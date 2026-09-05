@@ -59,19 +59,19 @@ Markdown 导入标题取文件内容中的首个 `# 标题`；没有一级标题
 
 ## 系统设置
 
-设置存储在 `system_configs`，配置键由 `WIKI_SETTING_KEYS` 定义。
+知识中心全局设置是[运行时设置](../backend/settings.md)的 `wiki` 模块（`packages/shared/src/settings/modules/wiki.ts`，平台作用域，License 特性 `wiki`），读写 `GET/PUT /api/settings/wiki`，服务端 `getSettings('wiki')`。
 
-| 配置键 | 类型 | 默认 | 页面文案 | 影响 |
+| 字段 | 类型 | 默认 | 页面文案 | 影响 |
 | --- | --- | --- | --- | --- |
-| `wiki.requireApproval` | boolean | `true` | 发布需审核 | 开启时提交进入 `pending`；关闭时提交即发布 |
-| `wiki.defaultVisibility` | string | `public` | 空间默认可见性 | 新建知识空间默认可见范围 |
-| `wiki.aiSyncEnabled` | boolean | `false` | 同步 AI 知识库 | 全局 AI 同步开关 |
-| `wiki.aiSyncKbId` | number | `0` | 同步目标知识库 | 目标 AI 知识库 ID；`0` 映射为 `null` |
-| `wiki.commentsEnabled` | boolean | `true` | 允许评论 | 关闭后暂停新评论 |
-| `wiki.recycleRetentionDays` | number | `0` | 回收站保留天数 | `0` 表示永久保留；大于 0 时每日任务清理超期文档 |
-| `wiki.pendingRemindHours` | number | `48` | 审核积压提醒时限 | 影响治理清单 `review-backlog` |
+| `requireApproval` | boolean | `true` | 发布需审核 | 开启时提交进入 `pending`；关闭时提交即发布 |
+| `defaultVisibility` | string | `public` | 空间默认可见性 | 新建知识空间默认可见范围 |
+| `aiSyncEnabled` | boolean | `false` | 同步 AI 知识库 | 全局 AI 同步开关 |
+| `aiSyncKbId` | number \| null | `null` | 同步目标知识库 | 目标 AI 知识库 ID；`null` 表示未指定 |
+| `commentsEnabled` | boolean | `true` | 允许评论 | 关闭后暂停新评论 |
+| `recycleRetentionDays` | number | `0` | 回收站保留天数 | `0` 表示永久保留；大于 0 时每日任务清理超期文档 |
+| `pendingRemindHours` | number | `48` | 审核积压提醒时限 | 影响治理清单 `review-backlog` |
 
-开启 AI 同步时，前端要求选择目标 AI 知识库。文档发布后只有在全局 `wiki.aiSyncEnabled = true`、`wiki.aiSyncKbId` 有效且文档所属空间 `aiSyncEnabled = true` 时才同步。
+开启 AI 同步时，前端要求选择目标 AI 知识库。文档发布后只有在全局 `aiSyncEnabled = true`、`aiSyncKbId` 有效且文档所属空间 `aiSyncEnabled = true` 时才同步。
 
 ## 治理与统计 API
 
@@ -89,6 +89,6 @@ Markdown 导入标题取文件内容中的首个 `# 标题`；没有一级标题
 | `GET` | `/api/wiki/stats/contributors` | `wiki:stats:view` | 贡献榜 Top N，`limit` 1-50 |
 | `GET` | `/api/wiki/stats/stale-docs` | `wiki:stats:view` | 沉睡文档 Top N，`limit` 1-50 |
 | `GET` | `/api/wiki/stats/ops` | `wiki:stats:view` | 运营统计 |
-| `GET` | `/api/wiki/settings` | `wiki:setting:view` | 获取知识库设置 |
-| `PUT` | `/api/wiki/settings` | `wiki:setting:edit` | 更新知识库设置 |
+| `GET` | `/api/settings/wiki` | `wiki:setting:view` | 读取知识库设置信封（生效值 / 默认值 / 版本） |
+| `PUT` | `/api/settings/wiki` | `wiki:setting:edit` | 整体替换知识库设置（携带 `version`，冲突返回 409） |
 

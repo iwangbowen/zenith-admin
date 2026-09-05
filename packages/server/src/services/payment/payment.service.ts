@@ -991,9 +991,9 @@ async function executeChannelRefund(
   }
 }
 
-/** 退款审批金额阈值（分）；≥阈值需审批，0=不审批。来源：运行时设置 payment.refundApprovalThreshold（租户级，未覆盖继承平台）。 */
-async function refundApprovalThreshold(): Promise<number> {
-  const v = (await getSettings('payment')).refundApprovalThreshold;
+/** 退款审批金额阈值（分）；≥阈值需审批，0=不审批。来源：运行时设置 payment.refundApprovalThreshold，按订单所属租户解析（未覆盖继承平台）。 */
+async function refundApprovalThreshold(tenantId: number | null): Promise<number> {
+  const v = (await getSettings('payment', { tenantId })).refundApprovalThreshold;
   return Number.isFinite(v) && v > 0 ? Math.trunc(v) : 0;
 }
 
@@ -1058,7 +1058,7 @@ export async function refund(input: CreateRefundInput & { idempotencyKey: string
 
   const refundNo = genNo('REF');
   const operatorId = input.operatorId ?? currentUserOrNull()?.userId ?? null;
-  const threshold = await refundApprovalThreshold();
+  const threshold = await refundApprovalThreshold(order.tenantId ?? null);
   const needApproval = threshold > 0 && input.refundAmount >= threshold;
 
   // ── 原子校验 + 插入（事务内 SELECT FOR UPDATE 防并发超退） ──────────────────

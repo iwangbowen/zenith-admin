@@ -17,7 +17,7 @@
 
 - 文档经 MDocument 自动分块，分块文本落 `ai_kb_chunks`（含 token 计数）；
 - 向量落 `mastra` schema 的 PgVector，**每个知识库独立索引**（`kb_{kbId}`），metadata 随向量存储、检索零回表；
-- embedding 模型由系统配置 `ai_embedding_model` 指定（配合系统默认服务商端点）。
+- embedding 模型由运行时设置 `ai.embeddingModel` 指定（配合系统默认服务商端点）。
 
 ## 检索与退化
 

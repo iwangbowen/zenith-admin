@@ -51,7 +51,7 @@ const { refundNo, status } = await refund({ orderNo, refundAmount: 500, reason: 
 ## 退款与审批
 
 - 可退余额在事务内锁单校验：实付金额 − 已成功退款 − 进行中退款。
-- 审批阈值来源：系统配置 `payment_refund_approval_threshold` 优先，环境变量 `PAYMENT_REFUND_APPROVAL_THRESHOLD` 兜底；`0` 或未设置表示不启用审批。
+- 审批阈值来源：运行时设置 `payment.refundApprovalThreshold`（租户作用域，按订单所属租户解析，未覆盖继承平台值；见[运行时设置](../backend/settings.md)）；`0` 表示不启用审批。
 - `refundAmount ≥ 阈值` 时退款单进入 `approvalStatus=pending`，不占用订单 `refunding` 状态；通过后执行渠道退款，驳回置 `failed` 并记录 `refund.failed`。
 - 免审批退款立即执行渠道退款。全额退完订单置 `refunded`，部分退款完成后订单回到 `success`。
 - 退款原因可选；投诉退款未传原因时使用「交易投诉退款（投诉单号）」作为默认原因。

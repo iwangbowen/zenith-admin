@@ -51,7 +51,7 @@
 - **域子路径导入**：**禁止**从 `@zenith/shared` 根入口导入（ESLint 报错）。一律用
   `@zenith/shared/{业务域}`（`core` / `identity` / `platform` / `messaging` / `workflow` / `payment` /
   `member` / `report` / `analytics` / `ai` / `chat` / `mp` / `cms` / `open-platform` / `rules` / `ops` /
-  `tasks` / `biz`），种子数据用 `@zenith/shared/seed`
+  `tasks` / `biz` / `settings`），种子数据用 `@zenith/shared/seed`
 - **Zod Schema 位置**：创建 / 更新 schema 定义在 `shared/src/{业务域}/validation.ts`，前后端共用，
   **禁止**在 server / web 中重复定义
 - **枚举 SSOT 在 constants**：`XXX_TYPES` 常量数组 + 派生 union type + `XXX_LABELS` / `XXX_OPTIONS`
@@ -80,6 +80,13 @@
   PUT / PATCH 请求体属性不得携带 `default`，全量替换 / upsert 端点须在其例外清单登记理由
 - **全量集合赋值端点**（`PUT /{id}/roles`、`/{id}/members` 等）：集合字段必填（`z.array(...)`），
   **禁止** `.default([])`——字段缺失应返回 400，而不是静默清空
+- **运行时设置进模块注册表**：可在后台修改、影响系统行为的开关 / 阈值 / 策略一律定义为
+  `shared/src/settings/modules/{module}.ts` 的字段（`defineSettingsModule`，新模块在 `registry.ts` 与 `contracts.ts` 各登记一行），
+  **禁止**新建 KV 配置表、逐项种子、环境变量兜底或在字典里存开关。叶子字段**必须** `.default()`、嵌套对象**必须** `.prefault({})`、
+  标签说明写 `.meta({ title, description })`（通用设置页据此渲染）；字符串 / 数组叶子字段名**禁止**含
+  `password` / `secret` / `token` / `apiKey` / `credential`（设置文档进审计快照与前端缓存，密钥走各自的加密存储）；
+  被后台任务 / 无租户上下文中间件读取的模块 `scope` **必须**是 `platform`；匿名 / 登录可见字段在 `visibility` 与
+  `publicSettingsSchema` / `mySettingsSchema` 两处同步声明（`settings.test.ts` 锁定）。见 [docs/backend/settings.md](../../../../docs/backend/settings.md)
 
 ## Service 层（Step 5）
 
@@ -92,6 +99,11 @@
   映射为 `HTTPException(400)`
 - **事务**：多步写操作（replace 模式 delete+insert、写主表+关联表）必须 `db.transaction()`；
   辅助写函数接受 `executor: DbExecutor` 参数；副作用（WebSocket、邮件）不放入事务
+- **事务内禁止走全局池读取**：`db.transaction()` 回调内**禁止**调用 `getSettings*`（`lib/settings`）及任何走全局 `db` 的读取——
+  它们占用第二个连接，并发事务达到池上限时互相等待直到超时。设置在事务外读取后以参数传入
+  （`services/drive/drive-transactions.test.ts` 静态扫描守住）；事务内的查询一律用 `tx`
+- **运行时设置读取**：`getSettings('{module}', { tenantId? })`（`lib/settings`）返回类型化生效文档，进程内缓存 + LISTEN/NOTIFY 失效；
+  **禁止**直接查 `system_settings`、**禁止**自建设置缓存或读取环境变量兜底；默认值只在模块 schema 出现，调用点**禁止**用 `??` 再抄一份默认值
 - **计数查询**：单表计数用 `db.$count(table, where)`，禁止 `db.select({ total: count() })`
 - **并行查询**：分页列表的 count 与 list **必须** `Promise.all` 并行，禁止串行 `await`
 - **只读快照统计**：同一（组）表的多条统计查询要求结果相互一致时（汇总卡片 + 明细榜单、对账）
@@ -151,6 +163,9 @@
 - **批量路由顺序**：`DELETE /batch` 必须注册在 `DELETE /{id}` **之前**，否则 `/batch` 被匹配为 `id="batch"`；
   静态 `/all` 同理早于 `/{id}`
 - **挂载路径取契约**：`routes/{业务域}/index.ts` 的挂载写 `[xxxContract.basePath, xxxRoutes]`，**禁止**路径字面量
+- **设置类接口不另开端点**：模块级设置的读写只经 `routes/platform/settings.ts` 循环注册表生成的 `GET/PUT /api/settings/{module-path}`，
+  **禁止**在业务域路由再暴露 `/settings` / `/policy` 之类的独立设置端点；写接口的 `guard` 权限取模块 `writePermission`，
+  平台作用域在多租户模式下仅平台管理员可写
 - **契约编译期检查**：`npm run typecheck:contracts`（随 `lint` 执行）以 `src/**/*.typecheck.ts` 锁定
   handler 入参 / 响应类型约束，改动 `lib/contract-route.ts` 必须保持其绿色
 - **外呼 HTTP**：服务端任何对外请求**必须**走 `lib/http-client.ts` 的 `httpRequest` / `httpGet` /
@@ -165,7 +180,8 @@
 
 - **显示与操作解耦**：`directory` / `menu` 节点是纯显示资源，**禁止**携带 `permission`；
   全部权限码（含查询）挂在 `button` 节点上。每个页面菜单的第一个按钮固定为「查询」
-  （`sort: 0`，权限码 `xxx:list`）
+  （`sort: 0`，权限码 `xxx:list`）；无列表语义的页面级设置页用 `xxx:view` / `xxx:update`
+  （通用设置页 `/system/settings` 为 `system:setting:view` / `system:setting:update`，模块 `readPermission` / `writePermission` 与之对齐）
 - **菜单 ID 分段**：每个一级目录独占 1000 段（系统管理 = 1000、系统设置 = 2000…）；
   页面落 10 的倍数槽位，按钮从父菜单 ID 顺延 +1..+n。**分配前必读 `SEED_MENUS` 源文件确认段内分布**，
   **严禁**依据任何文档记录的「当前最大 ID」分配
@@ -188,7 +204,9 @@
 - **自增 ID**：用 `nextIdFrom(list)`；**禁止**手写 `Math.max(...list.map((x) => x.id)) + 1`（空列表得 `-Infinity`）
 - **HTTP 状态码**：失败响应显式带 `{ status: N }`，与真实后端一致
 - **`data` 字段的有无是可观察差异**：`ok(x)` 省略 `data` 时响应体不含该字段，需要 `data: null` 就显式传 `null`
-- **数据源对齐**：初始数据从 `@zenith/shared/seed` 的 `SEED_XXXS` 派生，**禁止**在 mock 中重复写静态数组
+- **数据源对齐**：初始数据从 `@zenith/shared/seed` 的 `SEED_XXXS` 派生，**禁止**在 mock 中重复写静态数组；
+  运行时设置的 Demo 存储在 `mocks/data/settings.ts`（默认值来自模块 schema，解析 / diff / 投影复用 `@zenith/shared/settings`），
+  依赖某设置的其它 handler 读 `getMockSettings(module)` 或其镜像对象，**禁止**再写一份设置字面量
 - **路径契约测试**：`packages/web/src/lib/api-conformance.test.ts` 对照服务端路由快照校验所有仍以字面量书写的
   请求 URL 与 handler 路径；服务端尚无对应端点的调用必须登记在 `api-conformance.allowlist.ts` 并写明原因
 

@@ -73,9 +73,9 @@
 
 `POST /api/files/upload` 支持多文件字段 `file`，返回 `ManagedFile[]`；`POST /api/files/upload-one` 返回单个 `ManagedFile`。两者都使用当前启用的默认存储配置：
 
-1. 校验文件大小，系统配置 `file_upload_max_size_mb` 为 0 表示不限制。
-2. 读取文件前 4100 字节做 Magic Bytes 检测；系统配置 `file_upload_validate_type` 默认开启。
-3. 允许类型来自 `file_upload_allowed_types`，支持精确 MIME、`type/*`、`*`、`*/*`。
+1. 校验文件大小，运行时设置 `files.uploadMaxSizeMb`（模块见[运行时设置](../backend/settings.md)）为 0 表示不限制。
+2. 读取文件前 4100 字节做 Magic Bytes 检测；`files.uploadValidateType` 默认开启。
+3. 允许类型来自 `files.uploadAllowedTypes` 数组，支持精确 MIME、`type/*`、`*`、`*/*`。
 4. 无法通过 Magic Bytes 识别的文本类文件回退到上传方提供的 MIME。
 5. 生成对象 key：`basePath/YYYY/MM/DD/{timestamp}-{random}.{ext}`。
 6. 上传到 provider 后写入 `managed_files`。

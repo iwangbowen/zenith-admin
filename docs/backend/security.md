@@ -58,23 +58,24 @@ JWT payload 包含：`userId`、`username`、`roles`、`tenantId`、可选 `view
 
 ## 多因素、可信设备与登录风险
 
-身份安全策略由系统配置和身份路由共同实现：
+身份安全策略由运行时设置模块 `identitySecurity`（租户作用域，见[运行时设置](./settings.md)）和身份路由共同实现：
 
-- `mfa_enabled`、`mfa_mode`、`mfa_remember_device_days` 控制 MFA 与可信设备；
-- `login_risk_enabled`、`login_risk_new_device_action` 控制新设备风险动作；
+- `mfa.enabled`、`mfa.mode`、`mfa.rememberDeviceDays` 控制 MFA 与可信设备；
+- `risk.enabled`、`risk.newDeviceAction` 控制新设备风险动作；
+- `lockout.maxAttempts` / `lockout.durationMinutes` 与 `password.*` 控制登录锁定与密码策略，按用户所属租户解析，未覆盖时继承平台值；
 - MFA 因子表为 `user_mfa_factors`，可信设备表为 `user_trusted_devices`；
 - 登录风险事件写入 `login_risk_events`。
 
 ## IP 访问控制
 
-IP 访问控制由 `packages/server/src/middleware/ip-access.ts` 实现，配置从系统配置表读取：
+IP 访问控制由 `packages/server/src/middleware/ip-access.ts` 实现，配置来自运行时设置模块 `ipAccess`（平台作用域，进程内缓存 + 跨实例失效，管理页 `/system/ip-access`）：
 
-| 配置键 | 说明 |
+| 字段 | 说明 |
 | --- | --- |
-| `ip_whitelist_enabled` | 是否启用白名单 |
-| `ip_whitelist` | 白名单 JSON 数组，支持 IP 与 CIDR |
-| `ip_blacklist_enabled` | 是否启用黑名单 |
-| `ip_blacklist` | 黑名单 JSON 数组，支持 IP 与 CIDR |
+| `whitelistEnabled` | 是否启用白名单 |
+| `whitelist` | 白名单数组，支持 IP 与 CIDR（IPv4 / IPv6） |
+| `blacklistEnabled` | 是否启用黑名单（黑名单优先于白名单） |
+| `blacklist` | 黑名单数组，支持 IP 与 CIDR |
 
 免检精确路径包括登录、验证码、注册、刷新、找回密码、重置密码；免检前缀包括 `/api/oauth/` 与 `/api/auth/oauth/`。被拦截请求写入 `ip_access_logs`，查询接口位于 `/api/ip-access-logs`。
 

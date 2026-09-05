@@ -85,21 +85,22 @@ SSH 配置接口挂载在 `/api/ssh-profiles`，权限码为 `system:terminal:ex
 
 ## 终端录屏
 
-终端录屏由系统配置控制：
+终端录屏由运行时设置模块 `terminal`（通用设置页 `/system/settings?module=terminal`，见[运行时设置](../backend/settings.md)）控制：
 
-| 配置 Key | 默认值 | 说明 |
+| 字段 | 默认值 | 说明 |
 | --- | --- | --- |
-| `terminal_recording_enabled` | `false` | 是否启用 Web 终端录屏 |
-| `terminal_recording_retain_days` | `30` | 按保留天数自动清理，`0` 表示不按天数清理 |
-| `terminal_recording_max_size_mb` | `500` | 录屏总容量上限，`0` 表示不限制容量 |
+| `recordingEnabled` | `false` | 是否启用 Web 终端录屏 |
+| `recordingRetainDays` | `30` | 按保留天数自动清理，`0` 表示不按天数清理 |
+| `recordingMaxSizeMb` | `500` | 录屏总容量上限，`0` 表示不限制容量 |
+| `uploadMaxSizeMb` | `200` | 文件管理器 / SFTP 单文件上传上限，`0` 表示不限制 |
 
-前端创建终端 session 时读取 `GET /api/system-configs/public/terminal_recording_enabled`。启用后，前端记录终端输入输出事件，并在 WebSocket 关闭时提交到 `POST /api/terminal-recordings`。
+前端创建终端 session 时从登录用户设置投影 `GET /api/settings/me` 读取 `terminal.recordingEnabled`（租户套餐未含 `ops` 特性时该段缺省，视为关闭）。启用后，前端记录终端输入输出事件，并在 WebSocket 关闭时提交到 `POST /api/terminal-recordings`。
 
 `terminal_recordings` 表存储录屏标题、操作人、租户、shell、终端尺寸、持续时长、事件数组与审计时间。事件数组元素为 `[timeOffset, 'o' | 'i', data]`。
 
 「终端录屏」（`/system/terminal/recordings`）支持标题、操作人与时间范围查询，分页展示 Shell、尺寸、时长、命令数、操作人与录制时间；支持 xterm.js 本地回放、命令提取、复制全部命令、导出 asciinema `.cast`、删除单条录屏以及按 1 / 3 / 6 / 12 个月或全部范围批量清理。
 
-定时任务 `cleanupTerminalRecordings` 每天凌晨 4 点执行，根据 `terminal_recording_retain_days` 和 `terminal_recording_max_size_mb` 从旧到新清理录屏。
+定时任务 `cleanupTerminalRecordings` 每天凌晨 4 点执行，根据 `recordingRetainDays` 和 `recordingMaxSizeMb` 从旧到新清理录屏。
 
 ## SFTP 文件管理器
 

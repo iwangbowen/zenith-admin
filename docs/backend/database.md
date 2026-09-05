@@ -1,6 +1,6 @@
 # 数据库与迁移
 
-项目使用 PostgreSQL + Drizzle ORM 管理数据库结构与迁移。Server 工作区的 Drizzle 配置在 `packages/server/drizzle.config.ts`，schema 入口是 `packages/server/src/db/schema.ts`，迁移目录是 `packages/server/drizzle/`。
+项目使用 PostgreSQL（**≥ 15**，唯一约束依赖 `NULLS NOT DISTINCT`）+ Drizzle ORM 管理数据库结构与迁移。Server 工作区的 Drizzle 配置在 `packages/server/drizzle.config.ts`，schema 入口是 `packages/server/src/db/schema.ts`，迁移目录是 `packages/server/drizzle/`。
 
 ## 默认连接
 
@@ -47,9 +47,12 @@ npm run db:seed
 
 `packages/server/drizzle/` 包含 `0000_baseline.sql`、`0001_extensions.sql` 和后续增量迁移，执行顺序由 `drizzle/meta/_journal.json` 管理。全新数据库执行 `npm run db:migrate` 会按该顺序建库。
 
-`0001_extensions.sql` 收口维护 Drizzle schema 无法表达的手写 DDL，当前仅一项：
+`0001_extensions.sql` 收口维护 Drizzle schema 无法表达的手写 DDL，当前四项：
 
 - 条件启用 pgvector：`CREATE EXTENSION IF NOT EXISTS vector`（扩展可用才建，否则静默跳过；扩展创建与条件 DDL 均超出 Drizzle 表达范围）。它服务于 Mastra PgVector——知识库向量存放在 `mastra` schema（索引 `kb_{kbId}`），`ai_kb_chunks` 只存分块文本，业务表上没有任何 `vector` 列；无 pgvector 的部署除知识库向量化外照常工作。
+- `iot_telemetry` 的 RANGE 日分区建表与初始分区（见下文「分区表」）。
+- 跨实例缓存失效广播：通用触发器函数 `notify_cache_invalidate()`（以表名为 topic、可选以某列为 key 向 `cache_invalidate` 频道 `pg_notify`）与 `system_settings` 上的触发器；服务端 `lib/invalidation-bus.ts` 监听该频道，见[运行时设置](./settings.md)。新增需跨实例失效的进程内缓存只需再挂一个触发器。
+- 只读执行角色 `zenith_readonly`（NOLOGIN，仅 SELECT），供用户手写 SQL 在事务内 `SET LOCAL ROLE` 切换；无 CREATEROLE 权限的部署跳过创建并告警，服务端降级为白名单 + READ ONLY，见[数据平台 · 安全边界](../ops/data-platform.md#安全边界)。
 
 `pg_trgm` 扩展在 `0000_baseline.sql` 顶部创建；trigram 索引（含 `async_tasks.payload/result` 的「表达式 + gin_trgm_ops」形态）已全部收进 schema DSL，由 `drizzle-kit generate` 随基线生成。
 
@@ -57,9 +60,9 @@ npm run db:seed
 
 ### 分区表：`iot_telemetry`
 
-`0004_iot_telemetry_partition.sql` 把 IoT 遥测明细重建为 PostgreSQL 原生 **RANGE 日分区表**（按 `reported_at`，UTC 日边界，分区命名 `iot_telemetry_pYYYYMMDD`）。这是全库唯一的分区表，约定如下：
+`0001_extensions.sql` 把 IoT 遥测明细建为 PostgreSQL 原生 **RANGE 日分区表**（按 `reported_at`，UTC 日边界，分区命名 `iot_telemetry_pYYYYMMDD`）。这是全库唯一的分区表，约定如下：
 
-- Drizzle schema 仍以普通表描述列 / 索引 / 外键（父表定义自动继承到每个分区），`PARTITION BY` 与初始分区只存在于该迁移文件；重建基线时必须随 `0001_extensions.sql` 一并保留。
+- Drizzle schema 仍以普通表描述列 / 索引 / 外键（父表定义自动继承到每个分区），`PARTITION BY` 与初始分区只存在于 `0001_extensions.sql`；重建基线时必须一并保留。
 - 表没有代理主键：明细只按 `(device_id, reported_at)` 范围读取，主键索引纯属写放大，且分区键必须进主键的限制让 `id` 失去意义。
 - 分区生命周期由 `services/iot/iot-partitions.service.ts` 负责：启动与每小时任务「IoT 遥测分区维护」滚动预建未来 7 天；写入命中「无分区」错误时按批次内日期补建后重试；保留策略 `iot_telemetry` 走 `custom` 模式，按分区上界整表 `DROP`（秒级、零膨胀），写入侧同时丢弃早于保留窗口的回填点。
 - `drizzle-kit generate` 不会感知子分区（它只对比 schema 与快照），因此新增 / 删除分区无需迁移；但**不要**在 schema 中给该表加回 `id` 或改分区键列，否则生成的 `ALTER` 会作用于分区父表并破坏分区布局。
@@ -103,7 +106,7 @@ import { users, roles } from '../db/schema';
 | `auth.ts` | 认证与账号安全 | `user_oauth_accounts`、`oauth_configs`、`user_api_tokens`、`password_reset_tokens`、`user_mfa_factors`、`user_trusted_devices`、`login_risk_events`、`rate_limit_rules` |
 | `identity-providers.ts` | 企业 SSO | `tenant_identity_providers`、`user_identity_accounts`、`identity_provider_sync_logs` |
 | `directory-sync.ts` | 通讯录同步 | `directory_sync_sources`、`directory_sync_runs`、`directory_sync_run_items`、`directory_sync_conflicts`、`directory_sync_user_links`、`directory_sync_dept_links` |
-| `system.ts` | 系统配置与调度 | `system_configs`、`cron_jobs`、`cron_job_logs`、`system_scheduler_*`、`retention_policies`、`regions`、`maintenance_mode`、`user_feedbacks` |
+| `system.ts` | 运行时设置与调度 | `system_settings`（按模块的 jsonb 覆盖文档，见[运行时设置](./settings.md)）、`system_runtime_state`、`cron_jobs`、`cron_job_logs`、`system_scheduler_*`、`retention_policies`、`regions`、`maintenance_mode`、`user_feedbacks` |
 | `dicts.ts` | 数据字典 | `dicts`、`dict_items` |
 | `files.ts` | 文件存储 | `file_storage_configs`、`managed_files`、`upload_sessions`、`upload_chunks`、`business_files` |
 | `logs.ts` | 审计日志 | `login_logs`、`operation_logs`、`ip_access_logs` |

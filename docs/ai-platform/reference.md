@@ -45,7 +45,7 @@ AI 域的表结构、权限码与配置速查。业务表位于主 schema（`db/
 
 对话、消息、自定义智能体、个人配置、个人设置为用户私有数据，按归属校验，无独立 RBAC 权限码。
 
-## 环境变量与系统配置
+## 环境变量与运行时设置
 
 | 项 | 类型 | 说明 |
 | --- | --- | --- |
@@ -53,10 +53,10 @@ AI 域的表结构、权限码与配置速查。业务表位于主 schema（`db/
 | `AI_STREAM_IDLE_TIMEOUT_MS` | 环境变量 | 上游流式空闲超时（默认 90 秒） |
 | `MASTRA_STUDIO_ALLOW_ANONYMOUS` | 环境变量 | Studio 开发免鉴权（生产强制失效） |
 | `FIELD_ENCRYPTION_KEY` | 环境变量 | API Key 加密密钥（64 位 hex，按数据库共享；开发模式缺省用内置开发密钥，其他环境必填） |
-| `ai_embedding_model` | 系统配置 | 向量化模型（知识库 + 语义召回） |
-| `ai_image_model` | 系统配置 | 文生图模型（空 = 关闭） |
-| `ai_daily_token_quota` | 系统配置 | 每用户每日 token 配额 |
-| `ai_content_filter_enabled` | 系统配置 | 敏感词过滤开关 |
+| `ai.embeddingModel` | 运行时设置 | 向量化模型（知识库 + 语义召回） |
+| `ai.imageModel` | 运行时设置 | 文生图模型（空 = 关闭） |
+| `ai.dailyTokenQuota` | 运行时设置 | 每用户每日 token 配额 |
+| `ai.contentFilterEnabled` | 运行时设置 | 敏感词过滤开关（词库在字典「AI 敏感词」） |
 
 ## 接口挂载点
 

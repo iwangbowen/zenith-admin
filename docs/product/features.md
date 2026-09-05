@@ -15,7 +15,7 @@ open-platform、workflow、chat、mp、biz-demo、ai、short-link、marketing、
 
 | 路由领域 | 专题文档 | 边界 |
 | --- | --- | --- |
-| `platform` | [平台基础能力](../platform/index.md) | 系统配置、字典、地区、标签、反馈、安全治理、监控、缓存与实时通道，也负责规则和 License 路由装配 |
+| `platform` | [平台基础能力](../platform/index.md) | 运行时设置、字典、地区、标签、反馈、安全治理、监控、缓存与实时通道，也负责规则和 License 路由装配 |
 | `files` | [文件与存储](../storage/index.md) | 通用文件、业务附件与存储配置；共享契约位于 `shared\src\platform\contracts`，专题沿用 `/storage/` |
 | `drive` | [企业网盘](../drive/index.md) | 空间、目录、协作权限、版本与外链；复用 `files` 存储底座 |
 
@@ -40,13 +40,13 @@ open-platform、workflow、chat、mp、biz-demo、ai、short-link、marketing、
 | 企业身份源 | OIDC、SAML、LDAP、AD 身份源配置与 JIT 建号 |
 | 通讯录同步 | LDAP/AD、钉钉、企业微信、飞书同步源、同步记录、冲突处理与回调 |
 
-### 系统配置与基础能力
+### 系统设置与基础能力
 
 > 专题文档：[平台基础能力](../platform/index.md)
 
 | 模块 | 当前能力 |
 | --- | --- |
-| 系统配置 | 验证码、注册开关、密码策略、锁定策略、水印、运行开关等配置中心 |
+| 运行时设置 | 登录与注册、身份安全、界面与体验、文件上传、终端、会员、AI、规则、支付、工作流、IP 访问、网盘、知识中心 13 个模块的类型化设置；schema 驱动的通用设置页，租户级覆盖，多实例即时生效（[运行时设置](../backend/settings.md)） |
 | 数据字典 | 字典主表与字典项、树形结构、颜色标签、JSON 元数据、状态与排序 |
 | 地区管理 | 省 / 市 / 区数据维护与选择组件支撑 |
 | 标签管理 | 标签 CRUD、颜色、分组、批量操作 |

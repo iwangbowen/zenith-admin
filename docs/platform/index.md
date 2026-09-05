@@ -1,12 +1,12 @@
 # 平台基础能力
 
-`platform` 是系统配置、基础数据、安全治理与运行态能力的路由领域。本页以 `packages\server\src\routes\platform\index.ts` 的挂载清单为边界，汇总能力、管理入口及已有专题，不重复维护各专题的详细规则。
+`platform` 是运行时设置、基础数据、安全治理与运行态能力的路由领域。本页以 `packages\server\src\routes\platform\index.ts` 的挂载清单为边界，汇总能力、管理入口及已有专题，不重复维护各专题的详细规则。
 
 ## 模块边界
 
 | 概念 | 当前归属 |
 | --- | --- |
-| `platform` 路由领域 | 配置、字典、地区、标签、反馈、脱敏、审计、IP 访问日志、限流、缓存、监控、链路、健康检查与管理端 WebSocket |
+| `platform` 路由领域 | 运行时设置、字典、地区、标签、反馈、脱敏、审计、IP 访问日志、限流、缓存、监控、链路、健康检查与管理端 WebSocket |
 | 规则中心与 License | 共享契约分别位于 `shared\src\rules`、`shared\src\licensing`，路由由 `platform` 挂载，不是独立路由领域 |
 | `files` 路由领域 | 文件、存储配置、业务附件独立挂载；虽然共享契约位于 `shared\src\platform`，专题归属[文件与存储](../storage/index.md) |
 | `drive` 路由领域 | [企业网盘](../drive/index.md)独立管理空间与文件协作权限，复用文件存储底座 |
@@ -16,7 +16,7 @@
 
 | 能力 | API 前缀 | 当前实现 |
 | --- | --- | --- |
-| 系统配置 | `/api/system-configs` | 配置 CRUD、按键批量读取、公开配置读取与密码策略；配置键和读取工具见[系统内置配置](../backend/system-configs.md) |
+| 运行时设置 | `/api/settings` | 按模块读写类型化设置文档（`version` 乐观锁）、模块清单、匿名 / 登录用户投影；模块注册表、缓存与跨实例失效见[运行时设置](../backend/settings.md) |
 | 数据字典 | `/api/dicts` | 字典与字典项维护，按字典编码读取选项，支撑业务表单与展示 |
 | 地区 | `/api/regions` | 地区树、平铺列表、详情与增删改 |
 | 标签 | `/api/tags` | 标签维护、分组查询与批量删除 |
@@ -42,7 +42,7 @@ API 的方法、参数和响应以共享契约及运行中的 `/api/docs`、`/ap
 | --- | --- |
 | 字典管理 | `/system/dicts` |
 | 地区管理 | `/system/regions` |
-| 系统配置 | `/system/configs` |
+| 系统设置 | `/system/settings` |
 | 标签管理 | `/system/tags` |
 | 意见反馈 | `/system/feedbacks` |
 | 数据脱敏 | `/system/data-mask` |
@@ -54,7 +54,7 @@ API 的方法、参数和响应以共享契约及运行中的 `/api/docs`、`/ap
 ## 访问与运行边界
 
 - 管理操作按各路由的管理员认证与 `guard` 权限执行，不能把整个领域视为公开 API。反馈提交只要求管理员登录态，查询、处理和删除另有 `system:feedback:*` 权限。
-- 公开配置读取、密码策略和健康检查不要求登录；配置公开范围见[系统内置配置](../backend/system-configs.md)。健康检查在依赖异常时仍返回 HTTP 200，调用方应读取 `data.status`（`ok` / `degraded`）和 `data.checks`。
+- 匿名设置投影（`GET /api/settings/public`）和健康检查不要求登录；哪些字段可匿名读取由模块 `visibility` 决定，见[运行时设置](../backend/settings.md)。健康检查在依赖异常时仍返回 HTTP 200，调用方应读取 `data.status`（`ok` / `degraded`）和 `data.checks`。
 - `/api/ws` 只接受管理端 access token，不能复用会员凭证；身份与消息约束见[WebSocket 事件](../backend/websocket-events.md)。
 - 规则中心挂载声明 `feature: 'rules'`。License 管理面不加 feature 门禁，以便受限模式下恢复授权；仍要求平台管理员身份及 `system:license:view` / `system:license:manage` 权限。
 
@@ -64,7 +64,7 @@ API 的方法、参数和响应以共享契约及运行中的 `/api/docs`、`/ap
 | --- | --- |
 | API 装配与路由 | `packages\server\src\routes\platform\` |
 | 业务服务 | `packages\server\src\services\platform\` |
-| 共享契约 | `packages\shared\src\platform\contracts\`、`packages\shared\src\rules\contracts\`、`packages\shared\src\licensing\contracts\` |
-| 前端数据访问 | `packages\web\src\hooks\queries\` 下的 `system-configs.ts`、`dicts.ts`、`regions.ts`、`tags.ts`、`user-feedbacks.ts`、`data-mask.ts`、`cache.ts`、`licensing.ts` 等 |
+| 共享契约 | `packages\shared\src\platform\contracts\`、`packages\shared\src\settings\`、`packages\shared\src\rules\contracts\`、`packages\shared\src\licensing\contracts\` |
+| 前端数据访问 | `packages\web\src\hooks\queries\` 下的 `settings.ts`、`dicts.ts`、`regions.ts`、`tags.ts`、`user-feedbacks.ts`、`data-mask.ts`、`cache.ts`、`licensing.ts` 等 |
 
 路由领域完整清单及统计口径见[功能模块](../product/features.md#路由领域口径)。调整挂载边界时，应同步更新本页和归属专题，而不是按共享层目录增加重复文档。

@@ -34,7 +34,7 @@ zenith-admin/
 | `src/services/` | 业务规则、事务、数据映射、前置校验 |
 | `src/db/` | Drizzle schema、迁移、seed、数据库封装 |
 | `src/middleware/` | 认证、权限、限流、幂等、CSRF、维护模式、开放平台网关、HTTP 日志等 |
-| `src/lib/` | 契约路由适配（`contract-route.ts`）、时间、JWT、Redis、文件存储、任务中心、通知 outbox、HTTP 客户端、日志等通用能力 |
+| `src/lib/` | 契约路由适配（`contract-route.ts`）、运行时设置（`settings/`）与跨实例失效总线（`invalidation-bus.ts`）、时间、JWT、Redis、文件存储、任务中心、通知 outbox、HTTP 客户端、日志等通用能力 |
 | `drizzle/` | Drizzle 生成的迁移文件 |
 
 `packages/server/src/routes/` 当前领域目录：
@@ -63,7 +63,7 @@ tasks, wiki, workflow
 | `src/member/` | 会员前台独立应用 |
 | `src/approval/` | 移动审批入口 |
 | `src/layouts/` | 后台主布局、偏好面板、多账号切换、Electron 标题栏承载 |
-| `src/components/` | 公共组件 |
+| `src/components/` | 公共组件（含 `settings/` 的 schema 驱动设置表单） |
 | `src/hooks/queries/` | TanStack Query v5 域 hooks（由 `lib/contract-query.ts` 按契约派生） |
 | `src/lib/` | 契约调用层（`contract-query.ts`）、请求、账号停靠、主题色等封装 |
 | `src/mocks/` | MSW Demo 数据、handlers、测试与工具 |
@@ -77,10 +77,10 @@ tasks, wiki, workflow
 ```text
 ai, analytics, biz, chat, cms, core, drive, identity, licensing, member,
 messaging, mp, open-platform, ops, payment, platform, report,
-rules, seed, tasks, wiki, workflow
+rules, seed, settings, tasks, wiki, workflow
 ```
 
-每个业务域通常包含 `contracts/`（实体 schema 与操作契约，前后端与 Mock 的唯一真相）、`validation.ts`、`constants.ts`、`types.ts`（无法由 schema 推导的类型）、`index.ts`。业务代码使用域子路径导入，例如：
+每个业务域通常包含 `contracts/`（实体 schema 与操作契约，前后端与 Mock 的唯一真相）、`validation.ts`、`constants.ts`、`types.ts`（无法由 schema 推导的类型）、`index.ts`。`settings` 是横切域：`modules/` 下每个文件是一个运行时设置模块（带默认值的 Zod 文档 + 治理元数据），`registry.ts` 汇总为注册表，服务端读取、前端表单、Mock 与 OpenAPI 都由它派生，见[运行时设置](../backend/settings.md)。业务代码使用域子路径导入，例如：
 
 ```ts
 import type { User } from '@zenith/shared/identity';

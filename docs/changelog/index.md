@@ -4,6 +4,97 @@
 
 ---
 
+## v2.19.0 - 2026-09-05
+
+**运行时设置（Settings）取代 KV 系统配置**：可在后台修改、影响系统行为的开关与阈值按 13 个模块组织为带默认值的类型化 Zod 文档，
+服务端读取、前端表单、Demo Mock 与 OpenAPI 全部由 `@zenith/shared/settings` 的模块注册表派生；配置读取从「每次登录 12–24 条 SQL」
+变为进程内副本命中，多实例通过 PostgreSQL LISTEN/NOTIFY 即时失效。专题见 [运行时设置](/backend/settings)。
+
+> **数据库迁移基线重建**（`0000_baseline` + `0001_extensions`），不提供从 2.18 及更早版本的增量升级；
+> 全新建库执行 `npm run db:migrate && npm run db:seed`。PostgreSQL 版本要求 **≥ 15**（`NULLS NOT DISTINCT`）。
+> 移除的接口与权限：`/api/system-configs/*`（含 `/public/{key}`、`/password-policy`）、`/api/identity-security/policy`、
+> `/api/drive/admin/settings`、`/api/wiki/settings`，权限码 `system:config:*` → `system:setting:view` / `system:setting:update`；
+> 环境变量 `PAYMENT_REFUND_APPROVAL_THRESHOLD` / `PAYMENT_TRANSFER_APPROVAL_THRESHOLD` 不再读取，改在「系统设置 → 支付风控」维护。
+> 「站点名称」「用户默认密码」两项无消费者的旧配置删除。
+
+### Added
+
+#### 运行时设置：契约与注册表（shared）
+
+- 新增 `settings` 域：`defineSettingsModule` 模块定义（读取 schema + 作用域 / License 特性 / 读写权限 / 字段可见性 / 专用页面 / 排序），
+  `SETTINGS_MODULES` 注册表与 kebab-case 路径表，`validateSettingsRegistry()` 启动自检（默认值幂等、路径唯一、可见性字段存在、
+  字符串 / 数组字段名禁止密钥类词汇）
+- 13 个内置模块：登录与注册、身份安全（租户级）、界面与体验、文件上传、Web 终端、会员权益、AI 助手、规则引擎、支付风控（租户级）、
+  工作流引擎、IP 访问控制、企业网盘、知识中心；每个叶子字段带 `.default()` 与 `.meta({ title, description })`
+- `settingsContract`：模块清单、匿名投影 `GET /api/settings/public`、登录用户投影 `GET /api/settings/me`，以及每模块
+  `GET/PUT /api/settings/{module-path}`；读取信封含 `effective` / `inherited` / `overriddenPaths` / `version`，写入体 `{ version, data }`
+  由读取 schema 经 `stripDefaultsDeep` 派生（全字段必填、未知键 400）
+- 纯函数 `resolveSettings`（默认 ← 平台 ← 租户三层合并，坏数据逐路径降级）、`diffSettings`（只落库与上一层不同的叶子）、
+  `pickSettingsFields`（按可见性投影），服务端与 Mock 共用
+- `identitySecurity` 模块导出 `validatePassword` / `formatPasswordPolicyHint`；`core/validation` 新增 `stripDefaultsDeep`
+
+#### 运行时设置：服务端
+
+- `system_settings` 表（`module` + `tenant_id` 唯一，`NULLS NOT DISTINCT`；`data` 为稀疏 jsonb 覆盖文档；`version` 乐观锁）
+  与 `system_runtime_state` 表（机器状态，如 CMS 主题指纹）
+- `lib/settings`：`getSettings(module, { tenantId })` 类型化读取，进程内 `TtlCache` 按模块 × 作用域缓存（`SETTINGS_CACHE_TTL_MS`，默认 30s，SWR）；
+  `saveSettings` 做作用域与权限判定、`version` 冲突 409、diff 落库并失效；`getPublicSettings` / `getMySettings` / `listSettingsModules` 按可见性与租户套餐特性过滤
+- `lib/invalidation-bus`：通用跨实例失效总线——数据库触发器 `notify_cache_invalidate()` 向 `cache_invalidate` 频道广播 `{ topic, key }`，
+  服务进程以独立连接 `LISTEN`，按 topic 订阅、重连时整体清空，失败进入 `degraded` 并每 60s 重试；`GET /api/health` 新增 `checks.invalidationBus`
+- `routes/platform/settings.ts` 循环注册表生成全部模块路由，平台作用域在多租户模式下仅平台管理员可写，租户作用域按当前租户范围写入并记录审计
+- `services/drive/drive-transactions.test.ts`：静态扫描全部 `db.transaction()` 回调，禁止在事务内调用设置读取
+
+#### 运行时设置：前端与 Demo
+
+- 通用设置页 `/system/settings`：左侧模块清单（按权限与 License 过滤，URL `?module=` 定位），右侧 `SchemaForm` 由模块 Zod schema 自动渲染
+  开关 / 数字（范围与整数约束取自 schema）/ 下拉 / 输入框 / 标签输入 / 分组，显示「已覆盖」并支持「恢复继承」；有专用页面的模块给跳转入口
+- 域 hooks `hooks/queries/settings.ts`：`useSettings` / `useSaveSettings`（保存回填信封并失效投影）/ `useMySettings` / `usePublicSettings` / `useSettingsModules`
+- MSW `settings` handler：稀疏覆盖文档 + 版本号，复用 shared 解析 / diff / 投影，`list` / `public` / `me` 与服务端同语义
+
+#### 前端
+
+- `contract-query` 新增 `apiRaw(op, input, options)` 返回完整响应信封，登录 / 注册 / 验证码等需要读结果文案的调用不再手写请求泛型
+
+### Changed
+
+#### 运行时设置接入
+
+- 登录链路：验证码与注册开关读 `auth` 模块；登录锁定、密码过期、MFA、登录风险按用户所属租户解析 `identitySecurity` 模块，未覆盖继承平台值
+- 用户管理、导入中心、租户初始化、个人中心改密统一使用 `identitySecurity.password` 校验密码
+- 文件上传限制、终端录屏与上传上限、会员积分 / 生日礼 / 邀请奖励、AI 配额 / 敏感词 / 向量与图片模型、规则发布审批、
+  工作流引擎阈值、支付退款 / 转账审批阈值（按单据所属租户解析）、IP 黑白名单、网盘与知识库设置全部改为 `getSettings()` 读取
+- 网盘上传 / 复制 / 版本裁剪在事务外读取设置后以参数传入事务函数，事务内不再经全局连接池查询
+- IP 访问控制中间件移除私有 30s 缓存，直接依赖设置副本与失效总线
+- CMS 主题指纹改存 `system_runtime_state`
+- 管理端布局（水印 / 快捷聊天 / 反馈入口）、登录页、用户页、个人中心、意见反馈页、终端会话、规则审批开关改用 `me` / `public` 投影，
+  全站一次请求共享缓存
+- 身份安全、IP 访问控制、网盘设置、知识库设置四个专用页面改为读写设置信封，保存携带 `version`，冲突时提示并重载
+- 菜单「系统配置」改为「系统设置」（`/system/settings`），按钮权限 `system:setting:view` / `system:setting:update`；
+  删除「系统配置类型」字典与逐项配置种子——默认值只在 schema 出现一次
+- `authContract.register` / `mfaVerify` 响应收窄为登录结果 schema
+- 契约层复盘：路由 / 服务 / 契约 / hooks / 页面中仅复述端点地址的注释删除或改为契约操作引用
+
+#### 前端页面拆分
+
+- 四个 1400–1950 行的页面按「纯函数 / 独立 UI 块 / 成组状态 + 回调」拆分，入口路径与行为不变：
+  `WorkflowFormRenderer` 抽入 `components/form-renderer/` 13 个模块；`AnalyticsPage` 拆为 10 个 Tab 文件；
+  `AIChatPage` 拆为生成链路 / 分支树 / 模型选择 / 会话操作 / 语音 / 渲染配置 hooks 与侧栏 / 头部 / 输入区 / 弹窗组件；
+  `ChatPage` 拆出左栏 / 详情头 / 消息列表 / 输入区与静音 / @提及 / 通知偏好 / 文件预览 hooks
+
+#### 文档与开发规范
+
+- 新增 [运行时设置](/backend/settings) 专题；数据库、安全体系、多租户、平台基础能力、IAM、终端、网盘、知识中心、支付、会员、规则、AI、文件存储等文档同步模块字段与接口
+- Zenith Skill 新增运行时设置接入流程；硬约束补充设置模块注册表、事务内禁止走全局池读取、设置接口不另开端点、前端设置 hooks 与 `SchemaForm` 复用规则
+
+### Fixed
+
+- 并发上传 / 复制达到连接池上限时不再因事务内经全局池读取配置而相互等待直至超时
+- 身份安全策略保存按租户落库，租户管理员不再能改写平台级值；网盘设置写入同样受平台管理员校验
+- 平台级唯一约束改用 `NULLS NOT DISTINCT`，杜绝 `tenant_id IS NULL` 的重复行
+- 密钥类字段被注册表自检拦在设置之外，设置文档进入审计快照前不再需要逐字段脱敏
+
+---
+
 ## v2.18.0 - 2026-09-05
 
 **全域 API 契约统一**：实体 schema、操作路径、入参、响应与凭证类型统一在 shared 定义，服务端路由、前端数据访问、MSW Mock 和 OpenAPI 由同一份契约派生，减少跨层重复声明与接口漂移。

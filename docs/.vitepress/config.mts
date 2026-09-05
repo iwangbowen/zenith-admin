@@ -403,7 +403,7 @@ export default withMermaid(defineConfig({
           { text: '幂等防重复提交', link: '/backend/idempotency' },
           { text: 'OAuth 第三方登录', link: '/backend/oauth' },
           { text: '多租户指南', link: '/backend/multi-tenant' },
-          { text: '系统内置配置', link: '/backend/system-configs' },
+          { text: '运行时设置', link: '/backend/settings' },
           { text: '外呼 HTTP 客户端', link: '/backend/http-client' },
           { text: 'HTTP 流量日志', link: '/backend/http-logging' },
           { text: 'WebSocket 事件清单', link: '/backend/websocket-events' },

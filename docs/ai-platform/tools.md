@@ -21,7 +21,7 @@ AI 工具页面菜单路径为 `/ai/tools`。工具经 requestContext 注入 `ze
 
 ## 内置工具
 
-内置工具随系统注册；其中**文生图**工具 `generate_image` 由系统配置 `ai_image_model` 控制（配置模型名后启用，空 = 关闭）。
+内置工具随系统注册；其中**文生图**工具 `generate_image` 由运行时设置 `ai.imageModel` 控制（配置模型名后启用，空 = 关闭）。
 
 ## 使用范围
 

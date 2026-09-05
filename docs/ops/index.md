@@ -51,5 +51,5 @@ Zenith Admin 的运维文档按能力拆分维护。运维能力覆盖服务器�
 - [WebSocket 事件](../backend/websocket-events.md)
 - [维护模式](../backend/maintenance-mode.md)
 - [安全体系](../backend/security.md)
-- [系统内置配置](../backend/system-configs.md)
+- [运行时设置](../backend/settings.md)
 - [定时任务](../backend/cron-jobs.md)

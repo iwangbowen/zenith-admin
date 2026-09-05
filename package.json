@@ -1,6 +1,6 @@
 {
 	"name": "zenith-admin",
-	"version": "2.18.0",
+	"version": "2.19.0",
 	"private": true,
 	"engines": {
 		"node": ">=24 <25"

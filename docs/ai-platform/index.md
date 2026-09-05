@@ -73,20 +73,22 @@ Mastra Studio ──/api/mastra/*(标准 API)──▶ agents / datasets / exper
 | --- | --- |
 | 函数调用 | 服务商配置勾选 `tools` 能力标签，「AI 工具」页注册 HTTP API |
 | 图片理解 | 勾选 `vision` 能力标签 |
-| 知识库问答 | 配置 `ai_embedding_model` → 建知识库传文档 → 对话挂载 |
-| 语义召回 / 用户画像 | 配置 `ai_embedding_model` 后自动启用（画像可在个人设置关闭） |
+| 知识库问答 | 配置 `ai.embeddingModel` → 建知识库传文档 → 对话挂载 |
+| 语义召回 / 用户画像 | 配置 `ai.embeddingModel` 后自动启用（画像可在个人设置关闭） |
 | 自定义智能体 | 「智能体」页组合 instructions / 模型 / 知识库 / 工具 |
 | 模型评测 | 「模型评测」页建数据集 → 发起实验 |
 | Studio 调试 | `npm run dev:studio`，详见 [Mastra Studio](./studio.md) |
 
-## 系统配置速查
+## 运行时设置速查
 
-| 配置键 | 默认 | 说明 |
+模块 `ai`（通用设置页 `/system/settings?module=ai`，服务端 `getSettings('ai')`；机制见[运行时设置](../backend/settings.md)）：
+
+| 字段 | 默认 | 说明 |
 | --- | --- | --- |
-| `ai_daily_token_quota` | `0` | 每用户每日 token 配额（0 = 不限制） |
-| `ai_content_filter_enabled` | `false` | 输入侧敏感词过滤开关 |
-| `ai_embedding_model` | 空 | 向量化模型（知识库检索与语义召回；空 = 关键词检索） |
-| `ai_image_model` | 空 | 图片生成模型（空 = 关闭 generate_image 工具） |
+| `dailyTokenQuota` | `0` | 每用户每日 token 配额（0 = 不限制） |
+| `contentFilterEnabled` | `false` | 输入侧敏感词过滤开关 |
+| `embeddingModel` | 空 | 向量化模型（知识库检索与语义召回；空 = 关键词检索） |
+| `imageModel` | 空 | 图片生成模型（空 = 关闭 generate_image 工具） |
 
 ## 相关文档
 

@@ -88,7 +88,7 @@ OpenAPI tags 由各路由文件声明。代码中同时存在英文标签（如 
 | `Auth` / `MemberAuth` | 管理员与会员认证、刷新令牌、会话、个人资料 |
 | `Users` / `Roles` / `Menus` / `Departments` / `Positions` / `UserGroups` | 身份、组织、角色、菜单权限与用户组 |
 | `Tenants` / `TenantPackages` / `Licensing` | 租户、套餐与授权 |
-| `SystemConfigs` / `CronJobs` / `SystemScheduler` / `Retention` / `Cache` | 系统配置、业务定时任务、系统调度、数据保留与缓存 |
+| `Settings` / `CronJobs` / `SystemScheduler` / `Retention` / `Cache` | 运行时设置、业务定时任务、系统调度、数据保留与缓存 |
 | `AsyncTasks` / `TaskDemo` | 通用异步任务、任务类型策略、任务明细与演示任务 |
 | `ExportJobs` | 导出实体、导出任务、下载与下载日志 |
 | `Files` / `Business Files` | 文件上传、托管文件、业务附件 |

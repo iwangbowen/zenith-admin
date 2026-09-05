@@ -19,7 +19,7 @@ flowchart LR
     Services --> DB[("drive_* tables")]
     Services --> Files["managed_files<br/>visibility = restricted"]
     Services --> Storage["文件存储 provider"]
-    Services --> Config["system_configs<br/>drive_*"]
+    Services --> Config["运行时设置<br/>getSettings('drive')"]
     Services --> Tasks["任务中心<br/>打包 / 复制 / 重算 / 索引"]
     Services --> Notify["通知中心 notify()"]
     Public["/public/drive/:token"] --> PublicAPI["/api/drive/public/*"]
@@ -28,7 +28,7 @@ flowchart LR
 
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
-| 共享契约 | `packages\shared\src\drive\` | 实体 schema 与 API 契约（`contracts/`）、空间类型、角色、主体类型、设置键、Zod 入参 |
+| 共享契约 | `packages\shared\src\drive\` | 实体 schema 与 API 契约（`contracts/`）、空间类型、角色、主体类型、Zod 入参；全局设置模块在 `packages\shared\src\settings\modules\drive.ts` |
 | 数据模型 | `packages\server\src\db\schema\drive.ts` | 空间、成员、节点树、授权、版本、外链、访问日志、动态、收藏、最近、标签、评论、正文索引 |
 | API 路由 | `packages\server\src\routes\drive\` | 由契约派生的 `/api/drive/*` 路由与权限门控；`/api/drive/public/*` 匿名外链 |
 | 业务服务 | `packages\server\src\services\drive\` | ACL 解析、目录树操作、上传 / 秒传 / 版本、外链会话、回收站、检索、治理、任务处理器 |
@@ -122,18 +122,22 @@ flowchart LR
 | `drive_node_comments` | 节点评论 |
 | `drive_node_texts` | 正文全文索引（`tsvector`） |
 
-## 设置项（`system_configs`，`drive_` 前缀）
+## 设置项（运行时设置模块 `drive`）
 
-| 键 | 含义 |
+全局设置是[运行时设置](../backend/settings.md)的 `drive` 模块（平台作用域，License 特性 `drive`，权限 `drive:setting:view` / `drive:setting:edit`），读写 `GET/PUT /api/settings/drive`，服务端 `getSettings('drive')`：
+
+| 字段 | 含义 |
 | --- | --- |
-| `drive_personal_quota_gb` / `drive_department_quota_gb` / `drive_team_quota_gb` | 各类空间默认配额，0 = 不限 |
-| `drive_department_space_auto_create` | 用户首次访问时自动创建其部门空间 |
-| `drive_recycle_retention_days` | 回收站保留天数，0 = 永久保留 |
-| `drive_max_versions` | 默认最多保留版本数 |
-| `drive_quota_warning_percent` | 配额预警阈值 |
-| `drive_external_share_enabled` / `drive_external_share_max_days` / `drive_external_share_require_password` | 外链总开关、最长有效期、是否强制密码 |
-| `drive_blocked_extensions` | 禁止上传的扩展名 |
-| `drive_thumbnail_enabled` / `drive_text_index_enabled` | 缩略图与正文索引开关 |
+| `personalQuotaGb` / `departmentQuotaGb` / `teamQuotaGb` | 各类空间默认配额，0 = 不限；空间显式配额优先 |
+| `departmentSpaceAutoCreate` | 用户首次访问时自动创建其部门空间 |
+| `recycleRetentionDays` | 回收站保留天数，0 = 永久保留 |
+| `maxVersions` | 默认最多保留版本数 |
+| `quotaWarningPercent` | 配额预警阈值（%） |
+| `externalShareEnabled` / `externalShareMaxDays` / `externalShareRequirePassword` | 外链总开关、最长有效期、是否强制密码 |
+| `blockedExtensions` | 禁止上传的扩展名数组（不区分大小写，可带前导点） |
+| `thumbnailEnabled` / `textIndexEnabled` | 缩略图与正文索引开关 |
+
+上传、复制、版本裁剪等事务先在事务外读取设置再以参数传入事务函数（`appendVersion` / `copySubtree` / `reserveSpaceQuota`），事务回调内不调用 `getSettings`；`services/drive/drive-transactions.test.ts` 以静态扫描守住该约定。
 
 ## 接口速查
 
@@ -148,7 +152,7 @@ flowchart LR
 | `/api/drive/share-links*` | 我的外链、修改、撤销、访问记录 |
 | `/api/drive/public/shares/{token}/*` | 匿名外链：元信息、密码校验、浏览、内容、转存 |
 | `/api/drive/tags*` | 空间标签 |
-| `/api/drive/admin/*` | 统计、空间治理、部门空间、容量重算、索引补建、外链治理、动态审计、设置 |
+| `/api/drive/admin/*` | 统计、空间治理、部门空间、容量重算、索引补建、外链治理、动态审计（全局设置走 `/api/settings/drive`） |
 
 完整参数与响应以 `packages\shared\src\drive\contracts\` 中的契约为准（`driveSpaceContract` / `driveNodeContract` / `driveShareLinkContract` /
 `driveTagContract` / `driveAdminContract` / `drivePublicShareContract`），服务端路由、前端 hooks、MSW mock 与运行中的 `/api/docs`（`企业网盘-*` 标签）均由其派生。

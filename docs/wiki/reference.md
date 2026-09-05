@@ -32,18 +32,20 @@
 | `wiki_review_records` | `doc_id`、`version`、`action`、`actor_id`、`reason` | 审核时间线 |
 | `wiki_doc_read_receipts` | `doc_id`、`user_id`、`created_at` | 阅读确认，复合主键 |
 | `business_files` | `business_type = 'wiki_doc'`、`business_id = docId` | 文档附件多态关联 |
-| `system_configs` | `config_key = wiki.*` | 知识中心全局设置 |
+| `system_settings` | `module = 'wiki'` | 知识中心全局设置（[运行时设置](../backend/settings.md)） |
 
-## 设置键
+## 设置字段
+
+运行时设置模块 `wiki`（`getSettings('wiki')` / `useSettings('wiki')`）：
 
 ```ts
-wiki.requireApproval
-wiki.defaultVisibility
-wiki.aiSyncEnabled
-wiki.aiSyncKbId
-wiki.commentsEnabled
-wiki.recycleRetentionDays
-wiki.pendingRemindHours
+requireApproval
+defaultVisibility
+aiSyncEnabled
+aiSyncKbId
+commentsEnabled
+recycleRetentionDays
+pendingRemindHours
 ```
 
 ## 通知事件
@@ -177,6 +179,6 @@ wiki:governance:edit
 | `GET` | `/api/wiki/stats/contributors` |
 | `GET` | `/api/wiki/stats/stale-docs` |
 | `GET` | `/api/wiki/stats/ops` |
-| `GET` | `/api/wiki/settings` |
-| `PUT` | `/api/wiki/settings` |
+| `GET` | `/api/settings/wiki` |
+| `PUT` | `/api/settings/wiki` |
 

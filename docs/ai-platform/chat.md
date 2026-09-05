@@ -50,7 +50,7 @@
 | `reasoning` | 会话级推理档位 |
 | `images` | vision 图片；经统一文件存储持久化（`ai_messages.images` 存文件引用），刷新后以稳定 URL 回显，支持粘贴截图直接上传 |
 
-上下文由 **Mastra Memory** 承载：近 20 条消息 + 语义召回（配置 embedding 模型后启用，topK 4）。接口按用户限流（内置规则 `ai_chat_send`），并受 `ai_daily_token_quota` 每日配额约束。
+上下文由 **Mastra Memory** 承载：近 20 条消息 + 语义召回（配置 embedding 模型后启用，topK 4）。接口按用户限流（内置规则 `ai_chat_send`），并受运行时设置 `ai.dailyTokenQuota` 每日配额约束。
 
 ## 生成与连接解耦（断线续传）
 

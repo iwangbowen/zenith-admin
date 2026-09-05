@@ -74,7 +74,7 @@ POST /api/public/payment/notify/{channel}
 
 ## 退款审批
 
-审批阈值单位为分，来源优先级：系统配置 `payment_refund_approval_threshold` → 环境变量 `PAYMENT_REFUND_APPROVAL_THRESHOLD`。`0` 或未设置表示不启用审批。
+审批阈值单位为分，来自运行时设置模块 `payment`（`refundApprovalThreshold` 退款、`transferApprovalThreshold` 转账；租户作用域，按单据所属租户解析，未覆盖继承平台值，管理入口 `/system/settings?module=payment`）。`0` 表示不启用审批。
 
 - `refundAmount ≥ 阈值` 的退款进入 `approvalStatus=pending`；
 - `payment:refund:approve` 权限可审批通过或驳回；
@@ -165,5 +165,4 @@ decide({ kind: 'table', key: 'dispute_triage' }, facts, { caller: 'payment.dispu
 | --- | --- |
 | `FIELD_ENCRYPTION_KEY` | 字段级 AES-256-GCM 加密密钥（64 位 hex，按数据库共享）；开发模式缺省用内置开发密钥，其他环境必填 |
 | `PAYMENT_NOTIFY_BASE_URL` / `PUBLIC_BASE_URL` | 渠道回调地址基址 |
-| `PAYMENT_REFUND_APPROVAL_THRESHOLD` | 退款审批阈值兜底，单位分 |
 | `PAYMENT_MOCK_DISPUTES` | `true` 时定时任务为沙箱成功订单生成模拟投诉；手动模拟接口不受该变量限制 |

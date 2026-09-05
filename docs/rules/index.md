@@ -56,7 +56,7 @@ flowchart LR
 | --- | --- |
 | 决策表 | `first` / `unique` / `priority` / `collect` / `any` 命中策略；输入表达式、输出表达式、单元格 DSL、默认输出回退 |
 | 版本治理 | 决策表使用 `rule_decision_table_versions`；决策流和评分卡使用 `rule_asset_versions`；版本回滚覆盖编辑态并置为草稿 |
-| 发布控制 | 决策表发布前校验输入表达式、条件单元格、输出表达式；有测试用例时要求全部通过且覆盖率 100%；支持 `rule_publish_approval` 四眼审批 |
+| 发布控制 | 决策表发布前校验输入表达式、条件单元格、输出表达式；有测试用例时要求全部通过且覆盖率 100%；支持 `rules.publishApproval` 四眼审批（运行时设置） |
 | 灰度发布 | 决策表可传 `grayPercent` 与 `grayDimension`，按 FNV-1a 主体分桶，灰度外流量走上一版本 |
 | 批量评估 | 决策表支持测试求值、测试矩阵、批量仿真、命中分析、影子对比 |
 | 决策流 | 步骤按序执行，前序输出并入 scope，支持条件跳过和输出命名空间 |

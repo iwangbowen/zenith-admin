@@ -114,18 +114,20 @@
 
 ### 安全策略
 
-`/api/identity-security/policy` 读写系统配置：
+身份安全策略是运行时设置模块 `identitySecurity`（**租户作用域**：租户可覆盖平台值，未覆盖时继承；读写 `GET/PUT /api/settings/identity-security`，权限 `system:identity-security:manage`，管理页 `/system/identity-security`；机制见[运行时设置](../backend/settings.md)）：
 
-| 配置项 | 语义 |
+| 字段 | 语义 |
 | --- | --- |
-| `password_min_length` | 密码最小长度，默认 6 |
-| `password_require_uppercase` | 是否要求大写字母 |
-| `password_require_special_char` | 是否要求特殊字符 |
-| `password_expiry_enabled` / `password_expiry_days` | 密码过期强制修改 |
-| `login_max_attempts` / `login_lock_duration_minutes` | 登录失败锁定阈值与锁定时长 |
-| `mfa_enabled` / `mfa_mode` | MFA 总开关与模式：`off`、`optional`、`required` |
-| `mfa_remember_device_days` | 可信设备免 MFA 天数 |
-| `login_risk_enabled` / `login_risk_new_device_action` | 新设备风险策略；动作支持 `allow`、`challenge` |
+| `password.minLength` | 密码最小长度，默认 6 |
+| `password.requireUppercase` | 是否要求大写字母 |
+| `password.requireSpecialChar` | 是否要求特殊字符 |
+| `password.expiryEnabled` / `password.expiryDays` | 密码过期强制修改 |
+| `lockout.maxAttempts` / `lockout.durationMinutes` | 登录失败锁定阈值与锁定时长，按用户所属租户解析 |
+| `mfa.enabled` / `mfa.mode` | MFA 总开关与模式：`off`、`optional`、`required` |
+| `mfa.rememberDeviceDays` | 可信设备免 MFA 天数 |
+| `risk.enabled` / `risk.newDeviceAction` | 新设备风险策略；动作支持 `allow`、`challenge` |
+
+密码规则（`password`）是匿名可见字段：登录 / 注册 / 改密页通过 `GET /api/settings/public` 与 `/api/settings/me` 读取并做前端提示。
 
 MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现覆盖 TOTP 绑定、确认、停用与登录验证。新设备触发挑战时写入 `login_risk_events`，风险等级为 `low`、`medium`、`high`，动作是 `allow`、`challenge`、`block`。
 

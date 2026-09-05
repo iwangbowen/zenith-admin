@@ -12,7 +12,7 @@
 | [文档管理与阅读](./documents.md) | 文档树、移动排序、编辑器、模板、附件、版本、收藏、搜索、阅读视图与回收站 |
 | [协作与审批](./collaboration-approval.md) | 评论 / 回复 / @提及、问题解决、订阅通知、发布审核、阅读确认 |
 | [治理、统计与设置](./governance-stats-settings.md) | 治理清单、批量治理、无结果搜索词、统计看板、系统设置、每日治理任务、AI 同步 |
-| [数据模型与接口速查](./reference.md) | 表结构、枚举、权限码、设置键、通知事件、API 路径清单 |
+| [数据模型与接口速查](./reference.md) | 表结构、枚举、权限码、设置字段、通知事件、API 路径清单 |
 
 ---
 
@@ -26,14 +26,14 @@ flowchart LR
     Routes --> Services["services\\wiki\\*"]
     Services --> DB[("wiki_* tables")]
     Services --> Files["business_files<br/>business_type = wiki_doc"]
-    Services --> Config["system_configs<br/>wiki.*"]
+    Services --> Config["运行时设置<br/>getSettings('wiki')"]
     Services --> Notify["通知中心 notify()"]
     Services --> AI["AI 知识库<br/>wiki://docs/{id}"]
 ```
 
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
-| 共享契约 | `packages\shared\src\wiki\` | 实体 schema 与 API 契约（`contracts/`）、枚举、Zod 入参、设置键 |
+| 共享契约 | `packages\shared\src\wiki\` | 实体 schema 与 API 契约（`contracts/`）、枚举、Zod 入参；全局设置模块在 `packages\shared\src\settings\modules\wiki.ts` |
 | 数据模型 | `packages\server\src\db\schema\wiki.ts` | 空间、成员、文档、版本、标签、评论、互动、审核、搜索日志 |
 | API 路由 | `packages\server\src\routes\wiki\` | 由契约派生的 `/api/wiki/*` 路由与权限门控 |
 | 业务服务 | `packages\server\src\services\wiki\` | 权限校验、状态机、树重排、版本、治理、通知、AI 同步 |

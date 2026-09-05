@@ -105,4 +105,4 @@
 
 保留天数 `0` 表示永久保留；单批行数范围为 100–50000。系统调度中的 `data-retention` 任务每天 03:00 统一执行。策略覆盖操作日志、登录日志、IP 拦截、登录风险、License、身份源同步、通讯录同步、维护记录、数据库查询历史、应用升级事件、终端会话、系统调度、定时任务、调度节点、系统指标采样、监控告警事件、通知中心、数据分析、支付中心、会员中心、开放平台、工作流、规则中心与报表中心等追加型或运行流水表。
 
-终端录屏 `terminal_recordings` 由 `terminal_recording_retain_days` 与 `terminal_recording_max_size_mb` 双策略清理，不纳入 `retention_policies`。
+终端录屏 `terminal_recordings` 由运行时设置 `terminal.recordingRetainDays` 与 `terminal.recordingMaxSizeMb` 双策略清理，不纳入 `retention_policies`。

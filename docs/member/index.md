@@ -178,7 +178,7 @@
 系统周期任务 `member-housekeeping`（每天 02:10，调度中心可手动执行）依次处理：
 
 1. **优惠券过期**：`member_coupons` 中已过 `expire_at` 的未使用券批量置为 `expired`，保证统计与展示口径准确。
-2. **积分不活跃过期**：由 system_config `member_point_expire_days` 控制（默认 `0` 不启用）；账户超过 N 天无任何积分变动时，余额通过 `changePoints(type='expire')` 清零并写 `bizType = 'points_inactive_expire'` 流水，可审计可对账。
+2. **积分不活跃过期**：由运行时设置 `member.pointExpireDays` 控制（默认 `0` 不启用；模块见[运行时设置](../backend/settings.md)）；账户超过 N 天无任何积分变动时，余额通过 `changePoints(type='expire')` 清零并写 `bizType = 'points_inactive_expire'` 流水，可审计可对账。
 3. **生日礼发放**：见「生日礼自动发放」章节。
 4. **券到期提醒**：见「券到期提醒」章节。
 
@@ -230,8 +230,8 @@
 
 每日例行维护任务在生日当天（`birthday` 的 MM-DD 匹配）为启用会员发放礼包，**按年幂等**（每年最多一次）：
 
-- `member_birthday_points`（system_config，默认 `0` 不发）：积分礼，流水 `bizType = 'birthday'`、`bizId = 年份`，以流水查重防重发。
-- `member_birthday_coupon_id`（system_config，默认 `0` 不发）：券礼，`member_coupons` 以同样标记查重；库存不足等业务异常跳过该会员不阻断整体。
+- `member.birthdayPoints`（运行时设置，默认 `0` 不发）：积分礼，流水 `bizType = 'birthday'`、`bizId = 年份`，以流水查重防重发。
+- `member.birthdayCouponId`（运行时设置，默认 `null` 不发）：券礼，`member_coupons` 以同样标记查重；库存不足等业务异常跳过该会员不阻断整体。
 
 ### 券到期提醒
 
@@ -258,7 +258,7 @@
 ### 邀请裂变
 
 - `members.invite_code`（部分唯一索引，首次访问邀请页懒生成）+ `invited_by`（邀请关系）。
-- 注册接口支持 `inviteCode`（选填）：注册成功后绑定邀请关系，按 system_config `member_invite_reward_points`（默认 `0` 关闭）给邀请人发积分（流水 `bizType='invite'`、`bizId=新会员ID`，天然幂等）并发站内通知；处理为 best-effort，不阻断注册。
+- 注册接口支持 `inviteCode`（选填）：注册成功后绑定邀请关系，按运行时设置 `member.inviteRewardPoints`（默认 `0` 关闭）给邀请人发积分（流水 `bizType='invite'`、`bizId=新会员ID`，天然幂等）并发站内通知；处理为 best-effort，不阻断注册。
 - 前台：邀请页 `/invite`（邀请码/邀请链接复制、已邀人数、累计奖励、最近邀请列表）；注册弹窗支持邀请码输入并可从链接 `#/?invite=CODE` 预填。
 
 ### 账户自助注销
