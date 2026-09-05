@@ -4,6 +4,7 @@ import { Banner, Button, Col, DatePicker, Form, Row, SideSheet, TabPane, Tabs, T
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CMS_CONTENT_TYPES, CMS_CONTENT_TYPE_LABELS, CMS_DISTRIBUTION_CONFLICT_STRATEGIES, CMS_DISTRIBUTION_CONFLICT_STRATEGY_LABELS, CMS_DISTRIBUTION_MODES, CMS_DISTRIBUTION_MODE_LABELS, CMS_DISTRIBUTION_RUN_OUTCOME_LABELS, CMS_DISTRIBUTION_TASK_STATUSES, CMS_DISTRIBUTION_TASK_STATUS_LABELS } from '@zenith/shared/cms';
 import type { CmsChannel, CmsDistributionRule, CmsDistributionRun } from '@zenith/shared/cms';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import ExportButton from '@/components/ExportButton';
@@ -23,7 +24,7 @@ import {
   useCmsDistributionRuleList,
   useCmsDistributionRunDetail,
   useCmsDistributionRunList,
-  useDeleteCmsDistributionRule,
+  useDeleteCmsDistributionRules,
   useRunCmsDistributionRule,
   useSaveCmsDistributionRule,
 } from '@/hooks/queries/cms-stage5';
@@ -79,15 +80,15 @@ export default function DistributionPage() {
     keyword: ruleSubmitted.keyword || undefined,
     sourceSiteId: ruleSubmitted.sourceSiteId,
     targetSiteId: ruleSubmitted.targetSiteId,
-    mode: ruleSubmitted.mode as CmsDistributionRule['mode'] | undefined,
-    status: ruleSubmitted.status,
+    mode: enumValueOf(CMS_DISTRIBUTION_MODES, ruleSubmitted.mode),
+    status: enumValueOf(USER_STATUSES, ruleSubmitted.status),
   });
   const runQuery = useCmsDistributionRunList({
     page: runPagination.page,
     pageSize: runPagination.pageSize,
     ruleId: runSubmitted.ruleId,
     siteId: runSubmitted.siteId,
-    status: runSubmitted.status,
+    status: enumValueOf(CMS_DISTRIBUTION_TASK_STATUSES, runSubmitted.status),
     ...formatDateTimeRangeForApi(runSubmitted.range),
   });
   const runDetailQuery = useCmsDistributionRunDetail(detailRunId, detailRunId !== undefined);
@@ -134,7 +135,7 @@ export default function DistributionPage() {
     }),
     successMessage: ({ isEdit }) => isEdit ? '分发规则已更新' : '分发规则已创建',
   });
-  const deleteMutation = useDeleteCmsDistributionRule();
+  const deleteMutation = useDeleteCmsDistributionRules();
   const runMutation = useRunCmsDistributionRule();
   const cancelRunMutation = useAsyncTaskAction('cancel');
   const resumeRunMutation = useAsyncTaskAction('resume');
@@ -187,7 +188,7 @@ export default function DistributionPage() {
   }
 
   async function runRule(rule: CmsDistributionRule) {
-    await runMutation.mutateAsync(rule.id);
+    await runMutation.mutateAsync({ params: { id: rule.id } });
     Toast.success('分发任务已提交，可在“同步结果”查看进度');
   }
 
@@ -287,7 +288,7 @@ export default function DistributionPage() {
               title: `删除分发规则「${rule.name}」？`,
               content: '已物化内容会保留并解除规则关联；进行中的旧任务会因 revision/rule fence 安全取消。',
               onOk: async () => {
-                await deleteMutation.mutateAsync(rule.id);
+                await deleteMutation.mutateAsync([rule.id]);
                 Toast.success('规则已删除');
               },
             });

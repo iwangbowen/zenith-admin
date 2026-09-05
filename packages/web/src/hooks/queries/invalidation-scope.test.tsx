@@ -23,6 +23,8 @@ import {
 const api = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => api) }));
 
+import { cmsSiteContract } from '@zenith/shared/cms';
+import { contractKey } from '@/lib/contract-query';
 import { cmsSiteKeys, useAllCmsSites, useCmsThemeTemplates, useEnableSiteAnalytics, useSetCmsSiteUsers } from './cms';
 import {
   paymentContractKeys,
@@ -69,11 +71,11 @@ describe('cms 主题元数据与站点下拉源不被站点级动作打回源', 
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.enable.mutateAsync(1);
+    await hook.result.current.enable.mutateAsync({ params: { id: 1 } });
     await waitFor(() => expect(hook.result.current.sites.isFetching).toBe(false));
 
     // 开通统计会在站点上写入 siteKey：站点下拉源该刷新，主题元数据不该被波及
-    expect(fetches.countOf(['cms-sites', 'themes'])).toBe(0);
+    expect(fetches.countOf(contractKey(cmsSiteContract.themeTemplates))).toBe(0);
     expect(api.countOf('GET', /themes\/default\/templates/)).toBe(0);
 
     fetches.stop();
@@ -95,7 +97,7 @@ describe('cms 主题元数据与站点下拉源不被站点级动作打回源', 
     });
 
     api.resetCalls();
-    await hook.result.current.setUsers.mutateAsync({ siteId: 1, userIds: [9] });
+    await hook.result.current.setUsers.mutateAsync({ params: { id: 1 }, body: { userIds: [9] } });
     await waitFor(() => expect(hook.result.current.setUsers.isSuccess).toBe(true));
 
     // 授权名单自成一份查询，不出现在站点列表/下拉源/主题元数据里

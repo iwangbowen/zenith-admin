@@ -1,8 +1,8 @@
-import { http } from 'msw';
 import { escapeHtml } from '@zenith/shared/core';
-import { ok, badRequest, notFound, conflict, paginate } from '@/mocks/utils/handlers';
-import { CMS_WIDGET_HIGH_FANOUT_THRESHOLD, CMS_WIDGET_RENDERER_KEYS, CMS_WIDGET_RENDERER_LABELS } from '@zenith/shared/cms';
-import type { CmsResolvedWidget, CmsResolvedWidgetItem, CmsWidget, CmsWidgetItem, CmsWidgetRendererKey, CmsWidgetSourceReference } from '@zenith/shared/cms';
+import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
+import { mock } from '@/mocks/utils/contract';
+import { CMS_WIDGET_HIGH_FANOUT_THRESHOLD, CMS_WIDGET_RENDERER_KEYS, CMS_WIDGET_RENDERER_LABELS, cmsWidgetContract } from '@zenith/shared/cms';
+import type { CmsResolvedWidget, CmsResolvedWidgetItem, CmsWidget, CmsWidgetData, CmsWidgetSlot, CmsWidgetSourceReference } from '@zenith/shared/cms';
 import {
   getNextCmsWidgetId,
   getNextCmsWidgetRefId,
@@ -14,8 +14,6 @@ import {
 } from '../data/cms';
 import { mockDateTime } from '../utils/date';
 import { createProgressingMockTask } from './async-tasks';
-
-type Body = Record<string, unknown>;
 
 function refreshCounts() {
   for (const widget of mockCmsWidgets) {
@@ -76,11 +74,20 @@ function rendererOptions() {
   return CMS_WIDGET_RENDERER_KEYS.map((key) => ({ key, label: CMS_WIDGET_RENDERER_LABELS[key] }));
 }
 
-function cloneItems(value: unknown): { items: CmsWidgetItem[] } {
-  const items = value && typeof value === 'object' && Array.isArray((value as { items?: unknown }).items)
-    ? (value as { items: CmsWidgetItem[] }).items
-    : [];
-  return { items: items.map((item) => ({ ...item })) };
+function cloneItems(value: CmsWidgetData | null | undefined): CmsWidgetData {
+  return { items: (value?.items ?? []).map((item) => ({ ...item })) };
+}
+
+function homeSidebarSlot(siteId: number): CmsWidgetSlot {
+  const binding = mockCmsWidgetRefs.find((ref) =>
+    ref.siteId === siteId && ref.ownerType === 'theme_slot' && ref.field === 'home.sidebar') ?? null;
+  return {
+    key: 'home.sidebar',
+    label: '首页侧栏',
+    allowedTypes: ['manual-list'],
+    rendererKeys: [...CMS_WIDGET_RENDERER_KEYS],
+    binding,
+  };
 }
 
 const refreshTasksByKey = new Map<string, ReturnType<typeof createProgressingMockTask>>();
@@ -123,36 +130,23 @@ export function submitMockCmsWidgetSourceRefresh(
 }
 
 export const cmsWidgetsHandlers = [
-  http.get('/api/cms/widgets/options', ({ request }) => {
-    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
+  mock(cmsWidgetContract.options, ({ query, ok }) => {
     refreshCounts();
-    return ok(mockCmsWidgets.filter((widget) => widget.siteId === siteId && widget.status === 'published'));
+    return ok(mockCmsWidgets.filter((widget) => widget.siteId === query.siteId && widget.status === 'published'));
   }),
 
-  http.get('/api/cms/widgets/renderers', () => ok(rendererOptions())),
+  mock(cmsWidgetContract.renderers, ({ ok }) => ok(rendererOptions())),
 
-  http.get('/api/cms/widgets/slots', ({ request }) => {
-    const siteId = Number(new URL(request.url).searchParams.get('siteId'));
-    const binding = mockCmsWidgetRefs.find((ref) =>
-      ref.siteId === siteId && ref.ownerType === 'theme_slot' && ref.field === 'home.sidebar') ?? null;
-    return ok([{
-      key: 'home.sidebar',
-      label: '首页侧栏',
-      allowedTypes: ['manual-list'],
-      rendererKeys: [...CMS_WIDGET_RENDERER_KEYS],
-      binding,
-    }]);
-  }),
+  mock(cmsWidgetContract.slots, ({ query, ok }) => ok([homeSidebarSlot(query.siteId)])),
 
-  http.put('/api/cms/widgets/slots/:slotKey', async ({ params, request }) => {
-    const body = (await request.json()) as Body;
-    const siteId = Number(body.siteId);
-    const slotKey = String(params.slotKey);
+  mock(cmsWidgetContract.saveSlot, ({ params, body, ok }) => {
+    const { siteId } = body;
+    const { slotKey } = params;
     const index = mockCmsWidgetRefs.findIndex((ref) =>
       ref.siteId === siteId && ref.ownerType === 'theme_slot' && ref.field === slotKey);
     if (index >= 0) mockCmsWidgetRefs.splice(index, 1);
     if (body.widgetId) {
-      const widget = mockCmsWidgets.find((entry) => entry.id === Number(body.widgetId) && entry.siteId === siteId);
+      const widget = mockCmsWidgets.find((entry) => entry.id === body.widgetId && entry.siteId === siteId);
       if (!widget || widget.status !== 'published') return badRequest('主题插槽只能绑定已发布页面部件', { status: 400 });
       mockCmsWidgetRefs.push({
         id: getNextCmsWidgetRefId(),
@@ -161,7 +155,7 @@ export const cmsWidgetsHandlers = [
         ownerType: 'theme_slot',
         ownerId: siteId,
         field: slotKey,
-        rendererKey: String(body.rendererKey ?? 'list-sidebar') as CmsWidgetRendererKey,
+        rendererKey: body.rendererKey,
         styleProps: {},
         ownerName: mockCmsSites.find((site) => site.id === siteId)?.name ?? null,
         createdAt: mockDateTime(),
@@ -170,20 +164,11 @@ export const cmsWidgetsHandlers = [
     }
     refreshCounts();
     submitMockWidgetRefresh(siteId);
-    const binding = mockCmsWidgetRefs.find((ref) =>
-      ref.siteId === siteId && ref.ownerType === 'theme_slot' && ref.field === slotKey) ?? null;
-    return ok([{
-      key: 'home.sidebar',
-      label: '首页侧栏',
-      allowedTypes: ['manual-list'],
-      rendererKeys: [...CMS_WIDGET_RENDERER_KEYS],
-      binding,
-    }], '主题插槽已更新');
+    return ok([homeSidebarSlot(siteId)], '主题插槽已更新');
   }),
 
-  http.post('/api/cms/widgets/batch', async ({ request }) => {
-    const body = (await request.json()) as { ids?: number[]; action?: 'publish' | 'offline' | 'delete' };
-    const ids = [...new Set(body.ids ?? [])];
+  mock(cmsWidgetContract.batch, ({ body, ok }) => {
+    const ids = [...new Set(body.ids)];
     let succeeded = 0;
     let failed = 0;
     let skipped = 0;
@@ -228,12 +213,10 @@ export const cmsWidgetsHandlers = [
     return ok(task, '批量任务已提交');
   }),
 
-  http.get('/api/cms/widgets/source-refs', ({ request }) => {
-    const url = new URL(request.url);
-    const sourceType = url.searchParams.get('sourceType') as 'content' | 'channel';
-    const sourceId = Number(url.searchParams.get('sourceId'));
+  mock(cmsWidgetContract.sourceRefs, ({ query, ok }) => {
+    const { sourceType, sourceId } = query;
     refreshCounts();
-    const refs: CmsWidgetSourceReference[] = mockCmsWidgets.flatMap((widget) => {
+    const refs = mockCmsWidgets.flatMap((widget): CmsWidgetSourceReference[] => {
       if (widget.status !== 'published' || !widget.publishedData) return [];
       return widget.publishedData.items
         .filter((item) => (
@@ -243,30 +226,27 @@ export const cmsWidgetsHandlers = [
           && item.sourceType === 'content'
           && mockCmsContents.some((content) => content.id === item.sourceId && content.channelId === sourceId)
         ))
-        .map((item) => ({
+        .flatMap((item): CmsWidgetSourceReference[] => (item.sourceType === 'manual' || item.sourceId == null ? [] : [{
           widgetId: widget.id,
           widgetName: widget.name,
           widgetCode: widget.code,
           itemId: item.id,
-          sourceType: item.sourceType as 'content' | 'channel',
-          sourceId: item.sourceId!,
+          sourceType: item.sourceType,
+          sourceId: item.sourceId,
           referenceCount: widget.referenceCount,
           impactCount: widget.impactCount,
           highFanout: widget.highFanout,
-        }));
+        }]));
     });
     return ok(refs);
   }),
 
-  http.get('/api/cms/widgets/:id/refs', ({ params }) => {
-    const id = Number(params.id);
-    return ok(mockCmsWidgetRefs.filter((ref) => ref.widgetId === id));
-  }),
+  mock(cmsWidgetContract.refs, ({ params, ok }) => ok(mockCmsWidgetRefs.filter((ref) => ref.widgetId === params.id))),
 
-  http.get('/api/cms/widgets/:id/preview', ({ params, request }) => {
-    const widget = mockCmsWidgets.find((entry) => entry.id === Number(params.id));
+  mock(cmsWidgetContract.preview, ({ params, query, ok }) => {
+    const widget = mockCmsWidgets.find((entry) => entry.id === params.id);
     if (!widget) return notFound('页面部件不存在', { status: 404 });
-    const rendererKey = (new URL(request.url).searchParams.get('rendererKey') || widget.defaultRendererKey) as CmsWidgetRendererKey;
+    const rendererKey = query.rendererKey ?? widget.defaultRendererKey;
     const resolved: CmsResolvedWidget = {
       id: widget.id,
       name: widget.name,
@@ -285,8 +265,8 @@ export const cmsWidgetsHandlers = [
     });
   }),
 
-  http.post('/api/cms/widgets/:id/publish', ({ params }) => {
-    const widget = mockCmsWidgets.find((entry) => entry.id === Number(params.id));
+  mock(cmsWidgetContract.publish, ({ params, ok }) => {
+    const widget = mockCmsWidgets.find((entry) => entry.id === params.id);
     if (!widget) return notFound('页面部件不存在', { status: 404 });
     widget.publishedData = cloneItems(widget.draftData);
     widget.publishedName = widget.name;
@@ -298,8 +278,8 @@ export const cmsWidgetsHandlers = [
     return ok(widget, '发布成功');
   }),
 
-  http.post('/api/cms/widgets/:id/offline', ({ params }) => {
-    const widget = mockCmsWidgets.find((entry) => entry.id === Number(params.id));
+  mock(cmsWidgetContract.offline, ({ params, ok }) => {
+    const widget = mockCmsWidgets.find((entry) => entry.id === params.id);
     if (!widget) return notFound('页面部件不存在', { status: 404 });
     if (widget.status !== 'published') return badRequest(`当前状态（${widget.status}）不允许下线`, { status: 400 });
     widget.status = 'offline';
@@ -308,34 +288,29 @@ export const cmsWidgetsHandlers = [
     return ok(widget, '下线成功');
   }),
 
-  http.get('/api/cms/widgets/:id', ({ params }) => {
+  mock(cmsWidgetContract.detail, ({ params, ok }) => {
     refreshCounts();
-    const widget = mockCmsWidgets.find((entry) => entry.id === Number(params.id));
+    const widget = mockCmsWidgets.find((entry) => entry.id === params.id);
     return widget ? ok(widget) : notFound('页面部件不存在', { status: 404 });
   }),
 
-  http.get('/api/cms/widgets', ({ request }) => {
-    const url = new URL(request.url);
-    const siteId = Number(url.searchParams.get('siteId'));
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const type = url.searchParams.get('type') ?? '';
+  mock(cmsWidgetContract.list, ({ query, ok, paginate }) => {
+    const { siteId, keyword, status, type } = query;
     refreshCounts();
     let list = mockCmsWidgets.filter((widget) => widget.siteId === siteId);
     if (keyword) list = list.filter((widget) => widget.name.includes(keyword) || widget.code.includes(keyword));
     if (status) list = list.filter((widget) => widget.status === status);
     if (type) list = list.filter((widget) => widget.type === type);
-    return ok(paginate(list, url));
+    return ok(paginate(list));
   }),
 
-  http.post('/api/cms/widgets', async ({ request }) => {
-    const body = (await request.json()) as Body;
+  mock(cmsWidgetContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const row: CmsWidget = {
       id: getNextCmsWidgetId(),
-      siteId: Number(body.siteId),
-      name: String(body.name),
-      code: String(body.code),
+      siteId: body.siteId,
+      name: body.name,
+      code: body.code,
       type: 'manual-list',
       schemaVersion: 1,
       draftData: cloneItems(body.draftData),
@@ -344,8 +319,8 @@ export const cmsWidgetsHandlers = [
       draftRevision: 1,
       publishedRevision: 0,
       status: 'draft',
-      defaultRendererKey: String(body.defaultRendererKey ?? 'list-sidebar') as CmsWidgetRendererKey,
-      remark: body.remark == null ? null : String(body.remark),
+      defaultRendererKey: body.defaultRendererKey,
+      remark: body.remark ?? null,
       referenceCount: 0,
       impactCount: 0,
       highFanout: false,
@@ -357,22 +332,20 @@ export const cmsWidgetsHandlers = [
     return ok(row, '创建成功');
   }),
 
-  http.put('/api/cms/widgets/:id', async ({ params, request }) => {
-    const widget = mockCmsWidgets.find((entry) => entry.id === Number(params.id));
+  mock(cmsWidgetContract.update, ({ params, body, ok }) => {
+    const widget = mockCmsWidgets.find((entry) => entry.id === params.id);
     if (!widget) return notFound('页面部件不存在', { status: 404 });
-    const body = (await request.json()) as Body;
-    if (body.code !== undefined) return badRequest('页面部件编码创建后不可修改', { status: 400 });
-    if (Number(body.expectedRevision) !== widget.draftRevision) {
+    if (body.expectedRevision !== widget.draftRevision) {
       return conflict('页面部件草稿已被其他人更新，请刷新后再编辑', { status: 409 });
     }
-    const nextRemark = body.remark == null ? null : String(body.remark);
+    const nextRemark = body.remark == null ? null : body.remark;
     const changed = body.draftData !== undefined
-      || (body.name !== undefined && String(body.name) !== widget.name)
-      || (body.defaultRendererKey !== undefined && String(body.defaultRendererKey) !== widget.defaultRendererKey)
+      || (body.name !== undefined && body.name !== widget.name)
+      || (body.defaultRendererKey !== undefined && body.defaultRendererKey !== widget.defaultRendererKey)
       || (body.remark !== undefined && nextRemark !== widget.remark);
-    if (body.name !== undefined) widget.name = String(body.name);
+    if (body.name !== undefined) widget.name = body.name;
     if (body.draftData !== undefined) widget.draftData = cloneItems(body.draftData);
-    if (body.defaultRendererKey !== undefined) widget.defaultRendererKey = String(body.defaultRendererKey) as CmsWidgetRendererKey;
+    if (body.defaultRendererKey !== undefined) widget.defaultRendererKey = body.defaultRendererKey;
     if (body.remark !== undefined) widget.remark = nextRemark;
     if (changed) widget.draftRevision += 1;
     widget.hasUnpublishedChanges = widget.draftRevision !== widget.publishedRevision;
@@ -380,11 +353,10 @@ export const cmsWidgetsHandlers = [
     return ok(widget, '保存成功');
   }),
 
-  http.delete('/api/cms/widgets/:id', ({ params }) => {
-    const id = Number(params.id);
-    const index = mockCmsWidgets.findIndex((widget) => widget.id === id);
+  mock(cmsWidgetContract.remove, ({ params, ok }) => {
+    const index = mockCmsWidgets.findIndex((widget) => widget.id === params.id);
     if (index < 0) return notFound('页面部件不存在', { status: 404 });
-    const count = mockCmsWidgetRefs.filter((ref) => ref.widgetId === id).length;
+    const count = mockCmsWidgetRefs.filter((ref) => ref.widgetId === params.id).length;
     if (count > 0) return conflict(`该页面部件仍被 ${count} 个位置引用，请先解除引用`, { status: 409 });
     mockCmsWidgets.splice(index, 1);
     return ok(null, '删除成功');

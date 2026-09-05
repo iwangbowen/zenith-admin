@@ -2,8 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Banner, Select, Toast } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
-import { useAllCmsSites } from '@/hooks/queries/cms';
-import { useMoveCmsSite } from '@/hooks/queries/cms-stage5';
+import { useAllCmsSites, useMoveCmsSite } from '@/hooks/queries/cms';
 import type { CmsSite } from '@zenith/shared/cms';
 import { collectFlatSiteDescendantIds, siteIndentOptions } from './site-tree-utils';
 
@@ -30,7 +29,7 @@ export default function SiteMoveModal({ site, onClose }: Readonly<SiteMoveModalP
 
   async function handleOk() {
     if (!site) return;
-    const result = await moveSiteMutation.mutateAsync({ siteId: site.id, parentId });
+    const result = await moveSiteMutation.mutateAsync({ params: { id: site.id }, body: { parentId } });
     Toast.success(`移动成功，已为 ${result.affectedSiteIds.length} 个受影响站点提交重建`);
     onClose();
   }

@@ -19,7 +19,7 @@ export default function FavoritesPage() {
       title: '取消收藏',
       content: `确定取消收藏「${title}」吗？`,
       onOk: async () => {
-        await removeMutation.mutateAsync(contentId);
+        await removeMutation.mutateAsync({ params: { id: contentId } });
         Toast.success('已取消收藏');
       },
     });

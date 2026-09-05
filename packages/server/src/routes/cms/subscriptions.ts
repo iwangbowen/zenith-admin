@@ -1,46 +1,25 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { cmsSubscriptionContract } from '@zenith/shared/cms';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import { CmsMemberSubscriptionDTO, CmsSubscriptionAggregateDTO } from '../../lib/openapi-dtos';
-import { PaginationQuery, commonErrorResponses, dateRangeBound, ok, okBody, okPaginated, validationHook } from '../../lib/openapi-schemas';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listCmsSubscriptionAggregates,
   listCmsSubscriptions,
 } from '../../services/cms/cms-subscriptions.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-const filters = {
-  siteId: z.coerce.number().int().positive(),
-  subjectType: z.enum(['site', 'channel', 'author']).optional(),
-  subjectKeyword: z.string().max(255).optional(),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
-};
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/',
-    tags: ['CMS-会员订阅'], summary: '会员订阅明细（隐私脱敏）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:subscription:list' })] as const,
-    request: { query: PaginationQuery.extend(filters) },
-    responses: { ...commonErrorResponses, ...okPaginated(CmsMemberSubscriptionDTO, '订阅明细') },
-  }),
+const read = [authMiddleware, guard({ permission: 'cms:subscription:list' })] as const;
+
+const listRoute = defineContractRoute(cmsSubscriptionContract.list, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listCmsSubscriptions(c.req.valid('query'))), 200),
 });
 
-const aggregateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/aggregates',
-    tags: ['CMS-会员订阅'], summary: '会员订阅聚合',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:subscription:list' })] as const,
-    request: { query: z.object(filters) },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(z.array(CmsSubscriptionAggregateDTO), '订阅聚合'),
-    },
-  }),
+const aggregateRoute = defineContractRoute(cmsSubscriptionContract.aggregates, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listCmsSubscriptionAggregates(c.req.valid('query'))), 200),
 });
 

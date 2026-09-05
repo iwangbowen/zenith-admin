@@ -114,7 +114,7 @@ export default function SurveysPage() {
   };
 
   const changeStatus = async (record: CmsInteraction, status: CmsInteractionStatus) => {
-    await statusMutation.mutateAsync({ id: record.id, status });
+    await statusMutation.mutateAsync({ params: { id: record.id }, body: { status } });
     Toast.success(status === 'published' ? '已发布' : status === 'closed' ? '已关闭' : '已转为草稿');
   };
 
@@ -123,7 +123,7 @@ export default function SurveysPage() {
       title: status === 'published' ? '批量发布互动问卷？' : '批量关闭互动问卷？',
       content: '操作将提交到任务中心，可在全局任务托盘查看进度、取消或重试。',
       onOk: async () => {
-        await batchMutation.mutateAsync({ ids: selectedIds, status });
+        await batchMutation.mutateAsync({ body: { ids: selectedIds, status } });
         setSelectedIds([]);
         Toast.success('批量任务已提交');
       },
@@ -179,7 +179,7 @@ export default function SurveysPage() {
               title: `复制「${record.title}」？`,
               content: '将生成一份草稿副本（配置与题目全量复制，答卷不复制），可直接修改题目。',
               onOk: async () => {
-                const created = await copyMutation.mutateAsync(record.id);
+                const created = await copyMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success(`已生成副本「${created.title}」`);
                 openEditor(created);
               },
@@ -194,7 +194,7 @@ export default function SurveysPage() {
               title: `删除「${record.title}」？`,
               content: `将级联删除 ${record.responseCount} 份答卷，无法恢复。`,
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success('删除成功');
               },
             });

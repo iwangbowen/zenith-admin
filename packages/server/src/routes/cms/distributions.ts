@@ -1,15 +1,10 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { CMS_DISTRIBUTION_MODES, CMS_DISTRIBUTION_TASK_STATUSES, createCmsDistributionRuleSchema, updateCmsDistributionRuleSchema } from '@zenith/shared/cms';
-import { asyncTaskSchema } from '@zenith/shared/tasks';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { cmsDistributionContract } from '@zenith/shared/cms';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
 import { idempotencyGuard } from '../../middleware/idempotency';
-import { IdParam, PaginationQuery, commonErrorResponses, dateRangeBound, jsonContent, ok, okBody, okMsg, okPaginated, validationHook } from '../../lib/openapi-schemas';
-import {
-  CmsDistributionRuleDTO,
-  CmsDistributionRunDetailDTO,
-  CmsDistributionRunDTO,
-} from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   createCmsDistributionRule,
   deleteCmsDistributionRule,
@@ -22,68 +17,29 @@ import {
 } from '../../services/cms/cms-distributions.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-const TaskStatus = z.enum(CMS_DISTRIBUTION_TASK_STATUSES);
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['CMS-内容分发'], summary: '受权分发规则分页列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:distribution:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        keyword: z.string().max(100).optional(),
-        sourceSiteId: z.coerce.number().int().positive().optional(),
-        targetSiteId: z.coerce.number().int().positive().optional(),
-        mode: z.enum(CMS_DISTRIBUTION_MODES).optional(),
-        status: z.enum(['enabled', 'disabled']).optional(),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(CmsDistributionRuleDTO, '分发规则') },
-  }),
+const read = [authMiddleware, guard({ permission: 'cms:distribution:list' })] as const;
+
+const listRoute = defineContractRoute(cmsDistributionContract.list, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listCmsDistributionRules(c.req.valid('query'))), 200),
 });
 
-const runsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/runs', tags: ['CMS-内容分发'], summary: '分发同步结果与日志',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:distribution:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        ruleId: z.coerce.number().int().positive().optional(),
-        siteId: z.coerce.number().int().positive().optional(),
-        status: TaskStatus.optional(),
-        startTime: dateRangeBound('起始时间'),
-        endTime: dateRangeBound('结束时间'),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(CmsDistributionRunDTO, '同步记录') },
-  }),
+const runsRoute = defineContractRoute(cmsDistributionContract.runs, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listCmsDistributionRuns(c.req.valid('query'))), 200),
 });
 
-const runDetailRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/runs/{id}', tags: ['CMS-内容分发'], summary: '分发同步行级结果',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:distribution:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(CmsDistributionRunDetailDTO, '同步详情') },
-  }),
+const runDetailRoute = defineContractRoute(cmsDistributionContract.runDetail, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getCmsDistributionRunDetail(c.req.valid('param').id)), 200),
 });
 
-const createRoute_ = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['CMS-内容分发'], summary: '创建受治理分发规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'cms:distribution:create',
-      audit: { description: '创建 CMS 内容分发规则', module: 'CMS内容管理' },
-    })] as const,
-    request: { body: { content: jsonContent(createCmsDistributionRuleSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(CmsDistributionRuleDTO, '创建结果') },
-  }),
+const createRouteDef = defineContractRoute(cmsDistributionContract.create, {
+  middleware: [authMiddleware, guard({
+    permission: 'cms:distribution:create',
+    audit: { description: '创建 CMS 内容分发规则', module: 'CMS内容管理' },
+  })],
   handler: async (c) => {
     const result = await createCmsDistributionRule(c.req.valid('json'));
     setAuditAfterData(c, result);
@@ -91,31 +47,16 @@ const createRoute_ = defineOpenAPIRoute({
   },
 });
 
-const getRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}', tags: ['CMS-内容分发'], summary: '分发规则详情',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:distribution:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(CmsDistributionRuleDTO, '规则详情') },
-  }),
+const getRoute = defineContractRoute(cmsDistributionContract.detail, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getCmsDistributionRule(c.req.valid('param').id)), 200),
 });
 
-const updateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}', tags: ['CMS-内容分发'], summary: '编辑或启停分发规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'cms:distribution:update',
-      audit: { description: '更新 CMS 内容分发规则', module: 'CMS内容管理' },
-    })] as const,
-    request: {
-      params: IdParam,
-      body: { content: jsonContent(updateCmsDistributionRuleSchema), required: true },
-    },
-    responses: { ...commonErrorResponses, ...ok(CmsDistributionRuleDTO, '更新结果') },
-  }),
+const updateRoute = defineContractRoute(cmsDistributionContract.update, {
+  middleware: [authMiddleware, guard({
+    permission: 'cms:distribution:update',
+    audit: { description: '更新 CMS 内容分发规则', module: 'CMS内容管理' },
+  })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getCmsDistributionRule(id));
@@ -125,38 +66,26 @@ const updateRoute = defineOpenAPIRoute({
   },
 });
 
-const runRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/{id}/run', tags: ['CMS-内容分发'], summary: '提交分发同步任务',
-    security: [{ BearerAuth: [] }],
-    middleware: [
-      authMiddleware,
-      guard({
-        permission: 'cms:distribution:run',
-        audit: { description: '执行 CMS 内容分发', module: 'CMS内容管理' },
-      }),
-      idempotencyGuard({ ttlSeconds: 30 }),
-    ] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(asyncTaskSchema, '同步任务') },
-  }),
+const runRoute = defineContractRoute(cmsDistributionContract.run, {
+  middleware: [
+    authMiddleware,
+    guard({
+      permission: 'cms:distribution:run',
+      audit: { description: '执行 CMS 内容分发', module: 'CMS内容管理' },
+    }),
+    idempotencyGuard({ ttlSeconds: 30 }),
+  ],
   handler: async (c) => c.json(okBody(
     await submitCmsDistributionRun(c.req.valid('param').id),
     '分发任务已提交',
   ), 200),
 });
 
-const deleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}', tags: ['CMS-内容分发'], summary: '删除分发规则（保留已物化内容）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'cms:distribution:delete',
-      audit: { description: '删除 CMS 内容分发规则', module: 'CMS内容管理' },
-    })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteRoute = defineContractRoute(cmsDistributionContract.remove, {
+  middleware: [authMiddleware, guard({
+    permission: 'cms:distribution:delete',
+    audit: { description: '删除 CMS 内容分发规则', module: 'CMS内容管理' },
+  })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getCmsDistributionRule(id));
@@ -169,7 +98,7 @@ router.openapiRoutes([
   listRoute,
   runsRoute,
   runDetailRoute,
-  createRoute_,
+  createRouteDef,
   runRoute,
   getRoute,
   updateRoute,

@@ -1,11 +1,10 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
-import { batchUpdateCmsSearchWordsSchema, createCmsHotwordGroupSchema, createCmsHotwordSchema, createCmsSearchWordSchema, updateCmsHotwordGroupSchema, updateCmsHotwordSchema, updateCmsSearchWordSchema } from '@zenith/shared/cms';
-import { asyncTaskSchema } from '@zenith/shared/tasks';
+import { cmsSearchContract } from '@zenith/shared/cms';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import { ErrorResponse, IdParam, PaginationQuery, commonErrorResponses, dateRangeBound, jsonContent, ok, okBody, okMsg, okPaginated, validationHook } from '../../lib/openapi-schemas';
-import { CmsSearchResultDTO, CmsSearchWordDTO, CmsHotKeywordDTO, CmsHotwordGroupDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 import { searchCmsContents, segmentForQuery, reloadCmsSearchDict, clearHotKeywords } from '../../services/cms/cms-search.service';
 import {
@@ -22,22 +21,10 @@ import {
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const testRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/test',
-    tags: ['CMS-全文检索'], summary: '检索测试（后台联调）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: {
-      query: z.object({
-        siteId: z.coerce.number().int().positive(),
-        keyword: z.string().min(1),
-        page: z.coerce.number().int().min(1).default(1),
-        pageSize: z.coerce.number().int().min(1).max(50).default(10),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(CmsSearchResultDTO, '检索结果') },
-  }),
+const manage = [authMiddleware, guard({ permission: 'cms:search:manage' })] as const;
+
+const testRoute = defineContractRoute(cmsSearchContract.test, {
+  middleware: manage,
   handler: async (c) => {
     const q = c.req.valid('query');
     const { tokens: _tokens, ...result } = await searchCmsContents(q);
@@ -45,15 +32,8 @@ const testRoute = defineOpenAPIRoute({
   },
 });
 
-const segmentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/segment',
-    tags: ['CMS-全文检索'], summary: '分词预览（调试分词效果）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: { query: z.object({ siteId: z.coerce.number().int().positive(), text: z.string().min(1).max(200) }) },
-    responses: { ...commonErrorResponses, ...ok(z.object({ tokens: z.array(z.string()) }), '分词结果') },
-  }),
+const segmentRoute = defineContractRoute(cmsSearchContract.segment, {
+  middleware: manage,
   handler: async (c) => {
     const { siteId, text } = c.req.valid('query');
     await assertSiteAccess(siteId);
@@ -62,15 +42,8 @@ const segmentRoute = defineOpenAPIRoute({
   },
 });
 
-const reindexRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/reindex',
-    tags: ['CMS-全文检索'], summary: '提交索引重建任务（任务中心执行）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: 'CMS 检索索引重建', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(z.object({ siteId: z.number().int().positive().nullable().optional() })), required: true } },
-    responses: { ...commonErrorResponses, ...ok(asyncTaskSchema, '任务已提交') },
-  }),
+const reindexRoute = defineContractRoute(cmsSearchContract.reindex, {
+  middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: 'CMS 检索索引重建', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { siteId } = c.req.valid('json');
     let title = 'CMS 检索索引重建（全部站点）';
@@ -91,58 +64,20 @@ const reindexRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([testRoute, segmentRoute, reindexRoute] as const);
+// ═══ 自定义词典 + 搜索热词 ═══════════════════════════════════════════════════
 
-export default router;
-
-// ═══ P3：自定义词典 + 搜索热词 ═════════════════════════════════════════════════
-const p3Router = new OpenAPIHono({ defaultHook: validationHook });
-
-const listWordsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/words',
-    tags: ['CMS-全文检索'], summary: '自定义词典分页列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        siteId: z.coerce.number().int().positive(),
-        keyword: z.string().optional(),
-        type: z.enum(['extension', 'stop']).optional(),
-        groupName: z.string().optional(),
-        status: z.enum(['enabled', 'disabled']).optional(),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(CmsSearchWordDTO, '词典列表') },
-  }),
+const listWordsRoute = defineContractRoute(cmsSearchContract.wordList, {
+  middleware: manage,
   handler: async (c) => c.json(okBody(await listCmsSearchWords(c.req.valid('query'))), 200),
 });
 
-const createWordRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/words',
-    tags: ['CMS-全文检索'], summary: '新增词条（即时生效，历史内容需重建索引）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '新增 CMS 检索词条', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(createCmsSearchWordSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(CmsSearchWordDTO, '创建成功') },
-  }),
+const createWordRoute = defineContractRoute(cmsSearchContract.wordCreate, {
+  middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '新增 CMS 检索词条', module: 'CMS内容管理' } })],
   handler: async (c) => c.json(okBody(await createCmsSearchWord(c.req.valid('json')), '创建成功'), 200),
 });
 
-const updateWordRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/words/{id}',
-    tags: ['CMS-全文检索'], summary: '更新词条',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '更新 CMS 检索词条', module: 'CMS内容管理' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateCmsSearchWordSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(CmsSearchWordDTO, '更新成功'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const updateWordRoute = defineContractRoute(cmsSearchContract.wordUpdate, {
+  middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '更新 CMS 检索词条', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, mapCmsSearchWord(await ensureCmsSearchWordExists(id)));
@@ -150,19 +85,8 @@ const updateWordRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteWordRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/words/{id}',
-    tags: ['CMS-全文检索'], summary: '删除词条（即时重建当前站点词典）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '删除 CMS 检索词条', module: 'CMS内容管理' } })] as const,
-    request: { params: IdParam },
-    responses: {
-      ...commonErrorResponses,
-      ...okMsg('删除成功'),
-      404: { content: jsonContent(ErrorResponse), description: '不存在' },
-    },
-  }),
+const deleteWordRoute = defineContractRoute(cmsSearchContract.wordRemove, {
+  middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '删除 CMS 检索词条', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, mapCmsSearchWord(await ensureCmsSearchWordExists(id)));
@@ -171,174 +95,88 @@ const deleteWordRoute = defineOpenAPIRoute({
   },
 });
 
-const batchUpdateWordsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/words/batch',
-    tags: ['CMS-全文检索'], summary: '批量更新词典分组/状态',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '批量更新 CMS 检索词典', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(batchUpdateCmsSearchWordsSchema), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('更新成功') },
-  }),
+const batchUpdateWordsRoute = defineContractRoute(cmsSearchContract.wordBatchUpdate, {
+  middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '批量更新 CMS 检索词典', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const count = await batchUpdateCmsSearchWords(c.req.valid('json'));
     return c.json(okBody(null, `已更新 ${count} 个词条`), 200);
   },
 });
 
-const batchDeleteWordsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/words/batch',
-    tags: ['CMS-全文检索'], summary: '批量删除词典',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '批量删除 CMS 检索词典', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(z.object({ ids: z.array(z.number().int().positive()).min(1).max(1000) })), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const batchDeleteWordsRoute = defineContractRoute(cmsSearchContract.wordBatchRemove, {
+  middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '批量删除 CMS 检索词典', module: 'CMS内容管理' } })],
   handler: async (c) => {
     const count = await batchDeleteCmsSearchWords(c.req.valid('json').ids);
     return c.json(okBody(null, `已删除 ${count} 个词条`), 200);
   },
 });
 
-const hotKeywordsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/hot-keywords',
-    tags: ['CMS-全文检索'], summary: '搜索热词榜',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: {
-      query: z.object({
-        siteId: z.coerce.number().int().positive(),
-        groupId: z.coerce.number().int().positive().optional(),
-        keyword: z.string().optional(),
-        status: z.enum(['enabled', 'disabled']).optional(),
-        startTime: dateRangeBound('起始时间'),
-        endTime: dateRangeBound('结束时间'),
-        limit: z.coerce.number().int().min(1).max(500).default(100),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...ok(z.array(CmsHotKeywordDTO), '热词榜') },
-  }),
-  handler: async (c) => {
-    return c.json(okBody(await listCmsHotwords(c.req.valid('query'))), 200);
-  },
+const hotKeywordsRoute = defineContractRoute(cmsSearchContract.hotKeywords, {
+  middleware: manage,
+  handler: async (c) => c.json(okBody(await listCmsHotwords(c.req.valid('query'))), 200),
 });
 
-const clearHotRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/hot-keywords/clear',
-    tags: ['CMS-全文检索'], summary: '清空搜索热词榜',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '清空 CMS 搜索热词', module: 'CMS内容管理' } })] as const,
-    request: { body: { content: jsonContent(z.object({ siteId: z.number().int().positive() })), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('已清空') },
-  }),
+const clearHotRoute = defineContractRoute(cmsSearchContract.clearHotKeywords, {
+  middleware: [authMiddleware, guard({ permission: 'cms:search:manage', audit: { description: '清空 CMS 搜索热词', module: 'CMS内容管理' } })],
   handler: async (c) => {
     await clearHotKeywords(c.req.valid('json').siteId);
     return c.json(okBody(null, '已清空'), 200);
   },
 });
 
-const hotwordGroupsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/hotword-groups',
-    tags: ['CMS-全文检索'], summary: '热词分组列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: { query: z.object({ siteId: z.coerce.number().int().positive() }) },
-    responses: { ...commonErrorResponses, ...ok(z.array(CmsHotwordGroupDTO), '分组列表') },
-  }),
+const hotwordGroupsRoute = defineContractRoute(cmsSearchContract.hotwordGroups, {
+  middleware: manage,
   handler: async (c) => c.json(okBody(await listCmsHotwordGroups(c.req.valid('query').siteId)), 200),
 });
 
-const createHotwordGroupRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/hotword-groups',
-    tags: ['CMS-全文检索'], summary: '创建热词分组',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: { body: { content: jsonContent(createCmsHotwordGroupSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(CmsHotwordGroupDTO, '创建成功') },
-  }),
+const createHotwordGroupRoute = defineContractRoute(cmsSearchContract.hotwordGroupCreate, {
+  middleware: manage,
   handler: async (c) => c.json(okBody(await createCmsHotwordGroup(c.req.valid('json')), '创建成功'), 200),
 });
 
-const updateHotwordGroupRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/hotword-groups/{id}',
-    tags: ['CMS-全文检索'], summary: '更新热词分组',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateCmsHotwordGroupSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(CmsHotwordGroupDTO, '更新成功') },
-  }),
+const updateHotwordGroupRoute = defineContractRoute(cmsSearchContract.hotwordGroupUpdate, {
+  middleware: manage,
   handler: async (c) => c.json(okBody(await updateCmsHotwordGroup(c.req.valid('param').id, c.req.valid('json')), '更新成功'), 200),
 });
 
-const deleteHotwordGroupRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/hotword-groups/{id}',
-    tags: ['CMS-全文检索'], summary: '删除空热词分组',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteHotwordGroupRoute = defineContractRoute(cmsSearchContract.hotwordGroupRemove, {
+  middleware: manage,
   handler: async (c) => {
     await deleteCmsHotwordGroup(c.req.valid('param').id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
-const createHotwordRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/hot-keywords',
-    tags: ['CMS-全文检索'], summary: '创建可管理热词',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: { body: { content: jsonContent(createCmsHotwordSchema), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('创建成功') },
-  }),
+const createHotwordRoute = defineContractRoute(cmsSearchContract.hotwordCreate, {
+  middleware: manage,
   handler: async (c) => {
     await createCmsHotword(c.req.valid('json'));
     return c.json(okBody(null, '创建成功'), 200);
   },
 });
 
-const updateHotwordRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/hot-keywords/{id}',
-    tags: ['CMS-全文检索'], summary: '更新可管理热词',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateCmsHotwordSchema), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('更新成功') },
-  }),
+const updateHotwordRoute = defineContractRoute(cmsSearchContract.hotwordUpdate, {
+  middleware: manage,
   handler: async (c) => {
     await updateCmsHotword(c.req.valid('param').id, c.req.valid('json'));
     return c.json(okBody(null, '更新成功'), 200);
   },
 });
 
-const deleteHotwordRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/hot-keywords/{id}',
-    tags: ['CMS-全文检索'], summary: '删除可管理热词',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'cms:search:manage' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteHotwordRoute = defineContractRoute(cmsSearchContract.hotwordRemove, {
+  middleware: manage,
   handler: async (c) => {
     await deleteCmsHotword(c.req.valid('param').id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
-p3Router.openapiRoutes([
+// /words/batch 与 /hot-keywords/clear 是静态路径，必须早于同前缀的 /{id}
+router.openapiRoutes([
+  testRoute, segmentRoute, reindexRoute,
   listWordsRoute, createWordRoute, batchUpdateWordsRoute, batchDeleteWordsRoute, updateWordRoute, deleteWordRoute,
   hotKeywordsRoute, createHotwordRoute, updateHotwordRoute, deleteHotwordRoute, clearHotRoute,
   hotwordGroupsRoute, createHotwordGroupRoute, updateHotwordGroupRoute, deleteHotwordGroupRoute,
 ] as const);
-router.route('/', p3Router);
+
+export default router;

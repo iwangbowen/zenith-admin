@@ -1,9 +1,9 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CmsContribSite, CmsContribution, CmsMemberComment, CmsMemberContentItem, CmsMemberSubscription } from '@zenith/shared/cms';
-import { resourceKeyOf, type PaginatedResponse, type QueryOf } from '@zenith/shared/core';
+import { memberCmsContract, type CreateCmsContributionInput } from '@zenith/shared/cms';
+import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
 import { memberAuthContract, memberRenewalContract, memberSelfContract } from '@zenith/shared/member';
 import { api, apiQueryOptions, contractKey, useApiMutation, type ApiCallOptions } from '@/lib/contract-query';
-import { toQueryString, unwrap } from '@/lib/query';
+import { unwrap } from '@/lib/query';
 import { memberRequest } from '../utils/member-request';
 
 /** 会员端一律走会员请求实例（独立 token 与刷新链路），不得混用后台 request */
@@ -17,11 +17,6 @@ export type MemberCheckinHistoryParams = NonNullable<QueryOf<typeof memberSelfCo
 export type MemberNotificationListParams = NonNullable<QueryOf<typeof memberSelfContract.notifications>>;
 export type MemberLoginLogParams = NonNullable<QueryOf<typeof memberSelfContract.loginLogs>>;
 
-export interface MemberListParams {
-  page: number;
-  pageSize: number;
-  [key: string]: string | number | undefined;
-}
 
 export const memberKeys = {
   me: contractKey(memberAuthContract.me),
@@ -62,12 +57,7 @@ export const memberKeys = {
     info: (applicationId?: number) => contractKey(memberRenewalContract.info, { query: { applicationId: applicationId ?? 0 } }),
     plans: (applicationId?: number) => contractKey(memberRenewalContract.plans, { query: { applicationId: applicationId ?? 0 } }),
   },
-  subscriptions: {
-    all: ['member', 'cms-subscriptions'] as const,
-    lists: ['member', 'cms-subscriptions', 'list'] as const,
-    list: (params: MemberListParams) => ['member', 'cms-subscriptions', 'list', params] as const,
-    detail: (id: number | undefined) => ['member', 'cms-subscriptions', 'detail', id] as const,
-  },
+
 };
 
 /** 积分 / 钱包 / 优惠券 / 签到等自助资源都挂在 /api/member 之下，资料变更后按资源根整体回源 */
@@ -317,146 +307,132 @@ export function useUploadMemberAvatar() {
   });
 }
 
-// ─── CMS 会员投稿（P3）────────────────────────────────────────────────────────
-export const contributionKeys = {
-  all: ['member', 'contributions'] as const,
-  lists: ['member', 'contributions', 'list'] as const,
-  list: (params: object) => ['member', 'contributions', 'list', params] as const,
-  detail: (id: number | undefined) => ['member', 'contributions', 'detail', id ?? null] as const,
-  channels: ['member', 'contributions', 'channels'] as const,
+// ─── CMS 会员投稿 ─────────────────────────────────────────────────────────────
+export type MemberContributionListParams = NonNullable<QueryOf<typeof memberCmsContract.contributions>>;
+export type MemberCmsSubscriptionListParams = NonNullable<QueryOf<typeof memberCmsContract.subscriptions>>;
+export type MemberPageParams = NonNullable<QueryOf<typeof memberCmsContract.favorites>>;
+
+/** 会员端 CMS 缓存键全部派生自会员 CMS 契约（与后台 CMS 键空间隔离） */
+export const memberCmsKeys = {
+  all: [resourceKeyOf(memberCmsContract.basePath)] as const,
+  contributions: {
+    lists: contractKey(memberCmsContract.contributions),
+    list: (params: MemberContributionListParams) => contractKey(memberCmsContract.contributions, { query: params }),
+    detail: (id: number) => contractKey(memberCmsContract.contribution, { params: { id } }),
+    channels: contractKey(memberCmsContract.channels),
+  },
+  subscriptions: {
+    lists: contractKey(memberCmsContract.subscriptions),
+    list: (params: MemberCmsSubscriptionListParams) => contractKey(memberCmsContract.subscriptions, { query: params }),
+  },
+  favorites: {
+    lists: contractKey(memberCmsContract.favorites),
+    list: (params: MemberPageParams) => contractKey(memberCmsContract.favorites, { query: params }),
+  },
+  viewHistory: {
+    lists: contractKey(memberCmsContract.viewHistory),
+    list: (params: MemberPageParams) => contractKey(memberCmsContract.viewHistory, { query: params }),
+  },
+  comments: {
+    lists: contractKey(memberCmsContract.comments),
+    list: (params: MemberPageParams) => contractKey(memberCmsContract.comments, { query: params }),
+  },
 };
 
 export function useContribChannels() {
-  return useQuery({
-    queryKey: contributionKeys.channels,
-    queryFn: () => memberRequest.get<CmsContribSite[]>('/api/member/cms/channels').then(unwrap),
-    staleTime: 5 * 60 * 1000,
-  });
+  return useQuery(apiQueryOptions(memberCmsContract.channels, { requestOptions: memberClient, staleTime: 5 * 60 * 1000 }));
 }
 
-export function useMyContributions(params: { page: number; pageSize: number; status?: string }) {
-  return useQuery({
-    queryKey: contributionKeys.list(params),
-    queryFn: () => memberRequest.get<PaginatedResponse<CmsContribution>>(`/api/member/cms/contributions${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+export function useMyContributions(params: MemberContributionListParams) {
+  return useQuery(apiQueryOptions(memberCmsContract.contributions, { query: params }, { requestOptions: memberClient, placeholderData: keepPreviousData }));
 }
 
 export function useMyContribution(id: number | undefined) {
   return useQuery({
-    queryKey: contributionKeys.detail(id),
-    queryFn: () => memberRequest.get<CmsContribution>(`/api/member/cms/contributions/${id}`).then(unwrap),
+    ...apiQueryOptions(memberCmsContract.contribution, { params: { id: id ?? 0 } }, { requestOptions: memberClient }),
     enabled: !!id,
   });
 }
 
+/** 新建投稿与修改被驳回投稿共用一个提交入口，成功后投稿列表 / 详情整体回源 */
 export function useSaveContribution() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id
-        ? memberRequest.put<CmsContribution>(`/api/member/cms/contributions/${id}`, values)
-        : memberRequest.post<CmsContribution>('/api/member/cms/contributions', values)
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: contributionKeys.all }),
-  });
+  const create = useApiMutation(memberCmsContract.createContribution, { requestOptions: memberClient });
+  const update = useApiMutation(memberCmsContract.updateContribution, { requestOptions: memberClient });
+  return {
+    isPending: create.isPending || update.isPending,
+    mutateAsync: async (input: { id?: number; values: CreateCmsContributionInput }) => {
+      const { id, values } = input;
+      const saved = id
+        ? await update.mutateAsync({ params: { id }, body: { channelId: values.channelId, title: values.title, summary: values.summary, body: values.body } })
+        : await create.mutateAsync({ body: values });
+      void qc.invalidateQueries({ queryKey: memberCmsKeys.contributions.lists });
+      if (id) void qc.invalidateQueries({ queryKey: memberCmsKeys.contributions.detail(id) });
+      return saved;
+    },
+  };
 }
 
 export function useDeleteContribution() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => memberRequest.delete<null>(`/api/member/cms/contributions/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: contributionKeys.all }),
+  return useApiMutation(memberCmsContract.removeContribution, {
+    requestOptions: memberClient,
+    invalidate: (qc, _output, input) => {
+      qc.removeQueries({ queryKey: memberCmsKeys.contributions.detail(input.params.id) });
+      void qc.invalidateQueries({ queryKey: memberCmsKeys.contributions.lists });
+    },
   });
 }
 
 // ─── CMS 会员订阅 ────────────────────────────────────────────────────────────
-export function useMyCmsSubscriptions(params: MemberListParams & { subjectType?: string }) {
-  return useQuery({
-    queryKey: memberKeys.subscriptions.list(params),
-    queryFn: () => memberRequest.get<PaginatedResponse<CmsMemberSubscription>>(
-      `/api/member/cms/subscriptions${toQueryString(params)}`,
-    ).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+export function useMyCmsSubscriptions(params: MemberCmsSubscriptionListParams) {
+  return useQuery(apiQueryOptions(memberCmsContract.subscriptions, { query: params }, { requestOptions: memberClient, placeholderData: keepPreviousData }));
 }
 
 export function useUpdateCmsSubscription() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, notificationEnabled }: { id: number; notificationEnabled: boolean }) =>
-      memberRequest.put<CmsMemberSubscription>(`/api/member/cms/subscriptions/${id}`, { notificationEnabled }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.subscriptions.all }),
+  return useApiMutation(memberCmsContract.updateSubscription, {
+    requestOptions: memberClient,
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: memberCmsKeys.subscriptions.lists }),
   });
 }
 
 export function useCancelCmsSubscription() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) =>
-      memberRequest.delete<CmsMemberSubscription>(`/api/member/cms/subscriptions/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: memberKeys.subscriptions.all }),
+  return useApiMutation(memberCmsContract.cancelSubscription, {
+    requestOptions: memberClient,
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: memberCmsKeys.subscriptions.lists }),
   });
 }
 
-// ─── CMS 会员互动：收藏 / 浏览历史（P3）───────────────────────────────────────
-export const cmsInteractionKeys = {
-  favorites: (params: object) => ['member', 'cms-favorites', params] as const,
-  favoritesAll: ['member', 'cms-favorites'] as const,
-  history: (params: object) => ['member', 'cms-history', params] as const,
-  historyAll: ['member', 'cms-history'] as const,
-};
-
-export function useMyCmsFavorites(params: { page: number; pageSize: number }) {
-  return useQuery({
-    queryKey: cmsInteractionKeys.favorites(params),
-    queryFn: () => memberRequest.get<PaginatedResponse<CmsMemberContentItem>>(`/api/member/cms/favorites${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+// ─── CMS 会员互动：收藏 / 浏览历史 ───────────────────────────────────────────
+export function useMyCmsFavorites(params: MemberPageParams) {
+  return useQuery(apiQueryOptions(memberCmsContract.favorites, { query: params }, { requestOptions: memberClient, placeholderData: keepPreviousData }));
 }
 
 export function useRemoveCmsFavorite() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (contentId: number) => memberRequest.delete<unknown>(`/api/member/cms/contents/${contentId}/favorite`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cmsInteractionKeys.favoritesAll }),
+  return useApiMutation(memberCmsContract.unfavorite, {
+    requestOptions: memberClient,
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: memberCmsKeys.favorites.lists }),
   });
 }
 
-export function useMyCmsViewHistory(params: { page: number; pageSize: number }) {
-  return useQuery({
-    queryKey: cmsInteractionKeys.history(params),
-    queryFn: () => memberRequest.get<PaginatedResponse<CmsMemberContentItem>>(`/api/member/cms/view-history${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+export function useMyCmsViewHistory(params: MemberPageParams) {
+  return useQuery(apiQueryOptions(memberCmsContract.viewHistory, { query: params }, { requestOptions: memberClient, placeholderData: keepPreviousData }));
 }
 
 export function useClearCmsViewHistory() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => memberRequest.delete<null>('/api/member/cms/view-history').then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cmsInteractionKeys.historyAll }),
+  return useApiMutation(memberCmsContract.clearViewHistory, {
+    requestOptions: memberClient,
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: memberCmsKeys.viewHistory.lists }),
   });
 }
 
-// ─── CMS 我的评论（P1 评论会员化）─────────────────────────────────────────────
-export const cmsMyCommentKeys = {
-  all: ['member', 'cms-comments'] as const,
-  list: (params: object) => ['member', 'cms-comments', params] as const,
-};
-
-export function useMyCmsComments(params: { page: number; pageSize: number }) {
-  return useQuery({
-    queryKey: cmsMyCommentKeys.list(params),
-    queryFn: () => memberRequest.get<PaginatedResponse<CmsMemberComment>>(`/api/member/cms/comments${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+// ─── CMS 我的评论 ─────────────────────────────────────────────────────────────
+export function useMyCmsComments(params: MemberPageParams) {
+  return useQuery(apiQueryOptions(memberCmsContract.comments, { query: params }, { requestOptions: memberClient, placeholderData: keepPreviousData }));
 }
 
 export function useDeleteMyCmsComment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => memberRequest.delete<null>(`/api/member/cms/comments/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cmsMyCommentKeys.all }),
+  return useApiMutation(memberCmsContract.removeComment, {
+    requestOptions: memberClient,
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: memberCmsKeys.comments.lists }),
   });
 }

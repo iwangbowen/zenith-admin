@@ -9,8 +9,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
-import { useCmsStaticBuild } from '@/hooks/queries/cms';
-import { useCmsSiteEffectiveConfig } from '@/hooks/queries/cms-stage5';
+import { useCmsSiteEffectiveConfig, useCmsStaticBuild } from '@/hooks/queries/cms';
 import { CMS_STATIC_MODE_LABELS } from '@zenith/shared/cms';
 import type { CmsSite } from '@zenith/shared/cms';
 import type { AsyncTask } from '@zenith/shared/tasks';
@@ -27,7 +26,7 @@ function SiteStaticPanel({ site, canBuild }: { site: CmsSite; canBuild: boolean 
   });
 
   async function handleBuild() {
-    await buildMutation.mutateAsync(site.id);
+    await buildMutation.mutateAsync({ body: { siteId: site.id } });
     Toast.success('任务已提交，可在下方列表查看进度');
     void refresh();
   }

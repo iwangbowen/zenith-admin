@@ -1,13 +1,4 @@
 [
-  "d2s__CmsChannel",
-  "d2s__CmsContent",
-  "d2s__CmsForm",
-  "d2s__CmsPublishingDetail",
-  "d2s__CmsPublishingTask",
-  "d2s__CmsResourceFolder",
   "d2s__RetentionRunResult",
-  "s2d__CmsContent",
-  "s2d__CmsSiteImportResult",
-  "s2d__CmsTag",
   "s2d__SslCertificate"
 ]

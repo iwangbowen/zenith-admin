@@ -14,7 +14,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { usePagination } from '@/hooks/usePagination';
 import {
   useCmsAdSlots, useSaveCmsAdSlot, useDeleteCmsAdSlot,
-  useCmsAdList, useSaveCmsAd, useDeleteCmsAd,
+  useCmsAdList, useSaveCmsAd, useDeleteCmsAds,
   cmsAdEventKeys, useCleanupCmsAdEvents, useCmsAdEventList, useCmsAdEventStats,
 } from '@/hooks/queries/cms';
 import { CMS_AD_EVENT_TYPE_LABELS, CMS_DEVICE_TYPE_LABELS, CMS_AD_EVENT_TYPE_OPTIONS, CMS_DEVICE_TYPE_OPTIONS } from '@zenith/shared/cms';
@@ -62,7 +62,7 @@ function SlotsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
               title: '确定要删除该广告位吗？',
               content: '需先清空广告位下的广告',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success('删除成功');
               },
             });
@@ -134,7 +134,7 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
       endAt: values.endAt instanceof Date ? formatDateTimeForApi(values.endAt) : (values.endAt ?? null),
     }),
   });
-  const deleteMutation = useDeleteCmsAd();
+  const deleteMutation = useDeleteCmsAds();
   const canManage = hasPermission('cms:ad:manage');
 
   const columns: ColumnProps<CmsAd>[] = [
@@ -165,7 +165,7 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
             confirmDelete({
               title: '确定要删除该广告吗？',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync([record.id]);
                 Toast.success('删除成功');
               },
             });
@@ -361,7 +361,7 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
                     title: '按保留策略清理广告事件？',
                     content: '将提交到任务中心分批执行，可查看进度、取消或重试。',
                     onOk: async () => {
-                      await cleanupMutation.mutateAsync({ siteId });
+                      await cleanupMutation.mutateAsync({ body: { siteId } });
                       Toast.success('清理任务已提交');
                     },
                   });

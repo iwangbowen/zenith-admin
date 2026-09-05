@@ -23,9 +23,10 @@ import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
-import { cmsSiteKeys, useCmsSiteList, useDeleteCmsSite, useEnableSiteAnalytics, useImportCmsSite } from '@/hooks/queries/cms';
-import { cmsSiteHierarchyKeys, useCmsSiteTree, useSubmitCmsSiteGroupPublish } from '@/hooks/queries/cms-stage5';
+import { cmsSiteExportUrl, cmsSiteKeys, useCmsSiteList, useCmsSiteTree, useDeleteCmsSites, useEnableSiteAnalytics, useImportCmsSite } from '@/hooks/queries/cms';
+import { useSubmitCmsSiteGroupPublish } from '@/hooks/queries/cms-stage3';
 import { CMS_STATIC_MODE_LABELS } from '@zenith/shared/cms';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CmsSite } from '@zenith/shared/cms';
 import { cmsPreviewUrl } from './CmsSiteSelect';
 import SiteEditSheet from './sites/SiteEditSheet';
@@ -54,7 +55,7 @@ export default function SitesPage() {
     // 树视图（默认）与列表视图各有独立 query key：两个都要失效，
     // 否则条件未变化时点「查询」在树视图下不会回源（表现为按钮没反应）
     listKey: cmsSiteKeys.lists,
-    extraKeys: [cmsSiteHierarchyKeys.all],
+    extraKeys: [...cmsSiteKeys.hierarchy],
   });
   const [treeView, setTreeView] = useState(true);
 
@@ -62,13 +63,13 @@ export default function SitesPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const treeQuery = useCmsSiteTree({
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   }, treeView);
   const tree = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const {
@@ -84,7 +85,7 @@ export default function SitesPage() {
   const [inheritanceSite, setInheritanceSite] = useState<CmsSite | null>(null);
   const [staticSheetSite, setStaticSheetSite] = useState<CmsSite | null>(null);
 
-  const deleteMutation = useDeleteCmsSite();
+  const deleteMutation = useDeleteCmsSites();
   const enableAnalyticsMutation = useEnableSiteAnalytics();
   const groupPublishMutation = useSubmitCmsSiteGroupPublish();
   const importMutation = useImportCmsSite();
@@ -106,7 +107,7 @@ export default function SitesPage() {
   }
 
   async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync([id]);
     Toast.success('删除成功');
   }
 
@@ -115,7 +116,7 @@ export default function SitesPage() {
       title: `整组重建「${record.name}」及全部子站点？`,
       content: '系统会先校验全部目标站点与栏目 ACL，再为每个站点提交带 revision fence 的可取消任务。',
       onOk: async () => {
-        const result = await groupPublishMutation.mutateAsync({ rootSiteId: record.id });
+        const result = await groupPublishMutation.mutateAsync({ body: { rootSiteId: record.id } });
         Toast.success(`已提交 ${result.tasks.length} 个站点重建任务`);
       },
     });
@@ -123,7 +124,7 @@ export default function SitesPage() {
 
   // ─── 站点导入导出（P5 整站备份迁移）────────────────────────────────────────
   function handleExport(record: CmsSite) {
-    void request.download(`/api/cms/sites/${record.id}/export`, `cms-site-${record.code}-${Date.now()}.json`)
+    void request.download(cmsSiteExportUrl(record.id), `cms-site-${record.code}-${Date.now()}.json`)
       .catch(() => Toast.error('导出失败'));
   }
 
@@ -237,7 +238,7 @@ export default function SitesPage() {
               title: `为「${record.name}」开通行为统计？`,
               content: '将自动创建统计站点并在前台页面注入采集脚本（需重新生成静态页生效）',
               onOk: async () => {
-                await enableAnalyticsMutation.mutateAsync(record.id);
+                await enableAnalyticsMutation.mutateAsync({ params: { id: record.id } });
                 Toast.success('已开通，重新生成静态页后生效');
               },
             });

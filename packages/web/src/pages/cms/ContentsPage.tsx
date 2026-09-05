@@ -153,7 +153,7 @@ export default function ContentsPage() {
           abortSubmit('validation');
         }
 
-        await actionMutation.mutateAsync({ id: record.id, action: 'reject', body: { reason } });
+        await actionMutation.mutateAsync({ id: record.id, action: 'reject', reason });
         Toast.success('已驳回');
       },
     });
@@ -194,7 +194,7 @@ export default function ContentsPage() {
 
   /** 批量状态流转：部分成功时逐条明示失败原因（欠提示比误吞更危险） */
   async function runBatchStatus(action: 'submit' | 'publish' | 'reject' | 'offline', label: string, reason?: string) {
-    const result = await batchStatusMutation.mutateAsync({ ids: selectedIds, action, reason });
+    const result = await batchStatusMutation.mutateAsync({ body: { ids: selectedIds, action, reason } });
     setSelectedIds([]);
     if (result.failed.length === 0) {
       Toast.success(`已${label} ${result.okIds.length} 条内容`);
@@ -452,7 +452,7 @@ export default function ContentsPage() {
               key: 'duplicate',
               label: '复制',
               onClick: () => {
-                void duplicateMutation.mutateAsync({ id: record.id }).then(() => Toast.success('已复制为草稿'));
+                void duplicateMutation.mutateAsync({ params: { id: record.id }, body: {} }).then(() => Toast.success('已复制为草稿'));
               },
             }, {
               key: 'copy-to-channel',
@@ -706,7 +706,7 @@ export default function ContentsPage() {
         onOk={() => {
           if (!copyTarget) return;
           if (!copyChannelId) { Toast.warning('请选择目标栏目'); return; }
-          void duplicateMutation.mutateAsync({ id: copyTarget.id, targetChannelId: copyChannelId })
+          void duplicateMutation.mutateAsync({ params: { id: copyTarget.id }, body: { targetChannelId: copyChannelId } })
             .then(() => {
               Toast.success('已复制为草稿到目标栏目');
               setCopyTarget(null);

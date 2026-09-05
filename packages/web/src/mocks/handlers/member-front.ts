@@ -1,4 +1,6 @@
 import { http } from 'msw';
+import { memberCmsContract } from '@zenith/shared/cms';
+import type { CmsContribution, CmsMemberComment, CmsMemberContentItem } from '@zenith/shared/cms';
 import { memberAuthContract, memberSelfContract } from '@zenith/shared/member';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, ok, notFound } from '@/mocks/utils/handlers';
@@ -24,9 +26,9 @@ const MEMBER_REFRESH = 'mock-member-refresh-demo';
 
 const demo = mockMembers[0];
 
-/** CMS 会员侧 handler 的分页响应（尚未契约化，沿用固定页大小） */
-function paginated<T>(list: T[]) {
-  return ok({ list, total: list.length, page: 1, pageSize: 15 });
+/** CMS 会员侧列表固定页大小 */
+function fixedPage<T>(list: T[]) {
+  return { list, total: list.length, page: 1, pageSize: 15 };
 }
 
 export const memberFrontHandlers = [
@@ -145,32 +147,29 @@ export const memberFrontHandlers = [
   mock(memberSelfContract.loginLogs, ({ ok, paginate }) => ok(paginate(mockMemberLoginLogs))),
 
   // ── CMS 会员投稿 ──────────────────────────────────────────────────────────
-  http.get('/api/member/cms/channels', () => ok([
+  mock(memberCmsContract.channels, ({ ok }) => ok([
     { id: 1, name: 'Zenith 官方网站', channels: [{ id: 2, name: '新闻中心' }, { id: 3, name: '产品中心' }] },
   ])),
-  http.get('/api/member/cms/contributions/:id', ({ params }) => {
-    const row = mockContributions.find((x) => x.id === Number(params.id));
+  mock(memberCmsContract.contribution, ({ params, ok }) => {
+    const row = mockContributions.find((x) => x.id === params.id);
     return row ? ok(row) : notFound('投稿不存在', { status: 404 });
   }),
-  http.get('/api/member/cms/contributions', ({ request }) => {
-    const url = new URL(request.url);
-    const status = url.searchParams.get('status');
-    const list = status ? mockContributions.filter((x) => x.status === status) : mockContributions;
-    return paginated(list);
+  mock(memberCmsContract.contributions, ({ query, ok }) => {
+    const { status } = query;
+    return ok(fixedPage(status ? mockContributions.filter((x) => x.status === status) : mockContributions));
   }),
-  http.post('/api/member/cms/contributions', async ({ request }) => {
-    const body = (await request.json()) as Record<string, unknown>;
+  mock(memberCmsContract.createContribution, ({ body, ok }) => {
     const now = mockDateTime();
-    const row = {
+    const row: CmsContribution = {
       id: mockContributions.length + 100,
-      siteId: Number(body.siteId ?? 1),
-      channelId: Number(body.channelId ?? 2),
+      siteId: body.siteId,
+      channelId: body.channelId,
       channelName: '新闻中心',
-      title: String(body.title ?? ''),
-      summary: (body.summary as string) ?? null,
+      title: body.title,
+      summary: body.summary ?? null,
       coverImage: null,
-      body: String(body.body ?? ''),
-      status: 'pending' as const,
+      body: body.body,
+      status: 'pending',
       rejectReason: null,
       publishedAt: null,
       viewCount: 0,
@@ -180,21 +179,21 @@ export const memberFrontHandlers = [
     mockContributions.unshift(row);
     return ok(row, '投稿已提交，等待审核');
   }),
-  http.put('/api/member/cms/contributions/:id', async ({ params, request }) => {
-    const idx = mockContributions.findIndex((x) => x.id === Number(params.id));
+  mock(memberCmsContract.updateContribution, ({ params, body, ok }) => {
+    const idx = mockContributions.findIndex((x) => x.id === params.id);
     if (idx === -1) return notFound('投稿不存在', { status: 404 });
-    Object.assign(mockContributions[idx], await request.json(), { status: 'pending', rejectReason: null, updatedAt: mockDateTime() });
+    Object.assign(mockContributions[idx], body, { status: 'pending', rejectReason: null, updatedAt: mockDateTime() });
     return ok(mockContributions[idx], '已重新提交，等待审核');
   }),
-  http.delete('/api/member/cms/contributions/:id', ({ params }) => {
-    const idx = mockContributions.findIndex((x) => x.id === Number(params.id));
+  mock(memberCmsContract.removeContribution, ({ params, ok }) => {
+    const idx = mockContributions.findIndex((x) => x.id === params.id);
     if (idx !== -1) mockContributions.splice(idx, 1);
     return ok(null, '删除成功');
   }),
 
-  // ── CMS 会员互动：点赞 / 收藏 / 浏览历史（P3）──────────────────────────────
-  http.get('/api/member/cms/contents/:id/interaction-state', ({ params }) => {
-    const id = Number(params.id);
+  // ── CMS 会员互动：点赞 / 收藏 / 浏览历史 ─────────────────────────────────
+  mock(memberCmsContract.interactionState, ({ params, ok }) => {
+    const { id } = params;
     return ok({
       liked: mockLikedIds.has(id),
       favorited: mockFavorites.some((f) => f.contentId === id),
@@ -202,31 +201,31 @@ export const memberFrontHandlers = [
       favoriteCount: mockFavorites.some((f) => f.contentId === id) ? 6 : 5,
     });
   }),
-  http.post('/api/member/cms/contents/:id/like', ({ params }) => {
-    const id = Number(params.id);
+  mock(memberCmsContract.like, ({ params, ok }) => {
+    const { id } = params;
     mockLikedIds.add(id);
     return ok({ liked: true, favorited: mockFavorites.some((f) => f.contentId === id), likeCount: 13, favoriteCount: 5 }, '已点赞');
   }),
-  http.delete('/api/member/cms/contents/:id/like', ({ params }) => {
-    const id = Number(params.id);
+  mock(memberCmsContract.unlike, ({ params, ok }) => {
+    const { id } = params;
     mockLikedIds.delete(id);
     return ok({ liked: false, favorited: mockFavorites.some((f) => f.contentId === id), likeCount: 12, favoriteCount: 5 }, '已取消点赞');
   }),
-  http.post('/api/member/cms/contents/:id/favorite', ({ params }) => {
-    const id = Number(params.id);
+  mock(memberCmsContract.favorite, ({ params, ok }) => {
+    const { id } = params;
     if (!mockFavorites.some((f) => f.contentId === id)) {
       mockFavorites.unshift({ contentId: id, title: `内容 #${id}`, url: `/news/${id}.html`, coverThumb: null, contentType: 'article', createdAt: mockDateTime() });
     }
     return ok({ liked: mockLikedIds.has(id), favorited: true, likeCount: 12, favoriteCount: 6 }, '已收藏');
   }),
-  http.delete('/api/member/cms/contents/:id/favorite', ({ params }) => {
-    const id = Number(params.id);
+  mock(memberCmsContract.unfavorite, ({ params, ok }) => {
+    const { id } = params;
     const idx = mockFavorites.findIndex((f) => f.contentId === id);
     if (idx !== -1) mockFavorites.splice(idx, 1);
     return ok({ liked: mockLikedIds.has(id), favorited: false, likeCount: 12, favoriteCount: 5 }, '已取消收藏');
   }),
-  http.post('/api/member/cms/contents/:id/view', ({ params }) => {
-    const id = Number(params.id);
+  mock(memberCmsContract.recordView, ({ params, ok }) => {
+    const { id } = params;
     const hit = mockViewHistory.find((v) => v.contentId === id);
     if (hit) {
       hit.viewCount = (hit.viewCount ?? 1) + 1;
@@ -236,20 +235,19 @@ export const memberFrontHandlers = [
     }
     return ok(null, '已记录');
   }),
-  http.get('/api/member/cms/favorites', () => paginated(mockFavorites)),
-  http.get('/api/member/cms/view-history', () => paginated(mockViewHistory)),
-  http.delete('/api/member/cms/view-history', () => {
+  mock(memberCmsContract.favorites, ({ ok }) => ok(fixedPage(mockFavorites))),
+  mock(memberCmsContract.viewHistory, ({ ok }) => ok(fixedPage(mockViewHistory))),
+  mock(memberCmsContract.clearViewHistory, ({ ok }) => {
     const count = mockViewHistory.length;
     mockViewHistory.length = 0;
     return ok(null, `已清空 ${count} 条浏览记录`);
   }),
 
-  // ── CMS 我的评论（P1 评论会员化）──────────────────────────────────────────
-  http.post('/api/member/cms/contents/:id/comments', async ({ params, request }) => {
-    const body = (await request.json()) as { content: string; parentId?: number };
+  // ── CMS 我的评论 ──────────────────────────────────────────────────────────
+  mock(memberCmsContract.submitComment, ({ params, body, ok }) => {
     mockMyComments.unshift({
       id: nextMyCommentId++,
-      contentId: Number(params.id),
+      contentId: params.id,
       contentTitle: `内容 #${params.id}`,
       contentUrl: `/news/${params.id}.html`,
       parentId: body.parentId ?? 0,
@@ -260,46 +258,30 @@ export const memberFrontHandlers = [
     });
     return ok(null, '评论已提交，审核通过后显示');
   }),
-  http.get('/api/member/cms/comments', () => paginated(mockMyComments)),
-  http.delete('/api/member/cms/comments/:id', ({ params }) => {
-    const idx = mockMyComments.findIndex((c) => c.id === Number(params.id));
+  mock(memberCmsContract.comments, ({ ok }) => ok(fixedPage(mockMyComments))),
+  mock(memberCmsContract.removeComment, ({ params, ok }) => {
+    const idx = mockMyComments.findIndex((c) => c.id === params.id);
     if (idx >= 0) mockMyComments.splice(idx, 1);
     return ok(null, '删除成功');
-  }),
-];
-
-interface MockMemberContentItem {
-  contentId: number; title: string; url: string | null; coverThumb: string | null;
-  contentType: 'article' | 'album' | 'media' | 'link';
-  viewCount?: number; createdAt: string; updatedAt?: string;
-}
+  }),];
 
 const mockLikedIds = new Set<number>();
-const mockFavorites: MockMemberContentItem[] = [
+const mockFavorites: CmsMemberContentItem[] = [
   { contentId: 1, title: 'Zenith Admin 发布 CMS 内容管理模块', url: '/news/1.html', coverThumb: null, contentType: 'article', createdAt: '2026-01-05 10:00:00' },
 ];
-const mockViewHistory: MockMemberContentItem[] = [
+const mockViewHistory: CmsMemberContentItem[] = [
+
   { contentId: 2, title: '内容管理系统选型指南：静态化与全文检索实践', url: '/news/2.html', coverThumb: null, contentType: 'article', viewCount: 3, createdAt: '2026-01-04 09:00:00', updatedAt: '2026-01-06 15:30:00' },
 ];
 
-interface MockMyComment {
-  id: number; contentId: number; contentTitle: string | null; contentUrl: string | null;
-  parentId: number; content: string; likeCount: number;
-  status: 'pending' | 'approved' | 'rejected'; createdAt: string;
-}
+const mockMyComments: CmsMemberComment[] = [
 
-const mockMyComments: MockMyComment[] = [
   { id: 3, contentId: 1, contentTitle: 'Zenith Admin 发布 CMS 内容管理模块', contentUrl: '/news/1.html', parentId: 0, content: '登录会员的评论会带会员标识，支持在会员中心统一管理。', likeCount: 1, status: 'approved', createdAt: '2026-01-05 11:00:00' },
 ];
 let nextMyCommentId = 100;
 
-const mockContributions: {
-  id: number; siteId: number; channelId: number; channelName: string | null;
-  title: string; summary: string | null; coverImage: string | null; body: string | null;
-  status: 'draft' | 'pending' | 'published' | 'offline' | 'rejected';
-  rejectReason: string | null; publishedAt: string | null; viewCount: number;
-  createdAt: string; updatedAt: string;
-}[] = [
+const mockContributions: CmsContribution[] = [
+
   { id: 1, siteId: 1, channelId: 2, channelName: '新闻中心', title: '我的第一篇投稿', summary: '演示投稿数据', coverImage: null, body: '<p>投稿正文</p>', status: 'published', rejectReason: null, publishedAt: '2024-06-01 10:00:00', viewCount: 88, createdAt: '2024-05-30 09:00:00', updatedAt: '2024-06-01 10:00:00' },
   { id: 2, siteId: 1, channelId: 3, channelName: '产品中心', title: '待审核的投稿示例', summary: null, coverImage: null, body: '<p>等待审核</p>', status: 'pending', rejectReason: null, publishedAt: null, viewCount: 0, createdAt: '2024-06-02 14:00:00', updatedAt: '2024-06-02 14:00:00' },
   { id: 3, siteId: 1, channelId: 2, channelName: '新闻中心', title: '被驳回的投稿示例', summary: null, coverImage: null, body: '<p>需要修改</p>', status: 'rejected', rejectReason: '内容与栏目主题不符，请调整后重新提交', publishedAt: null, viewCount: 0, createdAt: '2024-06-03 16:00:00', updatedAt: '2024-06-03 18:00:00' },

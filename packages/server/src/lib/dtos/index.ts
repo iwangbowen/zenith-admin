@@ -15,5 +15,4 @@ export * from './nginx-sites';
 export * from './firewall';
 export * from './ops-overview';
 export * from './ops-hosts';
-export * from './cms';
 export * from './app-releases';

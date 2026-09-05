@@ -1,3 +1,4 @@
+import { openCmsContract } from '@zenith/shared/cms';
 import { developerAppContract, openGatewayContract } from '@zenith/shared/open-platform';
 import type { OAuth2Client, OAuth2ClientCreated, OpenApiDebugEndpoint } from '@zenith/shared/open-platform';
 import { urlOf } from '@/lib/contract-query';
@@ -35,14 +36,14 @@ let apps: OAuth2Client[] = [{
 }];
 const secret = () => `oas_mock_${Math.random().toString(36).slice(2)}${Date.now()}`;
 
-/** 端点目录：网关核心端点取自契约，CMS 端点归 cms 域，这里只列演示用的两条 */
+/** 端点目录：网关核心端点与演示用的两条 CMS 端点均取自契约 */
 const DEBUG_ENDPOINTS: OpenApiDebugEndpoint[] = [
   { method: 'GET', path: urlOf(openGatewayContract.ping), summary: openGatewayContract.ping.summary, scope: null },
   { method: 'GET', path: urlOf(openGatewayContract.echoQuery), summary: openGatewayContract.echoQuery.summary, scope: 'data:read' },
   { method: 'POST', path: urlOf(openGatewayContract.echoBody), summary: openGatewayContract.echoBody.summary, scope: 'data:write' },
   { method: 'GET', path: urlOf(openGatewayContract.userinfo), summary: openGatewayContract.userinfo.summary, scope: 'user:read' },
-  { method: 'GET', path: '/api/open/v1/cms/channels', summary: '站点栏目树（启用中）', scope: null },
-  { method: 'GET', path: '/api/open/v1/cms/contents', summary: '已发布内容查询', scope: null },
+  { method: 'GET', path: openCmsContract.channels.fullPath, summary: openCmsContract.channels.summary, scope: null },
+  { method: 'GET', path: openCmsContract.contents.fullPath, summary: openCmsContract.contents.summary, scope: null },
 ];
 
 export const developerAppsHandlers = [

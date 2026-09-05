@@ -9,8 +9,8 @@ import { createdAtColumn } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { useCmsTagList, useSaveCmsTag, useDeleteCmsTag, cmsTagKeys } from '@/hooks/queries/cms';
-import type { CmsTag } from '@zenith/shared/cms';
+import { useCmsTagList, useSaveCmsTag, useDeleteCmsTags, cmsTagKeys } from '@/hooks/queries/cms';
+import type { CmsTag, CreateCmsTagInput } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
@@ -37,7 +37,7 @@ export default function TagsPage() {
   const total = listQuery.data?.total ?? 0;
 
   const saveMutation = useSaveCmsTag();
-  const modal = useEditModal<CmsTag, Partial<CmsTag>, Record<string, unknown>>({
+  const modal = useEditModal<CmsTag, Partial<CmsTag>, Partial<CreateCmsTagInput>>({
     entityName: '标签',
     save: saveMutation,
     toValues: (record) => ({ name: record.name, slug: record.slug, groupName: record.groupName ?? '' }),
@@ -50,7 +50,7 @@ export default function TagsPage() {
       };
     },
   });
-  const deleteMutation = useDeleteCmsTag();
+  const deleteMutation = useDeleteCmsTags();
 
   // 新建时按名称自动生成拼音 slug；用户手改过（当前值 ≠ 上次自动值）则不再覆盖
   const lastAutoSlug = useRef('');
@@ -89,7 +89,7 @@ export default function TagsPage() {
               title: '确定要删除该标签吗？',
               content: '删除后关联内容的打标关系将一并移除',
               onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
+                await deleteMutation.mutateAsync([record.id]);
                 Toast.success('删除成功');
               },
             });

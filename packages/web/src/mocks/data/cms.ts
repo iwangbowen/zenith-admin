@@ -115,11 +115,12 @@ export const mockCmsInteractionResponses: CmsInteractionResponse[] = SEED_CMS_IN
       .filter((answer) => answer.responseId === response.id)
       .map((answer) => [String(answer.questionId), answer.value]),
   );
+  const interaction = SEED_CMS_INTERACTIONS.find((item) => item.id === response.interactionId);
   return {
     id: response.id,
     interactionId: response.interactionId,
-    interactionTitle: SEED_CMS_INTERACTIONS.find((interaction) => interaction.id === response.interactionId)?.title,
-    kind: SEED_CMS_INTERACTIONS.find((interaction) => interaction.id === response.interactionId)?.kind,
+    interactionTitle: interaction?.title ?? '',
+    kind: interaction?.kind ?? 'survey',
     memberId: response.memberId,
     memberDisplay: response.memberId ? '演***员' : '游客',
     visitorHash: response.visitorHash,

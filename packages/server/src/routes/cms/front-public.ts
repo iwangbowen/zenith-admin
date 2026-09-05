@@ -1,6 +1,8 @@
-import { Hono } from 'hono';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
-import { submitCmsCommentSchema, submitCmsInteractionSchema } from '@zenith/shared/cms';
+import { publicCmsContract, submitCmsCommentSchema } from '@zenith/shared/cms';
+import { defineContractRoute } from '../../lib/contract-route';
+import { errBody, okBody, validationHook } from '../../lib/openapi-schemas';
 import { resolveSiteByCode } from '../../services/cms/cms-sites.service';
 import { getCmsCommentSite, submitCmsComment, likeCmsComment, throttleFrontSubmit } from '../../services/cms/cms-comments.service';
 import { getCmsFormByCode, submitCmsForm } from '../../services/cms/cms-forms.service';
@@ -32,8 +34,9 @@ import { escapeHtml } from '@zenith/shared/core';
 import { safeReturnUrl } from '../../lib/safe-return-url';
 
 /**
- * CMS 前台公开提交接口（评论 / 自定义表单）。
- * 面向静态页的原生 HTML form POST（零 JS），处理后返回轻量提示页并跳回来源页。
+ * CMS 前台公开接口（评论 / 自定义表单 / 互动问卷 / 广告事件 / 浏览计数）。
+ * JSON 端点由 `publicCmsContract` 定义；原生 HTML form POST（零 JS）返回轻量提示页并跳回来源页，
+ * 302 中转与 204 beacon 不进入契约。
  * 防护：Redis IP 限流 + 蜜罐字段 + 敏感词过滤（service 层）。
  */
 
@@ -54,17 +57,91 @@ async function assertCaptchaIfEnabled(site: { settings: unknown } | null, body: 
   return passed ? null : '验证码错误或已过期，请重试';
 }
 
-export function createCmsFrontPublicRoutes(): Hono {
-  const app = new Hono();
+export function createCmsFrontPublicRoutes() {
+  const app = new OpenAPIHono({ defaultHook: validationHook });
   app.use('*', optionalMemberSessionMiddleware);
 
   // ─── 图形验证码（站点开启 captchaEnabled 时评论/表单提交必须携带）──────────────
-  app.get('/captcha', async (c) => {
-    const ip = getClientIp(c);
-    await throttleFrontSubmit(ip).catch(() => undefined);
-    const challenge = await generateCmsCaptcha();
-    return c.json({ code: 0, message: 'ok', data: challenge });
+  const captchaRoute = defineContractRoute(publicCmsContract.captcha, {
+    middleware: [],
+    handler: async (c) => {
+      const ip = getClientIp(c);
+      await throttleFrontSubmit(ip).catch(() => undefined);
+      const challenge = await generateCmsCaptcha();
+      return c.json(okBody(challenge, 'ok'), 200);
+    },
   });
+
+  // ─── 统一互动问卷：查询与结果可见性 ─────────────────────────────────────────
+  const interactionRoute = defineContractRoute(publicCmsContract.interaction, {
+    middleware: [],
+    handler: async (c) => {
+      const { siteCode, code } = c.req.valid('param');
+      const site = await resolveSiteByCode(siteCode);
+      if (!site) return c.json(errBody('站点不存在', 404), 404);
+      const interaction = await getPublicCmsInteractionByCode(site.id, code);
+      if (!interaction) return c.json(errBody('互动问卷不存在', 404), 404);
+      const state = await getCmsInteractionPublicState(interaction, {
+        memberId: c.get('member')?.memberId ?? null,
+        ip: getClientIp(c),
+      });
+      return c.json(okBody(state, 'ok'), 200);
+    },
+  });
+
+  // ─── 统一互动问卷：公开/可选会员提交 ─────────────────────────────────────────
+  const submitInteractionRoute = defineContractRoute(publicCmsContract.submitInteraction, {
+    middleware: [],
+    handler: async (c) => {
+      const { siteCode, code } = c.req.valid('param');
+      const site = await resolveSiteByCode(siteCode);
+      if (!site) return c.json(errBody('站点不存在', 404), 404);
+      const interaction = await getPublicCmsInteractionByCode(site.id, code);
+      if (!interaction) return c.json(errBody('互动问卷不存在', 404), 404);
+      const ip = getClientIp(c);
+      try {
+        await throttleFrontSubmit(ip);
+        const result = await submitCmsInteraction(interaction, c.req.valid('json'), {
+          memberId: c.get('member')?.memberId ?? null,
+          ip,
+          userAgent: c.req.header('user-agent') ?? null,
+          idempotencyKey: c.req.header('x-idempotency-key') ?? null,
+        });
+        return c.json(okBody(result, result.message), 200);
+      } catch (err) {
+        const msg = err instanceof HTTPException ? err.message : '提交失败，请稍后再试';
+        const status = err instanceof HTTPException ? err.status : 500;
+        return c.json(errBody(msg, status), status as 400);
+      }
+    },
+  });
+
+  // ─── 广告事件令牌：短期、一次性并绑定站点/广告/页面/访客 ───────────────────
+  const issueAdTokensRoute = defineContractRoute(publicCmsContract.issueAdTokens, {
+    middleware: [],
+    handler: async (c) => {
+      c.header('Cache-Control', 'no-store');
+      const ip = getClientIp(c);
+      try {
+        await throttleCmsAdTokenIssue(ip);
+        const tokens = await issueCmsAdEventTokens({
+          siteCode: c.req.valid('param').siteCode,
+          ads: c.req.valid('json').ads,
+          host: c.req.header('host') ?? null,
+          memberId: c.get('member')?.memberId ?? null,
+          ip,
+          userAgent: c.req.header('user-agent') ?? null,
+        });
+        return c.json(okBody(tokens, 'ok'), 200);
+      } catch (error) {
+        const status = error instanceof HTTPException ? error.status : 500;
+        const message = error instanceof HTTPException ? error.message : '广告事件令牌签发失败';
+        return c.json(errBody(message, status), status as 400);
+      }
+    },
+  });
+
+  app.openapiRoutes([captchaRoute, interactionRoute, submitInteractionRoute, issueAdTokensRoute] as const);
 
   // ─── 评论提交 ───────────────────────────────────────────────────────────────
   app.post('/comments', async (c) => {
@@ -144,87 +221,6 @@ export function createCmsFrontPublicRoutes(): Hono {
       await likeCmsComment(commentId, ip).catch(() => undefined);
     }
     return c.redirect(backUrl, 302);
-  });
-
-  // ─── Stage 4 统一互动问卷：查询与结果可见性 ─────────────────────────────────
-  app.get('/interactions/:siteCode/:code', async (c) => {
-    const site = await resolveSiteByCode(c.req.param('siteCode'));
-    if (!site) return c.json({ code: 404, message: '站点不存在', data: null }, 404);
-    const interaction = await getPublicCmsInteractionByCode(site.id, c.req.param('code'));
-    if (!interaction) return c.json({ code: 404, message: '互动问卷不存在', data: null }, 404);
-    const state = await getCmsInteractionPublicState(interaction, {
-      memberId: c.get('member')?.memberId ?? null,
-      ip: getClientIp(c),
-    });
-    return c.json({ code: 0, message: 'ok', data: state });
-  });
-
-  // ─── Stage 4 统一互动问卷：公开/可选会员提交 ─────────────────────────────────
-  app.post('/interactions/:siteCode/:code/submit', async (c) => {
-    const site = await resolveSiteByCode(c.req.param('siteCode'));
-    if (!site) return c.json({ code: 404, message: '站点不存在', data: null }, 404);
-    const interaction = await getPublicCmsInteractionByCode(site.id, c.req.param('code'));
-    if (!interaction) return c.json({ code: 404, message: '互动问卷不存在', data: null }, 404);
-    let raw: unknown;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return c.json({ code: 400, message: '提交参数有误', data: null }, 400);
-    }
-    const parsed = submitCmsInteractionSchema.safeParse(raw);
-    if (!parsed.success) {
-      return c.json({ code: 400, message: parsed.error.issues[0]?.message ?? '提交参数有误', data: null }, 400);
-    }
-    const ip = getClientIp(c);
-    try {
-      await throttleFrontSubmit(ip);
-      const result = await submitCmsInteraction(interaction, parsed.data, {
-        memberId: c.get('member')?.memberId ?? null,
-        ip,
-        userAgent: c.req.header('user-agent') ?? null,
-        idempotencyKey: c.req.header('x-idempotency-key') ?? null,
-      });
-      return c.json({ code: 0, message: result.message, data: result });
-    } catch (err) {
-      const msg = err instanceof HTTPException ? err.message : '提交失败，请稍后再试';
-      const status = err instanceof HTTPException ? err.status : 500;
-      return c.json({ code: status, message: msg, data: null }, status);
-    }
-  });
-
-  // ─── 广告事件令牌：短期、一次性并绑定站点/广告/页面/访客 ───────────────────
-  app.post('/ads/tokens/:siteCode', async (c) => {
-    c.header('Cache-Control', 'no-store');
-    let body: {
-      ads?: Array<{ adId?: number; renderProof?: string }>;
-    };
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ code: 400, message: '广告事件令牌参数无效', data: null }, 400);
-    }
-    const ip = getClientIp(c);
-    try {
-      await throttleCmsAdTokenIssue(ip);
-      const tokens = await issueCmsAdEventTokens({
-        siteCode: c.req.param('siteCode'),
-        ads: Array.isArray(body.ads)
-          ? body.ads.map((item) => ({
-            adId: Number(item.adId),
-            renderProof: typeof item.renderProof === 'string' ? item.renderProof : '',
-          }))
-          : [],
-        host: c.req.header('host') ?? null,
-        memberId: c.get('member')?.memberId ?? null,
-        ip,
-        userAgent: c.req.header('user-agent') ?? null,
-      });
-      return c.json({ code: 0, message: 'ok', data: tokens });
-    } catch (error) {
-      const status = error instanceof HTTPException ? error.status : 500;
-      const message = error instanceof HTTPException ? error.message : '广告事件令牌签发失败';
-      return c.json({ code: status, message, data: null }, status);
-    }
   });
 
   // ─── 广告点击中转（令牌验证 + 计数后 302 跳转安全目标）──────────────────────
