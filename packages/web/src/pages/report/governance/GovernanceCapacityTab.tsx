@@ -109,14 +109,14 @@ export default function GovernanceCapacityTab() {
           onClick: () => { confirmDanger({
             title: '重置当前日期的配额用量？',
             content: '该操作仅重置计量，不会取消正在运行的查询。',
-            onOk: async () => { await resetMutation.mutateAsync({ id: record.id }); Toast.success('配额用量已重置'); },
+            onOk: async () => { await resetMutation.mutateAsync({ params: { id: record.id }, body: {} }); Toast.success('配额用量已重置'); },
           }); },
         },
         {
           key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:query-quota:delete'),
           onClick: () => { confirmDelete({
             title: '删除该查询配额？',
-            onOk: async () => { await deleteMutation.mutateAsync(record.id); Toast.success('配额已删除'); },
+            onOk: async () => { await deleteMutation.mutateAsync({ params: { id: record.id } }); Toast.success('配额已删除'); },
           }); },
         },
       ],

@@ -14,7 +14,7 @@ import {
   useAcknowledgeReportAlertRun,
   useBatchReportAlertEnabled,
   reportAlertKeys,
-  useDeleteReportAlert,
+  useDeleteReportAlerts,
   useEvaluateReportAlert,
   useReportAlertHistory,
   useReportAlertList,
@@ -111,8 +111,8 @@ export default function AlertsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    datasetId: submittedParams.datasetId || undefined,
-    metricId: submittedParams.metricId || undefined,
+    datasetId: submittedParams.datasetId ? Number(submittedParams.datasetId) : undefined,
+    metricId: submittedParams.metricId ? Number(submittedParams.metricId) : undefined,
     enabled: submittedParams.enabled ? submittedParams.enabled === 'enabled' : undefined,
   });
   const data = listQuery.data ?? null;
@@ -120,10 +120,10 @@ export default function AlertsPage() {
   const toggleMutation = useToggleReportAlertEnabled();
   const batchEnabledMutation = useBatchReportAlertEnabled();
   const evaluateMutation = useEvaluateReportAlert();
-  const deleteMutation = useDeleteReportAlert();
+  const deleteMutation = useDeleteReportAlerts();
   const acknowledgeMutation = useAcknowledgeReportAlertRun();
   const historyQuery = useReportAlertHistory(historyTarget?.id, !!historyTarget);
-  const togglingId = toggleMutation.isPending ? toggleMutation.variables?.id ?? null : null;
+  const togglingId = toggleMutation.isPending ? toggleMutation.variables?.params.id ?? null : null;
 
   const alertModal = useEditModal<ReportAlertRule, Record<string, unknown>, CreateReportAlertInput>({
     entityName: '预警',
@@ -202,7 +202,7 @@ export default function AlertsPage() {
   function handleToggleEnabled(record: ReportAlertRule, checked: boolean) {
     const doToggle = async () => {
       try {
-        await toggleMutation.mutateAsync({ id: record.id, enabled: checked });
+        await toggleMutation.mutateAsync({ params: { id: record.id }, body: { enabled: checked } });
         Toast.success(checked ? '已启用' : '已停用');
       } catch (error) {
         Toast.error(error instanceof Error ? error.message : '状态更新失败');
@@ -214,7 +214,7 @@ export default function AlertsPage() {
 
   async function handleEvaluate(id: number) {
     try {
-      await evaluateMutation.mutateAsync(id);
+      await evaluateMutation.mutateAsync({ params: { id } });
       Toast.success('任务已提交，可在任务中心查看进度');
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '评估失败');
@@ -223,7 +223,7 @@ export default function AlertsPage() {
 
   async function handleAcknowledge(runId: number) {
     try {
-      await acknowledgeMutation.mutateAsync({ runId });
+      await acknowledgeMutation.mutateAsync({ params: { id: runId }, body: {} });
       await historyQuery.refetch();
       Toast.success('已确认');
     } catch (error) {
@@ -233,7 +233,7 @@ export default function AlertsPage() {
 
   async function handleDelete(id: number) {
     try {
-      await deleteMutation.mutateAsync(id);
+      await deleteMutation.mutateAsync([id]);
       Toast.success('删除成功');
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '删除失败');
@@ -245,7 +245,7 @@ export default function AlertsPage() {
     Modal.confirm({
       title: `确认批量${enabled ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 条预警？`,
       onOk: async () => {
-        await batchEnabledMutation.mutateAsync({ ids: selectedRowKeys, enabled });
+        await batchEnabledMutation.mutateAsync({ body: { ids: selectedRowKeys, enabled } });
         setSelectedRowKeys([]);
         Toast.success(enabled ? '批量启用成功' : '批量停用成功');
       },

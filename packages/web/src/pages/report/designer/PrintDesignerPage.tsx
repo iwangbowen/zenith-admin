@@ -28,11 +28,10 @@ import {
   useReportPrintTemplateDetail,
   useSaveReportPrintTemplate,
 } from '@/hooks/queries/report-print';
-import { REPORT_FIELD_TYPE_OPTIONS } from '@zenith/shared/report';
+import { REPORT_FIELD_TYPE_OPTIONS, reportDatasetContract, reportPrintContract } from '@zenith/shared/report';
 import type { ReportDataset, ReportDatasetParam, ReportFieldType, ReportPrintContent, ReportPrintCrosstabConfig, ReportPrintDatasetBinding, ReportPrintPageConfig, ReportPrintRenderResult, ReportPrintSheet, ReportPrintTemplate, UpdateReportPrintTemplateInput } from '@zenith/shared/report';
 import { useDictItems } from '@/hooks/useDictItems';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { api } from '@/lib/contract-query';
 
 type UniverBundle = ReturnType<typeof createUniver>;
 type PanelKey = 'fields' | 'params' | 'bindings' | 'blocks' | 'page';
@@ -379,7 +378,7 @@ export default function PrintDesignerPage() {
     ])];
     const details = await Promise.all(datasetIds.map((id) => queryClient.ensureQueryData({
       queryKey: reportDatasetKeys.detail(id),
-      queryFn: () => request.get<ReportDataset>(`/api/report/datasets/${id}`).then(unwrap),
+      queryFn: () => api(reportDatasetContract.detail, { params: { id } }),
     })));
     const detailsById = new Map(details.map((detail) => [detail.id, detail]));
     const sourceParamNames = new Set(normalizedParams.map((param) => param.name));
@@ -403,7 +402,7 @@ export default function PrintDesignerPage() {
     const subreportIds = [...new Set(subreportCells.map((cell) => cell.subreport!.templateId))];
     const subreportTemplates = await Promise.all(subreportIds.map((id) => queryClient.ensureQueryData({
       queryKey: reportPrintKeys.detail(id),
-      queryFn: () => request.get<ReportPrintTemplate>(`/api/report/print/${id}`).then(unwrap),
+      queryFn: () => api(reportPrintContract.detail, { params: { id } }),
     })));
     const subreportById = new Map(subreportTemplates.map((item) => [item.id, item]));
     for (const cell of subreportCells) {
@@ -489,7 +488,7 @@ export default function PrintDesignerPage() {
     setPreviewVisible(true);
     setPreviewResult(null);
     setPreviewParams(values);
-    const result = await renderMutation.mutateAsync({ id: templateId, params: values, limit: 300 });
+    const result = await renderMutation.mutateAsync({ params: { id: templateId }, body: { params: values, limit: 300 } });
     setPreviewResult(result);
   }
 

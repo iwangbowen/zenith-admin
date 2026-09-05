@@ -156,7 +156,7 @@ export default function QualityPage() {
   };
   const runRule = async (record: ReportDqRule) => {
     try {
-      const task = await runMutation.mutateAsync({ id: record.id, values: { sampleLimit: 20 } });
+      const task = await runMutation.mutateAsync({ params: { id: record.id }, body: { sampleLimit: 20 } });
       Toast.success(dqTaskSubmissionMessage(task));
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '质量任务提交失败');
@@ -167,7 +167,7 @@ export default function QualityPage() {
       title: status === 'acknowledged' ? '确认已知悉该异常？' : '确认该异常已解决？',
       content: record.title,
       onOk: async () => {
-        await anomalyMutation.mutateAsync({ id: record.id, values: { status } });
+        await anomalyMutation.mutateAsync({ params: { id: record.id }, body: { status } });
         Toast.success(status === 'acknowledged' ? '异常已确认' : '异常已解决');
       },
     });
@@ -184,20 +184,20 @@ export default function QualityPage() {
     dateTimeColumn('最近运行', 'lastRunAt'),
     {
       title: '状态', dataIndex: 'enabled', width: 90, fixed: 'right',
-      render: (v: boolean, r) => <Switch size="small" checked={v} disabled={!hasPermission('report:dq:update')} loading={toggleMutation.isPending && toggleMutation.variables === r.id} onChange={() => toggleMutation.mutate(r.id)} />,
+      render: (v: boolean, r) => <Switch size="small" checked={v} disabled={!hasPermission('report:dq:update')} loading={toggleMutation.isPending && toggleMutation.variables?.params.id === r.id} onChange={() => toggleMutation.mutate({ params: { id: r.id } })} />,
     },
     createOperationColumn<ReportDqRule>({
       width: 180,
       desktopInlineKeys: ['run', 'edit'],
       actions: (record) => [
-        { key: 'run', label: '执行', hidden: !hasPermission('report:dq:run'), loading: runMutation.isPending && runMutation.variables?.id === record.id, onClick: () => void runRule(record) },
+        { key: 'run', label: '执行', hidden: !hasPermission('report:dq:run'), loading: runMutation.isPending && runMutation.variables?.params.id === record.id, onClick: () => void runRule(record) },
         { key: 'edit', label: '编辑', hidden: !hasPermission('report:dq:update'), onClick: () => openEdit(record) },
         { key: 'history', label: '运行历史', onClick: () => setHistoryRule(record) },
         {
           key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:dq:delete'),
           onClick: () => { confirmDelete({
             title: `删除规则「${record.name}」？`,
-            onOk: async () => { await deleteMutation.mutateAsync(record.id); Toast.success('规则已删除'); },
+            onOk: async () => { await deleteMutation.mutateAsync({ params: { id: record.id } }); Toast.success('规则已删除'); },
           }); },
         },
       ],

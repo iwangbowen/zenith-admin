@@ -72,12 +72,12 @@ export default function FillEntryPage() {
   async function persistDraft(values: Record<string, unknown>) {
     if (record) {
       return updateMutation.mutateAsync({
-        id: record.id,
-        values: { expectedRevision: record.revision, data: values },
+        params: { id: record.id },
+        body: { expectedRevision: record.revision, data: values },
       });
     }
     if (!template) throw new Error('模板不存在、未发布或已下线');
-    return createMutation.mutateAsync({ templateId: template.id, data: values });
+    return createMutation.mutateAsync({ body: { templateId: template.id, data: values } });
   }
 
   async function handleSave() {
@@ -98,8 +98,8 @@ export default function FillEntryPage() {
         await collectValues(),
         persistDraft,
         (id, expectedRevision) => submitMutation.mutateAsync({
-          id,
-          values: { expectedRevision },
+          params: { id },
+          body: { expectedRevision },
         }),
       );
       setSavedRecord(submitted);

@@ -1,104 +1,66 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { CreateReportChatbiMessageInput, CreateReportChatbiSessionInput, ReportChatbiMessage, ReportChatbiQuota, ReportChatbiSavedResource, ReportChatbiSession, ReportChatbiSessionDetail, ReportChatbiSessionStatus, SaveReportChatbiMessageAssetInput, UpdateReportChatbiSessionInput } from '@zenith/shared/report';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { BodyOf, QueryOf } from '@zenith/shared/core';
+import { reportChatbiContract, type ReportChatbiSessionDetail } from '@zenith/shared/report';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { reportDatasetKeys } from './report-datasets';
 import { reportDashboardKeys } from './report-dashboards';
 
-export interface ReportChatbiSessionListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: ReportChatbiSessionStatus;
-  userId?: number;
-}
-
-export interface ReportChatbiAuditParams {
-  page: number;
-  pageSize: number;
-  userId?: number;
-  failedOnly?: boolean;
-}
+export type ReportChatbiSessionListParams = NonNullable<QueryOf<typeof reportChatbiContract.sessions>>;
+export type ReportChatbiAuditParams = NonNullable<QueryOf<typeof reportChatbiContract.audit>>;
 
 export const reportChatbiKeys = {
-  all: ['report', 'chatbi'] as const,
-  lists: ['report', 'chatbi', 'sessions', 'list'] as const,
-  list: (params: ReportChatbiSessionListParams) => ['report', 'chatbi', 'sessions', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'chatbi', 'sessions', 'detail', id] as const,
-  messages: (id: number | undefined) => ['report', 'chatbi', 'sessions', id, 'messages'] as const,
-  quota: ['report', 'chatbi', 'quota'] as const,
-  audit: (params: ReportChatbiAuditParams) => ['report', 'chatbi', 'audit', params] as const,
+  lists: contractKey(reportChatbiContract.sessions),
+  list: (params: ReportChatbiSessionListParams) => contractKey(reportChatbiContract.sessions, { query: params }),
+  detail: (id: number | undefined) => contractKey(reportChatbiContract.sessionDetail, { params: { id: id ?? 0 } }),
+  /** 消息列表由会话详情派生（同一请求），独立缓存供流式追加 */
+  messages: (id: number | undefined) => [...contractKey(reportChatbiContract.sessionDetail, { params: { id: id ?? 0 } }), 'messages'] as const,
+  quota: contractKey(reportChatbiContract.myQuota),
+  audit: (params: ReportChatbiAuditParams) => contractKey(reportChatbiContract.audit, { query: params }),
 };
 
 export function useReportChatbiSessionList(params: ReportChatbiSessionListParams) {
-  return useQuery({
-    queryKey: reportChatbiKeys.list(params),
-    queryFn: () => request
-      .get<PaginatedResponse<ReportChatbiSession>>(`/api/report/chatbi/sessions${toQueryString(params)}`)
-      .then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(reportChatbiContract.sessions, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useReportChatbiSessionDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: reportChatbiKeys.detail(id),
-    queryFn: () => request.get<ReportChatbiSessionDetail>(`/api/report/chatbi/sessions/${id}`, { silent: true }).then(unwrap),
+  return useApiQuery(reportChatbiContract.sessionDetail, { params: { id: id ?? 0 } }, {
     enabled: enabled && id !== undefined,
+    requestOptions: { silent: true },
   });
 }
 
 export function useReportChatbiMessages(id: number | undefined, enabled = true) {
   return useQuery({
     queryKey: reportChatbiKeys.messages(id),
-    queryFn: () => request
-      .get<ReportChatbiSessionDetail>(`/api/report/chatbi/sessions/${id}`, { silent: true })
-      .then(unwrap)
-      .then((detail) => detail.messages),
+    queryFn: () => api(reportChatbiContract.sessionDetail, { params: { id: id ?? 0 } }, { silent: true }).then((detail) => detail.messages),
     enabled: enabled && id !== undefined,
   });
 }
 
 export function useReportChatbiQuota(enabled = true) {
-  return useQuery({
-    queryKey: reportChatbiKeys.quota,
-    queryFn: () => request.get<ReportChatbiQuota>('/api/report/chatbi/quotas/me', { silent: true }).then(unwrap),
-    enabled,
-  });
+  return useApiQuery(reportChatbiContract.myQuota, { enabled, requestOptions: { silent: true } });
 }
 
 export function useReportChatbiAudit(params: ReportChatbiAuditParams, enabled = true) {
-  return useQuery({
-    queryKey: reportChatbiKeys.audit(params),
-    queryFn: () => request
-      .get<PaginatedResponse<ReportChatbiMessage>>(`/api/report/chatbi/audit${toQueryString(params)}`)
-      .then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(reportChatbiContract.audit, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function useCreateReportChatbiSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (values: CreateReportChatbiSessionInput) =>
-      request.post<ReportChatbiSession>('/api/report/chatbi/sessions', values, { silent: true }).then(unwrap),
-    onSuccess: (session) => {
-      void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.lists });
-      queryClient.setQueryData(reportChatbiKeys.detail(session.id), { session, messages: [] });
+  return useApiMutation(reportChatbiContract.createSession, {
+    requestOptions: { silent: true },
+    invalidate: (qc, session) => {
+      void qc.invalidateQueries({ queryKey: reportChatbiKeys.lists });
+      qc.setQueryData(reportChatbiKeys.detail(session.id), { session, messages: [] });
     },
   });
 }
 
 export function useUpdateReportChatbiSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: UpdateReportChatbiSessionInput }) =>
-      request.put<ReportChatbiSession>(`/api/report/chatbi/sessions/${id}`, values, { silent: true }).then(unwrap),
-    onSuccess: (session) => {
-      void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.lists });
-      queryClient.setQueryData<ReportChatbiSessionDetail>(
+  return useApiMutation(reportChatbiContract.updateSession, {
+    requestOptions: { silent: true },
+    invalidate: (qc, session) => {
+      void qc.invalidateQueries({ queryKey: reportChatbiKeys.lists });
+      qc.setQueryData<ReportChatbiSessionDetail>(
         reportChatbiKeys.detail(session.id),
         (current) => current ? { ...current, session } : current,
       );
@@ -107,73 +69,56 @@ export function useUpdateReportChatbiSession() {
 }
 
 export function useArchiveReportChatbiSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) =>
-      request.post<ReportChatbiSession>(`/api/report/chatbi/sessions/${id}/archive`, undefined, { silent: true }).then(unwrap),
-    onSuccess: (session) => {
-      void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.lists });
-      void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.detail(session.id) });
+  return useApiMutation(reportChatbiContract.archiveSession, {
+    requestOptions: { silent: true },
+    invalidate: (qc, session) => {
+      void qc.invalidateQueries({ queryKey: reportChatbiKeys.lists });
+      void qc.invalidateQueries({ queryKey: reportChatbiKeys.detail(session.id) });
     },
   });
 }
 
 export function useDeleteReportChatbiSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) =>
-      request.delete<null>(`/api/report/chatbi/sessions/${id}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: (_data, id) => {
-      queryClient.removeQueries({ queryKey: reportChatbiKeys.detail(id) });
-      queryClient.removeQueries({ queryKey: reportChatbiKeys.messages(id) });
-      void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.lists });
+  return useApiMutation(reportChatbiContract.removeSession, {
+    requestOptions: { silent: true },
+    invalidate: (qc, _output, { params }) => {
+      qc.removeQueries({ queryKey: reportChatbiKeys.detail(params.id) });
+      void qc.invalidateQueries({ queryKey: reportChatbiKeys.lists });
     },
   });
 }
 
+/** 提问可被用户中止（signal 随每次调用传入），成功与失败都要回源会话与用量 */
 export function useAskReportChatbi() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      sessionId,
-      values,
-      signal,
-    }: {
+    mutationFn: ({ sessionId, values, signal }: {
       sessionId: number;
-      values: CreateReportChatbiMessageInput;
+      values: BodyOf<typeof reportChatbiContract.ask>;
       signal?: AbortSignal;
-    }) => request
-      .post<ReportChatbiMessage>(`/api/report/chatbi/sessions/${sessionId}/ask`, values, { signal, silent: true })
-      .then(unwrap),
+    }) => api(reportChatbiContract.ask, { params: { id: sessionId }, body: values }, { signal, silent: true }),
     onSettled: (_data, _error, variables) => {
       void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.detail(variables.sessionId) });
-      void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.messages(variables.sessionId) });
       void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.lists });
       void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.quota });
     },
   });
 }
 
+/** 存为数据集 / 看板会新增一条记录，只需刷新对应列表与下拉源 */
 export function useSaveReportChatbiMessageAsset() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      messageId,
-      values,
-    }: {
+    mutationFn: ({ messageId, values }: {
       messageId: number;
       sessionId: number;
-      values: SaveReportChatbiMessageAssetInput;
-    }) => request
-      .post<ReportChatbiSavedResource>(`/api/report/chatbi/messages/${messageId}/save`, values, { silent: true })
-      .then(unwrap),
+      values: BodyOf<typeof reportChatbiContract.saveMessage>;
+    }) => api(reportChatbiContract.saveMessage, { params: { id: messageId }, body: values }, { silent: true }),
     onSuccess: (resource, variables) => {
       void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.detail(variables.sessionId) });
-      void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.messages(variables.sessionId) });
-      // 存为数据集/看板会新增一条记录，只需刷新对应列表与下拉源
       if (resource.resourceType === 'dataset') {
         void queryClient.invalidateQueries({ queryKey: reportDatasetKeys.lists });
-        void queryClient.invalidateQueries({ queryKey: reportDatasetKeys.lookupPrefix });
+        void queryClient.invalidateQueries({ queryKey: reportDatasetKeys.lookup });
       } else {
         void queryClient.invalidateQueries({ queryKey: reportDashboardKeys.lists });
       }

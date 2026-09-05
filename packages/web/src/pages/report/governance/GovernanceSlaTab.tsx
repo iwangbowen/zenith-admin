@@ -78,7 +78,7 @@ export default function GovernanceSlaTab() {
   };
   const evaluate = async (record: ReportSlaRule) => {
     try {
-      await evaluateMutation.mutateAsync(record.id);
+      await evaluateMutation.mutateAsync({ params: { id: record.id } });
       Toast.success('SLA 评估任务已提交，可在顶部全局任务托盘查看进度');
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : 'SLA 评估提交失败');
@@ -89,7 +89,7 @@ export default function GovernanceSlaTab() {
       title: status === 'acknowledged' ? '确认已知悉 SLA 违规？' : '确认 SLA 违规已解决？',
       content: `观测值 ${record.observedValue}，目标值 ${record.targetValue}`,
       onOk: async () => {
-        await violationMutation.mutateAsync({ id: record.id, values: { status } });
+        await violationMutation.mutateAsync({ params: { id: record.id }, body: { status } });
         Toast.success(status === 'acknowledged' ? '违规已确认' : '违规已解决');
       },
     });
@@ -111,13 +111,13 @@ export default function GovernanceSlaTab() {
       width: 180,
       desktopInlineKeys: ['evaluate', 'edit'],
       actions: (record) => [
-        { key: 'evaluate', label: '评估', hidden: !hasPermission('report:sla:evaluate'), loading: evaluateMutation.isPending && evaluateMutation.variables === record.id, onClick: () => void evaluate(record) },
+        { key: 'evaluate', label: '评估', hidden: !hasPermission('report:sla:evaluate'), loading: evaluateMutation.isPending && evaluateMutation.variables?.params.id === record.id, onClick: () => void evaluate(record) },
         { key: 'edit', label: '编辑', hidden: !hasPermission('report:sla:update'), onClick: () => openRule(record) },
         {
           key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:sla:delete'),
           onClick: () => { confirmDelete({
             title: `删除 SLA 规则「${record.name}」？`,
-            onOk: async () => { await deleteMutation.mutateAsync(record.id); Toast.success('SLA 规则已删除'); },
+            onOk: async () => { await deleteMutation.mutateAsync({ params: { id: record.id } }); Toast.success('SLA 规则已删除'); },
           }); },
         },
       ],

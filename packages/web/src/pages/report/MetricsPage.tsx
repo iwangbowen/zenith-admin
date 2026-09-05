@@ -12,7 +12,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
 import {
   reportMetricKeys,
-  useDeleteReportMetric,
+  useDeleteReportMetrics,
   useDeprecateReportMetric,
   useEvaluateReportMetric,
   usePublishReportMetric,
@@ -74,7 +74,7 @@ export default function MetricsPage() {
   const evaluateMutation = useEvaluateReportMetric();
   const refsQuery = useReportMetricRefs(sheetMetric?.id, !!sheetMetric && sheetMode === 'refs');
   const saveMutation = useSaveReportMetric();
-  const deleteMutation = useDeleteReportMetric();
+  const deleteMutation = useDeleteReportMetrics();
   const publishMutation = usePublishReportMetric();
   const deprecateMutation = useDeprecateReportMetric();
   const datasetsQuery = useEnabledReportDatasets(undefined, true);
@@ -151,7 +151,7 @@ export default function MetricsPage() {
       onOk: async () => {
         try {
           const mutation = action === 'publish' ? publishMutation : deprecateMutation;
-          await mutation.mutateAsync({ id: record.id, values: metricLifecyclePayload(record.revision) });
+          await mutation.mutateAsync({ params: { id: record.id }, body: metricLifecyclePayload(record.revision) });
           Toast.success(action === 'publish' ? '指标已发布' : '指标已废弃');
         } catch (error) {
           Toast.error(isRevisionConflict(error) ? '版本已变化，请刷新列表后重试' : (error instanceof Error ? error.message : '操作失败'));
@@ -200,7 +200,7 @@ export default function MetricsPage() {
             title: `删除指标「${record.name}」？`,
             content: '仅无引用的草稿指标可删除。',
             onOk: async () => {
-              await deleteMutation.mutateAsync(record.id);
+              await deleteMutation.mutateAsync([record.id]);
               Toast.success('指标已删除');
             },
           }),
@@ -350,7 +350,7 @@ export default function MetricsPage() {
         {sheetMode === 'preview' ? (
           <Space vertical align="start" style={{ width: '100%' }}>
             <Banner type="info" description="计算由服务端安全执行，仅返回聚合结果，不下发原始查询。" />
-            <Button type="primary" loading={evaluateMutation.isPending} onClick={() => sheetMetric && evaluateMutation.mutate({ id: sheetMetric.id })}>执行计算</Button>
+            <Button type="primary" loading={evaluateMutation.isPending} onClick={() => sheetMetric && evaluateMutation.mutate({ params: { id: sheetMetric.id }, body: {} })}>执行计算</Button>
             {evaluateMutation.isError && <Banner type="danger" description={evaluateMutation.error instanceof Error ? evaluateMutation.error.message : '计算失败'} />}
             {evaluateMutation.data && (
               <>

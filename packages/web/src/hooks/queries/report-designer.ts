@@ -1,10 +1,20 @@
 import { useCallback, useMemo } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ApiResponse } from '@zenith/shared/core';
+import type { ApiResponse, BodyOf } from '@zenith/shared/core';
 import type { DictItem } from '@zenith/shared/platform';
-import type { ReportDashboard, ReportDataResult, ReportDataset, ReportFilter, ReportLookupOption, ReportMetricEvaluation, ReportWidget } from '@zenith/shared/report';
-import { request } from '@/utils/request';
+import {
+  reportDashboardContract,
+  reportDatasetContract,
+  reportMetricContract,
+  type ReportDashboard,
+  type ReportDataResult,
+  type ReportDataset,
+  type ReportFilter,
+  type ReportWidget,
+} from '@zenith/shared/report';
+import { api, contractKey, urlOf } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
+import { request } from '@/utils/request';
 import { reportDashboardKeys } from './report-dashboards';
 import { mergeReportLookupOptions } from './report-lookups';
 
@@ -16,17 +26,20 @@ export interface DatasetDataState {
 
 const EMPTY_DATASET_STATE: DatasetDataState = { data: null, loading: false, error: null };
 
+/** 设计器的数据集 / 指标取数与仪表盘正式取数分属不同操作，缓存互不干扰 */
 export const reportDesignerKeys = {
-  all: ['report', 'designer'] as const,
-  datasets: ['report', 'designer', 'datasets'] as const,
-  dashboards: (excludeId: number | undefined) => ['report', 'designer', 'dashboards', excludeId] as const,
-  datasetDataPrefix: ['report', 'designer', 'dataset-data'] as const,
+  datasets: (currentDatasetId: number | null, keyword: string) =>
+    [...contractKey(reportDatasetContract.lookup, { query: { status: 'enabled', limit: 50, keyword: keyword || undefined } }), currentDatasetId] as const,
+  dashboards: (excludeId: number | undefined, keyword: string) =>
+    contractKey(reportDashboardContract.lookup, { query: { status: 'enabled', limit: 50, keyword: keyword || undefined, excludeId } }),
+  datasetDataPrefix: contractKey(reportDatasetContract.data),
   datasetData: (datasetId: number, params: Record<string, unknown>, limit: number) =>
-    ['report', 'designer', 'dataset-data', datasetId, params, limit] as const,
-  metricDataPrefix: ['report', 'designer', 'metric-data'] as const,
+    contractKey(reportDatasetContract.data, { params: { id: datasetId }, body: { params, limit } }),
+  metricDataPrefix: contractKey(reportMetricContract.evaluate),
   metricData: (metricId: number, params: Record<string, unknown>) =>
-    ['report', 'designer', 'metric-data', metricId, params] as const,
-  dictItems: (code: string) => ['report', 'designer', 'dict-items', code] as const,
+    contractKey(reportMetricContract.evaluate, { params: { id: metricId }, body: { params } }),
+  /** 字典项来自 platform 域，与 useDictItems 共用同一缓存 */
+  dictItems: (code: string) => ['dicts', 'code-items', code] as const,
 };
 
 export function useReportDesignerDatasets(
@@ -34,12 +47,9 @@ export function useReportDesignerDatasets(
   keyword?: string,
 ) {
   return useQuery({
-    queryKey: [...reportDesignerKeys.datasets, currentDataset?.id ?? null, keyword ?? ''],
+    queryKey: reportDesignerKeys.datasets(currentDataset?.id ?? null, keyword ?? ''),
     queryFn: async () => {
-      const data = await request.get<ReportLookupOption[]>(
-        `/api/report/datasets/lookup?status=enabled&limit=50${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ''}`,
-        { silent: true },
-      ).then(unwrap);
+      const data = await api(reportDatasetContract.lookup, { query: { status: 'enabled', limit: 50, keyword: keyword || undefined } }, { silent: true });
       return mergeReportLookupOptions(data, currentDataset ? [currentDataset] : []);
     },
     staleTime: LOOKUP_STALE_TIME,
@@ -48,32 +58,28 @@ export function useReportDesignerDatasets(
 
 export function useReportDesignerDashboardLookup(excludeId: number | undefined, keyword?: string) {
   return useQuery({
-    queryKey: [...reportDesignerKeys.dashboards(excludeId), keyword ?? ''],
-    queryFn: async () => {
-      const data = await request.get<ReportLookupOption[]>(
-        `/api/report/dashboards/lookup?status=enabled&limit=50${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ''}`,
-        { silent: true },
-      ).then(unwrap);
-      return data.filter((dashboard) => dashboard.id !== excludeId);
-    },
+    queryKey: reportDesignerKeys.dashboards(excludeId, keyword ?? ''),
+    queryFn: () => api(reportDashboardContract.lookup, { query: { status: 'enabled', limit: 50, keyword: keyword || undefined, excludeId } }, { silent: true }),
     staleTime: LOOKUP_STALE_TIME,
   });
 }
 
+/**
+ * 设计器保存即改写看板内容：详情（各模式）、列表与该看板的取数结果都要回源。
+ * 保存冲突（409）的载荷携带服务端当前 revision，调用方需要读取原始响应体决定是否覆盖，故不经 unwrap。
+ */
 export function useSaveReportDashboardDesign() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: Record<string, unknown> }) =>
-      request.put<ReportDashboard>(`/api/report/dashboards/${id}`, values, { silent: true }) as Promise<ApiResponse<ReportDashboard>>,
+    mutationFn: ({ id, values }: { id: number; values: BodyOf<typeof reportDashboardContract.update> }) =>
+      request.put<ReportDashboard>(urlOf(reportDashboardContract.update, { params: { id } }), values, { silent: true }) as Promise<ApiResponse<ReportDashboard>>,
     onSuccess: (_data, vars) => {
-      // 设计器保存即改写看板内容：详情（各模式）、列表与该看板的取数结果都要回源
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.detailOf(vars.id) });
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists });
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.dataOf(vars.id) });
-      // 设计器自身的取数缓存（datasetData / metricData）随组件配置变化
+      // 设计器自身的取数缓存（datasetData / metricData）随组件配置变化；datasets / dashboards / dictItems 是下拉源，与本次保存无关
       void qc.invalidateQueries({ queryKey: reportDesignerKeys.datasetDataPrefix });
       void qc.invalidateQueries({ queryKey: reportDesignerKeys.metricDataPrefix });
-      // datasets / dashboards / dictItems 是设计器的下拉源，与本次保存无关
     },
   });
 }
@@ -90,6 +96,10 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '加载失败';
 }
 
+function fetchDatasetData(id: number, params: Record<string, unknown>, limit: number, signal?: AbortSignal) {
+  return api(reportDatasetContract.data, { params: { id }, body: { params, limit } }, { silent: true, signal });
+}
+
 export function useReportDatasetDataMap(datasetIds: number[], limit = 500) {
   const queryClient = useQueryClient();
   const ids = useMemo(() => Array.from(new Set(datasetIds.filter((id) => id > 0))).sort((a, b) => a - b), [datasetIds]);
@@ -97,8 +107,7 @@ export function useReportDatasetDataMap(datasetIds: number[], limit = 500) {
   const stateMap = useQueries({
     queries: ids.map((id) => ({
       queryKey: reportDesignerKeys.datasetData(id, {}, limit),
-      queryFn: ({ signal }) =>
-        request.post<ReportDataResult>(`/api/report/datasets/${id}/data`, { limit }, { silent: true, signal }).then(unwrap),
+      queryFn: ({ signal }: { signal?: AbortSignal }) => fetchDatasetData(id, {}, limit, signal),
     })),
     combine: (results) => {
       const map = new Map<number, DatasetDataState>();
@@ -120,7 +129,7 @@ export function useReportDatasetDataMap(datasetIds: number[], limit = 500) {
   }, [stateMap]);
 
   const refresh = useCallback(() => {
-    void queryClient.refetchQueries({ queryKey: [...reportDesignerKeys.all, 'dataset-data'], type: 'active' });
+    void queryClient.refetchQueries({ queryKey: reportDesignerKeys.datasetDataPrefix, type: 'active' });
   }, [queryClient]);
 
   return { get, refresh };
@@ -146,15 +155,11 @@ export function useReportWidgetData(widgets: ReportWidget[], filterValues: Recor
       queryKey: entry.source === 'metric'
         ? reportDesignerKeys.metricData(entry.id, entry.params)
         : reportDesignerKeys.datasetData(entry.id, entry.params, limit),
-      queryFn: async ({ signal }) => {
+      queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<ReportDataResult> => {
         if (entry.source === 'dataset') {
-          return request.post<ReportDataResult>(`/api/report/datasets/${entry.id}/data`, { params: entry.params, limit }, { silent: true, signal }).then(unwrap);
+          return fetchDatasetData(entry.id, entry.params, limit, signal);
         }
-        const result = await request.post<ReportMetricEvaluation>(
-          `/api/report/metrics/${entry.id}/evaluate`,
-          { params: entry.params },
-          { silent: true, signal },
-        ).then(unwrap);
+        const result = await api(reportMetricContract.evaluate, { params: { id: entry.id }, body: { params: entry.params } }, { silent: true, signal });
         return {
           columns: ['value'],
           fields: [{ name: 'value', label: result.code, type: 'number' as const, source: 'declared' as const }],
@@ -186,7 +191,8 @@ export function useReportWidgetData(widgets: ReportWidget[], filterValues: Recor
   }, [filterValues, stateMap]);
 
   const refresh = useCallback(() => {
-    void queryClient.refetchQueries({ queryKey: reportDesignerKeys.all, type: 'active' });
+    void queryClient.refetchQueries({ queryKey: reportDesignerKeys.datasetDataPrefix, type: 'active' });
+    void queryClient.refetchQueries({ queryKey: reportDesignerKeys.metricDataPrefix, type: 'active' });
   }, [queryClient]);
 
   return { get, refresh };
@@ -201,8 +207,7 @@ export function useReportFilterDynamicOptions(filters: ReportFilter[], disabled?
   const queries = useQueries({
     queries: sources.map((entry) => ({
       queryKey: reportDesignerKeys.datasetData(entry.datasetId, {}, 500),
-      queryFn: ({ signal }) =>
-        request.post<ReportDataResult>(`/api/report/datasets/${entry.datasetId}/data`, { limit: 500 }, { silent: true, signal }).then(unwrap),
+      queryFn: ({ signal }: { signal?: AbortSignal }) => fetchDatasetData(entry.datasetId, {}, 500, signal),
       enabled: !disabled,
       staleTime: LOOKUP_STALE_TIME,
     })),
