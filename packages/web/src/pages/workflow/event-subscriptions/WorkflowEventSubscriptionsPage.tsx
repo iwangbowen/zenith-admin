@@ -8,7 +8,7 @@ import { Button, Col, DatePicker, Form, Input, Modal, Row, Space, SideSheet, Spi
 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowEventDelivery, WorkflowEventSubscription, WorkflowEventType } from '@zenith/shared/workflow';
+import type { CreateWorkflowEventSubscriptionInput, WorkflowDefinition, WorkflowEventDelivery, WorkflowEventSubscription, WorkflowEventType } from '@zenith/shared/workflow';
 import { formatDateTimeForApi } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -97,7 +97,7 @@ export default function WorkflowEventSubscriptionsPage() {
     pageSize,
     keyword: submittedParams.keyword || undefined,
     definitionId: submittedParams.definitionId,
-    enabled: submittedParams.enabled || undefined,
+    enabled: submittedParams.enabled === undefined ? undefined : submittedParams.enabled === 'true',
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -113,7 +113,7 @@ export default function WorkflowEventSubscriptionsPage() {
   const testMutation = useTestWorkflowEventSubscription();
 
   const handleTestDelivery = (record: WorkflowEventSubscription) => {
-    testMutation.mutate(record.id, {
+    testMutation.mutate({ params: { id: record.id } }, {
       onSuccess: (result) => {
         Modal.info({
           title: result.ok ? '测试投递成功' : '测试投递失败',
@@ -146,14 +146,14 @@ export default function WorkflowEventSubscriptionsPage() {
   const deliveriesQuery = useWorkflowEventDeliveries({
     page: deliveryPage,
     pageSize: deliveryPageSize,
-    subscriptionId: deliverySubId,
+    subscriptionId: deliverySubId ?? undefined,
   }, deliveryVisible);
   const deliveries = deliveriesQuery.data?.list ?? [];
   const deliveriesTotal = deliveriesQuery.data?.total ?? 0;
   const retryDeliveryMutation = useRetryWorkflowEventDelivery();
   const replayDeliveriesMutation = useReplayWorkflowEventDeliveries();
 
-  const eventSubscriptionModal = useEditModal<WorkflowEventSubscription, FormValues, Record<string, unknown>>({
+  const eventSubscriptionModal = useEditModal<WorkflowEventSubscription, FormValues, Partial<CreateWorkflowEventSubscriptionInput>>({
     entityName: '订阅',
     save: saveMutation,
     useDetail: useWorkflowEventSubscriptionDetail,
@@ -195,7 +195,7 @@ export default function WorkflowEventSubscriptionsPage() {
   const openEdit = eventSubscriptionModal.openEdit;
 
   const handleToggle = async (row: WorkflowEventSubscription) => {
-    await toggleMutation.mutateAsync({ id: row.id, enabled: !row.enabled });
+    await toggleMutation.mutateAsync({ params: { id: row.id }, body: { enabled: !row.enabled } });
     Toast.success('已切换');
   };
 
@@ -205,7 +205,7 @@ export default function WorkflowEventSubscriptionsPage() {
   };
 
   const handleViewSecret = async (id: number) => {
-    const secret = await secretMutation.mutateAsync(id);
+    const secret = await secretMutation.mutateAsync({ params: { id } });
     Modal.info({ title: '订阅 Secret', content: <Typography.Text copyable>{secret.secret}</Typography.Text> });
   };
 
@@ -214,7 +214,7 @@ export default function WorkflowEventSubscriptionsPage() {
   };
 
   const handleRetryDelivery = async (id: number) => {
-    await retryDeliveryMutation.mutateAsync(id);
+    await retryDeliveryMutation.mutateAsync({ params: { id } });
     Toast.success('已加入重试');
   };
 
@@ -232,13 +232,14 @@ export default function WorkflowEventSubscriptionsPage() {
     if (deliverySubId === null) return;
     const start = replayRange?.[0];
     const end = replayRange?.[1];
-    const body = { subscriptionId: deliverySubId };
     const result = await replayDeliveriesMutation.mutateAsync({
-      ...body,
-      ...(replayEventType ? { eventType: replayEventType } : {}),
-      ...(replayStatus ? { status: replayStatus } : {}),
-      ...(start ? { startAt: formatDateTimeForApi(start) } : {}),
-      ...(end ? { endAt: formatDateTimeForApi(end) } : {}),
+      body: {
+        subscriptionId: deliverySubId,
+        ...(replayEventType ? { eventType: replayEventType } : {}),
+        ...(replayStatus ? { status: replayStatus } : {}),
+        ...(start ? { startAt: formatDateTimeForApi(start) } : {}),
+        ...(end ? { endAt: formatDateTimeForApi(end) } : {}),
+      },
     });
     Toast.success(`已重放 ${result.count} 条投递`);
     setReplayVisible(false);
@@ -269,7 +270,7 @@ export default function WorkflowEventSubscriptionsPage() {
     {
       title: '状态', dataIndex: 'enabled', width: 90, fixed: 'right',
       render: (v: boolean, r) => canManageEventSubscription
-        ? <Switch checked={v} loading={toggleMutation.isPending && toggleMutation.variables?.id === r.id} onChange={() => handleToggle(r)} />
+        ? <Switch checked={v} loading={toggleMutation.isPending && toggleMutation.variables?.params.id === r.id} onChange={() => handleToggle(r)} />
         : (v ? <Tag color="green">启用</Tag> : <Tag color="grey">禁用</Tag>),
     },
     createOperationColumn<WorkflowEventSubscription>({

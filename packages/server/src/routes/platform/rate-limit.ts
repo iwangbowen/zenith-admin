@@ -1,16 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { rateLimitContract } from '@zenith/shared/platform';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import {
-  jsonContent,
-  validationHook,
-  commonErrorResponses,
-  ok,
-  okMsg,
-  IdParam,
-  okBody,
-} from '../../lib/openapi-schemas';
-import { RateLimitBanDTO, RateLimitRuleDTO, RateLimitStatsDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listRateLimitRules,
   updateRateLimitRule,
@@ -27,99 +20,29 @@ import {
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-/** pathBoundRateLimit 只挂载在 /api/*，非 /api/ 前缀的 pattern 永远不会匹配 */
-const pathPatternSchema = z.string().max(256).refine((p) => p.startsWith('/api/'), '绑定路径必须以 /api/ 开头');
+const view = [authMiddleware, guard({ permission: 'system:rate-limit:view' })] as const;
 
-/** 白名单条目：IP / CIDR / u:{userId}；合法性在中间件运行期宽容处理，这里只做长度约束 */
-const allowlistSchema = z.array(z.string().min(1).max(128)).max(100);
-
-const UpdateRuleBody = z.object({
-  windowMs: z.number().int().min(1000).optional(),
-  limit: z.number().int().min(1).optional(),
-  keyType: z.enum(['ip', 'user', 'ip_path']).optional(),
-  enabled: z.boolean().optional(),
-  mode: z.enum(['enforce', 'monitor']).optional(),
-  algorithm: z.enum(['fixed_window', 'sliding_window']).optional(),
-  allowlist: allowlistSchema.optional(),
-  priority: z.number().int().min(0).max(9999).optional(),
-  alertThreshold: z.number().int().min(1).max(1_000_000).nullable().optional(),
-  description: z.string().nullable().optional(),
-  blockedMessage: z.string().nullable().optional(),
-  pathPatterns: z.array(pathPatternSchema).max(50).optional(),
-});
-
-const CreateRuleBody = z.object({
-  name: z.string().min(1).max(64).regex(/^[a-z][a-z0-9_-]*$/, '规则名称只能包含小写字母、数字、下划线和连字符'),
-  description: z.string().max(255).nullable().optional(),
-  windowMs: z.number().int().min(1000),
-  limit: z.number().int().min(1),
-  keyType: z.enum(['ip', 'user', 'ip_path']),
-  enabled: z.boolean(),
-  mode: z.enum(['enforce', 'monitor']).optional(),
-  algorithm: z.enum(['fixed_window', 'sliding_window']).optional(),
-  allowlist: allowlistSchema.optional(),
-  priority: z.number().int().min(0).max(9999).optional(),
-  alertThreshold: z.number().int().min(1).max(1_000_000).nullable().optional(),
-  blockedMessage: z.string().max(255).nullable().optional(),
-  pathPatterns: z.array(pathPatternSchema).max(50).optional(),
-});
-
-const UnblockBody = z.object({
-  name: z.string().min(1),
-  key: z.string().min(1),
-});
-
-const ResetStatsBody = z.object({
-  name: z.string().min(1),
-});
-
-const listRules = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/rules',
-    tags: ['RateLimit'],
-    summary: '获取限流规则列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:rate-limit:view' })] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(RateLimitRuleDTO), '规则列表') },
-  }),
+const listRules = defineContractRoute(rateLimitContract.rules, {
+  middleware: view,
   handler: async (c) => c.json(okBody(await listRateLimitRules()), 200),
 });
 
-const createRule = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/rules',
-    tags: ['RateLimit'],
-    summary: '新增自定义限流规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:rate-limit:manage',
-      audit: { description: '新增限流规则', module: '接口限流' },
-    })] as const,
-    request: { body: { content: jsonContent(CreateRuleBody), required: true } },
-    responses: { ...commonErrorResponses, ...ok(RateLimitRuleDTO, '新增的规则') },
-  }),
+const createRule = defineContractRoute(rateLimitContract.createRule, {
+  middleware: [authMiddleware, guard({
+    permission: 'system:rate-limit:manage',
+    audit: { description: '新增限流规则', module: '接口限流' },
+  })],
   handler: async (c) => {
     const body = c.req.valid('json');
     return c.json(okBody(await createRateLimitRule(body), '规则已创建'), 200);
   },
 });
 
-const patchRule = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'patch',
-    path: '/rules/{id}',
-    tags: ['RateLimit'],
-    summary: '更新限流规则（保存后立即热更新）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:rate-limit:manage',
-      audit: { description: '更新限流规则', module: '接口限流' },
-    })] as const,
-    request: { params: IdParam, body: { content: jsonContent(UpdateRuleBody), required: true } },
-    responses: { ...commonErrorResponses, ...ok(RateLimitRuleDTO, '更新后的规则') },
-  }),
+const patchRule = defineContractRoute(rateLimitContract.updateRule, {
+  middleware: [authMiddleware, guard({
+    permission: 'system:rate-limit:manage',
+    audit: { description: '更新限流规则', module: '接口限流' },
+  })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
@@ -128,20 +51,11 @@ const patchRule = defineOpenAPIRoute({
   },
 });
 
-const deleteRule = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete',
-    path: '/rules/{id}',
-    tags: ['RateLimit'],
-    summary: '删除自定义限流规则（内置规则不可删除）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:rate-limit:manage',
-      audit: { description: '删除限流规则', module: '接口限流' },
-    })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteRule = defineContractRoute(rateLimitContract.removeRule, {
+  middleware: [authMiddleware, guard({
+    permission: 'system:rate-limit:manage',
+    audit: { description: '删除限流规则', module: '接口限流' },
+  })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getRateLimitRuleBeforeAudit(id));
@@ -150,33 +64,16 @@ const deleteRule = defineOpenAPIRoute({
   },
 });
 
-const getStats = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/stats',
-    tags: ['RateLimit'],
-    summary: '获取限流统计与最近拦截记录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:rate-limit:view' })] as const,
-    responses: { ...commonErrorResponses, ...ok(RateLimitStatsDTO, '统计数据') },
-  }),
+const getStats = defineContractRoute(rateLimitContract.stats, {
+  middleware: view,
   handler: async (c) => c.json(okBody(await getRateLimitStats()), 200),
 });
 
-const unblock = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/unblock',
-    tags: ['RateLimit'],
-    summary: '解封指定 key（清除 Redis 计数窗口）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:rate-limit:manage',
-      audit: { description: '解封限流 key', module: '接口限流' },
-    })] as const,
-    request: { body: { content: jsonContent(UnblockBody), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('解封成功') },
-  }),
+const unblock = defineContractRoute(rateLimitContract.unblock, {
+  middleware: [authMiddleware, guard({
+    permission: 'system:rate-limit:manage',
+    audit: { description: '解封限流 key', module: '接口限流' },
+  })],
   handler: async (c) => {
     const { name, key } = c.req.valid('json');
     const { unblocked } = await unblockRateLimit(name, key);
@@ -184,20 +81,11 @@ const unblock = defineOpenAPIRoute({
   },
 });
 
-const resetStats = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/reset-stats',
-    tags: ['RateLimit'],
-    summary: '清空指定规则的统计计数器',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:rate-limit:manage',
-      audit: { description: '清空限流统计', module: '接口限流' },
-    })] as const,
-    request: { body: { content: jsonContent(ResetStatsBody), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('统计已清空') },
-  }),
+const resetStats = defineContractRoute(rateLimitContract.resetStats, {
+  middleware: [authMiddleware, guard({
+    permission: 'system:rate-limit:manage',
+    audit: { description: '清空限流统计', module: '接口限流' },
+  })],
   handler: async (c) => {
     const { name } = c.req.valid('json');
     await resetRateLimitStats(name);
@@ -205,31 +93,11 @@ const resetStats = defineOpenAPIRoute({
   },
 });
 
-const BanBody = z.object({
-  name: z.string().min(1),
-  key: z.string().min(1).max(256),
-  durationSeconds: z.number().int().min(60).max(30 * 24 * 3600),
-});
-
-const UnbanBody = z.object({
-  name: z.string().min(1),
-  key: z.string().min(1).max(256),
-});
-
-const banKey = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/ban',
-    tags: ['RateLimit'],
-    summary: '手动封禁指定 key（封禁期内一律 429，无视限额与观察模式）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:rate-limit:manage',
-      audit: { description: '手动封禁限流 key', module: '接口限流' },
-    })] as const,
-    request: { body: { content: jsonContent(BanBody), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('封禁成功') },
-  }),
+const banKey = defineContractRoute(rateLimitContract.ban, {
+  middleware: [authMiddleware, guard({
+    permission: 'system:rate-limit:manage',
+    audit: { description: '手动封禁限流 key', module: '接口限流' },
+  })],
   handler: async (c) => {
     const { name, key, durationSeconds } = c.req.valid('json');
     await banRateLimit(name, key, durationSeconds);
@@ -237,20 +105,11 @@ const banKey = defineOpenAPIRoute({
   },
 });
 
-const unbanKey = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/unban',
-    tags: ['RateLimit'],
-    summary: '解除手动封禁',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:rate-limit:manage',
-      audit: { description: '解除限流封禁', module: '接口限流' },
-    })] as const,
-    request: { body: { content: jsonContent(UnbanBody), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('已解除封禁') },
-  }),
+const unbanKey = defineContractRoute(rateLimitContract.unban, {
+  middleware: [authMiddleware, guard({
+    permission: 'system:rate-limit:manage',
+    audit: { description: '解除限流封禁', module: '接口限流' },
+  })],
   handler: async (c) => {
     const { name, key } = c.req.valid('json');
     const { unbanned } = await unbanRateLimit(name, key);
@@ -258,16 +117,8 @@ const unbanKey = defineOpenAPIRoute({
   },
 });
 
-const listBans = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/bans',
-    tags: ['RateLimit'],
-    summary: '活跃封禁列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:rate-limit:view' })] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(RateLimitBanDTO), '活跃封禁') },
-  }),
+const listBans = defineContractRoute(rateLimitContract.bans, {
+  middleware: view,
   handler: async (c) => c.json(okBody(await listRateLimitActiveBans()), 200),
 });
 

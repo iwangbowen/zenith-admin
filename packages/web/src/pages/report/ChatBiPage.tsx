@@ -190,11 +190,11 @@ export default function ChatBiPage() {
       isPending: createMutation.isPending,
       mutateAsync: ({ values }) => {
         const selectedId = Number(values.contextId);
-        return createMutation.mutateAsync({
+        return createMutation.mutateAsync({ body: {
           title: String(values.title),
           ...(contextType === 'dataset' ? { datasetId: selectedId } : { datasourceId: selectedId }),
           allowedTables: [],
-        });
+        } });
       },
     },
     labelWidth: 90,
@@ -204,7 +204,7 @@ export default function ChatBiPage() {
   const renameModal = useEditModal<ReportChatbiSession, { title: string }>({
     save: {
       isPending: updateMutation.isPending,
-      mutateAsync: ({ id, values }) => updateMutation.mutateAsync({ id: id!, values }),
+      mutateAsync: ({ id, values }) => updateMutation.mutateAsync({ params: { id: id! }, body: values }),
     },
     toValues: (session) => ({ title: session.title }),
     labelWidth: 72,
@@ -346,7 +346,7 @@ export default function ChatBiPage() {
                       <Dropdown.Item icon={<Pencil size={14} />} onClick={() => renameModal.openEdit(session)}>重命名</Dropdown.Item>
                     )}
                     {hasPermission('report:chatbi:update') && session.status === 'active' && (
-                      <Dropdown.Item icon={<Archive size={14} />} onClick={() => void archiveMutation.mutateAsync(session.id)}>
+                      <Dropdown.Item icon={<Archive size={14} />} onClick={() => void archiveMutation.mutateAsync({ params: { id: session.id } })}>
                         归档
                       </Dropdown.Item>
                     )}
@@ -358,7 +358,7 @@ export default function ChatBiPage() {
                           title: '删除会话？',
                           content: '会话及历史消息将永久删除。',
                           onOk: async () => {
-                            await deleteMutation.mutateAsync(session.id);
+                            await deleteMutation.mutateAsync({ params: { id: session.id } });
                             if (activeSessionId === session.id) setActiveSessionId(undefined);
                           },
                         })}

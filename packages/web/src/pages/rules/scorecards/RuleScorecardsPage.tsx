@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Banner, Button, Divider, Input, InputNumber, List, Modal, Select, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
-import type { RuleScorecard, RuleScorecardBand, RuleScorecardEvaluateResult, RuleScorecardGrade, RuleScorecardVariable } from '@zenith/shared/rules';
+import { RULE_DECISION_STATUSES, type RuleScorecard, type RuleScorecardBand, type RuleScorecardEvaluateResult, type RuleScorecardGrade, type RuleScorecardVariable } from '@zenith/shared/rules';
+import { enumValueOf } from '@zenith/shared/core';
 import { createdAtColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -14,6 +15,7 @@ import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-co
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import {
+  type RuleScorecardSaveValues,
   useDeleteRuleScorecard, useEvaluateRuleScorecard, usePublishRuleScorecard,
   useRollbackRuleScorecard, useRuleScorecardList, useRuleScorecardVersions,
   useSaveRuleScorecard, useToggleRuleScorecard,
@@ -83,7 +85,7 @@ export default function RuleScorecardsPage() {
   const listQuery = useRuleScorecardList({
     page, pageSize,
     keyword: submittedKeyword || undefined,
-    status: submittedStatus as 'draft' | 'published' | 'disabled' | undefined,
+    status: enumValueOf(RULE_DECISION_STATUSES, submittedStatus),
   });
   const data = listQuery.data ?? null;
   const saveMutation = useSaveRuleScorecard();
@@ -123,7 +125,7 @@ export default function RuleScorecardsPage() {
     if (!editor) return;
     if (!editor.key.trim() && editor.id === undefined) { Toast.warning('请填写 Key'); return; }
     if (!editor.name.trim()) { Toast.warning('请填写名称'); return; }
-    const values: Record<string, unknown> = {
+    const values: RuleScorecardSaveValues = {
       name: editor.name.trim(),
       description: editor.description || null,
       baseScore: editor.baseScore,
@@ -140,7 +142,7 @@ export default function RuleScorecardsPage() {
     Modal.confirm({
       title: `发布「${r.name}」？`,
       content: '发布后固化当前配置为运行时快照，继续编辑不影响线上，直至下次发布。',
-      onOk: async () => { await publishMutation.mutateAsync(r.id); Toast.success('发布成功'); },
+      onOk: async () => { await publishMutation.mutateAsync({ params: { id: r.id } }); Toast.success('发布成功'); },
     });
   }
   async function handleRunTest() {
@@ -152,7 +154,7 @@ export default function RuleScorecardsPage() {
       Toast.warning('输入不是合法 JSON');
       return;
     }
-    setTestResult(await evaluateMutation.mutateAsync({ id: testTarget.id, input }));
+    setTestResult(await evaluateMutation.mutateAsync({ params: { id: testTarget.id }, body: { input } }));
   }
 
   // ─── 编辑器结构操作 ─────────────────────────────────────────────────────────
@@ -197,14 +199,14 @@ export default function RuleScorecardsPage() {
         { key: 'versions', label: '版本', onClick: () => setVersionsRow(r) },
         {
           key: 'toggle', label: r.status === 'disabled' ? '启用' : '停用', hidden: !canEdit || r.status === 'draft',
-          onClick: async () => { await toggleMutation.mutateAsync({ id: r.id, enabled: r.status === 'disabled' }); Toast.success('操作成功'); },
+          onClick: async () => { await toggleMutation.mutateAsync({ params: { id: r.id }, body: { enabled: r.status === 'disabled' } }); Toast.success('操作成功'); },
         },
         {
           key: 'delete', label: '删除', danger: true, hidden: !canDelete,
           onClick: () => {
             confirmDelete({
               title: `删除评分卡「${r.name}」？`, content: '删除后不可恢复',
-              onOk: async () => { await deleteMutation.mutateAsync(r.id); Toast.success('删除成功'); },
+              onOk: async () => { await deleteMutation.mutateAsync({ params: { id: r.id } }); Toast.success('删除成功'); },
             });
           },
         },
@@ -421,7 +423,7 @@ export default function RuleScorecardsPage() {
                     content: '历史快照将覆盖当前编辑态并置为草稿；线上继续运行既有发布，重新发布后生效',
                     onOk: async () => {
                       if (!versionsRow) return;
-                      await rollbackMutation.mutateAsync({ id: versionsRow.id, version: v.version });
+                      await rollbackMutation.mutateAsync({ params: { id: versionsRow.id, version: v.version } });
                       Toast.success('回滚成功');
                       setVersionsRow(null);
                     },

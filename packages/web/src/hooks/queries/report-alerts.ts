@@ -1,94 +1,61 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { CreateReportAlertInput, ReportAlertRule, ReportDeliveryRun } from '@zenith/shared/report';
-import type { AsyncTask } from '@zenith/shared/tasks';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { reportAlertContract, reportDeliveryRunContract } from '@zenith/shared/report';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface ReportAlertListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  datasetId?: string;
-  metricId?: string;
-  enabled?: boolean;
-}
+export type ReportAlertListParams = NonNullable<QueryOf<typeof reportAlertContract.list>>;
+
+/** 预警的投递历史（投递记录契约按目标筛选） */
+const historyQuery = (id: number) => ({
+  targetType: 'alert' as const,
+  alertRuleId: id,
+  includeAttempts: true,
+  page: 1,
+  pageSize: 20,
+});
+
+const resource = createResourceQueries(reportAlertContract, {
+  requestOptions: { silent: true },
+  onSaved: (qc) => void qc.invalidateQueries({ queryKey: reportAlertKeys.history() }),
+  onDeleted: (qc) => void qc.invalidateQueries({ queryKey: reportAlertKeys.history() }),
+});
 
 export const reportAlertKeys = {
-  all: ['report', 'alerts'] as const,
-  lists: ['report', 'alerts', 'list'] as const,
-  list: (params: ReportAlertListParams) => ['report', 'alerts', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'alerts', 'detail', id] as const,
-  history: (id: number | undefined) => ['report', 'alerts', 'history', id] as const,
+  ...resource.keys,
+  history: (id?: number) => id === undefined
+    ? contractKey(reportDeliveryRunContract.list)
+    : contractKey(reportDeliveryRunContract.list, { query: historyQuery(id) }),
 };
 
+/** 预警规则的任何变更都会改写列表上的状态列与最近投递结果，整域失效 */
+function invalidateAlerts(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: reportAlertKeys.all });
+  void qc.invalidateQueries({ queryKey: reportAlertKeys.history() });
+}
+
 export function useReportAlertList(params: ReportAlertListParams) {
-  return useQuery({
-    queryKey: reportAlertKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<ReportAlertRule>>(`/api/report/alerts${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(reportAlertContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
-export function useSaveReportAlert() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CreateReportAlertInput }) =>
-      (id
-        ? request.put<ReportAlertRule>(`/api/report/alerts/${id}`, values, { silent: true })
-        : request.post<ReportAlertRule>('/api/report/alerts', values, { silent: true })
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAlertKeys.all }),
-  });
-}
-
-export function useDeleteReportAlert() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/report/alerts/${id}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAlertKeys.all }),
-  });
-}
+export const useSaveReportAlert = resource.useSave;
+export const useDeleteReportAlerts = resource.useDelete;
 
 export function useToggleReportAlertEnabled() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
-      request.put<ReportAlertRule>(`/api/report/alerts/${id}`, { enabled }, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAlertKeys.all }),
-  });
+  return useApiMutation(reportAlertContract.update, { requestOptions: { silent: true }, invalidate: invalidateAlerts });
 }
 
 export function useEvaluateReportAlert() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<AsyncTask>(`/api/report/alerts/${id}/evaluate`, undefined, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAlertKeys.all }),
-  });
+  return useApiMutation(reportAlertContract.evaluate, { requestOptions: { silent: true }, invalidate: invalidateAlerts });
 }
 
 export function useBatchReportAlertEnabled() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ ids, enabled }: { ids: number[]; enabled: boolean }) =>
-      request.put<null>('/api/report/alerts/batch-status', { ids, enabled }, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAlertKeys.all }),
-  });
+  return useApiMutation(reportAlertContract.batchStatus, { requestOptions: { silent: true }, invalidate: invalidateAlerts });
 }
 
 export function useReportAlertHistory(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: reportAlertKeys.history(id),
-    enabled: enabled && !!id,
-    queryFn: () => request.get<PaginatedResponse<ReportDeliveryRun>>(`/api/report/delivery-runs${toQueryString({ targetType: 'alert', alertRuleId: id, includeAttempts: true, page: 1, pageSize: 20 })}`).then(unwrap),
-  });
+  return useApiQuery(reportDeliveryRunContract.list, { query: historyQuery(id ?? 0) }, { enabled: enabled && !!id });
 }
 
 export function useAcknowledgeReportAlertRun() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ runId, note }: { runId: number; note?: string }) =>
-      request.post<ReportDeliveryRun>(`/api/report/delivery-runs/${runId}/acknowledge`, { note }, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAlertKeys.all }),
-  });
+  return useApiMutation(reportDeliveryRunContract.acknowledge, { requestOptions: { silent: true }, invalidate: invalidateAlerts });
 }

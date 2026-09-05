@@ -1,4 +1,5 @@
-import type { ReportPrintBorder, ReportPrintCell, ReportPrintContent, ReportPrintCrosstabConfig, ReportPrintCrosstabValueField, ReportPrintDatasetBinding, ReportPrintDatasetRows, ReportPrintGrid, ReportPrintMerge, ReportPrintPageConfig, ReportPrintRenderOptions, ReportPrintRenderPage, ReportPrintRenderResult, ReportPrintRowRange, ReportPrintSheet, ReportPrintSheetRenderResult } from './types';
+import type { ReportPrintBorder, ReportPrintCell, ReportPrintContent, ReportPrintCrosstabConfig, ReportPrintCrosstabValueField, ReportPrintDatasetBinding, ReportPrintGrid, ReportPrintMerge, ReportPrintPageConfig, ReportPrintRenderPage, ReportPrintRenderResult, ReportPrintRowRange, ReportPrintSheet, ReportPrintSheetRenderResult } from './contracts';
+import type { ReportPrintDatasetRows, ReportPrintRenderOptions } from './types';
 
 type Row = Record<string, unknown>;
 

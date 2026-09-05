@@ -11,10 +11,9 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
+import type { CacheItem, CacheOverview } from '@zenith/shared/platform';
 import {
   cacheKeys,
-  type CacheItem,
-  type CacheOverview,
   useBatchDeleteCacheKeys,
   useCacheValue,
   useCacheList,
@@ -215,7 +214,7 @@ export default function CacheManagePage() {
       title: '确定要删除该缓存键吗？',
       content: <span>Key：<code>{item.displayKey}</code></span>,
       onOk: async () => {
-        await deleteKeyMutation.mutateAsync(item.key);
+        await deleteKeyMutation.mutateAsync({ body: { key: item.key } });
         Toast.success('删除成功');
       },
     });
@@ -227,7 +226,7 @@ export default function CacheManagePage() {
       title: `确定要删除选中的 ${selectedKeys.length} 个缓存键吗？`,
       content: '操作不可撤销，请谨慎。',
       onOk: async () => {
-        const res = await batchDeleteMutation.mutateAsync(selectedKeys);
+        const res = await batchDeleteMutation.mutateAsync({ body: { keys: selectedKeys } });
         Toast.success(`已删除 ${res.count ?? 0} 条缓存`);
       },
     });
@@ -238,7 +237,7 @@ export default function CacheManagePage() {
       title: `确定要删除「${row.category}」分类下的所有缓存吗？`,
       content: `共 ${row.count} 条缓存将被删除，操作不可撤销。`,
       onOk: async () => {
-        const res = await deleteCategoryMutation.mutateAsync(row.segment);
+        const res = await deleteCategoryMutation.mutateAsync({ body: { segment: row.segment } });
         Toast.success(`已删除 ${res.count ?? 0} 条缓存`);
         if (selectedCategory?.category === row.category) {
           setSelectedCategoryKey(null);
@@ -252,7 +251,7 @@ export default function CacheManagePage() {
       title: '确定要清空所有缓存吗？',
       content: '此操作将删除当前命名空间下的全部缓存，包括会话数据，操作不可撤销，请谨慎！',
       onOk: async () => {
-        const res = await clearAllMutation.mutateAsync();
+        const res = await clearAllMutation.mutateAsync({});
         Toast.success(`已清空 ${res.count ?? 0} 条缓存`);
         setSelectedCategoryKey(null);
       },
@@ -277,7 +276,7 @@ export default function CacheManagePage() {
       Toast.warning('请输入大于 0 的秒数');
       return;
     }
-    await updateTtlMutation.mutateAsync({ key: ttlEditItem.key, ttl });
+    await updateTtlMutation.mutateAsync({ body: { key: ttlEditItem.key, ttl } });
     Toast.success('修改成功');
     setTtlEditItem(null);
   };
@@ -289,7 +288,7 @@ export default function CacheManagePage() {
 
   const handleSaveValue = async () => {
     if (!viewingItem) return;
-    await updateValueMutation.mutateAsync({ key: viewingItem.key, value: editValue });
+    await updateValueMutation.mutateAsync({ body: { key: viewingItem.key, value: editValue } });
     Toast.success('修改成功');
     setFullValue(editValue);
     setEditMode(false);

@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { Button, Form, Input, Space, Spin, Toast, Typography, Switch } from '@douyinfe/semi-ui';
 import { Tags, Trash2 } from 'lucide-react';
-import type { Tag } from '@zenith/shared/platform';
+import type { CreateTagInput, Tag } from '@zenith/shared/platform';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -132,14 +133,14 @@ export default function TagsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.filterStatus || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
     groupName: submittedParams.filterGroup || undefined,
   });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const groupsQuery = useTagGroups();
   const saveMutation = useSaveTag();
-  const tagModal = useEditModal<Tag, Partial<Tag>, Partial<Tag> & { color?: string | null }>({
+  const tagModal = useEditModal<Tag, Partial<CreateTagInput>>({
     entityName: '标签',
     save: saveMutation,
     useDetail: useTagDetail,
@@ -151,11 +152,11 @@ export default function TagsPage() {
       status: tag.status,
       sortOrder: tag.sortOrder,
     }),
-    beforeSave: (values) => ({ ...values, color: colorValue || null }),
+    beforeSave: (values) => ({ ...values, color: colorValue || undefined }),
   });
   const deleteMutation = useDeleteTags();
   const toggleStatusMutation = useUpdateTagStatus();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.params.id ?? null) : null;
 
   useEffect(() => {
     if (tagModal.visible && tagModal.editing) setColorValue(tagModal.editing.color ?? '');
@@ -203,7 +204,7 @@ export default function TagsPage() {
       });
       if (!confirmed) return;
     }
-    await toggleStatusMutation.mutateAsync({ id: tag.id, status: newStatus });
+    await toggleStatusMutation.mutateAsync({ params: { id: tag.id }, body: { status: newStatus } });
     Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
   };
 

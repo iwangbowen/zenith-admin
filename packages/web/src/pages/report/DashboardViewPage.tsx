@@ -202,10 +202,12 @@ export default function DashboardViewPage() {
     if (!content) { Toast.warning('请输入评论内容'); return; }
     try {
       await createCommentMutation.mutateAsync({
-        dashboardId,
-        widgetId: replyTo?.widgetId ?? commentWidgetId ?? null,
-        parentId: replyTo?.id ?? null,
-        content,
+        params: { id: dashboardId },
+        body: {
+          widgetId: replyTo?.widgetId ?? commentWidgetId ?? null,
+          parentId: replyTo?.id ?? null,
+          content,
+        },
       });
       setCommentText('');
       setReplyTo(null);
@@ -217,7 +219,7 @@ export default function DashboardViewPage() {
 
   async function deleteComment(commentId: number) {
     try {
-      await deleteCommentMutation.mutateAsync({ dashboardId, commentId });
+      await deleteCommentMutation.mutateAsync({ params: { id: dashboardId, commentId } });
       Toast.success('删除成功');
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '删除失败');
@@ -226,7 +228,7 @@ export default function DashboardViewPage() {
 
   async function toggleResolve(commentId: number, resolved: boolean) {
     try {
-      await resolveCommentMutation.mutateAsync({ dashboardId, commentId, resolved });
+      await resolveCommentMutation.mutateAsync({ params: { id: dashboardId, commentId }, body: { resolved } });
       Toast.success(resolved ? '已解决评论' : '已重新打开评论');
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '操作失败');

@@ -4,7 +4,6 @@
  */
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
 import {
   Descriptions, Empty, Skeleton, Table, Tabs, TabPane, Tag, Typography, Button,
   Avatar, TextArea, Select, Toast, Popconfirm, Radio, RadioGroup,
@@ -12,9 +11,10 @@ import {
 import { CornerUpLeft, Reply, Send, Undo2, X } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowDefinition, WorkflowFieldPermission, WorkflowInstance, WorkflowComment, WorkflowTask, WorkflowTaskConsult } from '@zenith/shared/workflow';
-import { applyFieldPermissionsToFields, WORKFLOW_TASK_STATUS_LABELS } from '@zenith/shared/workflow';
+import { applyFieldPermissionsToFields, WORKFLOW_TASK_STATUS_LABELS, workflowInstanceContract, workflowTaskContract } from '@zenith/shared/workflow';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '@/utils/request';
+import { useApiMutation } from '@/lib/contract-query';
+import { ApiError } from '@/lib/query';
 import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime, formatDurationBetween } from '@/utils/date';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
@@ -142,10 +142,7 @@ function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>
   const [mentions, setMentions] = useState<number[]>([]);
   const [attachments, setAttachments] = useState<Array<{ name: string; url: string; size?: number }>>([]);
   const [replyTo, setReplyTo] = useState<WorkflowComment | null>(null);
-  const commentMutation = useMutation({
-    mutationFn: ({ id, text, mentionIds, files, parentId }: { id: number; text: string; mentionIds: number[]; files: Array<{ name: string; url: string; size?: number }>; parentId: number | null }) =>
-      request.post<WorkflowComment>(`/api/workflows/instances/${id}/comments`, { content: text, mentions: mentionIds, attachments: files, parentId }),
-  });
+  const commentMutation = useApiMutation(workflowInstanceContract.addComment);
   const submitting = commentMutation.isPending;
 
   useEffect(() => { setComments(instance.comments ?? []); }, [instance.id, instance.comments]);
@@ -165,25 +162,22 @@ function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>
     const text = content.trim();
     if (!text) { Toast.warning('请输入评论内容'); return; }
     try {
-      const res = await commentMutation.mutateAsync({
-        id: instance.id,
-        text,
-        mentionIds: mentions,
-        files: attachments,
-        parentId: replyTo?.id ?? null,
+      const created = await commentMutation.mutateAsync({
+        params: { id: instance.id },
+        body: { content: text, mentions, attachments, parentId: replyTo?.id ?? null },
       });
-      if (res.code !== 0) return;
-      if (!res.data) {
+      if (!created) {
         Toast.error('评论失败');
         return;
       }
-      setComments((prev) => [...prev, res.data]);
+      setComments((prev) => [...prev, created]);
       setContent('');
       setMentions([]);
       setAttachments([]);
       setReplyTo(null);
-    } catch {
-      Toast.error('评论失败');
+    } catch (err) {
+      // 业务错误已由请求层统一提示，这里只兜底非业务异常
+      if (!(err instanceof ApiError)) Toast.error('评论失败');
     }
   };
 
@@ -301,9 +295,7 @@ export default function WorkflowInstanceDetailPanel({
   viewerFieldPermissions, formEditable = false, onFormApiReady,
 }: Readonly<Props>) {
   const { user } = useAuth();
-  const recallMutation = useMutation({
-    mutationFn: (id: number) => request.post(`/api/workflows/tasks/${id}/recall`, {}),
-  });
+  const recallMutation = useApiMutation(workflowTaskContract.recall);
   if (loading) {
     return <WorkflowDetailSkeleton />;
   }
@@ -318,11 +310,12 @@ export default function WorkflowInstanceDetailPanel({
   const handleRecall = async () => {
     if (!myRecallableTask) return;
     try {
-      const res = await recallMutation.mutateAsync(myRecallableTask.id);
-      if (res.code !== 0) return;
+      await recallMutation.mutateAsync({ params: { taskId: myRecallableTask.id }, body: {} });
       Toast.success('已撤回');
       onRecalled?.();
-    } catch { Toast.error('撤回失败'); }
+    } catch (err) {
+      if (!(err instanceof ApiError)) Toast.error('撤回失败');
+    }
   };
   const consults = instance.consults ?? [];
   // 流转记录：真实审批任务（排除运行时留痕行与抄送节点），口径与审批链徽标一致

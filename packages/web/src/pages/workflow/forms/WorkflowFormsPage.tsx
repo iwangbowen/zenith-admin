@@ -74,7 +74,7 @@ export default function WorkflowFormsPage() {
 
   const handleDelete = async (id: number) => {
     try {
-      await deleteMutation.mutateAsync(id);
+      await deleteMutation.mutateAsync({ params: { id } });
       Toast.success('删除成功');
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '删除失败');
@@ -83,7 +83,7 @@ export default function WorkflowFormsPage() {
 
   const handleDuplicate = async (id: number) => {
     try {
-      await duplicateMutation.mutateAsync(id);
+      await duplicateMutation.mutateAsync({ params: { id } });
       Toast.success('复制成功');
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '复制失败');

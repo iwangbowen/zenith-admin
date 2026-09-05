@@ -64,7 +64,7 @@ describe('report P2 platform handlers', () => {
     expect(published.data.lifecycleStatus).toBe('published');
     expect(published.data.publishedSnapshot).not.toBeNull();
 
-    const evaluated = await call<{ value: number }>('POST', `/api/report/metrics/${created.data.id}/evaluate`);
+    const evaluated = await call<{ value: number }>('POST', `/api/report/metrics/${created.data.id}/evaluate`, {});
     expect(evaluated.data.value).toBeGreaterThan(0);
     const refs = await call<{ dashboards: unknown[]; alerts: unknown[]; metrics: unknown[] }>(
       'GET',

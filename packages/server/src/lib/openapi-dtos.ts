@@ -5,12 +5,7 @@
  * re-export 入口，统一通过 `import { XxxDTO } from './openapi-dtos'` 导入。
  *
  * 新增 DTO 请直接在对应的子文件中维护（已契约化的域没有独立 DTO，实体 schema 来自 `@zenith/shared`）：
- *   - dtos/dict.ts           字典
- *   - dtos/logs.ts           日志（IP 拦截 / 操作日志统计）
- *   - dtos/system-configs.ts 系统配置 / 密码策略
- *   - dtos/cache.ts          缓存
- *   - dtos/monitor.ts        服务器监控
- *   - dtos/workflow.ts       工作流
- *   - dtos/region.ts         地区
+ *   - dtos/oauth2.ts         OAuth2 RFC 协议端点响应
+ *   - dtos/cms.ts            CMS 内容管理
  */
 export * from './dtos';

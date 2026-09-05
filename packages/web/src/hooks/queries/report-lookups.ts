@@ -1,38 +1,39 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDebouncedValue } from '@tanstack/react-pacer';
-import type { ReportLookupOption } from '@zenith/shared/report';
-import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
-import { request } from '@/utils/request';
+import type { AnyOperation, QueryOf } from '@zenith/shared/core';
+import {
+  reportCategoryContract,
+  reportDashboardContract,
+  reportDatasetContract,
+  reportDatasourceContract,
+  reportPrintContract,
+  type ReportLookupOption,
+} from '@zenith/shared/report';
+import { api, contractKey } from '@/lib/contract-query';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type ReportLookupEntity = 'datasources' | 'datasets' | 'dashboards' | 'categories' | 'print';
 
-export interface ReportLookupParams {
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  limit?: number;
-}
+export type ReportLookupParams = NonNullable<QueryOf<typeof reportDatasourceContract.lookup>>;
 
-function getLookupPath(entity: ReportLookupEntity) {
-  switch (entity) {
-    case 'datasources': return '/api/report/datasources/lookup';
-    case 'datasets': return '/api/report/datasets/lookup';
-    case 'dashboards': return '/api/report/dashboards/lookup';
-    case 'categories': return '/api/report/categories/lookup';
-    case 'print': return '/api/report/print/lookup';
-    default: return '/api/report/datasets/lookup';
-  }
-}
+/** 各资源的轻量下拉操作；分类下拉不接受 status，多余参数由契约解析忽略 */
+const LOOKUP_OPS: Record<ReportLookupEntity, AnyOperation> = {
+  datasources: reportDatasourceContract.lookup,
+  datasets: reportDatasetContract.lookup,
+  dashboards: reportDashboardContract.lookup,
+  categories: reportCategoryContract.lookup,
+  print: reportPrintContract.lookup,
+};
 
 export const reportLookupKeys = {
-  all: ['report', 'lookups'] as const,
-  entity: (entity: ReportLookupEntity, params: ReportLookupParams) => ['report', 'lookups', entity, params] as const,
+  entity: (entity: ReportLookupEntity, params: ReportLookupParams) => contractKey(LOOKUP_OPS[entity], { query: params }),
 };
 
 export function useReportLookup(entity: ReportLookupEntity, params: ReportLookupParams = {}, enabled = true) {
   return useQuery({
     queryKey: reportLookupKeys.entity(entity, params),
-    queryFn: () => request.get<ReportLookupOption[]>(`${getLookupPath(entity)}${toQueryString(params)}`, { silent: true }).then(unwrap),
+    queryFn: () => api(LOOKUP_OPS[entity], { query: params }, { silent: true }) as Promise<ReportLookupOption[]>,
     staleTime: LOOKUP_STALE_TIME,
     enabled,
   });

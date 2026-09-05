@@ -1,14 +1,11 @@
-import type { WorkflowAutomation, WorkflowAutomationRun } from '@zenith/shared/workflow';
 import { useQuery } from '@tanstack/react-query';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
+import type { QueryOf } from '@zenith/shared/core';
+import { workflowAutomationContract } from '@zenith/shared/workflow';
+import { api, createResourceQueries } from '@/lib/contract-query';
 
-export interface WorkflowAutomationListParams extends CrudListParams {
-  definitionId?: number;
-  trigger?: string;
-  status?: string;
-}
+export type WorkflowAutomationListParams = QueryOf<typeof workflowAutomationContract.list>;
+
+export type WorkflowAutomationRunListParams = QueryOf<typeof workflowAutomationContract.runs>;
 
 export const {
   keys: workflowAutomationKeys,
@@ -16,38 +13,17 @@ export const {
   useDetail: useWorkflowAutomationDetail,
   useSave: useSaveWorkflowAutomation,
   useDelete: useDeleteWorkflowAutomations,
-} = createCrudQueries<WorkflowAutomation, WorkflowAutomationListParams, Record<string, unknown>>({
-  resource: 'workflow-automations',
+} = createResourceQueries(workflowAutomationContract, {
   // 保留原有嵌套 key：多处运行时流程用 invalidateQueries({ queryKey: ['workflow'] }) 广播，
-  // 改成扁平的 ['workflow-automations'] 会让本域悄悄脱离该失效范围
+  // 改成扁平前缀会让本域悄悄脱离该失效范围
   keyPrefix: ['workflow', 'automations'],
-  path: '/api/workflows/automations',
-  deleteMode: 'single',
 });
-
-export interface WorkflowAutomationRunListParams {
-  ruleId?: number;
-  instanceId?: number;
-  status?: 'success' | 'failed' | 'skipped';
-  page?: number;
-  pageSize?: number;
-}
-
-interface WorkflowAutomationRunListResult {
-  list: WorkflowAutomationRun[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
 
 /** 自动化动作执行记录（打开执行记录抽屉时启用） */
 export function useWorkflowAutomationRunList(params: WorkflowAutomationRunListParams, enabled = true) {
   return useQuery({
-    queryKey: ['workflow', 'automations', 'runs', params] as const,
-    queryFn: () =>
-      request
-        .get<WorkflowAutomationRunListResult>(`/api/workflows/automations/runs${toQueryString(params)}`)
-        .then(unwrap),
+    queryKey: [...workflowAutomationKeys.all, 'runs', params] as const,
+    queryFn: () => api(workflowAutomationContract.runs, { query: params }),
     enabled,
   });
 }

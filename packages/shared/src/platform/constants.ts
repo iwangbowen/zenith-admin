@@ -174,6 +174,48 @@ export const FILE_STORAGE_PROVIDER_OPTIONS: Array<{ value: (typeof FILE_STORAGE_
 
 export const CONFIG_TYPES = ['string', 'number', 'boolean', 'json'] as const;
 
+export type ConfigType = (typeof CONFIG_TYPES)[number];
+
+/** IP 访问控制拦截类型 */
+export const IP_ACCESS_BLOCK_TYPES = ['blacklist', 'whitelist'] as const;
+
+export type IpAccessBlockType = (typeof IP_ACCESS_BLOCK_TYPES)[number];
+
+/** 操作日志结果筛选：按响应码归为成功 / 失败 */
+export const OPERATION_LOG_RESULTS = ['success', 'fail'] as const;
+
+export type OperationLogResult = (typeof OPERATION_LOG_RESULTS)[number];
+
+// ─── 意见反馈 ─────────────────────────────────────────────────────────────────
+
+export const USER_FEEDBACK_CATEGORIES = ['suggestion', 'bug', 'ux', 'other'] as const;
+
+export type UserFeedbackCategory = (typeof USER_FEEDBACK_CATEGORIES)[number];
+
+export const USER_FEEDBACK_CATEGORY_LABELS: Record<UserFeedbackCategory, string> = {
+  suggestion: '功能建议',
+  bug: '问题反馈',
+  ux: '体验问题',
+  other: '其他',
+};
+
+export const USER_FEEDBACK_STATUSES = ['pending', 'processing', 'resolved', 'ignored'] as const;
+
+export type UserFeedbackStatus = (typeof USER_FEEDBACK_STATUSES)[number];
+
+export const USER_FEEDBACK_STATUS_LABELS: Record<UserFeedbackStatus, string> = {
+  pending: '待处理',
+  processing: '处理中',
+  resolved: '已解决',
+  ignored: '已忽略',
+};
+
+// ─── 数据脱敏 ─────────────────────────────────────────────────────────────────
+
+export const MASK_TYPES = ['phone', 'email', 'id_card', 'name', 'bank_card', 'custom'] as const;
+
+export type MaskType = (typeof MASK_TYPES)[number];
+
 export const CRON_JOB_STATUSES = ['enabled', 'disabled'] as const;
 
 export type CronJobStatus = (typeof CRON_JOB_STATUSES)[number];
@@ -218,12 +260,17 @@ export const BACKUP_STATUSES = ['pending', 'running', 'success', 'failed'] as co
 /** 内置「Zenith 助手」系统号 code（全局唯一、内置不可删、全员订阅） */
 export const SYSTEM_CHANNEL_CODE = 'system-assistant';
 
+/** 地区层级（省 / 地 / 县三级） */
+export const REGION_LEVELS = ['province', 'city', 'county'] as const;
+
+export type RegionLevel = (typeof REGION_LEVELS)[number];
+
 /** 地区层级标签（regions 前端页面 / server 导出统一复用） */
-export const REGION_LEVEL_LABELS = {
+export const REGION_LEVEL_LABELS: Record<RegionLevel, string> = {
   province: '省级',
   city: '地级',
   county: '县级',
-} as const;
+};
 
 // ─── 系统监控告警指标 ─────────────────────────────────────────────────────────
 
@@ -344,7 +391,18 @@ export const TENANT_SCOPED_MONITOR_METRICS: MonitorMetric[] =
   MONITOR_METRICS.filter((metric) => MONITOR_METRIC_META[metric].scope === 'tenant');
 
 // ─── 告警级别 / 事件状态 / 通知派发结果（枚举 SSOT）──────────────────────────
+export const MONITOR_ALERT_OPERATORS = ['gt', 'gte', 'lt', 'lte'] as const;
+
+export type MonitorAlertOperator = (typeof MONITOR_ALERT_OPERATORS)[number];
+
+/** 规则运行态：ok=正常；firing=告警中 */
+export const MONITOR_ALERT_STATES = ['ok', 'firing'] as const;
+
+export type MonitorAlertState = (typeof MONITOR_ALERT_STATES)[number];
+
 export const MONITOR_ALERT_LEVELS = ['info', 'warning', 'critical'] as const;
+
+export type MonitorAlertLevel = (typeof MONITOR_ALERT_LEVELS)[number];
 
 export const MONITOR_ALERT_LEVEL_LABELS: Record<(typeof MONITOR_ALERT_LEVELS)[number], string> = {
   info: '提示',
@@ -356,6 +414,8 @@ export const MONITOR_ALERT_LEVEL_OPTIONS: Array<{ value: (typeof MONITOR_ALERT_L
   MONITOR_ALERT_LEVELS.map((level) => ({ value: level, label: MONITOR_ALERT_LEVEL_LABELS[level] }));
 
 export const MONITOR_ALERT_EVENT_STATUSES = ['firing', 'resolved'] as const;
+
+export type MonitorAlertEventStatus = (typeof MONITOR_ALERT_EVENT_STATUSES)[number];
 
 export const MONITOR_ALERT_EVENT_STATUS_LABELS: Record<(typeof MONITOR_ALERT_EVENT_STATUSES)[number], string> = {
   firing: '告警中',
@@ -418,6 +478,11 @@ export const MONITOR_ALERT_OVERVIEW_RANGE_LABELS: Record<MonitorAlertOverviewRan
 
 export const MONITOR_ALERT_OVERVIEW_RANGE_OPTIONS: Array<{ value: MonitorAlertOverviewRange; label: string }> =
   MONITOR_ALERT_OVERVIEW_RANGES.map((range) => ({ value: range, label: MONITOR_ALERT_OVERVIEW_RANGE_LABELS[range] }));
+
+/** 历史监控趋势的时间范围 */
+export const MONITOR_HISTORY_RANGES = ['1h', '6h', '24h', '7d', '30d'] as const;
+
+export type MonitorHistoryRange = (typeof MONITOR_HISTORY_RANGES)[number];
 
 const BYTE_RATE_UNITS = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
 

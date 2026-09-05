@@ -1,135 +1,107 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { ApplyReportAssetTemplateInput, CreateReportAssetTemplateInput, CreateReportDeprecationNoticeInput, ReportAssetCatalogItem, ReportAssetTemplate, ReportAssetTemplateApplyResult, ReportAssetTemplateType, ReportAssetUsageSummary, ReportAssetUsageTrendPoint, ReportDeprecationNotice, ReportResourceType, UpdateReportAssetTemplateInput, UpdateReportDeprecationNoticeInput } from '@zenith/shared/report';
-import { toQueryString, unwrap } from '@/lib/query';
-import { request } from '@/utils/request';
+import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { BodyOf, QueryOf } from '@zenith/shared/core';
+import { reportAssetContract, type ReportAssetTemplate, type ReportDeprecationNotice, type ReportResourceType } from '@zenith/shared/report';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
+export type ReportAssetCatalogParams = NonNullable<QueryOf<typeof reportAssetContract.catalog>>;
+export type ReportAssetTopParams = NonNullable<QueryOf<typeof reportAssetContract.topAssets>>;
+export type ReportAssetInactiveParams = NonNullable<QueryOf<typeof reportAssetContract.inactiveAssets>>;
+export type ReportAssetTrendParams = NonNullable<QueryOf<typeof reportAssetContract.usageTrend>>;
+export type ReportDeprecationListParams = NonNullable<QueryOf<typeof reportAssetContract.deprecations>>;
+export type ReportAssetTemplateListParams = NonNullable<QueryOf<typeof reportAssetContract.templates>>;
+
+/** 下线公告、资产模板与使用统计（usage / top / inactive / trend）互不相干，分别失效 */
 export const reportAssetKeys = {
-  all: ['report', 'assets'] as const,
-  lists: ['report', 'assets', 'list'] as const,
-  list: (params: object) => ['report', 'assets', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'assets', 'detail', id] as const,
-  usage: (resourceType: ReportResourceType | undefined, id: number | undefined, days: number) => ['report', 'assets', 'usage', resourceType, id, days] as const,
-  top: (params: object) => ['report', 'assets', 'top', params] as const,
-  inactive: (params: object) => ['report', 'assets', 'inactive', params] as const,
-  trend: (params: object) => ['report', 'assets', 'trend', params] as const,
-  deprecationLists: ['report', 'assets', 'deprecations'] as const,
-  deprecations: (params: object) => ['report', 'assets', 'deprecations', params] as const,
-  templateLists: ['report', 'assets', 'templates'] as const,
-  templates: (params: object) => ['report', 'assets', 'templates', params] as const,
-  templateDetail: (id: number | undefined) => ['report', 'assets', 'template-detail', id] as const,
+  lists: contractKey(reportAssetContract.catalog),
+  list: (params: ReportAssetCatalogParams) => contractKey(reportAssetContract.catalog, { query: params }),
+  usage: (resourceType: ReportResourceType | undefined, id: number | undefined, days: number) =>
+    contractKey(reportAssetContract.usage, { params: { resourceType: resourceType ?? 'dashboard', id: id ?? 0 }, query: { days } }),
+  top: (params: ReportAssetTopParams) => contractKey(reportAssetContract.topAssets, { query: params }),
+  inactive: (params: ReportAssetInactiveParams) => contractKey(reportAssetContract.inactiveAssets, { query: params }),
+  trend: (params: ReportAssetTrendParams) => contractKey(reportAssetContract.usageTrend, { query: params }),
+  deprecationLists: contractKey(reportAssetContract.deprecations),
+  deprecations: (params: ReportDeprecationListParams) => contractKey(reportAssetContract.deprecations, { query: params }),
+  templateLists: contractKey(reportAssetContract.templates),
+  templates: (params: ReportAssetTemplateListParams) => contractKey(reportAssetContract.templates, { query: params }),
+  templateDetail: (id: number | undefined) => contractKey(reportAssetContract.templateDetail, { params: { id: id ?? 0 } }),
 };
 
-export function useReportAssetCatalog(params: {
-  page: number; pageSize: number; keyword?: string; types?: string; ownerId?: number; folderId?: number;
-  lifecycle?: string; status?: string; updatedStart?: string; updatedEnd?: string;
-}) {
-  return useQuery({
-    queryKey: reportAssetKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<ReportAssetCatalogItem>>(`/api/report/assets/catalog${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+const silent = { requestOptions: { silent: true } } as const;
+
+export function useReportAssetCatalog(params: ReportAssetCatalogParams) {
+  return useApiQuery(reportAssetContract.catalog, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useReportAssetUsage(resourceType: ReportResourceType | undefined, id: number | undefined, days = 30, enabled = true) {
-  return useQuery({
-    queryKey: reportAssetKeys.usage(resourceType, id, days),
-    queryFn: () => request.get<ReportAssetUsageSummary>(`/api/report/assets/usage/${resourceType}/${id}${toQueryString({ days })}`).then(unwrap),
+  return useApiQuery(reportAssetContract.usage, { params: { resourceType: resourceType ?? 'dashboard', id: id ?? 0 }, query: { days } }, {
     enabled: enabled && !!resourceType && !!id,
   });
 }
 
-export function useTopReportAssets(params: { days: number; limit: number }) {
-  return useQuery({
-    queryKey: reportAssetKeys.top(params),
-    queryFn: () => request.get<ReportAssetUsageSummary[]>(`/api/report/assets/usage/top${toQueryString(params)}`).then(unwrap),
-  });
+export function useTopReportAssets(params: ReportAssetTopParams) {
+  return useApiQuery(reportAssetContract.topAssets, { query: params });
 }
 
-export function useInactiveReportAssets(params: { days: number; page: number; pageSize: number }) {
-  return useQuery({
-    queryKey: reportAssetKeys.inactive(params),
-    queryFn: () => request.get<PaginatedResponse<ReportAssetCatalogItem>>(`/api/report/assets/usage/inactive${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+export function useInactiveReportAssets(params: ReportAssetInactiveParams) {
+  return useApiQuery(reportAssetContract.inactiveAssets, { query: params }, { placeholderData: keepPreviousData });
 }
 
-export function useReportAssetUsageTrend(params: {
-  days: number; bucket?: 'hour' | 'day'; resourceType?: ReportResourceType; resourceId?: number;
-}) {
-  return useQuery({
-    queryKey: reportAssetKeys.trend(params),
-    queryFn: () => request.get<ReportAssetUsageTrendPoint[]>(`/api/report/assets/usage/trend${toQueryString(params)}`).then(unwrap),
-  });
+export function useReportAssetUsageTrend(params: ReportAssetTrendParams) {
+  return useApiQuery(reportAssetContract.usageTrend, { query: params });
 }
 
-export function useReportDeprecationList(params: {
-  page: number; pageSize: number; resourceType?: ReportResourceType; resourceId?: number; published?: boolean;
-}, enabled = true) {
-  return useQuery({
-    queryKey: reportAssetKeys.deprecations(params),
-    queryFn: () => request.get<PaginatedResponse<ReportDeprecationNotice>>(`/api/report/assets/deprecations${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+// ─── 弃用公告 ───────────────────────────────────────────────────────────────
+
+export function useReportDeprecationList(params: ReportDeprecationListParams, enabled = true) {
+  return useApiQuery(reportAssetContract.deprecations, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
+export type SaveReportDeprecationValues = Partial<BodyOf<typeof reportAssetContract.createDeprecation>>;
+
+/** 无 id 走 createDeprecation，有 id 走 updateDeprecation（供 useEditModal 使用） */
 export function useSaveReportDeprecation() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CreateReportDeprecationNoticeInput | UpdateReportDeprecationNoticeInput }) =>
-      (id
-        ? request.put<ReportDeprecationNotice>(`/api/report/assets/deprecations/${id}`, values, { silent: true })
-        : request.post<ReportDeprecationNotice>('/api/report/assets/deprecations', values, { silent: true })
-      ).then(unwrap),
-    // 下线公告与资产使用统计（usage/top/inactive/trend）、资产模板互不相干
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAssetKeys.deprecationLists }),
+  return useMutation<ReportDeprecationNotice, Error, { id?: number; values: SaveReportDeprecationValues }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(reportAssetContract.createDeprecation, { body: values as BodyOf<typeof reportAssetContract.createDeprecation> }, { silent: true })
+      : api(reportAssetContract.updateDeprecation, { params: { id }, body: values }, { silent: true })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: reportAssetKeys.deprecationLists }),
   });
 }
 
 export function usePublishReportDeprecation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, publish }: { id: number; publish: boolean }) =>
-      request.post<ReportDeprecationNotice>(`/api/report/assets/deprecations/${id}/publish`, { publish }, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAssetKeys.deprecationLists }),
+  return useApiMutation(reportAssetContract.publishDeprecation, {
+    ...silent,
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportAssetKeys.deprecationLists }),
   });
 }
 
 export function useDeleteReportDeprecation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/report/assets/deprecations/${id}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAssetKeys.deprecationLists }),
+  return useApiMutation(reportAssetContract.removeDeprecation, {
+    ...silent,
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportAssetKeys.deprecationLists }),
   });
 }
 
-export function useReportAssetTemplateList(params: {
-  page: number; pageSize: number; keyword?: string; type?: ReportAssetTemplateType; status?: 'enabled' | 'disabled';
-}) {
-  return useQuery({
-    queryKey: reportAssetKeys.templates(params),
-    queryFn: () => request.get<PaginatedResponse<ReportAssetTemplate>>(`/api/report/assets/templates${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+// ─── 资产模板 ───────────────────────────────────────────────────────────────
+
+export function useReportAssetTemplateList(params: ReportAssetTemplateListParams) {
+  return useApiQuery(reportAssetContract.templates, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useReportAssetTemplateDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: reportAssetKeys.templateDetail(id),
-    queryFn: () => request.get<ReportAssetTemplate>(`/api/report/assets/templates/${id}`).then(unwrap),
-    enabled: enabled && !!id,
-  });
+  return useApiQuery(reportAssetContract.templateDetail, { params: { id: id ?? 0 } }, { enabled: enabled && !!id });
 }
 
+export type SaveReportAssetTemplateValues = Partial<BodyOf<typeof reportAssetContract.createTemplate>>;
+
+/** 无 id 走 createTemplate，有 id 走 updateTemplate（供 useEditModal 使用） */
 export function useSaveReportAssetTemplate() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CreateReportAssetTemplateInput | UpdateReportAssetTemplateInput }) =>
-      (id
-        ? request.put<ReportAssetTemplate>(`/api/report/assets/templates/${id}`, values, { silent: true })
-        : request.post<ReportAssetTemplate>('/api/report/assets/templates', values, { silent: true })
-      ).then(unwrap),
+  return useMutation<ReportAssetTemplate, Error, { id?: number; values: SaveReportAssetTemplateValues }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(reportAssetContract.createTemplate, { body: values as BodyOf<typeof reportAssetContract.createTemplate> }, { silent: true })
+      : api(reportAssetContract.updateTemplate, { params: { id }, body: values }, { silent: true })),
     onSuccess: (saved) => {
       void qc.invalidateQueries({ queryKey: reportAssetKeys.templateDetail(saved.id) });
       void qc.invalidateQueries({ queryKey: reportAssetKeys.templateLists });
@@ -137,35 +109,30 @@ export function useSaveReportAssetTemplate() {
   });
 }
 
+/** 克隆只新增一条模板，源模板不受影响 */
 export function useCloneReportAssetTemplate() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, name, folderId }: { id: number; name: string; folderId?: number | null }) =>
-      request.post<ReportAssetTemplate>(`/api/report/assets/templates/${id}/clone`, { name, folderId }, { silent: true }).then(unwrap),
-    // 克隆只新增一条模板，源模板不受影响
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAssetKeys.templateLists }),
+  return useApiMutation(reportAssetContract.cloneTemplate, {
+    ...silent,
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportAssetKeys.templateLists }),
   });
 }
 
+/** 套用会记录使用次数；生成的看板 / 数据集属于各自域，由所在页面自行刷新 */
 export function useApplyReportAssetTemplate() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: ApplyReportAssetTemplateInput }) =>
-      request.post<ReportAssetTemplateApplyResult>(`/api/report/assets/templates/${id}/apply`, values, { silent: true }).then(unwrap),
-    // 套用会记录使用次数；生成的看板/数据集属于各自域，由所在页面自行刷新
-    onSuccess: (_data, { id }) => {
-      void qc.invalidateQueries({ queryKey: reportAssetKeys.templateDetail(id) });
+  return useApiMutation(reportAssetContract.applyTemplate, {
+    ...silent,
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: reportAssetKeys.templateDetail(params.id) });
       void qc.invalidateQueries({ queryKey: reportAssetKeys.templateLists });
     },
   });
 }
 
 export function useDeleteReportAssetTemplate() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/report/assets/templates/${id}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: (_data, id) => {
-      qc.removeQueries({ queryKey: reportAssetKeys.templateDetail(id) });
+  return useApiMutation(reportAssetContract.removeTemplate, {
+    ...silent,
+    invalidate: (qc, _output, { params }) => {
+      qc.removeQueries({ queryKey: reportAssetKeys.templateDetail(params.id) });
       void qc.invalidateQueries({ queryKey: reportAssetKeys.templateLists });
     },
   });

@@ -1,3 +1,4 @@
+import type { CacheOverview } from '@zenith/shared/platform';
 import redis from '../../lib/redis';
 import { config } from '../../config';
 import { HTTPException } from 'hono/http-exception';
@@ -180,22 +181,6 @@ export async function deleteAllCache() {
 function assertNamespace(key: string): void {
   if (!key) throw new HTTPException(400, { message: '参数错误：缺少 key' });
   if (!key.startsWith(keyPrefix)) throw new HTTPException(403, { message: '只能操作当前命名空间的缓存' });
-}
-
-export interface CacheOverview {
-  connected: boolean;
-  version: string;
-  uptimeSeconds: number;
-  connectedClients: number;
-  usedMemory: number;
-  usedMemoryHuman: string;
-  maxMemory: number;
-  memFragmentationRatio: number;
-  keyspaceHits: number;
-  keyspaceMisses: number;
-  hitRate: number;
-  totalKeys: number;
-  keyPrefix: string;
 }
 
 export async function getCacheOverview(): Promise<CacheOverview> {

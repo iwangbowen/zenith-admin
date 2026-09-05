@@ -43,7 +43,7 @@ export default function WorkflowLaunchPage() {
     const { values, formData } = result;
     if (!asDraft && !submitNonceRef.current) submitNonceRef.current = crypto.randomUUID();
     const res = await (asDraft ? saveDraftMutation : submitMutation).mutateAsync({
-      values: {
+      body: {
         definitionId: def.id,
         title: values.title,
         formData,

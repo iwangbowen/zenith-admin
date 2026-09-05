@@ -1,15 +1,26 @@
 import * as z from 'zod';
 import { partialForUpdate } from '../core/validation';
+import {
+  RULE_COLLECT_AGGREGATES,
+  RULE_FIELD_TYPES,
+  RULE_GRAY_ACTIONS,
+  RULE_HIT_POLICIES,
+  RULE_LIST_MATCH_MODES,
+  RULE_LIST_TYPES,
+  RULE_SCORECARD_BAND_OPS,
+  RULE_SCORECARD_VARIABLE_TYPES,
+} from './constants';
 
 // ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
-const ruleFieldTypeSchema = z.enum(['string', 'number', 'boolean', 'date']);
+const ruleFieldTypeSchema = z.enum(RULE_FIELD_TYPES);
 
-const ruleHitPolicySchema = z.enum(['first', 'unique', 'priority', 'collect', 'any']);
+const ruleHitPolicySchema = z.enum(RULE_HIT_POLICIES);
 
-const ruleLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+/** 规则行 then / 输出列默认值允许的字面量 */
+export const ruleLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
 export const ruleDecisionTableSettingsSchema = z.object({
-  collectAggregate: z.enum(['list', 'sum', 'min', 'max', 'count', 'distinct']).optional(),
+  collectAggregate: z.enum(RULE_COLLECT_AGGREGATES).optional(),
   fallbackToDefaults: z.boolean().optional(),
 });
 
@@ -58,7 +69,14 @@ export const toggleDecisionTableSchema = z.object({
   enabled: z.boolean(),
 });
 
+/** 测试求值（编辑态） */
 export const evaluateDecisionTableSchema = z.object({
+  input: z.record(z.string(), z.unknown()).default({}),
+});
+
+/** 按 key 求值（运行时 / 对外通用） */
+export const evaluateRuleByKeySchema = z.object({
+  key: z.string().min(1),
   input: z.record(z.string(), z.unknown()).default({}),
 });
 
@@ -70,7 +88,7 @@ export const publishDecisionTableSchema = z.object({
 
 /** 灰度操作：complete=转正（新版本全量）；cancel=取消灰度（全量回旧版本） */
 export const grayActionSchema = z.object({
-  action: z.enum(['complete', 'cancel']),
+  action: z.enum(RULE_GRAY_ACTIONS),
 });
 
 /** 批量仿真：逐行以草稿态求值 */
@@ -78,9 +96,18 @@ export const simulateDecisionTableSchema = z.object({
   rows: z.array(z.record(z.string(), z.unknown())).min(1).max(200),
 });
 
+/** 影子对比：重放最近 N 条执行输入 */
+export const shadowRunDecisionTableSchema = z.object({
+  limit: z.number().int().min(1).max(500).default(100),
+});
+
 export type CreateDecisionTableInput = z.input<typeof createDecisionTableSchema>;
 
 export type UpdateDecisionTableInput = z.input<typeof updateDecisionTableSchema>;
+
+export type EvaluateRuleByKeyInput = z.input<typeof evaluateRuleByKeySchema>;
+
+export type PublishDecisionTableInput = z.input<typeof publishDecisionTableSchema>;
 
 export const createRuleTestCaseSchema = z.object({
   name: z.string().min(1).max(64),
@@ -91,6 +118,8 @@ export const createRuleTestCaseSchema = z.object({
 export const updateRuleTestCaseSchema = partialForUpdate(createRuleTestCaseSchema);
 
 export type CreateRuleTestCaseInput = z.input<typeof createRuleTestCaseSchema>;
+
+export type UpdateRuleTestCaseInput = z.input<typeof updateRuleTestCaseSchema>;
 
 // ─── 规则中心：决策流 Schema ─────────────────────────────────────────────────────
 export const ruleFlowStepSchema = z.object({
@@ -120,7 +149,7 @@ export type UpdateDecisionFlowInput = z.input<typeof updateDecisionFlowSchema>;
 export const createRuleListSchema = z.object({
   key: z.string().min(1).max(64).regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/, 'key 仅限字母开头的字母数字下划线'),
   name: z.string().min(1).max(64),
-  type: z.enum(['black', 'white', 'grey']).default('black'),
+  type: z.enum(RULE_LIST_TYPES).default('black'),
   description: z.string().max(500).nullable().optional(),
 });
 
@@ -131,7 +160,7 @@ export const updateRuleListSchema = partialForUpdate(createRuleListSchema).omit(
 export const createRuleListItemSchema = z.object({
   value: z.string().min(1).max(128),
   label: z.string().max(64).nullable().optional(),
-  matchMode: z.enum(['exact', 'prefix', 'regex']).default('exact'),
+  matchMode: z.enum(RULE_LIST_MATCH_MODES).default('exact'),
   expiresAt: z.string().nullable().optional(),
   remark: z.string().max(255).nullable().optional(),
 });
@@ -146,16 +175,26 @@ export const checkRuleListSchema = z.object({
   value: z.string().min(1).max(128),
 });
 
+export type CreateRuleListInput = z.input<typeof createRuleListSchema>;
+
+export type UpdateRuleListInput = z.input<typeof updateRuleListSchema>;
+
+export type CreateRuleListItemInput = z.input<typeof createRuleListItemSchema>;
+
+export type BatchRuleListItemsInput = z.input<typeof batchRuleListItemsSchema>;
+
 // ─── 规则中心：发布审批 Schema ───────────────────────────────────────────────────
 export const reviewDecisionTableSchema = z.object({
   approve: z.boolean(),
   comment: z.string().max(255).optional(),
 });
 
+export type ReviewDecisionTableInput = z.input<typeof reviewDecisionTableSchema>;
+
 // ─── 规则中心：评分卡 Schema ─────────────────────────────────────────────────────
 export const ruleScorecardBandSchema = z.object({
   id: z.string().min(1).max(64),
-  op: z.enum(['range', 'eq', 'in', 'default']),
+  op: z.enum(RULE_SCORECARD_BAND_OPS),
   min: z.number().nullable().optional(),
   max: z.number().nullable().optional(),
   value: z.string().max(64).optional(),
@@ -168,7 +207,7 @@ export const ruleScorecardVariableSchema = z.object({
   key: z.string().min(1).max(64).regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, '变量 key 需为合法标识符'),
   label: z.string().min(1).max(64),
   expr: z.string().min(1).max(500),
-  type: z.enum(['number', 'string', 'boolean']),
+  type: z.enum(RULE_SCORECARD_VARIABLE_TYPES),
   weight: z.number().min(0).max(100).optional(),
   missingScore: z.number().optional(),
   bands: z.array(ruleScorecardBandSchema).max(50).default([]),
@@ -195,6 +234,12 @@ export const updateRuleScorecardSchema = partialForUpdate(createRuleScorecardSch
 });
 
 export const evaluateRuleScorecardSchema = z.object({
+  input: z.record(z.string(), z.unknown()).default({}),
+});
+
+/** 运行时求值（按 key 取发布快照） */
+export const evaluateRuleScorecardByKeySchema = z.object({
+  key: z.string().min(1).max(64),
   input: z.record(z.string(), z.unknown()).default({}),
 });
 

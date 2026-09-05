@@ -61,7 +61,7 @@ export function mapSubscription(
     description: row.description ?? null,
     definitionId: row.definitionId,
     definitionName: definitionName ?? null,
-    events: Array.isArray(row.events) ? row.events : [],
+    events: (Array.isArray(row.events) ? row.events : []) as WorkflowEventType[],
     url: row.url,
     secretMasked: maskSecret(decryptSubscriptionSecret(row.secretEncrypted)),
     signMode: row.signMode,

@@ -1,77 +1,24 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { UserFeedback, UserFeedbackCategory, UserFeedbackStatus } from '@zenith/shared/identity';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryClient } from '@tanstack/react-query';
+import { userFeedbackContract } from '@zenith/shared/platform';
+import { createResourceQueries, useApiMutation } from '@/lib/contract-query';
 
-export interface UserFeedbackListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  category?: UserFeedbackCategory;
-  status?: UserFeedbackStatus;
-  startTime?: string;
-  endTime?: string;
-}
+const resource = createResourceQueries(userFeedbackContract);
 
-export const userFeedbackKeys = {
-  all: ['user-feedbacks'] as const,
-  lists: ['user-feedbacks', 'list'] as const,
-  list: (params: UserFeedbackListParams) => ['user-feedbacks', 'list', params] as const,
-  detail: (id: number | undefined) => ['user-feedbacks', 'detail', id] as const,
-};
+export const userFeedbackKeys = resource.keys;
 
-export function useUserFeedbackList(params: UserFeedbackListParams) {
-  return useQuery({
-    queryKey: userFeedbackKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<UserFeedback>>(`/api/feedbacks${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
-}
+export const useUserFeedbackList = resource.useList;
+/** 删除：单条走 DELETE /{id}，多条走 DELETE /batch */
+export const useDeleteFeedbacks = resource.useDelete;
 
-export interface SubmitFeedbackValues {
-  score?: number | null;
-  category: UserFeedbackCategory;
-  content?: string | null;
-  pagePath?: string | null;
-  /** 提交时活跃的会话回放 ID（SDK 联动） */
-  replayId?: string | null;
-}
+/** 反馈没有详情接口，写操作后只需回源列表 */
+const invalidateLists = (qc: QueryClient) => void qc.invalidateQueries({ queryKey: userFeedbackKeys.lists });
 
 /** 提交意见反馈（所有登录用户可用） */
 export function useSubmitFeedback() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: SubmitFeedbackValues) =>
-      request.post<UserFeedback>('/api/feedbacks', values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: userFeedbackKeys.all }),
-  });
-}
-
-export interface HandleFeedbackValues {
-  status: UserFeedbackStatus;
-  handleRemark?: string | null;
+  return useApiMutation(userFeedbackContract.submit, { invalidate: invalidateLists });
 }
 
 /** 处理反馈（更新状态与备注） */
 export function useHandleFeedback() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: HandleFeedbackValues }) =>
-      request.put<UserFeedback>(`/api/feedbacks/${id}/handle`, values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: userFeedbackKeys.all }),
-  });
-}
-
-/** 删除：单个（length===1 走单删接口）或批量 */
-export function useDeleteFeedbacks() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (ids: number[]) =>
-      (ids.length === 1
-        ? request.delete<null>(`/api/feedbacks/${ids[0]}`)
-        : request.delete<null>('/api/feedbacks/batch', { ids })
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: userFeedbackKeys.all }),
-  });
+  return useApiMutation(userFeedbackContract.handle, { invalidate: invalidateLists });
 }

@@ -17,10 +17,9 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { TOKEN_KEY } from '@zenith/shared/core';
 import { terminalRecordingContract } from '@zenith/shared/ops';
-import { wsAuthProtocols } from '@zenith/shared/platform';
+import { systemConfigContract, wsAuthProtocols } from '@zenith/shared/platform';
 import { config } from '@/config';
 import { api } from '@/lib/contract-query';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { copyText } from '@/utils/clipboard';
 import { type TerminalThemeDef, toXtermTheme } from './themes';
@@ -248,11 +247,8 @@ class TerminalSessionStore {
     // 查询录屏开关（默认关闭）
     let recordingEnabled = false;
     try {
-      const res = await request.get<{ configValue: string }>(
-        '/api/system-configs/public/terminal_recording_enabled',
-        { silent: true },
-      );
-      if (res.code === 0) recordingEnabled = res.data?.configValue === 'true';
+      const recordingConfig = await api(systemConfigContract.publicByKey, { params: { key: 'terminal_recording_enabled' } }, { silent: true });
+      recordingEnabled = recordingConfig.configValue === 'true';
     } catch { /* 查询失败则不录屏 */ }
 
     const container = document.createElement('div');

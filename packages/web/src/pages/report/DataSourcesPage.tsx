@@ -20,8 +20,9 @@ import {
   useSaveReportDatasource,
   useTestReportDatasourceConnection,
 } from '@/hooks/queries/report-datasources';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { ReportDatasource, ReportDatasourceType, ReportApiDatasourceConfig, ReportExternalDbConfig } from '@zenith/shared/report';
-import { REPORT_DATASOURCE_TYPE_OPTIONS } from '@zenith/shared/report';
+import { REPORT_DATASOURCE_TYPE_OPTIONS, REPORT_DATASOURCE_TYPES } from '@zenith/shared/report';
 import { useDictItems } from '@/hooks/useDictItems';
 import { renderReportDatasourceTypeTag } from './report-datasource-ui';
 import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
@@ -56,8 +57,8 @@ export default function DataSourcesPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    type: submittedParams.type || undefined,
-    status: submittedParams.status || undefined,
+    type: enumValueOf(REPORT_DATASOURCE_TYPES, submittedParams.type),
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
     ownerId: submittedParams.ownerId,
     folderId: submittedParams.folderId,
   });
@@ -153,11 +154,11 @@ export default function DataSourcesPage() {
           try { headers = JSON.parse(headersText) as Record<string, string>; }
           catch { Toast.warning('请求头不是合法 JSON'); return; }
         }
-        res = await testConnectionMutation.mutateAsync({
+        res = await testConnectionMutation.mutateAsync({ body: {
           id: editing?.id,
           type,
           config: { url, method: values.method === 'POST' ? 'POST' : 'GET', ...(headers ? { headers } : {}) },
-        });
+        } });
       } else {
         const host = String(values.host ?? '').trim();
         const database = String(values.database ?? '').trim();
@@ -165,11 +166,11 @@ export default function DataSourcesPage() {
         const port = Number(values.port);
         if (!host || !port || !database || !user) { Toast.warning('请先填写连接信息'); return; }
         const password = String(values.password ?? '').trim();
-        res = await testConnectionMutation.mutateAsync({
+        res = await testConnectionMutation.mutateAsync({ body: {
           id: editing?.id,
           type,
           config: { host, port, database, user, ssl: !!values.ssl, ...(password ? { password } : {}) },
-        });
+        } });
       }
       if (res.ok) Toast.success(res.latencyMs != null ? `连接成功（${res.latencyMs}ms）` : '连接成功');
       else Toast.error(res.message || '连接失败');
@@ -205,7 +206,7 @@ export default function DataSourcesPage() {
       title: `确认批量${label}选中的 ${selectedRowKeys.length} 个数据源？`,
       content: status === 'disabled' ? '停用后相关数据集将无法继续取数。' : '启用后数据集可继续使用这些数据源。',
       onOk: async () => {
-        await batchStatusMutation.mutateAsync({ ids: selectedRowKeys, status });
+        await batchStatusMutation.mutateAsync({ body: { ids: selectedRowKeys, status } });
         setSelectedRowKeys([]);
         Toast.success(`批量${label}成功`);
       },
@@ -213,12 +214,12 @@ export default function DataSourcesPage() {
   }
 
   async function handleClone(record: ReportDatasource) {
-    const cloned = await cloneMutation.mutateAsync({ id: record.id });
+    const cloned = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
     Toast.success(`已复制为「${cloned.name}」`);
   }
 
   async function handleHealthCheck(ids: number[], name?: string) {
-    const task = await healthTaskMutation.mutateAsync(ids);
+    const task = await healthTaskMutation.mutateAsync({ body: { ids } });
     Toast.success(name ? `已提交「${name}」健康检查任务` : `已提交 ${ids.length} 个数据源的健康检查任务（#${task.id}）`);
   }
 

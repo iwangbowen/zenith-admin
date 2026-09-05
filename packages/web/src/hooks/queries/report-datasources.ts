@@ -1,24 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ReportDatasource } from '@zenith/shared/report';
-import type { AsyncTask } from '@zenith/shared/tasks';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
-import { useReportLookup } from './report-lookups';
+import type { QueryOf } from '@zenith/shared/core';
+import { reportDatasourceContract } from '@zenith/shared/report';
+import { createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { useReportLookup, type ReportLookupParams } from './report-lookups';
 
-export interface ReportDatasourceListParams extends CrudListParams {
-  keyword?: string;
-  type?: string;
-  status?: string;
-  ownerId?: number;
-  folderId?: number;
-}
-
-export interface TestReportDatasourceConnectionInput {
-  id?: number;
-  type: string;
-  config: Record<string, unknown>;
-}
+export type ReportDatasourceListParams = NonNullable<QueryOf<typeof reportDatasourceContract.list>>;
 
 export const {
   keys: reportDatasourceKeys,
@@ -26,48 +11,33 @@ export const {
   useDetail: useReportDatasourceDetail,
   useSave: useSaveReportDatasource,
   useDelete: useDeleteReportDatasources,
-} = createCrudQueries<ReportDatasource, ReportDatasourceListParams, Record<string, unknown>>({
-  resource: 'report-datasources',
-  // 保留原有嵌套 key：报表域用 ['report'] 前缀组织所有资源
-  keyPrefix: ['report', 'datasources'],
-  path: '/api/report/datasources',
-  // 服务端未提供 DELETE /batch
-  deleteMode: 'single',
-});
+} = createResourceQueries(reportDatasourceContract);
 
-export function useReportDatasourceLookup(params: { keyword?: string; status?: 'enabled' | 'disabled'; limit?: number } = {}, enabled = true) {
+export function useReportDatasourceLookup(params: ReportLookupParams = {}, enabled = true) {
   return useReportLookup('datasources', params, enabled);
 }
 
+/** 连接测试不落库，无需失效任何缓存；错误由弹窗自行展示 */
 export function useTestReportDatasourceConnection() {
-  return useMutation({
-    mutationFn: (values: TestReportDatasourceConnectionInput) =>
-      request.post<{ ok: boolean; message: string; latencyMs?: number }>('/api/report/datasources/test', values, { silent: true }).then(unwrap),
-  });
+  return useApiMutation(reportDatasourceContract.test, { requestOptions: { silent: true } });
 }
 
+/** 健康检查会回写连接状态字段，列表、详情与下拉源随之刷新 */
 export function useRunReportDatasourceHealthCheck() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (ids: number[]) => request.post<AsyncTask>('/api/report/datasources/health-check', { ids }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportDatasourceKeys.all }),
+  return useApiMutation(reportDatasourceContract.healthCheck, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportDatasourceKeys.all }),
   });
 }
 
 export function useBatchReportDatasourceStatus() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ ids, status }: { ids: number[]; status: 'enabled' | 'disabled' }) =>
-      request.put<null>('/api/report/datasources/batch-status', { ids, status }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportDatasourceKeys.all }),
+  return useApiMutation(reportDatasourceContract.batchStatus, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportDatasourceKeys.all }),
   });
 }
 
+/** 克隆只新增一条记录：列表与下拉源刷新，源数据源不受影响 */
 export function useCloneReportDatasource() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, name }: { id: number; name?: string }) =>
-      request.post<ReportDatasource>(`/api/report/datasources/${id}/clone`, name ? { name } : {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportDatasourceKeys.all }),
+  return useApiMutation(reportDatasourceContract.clone, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportDatasourceKeys.all }),
   });
 }

@@ -1,8 +1,6 @@
 /**
  * 外部审批回调路由（公开，无需登录）
  *
- * POST /api/public/workflow/external-callback/:callbackId
- * Body: { action: 'approve' | 'reject', comment?: string, approverName?: string }
  * Headers: X-Zenith-Signature: t={ts},v1={hex}（如果节点配置 signMode=hmacSha256）
  *
  * 流程：
@@ -10,41 +8,21 @@
  * 2. 读取节点 externalApproval.secret，校验 HMAC 签名
  * 3. 调用 approveTaskByCallback / rejectTaskByCallback
  */
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { workflowExternalCallbackContract, type WorkflowExternalApprovalConfig } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import { workflowInstances, workflowTasks } from '../../db/schema';
-import type { WorkflowExternalApprovalConfig } from '@zenith/shared/workflow';
-import { validationHook, commonErrorResponses, ok, okBody } from '../../lib/openapi-schemas';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { approveTaskByCallback, rejectTaskByCallback } from '../../services/workflow/workflow-instances.service';
 import { assertWorkflowCallbackSignature, captureWorkflowCallbackRawBody, getWorkflowCallbackRawBody } from '../../lib/workflow-callback-security';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const CallbackParam = z.object({ callbackId: z.string().min(8).max(128) });
-const CallbackBody = z.object({
-  action: z.enum(['approve', 'reject']),
-  comment: z.string().max(1024).optional(),
-  approverName: z.string().min(1).max(64).optional(),
-});
-
-const ResultDTO = z.object({ message: z.string() }).openapi('WorkflowExternalCallbackResult');
-
-const callback = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/{callbackId}',
-    tags: ['WorkflowExternalCallback'],
-    summary: '外部审批回调（公开，无需登录）',
-    security: [],
-    middleware: [captureWorkflowCallbackRawBody] as const,
-    request: {
-      params: CallbackParam,
-      body: { content: { 'application/json': { schema: CallbackBody } } },
-    },
-    responses: { ...commonErrorResponses, ...ok(ResultDTO, '回调处理结果') },
-  }),
+const callback = defineContractRoute(workflowExternalCallbackContract.callback, {
+  middleware: [captureWorkflowCallbackRawBody] as const,
   handler: async (c) => {
     const { callbackId } = c.req.valid('param');
     const body = c.req.valid('json');

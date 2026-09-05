@@ -10,6 +10,8 @@ import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/
 import { useListSearch } from '@/hooks/useListSearch';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { enumValueOf } from '@zenith/shared/core';
+import { OPERATION_LOG_RESULTS } from '@zenith/shared/platform';
 
 const METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((value) => ({ value, label: value }));
 const STATUS_OPTIONS = [{ value: 'success', label: '成功' }, { value: 'fail', label: '失败' }];
@@ -47,7 +49,7 @@ export default function OperationLogsPage() {
     ip: submittedParams.ip || undefined,
     method: submittedParams.method || undefined,
     path: submittedParams.path || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(OPERATION_LOG_RESULTS, submittedParams.status),
     content: submittedParams.content || undefined,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
     minDurationMs: submittedParams.minDurationMs ?? undefined,
@@ -58,7 +60,7 @@ export default function OperationLogsPage() {
   const cleanLogsMutation = useCleanOperationLogs();
   const clearLogsLoading = cleanLogsMutation.isPending;
   const clearLogs = useClearLogs({
-    clean: (months) => cleanLogsMutation.mutateAsync(months),
+    clean: (days) => cleanLogsMutation.mutateAsync({ query: { days } }),
     onCleared: () => setPage(1),
   });
 

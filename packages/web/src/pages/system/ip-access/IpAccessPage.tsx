@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Switch, TextArea, Toast, Spin, Typography, Tabs, TabPane, Tag, Select } from '@douyinfe/semi-ui';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { IpAccessLog } from '@zenith/shared/platform';
+import { IP_ACCESS_BLOCK_TYPES, type IpAccessLog } from '@zenith/shared/platform';
+import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
@@ -45,7 +46,7 @@ interface SearchParams { filterIp: string; filterBlockType: string | undefined; 
     page,
     pageSize,
     ip: submittedParams.filterIp || undefined,
-    blockType: submittedParams.filterBlockType || undefined,
+    blockType: enumValueOf(IP_ACCESS_BLOCK_TYPES, submittedParams.filterBlockType),
   });
   const logList = logsQuery.data?.list ?? [];
   const total = logsQuery.data?.total ?? 0;
