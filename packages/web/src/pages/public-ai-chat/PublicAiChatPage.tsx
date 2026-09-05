@@ -2,40 +2,24 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Empty, MarkdownRender, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Sparkles } from 'lucide-react';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { aiPublicContract } from '@zenith/shared/ai';
+import type { AiSharedConversation } from '@zenith/shared/ai';
+import { api } from '@/lib/contract-query';
 import { formatDateTime } from '@/utils/date';
 
 const { Text, Title } = Typography;
 
-interface SharedMessage {
-  id: number;
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-  reasoning: string | null;
-  model: string | null;
-  createdAt: string;
-}
-
-interface SharedConversation {
-  title: string;
-  sharedAt: string;
-  messages: SharedMessage[];
-}
-
 /** 对话分享只读页（免登录，/public/ai-chat/:token） */
 export default function PublicAiChatPage() {
   const { token } = useParams<{ token: string }>();
-  const [data, setData] = useState<SharedConversation | null>(null);
+  const [data, setData] = useState<AiSharedConversation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!token) return;
     setLoading(true);
-    request
-      .get<SharedConversation>(`/api/ai/public/chat/${token}`, { skipAuth: true, silent: true })
-      .then(unwrap)
+    api(aiPublicContract.sharedConversation, { params: { token } }, { skipAuth: true, silent: true })
       .then(setData)
       .catch((err: { message?: string }) => setError(err?.message || '分享不存在或已失效'))
       .finally(() => setLoading(false));

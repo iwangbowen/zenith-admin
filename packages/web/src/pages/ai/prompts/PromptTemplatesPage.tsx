@@ -297,7 +297,7 @@ export default function PromptTemplatesPage() {
                           title: `恢复到 v${v.version}？`,
                           content: '当前内容会自动留档为新版本',
                           onOk: async () => {
-                            await restoreVersionMutation.mutateAsync({ templateId: versionTemplate!.id, versionId: v.id });
+                            await restoreVersionMutation.mutateAsync({ params: { id: versionTemplate!.id, versionId: v.id } });
                             Toast.success('已恢复');
                             void queryClient.invalidateQueries({ queryKey: aiPromptKeys.all });
                           },

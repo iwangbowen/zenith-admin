@@ -16,8 +16,6 @@ export * from './biz-pay-demo';
 export * from './region';
 export * from './tags';
 export * from './rate-limit';
-
-export * from './ai';
 export * from './data-mask';
 export * from './oauth2';
 export * from './maintenance';

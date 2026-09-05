@@ -1,7 +1,8 @@
-import { http } from 'msw';
-import { ok, badRequest, notFound, pageParams, nextIdFrom } from '@/mocks/utils/handlers';
+import { aiPromptTemplateContract } from '@zenith/shared/ai';
+import type { AiPromptTemplate } from '@zenith/shared/ai';
 import { SEED_AI_PROMPT_TEMPLATES } from '@zenith/shared/seed';
-import type { AiPromptScope, AiPromptTemplate, CreateAiPromptTemplateInput, UpdateAiPromptTemplateInput } from '@zenith/shared/ai';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 
 const store: AiPromptTemplate[] = SEED_AI_PROMPT_TEMPLATES.map((item) => ({ ...item }));
@@ -16,14 +17,10 @@ function sortTemplates(list: AiPromptTemplate[]) {
 }
 
 export const aiPromptTemplatesHandlers = [
-  http.get('/api/ai/prompt-templates', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const scope = url.searchParams.get('scope') as AiPromptScope | null;
-    const keyword = (url.searchParams.get('keyword') ?? '').trim().toLowerCase();
-
+  mock(aiPromptTemplateContract.list, ({ query, ok, paginate }) => {
+    const keyword = (query.keyword ?? '').trim().toLowerCase();
     let list = sortTemplates(store);
-    if (scope) list = list.filter((item) => item.scope === scope);
+    if (query.scope) list = list.filter((item) => item.scope === query.scope);
     if (keyword) {
       list = list.filter((item) =>
         item.name.toLowerCase().includes(keyword) ||
@@ -32,46 +29,48 @@ export const aiPromptTemplatesHandlers = [
         (item.category ?? '').toLowerCase().includes(keyword),
       );
     }
-
-    const total = list.length;
-    const sliced = list.slice((page - 1) * pageSize, page * pageSize);
-    return ok({ list: sliced, total, page, pageSize }, 'success');
+    return ok(paginate(list), 'success');
   }),
 
-  http.get('/api/ai/prompt-templates/available', () => {
-    return ok(sortTemplates(store.filter((item) => item.isEnabled)), 'success');
-  }),
+  // 静态 /available 早于动态 /:id
+  mock(aiPromptTemplateContract.all, ({ ok }) => ok(sortTemplates(store.filter((item) => item.isEnabled)), 'success')),
 
   // 记录模板被应用一次（使用统计）
-  http.post('/api/ai/prompt-templates/:id/use', ({ params }) => {
-    const item = store.find((template) => template.id === Number(params.id));
+  mock(aiPromptTemplateContract.use, ({ params, ok }) => {
+    const item = store.find((template) => template.id === params.id);
     if (!item) return notFound('提示词模板不存在', { status: 404 });
     item.usageCount += 1;
     return ok(null, '已记录');
   }),
 
-  http.get('/api/ai/prompt-templates/:id', ({ params }) => {
-    const item = store.find((template) => template.id === Number(params.id));
+  mock(aiPromptTemplateContract.detail, ({ params, ok }) => {
+    const item = store.find((template) => template.id === params.id);
     if (!item) return notFound('提示词模板不存在', { status: 404 });
     return ok(item, 'success');
   }),
 
-  http.post('/api/ai/prompt-templates', async ({ request }) => {
-    const body = (await request.json()) as Partial<CreateAiPromptTemplateInput>;
+  // 恢复历史版本（Demo：版本内容为演示文本，仅回写 content）
+  mock(aiPromptTemplateContract.restoreVersion, ({ params, ok }) => {
+    const item = store.find((template) => template.id === params.id);
+    if (!item) return notFound('提示词模板不存在', { status: 404 });
+    item.updatedAt = mockDateTime();
+    return ok(item, '已恢复到历史版本');
+  }),
+
+  mock(aiPromptTemplateContract.create, ({ body, ok }) => {
     const now = mockDateTime();
-    const scope = (body.scope ?? 'system') as AiPromptScope;
     const item: AiPromptTemplate = {
       id: nextTemplateId(),
-      name: body.name ?? '未命名模板',
-      content: body.content ?? '',
+      name: body.name,
+      content: body.content,
       description: body.description ?? null,
       category: body.category ?? null,
-      scope,
-      userId: scope === 'user' ? 1 : null,
+      scope: body.scope,
+      userId: body.scope === 'user' ? 1 : null,
       isBuiltin: false,
-      sort: body.sort ?? 0,
+      sort: body.sort,
       usageCount: 0,
-      isEnabled: body.isEnabled ?? true,
+      isEnabled: body.isEnabled,
       createdAt: now,
       updatedAt: now,
     };
@@ -79,16 +78,14 @@ export const aiPromptTemplatesHandlers = [
     return ok(item, '创建成功');
   }),
 
-  http.put('/api/ai/prompt-templates/:id', async ({ params, request }) => {
-    const id = Number(params.id);
-    const idx = store.findIndex((template) => template.id === id);
+  mock(aiPromptTemplateContract.update, ({ params, body, ok }) => {
+    const idx = store.findIndex((template) => template.id === params.id);
     if (idx === -1) return notFound('提示词模板不存在', { status: 404 });
-    const body = (await request.json()) as Partial<UpdateAiPromptTemplateInput>;
-    const scope = (body.scope ?? store[idx].scope) as AiPromptScope;
+    const scope = body.scope ?? store[idx].scope;
     store[idx] = {
       ...store[idx],
       ...body,
-      id,
+      id: params.id,
       scope,
       userId: scope === 'user' ? (store[idx].userId ?? 1) : null,
       isBuiltin: store[idx].isBuiltin,
@@ -97,9 +94,8 @@ export const aiPromptTemplatesHandlers = [
     return ok(store[idx], '更新成功');
   }),
 
-  http.delete('/api/ai/prompt-templates/:id', ({ params }) => {
-    const id = Number(params.id);
-    const idx = store.findIndex((template) => template.id === id);
+  mock(aiPromptTemplateContract.remove, ({ params, ok }) => {
+    const idx = store.findIndex((template) => template.id === params.id);
     if (idx === -1) return notFound('提示词模板不存在', { status: 404 });
     if (store[idx].isBuiltin) {
       return badRequest('内置提示词模板不允许删除', { status: 400 });

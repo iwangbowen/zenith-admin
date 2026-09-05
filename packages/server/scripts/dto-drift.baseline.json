@@ -1,6 +1,4 @@
 [
-  "d2s__AiAgent",
-  "d2s__AiProviderConfig",
   "d2s__BizPayDemo",
   "d2s__CmsChannel",
   "d2s__CmsContent",
@@ -33,7 +31,6 @@
   "d2s__ReportPublicAccessSession",
   "d2s__ReportPublicDashboard",
   "d2s__RetentionRunResult",
-  "d2s__UserAiConfig",
   "d2s__WorkflowAnalytics",
   "d2s__WorkflowAutomation",
   "d2s__WorkflowAutomationRun",
