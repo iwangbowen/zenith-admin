@@ -65,7 +65,8 @@
 - **契约操作命名**：标准 CRUD 固定为 `list` / `detail` / `create` / `update` / `remove`，可选 `all`（下拉源）/
   `removeBatch`（`DELETE /batch`）——web 的 `createResourceQueries` 按此约定派生 hooks；其余操作按业务动词命名
 - **契约积木**：路径 `{id}` 用 `idParam`；列表查询 `paginationQuery.extend({...})`；分页响应 `paginated(xxxSchema)`；
-  时间范围端点 `dateRangeBound()`；查询串布尔 `queryBool()`；批量 ID `batchIdsBody`；审计列 `...auditFieldsSchema`；
+  时间范围端点 `dateRangeBound()`；查询串布尔 `queryBool()`、查询串枚举筛选 `queryEnum(XXX_VALUES)`（空串 = 未筛选）；
+  批量 ID `batchIdsBody`；审计列 `...auditFieldsSchema`；业务请求头 `headers: z.object({...})`；
   上传 `multipart(z.object({ file: fileField() }))`；非 JSON 响应 `kind: 'excel' | 'csv' | 'file' | 'sse'`
 - **OpenAPI 元数据用 `.meta()`**：组件名 `.meta({ id })`、说明 `.meta({ description, example })`；shared **禁止**依赖
   `@hono/zod-openapi`、**禁止**调用 `.openapi()`

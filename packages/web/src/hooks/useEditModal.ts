@@ -50,13 +50,13 @@ import { showRequestErrorToast } from '@/utils/request-toast';
  * ```
  */
 
-/** 详情查询 hook 的最小形状，与 `createCrudQueries().useDetail` 兼容 */
+/** 详情查询 hook 的最小形状，与 `createResourceQueries(contract).useDetail` 兼容 */
 export type DetailHook<TRecord> = (
   id: number | undefined,
   enabled?: boolean,
 ) => { data?: TRecord; isFetching: boolean };
 
-/** 保存 mutation 的最小形状，与 `createCrudQueries().useSave()` 兼容 */
+/** 保存 mutation 的最小形状，与 `createResourceQueries(contract).useSave()` 兼容 */
 export interface SaveMutationLike<TRecord, TValues> {
   mutateAsync: (vars: { id?: number; values: TValues }) => Promise<TRecord>;
   isPending: boolean;

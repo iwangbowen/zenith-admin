@@ -15,7 +15,6 @@
 		"test:watch": "vitest",
 		"lint": "eslint src && tsc -p tsconfig.typecheck.json",
 		"typecheck:contracts": "tsc -p tsconfig.typecheck.json",
-		"check:dto-drift": "node scripts/check-dto-drift.mjs",
 		"lint:fix": "eslint src --fix"
 	},
 	"dependencies": {

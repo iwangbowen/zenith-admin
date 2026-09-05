@@ -27,7 +27,7 @@ packages/web/src/mocks/
 
 | 字段 | 含义 |
 | --- | --- |
-| `params` / `query` / `body` | 已按契约 schema 解析（含 coerce 与默认值）；multipart 的 `body` 为 `FormData` |
+| `params` / `query` / `headers` / `body` | 已按契约 schema 解析（含 coerce 与默认值，类型即 schema 输出，带 `.default()` 的字段不再可选）；multipart 的 `body` 为 `FormData`；无 JSON 头的请求按 `{}` 进入校验（与服务端一致） |
 | `ok(data, message?, init?)` | 成功响应，`data` 必须满足契约响应类型；`message` 默认 `'ok'`，需要 `data: null` 就显式传 `null` |
 | `paginate(list)` | 按 `query.page` / `query.pageSize` 切片成 `{ list, total, page, pageSize }` |
 | `request` / `url` | 原始请求与 URL（极少需要） |

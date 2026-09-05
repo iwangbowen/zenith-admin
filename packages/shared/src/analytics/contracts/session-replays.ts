@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import {
   ANALYTICS_DEVICE_TYPES,
@@ -12,7 +12,7 @@ import {
   REPLAY_TRIGGER_TYPES,
 } from '../constants';
 import { replayTriggerSchema } from '../validation';
-import { daysQuery, filterEnum } from './_query';
+import { daysQuery } from './_query';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -138,12 +138,12 @@ export const replaySegmentParam = replayIdParam.extend({
 });
 
 export const replayListQuery = paginationQuery.extend({
-  status: filterEnum(REPLAY_STATUSES),
-  mode: filterEnum(REPLAY_MODES),
-  triggerType: filterEnum(REPLAY_TRIGGER_TYPES),
+  status: queryEnum(REPLAY_STATUSES),
+  mode: queryEnum(REPLAY_MODES),
+  triggerType: queryEnum(REPLAY_TRIGGER_TYPES),
   keyword: z.string().optional().meta({ description: '匹配用户名 / 入口页 / 回放 ID / 会话 ID' }),
   hasError: queryBool('仅含错误的回放'),
-  source: filterEnum(['web_admin', 'web_member']),
+  source: queryEnum(['web_admin', 'web_member']),
   pagePath: z.string().max(256).optional().meta({ description: '内容检索：访问过的页面路径（模糊）' }),
   clickLabel: z.string().max(64).optional().meta({ description: '内容检索：点击过的元素文案（模糊）' }),
 });

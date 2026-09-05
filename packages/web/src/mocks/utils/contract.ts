@@ -4,11 +4,8 @@ import {
   isMultipart,
   toColonPath,
   type AnyOperation,
-  type HeadersOf,
   type MultipartBody,
   type OutputOf,
-  type ParamsOf,
-  type QueryOf,
 } from '@zenith/shared/core';
 import { badRequest, ok, pageResult } from './handlers';
 
@@ -27,13 +24,16 @@ import { badRequest, ok, pageResult } from './handlers';
  * ```
  */
 
+/** 契约段 schema 的解析结果（默认值已补齐）；未声明时为 undefined */
+type Parsed<S> = S extends z.ZodType ? z.output<S> : undefined;
+
 export interface MockContext<Op extends AnyOperation> {
   /** 已按契约解析（含 coerce）的路径参数 */
-  readonly params: ParamsOf<Op>;
-  /** 已按契约解析的查询参数；未声明时为 undefined */
-  readonly query: QueryOf<Op>;
+  readonly params: Parsed<Op['params']>;
+  /** 已按契约解析的查询参数（`.default()` 已生效，无需再兜底）；未声明时为 undefined */
+  readonly query: Parsed<Op['query']>;
   /** 已按契约解析的业务请求头（键为小写头名）；未声明时为 undefined */
-  readonly headers: HeadersOf<Op>;
+  readonly headers: Parsed<Op['headers']>;
   /** 已按契约解析的 JSON 请求体；multipart 为原始 FormData；未声明时为 undefined */
   readonly body: Op['body'] extends MultipartBody ? FormData : Op['body'] extends z.ZodType ? z.output<Op['body']> : undefined;
   readonly request: Request;
@@ -94,9 +94,9 @@ export function mock<Op extends AnyOperation>(op: Op, resolver: MockResolver<Op>
 
     const pageOf = (query.value as { page?: number; pageSize?: number } | undefined) ?? {};
     const ctx: MockContext<Op> = {
-      params: params.value as ParamsOf<Op>,
-      query: query.value as QueryOf<Op>,
-      headers: headers.value as HeadersOf<Op>,
+      params: params.value as Parsed<Op['params']>,
+      query: query.value as Parsed<Op['query']>,
+      headers: headers.value as Parsed<Op['headers']>,
       body: body.value as MockContext<Op>['body'],
       request,
       url,

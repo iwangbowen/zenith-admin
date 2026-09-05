@@ -12,7 +12,7 @@
  */
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
-import { oauth2AuthContract } from '@zenith/shared/open-platform';
+import { oauth2AuthContract, oauth2IntrospectResponseSchema, oauth2TokenResponseSchema, oauth2UserInfoSchema } from '@zenith/shared/open-platform';
 import { OAuth2Error } from '../../lib/oauth2-error';
 import { authMiddleware } from '../../middleware/auth';
 import { defineContractRoute } from '../../lib/contract-route';
@@ -21,11 +21,6 @@ import {
   commonErrorResponses,
   okBody,
 } from '../../lib/openapi-schemas';
-import {
-  OAuth2TokenResponseDTO,
-  OAuth2UserInfoDTO,
-  OAuth2IntrospectResponseDTO,
-} from '../../lib/openapi-dtos';
 import {
   getAuthorizeInfo,
   createAuthorizationCode,
@@ -81,7 +76,7 @@ const token = defineOpenAPIRoute({
     responses: {
       200: {
         description: '令牌响应',
-        content: { 'application/json': { schema: OAuth2TokenResponseDTO } },
+        content: { 'application/json': { schema: oauth2TokenResponseSchema } },
       },
       ...commonErrorResponses,
     },
@@ -158,7 +153,7 @@ const introspect = defineOpenAPIRoute({
     summary: '令牌自省（RFC 7662）',
     security: [],
     responses: {
-      200: { description: '自省结果（RFC 7662 顶层格式，无业务信封）', content: { 'application/json': { schema: OAuth2IntrospectResponseDTO } } },
+      200: { description: '自省结果（RFC 7662 顶层格式，无业务信封）', content: { 'application/json': { schema: oauth2IntrospectResponseSchema } } },
       ...commonErrorResponses,
     },
   }),
@@ -182,7 +177,7 @@ const userinfo = defineOpenAPIRoute({
     summary: '获取用户信息（需要 Authorization: Bearer <access_token>）',
     security: [{ BearerAuth: [] }],
     responses: {
-      200: { description: '用户信息（OIDC 标准 claims 顶层格式，无业务信封）', content: { 'application/json': { schema: OAuth2UserInfoDTO } } },
+      200: { description: '用户信息（OIDC 标准 claims 顶层格式，无业务信封）', content: { 'application/json': { schema: oauth2UserInfoSchema } } },
       ...commonErrorResponses,
     },
   }),

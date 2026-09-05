@@ -3,7 +3,7 @@
  *
  * 1. 与 src/index.ts 一致，先加载 @hono/zod-openapi：它把 .openapi() 补丁到 ZodType 原型，
  *    zod v4 实例只在构造时拷贝原型方法，@zenith/shared 的 schema 必须在补丁之后构造，
- *    否则测试文件的导入顺序会决定 lib/dtos 对 shared schema 调 .openapi() 是否成立。
+ *    否则测试文件的导入顺序会决定路由层对 shared 契约 schema 调 .openapi() 是否成立。
  * 2. 把模块加载期就发起真实 TCP 连接的 `lib/redis` 替换成内存替身，
  *    原因与替身语义见 test-utils/redis-stub.ts。这里的 vi.mock 以本文件为基准
  *    解析路径，对所有测试文件生效；单个文件自己的 vi.mock('../lib/redis', ...)

@@ -1,9 +1,9 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { ANALYTICS_EVENT_OVERRIDE_STATUSES } from '../constants';
 import { createAnalyticsSiteSchema, updateAnalyticsSiteSchema } from '../validation';
-import { filterEnum } from './_query';
+
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ export type AnalyticsSite = z.infer<typeof analyticsSiteSchema>;
 export const analyticsSiteListQuery = paginationQuery.extend({
   name: z.string().optional(),
   appId: z.string().optional(),
-  status: filterEnum(ANALYTICS_EVENT_OVERRIDE_STATUSES),
+  status: queryEnum(ANALYTICS_EVENT_OVERRIDE_STATUSES),
 });
 
 export const analyticsSiteContract = defineContract('/api/analytics', {

@@ -1,9 +1,9 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { ANALYTICS_EXPERIMENT_STATUSES } from '../constants';
 import { analyticsExperimentVariantSchema, createAnalyticsExperimentSchema, updateAnalyticsExperimentSchema } from '../validation';
-import { dateOnly, filterEnum, siteKeyQueryField } from './_query';
+import { dateOnly, siteKeyQueryField } from './_query';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -77,7 +77,7 @@ export type AnalyticsExperimentReport = z.infer<typeof analyticsExperimentReport
 
 export const analyticsExperimentListQuery = paginationQuery.extend({
   name: z.string().optional(),
-  status: filterEnum(ANALYTICS_EXPERIMENT_STATUSES),
+  status: queryEnum(ANALYTICS_EXPERIMENT_STATUSES),
 });
 
 export const analyticsExperimentReportQuery = z.object({

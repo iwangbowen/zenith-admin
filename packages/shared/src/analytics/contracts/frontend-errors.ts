@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { batchIdsBody, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   ANALYTICS_DEVICE_TYPES,
@@ -18,7 +18,7 @@ import {
   updateErrorAlertRuleSchema,
   updateErrorGroupSchema,
 } from '../validation';
-import { daysQuery, filterEnum } from './_query';
+import { daysQuery } from './_query';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -156,12 +156,12 @@ export type SourceMapItem = z.infer<typeof sourceMapItemSchema>;
 export const errorOverviewQuery = z.object({ days: daysQuery(365, 30) });
 
 export const errorGroupListQuery = paginationQuery.extend({
-  status: filterEnum(ERROR_STATUSES),
-  errorType: filterEnum(FRONTEND_ERROR_TYPES),
-  level: filterEnum(ERROR_LEVELS),
+  status: queryEnum(ERROR_STATUSES),
+  errorType: queryEnum(FRONTEND_ERROR_TYPES),
+  level: queryEnum(ERROR_LEVELS),
   keyword: z.string().optional(),
   assigneeId: z.coerce.number().int().optional(),
-  environment: filterEnum(ANALYTICS_ENVIRONMENTS),
+  environment: queryEnum(ANALYTICS_ENVIRONMENTS),
 });
 
 export const errorGroupBatchStatusQuery = z.object({

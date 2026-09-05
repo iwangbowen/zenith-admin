@@ -42,9 +42,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Contract drift (DTO vs shared)
-        run: npm run check:dto-drift -w @zenith/server
-
       - name: Test
         run: npm run test
 

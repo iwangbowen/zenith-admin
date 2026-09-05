@@ -51,6 +51,18 @@ export function queryBool(description?: string) {
     .meta({ type: 'boolean', ...(description ? { description } : {}) });
 }
 
+/**
+ * 查询串枚举筛选参数（`?status=enabled`）。
+ * 空串（筛选控件的「全部」项）视为未传，解析后的值不含空串，handler 无需再 `|| undefined`；
+ * 不在取值集合内的输入 400。
+ */
+export function queryEnum<const T extends readonly string[]>(values: T, description?: string) {
+  return z
+    .union([z.literal('').transform(() => undefined), z.enum(values)])
+    .optional()
+    .meta({ type: 'string', enum: [...values], ...(description ? { description } : {}) });
+}
+
 // ─── 请求体积木 ──────────────────────────────────────────────────────────────
 
 /** 批量 ID 操作请求体（批量删除 / 批量更新） */

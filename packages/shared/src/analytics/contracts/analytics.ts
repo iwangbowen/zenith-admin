@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { userBehaviorEventTypeEnum } from '../../identity/validation';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
@@ -28,7 +28,7 @@ import {
   updateAnalyticsSettingsSchema,
   updateAnalyticsUserSegmentSchema,
 } from '../validation';
-import { dateOnly, daysQuery, filterEnum, siteKeyQueryField } from './_query';
+import { dateOnly, daysQuery, siteKeyQueryField } from './_query';
 import {
   analyticsOverviewSchema,
   analyticsUserStatsSchema,
@@ -97,13 +97,13 @@ export const analyticsHeatmapQuery = z.object({
   pagePath: z.string().min(1),
   componentArea: z.string().optional().meta({ description: '为空即全页模式' }),
   days: daysQuery(365, 30),
-  deviceType: filterEnum(ANALYTICS_DEVICE_TYPES),
-  source: filterEnum(ANALYTICS_EVENT_SOURCES),
+  deviceType: queryEnum(ANALYTICS_DEVICE_TYPES),
+  source: queryEnum(ANALYTICS_EVENT_SOURCES),
 });
 
 export const analyticsSessionListQuery = paginationQuery.extend({
   username: z.string().optional(),
-  deviceType: filterEnum(ANALYTICS_DEVICE_TYPES),
+  deviceType: queryEnum(ANALYTICS_DEVICE_TYPES),
 });
 
 export const analyticsAcquisitionQuery = z.object({
@@ -136,11 +136,11 @@ export const analyticsSavedReportListQuery = z.object({
 });
 
 export const analyticsEventListQuery = paginationQuery.extend({
-  eventType: filterEnum(userBehaviorEventTypeEnum.options),
+  eventType: queryEnum(userBehaviorEventTypeEnum.options),
   eventName: z.string().optional(),
   username: z.string().optional(),
   pagePath: z.string().optional(),
-  deviceType: filterEnum(ANALYTICS_DEVICE_TYPES),
+  deviceType: queryEnum(ANALYTICS_DEVICE_TYPES),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
 });

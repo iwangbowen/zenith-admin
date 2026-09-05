@@ -1,16 +1,5 @@
 import * as z from 'zod';
 
-/**
- * 列表筛选用的枚举查询参数：空串（筛选控件的「全部」项）视为未筛选，非法取值 400。
- * 与 core 的 `queryBool()` 同一套约定：解析后的值不含空串，handler 无需再做 `|| undefined`。
- */
-export function filterEnum<const T extends readonly string[]>(values: T, description?: string) {
-  return z
-    .union([z.literal('').transform(() => undefined), z.enum(values)])
-    .optional()
-    .meta(description ? { description } : {});
-}
-
 /** `days` 窗口参数（最近 N 天） */
 export function daysQuery(max: number, defaultDays: number, description = '统计窗口（天）') {
   return z.coerce.number().int().min(1).max(max).default(defaultDays).meta({ description, example: defaultDays });

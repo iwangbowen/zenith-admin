@@ -100,7 +100,7 @@ export type UpdateXxxInput = z.infer<typeof updateXxxSchema>;
 
 ```ts
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { XXX_STATUSES } from '../constants';
 import { createXxxSchema, updateXxxSchema } from '../validation';
@@ -127,10 +127,10 @@ export type Xxx = z.infer<typeof xxxSchema>;
 export const xxxOptionSchema = xxxSchema.pick({ id: true, name: true, status: true }).meta({ id: 'XxxOption' });
 export type XxxOption = z.infer<typeof xxxOptionSchema>;
 
-// ─── 列表查询参数：分页 + 筛选；范围端点必须用 dateRangeBound ────────────
+// ─── 列表查询参数：分页 + 筛选；枚举筛选用 queryEnum（空串 = 全部），范围端点必须用 dateRangeBound ──
 export const xxxListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: z.enum(XXX_STATUSES).optional(),
+  status: queryEnum(XXX_STATUSES),
   startTime: dateRangeBound('创建时间起'),
   endTime: dateRangeBound('创建时间止'),
 });
@@ -152,6 +152,7 @@ export const xxxContract = defineContract('/api/xxxs', {
 - 公开接口：`public: true`；设备签名 / 开放网关鉴权的接口：`security: 'device-signature' | 'open-gateway'`
   （默认 Bearer 登录令牌；凭证校验仍由 `middleware` 完成）；额外文档说明：`description`
 - 自定义路径参数：`params: z.object({ code: z.string().meta({ description: '编码', example: 'demo' }) })`
+- 查询串积木：布尔 `queryBool()`、枚举筛选 `queryEnum(XXX_VALUES)`（二者都把空串视为未传，handler 无需再 `|| undefined`）
 - 业务请求头（如幂等键）：`headers: z.object({ 'x-idempotency-key': z.string().min(8).max(128) })`，键为小写头名；
   服务端 `c.req.valid('header')`，客户端在输入的 `headers` 段提供；认证头不在契约声明
 
