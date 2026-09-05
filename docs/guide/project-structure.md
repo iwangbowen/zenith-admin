@@ -111,7 +111,7 @@ Electron 桌面客户端：
 | `backend/` | API、安全、数据库、任务中心、支付、Mastra 等后端专题 |
 | `frontend/` | UI、认证、数据获取等前端专题 |
 | `ai/` | AGENTS.md 与 Zenith Skill 协作说明 |
-| 业务专题目录 | `/rules/`、`/wiki/`、`/drive/`、`/open-platform/`、`/workflow/`、`/payment/`、`/cms/` 等 |
+| 业务专题目录 | [平台基础能力](/platform/)、[文件与存储](/storage/)（`files` 路由领域）、[企业网盘](/drive/)，以及 `/rules/`、`/wiki/`、`/open-platform/`、`/workflow/`、`/payment/`、`/cms/` 等 |
 | `changelog/` | 版本更新记录 |
 
 ## 分层原则

@@ -2,11 +2,13 @@
 
 本页描述 Zenith Admin 当前文件与存储实现：统一文件记录、上传下载、预览、分片上传、业务附件、存储后端与访问 URL 策略。事实来源以 `packages\server\src\routes\files`、`packages\server\src\services\files`、`packages\server\src\lib\file-storage.ts`、`packages\shared\src\platform` 为准。
 
+本页对应独立的 `files` 路由领域，专题地址沿用 `/storage/`。文件契约虽放在共享层 `platform` 下，但不由 `platform` 路由领域挂载；平台能力见[平台基础能力](../platform/index.md)，空间与协作权限见[企业网盘](../drive/index.md)。
+
 ## 模块边界
 
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
-| 共享契约 | `packages\shared\src\platform\constants.ts`、`types.ts`、`validation.ts` | 存储 provider、ACL、访问 URL 策略、分片上传输入、文件 DTO 类型 |
+| 共享契约 | `packages\shared\src\platform\contracts\` 下的 `files.ts`、`file-storage-configs.ts`、`business-files.ts` | 文件实体 schema 与 API 操作；同域 `constants.ts`、`validation.ts` 提供存储枚举与输入校验 |
 | 数据模型 | `packages\server\src\db\schema\files.ts` | 存储配置、托管文件、分片上传会话、分片记录、业务附件关联 |
 | 存储适配 | `packages\server\src\lib\file-storage.ts` | 对象 key、SDK 懒加载、上传、读取、删除、公开/签名/代理 URL、multipart 驱动 |
 | 服务层 | `packages\server\src\services\files` | 文件列表/上传/删除/统计/浏览、配置 CRUD、业务附件、分片上传会话 |
@@ -25,7 +27,7 @@
 
 `managed_files.bucketName` 与 `objectAcl` 是上传时快照，用于在存储配置后续切换 bucket 或 ACL 时继续读取旧文件并正确判断公开直链能力。
 
-`managed_files.visibility` 区分 `public`（默认，登录用户可经 `/api/files/{id}/content` 读取）与 `restricted`（业务域自管访问控制，通用内容接口返回 404，只能经业务域自己的内容接口读取，如企业网盘的 `/api/drive/nodes/{id}/content`）。文件管理列表默认只展示 `public` 文件。`contentHash` 为可选的 SHA-256，供业务域按内容去重 / 秒传。
+`managed_files.visibility` 区分 `public`（默认，可经无需登录的 `/api/files/{id}/content` 读取）与 `restricted`（业务域自管访问控制，通用内容接口返回 404，只能经业务域自己的内容接口读取，如企业网盘的 `/api/drive/nodes/{id}/content`）。文件管理列表默认只展示 `public` 文件。`contentHash` 为可选的 SHA-256，供业务域按内容去重 / 秒传。
 
 ## 存储后端
 
@@ -78,7 +80,7 @@
 5. 生成对象 key：`basePath/YYYY/MM/DD/{timestamp}-{random}.{ext}`。
 6. 上传到 provider 后写入 `managed_files`。
 
-当前文件服务没有独立的“秒传/按 hash 去重”接口或持久化 checksum 字段；分片接口使用 `uploadId + index` 保证同一分片重传幂等，但不按文件内容 hash 跳过整文件上传。
+通用 `files` API 没有独立的秒传接口；分片接口使用 `uploadId + index` 保证同一分片重传幂等，但不按内容 hash 跳过整文件上传。`managed_files.contentHash` 已支持持久化，网盘在此底座上实现自己的预检查与秒传，详见[企业网盘：存储集成](../drive/index.md#存储集成)。
 
 ### 分片上传
 
@@ -165,4 +167,4 @@
 - 新增 provider 必须同步更新 `FILE_STORAGE_PROVIDERS`、Drizzle 枚举、Zod schema、DTO/前端表单、上传/读取/删除/签名 URL 逻辑与必要 SDK 懒加载。
 - 修改 ACL 或 URL 策略时同时核对 `FILE_OBJECT_ACL_SUPPORT`、`resolveObjectAcl()`、`buildPublicFileUrl()`、`resolveFileAccessUrl()`。
 - 上传能力变更需要同步普通上传、分片上传、Magic Bytes 校验与业务附件组件。
-- 文档不得声称支持秒传，除非代码中已存在 hash/checksum 字段和对应查询接口。
+- 区分通用文件上传与业务域秒传：存在 `contentHash` 字段不代表通用上传接口会跳过传输，网盘秒传行为在网盘专题维护。

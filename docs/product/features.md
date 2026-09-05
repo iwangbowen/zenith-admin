@@ -1,6 +1,23 @@
 # 功能模块
 
-本文基于当前代码实现整理，主要对照后端 18 个路由领域、共享层业务域、菜单种子、前端页面与 MSW Mock。专题文档可从 `/rules/`、`/wiki/`、`/open-platform/`、`/workflow/`、`/payment/`、`/cms/` 等入口继续阅读。
+本文基于当前代码实现整理，主要对照后端 22 个路由领域、共享层业务域、菜单种子、前端页面与 MSW Mock。
+
+## 路由领域口径
+
+领域数量以 `packages\server\src\routes\index.ts` 的 `ROUTE_DOMAINS` 为准，由 `packages\server\src\app.ts` 逐域挂载。当前注册顺序为：
+
+```text
+ops、identity、member、platform、files、tasks、analytics、report、messaging、payment、
+open-platform、workflow、chat、mp、biz-demo、ai、short-link、marketing、iot、cms、wiki、drive
+```
+
+这里统计的是路由领域，不是 API 前缀、共享层目录或菜单分组；例如 `rules`、`licensing` 由 `platform` 挂载，不另计领域。新增或移除注册项时，应同步更新本节与对应专题入口。
+
+| 路由领域 | 专题文档 | 边界 |
+| --- | --- | --- |
+| `platform` | [平台基础能力](../platform/index.md) | 系统配置、字典、地区、标签、反馈、安全治理、监控、缓存与实时通道，也负责规则和 License 路由装配 |
+| `files` | [文件与存储](../storage/index.md) | 通用文件、业务附件与存储配置；共享契约位于 `shared\src\platform\contracts`，专题沿用 `/storage/` |
+| `drive` | [企业网盘](../drive/index.md) | 空间、目录、协作权限、版本与外链；复用 `files` 存储底座 |
 
 ## 模块全景
 
@@ -24,6 +41,8 @@
 | 通讯录同步 | LDAP/AD、钉钉、企业微信、飞书同步源、同步记录、冲突处理与回调 |
 
 ### 系统配置与基础能力
+
+> 专题文档：[平台基础能力](../platform/index.md)
 
 | 模块 | 当前能力 |
 | --- | --- |
