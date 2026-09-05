@@ -4,7 +4,7 @@ import { Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { LayoutTemplate } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { WorkflowTemplate, WorkflowDefinition } from '@zenith/shared/workflow';
+import type { WorkflowTemplate } from '@zenith/shared/workflow';
 import { KeywordSearchToolbar } from '@/components/KeywordSearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -39,7 +39,7 @@ export default function WorkflowTemplatesPage() {
   const templates = useMemo(() => templatesQuery.data ?? [], [templatesQuery.data]);
   const loading = templatesQuery.isFetching;
   const saving = updateMutation.isPending;
-  const cloningId = cloneMutation.isPending ? (cloneMutation.variables?.id ?? null) : null;
+  const cloningId = cloneMutation.isPending ? (cloneMutation.variables?.params.id ?? null) : null;
 
   const filtered = useMemo(() => {
     const kw = activeKeyword.trim().toLowerCase();
@@ -73,8 +73,8 @@ export default function WorkflowTemplatesPage() {
   const handleSubmit = async (values: WorkflowTemplateFormValues) => {
     if (!editing) return;
     await updateMutation.mutateAsync({
-      id: editing.id,
-      values: {
+      params: { id: editing.id },
+      body: {
         name: values.name,
         code: values.code?.trim() ? values.code.trim() : null,
         description: values.description?.trim() ? values.description.trim() : null,
@@ -89,14 +89,14 @@ export default function WorkflowTemplatesPage() {
   };
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync({ params: { id } });
     Toast.success('已删除');
   };
 
   const handleCloneToDefinition = async (record: WorkflowTemplate) => {
-    const res = await cloneMutation.mutateAsync({ id: record.id });
+    const res = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
     Toast.success('已从模板创建流程');
-    navigate(`/workflow/designer/${(res as WorkflowDefinition).id}`);
+    navigate(`/workflow/designer/${res.id}`);
   };
 
   const columns: ColumnProps<WorkflowTemplate>[] = [

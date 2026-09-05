@@ -1,4 +1,5 @@
-import type { WorkflowCategory, WorkflowCustomFormConfig, WorkflowDataSource, WorkflowDefinition, WorkflowForm } from '../workflow/types';
+import type { WorkflowCustomFormConfig } from '../workflow/types';
+import type { WorkflowCategory, WorkflowDataSource, WorkflowDefinition, WorkflowForm } from '../workflow/contracts';
 import { SEED_DATE } from './_base';
 
 // ─── 工作流表单库 ───────────────────────────────────────────────────────────────

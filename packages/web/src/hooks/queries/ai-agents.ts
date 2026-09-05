@@ -1,54 +1,46 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AiAgent, AiBuiltinAgent, CreateAiAgentInput, UpdateAiAgentInput } from '@zenith/shared/ai';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { aiAgentContract } from '@zenith/shared/ai';
+import type { AiAgent, CreateAiAgentInput } from '@zenith/shared/ai';
+import { resourceKeyOf, type BodyOf } from '@zenith/shared/core';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+
+/** 新增与编辑共用同一表单：必填字段由表单 rules 保证，服务端 schema 兜底校验 */
+export type SaveAiAgentValues = Partial<CreateAiAgentInput>;
 
 export const aiAgentKeys = {
-  all: ['ai-agents'] as const,
-  mine: ['ai-agents', 'mine'] as const,
-  builtin: ['ai-agents', 'builtin'] as const,
-  detail: (id: number | null) => ['ai-agents', 'detail', id] as const,
+  all: [resourceKeyOf(aiAgentContract.basePath)] as const,
+  mine: contractKey(aiAgentContract.list),
+  builtin: contractKey(aiAgentContract.builtin),
+  detail: (id: number | null) => contractKey(aiAgentContract.detail, { params: { id: id ?? 0 } }),
 };
 
 export function useMyAiAgents() {
-  return useQuery({
-    queryKey: aiAgentKeys.mine,
-    queryFn: () => request.get<AiAgent[]>('/api/ai/agents').then(unwrap),
-  });
+  return useApiQuery(aiAgentContract.list);
 }
 
 /** 编程式内置智能体(代码定义、注册进 Mastra,只读) */
 export function useBuiltinAiAgents() {
-  return useQuery({
-    queryKey: aiAgentKeys.builtin,
-    queryFn: () => request.get<AiBuiltinAgent[]>('/api/ai/agents/builtin').then(unwrap),
-  });
+  return useApiQuery(aiAgentContract.builtin);
 }
 
 export function useAiAgentDetail(id: number | null) {
-  return useQuery({
-    queryKey: aiAgentKeys.detail(id),
-    queryFn: () => request.get<AiAgent>(`/api/ai/agents/${id}`).then(unwrap),
-    enabled: id !== null,
-  });
+  return useApiQuery(aiAgentContract.detail, { params: { id: id ?? 0 } }, { enabled: id !== null });
 }
 
+/** 无 id 走创建，有 id 走更新；列表行即完整实体，整体失效本域即可 */
 export function useSaveAiAgent() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CreateAiAgentInput | UpdateAiAgentInput }) =>
-      (id === undefined
-        ? request.post<AiAgent>('/api/ai/agents', values)
-        : request.put<AiAgent>(`/api/ai/agents/${id}`, values)
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: aiAgentKeys.all }),
+  return useMutation<AiAgent, Error, { id?: number; values: SaveAiAgentValues }>({
+    mutationFn: ({ id, values }) =>
+      id === undefined
+        ? api(aiAgentContract.create, { body: values as BodyOf<typeof aiAgentContract.create> })
+        : api(aiAgentContract.update, { params: { id }, body: values }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: aiAgentKeys.all }),
   });
 }
 
 export function useDeleteAiAgent() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/ai/agents/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: aiAgentKeys.all }),
+  return useApiMutation(aiAgentContract.remove, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: aiAgentKeys.all }),
   });
 }

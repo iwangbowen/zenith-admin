@@ -12,7 +12,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, Eraser, Trash2, Copy, ClipboardPaste } from 'lucide-react';
 import dayjs from 'dayjs';
 import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFormFieldOptionItem, WorkflowFormFieldCompareRule, WorkflowRelationOption, WorkflowFormCascaderNode } from '@zenith/shared/workflow';
-import { evalWorkflowFieldRuleGroup as evalRuleGroup, isWorkflowFieldVisible as isFieldVisible } from '@zenith/shared/workflow';
+import { evalWorkflowFieldRuleGroup as evalRuleGroup, isWorkflowFieldVisible as isFieldVisible, workflowAttachmentContract } from '@zenith/shared/workflow';
 import { CURRENCY_OPTIONS, toDateFnsToken, dateFormatHasTime, dateFormatHasDay } from '../form-types';
 import { evalFormula } from '../form-formula';
 import { rmbUpper } from '@/utils/rmb';
@@ -28,6 +28,7 @@ import DictSelect from '@/components/DictSelect';
 import ColorPickerInput from '@/components/ColorPickerInput';
 import { useWorkflowDesignerRelationOptions, useWorkflowDesignerRemoteDataSourceOptions, fetchWorkflowDataSourceRecord } from '@/hooks/queries/workflow-designer';
 import { useWorkflowSelectableUsers } from '@/hooks/queries/workflow-shared';
+import { urlOf } from '@/lib/contract-query';
 import { useSignaturePad } from '@/hooks/useSignaturePad';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
@@ -335,7 +336,7 @@ function FileUploadInput({ value, onChange, disabled, isImage, limit, accept, ma
       accept={accept || (isImage ? 'image/*' : undefined)}
       maxSizeMB={maxSizeMb && maxSizeMb > 0 ? maxSizeMb : undefined}
       uploadTip={isImage ? '上传图片' : '上传文件'}
-      uploadPath="/api/workflows/attachments"
+      uploadPath={urlOf(workflowAttachmentContract.upload)}
       onChange={(items) => onChange?.(items.map((a) => ({
         name: a.file.originalName,
         url: a.file.url,

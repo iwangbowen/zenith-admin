@@ -1,52 +1,15 @@
-import { useQuery } from '@tanstack/react-query';
-import type { PaymentChannel, PaymentMethod } from '@zenith/shared/payment';
-import { toQueryString, unwrap } from '@/lib/query';
-import { request } from '@/utils/request';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentCapabilityContract } from '@zenith/shared/payment';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 
-export interface PaymentCapabilityParams {
-  channelConfigId?: number;
-  channel?: PaymentChannel;
-  operation?: string;
-  method?: PaymentMethod;
-  currency?: string;
-}
-
-export interface PaymentEffectiveCapability {
-  operation: string;
-  environment: 'sandbox' | 'live';
-  paymentMethod: PaymentMethod | null;
-  currency: string;
-  supported: boolean;
-  reason: string | null;
-}
-
-export interface PaymentConfigCapabilities {
-  channelConfigId: number;
-  channel: PaymentChannel;
-  environment: 'sandbox' | 'live';
-  configStatus: 'enabled' | 'disabled';
-  supported: boolean;
-  reason: string | null;
-  capabilities: PaymentEffectiveCapability[];
-}
-
-export interface PaymentCapabilitiesResponse {
-  engineMode: 'off' | 'sandbox' | 'live';
-  configs: PaymentConfigCapabilities[];
-}
+export type PaymentCapabilityParams = NonNullable<QueryOf<typeof paymentCapabilityContract.list>>;
 
 export const paymentCapabilityKeys = {
-  all: ['payment-capabilities'] as const,
-  list: (params: PaymentCapabilityParams) => ['payment-capabilities', params] as const,
+  all: contractKey(paymentCapabilityContract.list),
+  list: (params: PaymentCapabilityParams) => contractKey(paymentCapabilityContract.list, { query: params }),
 };
 
+/** 渠道有效能力：由商户配置 × 运行模式 × 支付方式启停派生，配置变更后由各自域失效，这里只做短期缓存 */
 export function usePaymentCapabilities(params: PaymentCapabilityParams, enabled = true) {
-  return useQuery({
-    queryKey: paymentCapabilityKeys.list(params),
-    queryFn: () => request
-      .get<PaymentCapabilitiesResponse>(`/api/payment/capabilities${toQueryString(params)}`)
-      .then(unwrap),
-    enabled,
-    staleTime: 60_000,
-  });
+  return useApiQuery(paymentCapabilityContract.list, { query: params }, { enabled, staleTime: 60_000 });
 }

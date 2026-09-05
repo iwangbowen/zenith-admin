@@ -1,5 +1,5 @@
-import { http } from 'msw';
 import type { ReportChatbiMessage, ReportChatbiSession, ReportChatbiSessionDetail } from '@zenith/shared/report';
+import { reportChatbiContract } from '@zenith/shared/report';
 import {
   getNextReportDashboardId,
   getNextReportDatasetId,
@@ -12,29 +12,13 @@ import {
   mockReportChatbiSessions,
   nextReportP2Id,
 } from '@/mocks/data/report-p2';
-import { mockDateTime } from '@/mocks/utils/date';
 import { removeWhere } from '@/mocks/utils/array';
-import {
-  DEMO_TENANT_ID,
-  DEMO_USER_ID,
-  matchesNumberParam,
-  reportError,
-  reportOk,
-  reportPage,
-} from './report-mock-utils';
+import { mock } from '@/mocks/utils/contract';
+import { mockDateTime } from '@/mocks/utils/date';
+import { badRequest, conflict, forbidden, notFound } from '@/mocks/utils/handlers';
+import { DEMO_TENANT_ID, DEMO_USER_ID } from './report-mock-utils';
 
 const SAFE_TABLES = ['menus', 'departments', 'users'] as const;
-
-async function parseObject(request: Request): Promise<Record<string, unknown> | null> {
-  const text = await request.text();
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
-  } catch (error) {
-    if (error instanceof SyntaxError) return null;
-    throw error;
-  }
-}
 
 function ownedSession(id: number): ReportChatbiSession | undefined {
   return mockReportChatbiSessions.find((item) => item.id === id && item.userId === DEMO_USER_ID);
@@ -60,32 +44,25 @@ function addMessage(message: Omit<ReportChatbiMessage, 'id' | 'tenantId' | 'crea
 }
 
 export const reportChatbiHandlers = [
-  http.get('/api/report/chatbi/sessions', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
+  mock(reportChatbiContract.sessions, ({ query, ok, paginate }) => {
     const list = mockReportChatbiSessions.filter((item) =>
       item.userId === DEMO_USER_ID
-      && (!keyword || item.title.includes(keyword))
-      && (!url.searchParams.get('status') || item.status === url.searchParams.get('status'))
-      && matchesNumberParam(url, 'userId', item.userId));
-    return reportOk(reportPage(request, list));
+      && (!query.keyword || item.title.includes(query.keyword))
+      && (!query.status || item.status === query.status)
+      && (!query.userId || item.userId === query.userId));
+    return ok(paginate(list));
   }),
 
-  http.post('/api/report/chatbi/sessions', async ({ request }) => {
-    const body = await parseObject(request);
-    if (!body || typeof body.title !== 'string' || !body.title.trim()) return reportError(400, '会话标题不能为空');
-    const datasourceId = typeof body.datasourceId === 'number' ? body.datasourceId : null;
-    const datasetId = typeof body.datasetId === 'number' ? body.datasetId : null;
+  mock(reportChatbiContract.createSession, ({ body, ok }) => {
+    const datasetId = body.datasetId ?? null;
     const dataset = datasetId ? mockReportDatasets.find((item) => item.id === datasetId) : null;
-    const datasource = mockReportDatasources.find((item) => item.id === (dataset?.datasourceId ?? datasourceId));
-    if (!datasource) return reportError(400, '必须选择有效的数据源或数据集上下文');
-    const requestedTables = Array.isArray(body.allowedTables)
-      ? body.allowedTables.filter((item): item is string => typeof item === 'string')
-      : [];
+    const datasource = mockReportDatasources.find((item) => item.id === (dataset?.datasourceId ?? body.datasourceId ?? null));
+    if (!datasource) return badRequest('必须选择有效的数据源或数据集上下文', { status: 400 });
+    const requestedTables = body.allowedTables ?? [];
     const allowedTables = requestedTables.length
       ? requestedTables.filter((table) => SAFE_TABLES.includes(table as typeof SAFE_TABLES[number]))
       : [...SAFE_TABLES];
-    if (requestedTables.length && allowedTables.length !== requestedTables.length) return reportError(400, '包含不允许访问的数据表');
+    if (requestedTables.length && allowedTables.length !== requestedTables.length) return badRequest('包含不允许访问的数据表', { status: 400 });
     const now = mockDateTime();
     const session: ReportChatbiSession = {
       id: nextReportP2Id('chatbi-session', mockReportChatbiSessions),
@@ -116,57 +93,51 @@ export const reportChatbiHandlers = [
       updatedAt: now,
     };
     mockReportChatbiSessions.unshift(session);
-    return reportOk(session, '创建成功');
+    return ok(session, '创建成功');
   }),
 
-  http.get('/api/report/chatbi/sessions/:id', ({ params }) => {
-    const session = ownedSession(Number(params.id));
-    return session ? reportOk(sessionDetail(session)) : reportError(404, 'ChatBI 会话不存在');
+  mock(reportChatbiContract.sessionDetail, ({ params, ok }) => {
+    const session = ownedSession(params.id);
+    return session ? ok(sessionDetail(session)) : notFound('ChatBI 会话不存在', { status: 404 });
   }),
 
-  http.put('/api/report/chatbi/sessions/:id', async ({ params, request }) => {
-    const session = ownedSession(Number(params.id));
-    if (!session) return reportError(404, 'ChatBI 会话不存在');
-    const body = await parseObject(request);
-    if (!body) return reportError(400, '请求体必须是 JSON 对象');
-    if (body.title !== undefined && (typeof body.title !== 'string' || !body.title.trim())) return reportError(400, '会话标题不能为空');
+  mock(reportChatbiContract.updateSession, ({ params, body, ok }) => {
+    const session = ownedSession(params.id);
+    if (!session) return notFound('ChatBI 会话不存在', { status: 404 });
     if (typeof body.title === 'string') session.title = body.title.trim();
     if (body.status === 'active' || body.status === 'archived') session.status = body.status;
     session.updatedAt = mockDateTime();
-    return reportOk(session, '更新成功');
+    return ok(session, '更新成功');
   }),
 
-  http.post('/api/report/chatbi/sessions/:id/archive', ({ params }) => {
-    const session = ownedSession(Number(params.id));
-    if (!session) return reportError(404, 'ChatBI 会话不存在');
+  mock(reportChatbiContract.archiveSession, ({ params, ok }) => {
+    const session = ownedSession(params.id);
+    if (!session) return notFound('ChatBI 会话不存在', { status: 404 });
     session.status = 'archived';
     session.updatedAt = mockDateTime();
-    return reportOk(session, '归档成功');
+    return ok(session, '归档成功');
   }),
 
-  http.delete('/api/report/chatbi/sessions/:id', ({ params }) => {
-    const id = Number(params.id);
-    const index = mockReportChatbiSessions.findIndex((item) => item.id === id && item.userId === DEMO_USER_ID);
-    if (index < 0) return reportError(404, 'ChatBI 会话不存在');
+  mock(reportChatbiContract.removeSession, ({ params, ok }) => {
+    const index = mockReportChatbiSessions.findIndex((item) => item.id === params.id && item.userId === DEMO_USER_ID);
+    if (index < 0) return notFound('ChatBI 会话不存在', { status: 404 });
     mockReportChatbiSessions.splice(index, 1);
-    removeWhere(mockReportChatbiMessages, (message) => message.sessionId === id);
-    return reportOk(null, '删除成功');
+    removeWhere(mockReportChatbiMessages, (message) => message.sessionId === params.id);
+    return ok(null, '删除成功');
   }),
 
-  http.post('/api/report/chatbi/sessions/:id/ask', async ({ params, request }) => {
-    const session = ownedSession(Number(params.id));
-    if (!session) return reportError(404, 'ChatBI 会话不存在');
-    if (session.status !== 'active') return reportError(409, '已归档会话不能继续提问');
-    const body = await parseObject(request);
-    if (!body || typeof body.content !== 'string' || !body.content.trim()) return reportError(400, '请输入问题');
+  mock(reportChatbiContract.ask, ({ params, body, ok }) => {
+    const session = ownedSession(params.id);
+    if (!session) return notFound('ChatBI 会话不存在', { status: 404 });
+    if (session.status !== 'active') return conflict('已归档会话不能继续提问', { status: 409 });
     const question = body.content.trim();
     if (/\b(insert|update|delete|drop|alter|truncate|grant|revoke)\b/i.test(question)) {
-      return reportError(400, 'ChatBI 仅支持只读分析问题');
+      return badRequest('ChatBI 仅支持只读分析问题', { status: 400 });
     }
     const asksDepartment = question.includes('部门');
     const requestedTable = asksDepartment ? 'departments' : 'menus';
     if (!session.allowedTables.includes(requestedTable)) {
-      return reportError(403, `当前会话未授权访问 ${requestedTable} 表`);
+      return forbidden(`当前会话未授权访问 ${requestedTable} 表`, { status: 403 });
     }
     addMessage({
       sessionId: session.id,
@@ -226,15 +197,13 @@ export const reportChatbiHandlers = [
     session.totalCostUnits += assistant.costUnits;
     session.lastMessageAt = assistant.createdAt;
     session.updatedAt = assistant.createdAt;
-    return reportOk(assistant);
+    return ok(assistant);
   }),
 
-  http.post('/api/report/chatbi/messages/:id/save', async ({ params, request }) => {
-    const message = mockReportChatbiMessages.find((item) => item.id === Number(params.id) && item.userId === DEMO_USER_ID);
-    if (!message || message.role !== 'assistant' || !message.generatedSql) return reportError(404, '可保存的 ChatBI 回答不存在');
-    const body = await parseObject(request);
-    if (!body || (body.resourceType !== 'dataset' && body.resourceType !== 'dashboard')) return reportError(400, '资源类型不正确');
-    const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : `ChatBI 分析 ${message.id}`;
+  mock(reportChatbiContract.saveMessage, ({ params, body, ok }) => {
+    const message = mockReportChatbiMessages.find((item) => item.id === params.id && item.userId === DEMO_USER_ID);
+    if (!message || message.role !== 'assistant' || !message.generatedSql) return notFound('可保存的 ChatBI 回答不存在', { status: 404 });
+    const name = body.name?.trim() ? body.name.trim() : `ChatBI 分析 ${message.id}`;
     const now = mockDateTime();
     if (body.resourceType === 'dataset') {
       const source = mockReportDatasets[0];
@@ -244,7 +213,7 @@ export const reportChatbiHandlers = [
         name,
         content: { sql: message.generatedSql },
         fields: Object.keys(message.resultSample[0] ?? {}).map((field) => ({ name: field, label: field, type: 'string' as const })),
-        folderId: typeof body.folderId === 'number' ? body.folderId : null,
+        folderId: body.folderId ?? null,
         ownerId: DEMO_USER_ID,
         createdAt: now,
         updatedAt: now,
@@ -253,13 +222,13 @@ export const reportChatbiHandlers = [
       message.savedResourceType = 'dataset';
       message.savedResourceId = dataset.id;
       message.savedDatasetId = dataset.id;
-      return reportOk({ resourceType: 'dataset' as const, resourceId: dataset.id, name: dataset.name, datasetId: dataset.id }, '保存成功');
+      return ok({ resourceType: 'dataset' as const, resourceId: dataset.id, name: dataset.name, datasetId: dataset.id }, '保存成功');
     }
-    const targetDashboardId = typeof body.targetDashboardId === 'number' ? body.targetDashboardId : null;
+    const targetDashboardId = body.targetDashboardId ?? null;
     const target = targetDashboardId ? mockReportDashboards.find((item) => item.id === targetDashboardId) : null;
-    if (targetDashboardId && !target) return reportError(404, '目标仪表盘不存在');
+    if (targetDashboardId && !target) return notFound('目标仪表盘不存在', { status: 404 });
     if (target) {
-      if (body.expectedDashboardRevision !== target.revision) return reportError(409, '仪表盘修订号不匹配');
+      if (body.expectedDashboardRevision !== target.revision) return conflict('仪表盘修订号不匹配', { status: 409 });
       const widgetId = `chatbi_${message.id}`;
       target.widgets.push({
         i: widgetId,
@@ -273,14 +242,14 @@ export const reportChatbiHandlers = [
       message.savedResourceType = 'dashboard';
       message.savedResourceId = target.id;
       message.savedDashboardId = target.id;
-      return reportOk({ resourceType: 'dashboard' as const, resourceId: target.id, name: target.name, datasetId: null }, '保存成功');
+      return ok({ resourceType: 'dashboard' as const, resourceId: target.id, name: target.name, datasetId: null }, '保存成功');
     }
     const source = mockReportDashboards[0];
     const dashboard = {
       ...source,
       id: getNextReportDashboardId(),
       name,
-      folderId: typeof body.folderId === 'number' ? body.folderId : null,
+      folderId: body.folderId ?? null,
       ownerId: DEMO_USER_ID,
       layout: [{ i: `chatbi_${message.id}`, x: 0, y: 0, w: 12, h: 6 }],
       canvasLayout: [],
@@ -304,12 +273,12 @@ export const reportChatbiHandlers = [
     message.savedResourceType = 'dashboard';
     message.savedResourceId = dashboard.id;
     message.savedDashboardId = dashboard.id;
-    return reportOk({ resourceType: 'dashboard' as const, resourceId: dashboard.id, name: dashboard.name, datasetId: null }, '保存成功');
+    return ok({ resourceType: 'dashboard' as const, resourceId: dashboard.id, name: dashboard.name, datasetId: null }, '保存成功');
   }),
 
-  http.get('/api/report/chatbi/quotas/me', () => {
+  mock(reportChatbiContract.myQuota, ({ ok }) => {
     const messages = mockReportChatbiMessages.filter((item) => item.userId === DEMO_USER_ID && item.role === 'assistant');
-    return reportOk({
+    return ok({
       aiPromptTokensToday: messages.reduce((sum, item) => sum + item.promptTokens, 0),
       aiCompletionTokensToday: messages.reduce((sum, item) => sum + item.completionTokens, 0),
       aiRequestsToday: messages.length,
@@ -320,12 +289,11 @@ export const reportChatbiHandlers = [
     });
   }),
 
-  http.get('/api/report/chatbi/audit', ({ request }) => {
-    const url = new URL(request.url);
+  mock(reportChatbiContract.audit, ({ query, ok, paginate }) => {
     const list = mockReportChatbiMessages.filter((item) =>
       item.role === 'assistant'
-      && matchesNumberParam(url, 'userId', item.userId)
-      && (!url.searchParams.has('failedOnly') || url.searchParams.get('failedOnly') !== 'true' || Boolean(item.errorMessage)));
-    return reportOk(reportPage(request, list));
+      && (!query.userId || item.userId === query.userId)
+      && (!query.failedOnly || Boolean(item.errorMessage)));
+    return ok(paginate(list));
   }),
 ];

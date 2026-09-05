@@ -1,35 +1,16 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { reportExecutionContract } from '@zenith/shared/report';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import { PaginationQuery, commonErrorResponses, dateRangeBound, ok, okBody, okPaginated, queryBool, validationHook } from '../../lib/openapi-schemas';
-import { ReportDatasetExecutionLogDTO, ReportExecutionStatsDTO, ReportRuntimeGovernanceDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { getDatasetExecutionStats, getReportRuntimeGovernance, listDatasetExecutionLogs } from '../../services/report/report-dataset.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/',
-    tags: ['报表数据集'],
-    summary: '数据集执行日志列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })] as const,
-    request: {
-      query: PaginationQuery.extend({
-        datasetId: z.coerce.number().int().positive().optional(),
-        datasourceId: z.coerce.number().int().positive().optional(),
-        dashboardId: z.coerce.number().int().positive().optional(),
-        scene: z.string().max(32).optional(),
-        success: queryBool(),
-        slow: queryBool(),
-        startAt: dateRangeBound('起始时间'),
-        endAt: dateRangeBound('结束时间'),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...okPaginated(ReportDatasetExecutionLogDTO, '执行日志列表') },
-  }),
+const listRoute = defineContractRoute(reportExecutionContract.list, {
+  middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })],
   handler: async (c) => {
     const query = c.req.valid('query');
     return c.json(okBody(await listDatasetExecutionLogs({
@@ -40,27 +21,8 @@ const listRoute = defineOpenAPIRoute({
   },
 });
 
-const statsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/stats',
-    tags: ['报表数据集'],
-    summary: '数据集执行日志统计',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })] as const,
-    request: {
-      query: z.object({
-        datasetId: z.coerce.number().int().positive().optional(),
-        datasourceId: z.coerce.number().int().positive().optional(),
-        dashboardId: z.coerce.number().int().positive().optional(),
-        scene: z.string().max(32).optional(),
-        success: queryBool(),
-        startAt: dateRangeBound('起始时间'),
-        endAt: dateRangeBound('结束时间'),
-      }),
-    },
-    responses: { ...commonErrorResponses, ...ok(ReportExecutionStatsDTO, '执行统计') },
-  }),
+const statsRoute = defineContractRoute(reportExecutionContract.stats, {
+  middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })],
   handler: async (c) => {
     const query = c.req.valid('query');
     return c.json(okBody(await getDatasetExecutionStats({
@@ -71,16 +33,8 @@ const statsRoute = defineOpenAPIRoute({
   },
 });
 
-const governanceRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/governance',
-    tags: ['报表数据集'],
-    summary: '报表运行治理配置',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })] as const,
-    responses: { ...commonErrorResponses, ...ok(ReportRuntimeGovernanceDTO, '治理配置') },
-  }),
+const governanceRoute = defineContractRoute(reportExecutionContract.governance, {
+  middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })],
   handler: async (c) => c.json(okBody(getReportRuntimeGovernance()), 200),
 });
 

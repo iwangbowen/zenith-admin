@@ -1,4 +1,4 @@
-import type { ReportAssetTemplate, ReportDashboard, ReportDataset, ReportDatasource, ReportDqRule, ReportEnvironment, ReportFillTemplate, ReportFolder, ReportMetric, ReportPrintTemplate, ReportQueryQuota, ReportSlaRule } from '../report/types';
+import type { ReportAssetTemplate, ReportDashboard, ReportDataset, ReportDatasource, ReportDqRule, ReportEnvironment, ReportFillTemplate, ReportFolder, ReportMetric, ReportPrintTemplate, ReportQueryQuota, ReportSlaRule } from '../report/contracts';
 import { SEED_DATE } from './_base';
 
 // ─── 报表中心：示例数据源 / 数据集 / 仪表盘 ─────────────────────────────────────

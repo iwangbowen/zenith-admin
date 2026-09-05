@@ -1,6 +1,14 @@
 import * as z from 'zod';
 import { httpUrl, partialForUpdate } from '../core/validation';
-import { AI_REASONING_LEVELS, AI_EVAL_SCORER_IDS } from './constants';
+import {
+  AI_EVAL_SCORER_IDS,
+  AI_FEEDBACK_STATUSES,
+  AI_HTTP_TOOL_METHODS,
+  AI_HTTP_TOOL_PARAM_LOCATIONS,
+  AI_HTTP_TOOL_PARAM_TYPES,
+  AI_PROMPT_SCOPES,
+  AI_REASONING_LEVELS,
+} from './constants';
 
 // ─── AI 对话模块 ──────────────────────────────────────────────────────────────
 
@@ -11,26 +19,39 @@ export const aiProviderIdSchema = z
   .max(50)
   .regex(/^[a-z][a-z0-9_-]*$/, 'provider ID 仅限小写字母/数字/连字符/下划线');
 
+/** 模型能力标签（vision=图片理解 / tools=函数调用 / contextWindow=上下文长度） */
 export const aiModelCapabilitiesSchema = z.object({
   vision: z.boolean().optional(),
   tools: z.boolean().optional(),
   contextWindow: z.number().int().min(0).max(100000000).optional(),
-});
+}).meta({ id: 'AiModelCapabilities' });
 
+export type AiModelCapabilities = z.infer<typeof aiModelCapabilitiesSchema>;
+
+/**
+ * 模型调用设置（Mastra ModelSettings 子集,调用时透传）。
+ * 分层覆盖:降级链条目 > 调用时 > 配置默认。
+ */
 export const aiModelSettingsSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   maxOutputTokens: z.number().int().min(1).max(10000000).optional(),
   topP: z.number().min(0).max(1).optional(),
   frequencyPenalty: z.number().min(-2).max(2).optional(),
   presencePenalty: z.number().min(-2).max(2).optional(),
+  /** 推理力度（仅支持 reasoning 的模型生效） */
   reasoning: z.enum(AI_REASONING_LEVELS).optional(),
-});
+}).meta({ id: 'AiModelSettings' });
 
+export type AiModelSettings = z.infer<typeof aiModelSettingsSchema>;
+
+/** 降级链条目:引用另一个服务商配置下的某个模型（Mastra ModelWithRetries 的持久化形态） */
 export const aiModelFallbackRefSchema = z.object({
-  configId: z.number().int().positive(),
-  model: z.string().min(1).max(100),
-  maxRetries: z.number().int().min(0).max(5).optional(),
-});
+  configId: z.number().int().positive().meta({ description: '目标服务商配置 ID' }),
+  model: z.string().min(1).max(100).meta({ description: '目标模型 ID（裸模型名,不含 provider 前缀）' }),
+  maxRetries: z.number().int().min(0).max(5).optional().meta({ description: '该级重试次数,默认 1' }),
+}).meta({ id: 'AiModelFallbackRef' });
+
+export type AiModelFallbackRef = z.infer<typeof aiModelFallbackRefSchema>;
 
 export const createAiProviderConfigSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(100),
@@ -86,6 +107,49 @@ export const createAiConversationSchema = z.object({
   agentId: z.number().int().positive().optional(),
 });
 
+export type CreateAiConversationInput = z.infer<typeof createAiConversationSchema>;
+
+export const renameAiConversationSchema = z.object({
+  title: z.string().min(1).max(200),
+});
+
+export type RenameAiConversationInput = z.infer<typeof renameAiConversationSchema>;
+
+/** 设置 / 清除对话挂载的知识库（kbId 传 null 清除） */
+export const setAiConversationKnowledgeBaseSchema = z.object({
+  kbId: z.number().int().positive().nullable(),
+});
+
+export type SetAiConversationKnowledgeBaseInput = z.infer<typeof setAiConversationKnowledgeBaseSchema>;
+
+/** 流式对话请求体：regenerate 模式不追加新的 user 消息，否则 message 必填 */
+export const sendAiChatMessageSchema = z.object({
+  message: z.string().min(1).max(8192).optional(),
+  /** 重新生成模式：不追加/保存新的 user 消息，基于激活路径重新回答（生成 assistant 兄弟分支） */
+  regenerate: z.boolean().optional(),
+  /** 编辑重发：新 user 消息挂到该父节点形成兄弟分支（null = 作为根消息） */
+  parentMsgId: z.number().int().positive().nullable().optional(),
+  configSource: z.enum(['system', 'user']).optional(),
+  configId: z.number().int().positive().optional(),
+  /** 多模型配置下选择的具体模型 */
+  model: z.string().max(100).optional(),
+  /** 推理力度(会话级覆盖,优先级高于智能体/服务商配置;AI SDK 统一档位) */
+  reasoning: z.enum(AI_REASONING_LEVELS).optional(),
+  /** vision 图片（data URL，base64），仅当轮上下文生效 */
+  images: z.array(z.string().regex(/^data:image\//, '仅支持 data:image 格式')).optional(),
+}).refine((d) => d.regenerate || !!d.message?.trim(), { message: '消息不能为空' });
+
+export type SendAiChatMessageInput = z.infer<typeof sendAiChatMessageSchema>;
+
+/** 多模型对比单栏流式请求体（不落库、不带历史） */
+export const arenaChatSchema = z.object({
+  message: z.string().min(1).max(8192),
+  configId: z.number().int().positive(),
+  model: z.string().max(100).optional(),
+});
+
+export type ArenaChatInput = z.infer<typeof arenaChatSchema>;
+
 export const saveUserAiConfigSchema = z.object({
   name: z.string().max(100).nullable().optional(),
   providerId: aiProviderIdSchema.optional(),
@@ -104,7 +168,7 @@ export const saveUserAiConfigSchema = z.object({
 export type SaveUserAiConfigInput = z.infer<typeof saveUserAiConfigSchema>;
 
 // ─── AI 提示词模板 Schema ──────────────────────────────────────────────────────
-export const aiPromptScopeEnum = z.enum(['system', 'user']);
+export const aiPromptScopeEnum = z.enum(AI_PROMPT_SCOPES);
 
 export const createAiPromptTemplateSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(100),
@@ -126,9 +190,11 @@ export const setConversationSystemPromptSchema = z.object({
   systemPrompt: z.string().max(5000).nullable(),
 });
 
+export type SetConversationSystemPromptInput = z.infer<typeof setConversationSystemPromptSchema>;
+
 export const aiFeedbackReasonEnum = z.enum(['inaccurate', 'irrelevant', 'harmful', 'other']);
 
-export const aiFeedbackStatusEnum = z.enum(['pending', 'resolved', 'ignored']);
+export const aiFeedbackStatusEnum = z.enum(AI_FEEDBACK_STATUSES);
 
 export const submitAiFeedbackSchema = z.object({
   feedback: z.union([z.literal(1), z.literal(-1), z.null()]),
@@ -205,18 +271,21 @@ export type UpdateAiAgentInput = z.infer<typeof updateAiAgentSchema>;
 
 // ─── P3：HTTP API 工具 ────────────────────────────────────────────────────────
 
+/** HTTP 工具参数定义（写入校验与实体字段同构） */
 export const aiHttpToolParamSchema = z.object({
   name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/, '参数名仅限字母/数字/下划线，字母开头'),
-  type: z.enum(['string', 'number', 'boolean']),
+  type: z.enum(AI_HTTP_TOOL_PARAM_TYPES),
   description: z.string().min(1, '参数说明不能为空').max(200),
   required: z.boolean(),
-  location: z.enum(['query', 'body', 'path']),
-});
+  location: z.enum(AI_HTTP_TOOL_PARAM_LOCATIONS),
+}).meta({ id: 'AiHttpToolParam' });
+
+export type AiHttpToolParam = z.infer<typeof aiHttpToolParamSchema>;
 
 export const createAiHttpToolSchema = z.object({
   name: z.string().regex(/^[a-z][a-z0-9_]{1,59}$/, '工具名仅限小写字母/数字/下划线，字母开头'),
   description: z.string().min(1, '工具描述不能为空').max(500),
-  method: z.enum(['GET', 'POST', 'PUT', 'DELETE']),
+  method: z.enum(AI_HTTP_TOOL_METHODS),
   urlTemplate: httpUrl('请输入合法的 http(s) URL').max(500),
   headers: z.record(z.string(), z.string().max(500)).nullable().optional(),
   params: z.array(aiHttpToolParamSchema).max(20).optional(),
@@ -302,6 +371,9 @@ export const saveAiUserSettingsSchema = z.strictObject({
 });
 
 export type SaveAiUserSettingsInput = z.infer<typeof saveAiUserSettingsSchema>;
+
+/** 用户级 AI 设置的稀疏存储形态（DB 只存与默认值的差异），与写入 schema 同构 */
+export type AiUserSettingsPatch = SaveAiUserSettingsInput;
 
 /** AI 记忆画像(working memory)编辑 schema */
 export const updateAiMemoryProfileSchema = z.object({

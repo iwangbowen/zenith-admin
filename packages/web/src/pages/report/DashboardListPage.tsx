@@ -11,6 +11,7 @@ import { ShareModal, VersionModal } from './components/DashboardOpsModals';
 import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { ReportDashboard, ReportWidget } from '@zenith/shared/report';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -60,7 +61,7 @@ export default function DashboardListPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
     lifecycleStatus: submittedParams.lifecycleStatus || undefined,
     categoryId: submittedParams.categoryId,
     favorited: submittedParams.favorited || undefined,
@@ -86,7 +87,7 @@ export default function DashboardListPage() {
   const favoriteMutation = useToggleReportDashboardFavorite();
   const publishMutation = usePublishReportDashboard();
   const offlineMutation = useOfflineReportDashboard();
-  const favTogglingId = favoriteMutation.isPending ? favoriteMutation.variables ?? null : null;
+  const favTogglingId = favoriteMutation.isPending ? favoriteMutation.variables?.params.id ?? null : null;
 
   const dashboardModal = useEditModal<ReportDashboard, Record<string, unknown>>({
     entityName: '仪表盘',
@@ -133,19 +134,19 @@ export default function DashboardListPage() {
   });
 
   async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync({ params: { id } });
     Toast.success('删除成功');
   }
 
   async function handleBatchStatus(status: 'enabled' | 'disabled') {
     if (selectedRowKeys.length === 0) return;
-    await batchStatusMutation.mutateAsync({ ids: selectedRowKeys, status });
+    await batchStatusMutation.mutateAsync({ body: { ids: selectedRowKeys, status } });
     setSelectedRowKeys([]);
     Toast.success(status === 'enabled' ? '批量启用成功' : '批量停用成功');
   }
 
   async function handleClone(record: ReportDashboard) {
-    const cloned = await cloneMutation.mutateAsync({ id: record.id });
+    const cloned = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
     Toast.success(`已复制为「${cloned.name}」`);
   }
 
@@ -156,23 +157,23 @@ export default function DashboardListPage() {
         ? `该分类已被 ${record.dashboardCount} 个仪表盘引用。删除后这些仪表盘的分类将自动置空。`
         : '删除后不可恢复。',
       onOk: async () => {
-        await deleteCategoryMutation.mutateAsync(record.id);
+        await deleteCategoryMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('分类删除成功');
       },
     });
   }
 
   async function toggleFavorite(record: ReportDashboard) {
-    await favoriteMutation.mutateAsync(record.id);
+    await favoriteMutation.mutateAsync({ params: { id: record.id } });
   }
 
   async function handlePublish(record: ReportDashboard) {
-    await publishMutation.mutateAsync({ dashboardId: record.id, expectedRevision: record.revision });
+    await publishMutation.mutateAsync({ params: { id: record.id }, body: { expectedRevision: record.revision } });
     Toast.success('发布成功');
   }
 
   async function handleOffline(record: ReportDashboard) {
-    await offlineMutation.mutateAsync({ dashboardId: record.id, expectedRevision: record.revision });
+    await offlineMutation.mutateAsync({ params: { id: record.id }, body: { expectedRevision: record.revision } });
     Toast.success('下线成功');
   }
 

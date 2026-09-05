@@ -1,116 +1,52 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { PaymentTransfer } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentTransferContract } from '@zenith/shared/payment';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface PaymentTransferListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  channel?: string;
-  status?: string;
-  approvalStatus?: string;
-}
+export type PaymentTransferListParams = NonNullable<QueryOf<typeof paymentTransferContract.list>>;
 
-export interface PaymentTransferSummary {
-  totalAmount: number;
-  successCount: number;
-  processingCount: number;
-  failedCount: number;
-}
-
-export interface CreatePaymentTransferValues {
-  applicationId: number;
-  channel: string;
-  currency: 'CNY';
-  receiverAccount: string;
-  receiverName?: string;
-  amount: number;
-  remark: string;
-  bizType?: string;
-  bizId?: string;
-  idempotencyKey: string;
-}
+const resource = createResourceQueries(paymentTransferContract);
 
 export const paymentTransferKeys = {
-  all: ['payment-transfers'] as const,
-  lists: ['payment-transfers', 'list'] as const,
-  list: (params: PaymentTransferListParams) => ['payment-transfers', 'list', params] as const,
-  summary: ['payment-transfers', 'summary'] as const,
-  detail: (id: number | undefined) => ['payment-transfers', 'detail', id] as const,
+  ...resource.keys,
+  summaries: contractKey(paymentTransferContract.summary),
 };
 
-export function usePaymentTransferList(params: PaymentTransferListParams) {
-  return useQuery({
-    queryKey: paymentTransferKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentTransfer>>(`/api/payment/transfers${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+/** 转账状态变化同时改变列表、汇总卡与该单详情 */
+function invalidateTransfer(qc: QueryClient, id?: number) {
+  void qc.invalidateQueries({ queryKey: paymentTransferKeys.lists });
+  void qc.invalidateQueries({ queryKey: paymentTransferKeys.summaries });
+  if (id !== undefined) void qc.invalidateQueries({ queryKey: paymentTransferKeys.detail(id) });
 }
+
+export const usePaymentTransferList = resource.useList;
+export const usePaymentTransferDetail = resource.useDetail;
 
 export function usePaymentTransferSummary(enabled = true) {
-  return useQuery({
-    queryKey: paymentTransferKeys.summary,
-    queryFn: () => request.get<PaymentTransferSummary>('/api/payment/transfers/summary').then(unwrap),
-    enabled,
-  });
+  return useApiQuery(paymentTransferContract.summary, { query: {} }, { enabled });
 }
 
+/** 发起转账：幂等键由页面按业务意图生成，放在输入的 headers 段 */
 export function useCreatePaymentTransfer() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ idempotencyKey, ...values }: CreatePaymentTransferValues) =>
-      request.post<PaymentTransfer>('/api/payment/transfers', values, { headers: { 'X-Idempotency-Key': idempotencyKey } }).then(unwrap),
-    onSuccess: async () => {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.lists }),
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.summary }),
-      ]);
-    },
+  return useApiMutation(paymentTransferContract.create, {
+    invalidate: (qc) => invalidateTransfer(qc),
   });
 }
 
 export function useQueryPaymentTransfer() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<PaymentTransfer>(`/api/payment/transfers/${id}/query`).then(unwrap),
-    onSuccess: async (transfer) => {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.lists }),
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.summary }),
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.detail(transfer.id) }),
-      ]);
-    },
+  return useApiMutation(paymentTransferContract.query, {
+    invalidate: (qc, transfer) => invalidateTransfer(qc, transfer.id),
   });
 }
 
 export function useApprovePaymentTransfer() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, remark }: { id: number; remark: string }) =>
-      request.post<PaymentTransfer>(`/api/payment/transfers/${id}/approve`, { remark }).then(unwrap),
-    onSuccess: async (transfer) => {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.lists }),
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.summary }),
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.detail(transfer.id) }),
-      ]);
-    },
+  return useApiMutation(paymentTransferContract.approve, {
+    invalidate: (qc, transfer) => invalidateTransfer(qc, transfer.id),
   });
 }
 
 export function useRejectPaymentTransfer() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, remark }: { id: number; remark: string }) =>
-      request.post<PaymentTransfer>(`/api/payment/transfers/${id}/reject`, { remark }).then(unwrap),
-    onSuccess: async (transfer) => {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.lists }),
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.summary }),
-        qc.invalidateQueries({ queryKey: paymentTransferKeys.detail(transfer.id) }),
-      ]);
-    },
+  return useApiMutation(paymentTransferContract.reject, {
+    invalidate: (qc, transfer) => invalidateTransfer(qc, transfer.id),
   });
 }

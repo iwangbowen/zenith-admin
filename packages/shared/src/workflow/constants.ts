@@ -8,11 +8,97 @@ export const WORKFLOW_INSTANCE_STATUSES = ['draft', 'running', 'suspended', 'ret
 /** 活跃（非终态）实例状态：业务键（bizType+bizId）唯一约束仅作用于这些状态，终态后允许同一业务记录重新发起 */
 export const WORKFLOW_ACTIVE_INSTANCE_STATUSES = ['draft', 'running', 'suspended', 'returned'] as const;
 
-export const WORKFLOW_TASK_STATUSES = ['pending', 'approved', 'rejected', 'skipped'] as const;
+export const WORKFLOW_TASK_STATUSES = ['pending', 'approved', 'rejected', 'skipped', 'waiting'] as const;
+
+/** 外部审批派发状态（task.status='waiting' 且启用 externalApproval 时） */
+export const WORKFLOW_TASK_EXTERNAL_DISPATCH_STATUSES = ['pending', 'dispatched', 'failed', 'fallback'] as const;
+
+/** 全局任务监控可筛选的任务节点类型 */
+export const WORKFLOW_TASK_MONITOR_NODE_TYPES = ['approve', 'handler', 'ccNode', 'delay', 'trigger', 'subProcess'] as const;
+
+export const WORKFLOW_INSTANCE_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
 
 export const WORKFLOW_NODE_TYPES = ['start', 'approve', 'end', 'exclusiveGateway', 'parallelGateway', 'ccNode'] as const;
 
 export const WORKFLOW_CONDITION_OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'contains'] as const;
+
+/** 流程级自动化规则触发时机 */
+export const WORKFLOW_AUTOMATION_TRIGGERS = ['approved', 'rejected', 'withdrawn', 'created'] as const;
+
+/** 流程事件总线事件类型（事件订阅 / 投递记录 / 引擎事件监听共用） */
+export const WORKFLOW_EVENT_TYPES = [
+  'instance.created', 'instance.approved', 'instance.rejected', 'instance.withdrawn', 'instance.returned',
+  'node.entered', 'node.left',
+  'task.created', 'task.assigned', 'task.approved', 'task.rejected', 'task.skipped', 'task.transferred', 'task.addSigned', 'task.reduceSigned', 'task.urged',
+] as const;
+
+export const WORKFLOW_EVENT_SIGN_MODES = ['hmacSha256', 'none'] as const;
+
+export const WORKFLOW_EVENT_DELIVERY_STATUSES = ['pending', 'success', 'failed', 'retrying'] as const;
+
+export const WORKFLOW_TRIGGER_TYPES = ['webhook', 'callback', 'updateData', 'deleteData'] as const;
+
+export const WORKFLOW_TRIGGER_EXECUTION_STATUSES = ['pending', 'running', 'success', 'failed', 'retrying'] as const;
+
+/** 统一作业账本（workflow_jobs）作业类型 */
+export const WORKFLOW_JOB_TYPES = [
+  'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch',
+  'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery',
+  'compensation_action',
+] as const;
+
+export const WORKFLOW_JOB_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'dead', 'canceled'] as const;
+
+export const WORKFLOW_JOB_EXECUTION_STATUSES = ['running', 'succeeded', 'failed'] as const;
+
+/** 引擎运维恢复动作（全部为幂等的恢复扫描） */
+export const WORKFLOW_ENGINE_ACTION_KEYS = [
+  'replay-outbox', 'recover-delays', 'recover-subprocess', 'process-timeouts', 'recover-triggers', 'recover-webhooks',
+] as const;
+
+export const WORKFLOW_ENGINE_COMPONENT_STATUSES = ['healthy', 'warning', 'critical'] as const;
+
+export const WORKFLOW_ENGINE_COMPONENT_KEYS = [
+  'dagExecutor', 'taskMaterializer', 'delayScheduler', 'timeoutProcessor', 'triggerDispatcher',
+  'externalApprover', 'subProcessRecovery', 'eventBus', 'outbox', 'scheduler',
+] as const;
+
+export const WORKFLOW_ENGINE_QUEUE_KEYS = [
+  'humanTasks', 'delayWakeups', 'timeouts', 'triggerDispatch', 'externalApprovals', 'subProcessJoin', 'eventOutbox',
+] as const;
+
+export const WORKFLOW_RUNTIME_ISSUE_SEVERITIES = ['info', 'warning', 'critical'] as const;
+
+/** 健康巡检问题类型 */
+export const WORKFLOW_HEALTH_ISSUE_TYPES = [
+  'external_dispatch_failed', 'external_dispatch_pending', 'trigger_waiting_no_execution', 'trigger_execution_failed',
+  'subprocess_waiting', 'delay_overdue', 'delay_missing_wake_job', 'task_timeout_overdue', 'token_task_mismatch',
+  'workflow_event_outbox_failed', 'workflow_event_outbox_pending', 'waiting_task_stuck', 'instance_stalled',
+] as const;
+
+/** 连接器类型（含尚未开放创建的 mq / database，历史数据可能存在） */
+export const WORKFLOW_CONNECTOR_TYPES = ['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database'] as const;
+
+export const WORKFLOW_CONNECTOR_BREAKER_STATES = ['closed', 'open', 'halfOpen'] as const;
+
+export const WORKFLOW_CONNECTOR_INVOCATION_SOURCES = ['test', 'trigger', 'external', 'webhook', 'manual'] as const;
+
+/** 待办 SLA 紧急度：none=未配置超时, safe=充裕, warning=临近, overdue=已超时 */
+export const WORKFLOW_SLA_LEVELS = ['none', 'safe', 'warning', 'overdue'] as const;
+
+export const WORKFLOW_TASK_CONSULT_STATUSES = ['pending', 'replied', 'revoked'] as const;
+
+export const WORKFLOW_COMPENSATION_ACTION_STATUSES = ['none', 'pending', 'running', 'succeeded', 'failed'] as const;
+
+export const WORKFLOW_SIMULATION_RESULT_STATUSES = ['finished', 'rejected', 'waiting', 'blocked', 'invalid', 'stepLimit'] as const;
+
+export const WORKFLOW_SIMULATION_TIMELINE_STATUSES = ['entered', 'waiting', 'approved', 'rejected', 'autoApproved', 'skipped', 'blocked'] as const;
+
+export const WORKFLOW_SIMULATION_NODE_STATE_STATUSES = ['pending', 'active', 'done', 'skipped', 'error'] as const;
+
+export const WORKFLOW_SIMULATION_HEALTH_LEVELS = ['error', 'warning', 'info'] as const;
+
+export const WORKFLOW_ENGINE_EXPLANATION_STATES = ['running', 'blocked', 'completed', 'rejected', 'canceled', 'withdrawn', 'draft'] as const;
 
 /**
  * 流程定义 flowData 的 schema 版本（引擎 schema 版本，区别于用户发布版本号 `version`）。

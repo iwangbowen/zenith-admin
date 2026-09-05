@@ -5,7 +5,7 @@ import { CMS_WIDGET_RENDERER_KEYS } from '../cms/constants';
 import { boundedJsonRecord, dateTimeStringSchema, httpUrl, partialForUpdate } from '../core/validation';
 import { isHttpUrlTemplate, isSafeLinkUrlTemplate } from '../core/url';
 import { workflowFormSchemaSchema } from '../workflow/validation';
-import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_DASHBOARD_VERSION_SOURCES } from './constants';
+import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_DASHBOARD_VERSION_SOURCES, REPORT_FIELD_TYPES, REPORT_FILTER_TYPES, REPORT_NOTIFY_CHANNELS, REPORT_SCHEDULE_MISFIRE_POLICIES } from './constants';
 import { REPORT_ACL_ROLES, REPORT_ACL_SUBJECT_TYPES, REPORT_APPROVAL_STATUSES, REPORT_ASSET_TEMPLATE_TYPES, REPORT_CHATBI_MESSAGE_ROLES, REPORT_CHATBI_SESSION_STATUSES, REPORT_DATASOURCE_TYPES, REPORT_DQ_ANOMALY_STATUSES, REPORT_DQ_RULE_TYPES, REPORT_DQ_RUN_STATUSES, REPORT_DQ_SEVERITIES, REPORT_ENVIRONMENT_KINDS, REPORT_FILL_RECORD_STATUSES, REPORT_FILL_TEMPLATE_STATUSES, REPORT_MATERIALIZATION_STRATEGIES, REPORT_METRIC_LIFECYCLE_STATUSES, REPORT_METRIC_TYPES, REPORT_PROMOTION_STATUSES, REPORT_QUOTA_SCOPES, REPORT_RESOURCE_TYPES, REPORT_SLA_TYPES, REPORT_SLA_VIOLATION_STATUSES, REPORT_SNAPSHOT_STATUSES, REPORT_TRANSFER_STATUSES, REPORT_WIDGET_TYPES } from './types';
 
 const timezoneSchema = z.string().min(1).max(64)
@@ -40,7 +40,7 @@ export type ErrorReportInput = z.infer<typeof errorReportSchema>;
 // ════════════════════════════════════════════════════════════════════════════
 export const reportDatasourceTypeSchema = z.enum(REPORT_DATASOURCE_TYPES);
 
-export const reportFieldTypeSchema = z.enum(['string', 'number', 'date', 'boolean']);
+export const reportFieldTypeSchema = z.enum(REPORT_FIELD_TYPES);
 
 export const reportWidgetTypeSchema = z.enum(REPORT_WIDGET_TYPES);
 
@@ -314,7 +314,7 @@ export const reportWidgetSchema = z.object({
   }
 });
 
-export const reportFilterTypeSchema = z.enum(['date', 'daterange', 'select', 'multiSelect', 'input', 'numberRange']);
+export const reportFilterTypeSchema = z.enum(REPORT_FILTER_TYPES);
 
 export const reportFilterSchema = z.object({
   id: z.string().min(1),
@@ -395,6 +395,22 @@ export type UpdateReportDashboardInput = z.input<typeof updateReportDashboardSch
 
 export const reportDashboardViewModeSchema = z.enum(['auto', 'draft', 'published']).default('auto');
 
+/** 批量获取仪表盘详情（视图模式随查询） */
+export const reportDashboardBatchSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(50),
+  mode: reportDashboardViewModeSchema.optional(),
+});
+
+export type ReportDashboardBatchInput = z.input<typeof reportDashboardBatchSchema>;
+
+/** 预警 / 订阅的批量启停（enabled 布尔而非 status 枚举） */
+export const reportBatchEnabledSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(50),
+  enabled: z.boolean(),
+});
+
+export type ReportBatchEnabledInput = z.input<typeof reportBatchEnabledSchema>;
+
 export const reportDashboardLifecycleActionSchema = z.object({
   expectedRevision: z.number().int().positive(),
   remark: z.string().max(256).optional(),
@@ -424,6 +440,8 @@ export const reportDatasetQuerySchema = z.object({
 export const reportDatasetDataBodySchema = reportDatasetQuerySchema.extend({
   params: z.record(z.string(), z.unknown()).optional(),
 });
+
+export type ReportDatasetQueryOptions = z.output<typeof reportDatasetQuerySchema>;
 
 export type ReportDatasetDataInput = z.input<typeof reportDatasetDataBodySchema>;
 
@@ -523,9 +541,9 @@ export const revokeReportEmbedTokenSchema = z.object({});
 export type CreateReportEmbedTokenInput = z.input<typeof createReportEmbedTokenSchema>;
 
 // ─── 订阅推送 ────────────────────────────────────────────────────────────────
-export const reportNotifyChannelSchema = z.enum(['email', 'inApp', 'webhook']);
+export const reportNotifyChannelSchema = z.enum(REPORT_NOTIFY_CHANNELS);
 
-export const reportScheduleMisfirePolicySchema = z.enum(['skip', 'fire_once']);
+export const reportScheduleMisfirePolicySchema = z.enum(REPORT_SCHEDULE_MISFIRE_POLICIES);
 
 export const createReportSubscriptionSchema = z.object({
   dashboardId: z.number().int().positive(),
@@ -1022,6 +1040,13 @@ export const grantReportResourceAclSchema = reportResourceRefSchema.extend({
   inheritFromFolder: z.boolean().default(false),
   expiresAt: dateTimeStringSchema.nullable().optional(),
 });
+
+/** 检查当前用户对某资源是否具备指定角色 */
+export const checkReportResourceAccessSchema = reportResourceRefSchema.extend({
+  requiredRole: reportAclRoleSchema,
+});
+
+export type CheckReportResourceAccessInput = z.input<typeof checkReportResourceAccessSchema>;
 
 export const updateReportResourceAclSchema = partialForUpdate(grantReportResourceAclSchema
   .pick({ role: true, inheritFromFolder: true, expiresAt: true }));

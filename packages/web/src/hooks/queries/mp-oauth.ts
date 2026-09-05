@@ -1,17 +1,11 @@
-import { useMutation } from '@tanstack/react-query';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { mpJsSdkContract, mpOAuthContract } from '@zenith/shared/mp';
+import { useApiMutation } from '@/lib/contract-query';
 
+/** 生成授权链接 / JS-SDK 签名都是无副作用的计算，不涉及缓存 */
 export function useGenerateMpOAuthUrl() {
-  return useMutation({
-    mutationFn: (values: { accountId: number; redirectUri: string; scope: 'snsapi_base' | 'snsapi_userinfo'; state?: string }) =>
-      request.post<{ url: string }>('/api/mp/oauth/url', values).then(unwrap),
-  });
+  return useApiMutation(mpOAuthContract.buildUrl);
 }
 
 export function useGenerateMpJsConfig() {
-  return useMutation({
-    mutationFn: (values: { accountId: number; url: string }) =>
-      request.post<{ appId: string; timestamp: number; nonceStr: string; signature: string }>('/api/mp/jssdk/config', values).then(unwrap),
-  });
+  return useApiMutation(mpJsSdkContract.config);
 }

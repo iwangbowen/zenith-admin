@@ -99,7 +99,7 @@ export function mapInstance(
     allowWithdraw: snapshotSettings?.allowWithdraw !== false,
     allowResubmit: snapshotSettings?.allowResubmit !== false,
     allowComment: snapshotSettings?.allowComment !== false,
-    formData: row.formData,
+    formData: (row.formData ?? null) as Record<string, unknown> | null,
     formSnapshot: normalizeStoredFormSnapshot(row.formSnapshot),
     status: row.status,
     currentNodeKey: row.currentNodeKey,

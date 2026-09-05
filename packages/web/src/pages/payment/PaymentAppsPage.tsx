@@ -11,7 +11,8 @@ import { useAllPaymentChannelConfigsLookup } from '@/hooks/queries/payment-chann
 import { paymentAppKeys, useDeletePaymentApp, usePaymentAppList, useSavePaymentApp } from '@/hooks/queries/payment-apps';
 import { useOpenAppOptions } from '@/hooks/queries/open-platform';
 import { copyableNoColumn, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
-import type { PaymentApp, PaymentChannel, PaymentChannelConfig } from '@zenith/shared/payment';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
+import type { CreatePaymentAppInput, PaymentApp, PaymentChannel, PaymentChannelConfig } from '@zenith/shared/payment';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
@@ -54,10 +55,10 @@ export default function PaymentAppsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
   const saveMutation = useSavePaymentApp();
-  const modal = useEditModal<PaymentApp, AppFormValues, Partial<PaymentApp>>({
+  const modal = useEditModal<PaymentApp, AppFormValues, Partial<CreatePaymentAppInput>>({
     entityName: '支付应用',
     save: saveMutation,
     defaults: { status: 'enabled' },

@@ -15,8 +15,9 @@ import { AppModal } from '@/components/AppModal';
 import PaymentStatsPanel from './PaymentStatsPanel';
 import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
-import { createPaymentSchema, PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS, PAYMENT_REFUND_STATUS_LABELS, PAYMENT_METHOD_OPTIONS, PAYMENT_ORDER_STATUS_OPTIONS } from '@zenith/shared/payment';
-import type { PaymentApp, PaymentChannel, PaymentMethod, PaymentOrder, PaymentOrderStatus, PaymentRefund, PaymentRefundStatus, CreatePaymentResult, PaymentStats } from '@zenith/shared/payment';
+import { enumValueOf, type BodyOf } from '@zenith/shared/core';
+import { createPaymentSchema, PAYMENT_CASHIER_METHODS, PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS, PAYMENT_ORDER_STATUSES, PAYMENT_REFUND_STATUS_LABELS, PAYMENT_METHOD_OPTIONS, PAYMENT_ORDER_STATUS_OPTIONS, paymentOrderContract } from '@zenith/shared/payment';
+import type { CreateRefundInput, PaymentApp, PaymentCashierMethod, PaymentChannel, PaymentMethod, PaymentOrder, PaymentOrderStatus, PaymentRefund, PaymentRefundResult, PaymentRefundStatus, CreatePaymentResult, PaymentStats } from '@zenith/shared/payment';
 import {
   paymentOrderKeys,
   useClosePaymentOrder,
@@ -28,14 +29,14 @@ import {
   usePaymentOrderRefunds,
   useQueryPaymentOrder,
   useSimulatePaymentOrderPaid,
-  type CreatePaymentRefundResult,
+  invalidatePaymentOrders,
+  type PaymentOrderListParams,
 } from '@/hooks/queries/payment-orders';
 import { usePaymentStats } from '@/hooks/queries/payment-stats';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
-import { compactQuery } from '@/lib/query';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { usePaymentAppList } from '@/hooks/queries/payment-apps';
@@ -68,8 +69,10 @@ interface SearchParams {
   timeRange: [Date, Date] | null;
 }
 const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: undefined, payMethod: undefined, bizType: '', minAmount: null, maxAmount: null, timeRange: null };
-interface ManualOrderFormValues { applicationId: number; subject: string; amount: number; bizType: string; bizId: string; payMethod: PaymentMethod; openId?: string; }
-interface ManualOrderRecord { id: number; orderNo: string; payParams: CreatePaymentResult; payMethod: PaymentMethod; }
+interface ManualOrderFormValues { applicationId: number; subject: string; amount: number; bizType: string; bizId: string; payMethod: PaymentCashierMethod; openId?: string; }
+interface ManualOrderRecord { id: number; orderNo: string; payParams: CreatePaymentResult; payMethod: PaymentCashierMethod; }
+type CreateOrderPayload = BodyOf<typeof paymentOrderContract.createOrder>;
+type RefundPayload = CreateRefundInput & { idempotencyKey: string };
 interface RefundFormValues { amountYuan: number; reason?: string; }
 
 export default function PaymentOrdersPage() {
@@ -118,7 +121,7 @@ export default function PaymentOrdersPage() {
   const [payResult, setPayResult] = useState<CreatePaymentResult | null>(null);
   const [payResultMethod, setPayResultMethod] = useState<PaymentMethod | null>(null);
   const [selectedApplicationId, setSelectedApplicationId] = useState<number>();
-  const latestRefundResult = useRef<CreatePaymentRefundResult | null>(null);
+  const latestRefundResult = useRef<PaymentRefundResult | null>(null);
   const refundIdempotencyKey = useRef<string | null>(null);
 
   const selectedPaymentApp = paymentApps.find((app) => app.id === selectedApplicationId);
@@ -153,17 +156,17 @@ export default function PaymentOrdersPage() {
     return [];
   }, [canReadCapabilities, capabilitiesQuery.data, capabilitiesQuery.isError, enabledPaymentMethods, selectedPaymentApp]);
 
-  function buildQuery(active: SearchParams): Record<string, string | number> {
-    return compactQuery({
-      keyword: active.keyword,
-      channel: active.channel,
-      status: active.status,
-      payMethod: active.payMethod,
-      bizType: active.bizType,
+  function buildQuery(active: SearchParams): Omit<PaymentOrderListParams, 'page' | 'pageSize'> {
+    return {
+      keyword: active.keyword || undefined,
+      channel: enumValueOf(PAYMENT_CHANNELS, active.channel),
+      status: enumValueOf(PAYMENT_ORDER_STATUSES, active.status),
+      payMethod: enumValueOf(PAYMENT_CASHIER_METHODS, active.payMethod),
+      bizType: active.bizType || undefined,
       minAmount: active.minAmount == null ? undefined : Math.round(active.minAmount * 100),
       maxAmount: active.maxAmount == null ? undefined : Math.round(active.maxAmount * 100),
       ...formatDateTimeRangeForApi(active.timeRange),
-    });
+    };
   }
 
   const listQuery = usePaymentOrderList({ page, pageSize, ...buildQuery(submittedParams) });
@@ -182,14 +185,15 @@ export default function PaymentOrdersPage() {
   const createRefundMutation = useCreatePaymentRefund();
   const payStatusQuery = usePaymentOrderByNo(payResult?.orderNo, !!payResult?.orderNo);
   const refundSaveMutation = {
-    mutateAsync: async ({ values }: { id?: number; values: { orderNo: string; refundAmount: number; reason?: string; idempotencyKey: string } }) => {
+    mutateAsync: async ({ values }: { id?: number; values: RefundPayload }) => {
+      const { idempotencyKey, ...body } = values;
       latestRefundResult.current = null;
-      latestRefundResult.current = await createRefundMutation.mutateAsync(values);
+      latestRefundResult.current = await createRefundMutation.mutateAsync({ headers: { 'x-idempotency-key': idempotencyKey }, body });
       return { id: 0 } as PaymentOrder;
     },
     isPending: createRefundMutation.isPending,
   };
-  const refundModal = useEditModal<PaymentOrder, RefundFormValues, { orderNo: string; refundAmount: number; reason?: string; idempotencyKey: string }>({
+  const refundModal = useEditModal<PaymentOrder, RefundFormValues, RefundPayload>({
     save: refundSaveMutation,
     toValues: (order) => ({ amountYuan: (order.amount - refundedAmount) / 100 }),
     beforeSave: (values, { editing }) => {
@@ -219,13 +223,13 @@ export default function PaymentOrdersPage() {
   });
   const openRefundEdit = refundModal.openEdit;
   const orderSaveMutation = {
-    mutateAsync: async ({ values }: { id?: number; values: { applicationId: number; bizType: string; bizId: string; subject: string; amount: number; payMethod: PaymentMethod; openId?: string } }) => {
-      const res = await createOrderMutation.mutateAsync(values);
+    mutateAsync: async ({ values }: { id?: number; values: CreateOrderPayload }) => {
+      const res = await createOrderMutation.mutateAsync({ body: values });
       return { id: 0, orderNo: res.orderNo, payParams: res.payParams, payMethod: values.payMethod };
     },
     isPending: createOrderMutation.isPending,
   };
-  const createOrderModal = useEditModal<ManualOrderRecord, ManualOrderFormValues, { applicationId: number; bizType: string; bizId: string; subject: string; amount: number; payMethod: PaymentMethod; openId?: string }>({
+  const createOrderModal = useEditModal<ManualOrderRecord, ManualOrderFormValues, CreateOrderPayload>({
     save: orderSaveMutation,
     defaults: { amount: 1 },
     beforeSave: (values) => {
@@ -258,7 +262,7 @@ export default function PaymentOrdersPage() {
       Toast.success('支付成功！');
       setPayResult(null);
       setPayResultMethod(null);
-      void queryClient.invalidateQueries({ queryKey: paymentOrderKeys.all });
+      invalidatePaymentOrders(queryClient);
     } else if (status === 'failed' || status === 'closed') {
       Toast.error(`支付${status === 'closed' ? '已关闭' : '失败'}`);
       setPayResult(null);
@@ -289,18 +293,18 @@ export default function PaymentOrdersPage() {
   }
 
   async function handleQuery(record: PaymentOrder) {
-    const order = await queryOrderMutation.mutateAsync(record.id);
+    const order = await queryOrderMutation.mutateAsync({ params: { id: record.id } });
     Toast.success(`最新状态：${PAYMENT_ORDER_STATUS_LABELS[order.status]}`);
   }
   async function handleSimulate(record: PaymentOrder) {
-    await simulateMutation.mutateAsync(record.id);
+    await simulateMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已模拟支付成功');
   }
   function handleClose(record: PaymentOrder) {
     Modal.confirm({
       title: '确认关闭订单', content: `确认关闭订单 ${record.orderNo}？`,
       onOk: async () => {
-        await closeMutation.mutateAsync(record.id);
+        await closeMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('订单已关闭');
       },
     });

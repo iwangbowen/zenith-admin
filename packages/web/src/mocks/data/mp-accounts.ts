@@ -1,5 +1,6 @@
 import type { MpAccount } from '@zenith/shared/mp';
 import { SEED_MP_ACCOUNTS } from '@zenith/shared/seed';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 
 export const mockMpAccounts: MpAccount[] = [
   ...SEED_MP_ACCOUNTS.map((a) => ({ ...a })),
@@ -24,7 +25,7 @@ export const mockMpAccounts: MpAccount[] = [
   },
 ];
 
-let nextId = Math.max(...mockMpAccounts.map((a) => a.id)) + 1;
+let nextId = nextIdFrom(mockMpAccounts);
 export function getNextMpAccountId() {
   return nextId++;
 }

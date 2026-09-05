@@ -1,141 +1,37 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { WorkflowAnalytics, WorkflowCompensation, WorkflowCompensationDetail, WorkflowDefinition, WorkflowEngineActionKey, WorkflowEngineActionPreview, WorkflowEngineActionResult, WorkflowEngineHealthHistory, WorkflowEngineIntrospection, WorkflowHandoverPreview, WorkflowHandoverResult, WorkflowInstance, WorkflowInstanceTrace, WorkflowJob, WorkflowJobBatchResult, WorkflowJobChain, WorkflowJobExecution, WorkflowJobStatus, WorkflowJobSummaryItem, WorkflowJobType, WorkflowOverdueTask, WorkflowRecoveryBatchResult, WorkflowRuntimeDiagnostics, WorkflowTaskMonitorResult } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { InputOf, QueryOf } from '@zenith/shared/core';
+import {
+  workflowDefinitionContract,
+  workflowEngineContract,
+  workflowInstanceContract,
+  workflowInstanceOpsContract,
+  workflowTaskContract,
+  type WorkflowJobClusterDimension,
+  type WorkflowJobFailureCluster,
+  type WorkflowJobFailureClusterMember,
+  type WorkflowJobDetail,
+  type WorkflowJobReplayResult,
+  type WorkflowJobRuntimeStatus,
+} from '@zenith/shared/workflow';
+import { api, useApiMutation } from '@/lib/contract-query';
 
-export interface WorkflowMonitorListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-  categoryId?: number;
-  definitionId?: number;
-  initiatorKeyword?: string;
-  priority?: string;
-}
+export type WorkflowMonitorListParams = QueryOf<typeof workflowInstanceContract.monitor>;
 
-export interface WorkflowMonitorStats {
-  total: number;
-  running: number;
-  suspended: number;
-  returned: number;
-  approved: number;
-  rejected: number;
-  withdrawn: number;
-  cancelled: number;
-}
+export type WorkflowJobListParams = QueryOf<typeof workflowEngineContract.jobs>;
 
-export interface WorkflowMonitorResponse {
-  stats: WorkflowMonitorStats;
-  list: WorkflowInstance[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export type WorkflowTaskMonitorParams = QueryOf<typeof workflowTaskContract.taskMonitor>;
 
-export interface WorkflowJobListParams {
-  page: number;
-  pageSize: number;
-  jobType: WorkflowJobType;
-  status?: WorkflowJobStatus;
-  keyword?: string;
-}
+export type WorkflowCompensationListParams = QueryOf<typeof workflowInstanceOpsContract.compensations>;
 
-export interface WorkflowTaskMonitorParams {
-  page: number;
-  pageSize: number;
-  status?: string;
-  nodeType?: string;
-  keyword?: string;
-  assigneeKeyword?: string;
-  definitionId?: number;
-  instanceId?: number;
-  startTime?: string;
-  endTime?: string;
-  stuckMinutes?: number;
-}
+export type { WorkflowJobDetail, WorkflowJobReplayResult, WorkflowJobRuntimeStatus };
 
-export type WorkflowJobDetail = WorkflowJob & { executions: WorkflowJobExecution[] };
+export type FailureCluster = WorkflowJobFailureCluster;
 
-export interface FailureClusterJob {
-  id: number;
-  jobType: string;
-  status: string;
-  instanceId: number | null;
-  instanceTitle: string | null;
-  definitionName: string | null;
-  nodeKey: string | null;
-  attempts: number;
-  maxAttempts: number;
-  /** 最后领取该作业的 worker 节点（hostname:pid） */
-  lockedBy: string | null;
-  traceId: string | null;
-  /** 完整原始错误 */
-  lastError: string | null;
-  /** 最近失败时间 */
-  failedAt: string;
-  createdAt: string;
-}
-
-export interface FailureCluster {
-  dimension: 'reason' | 'jobType' | 'instance' | 'trace';
-  key: string;
-  label: string;
-  count: number;
-  jobTypes: string[];
-  instanceId: number | null;
-  traceId: string | null;
-  reasonKeyword: string | null;
-  /** 簇内最早失败时间 */
-  firstAt: string | null;
-  /** 簇内最近失败时间 */
-  lastAt: string | null;
-  /** 涉及的流程实例数 */
-  instanceCount: number;
-  /** 成员作业明细（按最近失败倒序，最多 10 条） */
-  jobs: FailureClusterJob[];
-}
-
-export interface WorkflowJobReplayResult {
-  total: number;
-  success: number;
-  skipped: number;
-  matched: number;
-  ratePerSecond: number;
-  limit: number;
-}
-
-export interface WorkflowJobRuntimeStatus {
-  activeWorkers: number;
-  totalWorkers: number;
-  workers: Array<{ nodeId: string; hostname: string | null; runningJobCount: number; lastHeartbeatAt: string | null; fresh: boolean }>;
-  runningJobs: number;
-  stuckRunningJobs: number;
-  backlog: number;
-  deadLetter: number;
-  lastClaimedAt: string | null;
-  failureRate: number;
-  avgDurationMs: number | null;
-  recentExecutions: number;
-}
-
-export interface WorkflowCompensationListParams {
-  page: number;
-  pageSize: number;
-  status?: string;
-}
+export type FailureClusterJob = WorkflowJobFailureClusterMember;
 
 export interface WorkflowEngineDiagnosticsParams {
   thresholdMinutes: number;
   historyHours: number;
-}
-
-export interface WorkflowRecoveryBatchInput {
-  definitionId: number;
-  nodeKey: string;
-  olderThanMinutes?: number;
-  reason?: string;
 }
 
 export const workflowMonitorKeys = {
@@ -171,7 +67,7 @@ export const workflowMonitorKeys = {
 export function useWorkflowMonitorList(params: WorkflowMonitorListParams) {
   return useQuery({
     queryKey: workflowMonitorKeys.monitorList(params),
-    queryFn: () => request.get<WorkflowMonitorResponse>(`/api/workflows/instances/all${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowInstanceContract.monitor, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
@@ -179,31 +75,55 @@ export function useWorkflowMonitorList(params: WorkflowMonitorListParams) {
 export function useWorkflowTaskMonitorList(params: WorkflowTaskMonitorParams) {
   return useQuery({
     queryKey: workflowMonitorKeys.taskMonitorList(params),
-    queryFn: () => request.get<WorkflowTaskMonitorResult>(`/api/workflows/tasks/monitor${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowTaskContract.taskMonitor, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
 
+/** 监控视角的实例详情 queryOptions（供 fetchQuery 命令式取数） */
+export function workflowMonitorInstanceDetailQuery(id: number) {
+  return {
+    queryKey: workflowMonitorKeys.monitorDetail(id),
+    queryFn: () => api(workflowInstanceContract.detail, { params: { id } }),
+  };
+}
+
 export function useWorkflowInstanceDetail(id: number | undefined, enabled = true) {
   return useQuery({
+    ...workflowMonitorInstanceDetailQuery(id ?? 0),
     queryKey: workflowMonitorKeys.monitorDetail(id),
-    queryFn: () => request.get<WorkflowInstance>(`/api/workflows/instances/${id}`).then(unwrap),
     enabled: enabled && id !== undefined,
   });
 }
 
+export function workflowMonitorDefinitionDetailQuery(id: number, options?: { silent?: boolean }) {
+  return {
+    queryKey: workflowMonitorKeys.definitionDetail(id),
+    queryFn: () => api(workflowDefinitionContract.detail, { params: { id } }, { silent: options?.silent }),
+  };
+}
+
 export function useWorkflowDefinitionDetail(id: number | undefined, enabled = true, options?: { silent?: boolean }) {
   return useQuery({
+    ...workflowMonitorDefinitionDetailQuery(id ?? 0, options),
     queryKey: workflowMonitorKeys.definitionDetail(id),
-    queryFn: () => request.get<WorkflowDefinition>(`/api/workflows/definitions/${id}`, { silent: options?.silent }).then(unwrap),
     enabled: enabled && id !== undefined,
+  });
+}
+
+/** 已发布定义下拉（数据分析筛选 / 强制跳转节点选择 / 批量恢复），与定义子树共享失效前缀 */
+export function useWorkflowMonitorDefinitionOptions(enabled = true) {
+  return useQuery({
+    queryKey: workflowMonitorKeys.definitionsOptions,
+    queryFn: () => api(workflowDefinitionContract.published),
+    enabled,
   });
 }
 
 export function useWorkflowRuntimeDiagnostics(id: number | undefined, enabled = true) {
   return useQuery({
     queryKey: workflowMonitorKeys.diagnostics(id),
-    queryFn: () => request.get<WorkflowRuntimeDiagnostics>(`/api/workflows/instances/${id}/diagnostics`).then(unwrap),
+    queryFn: () => api(workflowInstanceOpsContract.diagnostics, { params: { id: id as number } }),
     enabled: enabled && id !== undefined,
   });
 }
@@ -211,30 +131,39 @@ export function useWorkflowRuntimeDiagnostics(id: number | undefined, enabled = 
 export function useWorkflowInstanceTrace(instanceId: number, enabled = true) {
   return useQuery({
     queryKey: workflowMonitorKeys.trace(instanceId),
-    queryFn: () => request.get<WorkflowInstanceTrace>(`/api/workflows/instances/${instanceId}/trace`).then(unwrap),
+    queryFn: () => api(workflowInstanceOpsContract.trace, { params: { id: instanceId } }),
     enabled,
   });
+}
+
+/** 导出实例诊断包（诊断 + 轨迹 + 执行 Token），供页面另存为 JSON */
+export function fetchWorkflowDiagnosticBundle(instanceId: number) {
+  return api(workflowInstanceOpsContract.diagnosticBundle, { params: { id: instanceId } });
+}
+
+/** traceId 诊断包（作业链路 + 涉及实例诊断聚合） */
+export function fetchWorkflowTraceDiagnosticBundle(traceId: string) {
+  return api(workflowEngineContract.jobChainBundle, { params: { traceId } });
 }
 
 export function useWorkflowAnalytics(definitionId: number | undefined) {
   return useQuery({
     queryKey: workflowMonitorKeys.analytics(definitionId),
-    queryFn: () => request.get<WorkflowAnalytics>(`/api/workflows/instances/analytics${toQueryString({ definitionId })}`).then(unwrap),
+    queryFn: () => api(workflowInstanceContract.analytics, { query: { definitionId } }),
   });
 }
 
 export function useWorkflowOverdueTasks(definitionId: number | undefined) {
   return useQuery({
     queryKey: workflowMonitorKeys.overdue(definitionId),
-    queryFn: () =>
-      request.get<PaginatedResponse<WorkflowOverdueTask>>(`/api/workflows/instances/overdue${toQueryString({ pageSize: 50, definitionId })}`).then(unwrap),
+    queryFn: () => api(workflowInstanceContract.overdue, { query: { pageSize: 50, definitionId } }),
   });
 }
 
 export function useWorkflowJobList(params: WorkflowJobListParams) {
   return useQuery({
     queryKey: workflowMonitorKeys.jobList(params),
-    queryFn: () => request.get<PaginatedResponse<WorkflowJob>>(`/api/workflows/engine/jobs${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowEngineContract.jobs, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
@@ -242,7 +171,7 @@ export function useWorkflowJobList(params: WorkflowJobListParams) {
 export function useWorkflowJobDetail(id: number | undefined, enabled = true) {
   return useQuery({
     queryKey: workflowMonitorKeys.jobDetail(id),
-    queryFn: () => request.get<WorkflowJobDetail>(`/api/workflows/engine/jobs/${id}`).then(unwrap),
+    queryFn: () => api(workflowEngineContract.jobDetail, { params: { id: id as number } }),
     enabled: enabled && id !== undefined,
   });
 }
@@ -250,7 +179,7 @@ export function useWorkflowJobDetail(id: number | undefined, enabled = true) {
 export function useWorkflowJobChain(traceId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: workflowMonitorKeys.jobChain(traceId),
-    queryFn: () => request.get<WorkflowJobChain>(`/api/workflows/engine/jobs/chain/${encodeURIComponent(traceId ?? '')}`).then(unwrap),
+    queryFn: () => api(workflowEngineContract.jobChain, { params: { traceId: traceId ?? '' } }),
     enabled: enabled && !!traceId,
   });
 }
@@ -258,21 +187,21 @@ export function useWorkflowJobChain(traceId: string | undefined, enabled = true)
 export function useWorkflowJobRuntimeStatus() {
   return useQuery({
     queryKey: workflowMonitorKeys.jobRuntimeStatus,
-    queryFn: () => request.get<WorkflowJobRuntimeStatus>('/api/workflows/engine/jobs/runtime-status').then(unwrap),
+    queryFn: () => api(workflowEngineContract.jobRuntimeStatus),
   });
 }
 
 export function useWorkflowJobSummary() {
   return useQuery({
     queryKey: workflowMonitorKeys.jobSummary,
-    queryFn: () => request.get<WorkflowJobSummaryItem[]>('/api/workflows/engine/jobs/summary').then(unwrap),
+    queryFn: () => api(workflowEngineContract.jobsSummary),
   });
 }
 
-export function useWorkflowJobFailureClusters(dimension: string | undefined, enabled = true) {
+export function useWorkflowJobFailureClusters(dimension: WorkflowJobClusterDimension | undefined, enabled = true) {
   return useQuery({
     queryKey: workflowMonitorKeys.jobFailureClusters(dimension),
-    queryFn: () => request.get<FailureCluster[]>(`/api/workflows/engine/jobs/failure-clusters${toQueryString({ dimension })}`).then(unwrap),
+    queryFn: () => api(workflowEngineContract.failureClusters, { query: { dimension } }),
     enabled: enabled && !!dimension,
   });
 }
@@ -280,7 +209,7 @@ export function useWorkflowJobFailureClusters(dimension: string | undefined, ena
 export function useWorkflowCompensationList(params: WorkflowCompensationListParams) {
   return useQuery({
     queryKey: workflowMonitorKeys.compensationList(params),
-    queryFn: () => request.get<PaginatedResponse<WorkflowCompensation>>(`/api/workflows/compensation/list${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowInstanceOpsContract.compensations, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
@@ -288,7 +217,7 @@ export function useWorkflowCompensationList(params: WorkflowCompensationListPara
 export function useWorkflowCompensationDetail(id: number | undefined, enabled = true) {
   return useQuery({
     queryKey: workflowMonitorKeys.compensationDetail(id),
-    queryFn: () => request.get<WorkflowCompensationDetail>(`/api/workflows/compensation/${id}`).then(unwrap),
+    queryFn: () => api(workflowInstanceOpsContract.compensationDetail, { params: { id: id as number } }),
     enabled: enabled && id !== undefined,
   });
 }
@@ -298,8 +227,8 @@ export function useWorkflowEngineDiagnostics(params: WorkflowEngineDiagnosticsPa
     queryKey: workflowMonitorKeys.engineDiagnostics(params),
     queryFn: async () => {
       const [introspection, history] = await Promise.all([
-        request.get<WorkflowEngineIntrospection>(`/api/workflows/engine/introspection${toQueryString({ thresholdMinutes: params.thresholdMinutes })}`).then(unwrap),
-        request.get<WorkflowEngineHealthHistory>(`/api/workflows/engine/health-history${toQueryString({ hours: params.historyHours })}`).then(unwrap),
+        api(workflowEngineContract.introspection, { query: { thresholdMinutes: params.thresholdMinutes } }),
+        api(workflowEngineContract.healthHistory, { query: { hours: params.historyHours } }),
       ]);
       return { introspection, history, fetchedAt: Date.now() };
     },
@@ -308,33 +237,70 @@ export function useWorkflowEngineDiagnostics(params: WorkflowEngineDiagnosticsPa
   });
 }
 
-/**
- * 实例状态变更（挂起/恢复/终止/迁移等，URL 由调用方给出）。
- * 无法从 URL 反推具体实例，故失效整个监控子树；作业、补偿、引擎诊断不受影响。
- */
-export function useWorkflowStateMutation() {
+// ─── 实例状态变更（管理员）：无法从入参反推受影响的列表，故失效整个监控子树；作业、补偿、引擎诊断不受影响 ───
+
+const invalidateMonitor = (qc: QueryClient) => {
+  void qc.invalidateQueries({ queryKey: workflowMonitorKeys.monitor });
+};
+
+export function useCancelWorkflowInstance() {
+  return useApiMutation(workflowInstanceContract.cancel, { invalidate: invalidateMonitor });
+}
+
+export function useSuspendWorkflowInstance() {
+  return useApiMutation(workflowInstanceOpsContract.suspend, { invalidate: invalidateMonitor });
+}
+
+export function useResumeWorkflowInstance() {
+  return useApiMutation(workflowInstanceOpsContract.resume, { invalidate: invalidateMonitor });
+}
+
+export function useMigrateWorkflowInstance() {
+  return useApiMutation(workflowInstanceOpsContract.migrate, { invalidate: invalidateMonitor });
+}
+
+export function useDeleteWorkflowInstanceAsAdmin() {
+  return useApiMutation(workflowInstanceContract.remove, { invalidate: invalidateMonitor });
+}
+
+export function useJumpWorkflowInstance() {
+  return useApiMutation(workflowInstanceOpsContract.jump, { invalidate: invalidateMonitor });
+}
+
+export function useReassignWorkflowTask() {
+  return useApiMutation(workflowTaskContract.reassign, { invalidate: invalidateMonitor });
+}
+
+/** Token 运营恢复操作（跳过卡死 / 从节点重放） */
+export function useWorkflowTokenOperation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ url, body, method = 'post' }: { url: string; body?: unknown; method?: 'post' | 'delete' }) =>
-      (method === 'delete' ? request.delete<null>(url, body) : request.post<null>(url, body)).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: workflowMonitorKeys.monitor }),
+    mutationFn: ({ op, ...input }: InputOf<typeof workflowInstanceOpsContract.skipToken> & { op: 'skip' | 'replay' }) =>
+      api(op === 'skip' ? workflowInstanceOpsContract.skipToken : workflowInstanceOpsContract.replayToken, input),
+    onSuccess: () => invalidateMonitor(qc),
   });
 }
 
 export function useWorkflowMigratePreflight() {
   return useMutation({
-    mutationFn: (id: number) =>
-      request.get<{ migratable: boolean; fromVersion: number; toVersion: number; blocked: string[] }>(`/api/workflows/${id}/migrate/preflight`).then(unwrap),
+    mutationFn: (id: number) => api(workflowInstanceOpsContract.migratePreflight, { params: { id } }),
   });
 }
+
+// ─── 作业账本：作业重试 / 跳过只改变作业子树；流程定义下拉、实例监控列表不受影响 ───
+
+const invalidateJobs = (qc: QueryClient) => {
+  void qc.invalidateQueries({ queryKey: workflowMonitorKeys.jobs });
+};
 
 export function useWorkflowJobBatchMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ action, ids }: { action: 'retry' | 'skip'; ids: number[] }) =>
-      request.post<WorkflowJobBatchResult>(`/api/workflows/engine/jobs/batch-${action}`, { ids }).then(unwrap),
-    // 作业重试/跳过只改变作业子树；流程定义下拉、实例监控列表不受影响
-    onSuccess: () => qc.invalidateQueries({ queryKey: workflowMonitorKeys.jobs }),
+      action === 'retry'
+        ? api(workflowEngineContract.batchRetryJobs, { body: { ids } })
+        : api(workflowEngineContract.batchSkipJobs, { body: { ids } }),
+    onSuccess: () => invalidateJobs(qc),
   });
 }
 
@@ -342,40 +308,56 @@ export function useWorkflowJobActionMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, action }: { id: number; action: 'retry' | 'skip' }) =>
-      request.post<WorkflowJob>(`/api/workflows/engine/jobs/${id}/${action}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: workflowMonitorKeys.jobs }),
+      action === 'retry'
+        ? api(workflowEngineContract.retryJob, { params: { id }, body: {} })
+        : api(workflowEngineContract.skipJob, { params: { id } }),
+    onSuccess: () => invalidateJobs(qc),
   });
 }
 
 export function useWorkflowJobReplayPreview() {
-  return useMutation({
-    mutationFn: (body: object) => request.post<{ matched: number }>('/api/workflows/engine/jobs/replay-preview', body).then(unwrap),
-  });
+  return useApiMutation(workflowEngineContract.replayPreview);
 }
 
 export function useWorkflowJobReplayDead() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: object) => request.post<WorkflowJobReplayResult>('/api/workflows/engine/jobs/replay-dead', body).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: workflowMonitorKeys.jobs }),
-  });
+  return useApiMutation(workflowEngineContract.replayDeadJobs, { invalidate: invalidateJobs });
 }
+
+// ─── 补偿工单：处理只影响补偿子树 ───
+
+const invalidateCompensations = (qc: QueryClient) => {
+  void qc.invalidateQueries({ queryKey: workflowMonitorKeys.compensations });
+};
+
+export type WorkflowCompensationActionVariables =
+  | { id: number; action: 'resolve'; body: InputOf<typeof workflowInstanceOpsContract.resolveCompensation>['body'] }
+  | { id: number; action: 'note'; body: InputOf<typeof workflowInstanceOpsContract.addCompensationNote>['body'] }
+  | { id: number; action: 'retry' | 'resume' };
 
 export function useWorkflowCompensationAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action, body }: { id: number; action: 'resolve' | 'resume' | 'retry' | 'note'; body?: unknown }) =>
-      request.post<unknown>(`/api/workflows/compensation/${id}/${action}`, body ?? {}).then(unwrap),
-    // 补偿处理只影响补偿子树
-    onSuccess: () => qc.invalidateQueries({ queryKey: workflowMonitorKeys.compensations }),
+    mutationFn: (vars: WorkflowCompensationActionVariables) => {
+      const params = { id: vars.id };
+      switch (vars.action) {
+        case 'resolve':
+          return api(workflowInstanceOpsContract.resolveCompensation, { params, body: vars.body });
+        case 'note':
+          return api(workflowInstanceOpsContract.addCompensationNote, { params, body: vars.body });
+        case 'retry':
+          return api(workflowInstanceOpsContract.retryCompensation, { params });
+        case 'resume':
+          return api(workflowInstanceOpsContract.resumeCompensation, { params });
+      }
+    },
+    onSuccess: () => invalidateCompensations(qc),
   });
 }
 
+// ─── 引擎运维 ───
+
 export function useWorkflowEngineActionPreview() {
-  return useMutation({
-    mutationFn: ({ key, filter }: { key: WorkflowEngineActionKey; filter: { instanceId?: number; olderThanMinutes?: number; limit: number } }) =>
-      request.post<WorkflowEngineActionPreview>(`/api/workflows/engine/actions/${key}/preview`, filter).then(unwrap),
-  });
+  return useApiMutation(workflowEngineContract.previewAction);
 }
 
 /**
@@ -383,48 +365,41 @@ export function useWorkflowEngineActionPreview() {
  * 但不涉及流程定义下拉，故失效监控与作业两棵子树。
  */
 export function useWorkflowEngineAction() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ key, filter }: { key: WorkflowEngineActionKey; filter: { instanceId?: number; olderThanMinutes?: number; limit: number } }) =>
-      request.post<WorkflowEngineActionResult>(`/api/workflows/engine/actions/${key}`, filter).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workflowMonitorKeys.monitor });
-      void qc.invalidateQueries({ queryKey: workflowMonitorKeys.jobs });
+  return useApiMutation(workflowEngineContract.runAction, {
+    invalidate: (qc) => {
+      invalidateMonitor(qc);
+      invalidateJobs(qc);
     },
   });
 }
 
 export function useWorkflowBatchRecovery() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: WorkflowRecoveryBatchInput) => request.post<WorkflowRecoveryBatchResult>('/api/workflows/instances/batch-skip-stuck', body).then(unwrap),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workflowMonitorKeys.monitor });
-      void qc.invalidateQueries({ queryKey: workflowMonitorKeys.jobs });
+  return useApiMutation(workflowInstanceOpsContract.batchSkipStuck, {
+    invalidate: (qc) => {
+      invalidateMonitor(qc);
+      invalidateJobs(qc);
     },
   });
 }
 
 export function useWorkflowHandoverPreview() {
   return useMutation({
-    mutationFn: (fromUserId: number) =>
-      request.get<WorkflowHandoverPreview>(`/api/workflows/tasks/handover-preview${toQueryString({ fromUserId })}`).then(unwrap),
+    mutationFn: (fromUserId: number) => api(workflowTaskContract.handoverPreview, { query: { fromUserId } }),
   });
 }
 
+/** 幂等键按交接双方生成，重复提交同一对交接不会重复移交 */
 export function useWorkflowHandover() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { fromUserId: number; toUserId: number; disableDelegations?: boolean; comment?: string }) =>
-      request.post<WorkflowHandoverResult>('/api/workflows/tasks/handover', body, {
-        headers: { 'X-Idempotency-Key': `workflow-handover-${body.fromUserId}-${body.toUserId}` },
-      }).then(unwrap),
+    mutationFn: ({ body }: InputOf<typeof workflowTaskContract.handover>) =>
+      api(workflowTaskContract.handover, { body }, { headers: { 'X-Idempotency-Key': `workflow-handover-${body.fromUserId}-${body.toUserId}` } }),
     onSuccess: () => {
       // 交接改写任务归属：任务列表、实例、监控视图都要回源；可选地停用委托
       void qc.invalidateQueries({ queryKey: ['workflow', 'tasks'] });
       void qc.invalidateQueries({ queryKey: ['workflow', 'instances'] });
       void qc.invalidateQueries({ queryKey: ['workflow', 'delegations'] });
-      void qc.invalidateQueries({ queryKey: workflowMonitorKeys.monitor });
+      invalidateMonitor(qc);
     },
   });
 }

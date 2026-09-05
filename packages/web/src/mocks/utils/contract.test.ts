@@ -10,6 +10,7 @@ const itemContract = defineContract('/api/items', {
   list: op.get('/', { query: paginationQuery.extend({ keyword: z.string().optional() }), response: paginated(itemSchema), summary: '列表' }),
   detail: op.get('/{id}', { params: idParam, response: itemSchema, summary: '详情' }),
   create: op.post('/', { body: z.object({ name: z.string().min(1, '名称不能为空') }), response: itemSchema, summary: '创建' }),
+  clone: op.post('/{id}/clone', { params: idParam, body: z.object({ name: z.string().optional() }), response: itemSchema, summary: '克隆' }),
   remove: op.delete('/{id}', { params: idParam, summary: '删除' }),
 });
 
@@ -25,14 +26,15 @@ const handlers: HttpHandler[] = [
     return item ? ok(item) : notFound('不存在', { status: 404 });
   }),
   mock(itemContract.create, ({ body, ok }) => ok({ id: 99, name: body.name }, '创建成功')),
+  mock(itemContract.clone, ({ params, body, ok }) => ok({ id: params.id + 100, name: body.name ?? 'copy' })),
   mock(itemContract.remove, ({ ok }) => ok(null, '删除成功')),
 ];
 
-async function call(method: string, path: string, body?: unknown) {
+async function call(method: string, path: string, body?: unknown, init?: { json?: boolean }) {
   for (const handler of handlers) {
     const request = new Request(`${ORIGIN}${path}`, {
       method,
-      headers: { 'content-type': 'application/json' },
+      headers: init?.json === false ? {} : { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const result = await (handler as unknown as {
@@ -69,6 +71,15 @@ describe('mock(op, resolver)', () => {
     expect(res).toEqual({ status: 200, body: { code: 0, message: '创建成功', data: { id: 99, name: 'delta' } } });
     const removed = await call('DELETE', '/api/items/1');
     expect(removed?.body).toEqual({ code: 0, message: '删除成功', data: null });
+  });
+
+  it('treats a request without JSON content-type as an empty body, like the server validator', async () => {
+    const noBody = await call('POST', '/api/items/1/clone', undefined, { json: false });
+    expect(noBody).toEqual({ status: 200, body: { code: 0, message: 'ok', data: { id: 101, name: 'copy' } } });
+    // 必填字段的 schema 对空体同样 400
+    expect((await call('POST', '/api/items', undefined, { json: false }))?.status).toBe(400);
+    // 带 JSON 头但报文为空 → 非法 JSON → 400
+    expect((await call('POST', '/api/items/1/clone'))?.status).toBe(400);
   });
 
   it('does not match paths outside the contract', async () => {

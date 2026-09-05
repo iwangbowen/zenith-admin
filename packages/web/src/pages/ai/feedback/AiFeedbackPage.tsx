@@ -4,6 +4,8 @@ import { Download, ThumbsUp, ThumbsDown } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { AiFeedbackItem, AiFeedbackStatus, AiMessage } from '@zenith/shared/ai';
+import { AI_FEEDBACK_STATUSES } from '@zenith/shared/ai';
+import { enumValueOf } from '@zenith/shared/core';
 import { formatDateForApi } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -25,6 +27,9 @@ const FEEDBACK_OPTIONS = [
   { value: '1', label: '👍 点赞' },
   { value: '-1', label: '👎 点踩' },
 ];
+
+/** 反馈类型查询值（与 FEEDBACK_OPTIONS 的 value 一致） */
+const FEEDBACK_FILTER_VALUES = ['1', '-1'] as const;
 
 const STATUS_FILTER_OPTIONS = [
   { value: 'pending', label: '待处理' },
@@ -80,15 +85,15 @@ export default function AiFeedbackPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [handlingMessage, setHandlingMessage] = useState<AiFeedbackItem | null>(null);
   const [contextMsgId, setContextMsgId] = useState<number | null>(null);
-  const listQuery = useAiFeedbackList({
-    page,
-    pageSize,
-    feedback: submittedParams.feedback || undefined,
-    status: submittedParams.status || undefined,
+  // 筛选值来自 Select 字符串，收窄为契约枚举后再进入查询
+  const filters = {
+    feedback: enumValueOf(FEEDBACK_FILTER_VALUES, submittedParams.feedback),
+    status: enumValueOf(AI_FEEDBACK_STATUSES, submittedParams.status),
     model: submittedParams.model || undefined,
     startDate: submittedParams.timeRange ? formatDateForApi(submittedParams.timeRange[0]) : undefined,
     endDate: submittedParams.timeRange ? formatDateForApi(submittedParams.timeRange[1]) : undefined,
-  });
+  };
+  const listQuery = useAiFeedbackList({ page, pageSize, ...filters });
   const data = listQuery.data ?? null;
   const handleMutation = useHandleAiFeedback();
   const contextQuery = useAiFeedbackContext(contextMsgId);
@@ -98,13 +103,7 @@ export default function AiFeedbackPage() {
     .map((m) => ({ value: m, label: m }));
 
   const handleExport = () => {
-    void downloadAiFeedbackCsv({
-      feedback: submittedParams.feedback || undefined,
-      status: submittedParams.status || undefined,
-      model: submittedParams.model || undefined,
-      startDate: submittedParams.timeRange ? formatDateForApi(submittedParams.timeRange[0]) : undefined,
-      endDate: submittedParams.timeRange ? formatDateForApi(submittedParams.timeRange[1]) : undefined,
-    });
+    void downloadAiFeedbackCsv(filters);
   };
 
   function openHandleModal(record: AiFeedbackItem) {
@@ -127,8 +126,8 @@ export default function AiFeedbackPage() {
     }
 
     await handleMutation.mutateAsync({
-      id: handlingMessage.id,
-      values: {
+      params: { msgId: handlingMessage.id },
+      body: {
         status: values.status,
         remark: normalizeRemark(values.remark),
       },

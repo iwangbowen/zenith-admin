@@ -1,211 +1,135 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { CreateReportEnvironmentInput, CreateReportEnvironmentPromotionInput, CreateReportPublishApprovalInput, CreateReportResourceTransferInput, DecideReportPublishApprovalInput, DecideReportResourceTransferInput, GrantReportResourceAclInput, ReportAclRole, ReportApprovalStatus, ReportEnvironment, ReportEnvironmentPromotion, ReportEnvironmentPromotionActionInput, ReportPromotionStatus, ReportPublishApproval, ReportResourceAcl, ReportResourceTransfer, ReportResourceType, ReportTransferStatus, UpdateReportEnvironmentInput, UpdateReportResourceAclInput } from '@zenith/shared/report';
-import { toQueryString, unwrap } from '@/lib/query';
-import { request } from '@/utils/request';
+import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { BodyOf, QueryOf } from '@zenith/shared/core';
+import { reportEnvironmentContract, reportGovernanceContract, type ReportEnvironment } from '@zenith/shared/report';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface ReportResourceRef {
-  resourceType: ReportResourceType;
-  resourceId: number;
-}
+const silent = { requestOptions: { silent: true } } as const;
+
+// ─── 资源权限 ───────────────────────────────────────────────────────────────
+
+export type ReportResourceAclParams = NonNullable<QueryOf<typeof reportGovernanceContract.acls>>;
 
 export const reportAclKeys = {
-  all: ['report', 'governance', 'acls'] as const,
-  lists: ['report', 'governance', 'acls', 'list'] as const,
-  list: (params: ReportResourceRef & { inheritFromFolder?: boolean }) => ['report', 'governance', 'acls', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'governance', 'acls', 'detail', id] as const,
+  all: contractKey(reportGovernanceContract.acls),
+  list: (params: ReportResourceAclParams) => contractKey(reportGovernanceContract.acls, { query: params }),
 };
 
-export function useReportResourceAcls(params: ReportResourceRef & { inheritFromFolder?: boolean }, enabled = true) {
-  return useQuery({
-    queryKey: reportAclKeys.list(params),
-    queryFn: () => request.get<ReportResourceAcl[]>(`/api/report/governance/acls${toQueryString(params)}`).then(unwrap),
-    enabled: enabled && params.resourceId > 0,
-  });
+export function useReportResourceAcls(params: ReportResourceAclParams, enabled = true) {
+  return useApiQuery(reportGovernanceContract.acls, { query: params }, { enabled: enabled && params.resourceId > 0 });
 }
 
 export function useGrantReportResourceAcl() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: GrantReportResourceAclInput) => request.post<ReportResourceAcl>('/api/report/governance/acls', values, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAclKeys.all }),
-  });
+  return useApiMutation(reportGovernanceContract.grantAcl, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportAclKeys.all }) });
 }
 
 export function useUpdateReportResourceAcl() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: UpdateReportResourceAclInput }) =>
-      request.put<ReportResourceAcl>(`/api/report/governance/acls/${id}`, values, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAclKeys.all }),
-  });
+  return useApiMutation(reportGovernanceContract.updateAcl, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportAclKeys.all }) });
 }
 
 export function useRevokeReportResourceAcl() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/report/governance/acls/${id}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportAclKeys.all }),
-  });
+  return useApiMutation(reportGovernanceContract.revokeAcl, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportAclKeys.all }) });
 }
 
+/** 权限检查是纯读操作，结果不进入缓存 */
 export function useCheckReportResourceAccess() {
-  return useMutation({
-    mutationFn: (values: ReportResourceRef & { requiredRole: ReportAclRole }) =>
-      request.post<{ allowed: boolean; requiredRole: ReportAclRole }>('/api/report/governance/access/check', values, { silent: true }).then(unwrap),
-  });
+  return useApiMutation(reportGovernanceContract.checkAccess, silent);
 }
 
-export interface GovernanceListParams {
-  page: number;
-  pageSize: number;
-  resourceType?: ReportResourceType;
-}
+// ─── 发布审批 ───────────────────────────────────────────────────────────────
+
+export type ReportApprovalListParams = NonNullable<QueryOf<typeof reportGovernanceContract.approvals>>;
 
 export const reportApprovalKeys = {
-  all: ['report', 'governance', 'approvals'] as const,
-  lists: ['report', 'governance', 'approvals', 'list'] as const,
-  list: (params: GovernanceListParams & { status?: ReportApprovalStatus }) => ['report', 'governance', 'approvals', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'governance', 'approvals', 'detail', id] as const,
+  all: contractKey(reportGovernanceContract.approvals),
+  list: (params: ReportApprovalListParams) => contractKey(reportGovernanceContract.approvals, { query: params }),
 };
 
-export function useReportApprovalList(params: GovernanceListParams & { status?: ReportApprovalStatus }) {
-  return useQuery({
-    queryKey: reportApprovalKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<ReportPublishApproval>>(`/api/report/governance/approvals${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+export function useReportApprovalList(params: ReportApprovalListParams) {
+  return useApiQuery(reportGovernanceContract.approvals, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useCreateReportApproval() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: CreateReportPublishApprovalInput) => request.post<ReportPublishApproval>('/api/report/governance/approvals', values, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportApprovalKeys.all }),
-  });
+  return useApiMutation(reportGovernanceContract.createApproval, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportApprovalKeys.all }) });
 }
 
 export function useDecideReportApproval() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: DecideReportPublishApprovalInput }) =>
-      request.post<ReportPublishApproval>(`/api/report/governance/approvals/${id}/decision`, values, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportApprovalKeys.all }),
-  });
+  return useApiMutation(reportGovernanceContract.decideApproval, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportApprovalKeys.all }) });
 }
 
 export function useCancelReportApproval() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
-      request.post<ReportPublishApproval>(`/api/report/governance/approvals/${id}/cancel`, reason ? { reason } : {}, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportApprovalKeys.all }),
-  });
+  return useApiMutation(reportGovernanceContract.cancelApproval, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportApprovalKeys.all }) });
 }
 
+// ─── 资源转移 ───────────────────────────────────────────────────────────────
+
+export type ReportTransferListParams = NonNullable<QueryOf<typeof reportGovernanceContract.transfers>>;
+
 export const reportTransferKeys = {
-  all: ['report', 'governance', 'transfers'] as const,
-  lists: ['report', 'governance', 'transfers', 'list'] as const,
-  list: (params: GovernanceListParams & { status?: ReportTransferStatus }) => ['report', 'governance', 'transfers', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'governance', 'transfers', 'detail', id] as const,
+  all: contractKey(reportGovernanceContract.transfers),
+  list: (params: ReportTransferListParams) => contractKey(reportGovernanceContract.transfers, { query: params }),
 };
 
-export function useReportTransferList(params: GovernanceListParams & { status?: ReportTransferStatus }) {
-  return useQuery({
-    queryKey: reportTransferKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<ReportResourceTransfer>>(`/api/report/governance/transfers${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+export function useReportTransferList(params: ReportTransferListParams) {
+  return useApiQuery(reportGovernanceContract.transfers, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useCreateReportTransfer() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: CreateReportResourceTransferInput) => request.post<ReportResourceTransfer>('/api/report/governance/transfers', values, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportTransferKeys.all }),
-  });
+  return useApiMutation(reportGovernanceContract.createTransfer, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportTransferKeys.all }) });
 }
 
 export function useDecideReportTransfer() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: DecideReportResourceTransferInput }) =>
-      request.post<ReportResourceTransfer>(`/api/report/governance/transfers/${id}/decision`, values, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportTransferKeys.all }),
-  });
+  return useApiMutation(reportGovernanceContract.decideTransfer, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportTransferKeys.all }) });
 }
 
 export function useCancelReportTransfer() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
-      request.post<ReportResourceTransfer>(`/api/report/governance/transfers/${id}/cancel`, reason ? { reason } : {}, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportTransferKeys.all }),
-  });
+  return useApiMutation(reportGovernanceContract.cancelTransfer, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportTransferKeys.all }) });
 }
 
+// ─── 环境 ───────────────────────────────────────────────────────────────────
+
 export const reportEnvironmentKeys = {
-  all: ['report', 'environments'] as const,
-  lists: ['report', 'environments', 'list'] as const,
-  list: (params: Record<string, never>) => ['report', 'environments', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'environments', 'detail', id] as const,
+  all: contractKey(reportEnvironmentContract.list),
 };
 
 export function useReportEnvironmentList() {
-  return useQuery({
-    queryKey: reportEnvironmentKeys.list({}),
-    queryFn: () => request.get<ReportEnvironment[]>('/api/report/environments').then(unwrap),
-  });
+  return useApiQuery(reportEnvironmentContract.list);
 }
 
+/** 新增 / 编辑共用的保存载荷：code 只在创建时提交 */
+export type SaveReportEnvironmentValues = Partial<BodyOf<typeof reportEnvironmentContract.create>>;
+
+/** 无 id 走 create，有 id 走 update（供 useEditModal 使用） */
 export function useSaveReportEnvironment() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CreateReportEnvironmentInput | UpdateReportEnvironmentInput }) =>
-      (id
-        ? request.put<ReportEnvironment>(`/api/report/environments/${id}`, values, { silent: true })
-        : request.post<ReportEnvironment>('/api/report/environments', values, { silent: true })
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportEnvironmentKeys.all }),
+  return useMutation<ReportEnvironment, Error, { id?: number; values: SaveReportEnvironmentValues }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(reportEnvironmentContract.create, { body: values as BodyOf<typeof reportEnvironmentContract.create> }, { silent: true })
+      : api(reportEnvironmentContract.update, { params: { id }, body: values }, { silent: true })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: reportEnvironmentKeys.all }),
   });
 }
 
 export function useDeleteReportEnvironment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/report/environments/${id}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportEnvironmentKeys.all }),
-  });
+  return useApiMutation(reportEnvironmentContract.remove, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportEnvironmentKeys.all }) });
 }
 
+// ─── 资源发布 ───────────────────────────────────────────────────────────────
+
+export type ReportPromotionListParams = NonNullable<QueryOf<typeof reportEnvironmentContract.promotions>>;
+
 export const reportPromotionKeys = {
-  all: ['report', 'environments', 'promotions'] as const,
-  lists: ['report', 'environments', 'promotions', 'list'] as const,
-  list: (params: GovernanceListParams & { status?: ReportPromotionStatus }) => ['report', 'environments', 'promotions', 'list', params] as const,
-  detail: (id: number | undefined) => ['report', 'environments', 'promotions', 'detail', id] as const,
+  all: contractKey(reportEnvironmentContract.promotions),
+  list: (params: ReportPromotionListParams) => contractKey(reportEnvironmentContract.promotions, { query: params }),
 };
 
-export function useReportPromotionList(params: GovernanceListParams & { status?: ReportPromotionStatus }) {
-  return useQuery({
-    queryKey: reportPromotionKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<ReportEnvironmentPromotion>>(`/api/report/environments/promotions${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+export function useReportPromotionList(params: ReportPromotionListParams) {
+  return useApiQuery(reportEnvironmentContract.promotions, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useCreateReportPromotion() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: CreateReportEnvironmentPromotionInput) => request.post<ReportEnvironmentPromotion>('/api/report/environments/promotions', values, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportPromotionKeys.all }),
-  });
+  return useApiMutation(reportEnvironmentContract.createPromotion, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportPromotionKeys.all }) });
 }
 
 export function useTransitionReportPromotion() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: ReportEnvironmentPromotionActionInput }) =>
-      request.post<ReportEnvironmentPromotion>(`/api/report/environments/promotions/${id}/transition`, values, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportPromotionKeys.all }),
-  });
+  return useApiMutation(reportEnvironmentContract.transitionPromotion, { ...silent, invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportPromotionKeys.all }) });
 }

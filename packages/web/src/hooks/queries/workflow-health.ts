@@ -1,11 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import type { WorkflowHealthSummary } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryOf } from '@zenith/shared/core';
+import { workflowHealthContract } from '@zenith/shared/workflow';
+import { api } from '@/lib/contract-query';
 
-export interface WorkflowHealthParams {
-  thresholdMinutes: number;
-}
+export type WorkflowHealthParams = QueryOf<typeof workflowHealthContract.summary>;
 
 export const workflowHealthKeys = {
   all: ['workflow', 'health'] as const,
@@ -15,6 +13,6 @@ export const workflowHealthKeys = {
 export function useWorkflowHealthSummary(params: WorkflowHealthParams) {
   return useQuery({
     queryKey: workflowHealthKeys.summary(params),
-    queryFn: () => request.get<WorkflowHealthSummary>(`/api/workflows/health${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowHealthContract.summary, { query: params }),
   });
 }

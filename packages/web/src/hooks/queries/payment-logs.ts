@@ -1,30 +1,15 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { PaymentNotifyLog } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentNotifyLogContract } from '@zenith/shared/payment';
+import { keepPreviousData } from '@tanstack/react-query';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 
-export interface PaymentLogListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  channel?: string;
-  scene?: string;
-  signatureValid?: string;
-  startTime?: string;
-  endTime?: string;
-}
+export type PaymentLogListParams = NonNullable<QueryOf<typeof paymentNotifyLogContract.logs>>;
 
 export const paymentLogKeys = {
-  all: ['payment-logs'] as const,
-  lists: ['payment-logs', 'list'] as const,
-  list: (params: PaymentLogListParams) => ['payment-logs', 'list', params] as const,
+  lists: contractKey(paymentNotifyLogContract.logs),
+  list: (params: PaymentLogListParams) => contractKey(paymentNotifyLogContract.logs, { query: params }),
 };
 
 export function usePaymentLogList(params: PaymentLogListParams) {
-  return useQuery({
-    queryKey: paymentLogKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentNotifyLog>>(`/api/payment/logs${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(paymentNotifyLogContract.logs, { query: params }, { placeholderData: keepPreviousData });
 }

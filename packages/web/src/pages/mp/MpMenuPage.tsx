@@ -131,7 +131,7 @@ export default function MpMenuPage() {
 
   const doSave = async () => {
     if (!currentId) return;
-    const data = await saveMutation.mutateAsync({ accountId: currentId, buttons });
+    const data = await saveMutation.mutateAsync({ body: { accountId: currentId, buttons } });
     Toast.success('已保存草稿');
     setMenu(data ?? null);
   };
@@ -145,7 +145,7 @@ export default function MpMenuPage() {
 
   const doPull = async () => {
     if (!currentId) return;
-    const data = await pullMutation.mutateAsync(currentId);
+    const data = await pullMutation.mutateAsync({ body: { accountId: currentId } });
     Toast.success('已从微信拉取');
     setMenu(data ?? null);
     setButtons(data?.buttons ?? []);
@@ -158,7 +158,7 @@ export default function MpMenuPage() {
     confirmDelete({
       title: '确定要删除微信端的自定义菜单吗？',
       onOk: async () => {
-        const data = await deleteMutation.mutateAsync(currentId);
+        const data = await deleteMutation.mutateAsync({ body: { accountId: currentId } });
         Toast.success('已删除微信菜单');
         setMenu(data ?? null);
         setButtons([]);

@@ -158,7 +158,7 @@ export default function AssetsPage() {
       onOk: async () => {
         const name = (document.querySelector('#asset-template-clone-name') as HTMLInputElement | null)?.value.trim();
         if (!name) { Toast.error('请输入副本名称'); abortSubmit(); }
-        await cloneTemplateMutation.mutateAsync({ id: record.id, name, folderId: record.folderId });
+        await cloneTemplateMutation.mutateAsync({ params: { id: record.id }, body: { name, folderId: record.folderId } });
         Toast.success('模板已克隆');
       },
     });
@@ -168,7 +168,7 @@ export default function AssetsPage() {
       title: `应用模板「${record.name}」？`,
       content: '系统将按模板类型创建对应资源；如需指定名称，可在创建后继续编辑。',
       onOk: async () => {
-        const result = await applyTemplateMutation.mutateAsync({ id: record.id, values: normalizeTemplateApplyValues({}) });
+        const result = await applyTemplateMutation.mutateAsync({ params: { id: record.id }, body: normalizeTemplateApplyValues({}) });
         Toast.success(`已创建${resourceTypeOptions.find((item) => item.value === result.resourceType)?.label ?? '资源'}：${result.name}`);
       },
     });
@@ -245,7 +245,7 @@ export default function AssetsPage() {
           key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:asset-template:delete'),
           onClick: () => { confirmDelete({
             title: `删除模板「${record.name}」？`,
-            onOk: async () => { await deleteTemplateMutation.mutateAsync(record.id); Toast.success('模板已删除'); },
+            onOk: async () => { await deleteTemplateMutation.mutateAsync({ params: { id: record.id } }); Toast.success('模板已删除'); },
           }); },
         },
       ],
@@ -266,7 +266,7 @@ export default function AssetsPage() {
           onClick: () => { Modal.confirm({
             title: record.publishedAt ? '撤销该弃用公告？' : '发布该弃用公告？',
             onOk: async () => {
-              await publishNoticeMutation.mutateAsync({ id: record.id, publish: !record.publishedAt });
+              await publishNoticeMutation.mutateAsync({ params: { id: record.id }, body: { publish: !record.publishedAt } });
               Toast.success(record.publishedAt ? '已撤销发布' : '已发布');
             },
           }); },
@@ -276,7 +276,7 @@ export default function AssetsPage() {
           key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:deprecation:delete'),
           onClick: () => { confirmDelete({
             title: '删除弃用公告？',
-            onOk: async () => { await deleteNoticeMutation.mutateAsync(record.id); Toast.success('公告已删除'); },
+            onOk: async () => { await deleteNoticeMutation.mutateAsync({ params: { id: record.id } }); Toast.success('公告已删除'); },
           }); },
         },
       ],

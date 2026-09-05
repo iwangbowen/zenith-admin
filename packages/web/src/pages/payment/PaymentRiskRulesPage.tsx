@@ -22,8 +22,9 @@ import {
   useRejectPaymentRiskReview,
   useSavePaymentRiskRule,
 } from '@/hooks/queries/payment-risk';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_RISK_DIMENSION_LABELS, PAYMENT_RISK_REVIEW_STATUS_LABELS, PAYMENT_RISK_SCOPE_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_RISK_SCOPE_OPTIONS, PAYMENT_RISK_ACTION_OPTIONS, PAYMENT_RISK_DIMENSION_OPTIONS, PAYMENT_RISK_REVIEW_STATUS_OPTIONS } from '@zenith/shared/payment';
-import type { PaymentChannel, PaymentRiskAction, PaymentRiskDimension, PaymentRiskHit, PaymentRiskReview, PaymentRiskReviewStatus, PaymentRiskRule, PaymentRiskScope } from '@zenith/shared/payment';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_RISK_ACTIONS, PAYMENT_RISK_DIMENSION_LABELS, PAYMENT_RISK_HIT_QUERY_DIMENSIONS, PAYMENT_RISK_REVIEW_STATUS_LABELS, PAYMENT_RISK_REVIEW_STATUSES, PAYMENT_RISK_SCOPE_LABELS, PAYMENT_RISK_SCOPES, PAYMENT_CHANNEL_OPTIONS, PAYMENT_RISK_SCOPE_OPTIONS, PAYMENT_RISK_ACTION_OPTIONS, PAYMENT_RISK_DIMENSION_OPTIONS, PAYMENT_RISK_REVIEW_STATUS_OPTIONS } from '@zenith/shared/payment';
+import type { CreatePaymentRiskRuleInput, PaymentChannel, PaymentRiskAction, PaymentRiskDimension, PaymentRiskHit, PaymentRiskReview, PaymentRiskReviewStatus, PaymentRiskRule, PaymentRiskScope } from '@zenith/shared/payment';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useRuleListList } from '@/hooks/queries/rules';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -36,7 +37,8 @@ const yuan = formatYuan;
 const channelOptions = PAYMENT_CHANNEL_OPTIONS;
 const scopeOptions = PAYMENT_RISK_SCOPE_OPTIONS;
 const actionOptions = PAYMENT_RISK_ACTION_OPTIONS;
-const dimensionOptions = PAYMENT_RISK_DIMENSION_OPTIONS;
+// 命中记录只支持按规则维度筛选（服务端 hits 查询不接受 decision）
+const dimensionOptions = PAYMENT_RISK_DIMENSION_OPTIONS.filter((option) => enumValueOf(PAYMENT_RISK_HIT_QUERY_DIMENSIONS, option.value) !== undefined);
 const reviewStatusOptions = PAYMENT_RISK_REVIEW_STATUS_OPTIONS;
 const REVIEW_STATUS_COLOR = { pending: 'orange', approved: 'green', rejected: 'red' } as const satisfies Record<PaymentRiskReviewStatus, string>;
 
@@ -95,8 +97,8 @@ export default function PaymentRiskRulesPage() {
   const listQuery = usePaymentRiskRuleList({
     page,
     pageSize,
-    scope: submittedParams.scope || undefined,
-    status: submittedParams.status || undefined,
+    scope: enumValueOf(PAYMENT_RISK_SCOPES, submittedParams.scope),
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -104,8 +106,8 @@ export default function PaymentRiskRulesPage() {
     page: hPage,
     pageSize: hPageSize,
     keyword: submittedHitParams.keyword || undefined,
-    action: submittedHitParams.action || undefined,
-    dimension: submittedHitParams.dimension || undefined,
+    action: enumValueOf(PAYMENT_RISK_ACTIONS, submittedHitParams.action),
+    dimension: enumValueOf(PAYMENT_RISK_HIT_QUERY_DIMENSIONS, submittedHitParams.dimension),
   });
   const hits = hitQuery.data?.list ?? [];
   const hitTotal = hitQuery.data?.total ?? 0;
@@ -113,7 +115,7 @@ export default function PaymentRiskRulesPage() {
     page: rPage,
     pageSize: rPageSize,
     keyword: submittedReviewParams.keyword || undefined,
-    status: submittedReviewParams.status || undefined,
+    status: enumValueOf(PAYMENT_RISK_REVIEW_STATUSES, submittedReviewParams.status),
   });
   const reviews = reviewQuery.data?.list ?? [];
   const reviewTotal = reviewQuery.data?.total ?? 0;
@@ -136,7 +138,7 @@ export default function PaymentRiskRulesPage() {
   function handleReviewSearch() { setRPage(1); setSubmittedReviewParams({ keyword: reviewKeyword, status: reviewStatus }); void queryClient.invalidateQueries({ queryKey: paymentRiskKeys.reviewLists }); }
   function handleReviewReset() { setReviewKeyword(''); setReviewStatus(undefined); setRPage(1); setSubmittedReviewParams({ keyword: '' }); void queryClient.invalidateQueries({ queryKey: paymentRiskKeys.reviewLists }); }
 
-  const modal = useEditModal<PaymentRiskRule, RiskFormValues, Partial<PaymentRiskRule>>({
+  const modal = useEditModal<PaymentRiskRule, RiskFormValues, Partial<CreatePaymentRiskRuleInput>>({
     entityName: '风控规则',
     save: saveMutation,
     defaults: { scope: 'global', status: 'enabled', action: 'block', blockListKeys: [], allowListKeys: [] },
@@ -204,10 +206,10 @@ export default function PaymentRiskRulesPage() {
       return;
     }
     if (reviewDecision === 'approve') {
-      await approveMutation.mutateAsync({ id: reviewTarget.id, remark });
+      await approveMutation.mutateAsync({ params: { id: reviewTarget.id }, body: { remark } });
       Toast.success('已放行');
     } else {
-      await rejectMutation.mutateAsync({ id: reviewTarget.id, remark });
+      await rejectMutation.mutateAsync({ params: { id: reviewTarget.id }, body: { remark } });
       Toast.success('已拒绝');
     }
     closeReviewDecision();

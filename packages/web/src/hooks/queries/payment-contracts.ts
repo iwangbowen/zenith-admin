@@ -1,50 +1,24 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { QueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { PaymentContract, PaymentDeductPlan } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { BodyOf, QueryOf } from '@zenith/shared/core';
+import { paymentDeductPlanContract, paymentSigningContract, type PaymentDeductPlan } from '@zenith/shared/payment';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { paymentOrderKeys } from './payment-orders';
 
-export interface PaymentContractListParams {
-  applicationId: number;
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-  channel?: string;
-  planId?: number;
-  startTime?: string;
-  endTime?: string;
-}
+export type PaymentContractListParams = NonNullable<QueryOf<typeof paymentSigningContract.contracts>>;
+export type DeductPlanListParams = NonNullable<QueryOf<typeof paymentDeductPlanContract.deductPlans>>;
+export type DeductPlanSaveValues = Partial<BodyOf<typeof paymentDeductPlanContract.createDeductPlan>>;
 
-export interface DeductPlanListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-}
-
-export interface DeductResult {
-  orderNo?: string | null;
-  deductStatus: 'success' | 'processing' | 'failed';
-  failReason?: string | null;
-}
-
-export interface SignContractResult {
-  contract: PaymentContract;
-  firstDeduct?: DeductResult | null;
-}
-
+/** 签约协议与扣款计划共用 `/api/payment` 根，key 按操作名区分：协议状态变化不会连坐扣款计划下拉源 */
 export const paymentContractKeys = {
-  all: ['payment-contracts'] as const,
-  lists: ['payment-contracts', 'list'] as const,
-  list: (params: PaymentContractListParams) => ['payment-contracts', 'list', params] as const,
-  detail: (id: number | undefined, applicationId?: number) => ['payment-contracts', 'detail', id, applicationId] as const,
-  planAll: ['payment-contracts', 'plans'] as const,
-  planLists: ['payment-contracts', 'plans', 'list'] as const,
-  planList: (params: DeductPlanListParams) => ['payment-contracts', 'plans', 'list', params] as const,
-  planOptions: ['payment-contracts', 'plans', 'options'] as const,
+  lists: contractKey(paymentSigningContract.contracts),
+  list: (params: PaymentContractListParams) => contractKey(paymentSigningContract.contracts, { query: params }),
+  details: contractKey(paymentSigningContract.contractDetail),
+  detail: (id: number | undefined, applicationId?: number) =>
+    contractKey(paymentSigningContract.contractDetail, { params: { id: id ?? 0 }, query: { applicationId: applicationId ?? 0 } }),
+  planLists: contractKey(paymentDeductPlanContract.deductPlans),
+  planList: (params: DeductPlanListParams) => contractKey(paymentDeductPlanContract.deductPlans, { query: params }),
+  planOptions: contractKey(paymentDeductPlanContract.deductPlansAll),
 };
 
 // ─── 签约协议 ─────────────────────────────────────────────────────────────────
@@ -61,20 +35,12 @@ function invalidateContract(qc: QueryClient, id?: number, applicationId?: number
 }
 
 export function usePaymentContractList(params: PaymentContractListParams, enabled = true) {
-  return useQuery({
-    queryKey: paymentContractKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentContract>>(`/api/payment/contracts${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(paymentSigningContract.contracts, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function useCreatePaymentContract() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: { applicationId: number; planId: number; payMethod: string; currency: 'CNY'; signerAccount: string; signerName?: string; remark?: string; firstDeductNow: boolean }) =>
-      request.post<SignContractResult>('/api/payment/contracts', values).then(unwrap),
-    onSuccess: (result) => {
+  return useApiMutation(paymentSigningContract.createContract, {
+    invalidate: (qc, result) => {
       invalidateContract(qc, result.contract.id, result.contract.appId);
       // firstDeductNow 会立即产生一笔支付单
       if (result.firstDeduct) void qc.invalidateQueries({ queryKey: paymentOrderKeys.lists });
@@ -83,51 +49,36 @@ export function useCreatePaymentContract() {
 }
 
 export function useTerminatePaymentContract() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, applicationId }: { id: number; applicationId: number }) =>
-      request.post<PaymentContract>(`/api/payment/contracts/${id}/terminate${toQueryString({ applicationId })}`).then(unwrap),
-    onSuccess: (_data, values) => invalidateContract(qc, values.id, values.applicationId),
+  return useApiMutation(paymentSigningContract.terminateContract, {
+    invalidate: (qc, _output, { params, query }) => invalidateContract(qc, params.id, query.applicationId),
   });
 }
 
 export function usePausePaymentContract() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, applicationId }: { id: number; applicationId: number }) =>
-      request.post<PaymentContract>(`/api/payment/contracts/${id}/pause${toQueryString({ applicationId })}`).then(unwrap),
-    onSuccess: (_data, values) => invalidateContract(qc, values.id, values.applicationId),
+  return useApiMutation(paymentSigningContract.pauseContract, {
+    invalidate: (qc, _output, { params, query }) => invalidateContract(qc, params.id, query.applicationId),
   });
 }
 
 export function useResumePaymentContract() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, applicationId }: { id: number; applicationId: number }) =>
-      request.post<PaymentContract>(`/api/payment/contracts/${id}/resume${toQueryString({ applicationId })}`).then(unwrap),
-    onSuccess: (_data, values) => invalidateContract(qc, values.id, values.applicationId),
+  return useApiMutation(paymentSigningContract.resumeContract, {
+    invalidate: (qc, _output, { params, query }) => invalidateContract(qc, params.id, query.applicationId),
   });
 }
 
 export function useDeductPaymentContract() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, applicationId }: { id: number; applicationId: number }) =>
-      request.post<DeductResult & { contract: PaymentContract }>(`/api/payment/contracts/${id}/deduct${toQueryString({ applicationId })}`).then(unwrap),
-    onSuccess: (_data, values) => {
+  return useApiMutation(paymentSigningContract.deductContract, {
+    invalidate: (qc, _output, { params, query }) => {
       // 扣款会改写 lastDeductAt / nextDeductAt / failCount 并生成一笔支付单
-      invalidateContract(qc, values.id, values.applicationId);
+      invalidateContract(qc, params.id, query.applicationId);
       void qc.invalidateQueries({ queryKey: paymentOrderKeys.lists });
     },
   });
 }
 
 export function useRecoverPaymentContract() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, applicationId }: { id: number; applicationId: number }) =>
-      request.post<PaymentContract>(`/api/payment/contracts/${id}/recover${toQueryString({ applicationId })}`).then(unwrap),
-    onSuccess: (_data, values) => invalidateContract(qc, values.id, values.applicationId),
+  return useApiMutation(paymentSigningContract.recoverContract, {
+    invalidate: (qc, _output, { params, query }) => invalidateContract(qc, params.id, query.applicationId),
   });
 }
 
@@ -146,41 +97,29 @@ function invalidatePlan(qc: QueryClient) {
 }
 
 export function useDeductPlanList(params: DeductPlanListParams) {
-  return useQuery({
-    queryKey: paymentContractKeys.planList(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentDeductPlan>>(`/api/payment/deduct-plans${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(paymentDeductPlanContract.deductPlans, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useAllDeductPlans() {
   return useQuery({
     queryKey: paymentContractKeys.planOptions,
-    queryFn: () => request.get<PaymentDeductPlan[]>('/api/payment/deduct-plans/all').then(unwrap),
+    queryFn: () => api(paymentDeductPlanContract.deductPlansAll),
+    staleTime: LOOKUP_STALE_TIME,
   });
 }
 
-export function useCreateDeductPlan() {
+/** 无 id 走新增，有 id 走更新 */
+export function useSaveDeductPlan() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (values: Partial<PaymentDeductPlan>) => request.post<PaymentDeductPlan>('/api/payment/deduct-plans', values).then(unwrap),
-    onSuccess: () => invalidatePlan(qc),
-  });
-}
-
-export function useUpdateDeductPlan() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id: number; values: Partial<PaymentDeductPlan> }) =>
-      request.put<PaymentDeductPlan>(`/api/payment/deduct-plans/${id}`, values).then(unwrap),
+  return useMutation<PaymentDeductPlan, Error, { id?: number; values: DeductPlanSaveValues }>({
+    mutationFn: ({ id, values }) =>
+      id === undefined
+        ? api(paymentDeductPlanContract.createDeductPlan, { body: values as BodyOf<typeof paymentDeductPlanContract.createDeductPlan> })
+        : api(paymentDeductPlanContract.updateDeductPlan, { params: { id }, body: values }),
     onSuccess: () => invalidatePlan(qc),
   });
 }
 
 export function useDeleteDeductPlan() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete(`/api/payment/deduct-plans/${id}`).then(unwrap),
-    onSuccess: () => invalidatePlan(qc),
-  });
+  return useApiMutation(paymentDeductPlanContract.removeDeductPlan, { invalidate: invalidatePlan });
 }

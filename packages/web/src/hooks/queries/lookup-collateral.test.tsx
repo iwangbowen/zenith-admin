@@ -57,7 +57,6 @@ beforeEach(() => {
     .on('POST', '/api/identity-providers', { id: 1 })
     .on('GET', '/api/payment/sharing/receivers', { list: [], total: 0, page: 1, pageSize: 10 })
     .on('GET', '/api/payment/sharing/orders', { list: [], total: 0, page: 1, pageSize: 10 })
-    .on('GET', '/api/payment/sharing/receivers/enabled', [{ id: 1, name: '分账方 A' }])
     .on('POST', '/api/payment/sharing/orders', { id: 9 })
     .on('GET', '/api/tenant-packages/all', [{ id: 1, name: '基础版' }])
     .on('GET', '/api/tenant-packages/1', { id: 1, name: '基础版', features: ['wiki'] })
@@ -162,7 +161,7 @@ describe('payment-sharing：新增分账单不改变分账方名单', () => {
     });
 
     const fetches = observeFetches(qc);
-    await result.current.createOrder.mutateAsync({ orderNo: 'X1', receiverId: 1 });
+    await result.current.createOrder.mutateAsync({ body: { orderNo: 'X1', receiverId: 1 } });
     await waitFor(() => expect(fetches.countOf(paymentSharingKeys.orderLists)).toBe(1));
 
     expect(fetches.countOf(paymentSharingKeys.receiverLists)).toBe(0);

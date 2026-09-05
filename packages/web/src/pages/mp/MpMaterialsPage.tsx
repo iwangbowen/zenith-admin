@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Button, Form, Input, Modal, Select, Spin, Tag, Toast, Banner, Upload, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, UploadCloud } from 'lucide-react';
-import { MP_MATERIAL_TYPE_LABELS, MP_MATERIAL_TYPE_OPTIONS } from '@zenith/shared/mp';
-import type { MpMaterial, MpMaterialType } from '@zenith/shared/mp';
+import { MP_MATERIAL_TYPES, MP_MATERIAL_TYPE_LABELS, MP_MATERIAL_TYPE_OPTIONS } from '@zenith/shared/mp';
+import type { CreateMpMaterialInput, MpMaterial, MpMaterialType } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -15,7 +15,7 @@ import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpMaterialKeys,
-  useDeleteMpMaterial,
+  useDeleteMpMaterials,
   useMpMaterialList,
   useSaveMpMaterial,
   useSyncMpMaterials,
@@ -25,7 +25,7 @@ import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-co
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
-import { formatBytes } from '@zenith/shared/core';
+import { enumValueOf, formatBytes } from '@zenith/shared/core';
 
 interface SearchParams { filterType: MpMaterialType | undefined; keyword: string; }
 const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
@@ -39,12 +39,13 @@ export default function MpMaterialsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpMaterialKeys.lists });
 
-  const listQuery = useMpMaterialList(currentId, {
+  const listQuery = useMpMaterialList({
+    accountId: currentId ?? 0,
     page,
     pageSize,
     type: submittedParams.filterType,
     keyword: submittedParams.keyword || undefined,
-  });
+  }, !!currentId);
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
 
@@ -53,7 +54,7 @@ export default function MpMaterialsPage() {
   const [uploadName, setUploadName] = useState('');
 
   const saveMutation = useSaveMpMaterial();
-  const deleteMutation = useDeleteMpMaterial();
+  const deleteMutation = useDeleteMpMaterials();
   const syncMutation = useSyncMpMaterials();
   const uploadMutation = useUploadMpMaterial();
 
@@ -61,14 +62,15 @@ export default function MpMaterialsPage() {
 
   const handleSync = async () => {
     if (!currentId) return;
-    const data = await syncMutation.mutateAsync(currentId);
+    const data = await syncMutation.mutateAsync({ body: { accountId: currentId } });
     Toast.success(`同步完成：新增 ${data.created ?? 0}，更新 ${data.updated ?? 0}`);
   };
 
-  const modal = useEditModal<MpMaterial, Record<string, unknown>>({
+  const modal = useEditModal<MpMaterial, Partial<CreateMpMaterialInput>>({
     save: saveMutation,
     defaults: { type: 'image', name: '', url: '' },
     toValues: (record) => ({ name: record.name }),
+    // 新增归属当前公众号；重命名只改名称
     beforeSave: (values, { isEdit }) => {
       if (!currentId) abortSubmit('validation');
       return isEdit ? { name: values.name } : { ...values, accountId: currentId };
@@ -118,7 +120,7 @@ export default function MpMaterialsPage() {
       placeholder="全部类型"
       items={MP_MATERIAL_TYPE_OPTIONS}
       value={draftParams.filterType}
-      onChange={(v) => setDraftParams({ ...draftParams, filterType: v as MpMaterialType | undefined })}
+      onChange={(v) => setDraftParams({ ...draftParams, filterType: enumValueOf(MP_MATERIAL_TYPES, v) })}
     />
   );
   const renderKeywordInput = () => (

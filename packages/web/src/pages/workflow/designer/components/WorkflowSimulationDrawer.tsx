@@ -685,7 +685,7 @@ export default function WorkflowSimulationDrawer({
     if (!values) return;
     try {
       const saved = await saveCaseMutation.mutateAsync({
-        definitionId, name, starterUserId: starterUserId ?? null, formData: values, decisions,
+        body: { definitionId, name, starterUserId: starterUserId ?? null, formData: values, decisions },
       });
       Toast.success('仿真用例已保存');
       setSaveCaseModalVisible(false);
@@ -714,7 +714,7 @@ export default function WorkflowSimulationDrawer({
   const deleteCase = async () => {
     if (!selectedCaseId) return;
     try {
-      await deleteCaseMutation.mutateAsync(selectedCaseId);
+      await deleteCaseMutation.mutateAsync({ params: { id: selectedCaseId } });
       Toast.success('已删除用例');
       setSelectedCaseId(undefined);
     } catch {

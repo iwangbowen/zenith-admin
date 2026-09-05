@@ -1,7 +1,7 @@
-import { http } from 'msw';
+import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
-import { ok, notFound, badRequest, paginate } from '@/mocks/utils/handlers';
-import type { PaymentDispute, PaymentDisputeDetail, PaymentDisputeReply, PaymentDisputeStats } from '@zenith/shared/payment';
+import { notFound, badRequest } from '@/mocks/utils/handlers';
+import { paymentDisputeContract, type PaymentDispute, type PaymentDisputeDetail, type PaymentDisputeReply, type PaymentDisputeStats } from '@zenith/shared/payment';
 import dayjs from 'dayjs';
 
 let nextDisputeId = 4;
@@ -108,58 +108,51 @@ function toDetail(d: MockDispute): PaymentDisputeDetail {
 }
 
 export const paymentDisputeHandlers = [
-  http.get('/api/payment/disputes/stats', () => {
+  mock(paymentDisputeContract.stats, ({ ok }) => {
     disputes.forEach(refreshOverdue);
     const open = disputes.filter((d) => d.status === 'pending' || d.status === 'processing').length;
     const overdue = disputes.filter((d) => d.overdue).length;
     const stats: PaymentDisputeStats = { open, overdue, last30dCount: disputes.length, last30dRate: 1.2, avgResolveHours: 5.5 };
     return ok(stats);
   }),
-  http.get('/api/payment/disputes', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const type = url.searchParams.get('type') ?? '';
-    const channel = url.searchParams.get('channel') ?? '';
-    const route = url.searchParams.get('route') ?? '';
+  mock(paymentDisputeContract.list, ({ query, ok, paginate }) => {
     disputes.forEach(refreshOverdue);
     const filtered = disputes.filter((d) =>
-      (!keyword || d.disputeNo.includes(keyword) || d.orderNo.includes(keyword) || (d.complainant ?? '').includes(keyword)) &&
-      (!status || d.status === status) && (!type || d.type === type) && (!channel || d.channel === channel) && (!route || d.route === route),
+      (!query.keyword || d.disputeNo.includes(query.keyword) || d.orderNo.includes(query.keyword) || (d.complainant ?? '').includes(query.keyword)) &&
+      (!query.status || d.status === query.status) && (!query.type || d.type === query.type) && (!query.channel || d.channel === query.channel) && (!query.route || d.route === query.route) &&
+      (!query.overdueOnly || d.overdue) &&
+      (!query.startTime || d.createdAt >= query.startTime) && (!query.endTime || d.createdAt <= query.endTime),
     ).map(({ replies: _r, ...rest }) => rest);
-    return ok(paginate([...filtered].sort((a, b) => b.id - a.id), url));
+    return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
-  http.get('/api/payment/disputes/:id', ({ params }) => {
-    const d = disputes.find((x) => x.id === Number(params.id));
+  mock(paymentDisputeContract.detail, ({ params, ok }) => {
+    const d = disputes.find((x) => x.id === params.id);
     return d ? ok(toDetail(d)) : notFound('投诉工单不存在');
   }),
-  http.post('/api/payment/disputes/:id/reply', async ({ params, request }) => {
-    const d = disputes.find((x) => x.id === Number(params.id));
+  mock(paymentDisputeContract.reply, ({ params, body, ok }) => {
+    const d = disputes.find((x) => x.id === params.id);
     if (!d) return notFound('投诉工单不存在');
     if (d.status !== 'pending' && d.status !== 'processing') return badRequest('工单已完结，无法回复');
-    const b = (await request.json()) as { content: string };
-    d.replies.push({ id: nextReplyId++, author: 'merchant', content: b.content, operatorName: '管理员', createdAt: mockDateTime() });
+    d.replies.push({ id: nextReplyId++, author: 'merchant', content: body.content, operatorName: '管理员', createdAt: mockDateTime() });
     if (d.status === 'pending') d.status = 'processing';
     d.updatedAt = mockDateTime();
     return ok(toDetail(d), '回复成功');
   }),
-  http.post('/api/payment/disputes/:id/resolve', async ({ params, request }) => {
-    const d = disputes.find((x) => x.id === Number(params.id));
+  mock(paymentDisputeContract.resolve, ({ params, body, ok }) => {
+    const d = disputes.find((x) => x.id === params.id);
     if (!d) return notFound('投诉工单不存在');
     if (d.status !== 'pending' && d.status !== 'processing') return badRequest('工单已完结');
-    const b = (await request.json().catch(() => ({}))) as { remark?: string };
-    d.replies.push({ id: nextReplyId++, author: 'system', content: b.remark ? `工单已完结：${b.remark}` : '工单已完结', operatorName: '管理员', createdAt: mockDateTime() });
+    d.replies.push({ id: nextReplyId++, author: 'system', content: body.remark ? `工单已完结：${body.remark}` : '工单已完结', operatorName: '管理员', createdAt: mockDateTime() });
     d.status = 'resolved';
     d.resolvedAt = mockDateTime();
     d.updatedAt = mockDateTime();
     return ok(toDetail(d), '已完结');
   }),
-  http.post('/api/payment/disputes/:id/refund', async ({ params, request }) => {
-    const d = disputes.find((x) => x.id === Number(params.id));
+  mock(paymentDisputeContract.refund, ({ params, body, ok }) => {
+    const d = disputes.find((x) => x.id === params.id);
     if (!d) return notFound('投诉工单不存在');
     if (d.status !== 'pending' && d.status !== 'processing') return badRequest('工单已完结');
-    const b = (await request.json().catch(() => ({}))) as { refundAmount?: number };
-    const amount = b.refundAmount ?? d.amount;
+    const amount = body.refundAmount ?? d.amount;
     d.refundNo = `REF${Date.now()}`;
     d.replies.push({ id: nextReplyId++, author: 'system', content: `已发起退款 ${d.refundNo}（${(amount / 100).toFixed(2)} 元，状态：success）`, operatorName: '管理员', createdAt: mockDateTime() });
     d.status = 'refunded';
@@ -167,7 +160,7 @@ export const paymentDisputeHandlers = [
     d.updatedAt = mockDateTime();
     return ok(toDetail(d), '退款已发起');
   }),
-  http.post('/api/payment/disputes/simulate', () => {
+  mock(paymentDisputeContract.simulate, ({ body, ok }) => {
     const id = nextDisputeId++;
     const now = mockDateTime();
     const item: MockDispute = {
@@ -175,7 +168,7 @@ export const paymentDisputeHandlers = [
       disputeNo: `DSP${Date.now()}`,
       channelDisputeNo: `WXC${Date.now()}`,
       channel: 'wechat',
-      orderNo: `PAY${Date.now()}`,
+      orderNo: body.orderNo ?? `PAY${Date.now()}`,
       complainant: `oDemo_user_${String(id).padStart(3, '0')}`,
       complainantPhone: '138****8888',
       type: 'service_issue',

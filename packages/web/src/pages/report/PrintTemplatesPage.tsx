@@ -23,6 +23,7 @@ import {
   useSaveReportPrintTemplate,
 } from '@/hooks/queries/report-print';
 import PrintReportView from './PrintReportView';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CreateReportPrintTemplateInput, ReportPrintRenderResult, ReportPrintTemplate, UpdateReportPrintTemplateInput } from '@zenith/shared/report';
 import type { ExportJobFormat } from '@zenith/shared/tasks';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -59,7 +60,7 @@ export default function PrintTemplatesPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
     ownerId: submittedParams.ownerId,
     folderId: submittedParams.folderId,
   });
@@ -109,7 +110,7 @@ export default function PrintTemplatesPage() {
   }
 
   async function handleClone(record: ReportPrintTemplate) {
-    const cloned = await cloneMutation.mutateAsync({ id: record.id });
+    const cloned = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
     Toast.success(`已复制为「${cloned.name}」`);
   }
 
@@ -118,7 +119,7 @@ export default function PrintTemplatesPage() {
     Modal.confirm({
       title: `确认批量${status === 'enabled' ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 个打印模板？`,
       onOk: async () => {
-        await batchStatusMutation.mutateAsync({ ids: selectedRowKeys, status });
+        await batchStatusMutation.mutateAsync({ body: { ids: selectedRowKeys, status } });
         setSelectedRowKeys([]);
         Toast.success(status === 'enabled' ? '批量启用成功' : '批量停用成功');
       },
@@ -138,7 +139,7 @@ export default function PrintTemplatesPage() {
     setPreviewVisible(true);
     setPreviewResult(null);
     setPreviewParams(values);
-    const result = await renderMutation.mutateAsync({ id: record.id, params: values, limit: 300 });
+    const result = await renderMutation.mutateAsync({ params: { id: record.id }, body: { params: values, limit: 300 } });
     setPreviewResult(result);
   }
 

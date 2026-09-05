@@ -52,14 +52,14 @@ export function GovernanceApprovalTab() {
     },
     defaults: { action: 'publish', requestedRevision: 1, snapshot: '{}' },
     labelWidth: 95,
-    beforeSave: (values) => ({
+    beforeSave: (values) => ({ body: {
         resourceType: values.resourceType as ReportResourceType,
         resourceId: Number(values.resourceId),
         action: values.action as 'publish' | 'promote' | 'deprecate',
         requestedRevision: Number(values.requestedRevision),
         snapshot: parseJsonObject(String(values.snapshot), '发布快照'),
         note: values.note ? String(values.note) : undefined,
-    }),
+    } }),
     successMessage: () => '发布审批已提交',
   });
   const decide = (record: ReportPublishApproval, decision: 'approved' | 'rejected') => {
@@ -69,7 +69,7 @@ export function GovernanceApprovalTab() {
       okButtonProps: decision === 'rejected' ? { type: 'danger', theme: 'solid' } : undefined,
       onOk: async () => {
         try {
-          await decideMutation.mutateAsync({ id: record.id, values: { decision } });
+          await decideMutation.mutateAsync({ params: { id: record.id }, body: { decision } });
           Toast.success(decision === 'approved' ? '审批已通过' : '审批已拒绝');
         } catch (error) {
           Toast.error(approvalConflictMessage(error) ?? (error instanceof Error ? error.message : '审批处理失败'));
@@ -96,7 +96,7 @@ export function GovernanceApprovalTab() {
           key: 'cancel', label: '取消申请', danger: true, hidden: !hasPermission('report:approval:request') || record.status !== 'pending',
           onClick: () => { confirmDanger({
             title: '取消该发布审批申请？',
-            onOk: async () => { await cancelMutation.mutateAsync({ id: record.id }); Toast.success('审批申请已取消'); },
+            onOk: async () => { await cancelMutation.mutateAsync({ params: { id: record.id }, body: {} }); Toast.success('审批申请已取消'); },
           }); },
         },
       ],
@@ -158,12 +158,12 @@ export function GovernanceTransferTab() {
       mutateAsync: ({ values }) => createMutation.mutateAsync(values),
     },
     labelWidth: 95,
-    beforeSave: (values) => ({
+    beforeSave: (values) => ({ body: {
         resourceType: values.resourceType as ReportResourceType,
         resourceId: Number(values.resourceId),
         toOwnerId: Number(values.toOwnerId),
         reason: values.reason ? String(values.reason) : undefined,
-    }),
+    } }),
     successMessage: () => '所有权转移已申请',
   });
   const decide = (record: ReportResourceTransfer, decision: 'accepted' | 'rejected') => {
@@ -172,7 +172,7 @@ export function GovernanceTransferTab() {
       content: `${record.fromOwnerName ?? '当前负责人'} → ${record.toOwnerName ?? `用户 #${record.toOwnerId}`}`,
       okButtonProps: decision === 'rejected' ? { type: 'danger', theme: 'solid' } : undefined,
       onOk: async () => {
-        await decideMutation.mutateAsync({ id: record.id, values: { decision } });
+        await decideMutation.mutateAsync({ params: { id: record.id }, body: { decision } });
         Toast.success(decision === 'accepted' ? '所有权已转移' : '转移已拒绝');
       },
     });
@@ -194,7 +194,7 @@ export function GovernanceTransferTab() {
           key: 'cancel', label: '取消申请', danger: true, hidden: !hasPermission('report:resource:transfer') || record.status !== 'pending',
           onClick: () => { confirmDanger({
             title: '取消该所有权转移申请？',
-            onOk: async () => { await cancelMutation.mutateAsync({ id: record.id }); Toast.success('转移申请已取消'); },
+            onOk: async () => { await cancelMutation.mutateAsync({ params: { id: record.id }, body: {} }); Toast.success('转移申请已取消'); },
           }); },
         },
       ],

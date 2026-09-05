@@ -20,7 +20,8 @@ import {
   useResolvePaymentDispute,
   useSimulatePaymentDispute,
 } from '@/hooks/queries/payment-disputes';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_DISPUTE_ROUTE_LABELS, PAYMENT_DISPUTE_ROUTE_OPTIONS, PAYMENT_DISPUTE_STATUS_LABELS, PAYMENT_DISPUTE_STATUS_OPTIONS, PAYMENT_DISPUTE_TYPE_LABELS, PAYMENT_DISPUTE_TYPE_OPTIONS, PAYMENT_ORDER_STATUS_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
+import { enumValueOf } from '@zenith/shared/core';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_DISPUTE_ROUTE_LABELS, PAYMENT_DISPUTE_ROUTE_OPTIONS, PAYMENT_DISPUTE_ROUTES, PAYMENT_DISPUTE_STATUS_LABELS, PAYMENT_DISPUTE_STATUS_OPTIONS, PAYMENT_DISPUTE_STATUSES, PAYMENT_DISPUTE_TYPE_LABELS, PAYMENT_DISPUTE_TYPE_OPTIONS, PAYMENT_DISPUTE_TYPES, PAYMENT_ORDER_STATUS_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentDispute, PaymentDisputeRoute, PaymentDisputeStatus, PaymentDisputeType } from '@zenith/shared/payment';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -51,10 +52,10 @@ export default function PaymentDisputesPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    type: submittedParams.type || undefined,
-    channel: submittedParams.channel || undefined,
-    route: submittedParams.route || undefined,
+    status: enumValueOf(PAYMENT_DISPUTE_STATUSES, submittedParams.status),
+    type: enumValueOf(PAYMENT_DISPUTE_TYPES, submittedParams.type),
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    route: enumValueOf(PAYMENT_DISPUTE_ROUTES, submittedParams.route),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -69,7 +70,7 @@ export default function PaymentDisputesPage() {
   const simulateMutation = useSimulatePaymentDispute();
 
   async function handleSimulate() {
-    const d = await simulateMutation.mutateAsync(undefined);
+    const d = await simulateMutation.mutateAsync({ body: {} });
     Toast.success(`已生成模拟投诉 ${d.disputeNo}`);
   }
 
@@ -84,7 +85,7 @@ export default function PaymentDisputesPage() {
       Toast.warning('请输入回复内容');
       return;
     }
-    await replyMutation.mutateAsync({ id: detailId, content: replyContent.trim() });
+    await replyMutation.mutateAsync({ params: { id: detailId }, body: { content: replyContent.trim() } });
     setReplyContent('');
     Toast.success('回复成功');
   }
@@ -95,7 +96,7 @@ export default function PaymentDisputesPage() {
       title: '完结该投诉？',
       content: '确认已与投诉人协商解决，无需退款',
       onOk: async () => {
-        await resolveMutation.mutateAsync({ id: detailId });
+        await resolveMutation.mutateAsync({ params: { id: detailId }, body: {} });
         Toast.success('已完结');
       },
     });
@@ -112,7 +113,7 @@ export default function PaymentDisputesPage() {
       title: '发起投诉退款？',
       content: `将退款 ${yuan(amount ?? detail.amount)}（大额退款自动进入审批），退款成功后工单自动完结`,
       onOk: async () => {
-        const updated = await refundMutation.mutateAsync({ id: detailId, refundAmount: amount });
+        const updated = await refundMutation.mutateAsync({ params: { id: detailId }, body: { refundAmount: amount } });
         if (updated.status === 'refunded') {
           Toast.success('退款成功，投诉工单已完结');
         } else {

@@ -1,12 +1,9 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { workflowAutomationContract } from '@zenith/shared/workflow';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import {
-  PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, BatchIdsBody, okBody,
-} from '../../lib/openapi-schemas';
-import { WorkflowAutomationDTO, WorkflowAutomationRunDTO } from '../../lib/openapi-dtos';
-import { createWorkflowAutomationSchema, updateWorkflowAutomationSchema } from '@zenith/shared/workflow';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listWorkflowAutomations,
   listWorkflowAutomationRuns,
@@ -21,70 +18,30 @@ import {
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listQuery = PaginationQuery.extend({
-  definitionId: z.coerce.number().int().optional(),
-  trigger: z.enum(['approved', 'rejected', 'withdrawn', 'created']).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
-});
+const read = [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const;
 
-const listRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/', tags: ['WorkflowAutomations'], summary: '流程自动化规则分页列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
-    request: { query: listQuery },
-    responses: { ...commonErrorResponses, ...okPaginated(WorkflowAutomationDTO, 'ok') },
-  }),
+const listRoute = defineContractRoute(workflowAutomationContract.list, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listWorkflowAutomations(c.req.valid('query'))), 200),
 });
 
-const runsQuery = PaginationQuery.extend({
-  ruleId: z.coerce.number().int().optional(),
-  instanceId: z.coerce.number().int().optional(),
-  status: z.enum(['success', 'failed', 'skipped']).optional(),
-});
-
-const listRunsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/runs', tags: ['WorkflowAutomations'], summary: '自动化动作执行记录',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
-    request: { query: runsQuery },
-    responses: { ...commonErrorResponses, ...okPaginated(WorkflowAutomationRunDTO, 'ok') },
-  }),
+const listRunsRoute = defineContractRoute(workflowAutomationContract.runs, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await listWorkflowAutomationRuns(c.req.valid('query'))), 200),
 });
 
-const getRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/{id}', tags: ['WorkflowAutomations'], summary: '获取自动化规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(WorkflowAutomationDTO, 'ok') },
-  }),
+const getRoute = defineContractRoute(workflowAutomationContract.detail, {
+  middleware: read,
   handler: async (c) => c.json(okBody(await getWorkflowAutomation(c.req.valid('param').id)), 200),
 });
 
-const createRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/', tags: ['WorkflowAutomations'], summary: '创建自动化规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '创建流程自动化规则', module: '工作流管理' } })] as const,
-    request: { body: { content: jsonContent(createWorkflowAutomationSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(WorkflowAutomationDTO, '创建成功') },
-  }),
+const createRouteDef = defineContractRoute(workflowAutomationContract.create, {
+  middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '创建流程自动化规则', module: '工作流管理' } })] as const,
   handler: async (c) => c.json(okBody(await createWorkflowAutomation(c.req.valid('json')), '创建成功'), 200),
 });
 
-const updateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'put', path: '/{id}', tags: ['WorkflowAutomations'], summary: '更新自动化规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '更新流程自动化规则', module: '工作流管理' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateWorkflowAutomationSchema), required: true } },
-    responses: { ...commonErrorResponses, ...ok(WorkflowAutomationDTO, '更新成功') },
-  }),
+const updateRoute = defineContractRoute(workflowAutomationContract.update, {
+  middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '更新流程自动化规则', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getWorkflowAutomationBeforeAudit(id);
@@ -93,14 +50,8 @@ const updateRoute = defineOpenAPIRoute({
   },
 });
 
-const deleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'delete', path: '/{id}', tags: ['WorkflowAutomations'], summary: '删除自动化规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '删除流程自动化规则', module: '工作流管理' } })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const deleteRoute = defineContractRoute(workflowAutomationContract.remove, {
+  middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '删除流程自动化规则', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const before = await getWorkflowAutomationBeforeAudit(id);
@@ -110,14 +61,8 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-const batchDeleteRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/batch-delete', tags: ['WorkflowAutomations'], summary: '批量删除自动化规则',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '批量删除流程自动化规则', module: '工作流管理' } })] as const,
-    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
-    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
-  }),
+const batchDeleteRoute = defineContractRoute(workflowAutomationContract.batchDelete, {
+  middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '批量删除流程自动化规则', module: '工作流管理' } })] as const,
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     const before = await getWorkflowAutomationsBeforeAudit(ids);

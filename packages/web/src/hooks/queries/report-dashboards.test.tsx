@@ -34,7 +34,7 @@ const LIST_PARAMS = { page: 1, pageSize: 10 };
 const DASHBOARD = { id: 1, name: '经营看板', lifecycleStatus: 'published' };
 
 /** 模拟一屏图表的取数缓存：本域最贵的缓存条目 */
-const DATA_KEY = reportDashboardKeys.dashboardData(1, 'auto', {}, 1000);
+const DATA_KEY = reportDashboardKeys.dashboardData(1, 'auto', { filters: {}, limit: 1000 });
 
 beforeEach(() => {
   api.reset();
@@ -58,7 +58,7 @@ describe('useToggleReportDashboardFavorite', () => {
     qc.setQueryData(reportDashboardKeys.detail(1, 'auto'), DASHBOARD);
 
     const fetches = observeFetches(qc);
-    await result.current.favorite.mutateAsync(1);
+    await result.current.favorite.mutateAsync({ params: { id: 1 } });
     await waitFor(() => expect(fetches.countOf(reportDashboardKeys.lists)).toBe(1));
 
     // 收藏只是列表标记：图表取数与详情都不应被牵连
@@ -81,7 +81,7 @@ describe('useCloneReportDashboard', () => {
 
     qc.setQueryData(DATA_KEY, { widgets: {} });
 
-    await result.current.clone.mutateAsync({ id: 1, name: '副本' });
+    await result.current.clone.mutateAsync({ params: { id: 1 }, body: { name: '副本' } });
     await waitFor(() => expect(result.current.list.isFetching).toBe(false));
 
     expect(isFresh(qc, DATA_KEY)).toBe(true);
@@ -103,7 +103,7 @@ describe('useDeleteReportDashboard', () => {
     qc.setQueryData(reportDashboardKeys.versions(1), []);
     qc.setQueryData(reportDashboardKeys.shares(1), []);
 
-    await result.current.remove.mutateAsync(1);
+    await result.current.remove.mutateAsync({ params: { id: 1 } });
     await waitFor(() => expect(result.current.list.isFetching).toBe(false));
 
     // detailOf 前缀一次性覆盖 auto / draft / published

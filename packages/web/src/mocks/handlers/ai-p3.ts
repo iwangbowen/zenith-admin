@@ -1,5 +1,4 @@
-import { http } from 'msw';
-import { ok, notFound } from '@/mocks/utils/handlers';
+import { aiAgentContract, aiEvalContract, aiHttpToolContract } from '@zenith/shared/ai';
 import type {
   AiAgent,
   AiBuiltinAgent,
@@ -10,6 +9,8 @@ import type {
   AiEvalExperiment,
   AiEvalExperimentResult,
 } from '@zenith/shared/ai';
+import { mock } from '@/mocks/utils/contract';
+import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 
 /* ─── 智能体(创建即用,注册进 Mastra) ─────────────────────── */
@@ -157,24 +158,23 @@ const resultStore = new Map<string, AiEvalExperimentResult[]>([
 ]);
 
 export const aiP3Handlers = [
-  // ── 智能体 ──
-  http.get('/api/ai/agents/builtin', () => ok(BUILTIN_AGENTS)),
-  http.get('/api/ai/agents/:id', ({ params }) => {
-    const agent = agentStore.find((a) => a.id === Number(params.id));
+  // ── 智能体（静态 /builtin 早于动态 /:id）──
+  mock(aiAgentContract.builtin, ({ ok }) => ok(BUILTIN_AGENTS)),
+  mock(aiAgentContract.detail, ({ params, ok }) => {
+    const agent = agentStore.find((a) => a.id === params.id);
     if (!agent) return notFound('智能体不存在', { status: 404 });
     return ok(agent);
   }),
-  http.get('/api/ai/agents', () => ok(agentStore)),
-  http.post('/api/ai/agents', async ({ request }) => {
-    const body = await request.json() as Partial<AiAgent>;
+  mock(aiAgentContract.list, ({ ok }) => ok(agentStore)),
+  mock(aiAgentContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const agent: AiAgent = {
       id: nextAgentId++,
       userId: 1,
-      name: body.name ?? '未命名智能体',
+      name: body.name,
       description: body.description ?? null,
-      avatar: body.avatar ?? '🤖',
-      instructions: body.instructions ?? '',
+      avatar: body.avatar?.trim() || '🤖',
+      instructions: body.instructions,
       configId: body.configId ?? null,
       model: body.model ?? null,
       modelSettings: body.modelSettings ?? null,
@@ -191,33 +191,31 @@ export const aiP3Handlers = [
     agentStore.unshift(agent);
     return ok(agent, '创建成功');
   }),
-  http.put('/api/ai/agents/:id', async ({ params, request }) => {
-    const agent = agentStore.find((a) => a.id === Number(params.id));
+  mock(aiAgentContract.update, ({ params, body, ok }) => {
+    const agent = agentStore.find((a) => a.id === params.id);
     if (!agent) return notFound('智能体不存在', { status: 404 });
-    const body = await request.json() as Partial<AiAgent>;
     Object.assign(agent, body, { updatedAt: mockDateTime() });
     return ok(agent, '更新成功');
   }),
-  http.delete('/api/ai/agents/:id', ({ params }) => {
-    const idx = agentStore.findIndex((a) => a.id === Number(params.id));
+  mock(aiAgentContract.remove, ({ params, ok }) => {
+    const idx = agentStore.findIndex((a) => a.id === params.id);
     if (idx === -1) return notFound('智能体不存在', { status: 404 });
     agentStore.splice(idx, 1);
     return ok(null, '删除成功');
   }),
 
-  // ── HTTP 工具 ──
-  http.get('/api/ai/http-tools/available', () =>
+  // ── HTTP 工具（静态 /available 早于动态 /:id）──
+  mock(aiHttpToolContract.all, ({ ok }) =>
     ok([...BUILTIN_TOOLS, ...toolStore.filter((t) => t.isEnabled).map((t) => ({ name: t.name, description: t.description, source: 'http' as const }))])),
-  http.get('/api/ai/http-tools', () => ok(toolStore)),
-  http.post('/api/ai/http-tools', async ({ request }) => {
-    const body = await request.json() as Partial<AiHttpTool>;
+  mock(aiHttpToolContract.list, ({ ok }) => ok(toolStore)),
+  mock(aiHttpToolContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const tool: AiHttpTool = {
       id: nextToolId++,
-      name: body.name ?? 'tool',
-      description: body.description ?? '',
-      method: body.method ?? 'GET',
-      urlTemplate: body.urlTemplate ?? '',
+      name: body.name,
+      description: body.description,
+      method: body.method,
+      urlTemplate: body.urlTemplate,
       headers: body.headers ?? null,
       params: body.params ?? [],
       isEnabled: body.isEnabled ?? true,
@@ -227,31 +225,29 @@ export const aiP3Handlers = [
     toolStore.unshift(tool);
     return ok(tool, '创建成功');
   }),
-  http.put('/api/ai/http-tools/:id', async ({ params, request }) => {
-    const tool = toolStore.find((t) => t.id === Number(params.id));
+  mock(aiHttpToolContract.update, ({ params, body, ok }) => {
+    const tool = toolStore.find((t) => t.id === params.id);
     if (!tool) return notFound('工具不存在', { status: 404 });
-    const body = await request.json() as Partial<AiHttpTool>;
     Object.assign(tool, body, { updatedAt: mockDateTime() });
     return ok(tool, '更新成功');
   }),
-  http.delete('/api/ai/http-tools/:id', ({ params }) => {
-    const idx = toolStore.findIndex((t) => t.id === Number(params.id));
+  mock(aiHttpToolContract.remove, ({ params, ok }) => {
+    const idx = toolStore.findIndex((t) => t.id === params.id);
     if (idx === -1) return notFound('工具不存在', { status: 404 });
     toolStore.splice(idx, 1);
     return ok(null, '删除成功');
   }),
 
-  // ── 评测:数据集 ──
-  http.get('/api/ai/eval/:id/items', ({ params }) => {
+  // ── 评测:数据集条目 ──
+  mock(aiEvalContract.items, ({ params, ok }) => {
     if (!datasetStore.some((d) => d.id === params.id)) return notFound('评测集不存在', { status: 404 });
-    return ok(itemStore.get(String(params.id)) ?? []);
+    return ok(itemStore.get(params.id) ?? []);
   }),
-  http.post('/api/ai/eval/:id/items', async ({ params, request }) => {
+  mock(aiEvalContract.addItems, ({ params, body, ok }) => {
     const dataset = datasetStore.find((d) => d.id === params.id);
     if (!dataset) return notFound('评测集不存在', { status: 404 });
-    const body = await request.json() as { items: Array<{ input: string; groundTruth?: string | null }> };
     const list = itemStore.get(dataset.id) ?? [];
-    for (const it of body.items ?? []) {
+    for (const it of body.items) {
       list.push({ id: `item-${nextItemId++}`, input: it.input, groundTruth: it.groundTruth ?? null });
     }
     itemStore.set(dataset.id, list);
@@ -260,7 +256,7 @@ export const aiP3Handlers = [
     dataset.updatedAt = mockDateTime();
     return ok(list, '添加成功');
   }),
-  http.delete('/api/ai/eval/:id/items/:itemId', ({ params }) => {
+  mock(aiEvalContract.removeItem, ({ params, ok }) => {
     const dataset = datasetStore.find((d) => d.id === params.id);
     if (!dataset) return notFound('评测集不存在', { status: 404 });
     const list = itemStore.get(dataset.id) ?? [];
@@ -274,20 +270,19 @@ export const aiP3Handlers = [
   }),
 
   // ── 评测:实验 ──
-  http.get('/api/ai/eval/:id/experiments/:experimentId', ({ params }) => {
-    const experiments = experimentStore.get(String(params.id)) ?? [];
+  mock(aiEvalContract.experimentDetail, ({ params, ok }) => {
+    const experiments = experimentStore.get(params.id) ?? [];
     const experiment = experiments.find((e) => e.id === params.experimentId);
     if (!experiment) return notFound('实验不存在', { status: 404 });
     return ok({ experiment, results: resultStore.get(experiment.id) ?? [] });
   }),
-  http.get('/api/ai/eval/:id/experiments', ({ params }) => {
+  mock(aiEvalContract.experiments, ({ params, ok }) => {
     if (!datasetStore.some((d) => d.id === params.id)) return notFound('评测集不存在', { status: 404 });
-    return ok(experimentStore.get(String(params.id)) ?? []);
+    return ok(experimentStore.get(params.id) ?? []);
   }),
-  http.post('/api/ai/eval/:id/experiments', async ({ params, request }) => {
+  mock(aiEvalContract.runExperiment, ({ params, body, ok }) => {
     const dataset = datasetStore.find((d) => d.id === params.id);
     if (!dataset) return notFound('评测集不存在', { status: 404 });
-    const body = await request.json() as { name?: string; targetId: string };
     const items = itemStore.get(dataset.id) ?? [];
     const experimentId = `exp-${nextExperimentId++}`;
     const name = body.name?.trim() || `exp-${experimentId}`;
@@ -319,15 +314,14 @@ export const aiP3Handlers = [
   }),
 
   // ── 评测:数据集 CRUD ──
-  http.get('/api/ai/eval', () => ok(datasetStore)),
-  http.post('/api/ai/eval', async ({ request }) => {
-    const body = await request.json() as { name?: string; description?: string | null; items?: Array<{ input: string; groundTruth?: string | null }> };
+  mock(aiEvalContract.list, ({ ok }) => ok(datasetStore)),
+  mock(aiEvalContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const id = `ds-${Date.now()}`;
     const items = (body.items ?? []).map((it) => ({ id: `item-${nextItemId++}`, input: it.input, groundTruth: it.groundTruth ?? null }));
     const dataset: AiEvalDataset = {
       id,
-      name: body.name ?? '未命名数据集',
+      name: body.name,
       description: body.description ?? null,
       itemCount: items.length,
       version: 1,
@@ -338,16 +332,15 @@ export const aiP3Handlers = [
     itemStore.set(id, items);
     return ok(dataset, '创建成功');
   }),
-  http.put('/api/ai/eval/:id', async ({ params, request }) => {
+  mock(aiEvalContract.update, ({ params, body, ok }) => {
     const dataset = datasetStore.find((d) => d.id === params.id);
     if (!dataset) return notFound('评测集不存在', { status: 404 });
-    const body = await request.json() as { name?: string; description?: string | null };
     if (body.name !== undefined) dataset.name = body.name;
     if (body.description !== undefined) dataset.description = body.description;
     dataset.updatedAt = mockDateTime();
     return ok(dataset, '更新成功');
   }),
-  http.delete('/api/ai/eval/:id', ({ params }) => {
+  mock(aiEvalContract.remove, ({ params, ok }) => {
     const idx = datasetStore.findIndex((d) => d.id === params.id);
     if (idx === -1) return notFound('评测集不存在', { status: 404 });
     const [removed] = datasetStore.splice(idx, 1);

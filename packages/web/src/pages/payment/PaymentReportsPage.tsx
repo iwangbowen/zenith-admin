@@ -64,7 +64,7 @@ export default function PaymentReportsPage() {
   const summaryQuery = usePaymentReportSummary({
     groupBy: submittedParams.groupBy,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-    compare: submittedParams.compare && submittedParams.timeRange ? 'true' : undefined,
+    compare: submittedParams.compare && submittedParams.timeRange ? true : undefined,
   }, canView);
   const summary = summaryQuery.data ?? null;
   const prev = summary?.prev ?? null;
