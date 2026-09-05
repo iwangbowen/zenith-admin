@@ -15,4 +15,3 @@
  *   - dtos/region.ts         地区
  */
 export * from './dtos';
-export * from './dtos/payment-capabilities';

@@ -1,24 +1,10 @@
 /** 支付开放 API：全部租户与应用上下文来自 openPrincipal。 */
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import {
-  createOpenPaymentIntentSchema,
-  createOpenPaymentRefundSchema,
-} from '@zenith/shared/payment';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import {
-  commonErrorResponses,
-  jsonContent,
-  ok,
-  okBody,
-  validationHook,
-} from '../../lib/openapi-schemas';
-import {
-  OpenPaymentApplicationCapabilitiesDTO,
-  OpenPaymentIntentCreatedDTO,
-  OpenPaymentIntentDTO,
-  OpenPaymentRefundDTO,
-} from '../../lib/openapi-dtos';
+import { openPaymentContract } from '@zenith/shared/payment';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { idempotencyGuard } from '../../middleware/idempotency';
 import {
   requireOpenScope,
@@ -36,20 +22,14 @@ import {
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const IdempotencyHeaders = z.object({
-  'x-idempotency-key': z.string().trim().min(8).max(128).openapi({
-    param: { in: 'header' },
-    example: 'pay-01JABCDEF1234567890',
-  }),
-});
-
-const OrderNoParam = z.object({
-  orderNo: z.string().min(1).max(64).openapi({ param: { name: 'orderNo', in: 'path' } }),
-});
-
-const RefundNoParam = z.object({
-  refundNo: z.string().min(1).max(64).openapi({ param: { name: 'refundNo', in: 'path' } }),
-});
+/** 各端点所需 scope；同时供端点目录展示 */
+const OPEN_PAYMENT_SCOPES = {
+  createIntent: 'payment:intent:create',
+  intentDetail: 'payment:intent:read',
+  createRefund: 'payment:refund:create',
+  refundDetail: 'payment:refund:read',
+  capabilities: 'payment:intent:read',
+} as const satisfies Record<Exclude<keyof typeof openPaymentContract, 'basePath'>, string>;
 
 function principalOf(c: Context): OpenPrincipal {
   const principal = c.get('openPrincipal');
@@ -57,23 +37,12 @@ function principalOf(c: Context): OpenPrincipal {
   return principal;
 }
 
-const createIntentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/payments/intents',
-    tags: ['开放API-支付'],
-    summary: '创建支付意图',
-    middleware: [
-      requireOpenSignatureChannel,
-      requireOpenScope('payment:intent:create'),
-      idempotencyGuard({ ttlSeconds: 300, autoFingerprint: false }),
-    ] as const,
-    request: {
-      headers: IdempotencyHeaders,
-      body: { content: jsonContent(createOpenPaymentIntentSchema), required: true },
-    },
-    responses: { ...commonErrorResponses, ...ok(OpenPaymentIntentCreatedDTO, '支付意图已创建') },
-  }),
+const createIntentRoute = defineContractRoute(openPaymentContract.createIntent, {
+  middleware: [
+    requireOpenSignatureChannel,
+    requireOpenScope(OPEN_PAYMENT_SCOPES.createIntent),
+    idempotencyGuard({ ttlSeconds: 300, autoFingerprint: false }),
+  ],
   handler: async (c) => c.json(okBody(await createOpenPaymentIntent({
     principal: principalOf(c),
     data: c.req.valid('json'),
@@ -82,39 +51,20 @@ const createIntentRoute = defineOpenAPIRoute({
   }), '支付意图已创建'), 200),
 });
 
-const getIntentRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/payments/intents/{orderNo}',
-    tags: ['开放API-支付'],
-    summary: '读取支付意图',
-    middleware: [requireOpenScope('payment:intent:read')] as const,
-    request: { params: OrderNoParam },
-    responses: { ...commonErrorResponses, ...ok(OpenPaymentIntentDTO, '支付意图') },
-  }),
+const getIntentRoute = defineContractRoute(openPaymentContract.intentDetail, {
+  middleware: [requireOpenScope(OPEN_PAYMENT_SCOPES.intentDetail)],
   handler: async (c) => c.json(okBody(await getOpenPaymentIntent(
     principalOf(c),
     c.req.valid('param').orderNo,
   )), 200),
 });
 
-const createRefundRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post',
-    path: '/payments/refunds',
-    tags: ['开放API-支付'],
-    summary: '创建退款',
-    middleware: [
-      requireOpenSignatureChannel,
-      requireOpenScope('payment:refund:create'),
-      idempotencyGuard({ ttlSeconds: 300, autoFingerprint: false }),
-    ] as const,
-    request: {
-      headers: IdempotencyHeaders,
-      body: { content: jsonContent(createOpenPaymentRefundSchema), required: true },
-    },
-    responses: { ...commonErrorResponses, ...ok(OpenPaymentRefundDTO, '退款已受理') },
-  }),
+const createRefundRoute = defineContractRoute(openPaymentContract.createRefund, {
+  middleware: [
+    requireOpenSignatureChannel,
+    requireOpenScope(OPEN_PAYMENT_SCOPES.createRefund),
+    idempotencyGuard({ ttlSeconds: 300, autoFingerprint: false }),
+  ],
   handler: async (c) => c.json(okBody(await createOpenPaymentRefund({
     principal: principalOf(c),
     data: c.req.valid('json'),
@@ -122,51 +72,32 @@ const createRefundRoute = defineOpenAPIRoute({
   }), '退款已受理'), 200),
 });
 
-const getRefundRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/payments/refunds/{refundNo}',
-    tags: ['开放API-支付'],
-    summary: '读取退款',
-    middleware: [requireOpenScope('payment:refund:read')] as const,
-    request: { params: RefundNoParam },
-    responses: { ...commonErrorResponses, ...ok(OpenPaymentRefundDTO, '退款') },
-  }),
+const getRefundRoute = defineContractRoute(openPaymentContract.refundDetail, {
+  middleware: [requireOpenScope(OPEN_PAYMENT_SCOPES.refundDetail)],
   handler: async (c) => c.json(okBody(await getOpenPaymentRefund(
     principalOf(c),
     c.req.valid('param').refundNo,
   )), 200),
 });
 
-const capabilitiesRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get',
-    path: '/payments/capabilities',
-    tags: ['开放API-支付'],
-    summary: '读取当前应用支付能力',
-    middleware: [requireOpenScope('payment:intent:read')] as const,
-    responses: { ...commonErrorResponses, ...ok(OpenPaymentApplicationCapabilitiesDTO, '应用支付能力') },
-  }),
+const capabilitiesRoute = defineContractRoute(openPaymentContract.capabilities, {
+  middleware: [requireOpenScope(OPEN_PAYMENT_SCOPES.capabilities)],
   handler: async (c) => c.json(okBody(await getOpenPaymentCapabilities(principalOf(c))), 200),
 });
 
-const OPEN_PAYMENT_ROUTES = [
+router.openapiRoutes([
   createIntentRoute,
   getIntentRoute,
   createRefundRoute,
   getRefundRoute,
   capabilitiesRoute,
-] as const;
+] as const);
 
-router.openapiRoutes(OPEN_PAYMENT_ROUTES);
-
-export const OPEN_PAYMENT_ENDPOINTS = OPEN_PAYMENT_ROUTES.map((item) => ({
-  method: item.route.method.toUpperCase(),
-  path: `/api/open/v1${item.route.path}`,
-  summary: item.route.summary ?? '',
-  scope: item.route.path.includes('/refunds')
-    ? item.route.method === 'post' ? 'payment:refund:create' : 'payment:refund:read'
-    : item.route.method === 'post' ? 'payment:intent:create' : 'payment:intent:read',
-}));
+/** 供 API 调试台展示的端点目录，由契约派生 */
+export const OPEN_PAYMENT_ENDPOINTS: Array<{ method: string; path: string; summary: string; scope: string | null }> =
+  (Object.keys(OPEN_PAYMENT_SCOPES) as Array<keyof typeof OPEN_PAYMENT_SCOPES>).map((name) => {
+    const operation = openPaymentContract[name];
+    return { method: operation.method.toUpperCase(), path: operation.fullPath, summary: operation.summary, scope: OPEN_PAYMENT_SCOPES[name] };
+  });
 
 export default router;

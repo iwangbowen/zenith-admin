@@ -1,18 +1,14 @@
-import type { PaymentFeeRule } from '@zenith/shared/payment';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentFeeRuleContract } from '@zenith/shared/payment';
+import { createResourceQueries } from '@/lib/contract-query';
 
-export interface PaymentFeeRuleListParams extends CrudListParams {
-  channel?: string;
-  status?: string;
-}
+export type PaymentFeeRuleListParams = NonNullable<QueryOf<typeof paymentFeeRuleContract.list>>;
 
 export const {
   keys: paymentFeeKeys,
   useList: usePaymentFeeRuleList,
+  useDetail: usePaymentFeeRuleDetail,
   useSave: useSavePaymentFeeRule,
+  /** 服务端未提供 DELETE /batch，多选删除按单条并发执行 */
   useDelete: useDeletePaymentFeeRule,
-} = createCrudQueries<PaymentFeeRule, PaymentFeeRuleListParams>({
-  resource: 'payment-fee',
-  path: '/api/payment/fee-rules',
-  deleteMode: 'single',
-});
+} = createResourceQueries(paymentFeeRuleContract);

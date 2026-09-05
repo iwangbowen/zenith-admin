@@ -193,7 +193,7 @@ export default function PaymentLinksPage() {
   }
 
   async function handleRotateToken(id: number) {
-    await rotateTokenMutation.mutateAsync(id);
+    await rotateTokenMutation.mutateAsync({ params: { id } });
     Toast.success('token 已重置，旧链接已失效');
   }
 
@@ -268,7 +268,7 @@ export default function PaymentLinksPage() {
         }, {
           key: 'rotate-token',
           label: '重置链接',
-          loading: rotateTokenMutation.isPending && rotateTokenMutation.variables === r.id,
+          loading: rotateTokenMutation.isPending && rotateTokenMutation.variables?.params.id === r.id,
           onClick: () => {
             confirmDanger({
               title: '重置链接',

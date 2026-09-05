@@ -1,167 +1,102 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type {
-  CreatePaymentFundReservationInput,
-  CreatePaymentLedgerAccountInput,
-  PaymentActiveReservationAmount,
-  PaymentFundReservation,
-  PaymentFundReservationStatus,
-  PaymentJournal,
-  PaymentLedgerAccount,
-  PostPaymentJournalInput,
-} from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentJournalContract } from '@zenith/shared/payment';
+import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface PaymentLedgerAccountListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  appId?: number;
-  channelConfigId?: number;
-  currency?: string;
-  status?: 'enabled' | 'disabled';
-}
-
-export interface PaymentJournalListParams {
-  page: number;
-  pageSize: number;
-  sourceType?: string;
-  appId?: number;
-  channelConfigId?: number;
-  currency?: string;
-  startTime?: string;
-  endTime?: string;
-}
-
-export interface PaymentFundReservationListParams {
-  page: number;
-  pageSize: number;
-  accountId?: number;
-  status?: PaymentFundReservationStatus;
-  sourceType?: string;
-  startTime?: string;
-  endTime?: string;
-}
+export type PaymentLedgerAccountListParams = NonNullable<QueryOf<typeof paymentJournalContract.accounts>>;
+export type PaymentJournalListParams = NonNullable<QueryOf<typeof paymentJournalContract.list>>;
+export type PaymentFundReservationListParams = NonNullable<QueryOf<typeof paymentJournalContract.reservations>>;
 
 export const paymentLedgerAccountKeys = {
-  all: ['payment-ledger-accounts'] as const,
-  lists: ['payment-ledger-accounts', 'list'] as const,
-  list: (params: PaymentLedgerAccountListParams) => ['payment-ledger-accounts', 'list', params] as const,
-  activeReservation: (accountId: number | undefined) => ['payment-ledger-accounts', 'active-reservation', accountId] as const,
+  lists: contractKey(paymentJournalContract.accounts),
+  list: (params: PaymentLedgerAccountListParams) => contractKey(paymentJournalContract.accounts, { query: params }),
+  activeReservations: contractKey(paymentJournalContract.activeReservation),
+  activeReservation: (accountId: number | undefined) => contractKey(paymentJournalContract.activeReservation, { params: { id: accountId ?? 0 } }),
 };
 
 export const paymentJournalKeys = {
-  all: ['payment-journals'] as const,
-  lists: ['payment-journals', 'list'] as const,
-  list: (params: PaymentJournalListParams) => ['payment-journals', 'list', params] as const,
-  detail: (id: number | undefined) => ['payment-journals', 'detail', id] as const,
+  lists: contractKey(paymentJournalContract.list),
+  list: (params: PaymentJournalListParams) => contractKey(paymentJournalContract.list, { query: params }),
+  details: contractKey(paymentJournalContract.detail),
+  detail: (id: number | undefined) => contractKey(paymentJournalContract.detail, { params: { id: id ?? 0 } }),
 };
 
 export const paymentFundReservationKeys = {
-  all: ['payment-fund-reservations'] as const,
-  lists: ['payment-fund-reservations', 'list'] as const,
-  list: (params: PaymentFundReservationListParams) => ['payment-fund-reservations', 'list', params] as const,
+  lists: contractKey(paymentJournalContract.reservations),
+  list: (params: PaymentFundReservationListParams) => contractKey(paymentJournalContract.reservations, { query: params }),
 };
 
 export function usePaymentLedgerAccountList(params: PaymentLedgerAccountListParams, enabled = true) {
-  return useQuery({
-    queryKey: paymentLedgerAccountKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentLedgerAccount>>(`/api/payment/journals/accounts${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(paymentJournalContract.accounts, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function useCreatePaymentLedgerAccount() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (values: CreatePaymentLedgerAccountInput) =>
-      request.post<PaymentLedgerAccount>('/api/payment/journals/accounts', values).then(unwrap),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: paymentLedgerAccountKeys.lists }),
+  return useApiMutation(paymentJournalContract.createAccount, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.lists }),
   });
 }
 
 export function usePaymentActiveReservationAmount(accountId: number | undefined, enabled = true) {
   return useQuery({
     queryKey: paymentLedgerAccountKeys.activeReservation(accountId),
-    queryFn: () => request.get<PaymentActiveReservationAmount>(`/api/payment/journals/accounts/${accountId}/active-reservation`).then(unwrap),
+    queryFn: () => api(paymentJournalContract.activeReservation, { params: { id: accountId ?? 0 } }),
     enabled: enabled && accountId !== undefined,
   });
 }
 
 export function usePaymentJournalList(params: PaymentJournalListParams, enabled = true) {
-  return useQuery({
-    queryKey: paymentJournalKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentJournal>>(`/api/payment/journals${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(paymentJournalContract.list, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function usePaymentJournalDetail(id: number | undefined, enabled = true) {
   return useQuery({
     queryKey: paymentJournalKeys.detail(id),
-    queryFn: () => request.get<PaymentJournal>(`/api/payment/journals/${id}`).then(unwrap),
+    queryFn: () => api(paymentJournalContract.detail, { params: { id: id ?? 0 } }),
     enabled: enabled && id !== undefined,
   });
 }
 
+/** 过账后把凭证写入详情缓存，列表回源 */
 export function usePostPaymentJournal() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (values: PostPaymentJournalInput) => request.post<PaymentJournal>('/api/payment/journals', values).then(unwrap),
-    onSuccess: (journal) => {
-      queryClient.setQueryData(paymentJournalKeys.detail(journal.id), journal);
-      return queryClient.invalidateQueries({ queryKey: paymentJournalKeys.lists });
+  return useApiMutation(paymentJournalContract.post, {
+    invalidate: (qc, journal) => {
+      qc.setQueryData(paymentJournalKeys.detail(journal.id), journal);
+      void qc.invalidateQueries({ queryKey: paymentJournalKeys.lists });
     },
   });
 }
 
+/** 冲正生成子凭证并回写原凭证的 reversedByJournalId：新凭证入缓存，原凭证详情与列表回源 */
 export function useReversePaymentJournal() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) =>
-      request.post<PaymentJournal>(`/api/payment/journals/${id}/reverse`, { reason }).then(unwrap),
-    onSuccess: (journal, values) => {
-      queryClient.setQueryData(paymentJournalKeys.detail(journal.id), journal);
-      return Promise.all([
-        queryClient.invalidateQueries({ queryKey: paymentJournalKeys.detail(values.id) }),
-        queryClient.invalidateQueries({ queryKey: paymentJournalKeys.lists }),
-      ]);
+  return useApiMutation(paymentJournalContract.reverse, {
+    invalidate: (qc, journal, { params }) => {
+      qc.setQueryData(paymentJournalKeys.detail(journal.id), journal);
+      void qc.invalidateQueries({ queryKey: paymentJournalKeys.detail(params.id) });
+      void qc.invalidateQueries({ queryKey: paymentJournalKeys.lists });
     },
   });
 }
 
 export function usePaymentFundReservationList(params: PaymentFundReservationListParams, enabled = true) {
-  return useQuery({
-    queryKey: paymentFundReservationKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentFundReservation>>(`/api/payment/journals/reservations${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(paymentJournalContract.reservations, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
+/** 预占改变账户的有效预占金额 */
 export function useCreatePaymentFundReservation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (values: CreatePaymentFundReservationInput) =>
-      request.post<PaymentFundReservation>('/api/payment/journals/reservations', values).then(unwrap),
-    onSuccess: (_reservation, values) => {
-      void queryClient.invalidateQueries({ queryKey: paymentFundReservationKeys.lists });
-      void queryClient.invalidateQueries({ queryKey: paymentLedgerAccountKeys.activeReservation(values.accountId) });
+  return useApiMutation(paymentJournalContract.createReservation, {
+    invalidate: (qc, _reservation, { body }) => {
+      void qc.invalidateQueries({ queryKey: paymentFundReservationKeys.lists });
+      void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.activeReservation(body.accountId) });
     },
   });
 }
 
+/** 核销 / 释放预占：预占列表与所属账户的有效预占金额回源 */
 export function useTransitionPaymentFundReservation(action: 'capture' | 'release') {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, accountId: _accountId, version, reason }: { id: number; accountId: number; version: number; reason: string }) =>
-      request.post<PaymentFundReservation>(`/api/payment/journals/reservations/${id}/${action}`, { version, reason }).then(unwrap),
-    onSuccess: (_reservation, values) => {
-      void queryClient.invalidateQueries({ queryKey: paymentFundReservationKeys.lists });
-      void queryClient.invalidateQueries({ queryKey: paymentLedgerAccountKeys.activeReservation(values.accountId) });
+  return useApiMutation(action === 'capture' ? paymentJournalContract.captureReservation : paymentJournalContract.releaseReservation, {
+    invalidate: (qc, reservation) => {
+      void qc.invalidateQueries({ queryKey: paymentFundReservationKeys.lists });
+      void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.activeReservation(reservation.accountId) });
     },
   });
 }

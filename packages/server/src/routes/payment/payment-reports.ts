@@ -1,31 +1,18 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { PAYMENT_REPORT_GROUP_BYS } from '@zenith/shared/payment';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { paymentReportContract } from '@zenith/shared/payment';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
-import { commonErrorResponses, dateRangeBound, ok, okBody, validationHook } from '../../lib/openapi-schemas';
-import { PaymentReportSummaryDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getReportSummary } from '../../services/payment/payment-report.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const summaryRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/summary', tags: ['支付中心-财务报表'], summary: '财务报表汇总（按日/应用/商户账户/币种/渠道）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:report:view' })] as const,
-    request: {
-      query: z.object({
-        groupBy: z.enum(PAYMENT_REPORT_GROUP_BYS).optional(),
-        startTime: dateRangeBound('起始时间'),
-        endTime: dateRangeBound('结束时间'),
-        compare: z.enum(['true', 'false']).optional().openapi({ description: '环比：附带上一等长周期汇总（需提供时间范围）' }),
-      }),
-    },
-    responses: { ...ok(PaymentReportSummaryDTO, '财务报表汇总'), ...commonErrorResponses },
-  }),
+const summaryRoute = defineContractRoute(paymentReportContract.summary, {
+  middleware: [authMiddleware, guard({ permission: 'payment:report:view' })],
   handler: async (c) => {
     const q = c.req.valid('query');
-    return c.json(okBody(await getReportSummary({ ...q, compare: q.compare === 'true' })), 200);
+    return c.json(okBody(await getReportSummary({ ...q, compare: q.compare === true })), 200);
   },
 });
 

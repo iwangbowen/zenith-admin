@@ -22,8 +22,9 @@ import {
 } from '@/hooks/queries/payment-settlements';
 import { usePaymentChannelOperationLookup } from '@/hooks/queries/payment-channels';
 import { usePaymentAppList } from '@/hooks/queries/payment-apps';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_SETTLEMENT_STATUS_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_SETTLEMENT_STATUS_OPTIONS } from '@zenith/shared/payment';
-import type { PaymentChannel, PaymentSettlementBatch, PaymentSettlementItem, PaymentSettlementStatus } from '@zenith/shared/payment';
+import { enumValueOf } from '@zenith/shared/core';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_SETTLEMENT_STATUS_LABELS, PAYMENT_SETTLEMENT_STATUSES, PAYMENT_CHANNEL_OPTIONS, PAYMENT_SETTLEMENT_STATUS_OPTIONS } from '@zenith/shared/payment';
+import type { CreatePaymentSettlementInput, PaymentChannel, PaymentSettlementBatch, PaymentSettlementItem, PaymentSettlementStatus } from '@zenith/shared/payment';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { abortSubmit } from '@/lib/abort-submit';
 import { confirmDelete } from '@/utils/confirm';
@@ -53,8 +54,8 @@ export default function PaymentSettlementsPage() {
   const listQuery = usePaymentSettlementList({
     page,
     pageSize,
-    channel: submittedParams.channel || undefined,
-    status: submittedParams.status || undefined,
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    status: enumValueOf(PAYMENT_SETTLEMENT_STATUSES, submittedParams.status),
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -86,13 +87,13 @@ export default function PaymentSettlementsPage() {
   const itemsQuery = usePaymentSettlementItems(detailBatch?.id, !!detailBatch);
   const transitionMutation = useUpdatePaymentSettlementStatus();
   const deleteMutation = useDeletePaymentSettlement();
-  const transitioningId = transitionMutation.isPending ? (transitionMutation.variables?.id ?? null) : null;
+  const transitioningId = transitionMutation.isPending ? (transitionMutation.variables?.params.id ?? null) : null;
 
   const generateSaveMutation = {
-    mutateAsync: ({ values }: { id?: number; values: { applicationId: number; channelConfigId: number; currency: string; periodStart: string; periodEnd: string; remark?: string } }) => generateMutation.mutateAsync(values),
+    mutateAsync: ({ values }: { id?: number; values: CreatePaymentSettlementInput }) => generateMutation.mutateAsync({ body: values }),
     isPending: generateMutation.isPending,
   };
-  const generateModal = useEditModal<PaymentSettlementBatch, GenerateFormValues, { applicationId: number; channelConfigId: number; currency: string; periodStart: string; periodEnd: string; remark?: string }>({
+  const generateModal = useEditModal<PaymentSettlementBatch, GenerateFormValues, CreatePaymentSettlementInput>({
     save: generateSaveMutation,
     defaults: { currency: 'CNY' },
     beforeSave: (values) => {
@@ -121,7 +122,7 @@ export default function PaymentSettlementsPage() {
         Toast.error('缺少结算批次 ID，请刷新后重试');
         abortSubmit('validation');
       }
-      return transitionMutation.mutateAsync({ id, status: 'settled', payoutReference: values.reference.trim() });
+      return transitionMutation.mutateAsync({ params: { id }, body: { status: 'settled', payoutReference: values.reference.trim() } });
     },
     isPending: transitionMutation.isPending,
   };
@@ -139,7 +140,7 @@ export default function PaymentSettlementsPage() {
         Toast.error('缺少结算批次 ID，请刷新后重试');
         abortSubmit('validation');
       }
-      return transitionMutation.mutateAsync({ id, status: 'failed', failureReason: values.reference.trim() });
+      return transitionMutation.mutateAsync({ params: { id }, body: { status: 'failed', failureReason: values.reference.trim() } });
     },
     isPending: transitionMutation.isPending,
   };
@@ -152,12 +153,12 @@ export default function PaymentSettlementsPage() {
   });
 
   async function handleStart(record: PaymentSettlementBatch) {
-    await transitionMutation.mutateAsync({ id: record.id, status: 'settling' });
+    await transitionMutation.mutateAsync({ params: { id: record.id }, body: { status: 'settling' } });
     Toast.success('已进入结算中');
   }
 
   async function handleDelete(record: PaymentSettlementBatch) {
-    await deleteMutation.mutateAsync(record.id);
+    await deleteMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('结算批次已删除，资金明细已解除认领');
   }
 
@@ -208,7 +209,7 @@ export default function PaymentSettlementsPage() {
             key: 'delete',
             label: '删除',
             danger: true,
-            loading: deleteMutation.isPending && deleteMutation.variables === r.id,
+            loading: deleteMutation.isPending && deleteMutation.variables?.params.id === r.id,
             onClick: () => {
               confirmDelete({
                 title: `删除结算批次 ${r.batchNo}？`,

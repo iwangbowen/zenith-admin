@@ -25,8 +25,9 @@ import {
   useReversePaymentSharingOrder,
   useSavePaymentSharingReceiver,
 } from '@/hooks/queries/payment-sharing';
-import { PAYMENT_SHARING_RECEIVER_TYPE_LABELS, PAYMENT_SHARING_ORDER_STATUS_LABELS, PAYMENT_SHARING_REVERSAL_STATUS_LABELS, PAYMENT_SHARING_RECEIVER_TYPE_OPTIONS, PAYMENT_SHARING_ORDER_STATUS_OPTIONS, PAYMENT_SHARING_REVERSAL_STATUS_OPTIONS } from '@zenith/shared/payment';
-import type { PaymentSharingOrder, PaymentSharingOrderStatus, PaymentSharingReceiver, PaymentSharingReceiverType, PaymentSharingReversal, PaymentSharingReversalStatus } from '@zenith/shared/payment';
+import { enumValueOf } from '@zenith/shared/core';
+import { PAYMENT_SHARING_RECEIVER_TYPE_LABELS, PAYMENT_SHARING_ORDER_STATUS_LABELS, PAYMENT_SHARING_ORDER_STATUSES, PAYMENT_SHARING_REVERSAL_STATUS_LABELS, PAYMENT_SHARING_REVERSAL_STATUSES, PAYMENT_SHARING_RECEIVER_TYPE_OPTIONS, PAYMENT_SHARING_ORDER_STATUS_OPTIONS, PAYMENT_SHARING_REVERSAL_STATUS_OPTIONS } from '@zenith/shared/payment';
+import type { CreatePaymentSharingReceiverInput, DispatchPaymentSharingInput, PaymentSharingOrder, PaymentSharingOrderStatus, PaymentSharingReceiver, PaymentSharingReceiverType, PaymentSharingReversal, PaymentSharingReversalStatus } from '@zenith/shared/payment';
 import { useDictItems } from '@/hooks/useDictItems';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -79,14 +80,14 @@ export default function PaymentSharingPage() {
     page: oPage,
     pageSize: oPageSize,
     keyword: submittedOrderParams.keyword || undefined,
-    status: submittedOrderParams.status || undefined,
+    status: enumValueOf(PAYMENT_SHARING_ORDER_STATUSES, submittedOrderParams.status),
   });
   const orderData = orderQuery.data?.list ?? [];
   const orderTotal = orderQuery.data?.total ?? 0;
   const reversalQuery = usePaymentSharingReversals({
     page: vPage,
     pageSize: vPageSize,
-    status: submittedReversalStatus || undefined,
+    status: enumValueOf(PAYMENT_SHARING_REVERSAL_STATUSES, submittedReversalStatus),
   });
   const reversalData = reversalQuery.data?.list ?? [];
   const reversalTotal = reversalQuery.data?.total ?? 0;
@@ -100,7 +101,7 @@ export default function PaymentSharingPage() {
   const queryReversalMutation = useQueryPaymentSharingReversal();
   const togglingId = toggleReceiverMutation.isPending ? (toggleReceiverMutation.variables?.id ?? null) : null;
 
-  const receiverModal = useEditModal<PaymentSharingReceiver, ReceiverFormValues, Partial<PaymentSharingReceiver>>({
+  const receiverModal = useEditModal<PaymentSharingReceiver, ReceiverFormValues, Partial<CreatePaymentSharingReceiverInput>>({
     entityName: '分账接收方',
     save: saveReceiverMutation,
     defaults: { name: '', receiverType: 'merchant', account: '', autoShare: false, status: 'enabled' },
@@ -131,10 +132,10 @@ export default function PaymentSharingPage() {
     labelWidth: 104,
   });
   const dispatchSaveMutation = {
-    mutateAsync: ({ values }: { id?: number; values: { orderNo: string; receiverId: number; amount?: number; remark?: string } }) => createOrderMutation.mutateAsync(values),
+    mutateAsync: ({ values }: { id?: number; values: DispatchPaymentSharingInput }) => createOrderMutation.mutateAsync({ body: values }),
     isPending: createOrderMutation.isPending,
   };
-  const dispatchModal = useEditModal<PaymentSharingOrder, DispatchFormValues, { orderNo: string; receiverId: number; amount?: number; remark?: string }>({
+  const dispatchModal = useEditModal<PaymentSharingOrder, DispatchFormValues, DispatchPaymentSharingInput>({
     save: dispatchSaveMutation,
     beforeSave: (values) => ({
       orderNo: values.orderNo,
@@ -188,7 +189,7 @@ export default function PaymentSharingPage() {
       title: `确认冲正分账单 ${reverseTarget.sharingNo}？`,
       content: '冲正提交后将由渠道异步处理，请通过冲正记录确认最终结果。',
       onOk: async () => {
-        await reverseOrderMutation.mutateAsync({ sharingOrderId: reverseTarget.id, idempotencyKey: reverseIdempotencyKey, reason });
+        await reverseOrderMutation.mutateAsync({ params: { id: reverseTarget.id }, headers: { 'x-idempotency-key': reverseIdempotencyKey }, body: { reason } });
         Toast.success('冲正已受理');
         setReverseTarget(null);
         setReverseReason('');
@@ -199,7 +200,7 @@ export default function PaymentSharingPage() {
   }
 
   async function handleQueryReversal(record: PaymentSharingReversal) {
-    const result = await queryReversalMutation.mutateAsync(record.id);
+    const result = await queryReversalMutation.mutateAsync({ params: { id: record.id } });
     if (result.status === 'success') Toast.success('查单完成，冲正已成功');
     else if (result.status === 'failed') Toast.warning('查单完成，冲正已失败');
     else Toast.info('查单完成，渠道结果仍待确认');
@@ -280,7 +281,7 @@ export default function PaymentSharingPage() {
         ...(canDispatch && (record.status === 'processing' || record.status === 'unknown') ? [{
           key: 'query',
           label: '查单',
-          loading: queryReversalMutation.isPending && queryReversalMutation.variables === record.id,
+          loading: queryReversalMutation.isPending && queryReversalMutation.variables?.params.id === record.id,
           onClick: () => { void handleQueryReversal(record); },
         }] : []),
       ],

@@ -11,8 +11,9 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Info } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS } from '@zenith/shared/payment';
-import type { BizPayDemo, BizPayDemoStatus } from '@zenith/shared/biz';
+import type { BizPayDemo, BizPayDemoStatus, CreateBizPayDemoInput } from '@zenith/shared/biz';
 import type { CreatePaymentResult, PaymentMethod } from '@zenith/shared/payment';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -91,8 +92,9 @@ await db.update(bizPayDemos)
   .where(and(eq(bizPayDemos.id, Number(bizId)), eq(bizPayDemos.status, 'paying')));`;
 
 const SNIPPET_FRONTEND = `// 前端 · 发起支付并展示二维码（pages/biz/pay-demo/PayDemoPage.tsx）
-const res = await request.post(\`/api/biz/pay-demos/\${id}/pay\`, { applicationId, payMethod: 'wechat_native' });
-const { payParams } = res.data;                 // { orderNo, codeUrl?, payUrl?, ... }
+const payMutation = useApiMutation(bizPayDemoContract.pay);   // 契约驱动：URL / 入参 / 响应类型均来自 @zenith/shared/biz
+const { payParams } = await payMutation.mutateAsync({ params: { id }, body: { applicationId, payMethod: 'wechat_native' } });
+// payParams: { orderNo, codeUrl?, payUrl?, ... }
 
 // 微信 native：渲染二维码供用户扫码
 <QRCodeSVG value={payParams.codeUrl} size={200} />
@@ -153,10 +155,10 @@ export default function PayDemoPage() {
   const payMutation = usePayBizPayDemo();
   const simulateMutation = useSimulateBizPayDemoPaid();
   const deleteMutation = useDeleteBizPayDemo();
-  const simulatingId = simulateMutation.isPending ? (simulateMutation.variables ?? null) : null;
-  const createModal = useEditModal<BizPayDemo, CreatePayDemoFormValues, { subject: string; amount: number }>({
+  const simulatingId = simulateMutation.isPending ? (simulateMutation.variables?.params.id ?? null) : null;
+  const createModal = useEditModal<BizPayDemo, CreatePayDemoFormValues, CreateBizPayDemoInput>({
     save: {
-      mutateAsync: ({ values }) => createMutation.mutateAsync(values),
+      mutateAsync: ({ values }) => createMutation.mutateAsync({ body: values }),
       isPending: createMutation.isPending,
     },
     defaults: { amount: 99 },
@@ -176,23 +178,24 @@ export default function PayDemoPage() {
     if (!payTarget || !payFormApi.current) return;
     let values: Record<string, unknown>;
     try { values = await payFormApi.current.validate() as Record<string, unknown>; } catch { abortSubmit('validation'); }
+    const payMethod = enumValueOf(PAYMENT_CASHIER_METHODS, values.payMethod);
+    if (!payMethod) { Toast.warning('请选择支付方式'); return; }
     const data = await payMutation.mutateAsync({
-      id: payTarget.id,
-      applicationId: Number(values.applicationId),
-      payMethod: values.payMethod as PaymentMethod,
+      params: { id: payTarget.id },
+      body: { applicationId: Number(values.applicationId), payMethod },
     });
-    setPayResultMethod(values.payMethod as PaymentMethod);
+    setPayResultMethod(payMethod);
     setPayTarget(null);
     setPayResult(data.payParams);
   };
 
   const handleSimulate = async (record: BizPayDemo) => {
-    await simulateMutation.mutateAsync(record.id);
+    await simulateMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已模拟支付成功，自动完成履约');
   };
 
   const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync([id]);
     Toast.success('已删除');
   };
 

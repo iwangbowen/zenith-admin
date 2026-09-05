@@ -1,84 +1,44 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { PaymentDispute, PaymentDisputeDetail, PaymentDisputeStats } from '@zenith/shared/payment';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryClient } from '@tanstack/react-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { paymentDisputeContract } from '@zenith/shared/payment';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-export interface PaymentDisputeListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-  channel?: string;
-  type?: string;
-  route?: string;
-  overdueOnly?: boolean;
-  startTime?: string;
-  endTime?: string;
-}
+export type PaymentDisputeListParams = NonNullable<QueryOf<typeof paymentDisputeContract.list>>;
+
+const resource = createResourceQueries(paymentDisputeContract);
 
 export const paymentDisputeKeys = {
-  all: ['payment-disputes'] as const,
-  lists: ['payment-disputes', 'list'] as const,
-  list: (params: PaymentDisputeListParams) => ['payment-disputes', 'list', params] as const,
-  detail: (id: number | undefined) => ['payment-disputes', 'detail', id] as const,
-  stats: ['payment-disputes', 'stats'] as const,
+  ...resource.keys,
+  details: [...resource.keys.all, 'detail'] as const,
+  stats: contractKey(paymentDisputeContract.stats),
 };
 
-export function usePaymentDisputeList(params: PaymentDisputeListParams) {
-  return useQuery({
-    queryKey: paymentDisputeKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<PaymentDispute>>(`/api/payment/disputes${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+/** 工单状态变化影响列表、详情与统计卡（待处理 / 超时数） */
+function invalidateDisputes(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: paymentDisputeKeys.lists });
+  void qc.invalidateQueries({ queryKey: paymentDisputeKeys.details });
+  void qc.invalidateQueries({ queryKey: paymentDisputeKeys.stats });
 }
+
+export const usePaymentDisputeList = resource.useList;
+export const usePaymentDisputeDetail = resource.useDetail;
 
 export function usePaymentDisputeStats() {
-  return useQuery({
-    queryKey: paymentDisputeKeys.stats,
-    queryFn: () => request.get<PaymentDisputeStats>('/api/payment/disputes/stats').then(unwrap),
-  });
-}
-
-export function usePaymentDisputeDetail(id: number | undefined) {
-  return useQuery({
-    queryKey: paymentDisputeKeys.detail(id),
-    queryFn: () => request.get<PaymentDisputeDetail>(`/api/payment/disputes/${id}`).then(unwrap),
-    enabled: id != null,
-  });
+  return useApiQuery(paymentDisputeContract.stats);
 }
 
 export function useReplyPaymentDispute() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, content }: { id: number; content: string }) =>
-      request.post<PaymentDisputeDetail>(`/api/payment/disputes/${id}/reply`, { content }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentDisputeKeys.all }),
-  });
+  return useApiMutation(paymentDisputeContract.reply, { invalidate: invalidateDisputes });
 }
 
 export function useResolvePaymentDispute() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, remark }: { id: number; remark?: string }) =>
-      request.post<PaymentDisputeDetail>(`/api/payment/disputes/${id}/resolve`, { remark }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentDisputeKeys.all }),
-  });
+  return useApiMutation(paymentDisputeContract.resolve, { invalidate: invalidateDisputes });
 }
 
 export function useRefundPaymentDispute() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, refundAmount, reason }: { id: number; refundAmount?: number; reason?: string }) =>
-      request.post<PaymentDisputeDetail>(`/api/payment/disputes/${id}/refund`, { refundAmount, reason }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentDisputeKeys.all }),
-  });
+  return useApiMutation(paymentDisputeContract.refund, { invalidate: invalidateDisputes });
 }
 
 export function useSimulatePaymentDispute() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (orderNo?: string) => request.post<PaymentDispute>('/api/payment/disputes/simulate', { orderNo }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: paymentDisputeKeys.all }),
-  });
+  return useApiMutation(paymentDisputeContract.simulate, { invalidate: invalidateDisputes });
 }

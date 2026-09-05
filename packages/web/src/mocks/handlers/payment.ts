@@ -1,4 +1,15 @@
-import { http } from 'msw';
+import {
+  PAYMENT_METHOD_CHANNEL,
+  paymentChannelContract,
+  paymentNotifyLogContract,
+  paymentOrderContract,
+  paymentRefundContract,
+  paymentStatsContract,
+  type PaymentChannelConfig,
+  type PaymentOrder,
+  type PaymentRefund,
+  type PaymentTrendPoint,
+} from '@zenith/shared/payment';
 import {
   mockPaymentChannels,
   getNextPaymentChannelId,
@@ -8,10 +19,9 @@ import {
   getNextPaymentRefundId,
   mockPaymentLogs,
 } from '@/mocks/data/payment';
+import { mock } from '@/mocks/utils/contract';
 import { mockDateTime, mockDateTimeOffset, mockDate } from '@/mocks/utils/date';
-import { badRequest, conflict, ok, notFound, paginate } from '@/mocks/utils/handlers';
-import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
-import type { PaymentChannelConfig, PaymentMethod, PaymentOrder, PaymentRefund } from '@zenith/shared/payment';
+import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { recordMockPaymentSucceeded, recordMockRefundSucceeded } from './payment-ext';
 
 interface MockRefundIdempotencyRecord {
@@ -25,9 +35,16 @@ function refundRequestHash(values: { refundAmount: number; reason?: string }): s
   return JSON.stringify({ refundAmount: values.refundAmount, reason: values.reason?.trim() || null });
 }
 
+/** Demo 模式的支付应用 → 商户配置绑定（应用 1 / 2 走微信主商户，应用 3 走支付宝沙箱） */
+function demoChannelConfigId(applicationId: number): number | null {
+  if (applicationId === 3) return 2;
+  if (applicationId === 1 || applicationId === 2) return 1;
+  return null;
+}
+
 export const paymentHandlers = [
   // ── 统计 ──
-  http.get('/api/payment/stats', () => {
+  mock(paymentStatsContract.stats, ({ ok }) => {
     const isPaid = (s: string) => s === 'success' || s === 'refunding' || s === 'refunded';
     const paid = mockPaymentOrders.filter((o) => isPaid(o.status));
     const totalAmount = paid.reduce((s, o) => s + o.amount, 0);
@@ -79,10 +96,9 @@ export const paymentHandlers = [
   }),
 
   // ── 收款趋势（Demo 模式生成确定性合成数据，便于图表演示）──
-  http.get('/api/payment/trend', ({ request }) => {
-    const url = new URL(request.url);
-    const days = Math.min(Math.max(Number(url.searchParams.get('days')) || 30, 1), 365);
-    const data = Array.from({ length: days }, (_, i) => {
+  mock(paymentStatsContract.trend, ({ query, ok }) => {
+    const days = query.days ?? 30;
+    const data: PaymentTrendPoint[] = Array.from({ length: days }, (_, i) => {
       const d = new Date();
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() - (days - 1 - i));
@@ -96,36 +112,31 @@ export const paymentHandlers = [
   }),
 
   // ── 渠道配置 ──
-  http.get('/api/payment/channels/all', () => ok(mockPaymentChannels)),
-  http.get('/api/payment/channels/operation-lookup', () => ok(
+  mock(paymentChannelContract.channelsAll, ({ ok }) => ok(mockPaymentChannels)),
+  mock(paymentChannelContract.channelOperationLookup, ({ ok }) => ok(
     mockPaymentChannels
       .filter((config) => config.status === 'enabled')
       .map(({ id, name, channel, sandbox }) => ({ id, name, channel, sandbox })),
   )),
-  http.get('/api/payment/channels', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const channel = url.searchParams.get('channel') ?? '';
-    const status = url.searchParams.get('status') ?? '';
+  mock(paymentChannelContract.channels, ({ query, ok, paginate }) => {
     const filtered = mockPaymentChannels.filter(
-      (c) => (!keyword || c.name.includes(keyword)) && (!channel || c.channel === channel) && (!status || c.status === status),
+      (c) => (!query.keyword || c.name.includes(query.keyword)) && (!query.channel || c.channel === query.channel) && (!query.status || c.status === query.status),
     );
-    return ok(paginate(filtered, url));
+    return ok(paginate(filtered));
   }),
-  http.get('/api/payment/channels/:id', ({ params }) => {
-    const c = mockPaymentChannels.find((x) => x.id === Number(params.id));
+  mock(paymentChannelContract.channelDetail, ({ params, ok }) => {
+    const c = mockPaymentChannels.find((x) => x.id === params.id);
     return c ? ok(c) : notFound('不存在');
   }),
-  http.post('/api/payment/channels', async ({ request }) => {
-    const body = (await request.json()) as Partial<PaymentChannelConfig> & { wechatApiV3Key?: string; wechatPrivateKey?: string; alipayPrivateKey?: string; unionpayPrivateKey?: string };
+  mock(paymentChannelContract.createChannel, ({ body, ok }) => {
     const now = mockDateTime();
     const item: PaymentChannelConfig = {
       id: getNextPaymentChannelId(),
-      name: body.name ?? '',
-      channel: body.channel ?? 'wechat',
-      status: body.status ?? 'enabled',
-      isDefault: body.isDefault ?? false,
-      sandbox: body.sandbox ?? false,
+      name: body.name,
+      channel: body.channel,
+      status: body.status,
+      isDefault: body.isDefault,
+      sandbox: body.sandbox,
       notifyUrl: body.notifyUrl ?? null,
       wechatAppId: body.wechatAppId ?? null,
       wechatMchId: body.wechatMchId ?? null,
@@ -134,8 +145,9 @@ export const paymentHandlers = [
       hasWechatApiV3Key: Boolean(body.wechatApiV3Key),
       hasWechatPrivateKey: Boolean(body.wechatPrivateKey),
       alipayAppId: body.alipayAppId ?? null,
+      alipaySellerId: body.alipaySellerId ?? null,
       alipayPublicKey: body.alipayPublicKey ?? null,
-      alipaySignType: body.alipaySignType ?? 'RSA2',
+      alipaySignType: body.alipaySignType,
       alipayGateway: body.alipayGateway ?? null,
       hasAlipayPrivateKey: Boolean(body.alipayPrivateKey),
       unionpayMerId: body.unionpayMerId ?? null,
@@ -150,34 +162,34 @@ export const paymentHandlers = [
     mockPaymentChannels.push(item);
     return ok(item, '创建成功');
   }),
-  http.put('/api/payment/channels/:id', async ({ params, request }) => {
-    const c = mockPaymentChannels.find((x) => x.id === Number(params.id));
+  mock(paymentChannelContract.updateChannel, ({ params, body, ok }) => {
+    const c = mockPaymentChannels.find((x) => x.id === params.id);
     if (!c) return notFound('不存在');
-    const body = (await request.json()) as Record<string, unknown>;
-    Object.assign(c, body, { updatedAt: mockDateTime() });
-    if (body.unionpayPrivateKey) c.hasUnionpayPrivateKey = true;
-    if (body.wechatApiV3Key) c.hasWechatApiV3Key = true;
-    if (body.wechatPrivateKey) c.hasWechatPrivateKey = true;
-    if (body.alipayPrivateKey) c.hasAlipayPrivateKey = true;
+    const { wechatApiV3Key, wechatPrivateKey, alipayPrivateKey, unionpayPrivateKey, ...fields } = body;
+    Object.assign(c, fields, { updatedAt: mockDateTime() });
+    if (unionpayPrivateKey) c.hasUnionpayPrivateKey = true;
+    if (wechatApiV3Key) c.hasWechatApiV3Key = true;
+    if (wechatPrivateKey) c.hasWechatPrivateKey = true;
+    if (alipayPrivateKey) c.hasAlipayPrivateKey = true;
     return ok(c, '更新成功');
   }),
-  http.delete('/api/payment/channels/:id', ({ params }) => {
-    const i = mockPaymentChannels.findIndex((x) => x.id === Number(params.id));
+  mock(paymentChannelContract.removeChannel, ({ params, ok }) => {
+    const i = mockPaymentChannels.findIndex((x) => x.id === params.id);
     if (i === -1) return notFound('不存在');
     mockPaymentChannels.splice(i, 1);
     return ok(null, '删除成功');
   }),
 
   // 渠道连通性测试（Demo 模式模拟 50ms 探测延迟，返回成功）
-  http.post('/api/payment/channels/:id/test', ({ params }) => {
-    const c = mockPaymentChannels.find((x) => x.id === Number(params.id));
+  mock(paymentChannelContract.testChannel, ({ params, ok }) => {
+    const c = mockPaymentChannels.find((x) => x.id === params.id);
     if (!c) return notFound('渠道配置不存在');
     return ok({ success: true, message: '连通性测试通过（演示模式）', latencyMs: 48 }, '操作成功');
   }),
 
   // 设为默认渠道（同渠道互斥）
-  http.post('/api/payment/channels/:id/default', ({ params }) => {
-    const target = mockPaymentChannels.find((x) => x.id === Number(params.id));
+  mock(paymentChannelContract.setDefaultChannel, ({ params, ok }) => {
+    const target = mockPaymentChannels.find((x) => x.id === params.id);
     if (!target) return notFound('渠道配置不存在');
     const now = mockDateTime();
     for (const c of mockPaymentChannels) {
@@ -189,35 +201,24 @@ export const paymentHandlers = [
   }),
 
   // ── 支付订单 ──
-  http.get('/api/payment/orders', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const channel = url.searchParams.get('channel') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const bizType = url.searchParams.get('bizType') ?? '';
-    const payMethod = url.searchParams.get('payMethod') ?? '';
-    const minAmount = url.searchParams.get('minAmount');
-    const maxAmount = url.searchParams.get('maxAmount');
-    const startTime = url.searchParams.get('startTime');
-    const endTime = url.searchParams.get('endTime');
+  mock(paymentOrderContract.orders, ({ query, ok, paginate }) => {
     const filtered = mockPaymentOrders.filter(
       (o) =>
-        (!keyword || o.orderNo.includes(keyword) || o.subject.includes(keyword)) &&
-        (!channel || o.channel === channel) &&
-        (!status || o.status === status) &&
-        (!bizType || o.bizType === bizType) &&
-        (!payMethod || o.payMethod === payMethod) &&
-        (minAmount == null || o.amount >= Number(minAmount)) &&
-        (maxAmount == null || o.amount <= Number(maxAmount)) &&
-        (!startTime || o.createdAt >= startTime) &&
-        (!endTime || o.createdAt <= endTime),
+        (!query.keyword || o.orderNo.includes(query.keyword) || o.subject.includes(query.keyword)) &&
+        (!query.channel || o.channel === query.channel) &&
+        (!query.status || o.status === query.status) &&
+        (!query.bizType || o.bizType === query.bizType) &&
+        (!query.payMethod || o.payMethod === query.payMethod) &&
+        (query.minAmount == null || o.amount >= query.minAmount) &&
+        (query.maxAmount == null || o.amount <= query.maxAmount) &&
+        (!query.startTime || o.createdAt >= query.startTime) &&
+        (!query.endTime || o.createdAt <= query.endTime),
     );
-    return ok(paginate(filtered, url));
+    return ok(paginate(filtered));
   }),
-  http.post('/api/payment/orders', async ({ request }) => {
-    const body = (await request.json()) as { applicationId: number; bizType: string; bizId: string; subject: string; amount: number; payMethod: PaymentMethod; openId?: string };
+  mock(paymentOrderContract.createOrder, ({ body, ok }) => {
     const channel = PAYMENT_METHOD_CHANNEL[body.payMethod];
-    const expectedConfigId = body.applicationId === 3 ? 2 : body.applicationId === 1 || body.applicationId === 2 ? 1 : null;
+    const expectedConfigId = demoChannelConfigId(body.applicationId);
     if (!expectedConfigId || mockPaymentChannels.find((config) => config.id === expectedConfigId)?.channel !== channel) {
       return badRequest('支付应用未绑定所选支付方式对应的商户配置');
     }
@@ -225,9 +226,9 @@ export const paymentHandlers = [
     const now = mockDateTime();
     const order: PaymentOrder = {
       id: getNextPaymentOrderId(), orderNo, outTradeNo: orderNo, channelTradeNo: null, bizType: body.bizType, bizId: body.bizId,
-      subject: body.subject, body: null, amount: body.amount, currency: 'CNY', channel, channelConfigId: expectedConfigId, appId: body.applicationId,
-      payMethod: body.payMethod, status: 'paying', userId: 1, openId: body.openId ?? null, clientIp: '127.0.0.1', departmentId: null,
-      paidAmount: null, feeAmount: null, netAmount: null, paidAt: null, expiredAt: mockDateTimeOffset(30 * 60 * 1000), errorMessage: null, version: 0, createdAt: now, updatedAt: now,
+      subject: body.subject, body: body.body ?? null, amount: body.amount, currency: body.currency, channel, channelConfigId: expectedConfigId, appId: body.applicationId,
+      payMethod: body.payMethod, status: 'paying', userId: body.userId ?? 1, openId: body.openId ?? null, clientIp: '127.0.0.1', departmentId: null,
+      paidAmount: null, feeAmount: null, netAmount: null, paidAt: null, expiredAt: mockDateTimeOffset(body.expireMinutes * 60 * 1000), errorMessage: null, version: 0, createdAt: now, updatedAt: now,
     };
     mockPaymentOrders.unshift(order);
     const payParams = {
@@ -239,22 +240,22 @@ export const paymentHandlers = [
     };
     return ok({ orderNo, payParams }, '下单成功');
   }),
-  http.get('/api/payment/orders/by-no/:orderNo', ({ params }) => {
-    const o = mockPaymentOrders.find((x) => x.orderNo === String(params.orderNo));
+  mock(paymentOrderContract.orderByNo, ({ params, ok }) => {
+    const o = mockPaymentOrders.find((x) => x.orderNo === params.orderNo);
     return o ? ok(o) : notFound('不存在');
   }),
-  http.get('/api/payment/orders/:id', ({ params }) => {
-    const o = mockPaymentOrders.find((x) => x.id === Number(params.id));
+  mock(paymentOrderContract.orderDetail, ({ params, ok }) => {
+    const o = mockPaymentOrders.find((x) => x.id === params.id);
     return o ? ok(o) : notFound('不存在');
   }),
-  http.get('/api/payment/orders/:id/refunds', ({ params }) => {
-    const order = mockPaymentOrders.find((x) => x.id === Number(params.id));
+  mock(paymentRefundContract.orderRefunds, ({ params, ok }) => {
+    const order = mockPaymentOrders.find((x) => x.id === params.id);
     if (!order) return notFound('订单不存在');
     const refunds = mockPaymentRefunds.filter((r) => r.orderId === order.id).sort((a, b) => b.id - a.id);
     return ok(refunds);
   }),
-  http.post('/api/payment/orders/:id/query', ({ params }) => {
-    const o = mockPaymentOrders.find((x) => x.id === Number(params.id));
+  mock(paymentOrderContract.queryOrder, ({ params, ok }) => {
+    const o = mockPaymentOrders.find((x) => x.id === params.id);
     if (!o) return notFound('不存在');
     if (o.status === 'paying') {
       o.status = 'success';
@@ -266,8 +267,8 @@ export const paymentHandlers = [
     }
     return ok(o, '已同步');
   }),
-  http.post('/api/payment/orders/:id/close', ({ params }) => {
-    const o = mockPaymentOrders.find((x) => x.id === Number(params.id));
+  mock(paymentOrderContract.closeOrder, ({ params, ok }) => {
+    const o = mockPaymentOrders.find((x) => x.id === params.id);
     if (!o) return notFound('不存在');
     o.status = 'closed';
     o.version += 1;
@@ -276,10 +277,8 @@ export const paymentHandlers = [
   }),
 
   // ── 退款 ──
-  http.post('/api/payment/refunds', async ({ request }) => {
-    const idempotencyKey = request.headers.get('X-Idempotency-Key')?.trim();
-    if (!idempotencyKey) return badRequest('退款请求必须提供 X-Idempotency-Key', { status: 400 });
-    const body = (await request.json()) as { orderNo: string; refundAmount: number; reason?: string };
+  mock(paymentRefundContract.createRefund, ({ headers, body, ok }) => {
+    const idempotencyKey = headers['x-idempotency-key'];
     const order = mockPaymentOrders.find((o) => o.orderNo === body.orderNo);
     if (!order) return notFound('订单不存在');
     const cacheKey = `${order.orderNo}:${idempotencyKey}`;
@@ -307,26 +306,21 @@ export const paymentHandlers = [
     refundIdempotencyRecords.set(cacheKey, { requestHash, result });
     return ok(result, '退款已发起');
   }),
-  http.get('/api/payment/refunds', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const channel = url.searchParams.get('channel') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const startTime = url.searchParams.get('startTime');
-    const endTime = url.searchParams.get('endTime');
+  mock(paymentRefundContract.refunds, ({ query, ok, paginate }) => {
     const filtered = mockPaymentRefunds.filter(
       (r) =>
-        (!keyword || r.refundNo.includes(keyword) || r.orderNo.includes(keyword)) &&
-        (!channel || r.channel === channel) &&
-        (!status || r.status === status) &&
-        (!startTime || r.createdAt >= startTime) &&
-        (!endTime || r.createdAt <= endTime),
+        (!query.keyword || r.refundNo.includes(query.keyword) || r.orderNo.includes(query.keyword)) &&
+        (!query.channel || r.channel === query.channel) &&
+        (!query.status || r.status === query.status) &&
+        (!query.approvalStatus || r.approvalStatus === query.approvalStatus) &&
+        (!query.startTime || r.createdAt >= query.startTime) &&
+        (!query.endTime || r.createdAt <= query.endTime),
     );
-    return ok(paginate(filtered, url));
+    return ok(paginate(filtered));
   }),
   // 退款查单同步（Demo 模式将处理中退款置为成功）
-  http.post('/api/payment/refunds/:id/query', ({ params }) => {
-    const r = mockPaymentRefunds.find((x) => x.id === Number(params.id));
+  mock(paymentRefundContract.queryRefund, ({ params, ok }) => {
+    const r = mockPaymentRefunds.find((x) => x.id === params.id);
     if (!r) return notFound('退款记录不存在');
     if (r.status === 'processing' || r.status === 'pending') {
       r.status = 'success';
@@ -342,29 +336,21 @@ export const paymentHandlers = [
     }
     return ok(r, '已同步');
   }),
-  http.get('/api/payment/refunds/:id', ({ params }) => {
-    const r = mockPaymentRefunds.find((x) => x.id === Number(params.id));
+  mock(paymentRefundContract.refundDetail, ({ params, ok }) => {
+    const r = mockPaymentRefunds.find((x) => x.id === params.id);
     return r ? ok(r) : notFound('不存在');
   }),
-
   // ── 回调日志 ──
-  http.get('/api/payment/logs', ({ request }) => {
-    const url = new URL(request.url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const channel = url.searchParams.get('channel') ?? '';
-    const scene = url.searchParams.get('scene') ?? '';
-    const signatureValid = url.searchParams.get('signatureValid');
-    const startTime = url.searchParams.get('startTime');
-    const endTime = url.searchParams.get('endTime');
+  mock(paymentNotifyLogContract.logs, ({ query, ok, paginate }) => {
     const filtered = mockPaymentLogs.filter(
       (l) =>
-        (!keyword || (l.orderNo ?? '').includes(keyword)) &&
-        (!channel || l.channel === channel) &&
-        (!scene || l.scene === scene) &&
-        (signatureValid == null || l.signatureValid === (signatureValid === 'true')) &&
-        (!startTime || l.createdAt >= startTime) &&
-        (!endTime || l.createdAt <= endTime),
+        (!query.keyword || (l.orderNo ?? '').includes(query.keyword)) &&
+        (!query.channel || l.channel === query.channel) &&
+        (!query.scene || l.scene === query.scene) &&
+        (query.signatureValid == null || l.signatureValid === query.signatureValid) &&
+        (!query.startTime || l.createdAt >= query.startTime) &&
+        (!query.endTime || l.createdAt <= query.endTime),
     );
-    return ok(paginate(filtered, url));
+    return ok(paginate(filtered));
   }),
 ];
