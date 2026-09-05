@@ -17,7 +17,8 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { TOKEN_KEY } from '@zenith/shared/core';
 import { terminalRecordingContract } from '@zenith/shared/ops';
-import { systemConfigContract, wsAuthProtocols } from '@zenith/shared/platform';
+import { wsAuthProtocols } from '@zenith/shared/platform';
+import { settingsContract } from '@zenith/shared/settings';
 import { config } from '@/config';
 import { api } from '@/lib/contract-query';
 import { formatDateTime } from '@/utils/date';
@@ -244,11 +245,11 @@ class TerminalSessionStore {
   async create(sessionId: string, options: SessionCreateOptions): Promise<void> {
     if (this.sessions.has(sessionId)) return;
 
-    // 查询录屏开关（默认关闭）
+    // 查询录屏开关（默认关闭）：来自运行时设置登录用户投影；terminal 模块受 ops 特性门控，未授权时字段缺省
     let recordingEnabled = false;
     try {
-      const recordingConfig = await api(systemConfigContract.publicByKey, { params: { key: 'terminal_recording_enabled' } }, { silent: true });
-      recordingEnabled = recordingConfig.configValue === 'true';
+      const mine = await api(settingsContract.me, { silent: true });
+      recordingEnabled = mine.terminal?.recordingEnabled ?? false;
     } catch { /* 查询失败则不录屏 */ }
 
     const container = document.createElement('div');

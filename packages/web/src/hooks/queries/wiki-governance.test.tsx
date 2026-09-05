@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import type { WikiDoc, WikiOpsStats, WikiSettings } from '@zenith/shared/wiki';
+import type { WikiDoc, WikiOpsStats } from '@zenith/shared/wiki';
+import type { SettingsEnvelope, WikiSettings } from '@zenith/shared/settings';
 import {
   ApiRecorder,
   createRequestMock,
@@ -29,6 +30,10 @@ const SAVED_SETTINGS: WikiSettings = {
   commentsEnabled: false,
   pendingRemindHours: 24,
 };
+// 运行时设置的读取信封：生效值 / 上级值 / 覆盖路径 / 版本
+function envelope(effective: WikiSettings, version: number): SettingsEnvelope<'wiki'> {
+  return { module: 'wiki', scope: 'platform', tenantId: null, version, effective, inherited: SETTINGS, overriddenPaths: [], updatedAt: null };
+}
 const DOC: WikiDoc = {
   id: 1,
   spaceId: 1,
@@ -76,8 +81,8 @@ const GOVERNANCE_PATH = '/api/wiki/governance/docs?page=1&pageSize=10&kind=revie
 beforeEach(() => {
   api.reset();
   api
-    .on('GET', '/api/wiki/settings', SETTINGS)
-    .on('PUT', '/api/wiki/settings', SAVED_SETTINGS)
+    .on('GET', '/api/settings/wiki', envelope(SETTINGS, 1))
+    .on('PUT', '/api/settings/wiki', envelope(SAVED_SETTINGS, 2))
     .on('GET', '/api/wiki/docs/1', DOC)
     .on('GET', '/api/wiki/stats/ops', OPS)
     .on('GET', GOVERNANCE_PATH, { list: [], total: 0, page: 1, pageSize: 10 })
@@ -105,7 +110,7 @@ describe('知识中心治理缓存契约', () => {
     });
 
     api.resetCalls();
-    await result.current.update.mutateAsync({ body: SAVED_SETTINGS });
+    await result.current.update.mutateAsync({ body: { version: 1, data: SAVED_SETTINGS } });
     await waitFor(() => expect(api.countOf('GET', GOVERNANCE_PATH)).toBe(1));
 
     expect(api.countOf('GET', '/api/wiki/docs/1')).toBe(1);

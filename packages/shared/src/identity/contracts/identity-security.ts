@@ -2,7 +2,6 @@ import * as z from 'zod';
 import { paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { LOGIN_RISK_ACTIONS, LOGIN_RISK_LEVELS } from '../constants';
-import { identitySecurityPolicySchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +28,5 @@ export const loginRiskEventListQuery = paginationQuery.extend({
 });
 
 export const identitySecurityContract = defineContract('/api/identity-security', {
-  policy: op.get('/policy', { response: identitySecurityPolicySchema, summary: '获取身份安全策略' }),
-  updatePolicy: op.put('/policy', { body: identitySecurityPolicySchema, response: identitySecurityPolicySchema, summary: '更新身份安全策略' }),
   riskEvents: op.get('/risk-events', { query: loginRiskEventListQuery, response: paginated(loginRiskEventSchema), summary: '登录风险事件' }),
 }, { tags: ['IdentitySecurity'] });

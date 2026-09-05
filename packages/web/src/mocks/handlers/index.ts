@@ -7,7 +7,7 @@ import { positionsHandlers } from './positions';
 import { userGroupsHandlers } from './user-groups';
 import { scopeMembersHandlers } from './scope-members';
 import { dictsHandlers } from './dicts';
-import { systemConfigsHandlers } from './system-configs';
+import { settingsHandlers } from './settings';
 import { identitySecurityHandlers } from './identity-security';
 import { identityProvidersHandlers } from './identity-providers';
 import { directorySyncHandlers } from './directory-sync';
@@ -153,7 +153,7 @@ export const handlers = [
   ...scopeMembersHandlers,
   ...userGroupsHandlers,
   ...dictsHandlers,
-  ...systemConfigsHandlers,
+  ...settingsHandlers,
   ...identitySecurityHandlers,
   ...identityProvidersHandlers,
   ...directorySyncHandlers,

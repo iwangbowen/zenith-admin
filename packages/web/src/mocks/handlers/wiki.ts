@@ -1,5 +1,5 @@
 import {
-  wikiCommentContract, wikiDocContract, wikiGovernanceContract, wikiSettingsContract,
+  wikiCommentContract, wikiDocContract, wikiGovernanceContract,
   wikiSpaceContract, wikiStatsContract, wikiTagContract, wikiTemplateContract,
 } from '@zenith/shared/wiki';
 import type {
@@ -728,15 +728,6 @@ const statsHandlers = [
   }),
 ];
 
-const settingsHandlers = [
-  mock(wikiSettingsContract.get, ({ ok }) => ok({ ...mockWikiSettings })),
-
-  mock(wikiSettingsContract.update, ({ body, ok }) => {
-    Object.assign(mockWikiSettings, { ...body, aiSyncKbId: body.aiSyncKbId ?? null });
-    return ok({ ...mockWikiSettings }, '保存成功');
-  }),
-];
-
 // ─── 治理 ─────────────────────────────────────────────────────────────────────
 
 const governanceHandlers = [
@@ -830,6 +821,5 @@ export const wikiHandlers = [
   ...tagHandlers,
   ...commentHandlers,
   ...statsHandlers,
-  ...settingsHandlers,
   ...governanceHandlers,
 ];

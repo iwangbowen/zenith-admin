@@ -22,7 +22,6 @@ import { config } from '@/config';
 import NProgress from '@/components/NProgress';
 import Watermark from '@/components/Watermark';
 import { FeedbackWidget } from '@/components/FeedbackWidget';
-import { usePublicConfig } from '@/hooks/queries/system-configs';
 // 重依赖懒加载：快捷聊天（Semi Chat 组件树）、音视频通话、聊天通知、锁屏（lunar 农历 ~300KB）均不进首屏 chunk
 const QuickChatButton = lazy(() => import('@/components/QuickChatButton'));
 const CallOverlayHost = lazy(() => import('@/webrtc/CallOverlayHost'));
@@ -41,7 +40,7 @@ import { usePageTracker } from '@/hooks/usePageTracker';
 import { useMediaQuery, useIsMobile } from '@/hooks/useMediaQuery';
 import { mediaDown } from '@/lib/breakpoints';
 import { findBreadcrumbs, findNavItemAncestorKeys, updateMessageRead, computeTabClosableFlags } from './admin/utils';
-import { useWatermarkConfig, useQuickChatEnabled } from './admin/useSystemConfigFlags';
+import { useMySettings } from '@/hooks/queries/settings';
 import { useFullscreen } from './admin/useFullscreen';
 import { usePreferencesPanel } from './admin/usePreferencesPanel';
 import { useAutoLock } from './admin/useAutoLock';
@@ -153,15 +152,12 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
 
   const reduceMotion = preferences.reduceMotion ?? false;
 
-  // ─── 水印配置 ──────────────────────────────────────────────────────────────
-  const watermarkConfig = useWatermarkConfig();
-
-  // ─── 快捷聊天系统开关 ─────────────────────────────────────────────────────
-  const quickChatEnabled = useQuickChatEnabled();
-
-  // ─── 意见反馈入口（feedback_entry_enabled 系统配置控制显隐）───────────────
-  const feedbackEntryQuery = usePublicConfig('feedback_entry_enabled');
-  const feedbackEntryEnabled = feedbackEntryQuery.data?.configValue === 'true';
+  // ─── 布局开关：水印 / 快捷聊天 / 意见反馈入口，来自运行时设置的登录用户投影（一次请求）──────
+  const mySettings = useMySettings().data;
+  const watermark = mySettings?.ui.watermark;
+  const watermarkConfig = { enabled: watermark?.enabled ?? false, content: watermark?.content ?? '', fontSize: watermark?.fontSize ?? 14, opacity: (watermark?.opacity ?? 15) / 100 };
+  const quickChatEnabled = mySettings?.ui.quickChatEnabled ?? false;
+  const feedbackEntryEnabled = mySettings?.ui.feedbackEntryEnabled ?? false;
   const [feedbackVisible, setFeedbackVisible] = useState(false);
 
   // Fullscreen

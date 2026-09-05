@@ -164,25 +164,6 @@ export const DRIVE_VIEW_LABELS: Record<DriveView, string> = {
   links: '我的外链',
 };
 
-// ─── 全局设置（存 system_configs，drive_ 前缀）──────────────────────────────────
-export const DRIVE_SETTING_KEYS = {
-  personalQuotaGb: 'drive_personal_quota_gb',
-  departmentQuotaGb: 'drive_department_quota_gb',
-  teamQuotaGb: 'drive_team_quota_gb',
-  departmentSpaceAutoCreate: 'drive_department_space_auto_create',
-  recycleRetentionDays: 'drive_recycle_retention_days',
-  maxVersions: 'drive_max_versions',
-  quotaWarningPercent: 'drive_quota_warning_percent',
-  externalShareEnabled: 'drive_external_share_enabled',
-  externalShareMaxDays: 'drive_external_share_max_days',
-  externalShareRequirePassword: 'drive_external_share_require_password',
-  blockedExtensions: 'drive_blocked_extensions',
-  thumbnailEnabled: 'drive_thumbnail_enabled',
-  textIndexEnabled: 'drive_text_index_enabled',
-} as const;
-
-export type DriveSettingKey = (typeof DRIVE_SETTING_KEYS)[keyof typeof DRIVE_SETTING_KEYS];
-
 /** 简单上传阈值：超过则走分片上传 */
 export const DRIVE_SIMPLE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 

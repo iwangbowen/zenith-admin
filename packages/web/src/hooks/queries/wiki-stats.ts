@@ -1,9 +1,11 @@
-import { wikiSettingsContract, wikiStatsContract, type WikiSettings } from '@zenith/shared/wiki';
-import { useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { wikiStatsContract } from '@zenith/shared/wiki';
+import type { SettingsEnvelope } from '@zenith/shared/settings';
+import { settingsKeys, useSaveSettings, useSettings } from './settings';
+import { useApiQuery } from '@/lib/contract-query';
 import { wikiDocDetailPrefix } from './wiki-docs';
-import { wikiGovernanceKeys, wikiSettingsKey, wikiStatsKeys } from './wiki-query-keys';
+import { wikiGovernanceKeys, wikiStatsKeys } from './wiki-query-keys';
 
-export { wikiSettingsKey, wikiStatsKeys } from './wiki-query-keys';
+export { wikiStatsKeys } from './wiki-query-keys';
 
 export function useWikiStatsOverview() {
   return useApiQuery(wikiStatsContract.overview);
@@ -25,8 +27,9 @@ export function useWikiOpsStats() {
   return useApiQuery(wikiStatsContract.ops);
 }
 
+/** 知识库全局设置由运行时设置 wiki 模块承载（/api/settings/wiki）；返回读取信封（effective / inherited / version） */
 export function useWikiSettings() {
-  return useApiQuery(wikiSettingsContract.get);
+  return useSettings('wiki');
 }
 
 /**
@@ -34,17 +37,14 @@ export function useWikiSettings() {
  * 评论开关影响文档详情的 commentsEnabled，审核积压时限影响治理「审核积压」清单与运营统计。
  */
 export function useUpdateWikiSettings() {
-  return useApiMutation(wikiSettingsContract.update, {
-    invalidate: (qc, saved) => {
-      const previous = qc.getQueryData<WikiSettings>(wikiSettingsKey);
-      qc.setQueryData(wikiSettingsKey, saved);
-      if (previous?.commentsEnabled !== saved.commentsEnabled) {
-        void qc.invalidateQueries({ queryKey: wikiDocDetailPrefix });
-      }
-      if (previous?.pendingRemindHours !== saved.pendingRemindHours) {
-        void qc.invalidateQueries({ queryKey: wikiGovernanceKeys.lists });
-        void qc.invalidateQueries({ queryKey: wikiStatsKeys.ops });
-      }
-    },
+  return useSaveSettings('wiki', (qc, saved) => {
+    const previous = qc.getQueryData<SettingsEnvelope<'wiki'>>(settingsKeys.module('wiki'))?.effective;
+    if (previous?.commentsEnabled !== saved.effective.commentsEnabled) {
+      void qc.invalidateQueries({ queryKey: wikiDocDetailPrefix });
+    }
+    if (previous?.pendingRemindHours !== saved.effective.pendingRemindHours) {
+      void qc.invalidateQueries({ queryKey: wikiGovernanceKeys.lists });
+      void qc.invalidateQueries({ queryKey: wikiStatsKeys.ops });
+    }
   });
 }

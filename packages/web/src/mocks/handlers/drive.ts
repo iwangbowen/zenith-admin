@@ -882,15 +882,6 @@ const adminHandlers = [
     if (query.action) list = list.filter((a) => a.action === query.action);
     return ok(paginate(list));
   }),
-  mock(driveAdminContract.settings, ({ ok }) => ok(mockDriveSettings)),
-  mock(driveAdminContract.saveSettings, ({ body, ok }) => {
-    Object.assign(mockDriveSettings, body);
-    for (const s of mockDriveSpaces) {
-      if (s.customQuotaBytes !== null) continue;
-      s.quotaBytes = quotaFallbackGb(s.type) * 1024 ** 3;
-    }
-    return ok(mockDriveSettings, '设置已保存');
-  }),
 ];
 
 export const driveHandlers = [

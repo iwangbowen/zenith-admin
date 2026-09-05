@@ -17,7 +17,8 @@ import { PresetAvatarPickerModal } from '@/components/PresetAvatarPickerModal';
 import { UserAvatar } from '@/components/UserAvatar';
 import { OAuthProviderIcon } from '@/components/OAuthProviderIcon';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
-import { type PasswordPolicy } from '@/utils/password-policy';
+import type { PasswordRules as PasswordPolicy } from '@zenith/shared/settings';
+import { useMySettings } from '@/hooks/queries/settings';
 import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -42,7 +43,6 @@ import {
   useProfileOauthAccounts,
   useProfileOAuthBindUrl,
   useProfileOperationLogs,
-  useProfilePasswordPolicy,
   useProfileSessions,
   useUnbindProfileOAuth,
   useUpdateProfile,
@@ -154,7 +154,8 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const newTokenFormApi = useRef<FormApi | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
 
-  const passwordPolicyQuery = useProfilePasswordPolicy();
+  // 密码规则来自运行时设置的登录用户投影（与布局共用一次请求）
+  const mySettingsQuery = useMySettings();
   const oauthAccountsQuery = useProfileOauthAccounts(activeSection === 'security');
   const oauthProvidersQuery = useOAuthProviders(activeSection === 'security');
   const mfaFactorsQuery = useProfileMfaFactors(activeSection === 'security');
@@ -190,7 +191,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
     Toast.success('已撤销该应用的授权');
   }
 
-  const passwordPolicy: PasswordPolicy | null = passwordPolicyQuery.data ?? null;
+  const passwordPolicy: PasswordPolicy | null = mySettingsQuery.data?.identitySecurity.password ?? null;
   const oauthAccounts = oauthAccountsQuery.data ?? [];
   const enabledOAuthProviders = oauthProvidersQuery.data ?? [];
   // 可绑定的只有后台已启用的提供方；已绑定但后来被停用的仍列出，允许解绑

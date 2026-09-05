@@ -82,7 +82,7 @@ export default function DriveWorkbenchPage() {
     setSelection((prev) => ({ ...prev, folder: folder ? String(folder) : null }));
   }, [setSelection]);
 
-  const allowExternalShare = (settingsQuery.data?.externalShareEnabled ?? true) && (activeSpace?.allowExternalShare ?? true);
+  const allowExternalShare = (settingsQuery.data?.effective.externalShareEnabled ?? true) && (activeSpace?.allowExternalShare ?? true);
 
   const quickCreateTeamSpace = () => navigate('/drive/spaces?create=1');
 

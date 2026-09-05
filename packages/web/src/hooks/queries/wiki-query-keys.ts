@@ -1,5 +1,5 @@
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
-import { wikiGovernanceContract, wikiSettingsContract, wikiStatsContract, type WikiGovernanceKind } from '@zenith/shared/wiki';
+import { wikiGovernanceContract, wikiStatsContract, type WikiGovernanceKind } from '@zenith/shared/wiki';
 import { contractKey } from '@/lib/contract-query';
 
 /**
@@ -16,7 +16,6 @@ export const wikiStatsKeys = {
   ops: contractKey(wikiStatsContract.ops),
 };
 
-export const wikiSettingsKey = contractKey(wikiSettingsContract.get);
 
 export type WikiGovernanceDocListParams = Omit<NonNullable<QueryOf<typeof wikiGovernanceContract.listDocs>>, 'kind'>;
 

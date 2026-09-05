@@ -1,11 +1,6 @@
-import type { PasswordPolicy } from '@zenith/shared/platform';
-
-export type { PasswordPolicy };
-
-export function formatPasswordPolicyHint(policy: PasswordPolicy | null): string {
-  if (!policy) return '至少 6 位';
-  const parts: string[] = [`至少 ${policy.minLength} 位`];
-  if (policy.requireUppercase) parts.push('包含大写字母');
-  if (policy.requireSpecialChar) parts.push('包含特殊字符');
-  return parts.join('、');
-}
+/**
+ * 密码规则文案与类型：唯一实现在 `@zenith/shared/settings`（与服务端校验同源），这里只做别名转发，
+ * 保持 `@/utils/password-policy` 引用路径稳定。
+ */
+export { formatPasswordPolicyHint, validatePassword } from '@zenith/shared/settings';
+export type { PasswordRules as PasswordPolicy } from '@zenith/shared/settings';

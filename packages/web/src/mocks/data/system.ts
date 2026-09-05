@@ -1,9 +1,7 @@
-import type { SystemConfig, CronJob, FileStorageConfig } from '@zenith/shared/platform';
+import type { CronJob, FileStorageConfig } from '@zenith/shared/platform';
 import type { OnlineSession } from '@zenith/shared/identity';
-import { SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS } from '@zenith/shared/seed';
+import { SEED_CRON_JOBS } from '@zenith/shared/seed';
 import { mockDateTimeOffset } from '@/mocks/utils/date';
-
-export const mockSystemConfigs: SystemConfig[] = SEED_SYSTEM_CONFIGS.map((s) => ({ ...s }));
 
 export const mockCronJobs: CronJob[] = SEED_CRON_JOBS.map((c) => ({ ...c }));
 

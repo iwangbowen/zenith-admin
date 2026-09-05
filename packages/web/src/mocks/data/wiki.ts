@@ -1,5 +1,6 @@
 import { SEED_WIKI_COMMENTS, SEED_WIKI_DOCS, SEED_WIKI_SPACES, SEED_WIKI_SPACE_MEMBERS, SEED_WIKI_TAGS, SEED_WIKI_TEMPLATES } from '@zenith/shared/seed';
-import type { WikiComment, WikiDoc, WikiDocVersion, WikiSettings, WikiSpace, WikiSpaceMember, WikiTag, WikiTemplate } from '@zenith/shared/wiki';
+import { wikiSettingsSchema, type WikiSettings } from '@zenith/shared/settings';
+import type { WikiComment, WikiDoc, WikiDocVersion, WikiSpace, WikiSpaceMember, WikiTag, WikiTemplate } from '@zenith/shared/wiki';
 import { mockDateTime } from '@/mocks/utils/date';
 import { nextIdFrom } from '@/mocks/utils/handlers';
 
@@ -95,15 +96,8 @@ export const mockWikiReadConfirmedDocIds = new Set<number>();
 /** 当前演示用户的收藏 */
 export const mockWikiFavoriteDocIds = new Set<number>([1]);
 
-export const mockWikiSettings: WikiSettings = {
-  requireApproval: true,
-  defaultVisibility: 'public',
-  aiSyncEnabled: false,
-  aiSyncKbId: null,
-  commentsEnabled: true,
-  recycleRetentionDays: 0,
-  pendingRemindHours: 48,
-};
+/** 知识库设置镜像：默认值来自设置模块 schema，保存设置后由 settings handler 同步 */
+export const mockWikiSettings: WikiSettings = wikiSettingsSchema.parse({});
 
 let nextSpaceId = nextIdFrom(mockWikiSpaces);
 export function getNextWikiSpaceId(): number {

@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { partialForUpdate, webhookUrlSchema } from '../core/validation';
-import { CONFIG_TYPES, CRON_JOB_STATUSES, FILE_OBJECT_ACL_SUPPORT, MASK_TYPES, MONITOR_ALERT_HANDLE_STATUSES, MONITOR_ALERT_LEVELS, MONITOR_ALERT_OPERATORS, MONITOR_HISTORY_RANGES, MONITOR_METRICS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS, RATE_LIMIT_ALGORITHMS, RATE_LIMIT_KEY_TYPES, RATE_LIMIT_MODES, REGION_LEVELS, SYSTEM_SCHEDULER_ALERT_CHANNELS, USER_FEEDBACK_CATEGORIES, USER_FEEDBACK_STATUSES } from './constants';
+import { CRON_JOB_STATUSES, FILE_OBJECT_ACL_SUPPORT, MASK_TYPES, MONITOR_ALERT_HANDLE_STATUSES, MONITOR_ALERT_LEVELS, MONITOR_ALERT_OPERATORS, MONITOR_HISTORY_RANGES, MONITOR_METRICS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS, RATE_LIMIT_ALGORITHMS, RATE_LIMIT_KEY_TYPES, RATE_LIMIT_MODES, REGION_LEVELS, SYSTEM_SCHEDULER_ALERT_CHANNELS, USER_FEEDBACK_CATEGORIES, USER_FEEDBACK_STATUSES } from './constants';
 
 // ─── 字典 Schema ──────────────────────────────────────────────────────────────
 export const createDictSchema = z.object({
@@ -217,21 +217,6 @@ export type UpdateDictItemInput = z.infer<typeof updateDictItemSchema>;
 export type CreateFileStorageConfigInput = z.infer<typeof createFileStorageConfigSchema>;
 
 export type UpdateFileStorageConfigInput = z.infer<typeof updateFileStorageConfigSchema>;
-
-// ─── 系统参数配置 Schema ─────────────────────────────────────────────────────
-export const createSystemConfigSchema = z.object({
-  configKey: z.string().min(1, '键名不能为空').max(128).regex(/^[\w.:]+$/, '键名只能包含字母、数字、下划线、点号和冒号'),
-  configName: z.string().min(1, '配置名称不能为空').max(128),
-  configValue: z.string().max(4096),
-  configType: z.enum(CONFIG_TYPES).default('string'),
-  description: z.string().max(256).default(''),
-});
-
-export const updateSystemConfigSchema = partialForUpdate(createSystemConfigSchema);
-
-export type CreateSystemConfigInput = z.infer<typeof createSystemConfigSchema>;
-
-export type UpdateSystemConfigInput = z.infer<typeof updateSystemConfigSchema>;
 
 // ─── 定时任务 Schema ────────────────────────────────────────────────────────
 export const createCronJobSchema = z.object({

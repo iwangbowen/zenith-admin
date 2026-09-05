@@ -12,6 +12,7 @@ import {
 import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
+import { useSaveSettings, useSettings } from './settings';
 
 /**
  * 企业网盘域 hooks。
@@ -106,7 +107,6 @@ export const driveKeys = {
   adminShareLinksPrefix: contractKey(driveAdminContract.shareLinks),
   adminActivitiesPrefix: contractKey(driveAdminContract.activities),
   adminStats: contractKey(driveAdminContract.stats),
-  settings: contractKey(driveAdminContract.settings),
   publicShare: (token: string, session: string | null) => [...publicMetaPrefix, token, session] as const,
   publicChildren: (token: string, session: string | null, parentId: number | undefined) => [...publicChildrenPrefix, token, session, parentId ?? 0] as const,
 };
@@ -650,17 +650,15 @@ export function useDriveAdminStats(enabled = true) {
   return useApiQuery(driveAdminContract.stats, { enabled });
 }
 
+/** 网盘全局设置由运行时设置 drive 模块承载（/api/settings/drive）；返回读取信封（effective / inherited / version） */
 export function useDriveSettings(enabled = true) {
-  return useApiQuery(driveAdminContract.settings, { enabled });
+  return useSettings('drive', enabled);
 }
 
-/** 保存设置直接写回响应；默认配额变化影响空间生效配额展示 */
+/** 保存设置：默认配额变化影响空间生效配额展示，额外失效空间列表 */
 export function useSaveDriveSettings() {
-  return useApiMutation(driveAdminContract.saveSettings, {
-    invalidate: (qc, settings) => {
-      qc.setQueryData(driveKeys.settings, settings);
-      invalidateAllSpaces(qc);
-      void qc.invalidateQueries({ queryKey: driveKeys.adminSpacesPrefix });
-    },
+  return useSaveSettings('drive', (qc) => {
+    invalidateAllSpaces(qc);
+    void qc.invalidateQueries({ queryKey: driveKeys.adminSpacesPrefix });
   });
 }

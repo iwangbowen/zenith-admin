@@ -1,13 +1,13 @@
 import * as z from 'zod';
-import { defineContract, op } from '../core/contract';
+import { defineContract, op, type Operation } from '../core/contract';
 import { stripDefaultsDeep } from '../core/validation';
-import { SETTINGS_SCOPES } from './constants';
+import { SETTINGS_SCOPES, type SettingsScope } from './constants';
 import { authSettingsSchema } from './modules/auth';
 import { identitySecuritySettingsSchema } from './modules/identity-security';
 import { rulesSettingsSchema } from './modules/rules';
 import { terminalSettingsSchema } from './modules/terminal';
 import { uiSettingsSchema } from './modules/ui';
-import { SETTINGS_MODULE_KEYS, SETTINGS_MODULE_PATHS, SETTINGS_MODULES, type SettingsModuleKey } from './registry';
+import { SETTINGS_MODULE_KEYS, SETTINGS_MODULE_PATHS, SETTINGS_MODULES, type SettingsModuleKey, type SettingsOf } from './registry';
 
 // ─── 模块清单 ────────────────────────────────────────────────────────────────
 
@@ -152,7 +152,33 @@ export function settingsUpdateOp<M extends SettingsModuleKey>(module: M): Settin
   return settingsContract[`update${pascal(module)}` as SettingsUpdateOpName<M>];
 }
 
-/** 模块读取信封（前端 hooks 用） */
-export type SettingsEnvelope<M extends SettingsModuleKey> = z.output<SettingsContract[SettingsGetOpName<M>]['response']>;
-/** 模块写入请求体 */
-export type SettingsWriteBody<M extends SettingsModuleKey> = z.input<NonNullable<SettingsContract[SettingsUpdateOpName<M>]['body']>>;
+/**
+ * 模块读取信封。显式接口而非 `z.output<契约响应>`：在以模块 key 为泛型参数的调用点
+ * （前端 hooks、Mock、路由循环）索引访问类型无法即时展开，显式结构才能保住 `SettingsOf<M>` 的精确类型。
+ * `settings.test.ts` 断言它与契约响应的 zod 输出一致。
+ */
+export interface SettingsEnvelope<M extends SettingsModuleKey> {
+  module: M;
+  scope: SettingsScope;
+  tenantId: number | null;
+  version: number;
+  effective: SettingsOf<M>;
+  inherited: SettingsOf<M>;
+  overriddenPaths: string[];
+  updatedAt: string | null;
+}
+
+/** 模块写入请求体：`data` 为剥离默认值后的完整文档（各叶子输入输出类型一致，直接复用 `SettingsOf`） */
+export interface SettingsWriteBody<M extends SettingsModuleKey> {
+  version: number;
+  data: SettingsOf<M>;
+}
+
+/**
+ * 按模块参数化的操作类型：泛型调用点把 `settingsGetOp(module)` / `settingsUpdateOp(module)` 断言到这里，
+ * 既能循环处理 13 个模块，又保留精确的输入 / 输出类型。运行时对象仍是契约上的原操作。
+ */
+export type SettingsGetOperation<M extends SettingsModuleKey> =
+  Operation<'get', string, undefined, undefined, undefined, z.ZodType<SettingsEnvelope<M>>, 'json', undefined>;
+export type SettingsUpdateOperation<M extends SettingsModuleKey> =
+  Operation<'put', string, undefined, undefined, z.ZodType<SettingsWriteBody<M>, SettingsWriteBody<M>>, z.ZodType<SettingsEnvelope<M>>, 'json', undefined>;

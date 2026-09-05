@@ -12,7 +12,6 @@ export * from './monitor-alerts';
 export * from './operation-logs';
 export * from './rate-limit';
 export * from './regions';
-export * from './system-configs';
 export * from './system-scheduler';
 export * from './tags';
 export * from './trace';

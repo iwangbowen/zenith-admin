@@ -1,7 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { apiTokenContract, authContract, oauthContract } from '@zenith/shared/identity';
-import { systemConfigContract } from '@zenith/shared/platform';
 import { api, useApiMutation } from '@/lib/contract-query';
 import { updateCachedAuthUser } from './auth';
 
@@ -11,7 +10,6 @@ export type ProfileOperationLogParams = NonNullable<QueryOf<typeof authContract.
 
 export const profileKeys = {
   all: ['profile'] as const,
-  passwordPolicy: ['profile', 'password-policy'] as const,
   oauthAccounts: ['profile', 'oauth-accounts'] as const,
   mfaFactors: ['profile', 'mfa-factors'] as const,
   sessions: ['profile', 'sessions'] as const,
@@ -21,13 +19,6 @@ export const profileKeys = {
   operationLogList: (params: ProfileOperationLogParams) => ['profile', 'operation-logs', params] as const,
   apiTokens: ['profile', 'api-tokens'] as const,
 };
-
-export function useProfilePasswordPolicy() {
-  return useQuery({
-    queryKey: profileKeys.passwordPolicy,
-    queryFn: () => api(systemConfigContract.passwordPolicy),
-  });
-}
 
 export function useProfileOauthAccounts(enabled = true) {
   return useQuery({

@@ -91,20 +91,3 @@ export const WIKI_GOVERNANCE_KIND_LABELS: Record<WikiGovernanceKind, string> = {
 export const WIKI_GOVERNANCE_KIND_OPTIONS: Array<{ value: WikiGovernanceKind; label: string }> =
   createLabelOptions(WIKI_GOVERNANCE_KINDS, WIKI_GOVERNANCE_KIND_LABELS);
 
-// ─── 全局设置（存 system_configs，wiki 分组）──────────────────────────────────
-export const WIKI_SETTING_KEYS = {
-  /** 发布是否需要审核（false 时提交即发布） */
-  requireApproval: 'wiki.requireApproval',
-  /** 新建空间的默认可见性 */
-  defaultVisibility: 'wiki.defaultVisibility',
-  /** 是否启用发布文档同步 AI 知识库 */
-  aiSyncEnabled: 'wiki.aiSyncEnabled',
-  /** 同步目标 AI 知识库 ID */
-  aiSyncKbId: 'wiki.aiSyncKbId',
-  /** 是否允许评论 */
-  commentsEnabled: 'wiki.commentsEnabled',
-  /** 回收站保留天数；0 = 永久保留 */
-  recycleRetentionDays: 'wiki.recycleRetentionDays',
-  /** 审核积压提醒时限（小时）；超时未处理的待审文档提醒空间管理员 */
-  pendingRemindHours: 'wiki.pendingRemindHours',
-} as const;

@@ -254,24 +254,6 @@ export const adminUpdateDriveSpaceSchema = z.object({
 
 export type AdminUpdateDriveSpaceInput = z.infer<typeof adminUpdateDriveSpaceSchema>;
 
-export const driveSettingsSchema = z.object({
-  personalQuotaGb: z.number().min(0).max(1_000_000),
-  departmentQuotaGb: z.number().min(0).max(1_000_000),
-  teamQuotaGb: z.number().min(0).max(1_000_000),
-  departmentSpaceAutoCreate: z.boolean(),
-  recycleRetentionDays: z.number().int().min(0).max(3650),
-  maxVersions: z.number().int().min(1).max(200),
-  quotaWarningPercent: z.number().int().min(50).max(100),
-  externalShareEnabled: z.boolean(),
-  externalShareMaxDays: z.number().int().min(0).max(3650),
-  externalShareRequirePassword: z.boolean(),
-  blockedExtensions: z.string().max(1000),
-  thumbnailEnabled: z.boolean(),
-  textIndexEnabled: z.boolean(),
-});
-
-export type DriveSettingsInput = z.infer<typeof driveSettingsSchema>;
-
 /** 治理任务（容量重算 / 索引补建）作用范围；缺省为全部空间 */
 export const driveAdminTaskScopeSchema = z.object({
   spaceId: z.number().int().positive().optional(),

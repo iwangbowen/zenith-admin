@@ -8,6 +8,7 @@ import {
   settingsGetOp,
   settingsUpdateOp,
   type SettingsEnvelope,
+  type SettingsWriteBody,
 } from './contracts';
 import { identitySecuritySettingsSchema, validatePassword } from './modules/identity-security';
 import { isIpOrCidr } from './modules/ip-access';
@@ -202,6 +203,13 @@ describe('settingsContract', () => {
   it('类型：读取信封的 effective 与模块类型一致', () => {
     expectTypeOf<SettingsEnvelope<'drive'>['effective']>().toEqualTypeOf<SettingsOf<'drive'>>();
     expectTypeOf<SettingsEnvelope<'drive'>['effective']['blockedExtensions']>().toEqualTypeOf<string[]>();
+  });
+
+  it('类型：显式信封 / 写入体接口与契约 zod 输出一致（两处不漂移）', () => {
+    expectTypeOf<z.output<typeof settingsContract.getDrive.response>>().toEqualTypeOf<SettingsEnvelope<'drive'>>();
+    expectTypeOf<z.output<typeof settingsContract.getIdentitySecurity.response>>().toEqualTypeOf<SettingsEnvelope<'identitySecurity'>>();
+    expectTypeOf<z.input<typeof settingsContract.updateDrive.body>>().toEqualTypeOf<SettingsWriteBody<'drive'>>();
+    expectTypeOf<z.input<typeof settingsContract.updateIdentitySecurity.body>>().toEqualTypeOf<SettingsWriteBody<'identitySecurity'>>();
   });
 });
 

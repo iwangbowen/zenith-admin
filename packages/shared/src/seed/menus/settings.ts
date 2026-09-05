@@ -4,11 +4,9 @@ import { SEED_DATE } from '../_base';
 /** 系统设置（2000 段） */
 export const SEED_MENUS_SETTINGS: Menu[] = [
   { id: 2000, parentId: 0, title: '系统设置', name: 'SystemSettings', icon: 'Settings2', type: 'directory', sort: 3, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2010, parentId: 2000, title: '系统配置', name: 'SystemConfigs', path: '/system/configs', component: 'system/configs/SystemConfigsPage', icon: 'SlidersHorizontal', type: 'menu', sort: 1, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2011, parentId: 2010, title: '查询', type: 'button', permission: 'system:config:list', sort: 0, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2012, parentId: 2010, title: '新增配置', type: 'button', permission: 'system:config:create', sort: 1, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2013, parentId: 2010, title: '编辑配置', type: 'button', permission: 'system:config:update', sort: 2, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2014, parentId: 2010, title: '删除配置', type: 'button', permission: 'system:config:delete', sort: 3, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2010, parentId: 2000, title: '系统设置', name: 'SystemSettingsCenter', path: '/system/settings', component: 'system/settings/SettingsPage', icon: 'SlidersHorizontal', type: 'menu', sort: 1, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2011, parentId: 2010, title: '查看设置', type: 'button', permission: 'system:setting:view', sort: 0, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2012, parentId: 2010, title: '修改设置', type: 'button', permission: 'system:setting:update', sort: 1, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2020, parentId: 2000, title: '身份安全', name: 'SystemIdentitySecurity', path: '/system/identity-security', component: 'system/identity-security/IdentitySecurityPage', icon: 'Fingerprint', type: 'menu', sort: 2, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2021, parentId: 2020, title: '管理策略', type: 'button', permission: 'system:identity-security:manage', sort: 1, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2030, parentId: 2000, title: '企业身份源', name: 'SystemIdentityProviders', path: '/system/identity-providers', component: 'system/identity-providers/IdentityProvidersPage', icon: 'Building2', type: 'menu', sort: 3, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },

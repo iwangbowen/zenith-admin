@@ -7,7 +7,6 @@ import {
   DEPARTMENT_CATEGORIES,
   DIRECTORY_SYNC_SOURCE_TYPES, DIRECTORY_SYNC_MATCH_KEYS,
   DIRECTORY_SYNC_CONFLICT_POLICIES, DIRECTORY_SYNC_RESOLUTIONS,
-  LOGIN_RISK_NEW_DEVICE_ACTIONS, MFA_MODES,
   OAUTH_PROVIDERS,
 } from './constants';
 
@@ -637,28 +636,3 @@ export const userGroupRulePreviewSchema = z.object({
 
 export type UserGroupRulePreviewInput = z.infer<typeof userGroupRulePreviewSchema>;
 
-// ─── 身份安全策略 Schema（既是策略实体，也是整体替换保存的请求体）─────────────
-export const identitySecurityPolicySchema = z.object({
-  password: z.object({
-    minLength: z.number().int().min(6).max(64),
-    requireUppercase: z.boolean(),
-    requireSpecialChar: z.boolean(),
-    expiryEnabled: z.boolean(),
-    expiryDays: z.number().int().min(1).max(3650),
-  }),
-  lockout: z.object({
-    maxAttempts: z.number().int().min(1).max(100),
-    durationMinutes: z.number().int().min(1).max(1440),
-  }),
-  mfa: z.object({
-    enabled: z.boolean(),
-    mode: z.enum(MFA_MODES),
-    rememberDeviceDays: z.number().int().min(1).max(365),
-  }),
-  risk: z.object({
-    enabled: z.boolean(),
-    newDeviceAction: z.enum(LOGIN_RISK_NEW_DEVICE_ACTIONS),
-  }),
-}).meta({ id: 'IdentitySecurityPolicy' });
-
-export type IdentitySecurityPolicy = z.infer<typeof identitySecurityPolicySchema>;

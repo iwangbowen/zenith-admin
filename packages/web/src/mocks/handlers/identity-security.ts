@@ -1,13 +1,6 @@
-import { identitySecurityContract, type IdentitySecurityPolicy, type LoginRiskEvent } from '@zenith/shared/identity';
+import { identitySecurityContract, type LoginRiskEvent } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
-
-let policy: IdentitySecurityPolicy = {
-  password: { minLength: 6, requireUppercase: false, requireSpecialChar: false, expiryEnabled: false, expiryDays: 90 },
-  lockout: { maxAttempts: 10, durationMinutes: 30 },
-  mfa: { enabled: false, mode: 'off', rememberDeviceDays: 30 },
-  risk: { enabled: false, newDeviceAction: 'allow' },
-};
 
 const riskEvents: LoginRiskEvent[] = [
   {
@@ -26,15 +19,6 @@ const riskEvents: LoginRiskEvent[] = [
 ];
 
 export const identitySecurityHandlers = [
-  mock(identitySecurityContract.policy, ({ ok }) => {
-    return ok(policy);
-  }),
-
-  mock(identitySecurityContract.updatePolicy, ({ body, ok }) => {
-    policy = body;
-    return ok(policy, '更新成功');
-  }),
-
   mock(identitySecurityContract.riskEvents, ({ query, ok, paginate }) => {
     const keyword = query.keyword ?? '';
     const list = keyword

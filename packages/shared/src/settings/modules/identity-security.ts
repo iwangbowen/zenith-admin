@@ -28,6 +28,8 @@ export const identitySecuritySettingsSchema = z.object({
 
 export type IdentitySecuritySettings = z.output<typeof identitySecuritySettingsSchema>;
 export type PasswordPolicy = IdentitySecuritySettings['password'];
+/** 校验明文密码只需要的三条规则（过期策略与之无关），供只持有部分字段的调用方复用 */
+export type PasswordRules = Pick<PasswordPolicy, 'minLength' | 'requireUppercase' | 'requireSpecialChar'>;
 
 export const identitySecuritySettingsModule = defineSettingsModule({
   schema: identitySecuritySettingsSchema,
@@ -46,7 +48,7 @@ export const identitySecuritySettingsModule = defineSettingsModule({
  * 按密码策略校验明文密码；返回错误文案，合规返回 `null`。
  * 前后端共用（用户新增 / 重置 / 注册 / 导入 / 租户初始管理员），禁止各自重写。
  */
-export function validatePassword(password: string, policy: PasswordPolicy): string | null {
+export function validatePassword(password: string, policy: PasswordRules): string | null {
   if (password.length < policy.minLength) {
     return `密码长度不能少于 ${policy.minLength} 位`;
   }
@@ -60,7 +62,7 @@ export function validatePassword(password: string, policy: PasswordPolicy): stri
 }
 
 /** 密码规则的一句话提示（表单 placeholder / extra） */
-export function formatPasswordPolicyHint(policy: PasswordPolicy | null | undefined): string {
+export function formatPasswordPolicyHint(policy: PasswordRules | null | undefined): string {
   if (!policy) return '至少 6 位';
   const parts: string[] = [`至少 ${policy.minLength} 位`];
   if (policy.requireUppercase) parts.push('包含大写字母');

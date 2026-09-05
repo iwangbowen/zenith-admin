@@ -13,7 +13,7 @@ import AppModal from '@/components/AppModal';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
-import { usePublicConfig } from '@/hooks/queries/system-configs';
+import { useMySettings } from '@/hooks/queries/settings';
 import { useDeleteFeedbacks, useHandleFeedback, useUserFeedbackList, userFeedbackKeys } from '@/hooks/queries/user-feedbacks';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -57,8 +57,8 @@ export default function FeedbacksPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
   // ─── 反馈入口配置状态（关闭时 Banner 提示）──────────────────────────────
-  const entryConfigQuery = usePublicConfig('feedback_entry_enabled');
-  const entryEnabled = entryConfigQuery.data?.configValue === 'true';
+  const entryConfigQuery = useMySettings();
+  const entryEnabled = entryConfigQuery.data?.ui.feedbackEntryEnabled ?? false;
 
   // ─── 搜索状态 ──────────────────────────────────────────────────────────
   const {
@@ -241,10 +241,10 @@ export default function FeedbacksPage() {
           style={{ marginBottom: 12 }}
           description={(
             <span>
-              意见反馈入口当前已关闭（系统配置 feedback_entry_enabled = false），用户暂时无法提交新反馈。
-              {hasPermission('system:config:update') && (
-                <Typography.Text link style={{ marginLeft: 8 }} onClick={() => navigate('/system/configs')}>
-                  前往系统配置开启
+              意见反馈入口当前已关闭（系统设置 · 界面与体验 · 意见反馈入口），用户暂时无法提交新反馈。
+              {hasPermission('system:setting:update') && (
+                <Typography.Text link style={{ marginLeft: 8 }} onClick={() => navigate('/system/settings?module=ui')}>
+                  前往系统设置开启
                 </Typography.Text>
               )}
             </span>

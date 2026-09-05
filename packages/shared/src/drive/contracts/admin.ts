@@ -3,7 +3,7 @@ import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts';
 import { DRIVE_ACTIVITY_ACTIONS, DRIVE_SPACE_TYPES } from '../constants';
-import { adminUpdateDriveSpaceSchema, createDepartmentDriveSpaceSchema, driveAdminTaskScopeSchema, driveSettingsSchema } from '../validation';
+import { adminUpdateDriveSpaceSchema, createDepartmentDriveSpaceSchema, driveAdminTaskScopeSchema } from '../validation';
 import { driveActivitySchema } from './nodes';
 import { driveShareLinkListQuery, driveShareLinkSchema } from './share-links';
 import { driveSpaceListQuery, driveSpaceSchema } from './spaces';
@@ -27,25 +27,6 @@ export const driveAdminStatsSchema = z.object({
 }).meta({ id: 'DriveAdminStats' });
 
 export type DriveAdminStats = z.infer<typeof driveAdminStatsSchema>;
-
-/** 网盘全局设置（存 system_configs，drive_ 前缀）；保存为整体替换，入参见 driveSettingsSchema */
-export const driveSettingsResultSchema = z.object({
-  personalQuotaGb: z.number(),
-  departmentQuotaGb: z.number(),
-  teamQuotaGb: z.number(),
-  departmentSpaceAutoCreate: z.boolean(),
-  recycleRetentionDays: z.int(),
-  maxVersions: z.int(),
-  quotaWarningPercent: z.int(),
-  externalShareEnabled: z.boolean(),
-  externalShareMaxDays: z.int(),
-  externalShareRequirePassword: z.boolean(),
-  blockedExtensions: z.string(),
-  thumbnailEnabled: z.boolean(),
-  textIndexEnabled: z.boolean(),
-}).meta({ id: 'DriveSettings' });
-
-export type DriveSettings = z.infer<typeof driveSettingsResultSchema>;
 
 // ─── 入参 ────────────────────────────────────────────────────────────────────
 
@@ -71,8 +52,6 @@ export const driveAdminActivityListQuery = paginationQuery.extend({
 
 export const driveAdminContract = defineContract('/api/drive/admin', {
   stats: op.get('/stats', { response: driveAdminStatsSchema, summary: '网盘统计概览' }),
-  settings: op.get('/settings', { response: driveSettingsResultSchema, summary: '网盘设置' }),
-  saveSettings: op.put('/settings', { body: driveSettingsSchema, response: driveSettingsResultSchema, summary: '保存网盘设置（整体替换）' }),
   spaces: op.get('/spaces', { query: driveAdminSpaceListQuery, response: paginated(driveSpaceSchema), summary: '全部空间（租户 + 数据权限收窄）' }),
   createDepartmentSpace: op.post('/spaces/department', { body: createDepartmentDriveSpaceSchema, response: driveSpaceSchema, summary: '创建部门空间' }),
   recalcUsage: op.post('/spaces/recalc', { body: driveAdminTaskScopeSchema, response: asyncTaskSchema, summary: '重算容量（任务中心；不传 spaceId 为全部）' }),

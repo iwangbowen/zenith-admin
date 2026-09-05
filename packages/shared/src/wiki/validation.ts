@@ -149,20 +149,6 @@ export const updateWikiCommentStatusSchema = z.object({
 
 export type UpdateWikiCommentStatusInput = z.infer<typeof updateWikiCommentStatusSchema>;
 
-// ─── 全局设置 ─────────────────────────────────────────────────────────────────
-
-export const updateWikiSettingsSchema = z.object({
-  requireApproval: z.boolean(),
-  defaultVisibility: z.enum(WIKI_SPACE_VISIBILITIES),
-  aiSyncEnabled: z.boolean(),
-  aiSyncKbId: z.number().int().positive().nullable().optional(),
-  commentsEnabled: z.boolean(),
-  recycleRetentionDays: z.number().int().min(0).max(3650),
-  pendingRemindHours: z.number().int().min(1).max(720),
-});
-
-export type UpdateWikiSettingsInput = z.infer<typeof updateWikiSettingsSchema>;
-
 // ─── 治理批量操作 ─────────────────────────────────────────────────────────────
 
 export const wikiGovernanceBatchSchema = z.object({

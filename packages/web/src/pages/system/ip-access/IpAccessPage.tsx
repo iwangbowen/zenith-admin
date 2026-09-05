@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Card, Switch, TextArea, Toast, Spin, Typography, Tabs, TabPane, Tag, Select } from '@douyinfe/semi-ui';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -7,7 +7,10 @@ import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
-import { ipAccessKeys, useIpAccessConfigs, useIpAccessLogs, useSaveIpAccessSection } from '@/hooks/queries/ip-access';
+import { ipAccessKeys, useIpAccessLogs } from '@/hooks/queries/ip-access';
+import { useSaveSettings, useSettings } from '@/hooks/queries/settings';
+import { isIpOrCidr, type IpAccessSettings } from '@zenith/shared/settings';
+import { ApiError } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
@@ -15,20 +18,14 @@ import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const { Title, Text } = Typography;
 
-function parseList(raw: string): string {
-  try {
-    const arr = JSON.parse(raw) as string[];
-    return Array.isArray(arr) ? arr.join('\n') : '';
-  } catch {
-    return '';
-  }
+/** 文本域（每行一条）↔ 名单数组 */
+function linesToList(text: string): string[] {
+  return [...new Set(text.split('\n').map((s) => s.trim()).filter(Boolean))];
 }
 
-function toJsonArray(text: string): string {
-  const lines = text.split('\n').map((s) => s.trim()).filter(Boolean);
-  return JSON.stringify(lines);
+function listToLines(list: readonly string[]): string {
+  return list.join('\n');
 }
-
 // ─── 拦截日志子页面 ─────────────────────────────────────────────
 
 function IpAccessLogsTab() {
@@ -128,34 +125,46 @@ export default function IpAccessPage() {
   const canUpdate = hasPermission('system:ip-access:update');
   const canViewLog = hasPermission('system:ip-access:log');
 
+  // 页面级全局配置表单（无弹窗、保存后不关闭），不走 useEditModal；名单由运行时设置 ipAccess 模块承载（平台级）
   const [whitelistEnabled, setWhitelistEnabled] = useState(false);
   const [whitelistText, setWhitelistText] = useState('');
   const [blacklistEnabled, setBlacklistEnabled] = useState(false);
   const [blacklistText, setBlacklistText] = useState('');
-  const configsQuery = useIpAccessConfigs();
-  const configs = useMemo(() => configsQuery.data ?? {}, [configsQuery.data]);
-  const saveMutation = useSaveIpAccessSection();
-  const saving = saveMutation.isPending ? (saveMutation.variables?.section ?? null) : null;
+  const configsQuery = useSettings('ipAccess');
+  const saveMutation = useSaveSettings('ipAccess');
+  const [saving, setSaving] = useState<'whitelist' | 'blacklist' | null>(null);
 
   useEffect(() => {
-    if (!configsQuery.data) return;
-    setWhitelistEnabled(configs.ip_whitelist_enabled?.configValue === 'true');
-    setBlacklistEnabled(configs.ip_blacklist_enabled?.configValue === 'true');
-    setWhitelistText(parseList(configs.ip_whitelist?.configValue ?? '[]'));
-    setBlacklistText(parseList(configs.ip_blacklist?.configValue ?? '[]'));
-  }, [configs, configsQuery.data]);
+    const s = configsQuery.data?.effective;
+    if (!s) return;
+    setWhitelistEnabled(s.whitelistEnabled);
+    setBlacklistEnabled(s.blacklistEnabled);
+    setWhitelistText(listToLines(s.whitelist));
+    setBlacklistText(listToLines(s.blacklist));
+  }, [configsQuery.data]);
 
+  /** 两段各自保存，但写入的是整份文档：另一段取当前表单值（与服务端整体替换语义一致） */
   const saveSection = async (section: 'whitelist' | 'blacklist') => {
-    await saveMutation.mutateAsync({
-      configs,
-      section,
-      enabled: section === 'whitelist' ? whitelistEnabled : blacklistEnabled,
-      listJson: section === 'whitelist' ? toJsonArray(whitelistText) : toJsonArray(blacklistText),
-    });
-    Toast.success('保存成功');
+    const whitelist = linesToList(whitelistText);
+    const blacklist = linesToList(blacklistText);
+    const invalid = (section === 'whitelist' ? whitelist : blacklist).find((item) => !isIpOrCidr(item));
+    if (invalid) {
+      Toast.error(`「${invalid}」不是合法的 IP 或 CIDR`);
+      return;
+    }
+    const data: IpAccessSettings = { whitelistEnabled, whitelist, blacklistEnabled, blacklist };
+    setSaving(section);
+    try {
+      await saveMutation.mutateAsync({ body: { version: configsQuery.data?.version ?? 0, data } });
+      Toast.success('保存成功');
+    } catch (err) {
+      // 409 = 他人已修改：请求层已提示，重载最新值供比对后再保存
+      if (err instanceof ApiError && err.code === 409) void configsQuery.refetch();
+    } finally {
+      setSaving(null);
+    }
   };
-
-  const configContent = configsQuery.isFetching && !configsQuery.data ? (
+  const configContent = configsQuery.isLoading ? (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
       <Spin size="large" />
     </div>
@@ -187,7 +196,7 @@ export default function IpAccessPage() {
         />
         {canUpdate && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-            <Button type="primary" loading={saving === 'whitelist'} onClick={() => saveSection('whitelist')}>
+            <Button type="primary" loading={saving === 'whitelist'} onClick={() => void saveSection('whitelist')}>
               保存白名单配置
             </Button>
           </div>
@@ -220,7 +229,7 @@ export default function IpAccessPage() {
         />
         {canUpdate && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-            <Button type="primary" loading={saving === 'blacklist'} onClick={() => saveSection('blacklist')}>
+            <Button type="primary" loading={saving === 'blacklist'} onClick={() => void saveSection('blacklist')}>
               保存黑名单配置
             </Button>
           </div>

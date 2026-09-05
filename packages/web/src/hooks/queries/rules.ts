@@ -1,6 +1,6 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
-import { systemConfigContract } from '@zenith/shared/platform';
+import { useMySettings } from './settings';
 import {
   decisionFlowContract,
   decisionTableContract,
@@ -61,8 +61,6 @@ export const ruleKeys = {
     items: (listId: number | undefined, params: RuleListItemsParams) =>
       contractKey(ruleListContract.items, { params: { id: listId ?? 0 }, query: params }),
   },
-  /** 发布审批开关：系统配置派生的布尔视图，与 usePublicConfig 的原始配置缓存分键 */
-  approvalConfig: ['rules', 'approval-config'] as const,
 };
 
 // ─── 决策表 ─────────────────────────────────────────────────────────────────────
@@ -181,14 +179,10 @@ export function useShadowRunRuleTable() {
   return useApiMutation(decisionTableContract.shadowRun);
 }
 
-/** 发布审批开关（system_configs 公开配置） */
+/** 发布审批开关：来自运行时设置登录用户投影（rules 模块受 License 特性门控，未授权时字段缺省视为关闭） */
 export function useRulePublishApprovalEnabled() {
-  return useQuery({
-    queryKey: ruleKeys.approvalConfig,
-    queryFn: () => api(systemConfigContract.publicByKey, { params: { key: 'rule_publish_approval' } }, { silent: true })
-      .then((c) => c.configValue === 'true').catch(() => false),
-    staleTime: 60_000,
-  });
+  const query = useMySettings();
+  return { ...query, data: query.data ? (query.data.rules?.publishApproval ?? false) : undefined };
 }
 
 export function useSubmitRuleTableReview() {

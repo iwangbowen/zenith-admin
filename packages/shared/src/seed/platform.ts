@@ -1,4 +1,4 @@
-import type { CronJob, DataMaskConfig, Dict, DictItem, SystemConfig, Tag, UserFeedback } from '../platform/contracts';
+import type { CronJob, DataMaskConfig, Dict, DictItem, Tag, UserFeedback } from '../platform/contracts';
 import type { MonitorAlertLevel, MonitorAlertOperator, MonitorMetric } from '../platform/constants';
 import { SEED_DATE } from './_base';
 
@@ -12,7 +12,6 @@ export const SEED_DICTS: Dict[] = [
   { id: 6, name: '公告类型',     code: 'announcement_type',           description: '公告类型',       status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 7, name: '公告发布状态', code: 'announcement_publish_status', description: '公告的发布状态', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 8, name: '公告优先级',   code: 'announcement_priority',       description: '公告优先级',     status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 9, name: '系统配置类型', code: 'system_config_type',    description: '系统配置项值类型',   status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 10, name: '部门类别',   code: 'department_category',   description: '部门类别',           status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 11, name: '请假类型',   code: 'leave_type',            description: '请假申请的类型（业务示例）', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 12, name: 'AI 点踩理由', code: 'ai_dislike_reason',    description: 'AI 对话点踩时的理由选项', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -48,11 +47,6 @@ export const SEED_DICT_ITEMS: DictItem[] = [
   { id: 17, dictId: 8, label: '低',     value: 'low',          color: 'grey',   sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 18, dictId: 8, label: '中',     value: 'medium',       color: 'blue',   sort: 2, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 19, dictId: 8, label: '高',     value: 'high',         color: 'red',    sort: 3, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  // 系统配置类型 (dictId: 9)
-  { id: 20, dictId: 9, label: '字符串', value: 'string',       color: 'blue',   sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 21, dictId: 9, label: '数字',   value: 'number',       color: 'green',  sort: 2, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 22, dictId: 9, label: '布尔值', value: 'boolean',      color: 'orange', sort: 3, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 23, dictId: 9, label: 'JSON',   value: 'json',         color: 'cyan',   sort: 4, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   // 公告发布状态扩展 (dictId: 7)
   { id: 24, dictId: 7, label: '定时发布', value: 'scheduled',   color: 'blue',   sort: 4, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   // 部门类别 (dictId: 10)
@@ -72,66 +66,6 @@ export const SEED_DICT_ITEMS: DictItem[] = [
   { id: 36, dictId: 12, label: '其他',   value: 'other',       color: 'grey',   sort: 4, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   // AI 敏感词 (dictId: 13) —— 示例词条，value 即敏感词本身
   { id: 37, dictId: 13, label: '示例敏感词', value: '示例敏感词', color: 'red', sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-];
-
-// ─── 系统配置 ─────────────────────────────────────────────────────────────────
-
-export const SEED_SYSTEM_CONFIGS: SystemConfig[] = [
-  { id: 1, configKey: 'captcha_enabled', configName: '登录验证码',            configValue: 'false',        configType: 'boolean', description: '是否开启登录验证码',                createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, configKey: 'site_name', configName: '站点名称',                  configValue: 'Zenith Admin', configType: 'string',  description: '站点名称，显示在浏览器标签页',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 3, configKey: 'user_default_password', configName: '用户默认密码',      configValue: '123456',       configType: 'string',  description: '新增用户时的默认密码',               createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 4, configKey: 'login_max_attempts', configName: '登录失败次数上限',         configValue: '10',           configType: 'number',  description: '登录失败最大次数，超出后锁定账号',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 5, configKey: 'login_lock_duration_minutes', configName: '账号锁定时长',   configValue: '30',    configType: 'number',  description: '账号锁定时长（分钟）',               createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 6, configKey: 'password_min_length', configName: '密码最小长度',           configValue: '6',     configType: 'number',  description: '密码最小长度',                       createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 7, configKey: 'password_require_uppercase', configName: '密码需含大写字母',    configValue: 'false', configType: 'boolean', description: '密码是否必须包含大写字母',            createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 8, configKey: 'password_require_special_char', configName: '密码需含特殊字符', configValue: 'false', configType: 'boolean', description: '密码是否必须包含特殊字符',            createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 9, configKey: 'password_expiry_enabled', configName: '密码过期重置',       configValue: 'false', configType: 'boolean', description: '是否开启密码过期强制重置',            createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 10, configKey: 'password_expiry_days', configName: '密码过期天数',         configValue: '90',    configType: 'number',  description: '密码过期天数',                       createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 11, configKey: 'allow_registration', configName: '开放用户注册',           configValue: 'false', configType: 'boolean', description: '是否允许新用户注册',                 createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 12, configKey: 'forgot_password_enabled', configName: '忘记密码重置',       configValue: 'false', configType: 'boolean', description: '是否开启忘记密码/邮件重置功能',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 13, configKey: 'watermark_enabled', configName: '页面水印',             configValue: 'false', configType: 'boolean', description: '是否开启页面水印（防截图泄漏）',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 14, configKey: 'watermark_content', configName: '水印文本',             configValue: '',      configType: 'string',  description: '水印文本内容，留空则自动显示当前用户名', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 15, configKey: 'watermark_font_size', configName: '水印字体大小',           configValue: '14',    configType: 'number',  description: '水印字体大小（px）',                 createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 16, configKey: 'watermark_opacity', configName: '水印透明度',             configValue: '15',    configType: 'number',  description: '水印透明度（1-100，实际值除以100）',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 17, configKey: 'quick_chat_enabled', configName: '快捷聊天按钮',            configValue: 'false', configType: 'boolean', description: '是否显示快捷聊天按钮（全局开关，关闭后偏好设置中的相关选项也同步隐藏）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 19, configKey: 'file_upload_validate_type', configName: '上传文件类型校验',     configValue: 'true',  configType: 'boolean', description: '上传文件时基于 magic bytes 校验真实文件类型（防止伪造 MIME type 绕过校验）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 20, configKey: 'file_upload_allowed_types', configName: '允许上传的文件类型',     configValue: 'image/*,video/*,audio/*,application/pdf,text/plain,text/csv,application/zip,application/x-zip-compressed,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-excel,application/msword,application/vnd.ms-powerpoint', configType: 'string', description: '允许上传的文件 MIME 类型，逗号分隔，支持通配符（如 image/*）；设为 */* 或 * 则允许所有类型', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 21, configKey: 'terminal_recording_enabled', configName: '终端录屏',  configValue: 'false', configType: 'boolean', description: '是否启用 Web 终端录屏（关闭后终端操作不再自动录制）',              createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 22, configKey: 'terminal_recording_retain_days', configName: '终端录屏保留天数', configValue: '30',  configType: 'number',  description: '终端录屏保留天数，超过此天数的录屏将在每日清理任务中删除（0 表示不按天数清理）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 23, configKey: 'terminal_recording_max_size_mb', configName: '终端录屏容量上限', configValue: '500', configType: 'number',  description: '终端录屏总容量上限（MB），超出上限后按时间从旧到新删除（0 表示不限制容量）',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 24, configKey: 'file_upload_max_size_mb', configName: '文件上传大小上限',       configValue: '0',     configType: 'number',  description: '单个文件上传大小上限（MB），0 表示不限制；超过该值的上传（含分片上传）将被拒绝', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 26, configKey: 'mfa_enabled', configName: 'MFA 多因素认证',                    configValue: 'false', configType: 'boolean', description: '是否启用 MFA 多因素认证',              createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 27, configKey: 'mfa_mode', configName: 'MFA 模式',                       configValue: 'off',   configType: 'string',  description: 'MFA 模式：off/optional/required',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 28, configKey: 'mfa_remember_device_days', configName: '可信设备免 MFA 天数',       configValue: '30',    configType: 'number',  description: '可信设备免 MFA 天数',                    createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 29, configKey: 'login_risk_enabled', configName: '登录风险策略',             configValue: 'false', configType: 'boolean', description: '是否启用登录风险策略',                    createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 30, configKey: 'login_risk_new_device_action', configName: '新设备登录动作',   configValue: 'allow', configType: 'string',  description: '新设备登录动作：allow/challenge',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 31, configKey: 'member_point_expire_days', configName: '会员积分过期天数',       configValue: '0',     configType: 'number',  description: '会员积分不活跃过期天数：账户超过 N 天无任何积分变动时余额自动过期清零（expire 流水可审计），0 表示积分永不过期', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 33, configKey: 'member_birthday_points', configName: '会员生日礼积分',         configValue: '0',     configType: 'number',  description: '会员生日礼积分：生日当天自动发放的积分数量（每年一次，流水 bizType=birthday），0 表示不发放', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 34, configKey: 'member_birthday_coupon_id', configName: '会员生日礼优惠券',      configValue: '0',     configType: 'number',  description: '会员生日礼优惠券模板 ID：生日当天自动发放该券（每年一次），0 表示不发放', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 35, configKey: 'member_invite_reward_points', configName: '邀请奖励积分',    configValue: '0',     configType: 'number',  description: '邀请奖励积分：新会员通过邀请码注册成功后发给邀请人的积分（流水 bizType=invite），0 表示不奖励', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 36, configKey: 'feedback_entry_enabled', configName: '意见反馈入口',         configValue: 'false', configType: 'boolean', description: '是否显示意见反馈入口（用户头像下拉菜单），关闭后用户无法提交反馈', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 37, configKey: 'captcha_complexity', configName: '验证码复杂度',             configValue: 'medium', configType: 'string', description: '验证码复杂度：low（干扰少、易识别）/ medium（默认）/ high（干扰强、识别难度高），仅在开启登录验证码后生效', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 38, configKey: 'ai_daily_token_quota', configName: 'AI 每日 Token 配额',           configValue: '0',     configType: 'number',  description: '每用户每日 AI 对话 token 配额（输入+输出合计），0 表示不限制；超限后当日无法继续对话', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 39, configKey: 'ai_content_filter_enabled', configName: 'AI 敏感词过滤',      configValue: 'false', configType: 'boolean', description: '是否启用 AI 对话输入侧敏感词过滤（词库维护在字典「AI 敏感词」中，命中直接拒绝发送）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 40, configKey: 'ai_embedding_model', configName: '知识库向量模型',             configValue: '',      configType: 'string',  description: '知识库向量化 embedding 模型名称（使用系统默认 AI 服务商的 /embeddings 接口）；留空则知识库退化为关键词检索', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 41, configKey: 'ai_image_model', configName: '图片生成模型',                 configValue: '',      configType: 'string',  description: '图片生成模型名称（使用系统默认 AI 服务商的 /images/generations 接口）；留空则关闭 generate_image 工具', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 42, configKey: 'rule_publish_approval', configName: '决策表发布审批',          configValue: 'false', configType: 'boolean', description: '决策表发布审批（四眼原则）：开启后发布需先提交申请，由具有「审批发布」权限的其他用户批准后生效', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 43, configKey: 'terminal_upload_max_size_mb', configName: '终端上传大小上限',    configValue: '200',   configType: 'number',  description: '文件管理器 / SFTP 单个文件上传大小上限（MB），0 表示不限制；该链路会把上传体整份读入内存，不限制可能导致服务内存耗尽', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 44, configKey: 'payment_transfer_approval_threshold', configName: '转账审批阈值', configValue: '100000', configType: 'number', description: '单笔转账达到该金额（分）时进入四眼审批；0 表示不启用审批', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  // ── 企业网盘 ──
-  { id: 45, configKey: 'drive_personal_quota_gb', configName: '网盘-个人空间默认配额(GB)', configValue: '10', configType: 'number', description: '个人空间默认配额（GB），0 表示不限；空间显式配额优先', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 46, configKey: 'drive_department_quota_gb', configName: '网盘-部门空间默认配额(GB)', configValue: '100', configType: 'number', description: '部门空间默认配额（GB），0 表示不限', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 47, configKey: 'drive_team_quota_gb', configName: '网盘-协作空间默认配额(GB)', configValue: '50', configType: 'number', description: '协作空间默认配额（GB），0 表示不限', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 48, configKey: 'drive_department_space_auto_create', configName: '网盘-部门空间自动创建', configValue: 'true', configType: 'boolean', description: '成员首次进入网盘时自动创建其直属部门的部门空间（部门及子部门成员默认可编辑，部门负责人为管理者）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 49, configKey: 'drive_recycle_retention_days', configName: '网盘-回收站保留天数', configValue: '30', configType: 'number', description: '回收站项目保留天数（前端提示用；实际清理由「数据保留 → 网盘回收站到期清理」策略执行）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 50, configKey: 'drive_max_versions', configName: '网盘-文件版本上限', configValue: '20', configType: 'number', description: '每个文件保留的历史版本数上限，超出自动修剪最旧版本；空间可单独设置', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 51, configKey: 'drive_quota_warning_percent', configName: '网盘-配额预警阈值(%)', configValue: '90', configType: 'number', description: '空间已用比例达到该值时通知空间管理者（每日一次）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 52, configKey: 'drive_external_share_enabled', configName: '网盘-允许外链分享', configValue: 'true', configType: 'boolean', description: '关闭后任何人不能创建网盘外链（已有外链仍可撤销）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 53, configKey: 'drive_external_share_max_days', configName: '网盘-外链最长有效期(天)', configValue: '30', configType: 'number', description: '外链必须设置且不超过该天数的有效期；0 表示允许永久外链', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 54, configKey: 'drive_external_share_require_password', configName: '网盘-外链强制密码', configValue: 'false', configType: 'boolean', description: '开启后创建外链必须设置访问密码', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 55, configKey: 'drive_blocked_extensions', configName: '网盘-禁止上传的扩展名', configValue: 'exe,bat,cmd,sh,msi,dll,scr,com,ps1,vbs', configType: 'string', description: '逗号分隔的扩展名黑名单；可执行文件另按内容魔数拦截', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 56, configKey: 'drive_thumbnail_enabled', configName: '网盘-生成图片缩略图', configValue: 'true', configType: 'boolean', description: '图片上传后异步生成 webp 缩略图供网格视图展示', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 57, configKey: 'drive_text_index_enabled', configName: '网盘-文本文件全文索引', configValue: 'true', configType: 'boolean', description: '文本类文件（≤ 2MB）上传后抽取正文建立全文索引，搜索可勾选「搜正文」', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 限流规则 ─────────────────────────────────────────────────────────────────
@@ -772,5 +706,5 @@ export const SEED_USER_FEEDBACKS: UserFeedback[] = [
   { id: 1, userId: 1, userNickname: '管理员', score: 5, category: 'suggestion', content: '整体体验很流畅，希望列表页支持自定义每页条数的默认值', pagePath: '/system/users', replayId: null, status: 'resolved', handleRemark: '已在偏好设置中支持', handledBy: 1, handlerNickname: '管理员', handledAt: '2024-01-02 10:00:00', createdAt: SEED_DATE, updatedAt: '2024-01-02 10:00:00' },
   { id: 2, userId: 1, userNickname: '管理员', score: 3, category: 'bug', content: '导出中心偶尔出现任务状态不刷新的情况，需要手动点刷新', pagePath: '/system/export-jobs', replayId: null, status: 'processing', handleRemark: '排查中，疑似 WS 断线重连问题', handledBy: 1, handlerNickname: '管理员', handledAt: '2024-01-03 15:30:00', createdAt: '2024-01-03 09:00:00', updatedAt: '2024-01-03 15:30:00' },
   { id: 3, userId: 1, userNickname: '管理员', score: 4, category: 'ux', content: '暗色模式下部分图表文字对比度偏低', pagePath: '/', replayId: null, status: 'pending', handleRemark: null, handledBy: null, handlerNickname: null, handledAt: null, createdAt: '2024-01-05 14:20:00', updatedAt: '2024-01-05 14:20:00' },
-  { id: 4, userId: 1, userNickname: '管理员', score: null, category: 'other', content: '建议文档站增加全文搜索', pagePath: '/system/configs', replayId: null, status: 'ignored', handleRemark: '文档站已有搜索入口', handledBy: 1, handlerNickname: '管理员', handledAt: '2024-01-06 11:00:00', createdAt: '2024-01-06 08:45:00', updatedAt: '2024-01-06 11:00:00' },
+  { id: 4, userId: 1, userNickname: '管理员', score: null, category: 'other', content: '建议文档站增加全文搜索', pagePath: '/system/settings', replayId: null, status: 'ignored', handleRemark: '文档站已有搜索入口', handledBy: 1, handlerNickname: '管理员', handledAt: '2024-01-06 11:00:00', createdAt: '2024-01-06 08:45:00', updatedAt: '2024-01-06 11:00:00' },
 ];

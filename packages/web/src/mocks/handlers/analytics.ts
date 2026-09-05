@@ -76,7 +76,7 @@ const MOCK_PAGE_ITEMS: PageStats['list'] = [
   { pagePath: '/departments', pageTitle: '部门管理', visits: 213, avgMs: 44700, medianMs: 33100, p90Ms: 98000 },
   { pagePath: '/', pageTitle: '首页', visits: 189, avgMs: 28900, medianMs: 19800, p90Ms: 65000 },
   { pagePath: '/system/menus', pageTitle: '菜单管理', visits: 156, avgMs: 87300, medianMs: 61200, p90Ms: 198000 },
-  { pagePath: '/system/configs', pageTitle: '系统配置', visits: 134, avgMs: 39200, medianMs: 27600, p90Ms: 84000 },
+  { pagePath: '/system/settings', pageTitle: '系统设置', visits: 134, avgMs: 39200, medianMs: 27600, p90Ms: 84000 },
 ];
 
 const MOCK_FEATURE_ITEMS: FeatureStats['list'] = [

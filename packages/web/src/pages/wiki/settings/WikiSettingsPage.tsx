@@ -1,31 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Banner, Button, Divider, InputNumber, Select, Spin, Switch, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, InputNumber, Select, Spin, Switch, Toast, Typography } from '@douyinfe/semi-ui';
 import type { WikiSpaceVisibility } from '@zenith/shared/wiki';
 import { WIKI_SPACE_VISIBILITY_OPTIONS } from '@zenith/shared/wiki';
 import { usePermission } from '@/hooks/usePermission';
 import { useAvailableKnowledgeBases } from '@/hooks/queries/ai-extras';
 import { useUpdateWikiSettings, useWikiSettings } from '@/hooks/queries/wiki-stats';
+import { SettingDivider, SettingRow } from '@/components/settings/SettingRow';
+import { ApiError } from '@/lib/query';
 
 const { Text, Title } = Typography;
 
-interface SettingRowProps {
-  title: string;
-  description: string;
-  control: React.ReactNode;
-}
-
-function SettingRow({ title, description, control }: SettingRowProps) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '14px 0' }}>
-      <div style={{ minWidth: 0 }}>
-        <Title heading={6} style={{ margin: 0 }}>{title}</Title>
-        <Text type="tertiary" size="small">{description}</Text>
-      </div>
-      {control}
-    </div>
-  );
-}
-
+/** 页面级全局配置表单（无弹窗、保存后不关闭），不走 useEditModal；设置由运行时设置 wiki 模块承载 */
 export default function WikiSettingsPage() {
   const { hasPermission } = usePermission();
   const canEdit = hasPermission('wiki:setting:edit');
@@ -43,9 +28,9 @@ export default function WikiSettingsPage() {
 
   const kbQuery = useAvailableKnowledgeBases(aiSyncEnabled);
 
-  // 设置到达后播种表单交互态
+  // 设置到达后播种表单交互态（生效值 = 平台行 ← schema 默认）
   useEffect(() => {
-    const s = settingsQuery.data;
+    const s = settingsQuery.data?.effective;
     if (!s) return;
     setRequireApproval(s.requireApproval);
     setDefaultVisibility(s.defaultVisibility);
@@ -62,8 +47,12 @@ export default function WikiSettingsPage() {
       return;
     }
     updateMutation.mutate(
-      { body: { requireApproval, defaultVisibility, aiSyncEnabled, aiSyncKbId, commentsEnabled, recycleRetentionDays, pendingRemindHours } },
-      { onSuccess: () => Toast.success('设置已保存') },
+      { body: { version: settingsQuery.data?.version ?? 0, data: { requireApproval, defaultVisibility, aiSyncEnabled, aiSyncKbId, commentsEnabled, recycleRetentionDays, pendingRemindHours } } },
+      {
+        onSuccess: () => Toast.success('设置已保存'),
+        // 409 = 他人已修改：请求层已提示，重载最新值供比对后再保存
+        onError: (err) => { if (err instanceof ApiError && err.code === 409) void settingsQuery.refetch(); },
+      },
     );
   }
 
@@ -83,7 +72,7 @@ export default function WikiSettingsPage() {
               <Switch checked={requireApproval} disabled={!canEdit} onChange={setRequireApproval} />
             )}
           />
-          <Divider margin={0} />
+          <SettingDivider />
           <SettingRow
             title="空间默认可见性"
             description="新建知识空间时的默认可见范围"
@@ -97,7 +86,7 @@ export default function WikiSettingsPage() {
               />
             )}
           />
-          <Divider margin={0} />
+          <SettingDivider />
           <SettingRow
             title="同步 AI 知识库"
             description="开启后，已开启同步的空间中发布的文档会自动进入所选 AI 知识库，可在智能对话中引用"
@@ -107,7 +96,7 @@ export default function WikiSettingsPage() {
           />
           {aiSyncEnabled ? (
             <>
-              <Divider margin={0} />
+              <SettingDivider />
               <SettingRow
                 title="同步目标知识库"
                 description="文档发布后写入的 AI 知识库"
@@ -132,7 +121,7 @@ export default function WikiSettingsPage() {
               description="还没有可用的 AI 知识库，请先到 智能助手 → 知识库 创建一个"
             />
           ) : null}
-          <Divider margin={0} />
+          <SettingDivider />
           <SettingRow
             title="允许评论"
             description="关闭后所有文档暂停新评论，已有评论保留展示"
@@ -140,7 +129,7 @@ export default function WikiSettingsPage() {
               <Switch checked={commentsEnabled} disabled={!canEdit} onChange={setCommentsEnabled} />
             )}
           />
-          <Divider margin={0} />
+          <SettingDivider />
           <SettingRow
             title="回收站保留天数"
             description="超期的已删除文档由每日治理任务彻底清理；0 表示永久保留"
@@ -156,7 +145,7 @@ export default function WikiSettingsPage() {
               />
             )}
           />
-          <Divider margin={0} />
+          <SettingDivider />
           <SettingRow
             title="审核积压提醒时限"
             description="待审核文档超过该时长未处理时进入治理「审核积压」清单"

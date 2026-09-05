@@ -7,7 +7,7 @@ import { USER_STATUSES, enumValueOf, type BodyOf } from '@zenith/shared/core';
 import { userContract } from '@zenith/shared/identity';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
+import { formatPasswordPolicyHint, type PasswordRules as PasswordPolicy } from '@zenith/shared/settings';
 import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -31,7 +31,7 @@ import ImportButton from '@/components/ImportButton';
 import { useAllRoles } from '@/hooks/queries/roles';
 import { useFlatDepartments } from '@/hooks/queries/departments';
 import { useAllPositions } from '@/hooks/queries/positions';
-import { useSystemPasswordPolicy } from '@/hooks/queries/system-configs';
+import { useMySettings } from '@/hooks/queries/settings';
 import { useListSearch } from '@/hooks/useListSearch';
 import {
   useAssignUserRoles,
@@ -115,11 +115,11 @@ export default function UsersPage() {
   const allRolesQuery = useAllRoles();
   const allDepartmentsQuery = useFlatDepartments();
   const allPositionsQuery = useAllPositions();
-  const passwordPolicyQuery = useSystemPasswordPolicy();
+  const mySettingsQuery = useMySettings();
   const allRoles = allRolesQuery.data ?? EMPTY_ROLES;
   const allDepartments = allDepartmentsQuery.data ?? EMPTY_DEPARTMENTS;
   const allPositions = allPositionsQuery.data ?? EMPTY_POSITIONS;
-  const passwordPolicy: PasswordPolicy | null = passwordPolicyQuery.data ?? null;
+  const passwordPolicy: PasswordPolicy | null = mySettingsQuery.data?.identitySecurity.password ?? null;
 
   const listQuery = useUserList({
     page,

@@ -172,10 +172,6 @@ export const FILE_STORAGE_PROVIDER_LABELS: Record<(typeof FILE_STORAGE_PROVIDERS
 export const FILE_STORAGE_PROVIDER_OPTIONS: Array<{ value: (typeof FILE_STORAGE_PROVIDERS)[number]; label: string }> =
   createLabelOptions(FILE_STORAGE_PROVIDERS, FILE_STORAGE_PROVIDER_LABELS);
 
-export const CONFIG_TYPES = ['string', 'number', 'boolean', 'json'] as const;
-
-export type ConfigType = (typeof CONFIG_TYPES)[number];
-
 /** IP 访问控制拦截类型 */
 export const IP_ACCESS_BLOCK_TYPES = ['blacklist', 'whitelist'] as const;
 

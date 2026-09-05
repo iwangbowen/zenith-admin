@@ -20,7 +20,8 @@ import AppLogo from '@/components/AppLogo';
 import AppModal from '@/components/AppModal';
 import { OAuthProviderIcon } from '@/components/OAuthProviderIcon';
 import ForgotPasswordModal from './ForgotPasswordModal';
-import { useEnterpriseProviders, useOAuthProviders, usePublicCaptcha, usePublicSystemConfig } from '@/hooks/queries/auth-public';
+import { useEnterpriseProviders, useOAuthProviders, usePublicCaptcha } from '@/hooks/queries/auth-public';
+import { usePublicSettings } from '@/hooks/queries/settings';
 import { useDebouncedValue } from '@tanstack/react-pacer';
 import './LoginPage.css';
 
@@ -82,8 +83,6 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
   const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
   const captchaQuery = usePublicCaptcha();
-  const allowRegistrationQuery = usePublicSystemConfig('allow_registration');
-  const forgotPasswordQuery = usePublicSystemConfig('forgot_password_enabled');
   const [forgotPasswordVisible, setForgotPasswordVisible] = useState(false);
   const [mfaChallenge, setMfaChallenge] = useState<MfaLoginChallenge | null>(mfaHandoff?.mfaChallenge ?? null);
   const [tenantCode, setTenantCode] = useState('');
@@ -93,12 +92,14 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
   const directoryFormApi = useRef<FormApi | null>(null);
 
   const enterpriseProvidersQuery = useEnterpriseProviders(debouncedTenantCode);
+  // 匿名设置投影（注册 / 找回密码开关）：多租户下随租户编码解析租户级值
+  const publicSettingsQuery = usePublicSettings(debouncedTenantCode);
   const oauthProvidersQuery = useOAuthProviders();
   const captchaEnabled = captchaQuery.data?.enabled ?? false;
   const captchaId = captchaQuery.data?.captchaId ?? '';
   const captchaSvg = captchaQuery.data?.svg ?? '';
-  const allowRegistration = allowRegistrationQuery.data?.configValue === 'true';
-  const forgotPasswordEnabled = forgotPasswordQuery.data?.configValue === 'true';
+  const allowRegistration = publicSettingsQuery.data?.auth.allowRegistration ?? false;
+  const forgotPasswordEnabled = publicSettingsQuery.data?.auth.forgotPasswordEnabled ?? false;
   const enterpriseProviders = enterpriseProvidersQuery.data?.providers ?? [];
   // 加载中 / 后端不可达 / 未启用任何提供方 → 空数组 → 不渲染「其他方式登录」
   const oauthProviders = oauthProvidersQuery.data ?? [];

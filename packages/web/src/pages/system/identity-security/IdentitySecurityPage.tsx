@@ -4,73 +4,57 @@ import { Button, Form, Tabs, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Save } from 'lucide-react';
-import type { IdentitySecurityPolicy, LoginRiskEvent } from '@zenith/shared/identity';
+import type { LoginRiskEvent } from '@zenith/shared/identity';
+import { identitySecuritySettingsSchema, type IdentitySecuritySettings } from '@zenith/shared/settings';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
-import {
-  identitySecurityKeys,
-  useIdentitySecurityPolicy,
-  useLoginRiskEventList,
-  useSaveIdentitySecurityPolicy,
-} from '@/hooks/queries/identity-security';
+import { identitySecurityKeys, useLoginRiskEventList } from '@/hooks/queries/identity-security';
+import { useSaveSettings, useSettings } from '@/hooks/queries/settings';
+import { ApiError } from '@/lib/query';
 import { RefreshButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const { TabPane } = Tabs;
 
-const defaultPolicy: IdentitySecurityPolicy = {
-  password: {
-    minLength: 6,
-    requireUppercase: false,
-    requireSpecialChar: false,
-    expiryEnabled: false,
-    expiryDays: 90,
-  },
-  lockout: {
-    maxAttempts: 10,
-    durationMinutes: 30,
-  },
-  mfa: {
-    enabled: false,
-    mode: 'off',
-    rememberDeviceDays: 30,
-  },
-  risk: {
-    enabled: false,
-    newDeviceAction: 'allow',
-  },
-};
+// 默认值以 shared schema 为唯一真相（通用设置页与服务端同源）
+const defaultPolicy: IdentitySecuritySettings = identitySecuritySettingsSchema.parse({});
 
 export default function IdentitySecurityPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['policy', 'risk'] as const, 'policy');
   const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [policy, setPolicy] = useState<IdentitySecurityPolicy>(defaultPolicy);
+  const [policy, setPolicy] = useState<IdentitySecuritySettings>(defaultPolicy);
   const [draftKeyword, setDraftKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const policyQuery = useIdentitySecurityPolicy();
-  const savePolicyMutation = useSaveIdentitySecurityPolicy();
+  // 页面级全局配置表单（无弹窗、保存后不关闭），不走 useEditModal；策略由运行时设置 identitySecurity 模块承载
+  const policyQuery = useSettings('identitySecurity');
+  const savePolicyMutation = useSaveSettings('identitySecurity');
   const riskQuery = useLoginRiskEventList({ page, pageSize, keyword: submittedKeyword.trim() || undefined });
   const riskData = riskQuery.data ?? null;
 
   useEffect(() => {
-    if (policyQuery.data) setPolicy(policyQuery.data);
+    if (policyQuery.data) setPolicy(policyQuery.data.effective);
   }, [policyQuery.data]);
 
   async function handleSavePolicy() {
-    let values: IdentitySecurityPolicy;
+    let values: IdentitySecuritySettings;
     try {
-      values = await formApi.current?.validate() as IdentitySecurityPolicy;
+      values = await formApi.current?.validate() as IdentitySecuritySettings;
     } catch {
       return;
     }
-    const saved = await savePolicyMutation.mutateAsync({ body: values });
-    setPolicy(saved);
-    Toast.success('身份安全策略已保存');
+    try {
+      const saved = await savePolicyMutation.mutateAsync({ body: { version: policyQuery.data?.version ?? 0, data: values } });
+      setPolicy(saved.effective);
+      Toast.success('身份安全策略已保存');
+    } catch (err) {
+      // 409 = 他人已修改：请求层已提示，重载最新值供比对后再保存
+      if (err instanceof ApiError && err.code === 409) void policyQuery.refetch();
+    }
   }
 
   function handleRiskSearch() {

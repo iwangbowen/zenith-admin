@@ -6,13 +6,13 @@ import {
   type DriveNode,
   type DriveNodeComment,
   type DriveNodePermission,
-  type DriveSettings,
   type DriveShareAccessLog,
   type DriveShareLink,
   type DriveSpace,
   type DriveSpaceMember,
   type DriveTag,
 } from '@zenith/shared/drive';
+import { driveSettingsSchema, type DriveSettings } from '@zenith/shared/settings';
 import { mockDateTime } from '@/mocks/utils/date';
 import { nextIdFrom } from '@/mocks/utils/handlers';
 
@@ -152,12 +152,8 @@ export const mockDriveRecent: Array<{ nodeId: number; lastAccessAt: string; last
   { nodeId: 11, lastAccessAt: '2026-01-22 13:58:00', lastAction: 'upload' },
 ];
 
-export const mockDriveSettings: DriveSettings = {
-  personalQuotaGb: 10, departmentQuotaGb: 100, teamQuotaGb: 50, departmentSpaceAutoCreate: true,
-  recycleRetentionDays: 30, maxVersions: 20, quotaWarningPercent: 90,
-  externalShareEnabled: true, externalShareMaxDays: 365, externalShareRequirePassword: false,
-  blockedExtensions: 'exe,bat,cmd,com,msi,scr,ps1,vbs,jar,sh', thumbnailEnabled: true, textIndexEnabled: true,
-};
+/** 网盘设置镜像：默认值来自设置模块 schema，保存设置后由 settings handler 同步 */
+export const mockDriveSettings: DriveSettings = driveSettingsSchema.parse({});
 
 /** 演示会话：token → 外链 id */
 export const mockDriveShareSessions = new Map<string, number>();
