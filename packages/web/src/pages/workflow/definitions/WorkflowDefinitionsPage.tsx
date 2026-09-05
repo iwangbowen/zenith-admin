@@ -475,12 +475,13 @@ export default function WorkflowDefinitionsPage() {
   );
 
   return (
-    <div className="page-container">
+    <div className="page-container page-container--stretch">
     <MasterDetailLayout
       defaultSize={220}
       minSize={180}
       maxSize={360}
       persistKey="workflow-definitions"
+      style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
       showDetail={!showCategorySidebar}
       onMasterBack={() => setShowCategorySidebar(false)}
       masterBackLabel="返回流程列表"
@@ -495,7 +496,7 @@ export default function WorkflowDefinitionsPage() {
         />
       }
       detail={
-        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <input
             ref={importInputRef}
             type="file"

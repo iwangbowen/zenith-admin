@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import { act, renderHook, waitFor } from '@testing-library/react';
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import { act, render, renderHook, waitFor } from '@testing-library/react';
+import { MemoryRouter, RouterProvider, createMemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import {
   defaultPreferences,
@@ -92,6 +92,52 @@ describe('useUrlSelectionState', () => {
       expect(hook.result.current.selection).toBe('9');
       expect(new URLSearchParams(hook.result.current.location.search).get('dict')).toBe('9');
     });
+  });
+
+  it('settles when the page clears an invalid deep link before the hook\'s own URL write lands', async () => {
+    // 数据路由器的导航异步落地：页面在数据落定后立即清掉无效参数时，hook 自己发起的
+    // 「消费模式剥离参数」导航尚未完成，此时 location 仍是旧值，不得被当作外部变化重新导入
+    let renders = 0;
+    let probe: { selection: string | null; search: string } = { selection: null, search: '' };
+    function Probe() {
+      const [selection, setSelection] = useUrlSelectionState('dict');
+      const location = useLocation();
+      renders += 1;
+      probe = { selection, search: location.search };
+      useEffect(() => {
+        // 上限防止旧实现的同步渲染风暴饿死事件循环把用例挂死：超过上限就放弃清参，让断言直接失败
+        if (renders > 200) return;
+        if (selection !== null && !/^\d+$/.test(selection)) setSelection(null);
+      }, [selection, setSelection]);
+      return null;
+    }
+    const context: PreferencesContextValue = {
+      preferences: { ...defaultPreferences, syncPageStateToUrl: false },
+      setPreferences: vi.fn(),
+      resetPreferences: vi.fn(),
+      ready: true,
+    };
+    const router = createMemoryRouter(
+      [{ path: '*', element: <Probe /> }],
+      { initialEntries: ['/system/dicts?dict=abc&view=compact'] },
+    );
+    render(
+      <PreferencesContext.Provider value={context}>
+        <RouterProvider router={router} />
+      </PreferencesContext.Provider>,
+    );
+
+    await waitFor(() => {
+      const params = new URLSearchParams(probe.search);
+      expect(probe.selection).toBeNull();
+      expect(params.has('dict')).toBe(false);
+      expect(params.get('view')).toBe('compact');
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(probe.selection).toBeNull();
+    expect(renders).toBeLessThan(20);
   });
 });
 

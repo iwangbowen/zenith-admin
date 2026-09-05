@@ -226,6 +226,11 @@ onClose:  () => { setLocalSiteId(siteId); setUrlSelection({ site: null, channel:
 - Tabs 嵌套时漏加 `className="tabs-fill-height"`：动画层破坏高度链，列表撑满后无滚动
 - `gap` 默认为 0：不需要间距且无边框时保持默认
 - B 类页面漏传 `onMasterBack`：窄屏切到 master 后无返回入口，用户只能靠浏览器后退
+- **外层套 `page-container` 时必须加 `page-container--stretch`**，并给组件传
+  `style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}`：普通 `page-container` 没有高度约束，
+  分栏会撑到内容高度、由 `.admin-content` 整体滚动，两侧无法各自滚动
+- **detail 是「工具栏 + 表格」时，包裹层要 `overflow: auto`（或让 Tabs 的 `contentStyle` 滚动）**，
+  不能 `overflow: hidden`：高度链建立后 hidden 会在矮窗口把表格尾部与分页裁掉
 
 ---
 

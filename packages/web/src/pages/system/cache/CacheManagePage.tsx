@@ -500,7 +500,7 @@ export default function CacheManagePage() {
   );
 
   return (
-    <div className="page-container">
+    <div className="page-container page-container--stretch">
       {overview && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 4, borderBottom: '1px solid var(--semi-color-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -559,7 +559,7 @@ export default function CacheManagePage() {
         showDetail={!!selectedCategory}
         onBack={() => setSelectedCategoryKey(null)}
         onResponsiveChange={setIsNarrowLayout}
-        style={{ flex: 1, overflow: 'hidden' }}
+        style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
       />
 
       <AppModal

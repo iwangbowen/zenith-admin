@@ -683,7 +683,7 @@ export default function UsersPage() {
   ) : null;
 
   return (
-    <div className="page-container">
+    <div className="page-container page-container--stretch">
       <MasterDetailLayout
         master={masterContent}
         detail={
@@ -767,7 +767,7 @@ export default function UsersPage() {
         masterBackLabel="返回用户列表"
         onResponsiveChange={setIsLayoutNarrow}
         persistKey="users"
-        style={{ flex: 1, overflow: 'hidden' }}
+        style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
       />
 
       <AppModal

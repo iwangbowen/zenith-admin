@@ -39,10 +39,12 @@
   font-size: 12px;
 }
 
+/* 右侧主体：分栏内独立滚动（工具栏 + 表格整体滚动，左侧部门树保持固定） */
 .users-content {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
+  min-height: 0;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;

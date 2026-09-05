@@ -70,15 +70,22 @@ export function useUrlSelectionParams<K extends string>(
   );
   const search = searchParams.toString();
   const selectionRef = useRef(selection);
+  /** 已发起写入、期望 URL 呈现的 search */
   const searchRef = useRef(search);
+  /** 上次 effect 实际观察到的 location search */
+  const observedSearchRef = useRef(search);
   const syncRef = useRef<boolean | null>(null);
 
   // 在同一个 effect 内判定变化来源，避免 URL→状态与状态→URL 两个 effect 用旧快照互相覆盖。
   useEffect(() => {
     const names = namesRef.current;
-    const urlChanged = search !== searchRef.current;
+    // URL 写入是异步导航：落地前若因状态变化重跑 effect，location 仍是旧值。
+    // 只有 location 相比上次观察确实变了、且不是自己发起的写入落地，才算外部变化——
+    // 否则会把待清除的旧参数重新导入，与页面「数据落定后清无效参数」互相触发死循环。
+    const urlChanged = search !== observedSearchRef.current && search !== searchRef.current;
     const stateChanged = !selectionEquals(selection, selectionRef.current, names);
     const syncChanged = syncToUrl !== syncRef.current;
+    observedSearchRef.current = search;
     if (!urlChanged && !stateChanged && !syncChanged) return;
 
     let nextSelection = selection;

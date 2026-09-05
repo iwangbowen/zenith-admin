@@ -34,25 +34,35 @@ const SCOPE_LABELS = { platform: '平台级', tenant: '租户级' } as const;
 export default function SettingsPage() {
   const modulesQuery = useSettingsModules();
   const modules = useMemo(() => modulesQuery.data ?? [], [modulesQuery.data]);
-  const [selected, setSelected] = useUrlSelectionState('module');
-  const activeKey: SettingsModuleKey | null = selected && isSettingsModuleKey(selected) && modules.some((m) => m.module === selected) ? selected : null;
+  const [selectedKey, setSelectedKey] = useUrlSelectionState('module');
+  // 窄屏单栏下若沿用桌面端「默认选中首项」会直接落到详情，列表反而要点返回才能看到；
+  // 布局形态参与选中派生，故用 state
+  const [isNarrowLayout, setIsNarrowLayout] = useState(false);
 
-  // 首次加载后若 URL 未指定模块，默认选中第一个（桌面端两栏直接可编辑；窄屏保持列表态）
+  // URL 深链值优先；无深链时桌面端回退首项（默认选中不入 URL），窄屏不自动选中
+  const explicitMeta = selectedKey !== null && isSettingsModuleKey(selectedKey)
+    ? modules.find((m) => m.module === selectedKey) ?? null
+    : null;
+  const activeMeta = explicitMeta ?? (isNarrowLayout ? null : modules[0] ?? null);
+  const activeKey: SettingsModuleKey | null = activeMeta?.module ?? null;
+
+  // 清单不分页且无详情接口兜底：等数据落定再判定深链目标不存在（非法 key / 无权限）并清参，避免在途误清
   useEffect(() => {
-    if (!selected && modules.length > 0) setSelected(modules[0].module);
-  }, [modules, selected, setSelected]);
-
-  const activeMeta = activeKey ? modules.find((m) => m.module === activeKey) ?? null : null;
+    if (selectedKey === null || explicitMeta !== null) return;
+    if (modulesQuery.data && !modulesQuery.isFetching) setSelectedKey(null);
+  }, [selectedKey, explicitMeta, modulesQuery.data, modulesQuery.isFetching, setSelectedKey]);
 
   return (
-    <div className="page-container">
+    <div className="page-container page-container--stretch">
       <MasterDetailLayout
         defaultSize={260}
         minSize={200}
         maxSize={400}
         persistKey="system-settings"
+        style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
         showDetail={activeKey !== null}
-        onBack={() => setSelected(null)}
+        onBack={() => setSelectedKey(null)}
+        onResponsiveChange={setIsNarrowLayout}
         master={(
           <NavListPanel<SettingsModuleMeta>
             title="设置模块"
@@ -63,7 +73,7 @@ export default function SettingsPage() {
               <NavListItem
                 key={item.module}
                 active={item.module === activeKey}
-                onClick={() => setSelected(item.module)}
+                onClick={() => setSelectedKey(item.module)}
                 icon={<Settings2 size={16} />}
                 primary={item.title}
                 meta={(

@@ -818,8 +818,18 @@ export default function ContentsPage() {
       <MasterDetailLayout
         master={masterContent}
         detail={(
-          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <Tabs collapsible="auto" activeKey={activeTab} onChange={handleTabChange} type="line" lazyRender keepDOM={false}>
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {/* 标签栏固定，内容区独立滚动：否则矮窗口下表格尾部与分页会被 overflow: hidden 裁掉 */}
+            <Tabs
+              collapsible="auto"
+              activeKey={activeTab}
+              onChange={handleTabChange}
+              type="line"
+              lazyRender
+              keepDOM={false}
+              style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+              contentStyle={{ flex: 1, minHeight: 0, overflow: 'auto' }}
+            >
               <TabPane tab="全部" itemKey="all">{tableContent}</TabPane>
               <TabPane tab="待审核" itemKey="pending">{tableContent}</TabPane>
               <TabPane tab="已发布" itemKey="published">{tableContent}</TabPane>
