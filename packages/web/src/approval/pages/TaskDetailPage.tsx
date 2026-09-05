@@ -29,6 +29,7 @@ import {
   fetchNextPendingTask,
   useAddApprovalComment, useApprovalDetail, useApprovalMe, useApprovalQuickPhrases, useApprovalUsers,
   useSelectableNextApprovers, useTaskAction, useUrgeInstance, useWithdrawInstance,
+  type ApprovalTaskActionVariables,
 } from '../lib/queries';
 import { INSTANCE_STATUS_MAP as STATUS_MAP } from '@/components/workflow/workflow-runtime';
 
@@ -174,12 +175,12 @@ export default function TaskDetailPage() {
   const submitAction = async () => {
     if (taskId == null || !action) return;
     try {
-      const values = (await actionFormApi.current?.validate() ?? {}) as Record<string, unknown>;
+      const values = (await actionFormApi.current?.validate() ?? {}) as { comment?: string };
       if (action === 'approve' && needSignature && !signature) {
         Toast.error('该节点要求手写签名，请先签名');
         return;
       }
-      let body: Record<string, unknown>;
+      let vars: ApprovalTaskActionVariables;
       if (action === 'approve') {
         const missing = nextGroups.find((g) => (selectedNext[g.nodeKey] ?? []).length === 0);
         if (missing) {
@@ -192,22 +193,26 @@ export default function TaskDetailPage() {
           const ids = selectedNext[g.nodeKey] ?? [];
           if (ids.length > 0) compactNext[g.nodeKey] = ids;
         }
-        body = {
-          comment: values.comment ?? '',
-          signature: signature || undefined,
-          formUpdates: await collectFormUpdates(),
-          selectedNextApprovers: Object.keys(compactNext).length > 0 ? compactNext : undefined,
+        vars = {
+          taskId,
+          action,
+          body: {
+            comment: values.comment ?? '',
+            signature: signature || undefined,
+            formUpdates: await collectFormUpdates(),
+            selectedNextApprovers: Object.keys(compactNext).length > 0 ? compactNext : undefined,
+          },
         };
       } else if (action === 'reject') {
-        body = { comment: values.comment };
+        vars = { taskId, action, body: { comment: values.comment ?? '' } };
       } else {
         if (transferTarget.length === 0) {
           Toast.error('请选择接收人');
           return;
         }
-        body = { targetUserId: transferTarget[0], comment: values.comment };
+        vars = { taskId, action, body: { targetUserId: transferTarget[0], comment: values.comment } };
       }
-      await actionMutation.mutateAsync({ taskId, action, body });
+      await actionMutation.mutateAsync(vars);
       setAction(null);
       // 连续审批（对标钉钉）：处理完自动进入下一条待办，清零后回列表
       const doneLabel = action === 'approve' ? '已同意' : action === 'reject' ? '已驳回' : '已转办';

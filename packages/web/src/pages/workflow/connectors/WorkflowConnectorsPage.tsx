@@ -23,7 +23,8 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
-import type { WorkflowConnector, WorkflowConnectorType, WorkflowConnectorBreakerState, WorkflowConnectorInvokeResult, WorkflowConnectorHttpConfig, WorkflowConnectorInvocation } from '@zenith/shared/workflow';
+import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
+import { WORKFLOW_CONNECTOR_TYPES, type WorkflowConnector, type WorkflowConnectorType, type WorkflowConnectorBreakerState, type WorkflowConnectorInvokeResult, type WorkflowConnectorHttpConfig, type WorkflowConnectorInvocation } from '@zenith/shared/workflow';
 import {
   useDeleteWorkflowConnectors,
   useSaveWorkflowConnector,
@@ -96,8 +97,8 @@ export default function WorkflowConnectorsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    type: submittedParams.type || undefined,
-    status: submittedParams.status || undefined,
+    type: enumValueOf(WORKFLOW_CONNECTOR_TYPES, submittedParams.type),
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
   const data = listQuery.data ?? null;
 
@@ -206,7 +207,8 @@ export default function WorkflowConnectorsPage() {
     if (!testTarget) return;
     setTestResult(null);
     try {
-      setTestResult(await testMutation.mutateAsync({ id: testTarget.id, path: testPath.trim() || undefined }));
+      const path = testPath.trim();
+      setTestResult(await testMutation.mutateAsync({ params: { id: testTarget.id }, body: path ? { path } : {} }));
     } catch (err) {
       Toast.error((err as Error).message || '测试失败');
     }

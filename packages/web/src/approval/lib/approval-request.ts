@@ -1,5 +1,4 @@
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared/core';
-import type { ApiResponse } from '@zenith/shared/core';
 import { config } from '@/config';
 import { HttpClient, type HttpRequestOptions } from '@/utils/http-client';
 
@@ -35,9 +34,3 @@ export const approvalRequest = new ApprovalRequest({
   loginUrl: approvalLoginUrl,
   logoutClearKeys: [TOKEN_KEY],
 });
-
-/** 统一解包：code!==0 抛错（配合 TanStack Query 错误态） */
-export function unwrapApproval<T>(res: ApiResponse<T>): T {
-  if (res.code !== 0) throw new Error(res.message || '请求失败');
-  return res.data;
-}

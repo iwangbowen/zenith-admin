@@ -1,7 +1,57 @@
-import { http, HttpResponse } from 'msw';
-import { ok, pageParams } from '@/mocks/utils/handlers';
-import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineRuntimeTask, WorkflowFlowData, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowSerialNoConfig, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationResult, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared/workflow';
-import { buildWorkflowSummaryItems, collectReferencedFormFieldKeys, findNextApproverSelectNodes, renderWorkflowSerialNo, resolveNodeFieldPermissions, resolveSerialPeriodKey, sanitizeFormUpdatesByNodePerms, WORKFLOW_SERIAL_SAMPLE_VARS } from '@zenith/shared/workflow';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, fail, notFound } from '@/mocks/utils/handlers';
+import type {
+  WorkflowDefinition,
+  WorkflowDefinitionHealthReport,
+  WorkflowDefinitionVersion,
+  WorkflowEngineActionKey,
+  WorkflowEngineHealthPoint,
+  WorkflowEngineIntrospection,
+  WorkflowEngineOutboxEvent,
+  WorkflowEngineRuntimeTask,
+  WorkflowExecutionToken,
+  WorkflowExecutionTokenView,
+  WorkflowFlowData,
+  WorkflowFormField,
+  WorkflowHandoverResult,
+  WorkflowInstance,
+  WorkflowInstanceFormSnapshot,
+  WorkflowInstanceListItem,
+  WorkflowInstanceTrace,
+  WorkflowJob,
+  WorkflowJobDetail,
+  WorkflowJobFailureCluster,
+  WorkflowJobFailureClusterMember,
+  WorkflowJobStatus,
+  WorkflowJobSummaryItem,
+  WorkflowJobType,
+  WorkflowPendingInstanceItem,
+  WorkflowRuntimeDiagnostics,
+  WorkflowRuntimeIssue,
+  WorkflowRuntimeOutboxEvent,
+  WorkflowSerialNoConfig,
+  WorkflowSimulationCase,
+  WorkflowSimulationDecision,
+  WorkflowSimulationResult,
+  WorkflowTask,
+  WorkflowTaskUrge,
+} from '@zenith/shared/workflow';
+import {
+  buildWorkflowSummaryItems,
+  collectReferencedFormFieldKeys,
+  findNextApproverSelectNodes,
+  renderWorkflowSerialNo,
+  resolveNodeFieldPermissions,
+  resolveSerialPeriodKey,
+  sanitizeFormUpdatesByNodePerms,
+  WORKFLOW_SERIAL_SAMPLE_VARS,
+  workflowDefinitionContract,
+  workflowEngineContract,
+  workflowInstanceContract,
+  workflowInstanceOpsContract,
+  workflowSimulationCaseContract,
+  workflowTaskContract,
+} from '@zenith/shared/workflow';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -21,26 +71,15 @@ import dayjs from 'dayjs';
 import { DATE_TIME_FORMAT } from '@/utils/date';
 import { mockWorkflowTriggerExecutions } from './workflow-trigger-executions';
 
-function err(message: string, code = 400) {
-  return HttpResponse.json({ code, message });
-}
-
-type MockApiPayload<T = unknown> = { code: number; message: string; data: T };
-const idempotencyCache = new Map<string, MockApiPayload>();
 /** 业务编号内存计数器（按 定义ID:周期键 自增），模拟后端的 workflow_serial_counters */
 const mockSerialCounters = new Map<string, number>();
 
-function readIdempotentResponse(request: Request) {
-  const key = request.headers.get('X-Idempotency-Key');
-  const payload = key ? idempotencyCache.get(key) : undefined;
-  return payload ? HttpResponse.json(payload) : null;
-}
+/** 审批 / 交接的幂等缓存：同一 X-Idempotency-Key 重复提交时原样回放首次结果 */
+const approveIdempotencyCache = new Map<string, { data: WorkflowInstance; message: string }>();
+const handoverIdempotencyCache = new Map<string, { data: WorkflowHandoverResult; message: string }>();
 
-function okIdempotent<T>(request: Request, data: T, message = 'ok') {
-  const payload: MockApiPayload<T> = { code: 0, message, data };
-  const key = request.headers.get('X-Idempotency-Key');
-  if (key) idempotencyCache.set(key, payload);
-  return HttpResponse.json(payload);
+function idempotencyKeyOf(request: Request) {
+  return request.headers.get('X-Idempotency-Key');
 }
 
 function cloneFormFields(fields: WorkflowFormField[] | null | undefined): WorkflowFormField[] | null {
@@ -1015,11 +1054,11 @@ function withActiveNodes<T extends WorkflowInstance>(inst: T): T {
 }
 
 /** Demo：从 pending/waiting 任务派生执行 Token（frontier 与运行态 1:1，stable id） */
-function mockExecutionTokens(instanceId: number): import('@zenith/shared').WorkflowExecutionToken[] {
+function mockExecutionTokens(instanceId: number): WorkflowExecutionToken[] {
   const inst = mockWorkflowInstances.find((i) => i.id === instanceId);
   const def = inst ? mockWorkflowDefinitions.find((d) => d.id === inst.definitionId) : undefined;
   const nameOf = (key: string) => def?.flowData?.nodes.find((n) => n.data.key === key)?.data.label ?? null;
-  const tokens: import('@zenith/shared').WorkflowExecutionToken[] = [];
+  const tokens: WorkflowExecutionToken[] = [];
   const seen = new Set<string>();
   for (const t of mockWorkflowTasks.filter((task) => task.instanceId === instanceId && (task.status === 'pending' || task.status === 'waiting'))) {
     if (seen.has(t.nodeKey)) continue;
@@ -1033,7 +1072,7 @@ function mockExecutionTokens(instanceId: number): import('@zenith/shared').Workf
   return tokens;
 }
 
-function mockTokenView(instanceId: number): import('@zenith/shared').WorkflowExecutionTokenView {
+function mockTokenView(instanceId: number): WorkflowExecutionTokenView {
   const tokens = mockExecutionTokens(instanceId);
   return {
     instanceId,
@@ -1058,7 +1097,7 @@ let simCaseSeq = 1;
 // ─── 流程定义 Handler ──────────────────────────────────────────────────────
 
 // 引擎运维动作 → 固定作业类型 / 标签（与后端 workflow-engine-ops.service 对齐）
-const ENGINE_ACTION_JOB_TYPES: Record<string, string[]> = {
+const ENGINE_ACTION_JOB_TYPES: Record<WorkflowEngineActionKey, WorkflowJobType[]> = {
   'replay-outbox': ['event_dispatch'],
   'recover-delays': ['delay_wake'],
   'recover-subprocess': ['subprocess_spawn', 'subprocess_join'],
@@ -1066,7 +1105,7 @@ const ENGINE_ACTION_JOB_TYPES: Record<string, string[]> = {
   'recover-triggers': ['trigger_dispatch'],
   'recover-webhooks': ['webhook_delivery'],
 };
-const ENGINE_ACTION_LABELS: Record<string, string> = {
+const ENGINE_ACTION_LABELS: Record<WorkflowEngineActionKey, string> = {
   'replay-outbox': '事件派发重放（作业账本）',
   'recover-delays': '延时任务兜底（作业账本）',
   'recover-subprocess': '子流程兜底（作业账本）',
@@ -1076,8 +1115,8 @@ const ENGINE_ACTION_LABELS: Record<string, string> = {
 };
 
 /** 引擎运维动作可处理作业筛选（与后端 drain 语义一致：到期 pending + 卡死 running）。 */
-function engineDrainableCandidates(action: string, body: { instanceId?: number; olderThanMinutes?: number }) {
-  const jobTypes = ENGINE_ACTION_JOB_TYPES[action] ?? [];
+function engineDrainableCandidates(action: WorkflowEngineActionKey, body: { instanceId?: number; olderThanMinutes?: number }) {
+  const jobTypes = ENGINE_ACTION_JOB_TYPES[action];
   const now = Date.now();
   const base = mockWorkflowJobs.filter((j) =>
     jobTypes.includes(j.jobType)
@@ -1089,84 +1128,290 @@ function engineDrainableCandidates(action: string, body: { instanceId?: number; 
   return { jobTypes, due, later, stuck, targets: [...due, ...stuck] };
 }
 
+/** 列表视图项：去掉详情专属的大字段（表单数据 / 快照 / 任务 / 评论 / 协办） */
+function toInstanceListItem(inst: WorkflowInstance): WorkflowInstanceListItem {
+  const { formData: _formData, formSnapshot: _formSnapshot, definitionSnapshot: _definitionSnapshot, tasks: _tasks, comments: _comments, consults: _consults, ...rest } = withActiveNodes(inst);
+  return rest;
+}
+
+/** 作业链路：同 traceId 的作业按创建时间升序 + 各自执行记录 + 状态统计 */
+function buildJobChain(traceId: string) {
+  const jobs = mockWorkflowJobs
+    .filter((j) => j.traceId === traceId)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id)
+    .map((j) => ({ ...j, executions: mockWorkflowJobExecutions.filter((e) => e.jobId === j.id).sort((a, b) => a.id - b.id) }));
+  const countBy = (s: WorkflowJobStatus) => jobs.filter((j) => j.status === s).length;
+  return {
+    traceId,
+    jobs,
+    stats: {
+      total: jobs.length,
+      pending: countBy('pending'), running: countBy('running'), succeeded: countBy('succeeded'),
+      failed: countBy('failed'), dead: countBy('dead'), canceled: countBy('canceled'),
+      instanceIds: [...new Set(jobs.map((j) => j.instanceId).filter((v): v is number => v != null))],
+    },
+  };
+}
+
+/** 重试 / 重放：作业重新入队并清空锁与错误 */
+function requeueJob(job: WorkflowJob) {
+  job.status = 'pending';
+  job.attempts = 0;
+  job.lockedAt = null;
+  job.lockedBy = null;
+  job.lastError = null;
+  job.runAt = mockDateTime();
+  job.updatedAt = mockDateTime();
+}
+
+function buildMockDiagnostics(inst: WorkflowInstance): WorkflowRuntimeDiagnostics {
+  const tasks = mockWorkflowTasks
+    .filter(t => t.instanceId === inst.id)
+    .sort((a, b) => a.id - b.id);
+  const activeTasks = tasks.filter(t => t.status === 'pending' || t.status === 'waiting');
+  const triggerExecutions = mockWorkflowTriggerExecutions.filter(item => item.instanceId === inst.id);
+  const outboxEvents: WorkflowRuntimeOutboxEvent[] = [
+    {
+      id: inst.id * 10 + 1,
+      eventId: `mock-node-entered-${inst.id}`,
+      eventType: 'node.entered',
+      taskId: activeTasks[0]?.id ?? null,
+      status: 'success',
+      attempts: 1,
+      errorMessage: null,
+      nextRetryAt: null,
+      processedAt: inst.updatedAt,
+      createdAt: inst.createdAt,
+    },
+    ...(inst.id === 2 ? [{
+      id: inst.id * 10 + 2,
+      eventId: `mock-trigger-retry-${inst.id}`,
+      eventType: 'task.created',
+      taskId: activeTasks[0]?.id ?? null,
+      status: 'retrying',
+      attempts: 2,
+      errorMessage: 'Demo：订阅者暂时不可用，等待重试',
+      nextRetryAt: mockDateTime(),
+      processedAt: null,
+      createdAt: inst.updatedAt,
+    }] : []),
+  ];
+  const issues: WorkflowRuntimeIssue[] = [];
+  if (inst.status === 'running' && activeTasks.length === 0) {
+    issues.push({
+      severity: 'critical',
+      source: 'instance',
+      title: '运行中实例没有活动任务',
+      description: 'Demo 诊断：实例处于运行中但没有可推进任务。',
+    });
+  }
+  for (const task of activeTasks) {
+    if (task.nodeType === 'trigger' && task.status === 'waiting') {
+      issues.push({
+        severity: 'warning',
+        source: 'trigger',
+        taskId: task.id,
+        nodeKey: task.nodeKey,
+        title: '触发器暂无执行记录',
+        description: 'Demo 诊断：等待中的触发器任务尚未发现作业执行记录。',
+      });
+    }
+  }
+  for (const event of outboxEvents) {
+    if (event.status !== 'success') {
+      issues.push({
+        severity: 'warning',
+        source: 'outbox',
+        taskId: event.taskId,
+        title: '事件派发待处理',
+        description: `${event.eventType} 当前状态为 ${event.status}，attempts=${event.attempts}。`,
+      });
+    }
+  }
+  if (issues.length === 0) {
+    issues.push({
+      severity: 'info',
+      source: 'instance',
+      title: '未发现明显运行时异常',
+      description: 'Demo 诊断：任务、触发器和事件派发均未命中异常规则。',
+    });
+  }
+  return {
+    instance: { ...withDefinitionSnapshot(withActiveNodes(inst)), tasks },
+    tasks,
+    activeTasks,
+    triggerExecutions,
+    outboxEvents,
+    issues,
+    tokens: mockExecutionTokens(inst.id),
+    snapshot: {
+      formData: inst.formData ?? null,
+      formSnapshot: inst.formSnapshot ?? null,
+      definitionSnapshot: withDefinitionSnapshot(inst).definitionSnapshot ?? null,
+    },
+    generatedAt: mockDateTime(),
+  };
+}
+
+/** 实例运行轨迹 + 引擎解释（固定演示剧本：Webhook 死信阻塞 + 待审批 + 超时作业待执行） */
+function buildMockTrace(id: number): WorkflowInstanceTrace {
+  const t0 = mockDateTimeOffset(-1000 * 60 * 90); // 90 分钟前
+  const t1 = mockDateTimeOffset(-1000 * 60 * 88);
+  const t2 = mockDateTimeOffset(-1000 * 60 * 60);
+  const trace: WorkflowInstanceTrace['trace'] = [
+    {
+      key: 'task-new-1', kind: 'task', at: t0, traceId: null,
+      title: '创建审批任务：李四', status: 'approved', nodeName: '部门主管', assigneeName: '李四', comment: null,
+      jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
+    },
+    {
+      key: 'job-101', kind: 'job', at: t0, traceId: 'trace-mock-aa01',
+      title: '事件派发 · node.entered', status: 'succeeded', nodeName: '部门主管', assigneeName: null, comment: null,
+      jobId: 101, jobType: 'event_dispatch', attempts: 1, maxAttempts: 3, runAt: t0, nextRetryAt: null, lastError: null, executions: [],
+    },
+    {
+      key: 'task-act-1', kind: 'task', at: t1, traceId: null,
+      title: '李四 通过', status: 'approved', nodeName: '部门主管', assigneeName: '李四', comment: '同意，按流程办理',
+      jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
+    },
+    {
+      key: 'task-new-2', kind: 'task', at: t1, traceId: null,
+      title: '创建审批任务：王五', status: 'pending', nodeName: '分管领导', assigneeName: '王五', comment: null,
+      jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
+    },
+    {
+      key: 'job-102', kind: 'job', at: t1, traceId: 'trace-mock-bb02',
+      title: 'Webhook 投递 · instance.node_changed', status: 'dead', nodeName: '分管领导', assigneeName: null, comment: null,
+      jobId: 102, jobType: 'webhook_delivery', attempts: 5, maxAttempts: 5, runAt: t2,
+      nextRetryAt: null, lastError: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable',
+      executions: [
+        { attempt: 1, status: 'failed', requestUrl: 'https://erp.example.com/hooks/wf', requestMethod: 'POST', responseStatus: 500, durationMs: 1203, errorMessage: 'HTTP 500', finishedAt: t1 },
+        { attempt: 5, status: 'failed', requestUrl: 'https://erp.example.com/hooks/wf', requestMethod: 'POST', responseStatus: 503, durationMs: 980, errorMessage: '503 Service Unavailable', finishedAt: t2 },
+      ],
+    },
+    {
+      key: 'job-103', kind: 'job', at: t2, traceId: 'trace-mock-bb02',
+      title: '任务超时', status: 'pending', nodeName: '分管领导', assigneeName: null, comment: null,
+      jobId: 103, jobType: 'task_timeout', attempts: 0, maxAttempts: 10, runAt: mockDateTimeOffset(1000 * 60 * 120),
+      nextRetryAt: mockDateTimeOffset(1000 * 60 * 120), lastError: null, executions: [],
+    },
+  ];
+  return {
+    instanceId: id,
+    title: `流程实例 #${id}`,
+    explanation: {
+      state: 'blocked',
+      headline: '流程推进受阻：1 个自动作业失败，需人工介入',
+      blockers: [
+        { kind: 'job', severity: 'critical', title: 'Webhook 投递已进入死信', detail: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable', taskId: null, jobId: 102, jobType: 'webhook_delivery', nodeName: '分管领导', waitingMinutes: null, nextRetryAt: null },
+        { kind: 'task', severity: 'info', title: '等待王五审批', detail: '节点「分管领导」· 已等待 1 小时', taskId: 2, jobId: null, jobType: null, nodeName: '分管领导', waitingMinutes: 60, nextRetryAt: null },
+        { kind: 'job', severity: 'info', title: '任务超时待执行', detail: `计划于 ${mockDateTimeOffset(1000 * 60 * 120)} 执行`, taskId: null, jobId: 103, jobType: 'task_timeout', nodeName: '分管领导', waitingMinutes: null, nextRetryAt: mockDateTimeOffset(1000 * 60 * 120) },
+      ],
+      lastError: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable',
+      nextWakeAt: mockDateTimeOffset(1000 * 60 * 120),
+      pendingJobCount: 1,
+      failedJobCount: 1,
+    },
+    trace,
+    generatedAt: mockDateTime(),
+  };
+}
+
+/** 委派回执：关闭当前任务并为原委派人生成新的 pending 任务，不推进流程 */
+function createDelegationReceiptTask(current: WorkflowTask, receiptComment: string, now: string): WorkflowTask {
+  const newTask: WorkflowTask = {
+    id: getNextTaskId(),
+    instanceId: current.instanceId,
+    nodeKey: current.nodeKey,
+    nodeName: current.nodeName,
+    nodeType: current.nodeType,
+    assigneeId: current.delegatedFromId ?? null,
+    assigneeName: `用户${current.delegatedFromId}`,
+    status: 'pending',
+    comment: receiptComment,
+    actionAt: null,
+    originalAssigneeId: current.delegatedFromId,
+    delegatedFromId: null,
+    actionButtons: current.actionButtons,
+    createdAt: now,
+  };
+  mockWorkflowTasks.push(newTask);
+  return newTask;
+}
+
 export const workflowHandlers = [
+  // ─── 流程定义 ─────────────────────────────────────────────────────────────
+
   // 获取流程定义列表（分页 + 搜索 + 状态筛选）
-  http.get('/api/workflows/definitions', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
+  mock(workflowDefinitionContract.list, ({ query, ok, paginate }) => {
+    const keyword = query.keyword ?? '';
+    const status = query.status ?? '';
 
     let list = [...mockWorkflowDefinitions];
     if (keyword) list = list.filter(d => d.name.includes(keyword) || (d.description ?? '').includes(keyword));
     if (status) list = list.filter(d => d.status === status);
 
-    const total = list.length;
-    const paged = list.slice((page - 1) * pageSize, page * pageSize).map(resolveWorkflowDefinition);
-    return ok({ list: paged, total, page, pageSize });
+    const page = paginate(list);
+    return ok({ ...page, list: page.list.map(resolveWorkflowDefinition) });
   }),
 
   // 获取已发布的流程定义列表（发起申请时使用，返回数组而非分页对象）
-  http.get('/api/workflows/definitions/published', () => {
+  mock(workflowDefinitionContract.published, ({ ok }) => {
     const list = mockWorkflowDefinitions.filter(d => d.status === 'published' && d.formType !== 'external').map(resolveWorkflowDefinition);
     return ok(list);
   }),
 
   // 仿真用例（按定义归档，内存态演示）
-  http.get('/api/workflows/simulation-cases', ({ request }) => {
-    const definitionId = Number(new URL(request.url).searchParams.get('definitionId')) || 0;
-    return ok(mockSimulationCases.filter((item) => item.definitionId === definitionId).sort((a, b) => b.id - a.id));
+  mock(workflowSimulationCaseContract.list, ({ query, ok }) => {
+    return ok(mockSimulationCases.filter((item) => item.definitionId === query.definitionId).sort((a, b) => b.id - a.id));
   }),
 
-  http.post('/api/workflows/simulation-cases', async ({ request }) => {
-    const body = await request.json() as { definitionId: number; name: string; starterUserId?: number | null; formData?: Record<string, unknown>; decisions?: WorkflowSimulationDecision[] };
-    if (!body.name?.trim()) return err('用例名称不能为空');
+  mock(workflowSimulationCaseContract.save, ({ body, ok }) => {
     const now = mockDateTime();
     const name = body.name.trim();
     const existing = mockSimulationCases.find((item) => item.definitionId === body.definitionId && item.name === name);
     if (existing) {
       existing.starterUserId = body.starterUserId ?? null;
-      existing.formData = body.formData ?? {};
-      existing.decisions = body.decisions ?? [];
+      existing.formData = body.formData;
+      existing.decisions = body.decisions;
       existing.updatedAt = now;
       return ok(existing, '已保存');
     }
     const item: WorkflowSimulationCase = {
       id: simCaseSeq++, definitionId: body.definitionId, name,
-      starterUserId: body.starterUserId ?? null, formData: body.formData ?? {}, decisions: body.decisions ?? [],
+      starterUserId: body.starterUserId ?? null, formData: body.formData, decisions: body.decisions,
       tenantId: null, createdBy: 1, updatedBy: 1, createdAt: now, updatedAt: now,
     };
     mockSimulationCases.unshift(item);
     return ok(item, '已保存');
   }),
 
-  http.delete('/api/workflows/simulation-cases/:id', ({ params }) => {
-    const idx = mockSimulationCases.findIndex((item) => item.id === Number(params.id));
-    if (idx === -1) return err('仿真用例不存在', 404);
+  mock(workflowSimulationCaseContract.remove, ({ params, ok }) => {
+    const idx = mockSimulationCases.findIndex((item) => item.id === params.id);
+    if (idx === -1) return notFound('仿真用例不存在');
     mockSimulationCases.splice(idx, 1);
     return ok(null, '删除成功');
   }),
 
   // 流程仿真（Demo 模式轻量实现）
-  http.post('/api/workflows/definitions/simulate', async ({ request }) => {
-    const body = await request.json().catch(() => ({})) as { definitionId?: number; flowData?: WorkflowFlowData | null; starterUserId?: number; decisions?: WorkflowSimulationDecision[] };
+  mock(workflowDefinitionContract.simulate, ({ body, ok }) => {
     const definition = body.definitionId ? mockWorkflowDefinitions.find((item) => item.id === body.definitionId) : undefined;
-    const flowData = body.flowData ?? definition?.flowData ?? null;
+    // 契约仅约束 flowData 为宽松对象，设计器传入的即为流程图结构
+    const flowData = (body.flowData as WorkflowFlowData | null | undefined) ?? definition?.flowData ?? null;
     return ok(buildMockSimulationResult(flowData, body.starterUserId, body.decisions ?? []));
   }),
 
   // 发布前体检（评分 + 分支覆盖）
-  http.post('/api/workflows/definitions/health-check', async ({ request }) => {
-    const body = await request.json().catch(() => ({})) as { definitionId?: number; flowData?: WorkflowFlowData | null };
+  mock(workflowDefinitionContract.healthCheck, ({ body, ok }) => {
     const definition = body.definitionId ? mockWorkflowDefinitions.find((item) => item.id === body.definitionId) : undefined;
     const flowData = (body.flowData ?? definition?.flowData ?? null) as { nodes?: Array<{ data?: { type?: string; label?: string; key?: string } }> } | null;
     const nodes = flowData?.nodes ?? [];
     const approveNodes = nodes.filter((n) => n.data?.type === 'approve' || n.data?.type === 'handler');
     const gatewayNodes = nodes.filter((n) => ['exclusiveGateway', 'inclusiveGateway', 'routeGateway'].includes(n.data?.type ?? ''));
     const firstGw = gatewayNodes[0]?.data;
-    const report = {
+    const report: WorkflowDefinitionHealthReport = {
       score: 82,
-      grade: 'B' as const,
+      grade: 'B',
       valid: true,
       checks: [
         { key: 'structure', title: '结构合法性', status: 'pass', score: 100, weight: 0.30, summary: '流程结构合法', issues: [] },
@@ -1204,27 +1449,27 @@ export const workflowHandlers = [
   }),
 
   // 获取单个流程定义
-  http.get('/api/workflows/definitions/:id', ({ params }) => {
-    const def = mockWorkflowDefinitions.find(d => d.id === Number(params.id));
-    if (!def) return err('流程定义不存在', 404);
+  mock(workflowDefinitionContract.detail, ({ params, ok }) => {
+    const def = mockWorkflowDefinitions.find(d => d.id === params.id);
+    if (!def) return notFound('流程定义不存在');
     return ok(resolveWorkflowDefinition(def));
   }),
 
-  // 创建流程定义
-  http.post('/api/workflows/definitions', async ({ request }) => {
-    const body = await request.json() as Partial<WorkflowDefinition>;
+  // 创建流程定义（新建总是草稿）
+  mock(workflowDefinitionContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const newDef: WorkflowDefinition = {
       id: getNextDefinitionId(),
-      name: body.name ?? '新流程',
+      name: body.name,
       description: body.description ?? null,
       categoryId: body.categoryId ?? null,
-      initiatorScopeType: body.initiatorScopeType ?? 'all',
+      initiatorScopeType: body.initiatorScopeType,
       initiatorScopeIds: body.initiatorScopeType === 'all' ? null : (body.initiatorScopeIds ?? []),
-      flowData: body.flowData ?? null,
+      // 契约仅约束 flowData 为对象，设计器传入的即为流程图结构
+      flowData: (body.flowData as WorkflowFlowData | null | undefined) ?? null,
       formId: isBusinessFormType(body.formType) ? null : (body.formId ?? null),
       formFields: null,
-      formType: body.formType ?? 'designer',
+      formType: body.formType,
       customForm: isBusinessFormType(body.formType) ? (body.customForm ?? null) : null,
       status: 'draft',
       version: 1,
@@ -1239,10 +1484,9 @@ export const workflowHandlers = [
   }),
 
   // 更新流程定义
-  http.put('/api/workflows/definitions/:id', async ({ params, request }) => {
-    const idx = mockWorkflowDefinitions.findIndex(d => d.id === Number(params.id));
-    if (idx === -1) return err('流程定义不存在', 404);
-    const body = await request.json() as Partial<WorkflowDefinition>;
+  mock(workflowDefinitionContract.update, ({ params, body, ok }) => {
+    const idx = mockWorkflowDefinitions.findIndex(d => d.id === params.id);
+    if (idx === -1) return notFound('流程定义不存在');
     const prev = mockWorkflowDefinitions[idx];
     // 已发布的流程保存后自动转为草稿
     const nextStatus = prev.status === 'published' && body.status === undefined ? 'draft' : prev.status;
@@ -1251,7 +1495,14 @@ export const workflowHandlers = [
       ...prev,
       ...body,
       id: prev.id,
-      formId: isBusinessFormType(nextFormType) ? null : (body.formId !== undefined ? body.formId : prev.formId),
+      // 契约仅约束 flowData 为对象，设计器传入的即为流程图结构
+      flowData: body.flowData !== undefined ? ((body.flowData as WorkflowFlowData | null | undefined) ?? null) : prev.flowData,
+      description: body.description !== undefined ? body.description ?? null : prev.description,
+      categoryId: body.categoryId !== undefined ? body.categoryId ?? null : prev.categoryId,
+      initiatorScopeType: body.initiatorScopeType ?? prev.initiatorScopeType,
+      initiatorScopeIds: body.initiatorScopeIds !== undefined ? body.initiatorScopeIds ?? null : prev.initiatorScopeIds,
+      formType: nextFormType,
+      formId: isBusinessFormType(nextFormType) ? null : (body.formId !== undefined ? body.formId ?? null : prev.formId),
       formName: null,
       formFields: null,
       formSettings: null,
@@ -1266,42 +1517,38 @@ export const workflowHandlers = [
     return ok(resolveWorkflowDefinition(updated));
   }),
 
-  // 发布流程定义
   // 批量禁用流程定义（仅已发布）
-  http.post('/api/workflows/definitions/batch-disable', async ({ request }) => {
-    const { ids } = await request.json() as { ids: number[] };
+  mock(workflowDefinitionContract.batchDisable, ({ body, ok }) => {
     const now = mockDateTime();
     let updated = 0;
-    for (const id of ids ?? []) {
+    for (const id of body.ids) {
       const idx = mockWorkflowDefinitions.findIndex(d => d.id === id);
       if (idx === -1 || mockWorkflowDefinitions[idx].status !== 'published') continue;
       mockWorkflowDefinitions[idx] = { ...mockWorkflowDefinitions[idx], status: 'disabled', updatedAt: now };
       updated++;
     }
-    const skipped = (ids?.length ?? 0) - updated;
+    const skipped = body.ids.length - updated;
     return ok(null, skipped > 0 ? `成功禁用 ${updated} 条，${skipped} 条已跳过（非已发布状态）` : `成功禁用 ${updated} 条`);
   }),
 
   // 批量启用流程定义（仅已禁用）
-  http.post('/api/workflows/definitions/batch-enable', async ({ request }) => {
-    const { ids } = await request.json() as { ids: number[] };
+  mock(workflowDefinitionContract.batchEnable, ({ body, ok }) => {
     const now = mockDateTime();
     let updated = 0;
-    for (const id of ids ?? []) {
+    for (const id of body.ids) {
       const idx = mockWorkflowDefinitions.findIndex(d => d.id === id);
       if (idx === -1 || mockWorkflowDefinitions[idx].status !== 'disabled') continue;
       mockWorkflowDefinitions[idx] = { ...mockWorkflowDefinitions[idx], status: 'published', updatedAt: now };
       updated++;
     }
-    const skipped = (ids?.length ?? 0) - updated;
+    const skipped = body.ids.length - updated;
     return ok(null, skipped > 0 ? `成功启用 ${updated} 条，${skipped} 条已跳过（非已禁用状态）` : `成功启用 ${updated} 条`);
   }),
 
   // 批量删除流程定义（仅非已发布且无发起实例）
-  http.post('/api/workflows/definitions/batch-delete', async ({ request }) => {
-    const { ids } = await request.json() as { ids: number[] };
+  mock(workflowDefinitionContract.batchDelete, ({ body, ok }) => {
     let deleted = 0;
-    for (const id of ids ?? []) {
+    for (const id of body.ids) {
       const idx = mockWorkflowDefinitions.findIndex(d => d.id === id);
       if (idx === -1) continue;
       if (mockWorkflowDefinitions[idx].status === 'published') continue;
@@ -1309,34 +1556,35 @@ export const workflowHandlers = [
       mockWorkflowDefinitions.splice(idx, 1);
       deleted++;
     }
-    const skipped = (ids?.length ?? 0) - deleted;
+    const skipped = body.ids.length - deleted;
     return ok(null, skipped > 0 ? `成功删除 ${deleted} 条，${skipped} 条已跳过（已发布或存在发起实例）` : `成功删除 ${deleted} 条`);
   }),
 
-  http.post('/api/workflows/definitions/:id/publish', ({ params }) => {
-    const idx = mockWorkflowDefinitions.findIndex(d => d.id === Number(params.id));
-    if (idx === -1) return err('流程定义不存在', 404);
-    if (!mockWorkflowDefinitions[idx].flowData) return err('流程图不能为空，请先设计流程');
+  // 发布流程定义
+  mock(workflowDefinitionContract.publish, ({ params, ok }) => {
+    const idx = mockWorkflowDefinitions.findIndex(d => d.id === params.id);
+    if (idx === -1) return notFound('流程定义不存在');
+    if (!mockWorkflowDefinitions[idx].flowData) return badRequest('流程图不能为空，请先设计流程');
     const cur = mockWorkflowDefinitions[idx];
     if (cur.formType === 'custom' && !cur.customForm?.createComponent?.trim()) {
-      return err('请先在「表单」步骤配置自定义业务表单的创建页组件路径');
+      return badRequest('请先在「表单」步骤配置自定义业务表单的创建页组件路径');
     }
     if (cur.formType === 'external' && !cur.customForm?.viewComponent?.trim()) {
-      return err('请先在「表单」步骤配置业务系统主导流程的审批查看页组件路径');
+      return badRequest('请先在「表单」步骤配置业务系统主导流程的审批查看页组件路径');
     }
     // designer 发布门禁（与真实 API assertPublishable 一致）：引用字段未绑定表单 / 绑定表单停用
     if ((cur.formType ?? 'designer') === 'designer') {
       if (cur.formId == null) {
-        const referenced = [...collectReferencedFormFieldKeys(cur.flowData as WorkflowFlowData | null)];
+        const referenced = [...collectReferencedFormFieldKeys(cur.flowData)];
         if (referenced.length > 0) {
           const head = referenced.slice(0, 5).join('、');
           const suffix = referenced.length > 5 ? ` 等 ${referenced.length} 个字段` : '';
-          return err(`流程的分支条件/审批人配置引用了表单字段（${head}${suffix}），但未绑定表单，请先在「表单」步骤选择表单`);
+          return badRequest(`流程的分支条件/审批人配置引用了表单字段（${head}${suffix}），但未绑定表单，请先在「表单」步骤选择表单`);
         }
       } else {
         const boundForm = mockWorkflowForms.find((f) => f.id === cur.formId);
-        if (!boundForm) return err('绑定的表单不存在，请在「表单」步骤重新选择');
-        if (boundForm.status === 'disabled') return err(`绑定的表单「${boundForm.name}」已停用，请启用该表单或更换后再发布`);
+        if (!boundForm) return badRequest('绑定的表单不存在，请在「表单」步骤重新选择');
+        if (boundForm.status === 'disabled') return badRequest(`绑定的表单「${boundForm.name}」已停用，请启用该表单或更换后再发布`);
       }
     }
     const newVersion = cur.version + 1;
@@ -1369,9 +1617,9 @@ export const workflowHandlers = [
   }),
 
   // 禁用流程定义
-  http.post('/api/workflows/definitions/:id/disable', ({ params }) => {
-    const idx = mockWorkflowDefinitions.findIndex(d => d.id === Number(params.id));
-    if (idx === -1) return err('流程定义不存在', 404);
+  mock(workflowDefinitionContract.disable, ({ params, ok }) => {
+    const idx = mockWorkflowDefinitions.findIndex(d => d.id === params.id);
+    if (idx === -1) return notFound('流程定义不存在');
     mockWorkflowDefinitions[idx] = {
       ...mockWorkflowDefinitions[idx],
       status: 'disabled',
@@ -1381,10 +1629,10 @@ export const workflowHandlers = [
   }),
 
   // 启用流程定义
-  http.post('/api/workflows/definitions/:id/enable', ({ params }) => {
-    const idx = mockWorkflowDefinitions.findIndex(d => d.id === Number(params.id));
-    if (idx === -1) return err('流程定义不存在', 404);
-    if (mockWorkflowDefinitions[idx].status !== 'disabled') return err('流程定义不存在或不处于禁用状态');
+  mock(workflowDefinitionContract.enable, ({ params, ok }) => {
+    const idx = mockWorkflowDefinitions.findIndex(d => d.id === params.id);
+    if (idx === -1) return notFound('流程定义不存在');
+    if (mockWorkflowDefinitions[idx].status !== 'disabled') return badRequest('流程定义不存在或不处于禁用状态');
     mockWorkflowDefinitions[idx] = {
       ...mockWorkflowDefinitions[idx],
       status: 'published',
@@ -1394,72 +1642,29 @@ export const workflowHandlers = [
   }),
 
   // 删除流程定义
-  http.delete('/api/workflows/definitions/:id', ({ params }) => {
-    const idx = mockWorkflowDefinitions.findIndex(d => d.id === Number(params.id));
-    if (idx === -1) return err('流程定义不存在', 404);
+  mock(workflowDefinitionContract.remove, ({ params, ok }) => {
+    const idx = mockWorkflowDefinitions.findIndex(d => d.id === params.id);
+    if (idx === -1) return notFound('流程定义不存在');
     mockWorkflowDefinitions.splice(idx, 1);
     return ok(null);
   }),
 
   // 流程定义历史版本列表
-  http.get('/api/workflows/definitions/:id/versions', ({ params, request }) => {
-    const definitionId = Number(params.id);
-    if (!mockWorkflowDefinitions.some(d => d.id === definitionId)) return err('流程定义不存在', 404);
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
+  mock(workflowDefinitionContract.versions, ({ params, ok, paginate }) => {
+    if (!mockWorkflowDefinitions.some(d => d.id === params.id)) return notFound('流程定义不存在');
     const all = mockWorkflowDefinitionVersions
-      .filter(v => v.definitionId === definitionId)
+      .filter(v => v.definitionId === params.id)
       .sort((a, b) => b.version - a.version);
-    const total = all.length;
-    const paged = all.slice((page - 1) * pageSize, page * pageSize).map(resolveWorkflowDefinitionVersion);
-    return ok({ list: paged, total, page, pageSize });
-  }),
-
-  // 版本对比（left/right 为版本行 id，0 表示当前草稿）
-  http.get('/api/workflows/definitions/:id/diff', ({ params, request }) => {
-    const definitionId = Number(params.id);
-    const def = mockWorkflowDefinitions.find(d => d.id === definitionId);
-    if (!def) return err('流程定义不存在', 404);
-    const url = new URL(request.url);
-    const leftId = Number(url.searchParams.get('left') ?? 0);
-    const rightId = Number(url.searchParams.get('right') ?? 0);
-    const sideOf = (vid: number) => {
-      if (vid === 0) return { version: def.version ?? 0, name: def.name, label: '当前草稿', flowData: def.flowData ?? null, publishedAt: null };
-      const v = mockWorkflowDefinitionVersions.find(x => x.id === vid && x.definitionId === definitionId);
-      return v
-        ? { version: v.version, name: v.name, label: `v${v.version}`, flowData: v.flowData ?? null, publishedAt: v.publishedAt ?? null }
-        : { version: 0, name: '', label: '-', flowData: null, publishedAt: null };
-    };
-    const left = sideOf(leftId);
-    const right = sideOf(rightId);
-    type FD = { nodes?: Array<{ id: string; data?: { key?: string; label?: string; type?: string } }>; edges?: Array<{ source: string; target: string }> };
-    const nodeMap = (fd: unknown) => new Map(((fd as FD)?.nodes ?? []).map(n => [n.data?.key ?? n.id, n] as const));
-    const edgeSet = (fd: unknown) => new Set(((fd as FD)?.edges ?? []).map(e => `${e.source}->${e.target}`));
-    const lN = nodeMap(left.flowData); const rN = nodeMap(right.flowData);
-    const nodeChanges: Array<{ kind: string; nodeKey: string; nodeName: string; nodeType: string; fields: unknown[] }> = [];
-    rN.forEach((n, k) => { if (!lN.has(k)) nodeChanges.push({ kind: 'added', nodeKey: k, nodeName: n.data?.label ?? k, nodeType: n.data?.type ?? '', fields: [] }); });
-    lN.forEach((n, k) => { if (!rN.has(k)) nodeChanges.push({ kind: 'removed', nodeKey: k, nodeName: n.data?.label ?? k, nodeType: n.data?.type ?? '', fields: [] }); });
-    const lE = edgeSet(left.flowData); const rE = edgeSet(right.flowData);
-    const edgeChanges: Array<{ kind: string; from: string; to: string; before: string | null; after: string | null }> = [];
-    rE.forEach(e => { if (!lE.has(e)) { const [from, to] = e.split('->'); edgeChanges.push({ kind: 'added', from, to, before: null, after: null }); } });
-    lE.forEach(e => { if (!rE.has(e)) { const [from, to] = e.split('->'); edgeChanges.push({ kind: 'removed', from, to, before: null, after: null }); } });
-    const summary = {
-      nodesAdded: nodeChanges.filter(c => c.kind === 'added').length,
-      nodesRemoved: nodeChanges.filter(c => c.kind === 'removed').length,
-      nodesModified: 0,
-      edgesAdded: edgeChanges.filter(c => c.kind === 'added').length,
-      edgesRemoved: edgeChanges.filter(c => c.kind === 'removed').length,
-      edgesModified: 0,
-    };
-    return ok({ left, right, summary, nodeChanges, edgeChanges });
+    const page = paginate(all);
+    return ok({ ...page, list: page.list.map(resolveWorkflowDefinitionVersion) });
   }),
 
   // 恢复历史版本
-  http.post('/api/workflows/definitions/:id/versions/:versionId/restore', ({ params }) => {
-    const idx = mockWorkflowDefinitions.findIndex(d => d.id === Number(params.id));
-    if (idx === -1) return err('流程定义不存在', 404);
-    const ver = mockWorkflowDefinitionVersions.find(v => v.id === Number(params.versionId) && v.definitionId === Number(params.id));
-    if (!ver) return err('历史版本不存在', 404);
+  mock(workflowDefinitionContract.restoreVersion, ({ params, ok }) => {
+    const idx = mockWorkflowDefinitions.findIndex(d => d.id === params.id);
+    if (idx === -1) return notFound('流程定义不存在');
+    const ver = mockWorkflowDefinitionVersions.find(v => v.id === params.versionId && v.definitionId === params.id);
+    if (!ver) return notFound('历史版本不存在');
     mockWorkflowDefinitions[idx] = {
       ...mockWorkflowDefinitions[idx],
       name: ver.name,
@@ -1477,30 +1682,27 @@ export const workflowHandlers = [
     return ok(resolveWorkflowDefinition(mockWorkflowDefinitions[idx]));
   }),
 
-  // ─── 流程实例 Handler ──────────────────────────────────────────────────────
+  // ─── 流程实例 ─────────────────────────────────────────────────────────────
 
   // 我的申请列表（当前用户 initiatorId=1）
-  http.get('/api/workflows/instances', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const status = url.searchParams.get('status') ?? '';
-    const definitionIdStr = url.searchParams.get('definitionId') ?? '';
-
+  mock(workflowInstanceContract.list, ({ query, ok, paginate }) => {
     let list = mockWorkflowInstances.filter(i => i.initiatorId === 1);
-    if (status) list = list.filter(i => i.status === status);
-    if (definitionIdStr) list = list.filter(i => i.definitionId === Number(definitionIdStr));
+    if (query.status) list = list.filter(i => i.status === query.status);
+    if (query.definitionId) list = list.filter(i => i.definitionId === query.definitionId);
     list = [...list].sort((a, b) => b.id - a.id);
 
-    const total = list.length;
-    const paged = list.slice((page - 1) * pageSize, page * pageSize).map(i => ({
-      ...withActiveNodes(i),
-      tasks: undefined, // 列表不返回 tasks
-    }));
-    return ok({ list: paged, total, page, pageSize });
+    const page = paginate(list);
+    return ok({
+      ...page,
+      list: page.list.map(i => ({
+        ...withActiveNodes(i),
+        tasks: undefined, // 列表不返回 tasks
+      })),
+    });
   }),
 
   // 工作流协作选人清单（转办/委派/加签/协办/转发/抄送共用，面向普通审批人开放）
-  http.get('/api/workflows/selectable-users', () => ok(
+  mock(workflowInstanceContract.selectableUsers, ({ ok }) => ok(
     mockUsers
       .filter((u) => u.status === 'enabled')
       .map((u) => ({
@@ -1512,8 +1714,8 @@ export const workflowHandlers = [
       })),
   )),
 
-  // 待我审批列表（assigneeId=1 且 status=pending 的任务所对应的实例）
-  http.get('/api/workflows/instances/pending-mine/count', () => {
+  // 待我审批总数（assigneeId=1 且 status=pending 的任务所对应的运行中实例）
+  mock(workflowInstanceContract.pendingMineCount, ({ ok }) => {
     const count = mockWorkflowTasks.filter((t) => {
       if (t.assigneeId !== 1 || t.status !== 'pending') return false;
       const inst = mockWorkflowInstances.find((i) => i.id === t.instanceId);
@@ -1522,22 +1724,20 @@ export const workflowHandlers = [
     return ok({ count });
   }),
 
-  http.get('/api/workflows/instances/pending-mine', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const definitionIdStr = url.searchParams.get('definitionId') ?? '';
-    const definitionId = definitionIdStr ? Number(definitionIdStr) : null;
+  // 待我审批列表
+  mock(workflowInstanceContract.pendingMine, ({ query, ok, paginate }) => {
+    const keyword = query.keyword ?? '';
+    const definitionId = query.definitionId ?? null;
 
     const pendingTaskIds = mockWorkflowTasks
       .filter(t => t.assigneeId === 1 && t.status === 'pending')
       .map(t => ({ instanceId: t.instanceId, taskId: t.id, signatureRequired: t.signatureRequired ?? false }));
 
-    let list = pendingTaskIds.map(({ instanceId, taskId, signatureRequired }, idx) => {
+    let list = pendingTaskIds.flatMap(({ instanceId, taskId, signatureRequired }, idx): WorkflowPendingInstanceItem[] => {
       const inst = mockWorkflowInstances.find(i => i.id === instanceId);
-      if (!inst) return null;
+      if (!inst) return [];
       // Demo SLA：轮换演示 已超时 / 即将超时 / 充裕 / 未配置
-      const slaCases: Array<{ slaLevel: 'overdue' | 'warning' | 'safe' | 'none'; slaOverdueSec: number | null; slaDeadline: string | null }> = [
+      const slaCases: Array<Pick<WorkflowInstanceListItem, 'slaLevel' | 'slaOverdueSec' | 'slaDeadline'>> = [
         { slaLevel: 'overdue', slaOverdueSec: 7200, slaDeadline: mockDateTimeOffset(-1000 * 60 * 120) },
         { slaLevel: 'warning', slaOverdueSec: -1800, slaDeadline: mockDateTimeOffset(1000 * 60 * 30) },
         { slaLevel: 'safe', slaOverdueSec: -86400, slaDeadline: mockDateTimeOffset(1000 * 60 * 60 * 24) },
@@ -1546,36 +1746,26 @@ export const workflowHandlers = [
       const sla = slaCases[idx % slaCases.length];
       // 列表摘要：与后端一致，按定义 settings.summaryFields + 表单快照解析
       const def = mockWorkflowDefinitions.find(d => d.id === inst.definitionId);
-      const settings = ((inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData?.settings
-        ?? (def?.flowData as WorkflowFlowData | undefined)?.settings);
-      const snap = inst.formSnapshot as { fields?: WorkflowFormField[] } | WorkflowFormField[] | null;
-      const snapFields = Array.isArray(snap) ? snap : snap?.fields ?? [];
-      const summary = buildWorkflowSummaryItems(snapFields, (inst.formData ?? {}) as Record<string, unknown>, settings?.summaryFields);
+      const settings = inst.definitionSnapshot?.flowData?.settings ?? def?.flowData?.settings;
+      const snapFields = inst.formSnapshot?.fields ?? [];
+      const summary = buildWorkflowSummaryItems(snapFields, inst.formData ?? {}, settings?.summaryFields);
       // 与服务端一致：下游紧邻节点含 approverSelect 时需逐条选人，不可极速同意
       const task = mockWorkflowTasks.find(t => t.id === taskId);
-      const flowForNext = ((inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData
-        ?? (def?.flowData as WorkflowFlowData | undefined));
+      const flowForNext = inst.definitionSnapshot?.flowData ?? def?.flowData;
       const requiresIndividual = !!task && !!flowForNext && findNextApproverSelectNodes(flowForNext, task.nodeKey).length > 0;
-      return { ...withActiveNodes(inst), pendingTaskId: taskId, pendingSignatureRequired: signatureRequired, requiresIndividual, tasks: undefined, ...sla, summary };
-    }).filter(Boolean) as (WorkflowInstance & { pendingTaskId: number })[];
+      return [{ ...toInstanceListItem(inst), pendingTaskId: taskId, pendingSignatureRequired: signatureRequired, requiresIndividual, ...sla, summary }];
+    });
 
     if (keyword) list = list.filter(i => i.title?.includes(keyword));
     if (definitionId !== null) list = list.filter(i => i.definitionId === definitionId);
 
-    const total = list.length;
-    const paged = list.slice((page - 1) * pageSize, page * pageSize);
-    return ok({ list: paged, total, page, pageSize });
+    return ok(paginate(list));
   }),
 
   // 全局流程监控（管理员看板）— 必须在 /instances/:id 之前注册，避免被参数路由捕获
-  http.get('/api/workflows/instances/all', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url, 20);
-    const keyword = url.searchParams.get('keyword') ?? '';
-    const status = url.searchParams.get('status') ?? '';
-    const categoryIdStr = url.searchParams.get('categoryId') ?? '';
-    const definitionIdStr = url.searchParams.get('definitionId') ?? '';
-    const initiatorKeyword = url.searchParams.get('initiatorKeyword') ?? '';
+  mock(workflowInstanceContract.monitor, ({ query, ok, paginate }) => {
+    const keyword = query.keyword ?? '';
+    const initiatorKeyword = query.initiatorKeyword ?? '';
 
     const stats = {
       total: mockWorkflowInstances.length,
@@ -1588,33 +1778,27 @@ export const workflowHandlers = [
 
     let list = [...mockWorkflowInstances];
     if (keyword) list = list.filter(i => i.title.includes(keyword) || (i.definitionName ?? '').includes(keyword));
-    if (status) list = list.filter(i => i.status === status);
-    if (categoryIdStr) list = list.filter(i => i.categoryId === Number(categoryIdStr));
-    if (definitionIdStr) list = list.filter(i => i.definitionId === Number(definitionIdStr));
+    if (query.status) list = list.filter(i => i.status === query.status);
+    if (query.categoryId) list = list.filter(i => i.categoryId === query.categoryId);
+    if (query.definitionId) list = list.filter(i => i.definitionId === query.definitionId);
     if (initiatorKeyword) list = list.filter(i => (i.initiatorName ?? '').includes(initiatorKeyword));
 
-    const total = list.length;
-    const paged = list
-      .slice()
-      .sort((a, b) => b.id - a.id)
-      .slice((page - 1) * pageSize, page * pageSize)
-      .map(i => ({ ...withActiveNodes(i), tasks: undefined }));
-
-    return ok({ stats, list: paged, total, page, pageSize });
+    const page = paginate(list.slice().sort((a, b) => b.id - a.id));
+    return ok({ stats, ...page, list: page.list.map(toInstanceListItem) });
   }),
 
-  http.get('/api/workflows/engine/introspection', ({ request }) => {
-    const url = new URL(request.url);
-    const threshold = Number(url.searchParams.get('thresholdMinutes')) || 30;
+  // ─── 流程引擎运维 ─────────────────────────────────────────────────────────
+
+  mock(workflowEngineContract.introspection, ({ query, ok }) => {
+    const threshold = query.thresholdMinutes || 30;
     return ok(buildMockWorkflowEngineIntrospection(Math.max(1, Math.min(threshold, 24 * 60))));
   }),
 
-  http.get('/api/workflows/engine/health-history', ({ request }) => {
-    const url = new URL(request.url);
-    const hours = Math.max(1, Math.min(Number(url.searchParams.get('hours')) || 24, 24 * 30));
+  mock(workflowEngineContract.healthHistory, ({ query, ok }) => {
+    const hours = Math.max(1, Math.min(query.hours || 24, 24 * 30));
     const stepMin = 30;
     const count = Math.min(Math.floor((hours * 60) / stepMin), 5000);
-    const points = Array.from({ length: count }, (_, i) => {
+    const points = Array.from({ length: count }, (_, i): WorkflowEngineHealthPoint => {
       const at = dayjs().subtract((count - 1 - i) * stepMin, 'minute');
       const wave = Math.sin(i / 5);
       const score = Math.max(60, Math.min(100, Math.round(94 + wave * 5 - (i % 11 === 0 ? 8 : 0))));
@@ -1637,10 +1821,8 @@ export const workflowHandlers = [
     });
   }),
 
-  http.post('/api/workflows/engine/actions/:action/preview', async ({ params, request }) => {
-    const action = String(params.action);
-    if (!(action in ENGINE_ACTION_JOB_TYPES)) return err('未知运维动作', 400);
-    const body = await request.json().catch(() => ({})) as { instanceId?: number; olderThanMinutes?: number; limit?: number };
+  mock(workflowEngineContract.previewAction, ({ params, body, ok }) => {
+    const action = params.action;
     const limit = Math.min(Math.max(Math.floor(body.limit ?? 200) || 200, 1), 500);
     const { jobTypes, due, later, stuck, targets } = engineDrainableCandidates(action, body);
     const sample = targets.slice(0, 10).map((j) => ({
@@ -1667,10 +1849,8 @@ export const workflowHandlers = [
     });
   }),
 
-  http.post('/api/workflows/engine/actions/:action', async ({ params, request }) => {
-    const action = String(params.action);
-    if (!(action in ENGINE_ACTION_LABELS)) return err('未知运维动作', 400);
-    const body = await request.json().catch(() => ({})) as { instanceId?: number; olderThanMinutes?: number; limit?: number };
+  mock(workflowEngineContract.runAction, ({ params, body, ok }) => {
+    const action = params.action;
     const limit = Math.min(Math.max(Math.floor(body.limit ?? 200) || 200, 1), 500);
     const { due, stuck, targets } = engineDrainableCandidates(action, body);
     const processed = targets.slice(0, limit);
@@ -1683,125 +1863,54 @@ export const workflowHandlers = [
   }),
 
   // ── 统一作业账本（workflow_jobs）死信 / 补偿中心 ──
-  http.get('/api/workflows/engine/jobs', ({ request }) => {
-    const url = new URL(request.url);
-    const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
-    const pageSize = Math.max(1, Number(url.searchParams.get('pageSize')) || 10);
-    const jobType = url.searchParams.get('jobType') || '';
-    const status = url.searchParams.get('status') || '';
-    const keyword = (url.searchParams.get('keyword') || '').trim().toLowerCase();
+  mock(workflowEngineContract.jobs, ({ query, ok, paginate }) => {
+    const keyword = (query.keyword ?? '').trim().toLowerCase();
     let list = [...mockWorkflowJobs].sort((a, b) => b.id - a.id);
-    if (jobType) list = list.filter((j) => j.jobType === jobType);
-    if (status) list = list.filter((j) => j.status === status);
+    if (query.jobType) list = list.filter((j) => j.jobType === query.jobType);
+    if (query.status) list = list.filter((j) => j.status === query.status);
     if (keyword) {
       list = list.filter((j) =>
         (j.idempotencyKey ?? '').toLowerCase().includes(keyword)
         || (j.traceId ?? '').toLowerCase().includes(keyword)
         || (j.nodeKey ?? '').toLowerCase().includes(keyword));
     }
-    const total = list.length;
-    const start = (page - 1) * pageSize;
-    return ok({ list: list.slice(start, start + pageSize), total, page, pageSize });
+    return ok(paginate(list));
   }),
 
-  http.get('/api/workflows/engine/jobs/summary', () => {
+  mock(workflowEngineContract.jobsSummary, ({ ok }) => {
     const types = ['delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch', 'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery'] as const;
-    const statuses = ['pending', 'running', 'succeeded', 'failed', 'dead', 'canceled'] as const;
-    const summary = types.map((jobType) => {
+    const summary = types.map((jobType): WorkflowJobSummaryItem => {
       const rows = mockWorkflowJobs.filter((j) => j.jobType === jobType);
-      const item: Record<string, number | string> = { jobType, total: rows.length };
-      for (const s of statuses) item[s] = rows.filter((j) => j.status === s).length;
-      return item;
+      const countBy = (s: WorkflowJobStatus) => rows.filter((j) => j.status === s).length;
+      return {
+        jobType,
+        total: rows.length,
+        pending: countBy('pending'),
+        running: countBy('running'),
+        succeeded: countBy('succeeded'),
+        failed: countBy('failed'),
+        dead: countBy('dead'),
+        canceled: countBy('canceled'),
+      };
     });
     return ok(summary);
   }),
 
-  http.get('/api/workflows/engine/jobs/chain/:traceId/diagnostic-bundle', ({ params }) => {
-    const traceId = String(params.traceId);
-    const jobs = mockWorkflowJobs
-      .filter((j) => j.traceId === traceId)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id)
-      .map((j) => ({ ...j, executions: mockWorkflowJobExecutions.filter((e) => e.jobId === j.id).sort((a, b) => a.id - b.id) }));
-    const countBy = (s: string) => jobs.filter((j) => j.status === s).length;
-    const instanceIds = [...new Set(jobs.map((j) => j.instanceId).filter((v): v is number => v != null))];
-    const chain = {
-      traceId, jobs,
-      stats: {
-        total: jobs.length,
-        pending: countBy('pending'), running: countBy('running'), succeeded: countBy('succeeded'),
-        failed: countBy('failed'), dead: countBy('dead'), canceled: countBy('canceled'),
-        instanceIds,
-      },
-    };
-    return ok({ traceId, generatedAt: mockDateTime(), chain, instances: [] });
+  mock(workflowEngineContract.jobChainBundle, ({ params, ok }) => {
+    return ok({ traceId: params.traceId, generatedAt: mockDateTime(), chain: buildJobChain(params.traceId), instances: [] });
   }),
 
-  http.get('/api/workflows/engine/jobs/chain/:traceId', ({ params }) => {
-    const traceId = String(params.traceId);
-    const jobs = mockWorkflowJobs
-      .filter((j) => j.traceId === traceId)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id)
-      .map((j) => ({ ...j, executions: mockWorkflowJobExecutions.filter((e) => e.jobId === j.id).sort((a, b) => a.id - b.id) }));
-    const countBy = (s: string) => jobs.filter((j) => j.status === s).length;
-    return ok({
-      traceId,
-      jobs,
-      stats: {
-        total: jobs.length,
-        pending: countBy('pending'), running: countBy('running'), succeeded: countBy('succeeded'),
-        failed: countBy('failed'), dead: countBy('dead'), canceled: countBy('canceled'),
-        instanceIds: [...new Set(jobs.map((j) => j.instanceId).filter((v): v is number => v != null))],
-      },
-    });
+  mock(workflowEngineContract.jobChain, ({ params, ok }) => {
+    return ok(buildJobChain(params.traceId));
   }),
 
-  http.get('/api/workflows/engine/jobs/:id', ({ params }) => {
-    const id = Number(params.id);
-    const job = mockWorkflowJobs.find((j) => j.id === id);
-    if (!job) return err('作业不存在', 404);
-    const executions = mockWorkflowJobExecutions
-      .filter((e) => e.jobId === id)
-      .sort((a, b) => b.id - a.id);
-    return ok({ ...job, executions });
-  }),
-
-  http.post('/api/workflows/engine/jobs/:id/retry', async ({ params, request }) => {
-    const id = Number(params.id);
-    const job = mockWorkflowJobs.find((j) => j.id === id);
-    if (!job) return err('作业不存在', 404);
-    if (!['failed', 'dead', 'canceled'].includes(job.status)) return err('仅失败 / 死信 / 已取消的作业可重试', 400);
-    const body = await request.json().catch(() => ({})) as { payload?: Record<string, unknown> };
-    if (body?.payload) job.payload = body.payload;
-    job.status = 'pending';
-    job.attempts = 0;
-    job.lockedAt = null;
-    job.lockedBy = null;
-    job.lastError = null;
-    job.runAt = mockDateTime();
-    job.updatedAt = mockDateTime();
-    return ok(job, '已重新入队');
-  }),
-
-  http.post('/api/workflows/engine/jobs/:id/skip', ({ params }) => {
-    const id = Number(params.id);
-    const job = mockWorkflowJobs.find((j) => j.id === id);
-    if (!job) return err('作业不存在', 404);
-    if (!['pending', 'failed', 'dead'].includes(job.status)) return err('仅待处理 / 失败 / 死信的作业可跳过', 400);
-    job.status = 'canceled';
-    job.lockedAt = null;
-    job.updatedAt = mockDateTime();
-    return ok(job, '已跳过');
-  }),
-
-  http.post('/api/workflows/engine/jobs/batch-retry', async ({ request }) => {
-    const body = await request.json().catch(() => ({})) as { ids?: number[] };
-    const ids = body?.ids ?? [];
+  mock(workflowEngineContract.batchRetryJobs, ({ body, ok }) => {
+    const ids = body.ids;
     let success = 0;
     for (const id of ids) {
       const job = mockWorkflowJobs.find((j) => j.id === id);
       if (job && ['failed', 'dead', 'canceled'].includes(job.status)) {
-        job.status = 'pending'; job.attempts = 0; job.lockedAt = null; job.lockedBy = null; job.lastError = null;
-        job.runAt = mockDateTime(); job.updatedAt = mockDateTime();
+        requeueJob(job);
         success += 1;
       }
     }
@@ -1809,9 +1918,8 @@ export const workflowHandlers = [
     return ok({ total: ids.length, success, skipped }, `已重试 ${success} 项${skipped > 0 ? `，${skipped} 项状态不满足已跳过` : ''}`);
   }),
 
-  http.post('/api/workflows/engine/jobs/batch-skip', async ({ request }) => {
-    const body = await request.json().catch(() => ({})) as { ids?: number[] };
-    const ids = body?.ids ?? [];
+  mock(workflowEngineContract.batchSkipJobs, ({ body, ok }) => {
+    const ids = body.ids;
     let success = 0;
     for (const id of ids) {
       const job = mockWorkflowJobs.find((j) => j.id === id);
@@ -1823,13 +1931,13 @@ export const workflowHandlers = [
     const skipped = ids.length - success;
     return ok({ total: ids.length, success, skipped }, `已跳过 ${success} 项${skipped > 0 ? `，${skipped} 项状态不满足已跳过` : ''}`);
   }),
-  http.post('/api/workflows/engine/jobs/replay-dead', async ({ request }) => {
-    const b = await request.json().catch(() => ({})) as { status?: string; jobType?: string; instanceId?: number; traceId?: string; reasonKeyword?: string; olderThanMinutes?: number; ratePerSecond?: number; limit?: number };
+
+  mock(workflowEngineContract.replayDeadJobs, ({ body: b, ok }) => {
     const status = b.status === 'failed' ? 'failed' : 'dead';
     const rate = Math.min(Math.max(Math.floor(b.ratePerSecond ?? 20) || 20, 1), 200);
     const limit = Math.min(Math.max(Math.floor(b.limit ?? 500) || 500, 1), 500);
     const kw = b.reasonKeyword?.trim().toLowerCase();
-    const match = (j: typeof mockWorkflowJobs[number]) => j.status === status
+    const match = (j: WorkflowJob) => j.status === status
       && (!b.jobType || j.jobType === b.jobType)
       && (b.instanceId == null || j.instanceId === b.instanceId)
       && (!b.traceId || j.traceId === b.traceId)
@@ -1837,12 +1945,12 @@ export const workflowHandlers = [
       && (b.olderThanMinutes == null || b.olderThanMinutes <= 0 || (Date.now() - new Date(j.createdAt).getTime()) >= b.olderThanMinutes * 60000);
     const matchedList = mockWorkflowJobs.filter(match);
     const target = matchedList.slice(0, limit);
-    target.forEach((j) => { j.status = 'pending'; j.attempts = 0; j.lockedAt = null; j.lockedBy = null; j.lastError = null; j.runAt = mockDateTime(); j.updatedAt = mockDateTime(); });
+    target.forEach(requeueJob);
     const more = matchedList.length > target.length ? `，剩余 ${matchedList.length - target.length} 条超单次上限未处理` : '';
     return ok({ total: target.length, success: target.length, skipped: 0, matched: matchedList.length, ratePerSecond: rate, limit }, `已按 ${rate} 条/秒错峰重放 ${target.length}/${target.length}（匹配 ${matchedList.length} 条）${more}`);
   }),
-  http.post('/api/workflows/engine/jobs/replay-preview', async ({ request }) => {
-    const b = await request.json().catch(() => ({})) as { status?: string; jobType?: string; instanceId?: number; traceId?: string; reasonKeyword?: string; olderThanMinutes?: number };
+
+  mock(workflowEngineContract.replayPreview, ({ body: b, ok }) => {
     const status = b.status === 'failed' ? 'failed' : 'dead';
     const kw = b.reasonKeyword?.trim().toLowerCase();
     const matched = mockWorkflowJobs.filter((j) => j.status === status
@@ -1853,20 +1961,18 @@ export const workflowHandlers = [
       && (b.olderThanMinutes == null || b.olderThanMinutes <= 0 || (Date.now() - new Date(j.createdAt).getTime()) >= b.olderThanMinutes * 60000)).length;
     return ok({ matched });
   }),
-  http.get('/api/workflows/engine/jobs/failure-clusters', ({ request }) => {
-    const dim = (new URL(request.url).searchParams.get('dimension') || 'reason') as 'reason' | 'jobType' | 'instance' | 'trace';
+
+  mock(workflowEngineContract.failureClusters, ({ query, ok }) => {
+    const dim = query.dimension ?? 'reason';
     const MEMBER_LIMIT = 10;
     const rows = mockWorkflowJobs
       .filter((j) => j.status === 'dead' || j.status === 'failed')
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    type Member = {
-      id: number; jobType: string; status: string; instanceId: number | null; instanceTitle: string | null;
-      definitionName: string | null; nodeKey: string | null; attempts: number; maxAttempts: number;
-      lockedBy: string | null; traceId: string | null; lastError: string | null; failedAt: string; createdAt: string;
-    };
-    const map = new Map<string, { dimension: string; key: string; label: string; count: number; instanceId: number | null; traceId: string | null; reasonKeyword: string | null; firstAt: string | null; lastAt: string | null; jobs: Member[]; _types: Set<string>; _instances: Set<number> }>();
-    const bump = (key: string, base: { dimension: string; key: string; label: string; instanceId: number | null; traceId: string | null; reasonKeyword: string | null }, j: typeof rows[number]) => {
-      const e = map.get(key) ?? { ...base, count: 0, firstAt: null, lastAt: null, jobs: [], _types: new Set<string>(), _instances: new Set<number>() };
+    type ClusterBase = Pick<WorkflowJobFailureCluster, 'dimension' | 'key' | 'label' | 'instanceId' | 'traceId' | 'reasonKeyword'>;
+    type ClusterAcc = ClusterBase & Pick<WorkflowJobFailureCluster, 'count' | 'firstAt' | 'lastAt'> & { jobs: WorkflowJobFailureClusterMember[]; _types: Set<string>; _instances: Set<number> };
+    const map = new Map<string, ClusterAcc>();
+    const bump = (key: string, base: ClusterBase, j: WorkflowJob) => {
+      const e: ClusterAcc = map.get(key) ?? { ...base, count: 0, firstAt: null, lastAt: null, jobs: [], _types: new Set<string>(), _instances: new Set<number>() };
       e.count++; e._types.add(j.jobType);
       if (j.instanceId != null) e._instances.add(j.instanceId);
       // 行已按 failedAt 倒序：首行即最近失败，末次覆盖即最早失败
@@ -1898,13 +2004,18 @@ export const workflowHandlers = [
         bump(reason, { dimension: dim, key: reason, label: reason, instanceId: null, traceId: null, reasonKeyword: kwRaw.length >= 2 ? kwRaw : null }, j);
       }
     }
-    return ok([...map.values()].map(({ _types, _instances, ...c }) => ({ ...c, jobTypes: [..._types], instanceCount: _instances.size })).sort((a, b) => b.count - a.count).slice(0, 20));
+    const clusters: WorkflowJobFailureCluster[] = [...map.values()]
+      .map(({ _types, _instances, ...c }) => ({ ...c, jobTypes: [..._types], instanceCount: _instances.size }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20);
+    return ok(clusters);
   }),
-  http.get('/api/workflows/engine/jobs/runtime-status', () => {
+
+  mock(workflowEngineContract.jobRuntimeStatus, ({ ok }) => {
     const running = mockWorkflowJobs.filter((j) => j.status === 'running');
     const dead = mockWorkflowJobs.filter((j) => j.status === 'dead').length;
     const backlog = mockWorkflowJobs.filter((j) => j.status === 'pending').length;
-    const lastClaimed = running.map((j) => j.lockedAt).filter(Boolean).sort().pop() ?? null;
+    const lastClaimed = running.map((j) => j.lockedAt).filter((v): v is string => !!v).sort().pop() ?? null;
     return ok({
       activeWorkers: 1,
       totalWorkers: 1,
@@ -1920,195 +2031,90 @@ export const workflowHandlers = [
     });
   }),
 
-  http.get('/api/workflows/instances/:id/diagnostics', ({ params }) => {
-    const inst = mockWorkflowInstances.find(i => i.id === Number(params.id));
-    if (!inst) return err('流程实例不存在', 404);
-    const tasks = mockWorkflowTasks
-      .filter(t => t.instanceId === inst.id)
-      .sort((a, b) => a.id - b.id);
-    const activeTasks = tasks.filter(t => t.status === 'pending' || t.status === 'waiting');
-    const triggerExecutions = mockWorkflowTriggerExecutions.filter(item => item.instanceId === inst.id);
-    const outboxEvents = [
-      {
-        id: inst.id * 10 + 1,
-        eventId: `mock-node-entered-${inst.id}`,
-        eventType: 'node.entered',
-        taskId: activeTasks[0]?.id ?? null,
-        status: inst.status === 'running' ? 'success' : 'success',
-        attempts: 1,
-        errorMessage: null,
-        nextRetryAt: null,
-        processedAt: inst.updatedAt,
-        createdAt: inst.createdAt,
-      },
-      ...(inst.id === 2 ? [{
-        id: inst.id * 10 + 2,
-        eventId: `mock-trigger-retry-${inst.id}`,
-        eventType: 'task.created',
-        taskId: activeTasks[0]?.id ?? null,
-        status: 'retrying',
-        attempts: 2,
-        errorMessage: 'Demo：订阅者暂时不可用，等待重试',
-        nextRetryAt: mockDateTime(),
-        processedAt: null,
-        createdAt: inst.updatedAt,
-      }] : []),
-    ];
-    const issues: WorkflowRuntimeIssue[] = [];
-    if (inst.status === 'running' && activeTasks.length === 0) {
-      issues.push({
-        severity: 'critical',
-        source: 'instance',
-        title: '运行中实例没有活动任务',
-        description: 'Demo 诊断：实例处于运行中但没有可推进任务。',
-      });
-    }
-    for (const task of activeTasks) {
-      if (task.nodeType === 'trigger' && task.status === 'waiting') {
-        issues.push({
-          severity: 'warning',
-          source: 'trigger',
-          taskId: task.id,
-          nodeKey: task.nodeKey,
-          title: '触发器暂无执行记录',
-          description: 'Demo 诊断：等待中的触发器任务尚未发现作业执行记录。',
-        });
-      }
-    }
-    for (const event of outboxEvents) {
-      if (event.status !== 'success') {
-        issues.push({
-          severity: 'warning',
-          source: 'outbox',
-          taskId: event.taskId,
-          title: '事件派发待处理',
-          description: `${event.eventType} 当前状态为 ${event.status}，attempts=${event.attempts}。`,
-        });
-      }
-    }
-    if (issues.length === 0) {
-      issues.push({
-        severity: 'info',
-        source: 'instance',
-        title: '未发现明显运行时异常',
-        description: 'Demo 诊断：任务、触发器和事件派发均未命中异常规则。',
-      });
-    }
-    const diagnostics: WorkflowRuntimeDiagnostics = {
-      instance: { ...withDefinitionSnapshot(withActiveNodes(inst)), tasks },
-      tasks,
-      activeTasks,
-      triggerExecutions,
-      outboxEvents,
-      issues,
-      tokens: mockExecutionTokens(inst.id),
-      snapshot: {
-        formData: inst.formData ?? null,
-        formSnapshot: inst.formSnapshot ?? null,
-        definitionSnapshot: withDefinitionSnapshot(inst).definitionSnapshot ?? null,
-      },
-      generatedAt: mockDateTime(),
-    };
-    return ok(diagnostics);
+  // 作业详情（参数路由，必须在 /jobs/* 静态路由之后注册）
+  mock(workflowEngineContract.jobDetail, ({ params, ok }) => {
+    const job = mockWorkflowJobs.find((j) => j.id === params.id);
+    if (!job) return notFound('作业不存在');
+    const executions = mockWorkflowJobExecutions
+      .filter((e) => e.jobId === params.id)
+      .sort((a, b) => b.id - a.id);
+    const detail: WorkflowJobDetail = { ...job, executions };
+    return ok(detail);
+  }),
+
+  mock(workflowEngineContract.retryJob, ({ params, body, ok }) => {
+    const job = mockWorkflowJobs.find((j) => j.id === params.id);
+    if (!job) return notFound('作业不存在');
+    if (!['failed', 'dead', 'canceled'].includes(job.status)) return badRequest('仅失败 / 死信 / 已取消的作业可重试');
+    if (body.payload) job.payload = body.payload;
+    requeueJob(job);
+    return ok(job, '已重新入队');
+  }),
+
+  mock(workflowEngineContract.skipJob, ({ params, ok }) => {
+    const job = mockWorkflowJobs.find((j) => j.id === params.id);
+    if (!job) return notFound('作业不存在');
+    if (!['pending', 'failed', 'dead'].includes(job.status)) return badRequest('仅待处理 / 失败 / 死信的作业可跳过');
+    job.status = 'canceled';
+    job.lockedAt = null;
+    job.updatedAt = mockDateTime();
+    return ok(job, '已跳过');
+  }),
+
+  // ─── 实例运行诊断 / 执行 Token / 轨迹 ────────────────────────────────────
+
+  mock(workflowInstanceOpsContract.diagnostics, ({ params, ok }) => {
+    const inst = mockWorkflowInstances.find(i => i.id === params.id);
+    if (!inst) return notFound('流程实例不存在');
+    return ok(buildMockDiagnostics(inst));
   }),
 
   // 实例显式执行 Token（执行树 / 活动路径）
-  http.get('/api/workflows/instances/:id/tokens', ({ params }) => {
-    return ok(mockTokenView(Number(params.id)));
+  mock(workflowInstanceOpsContract.tokens, ({ params, ok }) => {
+    return ok(mockTokenView(params.id));
   }),
 
   // Token 运营恢复（demo）：跳过卡死 Token / 从节点重放 / 导出诊断包
-  http.post('/api/workflows/instances/tokens/:id/skip', ({ params }) => {
-    const task = mockWorkflowTasks.find((t) => 900000 + t.id === Number(params.id));
+  mock(workflowInstanceOpsContract.skipToken, ({ params, ok }) => {
+    const task = mockWorkflowTasks.find((t) => 900000 + t.id === params.id);
     if (task && (task.status === 'pending' || task.status === 'waiting')) task.status = 'skipped';
     const inst = task ? mockWorkflowInstances.find((i) => i.id === task.instanceId) : undefined;
-    return ok(inst ? withDefinitionSnapshot(withActiveNodes(inst)) : null);
+    if (!inst) return notFound('流程实例不存在');
+    return ok(withDefinitionSnapshot(withActiveNodes(inst)));
   }),
-  http.post('/api/workflows/instances/tokens/:id/replay', ({ params }) => {
-    const task = mockWorkflowTasks.find((t) => 900000 + t.id === Number(params.id));
+  mock(workflowInstanceOpsContract.replayToken, ({ params, ok }) => {
+    const task = mockWorkflowTasks.find((t) => 900000 + t.id === params.id);
     const inst = task ? mockWorkflowInstances.find((i) => i.id === task.instanceId) : undefined;
-    return ok(inst ? withDefinitionSnapshot(withActiveNodes(inst)) : null);
+    if (!inst) return notFound('流程实例不存在');
+    return ok(withDefinitionSnapshot(withActiveNodes(inst)));
   }),
-  http.post('/api/workflows/instances/batch-skip-stuck', async ({ request }) => {
-    const body = await request.json().catch(() => ({})) as { definitionId?: number; nodeKey?: string };
+  mock(workflowInstanceOpsContract.batchSkipStuck, ({ body, ok }) => {
     const total = mockWorkflowInstances.filter((i) => i.definitionId === body.definitionId && i.status === 'running').length;
     return ok({ total, success: total, failed: 0 }, `已推进 ${total}/${total} 个实例`);
   }),
-  http.get('/api/workflows/instances/:id/diagnostic-bundle', ({ params }) => {
-    const id = Number(params.id);
-    return ok({ instanceId: id, generatedAt: mockDateTime(), tokens: mockTokenView(id) });
+  mock(workflowInstanceOpsContract.diagnosticBundle, ({ params, ok }) => {
+    const inst = mockWorkflowInstances.find(i => i.id === params.id);
+    if (!inst) return notFound('流程实例不存在');
+    return ok({
+      instanceId: params.id,
+      generatedAt: mockDateTime(),
+      diagnostics: buildMockDiagnostics(inst),
+      trace: buildMockTrace(params.id),
+      tokens: mockTokenView(params.id),
+    });
   }),
 
   // 实例运行轨迹 + 引擎解释
-  http.get('/api/workflows/instances/:id/trace', ({ params }) => {
-    const id = Number(params.id);
-    const t0 = mockDateTimeOffset(-1000 * 60 * 90); // 90 分钟前
-    const t1 = mockDateTimeOffset(-1000 * 60 * 88);
-    const t2 = mockDateTimeOffset(-1000 * 60 * 60);
-    const trace = [
-      {
-        key: 'task-new-1', kind: 'task', at: t0, traceId: null,
-        title: '创建审批任务：李四', status: 'approved', nodeName: '部门主管', assigneeName: '李四', comment: null,
-        jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
-      },
-      {
-        key: 'job-101', kind: 'job', at: t0, traceId: 'trace-mock-aa01',
-        title: '事件派发 · node.entered', status: 'succeeded', nodeName: '部门主管', assigneeName: null, comment: null,
-        jobId: 101, jobType: 'event_dispatch', attempts: 1, maxAttempts: 3, runAt: t0, nextRetryAt: null, lastError: null, executions: [],
-      },
-      {
-        key: 'task-act-1', kind: 'task', at: t1, traceId: null,
-        title: '李四 通过', status: 'approved', nodeName: '部门主管', assigneeName: '李四', comment: '同意，按流程办理',
-        jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
-      },
-      {
-        key: 'task-new-2', kind: 'task', at: t1, traceId: null,
-        title: '创建审批任务：王五', status: 'pending', nodeName: '分管领导', assigneeName: '王五', comment: null,
-        jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
-      },
-      {
-        key: 'job-102', kind: 'job', at: t1, traceId: 'trace-mock-bb02',
-        title: 'Webhook 投递 · instance.node_changed', status: 'dead', nodeName: '分管领导', assigneeName: null, comment: null,
-        jobId: 102, jobType: 'webhook_delivery', attempts: 5, maxAttempts: 5, runAt: t2,
-        nextRetryAt: null, lastError: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable',
-        executions: [
-          { attempt: 1, status: 'failed', requestUrl: 'https://erp.example.com/hooks/wf', requestMethod: 'POST', responseStatus: 500, durationMs: 1203, errorMessage: 'HTTP 500', finishedAt: t1 },
-          { attempt: 5, status: 'failed', requestUrl: 'https://erp.example.com/hooks/wf', requestMethod: 'POST', responseStatus: 503, durationMs: 980, errorMessage: '503 Service Unavailable', finishedAt: t2 },
-        ],
-      },
-      {
-        key: 'job-103', kind: 'job', at: t2, traceId: 'trace-mock-bb02',
-        title: '任务超时', status: 'pending', nodeName: '分管领导', assigneeName: null, comment: null,
-        jobId: 103, jobType: 'task_timeout', attempts: 0, maxAttempts: 10, runAt: mockDateTimeOffset(1000 * 60 * 120),
-        nextRetryAt: mockDateTimeOffset(1000 * 60 * 120), lastError: null, executions: [],
-      },
-    ];
-    const trace_instance = {
-      instanceId: id,
-      title: `流程实例 #${id}`,
-      explanation: {
-        state: 'blocked',
-        headline: '流程推进受阻：1 个自动作业失败，需人工介入',
-        blockers: [
-          { kind: 'job', severity: 'critical', title: 'Webhook 投递已进入死信', detail: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable', taskId: null, jobId: 102, jobType: 'webhook_delivery', nodeName: '分管领导', waitingMinutes: null, nextRetryAt: null },
-          { kind: 'task', severity: 'info', title: '等待王五审批', detail: '节点「分管领导」· 已等待 1 小时', taskId: 2, jobId: null, jobType: null, nodeName: '分管领导', waitingMinutes: 60, nextRetryAt: null },
-          { kind: 'job', severity: 'info', title: '任务超时待执行', detail: `计划于 ${mockDateTimeOffset(1000 * 60 * 120)} 执行`, taskId: null, jobId: 103, jobType: 'task_timeout', nodeName: '分管领导', waitingMinutes: null, nextRetryAt: mockDateTimeOffset(1000 * 60 * 120) },
-        ],
-        lastError: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable',
-        nextWakeAt: mockDateTimeOffset(1000 * 60 * 120),
-        pendingJobCount: 1,
-        failedJobCount: 1,
-      },
-      trace,
-      generatedAt: mockDateTime(),
-    };
-    return ok(trace_instance);
+  mock(workflowInstanceOpsContract.trace, ({ params, ok }) => {
+    return ok(buildMockTrace(params.id));
   }),
 
+  // ─── 实例生命周期 ─────────────────────────────────────────────────────────
+
   // 获取流程实例详情（含任务列表）
-  http.get('/api/workflows/instances/:id', ({ params }) => {
-    const inst = mockWorkflowInstances.find(i => i.id === Number(params.id));
-    if (!inst) return err('流程实例不存在', 404);
+  mock(workflowInstanceContract.detail, ({ params, ok }) => {
+    const inst = mockWorkflowInstances.find(i => i.id === params.id);
+    if (!inst) return notFound('流程实例不存在');
     const tasks = mockWorkflowTasks.filter(t => t.instanceId === inst.id)
       .sort((a, b) => a.id - b.id);
     // 子流程：聚合本实例发起的子实例摘要
@@ -2119,16 +2125,16 @@ export const workflowHandlers = [
   }),
 
   // 发起流程申请（支持保存草稿 asDraft）
-  http.post('/api/workflows/instances', async ({ request }) => {
-    const body = await request.json() as { definitionId: number; title: string; formData: Record<string, unknown>; asDraft?: boolean; priority?: 'low' | 'normal' | 'high' | 'urgent'; ccUserIds?: number[] };
+  mock(workflowInstanceContract.create, ({ body, ok }) => {
     const def = mockWorkflowDefinitions.find(d => d.id === body.definitionId);
-    if (!def) return err('流程定义不存在');
-    if (def.status !== 'published') return err('该流程未发布，无法发起申请');
-    if (def.formType === 'external') return err('业务系统主导流程请从对应业务模块发起');
+    if (!def) return badRequest('流程定义不存在');
+    if (def.status !== 'published') return badRequest('该流程未发布，无法发起申请');
+    if (def.formType === 'external') return badRequest('业务系统主导流程请从对应业务模块发起');
 
     const now = mockDateTime();
     const instanceId = getNextInstanceId();
     const isDraft = body.asDraft === true;
+    const formData = body.formData ?? null;
 
     // 业务编号：仅正式发起时生成（用内存计数器模拟按定义+周期自增）
     const serialCfg = (def.flowData?.settings as { serialNo?: WorkflowSerialNoConfig } | undefined)?.serialNo;
@@ -2143,7 +2149,7 @@ export const workflowHandlers = [
         ordinal,
         formatDate,
         vars: WORKFLOW_SERIAL_SAMPLE_VARS,
-        formData: (body.formData ?? {}) as Record<string, unknown>,
+        formData: formData ?? {},
       });
     }
 
@@ -2174,7 +2180,7 @@ export const workflowHandlers = [
       title: body.title,
       serialNo,
       priority: body.priority ?? 'normal',
-      formData: body.formData,
+      formData,
       formSnapshot: resolveDefinitionFormSnapshot(def),
       status: isDraft ? 'draft' : 'running',
       currentNodeKey: isDraft ? null : (firstApproveNode?.data.key ?? null),
@@ -2194,13 +2200,13 @@ export const workflowHandlers = [
   }),
 
   // 撤回流程实例
-  http.post('/api/workflows/instances/:id/withdraw', ({ params }) => {
-    const idx = mockWorkflowInstances.findIndex(i => i.id === Number(params.id));
-    if (idx === -1) return err('流程实例不存在', 404);
-    if (mockWorkflowInstances[idx].status !== 'running') return err('只有审批中的流程才能撤回');
+  mock(workflowInstanceContract.withdraw, ({ params, ok }) => {
+    const idx = mockWorkflowInstances.findIndex(i => i.id === params.id);
+    if (idx === -1) return notFound('流程实例不存在');
+    if (mockWorkflowInstances[idx].status !== 'running') return badRequest('只有审批中的流程才能撤回');
     const def = mockWorkflowDefinitions.find(d => d.id === mockWorkflowInstances[idx].definitionId);
     const allowWithdraw = (def?.flowData?.settings as { allowWithdraw?: boolean } | undefined)?.allowWithdraw;
-    if (allowWithdraw === false) return err('该流程不允许发起人撤回');
+    if (allowWithdraw === false) return badRequest('该流程不允许发起人撤回');
     mockWorkflowInstances[idx] = {
       ...mockWorkflowInstances[idx],
       status: 'withdrawn',
@@ -2208,7 +2214,7 @@ export const workflowHandlers = [
     };
     // 将所有 pending 任务设为 skipped
     mockWorkflowTasks
-      .filter(t => t.instanceId === Number(params.id) && t.status === 'pending')
+      .filter(t => t.instanceId === params.id && t.status === 'pending')
       .forEach(t => {
         t.status = 'skipped';
         t.actionAt = mockDateTime();
@@ -2217,10 +2223,10 @@ export const workflowHandlers = [
   }),
 
   // 取消流程实例（管理员强制终止）
-  http.post('/api/workflows/instances/:id/cancel', ({ params }) => {
-    const idx = mockWorkflowInstances.findIndex(i => i.id === Number(params.id));
-    if (idx === -1) return err('流程实例不存在', 404);
-    if (mockWorkflowInstances[idx].status !== 'running' && mockWorkflowInstances[idx].status !== 'suspended') return err('只能取消进行中或已挂起的流程');
+  mock(workflowInstanceContract.cancel, ({ params, ok }) => {
+    const idx = mockWorkflowInstances.findIndex(i => i.id === params.id);
+    if (idx === -1) return notFound('流程实例不存在');
+    if (mockWorkflowInstances[idx].status !== 'running' && mockWorkflowInstances[idx].status !== 'suspended') return badRequest('只能取消进行中或已挂起的流程');
     mockWorkflowInstances[idx] = {
       ...mockWorkflowInstances[idx],
       status: 'cancelled',
@@ -2230,7 +2236,7 @@ export const workflowHandlers = [
       updatedAt: mockDateTime(),
     };
     mockWorkflowTasks
-      .filter(t => t.instanceId === Number(params.id) && (t.status === 'pending' || t.status === 'waiting'))
+      .filter(t => t.instanceId === params.id && (t.status === 'pending' || t.status === 'waiting'))
       .forEach(t => {
         t.status = 'skipped';
         t.actionAt = mockDateTime();
@@ -2239,26 +2245,25 @@ export const workflowHandlers = [
   }),
 
   // 挂起流程实例（冻结待办与计时）
-  http.post('/api/workflows/instances/:id/suspend', async ({ params, request }) => {
-    const body = await request.json() as { reason?: string };
-    const idx = mockWorkflowInstances.findIndex(i => i.id === Number(params.id));
-    if (idx === -1) return err('流程实例不存在', 404);
-    if (mockWorkflowInstances[idx].status !== 'running') return err('仅审批中的流程可挂起');
+  mock(workflowInstanceOpsContract.suspend, ({ params, body, ok }) => {
+    const idx = mockWorkflowInstances.findIndex(i => i.id === params.id);
+    if (idx === -1) return notFound('流程实例不存在');
+    if (mockWorkflowInstances[idx].status !== 'running') return badRequest('仅审批中的流程可挂起');
     mockWorkflowInstances[idx] = {
       ...mockWorkflowInstances[idx],
       status: 'suspended',
       suspendedAt: mockDateTime(),
-      suspendReason: body.reason ?? null,
+      suspendReason: body.reason,
       updatedAt: mockDateTime(),
     };
     return ok(mockWorkflowInstances[idx], '已挂起，计时已冻结');
   }),
 
   // 恢复挂起的流程实例
-  http.post('/api/workflows/instances/:id/resume', ({ params }) => {
-    const idx = mockWorkflowInstances.findIndex(i => i.id === Number(params.id));
-    if (idx === -1) return err('流程实例不存在', 404);
-    if (mockWorkflowInstances[idx].status !== 'suspended') return err('仅已挂起的流程可恢复');
+  mock(workflowInstanceOpsContract.resume, ({ params, ok }) => {
+    const idx = mockWorkflowInstances.findIndex(i => i.id === params.id);
+    if (idx === -1) return notFound('流程实例不存在');
+    if (mockWorkflowInstances[idx].status !== 'suspended') return badRequest('仅已挂起的流程可恢复');
     mockWorkflowInstances[idx] = {
       ...mockWorkflowInstances[idx],
       status: 'running',
@@ -2270,11 +2275,10 @@ export const workflowHandlers = [
   }),
 
   // 离职交接：影响范围预览
-  http.get('/api/workflows/tasks/handover-preview', ({ request }) => {
-    const url = new URL(request.url);
-    const fromUserId = Number(url.searchParams.get('fromUserId'));
+  mock(workflowTaskContract.handoverPreview, ({ query, ok }) => {
+    const fromUserId = query.fromUserId;
     const from = mockUsers.find(u => u.id === fromUserId);
-    if (!from) return err('交接人不存在', 404);
+    if (!from) return notFound('交接人不存在');
     const open = mockWorkflowTasks.filter(t => {
       if (t.assigneeId !== fromUserId) return false;
       if (t.status !== 'pending' && t.status !== 'waiting') return false;
@@ -2290,14 +2294,14 @@ export const workflowHandlers = [
     });
   }),
 
-  // 离职交接：批量移交待办
-  http.post('/api/workflows/tasks/handover', async ({ request }) => {
-    const cached = readIdempotentResponse(request);
-    if (cached) return cached;
-    const body = await request.json() as { fromUserId: number; toUserId: number; disableDelegations?: boolean; comment?: string };
-    if (body.fromUserId === body.toUserId) return err('接手人不能与交接人相同');
+  // 离职交接：批量移交待办（按 X-Idempotency-Key 幂等）
+  mock(workflowTaskContract.handover, ({ body, ok, request }) => {
+    const idemKey = idempotencyKeyOf(request);
+    const cached = idemKey ? handoverIdempotencyCache.get(idemKey) : undefined;
+    if (cached) return ok(cached.data, cached.message);
+    if (body.fromUserId === body.toUserId) return badRequest('接手人不能与交接人相同');
     const target = mockUsers.find(u => u.id === body.toUserId);
-    if (!target) return err('接手人不存在');
+    if (!target) return badRequest('接手人不存在');
     const open = mockWorkflowTasks.filter(t => {
       if (t.assigneeId !== body.fromUserId) return false;
       if (t.status !== 'pending' && t.status !== 'waiting') return false;
@@ -2324,40 +2328,43 @@ export const workflowHandlers = [
       t.comment = `[离职交接]${body.comment ? ' ' + body.comment : ''}`;
       return { taskId: t.id, title: inst?.title ?? `实例#${t.instanceId}`, nodeName: t.nodeName, success: true };
     });
-    return okIdempotent(request, {
+    const data: WorkflowHandoverResult = {
       taskTotal: open.length,
       succeeded: open.length,
       failed: 0,
       delegationsDisabled: body.disableDelegations === false ? 0 : 1,
       results,
-    }, `已交接 ${open.length}/${open.length} 条待办`);
+    };
+    const message = `已交接 ${open.length}/${open.length} 条待办`;
+    if (idemKey) handoverIdempotencyCache.set(idemKey, { data, message });
+    return ok(data, message);
   }),
 
   // 删除流程实例（仅终态可删，级联删除任务）
-  http.delete('/api/workflows/instances/:id', ({ params }) => {
-    const id = Number(params.id);
+  mock(workflowInstanceContract.remove, ({ params, ok }) => {
+    const id = params.id;
     const idx = mockWorkflowInstances.findIndex(i => i.id === id);
-    if (idx === -1) return err('流程实例不存在', 404);
+    if (idx === -1) return notFound('流程实例不存在');
     if (mockWorkflowInstances[idx].status === 'running' || mockWorkflowInstances[idx].status === 'draft') {
-      return err('请先取消进行中的流程再删除');
+      return badRequest('请先取消进行中的流程再删除');
     }
     mockWorkflowInstances.splice(idx, 1);
     removeWhere(mockWorkflowTasks, (task) => task.instanceId === id);
     return ok(null);
   }),
 
-  // ─── 审批任务 Handler ──────────────────────────────────────────────────────
+  // ─── 审批任务 ─────────────────────────────────────────────────────────────
 
-  // 审批通过
-  http.get('/api/workflows/tasks/:taskId/selectable-next-approvers', ({ params }) => {
-    const task = mockWorkflowTasks.find(t => t.id === Number(params.taskId));
-    if (!task) return err('任务不存在', 404);
+  // 下一节点自选审批人候选
+  mock(workflowTaskContract.selectableNextApprovers, ({ params, ok }) => {
+    const task = mockWorkflowTasks.find(t => t.id === params.taskId);
+    if (!task) return notFound('任务不存在');
     // 与服务端一致：已处理任务无需再选下一审批人，返回空组而非报错
     if (task.status !== 'pending') return ok([]);
     const inst = mockWorkflowInstances.find(i => i.id === task.instanceId);
-    if (!inst) return err('流程实例不存在', 404);
+    if (!inst) return notFound('流程实例不存在');
     const def = mockWorkflowDefinitions.find(d => d.id === inst.definitionId);
-    const flowData = (def?.flowData ?? null) as WorkflowFlowData | null;
+    const flowData = def?.flowData ?? null;
     if (!flowData) return ok([]);
     const groups = findNextApproverSelectNodes(flowData, task.nodeKey).map((node) => {
       const scopeType = node.data.selectScopeType ?? 'user';
@@ -2375,54 +2382,45 @@ export const workflowHandlers = [
     return ok(groups);
   }),
 
-  http.post('/api/workflows/tasks/:taskId/approve', async ({ params, request }) => {
-    const cached = readIdempotentResponse(request);
-    if (cached) return cached;
-    const body = await request.json() as { comment?: string; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }>; selectedNextApprovers?: Record<string, number[]>; formUpdates?: Record<string, unknown> };
-    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
-    if (taskIdx === -1) return err('任务不存在', 404);
-    if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
+  // 审批通过（按 X-Idempotency-Key 幂等；返回所属实例最新状态）
+  mock(workflowTaskContract.approve, ({ params, body, ok, request }) => {
+    const idemKey = idempotencyKeyOf(request);
+    const cached = idemKey ? approveIdempotencyCache.get(idemKey) : undefined;
+    if (cached) return ok(cached.data, cached.message);
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
+    if (taskIdx === -1) return notFound('任务不存在');
+    if (mockWorkflowTasks[taskIdx].status !== 'pending') return badRequest('该任务已处理');
 
     const now = mockDateTime();
     const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
     const current = mockWorkflowTasks[taskIdx];
+    const instForUpdate = mockWorkflowInstances.find(i => i.id === current.instanceId);
 
     // 可编辑字段写回：与服务端一致，按节点 fieldPermissions 白名单过滤后合并进实例 formData
-    if (body.formUpdates) {
-      const instForUpdate = mockWorkflowInstances.find(i => i.id === current.instanceId);
-      if (instForUpdate) {
-        const flow = (instForUpdate.definitionSnapshot?.flowData
-          ?? mockWorkflowDefinitions.find(d => d.id === instForUpdate.definitionId)?.flowData) as WorkflowFlowData | undefined;
-        const sanitized = sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(flow, current.nodeKey), body.formUpdates);
-        if (Object.keys(sanitized).length > 0) {
-          instForUpdate.formData = { ...(instForUpdate.formData ?? {}), ...sanitized };
-          instForUpdate.updatedAt = now;
-        }
+    if (body.formUpdates && instForUpdate) {
+      const flow = instForUpdate.definitionSnapshot?.flowData
+        ?? mockWorkflowDefinitions.find(d => d.id === instForUpdate.definitionId)?.flowData;
+      const sanitized = sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(flow, current.nodeKey), body.formUpdates);
+      if (Object.keys(sanitized).length > 0) {
+        instForUpdate.formData = { ...(instForUpdate.formData ?? {}), ...sanitized };
+        instForUpdate.updatedAt = now;
       }
     }
+
+    const respond = (message?: string) => {
+      const inst = mockWorkflowInstances.find(i => i.id === current.instanceId);
+      if (!inst) return notFound('流程实例不存在');
+      const data = withActiveNodes(inst);
+      if (idemKey) approveIdempotencyCache.set(idemKey, { data, message: message ?? 'ok' });
+      return ok(data, message);
+    };
 
     // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不推进流程
     if (current.delegatedFromId) {
       const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} 建议同意：${body.comment ?? ''}`;
       mockWorkflowTasks[taskIdx] = { ...current, status: 'approved', comment: receiptComment, attachments, actionAt: now };
-      const newTask: WorkflowTask = {
-        id: getNextTaskId(),
-        instanceId: current.instanceId,
-        nodeKey: current.nodeKey,
-        nodeName: current.nodeName,
-        nodeType: current.nodeType,
-        assigneeId: current.delegatedFromId,
-        assigneeName: `用户${current.delegatedFromId}`,
-        status: 'pending',
-        comment: receiptComment,
-        actionAt: null,
-        originalAssigneeId: current.delegatedFromId,
-        delegatedFromId: null,
-        actionButtons: current.actionButtons,
-        createdAt: now,
-      };
-      mockWorkflowTasks.push(newTask);
-      return okIdempotent(request, newTask, '已提交委派回执，等待原审批人确认');
+      createDelegationReceiptTask(current, receiptComment, now);
+      return respond('已提交委派回执，等待原审批人确认');
     }
 
     mockWorkflowTasks[taskIdx] = {
@@ -2455,44 +2453,36 @@ export const workflowHandlers = [
       }
     }
 
-    return okIdempotent(request, mockWorkflowTasks[taskIdx]);
+    return respond();
   }),
 
-  // 审批驳回
-  http.post('/api/workflows/tasks/:taskId/reject', async ({ params, request }) => {
-    const cached = readIdempotentResponse(request);
-    if (cached) return cached;
-    const body = await request.json() as { comment?: string; attachments?: Array<{ name: string; url: string; size?: number }> };
-    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
-    if (taskIdx === -1) return err('任务不存在', 404);
-    if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
+  // 审批驳回（按 X-Idempotency-Key 幂等；返回所属实例最新状态）
+  mock(workflowTaskContract.reject, ({ params, body, ok, request }) => {
+    const idemKey = idempotencyKeyOf(request);
+    const cached = idemKey ? approveIdempotencyCache.get(idemKey) : undefined;
+    if (cached) return ok(cached.data, cached.message);
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
+    if (taskIdx === -1) return notFound('任务不存在');
+    if (mockWorkflowTasks[taskIdx].status !== 'pending') return badRequest('该任务已处理');
 
     const now = mockDateTime();
     const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
     const current = mockWorkflowTasks[taskIdx];
 
+    const respond = (message?: string) => {
+      const inst = mockWorkflowInstances.find(i => i.id === current.instanceId);
+      if (!inst) return notFound('流程实例不存在');
+      const data = withActiveNodes(inst);
+      if (idemKey) approveIdempotencyCache.set(idemKey, { data, message: message ?? 'ok' });
+      return ok(data, message);
+    };
+
     // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不驳回流程
     if (current.delegatedFromId) {
       const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} 建议拒绝：${body.comment ?? ''}`;
       mockWorkflowTasks[taskIdx] = { ...current, status: 'rejected', comment: receiptComment, attachments, actionAt: now };
-      const newTask: WorkflowTask = {
-        id: getNextTaskId(),
-        instanceId: current.instanceId,
-        nodeKey: current.nodeKey,
-        nodeName: current.nodeName,
-        nodeType: current.nodeType,
-        assigneeId: current.delegatedFromId,
-        assigneeName: `用户${current.delegatedFromId}`,
-        status: 'pending',
-        comment: receiptComment,
-        actionAt: null,
-        originalAssigneeId: current.delegatedFromId,
-        delegatedFromId: null,
-        actionButtons: current.actionButtons,
-        createdAt: now,
-      };
-      mockWorkflowTasks.push(newTask);
-      return okIdempotent(request, newTask, '已提交委派回执，等待原审批人确认');
+      createDelegationReceiptTask(current, receiptComment, now);
+      return respond('已提交委派回执，等待原审批人确认');
     }
 
     mockWorkflowTasks[taskIdx] = {
@@ -2521,21 +2511,20 @@ export const workflowHandlers = [
         });
     }
 
-    return okIdempotent(request, mockWorkflowTasks[taskIdx]);
+    return respond();
   }),
 
   // 转办
-  http.post('/api/workflows/tasks/:taskId/transfer', async ({ params, request }) => {
-    const body = await request.json() as { targetUserId: number; comment?: string; attachments?: Array<{ name: string; url: string; size?: number }> };
-    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
-    if (taskIdx === -1) return err('任务不存在', 404);
+  mock(workflowTaskContract.transfer, ({ params, body, ok }) => {
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
+    if (taskIdx === -1) return notFound('任务不存在');
     const current = mockWorkflowTasks[taskIdx];
-    if (current.status !== 'pending') return err('该任务已处理');
-    if (body.targetUserId === current.assigneeId) return err('转办人不能是当前处理人');
+    if (current.status !== 'pending') return badRequest('该任务已处理');
+    if (body.targetUserId === current.assigneeId) return badRequest('转办人不能是当前处理人');
     const handled = new Set((current.transfers ?? []).flatMap(tr => [tr.fromUserId, tr.toUserId]).filter((v): v is number => v != null));
     const original = current.originalAssigneeId ?? current.assigneeId;
     if (handled.has(body.targetUserId) || body.targetUserId === original) {
-      return err('禁止将任务转回曾经经手的处理人');
+      return badRequest('禁止将任务转回曾经经手的处理人');
     }
     mockWorkflowTasks[taskIdx] = {
       ...current,
@@ -2560,17 +2549,16 @@ export const workflowHandlers = [
   }),
 
   // 委派
-  http.post('/api/workflows/tasks/:taskId/delegate', async ({ params, request }) => {
-    const body = await request.json() as { targetUserId: number; comment?: string; attachments?: Array<{ name: string; url: string; size?: number }> };
-    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
-    if (taskIdx === -1) return err('任务不存在', 404);
+  mock(workflowTaskContract.delegate, ({ params, body, ok }) => {
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
+    if (taskIdx === -1) return notFound('任务不存在');
     const current = mockWorkflowTasks[taskIdx];
-    if (current.status !== 'pending') return err('该任务已处理');
-    if (body.targetUserId === current.assigneeId) return err('委派人不能是当前处理人');
+    if (current.status !== 'pending') return badRequest('该任务已处理');
+    if (body.targetUserId === current.assigneeId) return badRequest('委派人不能是当前处理人');
     const delegateHandled = new Set((current.transfers ?? []).flatMap(tr => [tr.fromUserId, tr.toUserId]).filter((v): v is number => v != null));
     const original = current.originalAssigneeId ?? current.assigneeId;
     if (delegateHandled.has(body.targetUserId) || body.targetUserId === original) {
-      return err('禁止将任务委派给曾经经手的处理人');
+      return badRequest('禁止将任务委派给曾经经手的处理人');
     }
     mockWorkflowTasks[taskIdx] = {
       ...current,
@@ -2596,12 +2584,11 @@ export const workflowHandlers = [
   }),
 
   // 加签
-  http.post('/api/workflows/tasks/:taskId/add-sign', async ({ params, request }) => {
-    const body = await request.json() as { targetUserIds: number[]; position: 'before' | 'after' | 'parallel'; comment?: string; attachments?: Array<{ name: string; url: string; size?: number }> };
-    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
-    if (taskIdx === -1) return err('任务不存在', 404);
+  mock(workflowTaskContract.addSign, ({ params, body, ok }) => {
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
+    if (taskIdx === -1) return notFound('任务不存在');
     const current = mockWorkflowTasks[taskIdx];
-    if (current.status !== 'pending') return err('该任务已处理');
+    if (current.status !== 'pending') return badRequest('该任务已处理');
     const now = mockDateTime();
     const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
     if (body.position === 'before') {
@@ -2629,12 +2616,11 @@ export const workflowHandlers = [
   }),
 
   // 减签
-  http.post('/api/workflows/tasks/:taskId/reduce-sign', async ({ params, request }) => {
-    const body = await request.json() as { targetTaskIds: number[]; comment?: string };
-    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
-    if (taskIdx === -1) return err('任务不存在', 404);
-    if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
-    if (body.targetTaskIds.includes(Number(params.taskId))) return err('不能减去自己');
+  mock(workflowTaskContract.reduceSign, ({ params, body, ok }) => {
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
+    if (taskIdx === -1) return notFound('任务不存在');
+    if (mockWorkflowTasks[taskIdx].status !== 'pending') return badRequest('该任务已处理');
+    if (body.targetTaskIds.includes(params.taskId)) return badRequest('不能减去自己');
     const now = mockDateTime();
     const suffix = body.comment ? `：${body.comment}` : '';
     let removed = 0;
@@ -2651,19 +2637,18 @@ export const workflowHandlers = [
   }),
 
   // 催办：单任务
-  http.post('/api/workflows/tasks/:taskId/urge', async ({ params, request }) => {
-    const body = await request.json().catch(() => ({})) as { message?: string };
-    const taskId = Number(params.taskId);
+  mock(workflowTaskContract.urgeTask, ({ params, body, ok }) => {
+    const taskId = params.taskId;
     const task = mockWorkflowTasks.find(t => t.id === taskId);
-    if (!task) return err('任务不存在', 404);
-    if (task.status !== 'pending') return err('该任务已处理');
+    if (!task) return notFound('任务不存在');
+    if (task.status !== 'pending') return badRequest('该任务已处理');
     const inst = mockWorkflowInstances.find(i => i.id === task.instanceId);
-    if (!inst) return err('流程不存在', 404);
-    if (inst.status !== 'running') return err('流程已结束，无需催办');
+    if (!inst) return notFound('流程不存在');
+    if (inst.status !== 'running') return badRequest('流程已结束，无需催办');
     const last = mockWorkflowUrges.filter(u => u.taskId === taskId).sort((a, b) => b.id - a.id)[0];
     if (last && Date.now() - new Date(last.createdAt).getTime() < URGE_MIN_INTERVAL_MS) {
       const wait = Math.ceil((URGE_MIN_INTERVAL_MS - (Date.now() - new Date(last.createdAt).getTime())) / 1000);
-      return err(`催办过于频繁，请 ${wait}s 后再试`, 429);
+      return fail(429, `催办过于频繁，请 ${wait}s 后再试`);
     }
     const row: WorkflowTaskUrge = {
       id: urgeIdSeq++,
@@ -2679,28 +2664,25 @@ export const workflowHandlers = [
   }),
 
   // 催办：单任务历史
-  http.get('/api/workflows/tasks/:taskId/urges', ({ params }) => {
-    const taskId = Number(params.taskId);
-    const list = mockWorkflowUrges.filter(u => u.taskId === taskId).sort((a, b) => b.id - a.id);
+  mock(workflowTaskContract.taskUrges, ({ params, ok }) => {
+    const list = mockWorkflowUrges.filter(u => u.taskId === params.taskId).sort((a, b) => b.id - a.id);
     return ok(list);
   }),
 
   // 催办：实例历史
-  http.get('/api/workflows/instances/:id/urges', ({ params }) => {
-    const instId = Number(params.id);
-    const list = mockWorkflowUrges.filter(u => u.instanceId === instId).sort((a, b) => b.id - a.id);
+  mock(workflowInstanceContract.urges, ({ params, ok }) => {
+    const list = mockWorkflowUrges.filter(u => u.instanceId === params.id).sort((a, b) => b.id - a.id);
     return ok(list);
   }),
 
   // 催办：实例批量
-  http.post('/api/workflows/instances/:id/urge', async ({ params, request }) => {
-    const body = await request.json().catch(() => ({})) as { message?: string };
-    const instId = Number(params.id);
+  mock(workflowInstanceContract.urge, ({ params, body, ok }) => {
+    const instId = params.id;
     const inst = mockWorkflowInstances.find(i => i.id === instId);
-    if (!inst) return err('流程不存在', 404);
-    if (inst.status !== 'running') return err('流程已结束，无需催办');
+    if (!inst) return notFound('流程不存在');
+    if (inst.status !== 'running') return badRequest('流程已结束，无需催办');
     const pendings = mockWorkflowTasks.filter(t => t.instanceId === instId && t.status === 'pending');
-    if (pendings.length === 0) return err('没有待办任务可催办');
+    if (pendings.length === 0) return badRequest('没有待办任务可催办');
     const now = mockDateTime();
     const nowMs = Date.now();
     const created: WorkflowTaskUrge[] = [];
@@ -2730,14 +2712,11 @@ export const workflowHandlers = [
   }),
 
   // 动态补加抄送
-  http.post('/api/workflows/instances/:id/cc/add', async ({ params, request }) => {
-    const body = await request.json().catch(() => ({})) as { nodeKey?: string; userIds?: number[] };
-    const instId = Number(params.id);
+  mock(workflowInstanceContract.addCc, ({ params, body, ok }) => {
+    const instId = params.id;
     const inst = mockWorkflowInstances.find(i => i.id === instId);
-    if (!inst) return err('流程不存在', 404);
-    if (inst.status !== 'running') return err('流程已结束，无法补加抄送');
-    if (!body.nodeKey) return err('请选择抄送节点');
-    if (!Array.isArray(body.userIds) || body.userIds.length === 0) return err('请选择抄送人');
+    if (!inst) return notFound('流程不存在');
+    if (inst.status !== 'running') return badRequest('流程已结束，无法补加抄送');
 
     // 去重：过滤掉当前实例 + 节点已经抄送过的用户
     const existingSet = new Set(
@@ -2753,14 +2732,14 @@ export const workflowHandlers = [
     const now = mockDateTime();
     const sample = mockWorkflowTasks.find(t => t.instanceId === instId && t.nodeKey === body.nodeKey);
     const inserted = toAdd.map((uid) => {
-      const task = {
+      const task: WorkflowTask = {
         id: getNextTaskId(),
         instanceId: instId,
-        nodeKey: body.nodeKey!,
+        nodeKey: body.nodeKey,
         nodeName: sample?.nodeName ?? '抄送',
-        nodeType: 'ccNode' as const,
+        nodeType: 'ccNode',
         assigneeId: uid,
-        status: 'skipped' as const,
+        status: 'skipped',
         comment: null,
         actionAt: null,
         createdAt: now,
@@ -2772,12 +2751,10 @@ export const workflowHandlers = [
   }),
 
   // 退回
-  http.post('/api/workflows/tasks/:taskId/return', async ({ params, request }) => {
-    const body = await request.json() as { targetNodeKeys: string[]; comment: string; attachments?: Array<{ name: string; url: string; size?: number }> };
-    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
-    if (taskIdx === -1) return err('任务不存在', 404);
-    if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
-    if (!Array.isArray(body.targetNodeKeys) || body.targetNodeKeys.length === 0) return err('请选择退回节点');
+  mock(workflowTaskContract.returnTask, ({ params, body, ok }) => {
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
+    if (taskIdx === -1) return notFound('任务不存在');
+    if (mockWorkflowTasks[taskIdx].status !== 'pending') return badRequest('该任务已处理');
     const firstNodeKey = body.targetNodeKeys[0];
     const now = mockDateTime();
     const current = mockWorkflowTasks[taskIdx];
@@ -2792,13 +2769,12 @@ export const workflowHandlers = [
       actionAt: now,
     };
     const instIdx = mockWorkflowInstances.findIndex(i => i.id === current.instanceId);
-    if (instIdx !== -1) {
-      mockWorkflowInstances[instIdx] = {
-        ...mockWorkflowInstances[instIdx],
-        currentNodeKey: firstNodeKey,
-        updatedAt: now,
-      };
-    }
-    return ok(mockWorkflowInstances[instIdx] ?? null);
+    if (instIdx === -1) return notFound('流程实例不存在');
+    mockWorkflowInstances[instIdx] = {
+      ...mockWorkflowInstances[instIdx],
+      currentNodeKey: firstNodeKey,
+      updatedAt: now,
+    };
+    return ok(mockWorkflowInstances[instIdx]);
   }),
 ];

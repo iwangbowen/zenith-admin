@@ -176,7 +176,7 @@ function InstanceDetailDrawer({
 
   const handleResubmitFromDetail = async () => {
     if (!viewId) return;
-    const draft = await resubmitMutation.mutateAsync(viewId);
+    const draft = await resubmitMutation.mutateAsync({ params: { id: viewId } });
     Toast.success('已生成草稿');
     onRefresh();
     onClose();
@@ -185,7 +185,7 @@ function InstanceDetailDrawer({
 
   const handleWithdraw = async () => {
     if (!viewId) return;
-    await withdrawMutation.mutateAsync({ id: viewId });
+    await withdrawMutation.mutateAsync({ params: { id: viewId } });
     Toast.success('已撤回');
     onRefresh();
     onClose();
@@ -213,7 +213,7 @@ function InstanceDetailDrawer({
   const handleUrge = async () => {
     if (!viewId) return;
     try {
-      await urgeMutation.mutateAsync({ id: viewId, message: urgeMessage || undefined });
+      await urgeMutation.mutateAsync({ params: { id: viewId }, body: { message: urgeMessage || undefined } });
       Toast.success('已催办');
       setUrgeVisible(false);
       setUrgeMessage('');
@@ -241,7 +241,7 @@ function InstanceDetailDrawer({
       Toast.warning('请选择抄送节点与抄送人');
       return;
     }
-    await addCcMutation.mutateAsync({ id: viewId, nodeKey: ccNodeKey, userIds: ccUserIds });
+    await addCcMutation.mutateAsync({ params: { id: viewId }, body: { nodeKey: ccNodeKey, userIds: ccUserIds } });
     Toast.success('已补加抄送');
     setCcVisible(false);
     onRefresh();
@@ -464,7 +464,7 @@ export default function MyApplicationsPage() {
     const { values, formData } = result;
     if (!launchSubmitNonceRef.current) launchSubmitNonceRef.current = crypto.randomUUID();
     await submitMutation.mutateAsync({
-      values: {
+      body: {
         definitionId: selectedDef.id,
         title: values.title,
         formData,
@@ -485,7 +485,7 @@ export default function MyApplicationsPage() {
     if (!result) return;
     const { values, formData } = result;
     await saveDraftMutation.mutateAsync({
-      values: {
+      body: {
         definitionId: selectedDef.id,
         title: values.title,
         formData,
@@ -504,8 +504,8 @@ export default function MyApplicationsPage() {
     if (!result) return;
     const { values, formData } = result;
     await updateDraftMutation.mutateAsync({
-      id: editingDraft.id,
-      values: {
+      params: { id: editingDraft.id },
+      body: {
         title: values.title,
         formData,
       },
@@ -520,15 +520,15 @@ export default function MyApplicationsPage() {
     if (!result) return;
     const { values, formData } = result;
     await updateDraftMutation.mutateAsync({
-      id: editingDraft.id,
-      values: {
+      params: { id: editingDraft.id },
+      body: {
         title: values.title,
         formData,
       },
     });
     await submitDraftMutation.mutateAsync({
-      id: editingDraft.id,
-      values: {
+      params: { id: editingDraft.id },
+      body: {
         selectedInitiatorApprovers: result.selectedInitiatorApprovers,
       },
     });
@@ -537,7 +537,7 @@ export default function MyApplicationsPage() {
   };
 
   const handleDirectSubmitDraft = async (id: number) => {
-    await submitDraftMutation.mutateAsync({ id });
+    await submitDraftMutation.mutateAsync({ params: { id }, body: {} });
     Toast.success('申请已提交');
   };
 
@@ -558,12 +558,12 @@ export default function MyApplicationsPage() {
   };
 
   const handleDeleteDraft = async (id: number) => {
-    await deleteMutation.mutateAsync(id);
+    await deleteMutation.mutateAsync({ params: { id } });
     Toast.success('已删除');
   };
 
   const handleResubmit = async (id: number) => {
-    await resubmitMutation.mutateAsync(id);
+    await resubmitMutation.mutateAsync({ params: { id } });
     Toast.success('已生成草稿，请在草稿箱中编辑提交');
   };
 
@@ -586,7 +586,7 @@ export default function MyApplicationsPage() {
       Toast.warning('请选择审批中且允许撤回的申请');
       return;
     }
-    const res = await batchWithdrawMutation.mutateAsync({ instanceIds, comment: batchWithdrawComment.trim() || undefined });
+    const res = await batchWithdrawMutation.mutateAsync({ body: { instanceIds, comment: batchWithdrawComment.trim() || undefined } });
     Toast.success(`成功 ${res.succeeded} 条，失败 ${res.failed} 条`);
     setBatchWithdrawVisible(false);
     setBatchWithdrawComment('');
@@ -608,7 +608,7 @@ export default function MyApplicationsPage() {
       Toast.warning('请选择审批中的申请');
       return;
     }
-    const res = await batchUrgeMutation.mutateAsync({ instanceIds, message: batchUrgeMessage.trim() || undefined });
+    const res = await batchUrgeMutation.mutateAsync({ body: { instanceIds, message: batchUrgeMessage.trim() || undefined } });
     Toast.success(`成功 ${res.succeeded} 条，失败 ${res.failed} 条`);
     setBatchUrgeVisible(false);
     setBatchUrgeMessage('');

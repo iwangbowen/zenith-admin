@@ -1,8 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { WorkflowApproverPreviewNode, WorkflowDefinition, WorkflowInstance, WorkflowSelectableNextApproverGroup } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
+import { workflowDefinitionContract, workflowInstanceContract, workflowTaskContract, type WorkflowDefinition, type WorkflowInstance, type WorkflowSelectableUser } from '@zenith/shared/workflow';
+import { api } from '@/lib/contract-query';
 
 export const workflowSharedKeys = {
   all: ['workflow'] as const,
@@ -20,11 +19,9 @@ export async function fetchWorkflowInstanceWithDefinition(instanceId: number): P
   instance: WorkflowInstance;
   definition: WorkflowDefinition | null;
 }> {
-  const instance = await request.get<WorkflowInstance>(`/api/workflows/instances/${instanceId}`, { silent: true }).then(unwrap);
+  const instance = await api(workflowInstanceContract.detail, { params: { id: instanceId } }, { silent: true });
   if (instance.definitionSnapshot) return { instance, definition: null };
-  const definition = await request
-    .get<WorkflowDefinition>(`/api/workflows/definitions/${instance.definitionId}`, { silent: true })
-    .then(unwrap);
+  const definition = await api(workflowDefinitionContract.detail, { params: { id: instance.definitionId } }, { silent: true });
   return { instance, definition };
 }
 
@@ -36,13 +33,11 @@ export function useWorkflowApprovalPreview(
   return useQuery({
     queryKey: workflowSharedKeys.approvalPreview(definitionId, reloadKey),
     queryFn: () =>
-      request
-        .post<WorkflowApproverPreviewNode[]>(
-          `/api/workflows/definitions/${definitionId}/preview`,
-          { formData: getFormData ? getFormData() : null },
-          { silent: true },
-        )
-        .then(unwrap),
+      api(
+        workflowDefinitionContract.preview,
+        { params: { id: definitionId as number }, body: { formData: getFormData ? getFormData() : null } },
+        { silent: true },
+      ),
     enabled: !!definitionId,
     placeholderData: (previousData, previousQuery) =>
       previousQuery?.queryKey[2] === definitionId ? previousData : undefined,
@@ -61,10 +56,7 @@ export function useWorkflowInstanceWithDefinition(instanceId: number | null | un
 export function useWorkflowSelectableNextApprovers(taskId: number | null | undefined, enabled = true) {
   return useQuery({
     queryKey: workflowSharedKeys.selectableNextApprovers(taskId),
-    queryFn: () =>
-      request
-        .get<WorkflowSelectableNextApproverGroup[]>(`/api/workflows/tasks/${taskId}/selectable-next-approvers`)
-        .then(unwrap),
+    queryFn: () => api(workflowTaskContract.selectableNextApprovers, { params: { taskId: taskId as number } }),
     enabled: enabled && taskId != null,
     placeholderData: keepPreviousData,
   });
@@ -72,13 +64,7 @@ export function useWorkflowSelectableNextApprovers(taskId: number | null | undef
 
 // ─── 工作流协作选人（转办/委派/加签/协办/转发/抄送共用） ─────────────────────
 
-export interface WorkflowSelectableUser {
-  id: number;
-  username: string;
-  nickname: string;
-  avatar: string | null;
-  departmentName: string | null;
-}
+export type { WorkflowSelectableUser };
 
 /** 与用户管理 lookup 相同的新鲜度语义：人员名录低频变化，5 分钟内复用缓存 */
 const SELECTABLE_USERS_STALE_TIME = 5 * 60 * 1000;
@@ -86,7 +72,7 @@ const SELECTABLE_USERS_STALE_TIME = 5 * 60 * 1000;
 export function workflowSelectableUsersQueryOptions() {
   return {
     queryKey: workflowSharedKeys.selectableUsers,
-    queryFn: () => request.get<WorkflowSelectableUser[]>('/api/workflows/selectable-users').then(unwrap),
+    queryFn: () => api(workflowInstanceContract.selectableUsers),
     staleTime: SELECTABLE_USERS_STALE_TIME,
   };
 }

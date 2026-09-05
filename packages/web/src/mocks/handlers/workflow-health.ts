@@ -1,6 +1,6 @@
-import { http } from 'msw';
-import { ok } from '@/mocks/utils/handlers';
+import { workflowHealthContract } from '@zenith/shared/workflow';
 import type { WorkflowHealthIssue, WorkflowHealthSummary } from '@zenith/shared/workflow';
+import { mock } from '@/mocks/utils/contract';
 import { mockWorkflowInstances, mockWorkflowTasks } from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
 
@@ -11,9 +11,8 @@ function minutesAgoText(minutes: number): string {
 }
 
 export const workflowHealthHandlers = [
-  http.get('/api/workflows/health', ({ request }) => {
-    const url = new URL(request.url);
-    const thresholdMinutes = Number(url.searchParams.get('thresholdMinutes') ?? 30);
+  mock(workflowHealthContract.summary, ({ query, ok }) => {
+    const thresholdMinutes = query.thresholdMinutes ?? 30;
     const issues: WorkflowHealthIssue[] = [];
     for (const task of mockWorkflowTasks) {
       if (task.status !== 'pending' && task.status !== 'waiting') continue;

@@ -1,16 +1,9 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { WorkflowTriggerExecution, WorkflowTriggerExecutionStatus } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryOf } from '@zenith/shared/core';
+import { workflowTriggerExecutionContract } from '@zenith/shared/workflow';
+import { api } from '@/lib/contract-query';
 
-export interface WorkflowTriggerExecutionListParams {
-  page: number;
-  pageSize: number;
-  status?: WorkflowTriggerExecutionStatus;
-  instanceId?: number;
-  nodeKey?: string;
-}
+export type WorkflowTriggerExecutionListParams = QueryOf<typeof workflowTriggerExecutionContract.list>;
 
 export const workflowTriggerExecutionKeys = {
   all: ['workflow', 'trigger-executions'] as const,
@@ -22,8 +15,7 @@ export const workflowTriggerExecutionKeys = {
 export function useWorkflowTriggerExecutionList(params: WorkflowTriggerExecutionListParams) {
   return useQuery({
     queryKey: workflowTriggerExecutionKeys.list(params),
-    queryFn: () =>
-      request.get<PaginatedResponse<WorkflowTriggerExecution>>(`/api/workflows/trigger-executions${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowTriggerExecutionContract.list, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
@@ -31,7 +23,7 @@ export function useWorkflowTriggerExecutionList(params: WorkflowTriggerExecution
 export function useWorkflowTriggerExecutionDetail(id: number | null | undefined, enabled = true) {
   return useQuery({
     queryKey: workflowTriggerExecutionKeys.detail(id),
-    queryFn: () => request.get<WorkflowTriggerExecution>(`/api/workflows/trigger-executions/${id}`).then(unwrap),
+    queryFn: () => api(workflowTriggerExecutionContract.detail, { params: { id: id as number } }),
     enabled: enabled && !!id,
   });
 }

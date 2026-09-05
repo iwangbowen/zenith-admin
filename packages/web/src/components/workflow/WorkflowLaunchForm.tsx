@@ -10,7 +10,7 @@ import { Banner, Button, Col, Form, Row, Toast, Typography } from '@douyinfe/sem
 import { RefreshCw } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import dayjs from 'dayjs';
-import type { WorkflowDefinition } from '@zenith/shared/workflow';
+import type { WorkflowDefinition, WorkflowInstancePriority } from '@zenith/shared/workflow';
 import { applyFieldPermissionsToFields } from '@zenith/shared/workflow';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkflowUserOptions } from '@/hooks/queries/workflow-shared';
@@ -27,8 +27,15 @@ import WorkflowApprovalChainPanel, {
   type SelectedInitiatorApprovers,
 } from '@/components/workflow/WorkflowApprovalChainPanel';
 
+/** 发起表头（标题 / 优先级 / 抄送人），与业务表单数据分开收集 */
+export interface WorkflowLaunchHeaderValues {
+  title: string;
+  priority?: WorkflowInstancePriority;
+  ccUserIds?: number[];
+}
+
 export interface WorkflowLaunchFormData {
-  values: Record<string, unknown>;
+  values: WorkflowLaunchHeaderValues;
   formData: Record<string, unknown>;
   selectedInitiatorApprovers?: SelectedInitiatorApprovers;
 }
@@ -111,7 +118,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
           return null;
         }
         try {
-          const values = await formApi.current.validate() as Record<string, unknown>;
+          const values = await formApi.current.validate() as WorkflowLaunchHeaderValues;
           const skipFormValidation = options?.validateForm === false;
           let formData: Record<string, unknown> = {};
           if (def.formType === 'custom') {

@@ -55,7 +55,7 @@ export default function CcToMePage() {
     setDetailVisible(true);
     // 自动标记已读
     if (record.ccTaskId && !record.ccReadAt) {
-      markReadMutation.mutate(record.ccTaskId);
+      markReadMutation.mutate({ params: { ccTaskId: record.ccTaskId } });
     }
   };
 
@@ -82,7 +82,7 @@ export default function CcToMePage() {
       Toast.warning('请选择抄送人');
       return;
     }
-    await forwardMutation.mutateAsync({ id: forwardTarget.id, userIds: forwardUserIds, note: forwardNote || undefined });
+    await forwardMutation.mutateAsync({ params: { id: forwardTarget.id }, body: { userIds: forwardUserIds, note: forwardNote || undefined } });
     Toast.success('已抄送');
     setForwardTarget(null);
   };

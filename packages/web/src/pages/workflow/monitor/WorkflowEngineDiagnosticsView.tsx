@@ -554,7 +554,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   const previewAction = useCallback(async (key: WorkflowEngineActionKey, filter: { instanceId?: number; olderThanMinutes?: number; limit: number }) => {
     setActionPreviewLoading(true);
     try {
-      const result = await actionPreviewMutation.mutateAsync({ key, filter });
+      const result = await actionPreviewMutation.mutateAsync({ params: { action: key }, body: filter });
       setActionPreview(result);
     } finally {
       setActionPreviewLoading(false);
@@ -565,7 +565,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     if (!actionModal) return;
     setActionLoading(actionModal.key);
     try {
-      const result = await actionMutation.mutateAsync({ key: actionModal.key, filter: actionFilter });
+      const result = await actionMutation.mutateAsync({ params: { action: actionModal.key }, body: actionFilter });
       if (result.ok) {
         Toast.success({ content: result.message, duration: 4 });
       } else {

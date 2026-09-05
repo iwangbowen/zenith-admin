@@ -173,7 +173,7 @@ export default function WorkflowSchedulesPage() {
   };
 
   const handleRunOnce = async (row: WorkflowSchedule) => {
-    await runMutation.mutateAsync(row.id);
+    await runMutation.mutateAsync({ params: { id: row.id } });
     Toast.success('已触发');
   };
 
@@ -239,7 +239,7 @@ export default function WorkflowSchedulesPage() {
           key: 'run-once',
           label: '立即执行',
           hidden: !canEdit,
-          loading: runMutation.isPending && runMutation.variables === record.id,
+          loading: runMutation.isPending && runMutation.variables?.params.id === record.id,
           disabled: runMutation.isPending,
           onClick: () => handleRunOnce(record),
         },

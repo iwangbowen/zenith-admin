@@ -1,32 +1,22 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { WorkflowSchedule } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
+import type { QueryOf } from '@zenith/shared/core';
+import { workflowScheduleContract } from '@zenith/shared/workflow';
+import { createResourceQueries, useApiMutation } from '@/lib/contract-query';
 
-export interface WorkflowScheduleListParams extends CrudListParams {
-  definitionId?: number;
-  status?: string;
-}
+export type WorkflowScheduleListParams = QueryOf<typeof workflowScheduleContract.list>;
 
 export const {
   keys: workflowScheduleKeys,
   useList: useWorkflowScheduleList,
   useSave: useSaveWorkflowSchedule,
   useDelete: useDeleteWorkflowSchedules,
-} = createCrudQueries<WorkflowSchedule, WorkflowScheduleListParams, Record<string, unknown>>({
-  resource: 'workflow-schedules',
+} = createResourceQueries(workflowScheduleContract, {
   // 保留原有嵌套 key：运行时流程用 invalidateQueries({ queryKey: ['workflow'] }) 广播失效
   keyPrefix: ['workflow', 'schedules'],
-  path: '/api/workflows/schedules',
-  // 服务端未提供 DELETE /batch
-  deleteMode: 'single',
 });
 
+/** 手动触发一次：会发起新实例并回写规则的最近执行状态，广播整个 workflow 子树 */
 export function useRunWorkflowSchedule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<WorkflowSchedule>(`/api/workflows/schedules/${id}/run`, {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workflow'] }),
+  return useApiMutation(workflowScheduleContract.run, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: ['workflow'] }),
   });
 }

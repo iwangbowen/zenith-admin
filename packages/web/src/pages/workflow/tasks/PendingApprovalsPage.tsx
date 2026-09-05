@@ -5,7 +5,6 @@ import { AppModal } from '@/components/AppModal';
 import { Button, Select, SideSheet, Tag, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
-import type { WorkflowInstance, WorkflowInstanceSummaryItem, WorkflowSlaLevel } from '@zenith/shared/workflow';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import WorkflowSummaryLine from '@/components/workflow/WorkflowSummaryLine';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -21,6 +20,7 @@ import { useWorkflowSelectableUsers } from '@/hooks/queries/workflow-shared';
 import { ApiError } from '@/lib/query';
 import {
   fetchPendingWorkflowTasks,
+  type PendingWorkflowItem,
   useBatchApproveWorkflowTasks,
   useBatchRejectWorkflowTasks,
   useConsultWorkflowTask,
@@ -40,7 +40,7 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', definitionId: null };
 
-type PendingItem = WorkflowInstance & { pendingTaskId: number; pendingTaskNodeType?: string | null; pendingSignatureRequired?: boolean; requiresIndividual?: boolean; pendingDelegatedFromName?: string | null; pendingDelegationMode?: 'full' | 'suggest' | null; slaLevel?: WorkflowSlaLevel; slaOverdueSec?: number | null; slaDeadline?: string | null; summary?: WorkflowInstanceSummaryItem[] };
+type PendingItem = PendingWorkflowItem;
 type SheetState = { instanceId: number; taskId: number; action: 'approve' | 'reject' | null };
 /** 批量审批交互状态（模式与意见总是一起出现/重置） */
 type BatchState = { mode: 'approve' | 'reject'; comment: string } | null;
@@ -114,8 +114,8 @@ export default function PendingApprovalsPage() {
         return;
       }
       const res = batch.mode === 'reject'
-        ? await batchRejectMutation.mutateAsync({ taskIds, comment: batch.comment.trim() })
-        : await batchApproveMutation.mutateAsync({ taskIds, comment: batch.comment.trim() || undefined });
+        ? await batchRejectMutation.mutateAsync({ body: { taskIds, comment: batch.comment.trim() } })
+        : await batchApproveMutation.mutateAsync({ body: { taskIds, comment: batch.comment.trim() || undefined } });
       const failed = res.failed ?? 0;
       if (failed > 0) {
         const reasons = [...new Set((res.results ?? [])
@@ -144,7 +144,7 @@ export default function PendingApprovalsPage() {
   const submitConsult = async () => {
     if (!consult) return;
     if (consult.userIds.length === 0) { Toast.warning('请选择协办人'); return; }
-    await consultMutation.mutateAsync({ taskId: consult.taskId, consulteeIds: consult.userIds, question: consult.question || undefined });
+    await consultMutation.mutateAsync({ params: { taskId: consult.taskId }, body: { consulteeIds: consult.userIds, question: consult.question || undefined } });
     Toast.success('已发起协办');
     setConsult(null);
   };
@@ -154,7 +154,7 @@ export default function PendingApprovalsPage() {
   const submitReply = async (id: number) => {
     const opinion = (replyDraft[id] ?? '').trim();
     if (!opinion) { Toast.warning('请填写协办意见'); return; }
-    await replyMutation.mutateAsync({ id, opinion });
+    await replyMutation.mutateAsync({ params: { id }, body: { opinion } });
     Toast.success('已回复');
   };
 

@@ -6,7 +6,7 @@ const offMin = (minutes: number) => mockDateTimeOffset(minutes * 60_000);
 
 
 /** 统一作业账本（workflow_jobs）演示数据，可被 retry/skip handler 原地变更 */
-const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionName'>> = [
+const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionName' | 'tenantId'>> = [
   {
     id: 9001,
     jobType: 'webhook_delivery',
@@ -25,7 +25,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable',
     result: null,
-    tenantId: null,
     createdAt: offMin(-180),
     updatedAt: offMin(-42),
   },
@@ -47,7 +46,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: 'connect ETIMEDOUT 10.20.30.40:443',
     result: null,
-    tenantId: null,
     createdAt: offMin(-30),
     updatedAt: offMin(-5),
   },
@@ -69,7 +67,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: null,
     result: { ok: true, status: 200 },
-    tenantId: null,
     createdAt: offMin(-121),
     updatedAt: offMin(-120),
   },
@@ -91,7 +88,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: null,
     result: null,
-    tenantId: null,
     createdAt: offMin(-15),
     updatedAt: offMin(-15),
   },
@@ -113,7 +109,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: 'worker-mock-01',
     lastError: null,
     result: null,
-    tenantId: null,
     createdAt: offMin(-130),
     updatedAt: offMin(-1),
   },
@@ -135,7 +130,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: null,
     result: { resumed: true },
-    tenantId: null,
     createdAt: offMin(-301),
     updatedAt: offMin(-300),
   },
@@ -158,7 +152,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: null,
     result: { dispatched: 0 },
-    tenantId: null,
     createdAt: offMin(-20),
     updatedAt: offMin(-20),
   },
@@ -180,7 +173,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: null,
     result: { dispatched: 0 },
-    tenantId: null,
     createdAt: offMin(-20),
     updatedAt: offMin(-20),
   },
@@ -202,7 +194,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: null,
     result: { dispatched: 1 },
-    tenantId: null,
     createdAt: offMin(-20),
     updatedAt: offMin(-20),
   },
@@ -224,7 +215,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: null,
     result: null,
-    tenantId: null,
     createdAt: offMin(-16),
     updatedAt: offMin(-16),
   },
@@ -246,7 +236,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: null,
     result: null,
-    tenantId: null,
     createdAt: offMin(-22),
     updatedAt: offMin(-3),
   },
@@ -268,7 +257,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: null,
     lastError: null,
     result: null,
-    tenantId: null,
     createdAt: offMin(-18),
     updatedAt: offMin(-18),
   },
@@ -290,7 +278,6 @@ const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionNam
     lockedBy: 'worker-1:demo',
     lastError: null,
     result: null,
-    tenantId: null,
     createdAt: offMin(-40),
     updatedAt: offMin(-14),
   },
@@ -309,6 +296,7 @@ const DEMO_JOB_FLOWS: Record<number, { flow: string; title: string }> = {
 
 export const mockWorkflowJobs: WorkflowJob[] = baseWorkflowJobs.map((j) => ({
   ...j,
+  tenantId: 1,
   definitionName: j.instanceId != null ? (DEMO_JOB_FLOWS[j.instanceId]?.flow ?? '演示流程') : null,
   instanceTitle: j.instanceId != null ? (DEMO_JOB_FLOWS[j.instanceId]?.title ?? `演示实例 #${j.instanceId}`) : null,
 }));
@@ -329,7 +317,6 @@ export const mockWorkflowJobExecutions: WorkflowJobExecution[] = [
     durationMs: 1203,
     startedAt: offMin(-178),
     finishedAt: offMin(-178),
-    tenantId: null,
     createdAt: offMin(-178),
   },
   {
@@ -347,7 +334,6 @@ export const mockWorkflowJobExecutions: WorkflowJobExecution[] = [
     durationMs: 980,
     startedAt: offMin(-42),
     finishedAt: offMin(-42),
-    tenantId: null,
     createdAt: offMin(-42),
   },
   {
@@ -365,7 +351,6 @@ export const mockWorkflowJobExecutions: WorkflowJobExecution[] = [
     durationMs: 5001,
     startedAt: offMin(-12),
     finishedAt: offMin(-12),
-    tenantId: null,
     createdAt: offMin(-12),
   },
   {
@@ -383,7 +368,6 @@ export const mockWorkflowJobExecutions: WorkflowJobExecution[] = [
     durationMs: 312,
     startedAt: offMin(-120),
     finishedAt: offMin(-120),
-    tenantId: null,
     createdAt: offMin(-120),
   },
 ];

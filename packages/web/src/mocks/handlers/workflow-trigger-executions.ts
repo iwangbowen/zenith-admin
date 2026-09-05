@@ -1,11 +1,8 @@
-import { http, HttpResponse } from 'msw';
-import { ok, pageParams, pageResult } from '@/mocks/utils/handlers';
-import type { WorkflowTriggerExecution, WorkflowTriggerExecutionStatus } from '@zenith/shared/workflow';
+import { workflowTriggerExecutionContract } from '@zenith/shared/workflow';
+import type { WorkflowTriggerExecution } from '@zenith/shared/workflow';
+import { mock } from '@/mocks/utils/contract';
+import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
-
-function err(message: string, code = 400) {
-  return HttpResponse.json({ code, message });
-}
 
 export const mockWorkflowTriggerExecutions: WorkflowTriggerExecution[] = [
   {
@@ -71,25 +68,19 @@ export const mockWorkflowTriggerExecutions: WorkflowTriggerExecution[] = [
 ];
 
 export const workflowTriggerExecutionsHandlers = [
-  http.get('/api/workflows/trigger-executions', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url, 20);
-    const instanceId = url.searchParams.get('instanceId');
-    const nodeKey = (url.searchParams.get('nodeKey') ?? '').trim();
-    const status = url.searchParams.get('status') as WorkflowTriggerExecutionStatus | null;
-
+  mock(workflowTriggerExecutionContract.list, ({ query, ok, paginate }) => {
+    const nodeKey = (query.nodeKey ?? '').trim();
     let list = [...mockWorkflowTriggerExecutions];
-    if (instanceId) list = list.filter((item) => item.instanceId === Number(instanceId));
+    if (query.instanceId) list = list.filter((item) => item.instanceId === query.instanceId);
     if (nodeKey) list = list.filter((item) => item.nodeKey.includes(nodeKey));
-    if (status) list = list.filter((item) => item.status === status);
+    if (query.status) list = list.filter((item) => item.status === query.status);
     list.sort((a, b) => b.id - a.id);
-
-    return ok(pageResult(list, page, pageSize));
+    return ok(paginate(list));
   }),
 
-  http.get('/api/workflows/trigger-executions/:id', ({ params }) => {
-    const row = mockWorkflowTriggerExecutions.find((item) => item.id === Number(params.id));
-    if (!row) return err('触发器执行记录不存在', 404);
+  mock(workflowTriggerExecutionContract.detail, ({ params, ok }) => {
+    const row = mockWorkflowTriggerExecutions.find((item) => item.id === params.id);
+    if (!row) return notFound('触发器执行记录不存在');
     return ok(row);
   }),
 ];

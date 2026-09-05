@@ -1,16 +1,9 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { WorkflowForm } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { BodyOf, QueryOf } from '@zenith/shared/core';
+import { workflowFormContract } from '@zenith/shared/workflow';
+import { api, useApiMutation } from '@/lib/contract-query';
 
-export interface WorkflowFormListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: string;
-  categoryId?: number;
-}
+export type WorkflowFormListParams = QueryOf<typeof workflowFormContract.list>;
 
 export const workflowFormKeys = {
   all: ['workflow', 'forms'] as const,
@@ -22,7 +15,7 @@ export const workflowFormKeys = {
 export function useWorkflowFormList(params: WorkflowFormListParams) {
   return useQuery({
     queryKey: workflowFormKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<WorkflowForm>>(`/api/workflows/forms${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowFormContract.list, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
@@ -30,36 +23,39 @@ export function useWorkflowFormList(params: WorkflowFormListParams) {
 export function useWorkflowFormDetail(id: number | null | undefined, enabled = true) {
   return useQuery({
     queryKey: workflowFormKeys.detail(id),
-    queryFn: () => request.get<WorkflowForm>(`/api/workflows/forms/${id}`).then(unwrap),
+    queryFn: () => api(workflowFormContract.detail, { params: { id: id as number } }),
     enabled: enabled && !!id,
   });
 }
 
-export function useSaveWorkflowForm() {
-  const qc = useQueryClient();
-  return useMutation({
-    // silent：错误交由调用方处理（409 乐观锁冲突需弹窗引导，而非通用 toast）
-    mutationFn: ({ id, values }: { id?: number | null; values: Record<string, unknown> }) =>
-      (id
-        ? request.put<WorkflowForm>(`/api/workflows/forms/${id}`, values, { silent: true })
-        : request.post<WorkflowForm>('/api/workflows/forms', values, { silent: true })
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: workflowFormKeys.all }),
-  });
-}
+/** 表单增删改都会影响列表 / 详情 / 设计器表单下拉（同一前缀），整体失效 */
+const invalidateForms = (qc: QueryClient) => {
+  void qc.invalidateQueries({ queryKey: workflowFormKeys.all });
+};
+
+// silent：错误交由调用方处理（409 乐观锁冲突需弹窗引导，而非通用 toast）
+const silent = { silent: true };
 
 export function useDeleteWorkflowForm() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/workflows/forms/${id}`, undefined, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: workflowFormKeys.all }),
-  });
+  return useApiMutation(workflowFormContract.remove, { invalidate: invalidateForms, requestOptions: silent });
 }
 
 export function useDuplicateWorkflowForm() {
+  return useApiMutation(workflowFormContract.duplicate, { invalidate: invalidateForms, requestOptions: silent });
+}
+
+/** 表单设计器保存载荷：创建入参 + 编辑时的乐观锁 / 字段重命名映射（新建时服务端忽略后两者） */
+export type WorkflowFormSaveValues = BodyOf<typeof workflowFormContract.create> &
+  Pick<BodyOf<typeof workflowFormContract.update>, 'expectedRevision' | 'renamedKeys'>;
+
+/** 无 id 走创建、有 id 走更新；409 乐观锁冲突由调用方按 ApiError.code 处理 */
+export function useSaveWorkflowForm() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => request.post<WorkflowForm>(`/api/workflows/forms/${id}/duplicate`, {}, { silent: true }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: workflowFormKeys.all }),
+    mutationFn: ({ id, values }: { id: number | null; values: WorkflowFormSaveValues }) =>
+      id == null
+        ? api(workflowFormContract.create, { body: values }, silent)
+        : api(workflowFormContract.update, { params: { id }, body: values }, silent),
+    onSuccess: () => invalidateForms(qc),
   });
 }

@@ -1,130 +1,104 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { WorkflowInstance } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { InputOf, QueryOf } from '@zenith/shared/core';
+import { workflowInstanceContract } from '@zenith/shared/workflow';
+import { api, useApiMutation } from '@/lib/contract-query';
 
-export interface WorkflowInstanceListParams {
-  page: number;
-  pageSize: number;
-  status?: string;
-  priority?: string;
-  keyword?: string;
-  definitionId?: number;
-}
+export type WorkflowInstanceListParams = QueryOf<typeof workflowInstanceContract.list>;
 
-export type WorkflowInstanceBatchActionResponse = {
-  succeeded: number;
-  failed: number;
-  results: Array<{ instanceId: number; success: boolean; message?: string }>;
-};
+/** 已办 / 抄送列表参数（分页 + 关键字） */
+export type WorkflowInstanceKeywordListParams = QueryOf<typeof workflowInstanceContract.handledMine>;
 
 export const workflowInstanceKeys = {
   all: ['workflow', 'instances'] as const,
   lists: ['workflow', 'instances', 'list'] as const,
   list: (params: WorkflowInstanceListParams) => ['workflow', 'instances', 'list', params] as const,
-  handled: (params: WorkflowInstanceListParams) => ['workflow', 'instances', 'handled', params] as const,
-  cc: (params: WorkflowInstanceListParams) => ['workflow', 'instances', 'cc', params] as const,
+  handled: (params: WorkflowInstanceKeywordListParams) => ['workflow', 'instances', 'handled', params] as const,
+  cc: (params: WorkflowInstanceKeywordListParams) => ['workflow', 'instances', 'cc', params] as const,
 };
 
 export function useMyWorkflowInstances(params: WorkflowInstanceListParams) {
   return useQuery({
     queryKey: workflowInstanceKeys.list(params),
-    queryFn: () => request.get<PaginatedResponse<WorkflowInstance>>(`/api/workflows/instances${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowInstanceContract.list, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
 
-export function useHandledWorkflowInstances(params: WorkflowInstanceListParams) {
+export function useHandledWorkflowInstances(params: WorkflowInstanceKeywordListParams) {
   return useQuery({
     queryKey: workflowInstanceKeys.handled(params),
-    queryFn: () => request.get<PaginatedResponse<WorkflowInstance>>(`/api/workflows/instances/handled-mine${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowInstanceContract.handledMine, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
 
-export function useCcWorkflowInstances(params: WorkflowInstanceListParams) {
+export function useCcWorkflowInstances(params: WorkflowInstanceKeywordListParams) {
   return useQuery({
     queryKey: workflowInstanceKeys.cc(params),
-    queryFn: () => request.get<PaginatedResponse<WorkflowInstance>>(`/api/workflows/instances/cc-mine${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowInstanceContract.ccMine, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
 
-function useWorkflowInvalidatingMutation<TVariables, TData = unknown>(
-  mutationFn: (variables: TVariables) => Promise<TData>,
-) {
+/** 实例状态变化牵连待办 / 已办 / 抄送 / 监控等多棵子树，统一广播 ['workflow'] */
+const invalidateWorkflow = (qc: QueryClient) => {
+  void qc.invalidateQueries({ queryKey: ['workflow'] });
+};
+
+export type CreateWorkflowInstanceVariables = InputOf<typeof workflowInstanceContract.create> & {
+  /** 按表单指纹传入以防连点；缺省由服务端自动指纹兜底 */
+  idempotencyKey?: string;
+};
+
+export function useCreateWorkflowInstance() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn,
+    mutationFn: ({ body, idempotencyKey }: CreateWorkflowInstanceVariables) =>
+      api(workflowInstanceContract.create, { body }, idempotencyKey ? { headers: { 'X-Idempotency-Key': idempotencyKey } } : undefined),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['workflow'] }),
   });
 }
 
-export function useCreateWorkflowInstance() {
-  return useWorkflowInvalidatingMutation(
-    ({ values, idempotencyKey }: { values: Record<string, unknown>; idempotencyKey?: string }) =>
-      request
-        .post<WorkflowInstance>(
-          '/api/workflows/instances',
-          values,
-          idempotencyKey ? { headers: { 'X-Idempotency-Key': idempotencyKey } } : undefined,
-        )
-        .then(unwrap),
-  );
-}
-
 export function useUpdateWorkflowDraft() {
-  return useWorkflowInvalidatingMutation(({ id, values }: { id: number; values: Record<string, unknown> }) =>
-    request.put<unknown>(`/api/workflows/instances/${id}/draft`, values).then(unwrap));
+  return useApiMutation(workflowInstanceContract.updateDraft, { invalidate: invalidateWorkflow });
 }
 
 export function useSubmitWorkflowDraft() {
-  return useWorkflowInvalidatingMutation(({ id, values }: { id: number; values?: Record<string, unknown> }) =>
-    request.post<unknown>(`/api/workflows/instances/${id}/submit`, values ?? {}).then(unwrap));
+  return useApiMutation(workflowInstanceContract.submitDraft, { invalidate: invalidateWorkflow });
 }
 
 export function useDeleteWorkflowInstance() {
-  return useWorkflowInvalidatingMutation((id: number) =>
-    request.delete<unknown>(`/api/workflows/instances/${id}`).then(unwrap));
+  return useApiMutation(workflowInstanceContract.remove, { invalidate: invalidateWorkflow });
 }
 
 export function useResubmitWorkflowInstance() {
-  return useWorkflowInvalidatingMutation((id: number) =>
-    request.post<WorkflowInstance>(`/api/workflows/instances/${id}/resubmit`, {}).then(unwrap));
+  return useApiMutation(workflowInstanceContract.resubmit, { invalidate: invalidateWorkflow });
 }
 
 export function useWithdrawWorkflowInstance() {
-  return useWorkflowInvalidatingMutation(({ id, comment }: { id: number; comment?: string }) =>
-    request.post<unknown>(`/api/workflows/instances/${id}/withdraw`, comment ? { comment } : {}).then(unwrap));
+  return useApiMutation(workflowInstanceContract.withdraw, { invalidate: invalidateWorkflow });
 }
 
 export function useBatchWithdrawWorkflowInstances() {
-  return useWorkflowInvalidatingMutation(({ instanceIds, comment }: { instanceIds: number[]; comment?: string }) =>
-    request.post<WorkflowInstanceBatchActionResponse>('/api/workflows/instances/batch-withdraw', { instanceIds, comment }).then(unwrap));
+  return useApiMutation(workflowInstanceContract.batchWithdraw, { invalidate: invalidateWorkflow });
 }
 
 export function useUrgeWorkflowInstance() {
-  return useWorkflowInvalidatingMutation(({ id, message }: { id: number; message?: string }) =>
-    request.post<unknown>(`/api/workflows/instances/${id}/urge`, { message }).then(unwrap));
+  return useApiMutation(workflowInstanceContract.urge, { invalidate: invalidateWorkflow });
 }
 
 export function useBatchUrgeWorkflowInstances() {
-  return useWorkflowInvalidatingMutation(({ instanceIds, message }: { instanceIds: number[]; message?: string }) =>
-    request.post<WorkflowInstanceBatchActionResponse>('/api/workflows/instances/batch-urge', { instanceIds, message }).then(unwrap));
+  return useApiMutation(workflowInstanceContract.batchUrge, { invalidate: invalidateWorkflow });
 }
 
 export function useAddWorkflowCc() {
-  return useWorkflowInvalidatingMutation(({ id, nodeKey, userIds }: { id: number; nodeKey: string; userIds: number[] }) =>
-    request.post<unknown>(`/api/workflows/instances/${id}/cc/add`, { nodeKey, userIds }).then(unwrap));
+  return useApiMutation(workflowInstanceContract.addCc, { invalidate: invalidateWorkflow });
 }
 
 export function useForwardWorkflowCc() {
-  return useWorkflowInvalidatingMutation(({ id, userIds, note }: { id: number; userIds: number[]; note?: string }) =>
-    request.post<unknown>(`/api/workflows/instances/${id}/forward`, { userIds, note }).then(unwrap));
+  return useApiMutation(workflowInstanceContract.forward, { invalidate: invalidateWorkflow });
 }
 
 export function useMarkWorkflowCcRead() {
-  return useWorkflowInvalidatingMutation((ccTaskId: number) =>
-    request.post<unknown>(`/api/workflows/instances/cc/${ccTaskId}/read`, {}).then(unwrap));
+  return useApiMutation(workflowInstanceContract.ccRead, { invalidate: invalidateWorkflow });
 }

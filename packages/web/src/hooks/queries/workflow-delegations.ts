@@ -1,20 +1,15 @@
-import type { WorkflowDelegation } from '@zenith/shared/workflow';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
+import type { QueryOf } from '@zenith/shared/core';
+import { workflowDelegationContract } from '@zenith/shared/workflow';
+import { createResourceQueries } from '@/lib/contract-query';
 
-export interface WorkflowDelegationListParams extends CrudListParams {
-  scope: 'mine' | 'all';
-}
+export type WorkflowDelegationListParams = QueryOf<typeof workflowDelegationContract.list>;
 
 export const {
   keys: workflowDelegationKeys,
   useList: useWorkflowDelegationList,
   useSave: useSaveWorkflowDelegation,
   useDelete: useDeleteWorkflowDelegations,
-} = createCrudQueries<WorkflowDelegation, WorkflowDelegationListParams, Record<string, unknown>>({
-  resource: 'workflow-delegations',
+} = createResourceQueries(workflowDelegationContract, {
   // 保留原有嵌套 key：运行时流程用 invalidateQueries({ queryKey: ['workflow'] }) 广播失效
   keyPrefix: ['workflow', 'delegations'],
-  path: '/api/workflows/delegations',
-  // 服务端未提供 DELETE /batch
-  deleteMode: 'single',
 });
