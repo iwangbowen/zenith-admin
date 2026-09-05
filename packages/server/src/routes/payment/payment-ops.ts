@@ -1,33 +1,22 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { paymentOpsContract } from '@zenith/shared/payment';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
-import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, IdParam, okBody } from '../../lib/openapi-schemas';
-import { PaymentOutboxEventDTO, PaymentOrderDTO, PaymentOpsHealthDTO } from '../../lib/openapi-dtos';
+import { defineContractRoute } from '../../lib/contract-route';
+import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getClientIp } from '../../lib/request-helpers';
 import { getPaymentEvent, getPaymentHealth, listPaymentEvents, redispatchEvent, simulateOrderPaid } from '../../services/payment/payment-ops.service';
 import { getOrderDetail } from '../../services/payment/payment.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listEventsRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/events', tags: ['支付中心-运营'], summary: '支付事件(Outbox)列表',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:ops:manage' })] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), status: z.enum(['pending', 'done', 'failed']).optional(), type: z.string().optional() }) },
-    responses: { ...okPaginated(PaymentOutboxEventDTO, '事件列表'), ...commonErrorResponses },
-  }),
+const listEventsRoute = defineContractRoute(paymentOpsContract.events, {
+  middleware: [authMiddleware, guard({ permission: 'payment:ops:manage' })],
   handler: async (c) => c.json(okBody(await listPaymentEvents(c.req.valid('query'))), 200),
 });
 
-const redispatchRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/events/{id}/redispatch', tags: ['支付中心-运营'], summary: '手动重投支付事件',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:ops:manage', audit: { description: '手动重投支付事件', module: '支付中心' } })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(PaymentOutboxEventDTO, '已重投'), ...commonErrorResponses },
-  }),
+const redispatchRoute = defineContractRoute(paymentOpsContract.redispatchEvent, {
+  middleware: [authMiddleware, guard({ permission: 'payment:ops:manage', audit: { description: '手动重投支付事件', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getPaymentEvent(id));
@@ -35,15 +24,8 @@ const redispatchRoute = defineOpenAPIRoute({
   },
 });
 
-const simulateRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'post', path: '/orders/{id}/simulate-paid', tags: ['支付中心-运营'], summary: '模拟支付成功（演示/联调）',
-    description: '构造沙箱回调报文送入 handleNotify，与真实渠道回调完全同径（验签/回调日志/幂等/事件/Webhook）。仅沙箱渠道配置可用。',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:ops:manage', audit: { description: '模拟支付成功', module: '支付中心' } })] as const,
-    request: { params: IdParam },
-    responses: { ...ok(PaymentOrderDTO, '已模拟支付'), ...commonErrorResponses },
-  }),
+const simulateRoute = defineContractRoute(paymentOpsContract.simulateOrderPaid, {
+  middleware: [authMiddleware, guard({ permission: 'payment:ops:manage', audit: { description: '模拟支付成功', module: '支付中心' } })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getOrderDetail(id));
@@ -51,14 +33,8 @@ const simulateRoute = defineOpenAPIRoute({
   },
 });
 
-const healthRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/health', tags: ['支付中心-运营'], summary: '支付链路健康指标',
-    description: 'Outbox 积压/死信、Webhook 待投递/24h 失败、处理中分账/转账、待处理对账差异，用于运维监控与告警。',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:ops:manage' })] as const,
-    responses: { ...ok(PaymentOpsHealthDTO, '健康指标'), ...commonErrorResponses },
-  }),
+const healthRoute = defineContractRoute(paymentOpsContract.health, {
+  middleware: [authMiddleware, guard({ permission: 'payment:ops:manage' })],
   handler: async (c) => c.json(okBody(await getPaymentHealth()), 200),
 });
 

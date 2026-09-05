@@ -1,7 +1,6 @@
 [
   "d2s__AiAgent",
   "d2s__AiProviderConfig",
-  "d2s__BizPayDemo",
   "d2s__BroadcastCampaign",
   "d2s__Channel",
   "d2s__ChannelMessage",
@@ -17,9 +16,6 @@
   "d2s__EmailConfig",
   "d2s__MonitorAlertEvent",
   "d2s__MonitorAlertRule",
-  "d2s__PaymentCashierSession",
-  "d2s__PaymentLinkPublic",
-  "d2s__PaymentSettlementBatch",
   "d2s__PushConfig",
   "d2s__PushSendLog",
   "d2s__Region",
