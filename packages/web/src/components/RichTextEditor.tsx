@@ -8,7 +8,7 @@ import { config as appConfig } from '@/config';
 import { urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
 
-interface RichTextEditorProps {
+export interface RichTextEditorProps {
   value?: string;
   onChange?: (html: string) => void;
   placeholder?: string;

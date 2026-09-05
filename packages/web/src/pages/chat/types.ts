@@ -12,6 +12,9 @@ export type LeftListItem =
   | { kind: 'channel'; sortTime: number; pinned: boolean; channel: Channel }
   | { kind: 'conv'; sortTime: number; pinned: boolean; conv: ChatConversation };
 
+/** 左栏视图模式：会话列表 / 收藏消息 / 全局搜索 */
+export type LeftPaneMode = 'conversations' | 'favorites' | 'globalSearch';
+
 /** 左栏右键菜单状态（会话 / 频道 / 收藏三种目标） */
 export type LeftPaneContextMenuState =
   | { x: number; y: number; type: 'conversation'; conv: ChatConversation }
