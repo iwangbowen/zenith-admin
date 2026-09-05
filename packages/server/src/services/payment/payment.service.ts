@@ -30,7 +30,7 @@ import { buildWhere, dateRangeConditions, keywordCondition, withPagination } fro
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { decryptField } from '../../lib/encryption';
 import { isPgUniqueViolation } from '../../lib/db-errors';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import logger from '../../lib/logger';
 import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
 import type { CreatePaymentInput, CreatePaymentResult, CreateRefundInput, PaymentChannel, PaymentNotifyLog, PaymentOrder, PaymentOrderStatus, PaymentRefund } from '@zenith/shared/payment';
@@ -991,15 +991,9 @@ async function executeChannelRefund(
   }
 }
 
-/**
- * 退款审批金额阈值（分）；≥阈值需审批，0=不审批。
- * 优先读系统配置 payment_refund_approval_threshold（系统设置界面可管理），
- * 未配置时回退环境变量 PAYMENT_REFUND_APPROVAL_THRESHOLD。
- */
+/** 退款审批金额阈值（分）；≥阈值需审批，0=不审批。来源：运行时设置 payment.refundApprovalThreshold（租户级，未覆盖继承平台）。 */
 async function refundApprovalThreshold(): Promise<number> {
-  const envDefault = Number(process.env.PAYMENT_REFUND_APPROVAL_THRESHOLD || 0);
-  const fallback = Number.isFinite(envDefault) && envDefault > 0 ? Math.trunc(envDefault) : 0;
-  const v = await getConfigNumber('payment_refund_approval_threshold', fallback);
+  const v = (await getSettings('payment')).refundApprovalThreshold;
   return Number.isFinite(v) && v > 0 ? Math.trunc(v) : 0;
 }
 

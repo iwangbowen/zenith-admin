@@ -14,9 +14,9 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { and, eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../../db';
-import { systemConfigs } from '../../db/schema';
+import { systemRuntimeState } from '../../db/schema';
 import { listThemes } from '../../cms/themes/registry';
 import { submitCmsPublishTask } from './cms-publishing.service';
 import { cmsSiteFencePayload } from './cms-site-publish-lock.service';
@@ -26,7 +26,8 @@ import { config } from '../../config';
 import logger from '../../lib/logger';
 import { loadCmsInheritanceState, resolveCmsSiteSnapshot } from './cms-site-inheritance.service';
 
-const CONFIG_KEY = 'cms:theme:fingerprints';
+/** 机器维护的运行时状态键（system_runtime_state），不是人工配置 */
+const STATE_KEY = 'cms.theme_fingerprints';
 const LOCK_KEY = `${config.redis.keyPrefix}cms:theme-rebuild-lock`;
 const LOCK_TTL_SECONDS = 300;
 
@@ -70,33 +71,17 @@ export async function computeThemeFingerprints(): Promise<Record<string, string>
 }
 
 async function readStoredFingerprints(): Promise<Record<string, string> | null> {
-  const [row] = await db.select({ value: systemConfigs.configValue }).from(systemConfigs)
-    .where(and(eq(systemConfigs.configKey, CONFIG_KEY), isNull(systemConfigs.tenantId)))
+  const [row] = await db.select({ value: systemRuntimeState.value }).from(systemRuntimeState)
+    .where(eq(systemRuntimeState.key, STATE_KEY))
     .limit(1);
-  if (!row) return null;
-  try {
-    const parsed = JSON.parse(row.value) as unknown;
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, string> : null;
-  } catch {
-    return null;
-  }
+  const parsed = row?.value;
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, string> : null;
 }
 
 async function saveFingerprints(fingerprints: Record<string, string>): Promise<void> {
-  const value = JSON.stringify(fingerprints);
-  const updated = await db.update(systemConfigs)
-    .set({ configValue: value })
-    .where(and(eq(systemConfigs.configKey, CONFIG_KEY), isNull(systemConfigs.tenantId)))
-    .returning({ id: systemConfigs.id });
-  if (updated.length === 0) {
-    await db.insert(systemConfigs).values({
-      configKey: CONFIG_KEY,
-      configName: 'CMS 主题指纹',
-      configValue: value,
-      configType: 'json',
-      description: 'CMS 主题代码指纹（启动自动检测，变更触发静态页重建；系统维护，勿手改）',
-    });
-  }
+  await db.insert(systemRuntimeState)
+    .values({ key: STATE_KEY, value: fingerprints })
+    .onConflictDoUpdate({ target: systemRuntimeState.key, set: { value: fingerprints } });
 }
 
 /** 以系统管理员身份执行（启动流程无请求上下文；admin id=1 由 seed 保证存在） */

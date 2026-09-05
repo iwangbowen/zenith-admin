@@ -15,7 +15,8 @@ import { dateRangeConditions, withPagination, keywordCondition } from '../../lib
 import { lookupIpLocation } from '../../lib/ip-location';
 import { clampSmallint, truncateVarchar } from '../../lib/sanitize';
 import logger from '../../lib/logger';
-import { getPasswordPolicy, validatePassword } from '../../lib/password-policy';
+import { getSettings } from '../../lib/settings';
+import { validatePassword, type IdentitySecuritySettings } from '@zenith/shared/settings';
 import {
   clearMfaChallenge,
   createMfaChallenge,
@@ -127,20 +128,25 @@ import { config } from '../../config';
 import { sendMail } from '../../lib/email';
 import { isSuperAdmin, getUserPermissions } from '../../lib/permissions';
 import { verifyCaptcha } from '../../lib/captcha';
-import { getConfigBoolean, getConfigNumber } from '../../lib/system-config';
 import { isPlatformAdmin, isTenantActive, isTenantExpired } from '../../lib/tenant';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 
-async function checkPasswordExpiry(user: { passwordUpdatedAt: Date | null; createdAt: Date }): Promise<boolean> {
-  const [enabled, expiryDays] = await Promise.all([
-    getConfigBoolean('password_expiry_enabled', false),
-    getConfigNumber('password_expiry_days', 90),
-  ]);
-  if (!enabled) return false;
+/** 密码过期检查：策略按用户所属租户解析（未传入时自行读取） */
+async function checkPasswordExpiry(
+  user: { passwordUpdatedAt: Date | null; createdAt: Date; tenantId?: number | null },
+  policy?: IdentitySecuritySettings,
+): Promise<boolean> {
+  const { expiryEnabled, expiryDays } = (policy ?? await getSettings('identitySecurity', { tenantId: user.tenantId ?? null })).password;
+  if (!expiryEnabled) return false;
   const pwdUpdate = user.passwordUpdatedAt || user.createdAt;
   const days = (Date.now() - pwdUpdate.getTime()) / (1000 * 60 * 60 * 24);
   return days > expiryDays;
+}
+
+/** 目标用户所属租户的密码规则（新增 / 改密 / 重置共用） */
+async function passwordPolicyFor(tenantId: number | null | undefined) {
+  return (await getSettings('identitySecurity', { tenantId: tenantId ?? null })).password;
 }
 
 export interface LoginInput {
@@ -239,8 +245,9 @@ export async function completeLoginWithMfa(
 }
 
 export async function login(input: LoginInput) {
-  const captchaEnabled = await getConfigBoolean('captcha_enabled', false);
-  if (captchaEnabled) {
+  // 验证码开关在租户解析之前判定，只能是平台级设置
+  const auth = await getSettings('auth');
+  if (auth.captchaEnabled) {
     if (!input.captchaId || !input.captchaCode) throw new HTTPException(400, { message: '请输入验证码' });
     if (!verifyCaptcha(input.captchaId, input.captchaCode)) throw new HTTPException(400, { message: '验证码错误或已过期' });
   }
@@ -254,16 +261,16 @@ export async function login(input: LoginInput) {
     tenantId = tenant.id;
   }
 
+  // 整条登录链路（锁定 / 密码过期 / MFA / 风控）统一使用目标租户的身份安全策略
+  const policy = await getSettings('identitySecurity', { tenantId });
+
   const remainingLockSeconds = await checkLoginLock(input.username);
   if (remainingLockSeconds > 0) {
     const remainingMinutes = Math.ceil(remainingLockSeconds / 60);
     throw new HTTPException(423, { message: `账号已被锁定，请 ${remainingMinutes} 分钟后重试` });
   }
-  const [loginMaxAttempts, loginLockDurationMinutes] = await Promise.all([
-    getConfigNumber('login_max_attempts', 10),
-    getConfigNumber('login_lock_duration_minutes', 30),
-  ]);
-  const lockDurationSeconds = loginLockDurationMinutes * 60;
+  const loginMaxAttempts = policy.lockout.maxAttempts;
+  const lockDurationSeconds = policy.lockout.durationMinutes * 60;
 
   // 支持用户名或手机号登录
   const identifierWhere = or(eq(users.username, input.username), eq(users.phone, input.username))!;
@@ -294,11 +301,11 @@ export async function login(input: LoginInput) {
   }
 
   const [requirePasswordChange] = await Promise.all([
-    checkPasswordExpiry(user),
+    checkPasswordExpiry(user, policy),
     clearLoginAttempts(input.username),
   ]);
 
-  const mfa = await shouldRequireMfa({ user, ip: input.ip, ua: input.ua, deviceId: input.deviceId });
+  const mfa = await shouldRequireMfa({ user, ip: input.ip, ua: input.ua, deviceId: input.deviceId, policy });
   if (mfa.required) {
     const challenge = await createMfaChallenge({
       userId: user.id,
@@ -332,10 +339,10 @@ export interface RegisterInput {
 }
 
 export async function register(input: RegisterInput) {
-  const allow = await getConfigBoolean('allow_registration', false);
-  if (!allow) throw new HTTPException(403, { message: '系统已关闭注册功能' });
-  const policy = await getPasswordPolicy();
-  const passwordError = validatePassword(input.password, policy);
+  const auth = await getSettings('auth');
+  if (!auth.allowRegistration) throw new HTTPException(403, { message: '系统已关闭注册功能' });
+  // 自助注册创建的是平台级用户，按平台密码规则校验
+  const passwordError = validatePassword(input.password, await passwordPolicyFor(null));
   if (passwordError) throw new HTTPException(400, { message: passwordError });
 
   const [[usernameRow], [emailRow]] = await Promise.all([
@@ -637,8 +644,7 @@ export async function changeMyPassword(oldPassword: string, newPassword: string)
   if (!user) throw new HTTPException(404, { message: '用户不存在' });
   const valid = await verifyPassword(oldPassword, user.password);
   if (!valid) throw new HTTPException(400, { message: '原密码错误' });
-  const policy = await getPasswordPolicy();
-  const passwordError = validatePassword(newPassword, policy);
+  const passwordError = validatePassword(newPassword, await passwordPolicyFor(user.tenantId));
   if (passwordError) throw new HTTPException(400, { message: passwordError });
   const hashed = await hashPassword(newPassword);
   await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date() }).where(eq(users.id, userId));
@@ -759,8 +765,8 @@ export async function listSwitchableTenants() {
 }
 
 export async function forgotPassword(email: string) {
-  const enabled = await getConfigBoolean('forgot_password_enabled');
-  if (!enabled) throw new HTTPException(403, { message: '忘记密码功能未开启' });
+  const auth = await getSettings('auth');
+  if (!auth.forgotPasswordEnabled) throw new HTTPException(403, { message: '忘记密码功能未开启' });
   const [user] = await db.select({ id: users.id, username: users.username })
     .from(users).where(and(eq(users.email, email), eq(users.status, 'enabled'))).limit(1);
   if (user) {
@@ -790,8 +796,8 @@ export async function resetPassword(token: string, newPassword: string) {
     .where(and(eq(passwordResetTokens.token, token), gt(passwordResetTokens.expiresAt, now), isNull(passwordResetTokens.usedAt)))
     .limit(1);
   if (!record) throw new HTTPException(400, { message: '重置链接无效或已过期' });
-  const policy = await getPasswordPolicy();
-  const passwordError = validatePassword(newPassword, policy);
+  const [target] = await db.select({ tenantId: users.tenantId }).from(users).where(eq(users.id, record.userId)).limit(1);
+  const passwordError = validatePassword(newPassword, await passwordPolicyFor(target?.tenantId));
   if (passwordError) throw new HTTPException(400, { message: passwordError });
   const hashed = await hashPassword(newPassword);
   await db.transaction(async (tx) => {

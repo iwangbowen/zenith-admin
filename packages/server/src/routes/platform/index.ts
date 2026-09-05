@@ -1,5 +1,6 @@
 import { upgradeWebSocket } from '@hono/node-server';
 import { licensingContract } from '@zenith/shared/licensing';
+import { settingsContract } from '@zenith/shared/settings';
 import {
   cacheContract,
   dataMaskConfigContract,
@@ -11,7 +12,6 @@ import {
   operationLogContract,
   rateLimitContract,
   regionContract,
-  systemConfigContract,
   tagContract,
   traceContract,
   userFeedbackContract,
@@ -39,7 +39,7 @@ import rulesFlowsRoutes from './rules-flows';
 import rulesListsRoutes from './rules-lists';
 import rulesScorecardsRoutes from './rules-scorecards';
 import rulesRoutes from './rules';
-import systemConfigsRoutes from './system-configs';
+import settingsRoutes from './settings';
 import licensingRoutes from './licensing';
 import tagsRoutes from './tags';
 import traceRoutes from './trace';
@@ -54,7 +54,8 @@ export default defineRouteDomain({
     [monitorAlertContract.basePath, monitorAlertsRoutes],
     [operationLogContract.basePath, operationLogsRoutes],
     [ipAccessLogContract.basePath, ipAccessLogsRoutes],
-    [systemConfigContract.basePath, systemConfigsRoutes],
+    // 运行时设置：模块级 License 门控在路由内按注册表逐模块施加，挂载点不整体打 feature 标
+    [settingsContract.basePath, settingsRoutes],
     // License 管理面永不打 feature 标（受限模式下也必须可达，否则无法自救）
     [licensingContract.basePath, licensingRoutes],
     [userFeedbackContract.basePath, userFeedbacksRoutes],

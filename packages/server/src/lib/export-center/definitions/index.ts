@@ -9,7 +9,6 @@ import { rolesExportDefinition } from './roles';
 import { dictsExportDefinition } from './dicts';
 import { tenantsExportDefinition } from './tenants';
 import { regionsExportDefinition } from './regions';
-import { systemConfigsExportDefinition } from './system-configs';
 import { fileStorageConfigsExportDefinition } from './file-storage-configs';
 import { cronJobsExportDefinition } from './cron-jobs';
 import { processesExportDefinition } from './processes';
@@ -65,7 +64,6 @@ const definitions = [
   dictsExportDefinition,
   tenantsExportDefinition,
   regionsExportDefinition,
-  systemConfigsExportDefinition,
   fileStorageConfigsExportDefinition,
   cronJobsExportDefinition,
   processesExportDefinition,

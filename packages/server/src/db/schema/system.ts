@@ -8,25 +8,41 @@ export const systemSchedulerRunStatusEnum = pgEnum('system_scheduler_run_status'
 
 export const systemSchedulerTriggerTypeEnum = pgEnum('system_scheduler_trigger_type', ['schedule', 'manual', 'queue']);
 
-// ─── 系统参数配置表 ──────────────────────────────────────────────────────────
-export const configTypeEnum = pgEnum('config_type', ['string', 'number', 'boolean', 'json']);
-
-export const systemConfigs = pgTable('system_configs', {
+// ─── 运行时设置 ──────────────────────────────────────────────────────────────
+/**
+ * 运行时设置：一行 = 一个模块（`@zenith/shared/settings` 注册表的 key）在一个作用域的**显式覆盖**，
+ * `data` 是稀疏文档，缺失字段继承上级（租户行 → 平台行 → schema 默认值）。
+ * 读写一律经 `lib/settings`，禁止业务代码直查本表；写入触发 `cache_invalidate` 通知（触发器见 0001_extensions.sql）。
+ */
+export const systemSettings = pgTable('system_settings', {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
-  configKey: varchar({ length: 128 }).notNull(),
-  configName: varchar({ length: 128 }).notNull().default(''),
-  configValue: varchar({ length: 4096 }).notNull().default(''),
-  configType: configTypeEnum().notNull().default('string'),
-  description: varchar({ length: 256 }).notNull().default(''),
+  module: varchar({ length: 64 }).notNull(),
+  /** null = 平台级 */
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
+  data: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+  /** 乐观锁版本：每次保存 +1；客户端携带的 version 不一致时拒绝（409） */
+  version: integer().notNull().default(1),
   ...auditColumns(),
   createdAt: timestamp().defaultNow().notNull(),
   updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
-}, (t) => [unique('system_configs_tenant_key_unique').on(t.tenantId, t.configKey)]);
+}, (t) => [
+  // NULLS NOT DISTINCT（PG15+）：平台行 (module, NULL) 同样受唯一约束，ON CONFLICT 可直接以 (module, tenant_id) 为目标
+  unique('system_settings_module_tenant_unique').on(t.module, t.tenantId).nullsNotDistinct(),
+]);
 
-export type SystemConfigRow = typeof systemConfigs.$inferSelect;
+export type SystemSettingsRow = typeof systemSettings.$inferSelect;
 
-export type NewSystemConfig = typeof systemConfigs.$inferInsert;
+/**
+ * 进程维护的运行时状态（非人工配置）：CMS 主题指纹等机器写入的键值。
+ * 与 `system_settings` 分离，避免机器写入触发设置失效广播、混入审计与设置页面。
+ */
+export const systemRuntimeState = pgTable('system_runtime_state', {
+  key: varchar({ length: 128 }).primaryKey(),
+  value: jsonb().$type<unknown>().notNull(),
+  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type SystemRuntimeStateRow = typeof systemRuntimeState.$inferSelect;
 
 // ─── 定时任务表 ──────────────────────────────────────────────────────────────
 export const cronRunStatusEnum = pgEnum('cron_run_status', ['success', 'fail', 'running']);

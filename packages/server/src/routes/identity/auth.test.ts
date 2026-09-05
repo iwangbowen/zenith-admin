@@ -12,7 +12,7 @@
  *  8. GET  /api/auth/me       — 有效 JWT + 用户存在 → 200
  *
  * Mock 策略：
- *  - db / redis / session-manager / system-config / email / logger 全部 mock
+ *  - db / redis / session-manager / settings / email / logger 全部 mock
  *  - JWT 使用固定测试密钥签名，与 config.jwtSecret mock 对齐
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -90,11 +90,13 @@ vi.mock('../../lib/session-manager', () => ({
   unlockUser: vi.fn(),
 }));
 
-vi.mock('../../lib/system-config', () => ({
-  getConfigBoolean: vi.fn().mockResolvedValue(false),
-  getConfigNumber: vi.fn().mockResolvedValue(90),
-  getConfigString: vi.fn().mockResolvedValue(''),
-}));
+vi.mock('../../lib/settings', async () => {
+  const { SETTINGS_MODULES } = await import('@zenith/shared/settings');
+  return {
+    // 运行时设置：全部按 schema 默认值返回（验证码关闭、注册关闭、密码不过期）
+    getSettings: vi.fn(async (module: keyof typeof SETTINGS_MODULES) => SETTINGS_MODULES[module].schema.parse({})),
+  };
+});
 
 vi.mock('../../lib/email', () => ({
   sendMail: vi.fn().mockResolvedValue(undefined),

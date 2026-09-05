@@ -1,1 +1,0 @@
-ALTER TABLE "cms_publish_artifacts" ADD COLUMN "public_revision" integer DEFAULT 0 NOT NULL;

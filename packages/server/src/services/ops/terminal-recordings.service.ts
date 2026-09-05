@@ -4,7 +4,7 @@ import { db } from '../../db';
 import { terminalRecordings, users, type RecordingEvent } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 
 export interface CreateRecordingInput {
   title: string;
@@ -255,8 +255,8 @@ export async function getRecordingStats() {
       .where(gte(terminalRecordings.createdAt, sql`now() - interval '30 days'`))
       .groupBy(sql`to_char(${terminalRecordings.createdAt}, 'YYYY-MM-DD')`)
       .orderBy(sql`to_char(${terminalRecordings.createdAt}, 'YYYY-MM-DD')`),
-    getConfigNumber('terminal_recording_retain_days', 30),
-    getConfigNumber('terminal_recording_max_size_mb', 500),
+    getSettings('terminal').then((s) => s.recordingRetainDays),
+    getSettings('terminal').then((s) => s.recordingMaxSizeMb),
   ]);
 
   const summary = summaryRows[0];
@@ -298,8 +298,7 @@ export async function cleanupRecordings(): Promise<{
   freedBytes: number;
   remainingBytes: number;
 }> {
-  const retainDays = await getConfigNumber('terminal_recording_retain_days', 30);
-  const maxSizeMb = await getConfigNumber('terminal_recording_max_size_mb', 500);
+  const { recordingRetainDays: retainDays, recordingMaxSizeMb: maxSizeMb } = await getSettings('terminal');
   let deletedByAge = 0;
   let deletedBySize = 0;
   let freedBytes = 0;

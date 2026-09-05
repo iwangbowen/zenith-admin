@@ -10,7 +10,7 @@ import { recordArenaVote } from '../../services/ai/ai-arena.service';
 import { recordAiRequest, recordAiError } from '../../lib/ai/reliability';
 import { addDailyTokensUsed, getDailyTokensUsed } from '../../lib/ai/quota';
 import { checkSensitiveContent } from '../../lib/ai/content-filter';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { currentUser } from '../../lib/context';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -32,7 +32,7 @@ const chat = defineContractRoute(aiArenaContract.chat, {
     if (hit) return c.json(errBody('消息包含敏感内容，已被拦截'), 400);
 
     const user = currentUser();
-    const dailyQuota = await getConfigNumber('ai_daily_token_quota', 0);
+    const dailyQuota = (await getSettings('ai')).dailyTokenQuota;
     if (dailyQuota > 0 && (await getDailyTokensUsed(user.userId)) >= dailyQuota) {
       return c.json(errBody('今日 AI 用量已达上限，请明天再试', 429), 429);
     }

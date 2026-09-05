@@ -8,7 +8,8 @@ import { db } from '../../../db';
 import { departments, positions, roles, users } from '../../../db/schema';
 import { tenantCondition, getCreateTenantId } from '../../../lib/tenant';
 import { reserveTenantSeats, getTenantUserLimit } from '../../../lib/tenant-quota';
-import { getPasswordPolicy, validatePassword, type PasswordPolicy } from '../../../lib/password-policy';
+import { validatePassword, type PasswordPolicy } from '@zenith/shared/settings';
+import { getSettings } from '../../../lib/settings';
 import { currentUser } from '../../../lib/context';
 import { setUserRoles, setUserPositions } from '../../../services/identity/users.service';
 import { syncUserDynamicMembershipsSafe } from '../../../services/identity/user-group-rules.service';
@@ -63,7 +64,7 @@ export function registerUsersImport(): void {
         db.select({ id: roles.id, code: roles.code }).from(roles).where(tenantCondition(roles, user)),
         db.select({ id: positions.id, code: positions.code }).from(positions).where(tenantCondition(positions, user)),
         db.select({ username: users.username, email: users.email }).from(users).where(tenantCondition(users, user)),
-        getPasswordPolicy(),
+        getSettings('identitySecurity').then((s) => s.password),
       ]);
       const tenantId = getCreateTenantId(user);
       return {

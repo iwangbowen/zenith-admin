@@ -32,7 +32,7 @@ import {
   resolveWritableParent,
 } from './drive-nodes.service';
 import { getSpaceQuotaState, releaseSpaceQuota, reserveSpaceQuota } from './drive-spaces.service';
-import { blockedExtensionSet, getDriveSettings } from './drive-settings.service';
+import { blockedExtensionSet, getDriveSettings, type DriveSettings } from './drive-settings.service';
 import { scheduleNodeEnrichment } from './drive-enrichment.service';
 
 // ─── 校验 ─────────────────────────────────────────────────────────────────────
@@ -119,6 +119,8 @@ interface AttachResult {
 async function attachFileAsNode(input: AttachInput): Promise<AttachResult> {
   const uid = currentUserId();
   const tenantId = getCreateTenantId(currentUser());
+  // 设置在事务外读取：事务内不得触发经全局连接池的冷加载（池满即死锁）
+  const settings = await getDriveSettings();
   return db.transaction(async (tx) => {
     const existing = await findSibling(tx, input.space.id, input.parentId, input.fileName);
     if (existing) {
@@ -126,7 +128,7 @@ async function attachFileAsNode(input: AttachInput): Promise<AttachResult> {
       if (input.conflictPolicy === 'version') {
         if (existing.type !== 'file') throw new HTTPException(409, { message: `「${input.fileName}」是文件夹，无法覆盖` });
         assertNotLockedByOthers(existing);
-        const appended = await appendVersion(tx, existing, input, '上传覆盖');
+        const appended = await appendVersion(tx, existing, input, '上传覆盖', settings);
         return { ...appended, newVersion: true };
       }
     }
@@ -140,7 +142,7 @@ async function attachFileAsNode(input: AttachInput): Promise<AttachResult> {
       siblings.forEach((s) => taken.add(s.name.toLowerCase()));
     }
     const name = existing ? pickFreeName(input.fileName, taken) : input.fileName;
-    await reserveSpaceQuota(tx, input.space.id, input.size);
+    await reserveSpaceQuota(tx, input.space.id, input.size, settings);
     const [created] = await tx.insert(driveNodes).values({
       spaceId: input.space.id,
       parentId: input.parentId,
@@ -164,17 +166,20 @@ async function attachFileAsNode(input: AttachInput): Promise<AttachResult> {
   });
 }
 
-/** 为已有文件节点追加新版本（事务内）；返回被修剪版本的对象 id，由调用方在事务提交后回收 */
+/**
+ * 为已有文件节点追加新版本（事务内）；返回被修剪版本的对象 id，由调用方在事务提交后回收。
+ * settings 必须由调用方在开启事务**之前**读取并传入。
+ */
 async function appendVersion(
   tx: DbExecutor,
   node: DriveNodeRow,
   input: Pick<AttachInput, 'fileId' | 'size' | 'mimeType' | 'contentHash'>,
   comment: string | null,
+  settings: DriveSettings,
 ): Promise<{ row: DriveNodeRow; releasedFileIds: string[] }> {
-  const settings = await getDriveSettings();
-  const { space } = await getSpaceQuotaState(node.spaceId, tx);
+  const { space } = await getSpaceQuotaState(node.spaceId, tx, settings);
   const maxVersions = space.maxVersions ?? settings.maxVersions;
-  await reserveSpaceQuota(tx, node.spaceId, input.size);
+  await reserveSpaceQuota(tx, node.spaceId, input.size, settings);
   const nextVersion = node.currentVersion + 1;
   await tx.insert(driveFileVersions).values({
     nodeId: node.id, version: nextVersion, fileId: input.fileId, size: input.size, contentHash: input.contentHash, comment, authorId: currentUserId(),
@@ -286,9 +291,10 @@ export async function uploadDriveNodeVersion(nodeId: number, file: File, comment
     ? { id: dedup.id, size: dedup.size, mimeType: dedup.mimeType ?? null, contentHash: dedup.contentHash ?? null }
     : await uploadManagedFile(new File([buffer], node.name, { type: file.type }), { visibility: 'restricted', contentHash, skipTypeCheck: true })
       .then((f) => ({ id: f.id, size: f.size, mimeType: f.mimeType ?? null, contentHash: f.contentHash ?? null }));
+  const settings = await getDriveSettings();
   const appended = await db.transaction((tx) => appendVersion(tx, node, {
     fileId: stored.id, size: stored.size, mimeType: stored.mimeType, contentHash: stored.contentHash,
-  }, comment ?? null));
+  }, comment ?? null, settings));
   return finishNode(appended);
 }
 
@@ -362,9 +368,10 @@ export async function completeDriveUpload(data: DriveUploadCompleteInput): Promi
   let result: { row: DriveNodeRow; releasedFileIds: string[] };
   if (binding.nodeId) {
     const node = await ensureDriveNodeExists(binding.nodeId);
+    const settings = await getDriveSettings();
     result = await db.transaction((tx) => appendVersion(tx, node, {
       fileId: file.id, size: file.size, mimeType: file.mimeType ?? null, contentHash: file.contentHash ?? null,
-    }, '分片上传覆盖'));
+    }, '分片上传覆盖', settings));
   } else {
     const { space, ancestorIds } = await resolveWritableParent(binding.spaceId, binding.parentId ?? null);
     result = await attachFileAsNode({
@@ -415,10 +422,11 @@ export async function restoreDriveNodeVersion(nodeId: number, version: number): 
   const target = await ensureVersionExists(nodeId, version);
   if (target.version === node.currentVersion) throw new HTTPException(400, { message: '该版本已是当前版本' });
   const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, target.fileId)).limit(1);
+  const settings = await getDriveSettings();
   const result = await db.transaction(async (tx) => {
     const appended = await appendVersion(tx, node, {
       fileId: target.fileId, size: target.size, mimeType: file?.mimeType ?? node.mimeType, contentHash: target.contentHash,
-    }, `回滚到版本 ${version}`);
+    }, `回滚到版本 ${version}`, settings);
     await logDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: 'file', action: 'version_restore', detail: { from: version, to: appended.row.currentVersion } }, tx);
     return appended;
   });

@@ -11,7 +11,7 @@ import { newGenerationId, initGeneration, getActiveGeneration } from '../../lib/
 import { tailGenerationToSSE } from './ai-generations';
 import { getDailyTokensUsed } from '../../lib/ai/quota';
 import { checkSensitiveContent } from '../../lib/ai/content-filter';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { currentUser } from '../../lib/context';
 import logger from '../../lib/logger';
 
@@ -57,7 +57,7 @@ const chat = defineContractRoute(aiConversationContract.chat, {
 
     // 每用户每日 token 配额（0 = 不限制）
     const user = currentUser();
-    const dailyQuota = await getConfigNumber('ai_daily_token_quota', 0);
+    const dailyQuota = (await getSettings('ai')).dailyTokenQuota;
     if (dailyQuota > 0) {
       const used = await getDailyTokensUsed(user.userId);
       if (used >= dailyQuota) {

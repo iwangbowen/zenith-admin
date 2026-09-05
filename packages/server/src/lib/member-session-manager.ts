@@ -11,7 +11,7 @@
 import crypto from 'node:crypto';
 import { config } from '../config';
 import redis from './redis';
-import { getConfigNumber } from './system-config';
+import { getSettings } from './settings';
 import { createRedisSessionStore } from './redis-session-store';
 
 export interface MemberSessionInfo {
@@ -109,13 +109,10 @@ export async function checkMemberLoginLock(account: string): Promise<number> {
 
 /**
  * 记录一次会员登录失败，达到阈值后自动锁定，返回剩余允许次数。
- * 沿用系统配置 login_max_attempts / login_lock_duration_minutes（与管理员一致）。
+ * 沿用身份安全策略的锁定次数 / 时长（与管理员一致）；会员所属租户已知时按租户策略，否则平台策略。
  */
-export async function recordMemberLoginFailure(account: string): Promise<number> {
-  const [maxAttempts, lockMinutes] = await Promise.all([
-    getConfigNumber('login_max_attempts', 10),
-    getConfigNumber('login_lock_duration_minutes', 30),
-  ]);
+export async function recordMemberLoginFailure(account: string, tenantId: number | null = null): Promise<number> {
+  const { maxAttempts, durationMinutes: lockMinutes } = (await getSettings('identitySecurity', { tenantId })).lockout;
   const lockSeconds = lockMinutes * 60;
   const attemptKey = `${MEMBER_LOGIN_ATTEMPT_PREFIX}${account}`;
   const count = await redis.incr(attemptKey);

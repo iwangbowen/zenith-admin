@@ -1,7 +1,7 @@
 import { eq, and } from 'drizzle-orm';
 import { db } from '../../db';
 import { dicts, dictItems } from '../../db/schema';
-import { getConfigBoolean } from '../system-config';
+import { getSettings } from '../settings';
 import logger from '../logger';
 
 let cache: { words: string[]; loadedAt: number } | null = null;
@@ -29,8 +29,8 @@ async function loadSensitiveWords(): Promise<string[]> {
  * 输入侧敏感词检查：开关开启且命中词库时返回命中的词，否则返回 null。
  */
 export async function checkSensitiveContent(text: string): Promise<string | null> {
-  const enabled = await getConfigBoolean('ai_content_filter_enabled', false);
-  if (!enabled || !text) return null;
+  const { contentFilterEnabled } = await getSettings('ai');
+  if (!contentFilterEnabled || !text) return null;
   const words = await loadSensitiveWords();
   for (const w of words) {
     if (text.includes(w)) return w;

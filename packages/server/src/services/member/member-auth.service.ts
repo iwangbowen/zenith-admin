@@ -340,7 +340,7 @@ export async function loginMember(input: MemberLoginServiceInput): Promise<Membe
     const valid = await verifyPassword(input.password, member.password);
     if (!valid) {
       recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, status: 'fail', message: '账号或密码错误' });
-      await recordMemberLoginFailure(account);
+      await recordMemberLoginFailure(account, member.tenantId ?? null);
       throw new HTTPException(400, { message: '账号或密码错误' });
     }
     await clearMemberLoginAttempts(account);

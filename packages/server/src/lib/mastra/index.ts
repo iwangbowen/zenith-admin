@@ -1,5 +1,5 @@
 import { config } from '../../config';
-import { getConfigValue } from '../system-config';
+import { getSettings } from '../settings';
 import logger from '../logger';
 import type { Mastra } from '@mastra/core';
 import type { PostgresStore, PgVector } from '@mastra/pg';
@@ -69,11 +69,11 @@ export function getMastraVector(): Promise<PgVector> {
 }
 
 /**
- * 解析 embedding 模型:系统配置 `ai_embedding_model`(裸模型名)+ 默认服务商的端点与密钥。
+ * 解析 embedding 模型:运行时设置 `ai.embeddingModel`(裸模型名)+ 默认服务商的端点与密钥。
  * 返回 null 表示未配置(语义召回与向量检索退化为关闭/关键词)。
  */
 export async function resolveEmbedderConfig(): Promise<{ key: string; source: AiModelSource; model: string } | null> {
-  const model = (await getConfigValue('ai_embedding_model', '')).trim();
+  const model = (await getSettings('ai')).embeddingModel;
   if (!model) return null;
   // 惰性 import 避免模块加载环(providers.service 依赖 lib/ai 层)
   const { getRawDefaultProviderConfig } = await import('../../services/ai/ai-providers.service');

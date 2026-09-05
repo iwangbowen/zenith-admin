@@ -63,10 +63,11 @@ export function mockServerInfra(): void {
   // 是让本模块自洽——契约测试的可运行性不依赖 setupFiles 配置存在与否。
   vi.doMock('../lib/redis', () => ({ default: createRedisStub(), closeRedis: vi.fn() }));
 
-  // db 必须一并拦截：maintenanceMiddleware 挂在 '/api/*' 上，每个请求都会
-  // getConfigValue() 去查 system_configs。CI 没有 PostgreSQL，查询抛错后被全局
+  // db 必须一并拦截：maintenanceMiddleware / ipAccessMiddleware 挂在 '/api/*' 上，每个请求都会
+  // 查 maintenance_mode / 冷加载 system_settings。CI 没有 PostgreSQL，查询抛错后被全局
   // onError 兜成 500，连 /api/openapi.json 都取不到——整个套件在装配阶段就失败。
-  // 契约测试校验的是路由声明面而非数据行为，因此给一个「查不到任何数据」的替身即可。
+  // 契约测试校验的是路由声明面而非数据行为，因此给一个「查不到任何数据」的替身即可
+  // （设置副本冷加载得到空行集 → 解析为 schema 默认文档）。
   vi.doMock('../db', () => ({ db: createDbStub() }));
 
   // ops 域（docker / ssh / 进程管理）会真的起子进程。契约测试只发无凭证请求，

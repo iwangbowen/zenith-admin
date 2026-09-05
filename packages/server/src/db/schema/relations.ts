@@ -2,7 +2,7 @@ import { relations } from 'drizzle-orm';
 import { departments, menus, positions, roleDeptScopes, roleMenus, roles, tenantPackageFeatures, tenantPackages, tenants, userDeptScopes, userGroupMembers, userGroupRoles, userGroups, userMenus, userPositions, userRoles, users } from './core';
 import { businessFiles, fileStorageConfigs, managedFiles, uploadChunks, uploadSessions } from './files';
 import { asyncTaskItems, asyncTasks, exportJobDownloads, exportJobs } from './tasks';
-import { cronJobLogs, cronJobs, systemConfigs, userFeedbacks } from './system';
+import { cronJobLogs, cronJobs, userFeedbacks } from './system';
 import { loginRiskEvents, passwordResetTokens, userApiTokens, userMfaFactors, userOauthAccounts, userTrustedDevices } from './auth';
 import { identityProviderSyncLogs, tenantIdentityProviders, userIdentityAccounts } from './identity-providers';
 import { directorySyncConflicts, directorySyncDeptLinks, directorySyncRunItems, directorySyncRuns, directorySyncSources, directorySyncUserLinks } from './directory-sync';
@@ -348,7 +348,6 @@ export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   exportJobs: many(exportJobs),
   exportJobDownloads: many(exportJobDownloads),
   announcements: many(announcements),
-  systemConfigs: many(systemConfigs),
   loginRiskEvents: many(loginRiskEvents),
   identityProviders: many(tenantIdentityProviders),
   workflowDefinitions: many(workflowDefinitions),

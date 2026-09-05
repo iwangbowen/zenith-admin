@@ -1,4 +1,4 @@
-import { getConfigValue } from '../system-config';
+import { getSettings } from '../settings';
 import { getRawDefaultProviderConfig } from '../../services/ai/ai-providers.service';
 import { httpRequest } from '../http-client';
 import { AI_SSRF_OPTIONS } from './outbound';
@@ -7,12 +7,12 @@ const IMAGE_TIMEOUT_MS = 60_000;
 
 /**
  * 通过系统默认服务商的 OpenAI 兼容 /images/generations 接口生成图片。
- * 依赖系统配置 ai_image_model（留空 = 功能关闭，generate_image 工具不注册）。
+ * 依赖运行时设置 ai.imageModel（留空 = 功能关闭，generate_image 工具不注册）。
  * 返回图片 URL（供应商直链或 base64 data URL）。
  */
 export async function generateImageViaProvider(prompt: string): Promise<string> {
-  const model = (await getConfigValue('ai_image_model', '')).trim();
-  if (!model) throw new Error('管理员未配置图片生成模型（ai_image_model）');
+  const model = (await getSettings('ai')).imageModel;
+  if (!model) throw new Error('管理员未配置图片生成模型（系统设置 → AI 助手 → 图片生成模型）');
   if (!prompt.trim()) throw new Error('图片描述不能为空');
 
   const cfg = await getRawDefaultProviderConfig();

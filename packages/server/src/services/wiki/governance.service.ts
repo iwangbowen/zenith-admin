@@ -1,7 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
 import type { ImportWikiDocsInput, WikiGovernanceKind } from '@zenith/shared/wiki';
-import { WIKI_SETTING_KEYS } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import {
   businessFiles, users, wikiDocVersions, wikiDocs, wikiReviewRecords, wikiSearchLogs, wikiSpaces,
@@ -9,7 +8,7 @@ import {
 import { currentUser, currentUserId } from '../../lib/context';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
 import logger from '../../lib/logger';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { notify } from '../messaging/notification-outbox.service';
@@ -72,7 +71,7 @@ function governanceScope() {
 export async function listGovernanceDocs(kind: WikiGovernanceKind, q: { page?: number; pageSize?: number }) {
   const { page = 1, pageSize = 10 } = q;
   const pendingRemindHours = kind === 'review-backlog'
-    ? await getConfigNumber(WIKI_SETTING_KEYS.pendingRemindHours, DEFAULT_REVIEW_BACKLOG_HOURS)
+    ? (await getSettings('wiki')).pendingRemindHours
     : DEFAULT_REVIEW_BACKLOG_HOURS;
   const where = buildWhere(governanceScope(), governanceKindCondition(kind, pendingRemindHours));
 
@@ -249,10 +248,7 @@ export async function getWikiOpsStats() {
   const since30d = new Date(Date.now() - 30 * DAY_MS);
   const scope = governanceScope();
   const tenantLogs = tenantCondition(wikiSearchLogs, currentUser());
-  const pendingRemindHours = await getConfigNumber(
-    WIKI_SETTING_KEYS.pendingRemindHours,
-    DEFAULT_REVIEW_BACKLOG_HOURS,
-  );
+  const { pendingRemindHours } = await getSettings('wiki');
 
   const [trendRows, spaceRows, searchCount30d, noResultCount30d, reviewCounts,
     pendingBacklog, expiredCount, reviewDueCount, noOwnerCount, archivedCount] = await Promise.all([
@@ -349,7 +345,7 @@ export async function runWikiGovernanceTick(): Promise<string> {
   // 2) 回收站超期清理（平台级设置）
   let purged = 0;
   try {
-    const retentionDays = await getConfigNumber(WIKI_SETTING_KEYS.recycleRetentionDays, 0);
+    const { recycleRetentionDays: retentionDays } = await getSettings('wiki');
     if (retentionDays > 0) {
       const threshold = new Date(Date.now() - retentionDays * DAY_MS);
       const expired = await db.select({ id: wikiDocs.id }).from(wikiDocs)

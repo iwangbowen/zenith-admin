@@ -1,12 +1,11 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { CreateWikiCommentInput, WikiCommentStatus } from '@zenith/shared/wiki';
-import { WIKI_SETTING_KEYS } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import { users, wikiComments, wikiDocs, type WikiCommentRow } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
-import { getConfigBoolean } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { getWikiDoc } from './docs.service';
@@ -62,7 +61,7 @@ export async function listWikiDocComments(docId: number) {
 }
 
 export async function createWikiComment(data: CreateWikiCommentInput) {
-  const commentsEnabled = await getConfigBoolean(WIKI_SETTING_KEYS.commentsEnabled, true);
+  const { commentsEnabled } = await getSettings('wiki');
   if (!commentsEnabled) throw new HTTPException(400, { message: '评论功能已关闭' });
   const doc = await getWikiDoc(data.docId);
   if (doc.status !== 'published') throw new HTTPException(400, { message: '只能评论已发布的文档' });

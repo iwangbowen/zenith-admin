@@ -40,16 +40,14 @@ import { assertPaymentEngineConfig, resolvePaymentChannelConfig } from './paymen
 import { resolveApplicationChannelConfig } from './payment-apps.service';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { assertEffectivePaymentOperation } from './payment-capability-evaluator';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 
 function genNo(): string {
   return `TRF${Date.now()}${randomInt(1000, 9999)}`;
 }
 
 async function transferApprovalThreshold(tenantId: number | null): Promise<number> {
-  const envValue = Number(process.env.PAYMENT_TRANSFER_APPROVAL_THRESHOLD ?? 100_000);
-  const fallback = Number.isFinite(envValue) && envValue >= 0 ? Math.trunc(envValue) : 100_000;
-  return Math.max(0, Math.trunc(await getConfigNumber('payment_transfer_approval_threshold', fallback, tenantId)));
+  return Math.max(0, Math.trunc((await getSettings('payment', { tenantId })).transferApprovalThreshold));
 }
 
 export function mapTransfer(row: PaymentTransferRow & { operatorName?: string | null }): PaymentTransfer {

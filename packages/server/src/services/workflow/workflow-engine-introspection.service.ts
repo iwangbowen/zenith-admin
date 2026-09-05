@@ -8,7 +8,7 @@ import { currentUser } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { getSchedulerIntrospection } from '../../lib/pg-boss-scheduler';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { tenantCondition } from '../../lib/tenant';
 import { getWorkflowEventBusIntrospection } from '../../lib/workflow-event-bus';
 import { validateFlowData } from '../../lib/workflow-engine';
@@ -450,40 +450,10 @@ function computeHealthScore(
   return { score: Math.max(0, Math.min(100, Math.round(score))), breakdown };
 }
 
-const THRESHOLD_DEFAULTS = {
-  healthWarn: 90,
-  healthCritical: 70,
-  backlogWarn: 50,
-  backlogCritical: 200,
-  errorRateWarn: 0.05,
-  errorRateCritical: 0.15,
-  apdexThresholdMs: 100,
-} as const;
-
-const THRESHOLD_CONFIG_KEYS = {
-  healthWarn: 'workflow_engine_health_warn',
-  healthCritical: 'workflow_engine_health_critical',
-  backlogWarn: 'workflow_engine_backlog_warn',
-  backlogCritical: 'workflow_engine_backlog_critical',
-  errorRateWarn: 'workflow_engine_error_rate_warn',
-  errorRateCritical: 'workflow_engine_error_rate_critical',
-  apdexThresholdMs: 'workflow_engine_apdex_threshold_ms',
-} as const;
-
-/** 读取可配置阈值（system_configs），缺省回退到内置默认。 */
+/** 读取可配置阈值（运行时设置 workflow.engine），缺省即 schema 默认值。 */
 export async function getWorkflowEngineThresholds(): Promise<WorkflowEngineThresholds & { apdexThresholdMs: number }> {
-  const [healthWarn, healthCritical, backlogWarn, backlogCritical, errorRateWarn, errorRateCritical, apdexThresholdMs] = await Promise.all([
-    getConfigNumber(THRESHOLD_CONFIG_KEYS.healthWarn, THRESHOLD_DEFAULTS.healthWarn),
-    getConfigNumber(THRESHOLD_CONFIG_KEYS.healthCritical, THRESHOLD_DEFAULTS.healthCritical),
-    getConfigNumber(THRESHOLD_CONFIG_KEYS.backlogWarn, THRESHOLD_DEFAULTS.backlogWarn),
-    getConfigNumber(THRESHOLD_CONFIG_KEYS.backlogCritical, THRESHOLD_DEFAULTS.backlogCritical),
-    getConfigNumber(THRESHOLD_CONFIG_KEYS.errorRateWarn, THRESHOLD_DEFAULTS.errorRateWarn),
-    getConfigNumber(THRESHOLD_CONFIG_KEYS.errorRateCritical, THRESHOLD_DEFAULTS.errorRateCritical),
-    getConfigNumber(THRESHOLD_CONFIG_KEYS.apdexThresholdMs, THRESHOLD_DEFAULTS.apdexThresholdMs),
-  ]);
-  return { healthWarn, healthCritical, backlogWarn, backlogCritical, errorRateWarn, errorRateCritical, apdexThresholdMs };
+  return (await getSettings('workflow')).engine;
 }
-
 /** 综合严重级别：按健康分档位映射（健康分已综合 issue/queue 扣分）。 */
 export function severityFromHealth(score: number, thresholds: WorkflowEngineThresholds): WorkflowEngineComponentStatus {
   if (score >= thresholds.healthWarn) return 'healthy';

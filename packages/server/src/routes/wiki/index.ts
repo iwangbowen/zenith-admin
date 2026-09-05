@@ -1,5 +1,5 @@
 import {
-  wikiCommentContract, wikiDocContract, wikiGovernanceContract, wikiSettingsContract,
+  wikiCommentContract, wikiDocContract, wikiGovernanceContract,
   wikiSpaceContract, wikiStatsContract, wikiTagContract, wikiTemplateContract,
 } from '@zenith/shared/wiki';
 import { defineRouteDomain } from '../_kit';
@@ -9,7 +9,7 @@ import wikiTemplatesRoutes from './wiki-templates';
 import wikiTagsRoutes from './wiki-tags';
 import wikiCommentsRoutes from './wiki-comments';
 import wikiGovernanceRoutes from './wiki-governance';
-import wikiStatsRoutes, { settingsRouter as wikiSettingsRoutes } from './wiki-stats';
+import wikiStatsRoutes from './wiki-stats';
 
 export default defineRouteDomain({
   name: 'wiki',
@@ -20,7 +20,6 @@ export default defineRouteDomain({
     [wikiTagContract.basePath, wikiTagsRoutes, { feature: 'wiki' }],
     [wikiCommentContract.basePath, wikiCommentsRoutes, { feature: 'wiki' }],
     [wikiStatsContract.basePath, wikiStatsRoutes, { feature: 'wiki' }],
-    [wikiSettingsContract.basePath, wikiSettingsRoutes, { feature: 'wiki' }],
     [wikiGovernanceContract.basePath, wikiGovernanceRoutes, { feature: 'wiki' }],
   ],
 });

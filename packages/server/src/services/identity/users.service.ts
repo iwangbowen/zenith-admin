@@ -12,7 +12,8 @@ import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
 import { pageOffset } from '../../lib/pagination';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
-import { getPasswordPolicy, validatePassword } from '../../lib/password-policy';
+import { validatePassword } from '@zenith/shared/settings';
+import { getSettings } from '../../lib/settings';
 import { unlockUser as unlockUserSession, batchCheckLoginLock, getOnlineSessions, forceLogoutAllByUsers } from '../../lib/session-manager';
 import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../../lib/excel-export';
 import { clearUserPermissionCache } from '../../lib/permissions';
@@ -312,7 +313,7 @@ export interface CreateUserInput {
 
 export async function createUser(data: CreateUserInput) {
   const user = currentUser();
-  const policy = await getPasswordPolicy();
+  const policy = (await getSettings('identitySecurity')).password;
   const policyError = validatePassword(data.password, policy);
   if (policyError) throw new HTTPException(400, { message: policyError });
   const { password, roleIds, positionIds, departmentId, ...rest } = data;
@@ -536,7 +537,7 @@ export async function batchResetUsersPassword(ids: number[], password: string) {
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   if (validIds.length === 0) throw new HTTPException(400, { message: '用户ID格式无效' });
   await ensureUsersManageable(validIds);
-  const policy = await getPasswordPolicy();
+  const policy = (await getSettings('identitySecurity')).password;
   const policyError = validatePassword(password, policy);
   if (policyError) throw new HTTPException(400, { message: policyError });
   const tc = tenantCondition(users, user);
@@ -549,7 +550,7 @@ export async function batchResetUsersPassword(ids: number[], password: string) {
 
 export async function updateUserPassword(id: number, password: string) {
   await ensureUserManageable(id);
-  const policy = await getPasswordPolicy();
+  const policy = (await getSettings('identitySecurity')).password;
   const policyError = validatePassword(password, policy);
   if (policyError) throw new HTTPException(400, { message: policyError });
   const hashed = await hashPassword(password);

@@ -4,7 +4,7 @@ import { aiKnowledgeBases, aiKbDocuments, aiKbChunks, aiConversations } from '..
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { estimateTokens } from '../../lib/ai/tokens';
-import { getConfigValue } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { getMastraVector, resolveEmbedderConfig } from '../../lib/mastra';
 import { toMastraModel } from '../../lib/ai/mastra-models';
 import { httpRequest } from '../../lib/http-client';
@@ -189,7 +189,7 @@ export async function ingestKbDocument(kbId: number, input: { name: string; cont
 
   try {
     const embeddings = await embedTexts(chunks);
-    const embeddingModel = embeddings ? (await getConfigValue('ai_embedding_model', '')).trim() : null;
+    const embeddingModel = embeddings ? (await getSettings('ai')).embeddingModel : null;
     // 账本只存文本(关键词兜底检索 + UI 计数);向量归 Mastra PgVector
     const inserted = await db.insert(aiKbChunks).values(
       chunks.map((content) => ({
@@ -353,8 +353,8 @@ export async function retrieveKbContext(kbId: number, ownerId: number, query: st
   const terms = splitTerms(query);
 
   // 向量检索：仅当入库所用 embedding 模型与当前配置一致时启用，
-  // 否则（管理员更换了 ai_embedding_model）向量空间不可比，直接走关键词兜底
-  const currentModel = (await getConfigValue('ai_embedding_model', '')).trim();
+  // 否则（管理员更换了 ai.embeddingModel）向量空间不可比，直接走关键词兜底
+  const currentModel = (await getSettings('ai')).embeddingModel;
   if (currentModel && kb.embeddingModel === currentModel) {
     const queryEmbedding = await embedTexts([query]);
     const queryVec = queryEmbedding?.[0];

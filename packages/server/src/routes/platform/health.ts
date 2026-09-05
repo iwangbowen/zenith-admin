@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { healthContract, type HealthCheckResult, type HealthStatus } from '@zenith/shared/platform';
 import { db } from '../../db';
 import redis from '../../lib/redis';
+import { invalidationBusState } from '../../lib/invalidation-bus';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 
@@ -27,8 +28,10 @@ const healthRoute = defineContractRoute(healthContract.check, {
     } catch {
       checks.redis = 'error';
     }
-    const allOk = Object.values(checks).every((v) => v === 'ok');
-    const status: HealthStatus = allOk ? 'ok' : 'degraded';
+    // 失效广播未建立时功能仍可用（缓存退回 TTL 兜底），只作为降级提示，不拉低整体 status
+    checks.invalidationBus = invalidationBusState() === 'listening' ? 'ok' : 'degraded';
+    const anyError = Object.values(checks).some((v) => v === 'error');
+    const status: HealthStatus = anyError ? 'degraded' : 'ok';
     return c.json(okBody({
       status,
       version: appVersion,

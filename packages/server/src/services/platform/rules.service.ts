@@ -2,7 +2,8 @@ import { and, desc, eq, inArray, gte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleHitPolicy, RuleEvaluateResult, RuleTestRunResult, RuleCaseResult, RuleDecisionTableSettings, RuleUsageItem, RuleTableStats, RuleShadowRunResult, RuleShadowDiffSample, RuleSimulateResult, RuleSimulateRowResult } from '@zenith/shared/rules';
 import { db } from '../../db';
-import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases, ruleExecutions, workflowDefinitions, systemConfigs } from '../../db/schema';
+import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases, ruleExecutions, workflowDefinitions } from '../../db/schema';
+import { getSettings } from '../../lib/settings';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
@@ -303,11 +304,9 @@ function ensurePublishable(row: TableRow): void {
   }
 }
 
-/** 发布审批开关（system_configs: rule_publish_approval） */
+/** 发布审批开关（运行时设置 rules.publishApproval） */
 export async function isPublishApprovalRequired(): Promise<boolean> {
-  const [row] = await db.select({ v: systemConfigs.configValue }).from(systemConfigs)
-    .where(eq(systemConfigs.configKey, 'rule_publish_approval')).limit(1);
-  return row?.v === 'true';
+  return (await getSettings('rules')).publishApproval;
 }
 
 /** 发布门禁（结构 + 静态校验 + 用例门禁），提交审批与直接发布共用 */

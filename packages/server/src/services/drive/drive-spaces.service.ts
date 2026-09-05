@@ -23,7 +23,7 @@ import { buildWhere, keywordCondition, withPagination } from '../../lib/where-he
 import { accessibleSpaceIdsSubquery, ensureSpaceRole, loadDriveSubjects, resolveSpaceRoles } from './drive-access.service';
 import { mapDriveSpace, resolveSubjectNames, resolveUserNames, subjectKey } from './drive-common';
 import { maybeNotifyQuotaWarning, notifySpaceMembersAdded } from './drive-notify.service';
-import { defaultQuotaBytes, effectiveQuotaBytes, getDriveSettings } from './drive-settings.service';
+import { defaultQuotaBytes, effectiveQuotaBytes, getDriveSettings, type DriveSettings } from './drive-settings.service';
 
 const GB = 1024 * 1024 * 1024;
 
@@ -366,10 +366,14 @@ export async function recalcSpaceUsage(spaceId: number, executor: DbExecutor = d
 
 // ─── 配额 ─────────────────────────────────────────────────────────────────────
 
-export async function getSpaceQuotaState(spaceId: number, executor: DbExecutor = db) {
+/**
+ * 空间配额状态。`settings` 可选：**事务内调用方必须传入**（在事务外读取），
+ * 否则冷加载会经全局连接池取连接——连接池被并发事务占满时即死锁。
+ */
+export async function getSpaceQuotaState(spaceId: number, executor: DbExecutor = db, settings?: DriveSettings) {
   const [row] = await executor.select().from(driveSpaces).where(eq(driveSpaces.id, spaceId)).limit(1);
   if (!row) throw new HTTPException(404, { message: '空间不存在' });
-  const settings = await getDriveSettings();
+  settings ??= await getDriveSettings();
   const quotaBytes = effectiveQuotaBytes(settings, row);
   return {
     space: row,
@@ -381,9 +385,9 @@ export async function getSpaceQuotaState(spaceId: number, executor: DbExecutor =
 }
 
 /** 原子占用配额；超额抛 400；达到预警阈值时通知空间管理者（每日一次） */
-export async function reserveSpaceQuota(executor: DbExecutor, spaceId: number, bytes: number): Promise<void> {
+export async function reserveSpaceQuota(executor: DbExecutor, spaceId: number, bytes: number, settings?: DriveSettings): Promise<void> {
   if (bytes <= 0) return;
-  const { quotaBytes } = await getSpaceQuotaState(spaceId, executor);
+  const { quotaBytes } = await getSpaceQuotaState(spaceId, executor, settings);
   const [ok] = await executor.update(driveSpaces)
     .set({ usedBytes: sql`${driveSpaces.usedBytes} + ${bytes}` })
     .where(and(

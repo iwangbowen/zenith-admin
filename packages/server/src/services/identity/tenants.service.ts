@@ -9,7 +9,8 @@ import { reserveTenantSeats } from '../../lib/tenant-quota';
 import type { DbTransaction } from '../../db/types';
 import { HTTPException } from 'hono/http-exception';
 import { clearUserPermissionCache } from '../../lib/permissions';
-import { getPasswordPolicy, validatePassword } from '../../lib/password-policy';
+import { validatePassword } from '@zenith/shared/settings';
+import { getSettings } from '../../lib/settings';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 
 export function mapTenant(row: typeof tenants.$inferSelect, packageName: string | null = null) {
@@ -181,7 +182,7 @@ export async function createTenant(data: CreateTenantInput) {
   let initialPassword: string | undefined;
   if (adminUsername) {
     if (adminPassword) {
-      const policy = await getPasswordPolicy();
+      const policy = (await getSettings('identitySecurity')).password;
       const policyError = validatePassword(adminPassword, policy);
       if (policyError) throw new HTTPException(400, { message: `管理员密码不符合策略：${policyError}` });
       initialPassword = adminPassword;

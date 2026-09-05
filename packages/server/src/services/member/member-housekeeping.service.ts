@@ -13,7 +13,7 @@ import { and, eq, gt, gte, inArray, isNull, like, lte } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { coupons, memberCoupons, memberPointAccounts, memberPointTransactions, members } from '../../db/schema';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import logger from '../../lib/logger';
 import { changePoints, earnPoints, ensurePointAccount } from './member-points.service';
 import { expireCoupons, grantCouponInTx } from './coupons.service';
@@ -30,7 +30,7 @@ export async function expireMemberCoupons(): Promise<number> {
  * 逐账户走 changePoints 统一记账（乐观锁 + expire 流水），单账户失败不影响其余账户。
  */
 export async function expireInactivePoints(): Promise<{ expired: number; skipped: number }> {
-  const days = await getConfigNumber('member_point_expire_days', 0);
+  const days = (await getSettings('member')).pointExpireDays;
   if (days <= 0) return { expired: 0, skipped: 0 };
 
   const cutoff = new Date(Date.now() - days * 86_400_000);
@@ -71,10 +71,8 @@ export async function expireInactivePoints(): Promise<{ expired: number; skipped
  * 幂等：积分以流水 (bizType='birthday', bizId=年份) 查重；券以 member_coupons 同标记查重，每年最多一次。
  */
 export async function grantBirthdayGifts(): Promise<{ points: number; coupons: number; skipped: number }> {
-  const [giftPoints, giftCouponId] = await Promise.all([
-    getConfigNumber('member_birthday_points', 0),
-    getConfigNumber('member_birthday_coupon_id', 0),
-  ]);
+  const { birthdayPoints: giftPoints, birthdayCouponId } = await getSettings('member');
+  const giftCouponId = birthdayCouponId ?? 0;
   if (giftPoints <= 0 && giftCouponId <= 0) return { points: 0, coupons: 0, skipped: 0 };
 
   const monthDay = dayjs().format('MM-DD');

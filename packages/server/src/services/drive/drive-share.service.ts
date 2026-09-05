@@ -494,9 +494,10 @@ export async function saveFromDriveShare(token: string, sessionToken: string, da
     : [root];
   const { space, parent, ancestorIds } = await resolveWritableParent(data.targetSpaceId, data.targetParentId);
   const subtrees = await Promise.all(sources.map((s) => loadSubtree(db, s.id)));
+  const settings = await getDriveSettings();
   const copied = await db.transaction(async (tx) => {
     let count = 0;
-    for (const subtree of subtrees) count += await copySubtree(tx, subtree, space, parent?.id ?? null, ancestorIds);
+    for (const subtree of subtrees) count += await copySubtree(tx, subtree, space, parent?.id ?? null, ancestorIds, settings);
     return count;
   });
   logShareAccess(share, 'save', true);

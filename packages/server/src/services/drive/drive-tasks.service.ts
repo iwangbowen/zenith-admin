@@ -201,11 +201,12 @@ export function registerDriveTaskHandlers(): void {
       const doneIds = new Set<number>((ctx.checkpoint?.doneIds as number[]) ?? []);
       const rows = await loadNodesByIds(ids);
       const { space, parent, ancestorIds } = await resolveWritableParent(targetSpaceId, targetParentId);
+      const settings = await getDriveSettings();
       let copied = Number(ctx.checkpoint?.copied ?? 0);
       for (const [index, row] of rows.entries()) {
         if (!doneIds.has(row.id)) {
           const subtree = await loadSubtree(db, row.id);
-          copied += await db.transaction((tx) => copySubtree(tx, subtree, space, parent?.id ?? null, ancestorIds));
+          copied += await db.transaction((tx) => copySubtree(tx, subtree, space, parent?.id ?? null, ancestorIds, settings));
           doneIds.add(row.id);
         }
         const { cancelRequested } = await ctx.progress({

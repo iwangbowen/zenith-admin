@@ -37,6 +37,11 @@ const envSchema = z.object({
   DATABASE_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(20),
   DATABASE_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(10),
   DATABASE_SSL: envBool(false),
+  /**
+   * 运行时设置进程内副本的 TTL（毫秒）。新鲜度主要由 PG LISTEN/NOTIFY 失效广播保证，TTL 只是兜底：
+   * 经 pgBouncer 事务池等无法透传 NOTIFY 的连接池部署时，跨实例陈旧窗口 ≈ 该值。
+   */
+  SETTINGS_CACHE_TTL_MS: z.coerce.number().int().min(1_000).default(30_000),
   /** psql 可执行文件路径；留空时按 PATH 查找，用于数据库管理页的 psql 终端 */
   PSQL_PATH: z.string().default(''),
   MULTI_TENANT_MODE: envBool(false),
@@ -231,6 +236,9 @@ export const config = {
     idleTimeoutSeconds: env.DATABASE_IDLE_TIMEOUT_SECONDS,
     connectTimeoutSeconds: env.DATABASE_CONNECT_TIMEOUT_SECONDS,
     ssl: env.DATABASE_SSL,
+  },
+  settings: {
+    cacheTtlMs: env.SETTINGS_CACHE_TTL_MS,
   },
   /** 数据库管理页 psql 终端：可执行文件路径覆盖（留空按 PATH 查找） */
   psqlPath: env.PSQL_PATH || undefined,

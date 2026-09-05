@@ -2,14 +2,14 @@ import { and, desc, eq, gt } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { createHash, randomBytes } from 'node:crypto';
 import { db } from '../../db';
-import { loginRiskEvents, systemConfigs, userMfaFactors, userTrustedDevices, users, type UserRow } from '../../db/schema';
+import { loginRiskEvents, userMfaFactors, userTrustedDevices, users, type UserRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { lookupIpLocation } from '../../lib/ip-location';
 import { decryptSecret, encryptSecret, SecretDecryptError } from '../../lib/secret-crypto';
-import { getConfigBoolean, getConfigNumber, getConfigValue } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { buildTotpUri, generateTotpSecret, verifyTotp } from '../../lib/totp';
-import type { IdentitySecurityPolicy } from '@zenith/shared/identity';
+import type { IdentitySecuritySettings } from '@zenith/shared/settings';
 
 export type MfaMethod = 'totp' | 'passkey';
 
@@ -29,71 +29,12 @@ export interface MfaChallengePayload {
 const MFA_CHALLENGE_TTL_SECONDS = 5 * 60;
 const MFA_CHALLENGE_PREFIX = 'mfa-challenge:';
 
-export async function getIdentitySecurityPolicy(tenantId?: number | null): Promise<IdentitySecurityPolicy> {
-  const [
-    minLength,
-    requireUppercase,
-    requireSpecialChar,
-    expiryEnabled,
-    expiryDays,
-    maxAttempts,
-    durationMinutes,
-    mfaEnabled,
-    mfaModeRaw,
-    rememberDeviceDays,
-    riskEnabled,
-    newDeviceActionRaw,
-  ] = await Promise.all([
-    getConfigNumber('password_min_length', 6, tenantId),
-    getConfigBoolean('password_require_uppercase', false, tenantId),
-    getConfigBoolean('password_require_special_char', false, tenantId),
-    getConfigBoolean('password_expiry_enabled', false, tenantId),
-    getConfigNumber('password_expiry_days', 90, tenantId),
-    getConfigNumber('login_max_attempts', 10, tenantId),
-    getConfigNumber('login_lock_duration_minutes', 30, tenantId),
-    getConfigBoolean('mfa_enabled', false, tenantId),
-    getConfigValue('mfa_mode', 'off', tenantId),
-    getConfigNumber('mfa_remember_device_days', 30, tenantId),
-    getConfigBoolean('login_risk_enabled', false, tenantId),
-    getConfigValue('login_risk_new_device_action', 'allow', tenantId),
-  ]);
-  const mfaMode = ['off', 'optional', 'required'].includes(mfaModeRaw) ? mfaModeRaw as 'off' | 'optional' | 'required' : 'off';
-  const newDeviceAction = newDeviceActionRaw === 'challenge' ? 'challenge' : 'allow';
-  return {
-    password: { minLength, requireUppercase, requireSpecialChar, expiryEnabled, expiryDays },
-    lockout: { maxAttempts, durationMinutes },
-    mfa: { enabled: mfaEnabled, mode: mfaMode, rememberDeviceDays },
-    risk: { enabled: riskEnabled, newDeviceAction },
-  };
-}
-
-export async function saveIdentitySecurityPolicy(input: IdentitySecurityPolicy) {
-  const entries = [
-    ['password_min_length', String(input.password.minLength), 'number', '密码最小长度'],
-    ['password_require_uppercase', String(input.password.requireUppercase), 'boolean', '密码是否必须包含大写字母'],
-    ['password_require_special_char', String(input.password.requireSpecialChar), 'boolean', '密码是否必须包含特殊字符'],
-    ['password_expiry_enabled', String(input.password.expiryEnabled), 'boolean', '是否开启密码过期强制重置'],
-    ['password_expiry_days', String(input.password.expiryDays), 'number', '密码过期天数'],
-    ['login_max_attempts', String(input.lockout.maxAttempts), 'number', '登录失败最大次数，超出后锁定账号'],
-    ['login_lock_duration_minutes', String(input.lockout.durationMinutes), 'number', '账号锁定时长（分钟）'],
-    ['mfa_enabled', String(input.mfa.enabled), 'boolean', '是否启用 MFA'],
-    ['mfa_mode', input.mfa.mode, 'string', 'MFA 模式：off/optional/required'],
-    ['mfa_remember_device_days', String(input.mfa.rememberDeviceDays), 'number', '可信设备免 MFA 天数'],
-    ['login_risk_enabled', String(input.risk.enabled), 'boolean', '是否启用登录风险策略'],
-    ['login_risk_new_device_action', input.risk.newDeviceAction, 'string', '新设备登录动作：allow/challenge'],
-  ] as const;
-
-  await db.transaction(async (tx) => {
-    for (const [configKey, configValue, configType, description] of entries) {
-      const [existing] = await tx.select({ id: systemConfigs.id }).from(systemConfigs).where(eq(systemConfigs.configKey, configKey)).limit(1);
-      if (existing) {
-        await tx.update(systemConfigs).set({ configValue, configType, description }).where(eq(systemConfigs.id, existing.id));
-      } else {
-        await tx.insert(systemConfigs).values({ configKey, configValue, configType, description });
-      }
-    }
-  });
-  return getIdentitySecurityPolicy();
+/**
+ * 身份安全策略：由运行时设置 `identitySecurity` 模块承载（租户级，未覆盖时继承平台值）。
+ * 保留本函数作为域内语义别名；管理界面读写统一走 `/api/settings/identity-security`。
+ */
+export async function getIdentitySecurityPolicy(tenantId?: number | null): Promise<IdentitySecuritySettings> {
+  return getSettings('identitySecurity', tenantId === undefined ? undefined : { tenantId });
 }
 
 export async function listMyMfaFactors() {
@@ -188,8 +129,10 @@ export async function shouldRequireMfa(input: {
   ip: string;
   ua: string;
   deviceId?: string;
+  /** 调用方（登录链路）已解析的策略，避免重复读取 */
+  policy?: IdentitySecuritySettings;
 }) {
-  const policy = await getIdentitySecurityPolicy(input.user.tenantId);
+  const policy = input.policy ?? await getIdentitySecurityPolicy(input.user.tenantId);
   if (!policy.mfa.enabled || policy.mfa.mode === 'off') return { required: false, methods: [] as MfaMethod[], reason: null };
 
   const hasFactor = await hasEnabledMfa(input.user.id);

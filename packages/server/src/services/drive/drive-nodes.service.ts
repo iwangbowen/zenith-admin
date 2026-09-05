@@ -39,7 +39,7 @@ import { ensureNodeRole, ensureSpaceRole, filterVisibleNodes, loadDriveSubjects,
 import { collectNodeUserIds, extensionOf, mapDriveNode, mapDriveTag, resolveUserNames, suffixedName } from './drive-common';
 import { logDriveActivity } from './drive-activity.service';
 import { ensureDriveSpaceExists, getSpaceQuotaState, releaseSpaceQuota, reserveSpaceQuota } from './drive-spaces.service';
-import { effectiveQuotaBytes, getDriveSettings } from './drive-settings.service';
+import { effectiveQuotaBytes, getDriveSettings, type DriveSettings } from './drive-settings.service';
 
 /** 目录最大深度（含根级子项 = 1） */
 export const DRIVE_MAX_DEPTH = 32;
@@ -386,10 +386,11 @@ export async function copyDriveNodes(data: CopyDriveNodesInput): Promise<DriveCo
     });
     return { mode: 'task', taskId: task.id, copied: 0 };
   }
+  const settings = await getDriveSettings();
   const copied = await db.transaction(async (tx) => {
     let count = 0;
     for (const subtree of subtrees) {
-      count += await copySubtree(tx, subtree, space, parent?.id ?? null, newAnc);
+      count += await copySubtree(tx, subtree, space, parent?.id ?? null, newAnc, settings);
     }
     return count;
   });
@@ -399,6 +400,7 @@ export async function copyDriveNodes(data: CopyDriveNodesInput): Promise<DriveCo
 /**
  * 复制一棵子树到目标目录（元数据复制 + fileId 引用，不复制对象）。
  * 事务内执行；根节点同名自动加后缀。返回复制的节点数。
+ * settings 由调用方在开启事务之前读取传入（事务内不得触发设置冷加载）。
  */
 export async function copySubtree(
   executor: DbExecutor,
@@ -406,11 +408,12 @@ export async function copySubtree(
   targetSpace: DriveSpaceRow,
   targetParentId: number | null,
   targetAnc: number[],
+  settings: DriveSettings,
 ): Promise<number> {
   if (subtree.length === 0) return 0;
   const root = subtree[0];
   const totalBytes = subtree.filter((n) => n.type === 'file').reduce((s, n) => s + n.size, 0);
-  await reserveSpaceQuota(executor, targetSpace.id, totalBytes);
+  await reserveSpaceQuota(executor, targetSpace.id, totalBytes, settings);
   const taken = await existingNamesIn(executor, targetSpace.id, targetParentId);
   const rootName = pickFreeName(root.name, taken);
   const tenantId = getCreateTenantId(currentUser());

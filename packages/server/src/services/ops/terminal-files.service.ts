@@ -9,7 +9,7 @@ import path from 'node:path';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime } from '../../lib/datetime';
 import { MAX_EDIT_SIZE, assertNotStale, atomicWriteFile, fileEtag, isBinaryBuffer } from '../../lib/fs-text';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 
 const execFileAsync = promisify(execFile);
 
@@ -24,7 +24,7 @@ const execFileAsync = promisify(execFile);
  * 该上限就是内存占用的封顶值。
  */
 export async function getUploadLimitBytes(): Promise<number> {
-  const mb = await getConfigNumber('terminal_upload_max_size_mb', 200);
+  const mb = (await getSettings('terminal')).uploadMaxSizeMb;
   return mb > 0 ? mb * 1024 * 1024 : 0;
 }
 

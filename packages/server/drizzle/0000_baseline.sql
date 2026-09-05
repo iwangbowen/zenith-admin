@@ -9,6 +9,7 @@ CREATE TYPE "public"."business_type" AS ENUM('announcement', 'wiki_doc');--> sta
 CREATE TYPE "public"."file_object_acl" AS ENUM('default', 'private', 'public-read', 'public-read-write');--> statement-breakpoint
 CREATE TYPE "public"."file_storage_provider" AS ENUM('local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp');--> statement-breakpoint
 CREATE TYPE "public"."file_url_strategy" AS ENUM('proxy', 'public', 'presigned');--> statement-breakpoint
+CREATE TYPE "public"."file_visibility" AS ENUM('public', 'restricted');--> statement-breakpoint
 CREATE TYPE "public"."upload_session_status" AS ENUM('uploading', 'completed', 'aborted');--> statement-breakpoint
 CREATE TYPE "public"."mask_type" AS ENUM('phone', 'email', 'id_card', 'name', 'bank_card', 'custom');--> statement-breakpoint
 CREATE TYPE "public"."async_task_item_status" AS ENUM('pending', 'success', 'failed', 'skipped');--> statement-breakpoint
@@ -17,7 +18,6 @@ CREATE TYPE "public"."export_job_delete_reason" AS ENUM('expired', 'manual', 'fi
 CREATE TYPE "public"."export_job_execution_mode" AS ENUM('sync', 'async');--> statement-breakpoint
 CREATE TYPE "public"."export_job_format" AS ENUM('xlsx', 'csv', 'pdf', 'docx');--> statement-breakpoint
 CREATE TYPE "public"."export_job_status" AS ENUM('pending', 'running', 'success', 'failed', 'cancelled', 'expired');--> statement-breakpoint
-CREATE TYPE "public"."config_type" AS ENUM('string', 'number', 'boolean', 'json');--> statement-breakpoint
 CREATE TYPE "public"."cron_run_status" AS ENUM('success', 'fail', 'running');--> statement-breakpoint
 CREATE TYPE "public"."region_level" AS ENUM('province', 'city', 'county');--> statement-breakpoint
 CREATE TYPE "public"."system_scheduler_run_status" AS ENUM('running', 'success', 'failed');--> statement-breakpoint
@@ -287,6 +287,13 @@ CREATE TYPE "public"."iot_property_type" AS ENUM('number', 'string', 'boolean', 
 CREATE TYPE "public"."iot_schedule_action" AS ENUM('command', 'desired');--> statement-breakpoint
 CREATE TYPE "public"."iot_schedule_type" AS ENUM('cron', 'once');--> statement-breakpoint
 CREATE TYPE "public"."iot_validation_mode" AS ENUM('loose', 'strict');--> statement-breakpoint
+CREATE TYPE "public"."drive_activity_action" AS ENUM('upload', 'new_version', 'create_folder', 'rename', 'move', 'copy', 'delete', 'restore', 'purge', 'download', 'preview', 'share_create', 'share_update', 'share_revoke', 'share_access', 'save_from_share', 'permission_change', 'inherit_change', 'version_restore', 'version_delete', 'lock', 'unlock', 'comment', 'tag');--> statement-breakpoint
+CREATE TYPE "public"."drive_node_type" AS ENUM('folder', 'file');--> statement-breakpoint
+CREATE TYPE "public"."drive_role" AS ENUM('viewer', 'downloader', 'editor', 'manager');--> statement-breakpoint
+CREATE TYPE "public"."drive_share_permission" AS ENUM('preview', 'download');--> statement-breakpoint
+CREATE TYPE "public"."drive_space_type" AS ENUM('personal', 'department', 'team');--> statement-breakpoint
+CREATE TYPE "public"."drive_subject_type" AS ENUM('user', 'department', 'role', 'user_group');--> statement-breakpoint
+CREATE TYPE "public"."drive_upload_conflict_policy" AS ENUM('rename', 'version', 'fail');--> statement-breakpoint
 CREATE TABLE "departments" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "departments_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"parent_id" integer DEFAULT 0 NOT NULL,
@@ -606,10 +613,12 @@ CREATE TABLE "managed_files" (
 	"original_name" varchar(256) NOT NULL,
 	"object_key" varchar(512) NOT NULL,
 	"bucket_name" varchar(256),
-	"size" integer DEFAULT 0 NOT NULL,
+	"size" bigint DEFAULT 0 NOT NULL,
 	"mime_type" varchar(128),
 	"extension" varchar(32),
 	"object_acl" "file_object_acl",
+	"visibility" "file_visibility" DEFAULT 'public' NOT NULL,
+	"content_hash" varchar(64),
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
@@ -848,19 +857,10 @@ CREATE TABLE "retention_policies" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "system_configs" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "system_configs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"config_key" varchar(128) NOT NULL,
-	"config_name" varchar(128) DEFAULT '' NOT NULL,
-	"config_value" varchar(4096) DEFAULT '' NOT NULL,
-	"config_type" "config_type" DEFAULT 'string' NOT NULL,
-	"description" varchar(256) DEFAULT '' NOT NULL,
-	"tenant_id" integer,
-	"created_by" integer,
-	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
-	CONSTRAINT "system_configs_tenant_key_unique" UNIQUE("tenant_id","config_key")
+CREATE TABLE "system_runtime_state" (
+	"key" varchar(128) PRIMARY KEY NOT NULL,
+	"value" jsonb NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "system_scheduler_nodes" (
@@ -923,6 +923,19 @@ CREATE TABLE "system_scheduler_task_configs" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "system_settings" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "system_settings_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"module" varchar(64) NOT NULL,
+	"tenant_id" integer,
+	"data" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "system_settings_module_tenant_unique" UNIQUE NULLS NOT DISTINCT("module","tenant_id")
+);
+--> statement-breakpoint
 CREATE TABLE "user_feedbacks" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "user_feedbacks_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"user_id" integer NOT NULL,
@@ -962,6 +975,7 @@ CREATE TABLE "oauth_configs" (
 	"agent_id" varchar(128),
 	"corp_id" varchar(128),
 	"enabled" boolean DEFAULT false NOT NULL,
+	"auto_link_by_email" boolean DEFAULT false NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
 	"created_at" timestamp DEFAULT now() NOT NULL,
@@ -1110,6 +1124,7 @@ CREATE TABLE "tenant_identity_providers" (
 	"ldap_timeout_ms" integer DEFAULT 5000 NOT NULL,
 	"attribute_mapping" jsonb DEFAULT '{"subject":"sub","email":"email","username":"preferred_username","nickname":"name"}'::jsonb NOT NULL,
 	"jit_enabled" boolean DEFAULT false NOT NULL,
+	"auto_link_by_email" boolean DEFAULT false NOT NULL,
 	"default_role_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"remark" text,
 	"created_by" integer,
@@ -6433,6 +6448,7 @@ CREATE TABLE "cms_publish_artifacts" (
 	"url" varchar(1000),
 	"checksum" varchar(64),
 	"size" integer,
+	"public_revision" integer DEFAULT 0 NOT NULL,
 	"status" "cms_publish_artifact_status" NOT NULL,
 	"error" text,
 	"generated_at" timestamp,
@@ -6590,6 +6606,7 @@ CREATE TABLE "cms_sites" (
 	"extend" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"theme_revision" integer DEFAULT 0 NOT NULL,
 	"template_refs_revision" integer DEFAULT 0 NOT NULL,
+	"public_revision" integer DEFAULT 0 NOT NULL,
 	"static_mode" "cms_static_mode" DEFAULT 'hybrid' NOT NULL,
 	"robots" text,
 	"settings" jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -7318,11 +7335,9 @@ CREATE TABLE "iot_schedules" (
 );
 --> statement-breakpoint
 CREATE TABLE "iot_telemetry" (
-	"id" bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "iot_telemetry_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
 	"device_id" integer NOT NULL,
 	"metrics" jsonb NOT NULL,
-	"reported_at" timestamp DEFAULT now() NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"reported_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_telemetry_hourly" (
@@ -7336,6 +7351,211 @@ CREATE TABLE "iot_telemetry_hourly" (
 	"last_value" double precision NOT NULL,
 	"count" integer NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "drive_activities" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_activities_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"space_id" integer NOT NULL,
+	"node_id" integer,
+	"node_name" varchar(255) NOT NULL,
+	"node_type" "drive_node_type" NOT NULL,
+	"action" "drive_activity_action" NOT NULL,
+	"actor_id" integer,
+	"share_id" integer,
+	"detail" jsonb,
+	"client_ip" varchar(64),
+	"tenant_id" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "drive_file_versions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_file_versions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"node_id" integer NOT NULL,
+	"version" integer NOT NULL,
+	"file_id" uuid NOT NULL,
+	"size" bigint DEFAULT 0 NOT NULL,
+	"content_hash" varchar(64),
+	"comment" varchar(500),
+	"author_id" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "drive_file_versions_node_version_unique" UNIQUE("node_id","version")
+);
+--> statement-breakpoint
+CREATE TABLE "drive_node_comments" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_node_comments_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"node_id" integer NOT NULL,
+	"parent_id" integer,
+	"content" varchar(2000) NOT NULL,
+	"author_id" integer,
+	"tenant_id" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "drive_node_permissions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_node_permissions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"node_id" integer NOT NULL,
+	"subject_type" "drive_subject_type" NOT NULL,
+	"subject_id" integer NOT NULL,
+	"role" "drive_role" NOT NULL,
+	"expire_at" timestamp,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "drive_node_permissions_node_subject_unique" UNIQUE("node_id","subject_type","subject_id")
+);
+--> statement-breakpoint
+CREATE TABLE "drive_node_stars" (
+	"user_id" integer NOT NULL,
+	"node_id" integer NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "drive_node_stars_user_id_node_id_pk" PRIMARY KEY("user_id","node_id")
+);
+--> statement-breakpoint
+CREATE TABLE "drive_node_tags" (
+	"node_id" integer NOT NULL,
+	"tag_id" integer NOT NULL,
+	CONSTRAINT "drive_node_tags_node_id_tag_id_pk" PRIMARY KEY("node_id","tag_id")
+);
+--> statement-breakpoint
+CREATE TABLE "drive_node_texts" (
+	"node_id" integer PRIMARY KEY NOT NULL,
+	"version" integer NOT NULL,
+	"content" text DEFAULT '' NOT NULL,
+	"search_vector" "tsvector",
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "drive_nodes" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_nodes_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"space_id" integer NOT NULL,
+	"parent_id" integer,
+	"ancestor_ids" integer[] DEFAULT '{}' NOT NULL,
+	"depth" smallint DEFAULT 0 NOT NULL,
+	"type" "drive_node_type" NOT NULL,
+	"name" varchar(255) NOT NULL,
+	"extension" varchar(32),
+	"mime_type" varchar(128),
+	"file_id" uuid,
+	"size" bigint DEFAULT 0 NOT NULL,
+	"content_hash" varchar(64),
+	"current_version" integer DEFAULT 1 NOT NULL,
+	"inherit_permissions" boolean DEFAULT true NOT NULL,
+	"locked_by" integer,
+	"locked_at" timestamp,
+	"lock_expires_at" timestamp,
+	"thumbnail_file_id" uuid,
+	"deleted_at" timestamp,
+	"deleted_by" integer,
+	"deleted_root_id" integer,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "drive_recent_access" (
+	"user_id" integer NOT NULL,
+	"node_id" integer NOT NULL,
+	"action" "drive_activity_action" NOT NULL,
+	"last_access_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "drive_recent_access_user_id_node_id_pk" PRIMARY KEY("user_id","node_id")
+);
+--> statement-breakpoint
+CREATE TABLE "drive_share_access_logs" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_share_access_logs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"share_id" integer NOT NULL,
+	"node_id" integer NOT NULL,
+	"action" varchar(16) NOT NULL,
+	"client_ip" varchar(64),
+	"ok" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "drive_share_links" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_share_links_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"node_id" integer NOT NULL,
+	"token" varchar(64) NOT NULL,
+	"token_encrypted" varchar(256),
+	"password_hash" varchar(100),
+	"permission" "drive_share_permission" DEFAULT 'preview' NOT NULL,
+	"enabled" boolean DEFAULT true NOT NULL,
+	"expire_at" timestamp,
+	"max_access_count" integer,
+	"access_count" integer DEFAULT 0 NOT NULL,
+	"download_count" integer DEFAULT 0 NOT NULL,
+	"session_version" integer DEFAULT 1 NOT NULL,
+	"revoked_at" timestamp,
+	"remark" varchar(256),
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "drive_share_links_token_unique" UNIQUE("token")
+);
+--> statement-breakpoint
+CREATE TABLE "drive_space_members" (
+	"space_id" integer NOT NULL,
+	"subject_type" "drive_subject_type" NOT NULL,
+	"subject_id" integer NOT NULL,
+	"role" "drive_role" DEFAULT 'viewer' NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "drive_space_members_space_id_subject_type_subject_id_pk" PRIMARY KEY("space_id","subject_type","subject_id")
+);
+--> statement-breakpoint
+CREATE TABLE "drive_spaces" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_spaces_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"type" "drive_space_type" NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"description" varchar(300),
+	"icon" varchar(50),
+	"owner_id" integer,
+	"department_id" integer,
+	"default_member_role" "drive_role",
+	"quota_bytes" bigint,
+	"used_bytes" bigint DEFAULT 0 NOT NULL,
+	"max_versions" integer,
+	"allow_external_share" boolean DEFAULT true NOT NULL,
+	"status" "status" DEFAULT 'enabled' NOT NULL,
+	"sort" integer DEFAULT 0 NOT NULL,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "drive_tags" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_tags_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"space_id" integer NOT NULL,
+	"name" varchar(50) NOT NULL,
+	"color" varchar(20),
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "drive_tags_space_name_unique" UNIQUE("space_id","name")
+);
+--> statement-breakpoint
+CREATE TABLE "drive_upload_bindings" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_upload_bindings_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"upload_id" varchar(64) NOT NULL,
+	"space_id" integer NOT NULL,
+	"parent_id" integer,
+	"node_id" integer,
+	"file_name" varchar(255) NOT NULL,
+	"file_size" bigint NOT NULL,
+	"conflict_policy" "drive_upload_conflict_policy" DEFAULT 'rename' NOT NULL,
+	"expected_hash" varchar(64),
+	"tenant_id" integer,
+	"created_by" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "drive_upload_bindings_upload_id_unique" UNIQUE("upload_id")
 );
 --> statement-breakpoint
 ALTER TABLE "departments" ADD CONSTRAINT "departments_leader_id_users_id_fk" FOREIGN KEY ("leader_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -7411,11 +7631,11 @@ ALTER TABLE "cron_jobs" ADD CONSTRAINT "cron_jobs_created_by_users_id_fk" FOREIG
 ALTER TABLE "cron_jobs" ADD CONSTRAINT "cron_jobs_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "regions" ADD CONSTRAINT "regions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "regions" ADD CONSTRAINT "regions_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "system_configs" ADD CONSTRAINT "system_configs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "system_configs" ADD CONSTRAINT "system_configs_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "system_configs" ADD CONSTRAINT "system_configs_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "system_scheduler_runs" ADD CONSTRAINT "system_scheduler_runs_triggered_by_users_id_fk" FOREIGN KEY ("triggered_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "system_scheduler_runs" ADD CONSTRAINT "system_scheduler_runs_alert_ack_by_users_id_fk" FOREIGN KEY ("alert_ack_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "system_settings" ADD CONSTRAINT "system_settings_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "system_settings" ADD CONSTRAINT "system_settings_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "system_settings" ADD CONSTRAINT "system_settings_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_feedbacks" ADD CONSTRAINT "user_feedbacks_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_feedbacks" ADD CONSTRAINT "user_feedbacks_handled_by_users_id_fk" FOREIGN KEY ("handled_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "login_risk_events" ADD CONSTRAINT "login_risk_events_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8512,6 +8732,56 @@ ALTER TABLE "iot_schedules" ADD CONSTRAINT "iot_schedules_created_by_users_id_fk
 ALTER TABLE "iot_schedules" ADD CONSTRAINT "iot_schedules_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "iot_telemetry" ADD CONSTRAINT "iot_telemetry_device_id_iot_devices_id_fk" FOREIGN KEY ("device_id") REFERENCES "public"."iot_devices"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "iot_telemetry_hourly" ADD CONSTRAINT "iot_telemetry_hourly_device_id_iot_devices_id_fk" FOREIGN KEY ("device_id") REFERENCES "public"."iot_devices"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_activities" ADD CONSTRAINT "drive_activities_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_activities" ADD CONSTRAINT "drive_activities_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_activities" ADD CONSTRAINT "drive_activities_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_file_versions" ADD CONSTRAINT "drive_file_versions_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_file_versions" ADD CONSTRAINT "drive_file_versions_file_id_managed_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."managed_files"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_file_versions" ADD CONSTRAINT "drive_file_versions_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_comments" ADD CONSTRAINT "drive_node_comments_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_comments" ADD CONSTRAINT "drive_node_comments_parent_id_drive_node_comments_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."drive_node_comments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_comments" ADD CONSTRAINT "drive_node_comments_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_comments" ADD CONSTRAINT "drive_node_comments_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_permissions" ADD CONSTRAINT "drive_node_permissions_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_permissions" ADD CONSTRAINT "drive_node_permissions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_permissions" ADD CONSTRAINT "drive_node_permissions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_permissions" ADD CONSTRAINT "drive_node_permissions_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_stars" ADD CONSTRAINT "drive_node_stars_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_stars" ADD CONSTRAINT "drive_node_stars_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_tags" ADD CONSTRAINT "drive_node_tags_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_tags" ADD CONSTRAINT "drive_node_tags_tag_id_drive_tags_id_fk" FOREIGN KEY ("tag_id") REFERENCES "public"."drive_tags"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_node_texts" ADD CONSTRAINT "drive_node_texts_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_nodes" ADD CONSTRAINT "drive_nodes_space_id_drive_spaces_id_fk" FOREIGN KEY ("space_id") REFERENCES "public"."drive_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_nodes" ADD CONSTRAINT "drive_nodes_parent_id_drive_nodes_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_nodes" ADD CONSTRAINT "drive_nodes_file_id_managed_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."managed_files"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_nodes" ADD CONSTRAINT "drive_nodes_locked_by_users_id_fk" FOREIGN KEY ("locked_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_nodes" ADD CONSTRAINT "drive_nodes_thumbnail_file_id_managed_files_id_fk" FOREIGN KEY ("thumbnail_file_id") REFERENCES "public"."managed_files"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_nodes" ADD CONSTRAINT "drive_nodes_deleted_by_users_id_fk" FOREIGN KEY ("deleted_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_nodes" ADD CONSTRAINT "drive_nodes_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_nodes" ADD CONSTRAINT "drive_nodes_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_nodes" ADD CONSTRAINT "drive_nodes_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_recent_access" ADD CONSTRAINT "drive_recent_access_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_recent_access" ADD CONSTRAINT "drive_recent_access_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_share_access_logs" ADD CONSTRAINT "drive_share_access_logs_share_id_drive_share_links_id_fk" FOREIGN KEY ("share_id") REFERENCES "public"."drive_share_links"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_share_links" ADD CONSTRAINT "drive_share_links_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_share_links" ADD CONSTRAINT "drive_share_links_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_share_links" ADD CONSTRAINT "drive_share_links_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_share_links" ADD CONSTRAINT "drive_share_links_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_space_members" ADD CONSTRAINT "drive_space_members_space_id_drive_spaces_id_fk" FOREIGN KEY ("space_id") REFERENCES "public"."drive_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_spaces" ADD CONSTRAINT "drive_spaces_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_spaces" ADD CONSTRAINT "drive_spaces_department_id_departments_id_fk" FOREIGN KEY ("department_id") REFERENCES "public"."departments"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_spaces" ADD CONSTRAINT "drive_spaces_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_spaces" ADD CONSTRAINT "drive_spaces_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_spaces" ADD CONSTRAINT "drive_spaces_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_tags" ADD CONSTRAINT "drive_tags_space_id_drive_spaces_id_fk" FOREIGN KEY ("space_id") REFERENCES "public"."drive_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_tags" ADD CONSTRAINT "drive_tags_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_tags" ADD CONSTRAINT "drive_tags_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_tags" ADD CONSTRAINT "drive_tags_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_space_id_drive_spaces_id_fk" FOREIGN KEY ("space_id") REFERENCES "public"."drive_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_parent_id_drive_nodes_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "role_dept_scopes_dept_idx" ON "role_dept_scopes" USING btree ("dept_id");--> statement-breakpoint
 CREATE INDEX "role_menus_menu_idx" ON "role_menus" USING btree ("menu_id");--> statement-breakpoint
 CREATE INDEX "user_dept_scopes_dept_idx" ON "user_dept_scopes" USING btree ("dept_id");--> statement-breakpoint
@@ -8524,6 +8794,7 @@ CREATE INDEX "users_department_idx" ON "users" USING btree ("department_id");-->
 CREATE INDEX "license_events_created_idx" ON "license_events" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "business_files_tenant_idx" ON "business_files" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "managed_files_tenant_idx" ON "managed_files" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "managed_files_content_hash_idx" ON "managed_files" USING btree ("tenant_id","content_hash");--> statement-breakpoint
 CREATE INDEX "upload_sessions_tenant_idx" ON "upload_sessions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "upload_sessions_created_at_idx" ON "upload_sessions" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "upload_sessions_status_idx" ON "upload_sessions" USING btree ("status");--> statement-breakpoint
@@ -9372,5 +9643,32 @@ CREATE INDEX "idx_iot_schedule_runs_schedule" ON "iot_schedule_runs" USING btree
 CREATE INDEX "idx_iot_schedules_next_run" ON "iot_schedules" USING btree ("status","next_run_at");--> statement-breakpoint
 CREATE INDEX "idx_iot_schedules_product" ON "iot_schedules" USING btree ("product_id");--> statement-breakpoint
 CREATE INDEX "idx_iot_telemetry_device_time" ON "iot_telemetry" USING btree ("device_id","reported_at");--> statement-breakpoint
+CREATE INDEX "idx_iot_telemetry_time_brin" ON "iot_telemetry" USING brin ("reported_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "uq_iot_telemetry_hourly" ON "iot_telemetry_hourly" USING btree ("device_id","property","bucket");--> statement-breakpoint
-CREATE INDEX "idx_iot_telemetry_hourly_bucket" ON "iot_telemetry_hourly" USING btree ("bucket");
+CREATE INDEX "idx_iot_telemetry_hourly_bucket" ON "iot_telemetry_hourly" USING btree ("bucket");--> statement-breakpoint
+CREATE INDEX "drive_activities_node_idx" ON "drive_activities" USING btree ("node_id","created_at");--> statement-breakpoint
+CREATE INDEX "drive_activities_space_idx" ON "drive_activities" USING btree ("space_id","created_at");--> statement-breakpoint
+CREATE INDEX "drive_activities_actor_idx" ON "drive_activities" USING btree ("actor_id");--> statement-breakpoint
+CREATE INDEX "drive_activities_created_idx" ON "drive_activities" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "drive_file_versions_file_idx" ON "drive_file_versions" USING btree ("file_id");--> statement-breakpoint
+CREATE INDEX "drive_node_comments_node_idx" ON "drive_node_comments" USING btree ("node_id");--> statement-breakpoint
+CREATE INDEX "drive_node_permissions_subject_idx" ON "drive_node_permissions" USING btree ("subject_type","subject_id");--> statement-breakpoint
+CREATE INDEX "drive_node_stars_node_idx" ON "drive_node_stars" USING btree ("node_id");--> statement-breakpoint
+CREATE INDEX "drive_node_tags_tag_idx" ON "drive_node_tags" USING btree ("tag_id");--> statement-breakpoint
+CREATE INDEX "drive_node_texts_search_idx" ON "drive_node_texts" USING gin ("search_vector");--> statement-breakpoint
+CREATE INDEX "drive_nodes_space_parent_idx" ON "drive_nodes" USING btree ("space_id","parent_id","deleted_at");--> statement-breakpoint
+CREATE INDEX "drive_nodes_ancestors_gin_idx" ON "drive_nodes" USING gin ("ancestor_ids");--> statement-breakpoint
+CREATE INDEX "drive_nodes_file_idx" ON "drive_nodes" USING btree ("file_id");--> statement-breakpoint
+CREATE INDEX "drive_nodes_deleted_root_idx" ON "drive_nodes" USING btree ("deleted_root_id");--> statement-breakpoint
+CREATE INDEX "drive_nodes_content_hash_idx" ON "drive_nodes" USING btree ("content_hash");--> statement-breakpoint
+CREATE INDEX "drive_nodes_name_trgm_idx" ON "drive_nodes" USING gin ("name" gin_trgm_ops);--> statement-breakpoint
+CREATE UNIQUE INDEX "drive_nodes_sibling_name_uq" ON "drive_nodes" USING btree ("space_id",coalesce("parent_id", 0),lower("name")) WHERE "drive_nodes"."deleted_at" is null;--> statement-breakpoint
+CREATE INDEX "drive_recent_access_user_time_idx" ON "drive_recent_access" USING btree ("user_id","last_access_at");--> statement-breakpoint
+CREATE INDEX "drive_share_access_logs_share_idx" ON "drive_share_access_logs" USING btree ("share_id");--> statement-breakpoint
+CREATE INDEX "drive_share_access_logs_created_idx" ON "drive_share_access_logs" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "drive_share_links_node_idx" ON "drive_share_links" USING btree ("node_id");--> statement-breakpoint
+CREATE INDEX "drive_share_links_tenant_idx" ON "drive_share_links" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "drive_space_members_subject_idx" ON "drive_space_members" USING btree ("subject_type","subject_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "drive_spaces_personal_owner_uq" ON "drive_spaces" USING btree ("owner_id") WHERE "drive_spaces"."type" = 'personal';--> statement-breakpoint
+CREATE UNIQUE INDEX "drive_spaces_department_uq" ON "drive_spaces" USING btree ("department_id") WHERE "drive_spaces"."type" = 'department';--> statement-breakpoint
+CREATE INDEX "drive_spaces_tenant_idx" ON "drive_spaces" USING btree ("tenant_id");

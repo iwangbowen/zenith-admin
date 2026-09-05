@@ -1,1 +1,0 @@
-ALTER TABLE "tenant_identity_providers" ADD COLUMN "auto_link_by_email" boolean DEFAULT false NOT NULL;

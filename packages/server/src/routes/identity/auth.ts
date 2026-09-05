@@ -3,7 +3,7 @@ import { authContract } from '@zenith/shared/identity';
 import { authMiddleware } from '../../middleware/auth';
 import { authRateLimit, captchaRateLimit, sensitiveRateLimit } from '../../middleware/rate-limit';
 import { generateCaptcha, resolveCaptchaComplexity } from '../../lib/captcha';
-import { getConfigBoolean, getConfigValue } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { defineContractRoute } from '../../lib/contract-route';
 import { validationHook, okBody } from '../../lib/openapi-schemas';
 import {
@@ -32,10 +32,9 @@ const authed = [authMiddleware] as const;
 const captchaRoute = defineContractRoute(authContract.captcha, {
   middleware: [captchaRateLimit] as const,
   handler: async (c) => {
-    const enabled = await getConfigBoolean('captcha_enabled', false);
-    if (!enabled) return c.json(okBody({ enabled: false, captchaId: '', svg: '' }), 200);
-    const complexity = await getConfigValue('captcha_complexity', 'medium');
-    const result = generateCaptcha(resolveCaptchaComplexity(complexity));
+    const { captchaEnabled, captchaComplexity } = await getSettings('auth');
+    if (!captchaEnabled) return c.json(okBody({ enabled: false, captchaId: '', svg: '' }), 200);
+    const result = generateCaptcha(resolveCaptchaComplexity(captchaComplexity));
     return c.json(okBody({ enabled: true, captchaId: result.captchaId, svg: result.captchaImage }), 200);
   },
 });

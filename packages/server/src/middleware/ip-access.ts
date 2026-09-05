@@ -1,6 +1,6 @@
 import { createMiddleware } from 'hono/factory';
 import ipRangeCheck from 'ip-range-check';
-import { getConfigBoolean, getConfigValue } from '../lib/system-config';
+import { getSettings } from '../lib/settings';
 import { errBody } from '../lib/openapi-schemas';
 import { getClientIp } from '../lib/request-helpers';
 import { writeIpAccessLog } from '../services/platform/ip-access-logs.service';
@@ -15,44 +15,10 @@ const EXEMPT_PATHS = new Set([
   '/api/auth/reset-password',
 ]);
 
-interface IpAccessConfig {
-  whitelistEnabled: boolean;
-  whitelist: string[];
-  blacklistEnabled: boolean;
-  blacklist: string[];
-  cachedAt: number;
-}
-
-let cache: IpAccessConfig | null = null;
-const CACHE_TTL = 30_000; // 30 秒
-
-async function loadConfig(): Promise<IpAccessConfig> {
-  if (cache && Date.now() - cache.cachedAt < CACHE_TTL) {
-    return cache;
-  }
-
-  const [whitelistEnabled, whitelistRaw, blacklistEnabled, blacklistRaw] = await Promise.all([
-    getConfigBoolean('ip_whitelist_enabled'),
-    getConfigValue('ip_whitelist', '[]'),
-    getConfigBoolean('ip_blacklist_enabled'),
-    getConfigValue('ip_blacklist', '[]'),
-  ]);
-
-  let whitelist: string[];
-  let blacklist: string[];
-
-  try { whitelist = JSON.parse(whitelistRaw) as string[]; } catch { whitelist = []; }
-  try { blacklist = JSON.parse(blacklistRaw) as string[]; } catch { blacklist = []; }
-
-  cache = { whitelistEnabled, whitelist, blacklistEnabled, blacklist, cachedAt: Date.now() };
-  return cache;
-}
-
-/** 使当前缓存立即失效，下次请求时重新加载 */
-export function invalidateIpAccessCache() {
-  cache = null;
-}
-
+/**
+ * IP 黑白名单：配置来自运行时设置 `ipAccess` 模块（平台级）。
+ * 读取命中进程内副本时零查询；管理端保存后经 cache_invalidate 广播即时生效，无需本地失效钩子。
+ */
 export const ipAccessMiddleware = createMiddleware(async (c, next) => {
   const path = c.req.path;
 
@@ -61,7 +27,7 @@ export const ipAccessMiddleware = createMiddleware(async (c, next) => {
     return next();
   }
 
-  const cfg = await loadConfig();
+  const cfg = await getSettings('ipAccess');
 
   // 如果两者都未启用，直接放行（快速路径）
   if (!cfg.blacklistEnabled && !cfg.whitelistEnabled) {

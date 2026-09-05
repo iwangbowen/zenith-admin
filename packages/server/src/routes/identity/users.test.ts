@@ -106,10 +106,12 @@ vi.mock('../../lib/permissions', () => ({
   clearUserPermissionCache: vi.fn(),
 }));
 
-vi.mock('../../lib/password-policy', () => ({
-  getPasswordPolicy: vi.fn().mockResolvedValue(null),
-  validatePassword: vi.fn().mockReturnValue(null),
-}));
+vi.mock('../../lib/settings', async () => {
+  const { SETTINGS_MODULES } = await import('@zenith/shared/settings');
+  return {
+    getSettings: vi.fn(async (module: keyof typeof SETTINGS_MODULES) => SETTINGS_MODULES[module].schema.parse({})),
+  };
+});
 
 vi.mock('../../lib/excel-export', () => ({
   exportToExcel: vi.fn(),

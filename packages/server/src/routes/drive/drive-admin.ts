@@ -7,7 +7,6 @@ import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { mapAsyncTask } from '../../lib/task-center';
 import { listDriveActivitiesForAdmin } from '../../services/drive/drive-activity.service';
 import { getDriveAdminStats } from '../../services/drive/drive-admin.service';
-import { getDriveSettings, updateDriveSettings } from '../../services/drive/drive-settings.service';
 import { adminRevokeDriveShareLink, getShareLinkBeforeAudit, listShareLinksForAdmin } from '../../services/drive/drive-share.service';
 import { adminUpdateDriveSpace, createDepartmentSpace, deleteDriveSpace, ensureDriveSpaceExists, listDriveSpacesForAdmin } from '../../services/drive/drive-spaces.service';
 import { submitRecalcUsageTask, submitReindexTask } from '../../services/drive/drive-tasks.service';
@@ -18,19 +17,6 @@ const AUDIT = { module: '企业网盘' } as const;
 const statsRoute = defineContractRoute(driveAdminContract.stats, {
   middleware: [authMiddleware, guard({ permission: 'drive:admin:stats:view' })],
   handler: async (c) => c.json(okBody(await getDriveAdminStats()), 200),
-});
-
-const settingsRoute = defineContractRoute(driveAdminContract.settings, {
-  middleware: [authMiddleware, guard({ permission: 'drive:setting:view' })],
-  handler: async (c) => c.json(okBody(await getDriveSettings()), 200),
-});
-
-const saveSettingsRoute = defineContractRoute(driveAdminContract.saveSettings, {
-  middleware: [authMiddleware, guard({ permission: 'drive:setting:edit', audit: { description: '保存网盘设置', ...AUDIT } })],
-  handler: async (c) => {
-    setAuditBeforeData(c, await getDriveSettings());
-    return c.json(okBody(await updateDriveSettings(c.req.valid('json')), '已保存'), 200);
-  },
 });
 
 const spacesRoute = defineContractRoute(driveAdminContract.spaces, {
@@ -101,7 +87,7 @@ const activitiesRoute = defineContractRoute(driveAdminContract.activities, {
 
 // 静态 /spaces/department、/spaces/recalc 先于动态 /spaces/{id}
 router.openapiRoutes([
-  statsRoute, settingsRoute, saveSettingsRoute,
+  statsRoute,
   spacesRoute, createDepartmentSpaceRoute, recalcRoute, updateSpaceRoute, deleteSpaceRoute, reindexRoute,
   shareLinksRoute, revokeShareLinkRoute, activitiesRoute,
 ] as const);

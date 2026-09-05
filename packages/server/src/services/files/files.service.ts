@@ -3,7 +3,8 @@ import type { FileStorageConfigRow } from '../../db/schema';
 import type { FileVisibility } from '@zenith/shared/platform';
 import { buildManagedFileProxyUrl, buildPublicFileUrl, deleteStoredFile, readStoredFile, resolveFileAccessUrl, resolveObjectAcl, uploadFileByConfig } from '../../lib/file-storage';
 import { formatDateTime } from '../../lib/datetime';
-import { getConfigBoolean, getConfigValue, getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
+import type { FilesSettings } from '@zenith/shared/settings';
 
 export function mapManagedFile(row: typeof managedFiles.$inferSelect, config?: FileStorageConfigRow) {
   return {
@@ -168,22 +169,19 @@ export async function listManagedFiles(query: {
   };
 }
 
-const DEFAULT_ALLOWED_TYPES = 'image/*,video/*,audio/*,application/pdf,text/plain,text/csv,application/zip,application/x-zip-compressed,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-excel,application/msword,application/vnd.ms-powerpoint';
-
-/** 校验上传大小是否超过系统配置上限（file_upload_max_size_mb，0 表示不限制） */
-export async function assertUploadSizeAllowed(size: number) {
-  const maxMb = await getConfigNumber('file_upload_max_size_mb', 0);
-  if (maxMb > 0 && size > maxMb * 1024 * 1024) {
-    throw new HTTPException(400, { message: `文件大小超过上限（${maxMb}MB）` });
+/** 校验上传大小是否超过系统设置上限（files.uploadMaxSizeMb，0 表示不限制）；调用方已持有设置时可传入，避免事务内重复读取 */
+export async function assertUploadSizeAllowed(size: number, settings?: FilesSettings) {
+  const { uploadMaxSizeMb } = settings ?? await getSettings('files');
+  if (uploadMaxSizeMb > 0 && size > uploadMaxSizeMb * 1024 * 1024) {
+    throw new HTTPException(400, { message: `文件大小超过上限（${uploadMaxSizeMb}MB）` });
   }
 }
 
 /** 基于 magic bytes 校验真实文件类型；headBytes 为文件前若干字节，fallbackMime 用于无法识别时回退 */
-export async function assertUploadTypeAllowed(headBytes: Buffer, fallbackMime: string) {
-  const validateEnabled = await getConfigBoolean('file_upload_validate_type', true);
-  if (!validateEnabled) return;
-  const allowedTypesRaw = await getConfigValue('file_upload_allowed_types', DEFAULT_ALLOWED_TYPES);
-  const allowedPatterns = allowedTypesRaw.split(',').map((s) => s.trim()).filter(Boolean);
+export async function assertUploadTypeAllowed(headBytes: Buffer, fallbackMime: string, settings?: FilesSettings) {
+  const { uploadValidateType, uploadAllowedTypes } = settings ?? await getSettings('files');
+  if (!uploadValidateType) return;
+  const allowedPatterns = uploadAllowedTypes.map((s) => s.trim()).filter(Boolean);
   const { fileTypeFromBuffer } = await import('file-type');
   const detected = await fileTypeFromBuffer(headBytes);
   // 无法识别（如纯文本）时回退使用调用方提供的 MIME

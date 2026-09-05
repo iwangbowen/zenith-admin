@@ -17,7 +17,7 @@ import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { httpGet, httpPost, HttpClientError } from '../../lib/http-client';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { checkLoginLock, clearLoginAttempts, recordLoginFailure } from '../../lib/session-manager';
 import { completeLoginWithMfa, recordLoginLog, type DeviceInfo } from './auth.service';
 import { assertDefaultRolesGrantable, resolveGrantableDefaultRoleIds, userHasPlatformSuperRole } from './role-grant';
@@ -1069,11 +1069,10 @@ export async function handleEnterpriseLdapLogin(input: {
     const remainingMinutes = Math.ceil(remainingLockSeconds / 60);
     throw new HTTPException(423, { message: `账号已被锁定，请 ${remainingMinutes} 分钟后重试` });
   }
-  const [loginMaxAttempts, loginLockDurationMinutes] = await Promise.all([
-    getConfigNumber('login_max_attempts', 10),
-    getConfigNumber('login_lock_duration_minutes', 30),
-  ]);
-  const lockDurationSeconds = loginLockDurationMinutes * 60;
+  // 企业身份源归属租户的身份安全策略（平台级身份源用平台策略）
+  const { lockout } = await getSettings('identitySecurity', { tenantId: provider.tenantId ?? null });
+  const loginMaxAttempts = lockout.maxAttempts;
+  const lockDurationSeconds = lockout.durationMinutes * 60;
   const failCredentials = async () => {
     await Promise.all([
       recordLoginLog({

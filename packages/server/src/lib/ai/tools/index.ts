@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import dayjs from 'dayjs';
 import { currentUser } from '../../context';
 import { getDailyTokensUsed } from '../quota';
-import { getConfigNumber, getConfigValue } from '../../system-config';
+import { getSettings } from '../../settings';
 import { httpRequest } from '../../http-client';
 import { AI_SSRF_OPTIONS } from '../outbound';
 import logger from '../../logger';
@@ -44,7 +44,7 @@ const getMyAiUsage: AiTool = {
   execute: async (_args, ctx) => {
     const [used, quota] = await Promise.all([
       getDailyTokensUsed(ctx.userId),
-      getConfigNumber('ai_daily_token_quota', 0),
+      getSettings('ai').then((s) => s.dailyTokenQuota),
     ]);
     return JSON.stringify({ usedTokensToday: used, dailyQuota: quota, unlimited: quota === 0 });
   },
@@ -145,7 +145,7 @@ const generateImage: AiTool = {
 
 /** 工具选择器视图（内置 + HTTP 工具），智能体编辑器勾选用 */
 export async function listAvailableTools(): Promise<Array<{ name: string; description: string; source: 'builtin' | 'http' }>> {
-  const imageModel = (await getConfigValue('ai_image_model', '')).trim();
+  const imageModel = (await getSettings('ai')).imageModel;
   const builtins = [...REGISTRY, ...(imageModel ? [generateImage] : [])]
     .map((t) => ({ name: t.name, description: t.description, source: 'builtin' as const }));
   const httpTools = (await loadEnabledHttpTools()).map((t) => ({ name: t.name, description: t.description, source: 'http' as const }));
@@ -157,7 +157,7 @@ export async function listAvailableTools(): Promise<Array<{ name: string; descri
  * filter 提供时（智能体工具白名单）仅保留名单内工具；undefined = 全部。
  */
 export async function getOpenAiToolDefs(filter?: string[] | null): Promise<unknown[]> {
-  const imageModel = (await getConfigValue('ai_image_model', '')).trim();
+  const imageModel = (await getSettings('ai')).imageModel;
   const builtin = [...REGISTRY, ...(imageModel ? [generateImage] : [])];
   const httpTools = await loadEnabledHttpTools();
   const all = [
@@ -202,7 +202,7 @@ export async function executeToolCall(call: ChatToolCall): Promise<string> {
  */
 export async function getMastraTools(filter?: string[] | null): Promise<Record<string, unknown>> {
   const { createTool } = await loadMastraToolsModule();
-  const imageModel = (await getConfigValue('ai_image_model', '')).trim();
+  const imageModel = (await getSettings('ai')).imageModel;
   const builtin = [...REGISTRY, ...(imageModel ? [generateImage] : [])]
     .map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
   const httpTools = (await loadEnabledHttpTools())

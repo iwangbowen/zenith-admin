@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '../../db';
 import { members, memberPointTransactions } from '../../db/schema';
-import { getConfigNumber } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { currentMemberId } from '../../lib/member-context';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
@@ -63,7 +63,7 @@ export async function applyInviteOnRegister(newMemberId: number, inviteCode: str
     if (!inviterId || inviterId === newMemberId) return;
     await db.update(members).set({ invitedBy: inviterId }).where(eq(members.id, newMemberId));
 
-    const reward = await getConfigNumber('member_invite_reward_points', 0);
+    const reward = (await getSettings('member')).inviteRewardPoints;
     if (reward > 0) {
       await ensurePointAccount(inviterId);
       await earnPoints(inviterId, reward, {

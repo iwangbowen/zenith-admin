@@ -19,12 +19,14 @@ import '@hono/zod-openapi';
 import { serve } from '@hono/node-server';
 import { WebSocketServer } from 'ws';
 import { WS_AUTH_SUBPROTOCOL } from '@zenith/shared/platform';
+import { validateSettingsRegistry } from '@zenith/shared/settings';
 import { createApp } from './app';
 import { registerEventSubscribers } from './bootstrap/subscribers';
 import { registerBackgroundWorkers } from './bootstrap/workers';
 import { warmupOpenApiDoc } from './bootstrap/openapi-warmup';
 import { assertRuntimeSecrets, config } from './config';
 import { closeDb } from './db';
+import { startInvalidationBus } from './lib/invalidation-bus';
 import logger from './lib/logger';
 import { metricsSampler } from './lib/metrics-sampler';
 import { stopAllJobs } from './lib/pg-boss-scheduler';
@@ -35,6 +37,15 @@ import { registerOpenWebhookSubscriber } from './services/open-platform/app-webh
 
 // 密钥不合规（非开发环境缺失 JWT_SECRET / FIELD_ENCRYPTION_KEY 或仍是默认值）时在开始监听前终止
 assertRuntimeSecrets(logger);
+
+// 运行时设置注册表自检：默认文档不可解析 / 字段命名越界 / 路径冲突都在监听前终止，而不是留到首个请求抛错
+{
+  const registryErrors = validateSettingsRegistry();
+  if (registryErrors.length > 0) {
+    logger.error(`[settings] 注册表自检失败，服务不会启动：\n${registryErrors.map((e) => `  - ${e}`).join('\n')}`);
+    process.exit(1);
+  }
+}
 
 await initTelemetry();
 
@@ -76,6 +87,9 @@ logger.info(`Server running at http://localhost:${config.port}`);
 
 // 启动后异步加载限流规则到内存（失败时使用代码内默认规则）
 void bootstrapRateLimitRules();
+
+// 跨实例缓存失效总线（PG LISTEN/NOTIFY）：只能在进程入口启动一次；失败进入降级、定时重试，不阻断服务
+void startInvalidationBus();
 
 // OpenAPI 文档预热：worker 线程生成（~10s CPU），主线程零阻塞
 warmupOpenApiDoc();

@@ -237,7 +237,8 @@ describe('loginMember - 账号密码', () => {
   it('密码错误时累计账号失败次数（防爆破）', async () => {
     dbMock.select.mockReturnValueOnce(createChain([makeMember()]));
     await expect(loginMember({ ...input, password: 'wrong-password' })).rejects.toMatchObject({ status: 400 });
-    expect(recordMemberLoginFailure).toHaveBeenCalledWith('alice');
+    // 会员已定位到，锁定策略按其所属租户解析（makeMember 无租户 → null）
+    expect(recordMemberLoginFailure).toHaveBeenCalledWith('alice', null);
   });
 
   it('账号已被锁定 → 423，短路不再查询会员', async () => {

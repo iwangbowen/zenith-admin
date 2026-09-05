@@ -8,7 +8,6 @@ import type {
   WikiDocStatus,
   WikiDocTreeNode,
 } from '@zenith/shared/wiki';
-import { WIKI_SETTING_KEYS } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import {
@@ -31,7 +30,7 @@ import {
 } from '../../db/schema';
 import { currentUser, currentUserId, isSuperAdmin, setAuditBefore } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
-import { getConfigBoolean } from '../../lib/system-config';
+import { getSettings } from '../../lib/settings';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { listBusinessFiles, saveBusinessFiles } from '../files/business-files.service';
@@ -223,7 +222,7 @@ export async function getWikiDoc(id: number) {
     db.$count(wikiDocSubscriptions, and(eq(wikiDocSubscriptions.docId, id), eq(wikiDocSubscriptions.userId, uid))),
     db.$count(wikiDocReadReceipts, and(eq(wikiDocReadReceipts.docId, id), eq(wikiDocReadReceipts.userId, uid))),
     db.$count(wikiDocReadReceipts, eq(wikiDocReadReceipts.docId, id)),
-    getConfigBoolean(WIKI_SETTING_KEYS.commentsEnabled, true),
+    getSettings('wiki').then((s) => s.commentsEnabled),
   ]);
 
   return {
@@ -461,7 +460,7 @@ export async function submitWikiDoc(id: number) {
     throw new HTTPException(400, { message: '只有草稿或已驳回的文档可以提交发布' });
   }
 
-  const requireApproval = await getConfigBoolean(WIKI_SETTING_KEYS.requireApproval, true);
+  const { requireApproval } = await getSettings('wiki');
   const next = requireApproval
     ? { status: 'pending' as const, rejectReason: null }
     : { status: 'published' as const, rejectReason: null, publishedAt: new Date() };

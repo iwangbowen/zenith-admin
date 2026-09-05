@@ -38,7 +38,10 @@ vi.mock('../../lib/tenant', async (importOriginal) => ({
   resolveManagedTenantId: vi.fn(),
   tenantScope: vi.fn(() => undefined),
 }));
-vi.mock('../../lib/system-config', () => ({ getConfigNumber: vi.fn(async (_k: string, d: number) => d) }));
+vi.mock('../../lib/settings', async () => {
+  const { SETTINGS_MODULES } = await import('@zenith/shared/settings');
+  return { getSettings: vi.fn(async (module: keyof typeof SETTINGS_MODULES) => SETTINGS_MODULES[module].schema.parse({})) };
+});
 vi.mock('../../lib/session-manager', () => ({
   checkLoginLock: vi.fn(async () => 0), clearLoginAttempts: vi.fn(), recordLoginFailure: vi.fn(),
 }));

@@ -5,64 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1788189462435,
+      "when": 1788615086074,
       "tag": "0000_baseline",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1788189510553,
+      "when": 1788615126927,
       "tag": "0001_extensions",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1788293966470,
-      "tag": "0002_jazzy_gamma_corps",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1788297286331,
-      "tag": "0003_unique_wrecker",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1788408084633,
-      "tag": "0004_iot_telemetry_partition",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1788439122466,
-      "tag": "0005_mighty_obadiah_stane",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1788444255045,
-      "tag": "0006_thin_thaddeus_ross",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1788446563101,
-      "tag": "0007_db_readonly_role",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1788533044018,
-      "tag": "0008_drive_module",
       "breakpoints": true
     }
   ]
