@@ -1,8 +1,6 @@
-export interface PasswordPolicy {
-  minLength: number;
-  requireUppercase: boolean;
-  requireSpecialChar: boolean;
-}
+import type { PasswordPolicy } from '@zenith/shared/platform';
+
+export type { PasswordPolicy };
 
 export function formatPasswordPolicyHint(policy: PasswordPolicy | null): string {
   if (!policy) return '至少 6 位';

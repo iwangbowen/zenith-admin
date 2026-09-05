@@ -28,9 +28,11 @@ import {
   RATE_LIMIT_MODE_OPTIONS,
   RATE_LIMIT_MOUNT_SOURCE_LABELS,
   RATE_LIMIT_WINDOW_UNIT_OPTIONS,
+  type CreateRateLimitRuleInput,
   type RateLimitAlgorithm,
   type RateLimitMode,
   type RateLimitMountSource,
+  type RateLimitRule,
   type RateLimitWindowUnit,
 } from '@zenith/shared/platform';
 import { usePermission } from '@/hooks/usePermission';
@@ -47,7 +49,6 @@ import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { DataBar } from '@/components/data-viz/DataBar';
 import {
-  type RateLimitRule,
   useBanRateLimitKey,
   useDeleteRateLimitRule,
   useRateLimitApiPaths,
@@ -155,7 +156,7 @@ export default function RateLimitPage() {
   const [blockTypeFilter, setBlockTypeFilter] = useState<string | undefined>();
   const [blockKeyword, setBlockKeyword] = useState('');
 
-  const editModal = useEditModal<RateLimitRule, RuleFormValues, Partial<RateLimitRule>>({
+  const editModal = useEditModal<RateLimitRule, RuleFormValues, Partial<CreateRateLimitRuleInput>>({
     entityName: '限流规则',
     save: saveMutation,
     defaults: {
@@ -206,7 +207,7 @@ export default function RateLimitPage() {
       title: `删除限流规则 ${rule.name}？`,
       content: '删除后该规则的限流与统计立即停止，操作不可恢复。',
       onOk: async () => {
-        await deleteMutation.mutateAsync(rule.id);
+        await deleteMutation.mutateAsync({ params: { id: rule.id } });
         if (detailRuleName === rule.name) setDetailRuleName(null);
         Toast.success('已删除');
       },
@@ -218,7 +219,7 @@ export default function RateLimitPage() {
       title: `清空 ${name} 的统计计数器？`,
       content: '命中 / 拦截计数、最近拦截记录与小时趋势将全部清零。',
       onOk: async () => {
-        await resetStatsMutation.mutateAsync(name);
+        await resetStatsMutation.mutateAsync({ body: { name } });
         Toast.success('统计已清空');
       },
     });
@@ -231,7 +232,7 @@ export default function RateLimitPage() {
 
   const handleBanConfirm = async () => {
     if (!banTarget) return;
-    await banMutation.mutateAsync({ name: banTarget.rule, key: banTarget.key, durationSeconds: banDuration });
+    await banMutation.mutateAsync({ body: { name: banTarget.rule, key: banTarget.key, durationSeconds: banDuration } });
     Toast.success(`已封禁 ${banTarget.key}`);
     setBanTarget(null);
   };

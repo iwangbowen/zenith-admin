@@ -1,108 +1,50 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-
-export interface CacheItem {
-  key: string;
-  displayKey: string;
-  segment: string;
-  category: string;
-  type: string;
-  ttl: number;
-  size: number;
-  value: string | null;
-}
-
-export interface CacheOverview {
-  connected: boolean;
-  version: string;
-  uptimeSeconds: number;
-  connectedClients: number;
-  usedMemory: number;
-  usedMemoryHuman: string;
-  maxMemory: number;
-  memFragmentationRatio: number;
-  keyspaceHits: number;
-  keyspaceMisses: number;
-  hitRate: number;
-  totalKeys: number;
-  keyPrefix: string;
-}
+import { resourceKeyOf } from '@zenith/shared/core';
+import { cacheContract } from '@zenith/shared/platform';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export const cacheKeys = {
-  all: ['cache'] as const,
-  lists: ['cache', 'list'] as const,
-  list: ['cache', 'list'] as const,
-  overview: ['cache', 'overview'] as const,
-  value: (key: string | undefined) => ['cache', 'value', key] as const,
+  all: [resourceKeyOf(cacheContract.basePath)] as const,
+  lists: contractKey(cacheContract.list),
+  overview: contractKey(cacheContract.overview),
+  value: (key: string | undefined) => contractKey(cacheContract.value, { query: { key: key ?? '' } }),
 };
 
+/** 全量 key 列表：关键词筛选在页面按分类 / displayKey 本地完成 */
 export function useCacheList() {
-  return useQuery({
-    queryKey: cacheKeys.list,
-    queryFn: () => request.get<{ list: CacheItem[]; total: number }>('/api/cache').then(unwrap),
-  });
+  return useApiQuery(cacheContract.list, { query: {} });
 }
 
 export function useCacheOverview() {
-  return useQuery({
-    queryKey: cacheKeys.overview,
-    queryFn: () => request.get<CacheOverview>('/api/cache/overview', { silent: true }).then(unwrap),
-  });
+  return useApiQuery(cacheContract.overview, { requestOptions: { silent: true } });
 }
 
 export function useCacheValue(key: string | undefined, enabled = true) {
-  return useQuery({
-    queryKey: cacheKeys.value(key),
-    queryFn: () => request.get<string | null>(`/api/cache/value?key=${encodeURIComponent(key ?? '')}`).then(unwrap),
-    enabled: enabled && key !== undefined,
-  });
+  return useApiQuery(cacheContract.value, { query: { key: key ?? '' } }, { enabled: enabled && key !== undefined });
 }
 
+/** 任何写操作都会改变 key 集合 / 概览计数 / 值预览，整域失效 */
+const invalidateAll = (qc: import('@tanstack/react-query').QueryClient) => void qc.invalidateQueries({ queryKey: cacheKeys.all });
+
 export function useDeleteCacheKey() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (key: string) => request.delete<null>('/api/cache', { key }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cacheKeys.all }),
-  });
+  return useApiMutation(cacheContract.removeKey, { invalidate: invalidateAll });
 }
 
 export function useBatchDeleteCacheKeys() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (keys: string[]) => request.delete<{ count: number }>('/api/cache/batch', { keys }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cacheKeys.all }),
-  });
+  return useApiMutation(cacheContract.removeKeys, { invalidate: invalidateAll });
 }
 
 export function useDeleteCacheCategory() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (segment: string) => request.delete<{ count: number }>('/api/cache/by-category', { segment }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cacheKeys.all }),
-  });
+  return useApiMutation(cacheContract.removeByCategory, { invalidate: invalidateAll });
 }
 
 export function useClearAllCache() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => request.delete<{ count: number }>('/api/cache/all', {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cacheKeys.all }),
-  });
+  return useApiMutation(cacheContract.removeAll, { invalidate: invalidateAll });
 }
 
 export function useUpdateCacheTtl() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ key, ttl }: { key: string; ttl: number }) => request.put<null>('/api/cache/ttl', { key, ttl }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cacheKeys.all }),
-  });
+  return useApiMutation(cacheContract.updateTtl, { invalidate: invalidateAll });
 }
 
 export function useUpdateCacheValue() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ key, value }: { key: string; value: string }) => request.put<null>('/api/cache/value', { key, value }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cacheKeys.all }),
-  });
+  return useApiMutation(cacheContract.updateValue, { invalidate: invalidateAll });
 }

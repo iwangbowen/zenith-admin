@@ -105,7 +105,7 @@ function OverviewTab() {
                     title="确认停用当前 License？"
                     content="required 模式下停用后全部增值功能将不可用。"
                     onConfirm={() => {
-                      deactivateMutation.mutate(undefined, { onSuccess: () => Toast.success('已停用') });
+                      deactivateMutation.mutate({}, { onSuccess: () => Toast.success('已停用') });
                     }}
                   >
                     <Button type="danger" theme="light" loading={deactivateMutation.isPending}>停用 License</Button>
@@ -195,7 +195,7 @@ function ActivateTab() {
       Toast.warning('请先粘贴 .zenlic 文件内容');
       return;
     }
-    const info = await activateMutation.mutateAsync(envelope.trim());
+    const info = await activateMutation.mutateAsync({ body: { envelope: envelope.trim() } });
     Toast.success(`License「${info.licenseId}」已激活`);
     setEnvelope('');
   };

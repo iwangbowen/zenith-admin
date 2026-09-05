@@ -1,422 +1,317 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { RuleAssetVersion, RuleDecisionFlow, RuleDecisionTable, RuleEvaluateResult, RuleExecution, RuleExecutionSource, RuleFlowEvaluateResult, RuleList, RuleListItem, RuleRefKind, RuleShadowRunResult, RuleSimulateResult, RuleTableStats, RuleTestCase, RuleTestRunResult, RuleUsageItem, RuleVersionDiff } from '@zenith/shared/rules';
-import { toQueryString, unwrap } from '@/lib/query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
+import { systemConfigContract } from '@zenith/shared/platform';
+import {
+  decisionFlowContract,
+  decisionTableContract,
+  ruleExecutionContract,
+  ruleListContract,
+  type CreateDecisionFlowInput,
+  type CreateDecisionTableInput,
+  type CreateRuleListInput,
+  type CreateRuleTestCaseInput,
+  type RuleDecisionFlow,
+  type RuleDecisionTable,
+  type RuleList,
+  type RuleTestCase,
+  type RuleUsageItem,
+  type UpdateDecisionFlowInput,
+  type UpdateDecisionTableInput,
+  type UpdateRuleListInput,
+  type UpdateRuleTestCaseInput,
+} from '@zenith/shared/rules';
+import { api, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
 
-export interface RuleDecisionTableListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: 'draft' | 'published' | 'disabled';
-}
+export type RuleDecisionTableListParams = NonNullable<QueryOf<typeof decisionTableContract.list>>;
 
-export interface RuleExecutionsParams {
-  page: number;
-  pageSize: number;
-  refKind?: RuleRefKind;
-  refId?: number;
-  caller?: string;
-  bizRef?: string;
-  ruleKey?: string;
-  source?: RuleExecutionSource;
-  matched?: boolean;
-  dateStart?: string;
-  dateEnd?: string;
-}
+export type RuleExecutionsParams = NonNullable<QueryOf<typeof ruleExecutionContract.list>>;
+
+export type RuleFlowListParams = NonNullable<QueryOf<typeof decisionFlowContract.list>>;
+
+export type RuleListListParams = NonNullable<QueryOf<typeof ruleListContract.list>>;
+
+export type RuleListItemsParams = NonNullable<QueryOf<typeof ruleListContract.items>>;
 
 export const ruleKeys = {
-  all: ['rules'] as const,
   decisionTables: {
-    all: ['rules', 'decision-tables'] as const,
-    lists: ['rules', 'decision-tables', 'list'] as const,
-    list: (params: RuleDecisionTableListParams) => ['rules', 'decision-tables', 'list', params] as const,
-    versions: (id: number | undefined) => ['rules', 'decision-tables', 'versions', id] as const,
-    diff: (id: number | undefined, from: number | null, to: number) => ['rules', 'decision-tables', 'diff', id, from, to] as const,
-    cases: (id: number | undefined) => ['rules', 'decision-tables', 'cases', id] as const,
-    stats: (id: number | undefined, days: number) => ['rules', 'decision-tables', 'stats', id, days] as const,
+    all: [resourceKeyOf(decisionTableContract.basePath)] as const,
+    lists: contractKey(decisionTableContract.list),
+    list: (params: RuleDecisionTableListParams) => contractKey(decisionTableContract.list, { query: params }),
+    versions: (id: number | undefined) => contractKey(decisionTableContract.versions, { params: { id: id ?? 0 } }),
+    diff: (id: number | undefined, from: number | null, to: number) =>
+      contractKey(decisionTableContract.diff, { params: { id: id ?? 0 }, query: { from: from ?? 0, to } }),
+    cases: (id: number | undefined) => contractKey(decisionTableContract.cases, { params: { id: id ?? 0 } }),
+    stats: (id: number | undefined, days: number) => contractKey(decisionTableContract.stats, { params: { id: id ?? 0 }, query: { days } }),
   },
   executions: {
-    all: ['rules', 'executions'] as const,
-    list: (params: RuleExecutionsParams) => ['rules', 'executions', 'list', params] as const,
+    all: [resourceKeyOf(ruleExecutionContract.basePath)] as const,
+    list: (params: RuleExecutionsParams) => contractKey(ruleExecutionContract.list, { query: params }),
   },
   flows: {
-    all: ['rules', 'flows'] as const,
-    lists: ['rules', 'flows', 'list'] as const,
-    list: (params: RuleFlowListParams) => ['rules', 'flows', 'list', params] as const,
-    versions: (id: number | undefined) => ['rules', 'flows', 'versions', id] as const,
+    all: [resourceKeyOf(decisionFlowContract.basePath)] as const,
+    lists: contractKey(decisionFlowContract.list),
+    list: (params: RuleFlowListParams) => contractKey(decisionFlowContract.list, { query: params }),
+    versions: (id: number | undefined) => contractKey(decisionFlowContract.versions, { params: { id: id ?? 0 } }),
   },
   ruleLists: {
-    all: ['rules', 'lists'] as const,
-    lists: ['rules', 'lists', 'list'] as const,
-    list: (params: RuleListListParams) => ['rules', 'lists', 'list', params] as const,
-    items: (listId: number | undefined, params: RuleListItemsParams) => ['rules', 'lists', 'items', listId, params] as const,
+    all: [resourceKeyOf(ruleListContract.basePath)] as const,
+    lists: contractKey(ruleListContract.list),
+    list: (params: RuleListListParams) => contractKey(ruleListContract.list, { query: params }),
+    items: (listId: number | undefined, params: RuleListItemsParams) =>
+      contractKey(ruleListContract.items, { params: { id: listId ?? 0 }, query: params }),
   },
+  /** 发布审批开关：系统配置派生的布尔视图，与 usePublicConfig 的原始配置缓存分键 */
   approvalConfig: ['rules', 'approval-config'] as const,
 };
 
+// ─── 决策表 ─────────────────────────────────────────────────────────────────────
+
+/** 决策表的版本 / 用例 / 统计 / 执行流水都挂在同一资源键下，任一写操作后整体回源 */
+const invalidateDecisionTables = (qc: QueryClient) => void qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.all });
+
 export function useRuleDecisionTableList(params: RuleDecisionTableListParams) {
-  return useQuery({
-    queryKey: ruleKeys.decisionTables.list(params),
-    queryFn: () => request.get<PaginatedResponse<RuleDecisionTable>>(`/api/rules/decision-tables${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(decisionTableContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
+export type RuleDecisionTableSaveValues = Partial<CreateDecisionTableInput & UpdateDecisionTableInput>;
+
+/** 无 id 走 create，有 id 走 update（key 仅创建时提交） */
 export function useSaveRuleDecisionTable() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id === undefined
-        ? request.post<RuleDecisionTable>('/api/rules/decision-tables', values)
-        : request.put<RuleDecisionTable>(`/api/rules/decision-tables/${id}`, values)
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.all }),
+  return useMutation<RuleDecisionTable, Error, { id?: number; values: RuleDecisionTableSaveValues }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(decisionTableContract.create, { body: values as CreateDecisionTableInput })
+      : api(decisionTableContract.update, { params: { id }, body: values as UpdateDecisionTableInput })),
+    onSuccess: () => invalidateDecisionTables(qc),
   });
 }
 
 export function usePublishRuleDecisionTable() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, gray }: { id: number; gray?: { grayPercent: number; grayDimension?: string | null } }) =>
-      request.post<null>(`/api/rules/decision-tables/${id}/publish`, gray ? { grayPercent: gray.grayPercent, grayDimension: gray.grayDimension ?? null } : {}).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.all }),
-  });
+  return useApiMutation(decisionTableContract.publish, { invalidate: invalidateDecisionTables });
 }
 
 /** 灰度操作：complete=转正全量；cancel=放弃（旧版本前滚为新版本） */
 export function useGrayActionRuleTable() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, action }: { id: number; action: 'complete' | 'cancel' }) =>
-      request.post<RuleDecisionTable>(`/api/rules/decision-tables/${id}/gray`, { action }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.all }),
-  });
+  return useApiMutation(decisionTableContract.grayAction, { invalidate: invalidateDecisionTables });
 }
 
 /** 批量仿真：纯读操作，不触发失效 */
 export function useSimulateRuleTable() {
-  return useMutation({
-    mutationFn: ({ id, rows }: { id: number; rows: Array<Record<string, unknown>> }) =>
-      request.post<RuleSimulateResult>(`/api/rules/decision-tables/${id}/simulate`, { rows }).then(unwrap),
-  });
+  return useApiMutation(decisionTableContract.simulate);
 }
 
 export function useDeleteRuleDecisionTable() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/rules/decision-tables/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.all }),
-  });
+  return useApiMutation(decisionTableContract.remove, { invalidate: invalidateDecisionTables });
 }
 
 export function useRuleVersions(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: ruleKeys.decisionTables.versions(id),
-    queryFn: () => request.get<Array<{ version: number; name: string; publishedAt: string }>>(`/api/rules/decision-tables/${id}/versions`).then(unwrap),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(decisionTableContract.versions, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 export function useRuleVersionDiff(id: number | undefined, from: number | null, to = 0, enabled = true) {
-  return useQuery({
-    queryKey: ruleKeys.decisionTables.diff(id, from, to),
-    queryFn: () => request.get<RuleVersionDiff>(`/api/rules/decision-tables/${id}/diff?from=${from}&to=${to}`).then(unwrap),
-    enabled: enabled && id !== undefined && from !== null,
-  });
+  return useApiQuery(
+    decisionTableContract.diff,
+    { params: { id: id ?? 0 }, query: { from: from ?? 0, to } },
+    { enabled: enabled && id !== undefined && from !== null },
+  );
 }
 
 export function useRollbackRuleDecisionTable() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, version }: { id: number; version: number }) => request.post<null>(`/api/rules/decision-tables/${id}/rollback/${version}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.all }),
-  });
+  return useApiMutation(decisionTableContract.rollback, { invalidate: invalidateDecisionTables });
 }
 
 export function useToggleRuleDecisionTable() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
-      request.post<RuleDecisionTable>(`/api/rules/decision-tables/${id}/toggle`, { enabled }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.all }),
-  });
+  return useApiMutation(decisionTableContract.toggle, { invalidate: invalidateDecisionTables });
 }
 
 export function useRuleTestCases(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: ruleKeys.decisionTables.cases(id),
-    queryFn: () => request.get<RuleTestCase[]>(`/api/rules/decision-tables/${id}/cases`).then(unwrap),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(decisionTableContract.cases, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
+export type RuleTestCaseSaveValues = Partial<CreateRuleTestCaseInput & UpdateRuleTestCaseInput>;
+
+/** 用例只影响所属决策表的用例列表 */
 export function useSaveRuleTestCase() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ tableId, caseId, values }: { tableId: number; caseId?: number; values: Record<string, unknown> }) =>
-      (caseId === undefined
-        ? request.post<RuleTestCase>(`/api/rules/decision-tables/${tableId}/cases`, values)
-        : request.put<RuleTestCase>(`/api/rules/decision-tables/${tableId}/cases/${caseId}`, values)
-      ).then(unwrap),
-    onSuccess: (_data, variables) => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.cases(variables.tableId) }),
+  return useMutation<RuleTestCase, Error, { tableId: number; caseId?: number; values: RuleTestCaseSaveValues }>({
+    mutationFn: ({ tableId, caseId, values }) => (caseId === undefined
+      ? api(decisionTableContract.createCase, { params: { id: tableId }, body: values as CreateRuleTestCaseInput })
+      : api(decisionTableContract.updateCase, { params: { id: tableId, caseId }, body: values })),
+    onSuccess: (_data, variables) => void qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.cases(variables.tableId) }),
   });
 }
 
 export function useDeleteRuleTestCase() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ tableId, caseId }: { tableId: number; caseId: number }) =>
-      request.delete<null>(`/api/rules/decision-tables/${tableId}/cases/${caseId}`).then(unwrap),
-    onSuccess: (_data, variables) => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.cases(variables.tableId) }),
+  return useApiMutation(decisionTableContract.removeCase, {
+    invalidate: (qc, _output, { params }) => void qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.cases(params.id) }),
   });
 }
 
+/** 运行用例 / 测试求值：纯读操作，不触发失效 */
 export function useRunRuleTestCases() {
-  return useMutation({
-    mutationFn: (tableId: number) => request.post<RuleTestRunResult>(`/api/rules/decision-tables/${tableId}/cases/run`, {}).then(unwrap),
-  });
+  return useApiMutation(decisionTableContract.runCases);
 }
 
 export function useTestRuleDecisionTable() {
-  return useMutation({
-    mutationFn: ({ tableId, input }: { tableId: number; input: unknown }) =>
-      request.post<RuleEvaluateResult>(`/api/rules/decision-tables/${tableId}/test`, { input }).then(unwrap),
-  });
+  return useApiMutation(decisionTableContract.test);
 }
 
 export function useRuleExecutions(params: RuleExecutionsParams, enabled = true) {
-  return useQuery({
-    queryKey: ruleKeys.executions.list(params),
-    queryFn: () => request.get<PaginatedResponse<RuleExecution>>(`/api/rules/executions${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(ruleExecutionContract.list, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 /** 引用分析（删除/停用确认时按需拉取） */
 export function fetchRuleUsages(id: number): Promise<RuleUsageItem[]> {
-  return request.get<RuleUsageItem[]>(`/api/rules/decision-tables/${id}/usages`).then(unwrap);
+  return api(decisionTableContract.usages, { params: { id } });
 }
 
 /** 名单引用分析（删除确认时按需拉取） */
 export function fetchRuleListUsages(id: number): Promise<RuleUsageItem[]> {
-  return request.get<RuleUsageItem[]>(`/api/rules/lists/${id}/usages`).then(unwrap);
+  return api(ruleListContract.usages, { params: { id } });
 }
 
 // ─── 命中分析 / 影子对比 / 发布审批 ──────────────────────────────────────────────
 
 export function useRuleTableStats(id: number | undefined, days: number, enabled = true) {
-  return useQuery({
-    queryKey: ruleKeys.decisionTables.stats(id, days),
-    queryFn: () => request.get<RuleTableStats>(`/api/rules/decision-tables/${id}/stats?days=${days}`).then(unwrap),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(decisionTableContract.stats, { params: { id: id ?? 0 }, query: { days } }, { enabled: enabled && id !== undefined });
 }
 
 export function useShadowRunRuleTable() {
-  return useMutation({
-    mutationFn: ({ id, limit }: { id: number; limit?: number }) =>
-      request.post<RuleShadowRunResult>(`/api/rules/decision-tables/${id}/shadow-run`, { limit: limit ?? 100 }).then(unwrap),
-  });
+  return useApiMutation(decisionTableContract.shadowRun);
 }
 
 /** 发布审批开关（system_configs 公开配置） */
 export function useRulePublishApprovalEnabled() {
   return useQuery({
     queryKey: ruleKeys.approvalConfig,
-    queryFn: () => request.get<{ configValue: string }>('/api/system-configs/public/rule_publish_approval', { silent: true })
-      .then(unwrap).then((c) => c.configValue === 'true').catch(() => false),
+    queryFn: () => api(systemConfigContract.publicByKey, { params: { key: 'rule_publish_approval' } }, { silent: true })
+      .then((c) => c.configValue === 'true').catch(() => false),
     staleTime: 60_000,
   });
 }
 
 export function useSubmitRuleTableReview() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<RuleDecisionTable>(`/api/rules/decision-tables/${id}/submit-review`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.all }),
-  });
+  return useApiMutation(decisionTableContract.submitReview, { invalidate: invalidateDecisionTables });
 }
 
 export function useReviewRuleTable() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, approve, comment }: { id: number; approve: boolean; comment?: string }) =>
-      request.post<RuleDecisionTable>(`/api/rules/decision-tables/${id}/review`, { approve, comment }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.all }),
-  });
+  return useApiMutation(decisionTableContract.review, { invalidate: invalidateDecisionTables });
 }
 
 // ─── 决策流 ─────────────────────────────────────────────────────────────────────
 
-export interface RuleFlowListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: 'draft' | 'published' | 'disabled';
-}
+const invalidateFlows = (qc: QueryClient) => void qc.invalidateQueries({ queryKey: ruleKeys.flows.all });
 
 export function useRuleFlowList(params: RuleFlowListParams) {
-  return useQuery({
-    queryKey: ruleKeys.flows.list(params),
-    queryFn: () => request.get<PaginatedResponse<RuleDecisionFlow>>(`/api/rules/decision-flows${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(decisionFlowContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
+
+export type RuleFlowSaveValues = Partial<CreateDecisionFlowInput & UpdateDecisionFlowInput>;
 
 export function useSaveRuleFlow() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id === undefined
-        ? request.post<RuleDecisionFlow>('/api/rules/decision-flows', values)
-        : request.put<RuleDecisionFlow>(`/api/rules/decision-flows/${id}`, values)
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.flows.all }),
+  return useMutation<RuleDecisionFlow, Error, { id?: number; values: RuleFlowSaveValues }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(decisionFlowContract.create, { body: values as CreateDecisionFlowInput })
+      : api(decisionFlowContract.update, { params: { id }, body: values as UpdateDecisionFlowInput })),
+    onSuccess: () => invalidateFlows(qc),
   });
 }
 
 export function usePublishRuleFlow() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.post<RuleDecisionFlow>(`/api/rules/decision-flows/${id}/publish`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.flows.all }),
-  });
+  return useApiMutation(decisionFlowContract.publish, { invalidate: invalidateFlows });
 }
 
 export function useToggleRuleFlow() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
-      request.post<RuleDecisionFlow>(`/api/rules/decision-flows/${id}/toggle`, { enabled }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.flows.all }),
-  });
+  return useApiMutation(decisionFlowContract.toggle, { invalidate: invalidateFlows });
 }
 
 export function useDeleteRuleFlow() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/rules/decision-flows/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.flows.all }),
-  });
+  return useApiMutation(decisionFlowContract.remove, { invalidate: invalidateFlows });
 }
 
 export function useTestRuleFlow() {
-  return useMutation({
-    mutationFn: ({ id, input }: { id: number; input: unknown }) =>
-      request.post<RuleFlowEvaluateResult>(`/api/rules/decision-flows/${id}/test`, { input }).then(unwrap),
-  });
+  return useApiMutation(decisionFlowContract.test);
 }
 
 export function useRuleFlowVersions(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: ruleKeys.flows.versions(id),
-    queryFn: () => request.get<RuleAssetVersion[]>(`/api/rules/decision-flows/${id}/versions`).then(unwrap),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(decisionFlowContract.versions, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 export function useRollbackRuleFlow() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, version }: { id: number; version: number }) =>
-      request.post<RuleDecisionFlow>(`/api/rules/decision-flows/${id}/rollback/${version}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.flows.all }),
-  });
+  return useApiMutation(decisionFlowContract.rollback, { invalidate: invalidateFlows });
 }
 
 // ─── 名单库 ─────────────────────────────────────────────────────────────────────
 
-export interface RuleListListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  type?: 'black' | 'white' | 'grey';
-}
-
-export interface RuleListItemsParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-}
+/** 名单与条目共用资源键：条目数随条目增删变化，列表也需回源 */
+const invalidateRuleLists = (qc: QueryClient) => void qc.invalidateQueries({ queryKey: ruleKeys.ruleLists.all });
 
 export function useRuleListList(params: RuleListListParams, enabled = true) {
-  return useQuery({
-    queryKey: ruleKeys.ruleLists.list(params),
-    queryFn: () => request.get<PaginatedResponse<RuleList>>(`/api/rules/lists${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(ruleListContract.list, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
+
+export type RuleListSaveValues = Partial<CreateRuleListInput & UpdateRuleListInput>;
 
 export function useSaveRuleList() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Record<string, unknown> }) =>
-      (id === undefined
-        ? request.post<RuleList>('/api/rules/lists', values)
-        : request.put<RuleList>(`/api/rules/lists/${id}`, values)
-      ).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.ruleLists.all }),
+  return useMutation<RuleList, Error, { id?: number; values: RuleListSaveValues }>({
+    mutationFn: ({ id, values }) => (id === undefined
+      ? api(ruleListContract.create, { body: values as CreateRuleListInput })
+      : api(ruleListContract.update, { params: { id }, body: values as UpdateRuleListInput })),
+    onSuccess: () => invalidateRuleLists(qc),
   });
 }
 
 export function useDeleteRuleList() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => request.delete<null>(`/api/rules/lists/${id}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.ruleLists.all }),
-  });
+  return useApiMutation(ruleListContract.remove, { invalidate: invalidateRuleLists });
 }
 
 export function useRuleListItems(listId: number | undefined, params: RuleListItemsParams, enabled = true) {
-  return useQuery({
-    queryKey: ruleKeys.ruleLists.items(listId, params),
-    queryFn: () => request.get<PaginatedResponse<RuleListItem>>(`/api/rules/lists/${listId}/items${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-    enabled: enabled && listId !== undefined,
-  });
+  return useApiQuery(
+    ruleListContract.items,
+    { params: { id: listId ?? 0 }, query: params },
+    { placeholderData: keepPreviousData, enabled: enabled && listId !== undefined },
+  );
 }
 
 export function useSaveRuleListItem() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ listId, values }: { listId: number; values: Record<string, unknown> }) =>
-      request.post<RuleListItem>(`/api/rules/lists/${listId}/items`, values).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.ruleLists.all }),
-  });
+  return useApiMutation(ruleListContract.createItem, { invalidate: invalidateRuleLists });
 }
 
+/** 批量导入返回服务端结果消息（新增 / 跳过数量），由调用方展示 */
 export function useBatchImportRuleListItems() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ listId, values, expiresAt }: { listId: number; values: string[]; expiresAt?: string | null }) =>
-      request.post<null>(`/api/rules/lists/${listId}/items/batch`, { values, expiresAt }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.ruleLists.all }),
+    mutationFn: async ({ listId, values, expiresAt }: { listId: number; values: string[]; expiresAt?: string | null }) => {
+      const res = await request.post<null>(urlOf(ruleListContract.createItemsBatch, { params: { id: listId } }), { values, expiresAt });
+      unwrap(res);
+      return res.message;
+    },
+    onSuccess: () => invalidateRuleLists(qc),
   });
 }
 
 export function useDeleteRuleListItem() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ listId, itemId }: { listId: number; itemId: number }) =>
-      request.delete<null>(`/api/rules/lists/${listId}/items/${itemId}`).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.ruleLists.all }),
-  });
+  return useApiMutation(ruleListContract.removeItem, { invalidate: invalidateRuleLists });
 }
 
+/** 清理过期条目返回服务端结果消息（删除数量），由调用方展示 */
 export function usePurgeExpiredRuleListItems() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (listId: number) => request.post<null>(`/api/rules/lists/${listId}/items/purge-expired`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ruleKeys.ruleLists.all }),
+    mutationFn: async (listId: number) => {
+      const res = await request.post<null>(urlOf(ruleListContract.purgeExpiredItems, { params: { id: listId } }));
+      unwrap(res);
+      return res.message;
+    },
+    onSuccess: () => invalidateRuleLists(qc),
   });
 }
 
+/** 命中判定：纯读操作，不触发失效 */
 export function useCheckRuleList() {
-  return useMutation({
-    mutationFn: ({ key, value }: { key: string; value: string }) =>
-      request.post<{ hit: boolean; listType?: string; item?: { value: string; label?: string | null } }>('/api/rules/lists/check', { key, value }).then(unwrap),
-  });
+  return useApiMutation(ruleListContract.check);
 }

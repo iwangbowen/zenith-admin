@@ -16,9 +16,9 @@ import {
   Table,
 } from '@douyinfe/semi-ui';
 import { Database } from 'lucide-react';
-import type { DataMaskConfig, MaskType, SensitiveField } from '@zenith/shared/platform';
+import { MASK_TYPES, type DataMaskConfig, type MaskType, type SensitiveField } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { createLabelOptionsFromMap } from '@zenith/shared/core';
+import { createLabelOptionsFromMap, enumValueOf } from '@zenith/shared/core';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -123,8 +123,8 @@ export default function DataMaskPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    maskType: submittedParams.maskType || undefined,
-    enabled: submittedParams.enabled || undefined,
+    maskType: enumValueOf(MASK_TYPES, submittedParams.maskType),
+    enabled: submittedParams.enabled === undefined ? undefined : submittedParams.enabled === 'true',
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -243,7 +243,7 @@ export default function DataMaskPage() {
     });
     setCreatingBatch(true);
     try {
-      const res = await batchCreateMutation.mutateAsync(items);
+      const res = await batchCreateMutation.mutateAsync({ body: { items } });
       const skippedMsg = res.skipped > 0 ? `，跳过 ${res.skipped} 条（已有规则）` : '';
       Toast.success(`已生成 ${res.created} 条规则${skippedMsg}`);
       closeScan();

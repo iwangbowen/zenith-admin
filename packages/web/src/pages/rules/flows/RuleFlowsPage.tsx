@@ -14,6 +14,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useWorkflowDesignerDecisionRefOptions } from '@/hooks/queries/workflow-designer';
 import {
   ruleKeys,
+  type RuleFlowSaveValues,
   useDeleteRuleFlow,
   usePublishRuleFlow,
   useRollbackRuleFlow,
@@ -63,7 +64,7 @@ export default function RuleFlowsPage() {
   const testMutation = useTestRuleFlow();
   const versionsQuery = useRuleFlowVersions(versionsRow?.id, !!versionsRow);
   const rollbackMutation = useRollbackRuleFlow();
-  const modal = useEditModal<RuleDecisionFlow>({
+  const modal = useEditModal<RuleDecisionFlow, Partial<RuleDecisionFlow>, RuleFlowSaveValues>({
     entityName: '决策流',
     save: saveMutation,
     defaults: {},
@@ -96,24 +97,24 @@ export default function RuleFlowsPage() {
   const handlePublish = (r: RuleDecisionFlow) => { Modal.confirm({
     title: `发布「${r.name}」？`,
     content: '将把当前步骤固化为运行时快照；引用的决策表必须均已发布',
-    onOk: async () => { await publishMutation.mutateAsync(r.id); Toast.success('发布成功'); },
+    onOk: async () => { await publishMutation.mutateAsync({ params: { id: r.id } }); Toast.success('发布成功'); },
   }); };
   const handleToggle = (r: RuleDecisionFlow) => { Modal.confirm({
     title: r.status === 'disabled' ? `启用「${r.name}」？` : `停用「${r.name}」？`,
     content: r.status === 'disabled' ? '启用后恢复运行时求值' : '停用后运行时求值返回空结果',
     okButtonProps: r.status === 'disabled' ? undefined : { type: 'danger' },
-    onOk: async () => { await toggleMutation.mutateAsync({ id: r.id, enabled: r.status === 'disabled' }); Toast.success('操作成功'); },
+    onOk: async () => { await toggleMutation.mutateAsync({ params: { id: r.id }, body: { enabled: r.status === 'disabled' } }); Toast.success('操作成功'); },
   }); };
   const handleDelete = (r: RuleDecisionFlow) => { confirmDelete({
     title: '确定删除？', content: '删除后不可恢复',
-    onOk: async () => { await deleteMutation.mutateAsync(r.id); Toast.success('删除成功'); },
+    onOk: async () => { await deleteMutation.mutateAsync({ params: { id: r.id } }); Toast.success('删除成功'); },
   }); };
 
   const runTest = async () => {
     if (!testRow) return;
     let input: Record<string, unknown>;
     try { input = JSON.parse(testInput || '{}'); } catch { Toast.error('输入不是合法 JSON'); return; }
-    const res = await testMutation.mutateAsync({ id: testRow.id, input });
+    const res = await testMutation.mutateAsync({ params: { id: testRow.id }, body: { input } });
     if (res) setTestResult(res);
   };
 
@@ -257,7 +258,7 @@ export default function RuleFlowsPage() {
                     content: '历史快照将覆盖当前编辑态并置为草稿；线上继续运行既有发布，重新发布后生效',
                     onOk: async () => {
                       if (!versionsRow) return;
-                      await rollbackMutation.mutateAsync({ id: versionsRow.id, version: v.version });
+                      await rollbackMutation.mutateAsync({ params: { id: versionsRow.id, version: v.version } });
                       Toast.success('回滚成功');
                       setVersionsRow(null);
                     },

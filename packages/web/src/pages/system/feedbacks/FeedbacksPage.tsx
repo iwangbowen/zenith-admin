@@ -90,7 +90,7 @@ export default function FeedbacksPage() {
       isPending: handleMutation.isPending,
       mutateAsync: ({ id, values }) => {
         if (id === undefined) throw new Error('缺少反馈 ID，请刷新后重试');
-        return handleMutation.mutateAsync({ id, values });
+        return handleMutation.mutateAsync({ params: { id }, body: values });
       },
     },
     toValues: (record) => ({

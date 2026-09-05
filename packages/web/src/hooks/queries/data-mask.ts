@@ -1,30 +1,18 @@
 import { useMemo } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { DataMaskConfig, SensitiveField } from '@zenith/shared/platform';
-import { request } from '@/utils/request';
-import { unwrap } from '@/lib/query';
-import { createCrudQueries, type CrudListParams } from '@/lib/crud-queries';
+import { useMutation } from '@tanstack/react-query';
+import { dataMaskConfigContract } from '@zenith/shared/platform';
+import { api, createResourceQueries, useApiMutation } from '@/lib/contract-query';
 import { useAllRoles } from './roles';
 
-export interface DataMaskListParams extends CrudListParams {
-  keyword?: string;
-  maskType?: string;
-  enabled?: string;
-}
+const resource = createResourceQueries(dataMaskConfigContract);
 
-const crud = createCrudQueries<DataMaskConfig, DataMaskListParams>({
-  resource: 'data-mask',
-  path: '/api/data-mask-configs',
-  // 服务端未提供 DELETE /batch
-  deleteMode: 'single',
-});
+export const dataMaskKeys = resource.keys;
 
-export const dataMaskKeys = crud.keys;
-
-export const useDataMaskList = crud.useList;
-export const useDataMaskDetail = crud.useDetail;
-export const useSaveDataMask = crud.useSave;
-export const useDeleteDataMasks = crud.useDelete;
+export const useDataMaskList = resource.useList;
+export const useDataMaskDetail = resource.useDetail;
+export const useSaveDataMask = resource.useSave;
+/** 服务端未提供 DELETE /batch，多条时逐条删除 */
+export const useDeleteDataMasks = resource.useDelete;
 
 /**
  * 角色选项。数据实际归属 roles 域，复用其共享 lookup，
@@ -39,18 +27,14 @@ export function useDataMaskRoleOptions() {
   return { data, isFetching: rolesQuery.isFetching, isSuccess: rolesQuery.isSuccess };
 }
 
+/** 扫描是按需触发的只读动作，结果只在弹窗内消费，不进入查询缓存 */
 export function useScanDataMaskFields() {
-  return useMutation({
-    mutationFn: () => request.get<SensitiveField[]>('/api/data-mask-configs/scan').then(unwrap),
-  });
+  return useMutation({ mutationFn: () => api(dataMaskConfigContract.scan) });
 }
 
 export function useBatchCreateDataMask() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (items: Array<Partial<DataMaskConfig>>) =>
-      request.post<{ created: number; skipped: number }>('/api/data-mask-configs/batch-create', { items }).then(unwrap),
+  return useApiMutation(dataMaskConfigContract.batchCreate, {
     // 批量创建的 id 未知，只需刷新列表
-    onSuccess: () => qc.invalidateQueries({ queryKey: dataMaskKeys.lists }),
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: dataMaskKeys.lists }),
   });
 }

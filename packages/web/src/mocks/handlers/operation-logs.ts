@@ -1,6 +1,6 @@
-import { http } from 'msw';
 import { analyticsContract } from '@zenith/shared/analytics';
-import { ok, pageParams } from '@/mocks/utils/handlers';
+import { operationLogContract } from '@zenith/shared/platform';
+import { mock } from '@/mocks/utils/contract';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockOperationLogs } from '@/mocks/data/logs';
 import { mockDate } from '@/mocks/utils/date';
@@ -62,19 +62,15 @@ function buildMockDailyStats(days: number): { date: string; count: number; succe
 }
 
 export const operationLogsHandlers = [
-  http.get('/api/operation-logs', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url);
-    const username = url.searchParams.get('username') ?? '';
-    const module = url.searchParams.get('module') ?? '';
-    const ip = url.searchParams.get('ip') ?? '';
-    const content = (url.searchParams.get('content') ?? '').toLowerCase();
-    const minDurationMsRaw = url.searchParams.get('minDurationMs');
-    const maxDurationMsRaw = url.searchParams.get('maxDurationMs');
-    const minDurationMs = minDurationMsRaw === null ? null : Number(minDurationMsRaw);
-    const maxDurationMs = maxDurationMsRaw === null ? null : Number(maxDurationMsRaw);
+  mock(operationLogContract.list, ({ query, ok, paginate }) => {
+    const username = query.username ?? '';
+    const module = query.module ?? '';
+    const ip = query.ip ?? '';
+    const content = (query.content ?? '').toLowerCase();
+    const minDurationMs = query.minDurationMs ?? null;
+    const maxDurationMs = query.maxDurationMs ?? null;
 
-    let list = mockOperationLogs.filter((log) => {
+    const list = mockOperationLogs.filter((log) => {
       if (username && log.username && !log.username.includes(username)) return false;
       if (module && log.module && !log.module.includes(module)) return false;
       if (ip && log.ip && !log.ip.includes(ip)) return false;
@@ -87,14 +83,11 @@ export const operationLogsHandlers = [
       if (maxDurationMs !== null && (log.durationMs === null || log.durationMs > maxDurationMs)) return false;
       return true;
     });
-    const total = list.length;
-    list = list.slice((page - 1) * pageSize, page * pageSize);
-    return ok({ list, total, page, pageSize });
+    return ok(paginate(list));
   }),
 
-  http.get('/api/operation-logs/stats', ({ request }) => {
-    const url = new URL(request.url);
-    const days = Math.min(Math.max(Number(url.searchParams.get('days')) || 30, 7), 365);
+  mock(operationLogContract.stats, ({ query, ok }) => {
+    const days = Math.min(Math.max(query.days || 30, 7), 365);
     const scale = days / 30;
 
     const moduleStats = MOCK_MODULE_STATS.map((m) => ({
@@ -201,10 +194,8 @@ export const operationLogsHandlers = [
     });
   }),
 
-  http.delete('/api/operation-logs/clean', ({ request }) => {
-    const url = new URL(request.url);
-    const days = Number(url.searchParams.get('days')) || 180;
-    const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000);
+  mock(operationLogContract.clean, ({ query, ok }) => {
+    const cutoff = new Date(Date.now() - (query.days ?? 180) * 24 * 3600 * 1000);
     const deleted = removeWhere(
       mockOperationLogs,
       (log) => new Date(log.createdAt) < cutoff,

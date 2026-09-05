@@ -15,154 +15,45 @@ import { dateTimeColumn } from '@/utils/table-columns';
 import { copyTextWithToast } from '@/utils/clipboard';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-import { formatBytes } from '@zenith/shared/core';
+import { enumValueOf, formatBytes } from '@zenith/shared/core';
+import {
+  MONITOR_HISTORY_RANGES,
+  monitorContract,
+  type MonitorDbInfo,
+  type MonitorHistoryPoint,
+  type MonitorHistoryRange,
+  type MonitorHttpStats,
+  type MonitorRedisInfo,
+  type MonitorSnapshot,
+  type MonitorTimeseriesPoint,
+  type MonitorTopProcessItem,
+  type MonitorTopProcesses,
+  type MonitorWsConnection,
+  type MonitorWsDisconnect,
+  type MonitorWsMetrics,
+} from '@zenith/shared/platform';
+import { urlOf } from '@/lib/contract-query';
 const { Text } = Typography;
 
-interface EventLoopStats {
-  meanMs: number; p50Ms: number; p95Ms: number; p99Ms: number; maxMs: number; stddevMs: number;
-}
-interface GcStats {
-  totalCount: number;
-  totalDurationMs: number;
-  byKind: Record<string, { count: number; durationMs: number }>;
-}
-interface HeapSpace { name: string; size: number; used: number; available: number; }
-interface ResourceUsage {
-  userCPUMicros: number; systemCPUMicros: number; maxRssBytes: number;
-  fsRead: number; fsWrite: number;
-  voluntaryContextSwitches: number; involuntaryContextSwitches: number;
-}
-interface HttpStats {
-  qps: number; currentQps: number; total: number; errors: number; errorRate: number;
-  total4xx: number; total5xx: number;
-  p50: number; p95: number; p99: number; max: number;
-}
-interface DbConnectionStates {
-  active: number; idle: number; idleInTransaction: number; other: number;
-}
-interface DbSlowQuery { query: string; calls: number; meanMs: number; totalMs: number; }
-interface DbInfo {
-  name: string; size: number; activeConnections: number; totalConnections: number; tableCount: number;
-  connectionStates?: DbConnectionStates;
-  cacheHit?: { blksHit: number; blksRead: number; ratio: number };
-  transactions?: { commit: number; rollback: number; deadlocks: number; tempBytes: number };
-  slowQueries?: DbSlowQuery[] | null;
-  slowQueriesAvailable?: boolean;
-}
-interface RedisSlowEntry { id: number; timestamp: number; durationMs: number; command: string; }
-interface RedisInfo {
-  version: string; uptimeSeconds: number; connectedClients: number;
-  blockedClients?: number; rejectedConnections?: number;
-  usedMemory: number; usedMemoryHuman: string; usedMemoryRss?: number;
-  memFragmentationRatio?: number; maxMemory?: number; maxMemoryPolicy?: string;
-  totalCommandsProcessed: number; keyspaceHits: number; keyspaceMisses: number;
-  keyCount: number; role: string;
-  rdbLastSaveTime?: number; rdbChangesSinceLastSave?: number; aofEnabled?: boolean;
-  masterLinkStatus?: string | null;
-  slowLog?: RedisSlowEntry[];
-}
+type MonitorData = MonitorSnapshot;
+type TimeseriesPoint = MonitorTimeseriesPoint;
+type HistoryPoint = MonitorHistoryPoint;
+type WsMetrics = MonitorWsMetrics;
+type WsConnection = MonitorWsConnection;
+type WsDisconnect = MonitorWsDisconnect;
+type HttpStats = MonitorHttpStats;
+type TopProcesses = MonitorTopProcesses;
+type TopProcessItem = MonitorTopProcessItem;
+type DbSlowQuery = NonNullable<MonitorDbInfo['slowQueries']>[number];
+type RedisSlowEntry = MonitorRedisInfo['slowLog'][number];
 
-interface PerCoreCpu { index: number; usage: number; user: number; system: number; idle: number; }
-
-interface NetIfaceStats {
-  name: string; rxBytes: number; txBytes: number; rxBps: number; txBps: number;
-  rxPackets: number; txPackets: number; rxErrors: number; txErrors: number;
-}
-
-interface DiskItem {
-  filesystem: string; total: number; used: number; free: number; usagePercent: number; mount: string;
-}
-
-interface TopProcessItem { pid: number; name: string; cpu: number; memPercent: number; memBytes: number; }
-interface TopProcesses { byCpu: TopProcessItem[]; byMemory: TopProcessItem[]; }
-interface TemperatureSensor { label: string; celsius: number; }
-interface TemperatureInfo { cpu: number | null; sensors: TemperatureSensor[]; }
-
-interface LinuxMemDetail {
-  memTotal: number; memFree: number; memAvailable: number;
-  buffers: number; cached: number; shared: number;
-  swapTotal: number; swapFree: number; swapCached: number; swapUsagePercent: number;
-  dirty: number; writeback: number;
-}
-
-interface MonitorData {
-  os: { platform: string; release: string; arch: string; hostname: string; uptimeSeconds: number; };
-  cpu: { model: string; cores: number; speed: number; loadAvg: [number, number, number]; usage: number; perCore?: PerCoreCpu[] };
-  memory: { total: number; used: number; free: number; usagePercent: number; detail?: LinuxMemDetail | null };
-  disk: { total: number; used: number; free: number; usagePercent: number; mount?: string } | null;
-  disks?: DiskItem[];
-  diskIo?: { readBps: number; writeBps: number };
-  network?: NetIfaceStats[];
-  topProcesses?: TopProcesses | null;
-  temperature?: TemperatureInfo | null;
-  node: {
-    version: string; uptime: number; pid: number;
-    memoryUsage: { rss: number; heapTotal: number; heapUsed: number; external: number; arrayBuffers?: number };
-    cpuUsagePercent?: number;
-    eventLoop?: EventLoopStats;
-    gc?: GcStats;
-    heapSpaces?: HeapSpace[];
-    resourceUsage?: ResourceUsage;
-  };
-  http?: HttpStats;
-  database: DbInfo | null;
-  redis: RedisInfo | null;
-}
-
-interface TimeseriesPoint {
-  t: number; cpu: number; mem: number; procCpu: number; heap: number;
-  loopLagMean: number; loopLagP99: number; qps: number; errorRate: number;
-  netRxBps?: number; netTxBps?: number; diskReadBps?: number; diskWriteBps?: number;
-  dbConnections?: number; redisMemBytes?: number; redisHitRate?: number;
-}
-interface HistoryPoint {
-  t: string; cpu: number; memory: number; disk: number; swap: number; load1: number;
-  procCpu: number; heap: number; loopLag: number; qps: number; errorRate: number;
-  netRxBps: number; netTxBps: number; diskReadBps: number; diskWriteBps: number;
-  cpuMax?: number; memoryMax?: number; diskMax?: number; swapMax?: number; load1Max?: number;
-  procCpuMax?: number; heapMax?: number; loopLagMax?: number; qpsMax?: number; errorRateMax?: number;
-  netRxBpsMax?: number; netTxBpsMax?: number; diskReadBpsMax?: number; diskWriteBpsMax?: number;
-}
-
-const HISTORY_RANGES: { label: string; value: string }[] = [
+const HISTORY_RANGES: { label: string; value: MonitorHistoryRange }[] = [
   { label: '近 1 小时', value: '1h' },
   { label: '近 6 小时', value: '6h' },
   { label: '近 24 小时', value: '24h' },
   { label: '近 7 天', value: '7d' },
   { label: '近 30 天', value: '30d' },
 ];
-
-interface WsConnection {
-  tokenId: string;
-  userId: number;
-  username: string | null;
-  nickname: string | null;
-  connectedAt: number;
-  lastActivityAt: number;
-  sent: number;
-  recv: number;
-}
-interface WsDisconnect {
-  tokenId: string;
-  userId: number;
-  username: string | null;
-  nickname: string | null;
-  at: number;
-  reason: string;
-  duration: number;
-  sent: number;
-  recv: number;
-}
-interface WsMetrics {
-  currentConnections: number;
-  currentUsers: number;
-  totalConnects: number;
-  totalDisconnects: number;
-  totalSent: number;
-  totalRecv: number;
-  connections: WsConnection[];
-  recentDisconnects: WsDisconnect[];
-}
 
 const numberFormatter = new Intl.NumberFormat('zh-CN');function formatNumber(value: number): string { return numberFormatter.format(value); }
 
@@ -204,7 +95,7 @@ const MONITOR_PREFS_KEY = 'zenith_monitor_prefs';
 interface MonitorPrefs {
   activeTab?: string;
   refreshInterval?: number;
-  historyRange?: string;
+  historyRange?: MonitorHistoryRange;
   historyStat?: 'avg' | 'max';
 }
 function loadPrefs(): MonitorPrefs {
@@ -260,7 +151,9 @@ export default function MonitorPage() {
   // URL ?tab= 优先定位；无参数时回落到用户上次停留的 Tab（偏好记忆），偏好值非法时回总览
   const savedTab = prefsRef.current.activeTab as MonitorTab | undefined;
   const [activeTab, setActiveTab] = useUrlTabState(MONITOR_TABS, savedTab && MONITOR_TABS.includes(savedTab) ? savedTab : 'overview');
-  const [historyRange, setHistoryRange] = useState<string>(prefsRef.current.historyRange ?? '1h');
+  const [historyRange, setHistoryRange] = useState<MonitorHistoryRange>(
+    enumValueOf(MONITOR_HISTORY_RANGES, prefsRef.current.historyRange) ?? '1h',
+  );
   /** 历史趋势统计口径：avg=桶内均值，max=桶内峰值（毛刺可见，用于容量规划） */
   const [historyStat, setHistoryStat] = useState<'avg' | 'max'>(prefsRef.current.historyStat ?? 'avg');
   /** WS Tab 时长列 30s 自刷新 tick */
@@ -274,11 +167,11 @@ export default function MonitorPage() {
   const [sseStatus, setSseStatus] = useState<'idle' | 'connecting' | 'open' | 'error'>('idle');
   const sseAbortRef = useRef<AbortController | null>(null);
 
-  const snapshotQuery = useMonitorSnapshot<MonitorData, TimeseriesPoint, WsMetrics>(
+  const snapshotQuery = useMonitorSnapshot(
     refreshInterval > 0 ? refreshInterval : false,
     refreshInterval !== -1,
   );
-  const historyQuery = useMonitorHistory<HistoryPoint>(historyRange, activeTab === 'history');
+  const historyQuery = useMonitorHistory(historyRange, activeTab === 'history');
   const connectionsPagination = buildConnectionsPagination(wsMetrics?.connections.length ?? 0);
   const disconnectsPagination = buildDisconnectsPagination(wsMetrics?.recentDisconnects.length ?? 0);
   const history = historyQuery.data?.points ?? EMPTY_HISTORY;
@@ -401,7 +294,7 @@ export default function MonitorPage() {
     const connectOnce = async (): Promise<boolean> => {
       try {
         setSseStatus('connecting');
-        const res = await request.fetchRaw('/api/monitor/stream', { signal: ctrl.signal, silent: true });
+        const res = await request.fetchRaw(urlOf(monitorContract.stream), { signal: ctrl.signal, silent: true });
         if (!res || !res.ok || !res.body) return !ctrl.signal.aborted;
         setSseStatus('open');
         await readSseStream(res, (events) => {
@@ -601,7 +494,7 @@ export default function MonitorPage() {
             />
             <Select
               value={historyRange}
-              onChange={(v) => setHistoryRange(v as string)}
+              onChange={(v) => setHistoryRange(v as MonitorHistoryRange)}
               optionList={HISTORY_RANGES}
               style={{ width: 130 }}
               size="small"

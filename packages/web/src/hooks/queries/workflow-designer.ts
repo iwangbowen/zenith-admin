@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse } from '@zenith/shared/core';
-import type { Dict } from '@zenith/shared/platform';
+import { dictContract } from '@zenith/shared/platform';
+import { decisionFlowContract, decisionTableContract, ruleScorecardContract } from '@zenith/shared/rules';
 import type { WorkflowDataSource, WorkflowDataSourceOption, WorkflowDefinition, WorkflowDefinitionHealthReport, WorkflowFlowData, WorkflowForm, WorkflowRelationOption, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationResult } from '@zenith/shared/workflow';
 import { request } from '@/utils/request';
 import { api } from '@/lib/contract-query';
@@ -71,21 +72,26 @@ export function useWorkflowDesignerConnectorOptions(enabled = true) {
 
 export type WorkflowDecisionRefKind = 'table' | 'scorecard' | 'flow';
 
-const DECISION_REF_ENDPOINTS: Record<WorkflowDecisionRefKind, string> = {
-  table: '/api/rules/decision-tables',
-  scorecard: '/api/rules/scorecards',
-  flow: '/api/rules/decision-flows',
-};
+/** 按类型取规则中心已发布资产（决策表/评分卡/决策流），仅保留下拉所需的 key / name */
+function fetchPublishedDecisionRefs(kind: WorkflowDecisionRefKind): Promise<Array<{ key: string; name: string }>> {
+  const query = { status: 'published' as const, pageSize: 100 };
+  switch (kind) {
+    case 'table':
+      return api(decisionTableContract.list, { query }).then((data) => data.list);
+    case 'scorecard':
+      return api(ruleScorecardContract.list, { query }).then((data) => data.list);
+    case 'flow':
+      return api(decisionFlowContract.list, { query }).then((data) => data.list);
+  }
+}
 
 /** 网关决策资产下拉源：按类型取规则中心已发布资产（决策表/评分卡/决策流） */
 export function useWorkflowDesignerDecisionRefOptions(kind: WorkflowDecisionRefKind, enabled = true) {
   return useQuery({
     queryKey: workflowDesignerKeys.decisionRefOptions(kind),
     queryFn: () =>
-      request
-        .get<{ list: Array<{ key: string; name: string }> }>(`${DECISION_REF_ENDPOINTS[kind]}?status=published&pageSize=100`)
-        .then(unwrap)
-        .then((data) => data.list.map((t) => ({ value: t.key, label: `${t.name}（${t.key}）` }))),
+      fetchPublishedDecisionRefs(kind)
+        .then((list) => list.map((t) => ({ value: t.key, label: `${t.name}（${t.key}）` }))),
     staleTime: LOOKUP_STALE_TIME,
     enabled,
   });
@@ -125,9 +131,7 @@ export function useWorkflowDesignerDictOptions() {
   return useQuery({
     queryKey: workflowDesignerKeys.dictOptions,
     queryFn: () =>
-      request
-        .get<PaginatedResponse<Dict>>('/api/dicts?page=1&pageSize=200', { silent: true })
-        .then(unwrap)
+      api(dictContract.list, { query: { page: 1, pageSize: 200 } }, { silent: true })
         .then((data) => data.list.map((d) => ({ code: d.code, name: d.name }))),
     staleTime: LOOKUP_STALE_TIME,
   });

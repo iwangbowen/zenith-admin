@@ -1,15 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { IpAccessLog, SystemConfig } from '@zenith/shared/platform';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { QueryOf } from '@zenith/shared/core';
+import { ipAccessLogContract, systemConfigContract, type SystemConfig } from '@zenith/shared/platform';
+import { api, contractKey, useApiQuery } from '@/lib/contract-query';
 
-export interface IpAccessLogListParams {
-  page: number;
-  pageSize: number;
-  ip?: string;
-  blockType?: string;
-}
+export type IpAccessLogListParams = NonNullable<QueryOf<typeof ipAccessLogContract.list>>;
 
 export interface IpConfigMap {
   ip_whitelist_enabled?: SystemConfig;
@@ -18,26 +12,23 @@ export interface IpConfigMap {
   ip_blacklist?: SystemConfig;
 }
 
+/** IP 访问控制页把「拦截日志」与「派生自系统配置的开关」放在同一命名空间下，保存后一并回源 */
 export const ipAccessKeys = {
   all: ['ip-access'] as const,
   config: ['ip-access', 'config'] as const,
-  logs: ['ip-access', 'logs'] as const,
-  logList: (params: IpAccessLogListParams) => ['ip-access', 'logs', params] as const,
+  logs: contractKey(ipAccessLogContract.list),
+  logList: (params: IpAccessLogListParams) => contractKey(ipAccessLogContract.list, { query: params }),
 };
 
 export function useIpAccessLogs(params: IpAccessLogListParams) {
-  return useQuery({
-    queryKey: ipAccessKeys.logList(params),
-    queryFn: () => request.get<PaginatedResponse<IpAccessLog>>(`/api/ip-access-logs${toQueryString(params)}`).then(unwrap),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(ipAccessLogContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useIpAccessConfigs() {
   return useQuery({
     queryKey: ipAccessKeys.config,
     queryFn: async () => {
-      const data = await request.get<PaginatedResponse<SystemConfig>>('/api/system-configs?keyword=ip_&pageSize=20').then(unwrap);
+      const data = await api(systemConfigContract.list, { query: { keyword: 'ip_', pageSize: 20 } });
       const map: IpConfigMap = {};
       for (const item of data.list) {
         if (item.configKey === 'ip_whitelist_enabled') map.ip_whitelist_enabled = item;
@@ -50,11 +41,11 @@ export function useIpAccessConfigs() {
   });
 }
 
-function upsertConfig(existing: SystemConfig | undefined, configKey: string, configType: string, configValue: string, description: string) {
+function upsertConfig(existing: SystemConfig | undefined, configKey: string, configName: string, configType: SystemConfig['configType'], configValue: string, description: string) {
   if (existing?.id) {
-    return request.put<SystemConfig>(`/api/system-configs/${existing.id}`, { configValue }).then(unwrap);
+    return api(systemConfigContract.update, { params: { id: existing.id }, body: { configValue } });
   }
-  return request.post<SystemConfig>('/api/system-configs', { configKey, configType, configValue, description }).then(unwrap);
+  return api(systemConfigContract.create, { body: { configKey, configName, configType, configValue, description } });
 }
 
 export function useSaveIpAccessSection() {
@@ -73,13 +64,13 @@ export function useSaveIpAccessSection() {
     }) => {
       if (section === 'whitelist') {
         await Promise.all([
-          upsertConfig(configs.ip_whitelist_enabled, 'ip_whitelist_enabled', 'boolean', String(enabled), '是否开启IP白名单访问控制'),
-          upsertConfig(configs.ip_whitelist, 'ip_whitelist', 'json', listJson, 'IP白名单列表（支持CIDR，JSON数组）'),
+          upsertConfig(configs.ip_whitelist_enabled, 'ip_whitelist_enabled', 'IP 白名单开关', 'boolean', String(enabled), '是否开启IP白名单访问控制'),
+          upsertConfig(configs.ip_whitelist, 'ip_whitelist', 'IP 白名单', 'json', listJson, 'IP白名单列表（支持CIDR，JSON数组）'),
         ]);
       } else {
         await Promise.all([
-          upsertConfig(configs.ip_blacklist_enabled, 'ip_blacklist_enabled', 'boolean', String(enabled), '是否开启IP黑名单访问控制'),
-          upsertConfig(configs.ip_blacklist, 'ip_blacklist', 'json', listJson, 'IP黑名单列表（支持CIDR，JSON数组）'),
+          upsertConfig(configs.ip_blacklist_enabled, 'ip_blacklist_enabled', 'IP 黑名单开关', 'boolean', String(enabled), '是否开启IP黑名单访问控制'),
+          upsertConfig(configs.ip_blacklist, 'ip_blacklist', 'IP 黑名单', 'json', listJson, 'IP黑名单列表（支持CIDR，JSON数组）'),
         ]);
       }
     },
