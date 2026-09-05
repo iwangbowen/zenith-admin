@@ -1,6 +1,8 @@
 import * as z from 'zod';
+import { dateRangeBound } from '../core/api-schemas';
 import { httpUrl, lazyRecursive, linkUrl, partialForUpdate } from '../core/validation';
 import { isHttpUrl } from '../core/url';
+import { WORKFLOW_EVENT_SIGN_MODES, WORKFLOW_EVENT_TYPES, WORKFLOW_JOB_TYPES } from './constants';
 import type { WorkflowFieldVisibilityRuleGroup, WorkflowFormCascaderNode, WorkflowFormField } from './types';
 
 // ─── 工作流引擎 Schema ────────────────────────────────────────────────────────
@@ -200,7 +202,7 @@ export const workflowFieldVisibilityRuleGroupSchema: z.ZodType<WorkflowFieldVisi
     logic: z.enum(['and', 'or']),
     rules: z.array(z.union([workflowFieldVisibilityRuleGroupSchema, workflowFieldVisibilityConditionSchema])),
   })
-);
+).meta({ id: 'WorkflowFieldVisibilityRuleGroup' });
 
 export const workflowFormCascaderNodeSchema: z.ZodType<WorkflowFormCascaderNode> = lazyRecursive(() =>
   z.object({
@@ -208,7 +210,7 @@ export const workflowFormCascaderNodeSchema: z.ZodType<WorkflowFormCascaderNode>
     label: z.string().optional(),
     children: z.array(workflowFormCascaderNodeSchema).optional(),
   })
-);
+).meta({ id: 'WorkflowFormCascaderNode' });
 
 export const workflowFormFieldSchema: z.ZodType<WorkflowFormField> = lazyRecursive(() =>
   z.object({
@@ -320,7 +322,23 @@ export const workflowFormFieldSchema: z.ZodType<WorkflowFormField> = lazyRecursi
     collapsible: z.boolean().optional(),
     defaultCollapsed: z.boolean().optional(),
   })
-);
+).meta({ id: 'WorkflowFormField' });
+
+// ─── 流程分类 ─────────────────────────────────────────────────────────────────
+export const createWorkflowCategorySchema = z.object({
+  name: z.string().min(1).max(64),
+  code: z.string().max(64).nullable().optional(),
+  icon: z.string().max(64).nullable().optional(),
+  color: z.string().max(16).nullable().optional(),
+  sort: z.number().int().optional(),
+  description: z.string().max(500).nullable().optional(),
+});
+
+export const updateWorkflowCategorySchema = partialForUpdate(createWorkflowCategorySchema);
+
+export type CreateWorkflowCategoryInput = z.input<typeof createWorkflowCategorySchema>;
+
+export type UpdateWorkflowCategoryInput = z.input<typeof updateWorkflowCategorySchema>;
 
 // ─── 表单库 ─────────────────────────────────────────────────────────────────
 
@@ -946,3 +964,108 @@ export type CreateWorkflowConsultInput = z.infer<typeof createWorkflowConsultSch
 export type ReplyWorkflowConsultInput = z.infer<typeof replyWorkflowConsultSchema>;
 
 export type RecallWorkflowTaskInput = z.infer<typeof recallWorkflowTaskSchema>;
+
+// ── 事件订阅 ──
+export const createWorkflowEventSubscriptionSchema = z.object({
+  name: z.string().min(1).max(64),
+  description: z.string().max(256).nullish(),
+  definitionId: z.number().int().nullish(),
+  events: z.array(z.enum(WORKFLOW_EVENT_TYPES)).min(1),
+  url: z.string().min(1).regex(/^https?:\/\//i, '必须是 http:// 或 https:// 开头的 URL'),
+  secret: z.string().max(256).nullish(),
+  signMode: z.enum(WORKFLOW_EVENT_SIGN_MODES).optional(),
+  headers: z.record(z.string(), z.string()).nullish(),
+  connectorId: z.number().int().positive().nullish(),
+  enabled: z.boolean().optional(),
+});
+
+export const updateWorkflowEventSubscriptionSchema = partialForUpdate(createWorkflowEventSubscriptionSchema);
+
+export const toggleWorkflowEventSubscriptionSchema = z.object({ enabled: z.boolean() });
+
+/** 按筛选批量重放投递（含补发已成功） */
+export const replayWorkflowEventDeliveriesSchema = z.object({
+  subscriptionId: z.number().int().positive().optional(),
+  eventType: z.enum(WORKFLOW_EVENT_TYPES).optional(),
+  status: z.enum(['success', 'failed', 'pending', 'all']).optional(),
+  startAt: dateRangeBound('起始时间'),
+  endAt: dateRangeBound('结束时间'),
+});
+
+export type CreateWorkflowEventSubscriptionInput = z.input<typeof createWorkflowEventSubscriptionSchema>;
+
+export type UpdateWorkflowEventSubscriptionInput = z.input<typeof updateWorkflowEventSubscriptionSchema>;
+
+export type ReplayWorkflowEventDeliveriesInput = z.infer<typeof replayWorkflowEventDeliveriesSchema>;
+
+// ── 执行 Token 运维 ──
+export const workflowTokenOpSchema = z.object({ reason: z.string().max(255).optional() });
+
+// ── 补偿工单 ──
+export const resolveWorkflowCompensationSchema = z.object({
+  action: z.enum(['resolve', 'terminate']),
+  resolution: z.string().optional(),
+});
+
+export const addWorkflowCompensationNoteSchema = z.object({
+  note: z.string().max(4000).optional(),
+  attachments: z.array(z.object({ id: z.number().int(), name: z.string(), url: z.string() })).optional(),
+});
+
+// ── 流程引擎运维 ──
+/** 运维动作筛选条件（jobType 由动作固定，此处为附加维度） */
+export const workflowEngineActionFilterSchema = z.object({
+  instanceId: z.number().int().positive().optional(),
+  olderThanMinutes: z.number().int().min(0).max(60 * 24 * 30).optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+});
+
+/** 重试 / 改参重放作业 */
+export const workflowJobRetrySchema = z.object({
+  payload: z.record(z.string(), z.unknown()).optional(),
+});
+
+/** 批量重试作业：选中的作业 id + 可选限流速率 */
+export const workflowJobBatchRetrySchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1),
+  ratePerSecond: z.number().int().min(1).max(200).optional(),
+});
+
+/** 死信条件重放过滤条件（多维：类型/实例/traceId/错误原因/入库时长） */
+export const workflowJobReplayFilterSchema = z.object({
+  status: z.enum(['dead', 'failed']).optional(),
+  jobType: z.enum(WORKFLOW_JOB_TYPES).optional(),
+  instanceId: z.number().int().positive().optional(),
+  traceId: z.string().trim().min(1).max(128).optional(),
+  reasonKeyword: z.string().trim().min(1).max(200).optional(),
+  olderThanMinutes: z.number().int().min(0).max(60 * 24 * 30).optional(),
+});
+
+/** 死信重放：过滤条件 + 限流（ratePerSecond 条/秒错峰）+ 单次上限 limit */
+export const workflowJobReplaySchema = workflowJobReplayFilterSchema.extend({
+  ratePerSecond: z.number().int().min(1).max(200).optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+});
+
+export type WorkflowEngineActionFilterInput = z.infer<typeof workflowEngineActionFilterSchema>;
+
+export type WorkflowJobReplayFilterInput = z.infer<typeof workflowJobReplayFilterSchema>;
+
+export type WorkflowJobReplayInput = z.infer<typeof workflowJobReplaySchema>;
+
+// ── 公开回调（外部审批 / 触发器） ──
+export const workflowExternalCallbackSchema = z.object({
+  action: z.enum(['approve', 'reject']),
+  comment: z.string().max(1024).optional(),
+  approverName: z.string().min(1).max(64).optional(),
+});
+
+export const workflowTriggerCallbackSchema = z.object({
+  comment: z.string().max(1024).optional(),
+  callerName: z.string().min(1).max(64).optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type WorkflowExternalCallbackInput = z.infer<typeof workflowExternalCallbackSchema>;
+
+export type WorkflowTriggerCallbackInput = z.infer<typeof workflowTriggerCallbackSchema>;

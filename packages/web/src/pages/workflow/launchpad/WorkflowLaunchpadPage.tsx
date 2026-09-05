@@ -79,7 +79,7 @@ export default function WorkflowLaunchpadPage() {
     const { values, formData } = result;
     const mutation = asDraft ? draftMutation : launchMutation;
     await mutation.mutateAsync({
-      values: {
+      body: {
         definitionId: selectedDef.id,
         title: values.title,
         formData,

@@ -1,15 +1,13 @@
 import { lazy, Suspense, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, JsonViewer, Modal, SideSheet, Space, Spin, Tabs, TabPane, Tag, Timeline, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Download, FileText, UserRoundCog } from 'lucide-react';
 import dayjs from 'dayjs';
-import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowDefinition, WorkflowExecutionToken, WorkflowFlowData, WorkflowInstance, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared/workflow';
+import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowExecutionToken, WorkflowFlowData, WorkflowInstanceListItem, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared/workflow';
 import { WORKFLOW_ISSUE_SEVERITY_META as ISSUE_SEVERITY_MAP } from './constants';
-import { request } from '@/utils/request';
 import { downloadBlob } from '@/utils/download';
-import { unwrap } from '@/lib/query';
 import { UserAvatar } from '@/components/UserAvatar';
 import AppModal from '@/components/AppModal';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -40,12 +38,23 @@ import WorkflowEngineTraceView from './WorkflowEngineTraceView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
+  fetchWorkflowDiagnosticBundle,
+  useCancelWorkflowInstance,
+  useDeleteWorkflowInstanceAsAdmin,
+  useJumpWorkflowInstance,
+  useMigrateWorkflowInstance,
+  useReassignWorkflowTask,
+  useResumeWorkflowInstance,
+  useSuspendWorkflowInstance,
   useWorkflowDefinitionDetail,
   useWorkflowInstanceDetail,
   useWorkflowMigratePreflight,
+  useWorkflowMonitorDefinitionOptions,
   useWorkflowMonitorList,
   useWorkflowRuntimeDiagnostics,
-  useWorkflowStateMutation,
+  useWorkflowTokenOperation,
+  workflowMonitorDefinitionDetailQuery,
+  workflowMonitorInstanceDetailQuery,
   workflowMonitorKeys,
 } from '@/hooks/queries/workflow-monitor';
 import { useAllUsers } from '@/hooks/queries/users';
@@ -404,23 +413,27 @@ export default function WorkflowMonitorPage() {
   const [defSnapshotVisible, setDefSnapshotVisible] = useState(false);
 
   // 流程定义（用于数据分析筛选 + 强制跳转节点选择）
-  const definitionsQuery = useQuery({
-    queryKey: ['workflow', 'definitions', 'options'] as const,
-    queryFn: () => request.get<WorkflowDefinition[]>('/api/workflows/definitions/published').then(unwrap),
-  });
+  const definitionsQuery = useWorkflowMonitorDefinitionOptions();
   const definitions = definitionsQuery.data ?? [];
   // 管理员：强制跳转
-  const [jumpRecord, setJumpRecord] = useState<WorkflowInstance | null>(null);
+  const [jumpRecord, setJumpRecord] = useState<WorkflowInstanceListItem | null>(null);
   const [jumpNodes, setJumpNodes] = useState<Array<{ label: string; value: string }>>([]);
   const [jumpActiveTasks, setJumpActiveTasks] = useState<WorkflowTask[]>([]);
   const jumpFormApi = useRef<FormApi | null>(null);
   // 管理员：改派处理人
-  const [reassignRecord, setReassignRecord] = useState<WorkflowInstance | null>(null);
+  const [reassignRecord, setReassignRecord] = useState<WorkflowInstanceListItem | null>(null);
   const [reassignTasks, setReassignTasks] = useState<Array<{ label: string; value: number }>>([]);
   const reassignFormApi = useRef<FormApi | null>(null);
   // 管理员：离职交接
   const [handoverVisible, setHandoverVisible] = useState(false);
-  const stateMutation = useWorkflowStateMutation();
+  const cancelMutation = useCancelWorkflowInstance();
+  const suspendMutation = useSuspendWorkflowInstance();
+  const resumeMutation = useResumeWorkflowInstance();
+  const migrateMutation = useMigrateWorkflowInstance();
+  const deleteMutation = useDeleteWorkflowInstanceAsAdmin();
+  const jumpMutation = useJumpWorkflowInstance();
+  const reassignMutation = useReassignWorkflowTask();
+  const tokenOpMutation = useWorkflowTokenOperation();
   const migratePreflightMutation = useWorkflowMigratePreflight();
   const allUsersQuery = useAllUsers({ enabled: !!reassignRecord });
   const userOptions = (allUsersQuery.data ?? []).map((u) => ({ label: u.nickname ?? u.username, value: u.id }));
@@ -437,7 +450,7 @@ export default function WorkflowMonitorPage() {
     setDetailId(instanceId);
   };
 
-  const openDetail = (item: WorkflowInstance) => {
+  const openDetail = (item: WorkflowInstanceListItem) => {
     setDetailVisible(true);
     loadDetail(item.id);
   };
@@ -447,24 +460,23 @@ export default function WorkflowMonitorPage() {
     setDiagnosticsId(instanceId);
     setDiagnosticsTab('nodes');
   };
-  const openDiagnostics = (item: WorkflowInstance) => openDiagnosticsById(item.id);
+  const openDiagnostics = (item: WorkflowInstanceListItem) => openDiagnosticsById(item.id);
 
   /** Token 运营恢复操作（跳过卡死 / 从节点重放），成功后刷新诊断 */
   const runTokenOp = async (tokenId: number, op: 'skip' | 'replay') => {
-    await stateMutation.mutateAsync({ url: `/api/workflows/instances/tokens/${tokenId}/${op}` });
+    await tokenOpMutation.mutateAsync({ op, params: { id: tokenId }, body: {} });
     Toast.success(op === 'skip' ? '已跳过并推进' : '已从该节点重放');
     if (diagnostics) void diagnosticsQuery.refetch();
   };
 
   /** 导出实例诊断包（诊断 + 轨迹 + 执行 Token）为 JSON 文件 */
   const exportDiagnosticBundle = async (instanceId: number) => {
-    const res = await request.get<unknown>(`/api/workflows/instances/${instanceId}/diagnostic-bundle`);
-    if (res.code !== 0) return;
-    const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+    const bundle = await fetchWorkflowDiagnosticBundle(instanceId);
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
     downloadBlob(blob, `workflow-diagnostic-${instanceId}.json`);
   };
 
-  const handleCancel = (record: WorkflowInstance) => {
+  const handleCancel = (record: WorkflowInstanceListItem) => {
     confirmDanger({
       title: '取消流程',
       content: `确定要强制取消流程「${record.title}」吗？取消后流程将立即终止，待办任务会被跳过，此操作不可恢复。`,
@@ -472,13 +484,13 @@ export default function WorkflowMonitorPage() {
       okButtonProps: { type: 'warning', theme: 'solid' },
       cancelText: '关闭',
       onOk: async () => {
-        await stateMutation.mutateAsync({ url: `/api/workflows/instances/${record.id}/cancel` });
+        await cancelMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('流程已取消');
       },
     });
   };
 
-  const handleSuspend = (record: WorkflowInstance) => {
+  const handleSuspend = (record: WorkflowInstanceListItem) => {
     let reason = '';
     Modal.confirm({
       title: '挂起流程',
@@ -495,13 +507,13 @@ export default function WorkflowMonitorPage() {
       cancelText: '关闭',
       onOk: async () => {
         if (!reason.trim()) { Toast.warning('请填写挂起原因'); return Promise.reject(new Error('validation')); }
-        await stateMutation.mutateAsync({ url: `/api/workflows/instances/${record.id}/suspend`, body: { reason: reason.trim() } });
+        await suspendMutation.mutateAsync({ params: { id: record.id }, body: { reason: reason.trim() } });
         Toast.success('流程已挂起，计时已冻结');
       },
     });
   };
 
-  const handleResume = (record: WorkflowInstance) => {
+  const handleResume = (record: WorkflowInstanceListItem) => {
     Modal.confirm({
       title: '恢复流程',
       content: `确定恢复流程「${record.title}」吗？恢复后待办可继续处理，超时计时按挂起前剩余时长续跑。${record.suspendReason ? `挂起原因：${record.suspendReason}` : ''}`,
@@ -509,33 +521,33 @@ export default function WorkflowMonitorPage() {
       okButtonProps: { type: 'primary', theme: 'solid' },
       cancelText: '关闭',
       onOk: async () => {
-        await stateMutation.mutateAsync({ url: `/api/workflows/instances/${record.id}/resume` });
+        await resumeMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('流程已恢复流转');
       },
     });
   };
 
-  const handleMigrate = async (record: WorkflowInstance) => {
+  const handleMigrate = async (record: WorkflowInstanceListItem) => {
     const p = await migratePreflightMutation.mutateAsync(record.id);
     if (!p) return;
     if (!p.migratable) { Toast.warning(p.blocked.length ? `无法迁移：新版本缺失节点 ${p.blocked.join(', ')}` : '无需迁移或已是最新版本'); return; }
     Modal.confirm({
       title: '迁移到最新版本', content: `将实例「${record.title}」从 v${p.fromVersion} 迁移到 v${p.toVersion}？`,
       onOk: async () => {
-        await stateMutation.mutateAsync({ url: `/api/workflows/${record.id}/migrate` });
+        await migrateMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('迁移成功');
       },
     });
   };
 
-  const handleDelete = (record: WorkflowInstance) => {
+  const handleDelete = (record: WorkflowInstanceListItem) => {
     confirmDelete({
       title: '删除流程',
       content: `确定要删除流程「${record.title}」吗？删除后该流程及其审批记录将被永久移除，此操作不可恢复。`,
       okText: '确定删除',
       cancelText: '取消',
       onOk: async () => {
-        await stateMutation.mutateAsync({ url: `/api/workflows/instances/${record.id}`, method: 'delete' });
+        await deleteMutation.mutateAsync({ params: { id: record.id } });
         Toast.success('流程已删除');
       },
     });
@@ -545,19 +557,13 @@ export default function WorkflowMonitorPage() {
   // 首次加载完成前显示占位符，避免统计短暂闪现误导性的 0
   const statValue = (v: number) => (listQuery.isLoading ? '—' : v);
 
-  const openJump = async (record: WorkflowInstance) => {
+  const openJump = async (record: WorkflowInstanceListItem) => {
     setJumpRecord(record);
     setJumpNodes([]);
     setJumpActiveTasks([]);
     const [definition, instance] = await Promise.all([
-      queryClient.fetchQuery({
-        queryKey: workflowMonitorKeys.definitionDetail(record.definitionId),
-        queryFn: () => request.get<WorkflowDefinition>(`/api/workflows/definitions/${record.definitionId}`).then(unwrap),
-      }),
-      queryClient.fetchQuery({
-        queryKey: workflowMonitorKeys.monitorDetail(record.id),
-        queryFn: () => request.get<WorkflowInstance>(`/api/workflows/instances/${record.id}`).then(unwrap),
-      }),
+      queryClient.fetchQuery(workflowMonitorDefinitionDetailQuery(record.definitionId)),
+      queryClient.fetchQuery(workflowMonitorInstanceDetailQuery(record.id)),
     ]);
     const nodes = (definition.flowData?.nodes ?? [])
       .filter((n) => n.data.type === 'approve' || n.data.type === 'handler')
@@ -570,19 +576,16 @@ export default function WorkflowMonitorPage() {
     if (!jumpRecord) return;
     try {
       const values = await jumpFormApi.current?.validate() as { targetNodeKey: string; comment: string };
-      await stateMutation.mutateAsync({ url: `/api/workflows/instances/${jumpRecord.id}/jump`, body: values });
+      await jumpMutation.mutateAsync({ params: { id: jumpRecord.id }, body: values });
       Toast.success('已强制跳转');
       setJumpRecord(null);
     } catch { /* validation */ }
   };
 
-  const openReassign = async (record: WorkflowInstance) => {
+  const openReassign = async (record: WorkflowInstanceListItem) => {
     setReassignRecord(record);
     setReassignTasks([]);
-    const instance = await queryClient.fetchQuery({
-      queryKey: workflowMonitorKeys.monitorDetail(record.id),
-      queryFn: () => request.get<WorkflowInstance>(`/api/workflows/instances/${record.id}`).then(unwrap),
-    });
+    const instance = await queryClient.fetchQuery(workflowMonitorInstanceDetailQuery(record.id));
     const tasks = (instance.tasks ?? [])
       .filter((t: WorkflowTask) => t.status === 'pending')
       .map((t: WorkflowTask) => ({ label: `${t.nodeName} · ${t.assigneeName ?? '未指派'}`, value: t.id }));
@@ -593,7 +596,7 @@ export default function WorkflowMonitorPage() {
     if (!reassignRecord) return;
     try {
       const values = await reassignFormApi.current?.validate() as { taskId: number; targetUserId: number; comment?: string };
-      await stateMutation.mutateAsync({ url: `/api/workflows/tasks/${values.taskId}/reassign`, body: { targetUserId: values.targetUserId, comment: values.comment } });
+      await reassignMutation.mutateAsync({ params: { taskId: values.taskId }, body: { targetUserId: values.targetUserId, comment: values.comment } });
       Toast.success('已改派');
       setReassignRecord(null);
     } catch { /* validation */ }
@@ -943,12 +946,12 @@ export default function WorkflowMonitorPage() {
     );
   };
 
-  const columns: ColumnProps<WorkflowInstance>[] = [
+  const columns: ColumnProps<WorkflowInstanceListItem>[] = [
     {
       title: '申请标题',
       dataIndex: 'title',
       width: 220,
-      render: (v: string, record: WorkflowInstance) => (
+      render: (v: string, record: WorkflowInstanceListItem) => (
         <WorkflowInstanceCell instanceId={record.id} title={v} showSub={false} onOpen={() => openDetail(record)} />
       ),
     },
@@ -956,7 +959,7 @@ export default function WorkflowMonitorPage() {
       title: '优先级',
       dataIndex: 'priority',
       width: 80,
-      render: (v: WorkflowInstance['priority']) => <WorkflowPriorityTag priority={v} />,
+      render: (v: WorkflowInstanceListItem['priority']) => <WorkflowPriorityTag priority={v} />,
     },
     {
       title: '流程名称',
@@ -976,7 +979,7 @@ export default function WorkflowMonitorPage() {
       title: '当前节点',
       dataIndex: 'currentNodeName',
       width: 180,
-      render: (v: string | null | undefined, record: WorkflowInstance) => {
+      render: (v: string | null | undefined, record: WorkflowInstanceListItem) => {
         const names = (record.currentNodeNames && record.currentNodeNames.length > 0)
           ? record.currentNodeNames
           : (v ? [v] : []);
@@ -989,7 +992,7 @@ export default function WorkflowMonitorPage() {
       title: '申请人',
       dataIndex: 'initiatorName',
       width: 160,
-      render: (v: string | null, record: WorkflowInstance) => (
+      render: (v: string | null, record: WorkflowInstanceListItem) => (
         <Space spacing={6}>
           <UserAvatar name={v ?? '?'} avatar={record.initiatorAvatar} semiSize="extra-extra-small" size={20} />
           <span>{v ?? '—'}</span>
@@ -1003,7 +1006,7 @@ export default function WorkflowMonitorPage() {
       align: 'right',
       key: 'duration',
       width: 120,
-      render: (_: unknown, record: WorkflowInstance) => {
+      render: (_: unknown, record: WorkflowInstanceListItem) => {
         // 草稿尚未提交，从创建时间累计耗时没有意义
         if (record.status === 'draft') return <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>;
         const end = RUNNING_STATUSES.has(record.status) ? dayjs().format('YYYY-MM-DD HH:mm:ss') : record.updatedAt;
@@ -1020,7 +1023,7 @@ export default function WorkflowMonitorPage() {
         return <Tag color={s?.color ?? 'grey'}>{s?.text ?? v}</Tag>;
       },
     },
-    createOperationColumn<WorkflowInstance>({
+    createOperationColumn<WorkflowInstanceListItem>({
       width: 180,
       desktopInlineKeys: ['detail', 'diagnostics'],
       actions: (record) => {
@@ -1301,7 +1304,7 @@ export default function WorkflowMonitorPage() {
         visible={!!jumpRecord}
         onCancel={() => setJumpRecord(null)}
         onOk={() => void submitJump()}
-        okButtonProps={{ loading: stateMutation.isPending, type: 'warning', theme: 'solid' }}
+        okButtonProps={{ loading: jumpMutation.isPending, type: 'warning', theme: 'solid' }}
         okText="确认跳转"
         closeOnEsc
         width={460}
@@ -1333,7 +1336,7 @@ export default function WorkflowMonitorPage() {
         visible={!!reassignRecord}
         onCancel={() => setReassignRecord(null)}
         onOk={() => void submitReassign()}
-        okButtonProps={{ loading: stateMutation.isPending, type: 'primary' }}
+        okButtonProps={{ loading: reassignMutation.isPending, type: 'primary' }}
         okText="确认改派"
         closeOnEsc
         width={460}

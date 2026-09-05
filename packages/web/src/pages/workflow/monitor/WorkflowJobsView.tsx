@@ -3,9 +3,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Descriptions, Empty, Form, JsonViewer, Modal, Popconfirm, Radio, RadioGroup, Row, SideSheet, Space, Table, Tabs, TabPane, Tag, Timeline, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronsDownUp, ChevronsUpDown, Download } from 'lucide-react';
-import type { WorkflowJob, WorkflowJobExecution, WorkflowJobStatus, WorkflowJobSummaryItem, WorkflowJobType } from '@zenith/shared/workflow';
+import { workflowEngineContract, type WorkflowJob, type WorkflowJobClusterDimension, type WorkflowJobExecution, type WorkflowJobStatus, type WorkflowJobSummaryItem, type WorkflowJobType } from '@zenith/shared/workflow';
 import { WORKFLOW_JOB_STATUS_META as JOB_STATUS_META } from './constants';
-import { request } from '@/utils/request';
+import { api } from '@/lib/contract-query';
 import { downloadBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/date';
 import { confirmDanger } from '@/utils/confirm';
@@ -20,7 +20,6 @@ import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import {
   type FailureCluster,
   type FailureClusterJob,
-  type WorkflowJobReplayResult,
   useWorkflowJobActionMutation,
   useWorkflowJobBatchMutation,
   useWorkflowJobChain,
@@ -55,7 +54,7 @@ const JOB_TYPE_META: Record<WorkflowJobType, { text: string; color: TagColor }> 
 const JOB_TYPES = Object.keys(JOB_TYPE_META) as WorkflowJobType[];
 const JOB_TYPE_OPTIONS = JOB_TYPES.map((value) => ({ value, label: JOB_TYPE_META[value].text }));
 
-type ClusterDimension = 'reason' | 'jobType' | 'instance' | 'trace';
+type ClusterDimension = WorkflowJobClusterDimension;
 interface ReplayFilterState {
   status: 'dead' | 'failed';
   jobType?: WorkflowJobType;
@@ -268,12 +267,12 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
   });
 
   const doPreview = async () => {
-    const result = await replayPreviewMutation.mutateAsync(buildReplayBody(replayFilter));
-    setReplayPreview(result.matched ?? 0);
+    const result = await replayPreviewMutation.mutateAsync({ body: buildReplayBody(replayFilter) });
+    setReplayPreview(result.matched);
   };
 
   const doReplay = async () => {
-    const result = await replayMutation.mutateAsync({ ...buildReplayBody(replayFilter), ratePerSecond: replayFilter.ratePerSecond, limit: replayFilter.limit }) as WorkflowJobReplayResult;
+    const result = await replayMutation.mutateAsync({ body: { ...buildReplayBody(replayFilter), ratePerSecond: replayFilter.ratePerSecond, limit: replayFilter.limit } });
     Toast.success(`已重放 ${result.success}/${result.total}`);
     setReplayOpen(false);
     onMutated();
@@ -335,12 +334,8 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
   const downloadTraceBundle = useCallback(async (traceId: string) => {
     setBundleLoading(true);
     try {
-      const res = await request.get<unknown>(
-        `/api/workflows/engine/jobs/chain/${encodeURIComponent(traceId)}/diagnostic-bundle`,
-        { silent: true },
-      );
-      if (res.code !== 0) { Toast.warning(res.message || '导出失败'); return; }
-      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+      const bundle = await api(workflowEngineContract.jobChainBundle, { params: { traceId } }, { silent: true });
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
       downloadBlob(blob, `workflow-trace-${traceId}.json`);
     } catch {
       Toast.error('导出失败');

@@ -1,4 +1,5 @@
-import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowInstanceSummaryItem, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
+import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
+import type { WorkflowInstanceSummaryItem } from './contracts/instances';
 
 type WorkflowFlowNode = WorkflowFlowData['nodes'][number];
 

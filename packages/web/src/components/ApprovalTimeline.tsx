@@ -4,12 +4,13 @@ import FileAttachment from '@/components/FileAttachment';
 import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import { timelineDot } from '@/components/workflow/timeline-dot';
 import { TASK_STATUS_MAP } from '@/components/workflow/workflow-runtime';
-import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared/workflow';
+import { WORKFLOW_INSTANCE_STATUS_LABELS, workflowExternalCallbackContract } from '@zenith/shared/workflow';
 import { Bot, CheckCircle2, Clock, CornerUpLeft, Flag, Mail, RotateCcw, XCircle, ExternalLink, Copy, Forward, UserCog, Send, type LucideIcon } from 'lucide-react';
 import type { WorkflowTask, WorkflowInstanceStatus } from '@zenith/shared/workflow';
 import type { FlowNodeBrief } from '@/components/workflow/workflow-runtime';
 import { formatDateTime, formatDurationBetween } from '@/utils/date';
 import { copyTextWithToast } from '@/utils/clipboard';
+import { urlOf } from '@/lib/contract-query';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -370,7 +371,7 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
 }
 
 function ExternalCallbackUrl({ callbackId }: Readonly<{ callbackId: string }>) {
-  const path = `/api/public/workflow/external-callback/${callbackId}`;
+  const path = urlOf(workflowExternalCallbackContract.callback, { params: { callbackId } });
   const origin = globalThis.window === undefined ? '' : globalThis.window.location.origin;
   const fullUrl = `${origin}${path}`;
   const handleCopy = () => {

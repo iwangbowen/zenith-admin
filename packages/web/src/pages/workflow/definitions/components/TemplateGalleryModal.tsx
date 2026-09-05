@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Modal, Spin, Toast, Input, TextArea, Typography } from '@douyinfe/semi-ui';
 import { LayoutTemplate, ArrowLeft } from 'lucide-react';
-import type { WorkflowTemplate, WorkflowDefinition } from '@zenith/shared/workflow';
+import type { WorkflowTemplate } from '@zenith/shared/workflow';
 import { useCloneWorkflowTemplate, useWorkflowTemplates } from '@/hooks/queries/workflow-templates';
 
 interface Props {
@@ -41,11 +41,11 @@ export function TemplateGalleryModal({ visible, onCancel, categoryId = null, onC
       return;
     }
     const res = await cloneMutation.mutateAsync({
-      id: picked.id,
-      values: { name: name.trim(), description: description.trim() || null, ...(categoryId == null ? {} : { categoryId }) },
+      params: { id: picked.id },
+      body: { name: name.trim(), description: description.trim() || null, ...(categoryId == null ? {} : { categoryId }) },
     });
     Toast.success('已从模板创建流程');
-    onCreated((res as WorkflowDefinition).id);
+    onCreated(res.id);
   };
 
   return (

@@ -1,12 +1,14 @@
 /**
  * 移动审批轻页域 hooks（独立 QueryClient，不与 admin/member 混用）
+ *
+ * 与后台共用同一套工作流契约；所有调用经 `approvalRequest` 实例发出（独立会话 / 刷新 / 登录跳转语义）。
  */
 import { QueryClient, keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { WorkflowApproverPreviewNode, WorkflowComment, WorkflowDefinition, WorkflowInstance, WorkflowInstanceSummaryItem, WorkflowQuickPhrase, WorkflowSelectableNextApproverGroup, WorkflowSlaLevel, WorkflowTaskStatus } from '@zenith/shared/workflow';
+import type { BodyOf } from '@zenith/shared/core';
+import { workflowDefinitionContract, workflowInstanceContract, workflowQuickPhraseContract, workflowTaskContract, type WorkflowInstance, type WorkflowInstanceListItem, type WorkflowTask } from '@zenith/shared/workflow';
 import { authContract, userContract } from '@zenith/shared/identity';
 import { api } from '@/lib/contract-query';
-import { approvalRequest, unwrapApproval } from './approval-request';
+import { approvalRequest } from './approval-request';
 
 export const approvalQueryClient = new QueryClient({
   defaultOptions: {
@@ -16,24 +18,12 @@ export const approvalQueryClient = new QueryClient({
 
 export type ApprovalTab = 'pending' | 'handled' | 'mine' | 'cc';
 
-export type ApprovalListItem = WorkflowInstance & {
-  pendingTaskId?: number;
-  pendingSignatureRequired?: boolean;
-  requiresIndividual?: boolean;
-  slaLevel?: WorkflowSlaLevel;
-  slaOverdueSec?: number | null;
-  slaDeadline?: string | null;
-  summary?: WorkflowInstanceSummaryItem[];
-  myTaskStatus?: WorkflowTaskStatus | null;
-  myActionAt?: string | null;
-};
+/** 四个 Tab 共用的列表项形态：待办返回 SLA / 摘要扩展字段，其余 Tab 返回实例摘要 */
+export type ApprovalListItem = WorkflowInstanceListItem;
 
-const TAB_ENDPOINT: Record<ApprovalTab, string> = {
-  pending: '/api/workflows/instances/pending-mine',
-  handled: '/api/workflows/instances/handled-mine',
-  mine: '/api/workflows/instances',
-  cc: '/api/workflows/instances/cc-mine',
-};
+/** 审批端请求实例：与后台 `request` 隔离的会话与 401 处理 */
+const client = { client: approvalRequest } as const;
+const silentClient = { client: approvalRequest, silent: true } as const;
 
 export const approvalKeys = {
   all: ['approval'] as const,
@@ -50,15 +40,25 @@ export const approvalKeys = {
 };
 
 /** 累积加载：固定 page=1、递增 pageSize（移动端"加载更多"语义，缓存 key 稳定） */
+function fetchApprovalList(tab: ApprovalTab, size: number, keyword: string): Promise<{ list: ApprovalListItem[]; total: number }> {
+  const query = { page: 1, pageSize: size, ...(keyword ? { keyword } : {}) };
+  switch (tab) {
+    case 'pending':
+      return api(workflowInstanceContract.pendingMine, { query }, client);
+    case 'handled':
+      return api(workflowInstanceContract.handledMine, { query }, client);
+    case 'cc':
+      return api(workflowInstanceContract.ccMine, { query }, client);
+    case 'mine':
+      // 「我的申请」端点不支持关键字筛选
+      return api(workflowInstanceContract.list, { query: { page: 1, pageSize: size } }, client);
+  }
+}
+
 export function useApprovalList(tab: ApprovalTab, size: number, keyword = '') {
   return useQuery({
     queryKey: approvalKeys.list(tab, size, keyword),
-    queryFn: () =>
-      approvalRequest
-        .get<PaginatedResponse<ApprovalListItem>>(
-          `${TAB_ENDPOINT[tab]}?page=1&pageSize=${size}${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ''}`,
-        )
-        .then(unwrapApproval),
+    queryFn: () => fetchApprovalList(tab, size, keyword),
     placeholderData: keepPreviousData,
     refetchInterval: tab === 'pending' ? 30_000 : false,
   });
@@ -70,8 +70,8 @@ export function useApprovalCounts() {
     queryKey: approvalKeys.counts,
     queryFn: async () => {
       const [pending, ccUnread] = await Promise.all([
-        approvalRequest.get<{ count: number }>('/api/workflows/instances/pending-mine/count', { silent: true }).then(unwrapApproval),
-        approvalRequest.get<{ count: number }>('/api/workflows/instances/cc-mine/unread-count', { silent: true }).then(unwrapApproval),
+        api(workflowInstanceContract.pendingMineCount, silentClient),
+        api(workflowInstanceContract.ccUnreadCount, silentClient),
       ]);
       return { pending: pending.count, ccUnread: ccUnread.count };
     },
@@ -83,7 +83,7 @@ export function useApprovalCounts() {
 export function useApprovalDetail(id: number | null) {
   return useQuery({
     queryKey: approvalKeys.detail(id),
-    queryFn: () => approvalRequest.get<WorkflowInstance>(`/api/workflows/instances/${id}`).then(unwrapApproval),
+    queryFn: () => api(workflowInstanceContract.detail, { params: { id: id as number } }, client),
     enabled: id != null,
   });
 }
@@ -91,20 +91,32 @@ export function useApprovalDetail(id: number | null) {
 export function useApprovalMe() {
   return useQuery({
     queryKey: approvalKeys.me,
-    queryFn: () => api(authContract.me, { client: approvalRequest, silent: true }),
+    queryFn: () => api(authContract.me, silentClient),
     retry: false,
   });
 }
 
+export type ApprovalTaskActionVariables =
+  | { taskId: number; action: 'approve'; body: BodyOf<typeof workflowTaskContract.approve> }
+  | { taskId: number; action: 'reject'; body: BodyOf<typeof workflowTaskContract.reject> }
+  | { taskId: number; action: 'transfer'; body: BodyOf<typeof workflowTaskContract.transfer> };
+
+/** 同意 / 驳回 / 转办：幂等键按动作 + 任务生成，防止弱网下的重复提交 */
 export function useTaskAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ taskId, action, body }: { taskId: number; action: 'approve' | 'reject' | 'transfer'; body: Record<string, unknown> }) =>
-      approvalRequest
-        .post<WorkflowInstance>(`/api/workflows/tasks/${taskId}/${action}`, body, {
-          headers: { 'X-Idempotency-Key': `approval-${action}-${taskId}` },
-        })
-        .then(unwrapApproval),
+    mutationFn: (vars: ApprovalTaskActionVariables): Promise<WorkflowInstance | WorkflowTask> => {
+      const params = { taskId: vars.taskId };
+      const options = { ...client, headers: { 'X-Idempotency-Key': `approval-${vars.action}-${vars.taskId}` } };
+      switch (vars.action) {
+        case 'approve':
+          return api(workflowTaskContract.approve, { params, body: vars.body }, options);
+        case 'reject':
+          return api(workflowTaskContract.reject, { params, body: vars.body }, options);
+        case 'transfer':
+          return api(workflowTaskContract.transfer, { params, body: vars.body }, options);
+      }
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: approvalKeys.all }),
   });
 }
@@ -113,8 +125,7 @@ export function useTaskAction() {
 export function useWithdrawInstance() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, comment }: { id: number; comment?: string }) =>
-      approvalRequest.post<unknown>(`/api/workflows/instances/${id}/withdraw`, comment ? { comment } : {}).then(unwrapApproval),
+    mutationFn: ({ id }: { id: number }) => api(workflowInstanceContract.withdraw, { params: { id } }, client),
     onSuccess: () => qc.invalidateQueries({ queryKey: approvalKeys.all }),
   });
 }
@@ -123,7 +134,7 @@ export function useWithdrawInstance() {
 export function useUrgeInstance() {
   return useMutation({
     mutationFn: ({ id, message }: { id: number; message?: string }) =>
-      approvalRequest.post<unknown>(`/api/workflows/instances/${id}/urge`, message ? { message } : {}).then(unwrapApproval),
+      api(workflowInstanceContract.urge, { params: { id }, body: message ? { message } : {} }, client),
   });
 }
 
@@ -131,8 +142,7 @@ export function useUrgeInstance() {
 export function useMarkCcRead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (ccTaskId: number) =>
-      approvalRequest.post<unknown>(`/api/workflows/instances/cc/${ccTaskId}/read`, {}, { silent: true }).then(unwrapApproval),
+    mutationFn: (ccTaskId: number) => api(workflowInstanceContract.ccRead, { params: { ccTaskId } }, silentClient),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: approvalKeys.counts });
       void qc.invalidateQueries({ queryKey: approvalKeys.lists });
@@ -145,9 +155,7 @@ export function useAddApprovalComment() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ instanceId, content }: { instanceId: number; content: string }) =>
-      approvalRequest
-        .post<WorkflowComment>(`/api/workflows/instances/${instanceId}/comments`, { content, mentions: [], attachments: [], parentId: null })
-        .then(unwrapApproval),
+      api(workflowInstanceContract.addComment, { params: { id: instanceId }, body: { content, mentions: [], attachments: [], parentId: null } }, client),
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: approvalKeys.detail(vars.instanceId) }),
   });
 }
@@ -156,7 +164,7 @@ export function useAddApprovalComment() {
 export function useApprovalQuickPhrases(enabled: boolean) {
   return useQuery({
     queryKey: approvalKeys.phrases,
-    queryFn: () => approvalRequest.get<WorkflowQuickPhrase[]>('/api/workflows/quick-phrases', { silent: true }).then(unwrapApproval),
+    queryFn: () => api(workflowQuickPhraseContract.list, silentClient),
     staleTime: 5 * 60_000,
     enabled,
     retry: false,
@@ -166,7 +174,7 @@ export function useApprovalQuickPhrases(enabled: boolean) {
 export function usePublishedDefinitions() {
   return useQuery({
     queryKey: approvalKeys.definitions,
-    queryFn: () => approvalRequest.get<WorkflowDefinition[]>('/api/workflows/definitions/published').then(unwrapApproval),
+    queryFn: () => api(workflowDefinitionContract.published, client),
     staleTime: 60_000,
   });
 }
@@ -175,8 +183,7 @@ export function useLaunchInstance() {
   const qc = useQueryClient();
   return useMutation({
     // 幂等由服务端自动指纹（userId+path+bodyHash）兜底，前端按钮 loading 防连点
-    mutationFn: (values: Record<string, unknown>) =>
-      approvalRequest.post<WorkflowInstance>('/api/workflows/instances', values).then(unwrapApproval),
+    mutationFn: (body: BodyOf<typeof workflowInstanceContract.create>) => api(workflowInstanceContract.create, { body }, client),
     onSuccess: () => qc.invalidateQueries({ queryKey: approvalKeys.all }),
   });
 }
@@ -190,13 +197,11 @@ export function useApprovalChainPreview(
   return useQuery({
     queryKey: approvalKeys.chainPreview(definitionId, reloadKey),
     queryFn: () =>
-      approvalRequest
-        .post<WorkflowApproverPreviewNode[]>(
-          `/api/workflows/definitions/${definitionId}/preview`,
-          { formData: getFormData ? getFormData() : null },
-          { silent: true },
-        )
-        .then(unwrapApproval),
+      api(
+        workflowDefinitionContract.preview,
+        { params: { id: definitionId as number }, body: { formData: getFormData ? getFormData() : null } },
+        silentClient,
+      ),
     enabled: definitionId != null,
     // 同一流程刷新预测时保留旧数据避免闪空；切换流程则重新加载
     placeholderData: (prev, prevQuery) =>
@@ -208,10 +213,7 @@ export function useApprovalChainPreview(
 export function useSelectableNextApprovers(taskId: number | null, enabled: boolean) {
   return useQuery({
     queryKey: approvalKeys.nextApprovers(taskId),
-    queryFn: () =>
-      approvalRequest
-        .get<WorkflowSelectableNextApproverGroup[]>(`/api/workflows/tasks/${taskId}/selectable-next-approvers`, { silent: true })
-        .then(unwrapApproval),
+    queryFn: () => api(workflowTaskContract.selectableNextApprovers, { params: { taskId: taskId as number } }, silentClient),
     enabled: enabled && taskId != null,
   });
 }
@@ -220,7 +222,7 @@ export function useSelectableNextApprovers(taskId: number | null, enabled: boole
 export function useApprovalUsers(enabled: boolean) {
   return useQuery({
     queryKey: approvalKeys.users,
-    queryFn: () => api(userContract.all, { client: approvalRequest, silent: true }),
+    queryFn: () => api(userContract.all, silentClient),
     enabled,
     staleTime: 5 * 60_000,
   });
@@ -230,9 +232,7 @@ export function useApprovalUsers(enabled: boolean) {
 export async function fetchNextPendingTask(
   excludeInstanceId: number,
 ): Promise<{ next: { instanceId: number; taskId: number } | null; remaining: number }> {
-  const data = await approvalRequest
-    .get<PaginatedResponse<ApprovalListItem>>('/api/workflows/instances/pending-mine?page=1&pageSize=5', { silent: true })
-    .then(unwrapApproval);
+  const data = await api(workflowInstanceContract.pendingMine, { query: { page: 1, pageSize: 5 } }, silentClient);
   const item = data.list.find((i) => i.id !== excludeInstanceId && i.pendingTaskId != null);
   return {
     next: item?.pendingTaskId != null ? { instanceId: item.id, taskId: item.pendingTaskId } : null,

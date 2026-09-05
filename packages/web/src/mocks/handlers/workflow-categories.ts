@@ -1,34 +1,22 @@
-import { http } from 'msw';
-import { ok, badRequest, notFound, pageParams } from '@/mocks/utils/handlers';
+import { workflowCategoryContract } from '@zenith/shared/workflow';
 import type { WorkflowCategory } from '@zenith/shared/workflow';
+import { mock } from '@/mocks/utils/contract';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockWorkflowCategories, getNextCategoryId } from '@/mocks/data/workflow-categories';
 import { mockDateTime } from '@/mocks/utils/date';
 
 export const workflowCategoriesHandlers = [
-  // GET /all — 全量列表（useWorkflowCategories hook 使用）
-  http.get('/api/workflows/categories/all', () => {
-    const sorted = [...mockWorkflowCategories].sort((a, b) => a.sort - b.sort);
-    return ok(sorted);
-  }),
+  // 全量列表（useWorkflowCategories hook 使用）
+  mock(workflowCategoryContract.all, ({ ok }) => ok([...mockWorkflowCategories].sort((a, b) => a.sort - b.sort))),
 
-  // GET / — 分页列表
-  http.get('/api/workflows/categories', ({ request }) => {
-    const url = new URL(request.url);
-    const { page, pageSize } = pageParams(url, 20);
-    const keyword = url.searchParams.get('keyword') ?? '';
-
+  mock(workflowCategoryContract.list, ({ query, ok, paginate }) => {
     let list = [...mockWorkflowCategories];
-    if (keyword) list = list.filter((c) => c.name.includes(keyword) || (c.code ?? '').includes(keyword));
-
-    const total = list.length;
-    const sliced = list.toSorted((a, b) => a.sort - b.sort).slice((page - 1) * pageSize, page * pageSize);
-    return ok({ list: sliced, total, page, pageSize });
+    if (query.keyword) list = list.filter((c) => c.name.includes(query.keyword!) || (c.code ?? '').includes(query.keyword!));
+    return ok(paginate(list.toSorted((a, b) => a.sort - b.sort)));
   }),
 
-  // POST / — 创建
-  http.post('/api/workflows/categories', async ({ request }) => {
-    const body = (await request.json()) as Partial<WorkflowCategory>;
-    if (!body.name?.trim()) return badRequest('分类名称不能为空', { status: 400 });
+  mock(workflowCategoryContract.create, ({ body, ok }) => {
+    if (!body.name.trim()) return badRequest('分类名称不能为空', { status: 400 });
     if (mockWorkflowCategories.some((c) => c.code && c.code === body.code)) {
       return badRequest('分类编码已存在', { status: 400 });
     }
@@ -49,29 +37,24 @@ export const workflowCategoriesHandlers = [
     return ok(newCategory);
   }),
 
-  // PUT /:id — 更新
-  http.put('/api/workflows/categories/:id', async ({ params, request }) => {
-    const id = Number(params.id);
-    const idx = mockWorkflowCategories.findIndex((c) => c.id === id);
+  mock(workflowCategoryContract.update, ({ params, body, ok }) => {
+    const idx = mockWorkflowCategories.findIndex((c) => c.id === params.id);
     if (idx === -1) return notFound('分类不存在', { status: 404 });
-    const body = (await request.json()) as Partial<WorkflowCategory>;
     if (body.code && body.code !== mockWorkflowCategories[idx].code) {
       if (mockWorkflowCategories.some((c) => c.code === body.code)) return badRequest('分类编码已存在', { status: 400 });
     }
     const updated: WorkflowCategory = {
       ...mockWorkflowCategories[idx],
       ...body,
-      id,
+      id: params.id,
       updatedAt: mockDateTime(),
     };
     mockWorkflowCategories[idx] = updated;
     return ok(updated);
   }),
 
-  // DELETE /:id — 删除
-  http.delete('/api/workflows/categories/:id', ({ params }) => {
-    const id = Number(params.id);
-    const idx = mockWorkflowCategories.findIndex((c) => c.id === id);
+  mock(workflowCategoryContract.remove, ({ params, ok }) => {
+    const idx = mockWorkflowCategories.findIndex((c) => c.id === params.id);
     if (idx === -1) return notFound('分类不存在', { status: 404 });
     mockWorkflowCategories.splice(idx, 1);
     return ok(null);

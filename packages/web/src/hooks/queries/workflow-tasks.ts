@@ -1,26 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { WorkflowInstance, WorkflowInstanceSummaryItem, WorkflowTaskConsult, WorkflowSlaLevel } from '@zenith/shared/workflow';
-import { request } from '@/utils/request';
-import { toQueryString, unwrap } from '@/lib/query';
+import type { BodyOf, InputOf, PaginatedResponse, QueryOf } from '@zenith/shared/core';
+import { workflowInstanceContract, workflowTaskContract, type WorkflowBatchActionResponse, type WorkflowPendingInstanceItem } from '@zenith/shared/workflow';
+import { api, useApiMutation } from '@/lib/contract-query';
 
-export type PendingWorkflowItem = WorkflowInstance & {
-  pendingTaskId: number;
-  pendingSignatureRequired?: boolean;
-  requiresIndividual?: boolean;
-  slaLevel?: WorkflowSlaLevel;
-  slaOverdueSec?: number | null;
-  slaDeadline?: string | null;
-  /** 列表摘要（流程「更多设置 → 列表摘要字段」配置） */
-  summary?: WorkflowInstanceSummaryItem[];
-};
+/** 待办列表项：实例摘要 + 待我处理任务的 SLA / 摘要字段 */
+export type PendingWorkflowItem = WorkflowPendingInstanceItem;
 
-export interface PendingWorkflowListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  definitionId?: number;
-}
+export type PendingWorkflowListParams = QueryOf<typeof workflowInstanceContract.pendingMine>;
 
 export const workflowTaskKeys = {
   all: ['workflow', 'tasks'] as const,
@@ -30,13 +16,13 @@ export const workflowTaskKeys = {
 };
 
 export function fetchPendingWorkflowTasks(params: PendingWorkflowListParams) {
-  return request.get<PaginatedResponse<PendingWorkflowItem>>(`/api/workflows/instances/pending-mine${toQueryString(params)}`, { silent: true }).then(unwrap);
+  return api(workflowInstanceContract.pendingMine, { query: params }, { silent: true });
 }
 
 export function usePendingWorkflowTasks(params: PendingWorkflowListParams) {
   return useQuery({
     queryKey: workflowTaskKeys.pendingList(params),
-    queryFn: () => request.get<PaginatedResponse<PendingWorkflowItem>>(`/api/workflows/instances/pending-mine${toQueryString(params)}`).then(unwrap),
+    queryFn: () => api(workflowInstanceContract.pendingMine, { query: params }),
     placeholderData: keepPreviousData,
   });
 }
@@ -44,23 +30,22 @@ export function usePendingWorkflowTasks(params: PendingWorkflowListParams) {
 export function useMyWorkflowConsults(enabled = true) {
   return useQuery({
     queryKey: workflowTaskKeys.consultsMine,
-    queryFn: () =>
-      request.get<PaginatedResponse<WorkflowTaskConsult>>('/api/workflows/instances/consults/mine?pageSize=50').then(unwrap),
+    queryFn: () => api(workflowTaskContract.myConsults, { query: { pageSize: 50 } }),
     enabled,
   });
 }
 
+/** 批量审批会跨越待办 / 已办 / 实例 / 监控多棵子树，统一广播 ['workflow'] */
+const invalidateWorkflow = (qc: QueryClient) => {
+  void qc.invalidateQueries({ queryKey: ['workflow'] });
+};
+
+/** 幂等键按选中任务集合生成，重复点击同一批任务不会重复审批 */
 export function useBatchApproveWorkflowTasks() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ taskIds, comment }: { taskIds: number[]; comment?: string }) =>
-      request
-        .post<WorkflowBatchTaskResult>(
-          '/api/workflows/tasks/batch-approve',
-          { taskIds, comment },
-          { headers: { 'X-Idempotency-Key': `workflow-batch-approve-${taskIds.join('-')}` } },
-        )
-        .then(unwrap),
+    mutationFn: ({ body }: InputOf<typeof workflowTaskContract.batchApprove>) =>
+      api(workflowTaskContract.batchApprove, { body }, { headers: { 'X-Idempotency-Key': `workflow-batch-approve-${body.taskIds.join('-')}` } }),
     onSuccess: (res) => {
       removeSucceededFromPendingCaches(qc, res);
       return qc.invalidateQueries({ queryKey: ['workflow'] });
@@ -71,14 +56,8 @@ export function useBatchApproveWorkflowTasks() {
 export function useBatchRejectWorkflowTasks() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ taskIds, comment }: { taskIds: number[]; comment: string }) =>
-      request
-        .post<WorkflowBatchTaskResult>(
-          '/api/workflows/tasks/batch-reject',
-          { taskIds, comment },
-          { headers: { 'X-Idempotency-Key': `workflow-batch-reject-${taskIds.join('-')}` } },
-        )
-        .then(unwrap),
+    mutationFn: ({ body }: InputOf<typeof workflowTaskContract.batchReject>) =>
+      api(workflowTaskContract.batchReject, { body }, { headers: { 'X-Idempotency-Key': `workflow-batch-reject-${body.taskIds.join('-')}` } }),
     onSuccess: (res) => {
       removeSucceededFromPendingCaches(qc, res);
       return qc.invalidateQueries({ queryKey: ['workflow'] });
@@ -86,11 +65,9 @@ export function useBatchRejectWorkflowTasks() {
   });
 }
 
-type WorkflowBatchTaskResult = { succeeded: number; failed: number; results?: Array<{ taskId: number; success: boolean; message?: string }> };
-
 /** 批量操作成功后：先把成功任务从各待办列表缓存即时移除（行立即消失），再由 invalidate 后台校准 */
-function removeSucceededFromPendingCaches(qc: QueryClient, res: WorkflowBatchTaskResult): void {
-  const okIds = new Set((res.results ?? []).filter((r) => r.success).map((r) => r.taskId));
+function removeSucceededFromPendingCaches(qc: QueryClient, res: WorkflowBatchActionResponse): void {
+  const okIds = new Set(res.results.filter((r) => r.success).map((r) => r.taskId));
   if (okIds.size === 0) return;
   qc.setQueriesData<PaginatedResponse<PendingWorkflowItem>>({ queryKey: workflowTaskKeys.pendingLists }, (old) => {
     if (!old) return old;
@@ -101,19 +78,45 @@ function removeSucceededFromPendingCaches(qc: QueryClient, res: WorkflowBatchTas
 }
 
 export function useConsultWorkflowTask() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ taskId, consulteeIds, question }: { taskId: number; consulteeIds: number[]; question?: string }) =>
-      request.post<unknown>(`/api/workflows/tasks/${taskId}/consult`, { consulteeIds, question }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workflow'] }),
-  });
+  return useApiMutation(workflowTaskContract.consult, { invalidate: invalidateWorkflow });
 }
 
 export function useReplyWorkflowConsult() {
-  const qc = useQueryClient();
+  return useApiMutation(workflowTaskContract.replyConsult, { invalidate: invalidateWorkflow });
+}
+
+/** 审批详情面板的单任务动作：动作名即幂等键前缀，body 形状由对应契约推导 */
+export type WorkflowTaskActionVariables =
+  | { taskId: number; action: 'approve'; body: BodyOf<typeof workflowTaskContract.approve> }
+  | { taskId: number; action: 'reject'; body: BodyOf<typeof workflowTaskContract.reject> }
+  | { taskId: number; action: 'transfer'; body: BodyOf<typeof workflowTaskContract.transfer> }
+  | { taskId: number; action: 'delegate'; body: BodyOf<typeof workflowTaskContract.delegate> }
+  | { taskId: number; action: 'add-sign'; body: BodyOf<typeof workflowTaskContract.addSign> }
+  | { taskId: number; action: 'reduce-sign'; body: BodyOf<typeof workflowTaskContract.reduceSign> }
+  | { taskId: number; action: 'return'; body: BodyOf<typeof workflowTaskContract.returnTask> };
+
+/** 幂等键按动作 + 任务生成，防止重复提交；缓存失效由调用方在关闭面板时统一处理 */
+export function useWorkflowTaskAction() {
   return useMutation({
-    mutationFn: ({ id, opinion }: { id: number; opinion: string }) =>
-      request.post<unknown>(`/api/workflows/instances/consults/${id}/reply`, { opinion }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workflow'] }),
+    mutationFn: (vars: WorkflowTaskActionVariables): Promise<unknown> => {
+      const params = { taskId: vars.taskId };
+      const options = { headers: { 'X-Idempotency-Key': `workflow-${vars.action}-${vars.taskId}` } };
+      switch (vars.action) {
+        case 'approve':
+          return api(workflowTaskContract.approve, { params, body: vars.body }, options);
+        case 'reject':
+          return api(workflowTaskContract.reject, { params, body: vars.body }, options);
+        case 'transfer':
+          return api(workflowTaskContract.transfer, { params, body: vars.body }, options);
+        case 'delegate':
+          return api(workflowTaskContract.delegate, { params, body: vars.body }, options);
+        case 'add-sign':
+          return api(workflowTaskContract.addSign, { params, body: vars.body }, options);
+        case 'reduce-sign':
+          return api(workflowTaskContract.reduceSign, { params, body: vars.body }, options);
+        case 'return':
+          return api(workflowTaskContract.returnTask, { params, body: vars.body }, options);
+      }
+    },
   });
 }
