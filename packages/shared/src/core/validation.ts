@@ -70,6 +70,55 @@ function stripDefaults(field: z.ZodType): z.ZodType {
 }
 
 /**
+ * 深度剥离默认值：在 `stripDefaults` 的基础上继续递归进入 `z.object` 的每个字段与 `z.array` 的元素，
+ * 得到「字段全部必填、任何层级都没有 `.default()` / `.prefault()`」的 schema。
+ *
+ * 用途：以「带默认值的读取 schema」为唯一真相、派生整体替换端点（PUT）的请求体——
+ * 客户端必须回传完整文档，省略字段应得到 400，而不是被静默填入默认值
+ * （契约层校验见 `app.contract.test.ts`：PUT / PATCH 请求体属性不得携带 `default`）。
+ * `strictObjects: true` 时所有层级的对象改为 `z.strictObject`，未知键同样得到 400。
+ *
+ * 各层的 `.meta()` 说明（title / description / example）随派生结果保留，但 **`id` 不复制**：
+ * zod 的全局注册表要求 `id` 唯一，派生出的新实例若沿用同一 `id` 会在注册时抛错；
+ * 调用方按需给派生结果另起 `id`。对象 / 数组自身的校验（`.max()` 等）原样保留。
+ * 派生结果不含默认值，输入类型与输出类型一致。
+ */
+export function stripDefaultsDeep<T extends z.ZodType>(
+  schema: T,
+  options: { strictObjects?: boolean } = {},
+): z.ZodType<z.output<T>, z.output<T>> {
+  const inner = (field: z.ZodType) => (field.def as unknown as { innerType: z.ZodType }).innerType;
+  const checksOf = (field: z.ZodType) => ((field.def as { checks?: unknown[] }).checks ?? []) as never[];
+  const withMeta = (field: z.ZodType, next: z.ZodType): z.ZodType => {
+    const { id: _id, ...rest } = field.meta() ?? {};
+    return Object.keys(rest).length > 0 ? next.meta(rest) : next;
+  };
+  const walk = (field: z.ZodType): z.ZodType => {
+    if (field instanceof z.ZodDefault || field instanceof z.ZodPrefault) return withMeta(field, walk(inner(field)));
+    if (field instanceof z.ZodOptional) return withMeta(field, z.optional(walk(inner(field))));
+    if (field instanceof z.ZodNullable) return withMeta(field, z.nullable(walk(inner(field))));
+    if (field instanceof z.ZodReadonly) return withMeta(field, z.readonly(walk(inner(field))));
+    if (field instanceof z.ZodPipe) {
+      const { in: input, out } = field.def as unknown as { in: z.ZodType; out: z.ZodType };
+      return withMeta(field, z.pipe(walk(input), out));
+    }
+    if (field instanceof z.ZodArray) {
+      const element = (field.def as unknown as { element: z.ZodType }).element;
+      return withMeta(field, z.array(walk(element)).check(...checksOf(field)));
+    }
+    if (field instanceof z.ZodObject) {
+      const shape = field.shape as Record<string, z.ZodType>;
+      const next: Record<string, z.ZodType> = {};
+      for (const key of Object.keys(shape)) next[key] = walk(shape[key]);
+      const rebuilt = options.strictObjects ? z.strictObject(next) : z.object(next);
+      return withMeta(field, rebuilt.check(...checksOf(field)));
+    }
+    return field;
+  };
+  return walk(schema) as z.ZodType<z.output<T>, z.output<T>>;
+}
+
+/**
  * 由 create schema 派生「部分更新」schema：先剥离全部 `.default()`，再 `.partial()`。
  *
  * 部分更新的契约是「未提交的字段保持不变」。Zod 的 `.partial()` 会保留 `.default()`
