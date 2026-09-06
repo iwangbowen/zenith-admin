@@ -395,24 +395,22 @@ import { StatCard, StatGrid } from '@/components/charts/StatCard';
 ### SideSheet 页脚
 
 Semi 的 `footer` 槽**不带任何对齐样式**——裸 `<Space>` 会让按钮靠左。带操作按钮的页脚
-统一右对齐：
+统一用 `components/ModalFooter.tsx`（取消在左、主操作在右且 `theme="solid"`）：
 
 ```tsx
-footer={(
-  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-    <Button type="tertiary" onClick={onClose}>取消</Button>
-    <Button type="primary" theme="solid" loading={saving} onClick={handleSave}>确定</Button>
-  </div>
-)}
+// 配合 useEditModal：提交、loading、详情加载中禁用一次接好
+footer={<ModalFooter {...modal.footerProps} okText="保存" />}
+
+// 自行管理提交状态时
+footer={<ModalFooter onCancel={onClose} onOk={handleSave} loading={saving} okText="确定" />}
 ```
 
-- **按钮次序**：次要动作（取消 / 关闭）在左，主操作在右且必须 `theme="solid"`
-- **左侧需要独立次要动作**（如「测试连接」）时用 `justifyContent: 'space-between'`，
-  左右各一组；工作流域直接用 `components/workflow/WorkflowSideSheet.tsx` 的
+- **按钮次序**由组件固定：次要动作（取消 / 关闭）在左，主操作在右；危险确认传 `okType="danger"`
+- **左侧需要独立次要动作**（如「测试连接」「下载模板」）传 `extra`，组件自动两端对齐；
+  工作流域直接用 `components/workflow/WorkflowSideSheet.tsx` 的
   `footerLeft` / `footerRight` 两段式，**禁止**在工作流抽屉里重新手写 footer 布局
 - 纯展示抽屉传 `footer={null}` 或不传，不放孤立的「关闭」主按钮
-- 复用 `useEditModal` 提交时，按钮直接消费 `modalProps.onOk` 与
-  `modalProps.okButtonProps` 的 `loading` / `disabled`，不要另建提交状态
+- **禁止**再手写 `<div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>` + 两个 `Button` 的 footer
 
 ---
 

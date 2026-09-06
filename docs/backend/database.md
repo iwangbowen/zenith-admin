@@ -159,6 +159,12 @@ await runAsUser(adminId, async () => {
 
 典型不加审计列的表：纯关联表、追加型日志、临时凭证、IM 消息、天然已有操作者语义的运行时表。
 
+### 时间戳列（`created_at` / `updated_at`）
+
+`db/schema/common.ts` 的 `timestampColumns({ withTimezone? })` 展开 `created_at`（默认 `now()`）与 `updated_at`
+（默认 `now()`，由 drizzle `$onUpdate` 在每次 UPDATE 时自动刷新），业务代码不手动传 `updatedAt`。
+与 `auditColumns()` 一样在列定义末尾展开；只有 `created_at` 的追加型表单独声明该列。
+
 ## 数据库备份
 
 系统内置数据库备份功能，路由在 `packages/server/src/routes/ops/db-backups.ts`，服务在 `services/ops/db-backups.service.ts` 与 `lib/db-backup.ts`。

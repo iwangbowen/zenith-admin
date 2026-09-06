@@ -28,6 +28,8 @@
 | 服务端调用 | `lib/contract-query.ts`：`api(op, input)` / `useApiQuery(op, input)` / `useApiMutation(op)`，`op` 来自 `@zenith/shared/{域}` 的契约 | `request.get<T>('/api/...')` 等路径字面量与响应泛型（`api-conformance.test.ts` 对照服务端路由表守住残留字面量） | 路径写错线上 404 而 Demo 全绿；响应类型与服务端漂移 |
 | 标准 CRUD 域 hooks | `lib/contract-query.ts` 的 `createResourceQueries(xxxContract)` | 手抄 `xxxKeys` 与列表 / 详情 / 保存 / 删除 / 下拉源 | 保存后列表不变；已删记录重新打开弹窗时闪出旧数据 |
 | 新增 / 编辑弹窗 | `hooks/useEditModal.ts` | `useRef<FormApi>` + `editingRecord` + `try { validate() } catch` + `Toast` + 关闭四件套 | 确定按钮永远转圈；异步详情进不了表单；下次「新增」带出上次记录 |
+| 弹窗 / 抽屉自定义页脚 | `components/ModalFooter.tsx`（`<ModalFooter {...modal.footerProps} okText="保存" />`，独立提交状态传 `onCancel` / `onOk` / `loading`；左侧次要动作传 `extra`） | `<div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>` + 取消 / 确认两个 `Button` | 按钮次序、主次样式与间距各页不一；详情加载中未禁用提交 |
+| Excel / CSV 导入入口 | `components/ImportButton.tsx`；自定义导入面板用 `hooks/useImportUpload.tsx`（隐藏 file input → 上传文件中心 → 提交任务，正式 / 预检） | 手写 `<input type="file">` + `useUploadFile` + `useSubmitImportJob` 串联 | 预检标记与 loading 归属错乱；上下文参数漏传 |
 | 列表页搜索状态 | `hooks/useListSearch.ts` | `draftParams` / `submittedParams` 双状态 + `handleSearch` / `handleReset` | 条件未变时点「查询」不回源，且列表仍有数据、不报错 |
 | 列表页工具栏排布 | `components/list-page` 的 `ListSearchToolbar`（`keyword` / `filters` / `create` / `actions` 槽位 + `onSearch` / `onReset`） | 手写 `SearchToolbar` 的 `primary` / `mobilePrimary` / `mobileFilters` 双份 JSX、`renderKeywordSearch` 之类的渲染闭包 | 桌面 / 移动排布各页不一致；移动端漏掉查询或新增 |
 | 状态开关列 | `components/list-page` 的 `useStatusToggle({ toggle, confirmDisable, disabled })` → `status.column()` | `togglingId = mutation.isPending ? mutation.variables?.id : null` + 手写 `Switch` + `Modal.confirm` + `Toast.success('已启用')` | 行内 loading 与载荷形状耦合；停用确认样式各页不一 |

@@ -52,8 +52,7 @@ export const bizPayDemos = pgTable('biz_pay_demos', {
   fulfillRemark: varchar({ length: 255 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 ```
 

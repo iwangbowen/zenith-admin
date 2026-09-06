@@ -31,8 +31,8 @@ export const xxxs = pgTable('xxxs', {
   parentId:    integer().references(() => xxxs.id, { onDelete: 'set null' }),
   // 审计列：created_by / updated_by → users.id，由 db Proxy 自动写入
   ...auditColumns(),
-  createdAt:   timestamp().defaultNow().notNull(),
-  updatedAt:   timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  // 时间戳列：created_at 默认 now()，updated_at 自动刷新（不带时区；需要 timestamptz 传 { withTimezone: true }）
+  ...timestampColumns(),
 });
 
 // 主表总是导出这两个 infer 类型

@@ -36,6 +36,9 @@
   派生结果即蛇形，可省略
 - **审计列必加**：业务主表必须展开 `...auditColumns()`。例外（不要加）：纯关联表（`xxx_yyys`）、
   追加型日志（`*_logs`）、临时凭证（`*_tokens`）、IM 消息等「作者天然就是当前用户」的实体
+- **时间戳列用积木**：`created_at` / `updated_at` 一律展开 `...timestampColumns()`（`db/schema/common.ts`；
+  `timestamptz` 传 `{ withTimezone: true }`），**禁止**逐表手写 `timestamp().defaultNow()…$onUpdate(...)` 两行；
+  只有 `created_at` 的追加型表单独声明
 - **审计字段禁止手写**：`created_by` / `updated_by` 由 `db/index.ts` 的 Proxy 自动写入，
   **禁止**在 service / route / seed 中手动赋值；需指定操作人时用 `runAsUser(userId, fn)` 包裹；
   契约实体 schema 用 `...auditFieldsSchema`（`@zenith/shared/core`）
@@ -112,6 +115,11 @@
   `exactTenantCondition(col, tenantId)`（`null → IS NULL`）、`optionalExactTenantCondition`（`undefined` 不过滤）、
   `inheritedTenantCondition`（平台级可被租户继承：`IS NULL OR =`）；**禁止**手写 `tenantId == null ? isNull(col) : eq(col, tenantId)` 三目。
   它们与 `tenantCondition(table, user)`（请求用户可见性，平台管理员可看全部）语义不同，不得互换
+- **单一默认项写入**：带 `is_default` 的配置类实体（短信 / 推送 / 存储 / 支付渠道 / 公众号 / 报表环境 / 保存视图…）
+  一律经 `lib/default-flag.ts` 的 `clearDefaultFlag(executor, table, scopeWhere)` / `ensureSingleDefault(executor, table, id, { scope })`
+  在事务内清除范围内其它默认标记，范围条件由调用方给出；**禁止**在 service 里手写 `update(table).set({ isDefault: false })`
+- **工作流实例并发保护**：实例上的审批 / 推进 / 管理操作在事务内用 `services/workflow/instances/shared.ts` 的
+  `lockInstanceExpecting(tx, id, expectedStatus, message)` 加行级锁并重校验状态；**禁止**手写 `SELECT status … FOR UPDATE` + 409 样板
 - **并行查询**：分页列表的 count 与 list **必须** `Promise.all` 并行，禁止串行 `await`
 - **只读快照统计**：同一（组）表的多条统计查询要求结果相互一致时（汇总卡片 + 明细榜单、对账）
   用 `readSnapshot()`（`db/index.ts`，repeatable read + read only）；事务内语句串行执行，
@@ -253,6 +261,10 @@
 | 动态文本插入 HTML（邮件、打印页、SSR 片段） | `escapeHtml(text)` |
 | 任意字符串拼入 `new RegExp()` | `escapeRegExp(text)` |
 | 数值限制在区间内 | `clamp(value, min, max)` |
+| 百分比（保留 N 位小数，分母为 0 返回 null） | `percentOf(part, total, digits = 1)`；空值展示由调用方 `?? 0` |
+| 阈值比较（`gt` / `gte` / `lt` / `lte` / `eq` / `neq`） | `compareNumber(value, op, threshold)`；算子集合 `NUMERIC_COMPARE_OPS`（报表预警 / IoT / 监控告警同源） |
+| ID 数组清洗（正整数、去重、保持顺序） | `uniquePositiveInts(values)`；单值判定 `isPositiveInt(value)` |
+| 凭据打码（API Key / Secret / Token） | `maskSecret(value, { head, tail, filler, short })`；展示占位与「未修改」哨兵用 `SECRET_PLACEHOLDER` |
 | 字节数展示（B / KB / MB / GB / TB） | `formatBytes(bytes)` |
 | 平铺列表（`id` / `parentId`，或自定义键）→ 树 | `buildTree(list, { compare?, keepEmptyChildren?, id?, parentId? })`；父节点缺失的节点挂到根 |
 | 树 → 另一种节点形态（如 Semi `TreeNodeData`） | `mapTree(nodes, (node) => ({ ... }))`，children 自动递归 |
