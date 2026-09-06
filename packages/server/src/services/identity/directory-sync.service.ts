@@ -507,11 +507,11 @@ export async function resolveDirectorySyncConflict(id: number, input: ResolveDir
         }
       });
     } else {
-      const [link] = await db.select().from(directorySyncUserLinks).where(and(
+      const [maybeLink] = await db.select().from(directorySyncUserLinks).where(and(
         eq(directorySyncUserLinks.sourceId, conflict.sourceId),
         eq(directorySyncUserLinks.externalId, conflict.externalId),
       )).limit(1);
-      if (!link) throw new HTTPException(400, { message: '未找到该外部用户的本地绑定' });
+      const link = requireRow(maybeLink, '未找到该外部用户的本地绑定', 400);
       const conflictedFields = conflict.localData ? Object.keys(conflict.localData) : undefined;
       if (conflict.sourceData) {
         await applySourceDataToUser(link.userId, conflict.sourceData, conflictedFields);

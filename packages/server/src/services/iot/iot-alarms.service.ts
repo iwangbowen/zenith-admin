@@ -121,15 +121,15 @@ async function ensureRuleReferencesValid(
   data: { ruleType: IotAlarmRuleType; propertyIdentifier?: string | null; eventIdentifier?: string | null; deviceId?: number | null },
 ): Promise<void> {
   if (data.deviceId) {
-    const [device] = await db.select({ id: iotDevices.id, productId: iotDevices.productId })
+    const [maybeDevice] = await db.select({ id: iotDevices.id, productId: iotDevices.productId })
       .from(iotDevices).where(eq(iotDevices.id, data.deviceId)).limit(1);
-    if (!device) throw new HTTPException(400, { message: '指定的设备不存在' });
+    const device = requireRow(maybeDevice, '指定的设备不存在', 400);
     if (device.productId !== productId) throw new HTTPException(400, { message: '设备不属于该产品' });
   }
   const model = await loadThingModel(productId);
   if (data.ruleType === 'threshold') {
-    const prop = model.properties.find((p) => p.identifier === data.propertyIdentifier);
-    if (!prop) throw new HTTPException(400, { message: `属性 "${data.propertyIdentifier}" 未在物模型中声明` });
+    const maybeProp = model.properties.find((p) => p.identifier === data.propertyIdentifier);
+    const prop = requireRow(maybeProp, `属性 "${data.propertyIdentifier}" 未在物模型中声明`, 400);
     if (prop.dataType !== 'number') throw new HTTPException(400, { message: '阈值规则仅支持数值型属性' });
   }
   if (data.ruleType === 'event' && !model.events.some((e) => e.identifier === data.eventIdentifier)) {

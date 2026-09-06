@@ -1,5 +1,6 @@
 import { eq, desc, and } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
+import { clearDefaultFlag } from '../../lib/default-flag';
 import { db } from '../../db';
 import { aiProviderConfigs } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -139,7 +140,7 @@ export async function createAiProviderConfig(input: CreateAiProviderConfigInput)
     throw new HTTPException(400, { message: '自定义服务商必须填写 API 地址' });
   }
   if (input.isDefault) {
-    await db.update(aiProviderConfigs).set({ isDefault: false });
+    await clearDefaultFlag(db, aiProviderConfigs);
   }
   try {
     const [row] = await db
@@ -190,7 +191,7 @@ export async function updateAiProviderConfig(id: number, input: UpdateAiProvider
   ensureProviderConfigInput(merged, id);
 
   if (input.isDefault === true) {
-    await db.update(aiProviderConfigs).set({ isDefault: false });
+    await clearDefaultFlag(db, aiProviderConfigs);
   }
 
   // 如果传入的 apiKey 是脱敏格式则保留原始值；新密钥加密入库
@@ -238,7 +239,7 @@ export async function deleteAiProviderConfig(id: number) {
 export async function setDefaultAiProviderConfig(id: number) {
   const [existing] = await db.select().from(aiProviderConfigs).where(eq(aiProviderConfigs.id, id));
   requireRow(existing, 'AI 服务商配置不存在');
-  await db.update(aiProviderConfigs).set({ isDefault: false });
+  await clearDefaultFlag(db, aiProviderConfigs);
   const [row] = await db.update(aiProviderConfigs).set({ isDefault: true }).where(eq(aiProviderConfigs.id, id)).returning();
   return mapRow(row);
 }

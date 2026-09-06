@@ -453,12 +453,12 @@ async function resolveShareSession(token: string, sessionToken: string, action: 
 /** 外链子树内的节点：必须是根节点自身或其后代 */
 async function ensureNodeWithinShare(root: DriveNodeRow, nodeId: number): Promise<DriveNodeRow> {
   if (nodeId === root.id) return root;
-  const [node] = await db.select().from(driveNodes).where(and(
+  const [maybeNode] = await db.select().from(driveNodes).where(and(
     eq(driveNodes.id, nodeId),
     sql`${driveNodes.ancestorIds} @> ARRAY[${root.id}]::integer[]`,
     isNull(driveNodes.deletedAt),
   )).limit(1);
-  if (!node) throw new HTTPException(404, { message: '文件不存在' });
+  const node = requireRow(maybeNode, '文件不存在');
   return node;
 }
 

@@ -3,6 +3,7 @@
  * 历史列表复用任务中心（taskType 'data-import'），无独立存储。
  */
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { managedFiles } from '../../db/schema';
@@ -46,9 +47,9 @@ export async function submitImportJob(entity: string, fileId: string, options: S
       throw new HTTPException(400, { message });
     }
   }
-  const [file] = await db.select({ id: managedFiles.id, size: managedFiles.size, originalName: managedFiles.originalName })
+  const [maybeFile] = await db.select({ id: managedFiles.id, size: managedFiles.size, originalName: managedFiles.originalName })
     .from(managedFiles).where(eq(managedFiles.id, fileId)).limit(1);
-  if (!file) throw new HTTPException(400, { message: '文件不存在，请重新上传' });
+  const file = requireRow(maybeFile, '文件不存在，请重新上传', 400);
   if (file.size > IMPORT_MAX_FILE_BYTES) {
     throw new HTTPException(400, { message: `文件超过 ${Math.round(IMPORT_MAX_FILE_BYTES / 1024 / 1024)}MB 上限` });
   }

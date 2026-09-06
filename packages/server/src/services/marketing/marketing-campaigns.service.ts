@@ -247,8 +247,8 @@ export async function endMarketingCampaign(id: number) {
 // ─── 奖品管理 ─────────────────────────────────────────────────────────────────
 async function ensureCouponUsable(couponId: number | null | undefined): Promise<void> {
   if (!couponId) return;
-  const [row] = await db.select({ id: coupons.id }).from(coupons).where(eq(coupons.id, couponId)).limit(1);
-  if (!row) throw new HTTPException(400, { message: `指定的优惠券（id=${couponId}）不存在` });
+  const [maybeRow] = await db.select({ id: coupons.id }).from(coupons).where(eq(coupons.id, couponId)).limit(1);
+  requireRow(maybeRow, `指定的优惠券（id=${couponId}）不存在`, 400);
 }
 
 export async function listMarketingPrizes(campaignId: number) {

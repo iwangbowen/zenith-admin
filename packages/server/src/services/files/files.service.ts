@@ -222,12 +222,12 @@ export async function uploadManagedFile(file: File, options: ManagedFileUploadOp
   if (!options.skipTypeCheck) {
     await assertUploadTypeAllowed(Buffer.from(await file.slice(0, 4100).arrayBuffer()), file.type);
   }
-  const [defaultConfig] = await db
+  const [maybeDefaultConfig] = await db
     .select()
     .from(fileStorageConfigs)
     .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
     .limit(1);
-  if (!defaultConfig) throw new HTTPException(400, { message: '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务' });
+  const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
   const uploaded = await uploadFileByConfig(defaultConfig, file);
   const [created] = await db
     .insert(managedFiles)
@@ -260,12 +260,12 @@ export async function saveGeneratedManagedFile(input: {
   const bytes = input.buffer instanceof ArrayBuffer ? new Uint8Array(input.buffer) : input.buffer;
   const blob = new Blob([bytes as BlobPart], { type: input.mimeType });
   const file = new File([blob], input.filename, { type: input.mimeType });
-  const [defaultConfig] = await db
+  const [maybeDefaultConfig] = await db
     .select()
     .from(fileStorageConfigs)
     .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
     .limit(1);
-  if (!defaultConfig) throw new HTTPException(400, { message: '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务' });
+  const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
   const uploaded = await uploadFileByConfig(defaultConfig, file);
   const [created] = await runAsUser(input.createdBy, () =>
     db

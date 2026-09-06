@@ -398,9 +398,9 @@ async function evaluateMetricRow(
   } else {
     if (!row.formula) throw new HTTPException(400, { message: '指标公式为空' });
     value = await evaluateMetricFormula(row.formula, execution.data.rows, async (code) => {
-      const [reference] = await db.select().from(reportMetrics)
+      const [maybeReference] = await db.select().from(reportMetrics)
         .where(and(eq(reportMetrics.code, code), metricTenantCondition(row.tenantId ?? null))).limit(1);
-      if (!reference) throw new HTTPException(400, { message: `指标引用不存在：${code}` });
+      const reference = requireRow(maybeReference, `指标引用不存在：${code}`, 400);
       if (currentUserOrNull()) await ensureReportResourceAccess('metric', reference.id, 'viewer');
       const result = await evaluateMetricRow(reference, params, [...stack, row.id]);
       cacheHit = cacheHit && result.cacheHit;
@@ -441,9 +441,9 @@ export async function assertReportMetricEvaluableGlobally(
   if (row.formula) {
     const { metricCodes } = analyzeMetricFormula(row.formula);
     for (const code of metricCodes) {
-      const [reference] = await db.select({ id: reportMetrics.id }).from(reportMetrics)
+      const [maybeReference] = await db.select({ id: reportMetrics.id }).from(reportMetrics)
         .where(and(eq(reportMetrics.code, code), metricTenantCondition(row.tenantId ?? null))).limit(1);
-      if (!reference) throw new HTTPException(400, { message: `指标引用不存在：${code}` });
+      const reference = requireRow(maybeReference, `指标引用不存在：${code}`, 400);
       await assertReportMetricEvaluableGlobally(reference.id, [...stack, id]);
     }
   }

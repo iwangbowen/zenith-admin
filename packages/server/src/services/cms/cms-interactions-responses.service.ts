@@ -25,6 +25,7 @@ import type { CmsInteractionRow } from '../../db/schema';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { maskEmail, maskName, maskPhone } from '../../lib/masking';
 import { withPagination } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
 import { streamByDescendingId } from '../../lib/export-center/cursor-stream';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { repeatKeyFor } from './cms-interactions-shared';
@@ -179,12 +180,15 @@ export async function listCmsInteractionResponses(q: ListCmsInteractionResponses
     .leftJoin(members, eq(cmsInteractionResponses.memberId, members.id))
     .where(where)
     .orderBy(desc(cmsInteractionResponses.createdAt), desc(cmsInteractionResponses.id));
-  const [countRows, rows] = await Promise.all([
-    db.select({ value: sql<number>`count(*)::int` }).from(cmsInteractionResponses)
+  const { list: rows, total } = await buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.select({ value: sql<number>`count(*)::int` }).from(cmsInteractionResponses)
       .innerJoin(cmsInteractions, eq(cmsInteractionResponses.interactionId, cmsInteractions.id))
-      .where(where),
-    withPagination(base.$dynamic(), q.page, q.pageSize),
-  ]);
+      .where(where)
+      .then((r) => r[0]?.value ?? 0),
+    rows: () => withPagination(base.$dynamic(), q.page, q.pageSize),
+  });
   const { answers, details } = await loadAnswers(rows.map((row) => row.response.id));
   const list: CmsInteractionResponse[] = rows.map((row) => ({
     id: row.response.id,
@@ -199,7 +203,7 @@ export async function listCmsInteractionResponses(q: ListCmsInteractionResponses
     answerDetails: details.get(row.response.id) ?? [],
     createdAt: formatDateTime(row.response.createdAt),
   }));
-  return { list, total: countRows[0]?.value ?? 0, page: q.page, pageSize: q.pageSize };
+  return { list, total, page: q.page, pageSize: q.pageSize };
 }
 
 export async function* streamCmsInteractionResponses(

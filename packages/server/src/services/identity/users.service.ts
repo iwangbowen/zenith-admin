@@ -192,8 +192,8 @@ export async function ensureDepartmentExists(departmentId?: number | null, user?
     const tc = tenantCondition(departments, user);
     if (tc) conditions.push(tc);
   }
-  const [d] = await db.select({ id: departments.id }).from(departments).where(and(...conditions)).limit(1);
-  if (!d) throw new HTTPException(400, { message: '所属部门不存在' });
+  const [maybeD] = await db.select({ id: departments.id }).from(departments).where(and(...conditions)).limit(1);
+  requireRow(maybeD, '所属部门不存在', 400);
 }
 
 export async function ensureRoleIdsExist(roleIds: number[], user?: JwtPayload) {

@@ -14,6 +14,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from './db-assert';
 import { and, eq, isNull } from 'drizzle-orm';
 import { Client as SshClient } from 'ssh2';
 import type { ConnectConfig, SFTPWrapper } from 'ssh2';
@@ -189,8 +190,8 @@ export function evictHostConnection(hostId: number): void {
 }
 
 async function loadHostRow(hostId: number) {
-  const [row] = await db.select().from(opsHosts).where(eq(opsHosts.id, hostId)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '主机不存在' });
+  const [maybeRow] = await db.select().from(opsHosts).where(eq(opsHosts.id, hostId)).limit(1);
+  const row = requireRow(maybeRow, '主机不存在');
   return row;
 }
 

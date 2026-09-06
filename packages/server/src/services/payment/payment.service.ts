@@ -1132,7 +1132,7 @@ export async function approveRefund(id: number, remark?: string): Promise<{ refu
   const config = await loadOrderConfig(order);
   if (!config) throw new HTTPException(400, { message: '支付渠道配置不存在，无法退款' });
 
-  const [approved] = await db
+  const [maybeApproved] = await db
     .update(paymentRefunds)
     .set({
       approvalStatus: 'approved',
@@ -1144,7 +1144,7 @@ export async function approveRefund(id: number, remark?: string): Promise<{ refu
     })
     .where(and(eq(paymentRefunds.id, id), eq(paymentRefunds.version, refundRow.version), eq(paymentRefunds.approvalStatus, 'pending')))
     .returning();
-  if (!approved) throw new HTTPException(409, { message: '退款审批状态已变化，请刷新后重试' });
+  const approved = requireRow(maybeApproved, '退款审批状态已变化，请刷新后重试', 409);
   await db
     .update(paymentOrders)
     .set({ status: 'refunding', version: sql`${paymentOrders.version} + 1` })

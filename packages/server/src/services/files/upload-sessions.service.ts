@@ -60,8 +60,8 @@ async function dirSize(dir: string): Promise<number> {
 }
 
 async function getSessionConfig(storageConfigId: number) {
-  const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, storageConfigId)).limit(1);
-  if (!config) throw new HTTPException(400, { message: '存储配置不存在' });
+  const [maybeConfig] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, storageConfigId)).limit(1);
+  const config = requireRow(maybeConfig, '存储配置不存在', 400);
   return config;
 }
 
@@ -69,12 +69,12 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
   const user = currentUser();
   await assertUploadSizeAllowed(input.fileSize);
 
-  const [defaultConfig] = await db
+  const [maybeDefaultConfig] = await db
     .select()
     .from(fileStorageConfigs)
     .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
     .limit(1);
-  if (!defaultConfig) throw new HTTPException(400, { message: '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务' });
+  const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
 
   const { objectKey } = buildUploadObjectKey(input.fileName, defaultConfig.basePath);
   const totalChunks = Math.max(1, Math.ceil(input.fileSize / input.chunkSize));

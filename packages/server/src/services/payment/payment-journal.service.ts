@@ -91,7 +91,7 @@ function mapFundReservation(row: PaymentFundReservationRow): PaymentFundReservat
 async function assertScopeOwnership(executor: DbExecutor, scope: PaymentMoneyScope): Promise<void> {
   const tenantScopeForApp = exactTenantCondition(paymentApps.tenantId, scope.tenantId);
   const tenantScopeForConfig = exactTenantCondition(paymentChannelConfigs.tenantId, scope.tenantId);
-  const [app] = await executor
+  const [maybeApp] = await executor
     .select({
       id: paymentApps.id,
       wechatConfigId: paymentApps.wechatConfigId,
@@ -101,13 +101,13 @@ async function assertScopeOwnership(executor: DbExecutor, scope: PaymentMoneySco
     .from(paymentApps)
     .where(and(eq(paymentApps.id, scope.appId), tenantScopeForApp))
     .limit(1);
-  const [channelConfig] = await executor
+  const [maybeChannelConfig] = await executor
     .select({ id: paymentChannelConfigs.id, channel: paymentChannelConfigs.channel })
     .from(paymentChannelConfigs)
     .where(and(eq(paymentChannelConfigs.id, scope.channelConfigId), tenantScopeForConfig))
     .limit(1);
-  if (!app) throw new HTTPException(400, { message: '账务作用域中的支付应用不存在或租户不一致' });
-  if (!channelConfig) throw new HTTPException(400, { message: '账务作用域中的商户配置不存在或租户不一致' });
+  const app = requireRow(maybeApp, '账务作用域中的支付应用不存在或租户不一致', 400);
+  const channelConfig = requireRow(maybeChannelConfig, '账务作用域中的商户配置不存在或租户不一致', 400);
   const boundConfigId = channelConfig.channel === 'wechat'
     ? app.wechatConfigId
     : channelConfig.channel === 'alipay'
@@ -498,8 +498,8 @@ async function ensureStandardLedgerAccountsInternal(
     ));
   const accountByCode = new Map(rows.map((row) => [row.code, row]));
   for (const code of uniqueCodes) {
-    const account = accountByCode.get(code);
-    if (!account) throw new HTTPException(409, { message: `标准账本账户 ${code} 创建失败` });
+    const maybeAccount = accountByCode.get(code);
+    const account = requireRow(maybeAccount, `标准账本账户 ${code} 创建失败`, 409);
     if (account.status !== 'enabled') throw new HTTPException(409, { message: `标准账本账户 ${code} 已停用` });
   }
   return accountByCode;
@@ -874,7 +874,7 @@ async function finalizeFundReservation(
       .where(and(eq(paymentFundReservations.id, row.id), eq(paymentFundReservations.version, input.version), eq(paymentFundReservations.status, 'active')));
     throw new HTTPException(409, { message: '资金预占已过期' });
   }
-  const [updated] = await db
+  const [maybeUpdated] = await db
     .update(paymentFundReservations)
     .set({
       status: target,
@@ -888,7 +888,7 @@ async function finalizeFundReservation(
       eq(paymentFundReservations.status, 'active'),
     ))
     .returning();
-  if (!updated) throw new HTTPException(409, { message: '资金预占版本已变化，请刷新后重试' });
+  const updated = requireRow(maybeUpdated, '资金预占版本已变化，请刷新后重试', 409);
   return mapFundReservation(updated);
 }
 

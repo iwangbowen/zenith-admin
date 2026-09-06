@@ -649,11 +649,13 @@ export async function listReportDqRuns(query: {
   }
   if (query.status) conds.push(eq(reportDqRuns.status, query.status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportDqRuns, where),
-    db.select().from(reportDqRuns).where(where).orderBy(desc(reportDqRuns.id))
+  const { list: rows, total } = await buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportDqRuns, where),
+    rows: () => db.select().from(reportDqRuns).where(where).orderBy(desc(reportDqRuns.id))
       .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
+  });
   const { ruleNames, datasetNames } = await resolveDqNames(rows);
   return {
     list: rows.map((row) => mapReportDqRun(row, {
@@ -706,11 +708,13 @@ export async function listReportDqAnomalies(query: {
   }
   if (query.status) conds.push(eq(reportDqAnomalies.status, query.status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportDqAnomalies, where),
-    db.select().from(reportDqAnomalies).where(where).orderBy(desc(reportDqAnomalies.id))
+  const { list: rows, total } = await buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportDqAnomalies, where),
+    rows: () => db.select().from(reportDqAnomalies).where(where).orderBy(desc(reportDqAnomalies.id))
       .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
+  });
   const { ruleNames, datasetNames } = await resolveDqNames(rows);
   return {
     list: rows.map((row) => mapReportDqAnomaly(row, {

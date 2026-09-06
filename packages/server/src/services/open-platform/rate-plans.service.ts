@@ -1,6 +1,7 @@
 import { eq, and, ne, desc, type SQL } from 'drizzle-orm';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
+import { clearDefaultFlag } from '../../lib/default-flag';
 import { db } from '../../db';
 import { ratePlans, oauth2Clients } from '../../db/schema';
 import type { RatePlanRow } from '../../db/schema';
@@ -86,12 +87,12 @@ export async function getDefaultRatePlanRow(): Promise<RatePlanRow | null> {
   return row ?? null;
 }
 
-/** 将除 keepId 外的所有套餐 isDefault 置为 false */
+/** 将除 keepId 外的所有套餐 isDefault 置为 false（套餐是平台级资源，默认全表唯一） */
 async function clearOtherDefaults(executor: DbExecutor, keepId?: number) {
   const cond = keepId
     ? and(eq(ratePlans.isDefault, true), ne(ratePlans.id, keepId))
     : eq(ratePlans.isDefault, true);
-  await executor.update(ratePlans).set({ isDefault: false }).where(cond);
+  await clearDefaultFlag(executor, ratePlans, cond);
 }
 
 export async function createRatePlan(input: CreateRatePlanInput) {

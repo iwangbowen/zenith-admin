@@ -1,4 +1,4 @@
-import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../db-assert';
 import { valuesAtPath } from '@zenith/shared/core';
 
 /**
@@ -22,10 +22,10 @@ export function hasRevealSource(entity: string): boolean {
 
 /** 读取指定记录上某个敏感字段的明文；实体未登记加载器 → 400，记录不可见 → 404 */
 export async function loadRevealValue(entity: string, id: number, field: string): Promise<string | null> {
-  const loader = sources.get(entity);
-  if (!loader) throw new HTTPException(400, { message: `实体 ${entity} 不支持按需查看明文` });
-  const record = await loader(id);
-  if (!record) throw new HTTPException(404, { message: '记录不存在或无权查看' });
+  const maybeLoader = sources.get(entity);
+  const loader = requireRow(maybeLoader, `实体 ${entity} 不支持按需查看明文`, 400);
+  const maybeRecord = await loader(id);
+  const record = requireRow(maybeRecord, '记录不存在或无权查看');
   const [value] = valuesAtPath(record, field.split('.'));
   return typeof value === 'string' ? value : null;
 }

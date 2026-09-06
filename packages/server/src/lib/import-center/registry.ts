@@ -1,7 +1,7 @@
 /**
  * 导入 Definition 注册表（与 export-center/registry 对偶）。
  */
-import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../db-assert';
 import type { ImportEntityMeta } from '@zenith/shared/tasks';
 import { hasPermission } from '../context';
 import { DEFAULT_MAX_ROWS, type ImportDefinition } from './types';
@@ -16,8 +16,8 @@ export function registerImport<TRow, TPrepared>(def: ImportDefinition<TRow, TPre
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getImportDefinition(entity: string): ImportDefinition<any, any> {
-  const def = definitions.get(entity);
-  if (!def) throw new HTTPException(400, { message: `未注册的导入实体：${entity}` });
+  const maybeDef = definitions.get(entity);
+  const def = requireRow(maybeDef, `未注册的导入实体：${entity}`, 400);
   return def;
 }
 

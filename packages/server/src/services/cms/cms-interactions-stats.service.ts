@@ -20,6 +20,7 @@ import type { CmsInteractionQuestionRow } from '../../db/schema';
 import { formatDate, formatDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { keywordCondition } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
 import { assertSiteAccess } from './cms-sites.service';
 import { ensureCmsInteractionExists, isOtherAnswer } from './cms-interactions-shared';
 
@@ -285,16 +286,18 @@ export async function listCmsInteractionTexts(q: ListCmsInteractionTextsQuery) {
     : sql`starts_with(v.val, ${CMS_INTERACTION_OTHER_PREFIX})`;
   const keywordMatch = keywordCondition(q.keyword, [sql`v.val`], 'ilike');
   const keywordFilter = keywordMatch ? sql`AND ${keywordMatch}` : sql``;
-  const [countRows, rows] = await Promise.all([
-    db.execute(sql`
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => (db.execute(sql`
       SELECT COUNT(*)::int AS total
       FROM ${cmsInteractionAnswers} a
       JOIN ${cmsInteractionResponses} r ON r.id = a.response_id
       ${ANSWER_VALUE_LATERAL}
       WHERE r.interaction_id = ${q.interactionId} AND a.question_id = ${q.questionId}
         AND ${valueFilter} ${keywordFilter}
-    `) as unknown as Promise<{ total: number }[]>,
-    db.execute(sql`
+    `) as unknown as Promise<{ total: number }[]>).then((r) => r[0]?.total ?? 0),
+    rows: () => db.execute(sql`
       SELECT a.response_id AS response_id, v.val AS val, r.created_at AS created_at
       FROM ${cmsInteractionAnswers} a
       JOIN ${cmsInteractionResponses} r ON r.id = a.response_id
@@ -304,15 +307,14 @@ export async function listCmsInteractionTexts(q: ListCmsInteractionTextsQuery) {
       ORDER BY a.id DESC
       LIMIT ${q.pageSize} OFFSET ${pageOffset(q.page, q.pageSize)}
     `) as unknown as Promise<{ response_id: number; val: string; created_at: Date }[]>,
-  ]);
-  const list: CmsInteractionTextAnswer[] = rows.map((row) => ({
-    responseId: row.response_id,
-    value: row.val.startsWith(CMS_INTERACTION_OTHER_PREFIX)
-      ? row.val.slice(CMS_INTERACTION_OTHER_PREFIX.length)
-      : row.val,
-    createdAt: formatDateTime(row.created_at),
-  }));
-  return { list, total: countRows[0]?.total ?? 0, page: q.page, pageSize: q.pageSize };
+    map: (row): CmsInteractionTextAnswer => ({
+      responseId: row.response_id,
+      value: row.val.startsWith(CMS_INTERACTION_OTHER_PREFIX)
+        ? row.val.slice(CMS_INTERACTION_OTHER_PREFIX.length)
+        : row.val,
+      createdAt: formatDateTime(row.created_at),
+    }),
+  });
 }
 
 /** 交叉分析：两道选择题按同一份答卷联合统计 */

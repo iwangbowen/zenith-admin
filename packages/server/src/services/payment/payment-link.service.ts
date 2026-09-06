@@ -365,8 +365,8 @@ export async function payByLink(token: string, input: PayByLinkInput): Promise<P
       idempotencyKey: `cashier:${session.sessionToken}`,
       returnUrl: session.returnUrl,
     });
-    const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, result.orderNo)).limit(1);
-    if (!order) throw new HTTPException(409, { message: '支付订单创建后无法回读' });
+    const [maybeOrder] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, result.orderNo)).limit(1);
+    const order = requireRow(maybeOrder, '支付订单创建后无法回读', 409);
     const bound = await bindCashierSession({ session, order, payParams: result.payParams });
     if (order.status === 'success' || order.status === 'refunding' || order.status === 'refunded') {
       await recordPaymentLinkRedemption({

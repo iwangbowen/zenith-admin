@@ -654,10 +654,10 @@ export async function getLatestPublicRelease(
     orderBy: [desc(appReleases.publishedAt), desc(appReleases.id)],
     limit: 20,
   });
-  const release = rows.find((r) =>
+  const maybeRelease = rows.find((r) =>
     r.artifacts.some((a) => a.kind !== 'metadata' && (!platform || a.platform === platform)),
   );
-  if (!release) throw new HTTPException(404, { message: '暂无已发布版本' });
+  const release = requireRow(maybeRelease, '暂无已发布版本');
   return {
     version: release.version,
     notes: release.notes ?? null,

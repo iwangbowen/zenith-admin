@@ -70,8 +70,8 @@ async function validateSubscriptionRuntimeConfig(dashboardId: number): Promise<v
   const datasetMap = new Map(datasets.map((dataset) => [dataset.id, dataset]));
   for (const widget of (dashboard.widgets ?? []) as ReportWidget[]) {
     if (widget.type !== 'kpi' || !widget.datasetId) continue;
-    const dataset = datasetMap.get(widget.datasetId);
-    if (!dataset) throw new HTTPException(400, { message: `订阅组件「${widget.title || widget.i}」绑定的数据集不存在` });
+    const maybeDataset = datasetMap.get(widget.datasetId);
+    const dataset = requireRow(maybeDataset, `订阅组件「${widget.title || widget.i}」绑定的数据集不存在`, 400);
     const fieldMap = buildReportFieldMetadataMap(
       dataset.fields as Array<{ name: string; type?: string; format?: { kind?: string } }> | undefined,
       dataset.computedFields as Array<{ name: string; type?: string; format?: { kind?: string } }> | undefined,

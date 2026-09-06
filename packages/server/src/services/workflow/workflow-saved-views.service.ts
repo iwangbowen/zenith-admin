@@ -5,9 +5,15 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { getCreateTenantId } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
+import { clearDefaultFlag } from '../../lib/default-flag';
 import type { WorkflowSavedView, CreateWorkflowSavedViewInput, UpdateWorkflowSavedViewInput } from '@zenith/shared/workflow';
 
 type Row = typeof workflowSavedViews.$inferSelect;
+
+/** 默认标记的归属范围：同一用户同一页面内至多一个默认视图 */
+function viewDefaultScope(userId: number, pageKey: string) {
+  return and(eq(workflowSavedViews.userId, userId), eq(workflowSavedViews.pageKey, pageKey));
+}
 
 function mapView(row: Row): WorkflowSavedView {
   return {
@@ -49,10 +55,7 @@ export async function getSavedViewBeforeAudit(id: number): Promise<WorkflowSaved
 export async function createSavedView(input: CreateWorkflowSavedViewInput): Promise<WorkflowSavedView> {
   const user = currentUser();
   const row = await db.transaction(async (tx) => {
-    if (input.isDefault) {
-      await tx.update(workflowSavedViews).set({ isDefault: false })
-        .where(and(eq(workflowSavedViews.userId, user.userId), eq(workflowSavedViews.pageKey, input.pageKey)));
-    }
+    if (input.isDefault) await clearDefaultFlag(tx, workflowSavedViews, viewDefaultScope(user.userId, input.pageKey));
     const [r] = await tx.insert(workflowSavedViews).values({
       userId: user.userId,
       pageKey: input.pageKey,
@@ -70,10 +73,7 @@ export async function createSavedView(input: CreateWorkflowSavedViewInput): Prom
 export async function updateSavedView(id: number, input: UpdateWorkflowSavedViewInput): Promise<WorkflowSavedView> {
   const existing = await ensureOwn(id);
   const row = await db.transaction(async (tx) => {
-    if (input.isDefault) {
-      await tx.update(workflowSavedViews).set({ isDefault: false })
-        .where(and(eq(workflowSavedViews.userId, existing.userId), eq(workflowSavedViews.pageKey, existing.pageKey)));
-    }
+    if (input.isDefault) await clearDefaultFlag(tx, workflowSavedViews, viewDefaultScope(existing.userId, existing.pageKey));
     const patch: Partial<typeof workflowSavedViews.$inferInsert> = {};
     if (input.name !== undefined) patch.name = input.name;
     if (input.filters !== undefined) patch.filters = input.filters;

@@ -6,6 +6,7 @@
  *             WS 在线即时推送，HTTP 设备心跳响应捎带；设备回报一致后按键收敛
  */
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { eq, sql } from 'drizzle-orm';
 import type { IotDesiredPayload, IotMetricValue, SetIotDesiredInput } from '@zenith/shared/iot';
 import { db } from '../../db';
@@ -79,8 +80,8 @@ export async function setIotDesiredForDevice(device: IotDeviceRow, input: SetIot
   const model = await loadThingModel(device.productId);
   const propMap = new Map(model.properties.map((p) => [p.identifier, p]));
   for (const [key, value] of Object.entries(input.desired)) {
-    const prop = propMap.get(key);
-    if (!prop) throw new HTTPException(400, { message: `属性 ${key} 未在物模型中声明` });
+    const maybeProp = propMap.get(key);
+    const prop = requireRow(maybeProp, `属性 ${key} 未在物模型中声明`, 400);
     if (prop.accessMode !== 'rw') throw new HTTPException(400, { message: `属性 ${key} 为只读，不可下发` });
     const err = validateDesiredValue(prop, value);
     if (err) throw new HTTPException(400, { message: err });

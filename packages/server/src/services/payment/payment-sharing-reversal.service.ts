@@ -214,7 +214,7 @@ async function finishReversalSuccess(
       if (latest?.status === 'success') return latest;
       throw new HTTPException(409, { message: '分账冲正状态已变化，请刷新后重试' });
     }
-    const [updatedSharing] = await tx
+    const [maybeUpdatedSharing] = await tx
       .update(paymentSharingOrders)
       .set({ status: 'reversed', version: sql`${paymentSharingOrders.version} + 1` })
       .where(and(
@@ -223,7 +223,7 @@ async function finishReversalSuccess(
         eq(paymentSharingOrders.status, 'success'),
       ))
       .returning({ id: paymentSharingOrders.id });
-    if (!updatedSharing) throw new HTTPException(409, { message: '原分账单状态已变化，无法确认冲正' });
+    requireRow(maybeUpdatedSharing, '原分账单状态已变化，无法确认冲正', 409);
     return updatedReversal;
   });
 }
@@ -344,12 +344,12 @@ export async function createSharingReversal(input: {
 export async function querySharingReversal(id: number): Promise<PaymentSharingReversal> {
   const current = await loadReversal(id);
   if (current.status === 'success' || current.status === 'failed') return mapSharingReversal(current);
-  const [sharing] = await db
+  const [maybeSharing] = await db
     .select()
     .from(paymentSharingOrders)
     .where(eq(paymentSharingOrders.id, current.sharingOrderId))
     .limit(1);
-  if (!sharing) throw new HTTPException(409, { message: '原分账单不存在' });
+  const sharing = requireRow(maybeSharing, '原分账单不存在', 409);
   const context = await resolveReversalContext(sharing, { recovery: true });
   const [claimed] = await db
     .update(paymentSharingReversals)

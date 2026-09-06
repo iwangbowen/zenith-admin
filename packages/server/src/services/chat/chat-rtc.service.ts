@@ -5,7 +5,7 @@ import { scheduleSendToUsers, isUserOnline, getUserLastSeen } from '../../lib/ws
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { config } from '../../config';
-import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import type { ChatCallRecordInput, ChatPresence, RtcConfig } from '@zenith/shared/chat';
 import { mapChatMessage, listConversationMemberIds } from './chat-shared';
 
@@ -58,13 +58,13 @@ function buildCallRecordText(input: ChatCallRecordInput): string {
 /** 通话结束后向会话写入一条系统消息（通话记录） */
 export async function postCallRecord(conversationId: number, input: ChatCallRecordInput): Promise<void> {
   const me = currentUser();
-  const member = await db.query.chatConversationMembers.findFirst({
+  const maybeMember = await db.query.chatConversationMembers.findFirst({
     where: and(
       eq(chatConversationMembers.conversationId, conversationId),
       eq(chatConversationMembers.userId, me.userId),
     ),
   });
-  if (!member) throw new HTTPException(403, { message: '无权访问该会话' });
+  requireRow(maybeMember, '无权访问该会话', 403);
 
   const [row] = await db.insert(chatMessages).values({
     conversationId,

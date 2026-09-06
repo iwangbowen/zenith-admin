@@ -29,12 +29,12 @@ import { MEMBER_RENEWAL_BIZ_TYPE } from '@zenith/shared/member';
 import { allDeductPlans } from '../payment/payment-contract.service';
 
 async function ensureMemberPaymentApplication(applicationId: number, tenantId: number | null) {
-  const [app] = await db.select({ id: paymentApps.id }).from(paymentApps).where(and(
+  const [maybeApp] = await db.select({ id: paymentApps.id }).from(paymentApps).where(and(
     eq(paymentApps.id, applicationId),
     eq(paymentApps.status, 'enabled'),
     exactTenantCondition(paymentApps.tenantId, tenantId),
   )).limit(1);
-  if (!app) throw new HTTPException(400, { message: '支付应用不存在、未启用或不属于当前会员租户' });
+  requireRow(maybeApp, '支付应用不存在、未启用或不属于当前会员租户', 400);
 }
 
 function mapRenewal(row: Pick<MemberVipRenewalRow, 'id' | 'orderNo' | 'contractNo' | 'amount' | 'vipExpireAfter' | 'createdAt'>): MemberVipRenewal {

@@ -170,8 +170,8 @@ export async function simulateBizPayDemoPaid(id: number): Promise<BizPayDemo> {
   if (!row.paymentOrderNo) {
     throw new HTTPException(400, { message: '请先通过支付应用创建支付订单，再模拟沙箱回调' });
   }
-  const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, row.paymentOrderNo)).limit(1);
-  if (!order) throw new HTTPException(409, { message: '关联支付订单不存在' });
+  const [maybeOrder] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, row.paymentOrderNo)).limit(1);
+  const order = requireRow(maybeOrder, '关联支付订单不存在', 409);
   if (order.status === 'pending' || order.status === 'paying') {
     const { simulateOrderPaid } = await import('./payment-ops.service');
     await simulateOrderPaid(order.id);

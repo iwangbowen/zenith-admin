@@ -78,8 +78,8 @@ async function validateAlertDefinition(
   }
   if (aggregate !== 'count') {
     const requiredField = requireRow(field, '非 count 聚合必须指定字段', 400);
-    const meta = fieldMap.get(requiredField);
-    if (!meta) throw new HTTPException(400, { message: `聚合字段不存在：${requiredField}` });
+    const maybeMeta = fieldMap.get(requiredField);
+    const meta = requireRow(maybeMeta, `聚合字段不存在：${requiredField}`, 400);
     if (!isNumericReportField(meta)) throw new HTTPException(400, { message: '非 count 聚合字段必须可数值化' });
   }
 }

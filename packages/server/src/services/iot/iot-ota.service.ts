@@ -399,7 +399,7 @@ export async function getPendingOtaPayload(device: IotDeviceRow): Promise<IotOta
 /** 设备回报进度（ingest / WS 帧共用）：downloading/installing 更新进度，succeeded/failed 收敛 */
 export async function reportIotOtaProgress(device: IotDeviceRow, input: IotOtaProgressInput): Promise<void> {
   const terminal = input.status === 'succeeded' || input.status === 'failed';
-  const [row] = await db.update(iotOtaTaskDevices)
+  const [maybeRow] = await db.update(iotOtaTaskDevices)
     .set({
       status: input.status,
       progress: input.status === 'succeeded' ? 100 : (input.progress ?? 0),
@@ -412,7 +412,7 @@ export async function reportIotOtaProgress(device: IotDeviceRow, input: IotOtaPr
       inArray(iotOtaTaskDevices.status, ['pending', 'notified', 'downloading', 'installing']),
     ))
     .returning({ id: iotOtaTaskDevices.id });
-  if (!row) throw new HTTPException(404, { message: '升级任务不存在或已结束' });
+  requireRow(maybeRow, '升级任务不存在或已结束');
   if (terminal) await convergeOtaTask(input.taskId);
 }
 
@@ -437,7 +437,7 @@ export async function confirmIotOtaByVersion(deviceId: number, version: string):
 
 /** 设备下载固件前校验：需持有该任务的活跃升级行，返回固件文件 id */
 export async function ensureOtaDownloadAllowed(device: IotDeviceRow, taskId: number): Promise<string> {
-  const [row] = await db.select({ fileId: iotFirmwares.fileId, tdStatus: iotOtaTaskDevices.status })
+  const [maybeRow] = await db.select({ fileId: iotFirmwares.fileId, tdStatus: iotOtaTaskDevices.status })
     .from(iotOtaTaskDevices)
     .innerJoin(iotOtaTasks, eq(iotOtaTaskDevices.taskId, iotOtaTasks.id))
     .innerJoin(iotFirmwares, eq(iotOtaTasks.firmwareId, iotFirmwares.id))
@@ -448,7 +448,7 @@ export async function ensureOtaDownloadAllowed(device: IotDeviceRow, taskId: num
       eq(iotOtaTasks.status, 'running'),
     ))
     .limit(1);
-  if (!row) throw new HTTPException(403, { message: '无该任务的有效升级授权' });
+  const row = requireRow(maybeRow, '无该任务的有效升级授权', 403);
   if (!row.fileId) throw new HTTPException(404, { message: '固件文件已被删除' });
   return row.fileId;
 }

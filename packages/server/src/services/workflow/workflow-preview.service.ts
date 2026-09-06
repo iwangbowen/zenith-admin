@@ -39,8 +39,8 @@ export async function previewFlow(
     (outEdges.get(e.source) ?? outEdges.set(e.source, []).get(e.source)!).push(e);
     inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
   }
-  const startNode = flowData.nodes.find((n) => n.data.type === 'start');
-  if (!startNode) throw new HTTPException(400, { message: '流程缺少开始节点' });
+  const maybeStartNode = flowData.nodes.find((n) => n.data.type === 'start');
+  const startNode = requireRow(maybeStartNode, '流程缺少开始节点', 400);
 
   const fd = (formData ?? {}) as Record<string, unknown>;
   const pendingIds = new Set<number>();

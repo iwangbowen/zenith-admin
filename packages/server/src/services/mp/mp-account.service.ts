@@ -8,6 +8,7 @@ import type { MpAccountRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId, exactTenantCondition } from '../../lib/tenant';
+import { clearDefaultFlag } from '../../lib/default-flag';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { refreshMpAccessToken, clearMpAccessToken, WechatApiError } from '../../lib/wechat';
 import type { DbExecutor } from '../../db/types';
@@ -97,8 +98,7 @@ export async function getMpAccountDefaultAudit(id: number) {
 
 /** 取消同租户内其它默认公众号（保证默认唯一）。按目标账号的 tenantId 精确过滤，避免平台管理员无租户上下文时跨租户清除。 */
 async function clearOtherDefaults(executor: DbExecutor, tenantId: number | null): Promise<void> {
-  const tenantCond = exactTenantCondition(mpAccounts.tenantId, tenantId);
-  await executor.update(mpAccounts).set({ isDefault: false }).where(and(eq(mpAccounts.isDefault, true), tenantCond));
+  await clearDefaultFlag(executor, mpAccounts, and(eq(mpAccounts.isDefault, true), exactTenantCondition(mpAccounts.tenantId, tenantId)));
 }
 
 export async function createMpAccount(data: CreateMpAccountInput) {

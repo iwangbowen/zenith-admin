@@ -1,4 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../../db';
@@ -128,9 +129,11 @@ export async function listComments(
   const conds = [eq(reportDashboardComments.dashboardId, dashboardId), isNull(reportDashboardComments.parentId)];
   if (query.widgetId) conds.push(eq(reportDashboardComments.widgetId, query.widgetId));
   const where = and(...conds);
-  const [total, roots] = await Promise.all([
-    db.$count(reportDashboardComments, where),
-    db.query.reportDashboardComments.findMany({
+  const { list: roots, total } = await buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportDashboardComments, where),
+    rows: () => db.query.reportDashboardComments.findMany({
       where,
       with: {
         user: { columns: { nickname: true, username: true, avatar: true } },
@@ -140,7 +143,7 @@ export async function listComments(
       limit: pageSize,
       offset: (page - 1) * pageSize,
     }),
-  ]);
+  });
   const rootIds = roots.map((row) => row.id);
   const replies = rootIds.length === 0 ? [] : await db.query.reportDashboardComments.findMany({
     where: and(

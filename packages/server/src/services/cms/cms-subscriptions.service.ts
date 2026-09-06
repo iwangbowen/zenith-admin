@@ -113,8 +113,8 @@ async function resolveSubscriptionSubject(input: CmsSubscriptionSubjectInput): P
       lte(cmsContents.publishedAt, new Date()),
       or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date())),
     ));
-  const matched = authors.find((row) => row.author && normalizeCmsAuthorKey(row.author) === requested)?.author;
-  if (!matched) throw new HTTPException(404, { message: '作者不存在或暂无可订阅内容' });
+  const maybeMatched = authors.find((row) => row.author && normalizeCmsAuthorKey(row.author) === requested)?.author;
+  const matched = requireRow(maybeMatched, '作者不存在或暂无可订阅内容');
   return {
     siteId: site.id,
     subjectType: 'author',

@@ -515,8 +515,8 @@ export async function saveCmsWidgetSlot(
 ) {
   await assertSiteAccess(input.siteId);
   const site = await resolveEffectiveCmsSiteRow(input.siteId);
-  const definition = getThemeWidgetSlots(site.theme).find((slot) => slot.key === slotKey);
-  if (!definition) throw new HTTPException(400, { message: `当前主题不支持插槽 ${slotKey}` });
+  const maybeDefinition = getThemeWidgetSlots(site.theme).find((slot) => slot.key === slotKey);
+  const definition = requireRow(maybeDefinition, `当前主题不支持插槽 ${slotKey}`, 400);
   if (!definition.rendererKeys.includes(input.rendererKey ?? 'list-sidebar')) {
     throw new HTTPException(400, { message: '所选展示模板不适用于该主题插槽' });
   }
@@ -839,10 +839,10 @@ export async function getCmsWidgetPreview(id: number, requestedRenderer?: CmsWid
     widgetId: id,
     rendererKey: key,
   }], { useDraft: true });
-  const widget = resolved.get('preview');
-  if (!widget) throw new HTTPException(404, { message: '页面部件预览数据不存在' });
-  const renderer = resolveThemeWidgetRenderer(site.theme, widget.type, widget.rendererKey);
-  if (!renderer) throw new HTTPException(400, { message: '当前主题不支持所选展示模板' });
+  const maybeWidget = resolved.get('preview');
+  const widget = requireRow(maybeWidget, '页面部件预览数据不存在');
+  const maybeRenderer = resolveThemeWidgetRenderer(site.theme, widget.type, widget.rendererKey);
+  const renderer = requireRow(maybeRenderer, '当前主题不支持所选展示模板', 400);
   const { renderCmsWidgetThemePreview } = await import('./cms-render.service');
   return {
     siteId: row.siteId,

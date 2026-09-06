@@ -1,4 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
 import type { ImportWikiDocsInput, WikiGovernanceKind } from '@zenith/shared/wiki';
 import { db } from '../../db';
@@ -173,8 +174,8 @@ export async function archiveGovernanceDocs(ids: number[], archived: boolean) {
 }
 
 export async function setGovernanceOwner(ids: number[], ownerId: number) {
-  const [owner] = await db.select({ id: users.id }).from(users).where(eq(users.id, ownerId)).limit(1);
-  if (!owner) throw new HTTPException(400, { message: '指定的负责人不存在' });
+  const [maybeOwner] = await db.select({ id: users.id }).from(users).where(eq(users.id, ownerId)).limit(1);
+  requireRow(maybeOwner, '指定的负责人不存在', 400);
   const governed = await pickGovernedIds(ids);
   if (governed.length === 0) return 0;
   const updated = await db.update(wikiDocs).set({ ownerId })

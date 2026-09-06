@@ -98,12 +98,12 @@ export async function getApp(id: number): Promise<PaymentApp> {
 
 async function ensureOpenClient(id: number) {
   const user = currentUser();
-  const [row] = await db
+  const [maybeRow] = await db
     .select()
     .from(oauth2Clients)
     .where(and(eq(oauth2Clients.id, id), tenantCondition(oauth2Clients, user)))
     .limit(1);
-  if (!row) throw new HTTPException(400, { message: '开放平台应用不存在或不属于当前租户' });
+  const row = requireRow(maybeRow, '开放平台应用不存在或不属于当前租户', 400);
   if (row.status !== 'enabled') throw new HTTPException(400, { message: '开放平台应用已停用' });
   if (row.isPublic || !row.signEnabled) {
     throw new HTTPException(400, { message: '支付应用必须绑定已开启 HMAC 签名的机密开放应用' });
@@ -119,7 +119,7 @@ async function assertConfigChannel(
 ): Promise<void> {
   if (configId == null) return;
   const tenantScope = exactTenantCondition(paymentChannelConfigs.tenantId, tenantId);
-  const [row] = await db
+  const [maybeRow] = await db
     .select({ channel: paymentChannelConfigs.channel, sandbox: paymentChannelConfigs.sandbox })
     .from(paymentChannelConfigs)
     .where(and(
@@ -128,7 +128,7 @@ async function assertConfigChannel(
       tenantScope,
     ))
     .limit(1);
-  if (!row) throw new HTTPException(400, { message: '渠道配置不存在' });
+  const row = requireRow(maybeRow, '渠道配置不存在', 400);
   if (row.channel !== channel) throw new HTTPException(400, { message: `配置 ${configId} 不是${channel}渠道，无法绑定` });
   if (row.sandbox !== (environment === 'sandbox')) {
     throw new HTTPException(400, { message: `开放应用环境 ${environment} 与渠道配置环境不一致` });
@@ -202,11 +202,11 @@ export async function resolveApplicationChannelConfig(
   const appTenant = expectedTenantId === null
     ? isNull(paymentApps.tenantId)
     : eq(paymentApps.tenantId, expectedTenantId);
-  const app = await db.query.paymentApps.findFirst({
+  const maybeApp = await db.query.paymentApps.findFirst({
     where: and(eq(paymentApps.id, applicationId), appTenant),
     with: { openClient: true },
   });
-  if (!app) throw new HTTPException(400, { message: '支付应用不存在或不属于当前租户' });
+  const app = requireRow(maybeApp, '支付应用不存在或不属于当前租户', 400);
   if (app.status !== 'enabled') throw new HTTPException(400, { message: `支付应用已停用：${app.name}` });
   if (!app.openClient || app.openClient.status !== 'enabled' || app.openClient.isPublic || !app.openClient.signEnabled) {
     throw new HTTPException(400, { message: '支付应用绑定的开放平台应用不可用' });
@@ -221,7 +221,7 @@ export async function resolveApplicationChannelConfig(
       : app.unionpayConfigId;
   if (!configId) throw new HTTPException(400, { message: `应用「${app.name}」未绑定${channel}渠道配置` });
   const configTenant = exactTenantCondition(paymentChannelConfigs.tenantId, app.tenantId);
-  const [boundConfig] = await db.select({ id: paymentChannelConfigs.id, sandbox: paymentChannelConfigs.sandbox })
+  const [maybeBoundConfig] = await db.select({ id: paymentChannelConfigs.id, sandbox: paymentChannelConfigs.sandbox })
     .from(paymentChannelConfigs)
     .where(and(
       eq(paymentChannelConfigs.id, configId),
@@ -230,7 +230,7 @@ export async function resolveApplicationChannelConfig(
       configTenant,
     ))
     .limit(1);
-  if (!boundConfig) throw new HTTPException(400, { message: `应用「${app.name}」绑定的渠道配置无效或不属于同一租户` });
+  const boundConfig = requireRow(maybeBoundConfig, `应用「${app.name}」绑定的渠道配置无效或不属于同一租户`, 400);
   if (boundConfig.sandbox !== (app.openClient.environment === 'sandbox')) {
     throw new HTTPException(400, { message: '支付应用与渠道配置环境不一致' });
   }

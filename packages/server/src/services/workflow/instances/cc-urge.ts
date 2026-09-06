@@ -234,8 +234,8 @@ export async function addInstanceCc(instanceId: number, nodeKey: string, userIds
 
   const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
-  const node = flowData.nodes.find((n) => n.data.key === nodeKey);
-  if (!node) throw new HTTPException(400, { message: '抄送节点不存在' });
+  const maybeNode = flowData.nodes.find((n) => n.data.key === nodeKey);
+  const node = requireRow(maybeNode, '抄送节点不存在', 400);
   if (node.data.type !== 'ccNode') throw new HTTPException(400, { message: '仅 ccNode 节点支持补加抄送' });
 
   // 去重：过滤掉已经在该节点抄送过的用户

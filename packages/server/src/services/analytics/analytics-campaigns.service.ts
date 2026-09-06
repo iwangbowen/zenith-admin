@@ -117,10 +117,10 @@ async function ensureTemplateForChannel(channel: CreateAnalyticsCampaignInput['c
   if (channel === 'webhook') return;
   if (!templateId) throw new HTTPException(400, { message: '邮件/站内信/短信渠道必须选择模板' });
   const table = channel === 'email' ? emailTemplates : channel === 'sms' ? smsTemplates : inAppTemplates;
-  const [tpl] = await db.select({ id: table.id, status: table.status }).from(table)
+  const [maybeTpl] = await db.select({ id: table.id, status: table.status }).from(table)
     .where(and(eq(table.id, templateId), tenantScope(table)))
     .limit(1);
-  if (!tpl) throw new HTTPException(404, { message: channel === 'email' ? '邮件模板不存在' : channel === 'sms' ? '短信模板不存在' : '站内信模板不存在' });
+  const tpl = requireRow(maybeTpl, channel === 'email' ? '邮件模板不存在' : channel === 'sms' ? '短信模板不存在' : '站内信模板不存在');
   if (tpl.status !== 'enabled') throw new HTTPException(400, { message: '模板已禁用' });
 }
 

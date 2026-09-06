@@ -1,5 +1,6 @@
 import { and, eq, gt, inArray, isNull, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../db-assert';
 import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, asyncTaskTypeConfigs, users } from '../../db/schema';
 import type { AsyncTaskRow } from '../../db/schema';
@@ -340,11 +341,11 @@ export async function requestCancelAsyncTask(taskId: number): Promise<AsyncTaskR
 
 /** 断点恢复：保留进度与 checkpoint，从中断处继续（failed / cancelled 可用） */
 export async function resumeAsyncTask(taskId: number): Promise<AsyncTaskRow> {
-  const [row] = await db.update(asyncTasks)
+  const [maybeRow] = await db.update(asyncTasks)
     .set({ status: 'pending', cancelRequested: false, errorMessage: null, completedAt: null, heartbeatAt: null, nextRunAt: null })
     .where(and(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, ['failed', 'cancelled'])))
     .returning();
-  if (!row) throw new HTTPException(400, { message: '仅失败或已取消的任务可以断点恢复' });
+  const row = requireRow(maybeRow, '仅失败或已取消的任务可以断点恢复', 400);
   await enqueueAsyncTask(row.id);
   pushTaskProgress(row, { force: true });
   return row;
@@ -367,11 +368,11 @@ export async function restartAsyncTask(
     return row;
   }
   const executor = options.executor ?? db;
-  const [existing] = await executor.select({ taskType: asyncTasks.taskType }).from(asyncTasks)
+  const [maybeExisting] = await executor.select({ taskType: asyncTasks.taskType }).from(asyncTasks)
     .where(eq(asyncTasks.id, taskId)).limit(1);
-  if (!existing) throw new HTTPException(404, { message: '任务不存在' });
+  const existing = requireRow(maybeExisting, '任务不存在');
   const policy = await getTaskTypePolicy(existing.taskType);
-  const [row] = await executor.update(asyncTasks)
+  const [maybeRow] = await executor.update(asyncTasks)
     .set({
       status: 'pending',
       processedCount: 0,
@@ -390,7 +391,7 @@ export async function restartAsyncTask(
     })
     .where(and(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, TERMINAL_STATUSES)))
     .returning();
-  if (!row) throw new HTTPException(400, { message: '仅已结束的任务可以重新开始' });
+  const row = requireRow(maybeRow, '仅已结束的任务可以重新开始', 400);
   await executor.delete(asyncTaskItems).where(eq(asyncTaskItems.taskId, taskId));
   return row;
 }

@@ -7,6 +7,7 @@ import { db } from '../../db';
 import { paymentOrders, members } from '../../db/schema';
 import { dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
+import { buildListResult } from '../../lib/list-query';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { currentUserOrNull } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
@@ -88,8 +89,15 @@ export function buildRechargeWhere(q: Omit<MemberRechargeQuery, 'page' | 'pageSi
 export async function listMemberRecharges(q: MemberRechargeQuery) {
   const where = buildRechargeWhere(q);
   const joinOn = sql`${members.id}::text = ${paymentOrders.bizId}`;
-  const [rows, totalRows] = await Promise.all([
-    db.select({
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.select({ value: count() })
+      .from(paymentOrders)
+      .leftJoin(members, joinOn)
+      .where(where)
+      .then((r) => r[0]?.value ?? 0),
+    rows: () => db.select({
       id: paymentOrders.id,
       orderNo: paymentOrders.orderNo,
       outTradeNo: paymentOrders.outTradeNo,
@@ -114,15 +122,6 @@ export async function listMemberRecharges(q: MemberRechargeQuery) {
       .orderBy(desc(paymentOrders.id))
       .limit(q.pageSize)
       .offset(pageOffset(q.page, q.pageSize)),
-    db.select({ value: count() })
-      .from(paymentOrders)
-      .leftJoin(members, joinOn)
-      .where(where),
-  ]);
-  return {
-    list: rows.map((r) => mapRecharge(r as RechargeRow)),
-    total: totalRows[0]?.value ?? 0,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    map: (r) => mapRecharge(r as RechargeRow),
+  });
 }

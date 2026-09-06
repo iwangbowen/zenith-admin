@@ -417,8 +417,15 @@ export function buildLoginLogWhere(q: Omit<MemberLoginLogQuery, 'page' | 'pageSi
 
 export async function listMemberLoginLogs(q: MemberLoginLogQuery) {
   const where = buildLoginLogWhere(q);
-  const [rows, totalRows] = await Promise.all([
-    db.select({
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.select({ value: count() })
+      .from(memberLoginLogs)
+      .leftJoin(members, eq(members.id, memberLoginLogs.memberId))
+      .where(where)
+      .then((r) => r[0]?.value ?? 0),
+    rows: () => db.select({
       id: memberLoginLogs.id,
       memberId: memberLoginLogs.memberId,
       memberNickname: members.nickname,
@@ -437,15 +444,6 @@ export async function listMemberLoginLogs(q: MemberLoginLogQuery) {
       .orderBy(desc(memberLoginLogs.createdAt))
       .limit(q.pageSize)
       .offset(pageOffset(q.page, q.pageSize)),
-    db.select({ value: count() })
-      .from(memberLoginLogs)
-      .leftJoin(members, eq(members.id, memberLoginLogs.memberId))
-      .where(where),
-  ]);
-  return {
-    list: rows.map((r) => mapMemberLoginLog(r)),
-    total: totalRows[0]?.value ?? 0,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    map: mapMemberLoginLog,
+  });
 }

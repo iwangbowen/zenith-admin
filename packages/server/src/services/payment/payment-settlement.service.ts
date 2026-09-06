@@ -152,7 +152,7 @@ export interface GenerateSettlementInput {
 export async function generateSettlement(input: GenerateSettlementInput, tenantIdOverride?: number | null): Promise<PaymentSettlementBatch> {
   const tenantId = tenantIdOverride === undefined ? requireTenantScopeId(currentUser()) : tenantIdOverride;
   const configTenant = exactTenantCondition(paymentChannelConfigs.tenantId, tenantId);
-  const [scope] = await db
+  const [maybeScope] = await db
     .select({
       appId: paymentApps.id,
       wechatConfigId: paymentApps.wechatConfigId,
@@ -170,7 +170,7 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
       exactTenantCondition(paymentApps.tenantId, tenantId),
     ))
     .limit(1);
-  if (!scope) throw new HTTPException(400, { message: '支付应用或商户配置不存在、未启用或不属于当前租户' });
+  const scope = requireRow(maybeScope, '支付应用或商户配置不存在、未启用或不属于当前租户', 400);
   const boundConfigId = scope.channel === 'wechat'
     ? scope.wechatConfigId
     : scope.channel === 'alipay'
@@ -369,7 +369,7 @@ export async function transitionSettlement(
   }
   const operatorId = user.userId;
   const row = await db.transaction(async (tx) => {
-    const [updated] = await tx
+    const [maybeUpdated] = await tx
       .update(paymentSettlementBatches)
       .set({
         status: target,
@@ -385,7 +385,7 @@ export async function transitionSettlement(
         eq(paymentSettlementBatches.version, batch.version),
       ))
       .returning();
-    if (!updated) throw new HTTPException(409, { message: '结算批次状态已变化，请刷新后重试' });
+    const updated = requireRow(maybeUpdated, '结算批次状态已变化，请刷新后重试', 409);
 
     const baseJournal = {
       tenantId: updated.tenantId ?? null,
@@ -439,7 +439,7 @@ export async function deleteSettlement(id: number): Promise<void> {
   if (batch.status !== 'pending') throw new HTTPException(400, { message: '只有未开始的结算批次可以删除；处理中及终态批次必须保留审计记录' });
   await db.transaction(async (tx) => {
     await tx.delete(paymentSettlementItems).where(eq(paymentSettlementItems.batchId, id));
-    const [deleted] = await tx
+    const [maybeDeleted] = await tx
       .delete(paymentSettlementBatches)
       .where(and(
         eq(paymentSettlementBatches.id, id),
@@ -448,6 +448,6 @@ export async function deleteSettlement(id: number): Promise<void> {
         eq(paymentSettlementBatches.version, batch.version),
       ))
       .returning({ id: paymentSettlementBatches.id });
-    if (!deleted) throw new HTTPException(409, { message: '结算批次状态已变化，请刷新后重试' });
+    requireRow(maybeDeleted, '结算批次状态已变化，请刷新后重试', 409);
   });
 }

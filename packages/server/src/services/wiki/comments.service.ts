@@ -6,6 +6,7 @@ import { users, wikiComments, wikiDocs, type WikiCommentRow } from '../../db/sch
 import { currentUser, currentUserId } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { getSettings } from '../../lib/settings';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -157,17 +158,13 @@ export async function listWikiComments(q: ListWikiCommentsQuery) {
     .innerJoin(wikiDocs, eq(wikiComments.docId, wikiDocs.id))
     .where(where);
 
-  const [countRows, rows] = await Promise.all([
-    countQuery,
-    withPagination(listQuery.$dynamic(), page, pageSize),
-  ]);
-
-  return {
-    list: rows.map((r) => mapWikiComment(r.comment, { authorName: r.authorName, docTitle: r.docTitle })),
-    total: countRows[0]?.count ?? 0,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => countQuery.then((r) => r[0]?.count ?? 0),
+    rows: () => withPagination(listQuery.$dynamic(), page, pageSize),
+    map: (r) => mapWikiComment(r.comment, { authorName: r.authorName, docTitle: r.docTitle }),
+  });
 }
 
 export async function ensureWikiCommentExists(id: number) {

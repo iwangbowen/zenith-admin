@@ -11,6 +11,7 @@
  * 由既有离线扫描逐台触发 offline 生命周期（无级联下线逻辑）。
  */
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { and, count, eq, inArray } from 'drizzle-orm';
 import type { IotGatewayBatchInput, IotGatewayEventInput } from '@zenith/shared/iot';
 import { db } from '../../db';
@@ -28,9 +29,9 @@ export async function ensureIotTopologyValid(
   if (data.nodeType === 'sub') {
     if (!data.gatewayId) throw new HTTPException(400, { message: '子设备必须指定所属网关' });
     if (selfId && data.gatewayId === selfId) throw new HTTPException(400, { message: '子设备不能挂在自身之下' });
-    const [gateway] = await db.select({ id: iotDevices.id, nodeType: iotDevices.nodeType })
+    const [maybeGateway] = await db.select({ id: iotDevices.id, nodeType: iotDevices.nodeType })
       .from(iotDevices).where(eq(iotDevices.id, data.gatewayId)).limit(1);
-    if (!gateway) throw new HTTPException(400, { message: '指定的网关不存在' });
+    const gateway = requireRow(maybeGateway, '指定的网关不存在', 400);
     if (gateway.nodeType !== 'gateway') throw new HTTPException(400, { message: '所属设备不是网关（仅支持一层拓扑）' });
   }
   if (data.nodeType && data.nodeType !== 'gateway' && selfId) {

@@ -120,7 +120,7 @@ function postPreauthRemainderRelease(
 }
 
 async function loadBoundConfig(row: Pick<PaymentPreauthRow, 'channelConfigId' | 'channel' | 'tenantId'>): Promise<PaymentChannelConfigRow> {
-  const [config] = await db
+  const [maybeConfig] = await db
     .select()
     .from(paymentChannelConfigs)
     .where(and(
@@ -129,7 +129,7 @@ async function loadBoundConfig(row: Pick<PaymentPreauthRow, 'channelConfigId' | 
       exactTenantCondition(paymentChannelConfigs.tenantId, row.tenantId),
     ))
     .limit(1);
-  if (!config) throw new HTTPException(409, { message: '预授权绑定的商户配置不存在或作用域不一致' });
+  const config = requireRow(maybeConfig, '预授权绑定的商户配置不存在或作用域不一致', 409);
   return config;
 }
 
@@ -224,10 +224,10 @@ export async function createPreauth(input: CreatePaymentPreauthInput): Promise<P
   const tenantId = requireTenantScopeId(user);
   const channel = PAYMENT_METHOD_CHANNEL[input.payMethod];
   const application = await resolveApplicationChannelConfig(input.applicationId, channel, tenantId);
-  const [config] = await db.select().from(paymentChannelConfigs).where(and(
+  const [maybeConfig] = await db.select().from(paymentChannelConfigs).where(and(
     eq(paymentChannelConfigs.id, application.channelConfigId), exactTenantCondition(paymentChannelConfigs.tenantId, tenantId),
   )).limit(1);
-  if (!config) throw new HTTPException(400, { message: '支付应用绑定的商户配置不存在' });
+  const config = requireRow(maybeConfig, '支付应用绑定的商户配置不存在', 400);
   await assertPreauthOperation(config, 'preauth.freeze', input.payMethod, input.currency);
   const adapter = getAdapter(channel);
   if (!adapter.preauthFreeze) throw new HTTPException(400, { message: `CAPABILITY_UNSUPPORTED: ${channel}/preauth.freeze` });
@@ -292,11 +292,11 @@ export async function capturePreauth(id: number, applicationId: number, input: C
   if (!adapter.preauthCapture) throw new HTTPException(400, { message: `CAPABILITY_UNSUPPORTED: ${row.channel}/preauth.capture` });
 
   const orderNo = `PAC${row.preauthNo.slice(3)}V${row.version + 1}`.slice(0, 64);
-  const [claimed] = await db.update(paymentPreauths).set({
+  const [maybeClaimed] = await db.update(paymentPreauths).set({
     status: 'unknown', unknownOperation: 'capture', capturedAmount: captureAmount, captureOrderNo: orderNo,
     errorMessage: null, version: sql`${paymentPreauths.version} + 1`,
   }).where(and(eq(paymentPreauths.id, row.id), eq(paymentPreauths.version, row.version), eq(paymentPreauths.status, 'frozen'))).returning();
-  if (!claimed) throw new HTTPException(409, { message: '预授权状态已变化，请刷新后重试' });
+  const claimed = requireRow(maybeClaimed, '预授权状态已变化，请刷新后重试', 409);
 
   let order: PaymentOrderRow;
   try {
@@ -358,10 +358,10 @@ export async function releasePreauth(id: number, applicationId: number): Promise
   await assertPreauthOperation(config, 'preauth.release', payMethod, row.currency);
   const adapter = getAdapter(row.channel);
   if (!adapter.preauthRelease) throw new HTTPException(400, { message: `CAPABILITY_UNSUPPORTED: ${row.channel}/preauth.release` });
-  const [claimed] = await db.update(paymentPreauths).set({
+  const [maybeClaimed] = await db.update(paymentPreauths).set({
     status: 'unknown', unknownOperation: 'release', errorMessage: null, version: sql`${paymentPreauths.version} + 1`,
   }).where(and(eq(paymentPreauths.id, row.id), eq(paymentPreauths.version, row.version), eq(paymentPreauths.status, 'frozen'))).returning();
-  if (!claimed) throw new HTTPException(409, { message: '预授权状态已变化，请刷新后重试' });
+  const claimed = requireRow(maybeClaimed, '预授权状态已变化，请刷新后重试', 409);
   try {
     await adapter.preauthRelease(buildAdapterContext(config), { outPreauthNo: row.preauthNo, channelPreauthNo: row.channelPreauthNo ?? undefined });
     const released = await db.transaction(async (tx) => {

@@ -5,6 +5,7 @@
  * initPaymentAdapters() 中调用 registerAdapter() 即可，门面与业务层零改动。
  */
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../db-assert';
 import type { PaymentChannel, PaymentMethod } from '@zenith/shared/payment';
 import type {
   PaymentChannelAdapter,
@@ -24,8 +25,8 @@ export function registerAdapter(adapter: PaymentChannelAdapter): void {
 }
 
 export function getAdapter(channel: PaymentChannel): PaymentChannelAdapter {
-  const adapter = adapterRegistry.get(channel);
-  if (!adapter) throw new HTTPException(400, { message: `不支持的支付渠道：${channel}` });
+  const maybeAdapter = adapterRegistry.get(channel);
+  const adapter = requireRow(maybeAdapter, `不支持的支付渠道：${channel}`, 400);
   return adapter;
 }
 

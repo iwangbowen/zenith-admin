@@ -54,8 +54,8 @@ interface MilestoneInput {
 async function ensureCouponValid(rewardType: CheckinMilestoneRewardType, couponId?: number | null) {
   if (rewardType !== 'coupon') return;
   if (!couponId) throw new HTTPException(400, { message: '优惠券奖励必须选择优惠券模板' });
-  const [c] = await db.select({ id: coupons.id }).from(coupons).where(eq(coupons.id, couponId)).limit(1);
-  if (!c) throw new HTTPException(400, { message: '优惠券模板不存在' });
+  const [maybeC] = await db.select({ id: coupons.id }).from(coupons).where(eq(coupons.id, couponId)).limit(1);
+  requireRow(maybeC, '优惠券模板不存在', 400);
 }
 
 export async function createCheckinMilestone(input: MilestoneInput) {

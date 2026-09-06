@@ -1,5 +1,6 @@
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
+import { clearDefaultFlag as clearTableDefaultFlag } from '../../lib/default-flag';
 import { fileStorageConfigs, managedFiles } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import type { createFileStorageConfigSchema } from '@zenith/shared/platform';
@@ -146,8 +147,9 @@ export function toStoragePayload(input: StorageInput) {
 
 // ─── 清除默认标记 ─────────────────────────────────────────────────────────────
 
+/** 文件存储配置是平台级资源：默认标记全表唯一（不带租户范围） */
 export async function clearDefaultFlag(executor: DbExecutor) {
-  await executor.update(fileStorageConfigs).set({ isDefault: false });
+  await clearTableDefaultFlag(executor, fileStorageConfigs);
 }
 
 // ─── 业务入口 ─────────────────────────────────────────────────────────────────

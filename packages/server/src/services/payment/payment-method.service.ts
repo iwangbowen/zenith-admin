@@ -97,12 +97,12 @@ export async function updateMethodConfig(id: number, input: UpdatePaymentMethodC
 /** 下单校验：配置缺失或停用均拒绝。 */
 export async function assertMethodEnabled(method: PaymentMethod, tenantId: number | null): Promise<void> {
   const exactTenant = exactTenantCondition(paymentMethodConfigs.tenantId, tenantId);
-  const [row] = await db
+  const [maybeRow] = await db
     .select({ enabled: paymentMethodConfigs.enabled, label: paymentMethodConfigs.label })
     .from(paymentMethodConfigs)
     .where(and(eq(paymentMethodConfigs.method, method), exactTenant))
     .limit(1);
-  if (!row) throw new HTTPException(400, { message: `支付方式 ${method} 未配置` });
+  const row = requireRow(maybeRow, `支付方式 ${method} 未配置`, 400);
   if (!row.enabled) {
     throw new HTTPException(400, { message: `支付方式「${row.label}」已停用` });
   }

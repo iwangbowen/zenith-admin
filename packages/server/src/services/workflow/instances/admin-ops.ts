@@ -29,8 +29,8 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   const snapshot = inst.definitionSnapshot;
   const flowData = snapshot?.flowData;
   if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程数据异常' });
-  const targetNode = flowData.nodes.find((n) => n.data.key === targetNodeKey);
-  if (!targetNode) throw new HTTPException(400, { message: '目标节点不存在' });
+  const maybeTargetNode = flowData.nodes.find((n) => n.data.key === targetNodeKey);
+  const targetNode = requireRow(maybeTargetNode, '目标节点不存在', 400);
   if (targetNode.data.type !== 'approve' && targetNode.data.type !== 'handler') {
     throw new HTTPException(400, { message: '只能强制跳转到审批/办理节点' });
   }

@@ -16,6 +16,7 @@ import {
 import { getReportRuntimeGovernance } from './report-dataset-shared';
 import type { ReportDatasetExecutionLog, ReportExecutionStats } from '@zenith/shared/report';
 import { buildWhere } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
 
 function mapDatasetExecutionLog(row: {
   id: number;
@@ -90,9 +91,11 @@ export async function listDatasetExecutionLogs(query: {
   if (startAt) conds.push(gte(reportDatasetExecutionLogs.executedAt, startAt));
   if (endAt) conds.push(lte(reportDatasetExecutionLogs.executedAt, endAt));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportDatasetExecutionLogs, where),
-    db.select({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportDatasetExecutionLogs, where),
+    rows: () => db.select({
       id: reportDatasetExecutionLogs.id,
       datasetId: reportDatasetExecutionLogs.datasetId,
       datasetName: reportDatasets.name,
@@ -123,13 +126,12 @@ export async function listDatasetExecutionLogs(query: {
       .orderBy(desc(reportDatasetExecutionLogs.id))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-  ]);
-  const list = rows.map((row) => mapDatasetExecutionLog({
-    ...row,
-    datasourceName: row.datasourceName ?? null,
-    paramKeys: (row.paramKeys ?? []) as string[],
-  }));
-  return { list, total, page, pageSize };
+    map: (row) => mapDatasetExecutionLog({
+      ...row,
+      datasourceName: row.datasourceName ?? null,
+      paramKeys: (row.paramKeys ?? []) as string[],
+    }),
+  });
 }
 
 export async function getDatasetExecutionStats(query: {

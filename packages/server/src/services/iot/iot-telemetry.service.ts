@@ -243,8 +243,8 @@ export async function sendIotCommand(deviceId: number, input: SendIotCommandInpu
 export async function sendIotCommandToDevice(device: IotDeviceRow, input: SendIotCommandInput) {
   if (device.status !== 'enabled') throw new HTTPException(400, { message: '设备已禁用，无法下发指令' });
   const model = await loadThingModel(device.productId);
-  const serviceDef = model.services.find((s) => s.identifier === input.service);
-  if (!serviceDef) throw new HTTPException(400, { message: `服务 ${input.service} 未在物模型中声明` });
+  const maybeServiceDef = model.services.find((s) => s.identifier === input.service);
+  const serviceDef = requireRow(maybeServiceDef, `服务 ${input.service} 未在物模型中声明`, 400);
   validateServiceParams(serviceDef.params ?? [], input.params);
 
   const ttl = input.ttlSeconds ?? IOT_COMMAND_DEFAULT_TTL_SECONDS;

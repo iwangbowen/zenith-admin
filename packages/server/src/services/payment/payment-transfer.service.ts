@@ -174,15 +174,15 @@ async function finalizeTransferReservation(
   target: 'captured' | 'released',
   reason: string,
 ): Promise<void> {
-  const [reservation] = await db
+  const [maybeReservation] = await db
     .select({ status: paymentFundReservations.status, version: paymentFundReservations.version })
     .from(paymentFundReservations)
     .where(eq(paymentFundReservations.id, row.fundReservationId))
     .limit(1);
-  if (!reservation) throw new HTTPException(409, { message: '转账资金预占不存在' });
+  const reservation = requireRow(maybeReservation, '转账资金预占不存在', 409);
   if (reservation.status === target) return;
   if (reservation.status !== 'active') throw new HTTPException(409, { message: `转账资金预占已处于 ${reservation.status}` });
-  const [updated] = await db
+  const [maybeUpdated] = await db
     .update(paymentFundReservations)
     .set({
       status: target,
@@ -196,7 +196,7 @@ async function finalizeTransferReservation(
       eq(paymentFundReservations.version, reservation.version),
     ))
     .returning({ id: paymentFundReservations.id });
-  if (!updated) throw new HTTPException(409, { message: '转账资金预占状态已变化' });
+  requireRow(maybeUpdated, '转账资金预占状态已变化', 409);
 }
 
 /** 调渠道执行转账并落状态；请求前先 claim 为 processing，未知结果只允许查单收敛。 */
@@ -416,7 +416,7 @@ export async function approveTransfer(id: number, input: ApprovePaymentTransferI
   });
   await assertEffectivePaymentOperation({ configRow: config, operation: 'transfer.create', currency: row.currency });
 
-  const [approved] = await db
+  const [maybeApproved] = await db
     .update(paymentTransfers)
     .set({
       approvalStatus: 'approved',
@@ -432,7 +432,7 @@ export async function approveTransfer(id: number, input: ApprovePaymentTransferI
       eq(paymentTransfers.approvalStatus, 'pending'),
     ))
     .returning();
-  if (!approved) throw new HTTPException(409, { message: '转账审批状态已变化，请刷新后重试' });
+  const approved = requireRow(maybeApproved, '转账审批状态已变化，请刷新后重试', 409);
 
   return mapTransfer(await executeTransferAtChannel(approved, config));
 }
@@ -454,18 +454,18 @@ export async function rejectTransfer(id: number, input: ApprovePaymentTransferIn
       throw new HTTPException(400, { message: '该转账单无需审批或已处理' });
     }
 
-    const [reservation] = await tx
+    const [maybeReservation] = await tx
       .select({ status: paymentFundReservations.status, version: paymentFundReservations.version })
       .from(paymentFundReservations)
       .where(eq(paymentFundReservations.id, row.fundReservationId))
       .for('update')
       .limit(1);
-    if (!reservation) throw new HTTPException(409, { message: '转账资金预占不存在' });
+    const reservation = requireRow(maybeReservation, '转账资金预占不存在', 409);
     if (reservation.status !== 'active') {
       throw new HTTPException(409, { message: `转账资金预占已处于 ${reservation.status}` });
     }
 
-    const [updated] = await tx
+    const [maybeUpdated] = await tx
       .update(paymentTransfers)
       .set({
         approvalStatus: 'rejected',
@@ -484,9 +484,9 @@ export async function rejectTransfer(id: number, input: ApprovePaymentTransferIn
         eq(paymentTransfers.approvalStatus, 'pending'),
       ))
       .returning();
-    if (!updated) throw new HTTPException(409, { message: '转账审批状态已变化，请刷新后重试' });
+    const updated = requireRow(maybeUpdated, '转账审批状态已变化，请刷新后重试', 409);
 
-    const [released] = await tx
+    const [maybeReleased] = await tx
       .update(paymentFundReservations)
       .set({
         status: 'released',
@@ -500,7 +500,7 @@ export async function rejectTransfer(id: number, input: ApprovePaymentTransferIn
         eq(paymentFundReservations.version, reservation.version),
       ))
       .returning({ id: paymentFundReservations.id });
-    if (!released) throw new HTTPException(409, { message: '转账资金预占状态已变化' });
+    requireRow(maybeReleased, '转账资金预占状态已变化', 409);
     return updated;
   });
   return mapTransfer(rejected);

@@ -118,8 +118,8 @@ function mapNode(row: typeof systemSchedulerNodes.$inferSelect) {
 
 function registeredTaskOrThrow(name: string): SystemSchedulerTaskInfo {
   const scheduler = getSchedulerIntrospection();
-  const task = [...scheduler.systemRecurringJobs, ...scheduler.systemQueueWorkers].find((item) => item.name === name);
-  if (!task) throw new HTTPException(404, { message: '系统调度任务不存在或尚未注册' });
+  const maybeTask = [...scheduler.systemRecurringJobs, ...scheduler.systemQueueWorkers].find((item) => item.name === name);
+  const task = requireRow(maybeTask, '系统调度任务不存在或尚未注册');
   return task;
 }
 

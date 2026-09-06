@@ -1,5 +1,6 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import { clearDefaultFlag } from '../../lib/default-flag';
 import { eq, asc, and, or, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -554,11 +555,7 @@ export async function createCmsSite(data: CreateCmsSiteInput) {
       } catch (error) {
         throw new HTTPException(400, { message: error instanceof Error ? error.message : '站点层级无效' });
       }
-      if (siteData.isDefault) {
-        await tx.update(cmsSites).set({ isDefault: false }).where(and(
-          eq(cmsSites.isDefault, true),
-        ));
-      }
+      if (siteData.isDefault) await clearDefaultFlag(tx, cmsSites, eq(cmsSites.isDefault, true));
       const [created] = await tx.insert(cmsSites).values({
         ...siteData,
         parentId,
@@ -701,11 +698,7 @@ export async function updateCmsSite(id: number, data: UpdateCmsSiteInput) {
         await assertSiteTemplateSettings(effective.theme, effective.settings, id, tx);
         assertSiteThemeConfig(effective.theme, effective.settings);
       }
-      if (data.isDefault) {
-        await tx.update(cmsSites).set({ isDefault: false }).where(and(
-          eq(cmsSites.isDefault, true),
-        ));
-      }
+      if (data.isDefault) await clearDefaultFlag(tx, cmsSites, eq(cmsSites.isDefault, true));
       const patch: Record<string, unknown> = {
         name: data.name,
         code: data.code,

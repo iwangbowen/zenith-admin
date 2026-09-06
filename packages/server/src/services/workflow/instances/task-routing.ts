@@ -407,8 +407,8 @@ export async function returnTask(taskId: number, targetNodeKeys: string[], comme
   const approvedNodeKeys = new Set(approvedRows.map((row) => row.nodeKey));
   const uniqueKeys = Array.from(new Set(targetNodeKeys));
   const targets = uniqueKeys.map((k) => {
-    const n = flowData.nodes.find((nd) => nd.data.key === k);
-    if (!n) throw new HTTPException(400, { message: `退回目标节点不存在：${k}` });
+    const maybeN = flowData.nodes.find((nd) => nd.data.key === k);
+    const n = requireRow(maybeN, `退回目标节点不存在：${k}`, 400);
     if (n.data.type !== 'approve' && n.data.type !== 'handler') {
       throw new HTTPException(400, { message: '只能退回到审批/办理节点' });
     }

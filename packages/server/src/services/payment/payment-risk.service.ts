@@ -548,12 +548,12 @@ export async function approveRiskReview(id: number, remark?: string): Promise<Pa
   if (!remark?.trim()) throw new HTTPException(400, { message: '审核意见不能为空' });
   const row = await ensureRiskReview(id);
   if (row.status !== 'pending') throw new HTTPException(400, { message: '该审核单已处理' });
-  const [updated] = await db
+  const [maybeUpdated] = await db
     .update(paymentRiskReviews)
     .set({ status: 'approved', reviewerId: currentUser().userId, reviewedAt: new Date(), reviewRemark: remark.trim() })
     .where(and(eq(paymentRiskReviews.id, id), eq(paymentRiskReviews.status, 'pending')))
     .returning();
-  if (!updated) throw new HTTPException(400, { message: '该审核单已被并发处理' });
+  const updated = requireRow(maybeUpdated, '该审核单已被并发处理', 400);
   await db
     .update(paymentOrders)
     .set({ expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000) })
@@ -572,12 +572,12 @@ export async function rejectRiskReview(id: number, remark?: string): Promise<Pay
   const row = await ensureRiskReview(id);
   if (row.status !== 'pending') throw new HTTPException(400, { message: '该审核单已处理' });
   const result = await db.transaction(async (tx) => {
-    const [updated] = await tx
+    const [maybeUpdated] = await tx
       .update(paymentRiskReviews)
       .set({ status: 'rejected', reviewerId: currentUser().userId, reviewedAt: new Date(), reviewRemark: remark.trim() })
       .where(and(eq(paymentRiskReviews.id, id), eq(paymentRiskReviews.status, 'pending')))
       .returning();
-    if (!updated) throw new HTTPException(409, { message: '该审核单已被并发处理' });
+    const updated = requireRow(maybeUpdated, '该审核单已被并发处理', 409);
     const [order] = await tx
       .select()
       .from(paymentOrders)

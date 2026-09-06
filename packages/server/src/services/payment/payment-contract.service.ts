@@ -350,12 +350,12 @@ export async function findActiveContractByBiz(input: {
 }
 
 async function loadContractConfig(row: Pick<PaymentContractRow, 'channel' | 'channelConfigId' | 'tenantId'>): Promise<PaymentChannelConfigRow> {
-  const [config] = await db.select().from(paymentChannelConfigs).where(and(
+  const [maybeConfig] = await db.select().from(paymentChannelConfigs).where(and(
     eq(paymentChannelConfigs.id, row.channelConfigId),
     eq(paymentChannelConfigs.channel, row.channel),
     exactTenantCondition(paymentChannelConfigs.tenantId, row.tenantId),
   )).limit(1);
-  if (!config) throw new HTTPException(409, { message: '协议绑定的商户配置不存在或作用域不一致' });
+  const config = requireRow(maybeConfig, '协议绑定的商户配置不存在或作用域不一致', 409);
   return config;
 }
 
@@ -403,11 +403,11 @@ export async function signContract(input: SignContractInput): Promise<SignContra
   }
   const channel = PAYMENT_METHOD_CHANNEL[input.payMethod];
   const application = await resolveApplicationChannelConfig(input.applicationId, channel, tenantId);
-  const [contractConfig] = await db.select().from(paymentChannelConfigs).where(and(
+  const [maybeContractConfig] = await db.select().from(paymentChannelConfigs).where(and(
     eq(paymentChannelConfigs.id, application.channelConfigId),
     exactTenantCondition(paymentChannelConfigs.tenantId, tenantId),
   )).limit(1);
-  if (!contractConfig) throw new HTTPException(400, { message: '支付应用绑定的商户配置不存在' });
+  const contractConfig = requireRow(maybeContractConfig, '支付应用绑定的商户配置不存在', 400);
   await assertContractOperation(contractConfig, 'contract.sign', input.payMethod, input.currency);
   const adapter = getAdapter(channel);
   if (!adapter.signContract) throw new HTTPException(400, { message: `CAPABILITY_UNSUPPORTED: ${channel}/contract.sign` });
@@ -547,12 +547,12 @@ export async function terminateContract(row: PaymentContractRow): Promise<Paymen
   await assertContractOperation(contractConfig, 'contract.terminate', method, row.currency);
   const adapter = getAdapter(row.channel);
   if (!adapter.terminateContract) throw new HTTPException(400, { message: `CAPABILITY_UNSUPPORTED: ${row.channel}/contract.terminate` });
-  const [claimed] = await db.update(paymentContracts).set({
+  const [maybeClaimed] = await db.update(paymentContracts).set({
     status: 'unknown', unknownOperation: 'terminate', errorMessage: null, version: sql`${paymentContracts.version} + 1`,
   }).where(and(
     eq(paymentContracts.id, row.id), eq(paymentContracts.version, row.version), inArray(paymentContracts.status, ['signed', 'paused']),
   )).returning();
-  if (!claimed) throw new HTTPException(409, { message: '协议状态已变化，请刷新后重试' });
+  const claimed = requireRow(maybeClaimed, '协议状态已变化，请刷新后重试', 409);
   try {
     await adapter.terminateContract(buildAdapterContext(contractConfig), {
       outContractNo: row.contractNo,
@@ -576,8 +576,8 @@ export async function pauseContract(id: number, applicationId: number): Promise<
   requireTenantScopeId(currentUser());
   const row = await ensureContract(id, applicationId);
   if (row.status !== 'signed') throw new HTTPException(400, { message: '仅已签约协议可暂停' });
-  const [updated] = await db.update(paymentContracts).set({ status: 'paused', version: sql`${paymentContracts.version} + 1` }).where(and(eq(paymentContracts.id, id), eq(paymentContracts.version, row.version), eq(paymentContracts.status, 'signed'))).returning();
-  if (!updated) throw new HTTPException(400, { message: '协议状态已变化，请刷新后重试' });
+  const [maybeUpdated] = await db.update(paymentContracts).set({ status: 'paused', version: sql`${paymentContracts.version} + 1` }).where(and(eq(paymentContracts.id, id), eq(paymentContracts.version, row.version), eq(paymentContracts.status, 'signed'))).returning();
+  const updated = requireRow(maybeUpdated, '协议状态已变化，请刷新后重试', 400);
   return mapContract(updated);
 }
 
@@ -585,12 +585,12 @@ export async function resumeContract(id: number, applicationId: number): Promise
   requireTenantScopeId(currentUser());
   const row = await ensureContract(id, applicationId);
   if (row.status !== 'paused') throw new HTTPException(400, { message: '仅已暂停协议可恢复' });
-  const [updated] = await db
+  const [maybeUpdated] = await db
     .update(paymentContracts)
     .set({ status: 'signed', failCount: 0, nextDeductAt: new Date(), version: sql`${paymentContracts.version} + 1` })
     .where(and(eq(paymentContracts.id, id), eq(paymentContracts.version, row.version), eq(paymentContracts.status, 'paused')))
     .returning();
-  if (!updated) throw new HTTPException(400, { message: '协议状态已变化，请刷新后重试' });
+  const updated = requireRow(maybeUpdated, '协议状态已变化，请刷新后重试', 400);
   return mapContract(updated);
 }
 
@@ -793,9 +793,9 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
             version: sql`${paymentOrders.version} + 1`,
           }).where(and(eq(paymentOrders.id, existingOrder.id), eq(paymentOrders.status, 'failed'))).returning();
           existingOrder = retryOrder ?? existingOrder;
-          const [contract] = await tx.update(paymentContracts).set({ lastOrderNo: stableOrderNo, version: sql`${paymentContracts.version} + 1` })
+          const [maybeContract] = await tx.update(paymentContracts).set({ lastOrderNo: stableOrderNo, version: sql`${paymentContracts.version} + 1` })
             .where(and(eq(paymentContracts.id, lockedContract.id), eq(paymentContracts.version, lockedContract.version), eq(paymentContracts.status, 'signed'))).returning();
-          if (!contract) throw new HTTPException(409, { message: '协议状态已变化，请刷新后重试' });
+          const contract = requireRow(maybeContract, '协议状态已变化，请刷新后重试', 409);
           return { order: existingOrder, contract, shouldCallProvider: true };
         }
         return { order: existingOrder, contract: lockedContract, shouldCallProvider: false };
@@ -818,9 +818,9 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
         expiredAt: dayjs().add(30, 'minute').toDate(),
         tenantId: lockedContract.tenantId,
       }).returning();
-      const [contract] = await tx.update(paymentContracts).set({ lastOrderNo: stableOrderNo, version: sql`${paymentContracts.version} + 1` })
+      const [maybeContract] = await tx.update(paymentContracts).set({ lastOrderNo: stableOrderNo, version: sql`${paymentContracts.version} + 1` })
         .where(and(eq(paymentContracts.id, lockedContract.id), eq(paymentContracts.version, lockedContract.version), eq(paymentContracts.status, 'signed'))).returning();
-      if (!contract) throw new HTTPException(409, { message: '协议状态已变化，请刷新后重试' });
+      const contract = requireRow(maybeContract, '协议状态已变化，请刷新后重试', 409);
       return { order: createdOrder, contract, shouldCallProvider: true };
     }));
   } catch (err) {

@@ -7,6 +7,7 @@ import { tenantCondition } from '../../lib/tenant';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
 import type { WorkflowAnalytics, WorkflowInstanceStatus, WorkflowAnalyticsTrendPoint, WorkflowOverdueTask } from '@zenith/shared/workflow';
 import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared/workflow';
 
@@ -231,13 +232,17 @@ export async function listOverdueTasks(query: { page?: number; pageSize?: number
   if (query.definitionId) conds.push(eq(workflowInstances.definitionId, query.definitionId));
   const where = and(...conds);
   const assignee = users;
-  const [countRows, rows] = await Promise.all([
-    db.select({ c: sql<number>`count(*)::int` })
+  const now = Date.now();
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.select({ c: sql<number>`count(*)::int` })
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .innerJoin(workflowJobs, eq(workflowJobs.taskId, workflowTasks.id))
-      .where(where),
-    db.select({
+      .where(where)
+      .then((r) => r[0]?.c ?? 0),
+    rows: () => db.select({
       taskId: workflowTasks.id,
       instanceId: workflowInstances.id,
       instanceTitle: workflowInstances.title,
@@ -257,21 +262,19 @@ export async function listOverdueTasks(query: { page?: number; pageSize?: number
       .orderBy(asc(workflowJobs.runAt))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-  ]);
-  const now = Date.now();
-  const list: WorkflowOverdueTask[] = rows.map((r) => ({
-    taskId: r.taskId,
-    instanceId: r.instanceId,
-    instanceTitle: r.instanceTitle,
-    serialNo: r.serialNo ?? null,
-    definitionName: r.definitionName ?? '—',
-    nodeName: r.nodeName,
-    assigneeId: r.assigneeId ?? null,
-    assigneeName: r.assigneeName ?? null,
-    timeoutAt: r.timeoutAt ? formatDateTime(r.timeoutAt) : '',
-    overdueSec: r.timeoutAt ? Math.round((now - r.timeoutAt.getTime()) / 1000) : 0,
-  }));
-  return { list, total: countRows[0]?.c ?? 0, page, pageSize };
+    map: (r): WorkflowOverdueTask => ({
+      taskId: r.taskId,
+      instanceId: r.instanceId,
+      instanceTitle: r.instanceTitle,
+      serialNo: r.serialNo ?? null,
+      definitionName: r.definitionName ?? '—',
+      nodeName: r.nodeName,
+      assigneeId: r.assigneeId ?? null,
+      assigneeName: r.assigneeName ?? null,
+      timeoutAt: r.timeoutAt ? formatDateTime(r.timeoutAt) : '',
+      overdueSec: r.timeoutAt ? Math.round((now - r.timeoutAt.getTime()) / 1000) : 0,
+    }),
+  });
 }
 
 const INSTANCE_STATUS_TEXT: Record<string, string> = WORKFLOW_INSTANCE_STATUS_LABELS;

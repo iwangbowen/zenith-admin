@@ -1,6 +1,6 @@
 import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
-import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, or } from 'drizzle-orm';
 import type { CreateReportEnvironmentInput, CreateReportEnvironmentPromotionInput, CreateReportPublishApprovalInput, CreateReportResourceTransferInput, DecideReportPublishApprovalInput, DecideReportResourceTransferInput, ReportApprovalStatus, ReportDashboardSnapshot, ReportCanvasItem, ReportDashboardConfig, ReportFilter, ReportGridItem, ReportWidget, ReportEnvironment, ReportEnvironmentPromotion, ReportEnvironmentPromotionActionInput, ReportPromotionStatus, ReportPublishApproval, ReportResourceTransfer, ReportResourceType, ReportTransferStatus, UpdateReportEnvironmentInput } from '@zenith/shared/report';
 import { db } from '../../db';
 import {
@@ -13,6 +13,8 @@ import {
 } from '../../db/schema';
 import { currentUserId, isSuperAdmin } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { clearDefaultFlag } from '../../lib/default-flag';
+import { exactTenantCondition } from '../../lib/tenant';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
@@ -456,12 +458,8 @@ export async function createReportEnvironment(input: CreateReportEnvironmentInpu
   const tenantId = reportCreateTenantId();
   try {
     const row = await db.transaction(async (tx) => {
-      if (input.isDefault) {
-        const targetTenant = tenantId == null
-          ? isNull(reportEnvironments.tenantId)
-          : eq(reportEnvironments.tenantId, tenantId);
-        await tx.update(reportEnvironments).set({ isDefault: false }).where(targetTenant);
-      }
+      // 同租户内至多一个默认环境（平台级 tenantId 为 null）
+      if (input.isDefault) await clearDefaultFlag(tx, reportEnvironments, exactTenantCondition(reportEnvironments.tenantId, tenantId));
       const [created] = await tx.insert(reportEnvironments).values({
         tenantId,
         code: input.code,
@@ -489,12 +487,7 @@ export async function updateReportEnvironment(
   const existing = await getReportEnvironment(id);
   try {
     const rowOrUndefined = await db.transaction(async (tx) => {
-      if (input.isDefault) {
-        const targetTenant = existing.tenantId == null
-          ? isNull(reportEnvironments.tenantId)
-          : eq(reportEnvironments.tenantId, existing.tenantId);
-        await tx.update(reportEnvironments).set({ isDefault: false }).where(targetTenant);
-      }
+      if (input.isDefault) await clearDefaultFlag(tx, reportEnvironments, exactTenantCondition(reportEnvironments.tenantId, existing.tenantId));
       const [updated] = await tx.update(reportEnvironments).set({
         name: input.name,
         kind: input.kind,

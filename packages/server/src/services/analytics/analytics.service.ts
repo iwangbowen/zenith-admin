@@ -985,8 +985,17 @@ export async function getUserStats(q: UserStatsQuery) {
   const start = startOfDaysAgo(days);
   const where = buildWhere(gte(userEvents.createdAt, start), tenantScope(userEvents));
 
-  const [rows, totalRows] = await Promise.all([
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db
+      .select({
+        total: sql<number>`COUNT(DISTINCT (COALESCE(${userEvents.userId}::text, 'anonymous') || ':' || COALESCE(${userEvents.username}, '')))::int`,
+      })
+      .from(userEvents)
+      .where(where)
+      .then((r) => Number(r[0]?.total ?? 0)),
+    rows: () => withPagination(
       db
         .select({
           userId: userEvents.userId,
@@ -1006,25 +1015,17 @@ export async function getUserStats(q: UserStatsQuery) {
       page,
       pageSize,
     ),
-    db
-      .select({
-        total: sql<number>`COUNT(DISTINCT (COALESCE(${userEvents.userId}::text, 'anonymous') || ':' || COALESCE(${userEvents.username}, '')))::int`,
-      })
-      .from(userEvents)
-      .where(where),
-  ]);
-
-  const list = rows.map((r) => ({
-    userId: r.userId,
-    username: r.username,
-    totalEvents: Number(r.totalEvents),
-    pageViews: Number(r.pageViews),
-    uniquePages: Number(r.uniquePages),
-    featureUses: Number(r.featureUses),
-    totalDwellMs: r.totalDwellMs == null ? null : Number(r.totalDwellMs),
-    lastActiveAt: formatNullableDateTime(r.lastActiveAt),
-  }));
-  return { list, total: Number(totalRows[0]?.total ?? 0), page, pageSize };
+    map: (r) => ({
+      userId: r.userId,
+      username: r.username,
+      totalEvents: Number(r.totalEvents),
+      pageViews: Number(r.pageViews),
+      uniquePages: Number(r.uniquePages),
+      featureUses: Number(r.featureUses),
+      totalDwellMs: r.totalDwellMs == null ? null : Number(r.totalDwellMs),
+      lastActiveAt: formatNullableDateTime(r.lastActiveAt),
+    }),
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════════

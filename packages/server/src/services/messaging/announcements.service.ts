@@ -221,9 +221,12 @@ export async function getInbox(q: { page?: number; pageSize?: number; isRead?: s
   if (isRead === 'true') readFilter = isNotNull(announcementReads.id);
   else if (isRead === 'false') readFilter = isNull(announcementReads.id);
   const where = readFilter ? and(baseWhere, readFilter) : baseWhere;
-  const [totalRow, rows] = await Promise.all([
-    db.select({ total: count() }).from(announcements).leftJoin(announcementReads, joinCond).where(where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.select({ total: count() }).from(announcements).leftJoin(announcementReads, joinCond).where(where)
+      .then((r) => r[0].total),
+    rows: () => withPagination(
       db.select({ ...getTableColumns(announcements), isRead: isNotNull(announcementReads.id).mapWith(Boolean) })
         .from(announcements)
         .leftJoin(announcementReads, joinCond)
@@ -232,8 +235,8 @@ export async function getInbox(q: { page?: number; pageSize?: number; isRead?: s
         .$dynamic(),
       page, pageSize,
     ),
-  ]);
-  return { list: rows.map(({ isRead, ...announcementRow }) => ({ ...mapAnnouncement(announcementRow), isRead })), total: totalRow[0].total, page, pageSize };
+    map: ({ isRead, ...announcementRow }) => ({ ...mapAnnouncement(announcementRow), isRead }),
+  });
 }
 
 export async function listAnnouncements(q: { page?: number; pageSize?: number; title?: string; type?: string; publishStatus?: string; startTime?: string; endTime?: string }) {

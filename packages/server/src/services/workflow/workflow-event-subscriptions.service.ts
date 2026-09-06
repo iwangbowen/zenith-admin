@@ -339,20 +339,22 @@ export async function listDeliveries(q: ListDeliveriesQuery) {
   else if (q.status === 'retrying') conds.push(and(eq(workflowJobExecutions.status, 'failed'), sql`${workflowJobs.attempts} < ${workflowJobs.maxAttempts}`)!);
   else if (q.status === 'pending') conds.push(inArray(workflowJobs.status, ['pending', 'running']));
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.select({ c: sql<number>`count(*)::int` })
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.select({ c: sql<number>`count(*)::int` })
       .from(workflowJobExecutions)
       .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
       .where(where)
       .then((r) => r[0]?.c ?? 0),
-    db.select({ execution: workflowJobExecutions, job: workflowJobs, subscriptionName: workflowEventSubscriptions.name })
+    rows: () => db.select({ execution: workflowJobExecutions, job: workflowJobs, subscriptionName: workflowEventSubscriptions.name })
       .from(workflowJobExecutions)
       .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
       .leftJoin(workflowEventSubscriptions, sql`(${workflowJobs.payload}->>'subscriptionId')::int = ${workflowEventSubscriptions.id}`)
       .where(where).orderBy(desc(workflowJobExecutions.id))
       .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map((r) => mapDelivery(r, r.subscriptionName)), total, page, pageSize };
+    map: (r) => mapDelivery(r, r.subscriptionName),
+  });
 }
 
 export async function getDelivery(id: number) {

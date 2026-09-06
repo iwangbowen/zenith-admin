@@ -9,6 +9,7 @@
  */
 import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { memberCoupons, paymentOrders } from '../../db/schema';
 import { paymentEventBus } from '../../lib/payment-event-bus';
@@ -56,7 +57,7 @@ export async function lockCouponForPayment(memberCouponId: number, expectedMembe
   const discount = calcDiscount(coupon, orderAmount);
   if (discount <= 0) throw new HTTPException(400, { message: '该券对当前金额无优惠' });
 
-  const [locked] = await db
+  const [maybeLocked] = await db
     .update(memberCoupons)
     .set({ status: 'frozen' })
     .where(and(
@@ -65,7 +66,7 @@ export async function lockCouponForPayment(memberCouponId: number, expectedMembe
       or(isNull(memberCoupons.expireAt), gt(memberCoupons.expireAt, now)),
     ))
     .returning({ id: memberCoupons.id });
-  if (!locked) throw new HTTPException(400, { message: '优惠券已被其他订单占用，请刷新后重试' });
+  requireRow(maybeLocked, '优惠券已被其他订单占用，请刷新后重试', 400);
   return { memberCouponId, discount, couponName: coupon.name };
 }
 

@@ -28,7 +28,13 @@ import { tenantCondition, requireTenantScopeId } from '../../lib/tenant';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { encryptField } from '../../lib/encryption';
 import { formatDateTime } from '../../lib/datetime';
+import { clearDefaultFlag } from '../../lib/default-flag';
 import type { CreatePaymentChannelConfigInput, PaymentChannel, PaymentChannelConfig, PaymentChannelConfigLookup, UpdatePaymentChannelConfigInput } from '@zenith/shared/payment';
+
+/** 默认标记的归属范围：同租户同渠道内互斥（不筛 is_default，范围内所有配置都会被刷新） */
+function channelDefaultScope(channel: PaymentChannel, user: ReturnType<typeof currentUser>) {
+  return and(eq(paymentChannelConfigs.channel, channel), tenantCondition(paymentChannelConfigs, user));
+}
 
 export function mapChannelConfig(row: PaymentChannelConfigRow): PaymentChannelConfig {
   return {
@@ -160,12 +166,7 @@ export async function createChannelConfig(input: CreatePaymentChannelConfigInput
     tenantId,
   };
   return db.transaction(async (tx) => {
-    if (values.isDefault) {
-      await tx
-        .update(paymentChannelConfigs)
-        .set({ isDefault: false })
-        .where(and(eq(paymentChannelConfigs.channel, input.channel), tenantCondition(paymentChannelConfigs, user)));
-    }
+    if (values.isDefault) await clearDefaultFlag(tx, paymentChannelConfigs, channelDefaultScope(input.channel, user));
     const [row] = await tx.insert(paymentChannelConfigs).values(values).returning();
     return mapChannelConfig(row);
   });
@@ -246,12 +247,7 @@ export async function updateChannelConfig(id: number, input: UpdatePaymentChanne
 
   const targetChannel = input.channel ?? existing.channel;
   return db.transaction(async (tx) => {
-    if (set.isDefault) {
-      await tx
-        .update(paymentChannelConfigs)
-        .set({ isDefault: false })
-        .where(and(eq(paymentChannelConfigs.channel, targetChannel), tenantCondition(paymentChannelConfigs, user)));
-    }
+    if (set.isDefault) await clearDefaultFlag(tx, paymentChannelConfigs, channelDefaultScope(targetChannel, user));
     const [row] = await tx
       .update(paymentChannelConfigs)
       .set(set)
@@ -293,10 +289,7 @@ export async function setChannelAsDefault(id: number): Promise<PaymentChannelCon
   requireTenantScopeId(user);
   const existing = await ensureChannelConfigExists(id);
   return db.transaction(async (tx) => {
-    await tx
-      .update(paymentChannelConfigs)
-      .set({ isDefault: false })
-      .where(and(eq(paymentChannelConfigs.channel, existing.channel), tenantCondition(paymentChannelConfigs, user)));
+    await clearDefaultFlag(tx, paymentChannelConfigs, channelDefaultScope(existing.channel, user));
     const [row] = await tx
       .update(paymentChannelConfigs)
       .set({ isDefault: true, status: 'enabled' })

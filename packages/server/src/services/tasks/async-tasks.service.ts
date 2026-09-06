@@ -199,8 +199,8 @@ export async function listAsyncTaskTypes() {
 /** 更新任务类型运行时策略 */
 export async function updateAsyncTaskTypePolicy(taskType: string, input: UpdateTaskTypePolicyInput) {
   await updateTaskTypePolicy(taskType, input);
-  const handler = listTaskHandlers().find((item) => item.taskType === taskType);
-  if (!handler) throw new HTTPException(404, { message: '任务类型未注册' });
+  const maybeHandler = listTaskHandlers().find((item) => item.taskType === taskType);
+  const handler = requireRow(maybeHandler, '任务类型未注册');
   return buildTaskTypeMeta(handler, await getTaskTypePolicy(taskType));
 }
 

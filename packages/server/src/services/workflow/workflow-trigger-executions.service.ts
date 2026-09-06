@@ -7,6 +7,7 @@ import { pageOffset } from '../../lib/pagination';
 import { formatDateTime } from '../../lib/datetime';
 import type { WorkflowTriggerExecution, WorkflowTriggerExecutionStatus, WorkflowTriggerType } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 
 /**
  * 触发器执行记录的原始行。nodeName 取自 workflow_tasks.node_name（非空列，建任务时冻结），
@@ -106,13 +107,15 @@ export async function listTriggerExecutions(params: ListTriggerExecutionsParams)
   if (params.status) conds.push(sql`${triggerExecutionStatusSql} = ${params.status}`);
   const where = and(...conds);
 
-  const [total, rows] = await Promise.all([
-    db.select({ c: sql<number>`count(*)::int` })
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.select({ c: sql<number>`count(*)::int` })
       .from(workflowJobExecutions)
       .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
       .where(where)
       .then((r) => r[0]?.c ?? 0),
-    db.select(TRIGGER_EXECUTION_SELECTION).from(workflowJobExecutions)
+    rows: () => db.select(TRIGGER_EXECUTION_SELECTION).from(workflowJobExecutions)
       .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
       .leftJoin(workflowTasks, eq(workflowJobs.taskId, workflowTasks.id))
       .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
@@ -120,8 +123,8 @@ export async function listTriggerExecutions(params: ListTriggerExecutionsParams)
       .orderBy(desc(workflowJobExecutions.id))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapTriggerExecution), total, page, pageSize };
+    map: mapTriggerExecution,
+  });
 }
 
 export async function getTriggerExecution(id: number) {

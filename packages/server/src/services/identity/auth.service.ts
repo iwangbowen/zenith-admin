@@ -256,8 +256,8 @@ export async function login(input: LoginInput) {
 
   let tenantId: number | null = null;
   if (config.multiTenantMode && input.tenantCode) {
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.code, input.tenantCode)).limit(1);
-    if (!tenant) throw new HTTPException(400, { message: '租户不存在' });
+    const [maybeTenant] = await db.select().from(tenants).where(eq(tenants.code, input.tenantCode)).limit(1);
+    const tenant = requireRow(maybeTenant, '租户不存在', 400);
     if (tenant.status !== 'enabled') throw new HTTPException(403, { message: '租户已被禁用' });
     if (isTenantExpired(tenant)) throw new HTTPException(403, { message: '租户已过期' });
     tenantId = tenant.id;
@@ -797,10 +797,10 @@ export async function forgotPassword(email: string) {
 
 export async function resetPassword(token: string, newPassword: string) {
   const now = new Date();
-  const [record] = await db.select().from(passwordResetTokens)
+  const [maybeRecord] = await db.select().from(passwordResetTokens)
     .where(and(eq(passwordResetTokens.token, token), gt(passwordResetTokens.expiresAt, now), isNull(passwordResetTokens.usedAt)))
     .limit(1);
-  if (!record) throw new HTTPException(400, { message: '重置链接无效或已过期' });
+  const record = requireRow(maybeRecord, '重置链接无效或已过期', 400);
   const [target] = await db.select({ tenantId: users.tenantId }).from(users).where(eq(users.id, record.userId)).limit(1);
   const passwordError = validatePassword(newPassword, await passwordPolicyFor(target?.tenantId));
   if (passwordError) throw new HTTPException(400, { message: passwordError });

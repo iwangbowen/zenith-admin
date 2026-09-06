@@ -288,9 +288,9 @@ async function assertPublishable(def: typeof workflowDefinitions.$inferSelect): 
         throw new HTTPException(400, { message: `流程的分支条件/审批人配置引用了表单字段（${head}${suffix}），但未绑定表单，请先在「表单」步骤选择表单` });
       }
     } else {
-      const [form] = await db.select({ name: workflowForms.name, status: workflowForms.status })
+      const [maybeForm] = await db.select({ name: workflowForms.name, status: workflowForms.status })
         .from(workflowForms).where(eq(workflowForms.id, def.formId)).limit(1);
-      if (!form) throw new HTTPException(400, { message: '绑定的表单不存在，请在「表单」步骤重新选择' });
+      const form = requireRow(maybeForm, '绑定的表单不存在，请在「表单」步骤重新选择', 400);
       if (form.status === 'disabled') {
         throw new HTTPException(400, { message: `绑定的表单「${form.name}」已停用，请启用该表单或更换后再发布` });
       }

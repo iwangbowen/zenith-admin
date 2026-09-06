@@ -50,8 +50,8 @@ export async function listRegionsFlat() {
 export async function createRegion(data: CreateRegionInput) {
   let parentLevel: string | null = null;
   if (data.parentCode) {
-    const [parent] = await db.select({ code: regions.code, level: regions.level }).from(regions).where(eq(regions.code, data.parentCode));
-    if (!parent) throw new HTTPException(400, { message: '父级地区不存在' });
+    const [maybeParent] = await db.select({ code: regions.code, level: regions.level }).from(regions).where(eq(regions.code, data.parentCode));
+    const parent = requireRow(maybeParent, '父级地区不存在', 400);
     parentLevel = parent.level;
   }
   ensureLevelHierarchy(data.level, parentLevel);

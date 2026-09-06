@@ -526,9 +526,9 @@ export async function changeMyMemberPassword(input: MemberChangePasswordInput): 
 export async function resetMemberPassword(input: MemberResetPasswordInput): Promise<void> {
   const ok = await verifyMemberSmsCode(input.phone, 'reset', input.smsCode);
   if (!ok) throw new HTTPException(400, { message: '验证码错误或已过期' });
-  const [member] = await db.select().from(members)
+  const [maybeMember] = await db.select().from(members)
     .where(and(eq(members.phone, input.phone), isNull(members.deletedAt))).limit(1);
-  if (!member) throw new HTTPException(400, { message: '该手机号未注册' });
+  const member = requireRow(maybeMember, '该手机号未注册', 400);
   const hashed = await hashPassword(input.newPassword);
   await db.update(members).set({ password: hashed }).where(eq(members.id, member.id));
   // 重置密码后踢下线所有会话

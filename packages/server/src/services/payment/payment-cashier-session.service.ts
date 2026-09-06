@@ -241,8 +241,8 @@ export async function bindCashierSession(input: {
     ))
     .returning();
   if (updated) return mapCashierSession(updated);
-  const [latest] = await db.select().from(paymentCashierSessions).where(eq(paymentCashierSessions.id, input.session.id)).limit(1);
-  if (!latest) throw new HTTPException(409, { message: '收银台会话已失效' });
+  const [maybeLatest] = await db.select().from(paymentCashierSessions).where(eq(paymentCashierSessions.id, input.session.id)).limit(1);
+  const latest = requireRow(maybeLatest, '收银台会话已失效', 409);
   return mapCashierSession(latest);
 }
 

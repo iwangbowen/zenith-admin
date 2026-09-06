@@ -155,9 +155,9 @@ async function ensureScheduleReferencesValid(
   data: { deviceId?: number | null; actionType: string; service?: string | null },
 ): Promise<void> {
   if (data.deviceId) {
-    const [device] = await db.select({ productId: iotDevices.productId })
+    const [maybeDevice] = await db.select({ productId: iotDevices.productId })
       .from(iotDevices).where(eq(iotDevices.id, data.deviceId)).limit(1);
-    if (!device) throw new HTTPException(400, { message: '指定的设备不存在' });
+    const device = requireRow(maybeDevice, '指定的设备不存在', 400);
     if (device.productId !== productId) throw new HTTPException(400, { message: '设备不属于该产品' });
   }
   if (data.actionType === 'command' && data.service) {

@@ -385,12 +385,12 @@ export async function handleReconItem(itemId: number, input: HandlePaymentReconI
       throw new HTTPException(400, { message: '该差异缺少可调账金额，请选择挂账或忽略' });
     }
 
-    const [updated] = await tx
+    const [maybeUpdated] = await tx
       .update(paymentReconItems)
       .set({ handleStatus: input.action, handleRemark: input.remark ?? null, handledAt: new Date(), handledById: user.userId })
       .where(and(eq(paymentReconItems.id, itemId), eq(paymentReconItems.handleStatus, 'pending')))
       .returning();
-    if (!updated) throw new HTTPException(400, { message: '该差异已被处理，请刷新后查看' });
+    const updated = requireRow(maybeUpdated, '该差异已被处理，请刷新后查看', 400);
 
     if (adjustment) {
       const amount = adjustment.amount.toString();
@@ -449,7 +449,7 @@ export async function generateSampleBill(input: {
 
 async function ensureReconConfig(id: number, channel: PaymentChannel, tenantId: number | null) {
   const exactTenant = exactTenantCondition(paymentChannelConfigs.tenantId, tenantId);
-  const [configRow] = await db
+  const [maybeConfigRow] = await db
     .select()
     .from(paymentChannelConfigs)
     .where(and(
@@ -459,7 +459,7 @@ async function ensureReconConfig(id: number, channel: PaymentChannel, tenantId: 
       exactTenant,
     ))
     .limit(1);
-  if (!configRow) throw new HTTPException(400, { message: '所选商户配置不存在、未启用或不属于当前租户' });
+  const configRow = requireRow(maybeConfigRow, '所选商户配置不存在、未启用或不属于当前租户', 400);
   return configRow;
 }
 

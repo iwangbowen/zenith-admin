@@ -9,6 +9,7 @@ import { getOnlineSessions, forceLogout, forceLogoutAllByUser, type SessionInfo 
 import { sendToToken, closeTokenConnection, sendToUser, closeUserConnections } from '../../lib/ws-manager';
 import { pageOffset } from '../../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
 import { currentUser } from '../../lib/context';
 import { getTenantScopeId, isPlatformAdmin } from '../../lib/tenant';
@@ -59,8 +60,8 @@ function notifyForceLogout(tokenId: string) {
 
 /** 管理端：强制下线指定会话（越出可见范围按不存在处理，不泄露其它租户会话是否存在） */
 export async function forceLogoutSession(tokenId: string) {
-  const session = (await visibleSessions()).find((s) => s.tokenId === tokenId);
-  if (!session) throw new HTTPException(404, { message: '会话不存在' });
+  const maybeSession = (await visibleSessions()).find((s) => s.tokenId === tokenId);
+  requireRow(maybeSession, '会话不存在');
   const success = await forceLogout(tokenId);
   if (!success) throw new HTTPException(404, { message: '会话不存在' });
   notifyForceLogout(tokenId);

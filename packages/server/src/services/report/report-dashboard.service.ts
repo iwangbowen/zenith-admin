@@ -14,6 +14,7 @@ import {
   reportDashboardFavorites,
 } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -227,9 +228,11 @@ export async function listDashboards(query: {
     conds.push(inArray(reportDashboards.id, ids));
   }
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportDashboards, where),
-    db.query.reportDashboards.findMany({
+  const { list: rows, total } = await buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportDashboards, where),
+    rows: () => db.query.reportDashboards.findMany({
       where,
       with: {
         category: { columns: { name: true } },
@@ -241,7 +244,7 @@ export async function listDashboards(query: {
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
+  });
   let favSet = new Set<number>();
   if (uid && rows.length > 0) {
     const favRows = await db.select({ id: reportDashboardFavorites.dashboardId }).from(reportDashboardFavorites)

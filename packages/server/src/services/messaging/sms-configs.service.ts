@@ -7,6 +7,7 @@ import type { SmsConfigRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
+import { clearDefaultFlag, ensureSingleDefault } from '../../lib/default-flag';
 import { currentUserOrNull } from '../../lib/context';
 import { config } from '../../config';
 import type { CreateSmsConfigInput, UpdateSmsConfigInput, SmsProvider } from '@zenith/shared/messaging';
@@ -54,6 +55,11 @@ export async function ensureSmsConfigExists(id: number) {
   );
 }
 
+/** 默认标记的归属范围：同租户内至多一个默认（平台视角无租户条件即全局） */
+function defaultScope(): SQL {
+  return and(eq(smsConfigs.isDefault, true), tenantScope(smsConfigs)) ?? eq(smsConfigs.isDefault, true);
+}
+
 export interface ListSmsConfigsQuery {
   keyword?: string;
   provider?: SmsProvider;
@@ -87,11 +93,7 @@ export async function getSmsConfigBeforeAudit(id: number) {
 export async function createSmsConfig(data: CreateSmsConfigInput) {
   return db.transaction(async (tx) => {
     const tenantId = currentCreateTenantId();
-    if (data.isDefault) {
-      await tx.update(smsConfigs)
-        .set({ isDefault: false })
-        .where(buildWhere(and(eq(smsConfigs.isDefault, true), tenantScope(smsConfigs))) ?? eq(smsConfigs.isDefault, true));
-    }
+    if (data.isDefault) await clearDefaultFlag(tx, smsConfigs, defaultScope());
     const [row] = await tx.insert(smsConfigs).values({ ...data, tenantId }).returning();
     return mapSmsConfigSafe(row);
   });
@@ -100,11 +102,7 @@ export async function createSmsConfig(data: CreateSmsConfigInput) {
 export async function updateSmsConfig(id: number, data: UpdateSmsConfigInput) {
   const existing = await ensureSmsConfigExists(id);
   return db.transaction(async (tx) => {
-    if (data.isDefault === true) {
-      await tx.update(smsConfigs)
-        .set({ isDefault: false })
-        .where(buildWhere(and(eq(smsConfigs.isDefault, true), tenantScope(smsConfigs))) ?? eq(smsConfigs.isDefault, true));
-    }
+    if (data.isDefault === true) await clearDefaultFlag(tx, smsConfigs, defaultScope());
     // accessKeySecret 留空表示不更新
     const patch: Partial<typeof smsConfigs.$inferInsert> = { ...data };
     if (!data.accessKeySecret) {
@@ -124,10 +122,7 @@ export async function deleteSmsConfig(id: number) {
 export async function setSmsConfigDefault(id: number) {
   const row = await ensureSmsConfigExists(id);
   await db.transaction(async (tx) => {
-    await tx.update(smsConfigs)
-      .set({ isDefault: false })
-      .where(buildWhere(and(eq(smsConfigs.isDefault, true), tenantScope(smsConfigs))) ?? eq(smsConfigs.isDefault, true));
-    await tx.update(smsConfigs).set({ isDefault: true }).where(eq(smsConfigs.id, id));
+    await ensureSingleDefault(tx, smsConfigs, id, { scope: tenantScope(smsConfigs) });
   });
   return mapSmsConfigSafe({ ...row, isDefault: true });
 }
