@@ -125,7 +125,9 @@ npm run build
 # 静态产物位于 packages/web/dist/
 ```
 
-GitHub Release 的 `zenith-admin-web-vX.Y.Z.zip` 也包含 `web/dist/`，适合同域部署。
+GitHub Release 的 `zenith-admin-web-vX.Y.Z.zip` 也包含 `web/dist/`，适合同域部署。发布包**不含**预压缩副本（`.gz` / `.br`），
+需要 `gzip_static` 时在部署机上生成一次：`node web/precompress.mjs web/dist`（脚本随包提供，仅依赖 Node 内建模块，约 30 秒）；
+未生成时 nginx 按 `gzip on` 动态压缩，功能不受影响。
 
 ### 2. Nginx 配置要点
 
@@ -136,7 +138,8 @@ GitHub Release 的 `zenith-admin-web-vX.Y.Z.zip` 也包含 `web/dist/`，适合�
 - `/studio/refresh-events` 返回 204。
 - `/` fallback 到 `/index.html` 支持 React Router；HTML 入口 `Cache-Control: no-cache, must-revalidate`。
 - JS/CSS/字体/图片等静态资源使用一年 immutable 缓存。
-- `gzip_static on` 直接下发构建期预生成的 `.gz`（构建也产出 `.br`，需含 brotli 模块的 nginx 才能启用 `brotli_static`）。
+- `gzip_static on` 直接下发预生成的 `.gz`（源码构建 `npm run build` 自动产出；发布 zip 需先执行 `node web/precompress.mjs web/dist`）。
+  构建也产出 `.br`，需含 brotli 模块的 nginx 才能启用 `brotli_static`。
 - 生产环境必须在 TLS 终结层启用 HTTP/2：多入口 SPA 首屏并发请求依赖 h2 多路复用，HTTP/1.1 会按域名 6 连接排队。
 
 最小同域配置示例：

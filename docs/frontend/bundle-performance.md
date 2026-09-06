@@ -27,6 +27,8 @@ lucide 图标全表（615 KB / 153 KB gz）在任何口径下都是运行时按�
    （`assets/`、`assets-member/`、`assets-approval/`），只有 main 清空目录；静态资源（字体 / wasm / 图片 / CSS）三个入口共用 `assets/`
    （`output.assetFileNames`）——文件名含内容 hash，相同内容在各入口构建中得到同名文件，落到同一目录即天然去重；
 2. `scripts/precompress.mjs` 用 worker 线程为 ≥ 1 KB 的文本资源生成 `.gz`（level 9）与 `.br`（quality 11），供 nginx `gzip_static` / `brotli_static` 直接下发。
+   预压缩副本随 Docker 镜像一起构建，但**不进 GitHub Release 的 web zip**（同一份 JS/CSS 的另一种编码、zip 无法再压缩，约占包体一半）；
+   手动部署时执行随包提供的 `node web/precompress.mjs web/dist` 生成。
 
 分入口构建的原因：rolldown 的 `$initial` 标签取「任一用户入口静态可达」的并集，三入口共建时后台关键路径会混入会员 / 审批入口的模块，
 并且每个共享模块的「入口集合」都掺进几十个懒加载页面，关键路径无法收敛为少数几个 chunk。三个入口面向三类用户，跨入口共享 chunk 的收益≈0。
@@ -151,7 +153,7 @@ nginx 侧的 `gzip_static`、HTML `no-cache`、静态资源一年 immutable 与 
 
 认证首屏的 gz 体积 +6%（Semi 核心整包、公共层一次装载）换来文件数 −84%。上表「dist JS 总量」翻倍来自审批入口独立构建时
 复制了一份页面注册表（`BusinessFormHost` 曾复用 `lazyPageComponent`），v2.20.1 起注册表拆分、静态资源跨入口共用后，
-dist JS 总量 53.1 MB / 904 个 chunk，发布 zip 由 94.3 MB 回落到约 60 MB（其余高于 v2.19 的部分为 `.gz/.br` 预压缩产物与各入口独立的按需 chunk）。
+dist JS 总量 53.1 MB / 904 个 chunk；发布 zip 由 94.3 MB 回落到约 33 MB（不含预压缩副本；较 v2.19 多出的约 4 MB 为各入口独立的按需 chunk）。
 
 ### 运行时（冷缓存中位数）
 

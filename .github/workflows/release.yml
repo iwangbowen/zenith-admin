@@ -64,6 +64,10 @@ jobs:
           TAG="${{ steps.tag.outputs.name }}"
           mkdir -p release_artifacts/web
           cp -r packages/web/dist release_artifacts/web/dist
+          # 预压缩副本（.gz/.br）不进发布包：它们是同一份 JS/CSS 的另一种编码、zip 无法再压缩（约占包体积一半），
+          # 部署时按需生成：node web/precompress.mjs web/dist（Docker 镜像内由 npm run build 自行产出）
+          find release_artifacts/web/dist -type f \( -name '*.gz' -o -name '*.br' \) -delete
+          cp packages/web/scripts/precompress.mjs release_artifacts/web/precompress.mjs
           cd release_artifacts
           zip -r "../zenith-admin-web-${TAG}.zip" web/
           cd ..

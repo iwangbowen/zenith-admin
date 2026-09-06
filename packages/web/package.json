@@ -1,6 +1,6 @@
 {
 	"name": "@zenith/web",
-	"version": "2.20.0",
+	"version": "2.20.1",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -11,6 +11,7 @@
 		"preview": "vite preview",
     "analyze:bundle": "node scripts/bundle-analyze.mjs",
     "check:bundle": "node scripts/bundle-analyze.mjs --check --quiet",
+    "precompress": "node scripts/precompress.mjs dist",
     "bench:runtime": "node scripts/bench-runtime.mjs",
     "smoke": "node scripts/smoke.mjs",
 		"test": "vitest run",
