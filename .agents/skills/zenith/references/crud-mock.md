@@ -41,8 +41,19 @@ packages/web/src/mocks/
 | `pageResult(list, page, pageSize)` | 页码来自 query 之外时用这个 |
 | `nextIdFrom(list)` | 由现有列表推下一个自增 ID，空列表返回 1 |
 
-批量删除或级联清理内存数组时用 `mocks/utils/array.ts` 的 `removeWhere(list, predicate)`，
+按任意谓词级联清理内存数组时用 `mocks/utils/array.ts` 的 `removeWhere(list, predicate)`，
 它保持原数组引用并返回实际移除数量。
+
+列表与 CRUD 的机械部分用 `mocks/utils/` 的工具，不要在 handler 里手写：
+
+| 工具 | 用途 |
+| --- | --- |
+| `filterByKeyword(list, keyword, [selectors])`（`filter.ts`） | 关键词对多个字段做 `includes` 过滤；默认大小写敏感，需要时传 `{ caseInsensitive: true }` |
+| `requireItem(list, id, message)`（`crud.ts`） | 按 id 取记录，找不到抛出 `MockHttpError`，`mock()` 把它映射为 `notFound(message)` 响应 |
+| `updateItem(list, id, patch, { notFoundMessage, now })` | 取记录并 `Object.assign` 补丁，`now` 存在时写入 `updatedAt` |
+| `removeByIds(list, ids)` | 按 id 集合就地删除，返回删除数量 |
+| `readFormOrJsonBody(request)`（`body.ts`） | 同一端点既收 `application/x-www-form-urlencoded` 又收 JSON（OAuth2 令牌类接口） |
+| `resolveIdempotent({ request, cache, run })`（`idempotency.ts`） | 按 `Idempotency-Key` 请求头缓存并回放结果 |
 
 所有构造函数的末位参数是原样透传的 `ResponseInit`：默认只在响应体里写 `code`（HTTP 仍是 200），
 需要同时设置 HTTP 状态码时显式写 `notFound('XXX 不存在', { status: 404 })`。
@@ -90,23 +101,21 @@ import { xxxContract } from '@zenith/shared/{业务域}';
 import type { Xxx } from '@zenith/shared/{业务域}';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { filterByKeyword } from '@/mocks/utils/filter';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import { mockXxxs, getNextXxxId } from '../data/xxxs';
 import { mockDateTime } from '../utils/date';
 
 export const xxxsHandlers = [
   // ─── 列表：关键词搜索 + 状态筛选 + 分页 ────────────────────────────────
   mock(xxxContract.list, ({ query, ok, paginate }) => {
-    let list = [...mockXxxs];
-    if (query.keyword) list = list.filter((x) => x.name.includes(query.keyword!) || (x.description ?? '').includes(query.keyword!));
+    let list = filterByKeyword(mockXxxs, query.keyword, [(x) => x.name, (x) => x.description]);
     if (query.status) list = list.filter((x) => x.status === query.status);
     return ok(paginate(list));
   }),
 
-  // ─── 详情 ───────────────────────────────────────────────────────────────
-  mock(xxxContract.detail, ({ params, ok }) => {
-    const xxx = mockXxxs.find((x) => x.id === params.id);
-    return xxx ? ok(xxx) : notFound('XXX 不存在', { status: 404 });
-  }),
+  // ─── 详情：requireItem 找不到时抛 MockHttpError，由 mock() 转为 404 ──────
+  mock(xxxContract.detail, ({ params, ok }) => ok(requireItem(mockXxxs, params.id, 'XXX 不存在'))),
 
   // ─── 创建：body 即 CreateXxxInput（已校验、已补默认值）────────────────
   mock(xxxContract.create, ({ body, ok }) => {
@@ -125,18 +134,12 @@ export const xxxsHandlers = [
   }),
 
   // ─── 更新 ───────────────────────────────────────────────────────────────
-  mock(xxxContract.update, ({ params, body, ok }) => {
-    const xxx = mockXxxs.find((x) => x.id === params.id);
-    if (!xxx) return notFound('XXX 不存在', { status: 404 });
-    Object.assign(xxx, body, { updatedAt: mockDateTime() });
-    return ok(xxx, '更新成功');
-  }),
+  mock(xxxContract.update, ({ params, body, ok }) =>
+    ok(updateItem(mockXxxs, params.id, body, { notFoundMessage: 'XXX 不存在', now: mockDateTime }), '更新成功')),
 
   // ─── 删除 ───────────────────────────────────────────────────────────────
   mock(xxxContract.remove, ({ params, ok }) => {
-    const idx = mockXxxs.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('XXX 不存在', { status: 404 });
-    mockXxxs.splice(idx, 1);
+    if (removeByIds(mockXxxs, [params.id]) === 0) return notFound('XXX 不存在', { status: 404 });
     // 显式传 null 保留 `data: null`；省略则响应体不含 data 字段
     return ok(null, '删除成功');
   }),
@@ -155,12 +158,9 @@ mock(xxxContract.all, ({ ok }) =>
 契约声明 `removeBatch` 时，在 `remove` handler **之前**添加：
 
 ```ts
-import { removeWhere } from '@/mocks/utils/array';
-
 mock(xxxContract.removeBatch, ({ body, ok }) => {
   if (body.ids.length === 0) return badRequest('请选择要删除的记录', { status: 400 });
-  const selected = new Set(body.ids);
-  const deleted = removeWhere(mockXxxs, (x) => selected.has(x.id));
+  const deleted = removeByIds(mockXxxs, body.ids);
   return ok(null, `已删除 ${deleted} 条记录`);
 }),
 ```
