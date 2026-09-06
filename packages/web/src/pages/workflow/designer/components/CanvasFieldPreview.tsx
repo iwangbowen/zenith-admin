@@ -3,6 +3,7 @@
  * 用非 Form 版 Semi 组件按字段配置渲染真实控件外观（禁用态、pointer-events 由外层关闭），
  * 让画布布局与最终填写页一致；交互（选中/拖拽/右键）由外层卡片壳负责。
  */
+import { memo } from 'react';
 import { Input, TextArea, InputNumber, DatePicker, TimePicker, Select, Cascader, RadioGroup, Radio, CheckboxGroup, Switch, Slider, TagInput, Rating, PinCode, Typography, Button } from '@douyinfe/semi-ui';
 import type { CascaderData } from '@douyinfe/semi-ui/lib/es/cascader';
 import { Paperclip, ImageIcon, PenTool } from 'lucide-react';
@@ -32,7 +33,8 @@ function BlockPlaceholder({ icon, text }: Readonly<{ icon: React.ReactNode; text
   );
 }
 
-export default function CanvasFieldPreview({ field }: Readonly<{ field: WorkflowFormField }>) {
+// memo：字段对象引用不变时跳过重渲染——画布因拖放高亮 / 临时列宽等本地状态重渲染时，几十个真实 Semi 控件不再全部重跑
+function CanvasFieldPreview({ field }: Readonly<{ field: WorkflowFormField }>) {
   const placeholder = field.placeholder ?? `请输入${field.label}`;
   const pickPlaceholder = field.placeholder ?? `请选择${field.label}`;
   const w = { width: '100%' } as const;
@@ -148,3 +150,5 @@ export default function CanvasFieldPreview({ field }: Readonly<{ field: Workflow
       return <Input style={w} disabled placeholder={placeholder} value={typeof field.defaultValue === 'string' ? field.defaultValue : undefined} />;
   }
 }
+
+export default memo(CanvasFieldPreview);

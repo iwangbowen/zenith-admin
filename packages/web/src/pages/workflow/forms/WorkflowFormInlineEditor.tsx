@@ -306,12 +306,12 @@ export default function WorkflowFormInlineEditor({
     else setSettings(next);
   };
 
-  // 表单 schema 的 JSON（保存即此结构），供预览/复制
-  const schemaJson = useMemo(() => JSON.stringify({ fields, settings }, null, 2), [fields, settings]);
+  // 表单 schema 的 JSON（保存即此结构），供预览/复制；只在打开抽屉 / 复制时序列化，不随每次字段变更重算
+  const schemaJson = () => JSON.stringify({ fields, settings }, null, 2);
 
-  const openJson = () => { setJsonDraft(schemaJson); setJsonVisible(true); };
+  const openJson = () => { setJsonDraft(schemaJson()); setJsonVisible(true); };
 
-  const copyJson = () => copyTextWithToast(jsonDraft || schemaJson, { success: '已复制 JSON', error: '复制失败，请手动选择复制' });
+  const copyJson = () => copyTextWithToast(jsonDraft || schemaJson(), { success: '已复制 JSON', error: '复制失败，请手动选择复制' });
 
   // 从 JSON 导入字段（结构校验 + 归一化后整体替换，纳入历史可撤销）
   const importJson = () => {
@@ -740,7 +740,7 @@ export default function WorkflowFormInlineEditor({
         onCancel={() => setJsonVisible(false)}
         footer={(
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Button theme="borderless" type="tertiary" size="small" onClick={() => setJsonDraft(schemaJson)}>重置为当前表单</Button>
+            <Button theme="borderless" type="tertiary" size="small" onClick={() => setJsonDraft(schemaJson())}>重置为当前表单</Button>
             <div style={{ display: 'flex', gap: 8 }}>
               <Button onClick={() => setJsonVisible(false)}>关闭</Button>
               <Button type="primary" onClick={importJson}>导入</Button>

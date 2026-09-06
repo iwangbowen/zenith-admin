@@ -681,9 +681,9 @@ export default function FormDesigner({ fields, onChange, settings, onSettingsCha
     selectOnly(rowField.key);
   }, [fields, selectedKeys, commit, selectOnly]);
 
-  // 画布内联属性更新（列宽拖拽等），tag 合并连续变更为一步撤销
-  const handleCanvasUpdateField = useCallback((key: string, updates: Partial<WorkflowFormField>, tag?: string) => {
-    commit(updateField(fields, key, updates), tag, '调整布局');
+  // 画布内联属性更新（列宽拖拽结束 / 双击均分）：一次调用即一步撤销
+  const handleCanvasUpdateField = useCallback((key: string, updates: Partial<WorkflowFormField>) => {
+    commit(updateField(fields, key, updates), undefined, '调整布局');
   }, [fields, commit]);
 
   // 键盘操作：Delete 删除（多选批量）、Ctrl/Cmd+C/V 复制粘贴、↑/↓ 切换选中、Esc 取消选中（输入框聚焦时不拦截）

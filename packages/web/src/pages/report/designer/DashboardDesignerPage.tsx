@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { useDebouncer } from '@tanstack/react-pacer';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Input, Select, Toast, Typography, Empty, Tooltip, Form, Space, Modal } from '@douyinfe/semi-ui';
@@ -26,7 +26,7 @@ import {
   useReportDesignerDatasets,
   useSaveReportDashboardDesign,
 } from '@/hooks/queries/report-designer';
-import type { ReportWidget, ReportWidgetType, ReportGridItem, ReportCanvasItem, ReportWidgetOptions, ReportFilter, ReportDashboardConfig, ReportScreenConfig, ReportCarouselConfig } from '@zenith/shared/report';
+import type { ReportWidget, ReportWidgetType, ReportGridItem, ReportCanvasItem, ReportWidgetOptions, ReportFilter, ReportDashboardConfig, ReportScreenConfig, ReportCarouselConfig, ReportDataResult } from '@zenith/shared/report';
 
 const GridLayout = WidthProvider(RGL);
 const COLS = 12;
@@ -49,6 +49,44 @@ function seedCanvasFromGrid(layout: Layout, screenWidth: number): ReportCanvasIt
   const colW = screenWidth / COLS;
   return layout.map((it) => ({ i: it.i, x: Math.round(it.x * colW), y: Math.round(it.y * (ROW_HEIGHT + 12)), w: Math.round(it.w * colW - 12), h: Math.round(it.h * (ROW_HEIGHT + 12) - 12), z: 1 }));
 }
+
+/** 栅格布局的下一空行（新增 / 复制组件的落点） */
+function layoutNextY(layout: Layout): number {
+  return layout.reduce((max, it) => Math.max(max, it.y + it.h), 0);
+}
+
+interface DesignerWidgetCardProps {
+  readonly widget: ReportWidget;
+  readonly data: ReportDataResult | null;
+  readonly loading: boolean;
+  readonly error: string | null;
+  readonly filterValues: Record<string, unknown>;
+  readonly canSave: boolean;
+  readonly drag?: boolean;
+  readonly onCopy: (i: string) => void;
+  readonly onRemove: (i: string) => void;
+}
+
+/**
+ * 设计器里的组件卡片。memo：选中、拖拽、撤销、筛选、自动保存等任何页面级状态变化都会让设计器整页重渲染，
+ * 只有本卡片的 widget / 数据 / 筛选值变化时才重跑（回调由页面以稳定引用传入）。
+ */
+const DesignerWidgetCard = memo(function DesignerWidgetCard({ widget, data, loading, error, filterValues, canSave, drag, onCopy, onRemove }: DesignerWidgetCardProps) {
+  return (
+    <div className="report-widget-card">
+      <div className={`report-widget-card__header${drag ? ' report-widget-card__drag' : ''}`}>
+        <span className="report-widget-card__title">{widget.title || '未命名组件'}</span>
+        <div className="report-widget-card__actions">
+          <Button theme="borderless" size="small" icon={<Copy size={13} />} disabled={!canSave} onClick={(e) => { e.stopPropagation(); if (canSave) onCopy(widget.i); }} aria-label="复制" />
+          <Button theme="borderless" size="small" type="danger" icon={<Trash2 size={13} />} disabled={!canSave} onClick={(e) => { e.stopPropagation(); if (canSave) onRemove(widget.i); }} aria-label="删除" />
+        </div>
+      </div>
+      <div className="report-widget-card__body">
+        <WidgetRenderer widget={widget} data={data} loading={loading} error={error} filterValues={filterValues} />
+      </div>
+    </div>
+  );
+});
 
 export default function DashboardDesignerPage() {
   const { id } = useParams<{ id: string }>();
@@ -176,7 +214,7 @@ export default function DashboardDesignerPage() {
     return () => ro.disconnect();
   }, [layoutMode, screenConfig.width, screenConfig.height]);
 
-  const nextY = useMemo(() => doc.layout.reduce((max, it) => Math.max(max, it.y + it.h), 0), [doc.layout]);
+  const nextY = useMemo(() => layoutNextY(doc.layout), [doc.layout]);
 
   const addWidget = useCallback((meta: WidgetTypeMeta) => {
     const i = genId();
@@ -226,6 +264,7 @@ export default function DashboardDesignerPage() {
     });
   }, [mutate]);
 
+  // 落点在 updater 内按当前布局计算：回调引用只依赖 mutate，卡片 memo 不会因每次拖拽改变布局而失效
   const copyWidget = useCallback((i: string) => {
     const ni = genId();
     mutate((d) => {
@@ -234,12 +273,12 @@ export default function DashboardDesignerPage() {
       return {
         ...d,
         widgets: [...d.widgets, { ...w, i: ni, title: `${w.title} 副本` }],
-        layout: [...d.layout, { ...it, i: ni, x: 0, y: nextY }],
+        layout: [...d.layout, { ...it, i: ni, x: 0, y: layoutNextY(d.layout) }],
         canvasLayout: ci ? [...d.canvasLayout, { ...ci, i: ni, x: ci.x + 24, y: ci.y + 24 }] : d.canvasLayout,
       };
     });
     setSelectedId(ni);
-  }, [mutate, nextY]);
+  }, [mutate]);
 
   const patchWidget = useCallback((i: string, patch: Partial<ReportWidget>) => {
     mutate((d) => ({ ...d, widgets: d.widgets.map((w) => (w.i === i ? { ...w, ...patch } : w)) }));
@@ -343,18 +382,17 @@ export default function DashboardDesignerPage() {
   const renderWidgetCard = (w: ReportWidget, opts?: { drag?: boolean }) => {
     const ds = getData(w);
     return (
-      <div className="report-widget-card">
-        <div className={`report-widget-card__header${opts?.drag ? ' report-widget-card__drag' : ''}`}>
-          <span className="report-widget-card__title">{w.title || '未命名组件'}</span>
-          <div className="report-widget-card__actions">
-            <Button theme="borderless" size="small" icon={<Copy size={13} />} disabled={!canSave} onClick={(e) => { e.stopPropagation(); if (canSave) copyWidget(w.i); }} aria-label="复制" />
-            <Button theme="borderless" size="small" type="danger" icon={<Trash2 size={13} />} disabled={!canSave} onClick={(e) => { e.stopPropagation(); if (canSave) removeWidget(w.i); }} aria-label="删除" />
-          </div>
-        </div>
-        <div className="report-widget-card__body">
-          <WidgetRenderer widget={w} data={ds.data} loading={ds.loading} error={ds.error} filterValues={filterValues} />
-        </div>
-      </div>
+      <DesignerWidgetCard
+        widget={w}
+        data={ds.data}
+        loading={ds.loading}
+        error={ds.error}
+        filterValues={filterValues}
+        canSave={canSave}
+        drag={opts?.drag}
+        onCopy={copyWidget}
+        onRemove={removeWidget}
+      />
     );
   };
 

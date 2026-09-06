@@ -15,6 +15,7 @@
 | 弹窗表单、枚举标签、上传、时区、Cron、进度条、滑块、分割线 | [表单与展示组件](#表单与展示组件) |
 | 多 Tab、左右分栏、统计卡、栅格、抽屉宽度、行内成组间距 | [布局与响应式](#布局与响应式) |
 | 新增页面文件、引入重库 / 图标 / 插画、改启动链路、预算失败 | [打包与首屏性能](#打包与首屏性能) |
+| 拖拽 / 调整尺寸手势、图表或卡片列表重渲染、`useQueries` 聚合 | [渲染性能](#渲染性能拖拽手势--大列表--查询聚合) |
 
 ---
 
@@ -350,5 +351,26 @@ chunk 分层机理、度量脚本与预算数字见 [docs/frontend/bundle-perfor
 - **提交前必须通过**：`npm run check:bundle -w @zenith/web`（产物预算，`bundle-budget.json`）与
   `npm run smoke -w @zenith/web`（demo 产物真实启动三入口 + 登录链路）。预算只能因明确的产品决策上调，
   上调时同步更新 `bundle-performance.md` 的记录表；不得为让 CI 通过而放宽
+
+---
+
+## 渲染性能（拖拽手势 / 大列表 / 查询聚合）
+
+违规不会报错，只表现为拖拽卡顿、图表闪烁、无关组件成批重渲染。
+
+- **拖拽手势期间禁止提交业务状态**：列宽 / 位置 / 尺寸等连续手势只更新组件本地的临时状态（或仅改 DOM），
+  `mouseup` / `pointerup` 时**一次**提交（一步撤销、一次 `onChange`）；同一整数结果不重复 `setState`；
+  `window` 上的 `blur` 也要结束手势。**禁止**在 `mousemove` 里调用 `onChange` / 写历史栈 / 触发校验
+  （`FormCanvas.startColResize` 为参考实现）。`ResizeObserver` 回调已按帧合并，只需
+  `setSize(prev => 尺寸相同 ? prev : next)` 让相同尺寸直接跳过，不需要再包 rAF
+- **被父级高频重渲染的重型子项必须 `memo`，且 props 只能是值与稳定引用**：图表 / 编辑器 / 卡片列表项用 `memo` 包裹，
+  props 传 `data` / `loading` / `error` / 切片值而不是 `getXxx(item)` getter 或 `state` 整对象；
+  父级内联回调用 `useEventCallback`（`hooks/useEventCallback.ts`）换成稳定引用，是否存在回调仍按原 prop 判定；
+  子项内部依赖 item 的回调用 `useCallback` / `useMemo` 派生（`report/widgets/ScreenCanvas.tsx` 的 `WidgetFrame`）。
+  `useMemo` 的依赖里**禁止**放只在无数据时才影响输出的标志（如 `loading`），先派生成 `showLoading = loading && !data`
+- **`useQueries` 的 `combine`**：`useCallback` 记忆化 + 返回普通对象 / 数组，见 [data-fetching.md](../../../../docs/frontend/data-fetching.md#域-hooks-约定)；
+  **禁止**内联函数或返回 `Map` / `Set`
+- **只在事件里用到的派生值不进渲染期**：`JSON.stringify(整份 schema)` 这类昂贵序列化按需在事件处理器里计算，
+  **禁止** `useMemo([fields])` 在每次编辑时重算一份没人读取的结果
 
 ---

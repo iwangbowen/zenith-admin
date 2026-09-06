@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Progress, Table } from '@douyinfe/semi-ui';
 import VChartCore from '@visactor/vchart';
@@ -76,9 +76,14 @@ function useElementSize<T extends HTMLElement>() {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // ResizeObserver 本身按帧合并回调；这里只需在取整后尺寸未变时沿用旧对象，让 React 直接跳过本次更新
+    // （亚像素抖动、缩放导致的小数变化会触发回调但取整结果相同）
     const ro = new ResizeObserver((entries) => {
       const r = entries[0]?.contentRect;
-      if (r) setSize({ width: Math.round(r.width), height: Math.round(r.height) });
+      if (!r) return;
+      const width = Math.round(r.width);
+      const height = Math.round(r.height);
+      setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -135,11 +140,17 @@ interface WidgetRendererProps {
   onCategoryClick?: (value: string) => void;
 }
 
-export function WidgetRenderer({
+/**
+ * 组件渲染器。memo：父级（设计器 / 大屏）因选中、拖拽、轮询等重渲染时，props 未变的组件整棵跳过；
+ * 内部 `content` 再按数据 / 尺寸 / 配置记忆化，图表 spec 只在真正影响它的输入变化时重建。
+ */
+export const WidgetRenderer = memo(function WidgetRenderer({
   widget, data, loading, error, widgetQuery, onWidgetQueryChange, filterValues, onCategoryClick,
 }: Readonly<WidgetRendererProps>) {
   const palette = useChartPalette();
   const { ref, width, height } = useElementSize<HTMLDivElement>();
+  // 只有尚无数据时 loading 才影响输出（显示「加载中」）；已有数据的轮询刷新不得触发 spec 重建
+  const showLoading = !!loading && !data;
   // 多级原地钻取：按 drilldown.fields 逐层下钻的当前路径（{字段,值}）
   const [drillPath, setDrillPath] = useState<{ field: string; value: string }[]>([]);
   const configuredTablePageSize = widget.type === 'table' ? (widget.options?.pageSize || 10) : 10;
@@ -195,7 +206,7 @@ export function WidgetRenderer({
     const interactive = fieldDrill || !!onCategoryClick;
 
     if (error) return <EmptyHint text={`加载失败：${error}`} />;
-    if (loading && !data) return <EmptyHint text="加载中…" />;
+    if (showLoading) return <EmptyHint text="加载中…" />;
 
     // 文本组件：不依赖数据集
     if (widget.type === 'text') {
@@ -677,7 +688,7 @@ export function WidgetRenderer({
       valueFields,
     );
     return <LineChart {...spec} options={chartOptions} height={chartHeight} onClick={onChartClick} />;
-  }, [widget, data, loading, error, palette, width, height, chartHeight, filterValues, onCategoryClick, drillPath, fieldDrill, drillFields, dataFieldMap, formatValueByField, onWidgetQueryChange, widgetQuery, localTablePage, localTablePageSize]);
+  }, [widget, data, showLoading, error, palette, width, height, chartHeight, filterValues, onCategoryClick, drillPath, fieldDrill, drillFields, dataFieldMap, formatValueByField, onWidgetQueryChange, widgetQuery, localTablePage, localTablePageSize]);
 
   return (
     <div ref={ref} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -690,7 +701,7 @@ export function WidgetRenderer({
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>{content}</div>
     </div>
   );
-}
+});
 
 /** 钻取面包屑：全部 > 值1 > 值2，点击回退到对应层级 */
 function DrillBreadcrumb({ path, onJump }: { readonly path: { field: string; value: string }[]; readonly onJump: (level: number) => void }) {

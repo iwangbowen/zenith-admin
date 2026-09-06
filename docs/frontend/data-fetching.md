@@ -94,7 +94,7 @@ export const useAssignXxxMenus = () =>
 - `params` 只放可序列化值；`Date` 先转成 API 字符串，空字符串筛选项映射为 `undefined`
 - 下拉源复用所有者域 hook，例如 `useAllUsers`、`useFlatDepartments`、`useDepartmentTree`、`useMenuTree`、`useAllRoles`、`useAllPositions`、`useDictItems`
 - `queryFn` 引用的、会影响响应数据的变量必须进入 `queryKey`
-- 官方 ESLint 插件 `@tanstack/eslint-plugin-query` 已启用；多查询聚合优先使用 `useQueries` 的 `combine` 生成稳定引用
+- 官方 ESLint 插件 `@tanstack/eslint-plugin-query` 已启用；多查询聚合使用 `useQueries` 的 `combine`，且 `combine` 必须是 `useCallback` 记忆化的函数并返回**普通对象 / 数组**：TanStack 只在 `combine` 引用或底层结果变化时重跑它，并用 `replaceEqualDeep` 对普通对象做结构共享；内联函数每次渲染都重跑，`Map` / `Set` 不参与共享，聚合结果的引用就每次都变，下游一切 memo 随之失效（参考 `hooks/queries/report-designer.ts`）
 - 成功提示由页面编排层负责；错误提示默认由 request 层处理，`silent` 调用需自行补提示
 
 ## 列表页模式

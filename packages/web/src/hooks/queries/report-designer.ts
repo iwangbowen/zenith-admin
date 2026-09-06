@@ -101,29 +101,32 @@ function fetchDatasetData(id: number, params: Record<string, unknown>, limit: nu
 export function useReportDatasetDataMap(datasetIds: number[], limit = 500) {
   const queryClient = useQueryClient();
   const ids = useMemo(() => Array.from(new Set(datasetIds.filter((id) => id > 0))).sort((a, b) => a - b), [datasetIds]);
-  // combine：返回值引用稳定（仅底层查询结果变化时重算），可安全用于下游依赖
+  // combine 必须是记忆化函数且返回普通对象：TanStack 只在 combine 引用或底层结果变化时重跑它，
+  // 并用 replaceEqualDeep 对普通对象 / 数组做结构共享——内联函数每次渲染都重跑，Map 也不会被共享，
+  // 下游拿到的引用就每次都变，任何基于它的 memo 都会失效
+  const combine = useCallback((results: { data?: ReportDataResult; isFetching: boolean; error: unknown }[]) => {
+    const map: Record<number, DatasetDataState> = {};
+    ids.forEach((id, index) => {
+      const query = results[index];
+      map[id] = {
+        data: query?.data ?? null,
+        loading: query?.isFetching ?? false,
+        error: query?.error ? errorMessage(query.error) : null,
+      };
+    });
+    return map;
+  }, [ids]);
   const stateMap = useQueries({
     queries: ids.map((id) => ({
       queryKey: reportDesignerKeys.datasetData(id, {}, limit),
       queryFn: ({ signal }: { signal?: AbortSignal }) => fetchDatasetData(id, {}, limit, signal),
     })),
-    combine: (results) => {
-      const map = new Map<number, DatasetDataState>();
-      ids.forEach((id, index) => {
-        const query = results[index];
-        map.set(id, {
-          data: query?.data ?? null,
-          loading: query?.isFetching ?? false,
-          error: query?.error ? errorMessage(query.error) : null,
-        });
-      });
-      return map;
-    },
+    combine,
   });
 
   const get = useCallback((id: number | null | undefined): DatasetDataState => {
     if (!id) return EMPTY_DATASET_STATE;
-    return stateMap.get(id) ?? EMPTY_DATASET_STATE;
+    return stateMap[id] ?? EMPTY_DATASET_STATE;
   }, [stateMap]);
 
   const refresh = useCallback(() => {
@@ -148,6 +151,19 @@ export function useReportWidgetData(widgets: ReportWidget[], filterValues: Recor
     return Array.from(map.values());
   }, [widgets, filterValues]);
 
+  // 见 useReportDatasetDataMap：记忆化 + 普通对象，让结果引用只在底层查询变化时改变
+  const combine = useCallback((results: { data?: ReportDataResult; isFetching: boolean; error: unknown }[]) => {
+    const map: Record<string, DatasetDataState> = {};
+    entries.forEach((entry, index) => {
+      const query = results[index];
+      map[entry.key] = {
+        data: query?.data ?? null,
+        loading: query?.isFetching ?? false,
+        error: query?.error ? errorMessage(query.error) : null,
+      };
+    });
+    return map;
+  }, [entries]);
   const stateMap = useQueries({
     queries: entries.map((entry) => ({
       queryKey: entry.source === 'metric'
@@ -166,18 +182,7 @@ export function useReportWidgetData(widgets: ReportWidget[], filterValues: Recor
         } satisfies ReportDataResult;
       },
     })),
-    combine: (results) => {
-      const map = new Map<string, DatasetDataState>();
-      entries.forEach((entry, index) => {
-        const query = results[index];
-        map.set(entry.key, {
-          data: query?.data ?? null,
-          loading: query?.isFetching ?? false,
-          error: query?.error ? errorMessage(query.error) : null,
-        });
-      });
-      return map;
-    },
+    combine,
   });
 
   const get = useCallback((widget: ReportWidget): DatasetDataState => {
@@ -185,7 +190,7 @@ export function useReportWidgetData(widgets: ReportWidget[], filterValues: Recor
     const id = widget.metricId ?? widget.datasetId;
     if (!source || !id) return EMPTY_DATASET_STATE;
     const key = `${source}:${id}:${JSON.stringify(computeWidgetParams(widget, filterValues))}`;
-    return stateMap.get(key) ?? EMPTY_DATASET_STATE;
+    return stateMap[key] ?? EMPTY_DATASET_STATE;
   }, [filterValues, stateMap]);
 
   const refresh = useCallback(() => {
@@ -229,19 +234,20 @@ export function useReportFilterDynamicOptions(filters: ReportFilter[], disabled?
 
 export function useReportWidgetDictMaps(codes: string[]) {
   const normalizedCodes = useMemo(() => Array.from(new Set(codes.map((code) => code.trim()).filter(Boolean))).sort(), [codes]);
+  const combine = useCallback((results: { data?: { value: string; label: string }[] }[]) => {
+    const maps: Record<string, Record<string, string>> = {};
+    normalizedCodes.forEach((code, index) => {
+      const items = results[index]?.data ?? [];
+      maps[code] = Object.fromEntries(items.map((item) => [item.value, item.label]));
+    });
+    return maps;
+  }, [normalizedCodes]);
   return useQueries({
     queries: normalizedCodes.map((code) => ({
       queryKey: reportDesignerKeys.dictItems(code),
       queryFn: () => api(dictContract.itemsByCode, { params: { code } }, { silent: true }),
       staleTime: LOOKUP_STALE_TIME,
     })),
-    combine: (results) => {
-      const maps: Record<string, Record<string, string>> = {};
-      normalizedCodes.forEach((code, index) => {
-        const items = results[index]?.data ?? [];
-        maps[code] = Object.fromEntries(items.map((item) => [item.value, item.label]));
-      });
-      return maps;
-    },
+    combine,
   });
 }

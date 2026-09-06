@@ -25,8 +25,8 @@ interface FormCanvasProps {
   onDropNew: (type: WorkflowFormFieldType, target: DropTarget) => void;
   /** 字段右键菜单（客户端坐标），由设计器渲染菜单 */
   onContextMenu?: (key: string, x: number, y: number) => void;
-  /** 字段属性更新（列宽拖拽等画布内联编辑），tagged commit 由设计器负责 */
-  onUpdateField?: (key: string, updates: Partial<WorkflowFormField>, tag?: string) => void;
+  /** 字段属性更新（列宽拖拽结束、双击均分等画布内联编辑），每次调用即一步可撤销的变更 */
+  onUpdateField?: (key: string, updates: Partial<WorkflowFormField>) => void;
 }
 
 const getFieldInfo = (type: WorkflowFormFieldType) => FORM_FIELD_TYPES.find(t => t.type === type);
@@ -63,6 +63,8 @@ export default function FormCanvas({
 }: Readonly<FormCanvasProps>) {
   // 当前高亮的拖放区标识（如 'root:before:<key>' / 'col:<rowKey>:<i>' / 'group:<key>'）
   const [hint, setHint] = useState<string | null>(null);
+  // 分栏列宽拖拽中的临时列宽：只存在于画布本地，松开鼠标才提交到字段树
+  const [liveCols, setLiveCols] = useState<{ rowKey: string; spans: number[] } | null>(null);
   const rootRef = useRef<HTMLElement>(null);
   const ghostRef = useRef<HTMLDivElement | null>(null);
   // 边缘自动滚动（F05）：靠近画布容器上下边时滚动，16ms 前沿节流
@@ -129,12 +131,15 @@ export default function FormCanvas({
     ghostRef.current = null;
   }, []);
 
-  // 分栏列宽拖拽（F06）：拖动分隔线按 24 栅格换算相邻两列 span；双击均分
+  // 分栏列宽拖拽（F06）：拖动分隔线按 24 栅格换算相邻两列 span；双击均分。
+  // 拖动期间只更新画布本地的临时列宽（同一整数 span 不重复 setState），松开时一次性提交：
+  // 历史栈只记一步，父级 onChange / 体检 / 差异对比只在提交时跑一次，而不是每个 mousemove 都跑。
   const startColResize = useCallback((e: React.MouseEvent, field: WorkflowFormField, colIndex: number) => {
     if (!onUpdateField) return;
     e.preventDefault();
     e.stopPropagation();
-    const rowEl = (e.currentTarget as HTMLElement).parentElement;
+    // 换算基准是整行宽度：分隔线挂在列元素内部，取 parentElement 会拿到列宽，拖动灵敏度随列数放大
+    const rowEl = (e.currentTarget as HTMLElement).closest<HTMLElement>('.fd-form-canvas__row-preview');
     const cols = field.columns ?? [];
     if (!rowEl || colIndex >= cols.length - 1) return;
     const totalPx = rowEl.getBoundingClientRect().width;
@@ -142,19 +147,29 @@ export default function FormCanvas({
     const startX = e.clientX;
     const left0 = cols[colIndex].span;
     const pairSpan = left0 + cols[colIndex + 1].span;
+    let left = left0;
+    const spansFor = (l: number) => cols.map((c, i) => (i === colIndex ? l : i === colIndex + 1 ? pairSpan - l : c.span));
     const onMove = (me: MouseEvent) => {
       const deltaSpan = Math.round(((me.clientX - startX) / totalPx) * totalSpan);
-      const left = Math.min(Math.max(4, left0 + deltaSpan), pairSpan - 4);
-      const next = cols.map((c, i) =>
-        i === colIndex ? { ...c, span: left } : i === colIndex + 1 ? { ...c, span: pairSpan - left } : c);
-      onUpdateField(field.key, { columns: next }, `col-resize:${field.key}`);
+      const next = Math.min(Math.max(4, left0 + deltaSpan), pairSpan - 4);
+      if (next === left) return;
+      left = next;
+      setLiveCols({ rowKey: field.key, spans: spansFor(left) });
     };
-    const onUp = () => {
+    const finish = () => {
       window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('mouseup', finish);
+      window.removeEventListener('blur', finish);
+      setLiveCols(null);
+      if (left === left0) return;
+      onUpdateField(field.key, {
+        columns: cols.map((c, i) => (i === colIndex ? { ...c, span: left } : i === colIndex + 1 ? { ...c, span: pairSpan - left } : c)),
+      });
     };
     window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('mouseup', finish);
+    // 鼠标在窗口外松开时收不到 mouseup，窗口失焦即结束拖拽
+    window.addEventListener('blur', finish);
   }, [onUpdateField]);
 
   const equalizeCols = useCallback((field: WorkflowFormField) => {
@@ -253,38 +268,42 @@ export default function FormCanvas({
       : renderChip(f, target);
 
   // ─── 分栏列容器（可拖入 + 分隔线拖拽调宽） ──────────────────────────
-  const renderRowColumns = (field: WorkflowFormField) => (
-    <div className="fd-form-canvas__row-preview">
-      {(field.columns ?? []).map((col, colIndex) => {
-        const zoneId = `col:${field.key}:${colIndex}`;
-        const isLast = colIndex === (field.columns?.length ?? 0) - 1;
-        return (
-          <div
-            key={`${field.key}-col-${colIndex}`}
-            className={['fd-form-canvas__row-col', hint === zoneId && 'fd-form-canvas__drop-active'].filter(Boolean).join(' ')}
-            style={{ flex: col.span }}
-            onDragOver={(e) => overZone(e, zoneId)}
-            onDrop={(e) => dispatchDrop(e, { container: 'col', rowKey: field.key, colIndex })}
-          >
-            <span className="fd-form-canvas__row-col-label">{col.span}/24</span>
-            {col.fields.length > 0
-              ? col.fields.map(f => renderInner(f, (beforeKey) => ({ container: 'col', rowKey: field.key, colIndex, beforeKey })))
-              : <div className="fd-form-canvas__row-col-empty">拖入字段</div>}
-            {!isLast && onUpdateField && (
-              <div
-                className="fd-form-canvas__col-resizer"
-                role="separator"
-                aria-label="拖拽调整列宽，双击均分"
-                title="拖拽调整列宽，双击均分"
-                onMouseDown={(e) => startColResize(e, field, colIndex)}
-                onDoubleClick={(e) => { e.stopPropagation(); equalizeCols(field); }}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+  const renderRowColumns = (field: WorkflowFormField) => {
+    const dragging = liveCols?.rowKey === field.key ? liveCols.spans : null;
+    return (
+      <div className="fd-form-canvas__row-preview">
+        {(field.columns ?? []).map((col, colIndex) => {
+          const zoneId = `col:${field.key}:${colIndex}`;
+          const isLast = colIndex === (field.columns?.length ?? 0) - 1;
+          const span = dragging?.[colIndex] ?? col.span;
+          return (
+            <div
+              key={`${field.key}-col-${colIndex}`}
+              className={['fd-form-canvas__row-col', hint === zoneId && 'fd-form-canvas__drop-active'].filter(Boolean).join(' ')}
+              style={{ flex: span }}
+              onDragOver={(e) => overZone(e, zoneId)}
+              onDrop={(e) => dispatchDrop(e, { container: 'col', rowKey: field.key, colIndex })}
+            >
+              <span className="fd-form-canvas__row-col-label">{span}/24</span>
+              {col.fields.length > 0
+                ? col.fields.map(f => renderInner(f, (beforeKey) => ({ container: 'col', rowKey: field.key, colIndex, beforeKey })))
+                : <div className="fd-form-canvas__row-col-empty">拖入字段</div>}
+              {!isLast && onUpdateField && (
+                <div
+                  className="fd-form-canvas__col-resizer"
+                  role="separator"
+                  aria-label="拖拽调整列宽，双击均分"
+                  title="拖拽调整列宽，双击均分"
+                  onMouseDown={(e) => startColResize(e, field, colIndex)}
+                  onDoubleClick={(e) => { e.stopPropagation(); equalizeCols(field); }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   // ─── 分组容器（可拖入） ─────────────────────────────────────────────
   const renderGroupBody = (field: WorkflowFormField) => {

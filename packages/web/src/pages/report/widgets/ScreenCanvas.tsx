@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import RGL, { WidthProvider, type Layout } from 'react-grid-layout/legacy';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import 'react-grid-layout/css/styles.css';
@@ -7,6 +7,7 @@ import '../report-grid.css';
 import '../report-screen.css';
 import { WidgetRenderer } from './WidgetRenderer';
 import { useIsMobile, useMediaQuery } from '@/hooks/useMediaQuery';
+import { useEventCallback } from '@/hooks/useEventCallback';
 import type { ReportWidget, ReportGridItem, ReportCanvasItem, ReportDashboardConfig, ReportDataResult, ReportDatasetQueryOptions, ReportScreenConfig } from '@zenith/shared/report';
 
 const GridLayout = WidthProvider(RGL);
@@ -28,21 +29,34 @@ interface ScreenCanvasProps {
   onWidgetClick?: (widget: ReportWidget) => void;
 }
 
-/** 组件卡片外壳 + 渲染器 */
-function WidgetFrame({
-  widget, state, filterValues, getWidgetQuery, onWidgetQueryChange, onCategoryClick, onWidgetClick,
-}: {
+interface WidgetFrameProps {
   readonly widget: ReportWidget;
-  readonly state: WidgetState;
+  readonly data: ReportDataResult | null;
+  readonly loading?: boolean;
+  readonly error?: string | null;
   readonly filterValues: Record<string, unknown>;
-  readonly getWidgetQuery?: (w: ReportWidget) => ReportDatasetQueryOptions | undefined;
+  readonly widgetQuery?: ReportDatasetQueryOptions;
   readonly onWidgetQueryChange?: (widgetId: string, next: ReportDatasetQueryOptions) => void;
   readonly onCategoryClick?: (w: ReportWidget, value: string) => void;
   readonly onWidgetClick?: (widget: ReportWidget) => void;
-}) {
+}
+
+/**
+ * 组件卡片外壳 + 渲染器。memo：轮播计时、视口缩放、轮询刷新等让整个舞台重渲染时，
+ * 数据与配置未变的组件整棵跳过；props 只接收值（data / loading / error / widgetQuery）与
+ * 引用稳定的回调，不接收父级每次渲染新建的 getter。
+ */
+const WidgetFrame = memo(function WidgetFrame({
+  widget, data, loading, error, filterValues, widgetQuery, onWidgetQueryChange, onCategoryClick, onWidgetClick,
+}: WidgetFrameProps) {
   const showHeader = widget.style?.showHeader !== false;
   const clickable = !!(widget.interaction?.enabled || widget.drilldown?.enabled);
-  const handleWidgetClick = () => onWidgetClick?.(widget);
+  const handleWidgetClick = useCallback(() => onWidgetClick?.(widget), [onWidgetClick, widget]);
+  // 每个组件自己的维度点击回调只随组件 / 外部回调变化，WidgetRenderer 的 spec 记忆化才不会被内联函数击穿
+  const handleCategoryClick = useMemo(
+    () => (clickable && onCategoryClick ? (value: string) => onCategoryClick(widget, value) : undefined),
+    [clickable, onCategoryClick, widget],
+  );
   return (
     <div
       className="report-widget-card"
@@ -66,23 +80,39 @@ function WidgetFrame({
       )}
       <div className="report-widget-card__body">
         <WidgetRenderer
-          widget={widget} data={state.data} loading={state.loading} error={state.error} filterValues={filterValues}
-          widgetQuery={getWidgetQuery?.(widget)}
+          widget={widget} data={data} loading={loading} error={error} filterValues={filterValues}
+          widgetQuery={widgetQuery}
           onWidgetQueryChange={onWidgetQueryChange}
-          onCategoryClick={clickable && onCategoryClick ? (v) => onCategoryClick(widget, v) : undefined}
+          onCategoryClick={handleCategoryClick}
         />
       </div>
     </div>
   );
+});
+
+/** 把 getter 形态的 props 在舞台层展开成值，交给 memo 化的 WidgetFrame */
+function frameProps(w: ReportWidget, props: Pick<ScreenCanvasProps, 'filterValues' | 'getWidgetState' | 'getWidgetQuery' | 'onWidgetQueryChange' | 'onCategoryClick' | 'onWidgetClick'>) {
+  const state = props.getWidgetState(w);
+  return {
+    widget: w,
+    data: state.data,
+    loading: state.loading,
+    error: state.error,
+    filterValues: props.filterValues,
+    widgetQuery: props.getWidgetQuery?.(w),
+    onWidgetQueryChange: props.onWidgetQueryChange,
+    onCategoryClick: props.onCategoryClick,
+    onWidgetClick: props.onWidgetClick,
+  };
 }
 
 /** 栅格模式（响应式 12 列只读）*/
-function GridStage({ widgets, layout, filterValues, getWidgetState, getWidgetQuery, onWidgetQueryChange, onCategoryClick, onWidgetClick }: Readonly<Omit<ScreenCanvasProps, 'canvasLayout' | 'config'>>) {
+function GridStage({ widgets, layout, ...rest }: Readonly<Omit<ScreenCanvasProps, 'canvasLayout' | 'config'>>) {
   return (
     <GridLayout className="report-grid" layout={layout as Layout} cols={12} rowHeight={40} margin={[12, 12]} isDraggable={false} isResizable={false} compactType="vertical">
       {widgets.map((w) => (
         <div key={w.i}>
-          <WidgetFrame widget={w} state={getWidgetState(w)} filterValues={filterValues} getWidgetQuery={getWidgetQuery} onWidgetQueryChange={onWidgetQueryChange} onCategoryClick={onCategoryClick} onWidgetClick={onWidgetClick} />
+          <WidgetFrame {...frameProps(w, rest)} />
         </div>
       ))}
     </GridLayout>
@@ -117,12 +147,7 @@ function MobileReadingStage({
   layout,
   canvasLayout,
   config,
-  filterValues,
-  getWidgetState,
-  getWidgetQuery,
-  onWidgetQueryChange,
-  onCategoryClick,
-  onWidgetClick,
+  ...rest
 }: Readonly<ScreenCanvasProps>) {
   const widgetOrder = new Map(widgets.map((widget, index) => [widget.i, index]));
   const gridPositions = new Map(layout.map((item) => [item.i, item]));
@@ -161,15 +186,7 @@ function MobileReadingStage({
               data-widget-id={widget.i}
               style={{ height, minHeight: height }}
             >
-              <WidgetFrame
-                widget={widget}
-                state={getWidgetState(widget)}
-                filterValues={filterValues}
-                getWidgetQuery={getWidgetQuery}
-                onWidgetQueryChange={onWidgetQueryChange}
-                onCategoryClick={onCategoryClick}
-                onWidgetClick={onWidgetClick}
-              />
+              <WidgetFrame {...frameProps(widget, rest)} />
             </section>
           );
         })}
@@ -179,7 +196,7 @@ function MobileReadingStage({
 }
 
 /** 自由画布大屏模式（固定设计尺寸 + 等比缩放居中）*/
-function CanvasStage({ widgets, canvasLayout, config, filterValues, getWidgetState, getWidgetQuery, onWidgetQueryChange, onCategoryClick, onWidgetClick }: Readonly<Omit<ScreenCanvasProps, 'layout'>>) {
+function CanvasStage({ widgets, canvasLayout, config, ...rest }: Readonly<Omit<ScreenCanvasProps, 'layout'>>) {
   const sc = { ...DEFAULT_SCREEN, ...(config.screenConfig ?? {}) };
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [transform, setTransform] = useState<{ sx: number; sy: number; ox: number; oy: number }>({ sx: 1, sy: 1, ox: 0, oy: 0 });
@@ -221,7 +238,7 @@ function CanvasStage({ widgets, canvasLayout, config, filterValues, getWidgetSta
           if (!it) return null;
           return (
             <div key={w.i} className="report-canvas-item" style={{ left: it.x, top: it.y, width: it.w, height: it.h, zIndex: it.z ?? 1 }}>
-              <WidgetFrame widget={w} state={getWidgetState(w)} filterValues={filterValues} getWidgetQuery={getWidgetQuery} onWidgetQueryChange={onWidgetQueryChange} onCategoryClick={onCategoryClick} onWidgetClick={onWidgetClick} />
+              <WidgetFrame {...frameProps(w, rest)} />
             </div>
           );
         })}
@@ -241,6 +258,18 @@ export function ScreenCanvas(props: Readonly<ScreenCanvasProps>) {
   const isDark = config.theme === 'dark';
   const isMobile = useIsMobile();
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+
+  // 调用方通常以内联函数传回调；这里统一换成引用稳定的包装，避免舞台每次重渲染都击穿所有 WidgetFrame 的 memo。
+  // 是否存在回调仍以原 props 判定（决定卡片标题是否可点、维度是否可交互）。
+  const stableCategoryClick = useEventCallback((w: ReportWidget, value: string) => props.onCategoryClick?.(w, value));
+  const stableWidgetClick = useEventCallback((w: ReportWidget) => props.onWidgetClick?.(w));
+  const stableWidgetQueryChange = useEventCallback((widgetId: string, next: ReportDatasetQueryOptions) => props.onWidgetQueryChange?.(widgetId, next));
+  const stageProps: ScreenCanvasProps = {
+    ...props,
+    onCategoryClick: props.onCategoryClick ? stableCategoryClick : undefined,
+    onWidgetClick: props.onWidgetClick ? stableWidgetClick : undefined,
+    onWidgetQueryChange: props.onWidgetQueryChange ? stableWidgetQueryChange : undefined,
+  };
 
   const carousel = config.carousel;
   const pageCount = Math.max(1, carousel?.enabled ? (carousel.pageCount ?? 1) : 1);
@@ -268,19 +297,19 @@ export function ScreenCanvas(props: Readonly<ScreenCanvasProps>) {
       style={{ width: '100%', height: isMobile ? 'auto' : '100%', minHeight: isMobile ? '100%' : undefined, position: 'relative' }}
     >
       {isMobile
-        ? <MobileReadingStage {...props} widgets={widgets} layout={layout} />
+        ? <MobileReadingStage {...stageProps} widgets={widgets} layout={layout} />
         : isCanvas
-        ? <CanvasStage {...props} widgets={widgets} />
+        ? <CanvasStage {...stageProps} widgets={widgets} />
         : (
           <GridStage
             widgets={widgets}
             layout={layout}
-            filterValues={props.filterValues}
-            getWidgetState={props.getWidgetState}
-            getWidgetQuery={props.getWidgetQuery}
-            onWidgetQueryChange={props.onWidgetQueryChange}
-            onCategoryClick={props.onCategoryClick}
-            onWidgetClick={props.onWidgetClick}
+            filterValues={stageProps.filterValues}
+            getWidgetState={stageProps.getWidgetState}
+            getWidgetQuery={stageProps.getWidgetQuery}
+            onWidgetQueryChange={stageProps.onWidgetQueryChange}
+            onCategoryClick={stageProps.onCategoryClick}
+            onWidgetClick={stageProps.onWidgetClick}
           />
         )}
       {carouselOn && (
