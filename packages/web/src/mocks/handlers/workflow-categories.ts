@@ -1,6 +1,7 @@
 import { workflowCategoryContract } from '@zenith/shared/workflow';
 import type { WorkflowCategory } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockWorkflowCategories, getNextCategoryId } from '@/mocks/data/workflow-categories';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -55,9 +56,8 @@ export const workflowCategoriesHandlers = [
   }),
 
   mock(workflowCategoryContract.remove, ({ params, ok }) => {
-    const idx = mockWorkflowCategories.findIndex((c) => c.id === params.id);
-    if (idx === -1) return notFound('分类不存在', { status: 404 });
-    mockWorkflowCategories.splice(idx, 1);
+    requireItem(mockWorkflowCategories, params.id, '分类不存在', { status: 404 });
+    removeByIds(mockWorkflowCategories, [params.id]);
     return ok(null);
   }),
 ];

@@ -1,6 +1,7 @@
 import { marketingCampaignContract } from '@zenith/shared/marketing';
 import type { MarketingCampaign, MarketingPrize } from '@zenith/shared/marketing';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockCoupons } from '@/mocks/data/members';
 import {
@@ -80,8 +81,7 @@ export const marketingHandlers = [
     return ok(withCouponName(current), '更新成功');
   }),
   mock(marketingCampaignContract.removePrize, ({ params, ok }) => {
-    const campaign = mockMarketingCampaigns.find((c) => c.id === params.campaignId);
-    if (!campaign) return notFound('营销活动不存在', { status: 404 });
+    const campaign = requireItem(mockMarketingCampaigns, params.campaignId, '营销活动不存在', { status: 404 });
     if (campaign.status === 'published') return badRequest('进行中的活动不可删除奖品', { status: 400 });
     const idx = mockMarketingPrizes.findIndex((p) => p.id === params.prizeId && p.campaignId === params.campaignId);
     if (idx === -1) return notFound('奖品不存在', { status: 404 });
@@ -100,8 +100,7 @@ export const marketingHandlers = [
 
   // ─── 发布 / 结束 ────────────────────────────────────────────────────────────
   mock(marketingCampaignContract.publish, ({ params, ok }) => {
-    const campaign = mockMarketingCampaigns.find((c) => c.id === params.id);
-    if (!campaign) return notFound('营销活动不存在', { status: 404 });
+    const campaign = requireItem(mockMarketingCampaigns, params.id, '营销活动不存在', { status: 404 });
     if (campaign.status === 'published') return badRequest('活动已是进行中状态', { status: 400 });
     if (!mockMarketingPrizes.some((p) => p.campaignId === params.id)) return badRequest('请先配置奖品再发布', { status: 400 });
     campaign.status = 'published';
@@ -110,8 +109,7 @@ export const marketingHandlers = [
     return ok(campaign, '发布成功');
   }),
   mock(marketingCampaignContract.end, ({ params, ok }) => {
-    const campaign = mockMarketingCampaigns.find((c) => c.id === params.id);
-    if (!campaign) return notFound('营销活动不存在', { status: 404 });
+    const campaign = requireItem(mockMarketingCampaigns, params.id, '营销活动不存在', { status: 404 });
     if (campaign.status !== 'published') return badRequest('仅进行中的活动可结束', { status: 400 });
     campaign.status = 'ended';
     campaign.updatedAt = mockDateTime();
@@ -120,8 +118,7 @@ export const marketingHandlers = [
 
   // ─── 详情 / 创建 / 更新 / 删除 ──────────────────────────────────────────────
   mock(marketingCampaignContract.detail, ({ params, ok }) => {
-    const campaign = mockMarketingCampaigns.find((c) => c.id === params.id);
-    if (!campaign) return notFound('营销活动不存在', { status: 404 });
+    const campaign = requireItem(mockMarketingCampaigns, params.id, '营销活动不存在', { status: 404 });
     return ok(campaign);
   }),
   mock(marketingCampaignContract.create, ({ body, ok }) => {
@@ -147,15 +144,13 @@ export const marketingHandlers = [
     return ok(campaign, '创建成功');
   }),
   mock(marketingCampaignContract.update, ({ params, body, ok }) => {
-    const campaign = mockMarketingCampaigns.find((c) => c.id === params.id);
-    if (!campaign) return notFound('营销活动不存在', { status: 404 });
+    const campaign = requireItem(mockMarketingCampaigns, params.id, '营销活动不存在', { status: 404 });
     if (campaign.status === 'ended') return badRequest('已结束的活动不可修改', { status: 400 });
     Object.assign(campaign, body, { updatedAt: mockDateTime() });
     return ok(campaign, '更新成功');
   }),
   mock(marketingCampaignContract.remove, ({ params, ok }) => {
-    const campaign = mockMarketingCampaigns.find((c) => c.id === params.id);
-    if (!campaign) return notFound('营销活动不存在', { status: 404 });
+    const campaign = requireItem(mockMarketingCampaigns, params.id, '营销活动不存在', { status: 404 });
     if (campaign.status === 'published') return badRequest('进行中的活动不可删除，请先结束', { status: 400 });
     mockMarketingCampaigns.splice(mockMarketingCampaigns.indexOf(campaign), 1);
     return ok(null, '删除成功');

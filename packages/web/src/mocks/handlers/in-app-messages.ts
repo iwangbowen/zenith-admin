@@ -1,13 +1,13 @@
 import { inAppMessageContract } from '@zenith/shared/messaging';
 import type { InAppMessage } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+
 import { mockInAppMessages, getNextInAppMessageId } from '@/mocks/data/in-app-messages';
 import { mockInAppTemplates } from '@/mocks/data/in-app-templates';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
-import { removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 
 /** 按关键词 / 类型 / 已读状态过滤（我的收件箱与管理员视角共用） */
 function filterMessages(list: InAppMessage[], query: { keyword?: string; type?: InAppMessage['type']; isRead?: boolean }) {
@@ -37,8 +37,7 @@ export const inAppMessagesHandlers = [
   }),
 
   mock(inAppMessageContract.adminMarkRead, ({ params, ok }) => {
-    const m = mockInAppMessages.find((x) => x.id === params.id);
-    if (!m) return notFound('站内信不存在', { status: 404 });
+    const m = requireItem(mockInAppMessages, params.id, '站内信不存在', { status: 404 });
     markRead(m, mockDateTime());
     return ok(null, '已标记已读');
   }),
@@ -50,9 +49,8 @@ export const inAppMessagesHandlers = [
   }),
 
   mock(inAppMessageContract.adminRemove, ({ params, ok }) => {
-    const idx = mockInAppMessages.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('站内信不存在', { status: 404 });
-    mockInAppMessages.splice(idx, 1);
+    requireItem(mockInAppMessages, params.id, '站内信不存在', { status: 404 });
+    removeByIds(mockInAppMessages, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -61,14 +59,12 @@ export const inAppMessagesHandlers = [
   mock(inAppMessageContract.unreadCount, ({ ok }) => ok({ count: mockInAppMessages.filter((m) => !m.isRead).length })),
 
   mock(inAppMessageContract.detail, ({ params, ok }) => {
-    const m = mockInAppMessages.find((x) => x.id === params.id);
-    if (!m) return notFound('站内信不存在', { status: 404 });
+    const m = requireItem(mockInAppMessages, params.id, '站内信不存在', { status: 404 });
     return ok(m);
   }),
 
   mock(inAppMessageContract.markRead, ({ params, ok }) => {
-    const m = mockInAppMessages.find((x) => x.id === params.id);
-    if (!m) return notFound('站内信不存在', { status: 404 });
+    const m = requireItem(mockInAppMessages, params.id, '站内信不存在', { status: 404 });
     markRead(m, mockDateTime());
     return ok(null, '已标记已读');
   }),
@@ -121,9 +117,8 @@ export const inAppMessagesHandlers = [
   }),
 
   mock(inAppMessageContract.remove, ({ params, ok }) => {
-    const idx = mockInAppMessages.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('站内信不存在', { status: 404 });
-    mockInAppMessages.splice(idx, 1);
+    requireItem(mockInAppMessages, params.id, '站内信不存在', { status: 404 });
+    removeByIds(mockInAppMessages, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

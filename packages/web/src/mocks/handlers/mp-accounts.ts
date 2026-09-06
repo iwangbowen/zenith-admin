@@ -1,7 +1,8 @@
 import { mpAccountContract, type MpAccount } from '@zenith/shared/mp';
 import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockMpAccounts, getNextMpAccountId } from '@/mocks/data/mp-accounts';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -28,8 +29,7 @@ export const mpAccountsHandlers = [
   }),
 
   mock(mpAccountContract.detail, ({ params, ok }) => {
-    const a = mockMpAccounts.find((x) => x.id === params.id);
-    if (!a) return notFound('公众号不存在', { status: 404 });
+    const a = requireItem(mockMpAccounts, params.id, '公众号不存在', { status: 404 });
     return ok(maskForEdit(a));
   }),
 
@@ -63,8 +63,7 @@ export const mpAccountsHandlers = [
   }),
 
   mock(mpAccountContract.update, ({ params, body, ok }) => {
-    const a = mockMpAccounts.find((x) => x.id === params.id);
-    if (!a) return notFound('公众号不存在', { status: 404 });
+    const a = requireItem(mockMpAccounts, params.id, '公众号不存在', { status: 404 });
     if (body.appId && body.appId !== a.appId && mockMpAccounts.some((x) => x.appId === body.appId)) {
       return badRequest('该 AppID 已存在', { status: 400 });
     }
@@ -76,23 +75,20 @@ export const mpAccountsHandlers = [
   }),
 
   mock(mpAccountContract.setDefault, ({ params, ok }) => {
-    const a = mockMpAccounts.find((x) => x.id === params.id);
-    if (!a) return notFound('公众号不存在', { status: 404 });
+    const a = requireItem(mockMpAccounts, params.id, '公众号不存在', { status: 404 });
     mockMpAccounts.forEach((x) => { x.isDefault = x.id === a.id; });
     a.updatedAt = mockDateTime();
     return ok(maskSafe(a), '操作成功');
   }),
 
   mock(mpAccountContract.testConnection, ({ params, ok }) => {
-    const a = mockMpAccounts.find((x) => x.id === params.id);
-    if (!a) return notFound('公众号不存在', { status: 404 });
+    requireItem(mockMpAccounts, params.id, '公众号不存在', { status: 404 });
     return ok({ success: true, message: '连接成功（Demo 模式，未真实调用微信接口）' }, '连接成功');
   }),
 
   mock(mpAccountContract.remove, ({ params, ok }) => {
-    const idx = mockMpAccounts.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('公众号不存在', { status: 404 });
-    mockMpAccounts.splice(idx, 1);
+    requireItem(mockMpAccounts, params.id, '公众号不存在', { status: 404 });
+    removeByIds(mockMpAccounts, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

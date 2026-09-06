@@ -1,7 +1,8 @@
 import { emailSendLogContract } from '@zenith/shared/messaging';
 import type { EmailSendLog } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+
 import { mockEmailSendLogs, getNextEmailSendLogId } from '@/mocks/data/email-send-logs';
 import { mockEmailTemplates } from '@/mocks/data/email-templates';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -20,9 +21,8 @@ export const emailSendLogsHandlers = [
   }),
 
   mock(emailSendLogContract.remove, ({ params, ok }) => {
-    const idx = mockEmailSendLogs.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('记录不存在', { status: 404 });
-    mockEmailSendLogs.splice(idx, 1);
+    requireItem(mockEmailSendLogs, params.id, '记录不存在', { status: 404 });
+    removeByIds(mockEmailSendLogs, [params.id]);
     return ok(null, '删除成功');
   }),
 

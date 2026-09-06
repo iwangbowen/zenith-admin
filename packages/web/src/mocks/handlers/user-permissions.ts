@@ -1,6 +1,7 @@
 import { userContract, mostPermissiveDataScope, type DataScope } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem } from '@/mocks/utils/crud';
+
 import { mockUsers } from '@/mocks/data/users';
 import { mockRoles } from '@/mocks/data/roles';
 import { mockUserGroups } from '@/mocks/data/user-groups';
@@ -37,8 +38,7 @@ export const userPermissionsHandlers = [
   // 用户菜单权限
   mock(userContract.menus, ({ params, ok }) => {
     const userId = params.id;
-    const user = mockUsers.find((u) => u.id === userId);
-    if (!user) return notFound('用户不存在', { status: 404 });
+    const user = requireItem(mockUsers, userId, '用户不存在', { status: 404 });
 
     const directMenuIds = userMenuMap[userId] ?? [];
     const roleMenuIdSet = new Set<number>();
@@ -57,8 +57,7 @@ export const userPermissionsHandlers = [
   // 用户数据权限
   mock(userContract.dataPermission, ({ params, ok }) => {
     const userId = params.id;
-    const user = mockUsers.find((u) => u.id === userId);
-    if (!user) return notFound('用户不存在', { status: 404 });
+    const user = requireItem(mockUsers, userId, '用户不存在', { status: 404 });
 
     const userRoles = getUserRoles(user.roles.map((r) => r.id));
     const roleDataScope = getMostPermissive(userRoles.map((r) => r.dataScope ?? null));
@@ -88,8 +87,7 @@ export const userPermissionsHandlers = [
   // 最终有效权限
   mock(userContract.effectivePermissions, ({ params, ok }) => {
     const userId = params.id;
-    const user = mockUsers.find((u) => u.id === userId);
-    if (!user) return notFound('用户不存在', { status: 404 });
+    const user = requireItem(mockUsers, userId, '用户不存在', { status: 404 });
 
     const userRoles = getUserRoles(user.roles.map((r) => r.id));
     const { groupMenuIds, groupDataScope, groupDeptScopeIds, groups } = getGroupInheritance(userId);

@@ -1,6 +1,7 @@
 import { mpConditionalMenuContract, type MpConditionalMenu } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+
 import { mockMpConditionalMenus, getNextMpConditionalMenuId } from '@/mocks/data/mp-conditional-menus';
 import { mockDateTime } from '@/mocks/utils/date';
 
@@ -27,8 +28,7 @@ export const mpConditionalMenusHandlers = [
   }),
 
   mock(mpConditionalMenuContract.update, ({ params, body, ok }) => {
-    const m = mockMpConditionalMenus.find((x) => x.id === params.id);
-    if (!m) return notFound('个性化菜单不存在', { status: 404 });
+    const m = requireItem(mockMpConditionalMenus, params.id, '个性化菜单不存在', { status: 404 });
     if (body.name !== undefined) m.name = body.name;
     if (body.buttons !== undefined) { m.buttons = body.buttons; m.status = 'draft'; }
     if (body.matchRule !== undefined) { m.matchRule = body.matchRule; m.status = 'draft'; }
@@ -37,16 +37,14 @@ export const mpConditionalMenusHandlers = [
   }),
 
   mock(mpConditionalMenuContract.publish, ({ params, ok }) => {
-    const m = mockMpConditionalMenus.find((x) => x.id === params.id);
-    if (!m) return notFound('个性化菜单不存在', { status: 404 });
+    const m = requireItem(mockMpConditionalMenus, params.id, '个性化菜单不存在', { status: 404 });
     m.status = 'published'; m.menuId = `mock-${m.id}`; m.publishedAt = mockDateTime(); m.updatedAt = mockDateTime();
     return ok(m, '发布成功');
   }),
 
   mock(mpConditionalMenuContract.remove, ({ params, ok }) => {
-    const idx = mockMpConditionalMenus.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('个性化菜单不存在', { status: 404 });
-    mockMpConditionalMenus.splice(idx, 1);
+    requireItem(mockMpConditionalMenus, params.id, '个性化菜单不存在', { status: 404 });
+    removeByIds(mockMpConditionalMenus, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

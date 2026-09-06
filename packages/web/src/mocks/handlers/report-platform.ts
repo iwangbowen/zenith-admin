@@ -20,6 +20,7 @@ import {
   nextReportP2Id,
 } from '@/mocks/data/report-p2';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, forbidden, notFound } from '@/mocks/utils/handlers';
 import { DEMO_TENANT_ID, DEMO_USER_ID, DEMO_USER_NAME } from './report-mock-utils';
@@ -125,8 +126,7 @@ function transitionMetric(metric: ReportMetric, action: 'publish' | 'deprecate',
 
 const metricLifecycleHandler = (action: 'publish' | 'deprecate') =>
   mock(reportMetricContract[action], ({ params, body, ok }) => {
-    const metric = mockReportMetrics.find((item) => item.id === params.id);
-    if (!metric) return notFound('指标不存在', { status: 404 });
+    const metric = requireItem(mockReportMetrics, params.id, '指标不存在', { status: 404 });
     if (body.expectedRevision !== metric.revision) return conflict('指标修订号不匹配', { status: 409 });
     transitionMetric(metric, action, body.reason);
     return ok(metricView(metric), '操作成功');
@@ -164,15 +164,13 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportFolderContract.update, ({ params, body, ok }) => {
-    const folder = mockReportFolders.find((item) => item.id === params.id);
-    if (!folder) return notFound('资源目录不存在', { status: 404 });
+    const folder = requireItem(mockReportFolders, params.id, '资源目录不存在', { status: 404 });
     Object.assign(folder, body, { updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
     return ok(folder, '更新成功');
   }),
 
   mock(reportFolderContract.move, ({ params, body, ok }) => {
-    const folder = mockReportFolders.find((item) => item.id === params.id);
-    if (!folder) return notFound('资源目录不存在', { status: 404 });
+    const folder = requireItem(mockReportFolders, params.id, '资源目录不存在', { status: 404 });
     if (body.parentId === folder.id) return badRequest('目录不能移动到自身', { status: 400 });
     const parent = body.parentId ? mockReportFolders.find((item) => item.id === body.parentId) : null;
     if (body.parentId && (!parent || parent.resourceType !== folder.resourceType)) return badRequest('目标父目录不存在或资源类型不一致', { status: 400 });
@@ -213,8 +211,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportMetricContract.refs, ({ params, ok }) => {
-    const metric = mockReportMetrics.find((item) => item.id === params.id);
-    if (!metric) return notFound('指标不存在', { status: 404 });
+    const metric = requireItem(mockReportMetrics, params.id, '指标不存在', { status: 404 });
     const dashboards = mockReportDashboards.flatMap((dashboard) => {
       const widgets = dashboard.widgets.filter((widget) => widget.metricId === metric.id).map((widget) => widget.i);
       return widgets.length ? [{ id: dashboard.id, name: dashboard.name, widgets }] : [];
@@ -257,8 +254,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportMetricContract.update, ({ params, body, ok }) => {
-    const metric = mockReportMetrics.find((item) => item.id === params.id);
-    if (!metric) return notFound('指标不存在', { status: 404 });
+    const metric = requireItem(mockReportMetrics, params.id, '指标不存在', { status: 404 });
     if (body.expectedRevision !== metric.revision) return conflict('指标已被其他用户修改', { status: 409 });
     const { expectedRevision: _expectedRevision, ...patch } = body;
     Object.assign(metric, patch, { revision: metric.revision + 1, updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
@@ -266,8 +262,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportMetricContract.evaluate, ({ params, ok }) => {
-    const metric = mockReportMetrics.find((item) => item.id === params.id);
-    if (!metric) return notFound('指标不存在', { status: 404 });
+    const metric = requireItem(mockReportMetrics, params.id, '指标不存在', { status: 404 });
     const data = getMockDatasetData(metric.datasetId);
     const values = data.rows.map((row) => Number(row[metric.sourceField ?? 'value'] ?? 0)).filter(Number.isFinite);
     const value = metric.aggregate === 'avg'
@@ -324,8 +319,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportGovernanceContract.updateAcl, ({ params, body, ok }) => {
-    const acl = mockReportResourceAcls.find((item) => item.id === params.id);
-    if (!acl) return notFound('授权记录不存在', { status: 404 });
+    const acl = requireItem(mockReportResourceAcls, params.id, '授权记录不存在', { status: 404 });
     Object.assign(acl, body, { updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
     return ok(acl, '更新成功');
   }),
@@ -371,8 +365,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportGovernanceContract.decideApproval, ({ params, body, ok }) => {
-    const approval = mockReportPublishApprovals.find((item) => item.id === params.id);
-    if (!approval) return notFound('审批不存在', { status: 404 });
+    const approval = requireItem(mockReportPublishApprovals, params.id, '审批不存在', { status: 404 });
     if (approval.status !== 'pending') return conflict('审批已处理', { status: 409 });
     approval.status = body.decision;
     approval.decidedBy = DEMO_USER_ID;
@@ -384,8 +377,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportGovernanceContract.cancelApproval, ({ params, body, ok }) => {
-    const approval = mockReportPublishApprovals.find((item) => item.id === params.id);
-    if (!approval) return notFound('审批不存在', { status: 404 });
+    const approval = requireItem(mockReportPublishApprovals, params.id, '审批不存在', { status: 404 });
     if (approval.status !== 'pending' || approval.requestedBy !== DEMO_USER_ID) return forbidden('不能取消该审批', { status: 403 });
     approval.status = 'cancelled';
     approval.decisionNote = body.reason ?? null;
@@ -424,8 +416,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportGovernanceContract.decideTransfer, ({ params, body, ok }) => {
-    const transfer = mockReportResourceTransfers.find((item) => item.id === params.id);
-    if (!transfer) return notFound('转移申请不存在', { status: 404 });
+    const transfer = requireItem(mockReportResourceTransfers, params.id, '转移申请不存在', { status: 404 });
     if (transfer.status !== 'pending') return conflict('转移申请已处理', { status: 409 });
     transfer.status = body.decision;
     transfer.decidedBy = DEMO_USER_ID;
@@ -444,8 +435,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportGovernanceContract.cancelTransfer, ({ params, body, ok }) => {
-    const transfer = mockReportResourceTransfers.find((item) => item.id === params.id);
-    if (!transfer) return notFound('转移申请不存在', { status: 404 });
+    const transfer = requireItem(mockReportResourceTransfers, params.id, '转移申请不存在', { status: 404 });
     if (transfer.status !== 'pending' || transfer.requestedBy !== DEMO_USER_ID) return forbidden('不能取消该转移申请', { status: 403 });
     transfer.status = 'cancelled';
     transfer.decisionNote = body.reason ?? null;
@@ -473,8 +463,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportEnvironmentContract.update, ({ params, body, ok }) => {
-    const environment = mockReportEnvironments.find((item) => item.id === params.id);
-    if (!environment) return notFound('环境不存在', { status: 404 });
+    const environment = requireItem(mockReportEnvironments, params.id, '环境不存在', { status: 404 });
     if (body.isDefault) mockReportEnvironments.forEach((item) => { item.isDefault = item.id === environment.id; });
     Object.assign(environment, body, { updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
     return ok(environment, '更新成功');
@@ -528,8 +517,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportEnvironmentContract.transitionPromotion, ({ params, body, ok }) => {
-    const promotion = mockReportPromotions.find((item) => item.id === params.id);
-    if (!promotion) return notFound('发布记录不存在', { status: 404 });
+    const promotion = requireItem(mockReportPromotions, params.id, '发布记录不存在', { status: 404 });
     if (promotion.status !== body.expectedStatus) return conflict('发布状态已变化', { status: 409 });
     const now = mockDateTime();
     if (body.action === 'approve' && promotion.status === 'pending') {

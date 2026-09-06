@@ -1,7 +1,8 @@
 import { emailTemplateContract } from '@zenith/shared/messaging';
 import type { EmailTemplate } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockEmailTemplates, getNextEmailTemplateId } from '@/mocks/data/email-templates';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -17,8 +18,7 @@ export const emailTemplatesHandlers = [
   }),
 
   mock(emailTemplateContract.detail, ({ params, ok }) => {
-    const t = mockEmailTemplates.find((x) => x.id === params.id);
-    if (!t) return notFound('邮件模板不存在', { status: 404 });
+    const t = requireItem(mockEmailTemplates, params.id, '邮件模板不存在', { status: 404 });
     return ok(t);
   }),
 
@@ -44,16 +44,14 @@ export const emailTemplatesHandlers = [
   }),
 
   mock(emailTemplateContract.update, ({ params, body, ok }) => {
-    const t = mockEmailTemplates.find((x) => x.id === params.id);
-    if (!t) return notFound('邮件模板不存在', { status: 404 });
+    const t = requireItem(mockEmailTemplates, params.id, '邮件模板不存在', { status: 404 });
     Object.assign(t, body, { id: t.id, code: t.code, updatedAt: mockDateTime() });
     return ok(t, '更新成功');
   }),
 
   mock(emailTemplateContract.remove, ({ params, ok }) => {
-    const idx = mockEmailTemplates.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('邮件模板不存在', { status: 404 });
-    mockEmailTemplates.splice(idx, 1);
+    requireItem(mockEmailTemplates, params.id, '邮件模板不存在', { status: 404 });
+    removeByIds(mockEmailTemplates, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

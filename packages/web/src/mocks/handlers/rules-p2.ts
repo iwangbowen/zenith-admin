@@ -1,7 +1,7 @@
 import type { RuleDecisionFlow, RuleFlowStep, RuleFlowStepTrace, RuleList, RuleListItem, RuleScorecard, RuleScorecardEvaluateResult, RuleUsageItem } from '@zenith/shared/rules';
 import { decisionFlowContract, ruleListContract, ruleScorecardContract } from '@zenith/shared/rules';
 import { mock } from '@/mocks/utils/contract';
-import { removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mockDecisionFlows, getNextFlowId, mockRuleLists, mockRuleListItems, getNextListId, getNextListItemId, mockRuleScorecards, getNextScorecardId, mockAssetVersions, getNextAssetVersionId } from '@/mocks/data/rules-p2';
 import { mockDecisionTables } from '@/mocks/data/decision-tables';
@@ -112,12 +112,11 @@ export const rulesP2Handlers = [
     return ok(null, '删除成功');
   }),
   mock(decisionFlowContract.detail, ({ params, ok }) => {
-    const r = mockDecisionFlows.find((t) => t.id === params.id);
-    return r ? ok(r) : notFound('决策流不存在', { status: 404 });
+    const r = requireItem(mockDecisionFlows, params.id, '决策流不存在', { status: 404 });
+    return ok(r);
   }),
   mock(decisionFlowContract.update, ({ params, body, ok }) => {
-    const r = mockDecisionFlows.find((t) => t.id === params.id);
-    if (!r) return notFound('决策流不存在', { status: 404 });
+    const r = requireItem(mockDecisionFlows, params.id, '决策流不存在', { status: 404 });
     const { expectedUpdatedAt, ...patch } = body;
     if (expectedUpdatedAt && expectedUpdatedAt !== r.updatedAt) return conflict('决策流已被他人修改，请刷新后重试', { status: 409 });
     Object.assign(r, patch, { updatedAt: mockDateTime() });
@@ -125,8 +124,7 @@ export const rulesP2Handlers = [
     return ok(r, '更新成功');
   }),
   mock(decisionFlowContract.publish, ({ params, ok }) => {
-    const r = mockDecisionFlows.find((t) => t.id === params.id);
-    if (!r) return notFound('决策流不存在', { status: 404 });
+    const r = requireItem(mockDecisionFlows, params.id, '决策流不存在', { status: 404 });
     if (r.steps.length === 0) return badRequest('决策流至少需要一个步骤', { status: 400 });
     const bad = r.steps.filter((s) => mockDecisionTables.find((t) => t.key === s.tableKey)?.status !== 'published');
     if (bad.length > 0) return badRequest(`发布受阻：引用的决策表未发布或不存在：${bad.map((s) => s.tableKey).join('、')}`, { status: 400 });
@@ -141,8 +139,7 @@ export const rulesP2Handlers = [
     return ok(list);
   }),
   mock(decisionFlowContract.rollback, ({ params, ok }) => {
-    const r = mockDecisionFlows.find((t) => t.id === params.id);
-    if (!r) return notFound('决策流不存在', { status: 404 });
+    const r = requireItem(mockDecisionFlows, params.id, '决策流不存在', { status: 404 });
     const v = mockAssetVersions.find((x) => x.refKind === 'flow' && x.refId === r.id && x.version === params.version);
     if (!v) return notFound(`版本 v${params.version} 不存在`, { status: 404 });
     const snap = v.snapshot as { name: string; description: string | null; steps: RuleFlowStep[] };
@@ -151,20 +148,17 @@ export const rulesP2Handlers = [
     return ok(r, '回滚成功');
   }),
   mock(decisionFlowContract.toggle, ({ params, body, ok }) => {
-    const r = mockDecisionFlows.find((t) => t.id === params.id);
-    if (!r) return notFound('决策流不存在', { status: 404 });
+    const r = requireItem(mockDecisionFlows, params.id, '决策流不存在', { status: 404 });
     r.status = body.enabled ? (r.publishedAt ? 'published' : 'draft') : 'disabled';
     return ok(r);
   }),
   mock(decisionFlowContract.test, ({ params, body, ok }) => {
-    const r = mockDecisionFlows.find((t) => t.id === params.id);
-    if (!r) return notFound('决策流不存在', { status: 404 });
+    const r = requireItem(mockDecisionFlows, params.id, '决策流不存在', { status: 404 });
     return ok(evaluateFlow(r.steps, body.input));
   }),
   mock(decisionFlowContract.remove, ({ params, ok }) => {
-    const i = mockDecisionFlows.findIndex((t) => t.id === params.id);
-    if (i === -1) return notFound('决策流不存在', { status: 404 });
-    mockDecisionFlows.splice(i, 1);
+    requireItem(mockDecisionFlows, params.id, '决策流不存在', { status: 404 });
+    removeByIds(mockDecisionFlows, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -199,8 +193,7 @@ export const rulesP2Handlers = [
     return ok(list);
   }),
   mock(ruleScorecardContract.rollback, ({ params, ok }) => {
-    const r = mockRuleScorecards.find((t) => t.id === params.id);
-    if (!r) return notFound('评分卡不存在', { status: 404 });
+    const r = requireItem(mockRuleScorecards, params.id, '评分卡不存在', { status: 404 });
     const v = mockAssetVersions.find((x) => x.refKind === 'scorecard' && x.refId === r.id && x.version === params.version);
     if (!v) return notFound(`版本 v${params.version} 不存在`, { status: 404 });
     const snap = v.snapshot as { name: string; description: string | null; baseScore: number; variables: RuleScorecard['variables']; grades: RuleScorecard['grades'] };
@@ -208,26 +201,23 @@ export const rulesP2Handlers = [
     return ok(r, '回滚成功');
   }),
   mock(ruleScorecardContract.detail, ({ params, ok }) => {
-    const r = mockRuleScorecards.find((t) => t.id === params.id);
-    return r ? ok(r) : notFound('评分卡不存在', { status: 404 });
+    const r = requireItem(mockRuleScorecards, params.id, '评分卡不存在', { status: 404 });
+    return ok(r);
   }),
   mock(ruleScorecardContract.update, ({ params, body, ok }) => {
-    const r = mockRuleScorecards.find((t) => t.id === params.id);
-    if (!r) return notFound('评分卡不存在', { status: 404 });
+    const r = requireItem(mockRuleScorecards, params.id, '评分卡不存在', { status: 404 });
     const { expectedUpdatedAt, ...patch } = body;
     if (expectedUpdatedAt && expectedUpdatedAt !== r.updatedAt) return conflict('评分卡已被他人修改，请刷新后重试', { status: 409 });
     Object.assign(r, patch, { updatedAt: mockDateTime(), dirty: r.status === 'published' ? true : r.dirty });
     return ok(r, '更新成功');
   }),
   mock(ruleScorecardContract.remove, ({ params, ok }) => {
-    const i = mockRuleScorecards.findIndex((t) => t.id === params.id);
-    if (i === -1) return notFound('评分卡不存在', { status: 404 });
-    mockRuleScorecards.splice(i, 1);
+    requireItem(mockRuleScorecards, params.id, '评分卡不存在', { status: 404 });
+    removeByIds(mockRuleScorecards, [params.id]);
     return ok(null, '删除成功');
   }),
   mock(ruleScorecardContract.publish, ({ params, ok }) => {
-    const r = mockRuleScorecards.find((t) => t.id === params.id);
-    if (!r) return notFound('评分卡不存在', { status: 404 });
+    const r = requireItem(mockRuleScorecards, params.id, '评分卡不存在', { status: 404 });
     if (r.variables.length === 0) return badRequest('评分卡至少需要一个变量', { status: 400 });
     const nextVersion = r.publishedAt == null ? r.version : r.version + 1;
     r.status = 'published'; r.publishedAt = mockDateTime(); r.version = nextVersion; r.dirty = false;
@@ -235,15 +225,13 @@ export const rulesP2Handlers = [
     return ok(r, '发布成功');
   }),
   mock(ruleScorecardContract.toggle, ({ params, body, ok }) => {
-    const r = mockRuleScorecards.find((t) => t.id === params.id);
-    if (!r) return notFound('评分卡不存在', { status: 404 });
+    const r = requireItem(mockRuleScorecards, params.id, '评分卡不存在', { status: 404 });
     if (body.enabled && !r.publishedAt) return badRequest('评分卡尚未发布过，请先发布', { status: 400 });
     r.status = body.enabled ? 'published' : 'disabled';
     return ok(r);
   }),
   mock(ruleScorecardContract.evaluate, ({ params, body, ok }) => {
-    const r = mockRuleScorecards.find((t) => t.id === params.id);
-    if (!r) return notFound('评分卡不存在', { status: 404 });
+    const r = requireItem(mockRuleScorecards, params.id, '评分卡不存在', { status: 404 });
     return ok(evaluateMockScorecard(r, body.input));
   }),
 
@@ -269,14 +257,11 @@ export const rulesP2Handlers = [
     return ok(row, '创建成功');
   }),
   mock(ruleListContract.usages, ({ params, ok }) => {
-    const list = mockRuleLists.find((l) => l.id === params.id);
-    if (!list) return notFound('名单不存在', { status: 404 });
+    const list = requireItem(mockRuleLists, params.id, '名单不存在', { status: 404 });
     return ok(listUsages(list.key));
   }),
   mock(ruleListContract.update, ({ params, body, ok }) => {
-    const r = mockRuleLists.find((t) => t.id === params.id);
-    if (!r) return notFound('名单不存在', { status: 404 });
-    Object.assign(r, body, { updatedAt: mockDateTime() });
+    const r = updateItem(mockRuleLists, params.id, body, { notFoundMessage: '名单不存在', now: mockDateTime, init: { status: 404 } });
     return ok(r, '更新成功');
   }),
   mock(ruleListContract.remove, ({ params, ok }) => {

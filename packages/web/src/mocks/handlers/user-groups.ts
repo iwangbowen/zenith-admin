@@ -1,6 +1,7 @@
 import { userGroupContract, type UserGroup, type UserGroupMemberRule } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest, conflict } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockUserGroups, getNextUserGroupId } from '@/mocks/data/user-groups';
 import { mockUsers } from '@/mocks/data/users';
@@ -73,8 +74,7 @@ export const userGroupsHandlers = [
   }),
 
   mock(userGroupContract.members, ({ params, ok }) => {
-    const grp = mockUserGroups.find((g) => g.id === params.id);
-    if (!grp) return notFound('用户组不存在', { status: 404 });
+    const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     const members = grp.memberIds.flatMap((uid) => {
       const u = mockUsers.find((mu) => mu.id === uid);
       return u
@@ -85,8 +85,7 @@ export const userGroupsHandlers = [
   }),
 
   mock(userGroupContract.setMembers, ({ params, body, ok }) => {
-    const grp = mockUserGroups.find((g) => g.id === params.id);
-    if (!grp) return notFound('用户组不存在', { status: 404 });
+    const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     if (grp.memberMode === 'dynamic') return badRequest(DYNAMIC_GROUP_MEMBERS_MESSAGE, { status: 400 });
     grp.memberIds = body.userIds;
     grp.memberCount = grp.memberIds.length;
@@ -95,8 +94,7 @@ export const userGroupsHandlers = [
   }),
 
   mock(userGroupContract.addMembers, ({ params, body, ok }) => {
-    const grp = mockUserGroups.find((g) => g.id === params.id);
-    if (!grp) return notFound('用户组不存在', { status: 404 });
+    const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     if (grp.memberMode === 'dynamic') return badRequest(DYNAMIC_GROUP_MEMBERS_MESSAGE, { status: 400 });
     const set = new Set(grp.memberIds);
     body.userIds.forEach((id) => set.add(id));
@@ -106,8 +104,7 @@ export const userGroupsHandlers = [
   }),
 
   mock(userGroupContract.removeMembers, ({ params, body, ok }) => {
-    const grp = mockUserGroups.find((g) => g.id === params.id);
-    if (!grp) return notFound('用户组不存在', { status: 404 });
+    const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     if (grp.memberMode === 'dynamic') return badRequest(DYNAMIC_GROUP_MEMBERS_MESSAGE, { status: 400 });
     const remove = new Set(body.userIds);
     grp.memberIds = grp.memberIds.filter((id) => !remove.has(id));
@@ -117,8 +114,7 @@ export const userGroupsHandlers = [
 
   // 手动同步动态组成员
   mock(userGroupContract.sync, ({ params, ok }) => {
-    const grp = mockUserGroups.find((g) => g.id === params.id);
-    if (!grp) return notFound('用户组不存在', { status: 404 });
+    const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     if (grp.memberMode !== 'dynamic') return badRequest('仅动态用户组支持手动同步', { status: 400 });
     const target = evaluateRule(grp.memberRule ?? {});
     const before = new Set(grp.memberIds);
@@ -131,8 +127,7 @@ export const userGroupsHandlers = [
   }),
 
   mock(userGroupContract.roles, ({ params, ok }) => {
-    const grp = mockUserGroups.find((g) => g.id === params.id);
-    if (!grp) return notFound('用户组不存在', { status: 404 });
+    const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     const list = grp.roleIds
       .map((rid) => mockRoles.find((r) => r.id === rid))
       .filter((r): r is NonNullable<typeof r> => !!r)
@@ -141,8 +136,7 @@ export const userGroupsHandlers = [
   }),
 
   mock(userGroupContract.setRoles, ({ params, body, ok }) => {
-    const grp = mockUserGroups.find((g) => g.id === params.id);
-    if (!grp) return notFound('用户组不存在', { status: 404 });
+    const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     grp.roleIds = body.roleIds;
     grp.roleCount = grp.roleIds.length;
     grp.updatedAt = mockDateTime();
@@ -150,8 +144,7 @@ export const userGroupsHandlers = [
   }),
 
   mock(userGroupContract.detail, ({ params, ok }) => {
-    const grp = mockUserGroups.find((g) => g.id === params.id);
-    if (!grp) return notFound('用户组不存在', { status: 404 });
+    const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     return ok(publicView(grp));
   }),
 
@@ -186,8 +179,7 @@ export const userGroupsHandlers = [
   }),
 
   mock(userGroupContract.update, ({ params, body, ok }) => {
-    const grp = mockUserGroups.find((g) => g.id === params.id);
-    if (!grp) return notFound('用户组不存在', { status: 404 });
+    const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     Object.assign(grp, body, { updatedAt: mockDateTime() });
     if (grp.memberMode === 'static') {
       grp.memberRule = null;
@@ -213,13 +205,11 @@ export const userGroupsHandlers = [
   }),
 
   mock(userGroupContract.remove, ({ params, ok }) => {
-    const idx = mockUserGroups.findIndex((g) => g.id === params.id);
-    if (idx === -1) return notFound('用户组不存在', { status: 404 });
-    const grp = mockUserGroups[idx];
+    const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     if (grp.memberMode === 'static' && grp.memberCount > 0) {
       return conflict(`该用户组下仍有 ${grp.memberCount} 名成员，请先移除成员后再删除`, { status: 409 });
     }
-    mockUserGroups.splice(idx, 1);
+    removeByIds(mockUserGroups, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

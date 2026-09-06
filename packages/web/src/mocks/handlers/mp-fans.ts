@@ -1,6 +1,7 @@
 import { mpFanContract } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { requireItem } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockMpFans } from '@/mocks/data/mp-fans';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -39,8 +40,7 @@ export const mpFansHandlers = [
   }),
 
   mock(mpFanContract.update, ({ params, body, ok }) => {
-    const f = mockMpFans.find((x) => x.id === params.id);
-    if (!f) return notFound('粉丝不存在', { status: 404 });
+    const f = requireItem(mockMpFans, params.id, '粉丝不存在', { status: 404 });
     if (body.remark !== undefined) f.remark = body.remark || null;
     if (body.tagIds !== undefined) f.tagIds = body.tagIds;
     f.updatedAt = mockDateTime();
@@ -48,8 +48,7 @@ export const mpFansHandlers = [
   }),
 
   mock(mpFanContract.createMember, ({ params, ok }) => {
-    const f = mockMpFans.find((x) => x.id === params.id);
-    if (!f) return notFound('粉丝不存在', { status: 404 });
+    const f = requireItem(mockMpFans, params.id, '粉丝不存在', { status: 404 });
     if (f.memberId) return badRequest('该粉丝已绑定会员', { status: 400 });
     f.memberId = 9000 + f.id;
     f.updatedAt = mockDateTime();
@@ -57,16 +56,14 @@ export const mpFansHandlers = [
   }),
 
   mock(mpFanContract.bindMember, ({ params, body, ok }) => {
-    const f = mockMpFans.find((x) => x.id === params.id);
-    if (!f) return notFound('粉丝不存在', { status: 404 });
+    const f = requireItem(mockMpFans, params.id, '粉丝不存在', { status: 404 });
     f.memberId = body.memberId;
     f.updatedAt = mockDateTime();
     return ok(f, '绑定成功');
   }),
 
   mock(mpFanContract.unbindMember, ({ params, ok }) => {
-    const f = mockMpFans.find((x) => x.id === params.id);
-    if (!f) return notFound('粉丝不存在', { status: 404 });
+    const f = requireItem(mockMpFans, params.id, '粉丝不存在', { status: 404 });
     f.memberId = null;
     f.updatedAt = mockDateTime();
     return ok(f, '已解绑');

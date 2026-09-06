@@ -1,6 +1,7 @@
 import { mpDraftContract, type MpDraft } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+
 import { mockMpDrafts, getNextMpDraftId } from '@/mocks/data/mp-drafts';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -12,8 +13,7 @@ export const mpDraftsHandlers = [
   }),
 
   mock(mpDraftContract.detail, ({ params, ok }) => {
-    const d = mockMpDrafts.find((x) => x.id === params.id);
-    if (!d) return notFound('图文草稿不存在', { status: 404 });
+    const d = requireItem(mockMpDrafts, params.id, '图文草稿不存在', { status: 404 });
     return ok(d);
   }),
 
@@ -28,8 +28,7 @@ export const mpDraftsHandlers = [
   }),
 
   mock(mpDraftContract.update, ({ params, body, ok }) => {
-    const d = mockMpDrafts.find((x) => x.id === params.id);
-    if (!d) return notFound('图文草稿不存在', { status: 404 });
+    const d = requireItem(mockMpDrafts, params.id, '图文草稿不存在', { status: 404 });
     d.articles = body.articles;
     d.title = body.articles[0]?.title ?? '未命名图文';
     d.status = 'draft';
@@ -39,8 +38,7 @@ export const mpDraftsHandlers = [
   }),
 
   mock(mpDraftContract.push, ({ params, ok }) => {
-    const d = mockMpDrafts.find((x) => x.id === params.id);
-    if (!d) return notFound('图文草稿不存在', { status: 404 });
+    const d = requireItem(mockMpDrafts, params.id, '图文草稿不存在', { status: 404 });
     d.status = 'published';
     d.wechatMediaId = `mock_draft_${d.id}`;
     d.updatedAt = mockDateTime();
@@ -48,9 +46,8 @@ export const mpDraftsHandlers = [
   }),
 
   mock(mpDraftContract.remove, ({ params, ok }) => {
-    const idx = mockMpDrafts.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('图文草稿不存在', { status: 404 });
-    mockMpDrafts.splice(idx, 1);
+    requireItem(mockMpDrafts, params.id, '图文草稿不存在', { status: 404 });
+    removeByIds(mockMpDrafts, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

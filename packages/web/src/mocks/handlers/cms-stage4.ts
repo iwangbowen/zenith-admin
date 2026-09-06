@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import type * as z from 'zod';
 import { badRequest, unauthorized, forbidden, notFound, conflict, nextIdFrom } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import {
   cmsAdContract,
   cmsContentContract,
@@ -319,8 +320,7 @@ function recordAdEvent(adId: number, eventType: 'impression' | 'click', path: st
 
 export const cmsStage4Handlers = [
   mock(cmsContentContract.publish, ({ params, ok }) => {
-    const content = mockCmsContents.find((item) => item.id === params.id);
-    if (!content) return notFound('内容不存在', { status: 404 });
+    const content = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
     content.status = 'published';
     content.version += 1;
     content.updatedAt = mockDateTime();
@@ -351,8 +351,7 @@ export const cmsStage4Handlers = [
     return ok(paginate(list));
   }),
   mock(cmsInteractionContract.texts, ({ params, query, ok, paginate }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
-    if (!interaction) return notFound('互动问卷不存在', { status: 404 });
+    const interaction = requireItem(mockCmsInteractions, params.id, '互动问卷不存在', { status: 404 });
     const { questionId } = query;
     const keyword = query.keyword?.trim() ?? '';
     const question = (interaction.questions ?? []).find((item) => item.id === questionId);
@@ -377,8 +376,7 @@ export const cmsStage4Handlers = [
     return ok(paginate(list));
   }),
   mock(cmsInteractionContract.crossStats, ({ params, query, ok }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
-    if (!interaction) return notFound('互动问卷不存在', { status: 404 });
+    const interaction = requireItem(mockCmsInteractions, params.id, '互动问卷不存在', { status: 404 });
     const { xQuestionId: xId, yQuestionId: yId } = query;
     if (xId === yId) return badRequest('交叉分析需要选择两道不同的题目', { status: 400 });
     const questions = interaction.questions ?? [];
@@ -421,8 +419,7 @@ export const cmsStage4Handlers = [
     });
   }),
   mock(cmsInteractionContract.trend, ({ params, query, ok }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
-    if (!interaction) return notFound('互动问卷不存在', { status: 404 });
+    const interaction = requireItem(mockCmsInteractions, params.id, '互动问卷不存在', { status: 404 });
     const days = query.days ?? 30;
     const byDay = new Map<string, number>();
     mockCmsInteractionResponses
@@ -444,8 +441,8 @@ export const cmsStage4Handlers = [
     return interaction ? ok(interactionStats(interaction)) : notFound('互动问卷不存在', { status: 404 });
   }),
   mock(cmsInteractionContract.detail, ({ params, ok }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
-    return interaction ? ok(interaction) : notFound('互动问卷不存在', { status: 404 });
+    const interaction = requireItem(mockCmsInteractions, params.id, '互动问卷不存在', { status: 404 });
+    return ok(interaction);
   }),
   mock(cmsInteractionContract.list, ({ query, ok, paginate }) => {
     const { siteId, kind, status } = query;
@@ -484,8 +481,7 @@ export const cmsStage4Handlers = [
     return ok(interaction, '创建成功');
   }),
   mock(cmsInteractionContract.update, ({ params, body, ok }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
-    if (!interaction) return notFound('互动问卷不存在', { status: 404 });
+    const interaction = requireItem(mockCmsInteractions, params.id, '互动问卷不存在', { status: 404 });
     if (body.questions && interaction.responseCount > 0) return conflict('已有答卷，不可替换题目', { status: 409 });
     const { turnstileSecret, questions, ...safeBody } = body;
     Object.assign(interaction, safeBody, {
@@ -496,8 +492,7 @@ export const cmsStage4Handlers = [
     return ok(interaction, '更新成功');
   }),
   mock(cmsInteractionContract.copy, ({ params, ok }) => {
-    const source = mockCmsInteractions.find((item) => item.id === params.id);
-    if (!source) return notFound('互动问卷不存在', { status: 404 });
+    const source = requireItem(mockCmsInteractions, params.id, '互动问卷不存在', { status: 404 });
     const stem = source.code.replace(/-copy(?:-\d+)?$/, '') || source.code;
     const taken = new Set(mockCmsInteractions.filter((item) => item.siteId === source.siteId).map((item) => item.code));
     let code = `${stem}-copy`;
@@ -523,8 +518,7 @@ export const cmsStage4Handlers = [
     return ok(copied, '复制成功');
   }),
   mock(cmsInteractionContract.setStatus, ({ params, body, ok }) => {
-    const interaction = mockCmsInteractions.find((item) => item.id === params.id);
-    if (!interaction) return notFound('互动问卷不存在', { status: 404 });
+    const interaction = requireItem(mockCmsInteractions, params.id, '互动问卷不存在', { status: 404 });
     interaction.status = body.status;
     interaction.updatedAt = mockDateTime();
     return ok(interaction, '状态已更新');
@@ -762,8 +756,7 @@ export const cmsStage4Handlers = [
   mock(cmsPageContract.blockAcls, ({ params, ok }) => ok(mockCmsPageBlockAcls.filter((acl) => acl.pageId === params.id))),
   mock(cmsPageContract.setBlockAcls, ({ params, body, ok }) => {
     const pageId = params.id;
-    const page = mockCmsPages.find((item) => item.id === pageId);
-    if (!page) return notFound('页面不存在', { status: 404 });
+    const page = requireItem(mockCmsPages, pageId, '页面不存在', { status: 404 });
     if (body.blockIds.some((blockId) => !page.blocks.some((block) => block.id === blockId))) {
       return notFound('所选页面区块包含不存在或已替换的 blockId', { status: 404 });
     }
@@ -797,8 +790,7 @@ export const cmsStage4Handlers = [
     return ok(mockCmsPageBlockAcls.filter((acl) => acl.pageId === pageId), '区块权限已更新');
   }),
   mock(cmsPageContract.update, ({ params, body, ok }) => {
-    const page = mockCmsPages.find((item) => item.id === params.id);
-    if (!page) return notFound('页面不存在', { status: 404 });
+    const page = requireItem(mockCmsPages, params.id, '页面不存在', { status: 404 });
     const { blocks: incoming, ...patch } = body;
     if (incoming) {
       const immutableBefore = page.blocks.filter((block) => block.canManage === false);

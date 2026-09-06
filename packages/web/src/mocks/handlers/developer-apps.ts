@@ -3,6 +3,7 @@ import { developerAppContract, openGatewayContract } from '@zenith/shared/open-p
 import type { OAuth2Client, OAuth2ClientCreated, OpenApiDebugEndpoint } from '@zenith/shared/open-platform';
 import { urlOf } from '@/lib/contract-query';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -91,16 +92,14 @@ export const developerAppsHandlers = [
     return ok(result, '应用已保存为草稿');
   }),
   mock(developerAppContract.submit, ({ params, ok }) => {
-    const app = apps.find((item) => item.id === params.id);
-    if (!app) return notFound('应用不存在', { status: 404 });
+    const app = requireItem(apps, params.id, '应用不存在', { status: 404 });
     app.reviewStatus = 'pending';
     app.submittedAt = mockDateTime();
     app.updatedAt = mockDateTime();
     return ok(app, '已提交审核');
   }),
   mock(developerAppContract.regenerateSecret, ({ params, ok }) => {
-    const app = apps.find((item) => item.id === params.id);
-    if (!app) return notFound('应用不存在', { status: 404 });
+    const app = requireItem(apps, params.id, '应用不存在', { status: 404 });
     const rawSecret = secret();
     app.clientSecretPrefix = `${rawSecret.slice(0, 10)}...`;
     app.previousSecretExpiresAt = '2026-07-16 10:00:00';
@@ -111,8 +110,7 @@ export const developerAppsHandlers = [
     });
   }),
   mock(developerAppContract.quotaUsage, ({ params, ok }) => {
-    const app = apps.find((item) => item.id === params.id);
-    if (!app) return notFound('应用不存在', { status: 404 });
+    const app = requireItem(apps, params.id, '应用不存在', { status: 404 });
     const sandbox = app.environment === 'sandbox';
     return ok({
       clientId: app.clientId,
@@ -126,8 +124,7 @@ export const developerAppsHandlers = [
   }),
   mock(developerAppContract.debugEndpoints, ({ ok }) => ok(DEBUG_ENDPOINTS)),
   mock(developerAppContract.debug, ({ params, body, ok }) => {
-    const app = apps.find((item) => item.id === params.id);
-    if (!app) return notFound('应用不存在', { status: 404 });
+    const app = requireItem(apps, params.id, '应用不存在', { status: 404 });
     const qs = new URLSearchParams(body.query ?? {}).toString();
     return ok({
       requestUrl: `http://127.0.0.1:3300${body.path}${qs ? `?${qs}` : ''}`,
@@ -146,8 +143,8 @@ export const developerAppsHandlers = [
     });
   }),
   mock(developerAppContract.detail, ({ params, ok }) => {
-    const app = apps.find((item) => item.id === params.id);
-    return app ? ok(app) : notFound('应用不存在', { status: 404 });
+    const app = requireItem(apps, params.id, '应用不存在', { status: 404 });
+    return ok(app);
   }),
   mock(developerAppContract.update, ({ params, body, ok }) => {
     const index = apps.findIndex((item) => item.id === params.id);

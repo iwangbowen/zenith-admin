@@ -11,7 +11,8 @@ import {
   type MemberCheckin,
 } from '@zenith/shared/member';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
+import { requireItem, updateItem } from '@/mocks/utils/crud';
+import { badRequest, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockCheckinRules, mockCheckinStatus, mockMemberCheckins, mockCheckinSettings, mockCheckinMilestones, buildMilestoneStatus } from '../data/checkin';
 import { mockCoupons } from '../data/members';
 import { mockDate, mockDateTime } from '../utils/date';
@@ -65,9 +66,7 @@ export const checkinHandlers = [
     return ok(created, '创建成功');
   }),
   mock(checkinRuleContract.update, ({ params, body, ok }) => {
-    const target = rules.find((rule) => rule.id === params.id);
-    if (!target) return notFound('签到规则不存在', { status: 404 });
-    Object.assign(target, body, { updatedAt: mockDateTime() });
+    const target = updateItem(rules, params.id, body, { notFoundMessage: '签到规则不存在', now: mockDateTime, init: { status: 404 } });
     return ok(target, '更新成功');
   }),
   mock(checkinRuleContract.remove, ({ params, ok }) => {
@@ -163,8 +162,7 @@ export const checkinHandlers = [
     return ok(created, '创建成功');
   }),
   mock(checkinMilestoneContract.update, ({ params, body, ok }) => {
-    const target = milestones.find((m) => m.id === params.id);
-    if (!target) return notFound('里程碑不存在', { status: 404 });
+    const target = requireItem(milestones, params.id, '里程碑不存在', { status: 404 });
     Object.assign(target, body, {
       couponName: couponNameOf(body.couponId ?? target.couponId),
       updatedAt: mockDateTime(),

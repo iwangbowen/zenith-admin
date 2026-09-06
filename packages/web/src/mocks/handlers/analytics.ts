@@ -44,6 +44,7 @@ import {
 import type { UserBehaviorEventType } from '@zenith/shared/analytics';
 import { SEED_ANALYTICS_EVENT_META, SEED_ANALYTICS_SITES, SEED_ANALYTICS_SEGMENTS } from '@zenith/shared/seed';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, nextIdFrom, notFound, pageResult } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '../utils/date';
 import { createProgressingMockTask } from './async-tasks';
@@ -426,8 +427,8 @@ export const analyticsHandlers = [
   }),
 
   mock(analyticsExperimentContract.experimentDetail, ({ params, ok }) => {
-    const exp = mockExperiments.find((item) => item.id === params.id);
-    return exp ? ok(exp) : notFound('实验不存在', { status: 404 });
+    const exp = requireItem(mockExperiments, params.id, '实验不存在', { status: 404 });
+    return ok(exp);
   }),
 
   mock(analyticsExperimentContract.createExperiment, ({ body, ok }) => {
@@ -470,8 +471,7 @@ export const analyticsHandlers = [
   }),
 
   mock(analyticsExperimentContract.experimentReport, ({ params, ok }) => {
-    const exp = mockExperiments.find((item) => item.id === params.id);
-    if (!exp) return notFound('实验不存在', { status: 404 });
+    const exp = requireItem(mockExperiments, params.id, '实验不存在', { status: 404 });
     const rows = exp.variants.map((variant, index) => {
       const exposures = 4200 + index * 130;
       const conversions = Math.floor(exposures * (0.08 + index * 0.012));
@@ -827,20 +827,16 @@ export const analyticsHandlers = [
     return ok(item, '创建成功');
   }),
   mock(analyticsSiteContract.updateSite, ({ params, body, ok }) => {
-    const idx = mockSites.findIndex((site) => site.id === params.id);
-    if (idx === -1) return notFound('站点不存在', { status: 404 });
-    mockSites[idx] = { ...mockSites[idx], ...body, allowedOrigins: body.allowedOrigins?.length ? body.allowedOrigins : null, updatedAt: mockDateTime() };
-    return ok(mockSites[idx], '更新成功');
+    const site = updateItem(mockSites, params.id, { ...body, allowedOrigins: body.allowedOrigins?.length ? body.allowedOrigins : null }, { notFoundMessage: '站点不存在', now: mockDateTime, init: { status: 404 } });
+    return ok(site, '更新成功');
   }),
   mock(analyticsSiteContract.removeSite, ({ params, ok }) => {
     mockSites = mockSites.filter((site) => site.id !== params.id);
     return ok(null, '删除成功');
   }),
   mock(analyticsSiteContract.regenerateSiteKey, ({ params, ok }) => {
-    const idx = mockSites.findIndex((site) => site.id === params.id);
-    if (idx === -1) return notFound('站点不存在', { status: 404 });
-    mockSites[idx] = { ...mockSites[idx], siteKey: mockSiteKey(), updatedAt: mockDateTime() };
-    return ok(mockSites[idx], '重新生成成功');
+    const site = updateItem(mockSites, params.id, { siteKey: mockSiteKey() }, { notFoundMessage: '站点不存在', now: mockDateTime, init: { status: 404 } });
+    return ok(site, '重新生成成功');
   }),
 
   // ─── 事件字典 CRUD ─────────────────────────────────────────────────────────
@@ -854,10 +850,8 @@ export const analyticsHandlers = [
     return ok(item, '创建成功');
   }),
   mock(analyticsContract.updateEventMeta, ({ params, body, ok }) => {
-    const idx = mockEventMeta.findIndex((m) => m.id === params.id);
-    if (idx === -1) return notFound('不存在', { status: 404 });
-    mockEventMeta[idx] = { ...mockEventMeta[idx], ...body, updatedAt: mockDateTime() };
-    return ok(mockEventMeta[idx], '更新成功');
+    const meta = updateItem(mockEventMeta, params.id, body, { notFoundMessage: '不存在', now: mockDateTime, init: { status: 404 } });
+    return ok(meta, '更新成功');
   }),
   mock(analyticsContract.removeEventMeta, ({ params, ok }) => {
     mockEventMeta = mockEventMeta.filter((m) => m.id !== params.id);
@@ -900,10 +894,8 @@ export const analyticsHandlers = [
     return ok(item, '创建成功');
   }),
   mock(analyticsContract.updateEventOverride, ({ params, body, ok }) => {
-    const idx = mockEventOverrides.findIndex((o) => o.id === params.id);
-    if (idx === -1) return notFound('不存在', { status: 404 });
-    mockEventOverrides[idx] = { ...mockEventOverrides[idx], ...body, updatedAt: mockDateTime() };
-    return ok(mockEventOverrides[idx], '更新成功');
+    const override = updateItem(mockEventOverrides, params.id, body, { notFoundMessage: '不存在', now: mockDateTime, init: { status: 404 } });
+    return ok(override, '更新成功');
   }),
   mock(analyticsContract.removeEventOverride, ({ params, ok }) => {
     mockEventOverrides = mockEventOverrides.filter((o) => o.id !== params.id);
@@ -1067,18 +1059,16 @@ export const analyticsHandlers = [
     return ok(item, '创建成功');
   }),
   mock(analyticsContract.segmentDetail, ({ params, ok }) => {
-    const item = mockSegments.find((s) => s.id === params.id);
-    if (!item) return notFound('分群不存在', { status: 404 });
+    const item = requireItem(mockSegments, params.id, '分群不存在', { status: 404 });
     return ok(item);
   }),
   mock(analyticsContract.updateSegment, ({ params, body, ok }) => {
-    const idx = mockSegments.findIndex((s) => s.id === params.id);
-    if (idx === -1) return notFound('分群不存在', { status: 404 });
+    const segment = requireItem(mockSegments, params.id, '分群不存在', { status: 404 });
     if (body.name && mockSegments.some((s) => s.id !== params.id && s.name === body.name)) {
       return badRequest('分群名称已存在', { status: 400 });
     }
-    mockSegments[idx] = { ...mockSegments[idx], ...body, updatedAt: mockDateTime() };
-    return ok(mockSegments[idx], '更新成功');
+    Object.assign(segment, body, { updatedAt: mockDateTime() });
+    return ok(segment, '更新成功');
   }),
   mock(analyticsContract.removeSegment, ({ params, ok }) => {
     mockSegments = mockSegments.filter((s) => s.id !== params.id);
@@ -1088,11 +1078,10 @@ export const analyticsHandlers = [
   mock(analyticsContract.segmentMembers, ({ params, ok, paginate }) => ok(paginate(mockSegmentMembers[params.id] ?? []))),
   mock(analyticsContract.materializeSegment, ({ params, ok }) => {
     const { id } = params;
-    const idx = mockSegments.findIndex((s) => s.id === id);
-    if (idx === -1) return notFound('分群不存在', { status: 404 });
+    const segment = requireItem(mockSegments, id, '分群不存在', { status: 404 });
     // Demo 模式简化：提交任务的同时即时刷新一次快照，近似真实的异步物化效果
     const size = rand(20, 200);
-    mockSegments[idx] = { ...mockSegments[idx], estimatedSize: size, snapshotAt: mockDateTime(), updatedAt: mockDateTime() };
+    Object.assign(segment, { estimatedSize: size, snapshotAt: mockDateTime(), updatedAt: mockDateTime() });
     mockSegmentMembers[id] = buildSegmentMembers(id, size);
     const task = createProgressingMockTask({
       taskType: 'analytics-segment-materialize',
@@ -1109,8 +1098,7 @@ export const analyticsHandlers = [
     return ok(paginate(list));
   }),
   mock(analyticsCampaignContract.createCampaign, ({ body, ok }) => {
-    const segment = mockSegments.find((s) => s.id === body.segmentId);
-    if (!segment) return notFound('分群不存在', { status: 404 });
+    const segment = requireItem(mockSegments, body.segmentId, '分群不存在', { status: 404 });
     if (body.channel !== 'webhook' && !body.templateId) return badRequest('请选择消息模板', { status: 400 });
     const item: AnalyticsSegmentCampaign = {
       id: nextCampaignId++,
@@ -1139,11 +1127,10 @@ export const analyticsHandlers = [
     return ok(item, '创建成功');
   }),
   mock(analyticsCampaignContract.updateCampaign, ({ params, body, ok }) => {
-    const idx = mockCampaigns.findIndex((c) => c.id === params.id);
-    if (idx === -1) return notFound('触达活动不存在', { status: 404 });
-    if (mockCampaigns[idx].status !== 'draft') return badRequest('仅草稿状态可修改', { status: 400 });
-    mockCampaigns[idx] = { ...mockCampaigns[idx], ...body, updatedAt: mockDateTime() };
-    return ok(mockCampaigns[idx], '更新成功');
+    const campaign = requireItem(mockCampaigns, params.id, '触达活动不存在', { status: 404 });
+    if (campaign.status !== 'draft') return badRequest('仅草稿状态可修改', { status: 400 });
+    Object.assign(campaign, body, { updatedAt: mockDateTime() });
+    return ok(campaign, '更新成功');
   }),
   mock(analyticsCampaignContract.removeCampaign, ({ params, ok }) => {
     const item = mockCampaigns.find((c) => c.id === params.id);
@@ -1153,10 +1140,9 @@ export const analyticsHandlers = [
   }),
   mock(analyticsCampaignContract.executeCampaign, ({ params, ok }) => {
     const { id } = params;
-    const idx = mockCampaigns.findIndex((c) => c.id === id);
-    if (idx === -1) return notFound('触达活动不存在', { status: 404 });
-    const total = mockSegmentMembers[mockCampaigns[idx].segmentId]?.length ?? rand(20, 120);
-    mockCampaigns[idx] = { ...mockCampaigns[idx], status: 'running', totalCount: total, sentCount: 0, failedCount: 0, lastError: null, updatedAt: mockDateTime() };
+    const campaign = requireItem(mockCampaigns, id, '触达活动不存在', { status: 404 });
+    const total = mockSegmentMembers[campaign.segmentId]?.length ?? rand(20, 120);
+    Object.assign(campaign, { status: 'running', totalCount: total, sentCount: 0, failedCount: 0, lastError: null, updatedAt: mockDateTime() });
     setTimeout(() => {
       const current = mockCampaigns.findIndex((c) => c.id === id);
       if (current >= 0) {

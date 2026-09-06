@@ -27,6 +27,7 @@ import {
   nextReportP2Id,
 } from '@/mocks/data/report-p2';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { mockDate, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { createProgressingMockTask } from './async-tasks';
@@ -134,8 +135,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportDqContract.updateRule, ({ params, body, ok }) => {
-    const rule = mockReportDqRules.find((item) => item.id === params.id);
-    if (!rule) return notFound('质量规则不存在', { status: 404 });
+    const rule = requireItem(mockReportDqRules, params.id, '质量规则不存在', { status: 404 });
     const customSqlError = validateCustomDqSql({
       type: body.type ?? rule.type,
       config: body.config ?? rule.config,
@@ -153,16 +153,14 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportDqContract.toggleRule, ({ params, ok }) => {
-    const rule = mockReportDqRules.find((item) => item.id === params.id);
-    if (!rule) return notFound('质量规则不存在', { status: 404 });
+    const rule = requireItem(mockReportDqRules, params.id, '质量规则不存在', { status: 404 });
     rule.enabled = !rule.enabled;
     rule.updatedAt = mockDateTime();
     return ok(dqRuleView(rule), rule.enabled ? '已启用' : '已停用');
   }),
 
   mock(reportDqContract.runRule, ({ params, body, ok }) => {
-    const rule = mockReportDqRules.find((item) => item.id === params.id);
-    if (!rule) return notFound('质量规则不存在', { status: 404 });
+    const rule = requireItem(mockReportDqRules, params.id, '质量规则不存在', { status: 404 });
     if (!rule.enabled) return conflict('质量规则已停用', { status: 409 });
     const now = mockDateTime();
     const failedRows = rule.type === 'row_count' ? 1 : 0;
@@ -257,8 +255,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportDqContract.updateAnomalyStatus, ({ params, body, ok }) => {
-    const anomaly = mockReportDqAnomalies.find((item) => item.id === params.id);
-    if (!anomaly) return notFound('质量异常不存在', { status: 404 });
+    const anomaly = requireItem(mockReportDqAnomalies, params.id, '质量异常不存在', { status: 404 });
     const now = mockDateTime();
     anomaly.status = body.status;
     anomaly.acknowledgementNote = body.note ?? null;
@@ -282,8 +279,7 @@ export const reportQualityCapacityHandlers = [
 
   mock(reportMaterializationContract.refresh, ({ params, body, ok }) => {
     const datasetId = params.id;
-    const dataset = mockReportDatasets.find((item) => item.id === datasetId);
-    if (!dataset) return notFound('数据集不存在', { status: 404 });
+    const dataset = requireItem(mockReportDatasets, datasetId, '数据集不存在', { status: 404 });
     const now = mockDateTime();
     const revision = Math.max(0, ...mockReportSnapshots.filter((item) => item.datasetId === datasetId).map((item) => item.revision)) + 1;
     const snapshot: ReportMaterializationSnapshot = {
@@ -318,8 +314,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportMaterializationContract.purge, ({ params, ok }) => {
-    const snapshot = mockReportSnapshots.find((item) => item.id === params.id);
-    if (!snapshot) return notFound('物化快照不存在', { status: 404 });
+    const snapshot = requireItem(mockReportSnapshots, params.id, '物化快照不存在', { status: 404 });
     snapshot.status = 'deleted';
     snapshot.updatedAt = mockDateTime();
     return ok(null, '清除成功');
@@ -335,8 +330,8 @@ export const reportQualityCapacityHandlers = [
   mock(reportQueryCapacityContract.quotas, ({ ok, paginate }) => ok(paginate(mockReportQueryQuotas))),
 
   mock(reportQueryCapacityContract.quotaDetail, ({ params, ok }) => {
-    const quota = mockReportQueryQuotas.find((item) => item.id === params.id);
-    return quota ? ok(quota) : notFound('查询配额不存在', { status: 404 });
+    const quota = requireItem(mockReportQueryQuotas, params.id, '查询配额不存在', { status: 404 });
+    return ok(quota);
   }),
 
   mock(reportQueryCapacityContract.createQuota, ({ body, ok }) => {
@@ -359,8 +354,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportQueryCapacityContract.updateQuota, ({ params, body, ok }) => {
-    const quota = mockReportQueryQuotas.find((item) => item.id === params.id);
-    if (!quota) return notFound('查询配额不存在', { status: 404 });
+    const quota = requireItem(mockReportQueryQuotas, params.id, '查询配额不存在', { status: 404 });
     Object.assign(quota, body, { updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
     return ok(quota, '更新成功');
   }),
@@ -373,8 +367,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportQueryCapacityContract.quotaUsage, ({ params, query, ok }) => {
-    const quota = mockReportQueryQuotas.find((item) => item.id === params.id);
-    if (!quota) return notFound('查询配额不存在', { status: 404 });
+    const quota = requireItem(mockReportQueryQuotas, params.id, '查询配额不存在', { status: 404 });
     return ok({
       tenantId: quota.tenantId,
       userId: quota.userId ?? null,
@@ -442,8 +435,8 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportSlaContract.ruleDetail, ({ params, ok }) => {
-    const rule = mockReportSlaRules.find((item) => item.id === params.id);
-    return rule ? ok(rule) : notFound('SLA 规则不存在', { status: 404 });
+    const rule = requireItem(mockReportSlaRules, params.id, 'SLA 规则不存在', { status: 404 });
+    return ok(rule);
   }),
 
   mock(reportSlaContract.createRule, ({ body, ok }) => {
@@ -468,8 +461,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportSlaContract.updateRule, ({ params, body, ok }) => {
-    const rule = mockReportSlaRules.find((item) => item.id === params.id);
-    if (!rule) return notFound('SLA 规则不存在', { status: 404 });
+    const rule = requireItem(mockReportSlaRules, params.id, 'SLA 规则不存在', { status: 404 });
     Object.assign(rule, body, { updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
     return ok(rule, '更新成功');
   }),
@@ -482,8 +474,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportSlaContract.evaluate, ({ params, ok }) => {
-    const rule = mockReportSlaRules.find((item) => item.id === params.id);
-    if (!rule) return notFound('SLA 规则不存在', { status: 404 });
+    const rule = requireItem(mockReportSlaRules, params.id, 'SLA 规则不存在', { status: 404 });
     rule.lastEvaluatedAt = mockDateTime();
     rule.updatedAt = rule.lastEvaluatedAt;
     return ok(createProgressingMockTask({
@@ -503,8 +494,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportSlaContract.updateViolationStatus, ({ params, body, ok }) => {
-    const violation = mockReportSlaViolations.find((item) => item.id === params.id);
-    if (!violation) return notFound('SLA 违规不存在', { status: 404 });
+    const violation = requireItem(mockReportSlaViolations, params.id, 'SLA 违规不存在', { status: 404 });
     const now = mockDateTime();
     violation.status = body.status;
     if (body.status === 'acknowledged') {
@@ -592,16 +582,14 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportAssetContract.updateDeprecation, ({ params, body, ok }) => {
-    const notice = mockReportDeprecations.find((item) => item.id === params.id);
-    if (!notice) return notFound('弃用公告不存在', { status: 404 });
+    const notice = requireItem(mockReportDeprecations, params.id, '弃用公告不存在', { status: 404 });
     if (notice.publishedAt) return conflict('已发布公告不能编辑', { status: 409 });
     Object.assign(notice, body, { updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
     return ok(notice, '更新成功');
   }),
 
   mock(reportAssetContract.publishDeprecation, ({ params, body, ok }) => {
-    const notice = mockReportDeprecations.find((item) => item.id === params.id);
-    if (!notice) return notFound('弃用公告不存在', { status: 404 });
+    const notice = requireItem(mockReportDeprecations, params.id, '弃用公告不存在', { status: 404 });
     notice.publishedAt = body.publish ? mockDateTime() : null;
     notice.publishedBy = body.publish ? DEMO_USER_ID : null;
     notice.updatedAt = mockDateTime();
@@ -624,8 +612,8 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportAssetContract.templateDetail, ({ params, ok }) => {
-    const template = mockReportAssetTemplates.find((item) => item.id === params.id);
-    return template ? ok(template) : notFound('资产模板不存在', { status: 404 });
+    const template = requireItem(mockReportAssetTemplates, params.id, '资产模板不存在', { status: 404 });
+    return ok(template);
   }),
 
   mock(reportAssetContract.createTemplate, ({ body, ok }) => {
@@ -652,15 +640,13 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportAssetContract.updateTemplate, ({ params, body, ok }) => {
-    const template = mockReportAssetTemplates.find((item) => item.id === params.id);
-    if (!template) return notFound('资产模板不存在', { status: 404 });
+    const template = requireItem(mockReportAssetTemplates, params.id, '资产模板不存在', { status: 404 });
     Object.assign(template, body, { version: template.version + 1, updatedBy: DEMO_USER_ID, updatedAt: mockDateTime() });
     return ok(template, '更新成功');
   }),
 
   mock(reportAssetContract.cloneTemplate, ({ params, body, ok }) => {
-    const source = mockReportAssetTemplates.find((item) => item.id === params.id);
-    if (!source) return notFound('资产模板不存在', { status: 404 });
+    const source = requireItem(mockReportAssetTemplates, params.id, '资产模板不存在', { status: 404 });
     const now = mockDateTime();
     const copy: ReportAssetTemplate = {
       ...source,
@@ -679,8 +665,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportAssetContract.applyTemplate, ({ params, body, ok }) => {
-    const template = mockReportAssetTemplates.find((item) => item.id === params.id);
-    if (!template) return notFound('资产模板不存在', { status: 404 });
+    const template = requireItem(mockReportAssetTemplates, params.id, '资产模板不存在', { status: 404 });
     if (template.status !== 'enabled') return conflict('资产模板已停用', { status: 409 });
     let result: ReportAssetTemplateApplyResult;
     if (template.type === 'semantic_model') {

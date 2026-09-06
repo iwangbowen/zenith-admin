@@ -1,6 +1,7 @@
 import { workflowConnectorContract } from '@zenith/shared/workflow';
 import type { WorkflowConnector, WorkflowConnectorInvocation } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockWorkflowConnectors, getNextConnectorId } from '@/mocks/data/workflow-connectors';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
@@ -54,8 +55,7 @@ export const workflowConnectorsHandlers = [
   }),
 
   mock(workflowConnectorContract.detail, ({ params, ok }) => {
-    const item = mockWorkflowConnectors.find((x) => x.id === params.id);
-    if (!item) return notFound('连接器不存在', { status: 404 });
+    const item = requireItem(mockWorkflowConnectors, params.id, '连接器不存在', { status: 404 });
     return ok(item);
   }),
 
@@ -79,9 +79,7 @@ export const workflowConnectorsHandlers = [
   }),
 
   mock(workflowConnectorContract.update, ({ params, body, ok }) => {
-    const idx = mockWorkflowConnectors.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('连接器不存在', { status: 404 });
-    const cur = mockWorkflowConnectors[idx];
+    const cur = requireItem(mockWorkflowConnectors, params.id, '连接器不存在', { status: 404 });
     const { credentials, clearCredentials, ...patch } = body;
     const next: WorkflowConnector = {
       ...cur,
@@ -90,14 +88,13 @@ export const workflowConnectorsHandlers = [
       hasCredentials: clearCredentials ? false : (hasCred(credentials) || cur.hasCredentials),
       updatedAt: mockDateTime(),
     };
-    mockWorkflowConnectors[idx] = next;
-    return ok(next, '更新成功');
+    Object.assign(cur, next);
+    return ok(cur, '更新成功');
   }),
 
   mock(workflowConnectorContract.remove, ({ params, ok }) => {
-    const idx = mockWorkflowConnectors.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('连接器不存在', { status: 404 });
-    mockWorkflowConnectors.splice(idx, 1);
+    requireItem(mockWorkflowConnectors, params.id, '连接器不存在', { status: 404 });
+    removeByIds(mockWorkflowConnectors, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

@@ -1,6 +1,7 @@
 import { mpQrcodeContract, type MpQrcode } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+
 import { mockMpQrcodes, getNextMpQrcodeId } from '@/mocks/data/mp-qrcodes';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -29,9 +30,8 @@ export const mpQrcodesHandlers = [
   }),
 
   mock(mpQrcodeContract.remove, ({ params, ok }) => {
-    const idx = mockMpQrcodes.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('二维码不存在', { status: 404 });
-    mockMpQrcodes.splice(idx, 1);
+    requireItem(mockMpQrcodes, params.id, '二维码不存在', { status: 404 });
+    removeByIds(mockMpQrcodes, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

@@ -1,9 +1,9 @@
 import { tagContract, type Tag } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockTags, getNextTagId, getTagGroups } from '@/mocks/data/tags';
 import { mockDateTime } from '@/mocks/utils/date';
-import { removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { includesKeyword } from '@/mocks/utils/filter';
 
 export const tagsHandlers = [
@@ -24,8 +24,7 @@ export const tagsHandlers = [
 
   // 获取单个标签
   mock(tagContract.detail, ({ params, ok }) => {
-    const tag = mockTags.find((t) => t.id === params.id);
-    if (!tag) return notFound('标签不存在', { status: 404 });
+    const tag = requireItem(mockTags, params.id, '标签不存在', { status: 404 });
     return ok(tag);
   }),
 
@@ -52,8 +51,7 @@ export const tagsHandlers = [
 
   // 更新标签
   mock(tagContract.update, ({ params, body, ok }) => {
-    const tag = mockTags.find((t) => t.id === params.id);
-    if (!tag) return notFound('标签不存在', { status: 404 });
+    const tag = requireItem(mockTags, params.id, '标签不存在', { status: 404 });
     if (body.name && body.name !== tag.name && mockTags.some((t) => t.name === body.name)) {
       return badRequest('标签名称已存在', { status: 400 });
     }
@@ -69,9 +67,8 @@ export const tagsHandlers = [
 
   // 删除标签
   mock(tagContract.remove, ({ params, ok }) => {
-    const index = mockTags.findIndex((t) => t.id === params.id);
-    if (index === -1) return notFound('标签不存在', { status: 404 });
-    mockTags.splice(index, 1);
+    requireItem(mockTags, params.id, '标签不存在', { status: 404 });
+    removeByIds(mockTags, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

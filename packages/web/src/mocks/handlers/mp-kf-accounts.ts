@@ -1,6 +1,7 @@
 import { mpKfAccountContract, type MpKfAccount } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockMpKfAccounts, getNextMpKfAccountId } from '@/mocks/data/mp-kf-accounts';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -30,17 +31,15 @@ export const mpKfAccountsHandlers = [
   }),
 
   mock(mpKfAccountContract.update, ({ params, body, ok }) => {
-    const k = mockMpKfAccounts.find((x) => x.id === params.id);
-    if (!k) return notFound('客服账号不存在', { status: 404 });
+    const k = requireItem(mockMpKfAccounts, params.id, '客服账号不存在', { status: 404 });
     k.nickname = body.nickname;
     k.updatedAt = mockDateTime();
     return ok(k, '更新成功');
   }),
 
   mock(mpKfAccountContract.remove, ({ params, ok }) => {
-    const idx = mockMpKfAccounts.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('客服账号不存在', { status: 404 });
-    mockMpKfAccounts.splice(idx, 1);
+    requireItem(mockMpKfAccounts, params.id, '客服账号不存在', { status: 404 });
+    removeByIds(mockMpKfAccounts, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

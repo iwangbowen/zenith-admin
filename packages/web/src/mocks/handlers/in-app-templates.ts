@@ -1,7 +1,8 @@
 import { inAppTemplateContract } from '@zenith/shared/messaging';
 import type { InAppTemplate } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockInAppTemplates, getNextInAppTemplateId } from '@/mocks/data/in-app-templates';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -18,8 +19,7 @@ export const inAppTemplatesHandlers = [
   }),
 
   mock(inAppTemplateContract.detail, ({ params, ok }) => {
-    const t = mockInAppTemplates.find((x) => x.id === params.id);
-    if (!t) return notFound('站内信模板不存在', { status: 404 });
+    const t = requireItem(mockInAppTemplates, params.id, '站内信模板不存在', { status: 404 });
     return ok(t);
   }),
 
@@ -46,16 +46,14 @@ export const inAppTemplatesHandlers = [
   }),
 
   mock(inAppTemplateContract.update, ({ params, body, ok }) => {
-    const t = mockInAppTemplates.find((x) => x.id === params.id);
-    if (!t) return notFound('站内信模板不存在', { status: 404 });
+    const t = requireItem(mockInAppTemplates, params.id, '站内信模板不存在', { status: 404 });
     Object.assign(t, body, { id: t.id, code: t.code, updatedAt: mockDateTime() });
     return ok(t, '更新成功');
   }),
 
   mock(inAppTemplateContract.remove, ({ params, ok }) => {
-    const idx = mockInAppTemplates.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('站内信模板不存在', { status: 404 });
-    mockInAppTemplates.splice(idx, 1);
+    requireItem(mockInAppTemplates, params.id, '站内信模板不存在', { status: 404 });
+    removeByIds(mockInAppTemplates, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

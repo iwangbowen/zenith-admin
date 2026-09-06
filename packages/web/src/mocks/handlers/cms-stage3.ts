@@ -1,5 +1,6 @@
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { cmsPublishingContract } from '@zenith/shared/cms';
 import type { CmsPublishTargetType } from '@zenith/shared/cms';
 import type { AsyncTask } from '@zenith/shared/tasks';
@@ -69,8 +70,7 @@ export const cmsStage3Handlers = [
   }),
 
   mock(cmsPublishingContract.detail, ({ params, ok }) => {
-    const task = mockCmsPublishingTasks.find((item) => item.id === params.id);
-    if (!task) return notFound('CMS 发布任务不存在', { status: 404 });
+    const task = requireItem(mockCmsPublishingTasks, params.id, 'CMS 发布任务不存在', { status: 404 });
     const artifacts = mockCmsPublishArtifacts.filter((item) => item.taskId === task.id);
     return ok({
       task,
@@ -91,8 +91,7 @@ export const cmsStage3Handlers = [
   }),
 
   mock(cmsPublishingContract.action, ({ params, ok }) => {
-    const task = mockCmsPublishingTasks.find((item) => item.id === params.id);
-    if (!task) return notFound('CMS 发布任务不存在', { status: 404 });
+    const task = requireItem(mockCmsPublishingTasks, params.id, 'CMS 发布任务不存在', { status: 404 });
     const { action } = params;
     if (action === 'cancel' && ['pending', 'running'].includes(task.status)) task.status = 'cancelled';
     else if (action === 'resume' && ['failed', 'cancelled'].includes(task.status)) task.status = 'pending';

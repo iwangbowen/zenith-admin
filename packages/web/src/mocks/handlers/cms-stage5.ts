@@ -1,5 +1,6 @@
 import { badRequest, conflict, locked, notFound } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import {
   CMS_SECRET_MASK,
   CMS_SITE_INHERITABLE_FIELDS,
@@ -321,8 +322,7 @@ export const cmsStage5Handlers = [
   }),
 
   mock(cmsSiteContract.templateHealth, ({ params, query, ok }) => {
-    const site = mockCmsSites.find((item) => item.id === params.id);
-    if (!site) return notFound('站点不存在', { status: 404 });
+    const site = requireItem(mockCmsSites, params.id, '站点不存在', { status: 404 });
     const theme = query.theme || sourceForField(site.id, 'theme').theme;
     return ok({
       theme,
@@ -340,8 +340,7 @@ export const cmsStage5Handlers = [
   }),
 
   mock(cmsSiteContract.inheritanceChain, ({ params, ok }) => {
-    const site = mockCmsSites.find((item) => item.id === params.id);
-    if (!site) return notFound('站点不存在', { status: 404 });
+    const site = requireItem(mockCmsSites, params.id, '站点不存在', { status: 404 });
     return ok(chain(site.id).reverse().map((item, index) => ({
       id: item.id,
       parentId: item.parentId,
@@ -358,8 +357,7 @@ export const cmsStage5Handlers = [
   }),
 
   mock(cmsSiteContract.move, ({ params, body, ok }) => {
-    const site = mockCmsSites.find((item) => item.id === params.id);
-    if (!site) return notFound('站点不存在', { status: 404 });
+    const site = requireItem(mockCmsSites, params.id, '站点不存在', { status: 404 });
     const parentId = body.parentId ?? null;
     if (parentId === site.id || descendants(site.id).includes(parentId ?? -1)) {
       return badRequest('不能把站点移动到自身子树中', { status: 400 });
@@ -379,8 +377,7 @@ export const cmsStage5Handlers = [
   }),
 
   mock(cmsSiteContract.updateInheritance, ({ params, body, ok }) => {
-    const site = mockCmsSites.find((item) => item.id === params.id);
-    if (!site) return notFound('站点不存在', { status: 404 });
+    const site = requireItem(mockCmsSites, params.id, '站点不存在', { status: 404 });
     if (site.parentId == null && Object.values(body).some(Boolean)) return badRequest('根站点没有父级，不能启用继承', { status: 400 });
     site.inheritance = { ...EMPTY_INHERITANCE, ...(site.inheritance ?? {}), ...body };
     site.themeRevision += 1;
@@ -394,8 +391,7 @@ export const cmsStage5Handlers = [
   }),
 
   mock(cmsPublishingContract.groupSubmit, ({ body, ok }) => {
-    const root = mockCmsSites.find((site) => site.id === body.rootSiteId);
-    if (!root) return notFound('站群根站点不存在', { status: 404 });
+    const root = requireItem(mockCmsSites, body.rootSiteId, '站群根站点不存在', { status: 404 });
     const targetSiteIds = descendants(root.id).filter((id) => mockCmsSites.find((site) => site.id === id)?.status === 'enabled');
     const tasks = targetSiteIds.map((siteId) => createProgressingMockTask({
       taskType: 'cms-publish-build',
@@ -466,13 +462,12 @@ export const cmsStage5Handlers = [
   }),
 
   mock(cmsDistributionContract.detail, ({ params, ok }) => {
-    const rule = mockCmsDistributionRules.find((item) => item.id === params.id);
-    return rule ? ok(rule) : notFound('分发规则不存在', { status: 404 });
+    const rule = requireItem(mockCmsDistributionRules, params.id, '分发规则不存在', { status: 404 });
+    return ok(rule);
   }),
 
   mock(cmsDistributionContract.update, ({ params, body, ok }) => {
-    const rule = mockCmsDistributionRules.find((item) => item.id === params.id);
-    if (!rule) return notFound('分发规则不存在', { status: 404 });
+    const rule = requireItem(mockCmsDistributionRules, params.id, '分发规则不存在', { status: 404 });
     Object.assign(rule, body, {
       revision: rule.revision + 1,
       updatedAt: mockDateTime(),
@@ -481,8 +476,7 @@ export const cmsStage5Handlers = [
   }),
 
   mock(cmsDistributionContract.run, ({ params, ok }) => {
-    const rule = mockCmsDistributionRules.find((item) => item.id === params.id);
-    if (!rule) return notFound('分发规则不存在', { status: 404 });
+    const rule = requireItem(mockCmsDistributionRules, params.id, '分发规则不存在', { status: 404 });
     if (rule.status !== 'enabled') return conflict('分发规则已停用', { status: 409 });
     const watermark = `${rule.revision}-${mockCmsContents.filter((item) => item.siteId === rule.sourceSiteId).reduce((max, item) => Math.max(max, item.version), 0)}`;
     const duplicate = mockCmsDistributionRuns.find((run) =>

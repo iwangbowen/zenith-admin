@@ -12,6 +12,7 @@ import {
   nextReportP2Id,
 } from '@/mocks/data/report-p2';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { createProgressingMockTask } from './async-tasks';
@@ -164,8 +165,7 @@ export const reportFillHandlers = [
   }),
 
   mock(reportFillContract.updateTemplate, ({ params, body, ok }) => {
-    const template = mockReportFillTemplates.find((item) => item.id === params.id);
-    if (!template) return notFound('填报模板不存在', { status: 404 });
+    const template = requireItem(mockReportFillTemplates, params.id, '填报模板不存在', { status: 404 });
     if (template.status === 'published') return conflict('请先下线模板再编辑', { status: 409 });
     if (body.expectedRevision !== template.revision) return conflict('模板已被其他操作更新', { status: 409 });
     const { expectedRevision: _expectedRevision, ...patch } = body;
@@ -178,8 +178,7 @@ export const reportFillHandlers = [
   }),
 
   mock(reportFillContract.templateLifecycle, ({ params, body, ok }) => {
-    const template = mockReportFillTemplates.find((item) => item.id === params.id);
-    if (!template) return notFound('填报模板不存在', { status: 404 });
+    const template = requireItem(mockReportFillTemplates, params.id, '填报模板不存在', { status: 404 });
     if (body.expectedRevision !== template.revision) return conflict('模板修订号不匹配', { status: 409 });
     if (body.action === 'publish' && template.status === 'published') {
       return ok(templateView(template), '操作成功');
@@ -202,8 +201,7 @@ export const reportFillHandlers = [
   }),
 
   mock(reportFillContract.cloneTemplate, ({ params, body, ok }) => {
-    const source = mockReportFillTemplates.find((item) => item.id === params.id);
-    if (!source) return notFound('填报模板不存在', { status: 404 });
+    const source = requireItem(mockReportFillTemplates, params.id, '填报模板不存在', { status: 404 });
     if (mockReportFillTemplates.some((item) => item.code === body.code)) return badRequest('填报模板编码已存在', { status: 400 });
     const now = mockDateTime();
     const copy: ReportFillTemplate = {
@@ -255,14 +253,12 @@ export const reportFillHandlers = [
   }),
 
   mock(reportFillContract.recordDetail, ({ params, ok }) => {
-    const record = mockReportFillRecords.find((item) => item.id === params.id);
-    if (!record) return notFound('填报记录不存在', { status: 404 });
+    const record = requireItem(mockReportFillRecords, params.id, '填报记录不存在', { status: 404 });
     return ok(recordView(record));
   }),
 
   mock(reportFillContract.createRecord, ({ body, ok }) => {
-    const template = mockReportFillTemplates.find((item) => item.id === body.templateId);
-    if (!template) return notFound('填报模板不存在', { status: 404 });
+    const template = requireItem(mockReportFillTemplates, body.templateId, '填报模板不存在', { status: 404 });
     if (template.status !== 'published' || !template.publishedSchema || !template.publishedRevision) {
       return conflict('填报模板未发布或发布快照无效', { status: 409 });
     }
@@ -323,8 +319,7 @@ export const reportFillHandlers = [
     if (revisionError) return revisionError;
     const validationError = validateRequired(record.templateSchemaSnapshot, record.data);
     if (validationError) return badRequest(validationError, { status: 400 });
-    const template = mockReportFillTemplates.find((item) => item.id === record.templateId);
-    if (!template) return notFound('填报模板不存在', { status: 404 });
+    const template = requireItem(mockReportFillTemplates, record.templateId, '填报模板不存在', { status: 404 });
     const now = mockDateTime();
     record.status = record.templateNeedReview ? 'submitted' : 'approved';
     record.submittedAt = now;
@@ -342,14 +337,12 @@ export const reportFillHandlers = [
   }),
 
   mock(reportFillContract.reviewRecord, ({ params, body, ok }) => {
-    const record = mockReportFillRecords.find((item) => item.id === params.id);
-    if (!record) return notFound('填报记录不存在', { status: 404 });
+    const record = requireItem(mockReportFillRecords, params.id, '填报记录不存在', { status: 404 });
     if (!['submitted', 'in_review'].includes(record.status)) return conflict('当前状态不允许审核', { status: 409 });
     if (record.workflowDefinitionIdSnapshot || record.workflowInstanceId) return conflict('该记录必须通过绑定的工作流审批', { status: 409 });
     const revisionError = assertRevision(record, body.expectedRevision);
     if (revisionError) return revisionError;
-    const template = mockReportFillTemplates.find((item) => item.id === record.templateId);
-    if (!template) return notFound('填报模板不存在', { status: 404 });
+    const template = requireItem(mockReportFillTemplates, record.templateId, '填报模板不存在', { status: 404 });
     record.status = body.decision;
     record.reviewedAt = mockDateTime();
     record.reviewedBy = DEMO_USER_ID;

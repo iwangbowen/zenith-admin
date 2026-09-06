@@ -10,6 +10,7 @@ import type {
   AiEvalExperimentResult,
 } from '@zenith/shared/ai';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 
@@ -161,8 +162,7 @@ export const aiP3Handlers = [
   // ── 智能体（静态 /builtin 早于动态 /:id）──
   mock(aiAgentContract.builtin, ({ ok }) => ok(BUILTIN_AGENTS)),
   mock(aiAgentContract.detail, ({ params, ok }) => {
-    const agent = agentStore.find((a) => a.id === params.id);
-    if (!agent) return notFound('智能体不存在', { status: 404 });
+    const agent = requireItem(agentStore, params.id, '智能体不存在', { status: 404 });
     return ok(agent);
   }),
   mock(aiAgentContract.list, ({ ok }) => ok(agentStore)),
@@ -192,15 +192,12 @@ export const aiP3Handlers = [
     return ok(agent, '创建成功');
   }),
   mock(aiAgentContract.update, ({ params, body, ok }) => {
-    const agent = agentStore.find((a) => a.id === params.id);
-    if (!agent) return notFound('智能体不存在', { status: 404 });
-    Object.assign(agent, body, { updatedAt: mockDateTime() });
+    const agent = updateItem(agentStore, params.id, body, { notFoundMessage: '智能体不存在', now: mockDateTime, init: { status: 404 } });
     return ok(agent, '更新成功');
   }),
   mock(aiAgentContract.remove, ({ params, ok }) => {
-    const idx = agentStore.findIndex((a) => a.id === params.id);
-    if (idx === -1) return notFound('智能体不存在', { status: 404 });
-    agentStore.splice(idx, 1);
+    requireItem(agentStore, params.id, '智能体不存在', { status: 404 });
+    removeByIds(agentStore, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -226,15 +223,12 @@ export const aiP3Handlers = [
     return ok(tool, '创建成功');
   }),
   mock(aiHttpToolContract.update, ({ params, body, ok }) => {
-    const tool = toolStore.find((t) => t.id === params.id);
-    if (!tool) return notFound('工具不存在', { status: 404 });
-    Object.assign(tool, body, { updatedAt: mockDateTime() });
+    const tool = updateItem(toolStore, params.id, body, { notFoundMessage: '工具不存在', now: mockDateTime, init: { status: 404 } });
     return ok(tool, '更新成功');
   }),
   mock(aiHttpToolContract.remove, ({ params, ok }) => {
-    const idx = toolStore.findIndex((t) => t.id === params.id);
-    if (idx === -1) return notFound('工具不存在', { status: 404 });
-    toolStore.splice(idx, 1);
+    requireItem(toolStore, params.id, '工具不存在', { status: 404 });
+    removeByIds(toolStore, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -260,7 +254,7 @@ export const aiP3Handlers = [
     const dataset = datasetStore.find((d) => d.id === params.id);
     if (!dataset) return notFound('评测集不存在', { status: 404 });
     const list = itemStore.get(dataset.id) ?? [];
-    const idx = list.findIndex((it) => it.id === params.itemId);
+    const idx = list.findIndex((item) => item.id === params.itemId);
     if (idx === -1) return notFound('条目不存在', { status: 404 });
     list.splice(idx, 1);
     dataset.itemCount = list.length;

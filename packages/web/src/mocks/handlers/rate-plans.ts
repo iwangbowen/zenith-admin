@@ -1,6 +1,7 @@
 import { ratePlanContract } from '@zenith/shared/open-platform';
 import type { RatePlan } from '@zenith/shared/open-platform';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockRatePlans } from '@/mocks/data/rate-plans';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -50,8 +51,8 @@ export const ratePlansHandlers = [
   }),
 
   mock(ratePlanContract.detail, ({ params, ok }) => {
-    const found = plans.find((p) => p.id === params.id);
-    return found ? ok(found) : notFound('限流套餐不存在', { status: 404 });
+    const found = requireItem(plans, params.id, '限流套餐不存在', { status: 404 });
+    return ok(found);
   }),
 
   mock(ratePlanContract.update, ({ params, body, ok }) => {
@@ -63,9 +64,8 @@ export const ratePlansHandlers = [
   }),
 
   mock(ratePlanContract.remove, ({ params, ok }) => {
-    const idx = plans.findIndex((p) => p.id === params.id);
-    if (idx === -1) return notFound('限流套餐不存在', { status: 404 });
-    plans.splice(idx, 1);
+    requireItem(plans, params.id, '限流套餐不存在', { status: 404 });
+    removeByIds(plans, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

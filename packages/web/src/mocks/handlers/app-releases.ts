@@ -19,6 +19,7 @@ import {
   type ClientApp,
 } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -94,8 +95,7 @@ export const appReleasesHandlers = [
   }),
 
   mock(clientAppContract.update, ({ params, body, ok }) => {
-    const app = mockClientApps.find((a) => a.id === params.id);
-    if (!app) return notFound('应用不存在', { status: 404 });
+    const app = requireItem(mockClientApps, params.id, '应用不存在', { status: 404 });
     if (body.name !== undefined) app.name = body.name;
     if (body.description !== undefined) app.description = body.description;
     if (body.status !== undefined) app.status = body.status;
@@ -170,8 +170,7 @@ export const appReleasesHandlers = [
   }),
 
   mock(appReleaseContract.detail, ({ params, ok }) => {
-    const release = mockAppReleases.find((r) => r.id === params.id);
-    if (!release) return notFound('版本不存在', { status: 404 });
+    const release = requireItem(mockAppReleases, params.id, '版本不存在', { status: 404 });
     return ok(decorateRelease(release));
   }),
 
@@ -200,8 +199,7 @@ export const appReleasesHandlers = [
   }),
 
   mock(appReleaseContract.update, ({ params, body, ok }) => {
-    const release = mockAppReleases.find((r) => r.id === params.id);
-    if (!release) return notFound('版本不存在', { status: 404 });
+    const release = requireItem(mockAppReleases, params.id, '版本不存在', { status: 404 });
     if (release.status !== 'draft') {
       if (body.version !== undefined && body.version !== release.version) {
         return badRequest('仅草稿状态可修改版本号', { status: 400 });
@@ -221,8 +219,7 @@ export const appReleasesHandlers = [
   }),
 
   mock(appReleaseContract.publish, ({ params, ok }) => {
-    const release = mockAppReleases.find((r) => r.id === params.id);
-    if (!release) return notFound('版本不存在', { status: 404 });
+    const release = requireItem(mockAppReleases, params.id, '版本不存在', { status: 404 });
     if (release.status === 'published') return badRequest('该版本已是发布状态', { status: 400 });
     if (!mockAppArtifacts.some((a) => a.releaseId === release.id)) {
       return badRequest('该版本还没有任何制品，无法发布', { status: 400 });
@@ -232,16 +229,14 @@ export const appReleasesHandlers = [
   }),
 
   mock(appReleaseContract.revoke, ({ params, ok }) => {
-    const release = mockAppReleases.find((r) => r.id === params.id);
-    if (!release) return notFound('版本不存在', { status: 404 });
+    const release = requireItem(mockAppReleases, params.id, '版本不存在', { status: 404 });
     if (release.status !== 'published') return badRequest('仅已发布版本可以撤回', { status: 400 });
     Object.assign(release, { status: 'revoked', updatedAt: mockDateTime() });
     return ok(decorateRelease(release), '撤回成功');
   }),
 
   mock(appReleaseContract.rollout, ({ params, body, ok }) => {
-    const release = mockAppReleases.find((r) => r.id === params.id);
-    if (!release) return notFound('版本不存在', { status: 404 });
+    const release = requireItem(mockAppReleases, params.id, '版本不存在', { status: 404 });
     Object.assign(release, { rolloutPercent: body.rolloutPercent, updatedAt: mockDateTime() });
     return ok(decorateRelease(release), '调整成功');
   }),
@@ -315,9 +310,8 @@ export const appReleasesHandlers = [
   }),
 
   mock(appArtifactContract.remove, ({ params, ok }) => {
-    const idx = mockAppArtifacts.findIndex((a) => a.id === params.id);
-    if (idx === -1) return notFound('制品不存在', { status: 404 });
-    mockAppArtifacts.splice(idx, 1);
+    requireItem(mockAppArtifacts, params.id, '制品不存在', { status: 404 });
+    removeByIds(mockAppArtifacts, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

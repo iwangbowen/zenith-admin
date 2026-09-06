@@ -2,10 +2,10 @@ import { channelAnalysisContract, shortLinkContract } from '@zenith/shared/short
 import type { ChannelAnalysisResult, ShortLink, ShortLinkStats } from '@zenith/shared/short-link';
 import { CHANNEL_ANALYSIS_UNSET, SHORT_LINK_CODE_ALPHABET, SHORT_LINK_CODE_LENGTH } from '@zenith/shared/short-link';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockShortLinks, getNextShortLinkId } from '../data/short-links';
 import { mockDateTime } from '../utils/date';
-import { removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import { filterByKeyword } from '@/mocks/utils/filter';
 
 function generateMockCode(): string {
@@ -155,8 +155,7 @@ export const shortLinksHandlers = [
 
   // ─── 访问统计 ───────────────────────────────────────────────────────────────
   mock(shortLinkContract.stats, ({ params, query, ok }) => {
-    const link = mockShortLinks.find((x) => x.id === params.id);
-    if (!link) return notFound('短链不存在', { status: 404 });
+    const link = requireItem(mockShortLinks, params.id, '短链不存在', { status: 404 });
     const trend = seededSeries(link.id, query.days ?? 30);
     const pv = trend.reduce((s, p) => s + p.pv, 0);
     const uv = trend.reduce((s, p) => s + p.uv, 0);
@@ -196,8 +195,7 @@ export const shortLinksHandlers = [
 
   // ─── 详情 ───────────────────────────────────────────────────────────────────
   mock(shortLinkContract.detail, ({ params, ok }) => {
-    const link = mockShortLinks.find((x) => x.id === params.id);
-    if (!link) return notFound('短链不存在', { status: 404 });
+    const link = requireItem(mockShortLinks, params.id, '短链不存在', { status: 404 });
     return ok(link);
   }),
 
@@ -239,17 +237,14 @@ export const shortLinksHandlers = [
 
   // ─── 更新（code 不可修改，契约请求体不含 code）─────────────────────────────
   mock(shortLinkContract.update, ({ params, body, ok }) => {
-    const link = mockShortLinks.find((x) => x.id === params.id);
-    if (!link) return notFound('短链不存在', { status: 404 });
-    Object.assign(link, body, { updatedAt: mockDateTime() });
+    const link = updateItem(mockShortLinks, params.id, body, { notFoundMessage: '短链不存在', now: mockDateTime, init: { status: 404 } });
     return ok(link, '更新成功');
   }),
 
   // ─── 删除 ───────────────────────────────────────────────────────────────────
   mock(shortLinkContract.remove, ({ params, ok }) => {
-    const idx = mockShortLinks.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('短链不存在', { status: 404 });
-    mockShortLinks.splice(idx, 1);
+    requireItem(mockShortLinks, params.id, '短链不存在', { status: 404 });
+    removeByIds(mockShortLinks, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

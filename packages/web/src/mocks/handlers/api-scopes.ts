@@ -5,7 +5,7 @@ import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockApiScopes } from '@/mocks/data/api-scopes';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
-import { removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 
 const scopes: ApiScope[] = mockApiScopes.map((s) => ({ ...s }));
 let nextId = nextIdFrom(scopes);
@@ -47,8 +47,8 @@ export const apiScopesHandlers = [
   }),
 
   mock(apiScopeContract.detail, ({ params, ok }) => {
-    const found = scopes.find((s) => s.id === params.id);
-    return found ? ok(found) : notFound('API Scope 不存在', { status: 404 });
+    const found = requireItem(scopes, params.id, 'API Scope 不存在', { status: 404 });
+    return ok(found);
   }),
 
   mock(apiScopeContract.update, ({ params, body, ok }) => {
@@ -59,9 +59,8 @@ export const apiScopesHandlers = [
   }),
 
   mock(apiScopeContract.remove, ({ params, ok }) => {
-    const idx = scopes.findIndex((s) => s.id === params.id);
-    if (idx === -1) return notFound('API Scope 不存在', { status: 404 });
-    scopes.splice(idx, 1);
+    requireItem(scopes, params.id, 'API Scope 不存在', { status: 404 });
+    removeByIds(scopes, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

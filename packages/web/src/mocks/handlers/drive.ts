@@ -20,6 +20,7 @@ import {
   type DriveTag,
 } from '@zenith/shared/drive';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, forbidden, notFound, unauthorized } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { removeWhere } from '@/mocks/utils/array';
@@ -261,14 +262,12 @@ const spaceHandlers = [
     return ok(space, '创建成功');
   }),
   mock(driveSpaceContract.detail, ({ params, ok }) => {
-    const space = mockDriveSpaces.find((s) => s.id === params.id);
-    if (!space) return notFound('空间不存在', { status: 404 });
+    const space = requireItem(mockDriveSpaces, params.id, '空间不存在', { status: 404 });
     recalcMockDriveUsage();
     return ok(space);
   }),
   mock(driveSpaceContract.update, ({ params, body, ok }) => {
-    const space = mockDriveSpaces.find((s) => s.id === params.id);
-    if (!space) return notFound('空间不存在', { status: 404 });
+    const space = requireItem(mockDriveSpaces, params.id, '空间不存在', { status: 404 });
     const { quotaGb, ...rest } = body;
     Object.assign(space, rest, { updatedAt: mockDateTime() });
     if (quotaGb !== undefined) {
@@ -287,8 +286,7 @@ const spaceHandlers = [
     return ok(null, '成员已更新');
   }),
   mock(driveSpaceContract.transfer, ({ params, body, ok }) => {
-    const space = mockDriveSpaces.find((s) => s.id === params.id);
-    if (!space) return notFound('空间不存在', { status: 404 });
+    const space = requireItem(mockDriveSpaces, params.id, '空间不存在', { status: 404 });
     space.ownerId = body.ownerId; space.ownerName = subjectName('user', body.ownerId); space.updatedAt = mockDateTime();
     return ok(space, '已转让');
   }),
@@ -362,8 +360,7 @@ const nodeStaticHandlers = [
     return ok(paginate(list));
   }),
   mock(driveNodeContract.precheck, ({ body, ok }) => {
-    const space = mockDriveSpaces.find((s) => s.id === body.spaceId);
-    if (!space) return notFound('空间不存在', { status: 404 });
+    const space = requireItem(mockDriveSpaces, body.spaceId, '空间不存在', { status: 404 });
     const existing = liveNodes().find((n) => n.spaceId === body.spaceId && n.parentId === body.parentId && n.name.toLowerCase() === body.fileName.toLowerCase());
     const remaining = space.quotaBytes ? space.quotaBytes - space.usedBytes : null;
     return ok({ conflict: !!existing, existingNodeId: existing?.id ?? null, quotaOk: remaining === null || remaining >= body.fileSize, quotaRemaining: remaining, instant: false, node: null });
@@ -662,8 +659,7 @@ const shareLinkHandlers = [
     ok(paginate(mockDriveShareAccessLogs.filter((l) => l.shareId === params.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))))),
   mock(driveShareLinkContract.revoke, ({ params, ok }) => (revokeShareLink(params.id) ? ok(null, '已撤销') : notFound('外链不存在', { status: 404 }))),
   mock(driveShareLinkContract.update, ({ params, body, ok }) => {
-    const link = mockDriveShareLinks.find((l) => l.id === params.id);
-    if (!link) return notFound('外链不存在', { status: 404 });
+    const link = requireItem(mockDriveShareLinks, params.id, '外链不存在', { status: 404 });
     if (link.revokedAt) return badRequest('外链已撤销，不能修改', { status: 400 });
     const { password, clearPassword, ...rest } = body;
     Object.assign(link, rest, { updatedAt: mockDateTime() });
@@ -775,9 +771,7 @@ const tagHandlers = [
     return ok(tag, '创建成功');
   }),
   mock(driveTagContract.update, ({ params, body, ok }) => {
-    const tag = mockDriveTags.find((t) => t.id === params.id);
-    if (!tag) return notFound('标签不存在', { status: 404 });
-    Object.assign(tag, body, { updatedAt: mockDateTime() });
+    const tag = updateItem(mockDriveTags, params.id, body, { notFoundMessage: '标签不存在', now: mockDateTime, init: { status: 404 } });
     return ok(tag, '更新成功');
   }),
   mock(driveTagContract.remove, ({ params, ok }) => {
@@ -857,8 +851,7 @@ const adminHandlers = [
   mock(driveAdminContract.recalcUsage, ({ ok }) => { recalcMockDriveUsage(); return ok(createImmediateMockTask({ taskType: 'drive-recalc-usage', title: '网盘容量重算', module: '企业网盘' })); }),
   mock(driveAdminContract.reindex, ({ ok }) => ok(createImmediateMockTask({ taskType: 'drive-reindex', title: '网盘索引补建', module: '企业网盘' }))),
   mock(driveAdminContract.updateSpace, ({ params, body, ok }) => {
-    const space = mockDriveSpaces.find((s) => s.id === params.id);
-    if (!space) return notFound('空间不存在', { status: 404 });
+    const space = requireItem(mockDriveSpaces, params.id, '空间不存在', { status: 404 });
     const { quotaGb, ownerId, ...rest } = body;
     Object.assign(space, rest, { updatedAt: mockDateTime() });
     if (quotaGb !== undefined) {

@@ -14,6 +14,7 @@ import {
 } from '@zenith/shared/ai';
 import type { AiConversationShare, AiKbDocument, AiKnowledgeBase, AiUserSettings } from '@zenith/shared/ai';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 
@@ -125,23 +126,20 @@ export const aiExtrasHandlers = [
     return ok(kb, '创建成功');
   }),
   mock(aiKnowledgeBaseContract.update, ({ params, body, ok }) => {
-    const kb = kbStore.find((k) => k.id === params.id);
-    if (!kb) return notFound('知识库不存在', { status: 404 });
+    const kb = requireItem(kbStore, params.id, '知识库不存在', { status: 404 });
     if (body.name !== undefined) kb.name = body.name;
     if (body.description !== undefined) kb.description = body.description;
     kb.updatedAt = mockDateTime();
     return ok(kb, '更新成功');
   }),
   mock(aiKnowledgeBaseContract.remove, ({ params, ok }) => {
-    const idx = kbStore.findIndex((k) => k.id === params.id);
-    if (idx === -1) return notFound('知识库不存在', { status: 404 });
-    kbStore.splice(idx, 1);
+    requireItem(kbStore, params.id, '知识库不存在', { status: 404 });
+    removeByIds(kbStore, [params.id]);
     return ok(null, '删除成功');
   }),
   mock(aiKnowledgeBaseContract.documents, ({ params, ok }) => ok(docStore[params.id] ?? [])),
   mock(aiKnowledgeBaseContract.addDocument, ({ params, body, ok }) => {
-    const kb = kbStore.find((k) => k.id === params.id);
-    if (!kb) return notFound('知识库不存在', { status: 404 });
+    const kb = requireItem(kbStore, params.id, '知识库不存在', { status: 404 });
     const chunkCount = Math.max(1, Math.ceil(body.content.length / 800));
     const doc: AiKbDocument = {
       id: nextDocId++,
@@ -161,8 +159,7 @@ export const aiExtrasHandlers = [
   }),
   // 从 URL 抓取网页入库（Demo：生成模拟正文）
   mock(aiKnowledgeBaseContract.importUrl, ({ params, body, ok }) => {
-    const kb = kbStore.find((k) => k.id === params.id);
-    if (!kb) return notFound('知识库不存在', { status: 404 });
+    const kb = requireItem(kbStore, params.id, '知识库不存在', { status: 404 });
     const doc: AiKbDocument = {
       id: nextDocId++,
       kbId: params.id,

@@ -6,10 +6,10 @@ import {
   type MonitorAlertRule,
 } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
-import { notFound, nextIdFrom } from '@/mocks/utils/handlers';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset } from '../utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
-import { removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 
 /** N 分钟前的时间字符串 */
 const minsAgo = (m: number) => mockDateTimeOffset(-m * 60 * 1000);
@@ -249,8 +249,7 @@ export const monitorAlertsHandlers = [
   }),
 
   mock(monitorAlertContract.handleEvent, ({ params, body, ok }) => {
-    const event = events.find((e) => e.id === params.id);
-    if (!event) return notFound('告警事件不存在', { status: 404 });
+    const event = requireItem(events, params.id, '告警事件不存在', { status: 404 });
     applyHandle(event, body.handleStatus, body.note);
     return ok(event, '操作成功');
   }),
@@ -302,8 +301,7 @@ export const monitorAlertsHandlers = [
   }),
 
   mock(monitorAlertContract.test, ({ params, ok }) => {
-    const rule = rules.find((r) => r.id === params.id);
-    if (!rule) return notFound('告警规则不存在', { status: 404 });
+    const rule = requireItem(rules, params.id, '告警规则不存在', { status: 404 });
     const channels = rule.channels ?? [];
     if (channels.length === 0) {
       return ok({ status: 'skipped', channels: [], error: null }, '测试通知已发送');
@@ -318,8 +316,7 @@ export const monitorAlertsHandlers = [
   }),
 
   mock(monitorAlertContract.update, ({ params, body, ok }) => {
-    const rule = rules.find((r) => r.id === params.id);
-    if (!rule) return notFound('告警规则不存在', { status: 404 });
+    const rule = requireItem(rules, params.id, '告警规则不存在', { status: 404 });
     Object.assign(rule, body, { updatedAt: mockDateTime() });
     if (body.enabled === false) {
       rule.state = 'ok';
@@ -329,8 +326,7 @@ export const monitorAlertsHandlers = [
   }),
 
   mock(monitorAlertContract.setEnabled, ({ params, body, ok }) => {
-    const rule = rules.find((r) => r.id === params.id);
-    if (!rule) return notFound('告警规则不存在', { status: 404 });
+    const rule = requireItem(rules, params.id, '告警规则不存在', { status: 404 });
     rule.enabled = body.enabled;
     if (!body.enabled) {
       rule.state = 'ok';

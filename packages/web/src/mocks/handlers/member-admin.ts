@@ -12,6 +12,7 @@ import {
   type MemberTag,
 } from '@zenith/shared/member';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -102,8 +103,7 @@ export const memberAdminHandlers = [
     return ok(paginate(rows));
   }),
   mock(memberContract.overview, ({ params, ok }) => {
-    const m = mockMembers.find((x) => x.id === params.id);
-    if (!m) return notFound('不存在', { status: 404 });
+    const m = requireItem(mockMembers, params.id, '不存在', { status: 404 });
     return ok({
       member: memberView(m),
       points: mockMemberPointAccount,
@@ -128,15 +128,13 @@ export const memberAdminHandlers = [
   }),
   mock(memberContract.create, ({ ok }) => ok(memberView(mockMembers[0]), '创建成功')),
   mock(memberContract.setStatus, ({ params, body, ok }) => {
-    const m = mockMembers.find((x) => x.id === params.id);
-    if (!m) return notFound('会员不存在', { status: 404 });
+    const m = requireItem(mockMembers, params.id, '会员不存在', { status: 404 });
     m.status = body.status;
     return ok(memberView(m), '已更新');
   }),
   mock(memberContract.resetPassword, ({ ok }) => ok(null, '密码已重置')),
   mock(memberContract.adjustGrowth, ({ params, body, ok }) => {
-    const m = mockMembers.find((x) => x.id === params.id);
-    if (!m) return notFound('会员不存在', { status: 404 });
+    const m = requireItem(mockMembers, params.id, '会员不存在', { status: 404 });
     m.growthValue = Math.max(0, m.growthValue + body.delta);
     // 与后端一致：按成长值门槛自动重定级
     const lvl = [...mockMemberLevels]
@@ -147,8 +145,7 @@ export const memberAdminHandlers = [
     return ok(memberView(m), '已调整');
   }),
   mock(memberContract.setTags, ({ params, body, ok }) => {
-    const m = mockMembers.find((x) => x.id === params.id);
-    if (!m) return notFound('会员不存在', { status: 404 });
+    const m = requireItem(mockMembers, params.id, '会员不存在', { status: 404 });
     m.tags = body.tagIds
       .map((tid) => mockMemberTags.find((t) => t.id === tid))
       .filter((t): t is NonNullable<typeof t> => !!t)
@@ -156,9 +153,7 @@ export const memberAdminHandlers = [
     return ok(memberView(m), '已更新');
   }),
   mock(memberContract.update, ({ params, body, ok }) => {
-    const m = mockMembers.find((x) => x.id === params.id);
-    if (!m) return notFound('会员不存在', { status: 404 });
-    Object.assign(m, body, { updatedAt: mockDateTime() });
+    const m = updateItem(mockMembers, params.id, body, { notFoundMessage: '会员不存在', now: mockDateTime, init: { status: 404 } });
     return ok(memberView(m), '更新成功');
   }),
   mock(memberContract.remove, ({ ok }) => ok(null, '删除成功')),
@@ -181,9 +176,7 @@ export const memberAdminHandlers = [
     return ok(created, '创建成功');
   }),
   mock(memberTagContract.update, ({ params, body, ok }) => {
-    const t = mockMemberTags.find((x) => x.id === params.id);
-    if (!t) return notFound('标签不存在', { status: 404 });
-    Object.assign(t, body, { updatedAt: mockDateTime() });
+    const t = updateItem(mockMemberTags, params.id, body, { notFoundMessage: '标签不存在', now: mockDateTime, init: { status: 404 } });
     return ok(t, '更新成功');
   }),
   mock(memberTagContract.remove, ({ params, ok }) => {
@@ -217,8 +210,8 @@ export const memberAdminHandlers = [
   // ── 会员等级 ─────────────────────────────────────────────────────────────
   mock(memberLevelContract.list, ({ ok }) => ok(mockMemberLevels)),
   mock(memberLevelContract.detail, ({ params, ok }) => {
-    const level = mockMemberLevels.find((l) => l.id === params.id);
-    return level ? ok(level) : notFound('会员等级不存在', { status: 404 });
+    const level = requireItem(mockMemberLevels, params.id, '会员等级不存在', { status: 404 });
+    return ok(level);
   }),
   mock(memberLevelContract.create, ({ body, ok }) => {
     const created: MemberLevel = {
@@ -240,9 +233,7 @@ export const memberAdminHandlers = [
     return ok(created, '创建成功');
   }),
   mock(memberLevelContract.update, ({ params, body, ok }) => {
-    const level = mockMemberLevels.find((l) => l.id === params.id);
-    if (!level) return notFound('会员等级不存在', { status: 404 });
-    Object.assign(level, body, { updatedAt: mockDateTime() });
+    const level = updateItem(mockMemberLevels, params.id, body, { notFoundMessage: '会员等级不存在', now: mockDateTime, init: { status: 404 } });
     return ok(level, '更新成功');
   }),
   mock(memberLevelContract.remove, ({ params, ok }) => {
@@ -325,8 +316,7 @@ export const memberAdminHandlers = [
     return ok(paginate(rows));
   }),
   mock(couponContract.revokeRecord, ({ params, ok }) => {
-    const mc = mockMemberCoupons.find((c) => c.id === params.id);
-    if (!mc) return notFound('领券记录不存在', { status: 404 });
+    const mc = requireItem(mockMemberCoupons, params.id, '领券记录不存在', { status: 404 });
     if (mc.status === 'used') return badRequest('已使用的券不可作废', { status: 400 });
     mc.status = 'frozen';
     return ok(null, '券码已作废');
@@ -352,12 +342,11 @@ export const memberAdminHandlers = [
     return ok(paginate(rows));
   }),
   mock(couponContract.detail, ({ params, ok }) => {
-    const coupon = mockCoupons.find((c) => c.id === params.id);
-    return coupon ? ok(coupon) : notFound('优惠券不存在', { status: 404 });
+    const coupon = requireItem(mockCoupons, params.id, '优惠券不存在', { status: 404 });
+    return ok(coupon);
   }),
   mock(couponContract.issue, ({ params, body, ok }) => {
-    const coupon = mockCoupons.find((c) => c.id === params.id);
-    if (!coupon) return notFound('优惠券不存在', { status: 404 });
+    const coupon = requireItem(mockCoupons, params.id, '优惠券不存在', { status: 404 });
     coupon.issuedQuantity += 1;
     const issued = {
       id: nextIdFrom(mockMemberCoupons),
@@ -377,9 +366,7 @@ export const memberAdminHandlers = [
   }),
   mock(couponContract.create, ({ ok }) => ok(mockCoupons[0], '创建成功')),
   mock(couponContract.update, ({ params, body, ok }) => {
-    const coupon = mockCoupons.find((c) => c.id === params.id);
-    if (!coupon) return notFound('优惠券不存在', { status: 404 });
-    Object.assign(coupon, body, { updatedAt: mockDateTime() });
+    const coupon = updateItem(mockCoupons, params.id, body, { notFoundMessage: '优惠券不存在', now: mockDateTime, init: { status: 404 } });
     return ok(coupon, '更新成功');
   }),
   mock(couponContract.remove, ({ ok }) => ok(null, '删除成功')),

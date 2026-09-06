@@ -1,6 +1,7 @@
 import { apiTokenContract, type UserApiToken, type UserApiTokenCreated } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 
 type TokenEntry = UserApiToken & { _full: string };
@@ -63,9 +64,8 @@ export const apiTokensHandlers = [
 
   // 撤销 Token
   mock(apiTokenContract.remove, ({ params, ok }) => {
-    const idx = mockTokenStore.findIndex((t) => t.id === params.id);
-    if (idx === -1) return notFound('Token 不存在', { status: 404 });
-    mockTokenStore.splice(idx, 1);
+    requireItem(mockTokenStore, params.id, 'Token 不存在', { status: 404 });
+    removeByIds(mockTokenStore, [params.id]);
     return ok(null, 'Token 已撤销');
   }),
 ];

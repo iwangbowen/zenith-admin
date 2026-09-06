@@ -4,6 +4,7 @@ import type {
   ChatMessage, ChatQuickReply, ChatReadState, ChatReplySnapshot, ChatScheduledMessage,
 } from '@zenith/shared/chat';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, forbidden, notFound } from '@/mocks/utils/handlers';
 import {
   mockChatConversations, mockChatUsers, getMockConvMessages,
@@ -168,8 +169,7 @@ export const chatHandlers = [
 
   // 创建/获取单聊
   mock(chatContract.createDirect, ({ body, ok }) => {
-    const targetUser = mockChatUsers.find((u) => u.id === body.targetUserId);
-    if (!targetUser) return notFound('用户不存在', { status: 404 });
+    const targetUser = requireItem(mockChatUsers, body.targetUserId, '用户不存在', { status: 404 });
 
     const existing = mockChatConversations.find(
       (c) => c.type === 'direct' && c.targetUser?.id === body.targetUserId,
@@ -237,8 +237,7 @@ export const chatHandlers = [
 
   // 撤回消息
   mock(chatContract.recallMessage, ({ params, ok }) => {
-    const msg = mockChatMessages.find((m) => m.id === params.id);
-    if (!msg) return notFound('消息不存在', { status: 404 });
+    const msg = requireItem(mockChatMessages, params.id, '消息不存在', { status: 404 });
     if (msg.senderId !== CURRENT_USER_ID) {
       return forbidden('只能撤回自己的消息', { status: 403 });
     }
@@ -248,16 +247,14 @@ export const chatHandlers = [
   }),
 
   mock(chatContract.favoriteMessage, ({ params, body, ok }) => {
-    const msg = mockChatMessages.find((m) => m.id === params.id);
-    if (!msg) return notFound('消息不存在', { status: 404 });
+    const msg = requireItem(mockChatMessages, params.id, '消息不存在', { status: 404 });
     msg.extra = { ...(msg.extra || {}), isFavorited: body.favorite };
     msg.updatedAt = mockDateTime();
     return ok(msg);
   }),
 
   mock(chatContract.pinMessage, ({ params, body, ok }) => {
-    const msg = mockChatMessages.find((m) => m.id === params.id);
-    if (!msg) return notFound('消息不存在', { status: 404 });
+    const msg = requireItem(mockChatMessages, params.id, '消息不存在', { status: 404 });
     msg.extra = { ...(msg.extra || {}), isPinned: body.pin };
     msg.updatedAt = mockDateTime();
     return ok(msg);
@@ -265,8 +262,7 @@ export const chatHandlers = [
 
   // 投票
   mock(chatContract.vote, ({ params, body, ok }) => {
-    const msg = mockChatMessages.find((m) => m.id === params.id);
-    if (!msg) return notFound('消息不存在', { status: 404 });
+    const msg = requireItem(mockChatMessages, params.id, '消息不存在', { status: 404 });
     if (msg.type !== 'vote') return badRequest('该消息不是投票类型', { status: 400 });
 
     const voteData = msg.extra?.voteData;
@@ -426,8 +422,7 @@ export const chatHandlers = [
 
   // 全员禁言开关
   mock(chatContract.setMuteAll, ({ params, body, ok }) => {
-    const conv = mockChatConversations.find((c) => c.id === params.id);
-    if (!conv) return notFound('会话不存在', { status: 404 });
+    const conv = requireItem(mockChatConversations, params.id, '会话不存在', { status: 404 });
     conv.muteAll = body.muteAll;
     addSystemMessage(params.id, body.muteAll
       ? `${CURRENT_USER_NICKNAME} 开启了全员禁言`
@@ -476,8 +471,7 @@ export const chatHandlers = [
   }),
 
   mock(chatContract.updateQuickReply, ({ params, body, ok }) => {
-    const item = mockQuickReplies.find((q) => q.id === params.id);
-    if (!item) return notFound('常用语不存在', { status: 404 });
+    const item = requireItem(mockQuickReplies, params.id, '常用语不存在', { status: 404 });
     if (body.content !== undefined) item.content = body.content;
     if (body.sort !== undefined) item.sort = body.sort;
     item.updatedAt = mockDateTime();
@@ -485,9 +479,8 @@ export const chatHandlers = [
   }),
 
   mock(chatContract.removeQuickReply, ({ params, ok }) => {
-    const idx = mockQuickReplies.findIndex((q) => q.id === params.id);
-    if (idx === -1) return notFound('常用语不存在', { status: 404 });
-    mockQuickReplies.splice(idx, 1);
+    requireItem(mockQuickReplies, params.id, '常用语不存在', { status: 404 });
+    removeByIds(mockQuickReplies, [params.id]);
     return ok(null);
   }),
 
@@ -520,8 +513,7 @@ export const chatHandlers = [
   }),
 
   mock(chatContract.cancelScheduledMessage, ({ params, ok }) => {
-    const item = mockScheduledMessages.find((m) => m.id === params.id);
-    if (!item) return notFound('定时消息不存在', { status: 404 });
+    const item = requireItem(mockScheduledMessages, params.id, '定时消息不存在', { status: 404 });
     if (item.status !== 'pending') return badRequest('仅待发送的定时消息可取消', { status: 400 });
     item.status = 'canceled';
     item.updatedAt = mockDateTime();
@@ -545,9 +537,8 @@ export const chatHandlers = [
   }),
 
   mock(chatContract.removeCustomEmoji, ({ params, ok }) => {
-    const idx = mockCustomEmojis.findIndex((e) => e.id === params.id);
-    if (idx === -1) return notFound('表情不存在', { status: 404 });
-    mockCustomEmojis.splice(idx, 1);
+    requireItem(mockCustomEmojis, params.id, '表情不存在', { status: 404 });
+    removeByIds(mockCustomEmojis, [params.id]);
     return ok(null);
   }),
 
@@ -608,8 +599,7 @@ export const chatHandlers = [
   }),
 
   mock(chatContract.handleJoinRequest, ({ params, body, ok }) => {
-    const req = mockJoinRequests.find((r) => r.id === params.id);
-    if (!req) return notFound('申请不存在', { status: 404 });
+    const req = requireItem(mockJoinRequests, params.id, '申请不存在', { status: 404 });
     if (req.status !== 'pending') return badRequest('该申请已处理', { status: 400 });
     req.status = body.approve ? 'approved' : 'rejected';
     if (body.approve) {
@@ -623,24 +613,21 @@ export const chatHandlers = [
   }),
 
   mock(chatContract.setJoinApproval, ({ params, body, ok }) => {
-    const conv = mockChatConversations.find((c) => c.id === params.id);
-    if (!conv) return notFound('会话不存在', { status: 404 });
+    const conv = requireItem(mockChatConversations, params.id, '会话不存在', { status: 404 });
     conv.joinApproval = body.enabled;
     return ok(null);
   }),
 
   // 删除/退出会话
   mock(chatContract.removeConversation, ({ params, ok }) => {
-    const idx = mockChatConversations.findIndex((c) => c.id === params.id);
-    if (idx === -1) return notFound('会话不存在', { status: 404 });
-    mockChatConversations.splice(idx, 1);
+    requireItem(mockChatConversations, params.id, '会话不存在', { status: 404 });
+    removeByIds(mockChatConversations, [params.id]);
     return ok(null);
   }),
 
   // 添加群成员
   mock(chatContract.addGroupMember, ({ params, body, ok }) => {
-    const user = mockChatUsers.find((u) => u.id === body.userId);
-    if (!user) return notFound('用户不存在', { status: 404 });
+    const user = requireItem(mockChatUsers, body.userId, '用户不存在', { status: 404 });
     if (!mockGroupMembers[params.id]) mockGroupMembers[params.id] = [];
     const already = mockGroupMembers[params.id].some((m) => m.id === body.userId);
     if (already) return badRequest('已是群成员', { status: 400 });
@@ -662,8 +649,7 @@ export const chatHandlers = [
 
   // 更新群聊信息（群名/公告）
   mock(chatContract.updateGroupInfo, ({ params, body, ok }) => {
-    const conv = mockChatConversations.find((c) => c.id === params.id);
-    if (!conv) return notFound('会话不存在', { status: 404 });
+    const conv = requireItem(mockChatConversations, params.id, '会话不存在', { status: 404 });
     const oldName = conv.name ?? null;
     const oldAnnouncement = conv.announcement ?? null;
     if (body.name !== undefined) conv.name = body.name || null;
@@ -702,8 +688,7 @@ export const chatHandlers = [
   mock(chatContract.transferGroup, ({ params, body, ok }) => {
     const members = mockGroupMembers[params.id];
     if (!members) return notFound('群聊不存在', { status: 404 });
-    const target = members.find((m) => m.id === body.newOwnerId);
-    if (!target) return notFound('目标用户不在群聊中', { status: 404 });
+    const target = requireItem(members, body.newOwnerId, '目标用户不在群聊中', { status: 404 });
     members.forEach((m) => { m.role = m.id === body.newOwnerId ? 'owner' : 'member'; });
     addSystemMessage(params.id, `${CURRENT_USER_NICKNAME} 将群主转让给 ${target.nickname}`);
     return ok(null);

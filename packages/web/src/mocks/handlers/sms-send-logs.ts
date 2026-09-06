@@ -1,7 +1,8 @@
 import { smsSendLogContract } from '@zenith/shared/messaging';
 import type { SmsSendLog } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+
 import { mockSmsSendLogs, getNextSmsSendLogId } from '@/mocks/data/sms-send-logs';
 import { mockSmsTemplates } from '@/mocks/data/sms-templates';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -21,15 +22,13 @@ export const smsSendLogsHandlers = [
   }),
 
   mock(smsSendLogContract.remove, ({ params, ok }) => {
-    const idx = mockSmsSendLogs.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('记录不存在', { status: 404 });
-    mockSmsSendLogs.splice(idx, 1);
+    requireItem(mockSmsSendLogs, params.id, '记录不存在', { status: 404 });
+    removeByIds(mockSmsSendLogs, [params.id]);
     return ok(null, '删除成功');
   }),
 
   mock(smsSendLogContract.testSend, ({ body, ok }) => {
-    const tpl = mockSmsTemplates.find((t) => t.id === body.templateId);
-    if (!tpl) return notFound('短信模板不存在', { status: 404 });
+    const tpl = requireItem(mockSmsTemplates, body.templateId, '短信模板不存在', { status: 404 });
     const now = mockDateTime();
     const log: SmsSendLog = {
       id: getNextSmsSendLogId(),

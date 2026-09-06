@@ -2,6 +2,7 @@ import { aiChatModelContract, aiProviderContract, AI_COMMON_PROVIDERS, AI_CUSTOM
 import type { AiProviderCatalogEntry, AiProviderConfig } from '@zenith/shared/ai';
 import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockAiProviders, getNextProviderId } from '@/mocks/data/ai';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -73,8 +74,7 @@ export const aiProvidersHandlers = [
 
   // 单条
   mock(aiProviderContract.detail, ({ params, ok }) => {
-    const item = store.find((p) => p.id === params.id);
-    if (!item) return notFound('服务商不存在', { status: 404 });
+    const item = requireItem(store, params.id, '服务商不存在', { status: 404 });
     return ok(item);
   }),
 
@@ -129,16 +129,14 @@ export const aiProvidersHandlers = [
 
   // 删除
   mock(aiProviderContract.remove, ({ params, ok }) => {
-    const idx = store.findIndex((p) => p.id === params.id);
-    if (idx === -1) return notFound('服务商不存在', { status: 404 });
-    store.splice(idx, 1);
+    requireItem(store, params.id, '服务商不存在', { status: 404 });
+    removeByIds(store, [params.id]);
     return ok(null, '删除成功');
   }),
 
   // 设为默认
   mock(aiProviderContract.setDefault, ({ params, ok }) => {
-    const item = store.find((p) => p.id === params.id);
-    if (!item) return notFound('服务商不存在', { status: 404 });
+    const item = requireItem(store, params.id, '服务商不存在', { status: 404 });
     store.forEach((p) => { p.isDefault = p.id === params.id; });
     return ok(item, '已设为默认');
   }),

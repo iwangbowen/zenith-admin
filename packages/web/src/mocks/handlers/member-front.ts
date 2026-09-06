@@ -3,6 +3,7 @@ import { memberCmsContract } from '@zenith/shared/cms';
 import type { CmsContribution, CmsMemberComment, CmsMemberContentItem } from '@zenith/shared/cms';
 import { memberAuthContract, memberSelfContract } from '@zenith/shared/member';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, ok, notFound } from '@/mocks/utils/handlers';
 import {
   memberView,
@@ -114,8 +115,7 @@ export const memberFrontHandlers = [
     return ok(null, `已读 ${n} 条`);
   }),
   mock(memberSelfContract.markRead, ({ params, ok }) => {
-    const n = mockMemberNotifications.find((x) => x.id === params.id);
-    if (!n) return notFound('通知不存在', { status: 404 });
+    const n = requireItem(mockMemberNotifications, params.id, '通知不存在', { status: 404 });
     n.readAt = n.readAt ?? mockDateTime();
     return ok(null, '已读');
   }),
@@ -151,8 +151,8 @@ export const memberFrontHandlers = [
     { id: 1, name: 'Zenith 官方网站', channels: [{ id: 2, name: '新闻中心' }, { id: 3, name: '产品中心' }] },
   ])),
   mock(memberCmsContract.contribution, ({ params, ok }) => {
-    const row = mockContributions.find((x) => x.id === params.id);
-    return row ? ok(row) : notFound('投稿不存在', { status: 404 });
+    const row = requireItem(mockContributions, params.id, '投稿不存在', { status: 404 });
+    return ok(row);
   }),
   mock(memberCmsContract.contributions, ({ query, ok }) => {
     const { status } = query;

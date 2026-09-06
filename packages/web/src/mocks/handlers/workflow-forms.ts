@@ -1,6 +1,7 @@
 import { workflowFormContract } from '@zenith/shared/workflow';
 import type { WorkflowForm } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mockWorkflowForms, getNextWorkflowFormId } from '@/mocks/data/workflow-forms';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
@@ -37,8 +38,7 @@ export const workflowFormsHandlers = [
   }),
 
   mock(workflowFormContract.detail, ({ params, ok }) => {
-    const form = mockWorkflowForms.find((item) => item.id === params.id);
-    if (!form) return notFound('表单不存在', { status: 404 });
+    const form = requireItem(mockWorkflowForms, params.id, '表单不存在', { status: 404 });
     return ok(withUsage(form), 'success');
   }),
 
@@ -71,8 +71,7 @@ export const workflowFormsHandlers = [
   }),
 
   mock(workflowFormContract.duplicate, ({ params, ok }) => {
-    const src = mockWorkflowForms.find((item) => item.id === params.id);
-    if (!src) return notFound('表单不存在', { status: 404 });
+    const src = requireItem(mockWorkflowForms, params.id, '表单不存在', { status: 404 });
     const now = mockDateTime();
     const form: WorkflowForm = {
       ...src,
@@ -93,8 +92,7 @@ export const workflowFormsHandlers = [
   }),
 
   mock(workflowFormContract.update, ({ params, body, ok }) => {
-    const form = mockWorkflowForms.find((item) => item.id === params.id);
-    if (!form) return notFound('表单不存在', { status: 404 });
+    const form = requireItem(mockWorkflowForms, params.id, '表单不存在', { status: 404 });
     // 乐观锁：客户端持有的版本与当前不一致时返回 409（与服务端语义一致）
     if (body.expectedRevision != null && body.expectedRevision !== form.revision) {
       return conflict('表单已被其他人更新，请刷新后重试', { status: 409 });

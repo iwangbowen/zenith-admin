@@ -6,6 +6,7 @@ import type {
   WikiComment, WikiDoc, WikiDocTag, WikiDocTreeNode, WikiReviewRecord, WikiSpace, WikiTag, WikiTemplate,
 } from '@zenith/shared/wiki';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -176,8 +177,7 @@ const spaceHandlers = [
   }),
 
   mock(wikiSpaceContract.detail, ({ params, ok }) => {
-    const space = mockWikiSpaces.find((s) => s.id === params.id);
-    if (!space) return notFound('知识空间不存在', { status: 404 });
+    const space = requireItem(mockWikiSpaces, params.id, '知识空间不存在', { status: 404 });
     return ok(space);
   }),
 
@@ -203,9 +203,7 @@ const spaceHandlers = [
   }),
 
   mock(wikiSpaceContract.update, ({ params, body, ok }) => {
-    const space = mockWikiSpaces.find((s) => s.id === params.id);
-    if (!space) return notFound('知识空间不存在', { status: 404 });
-    Object.assign(space, body, { updatedAt: mockDateTime() });
+    const space = updateItem(mockWikiSpaces, params.id, body, { notFoundMessage: '知识空间不存在', now: mockDateTime, init: { status: 404 } });
     return ok(space, '更新成功');
   }),
 
@@ -524,8 +522,7 @@ const templateHandlers = [
   }),
 
   mock(wikiTemplateContract.detail, ({ params, ok }) => {
-    const tpl = mockWikiTemplates.find((t) => t.id === params.id);
-    if (!tpl) return notFound('模板不存在', { status: 404 });
+    const tpl = requireItem(mockWikiTemplates, params.id, '模板不存在', { status: 404 });
     return ok(tpl);
   }),
 
@@ -546,16 +543,13 @@ const templateHandlers = [
   }),
 
   mock(wikiTemplateContract.update, ({ params, body, ok }) => {
-    const tpl = mockWikiTemplates.find((t) => t.id === params.id);
-    if (!tpl) return notFound('模板不存在', { status: 404 });
-    Object.assign(tpl, body, { updatedAt: mockDateTime() });
+    const tpl = updateItem(mockWikiTemplates, params.id, body, { notFoundMessage: '模板不存在', now: mockDateTime, init: { status: 404 } });
     return ok(tpl, '更新成功');
   }),
 
   mock(wikiTemplateContract.remove, ({ params, ok }) => {
-    const idx = mockWikiTemplates.findIndex((t) => t.id === params.id);
-    if (idx === -1) return notFound('模板不存在', { status: 404 });
-    mockWikiTemplates.splice(idx, 1);
+    requireItem(mockWikiTemplates, params.id, '模板不存在', { status: 404 });
+    removeByIds(mockWikiTemplates, [params.id]);
     return ok(null, '删除成功');
   }),
 ];
@@ -584,17 +578,14 @@ const tagHandlers = [
   }),
 
   mock(wikiTagContract.update, ({ params, body, ok }) => {
-    const tag = mockWikiTags.find((t) => t.id === params.id);
-    if (!tag) return notFound('标签不存在', { status: 404 });
-    Object.assign(tag, body, { updatedAt: mockDateTime() });
+    const tag = updateItem(mockWikiTags, params.id, body, { notFoundMessage: '标签不存在', now: mockDateTime, init: { status: 404 } });
     return ok(tag, '更新成功');
   }),
 
   mock(wikiTagContract.remove, ({ params, ok }) => {
     const id = params.id;
-    const idx = mockWikiTags.findIndex((t) => t.id === id);
-    if (idx === -1) return notFound('标签不存在', { status: 404 });
-    mockWikiTags.splice(idx, 1);
+    requireItem(mockWikiTags, id, '标签不存在', { status: 404 });
+    removeByIds(mockWikiTags, [id]);
     for (const d of mockWikiDocs) d.tagIds = d.tagIds.filter((t) => t !== id);
     return ok(null, '删除成功');
   }),
@@ -655,16 +646,14 @@ const commentHandlers = [
   }),
 
   mock(wikiCommentContract.resolve, ({ params, ok }) => {
-    const comment = mockWikiComments.find((c) => c.id === params.id);
-    if (!comment) return notFound('评论不存在', { status: 404 });
+    const comment = requireItem(mockWikiComments, params.id, '评论不存在', { status: 404 });
     if (!comment.isQuestion) return badRequest('只有标记为问题的评论可以解决', { status: 400 });
     comment.resolvedAt = mockDateTime();
     return ok(comment, '已标记解决');
   }),
 
   mock(wikiCommentContract.updateStatus, ({ params, body, ok }) => {
-    const comment = mockWikiComments.find((c) => c.id === params.id);
-    if (!comment) return notFound('评论不存在', { status: 404 });
+    const comment = requireItem(mockWikiComments, params.id, '评论不存在', { status: 404 });
     comment.status = body.status;
     return ok(comment, '操作成功');
   }),

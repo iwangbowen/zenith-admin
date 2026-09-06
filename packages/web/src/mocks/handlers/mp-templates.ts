@@ -1,6 +1,7 @@
 import { mpTemplateContract, type MpTemplateSendLog } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+
 import { mockMpTemplates, mockMpTemplateLogs, getNextMpTemplateLogId } from '@/mocks/data/mp-templates';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -46,9 +47,8 @@ export const mpTemplatesHandlers = [
   }),
 
   mock(mpTemplateContract.remove, ({ params, ok }) => {
-    const idx = mockMpTemplates.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('模板不存在', { status: 404 });
-    mockMpTemplates.splice(idx, 1);
+    requireItem(mockMpTemplates, params.id, '模板不存在', { status: 404 });
+    removeByIds(mockMpTemplates, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

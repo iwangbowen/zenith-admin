@@ -1,6 +1,7 @@
 import { MP_MATERIAL_TYPES, mpMaterialContract, type MpMaterial, type MpMaterialType } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockMpMaterials, getNextMpMaterialId } from '@/mocks/data/mp-materials';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -50,17 +51,15 @@ export const mpMaterialsHandlers = [
   }),
 
   mock(mpMaterialContract.update, ({ params, body, ok }) => {
-    const m = mockMpMaterials.find((x) => x.id === params.id);
-    if (!m) return notFound('素材不存在', { status: 404 });
+    const m = requireItem(mockMpMaterials, params.id, '素材不存在', { status: 404 });
     m.name = body.name;
     m.updatedAt = mockDateTime();
     return ok(m, '更新成功');
   }),
 
   mock(mpMaterialContract.remove, ({ params, ok }) => {
-    const idx = mockMpMaterials.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('素材不存在', { status: 404 });
-    mockMpMaterials.splice(idx, 1);
+    requireItem(mockMpMaterials, params.id, '素材不存在', { status: 404 });
+    removeByIds(mockMpMaterials, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

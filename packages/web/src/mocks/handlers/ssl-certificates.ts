@@ -1,7 +1,8 @@
 import { HttpResponse } from 'msw';
 import { sslCertificateContract, type SslCertificate } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
-import { notFound, nextIdFrom } from '@/mocks/utils/handlers';
+import { requireItem } from '@/mocks/utils/crud';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
 
@@ -76,13 +77,11 @@ export const sslCertificatesHandlers = [
     return ok(paginate(filtered));
   }),
   mock(sslCertificateContract.detail, ({ params, ok }) => {
-    const cert = mockCerts.find((item) => item.id === params.id);
-    if (!cert) return notFound('证书不存在', { status: 404 });
+    const cert = requireItem(mockCerts, params.id, '证书不存在', { status: 404 });
     return ok(cert);
   }),
   mock(sslCertificateContract.download, ({ params, query }) => {
-    const cert = mockCerts.find((item) => item.id === params.id);
-    if (!cert) return notFound('证书不存在', { status: 404 });
+    const cert = requireItem(mockCerts, params.id, '证书不存在', { status: 404 });
     const kind = query.kind === 'key' ? 'key' : 'cert';
     const content = kind === 'cert'
       ? `-----BEGIN CERTIFICATE-----\nMOCK-${cert.domain}\n-----END CERTIFICATE-----\n`

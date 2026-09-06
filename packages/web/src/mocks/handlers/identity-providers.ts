@@ -7,7 +7,8 @@ import {
 } from '@zenith/shared/identity';
 import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -173,8 +174,7 @@ export const identityProvidersHandlers = [
   }),
 
   mock(identityProviderContract.detail, ({ params, ok }) => {
-    const item = providers.find((provider) => provider.id === params.id);
-    if (!item) return notFound('身份源不存在', { status: 404 });
+    const item = requireItem(providers, params.id, '身份源不存在', { status: 404 });
     return ok(item);
   }),
 
@@ -196,8 +196,7 @@ export const identityProvidersHandlers = [
   }),
 
   mock(identityProviderContract.update, ({ params, body, ok }) => {
-    const item = providers.find((provider) => provider.id === params.id);
-    if (!item) return notFound('身份源不存在', { status: 404 });
+    const item = requireItem(providers, params.id, '身份源不存在', { status: 404 });
     Object.assign(item, body, {
       tenantName: body.tenantId ? '演示租户' : null,
       clientSecret: body.clientSecret && body.clientSecret !== SECRET_PLACEHOLDER ? SECRET_PLACEHOLDER : item.clientSecret,
@@ -209,22 +208,19 @@ export const identityProvidersHandlers = [
   }),
 
   mock(identityProviderContract.test, ({ params, ok }) => {
-    const item = providers.find((provider) => provider.id === params.id);
-    if (!item) return notFound('身份源不存在', { status: 404 });
+    const item = requireItem(providers, params.id, '身份源不存在', { status: 404 });
     return ok({ ok: item.type === 'ldap' || item.type === 'ad', message: '连接成功', sampleUsers: directoryUsers.slice(0, 2) });
   }),
 
   mock(identityProviderContract.ldapUsers, ({ params, query, ok }) => {
-    const item = providers.find((provider) => provider.id === params.id);
-    if (!item) return notFound('身份源不存在', { status: 404 });
+    requireItem(providers, params.id, '身份源不存在', { status: 404 });
     const keyword = (query.keyword ?? '').toLowerCase();
     const list = filterByKeyword(directoryUsers, keyword, [(user) => user.username, (user) => user.nickname, (user) => user.email, (user) => user.department], { caseInsensitive: true });
     return ok(list.slice(0, query.limit));
   }),
 
   mock(identityProviderContract.sync, ({ params, ok }) => {
-    const item = providers.find((provider) => provider.id === params.id);
-    if (!item) return notFound('身份源不存在', { status: 404 });
+    requireItem(providers, params.id, '身份源不存在', { status: 404 });
     return ok({
       logId: 1,
       status: 'success',
@@ -239,9 +235,8 @@ export const identityProvidersHandlers = [
   }),
 
   mock(identityProviderContract.remove, ({ params, ok }) => {
-    const index = providers.findIndex((provider) => provider.id === params.id);
-    if (index === -1) return notFound('身份源不存在', { status: 404 });
-    providers.splice(index, 1);
+    requireItem(providers, params.id, '身份源不存在', { status: 404 });
+    removeByIds(providers, [params.id]);
     return ok(null, '删除成功');
   }),
 

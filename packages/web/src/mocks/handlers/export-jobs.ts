@@ -2,6 +2,7 @@ import type { QueryOf } from '@zenith/shared/core';
 import { exportJobContract } from '@zenith/shared/tasks';
 import type { ExportEntityMeta, ExportJob, ExportJobDownload } from '@zenith/shared/tasks';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -348,8 +349,7 @@ export const exportJobsHandlers = [
   mock(exportJobContract.downloads, ({ params, ok }) => ok(downloads.filter((item) => item.jobId === params.id))),
 
   mock(exportJobContract.download, ({ params }) => {
-    const job = jobs.find((item) => item.id === params.id);
-    if (!job) return notFound('导出任务不存在', { status: 404 });
+    const job = requireItem(jobs, params.id, '导出任务不存在', { status: 404 });
     if (job.status !== 'success') return badRequest('导出文件尚未生成', { status: 400 });
     job.downloadCount += 1;
     job.lastDownloadedAt = mockDateTime();
@@ -367,14 +367,12 @@ export const exportJobsHandlers = [
   }),
 
   mock(exportJobContract.detail, ({ params, ok }) => {
-    const job = jobs.find((item) => item.id === params.id);
-    if (!job) return notFound('导出任务不存在', { status: 404 });
+    const job = requireItem(jobs, params.id, '导出任务不存在', { status: 404 });
     return ok(job);
   }),
 
   mock(exportJobContract.cancel, ({ params, ok }) => {
-    const job = jobs.find((item) => item.id === params.id);
-    if (!job) return notFound('导出任务不存在', { status: 404 });
+    const job = requireItem(jobs, params.id, '导出任务不存在', { status: 404 });
     job.status = 'cancelled';
     job.completedAt = mockDateTime();
     job.updatedAt = job.completedAt;
@@ -382,8 +380,7 @@ export const exportJobsHandlers = [
   }),
 
   mock(exportJobContract.retry, ({ params, ok }) => {
-    const job = jobs.find((item) => item.id === params.id);
-    if (!job) return notFound('导出任务不存在', { status: 404 });
+    const job = requireItem(jobs, params.id, '导出任务不存在', { status: 404 });
     job.status = 'pending';
     job.errorMessage = null;
     job.startedAt = null;
@@ -393,9 +390,8 @@ export const exportJobsHandlers = [
   }),
 
   mock(exportJobContract.remove, ({ params, ok }) => {
-    const index = jobs.findIndex((item) => item.id === params.id);
-    if (index === -1) return notFound('导出任务不存在', { status: 404 });
-    jobs.splice(index, 1);
+    requireItem(jobs, params.id, '导出任务不存在', { status: 404 });
+    removeByIds(jobs, [params.id]);
     return ok(null, '已删除');
   }),
 ];

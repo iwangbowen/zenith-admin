@@ -1,5 +1,6 @@
 import { directorySyncContract, directorySyncSourceContract, type DirectorySyncSource } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { createImmediateMockTask } from './async-tasks';
@@ -74,9 +75,8 @@ export const directorySyncHandlers = [
   }),
 
   mock(directorySyncSourceContract.remove, ({ params, ok }) => {
-    const idx = mockDirectorySyncSources.findIndex((s) => s.id === params.id);
-    if (idx === -1) return notFound('同步源不存在', { status: 404 });
-    mockDirectorySyncSources.splice(idx, 1);
+    requireItem(mockDirectorySyncSources, params.id, '同步源不存在', { status: 404 });
+    removeByIds(mockDirectorySyncSources, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -132,8 +132,7 @@ export const directorySyncHandlers = [
   }),
 
   mock(directorySyncContract.runDetail, ({ params, ok }) => {
-    const run = mockDirectorySyncRuns.find((r) => r.id === params.id);
-    if (!run) return notFound('同步记录不存在', { status: 404 });
+    const run = requireItem(mockDirectorySyncRuns, params.id, '同步记录不存在', { status: 404 });
     return ok(run);
   }),
 
@@ -146,8 +145,7 @@ export const directorySyncHandlers = [
   }),
 
   mock(directorySyncContract.retryRun, ({ params, ok }) => {
-    const run = mockDirectorySyncRuns.find((r) => r.id === params.id);
-    if (!run) return notFound('同步记录不存在', { status: 404 });
+    const run = requireItem(mockDirectorySyncRuns, params.id, '同步记录不存在', { status: 404 });
     const source = mockDirectorySyncSources.find((s) => s.id === run.sourceId);
     if (!source) return badRequest('同步源已删除', { status: 400 });
     simulateDirectorySyncRun(source, { dryRun: false, triggerType: 'manual' });
@@ -191,8 +189,7 @@ export const directorySyncHandlers = [
   }),
 
   mock(directorySyncContract.resolveConflict, ({ params, body, ok }) => {
-    const conflict = mockDirectorySyncConflicts.find((c) => c.id === params.id);
-    if (!conflict) return notFound('冲突记录不存在', { status: 404 });
+    const conflict = requireItem(mockDirectorySyncConflicts, params.id, '冲突记录不存在', { status: 404 });
     if (conflict.status !== 'pending') return badRequest('该冲突已处理', { status: 400 });
     if (conflict.conflictType === 'multi_match' && body.resolution === 'source' && !body.targetUserId) {
       return badRequest('请选择要绑定的本地账号', { status: 400 });

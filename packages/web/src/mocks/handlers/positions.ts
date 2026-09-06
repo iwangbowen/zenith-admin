@@ -1,11 +1,11 @@
 import { positionContract, type Position } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+
 import { mockPositions, getNextPositionId } from '@/mocks/data/positions';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDepartments } from '@/mocks/data/departments';
 import { mockDateTime } from '@/mocks/utils/date';
-import { removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import { includesKeyword } from '@/mocks/utils/filter';
 
 function findDepartmentName(departmentId: number | null | undefined): string | null {
@@ -45,8 +45,7 @@ export const positionsHandlers = [
 
   // 获取单个岗位
   mock(positionContract.detail, ({ params, ok }) => {
-    const pos = mockPositions.find((p) => p.id === params.id);
-    if (!pos) return notFound('岗位不存在', { status: 404 });
+    const pos = requireItem(mockPositions, params.id, '岗位不存在', { status: 404 });
     return ok(pos);
   }),
 
@@ -64,25 +63,21 @@ export const positionsHandlers = [
 
   // 更新岗位
   mock(positionContract.update, ({ params, body, ok }) => {
-    const pos = mockPositions.find((p) => p.id === params.id);
-    if (!pos) return notFound('岗位不存在', { status: 404 });
-    Object.assign(pos, body, { updatedAt: mockDateTime() });
+    const pos = updateItem(mockPositions, params.id, body, { notFoundMessage: '岗位不存在', now: mockDateTime, init: { status: 404 } });
     return ok(pos, '更新成功');
   }),
 
   // 删除岗位
   mock(positionContract.remove, ({ params, ok }) => {
-    const index = mockPositions.findIndex((p) => p.id === params.id);
-    if (index === -1) return notFound('岗位不存在', { status: 404 });
-    mockPositions.splice(index, 1);
+    requireItem(mockPositions, params.id, '岗位不存在', { status: 404 });
+    removeByIds(mockPositions, [params.id]);
     return ok(null, '删除成功');
   }),
 
   // 获取岗位成员
   mock(positionContract.members, ({ params, ok }) => {
     const positionId = params.id;
-    const pos = mockPositions.find((p) => p.id === positionId);
-    if (!pos) return notFound('岗位不存在', { status: 404 });
+    requireItem(mockPositions, positionId, '岗位不存在', { status: 404 });
     const list = mockUsers
       .filter((u) => (u.positionIds ?? []).includes(positionId))
       .map((u) => ({
@@ -97,8 +92,7 @@ export const positionsHandlers = [
   // 分配岗位成员（先清后设）
   mock(positionContract.setMembers, ({ params, body, ok }) => {
     const positionId = params.id;
-    const pos = mockPositions.find((p) => p.id === positionId);
-    if (!pos) return notFound('岗位不存在', { status: 404 });
+    const pos = requireItem(mockPositions, positionId, '岗位不存在', { status: 404 });
     const nextIds = new Set(body.userIds);
     mockUsers.forEach((u) => {
       const ids = new Set(u.positionIds ?? []);

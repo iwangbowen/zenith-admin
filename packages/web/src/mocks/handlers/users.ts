@@ -1,5 +1,6 @@
 import { userContract, type Department, type Position, type Role, type User } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockUsers, getNextUserId, type MockUser } from '@/mocks/data/users';
@@ -129,8 +130,7 @@ export const usersHandlers = [
 
   // 重置密码
   mock(userContract.resetPassword, ({ params, ok }) => {
-    const user = mockUsers.find((u) => u.id === params.id);
-    if (!user) return notFound('用户不存在', { status: 404 });
+    const user = requireItem(mockUsers, params.id, '用户不存在', { status: 404 });
     user.password = DEMO_INITIAL_CREDENTIAL;
     return ok(null, '密码修改成功');
   }),
@@ -142,15 +142,13 @@ export const usersHandlers = [
 
   // 获取单个用户
   mock(userContract.detail, ({ params, ok }) => {
-    const user = mockUsers.find((u) => u.id === params.id);
-    if (!user) return notFound('用户不存在', { status: 404 });
+    const user = requireItem(mockUsers, params.id, '用户不存在', { status: 404 });
     return ok(toUserResponse(user));
   }),
 
   // 更新用户
   mock(userContract.update, ({ params, body, ok }) => {
-    const user = mockUsers.find((u) => u.id === params.id);
-    if (!user) return notFound('用户不存在', { status: 404 });
+    const user = requireItem(mockUsers, params.id, '用户不存在', { status: 404 });
     const { roleIds, positionIds, ...rest } = body;
     if (roleIds !== undefined) {
       user.roles = resolveRoles(roleIds);
@@ -176,8 +174,7 @@ export const usersHandlers = [
 
   // 分配用户角色
   mock(userContract.assignRoles, ({ params, body, ok }) => {
-    const user = mockUsers.find((u) => u.id === params.id);
-    if (!user) return notFound('用户不存在', { status: 404 });
+    const user = requireItem(mockUsers, params.id, '用户不存在', { status: 404 });
     user.roles = resolveRoles(body.roleIds);
     user.updatedAt = mockDateTime();
     return ok(null, '保存成功');

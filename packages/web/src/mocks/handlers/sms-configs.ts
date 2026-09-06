@@ -2,7 +2,8 @@ import { smsConfigContract } from '@zenith/shared/messaging';
 import type { SmsConfig } from '@zenith/shared/messaging';
 import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockSmsConfigs, getNextSmsConfigId } from '@/mocks/data/sms-configs';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -34,8 +35,7 @@ export const smsConfigsHandlers = [
   }),
 
   mock(smsConfigContract.detail, ({ params, ok }) => {
-    const c = mockSmsConfigs.find((x) => x.id === params.id);
-    if (!c) return notFound('短信配置不存在', { status: 404 });
+    const c = requireItem(mockSmsConfigs, params.id, '短信配置不存在', { status: 404 });
     return ok(toEditable(c));
   }),
 
@@ -64,8 +64,7 @@ export const smsConfigsHandlers = [
   }),
 
   mock(smsConfigContract.update, ({ params, body, ok }) => {
-    const c = mockSmsConfigs.find((x) => x.id === params.id);
-    if (!c) return notFound('短信配置不存在', { status: 404 });
+    const c = requireItem(mockSmsConfigs, params.id, '短信配置不存在', { status: 404 });
     if (body.name && body.name !== c.name && mockSmsConfigs.some((x) => x.name === body.name)) {
       return badRequest('配置名称已存在', { status: 400 });
     }
@@ -78,17 +77,15 @@ export const smsConfigsHandlers = [
   }),
 
   mock(smsConfigContract.setDefault, ({ params, ok }) => {
-    const c = mockSmsConfigs.find((x) => x.id === params.id);
-    if (!c) return notFound('短信配置不存在', { status: 404 });
+    const c = requireItem(mockSmsConfigs, params.id, '短信配置不存在', { status: 404 });
     mockSmsConfigs.forEach((x) => { x.isDefault = x.id === c.id; });
     c.updatedAt = mockDateTime();
     return ok(toSafe(c), '设置默认成功');
   }),
 
   mock(smsConfigContract.remove, ({ params, ok }) => {
-    const idx = mockSmsConfigs.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('短信配置不存在', { status: 404 });
-    mockSmsConfigs.splice(idx, 1);
+    requireItem(mockSmsConfigs, params.id, '短信配置不存在', { status: 404 });
+    removeByIds(mockSmsConfigs, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

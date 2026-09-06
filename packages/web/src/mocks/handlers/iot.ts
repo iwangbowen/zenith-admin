@@ -10,7 +10,7 @@ import {
 } from '@zenith/shared/iot';
 import type { AsyncTask } from '@zenith/shared/tasks';
 import { mock } from '@/mocks/utils/contract';
-import { removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import {
   buildMockTelemetry, buildMockTelemetryAgg, getNextIotAlarmRuleId, getNextIotAutomationId, getNextIotCommandId, getNextIotDeviceId,
@@ -170,9 +170,7 @@ export const iotHandlers = [
     return ok(firmware, '上传成功');
   }),
   mock(iotFirmwareContract.update, ({ params, body, ok }) => {
-    const firmware = mockIotFirmwares.find((f) => f.id === params.id);
-    if (!firmware) return notFound('固件不存在', { status: 404 });
-    Object.assign(firmware, body, { updatedAt: mockDateTime() });
+    const firmware = updateItem(mockIotFirmwares, params.id, body, { notFoundMessage: '固件不存在', now: mockDateTime, init: { status: 404 } });
     return ok(firmware, '更新成功');
   }),
   mock(iotFirmwareContract.remove, ({ params, ok }) => {
@@ -192,8 +190,7 @@ export const iotHandlers = [
     return ok(paginate(list.sort((a, b) => b.id - a.id)));
   }),
   mock(iotOtaTaskContract.create, ({ body, ok }) => {
-    const firmware = mockIotFirmwares.find((f) => f.id === body.firmwareId);
-    if (!firmware) return notFound('固件不存在', { status: 404 });
+    const firmware = requireItem(mockIotFirmwares, body.firmwareId, '固件不存在', { status: 404 });
     const ids = resolveBatchTargets(body.deviceIds, body.groupId);
     if (body.allDevices) {
       for (const d of mockIotDevices.filter((d) => d.productId === firmware.productId)) ids.add(d.id);
@@ -273,8 +270,7 @@ export const iotHandlers = [
     return ok(paginate([...list].sort((a, b) => b.id - a.id)));
   }),
   mock(iotOtaTaskContract.releaseNextBatch, ({ params, ok }) => {
-    const task = mockIotOtaTasks.find((t) => t.id === params.id);
-    if (!task) return notFound('升级任务不存在', { status: 404 });
+    const task = requireItem(mockIotOtaTasks, params.id, '升级任务不存在', { status: 404 });
     if (!task.batchSize || !task.totalBatches) return badRequest('该任务不是灰度任务', { status: 400 });
     if (task.currentBatch >= task.totalBatches) return badRequest('所有批次均已放量', { status: 400 });
     task.currentBatch += 1;
@@ -286,15 +282,13 @@ export const iotHandlers = [
     return ok(task, `已放量第 ${task.currentBatch} 批`);
   }),
   mock(iotOtaTaskContract.resume, ({ params, ok }) => {
-    const task = mockIotOtaTasks.find((t) => t.id === params.id);
-    if (!task) return notFound('升级任务不存在', { status: 404 });
+    const task = requireItem(mockIotOtaTasks, params.id, '升级任务不存在', { status: 404 });
     if (task.status !== 'paused') return badRequest('仅熔断暂停的任务可恢复', { status: 400 });
     task.status = 'running';
     return ok(task, '任务已恢复');
   }),
   mock(iotOtaTaskContract.cancel, ({ params, ok }) => {
-    const task = mockIotOtaTasks.find((t) => t.id === params.id);
-    if (!task) return notFound('升级任务不存在', { status: 404 });
+    const task = requireItem(mockIotOtaTasks, params.id, '升级任务不存在', { status: 404 });
     if (task.status !== 'running' && task.status !== 'paused') return badRequest('任务已结束，无法取消', { status: 400 });
     task.status = 'cancelled';
     for (const d of mockIotOtaTaskDevices.filter((d) => d.taskId === task.id)) {
@@ -306,8 +300,7 @@ export const iotHandlers = [
     return ok(task, '任务已取消');
   }),
   mock(iotOtaTaskContract.detail, ({ params, ok }) => {
-    const task = mockIotOtaTasks.find((t) => t.id === params.id);
-    if (!task) return notFound('升级任务不存在', { status: 404 });
+    const task = requireItem(mockIotOtaTasks, params.id, '升级任务不存在', { status: 404 });
     return ok(task);
   }),
 
@@ -462,19 +455,15 @@ export const iotHandlers = [
 
   // ─── 产品详情 / 更新 / 删除（动态段在静态段之后）─────────────────────────────
   mock(iotProductContract.detail, ({ params, ok }) => {
-    const product = mockIotProducts.find((p) => p.id === params.id);
-    if (!product) return notFound('产品不存在', { status: 404 });
+    const product = requireItem(mockIotProducts, params.id, '产品不存在', { status: 404 });
     return ok(productWithCounts(product));
   }),
   mock(iotProductContract.update, ({ params, body, ok }) => {
-    const product = mockIotProducts.find((p) => p.id === params.id);
-    if (!product) return notFound('产品不存在', { status: 404 });
-    Object.assign(product, body, { updatedAt: mockDateTime() });
+    const product = updateItem(mockIotProducts, params.id, body, { notFoundMessage: '产品不存在', now: mockDateTime, init: { status: 404 } });
     return ok(productWithCounts(product), '更新成功');
   }),
   mock(iotProductContract.remove, ({ params, ok }) => {
-    const product = mockIotProducts.find((p) => p.id === params.id);
-    if (!product) return notFound('产品不存在', { status: 404 });
+    const product = requireItem(mockIotProducts, params.id, '产品不存在', { status: 404 });
     if (mockIotDevices.some((d) => d.productId === params.id)) return badRequest('产品下存在设备，无法删除', { status: 400 });
     mockIotProducts.splice(mockIotProducts.indexOf(product), 1);
     return ok(null, '删除成功');
@@ -499,20 +488,17 @@ export const iotHandlers = [
     return ok(group, '创建成功');
   }),
   mock(iotDeviceGroupContract.detail, ({ params, ok }) => {
-    const group = mockIotGroups.find((g) => g.id === params.id);
-    if (!group) return notFound('设备分组不存在', { status: 404 });
+    const group = requireItem(mockIotGroups, params.id, '设备分组不存在', { status: 404 });
     return ok({ ...group, deviceCount: group.deviceIds.length });
   }),
   mock(iotDeviceGroupContract.update, ({ params, body, ok }) => {
-    const group = mockIotGroups.find((g) => g.id === params.id);
-    if (!group) return notFound('设备分组不存在', { status: 404 });
+    const group = requireItem(mockIotGroups, params.id, '设备分组不存在', { status: 404 });
     Object.assign(group, body, { updatedAt: mockDateTime() });
     return ok({ ...group, deviceCount: group.deviceIds.length }, '更新成功');
   }),
   mock(iotDeviceGroupContract.remove, ({ params, ok }) => {
-    const idx = mockIotGroups.findIndex((g) => g.id === params.id);
-    if (idx === -1) return notFound('设备分组不存在', { status: 404 });
-    mockIotGroups.splice(idx, 1);
+    requireItem(mockIotGroups, params.id, '设备分组不存在', { status: 404 });
+    removeByIds(mockIotGroups, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -590,8 +576,7 @@ export const iotHandlers = [
     return ok(rule, '创建成功');
   }),
   mock(iotAlarmRuleContract.update, ({ params, body, ok }) => {
-    const rule = mockIotAlarmRules.find((r) => r.id === params.id);
-    if (!rule) return notFound('告警规则不存在', { status: 404 });
+    const rule = requireItem(mockIotAlarmRules, params.id, '告警规则不存在', { status: 404 });
     if (body.deviceId !== undefined) {
       rule.deviceName = body.deviceId ? (mockIotDevices.find((d) => d.id === body.deviceId)?.name ?? null) : null;
     }
@@ -599,9 +584,8 @@ export const iotHandlers = [
     return ok(rule, '更新成功');
   }),
   mock(iotAlarmRuleContract.remove, ({ params, ok }) => {
-    const idx = mockIotAlarmRules.findIndex((r) => r.id === params.id);
-    if (idx === -1) return notFound('告警规则不存在', { status: 404 });
-    mockIotAlarmRules.splice(idx, 1);
+    requireItem(mockIotAlarmRules, params.id, '告警规则不存在', { status: 404 });
+    removeByIds(mockIotAlarmRules, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -666,15 +650,12 @@ export const iotHandlers = [
     return ok(win, '创建成功');
   }),
   mock(iotMaintenanceWindowContract.update, ({ params, body, ok }) => {
-    const win = mockIotMaintenanceWindows.find((w) => w.id === params.id);
-    if (!win) return notFound('维护窗口不存在', { status: 404 });
-    Object.assign(win, body, { updatedAt: mockDateTime() });
+    const win = updateItem(mockIotMaintenanceWindows, params.id, body, { notFoundMessage: '维护窗口不存在', now: mockDateTime, init: { status: 404 } });
     return ok(win, '更新成功');
   }),
   mock(iotMaintenanceWindowContract.remove, ({ params, ok }) => {
-    const idx = mockIotMaintenanceWindows.findIndex((w) => w.id === params.id);
-    if (idx === -1) return notFound('维护窗口不存在', { status: 404 });
-    mockIotMaintenanceWindows.splice(idx, 1);
+    requireItem(mockIotMaintenanceWindows, params.id, '维护窗口不存在', { status: 404 });
+    removeByIds(mockIotMaintenanceWindows, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -692,8 +673,7 @@ export const iotHandlers = [
     return ok(paginate(list.sort((a, b) => b.id - a.id)));
   }),
   mock(iotScheduleContract.create, ({ body, ok }) => {
-    const product = mockIotProducts.find((p) => p.id === body.productId);
-    if (!product) return notFound('产品不存在', { status: 404 });
+    const product = requireItem(mockIotProducts, body.productId, '产品不存在', { status: 404 });
     const schedule: IotSchedule = {
       id: getNextIotScheduleId(),
       name: body.name,
@@ -721,17 +701,15 @@ export const iotHandlers = [
     return ok(schedule, '创建成功');
   }),
   mock(iotScheduleContract.update, ({ params, body, ok }) => {
-    const schedule = mockIotSchedules.find((s) => s.id === params.id);
-    if (!schedule) return notFound('计划任务不存在', { status: 404 });
+    const schedule = requireItem(mockIotSchedules, params.id, '计划任务不存在', { status: 404 });
     Object.assign(schedule, body, { updatedAt: mockDateTime() });
     schedule.groupName = mockIotGroups.find((g) => g.id === schedule.groupId)?.name ?? null;
     schedule.deviceName = mockIotDevices.find((d) => d.id === schedule.deviceId)?.name ?? null;
     return ok(schedule, '更新成功');
   }),
   mock(iotScheduleContract.remove, ({ params, ok }) => {
-    const idx = mockIotSchedules.findIndex((s) => s.id === params.id);
-    if (idx === -1) return notFound('计划任务不存在', { status: 404 });
-    mockIotSchedules.splice(idx, 1);
+    requireItem(mockIotSchedules, params.id, '计划任务不存在', { status: 404 });
+    removeByIds(mockIotSchedules, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -741,14 +719,12 @@ export const iotHandlers = [
     return ok({ total: list.length, used: list.filter((e) => e.used).length });
   }),
   mock(iotWhitelistContract.resetRegistrationSecret, ({ params, ok }) => {
-    const product = mockIotProducts.find((p) => p.id === params.id);
-    if (!product) return notFound('产品不存在', { status: 404 });
+    const product = requireItem(mockIotProducts, params.id, '产品不存在', { status: 404 });
     product.registrationEnabled = true;
     return ok({ registrationSecret: randomHex(32) }, '注册密钥已生成');
   }),
   mock(iotWhitelistContract.disableRegistration, ({ params, ok }) => {
-    const product = mockIotProducts.find((p) => p.id === params.id);
-    if (!product) return notFound('产品不存在', { status: 404 });
+    const product = requireItem(mockIotProducts, params.id, '产品不存在', { status: 404 });
     product.registrationEnabled = false;
     return ok(null, '已关闭动态注册');
   }),
@@ -760,8 +736,7 @@ export const iotHandlers = [
     return ok(paginate(list.sort((a, b) => b.id - a.id)));
   }),
   mock(iotWhitelistContract.import, ({ body, ok }) => {
-    const product = mockIotProducts.find((p) => p.id === body.productId);
-    if (!product) return notFound('产品不存在', { status: 404 });
+    const product = requireItem(mockIotProducts, body.productId, '产品不存在', { status: 404 });
     const existing = new Set(mockIotWhitelist.map((e) => e.sn));
     let inserted = 0;
     for (const sn of body.sns) {
@@ -835,8 +810,7 @@ export const iotHandlers = [
     return ok(automation, '创建成功');
   }),
   mock(iotAutomationContract.update, ({ params, body, ok }) => {
-    const automation = mockIotAutomations.find((a) => a.id === params.id);
-    if (!automation) return notFound('联动规则不存在', { status: 404 });
+    const automation = requireItem(mockIotAutomations, params.id, '联动规则不存在', { status: 404 });
     if (body.deviceId !== undefined) {
       const device = body.deviceId ? mockIotDevices.find((d) => d.id === body.deviceId) : null;
       automation.deviceId = body.deviceId ?? null;
@@ -900,8 +874,7 @@ export const iotHandlers = [
     return ok(rule, '创建成功');
   }),
   mock(iotForwardRuleContract.update, ({ params, body, ok }) => {
-    const rule = mockIotForwardRules.find((r) => r.id === params.id);
-    if (!rule) return notFound('流转规则不存在', { status: 404 });
+    const rule = requireItem(mockIotForwardRules, params.id, '流转规则不存在', { status: 404 });
     if (body.name !== undefined) rule.name = body.name;
     if (body.productId !== undefined) {
       rule.productId = body.productId ?? null;
@@ -960,8 +933,7 @@ export const iotHandlers = [
     return ok({ ...getShadow(params.id), updatedAt: mockDateTime() });
   }),
   mock(iotDeviceContract.setDesired, ({ params, body, ok }) => {
-    const device = mockIotDevices.find((d) => d.id === params.id);
-    if (!device) return notFound('设备不存在', { status: 404 });
+    const device = requireItem(mockIotDevices, params.id, '设备不存在', { status: 404 });
     const props = mockIotProperties.filter((p) => p.productId === device.productId);
     for (const key of Object.keys(body.desired)) {
       const prop = props.find((p) => p.identifier === key);
@@ -994,8 +966,7 @@ export const iotHandlers = [
     return ok(paginate([...list].sort((a, b) => b.id - a.id)));
   }),
   mock(iotDeviceContract.topology, ({ params, ok }) => {
-    const gateway = mockIotDevices.find((d) => d.id === params.id);
-    if (!gateway) return notFound('设备不存在', { status: 404 });
+    const gateway = requireItem(mockIotDevices, params.id, '设备不存在', { status: 404 });
     if (gateway.nodeType !== 'gateway') return badRequest('该设备不是网关，无拓扑视图', { status: 400 });
     const children = mockIotDevices.filter((d) => d.gatewayId === gateway.id);
     return ok({
@@ -1012,8 +983,7 @@ export const iotHandlers = [
     return ok(paginate([...list].sort((a, b) => b.id - a.id)));
   }),
   mock(iotDeviceContract.sendCommand, ({ params, body, ok }) => {
-    const device = mockIotDevices.find((d) => d.id === params.id);
-    if (!device) return notFound('设备不存在', { status: 404 });
+    const device = requireItem(mockIotDevices, params.id, '设备不存在', { status: 404 });
     if (device.status !== 'enabled') return badRequest('设备已禁用，无法下发指令', { status: 400 });
     if (!mockIotServices.some((s) => s.productId === device.productId && s.identifier === body.service)) {
       return badRequest(`服务 ${body.service} 未在物模型中声明`, { status: 400 });
@@ -1037,8 +1007,7 @@ export const iotHandlers = [
     return ok(command, device.online ? '指令已实时送达设备' : '设备离线，指令将在上线后送达');
   }),
   mock(iotDeviceContract.resetSecret, ({ params, ok }) => {
-    const device = mockIotDevices.find((d) => d.id === params.id);
-    if (!device) return notFound('设备不存在', { status: 404 });
+    const device = requireItem(mockIotDevices, params.id, '设备不存在', { status: 404 });
     device.secret = randomHex(48);
     device.updatedAt = mockDateTime();
     return ok(withGroupInfo(device), '密钥已重置，请更新设备侧配置');
@@ -1046,8 +1015,7 @@ export const iotHandlers = [
 
   // ─── 设备详情 / 创建 / 更新 / 删除 ──────────────────────────────────────────
   mock(iotDeviceContract.detail, ({ params, ok }) => {
-    const device = mockIotDevices.find((d) => d.id === params.id);
-    if (!device) return notFound('设备不存在', { status: 404 });
+    const device = requireItem(mockIotDevices, params.id, '设备不存在', { status: 404 });
     return ok(withGroupInfo(device));
   }),
   mock(iotDeviceContract.create, ({ body, ok }) => {
@@ -1093,8 +1061,7 @@ export const iotHandlers = [
     return ok(withGroupInfo(device), '创建成功');
   }),
   mock(iotDeviceContract.update, ({ params, body, ok }) => {
-    const device = mockIotDevices.find((d) => d.id === params.id);
-    if (!device) return notFound('设备不存在', { status: 404 });
+    const device = requireItem(mockIotDevices, params.id, '设备不存在', { status: 404 });
     if (body.productId && body.productId !== device.productId) {
       const product = mockIotProducts.find((p) => p.id === body.productId);
       if (!product) return badRequest('所属产品不存在', { status: 400 });
@@ -1113,9 +1080,8 @@ export const iotHandlers = [
     return ok(withGroupInfo(device), '更新成功');
   }),
   mock(iotDeviceContract.remove, ({ params, ok }) => {
-    const idx = mockIotDevices.findIndex((d) => d.id === params.id);
-    if (idx === -1) return notFound('设备不存在', { status: 404 });
-    mockIotDevices.splice(idx, 1);
+    requireItem(mockIotDevices, params.id, '设备不存在', { status: 404 });
+    removeByIds(mockIotDevices, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

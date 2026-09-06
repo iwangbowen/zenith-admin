@@ -1,6 +1,7 @@
 import type { RuleDecisionTable, RuleDecisionOutput, RuleDecisionRow, RuleDecisionTableVersion, RuleEvaluateResult, RuleTestRunResult, RuleUsageItem, RuleVersionChange } from '@zenith/shared/rules';
 import { decisionTableContract, matchDecisionRows, resolveDecisionHits, ruleExecutionContract } from '@zenith/shared/rules';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mockDecisionTables, getNextTableId, mockDecisionVersions, getNextVersionId, mockTestCases, getNextCaseId, mockExecutions, getNextExecId } from '@/mocks/data/decision-tables';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -87,16 +88,14 @@ export const decisionTablesHandlers = [
     return ok(paginate(list));
   }),
   mock(decisionTableContract.usages, ({ params, ok }) => {
-    const r = mockDecisionTables.find((t) => t.id === params.id);
-    if (!r) return notFound('决策表不存在', { status: 404 });
+    const r = requireItem(mockDecisionTables, params.id, '决策表不存在', { status: 404 });
     const usages: RuleUsageItem[] = r.key === 'coupon_eligibility'
       ? [{ type: 'coupon', id: null, name: '优惠券领取资格判定（内置消费方）', status: null }]
       : [];
     return ok(usages);
   }),
   mock(decisionTableContract.stats, ({ params, query, ok }) => {
-    const r = mockDecisionTables.find((t) => t.id === params.id);
-    if (!r) return notFound('决策表不存在', { status: 404 });
+    const r = requireItem(mockDecisionTables, params.id, '决策表不存在', { status: 404 });
     const days = query.days ?? 30;
     const execs = mockExecutions.filter((e) => e.refKind === 'table' && e.refId === r.id);
     const total = execs.length;
@@ -121,8 +120,7 @@ export const decisionTablesHandlers = [
     });
   }),
   mock(decisionTableContract.shadowRun, ({ params, body, ok }) => {
-    const r = mockDecisionTables.find((t) => t.id === params.id);
-    if (!r) return notFound('决策表不存在', { status: 404 });
+    const r = requireItem(mockDecisionTables, params.id, '决策表不存在', { status: 404 });
     const execs = mockExecutions.filter((e) => e.refKind === 'table' && e.refId === r.id).slice(0, body.limit);
     const samples: Array<{ executionId: number; input: Record<string, unknown>; before: Record<string, unknown>; after: Record<string, unknown>; beforeMatched: boolean; afterMatched: boolean }> = [];
     let same = 0;
@@ -136,15 +134,13 @@ export const decisionTablesHandlers = [
     return ok({ total: execs.length, same, changed: execs.length - same, samples });
   }),
   mock(decisionTableContract.submitReview, ({ params, ok }) => {
-    const r = mockDecisionTables.find((t) => t.id === params.id);
-    if (!r) return notFound('决策表不存在', { status: 404 });
+    const r = requireItem(mockDecisionTables, params.id, '决策表不存在', { status: 404 });
     if (r.reviewStatus === 'pending') return badRequest('已有待审批的发布申请', { status: 400 });
     r.reviewStatus = 'pending'; r.reviewRequestedBy = 1; r.reviewRequestedAt = mockDateTime(); r.reviewComment = null;
     return ok(r, '已提交审批');
   }),
   mock(decisionTableContract.review, ({ params, body, ok }) => {
-    const r = mockDecisionTables.find((t) => t.id === params.id);
-    if (!r) return notFound('决策表不存在', { status: 404 });
+    const r = requireItem(mockDecisionTables, params.id, '决策表不存在', { status: 404 });
     if (r.reviewStatus !== 'pending') return badRequest('该决策表没有待审批的发布申请', { status: 400 });
     const { approve, comment } = body;
     r.reviewStatus = null; r.reviewRequestedBy = null; r.reviewRequestedAt = null;
@@ -178,8 +174,8 @@ export const decisionTablesHandlers = [
     return ok(r);
   }),
   mock(decisionTableContract.detail, ({ params, ok }) => {
-    const row = mockDecisionTables.find((t) => t.id === params.id);
-    return row ? ok(row) : notFound('决策表不存在', { status: 404 });
+    const row = requireItem(mockDecisionTables, params.id, '决策表不存在', { status: 404 });
+    return ok(row);
   }),
   mock(decisionTableContract.create, ({ body, ok }) => {
     const now = mockDateTime();
@@ -203,14 +199,12 @@ export const decisionTablesHandlers = [
     return ok(mockDecisionTables[i]);
   }),
   mock(decisionTableContract.toggle, ({ params, body, ok }) => {
-    const r = mockDecisionTables.find((t) => t.id === params.id);
-    if (!r) return notFound('决策表不存在', { status: 404 });
+    const r = requireItem(mockDecisionTables, params.id, '决策表不存在', { status: 404 });
     r.status = body.enabled ? (r.publishedAt ? 'published' : 'draft') : 'disabled';
     return ok(r);
   }),
   mock(decisionTableContract.publish, ({ params, ok }) => {
-    const r = mockDecisionTables.find((t) => t.id === params.id);
-    if (!r) return notFound('决策表不存在', { status: 404 });
+    const r = requireItem(mockDecisionTables, params.id, '决策表不存在', { status: 404 });
     const run = runCases(r.id);
     if (run.failed > 0) return badRequest(`发布受阻：${run.failed}/${run.total} 个用例未通过`, { status: 400 });
     if (run.total > 0 && run.coverage < 100) return badRequest(`发布受阻：覆盖率 ${run.coverage}%`, { status: 400 });
@@ -240,8 +234,7 @@ export const decisionTablesHandlers = [
     return ok(null);
   }),
   mock(decisionTableContract.test, ({ params, body, ok }) => {
-    const r = mockDecisionTables.find((t) => t.id === params.id);
-    if (!r) return notFound('决策表不存在', { status: 404 });
+    const r = requireItem(mockDecisionTables, params.id, '决策表不存在', { status: 404 });
     const { input } = body;
     const res = evaluate(r, input);
     mockExecutions.unshift({ id: getNextExecId(), refKind: 'table', refId: r.id, ruleKey: r.key, version: null, caller: 'admin.test', callerName: '后台测试', bizRef: null, source: 'test', matched: res.matched, hitPolicy: r.hitPolicy, input, outputs: res.outputs, matchedRowIds: res.matchedRowIds, createdAt: mockDateTime() });
@@ -257,9 +250,8 @@ export const decisionTablesHandlers = [
     return ok(res);
   }),
   mock(decisionTableContract.remove, ({ params, ok }) => {
-    const i = mockDecisionTables.findIndex((t) => t.id === params.id);
-    if (i === -1) return notFound('决策表不存在', { status: 404 });
-    mockDecisionTables.splice(i, 1);
+    requireItem(mockDecisionTables, params.id, '决策表不存在', { status: 404 });
+    removeByIds(mockDecisionTables, [params.id]);
     return ok(null);
   }),
 ];

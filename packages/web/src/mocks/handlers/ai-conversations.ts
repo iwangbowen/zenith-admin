@@ -3,6 +3,7 @@ import { toColonPath } from '@zenith/shared/core';
 import { aiConversationContract, sendAiChatMessageSchema } from '@zenith/shared/ai';
 import type { AiConversation, AiFeedbackItem, AiMessage } from '@zenith/shared/ai';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockAiConversations, mockAiMessages, getNextConvId, getNextMsgId } from '@/mocks/data/ai';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -129,16 +130,14 @@ export const aiConversationsHandlers = [
 
   // 更新对话标签
   mock(aiConversationContract.setTags, ({ params, body, ok }) => {
-    const conv = convStore.find((c) => c.id === params.id);
-    if (!conv) return notFound('对话不存在', { status: 404 });
+    const conv = requireItem(convStore, params.id, '对话不存在', { status: 404 });
     conv.tags = body.tags.slice(0, 10);
     return ok({ tags: conv.tags }, '标签已更新');
   }),
 
   // 切换消息分支（简化：沿最新子分支下探）
   mock(aiConversationContract.switchBranch, ({ params, body, ok }) => {
-    const conv = convStore.find((c) => c.id === params.id);
-    if (!conv) return notFound('对话不存在', { status: 404 });
+    const conv = requireItem(convStore, params.id, '对话不存在', { status: 404 });
     const msgs = msgStore[params.id] ?? [];
     let leaf = body.leafMsgId;
     let advanced = true;
@@ -159,8 +158,7 @@ export const aiConversationsHandlers = [
 
   // 重命名对话
   mock(aiConversationContract.rename, ({ params, body, ok }) => {
-    const conv = convStore.find((c) => c.id === params.id);
-    if (!conv) return notFound('对话不存在', { status: 404 });
+    const conv = requireItem(convStore, params.id, '对话不存在', { status: 404 });
     conv.title = body.title.trim().slice(0, 200) || '新对话';
     conv.updatedAt = mockDateTime();
     return ok(null, '重命名成功');
@@ -168,16 +166,14 @@ export const aiConversationsHandlers = [
 
   // 置顶 / 取消置顶
   mock(aiConversationContract.pin, ({ params, ok }) => {
-    const conv = convStore.find((c) => c.id === params.id);
-    if (!conv) return notFound('对话不存在', { status: 404 });
+    const conv = requireItem(convStore, params.id, '对话不存在', { status: 404 });
     conv.isPinned = !conv.isPinned;
     return ok({ isPinned: conv.isPinned });
   }),
 
   // 归档 / 取消归档
   mock(aiConversationContract.archive, ({ params, ok }) => {
-    const conv = convStore.find((c) => c.id === params.id);
-    if (!conv) return notFound('对话不存在', { status: 404 });
+    const conv = requireItem(convStore, params.id, '对话不存在', { status: 404 });
     conv.isArchived = !conv.isArchived;
     if (conv.isArchived) conv.isPinned = false;
     return ok({ isArchived: conv.isArchived });
@@ -185,8 +181,7 @@ export const aiConversationsHandlers = [
 
   // 设置 / 清除对话级提示词（角色模板）
   mock(aiConversationContract.setSystemPrompt, ({ params, body, ok }) => {
-    const conv = convStore.find((c) => c.id === params.id);
-    if (!conv) return notFound('对话不存在', { status: 404 });
+    const conv = requireItem(convStore, params.id, '对话不存在', { status: 404 });
     const value = body.systemPrompt?.trim() ? body.systemPrompt.trim().slice(0, 5000) : null;
     conv.systemPromptOverride = value;
     return ok({ systemPromptOverride: value });
@@ -194,16 +189,14 @@ export const aiConversationsHandlers = [
 
   // 获取单条对话
   mock(aiConversationContract.detail, ({ params, ok }) => {
-    const conv = convStore.find((c) => c.id === params.id);
-    if (!conv) return notFound('对话不存在', { status: 404 });
+    const conv = requireItem(convStore, params.id, '对话不存在', { status: 404 });
     return ok(conv);
   }),
 
   // 删除对话
   mock(aiConversationContract.remove, ({ params, ok }) => {
-    const idx = convStore.findIndex((c) => c.id === params.id);
-    if (idx === -1) return notFound('对话不存在', { status: 404 });
-    convStore.splice(idx, 1);
+    requireItem(convStore, params.id, '对话不存在', { status: 404 });
+    removeByIds(convStore, [params.id]);
     delete msgStore[params.id];
     return ok(null, '删除成功');
   }),
@@ -213,8 +206,7 @@ export const aiConversationsHandlers = [
 
   // 导出对话（Markdown / JSON）
   mock(aiConversationContract.exportFile, ({ params, query }) => {
-    const conv = convStore.find((c) => c.id === params.id);
-    if (!conv) return notFound('对话不存在', { status: 404 });
+    const conv = requireItem(convStore, params.id, '对话不存在', { status: 404 });
     const msgs = msgStore[params.id] ?? [];
     const safeTitle = (conv.title || '对话').replace(/[\\/:*?"<>|]/g, '_').slice(0, 50);
     let content: string;
@@ -393,8 +385,7 @@ export const aiConversationsHandlers = [
   mock(aiConversationContract.submitFeedback, ({ params, body, ok }) => {
     const msgs = msgStore[params.id];
     if (!msgs) return notFound('对话不存在', { status: 404 });
-    const msg = msgs.find((m) => m.id === params.msgId);
-    if (!msg) return notFound('消息不存在', { status: 404 });
+    const msg = requireItem(msgs, params.msgId, '消息不存在', { status: 404 });
     const isDislike = body.feedback === -1;
     msg.feedback = body.feedback;
     msg.feedbackReason = isDislike ? (body.reason ?? null) : null;

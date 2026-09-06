@@ -1,5 +1,6 @@
 import { menuContract, type Menu } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, updateItem } from '@/mocks/utils/crud';
 import { notFound, conflict } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockMenus, buildMenuTree, getNextMenuId } from '@/mocks/data/menus';
@@ -25,8 +26,7 @@ export const menusHandlers = [
 
   // 获取单个菜单
   mock(menuContract.detail, ({ params, ok }) => {
-    const menu = mockMenus.find((m) => m.id === params.id);
-    if (!menu) return notFound('菜单不存在', { status: 404 });
+    const menu = requireItem(mockMenus, params.id, '菜单不存在', { status: 404 });
     return ok(menu);
   }),
 
@@ -44,9 +44,7 @@ export const menusHandlers = [
 
   // 更新菜单
   mock(menuContract.update, ({ params, body, ok }) => {
-    const menu = mockMenus.find((m) => m.id === params.id);
-    if (!menu) return notFound('菜单不存在', { status: 404 });
-    Object.assign(menu, body, { updatedAt: mockDateTime() });
+    const menu = updateItem(mockMenus, params.id, body, { notFoundMessage: '菜单不存在', now: mockDateTime, init: { status: 404 } });
     return ok(menu, '更新成功');
   }),
 

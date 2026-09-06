@@ -1,6 +1,7 @@
 import { appWebhookContract, paymentWebhookContract, OPEN_WEBHOOK_EVENTS, OPEN_WEBHOOK_EVENT_LABELS, PAYMENT_WEBHOOK_EVENTS } from '@zenith/shared/open-platform';
 import type { AppWebhookContract, AppWebhookSubscription, AppWebhookDelivery } from '@zenith/shared/open-platform';
 import { mock } from '@/mocks/utils/contract';
+
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockWebhookSubscriptions, mockWebhookDeliveries } from '@/mocks/data/app-webhooks';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -59,7 +60,8 @@ function createAppWebhookHandlers(contract: AppWebhookContract, paymentScope = f
     }),
     mock(contract.deliveryDetail, ({ params, ok }) => {
       const found = deliveries.find((d) => d.id === params.id && scopedSub(d.subscriptionId));
-      return found ? ok(found) : notFound('投递记录不存在', { status: 404 });
+      if (!found) return notFound('投递记录不存在', { status: 404 });
+      return ok(found);
     }),
     mock(contract.retryDelivery, ({ params, ok }) => {
       const d = deliveries.find((x) => x.id === params.id && scopedSub(x.subscriptionId));

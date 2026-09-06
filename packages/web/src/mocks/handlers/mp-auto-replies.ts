@@ -1,6 +1,7 @@
 import { mpAutoReplyContract, type MpAutoReply, type MpUnmatchedKeyword } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockMpAutoReplies, getNextMpAutoReplyId } from '@/mocks/data/mp-auto-replies';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -54,16 +55,13 @@ export const mpAutoRepliesHandlers = [
   }),
 
   mock(mpAutoReplyContract.update, ({ params, body, ok }) => {
-    const r = mockMpAutoReplies.find((x) => x.id === params.id);
-    if (!r) return notFound('自动回复不存在', { status: 404 });
-    Object.assign(r, body, { updatedAt: mockDateTime() });
+    const r = updateItem(mockMpAutoReplies, params.id, body, { notFoundMessage: '自动回复不存在', now: mockDateTime, init: { status: 404 } });
     return ok(r, '更新成功');
   }),
 
   mock(mpAutoReplyContract.remove, ({ params, ok }) => {
-    const idx = mockMpAutoReplies.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('自动回复不存在', { status: 404 });
-    mockMpAutoReplies.splice(idx, 1);
+    requireItem(mockMpAutoReplies, params.id, '自动回复不存在', { status: 404 });
+    removeByIds(mockMpAutoReplies, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

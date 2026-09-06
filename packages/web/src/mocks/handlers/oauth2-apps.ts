@@ -1,6 +1,7 @@
 import { oauth2ClientContract } from '@zenith/shared/open-platform';
 import type { OAuth2Client, OAuth2ClientCreated, OAuth2MyGrant, OAuth2Token, OAuth2UserGrant } from '@zenith/shared/open-platform';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -180,8 +181,7 @@ export const oauth2AppsHandlers = [
   mock(oauth2ClientContract.revokeToken, ({ ok }) => ok(null, '令牌已撤销')),
 
   mock(oauth2ClientContract.grants, ({ params, ok, paginate }) => {
-    const client = mockOAuth2Clients.find((item) => item.id === params.id);
-    if (!client) return notFound('不存在', { status: 404 });
+    const client = requireItem(mockOAuth2Clients, params.id, '不存在', { status: 404 });
     return ok(paginate(grantsOf(client)));
   }),
 
@@ -222,8 +222,8 @@ export const oauth2AppsHandlers = [
   }),
 
   mock(oauth2ClientContract.detail, ({ params, ok }) => {
-    const found = mockOAuth2Clients.find((c) => c.id === params.id);
-    return found ? ok(found) : notFound('不存在', { status: 404 });
+    const found = requireItem(mockOAuth2Clients, params.id, '不存在', { status: 404 });
+    return ok(found);
   }),
 
   mock(oauth2ClientContract.update, ({ params, body, ok }) => {
@@ -240,15 +240,13 @@ export const oauth2AppsHandlers = [
   }),
 
   mock(oauth2ClientContract.remove, ({ params, ok }) => {
-    const idx = mockOAuth2Clients.findIndex((c) => c.id === params.id);
-    if (idx === -1) return notFound('不存在', { status: 404 });
-    mockOAuth2Clients.splice(idx, 1);
+    requireItem(mockOAuth2Clients, params.id, '不存在', { status: 404 });
+    removeByIds(mockOAuth2Clients, [params.id]);
     return ok(null, '删除成功');
   }),
 
   mock(oauth2ClientContract.regenerateSecret, ({ params, ok }) => {
-    const found = mockOAuth2Clients.find((c) => c.id === params.id);
-    if (!found) return notFound('不存在', { status: 404 });
+    const found = requireItem(mockOAuth2Clients, params.id, '不存在', { status: 404 });
     const clientSecret = `oas_mock${randomHex(32)}`;
     found.clientSecretPrefix = `${clientSecret.slice(0, 10)}...`;
     found.previousSecretExpiresAt = '2026-07-16 10:00:00';
@@ -256,8 +254,7 @@ export const oauth2AppsHandlers = [
   }),
 
   mock(oauth2ClientContract.review, ({ params, body, ok }) => {
-    const found = mockOAuth2Clients.find((client) => client.id === params.id);
-    if (!found) return notFound('不存在', { status: 404 });
+    const found = requireItem(mockOAuth2Clients, params.id, '不存在', { status: 404 });
     found.reviewStatus = body.action === 'approve' ? 'approved' : 'rejected';
     found.reviewComment = body.comment ?? null;
     found.reviewedAt = mockDateTime();

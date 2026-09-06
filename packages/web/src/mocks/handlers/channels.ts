@@ -6,6 +6,7 @@ import type {
 import type { PublishChannelInput } from '@zenith/shared/mp';
 import type { ChatMessageExtra } from '@zenith/shared/chat';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import {
@@ -204,8 +205,7 @@ export const channelsHandlers = [
     return ok(tpl, '已创建');
   }),
   mock(channelMessageContract.updateTemplate, ({ params, body, ok }) => {
-    const tpl = mockChannelTemplates.find((t) => t.id === params.id);
-    if (!tpl) return notFound('模板不存在', { status: 404 });
+    const tpl = requireItem(mockChannelTemplates, params.id, '模板不存在', { status: 404 });
     if (body.name !== undefined) tpl.name = body.name;
     if (body.type !== undefined) tpl.type = body.type;
     if (body.title !== undefined) tpl.title = body.title;
@@ -215,9 +215,8 @@ export const channelsHandlers = [
     return ok(tpl, '已保存');
   }),
   mock(channelMessageContract.removeTemplate, ({ params, ok }) => {
-    const idx = mockChannelTemplates.findIndex((t) => t.id === params.id);
-    if (idx === -1) return notFound('模板不存在', { status: 404 });
-    mockChannelTemplates.splice(idx, 1);
+    requireItem(mockChannelTemplates, params.id, '模板不存在', { status: 404 });
+    removeByIds(mockChannelTemplates, [params.id]);
     return ok(null, '已删除');
   }),
 
@@ -303,8 +302,7 @@ export const channelsHandlers = [
   }),
 
   mock(channelCsContract.updateQuickReply, ({ params, body, ok }) => {
-    const reply = mockChannelQuickReplies.find((q) => q.id === params.id);
-    if (!reply) return notFound('快捷回复不存在', { status: 404 });
+    const reply = requireItem(mockChannelQuickReplies, params.id, '快捷回复不存在', { status: 404 });
     if (body.channelId !== undefined) {
       reply.channelId = body.channelId;
       reply.channelName = body.channelId != null ? (mockChannels.find((c) => c.id === body.channelId)?.name ?? null) : null;
@@ -317,16 +315,14 @@ export const channelsHandlers = [
   }),
 
   mock(channelCsContract.removeQuickReply, ({ params, ok }) => {
-    const idx = mockChannelQuickReplies.findIndex((q) => q.id === params.id);
-    if (idx === -1) return notFound('快捷回复不存在', { status: 404 });
-    mockChannelQuickReplies.splice(idx, 1);
+    requireItem(mockChannelQuickReplies, params.id, '快捷回复不存在', { status: 404 });
+    removeByIds(mockChannelQuickReplies, [params.id]);
     return ok(null, '删除成功');
   }),
 
   // ── 消息记录管理（编辑/删除/立即发送单条）──────────
   mock(channelMessageContract.updateDraft, ({ params, body, ok }) => {
-    const msg = mockChannelMessages.find((m) => m.id === params.id);
-    if (!msg) return notFound('消息不存在', { status: 404 });
+    const msg = requireItem(mockChannelMessages, params.id, '消息不存在', { status: 404 });
     if (msg.status === 'sent') return badRequest('已发送消息不可编辑', { status: 400 });
     applyPublishFields(msg, body);
     return ok(msg, '更新成功');
@@ -341,8 +337,7 @@ export const channelsHandlers = [
   }),
 
   mock(channelMessageContract.publishDraftNow, ({ params, ok }) => {
-    const msg = mockChannelMessages.find((m) => m.id === params.id);
-    if (!msg) return notFound('消息不存在', { status: 404 });
+    const msg = requireItem(mockChannelMessages, params.id, '消息不存在', { status: 404 });
     msg.status = 'sent';
     msg.scheduledAt = null;
     msg.createdAt = mockDateTime();
@@ -350,8 +345,7 @@ export const channelsHandlers = [
   }),
 
   mock(channelMessageContract.retract, ({ params, ok }) => {
-    const msg = mockChannelMessages.find((m) => m.id === params.id);
-    if (!msg) return notFound('消息不存在', { status: 404 });
+    const msg = requireItem(mockChannelMessages, params.id, '消息不存在', { status: 404 });
     if (msg.status !== 'sent') return badRequest('仅已发送的消息可撤回', { status: 400 });
     msg.isRetracted = true;
     msg.retractedAt = mockDateTime();
@@ -393,8 +387,7 @@ export const channelsHandlers = [
   // 用户向运营号发送消息（写 in + 命中自动回复写 out）
   mock(channelContract.send, ({ params, body, ok }) => {
     const channelId = params.id;
-    const ch = mockChannels.find((c) => c.id === channelId);
-    if (!ch) return notFound('频道不存在', { status: 404 });
+    const ch = requireItem(mockChannels, channelId, '频道不存在', { status: 404 });
     if (ch.type !== 'business') return badRequest('仅运营号支持该操作', { status: 400 });
 
     const inMsg: MockChannelMessage = {
@@ -472,8 +465,7 @@ export const channelsHandlers = [
   }),
 
   mock(channelContract.updateAutoReply, ({ params, body, ok }) => {
-    const rule = mockChannelAutoReplies.find((r) => r.id === params.replyId);
-    if (!rule) return notFound('自动回复规则不存在', { status: 404 });
+    const rule = requireItem(mockChannelAutoReplies, params.replyId, '自动回复规则不存在', { status: 404 });
     if (body.keyword !== undefined) rule.keyword = rule.matchType === 'keyword' ? body.keyword : null;
     if (body.keywordMode !== undefined) rule.keywordMode = body.keywordMode;
     if (body.replyType !== undefined) rule.replyType = body.replyType;
@@ -486,9 +478,8 @@ export const channelsHandlers = [
   }),
 
   mock(channelContract.removeAutoReply, ({ params, ok }) => {
-    const idx = mockChannelAutoReplies.findIndex((r) => r.id === params.replyId);
-    if (idx === -1) return notFound('自动回复规则不存在', { status: 404 });
-    mockChannelAutoReplies.splice(idx, 1);
+    requireItem(mockChannelAutoReplies, params.replyId, '自动回复规则不存在', { status: 404 });
+    removeByIds(mockChannelAutoReplies, [params.replyId]);
     return ok(null, '删除成功');
   }),
 
@@ -606,8 +597,7 @@ export const channelsHandlers = [
   }),
 
   mock(channelContract.update, ({ params, body, ok }) => {
-    const ch = mockChannels.find((c) => c.id === params.id);
-    if (!ch) return notFound('频道不存在', { status: 404 });
+    const ch = requireItem(mockChannels, params.id, '频道不存在', { status: 404 });
     if (body.name !== undefined) ch.name = body.name;
     if (body.avatar !== undefined) ch.avatar = body.avatar;
     if (body.description !== undefined) ch.description = body.description;
@@ -658,16 +648,14 @@ export const channelsHandlers = [
   }),
 
   mock(channelContract.subscribe, ({ params, ok }) => {
-    const ch = mockChannels.find((c) => c.id === params.id);
-    if (!ch) return notFound('频道不存在', { status: 404 });
+    const ch = requireItem(mockChannels, params.id, '频道不存在', { status: 404 });
     if (ch.type === 'system') return badRequest('系统号默认全员订阅', { status: 400 });
     ch.isSubscribed = true;
     return ok(null, '已订阅');
   }),
 
   mock(channelContract.unsubscribe, ({ params, ok }) => {
-    const ch = mockChannels.find((c) => c.id === params.id);
-    if (!ch) return notFound('频道不存在', { status: 404 });
+    const ch = requireItem(mockChannels, params.id, '频道不存在', { status: 404 });
     if (ch.type === 'system') return badRequest('系统号不可退订', { status: 400 });
     ch.isSubscribed = false;
     return ok(null, '已退订');

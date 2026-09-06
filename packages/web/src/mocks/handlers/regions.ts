@@ -1,5 +1,6 @@
 import { buildRegionTree, filterRegionTree, regionContract, validateRegionLevelHierarchy, type Region } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockRegions, getNextRegionId } from '@/mocks/data/regions';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -26,8 +27,7 @@ export const regionsHandlers = [
 
   // 地区详情
   mock(regionContract.detail, ({ params, ok }) => {
-    const region = mockRegions.find((r) => r.id === params.id);
-    if (!region) return notFound('地区不存在', { status: 404 });
+    const region = requireItem(mockRegions, params.id, '地区不存在', { status: 404 });
     return ok(region);
   }),
 

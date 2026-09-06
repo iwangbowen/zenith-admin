@@ -1,6 +1,7 @@
 import { roleContract, type Role } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest, conflict } from '@/mocks/utils/handlers';
 import { mockRoles, getNextRoleId } from '@/mocks/data/roles';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -25,8 +26,7 @@ export const rolesHandlers = [
 
   // 获取单个角色
   mock(roleContract.detail, ({ params, ok }) => {
-    const role = mockRoles.find((r) => r.id === params.id);
-    if (!role) return notFound('角色不存在', { status: 404 });
+    const role = requireItem(mockRoles, params.id, '角色不存在', { status: 404 });
     return ok(role);
   }),
 
@@ -53,8 +53,7 @@ export const rolesHandlers = [
 
   // 更新角色
   mock(roleContract.update, ({ params, body, ok }) => {
-    const role = mockRoles.find((r) => r.id === params.id);
-    if (!role) return notFound('角色不存在', { status: 404 });
+    const role = requireItem(mockRoles, params.id, '角色不存在', { status: 404 });
     if (body.code !== undefined && body.code !== role.code) {
       if (body.code === 'super_admin') {
         return badRequest('角色编码 super_admin 为系统保留编码，不允许使用', { status: 400 });
@@ -71,9 +70,7 @@ export const rolesHandlers = [
 
   // 删除角色（在用保护：已分配用户的角色返回 409）
   mock(roleContract.remove, ({ params, ok }) => {
-    const index = mockRoles.findIndex((r) => r.id === params.id);
-    if (index === -1) return notFound('角色不存在', { status: 404 });
-    const role = mockRoles[index];
+    const role = requireItem(mockRoles, params.id, '角色不存在', { status: 404 });
     if (role.code === 'super_admin') {
       return badRequest('超级管理员角色不允许删除', { status: 400 });
     }
@@ -81,14 +78,13 @@ export const rolesHandlers = [
     if (boundUsers > 0) {
       return conflict(`该角色已分配给 ${boundUsers} 个用户，请先解除用户关联后再删除`, { status: 409 });
     }
-    mockRoles.splice(index, 1);
+    removeByIds(mockRoles, [params.id]);
     return ok(null, '删除成功');
   }),
 
   // 更新角色菜单
   mock(roleContract.assignMenus, ({ params, body, ok }) => {
-    const role = mockRoles.find((r) => r.id === params.id);
-    if (!role) return notFound('角色不存在', { status: 404 });
+    const role = requireItem(mockRoles, params.id, '角色不存在', { status: 404 });
     role.menuIds = body.menuIds;
     role.updatedAt = mockDateTime();
     return ok(null, '菜单权限更新成功');
@@ -97,8 +93,7 @@ export const rolesHandlers = [
   // 获取角色下的用户列表
   mock(roleContract.users, ({ params, ok }) => {
     const roleId = params.id;
-    const role = mockRoles.find((r) => r.id === roleId);
-    if (!role) return notFound('角色不存在', { status: 404 });
+    requireItem(mockRoles, roleId, '角色不存在', { status: 404 });
     const list = mockUsers
       .filter((u) => u.roles.some((r) => r.id === roleId))
       .map((u) => ({
@@ -112,8 +107,7 @@ export const rolesHandlers = [
   // 分配角色用户（先清后设）
   mock(roleContract.assignUsers, ({ params, body, ok }) => {
     const roleId = params.id;
-    const role = mockRoles.find((r) => r.id === roleId);
-    if (!role) return notFound('角色不存在', { status: 404 });
+    const role = requireItem(mockRoles, roleId, '角色不存在', { status: 404 });
     const nextIds = new Set(body.userIds);
     mockUsers.forEach((u) => {
       const has = u.roles.some((r) => r.id === roleId);

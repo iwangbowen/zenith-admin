@@ -1,5 +1,6 @@
 import { authContract, type MfaFactor, type TotpSetupResult, type UserSession } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, unauthorized, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockUsers } from '@/mocks/data/users';
 import { mockMenus } from '@/mocks/data/menus';
@@ -247,8 +248,7 @@ export const authHandlers = [
   }),
 
   mock(authContract.verifyTotpSetup, ({ body, ok }) => {
-    const factor = mockMfaFactors.find((item) => item.id === body.factorId);
-    if (!factor) return notFound('MFA 因子不存在', { status: 404 });
+    const factor = requireItem(mockMfaFactors, body.factorId, 'MFA 因子不存在', { status: 404 });
     factor.status = 'enabled';
     factor.verifiedAt = mockDateTime();
     factor.lastUsedAt = mockDateTime();
@@ -256,8 +256,7 @@ export const authHandlers = [
   }),
 
   mock(authContract.disableMfaFactor, ({ params, ok }) => {
-    const factor = mockMfaFactors.find((item) => item.id === params.id);
-    if (!factor) return notFound('MFA 因子不存在', { status: 404 });
+    const factor = requireItem(mockMfaFactors, params.id, 'MFA 因子不存在', { status: 404 });
     factor.status = 'disabled';
     return ok(null, '已停用');
   }),

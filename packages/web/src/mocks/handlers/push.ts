@@ -5,7 +5,8 @@ import { pushConfigContract, pushSendLogContract } from '@zenith/shared/messagin
 import type { PushConfig } from '@zenith/shared/messaging';
 import { clientDeviceContract } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
 import {
@@ -27,8 +28,7 @@ export const pushHandlers = [
   }),
 
   mock(pushConfigContract.detail, ({ params, ok }) => {
-    const config = mockPushConfigs.find((c) => c.id === params.id);
-    if (!config) return notFound('推送配置不存在', { status: 404 });
+    const config = requireItem(mockPushConfigs, params.id, '推送配置不存在', { status: 404 });
     return ok({ ...config, masterSecret: '' });
   }),
 
@@ -56,8 +56,7 @@ export const pushHandlers = [
   }),
 
   mock(pushConfigContract.testSend, ({ params, body, ok }) => {
-    const config = mockPushConfigs.find((c) => c.id === params.id);
-    if (!config) return notFound('推送配置不存在', { status: 404 });
+    const config = requireItem(mockPushConfigs, params.id, '推送配置不存在', { status: 404 });
     const now = mockDateTime();
     const msgId = `demo-${Date.now()}`;
     mockPushSendLogs.unshift({
@@ -79,8 +78,7 @@ export const pushHandlers = [
   }),
 
   mock(pushConfigContract.update, ({ params, body, ok }) => {
-    const config = mockPushConfigs.find((c) => c.id === params.id);
-    if (!config) return notFound('推送配置不存在', { status: 404 });
+    const config = requireItem(mockPushConfigs, params.id, '推送配置不存在', { status: 404 });
     // masterSecret 留空表示不更新；脱敏字段不覆盖；所属应用创建后不可改
     const { masterSecret: _secret, appId: _appId, ...patch } = body;
     Object.assign(config, { ...patch, updatedAt: mockDateTime() });
@@ -88,9 +86,8 @@ export const pushHandlers = [
   }),
 
   mock(pushConfigContract.remove, ({ params, ok }) => {
-    const idx = mockPushConfigs.findIndex((c) => c.id === params.id);
-    if (idx === -1) return notFound('推送配置不存在', { status: 404 });
-    mockPushConfigs.splice(idx, 1);
+    requireItem(mockPushConfigs, params.id, '推送配置不存在', { status: 404 });
+    removeByIds(mockPushConfigs, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -146,16 +143,14 @@ export const pushHandlers = [
   }),
 
   mock(clientDeviceContract.unbind, ({ params, ok }) => {
-    const device = mockClientDevices.find((d) => d.id === params.id);
-    if (!device) return notFound('设备不存在', { status: 404 });
+    const device = requireItem(mockClientDevices, params.id, '设备不存在', { status: 404 });
     Object.assign(device, { subjectType: null, subjectId: null, subjectName: null, pushProvider: null, pushRegistrationId: null });
     return ok(null, '解绑成功');
   }),
 
   mock(clientDeviceContract.remove, ({ params, ok }) => {
-    const idx = mockClientDevices.findIndex((d) => d.id === params.id);
-    if (idx === -1) return notFound('设备不存在', { status: 404 });
-    mockClientDevices.splice(idx, 1);
+    requireItem(mockClientDevices, params.id, '设备不存在', { status: 404 });
+    removeByIds(mockClientDevices, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

@@ -1,6 +1,7 @@
 import { mpKfSessionContract, type MpKfSessionReportItem, type MpMessage } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem } from '@/mocks/utils/crud';
+
 import {
   mockMpKfSessions, mockMpKfSessionEvents, mockMpKfMessages,
   buildMpKfStats, ensureMpKfConfig, getNextMpKfEventId, getNextMpKfMessageId,
@@ -45,8 +46,7 @@ export const mpKfSessionsHandlers = [
   }),
 
   mock(mpKfSessionContract.accept, ({ params, body, ok }) => {
-    const s = mockMpKfSessions.find((x) => x.id === params.id);
-    if (!s) return notFound('会话不存在', { status: 404 });
+    const s = requireItem(mockMpKfSessions, params.id, '会话不存在', { status: 404 });
     const now = mockDateTime();
     s.status = 'active'; s.kfId = body.kfId; s.kfNickname = kfNick(body.kfId); s.acceptedAt = now; s.waitingSince = null; s.waitSeconds = undefined; s.lastMsgAt = now;
     mockMpKfSessionEvents.push({ id: getNextMpKfEventId(), sessionId: s.id, accountId: s.accountId, type: 'accept', fromKfId: null, toKfId: body.kfId, fromKfNickname: null, toKfNickname: kfNick(body.kfId), operatorId: null, operatorName: '管理员', detail: '人工接入', createdAt: now });
@@ -54,8 +54,7 @@ export const mpKfSessionsHandlers = [
   }),
 
   mock(mpKfSessionContract.transfer, ({ params, body, ok }) => {
-    const s = mockMpKfSessions.find((x) => x.id === params.id);
-    if (!s) return notFound('会话不存在', { status: 404 });
+    const s = requireItem(mockMpKfSessions, params.id, '会话不存在', { status: 404 });
     const now = mockDateTime();
     const fromKfId = s.kfId;
     s.kfId = body.toKfId; s.kfNickname = kfNick(body.toKfId); s.lastMsgAt = now;
@@ -64,8 +63,7 @@ export const mpKfSessionsHandlers = [
   }),
 
   mock(mpKfSessionContract.close, ({ params, body, ok }) => {
-    const s = mockMpKfSessions.find((x) => x.id === params.id);
-    if (!s) return notFound('会话不存在', { status: 404 });
+    const s = requireItem(mockMpKfSessions, params.id, '会话不存在', { status: 404 });
     const now = mockDateTime();
     s.status = 'closed'; s.closedAt = now; s.closeReason = 'manual'; s.unreadCount = 0; s.remark = body.remark ?? s.remark;
     mockMpKfSessionEvents.push({ id: getNextMpKfEventId(), sessionId: s.id, accountId: s.accountId, type: 'close', fromKfId: s.kfId, toKfId: null, fromKfNickname: kfNick(s.kfId), toKfNickname: null, operatorId: null, operatorName: '管理员', detail: '手动结束', createdAt: now });
@@ -73,15 +71,13 @@ export const mpKfSessionsHandlers = [
   }),
 
   mock(mpKfSessionContract.rate, ({ params, body, ok }) => {
-    const s = mockMpKfSessions.find((x) => x.id === params.id);
-    if (!s) return notFound('会话不存在', { status: 404 });
+    const s = requireItem(mockMpKfSessions, params.id, '会话不存在', { status: 404 });
     s.rating = body.rating; s.ratingRemark = body.remark ?? null;
     return ok(s, '已记录');
   }),
 
   mock(mpKfSessionContract.reply, ({ params, body, ok }) => {
-    const s = mockMpKfSessions.find((x) => x.id === params.id);
-    if (!s) return notFound('会话不存在', { status: 404 });
+    const s = requireItem(mockMpKfSessions, params.id, '会话不存在', { status: 404 });
     const now = mockDateTime();
     const msg: MpMessage = {
       id: getNextMpKfMessageId(), accountId: s.accountId, openid: s.openid, direction: 'out',
@@ -95,8 +91,7 @@ export const mpKfSessionsHandlers = [
 
   // 详情（含消息与事件时间线）：动态 :id 放在静态子路径之后
   mock(mpKfSessionContract.detail, ({ params, ok }) => {
-    const s = mockMpKfSessions.find((x) => x.id === params.id);
-    if (!s) return notFound('会话不存在', { status: 404 });
+    const s = requireItem(mockMpKfSessions, params.id, '会话不存在', { status: 404 });
     const events = mockMpKfSessionEvents.filter((e) => e.sessionId === s.id).sort((a, b) => a.id - b.id);
     const messages = mockMpKfMessages.filter((m) => m.accountId === s.accountId && m.openid === s.openid).slice(-50);
     return ok({ ...s, events, messages });

@@ -296,8 +296,7 @@ const sharingHandlers = [
   }),
   mock(paymentSharingContract.reverse, ({ params, headers, body, ok }) => {
     const sharingOrderId = params.id;
-    const sharingOrder = sharingOrders.find((record) => record.id === sharingOrderId);
-    if (!sharingOrder) return notFound('分账单不存在', { status: 404 });
+    const sharingOrder = requireItem(sharingOrders, sharingOrderId, '分账单不存在', { status: 404 });
     if (sharingOrder.status !== 'success') return badRequest('仅分账成功的分账单可冲正', { status: 400 });
     const idempotencyKey = headers['x-idempotency-key'];
     const reason = body.reason;
@@ -320,8 +319,7 @@ const sharingHandlers = [
     return ok(reversal, '冲正已受理');
   }),
   mock(paymentSharingContract.queryReversal, ({ params, ok }) => {
-    const reversal = sharingReversals.find((record) => record.id === params.id);
-    if (!reversal) return notFound('分账冲正单不存在', { status: 404 });
+    const reversal = requireItem(sharingReversals, params.id, '分账冲正单不存在', { status: 404 });
     reversal.queryAttempts += 1;
     reversal.version += 1;
     reversal.updatedAt = mockDateTime();

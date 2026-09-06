@@ -2,6 +2,7 @@ import { aiPromptTemplateContract } from '@zenith/shared/ai';
 import type { AiPromptTemplate } from '@zenith/shared/ai';
 import { SEED_AI_PROMPT_TEMPLATES } from '@zenith/shared/seed';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -33,22 +34,19 @@ export const aiPromptTemplatesHandlers = [
 
   // 记录模板被应用一次（使用统计）
   mock(aiPromptTemplateContract.use, ({ params, ok }) => {
-    const item = store.find((template) => template.id === params.id);
-    if (!item) return notFound('提示词模板不存在', { status: 404 });
+    const item = requireItem(store, params.id, '提示词模板不存在', { status: 404 });
     item.usageCount += 1;
     return ok(null, '已记录');
   }),
 
   mock(aiPromptTemplateContract.detail, ({ params, ok }) => {
-    const item = store.find((template) => template.id === params.id);
-    if (!item) return notFound('提示词模板不存在', { status: 404 });
+    const item = requireItem(store, params.id, '提示词模板不存在', { status: 404 });
     return ok(item, 'success');
   }),
 
   // 恢复历史版本（Demo：版本内容为演示文本，仅回写 content）
   mock(aiPromptTemplateContract.restoreVersion, ({ params, ok }) => {
-    const item = store.find((template) => template.id === params.id);
-    if (!item) return notFound('提示词模板不存在', { status: 404 });
+    const item = requireItem(store, params.id, '提示词模板不存在', { status: 404 });
     item.updatedAt = mockDateTime();
     return ok(item, '已恢复到历史版本');
   }),

@@ -4,6 +4,7 @@
 import { broadcastContract } from '@zenith/shared/messaging';
 import type { BroadcastCampaign } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { createProgressingMockTask } from './async-tasks';
@@ -19,8 +20,7 @@ export const broadcastHandlers = [
   }),
 
   mock(broadcastContract.detail, ({ params, ok }) => {
-    const row = mockBroadcasts.find((b) => b.id === params.id);
-    if (!row) return notFound('群发活动不存在', { status: 404 });
+    const row = requireItem(mockBroadcasts, params.id, '群发活动不存在', { status: 404 });
     return ok(row);
   }),
 
@@ -50,8 +50,7 @@ export const broadcastHandlers = [
   }),
 
   mock(broadcastContract.update, ({ params, body, ok }) => {
-    const row = mockBroadcasts.find((b) => b.id === params.id);
-    if (!row) return notFound('群发活动不存在', { status: 404 });
+    const row = requireItem(mockBroadcasts, params.id, '群发活动不存在', { status: 404 });
     if (!['draft', 'failed', 'cancelled'].includes(row.status)) {
       return badRequest('仅草稿/失败/已取消状态可编辑', { status: 400 });
     }
@@ -73,8 +72,7 @@ export const broadcastHandlers = [
   }),
 
   mock(broadcastContract.send, ({ params, ok }) => {
-    const row = mockBroadcasts.find((b) => b.id === params.id);
-    if (!row) return notFound('群发活动不存在', { status: 404 });
+    const row = requireItem(mockBroadcasts, params.id, '群发活动不存在', { status: 404 });
     if (row.status === 'sending') return badRequest('活动正在发送中', { status: 400 });
     if (row.status === 'sent') return badRequest('活动已发送,不可重复发送', { status: 400 });
 

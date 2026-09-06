@@ -1,5 +1,6 @@
 import { mpTagContract, type MpTag } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockMpTags, getNextMpTagId } from '@/mocks/data/mp-tags';
 import { mockMpFans } from '@/mocks/data/mp-fans';
@@ -28,8 +29,7 @@ export const mpTagsHandlers = [
   }),
 
   mock(mpTagContract.update, ({ params, body, ok }) => {
-    const t = mockMpTags.find((x) => x.id === params.id);
-    if (!t) return notFound('标签不存在', { status: 404 });
+    const t = requireItem(mockMpTags, params.id, '标签不存在', { status: 404 });
     if (body.name !== t.name && mockMpTags.some((x) => x.accountId === t.accountId && x.name === body.name)) {
       return badRequest('该标签名称已存在', { status: 400 });
     }

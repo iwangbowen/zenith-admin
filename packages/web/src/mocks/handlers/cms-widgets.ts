@@ -1,6 +1,7 @@
 import { escapeHtml } from '@zenith/shared/core';
 import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { CMS_WIDGET_HIGH_FANOUT_THRESHOLD, CMS_WIDGET_RENDERER_KEYS, CMS_WIDGET_RENDERER_LABELS, cmsWidgetContract } from '@zenith/shared/cms';
 import type { CmsResolvedWidget, CmsResolvedWidgetItem, CmsWidget, CmsWidgetData, CmsWidgetSlot, CmsWidgetSourceReference } from '@zenith/shared/cms';
 import {
@@ -245,8 +246,7 @@ export const cmsWidgetsHandlers = [
   mock(cmsWidgetContract.refs, ({ params, ok }) => ok(mockCmsWidgetRefs.filter((ref) => ref.widgetId === params.id))),
 
   mock(cmsWidgetContract.preview, ({ params, query, ok }) => {
-    const widget = mockCmsWidgets.find((entry) => entry.id === params.id);
-    if (!widget) return notFound('页面部件不存在', { status: 404 });
+    const widget = requireItem(mockCmsWidgets, params.id, '页面部件不存在', { status: 404 });
     const rendererKey = query.rendererKey ?? widget.defaultRendererKey;
     const resolved: CmsResolvedWidget = {
       id: widget.id,
@@ -267,8 +267,7 @@ export const cmsWidgetsHandlers = [
   }),
 
   mock(cmsWidgetContract.publish, ({ params, ok }) => {
-    const widget = mockCmsWidgets.find((entry) => entry.id === params.id);
-    if (!widget) return notFound('页面部件不存在', { status: 404 });
+    const widget = requireItem(mockCmsWidgets, params.id, '页面部件不存在', { status: 404 });
     widget.publishedData = cloneItems(widget.draftData);
     widget.publishedName = widget.name;
     widget.publishedRevision = widget.draftRevision;
@@ -280,8 +279,7 @@ export const cmsWidgetsHandlers = [
   }),
 
   mock(cmsWidgetContract.offline, ({ params, ok }) => {
-    const widget = mockCmsWidgets.find((entry) => entry.id === params.id);
-    if (!widget) return notFound('页面部件不存在', { status: 404 });
+    const widget = requireItem(mockCmsWidgets, params.id, '页面部件不存在', { status: 404 });
     if (widget.status !== 'published') return badRequest(`当前状态（${widget.status}）不允许下线`, { status: 400 });
     widget.status = 'offline';
     widget.updatedAt = mockDateTime();
@@ -291,8 +289,8 @@ export const cmsWidgetsHandlers = [
 
   mock(cmsWidgetContract.detail, ({ params, ok }) => {
     refreshCounts();
-    const widget = mockCmsWidgets.find((entry) => entry.id === params.id);
-    return widget ? ok(widget) : notFound('页面部件不存在', { status: 404 });
+    const widget = requireItem(mockCmsWidgets, params.id, '页面部件不存在', { status: 404 });
+    return ok(widget);
   }),
 
   mock(cmsWidgetContract.list, ({ query, ok, paginate }) => {
@@ -334,8 +332,7 @@ export const cmsWidgetsHandlers = [
   }),
 
   mock(cmsWidgetContract.update, ({ params, body, ok }) => {
-    const widget = mockCmsWidgets.find((entry) => entry.id === params.id);
-    if (!widget) return notFound('页面部件不存在', { status: 404 });
+    const widget = requireItem(mockCmsWidgets, params.id, '页面部件不存在', { status: 404 });
     if (body.expectedRevision !== widget.draftRevision) {
       return conflict('页面部件草稿已被其他人更新，请刷新后再编辑', { status: 409 });
     }

@@ -1,6 +1,7 @@
 import { departmentContract, type Department } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
+
 import { mockDepartments, getNextDeptId } from '@/mocks/data/departments';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -60,8 +61,7 @@ export const departmentsHandlers = [
 
   // 获取单个部门
   mock(departmentContract.detail, ({ params, ok }) => {
-    const dept = mockDepartments.find((d) => d.id === params.id);
-    if (!dept) return notFound('部门不存在', { status: 404 });
+    const dept = requireItem(mockDepartments, params.id, '部门不存在', { status: 404 });
     return ok(dept);
   }),
 
@@ -80,17 +80,14 @@ export const departmentsHandlers = [
 
   // 更新部门
   mock(departmentContract.update, ({ params, body, ok }) => {
-    const dept = mockDepartments.find((d) => d.id === params.id);
-    if (!dept) return notFound('部门不存在', { status: 404 });
-    Object.assign(dept, body, { updatedAt: mockDateTime() });
+    const dept = updateItem(mockDepartments, params.id, body, { notFoundMessage: '部门不存在', now: mockDateTime, init: { status: 404 } });
     return ok(dept, '更新成功');
   }),
 
   // 删除部门
   mock(departmentContract.remove, ({ params, ok }) => {
-    const index = mockDepartments.findIndex((d) => d.id === params.id);
-    if (index === -1) return notFound('部门不存在', { status: 404 });
-    mockDepartments.splice(index, 1);
+    requireItem(mockDepartments, params.id, '部门不存在', { status: 404 });
+    removeByIds(mockDepartments, [params.id]);
     return ok(null, '删除成功');
   }),
 ];
