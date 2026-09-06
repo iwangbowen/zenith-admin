@@ -26,7 +26,7 @@ import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete as confirmDeleteModal } from '@/utils/confirm';
+import { deleteAction, listTableProps } from '@/components/list-page';
 
 interface SearchState {
   keyword: string;
@@ -129,20 +129,6 @@ export default function WidgetsPage() {
     void execute();
   }
 
-  function confirmDelete(widget: CmsWidget) {
-    confirmDeleteModal({
-      title: `删除页面部件「${widget.name}」？`,
-      content: widget.referenceCount > 0
-        ? `该部件仍有 ${widget.referenceCount} 个引用，无法删除。`
-        : '删除后不可恢复。',
-      okButtonProps: { disabled: widget.referenceCount > 0 },
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id: widget.id } });
-        Toast.success('删除成功');
-      },
-    });
-  }
-
   function submitBatch(action: 'publish' | 'offline' | 'delete') {
     if (selectedIds.length === 0) return;
     const label = action === 'publish' ? '发布' : action === 'offline' ? '下线' : '删除';
@@ -237,15 +223,16 @@ export default function WidgetsPage() {
           label: `引用（${record.referenceCount}）`,
           onClick: () => setRefsWidget(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('cms:widget:delete'),
           disabled: record.referenceCount > 0,
           disabledReason: record.referenceCount > 0 ? '请先解除所有页面和主题插槽引用' : undefined,
-          onClick: () => confirmDelete(record),
-        },
+          title: `删除页面部件「${record.name}」？`,
+          content: record.referenceCount > 0
+            ? `该部件仍有 ${record.referenceCount} 个引用，无法删除。`
+            : '删除后不可恢复。',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -320,32 +307,29 @@ export default function WidgetsPage() {
       />
 
       <ConfigurableTable<CmsWidget>
-        bordered
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey={(record) => String(record?.id ?? '')}
-        empty={siteId ? '暂无页面部件' : '请先选择站点'}
-        pagination={buildPagination(listQuery.data?.total ?? 0, () => { setSelectedIds([]); setSelectedRecords({}); })}
-        rowSelection={{
-          selectedRowKeys: selectedIds.map(String),
-          onChange: (keys) => {
-            const nextIds = (keys ?? []).map(Number);
-            const selected = new Set(nextIds);
-            setSelectedIds(nextIds);
-            setSelectedRecords((current) => {
-              const next = Object.fromEntries(
-                Object.entries(current).filter(([id]) => selected.has(Number(id))),
-              ) as Record<number, CmsWidget>;
-              for (const widget of listQuery.data?.list ?? []) {
-                if (selected.has(widget.id)) next[widget.id] = widget;
-              }
-              return next;
-            });
+        {...listTableProps(listQuery, {
+          rowKey: (record) => String(record?.id ?? ''),
+          empty: siteId ? '暂无页面部件' : '请先选择站点',
+          pagination: (total) => buildPagination(total, () => { setSelectedIds([]); setSelectedRecords({}); }),
+          rowSelection: {
+            selectedRowKeys: selectedIds.map(String),
+            onChange: (keys) => {
+              const nextIds = (keys ?? []).map(Number);
+              const selected = new Set(nextIds);
+              setSelectedIds(nextIds);
+              setSelectedRecords((current) => {
+                const next = Object.fromEntries(
+                  Object.entries(current).filter(([id]) => selected.has(Number(id))),
+                ) as Record<number, CmsWidget>;
+                for (const widget of listQuery.data?.list ?? []) {
+                  if (selected.has(widget.id)) next[widget.id] = widget;
+                }
+                return next;
+              });
+            },
           },
-        }}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        })}
       />
 
       {widgetTasks.length > 0 ? (
@@ -377,8 +361,6 @@ export default function WidgetsPage() {
         onCancel={() => setRefsWidget(null)}
       >
         <ConfigurableTable<CmsWidgetRef>
-          bordered
-          rowKey="id"
           columns={[
             {
               title: '类型',
@@ -388,11 +370,7 @@ export default function WidgetsPage() {
             { title: '位置', dataIndex: 'ownerName', width: 160, render: renderEllipsis },
             { title: '字段', dataIndex: 'field', width: 150, render: renderEllipsis },
           ]}
-          dataSource={refsQuery.data ?? []}
-          loading={refsQuery.isFetching}
-          pagination={false}
-          onRefresh={() => void refsQuery.refetch()}
-          refreshLoading={refsQuery.isFetching}
+          {...listTableProps(refsQuery)}
         />
       </SideSheet>
     </div>

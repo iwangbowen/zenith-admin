@@ -1,5 +1,6 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt, gt, sql, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
@@ -137,16 +138,14 @@ export function mapCmsContent(row: CmsContentMapRow, extra?: {
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsContentExists(id: number): Promise<CmsContentRow> {
   const [row] = await db.select().from(cmsContents).where(eq(cmsContents.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '内容不存在' });
-  return row;
+  return requireRow(row, '内容不存在');
 }
 
 /** 只为站点 / 栏目访问断言取归属列，不解压正文（`getCmsContent` 随后会带关联取全行） */
 async function ensureCmsContentOwnership(id: number): Promise<Pick<CmsContentRow, 'id' | 'siteId' | 'channelId'>> {
   const [row] = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId, channelId: cmsContents.channelId })
     .from(cmsContents).where(eq(cmsContents.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '内容不存在' });
-  return row;
+  return requireRow(row, '内容不存在');
 }
 
 export async function getCmsContent(id: number) {
@@ -164,21 +163,21 @@ export async function getCmsContent(id: number) {
      lockedByUser: { columns: { nickname: true } },
    },
  });
- if (!row) throw new HTTPException(404, { message: '内容不存在' });
+  const content = requireRow(row, '内容不存在');
   // Mapping rows are materialized snapshots. Never read body/extend from a
   // relation that could belong to another site; only expose a same-site
   // source title for governance UI.
-  const [mappingSource] = row.mappingSourceId
+  const [mappingSource] = content.mappingSourceId
     ? await db.select({ title: cmsContents.title }).from(cmsContents).where(and(
-      eq(cmsContents.id, row.mappingSourceId),
+      eq(cmsContents.id, content.mappingSourceId),
       eq(cmsContents.siteId, site.id),
     )).limit(1)
     : [null];
-  const resolved = await resolveCmsContentRow(row, site.id);
+  const resolved = await resolveCmsContentRow(content, site.id);
   const urls = buildCmsContentUrls(resolved, {
     siteCode: site.code,
-    channelPath: row.channel?.path,
-    detailPathRule: row.channel?.detailPathRule,
+    channelPath: content.channel?.path,
+    detailPathRule: content.channel?.detailPathRule,
   });
   if (resolved.externalLink) {
     const [canonicalLink, previewLink] = await Promise.all([
@@ -191,13 +190,13 @@ export async function getCmsContent(id: number) {
     urls.previewUrl = previewLink?.url ?? null;
   }
   return mapCmsContent(resolved, {
-    channelName: row.channel?.name,
+    channelName: content.channel?.name,
     ...urls,
-    tags: row.contentTags.map((ct) => ct.tag),
-    extraChannelIds: row.extraChannels.map((ec) => ec.channelId),
-    relatedIds: [...row.relatedContents].sort((a, b) => a.sort - b.sort).map((r) => r.relatedId),
+    tags: content.contentTags.map((ct) => ct.tag),
+    extraChannelIds: content.extraChannels.map((ec) => ec.channelId),
+    relatedIds: [...content.relatedContents].sort((a, b) => a.sort - b.sort).map((r) => r.relatedId),
     mappingSourceTitle: mappingSource?.title ?? null,
-    lockedByName: row.lockedByUser?.nickname ?? null,
+    lockedByName: content.lockedByUser?.nickname ?? null,
   });
 }
 
@@ -255,47 +254,46 @@ export async function listCmsContents(q: ListCmsContentsQuery) {
   }
 
   const where = buildWhere(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsContents, where),
-    db.query.cmsContents.findMany({
-      where,
-      // 列表不输出正文与检索向量（两个最大的 TOAST 列）；attachments 保留给列表的附件计数角标
-      columns: { body: false, searchVector: false },
-      with: {
-        channel: { columns: { name: true, path: true, detailPathRule: true } },
-        lockedByUser: { columns: { nickname: true } },
-      },
-      orderBy: [desc(cmsContents.isTop), desc(cmsContents.topWeight), desc(cmsContents.id)],
-      limit: q.pageSize,
-      offset: pageOffset(q.page, q.pageSize),
-    }),
-  ]);
-  const resolvedRows = await resolveCmsContentRows(rows, q.siteId);
-  const [canonicalLinkResolver, previewLinkResolver] = await Promise.all([
-    buildCmsLinkResolver(q.siteId, '', resolvedRows.map((row) => row.externalLink)),
-    buildCmsLinkResolver(q.siteId, `${CMS_PREVIEW_PREFIX}/${site.code}`, resolvedRows.map((row) => row.externalLink)),
-  ]);
-  return {
-    list: resolvedRows.map((r) => mapCmsContentListItem(r, {
-      channelName: r.channel?.name,
-      ...(() => {
-        const urls = buildCmsContentUrls(r, {
-        siteCode: site.code,
-        channelPath: r.channel?.path,
-        detailPathRule: r.channel?.detailPathRule,
-        });
-        if (r.externalLink) {
-          urls.canonicalUrl = canonicalLinkResolver(r.externalLink)?.url ?? null;
-          urls.previewUrl = r.status === 'published' ? previewLinkResolver(r.externalLink)?.url ?? null : null;
-        }
-        return urls;
-      })(),
-      lockedByName: r.lockedByUser?.nickname ?? null,
-    })),
-    total,
+  return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
-  };
+    count: () => db.$count(cmsContents, where),
+    rows: async () => {
+      const rows = await db.query.cmsContents.findMany({
+        where,
+        // 列表不输出正文与检索向量（两个最大的 TOAST 列）；attachments 保留给列表的附件计数角标
+        columns: { body: false, searchVector: false },
+        with: {
+          channel: { columns: { name: true, path: true, detailPathRule: true } },
+          lockedByUser: { columns: { nickname: true } },
+        },
+        orderBy: [desc(cmsContents.isTop), desc(cmsContents.topWeight), desc(cmsContents.id)],
+        limit: q.pageSize,
+        offset: pageOffset(q.page, q.pageSize),
+      });
+      const resolvedRows = await resolveCmsContentRows(rows, q.siteId);
+      const [canonicalLinkResolver, previewLinkResolver] = await Promise.all([
+        buildCmsLinkResolver(q.siteId, '', resolvedRows.map((row) => row.externalLink)),
+        buildCmsLinkResolver(q.siteId, `${CMS_PREVIEW_PREFIX}/${site.code}`, resolvedRows.map((row) => row.externalLink)),
+      ]);
+      return resolvedRows.map((r) => mapCmsContentListItem(r, {
+        channelName: r.channel?.name,
+        ...(() => {
+          const urls = buildCmsContentUrls(r, {
+          siteCode: site.code,
+          channelPath: r.channel?.path,
+          detailPathRule: r.channel?.detailPathRule,
+          });
+          if (r.externalLink) {
+            urls.canonicalUrl = canonicalLinkResolver(r.externalLink)?.url ?? null;
+            urls.previewUrl = r.status === 'published' ? previewLinkResolver(r.externalLink)?.url ?? null : null;
+          }
+          return urls;
+        })(),
+        lockedByName: r.lockedByUser?.nickname ?? null,
+      }));
+    },
+  });
 }
 
 // ─── 标题查重（P4：编辑辅助提示，不阻断保存；排除回收站与自身）───────────────────

@@ -19,10 +19,10 @@ import type { CmsCollectRule, CmsCollectItem } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { channelsToSelectTree } from './channel-tree';
+import { deleteAction, listTableProps } from '@/components/list-page';
 
 const ITEM_STATUS_META: Record<CmsCollectItem['status'], { label: string; color: 'green' | 'grey' | 'red' }> = {
   success: { label: '成功', color: 'green' },
@@ -132,21 +132,12 @@ export default function CollectPage() {
           label: '编辑',
           onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('cms:collect:delete') ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `删除规则「${record.name}」？`,
-              content: '采集明细将一并删除，已入库内容不受影响',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('cms:collect:delete'),
+          title: `删除规则「${record.name}」？`,
+          content: '采集明细将一并删除，已入库内容不受影响',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -188,14 +179,8 @@ export default function CollectPage() {
       ) : null}
 
       <ConfigurableTable<CmsCollectRule>
-        bordered
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <SideSheet
@@ -295,17 +280,16 @@ export default function CollectPage() {
         width={760}
       >
         <ConfigurableTable<CmsCollectItem>
-          bordered
           columns={itemColumns}
-          dataSource={itemsQuery.data?.list ?? []}
-          rowKey="id"
-          loading={itemsQuery.isFetching}
-          pagination={{
-            currentPage: itemsPage,
-            pageSize: 10,
-            total: itemsQuery.data?.total ?? 0,
-            onPageChange: setItemsPage,
-          }}
+          {...listTableProps(itemsQuery, {
+            pagination: (total) => ({
+              currentPage: itemsPage,
+              pageSize: 10,
+              total,
+              onPageChange: setItemsPage,
+              onPageSizeChange: () => undefined,
+            }),
+          })}
         />
       </SideSheet>
     </div>

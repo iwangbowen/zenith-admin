@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import {
   and,
   asc,
@@ -75,15 +76,15 @@ export async function deleteCmsDistributionRule(id: number): Promise<void> {
     const initialRule = await tx.select().from(cmsDistributionRules)
       .where(eq(cmsDistributionRules.id, id)).limit(1);
     const rule = initialRule[0];
-    if (!rule) throw new HTTPException(404, { message: '分发规则不存在' });
+    requireRow(rule, '分发规则不存在');
     await acquireCmsSitePublishLock(tx, rule.targetSiteId);
     const [lockedRule] = await tx.select().from(cmsDistributionRules)
       .where(eq(cmsDistributionRules.id, id)).for('update').limit(1);
-    if (!lockedRule) throw new HTTPException(404, { message: '分发规则不存在' });
+    requireRow(lockedRule, '分发规则不存在');
     if (lockedRule.targetSiteId !== rule.targetSiteId) throw new HTTPException(409, { message: '分发规则目标站点已变化，请重试' });
     const [lockedSite] = await tx.select().from(cmsSites)
       .where(eq(cmsSites.id, rule.targetSiteId)).for('update').limit(1);
-    if (!lockedSite) throw new HTTPException(404, { message: '目标站点不存在' });
+    requireRow(lockedSite, '目标站点不存在');
     const materialized = await tx.select().from(cmsContents)
       .where(and(eq(cmsContents.distributionRuleId, id), eq(cmsContents.siteId, rule.targetSiteId))).for('update');
     const lockedMapping = materialized.find((content) => content.mappingSourceId != null && content.lockedAt);
@@ -138,7 +139,7 @@ export async function deleteCmsDistributionRule(id: number): Promise<void> {
       await logContentOp(tx, content.id, 'updated', `分发规则 #${id} 删除，映射已物化为独立内容`);
     }
    const [deleted] = await tx.delete(cmsDistributionRules).where(eq(cmsDistributionRules.id, id)).returning();
-   if (!deleted) throw new HTTPException(404, { message: '分发规则不存在' });
+   requireRow(deleted, '分发规则不存在');
     const publicRows = materialized.filter((content) => content.status === 'published'
       && content.deletedAt == null && content.archivedAt == null);
     const tasks: AsyncTask[] = [];
@@ -410,7 +411,7 @@ async function synchronizeExisting(
       version: sql`${cmsContents.version} + 1`,
       searchVector: contentSearchVector(rule.targetSiteId, { ...source, ...contentPatch, body }, extendSearchTexts((contentPatch.extend ?? extend) as Record<string, unknown>)),
     }).where(and(eq(cmsContents.id, locked.id), eq(cmsContents.version, locked.version), isNull(cmsContents.lockedAt))).returning();
-    if (!updated) throw new HTTPException(409, { message: '目标内容已被其他操作修改或锁定' });
+    requireRow(updated, '目标内容已被其他操作修改或锁定', 409);
     await syncCmsResourceRefs(tx, 'content', updated.id, updated.siteId, updated);
     await logContentOp(tx, target.id, 'updated', '分发规则 #' + rule.id + ' 同步来源内容 #' + source.id + ' v' + source.version);
     const task = oldPublish
@@ -549,7 +550,7 @@ async function detachStaleMapping(
       version: sql`${cmsContents.version} + 1`,
       searchVector: contentSearchVector(target.siteId, { ...locked, ...adopted, body }, extendSearchTexts(extend)),
     }).where(and(eq(cmsContents.id, locked.id), eq(cmsContents.version, locked.version), isNull(cmsContents.lockedAt))).returning();
-    if (!updated) throw new HTTPException(409, { message: '目标内容已被其他操作修改' });
+    requireRow(updated, '目标内容已被其他操作修改', 409);
     await syncCmsResourceRefs(tx, 'content', updated.id, updated.siteId, updated);
     await logContentOp(
       tx,

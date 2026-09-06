@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import {
   and,
   eq,
@@ -173,12 +174,12 @@ export async function getCmsInteractionStatsInternal(id: number): Promise<CmsInt
     where: eq(cmsInteractions.id, id),
     with: { questions: true },
   });
-  if (!interaction) throw new HTTPException(404, { message: '互动问卷不存在' });
+  const row = requireRow(interaction, '互动问卷不存在');
   const aggregates = await loadStatsAggregates(id);
   return {
     interactionId: id,
-    responseCount: interaction.responseCount,
-    questions: [...interaction.questions].sort((a, b) => a.sort - b.sort || a.id - b.id).map((question) => {
+    responseCount: row.responseCount,
+    questions: [...row.questions].sort((a, b) => a.sort - b.sort || a.id - b.id).map((question) => {
       const buckets = aggregates.histogram.get(question.id) ?? new Map<string, number>();
       const answered = aggregates.answered.get(question.id) ?? 0;
       const base: CmsInteractionQuestionStats = {
@@ -272,7 +273,7 @@ export async function listCmsInteractionTexts(q: ListCmsInteractionTextsQuery) {
       eq(cmsInteractionQuestions.interactionId, q.interactionId),
     ))
     .limit(1);
-  if (!question) throw new HTTPException(404, { message: '题目不存在' });
+  requireRow(question, '题目不存在');
   const isFreeText = question.type === 'text' || question.type === 'date' || question.type === 'number';
   if (!isFreeText && !question.allowOther) {
     throw new HTTPException(400, { message: '该题型没有文本答案' });

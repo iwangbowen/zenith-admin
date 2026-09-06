@@ -26,11 +26,11 @@ import { formatDateTimeForApi } from '@/utils/date';
 import { useCmsWidgetRenderers, usePublishedCmsWidgets } from '@/hooks/queries/cms-widgets';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { mapTree } from '@zenith/shared/core';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
+import { deleteAction, listTableProps } from '@/components/list-page';
 
 /** 区块按栏目标识引用栏目：value 用 code，站点复制/重建后配置无需重配 */
 function channelsToSelectTree(nodes: CmsChannel[]): TreeNodeData[] {
@@ -288,21 +288,12 @@ export default function PagesPage() {
             window.open(cmsPreviewUrl(currentSite.code, record.isHome ? '/' : `/${cmsCustomPagePath(record)}`), '_blank');
           },
         }] : []),
-        ...(hasPermission('cms:page:delete') ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `删除页面「${record.name}」？`,
-              content: '静态文件将同步移除',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('cms:page:delete'),
+          title: `删除页面「${record.name}」？`,
+          content: '静态文件将同步移除',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -323,14 +314,8 @@ export default function PagesPage() {
       </SearchToolbar>
 
       <ConfigurableTable<CmsPage>
-        bordered
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       {/* 搭建器 */}

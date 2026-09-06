@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import {
   and,
   desc,
@@ -86,6 +88,7 @@ import {
   loadCmsInheritanceState,
   resolveEffectiveCmsSiteRow,
 } from './cms-site-inheritance.service';
+import { mapAsyncTaskItem } from './cms-task-shared';
 
 const SYSTEM_USER = { userId: 1, username: 'admin', roles: ['super_admin'], tenantId: null };
 
@@ -192,22 +195,18 @@ export async function buildCmsPublishingConditions(query: Omit<ListCmsPublishing
 export async function listCmsPublishingTasks(query: ListCmsPublishingQuery) {
   const conditions = await buildCmsPublishingConditions(query);
   const where = and(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(asyncTasks, where),
-    db.query.asyncTasks.findMany({
+  return buildListResult({
+    page: query.page,
+    pageSize: query.pageSize,
+    count: () => db.$count(asyncTasks, where),
+    rows: async () => mapPublishingTasks(await db.query.asyncTasks.findMany({
       where,
       with: { createdByUser: { columns: { nickname: true, username: true } } },
       orderBy: desc(asyncTasks.id),
       limit: query.pageSize,
       offset: pageOffset(query.page, query.pageSize),
-    }),
-  ]);
-  return {
-    list: await mapPublishingTasks(rows),
-    total,
-    page: query.page,
-    pageSize: query.pageSize,
-  };
+    })),
+  });
 }
 
 async function ensurePublishingTaskAccessible(id: number, manage = false) {
@@ -256,21 +255,6 @@ function mapArtifact(row: CmsPublishArtifactRow) {
   };
 }
 
-function mapTaskItem(row: typeof asyncTaskItems.$inferSelect) {
-  return {
-    id: row.id,
-    taskId: row.taskId,
-    itemKey: row.itemKey,
-    label: row.label ?? null,
-    status: row.status,
-    message: row.message ?? null,
-    data: row.data ?? null,
-    attempt: row.attempt,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
-  };
-}
-
 export async function getCmsPublishingDetail(id: number) {
   const row = await ensurePublishingTaskAccessible(id);
   const [mapped] = await mapPublishingTasks([row]);
@@ -278,7 +262,7 @@ export async function getCmsPublishingDetail(id: number) {
     db.select().from(asyncTaskItems).where(eq(asyncTaskItems.taskId, id)).orderBy(desc(asyncTaskItems.id)).limit(1000),
     db.select().from(cmsPublishArtifacts).where(eq(cmsPublishArtifacts.taskId, id)).orderBy(desc(cmsPublishArtifacts.id)).limit(1000),
   ]);
-  return { task: mapped, items: items.map(mapTaskItem), artifacts: artifacts.map((a) => mapArtifact(a)) };
+  return { task: mapped, items: items.map(mapAsyncTaskItem), artifacts: artifacts.map((a) => mapArtifact(a)) };
 }
 
 /**
@@ -334,9 +318,9 @@ async function buildFreshCmsPublishInput(
         captured.deletePaths.forEach((path) => deletePaths.add(path));
       } else {
         const previous = oldSnapshots.get(contentId);
-        if (!previous) throw new HTTPException(400, { message: `内容 #${contentId} 已不存在，无法重试` });
-        snapshots.push({ ...previous, purged: true, build: false });
-        (previous.paths ?? []).forEach((path) => deletePaths.add(path));
+        const previousSnapshot = requireRow(previous, `内容 #${contentId} 已不存在，无法重试`, 400);
+        snapshots.push({ ...previousSnapshot, purged: true, build: false });
+        (previousSnapshot.paths ?? []).forEach((path) => deletePaths.add(path));
       }
     }
     input.contentSnapshots = snapshots;
@@ -484,7 +468,7 @@ async function validatePublishInput(input: CmsPublishSubmitInput, skipAccessChec
     if (!input.pageId && !input.pageSlug) throw new HTTPException(400, { message: '缺少 pageId/pageSlug' });
     if (input.pageId) {
       const [page] = await db.select().from(cmsPages).where(and(eq(cmsPages.id, input.pageId), eq(cmsPages.siteId, site.id))).limit(1);
-      if (!page) throw new HTTPException(404, { message: '搭建页面不存在或不属于所选站点' });
+      requireRow(page, '搭建页面不存在或不属于所选站点');
     }
   }
 }
@@ -513,7 +497,7 @@ export async function submitCmsPublishTask(
   const user = currentUser();
   const executor = options?.executor ?? db;
   const [site] = await executor.select().from(cmsSites).where(eq(cmsSites.id, input.siteId)).limit(1);
-  if (!site) throw new HTTPException(404, { message: '站点不存在' });
+  requireRow(site, '站点不存在');
   const fence = await cmsSiteFencePayload(executor, site);
   const fencedInput: CmsPublishSubmitInput = {
     ...input,
@@ -567,8 +551,8 @@ export async function submitCmsSiteGroupPublish(input: SubmitCmsSiteGroupPublish
   }
   const state = await loadCmsInheritanceState();
   const root = state.sites.find((site) => site.id === input.rootSiteId);
-  if (!root) throw new HTTPException(404, { message: '站群根站点不存在' });
-  const targetSiteIds = listCmsSubtreeIds(state.sites, root.id)
+  const rootSite = requireRow(root, '站群根站点不存在');
+  const targetSiteIds = listCmsSubtreeIds(state.sites, rootSite.id)
     .filter((id) => state.sites.find((site) => site.id === id)?.status === 'enabled')
     .sort((a, b) => a - b);
   if (!targetSiteIds.length) throw new HTTPException(400, { message: '站群中没有可发布的启用站点' });
@@ -591,7 +575,7 @@ export async function submitCmsSiteGroupPublish(input: SubmitCmsSiteGroupPublish
         siteId,
         targetType: 'site',
         ...fence,
-        reason: input.reason?.trim() || `站群 #${root.id} 整组重建`,
+        reason: input.reason?.trim() || `站群 #${rootSite.id} 整组重建`,
       }, {
         skipPermissionCheck: true,
         skipAccessCheck: true,
@@ -602,7 +586,7 @@ export async function submitCmsSiteGroupPublish(input: SubmitCmsSiteGroupPublish
     return submitted;
   });
   await enqueueCmsPublishOutboxes(tasks, 'CMS 站群整组发布');
-  return { rootSiteId: root.id, targetSiteIds, tasks };
+  return { rootSiteId: rootSite.id, targetSiteIds, tasks };
 }
 
 /** 发布状态事务提交后的静态副作用入口；请求、工作流、采集与系统调度统一走任务中心。 */

@@ -8,7 +8,6 @@ import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { ChevronDown, Image as ImageIcon, Film, Paperclip, FolderTree } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { ExportButton } from '@/components/ExportButton';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -24,15 +23,15 @@ import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS, CMS_CONTENT_TYPE_OP
 import type { CmsChannel, CmsContent, CmsContentStatus, CmsContentType } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CmsWidgetSourceRefsSheet, type CmsWidgetSourceTarget } from './CmsWidgetSourceRefsSheet';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { DATE_TIME_COLUMN_WIDTH, dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { channelsToSelectTree } from './channel-tree';
 import { mapTree } from '@zenith/shared/core';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 const STATUS_COLORS: Record<CmsContentStatus, 'grey' | 'orange' | 'green' | 'red' | 'violet'> = {
   draft: 'grey',
   pending: 'orange',
@@ -91,7 +90,6 @@ export default function ContentsPage() {
     archived: activeTab === 'archived' ? true : undefined,
   }, siteId !== undefined);
   const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const actionMutation = useCmsContentAction();
   const batchMutation = useCmsContentBatch();
@@ -380,14 +378,14 @@ export default function ContentsPage() {
         ? [
             ...(hasPermission('cms:content:delete') ? [
               { key: 'restore', label: '恢复', onClick: () => void runBatch('restore', [record.id], '已恢复为草稿') },
-              {
+              deleteAction({
                 key: 'purge',
                 label: '彻底删除',
-                danger: true,
-                onClick: () => {
-                  confirmDelete({ title: '确定要彻底删除吗？', content: '删除后不可恢复', onOk: () => runBatch('purge', [record.id], '已彻底删除') });
-                },
-              },
+                title: '确定要彻底删除吗？',
+                content: '删除后不可恢复',
+                run: () => runBatch('purge', [record.id], '已彻底删除'),
+                successMessage: null,
+              }),
             ] : []),
             ...(hasPermission('cms:content:lock') ? [{ key: 'lock', label: '锁定', onClick: () => handlePersistentLock(record) }] : []),
           ]
@@ -509,12 +507,6 @@ export default function ContentsPage() {
       width={140}
     />
   );
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
   const gotoCreate = (type: CmsContentType) => navigate(
     `/cms/contents/edit?siteId=${siteId}${channelId ? `&channelId=${channelId}` : ''}&contentType=${type}`,
   );
@@ -583,7 +575,12 @@ export default function ContentsPage() {
       <>
         <Button onClick={() => void runBatch('restore', selectedIds, `已恢复 ${selectedIds.length} 条`)}>批量恢复</Button>
         <Button type="danger" onClick={() => {
-          confirmDelete({ title: `彻底删除 ${selectedIds.length} 条内容？`, content: '删除后不可恢复', onOk: () => runBatch('purge', selectedIds, '已彻底删除') });
+          confirmAndDelete({
+            title: `彻底删除 ${selectedIds.length} 条内容？`,
+            content: '删除后不可恢复',
+            run: () => runBatch('purge', selectedIds, '已彻底删除'),
+            successMessage: null,
+          });
         }}>批量删除</Button>
       </>
     ) : null) : activeTab === 'archived' ? (hasPermission('cms:content:update') ? (
@@ -648,56 +645,27 @@ export default function ContentsPage() {
 
   const tableContent = (
     <>
-      <SearchToolbar
-        primary={(
-          <>
-            {renderChannelTreeButton()}
-            {renderKeywordSearch()}
-            {renderTypeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {batchBar}
-          </>
-        )}
-        actions={(
-          <>
-            {renderExportButton()}
-            {renderImportButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderTypeFilter()}
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderTypeFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={<>{renderChannelTreeButton()}{batchBar}{renderExportButton()}{renderImportButton()}</>}
         mobileActions={renderChannelTreeButton(true)}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
       <ConfigurableTable
-        bordered
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey={(record) => String(record?.id ?? '')}
-        size="small"
-        empty="暂无内容"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total, () => setSelectedIds([]))}
-        rowSelection={{
-          selectedRowKeys: selectedIds.map(String),
-          onChange: (keys) => setSelectedIds((keys ?? []).map(Number)),
-        }}
+        {...listTableProps(listQuery, {
+          rowKey: (record) => String(record?.id ?? ''),
+          empty: '暂无内容',
+          pagination: (total) => buildPagination(total, () => setSelectedIds([])),
+          rowSelection: {
+            selectedRowKeys: selectedIds.map(String),
+            onChange: (keys) => setSelectedIds((keys ?? []).map(Number)),
+          },
+        })}
       />
       {/* P3 批量操作弹窗 */}
       <AppModal

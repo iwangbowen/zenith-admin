@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrayField, Button, Col, Form, Row, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { ArrayField, Button, Col, Form, Row, SideSheet, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -18,9 +18,9 @@ import { CMS_FORM_CAPTCHA_PROVIDERS, CMS_FORM_CAPTCHA_PROVIDER_LABELS, CMS_FORM_
 import type { CmsForm, CmsFormSubmission } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
+import { deleteAction, listTableProps } from '@/components/list-page';
 
 const FIELD_TYPE_OPTIONS = CMS_FORM_FIELD_TYPES.map((t) => ({ value: t, label: CMS_FORM_FIELD_TYPE_LABELS[t] }));
 
@@ -49,18 +49,13 @@ function SubmissionsSheet({ form, onClose }: Readonly<{ form: CmsForm | null; on
     createOperationColumn<CmsFormSubmission>({
       width: 100,
       desktopInlineKeys: ['delete'],
-      actions: (record) => hasPermission('cms:form:manage') && form ? [{
-        key: 'delete', label: '删除', danger: true,
-        onClick: () => {
-          confirmDelete({
-            title: '确定要删除该提交记录吗？',
-            onOk: async () => {
-              await deleteMutation.mutateAsync({ params: { id: form.id }, body: { ids: [record.id] } });
-              Toast.success('删除成功');
-            },
-          });
-        },
-      }] : [],
+      actions: (record) => form ? [
+        deleteAction({
+          hidden: !hasPermission('cms:form:manage'),
+          title: '确定要删除该提交记录吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: form.id }, body: { ids: [record.id] } }),
+        }),
+      ] : [],
     }),
   ];
 
@@ -76,22 +71,12 @@ function SubmissionsSheet({ form, onClose }: Readonly<{ form: CmsForm | null; on
           <ExportButton entity="cms.form-submissions" permission="cms:form:manage" query={{ formId: form.id }} />
         </div>
       ) : null}
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsFormSubmission>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无提交数据"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: listQuery.data?.total ?? 0,
-          onPageChange: setPage,
-        }}
+        {...listTableProps(listQuery, {
+          pagination: (total) => ({ currentPage: page, pageSize, total, onPageChange: setPage, onPageSizeChange: () => undefined }),
+          empty: '暂无提交数据',
+        })}
       />
     </SideSheet>
   );
@@ -157,19 +142,11 @@ export default function FormsPage() {
         { key: 'preview', label: '预览', onClick: () => setPreviewingForm(record) },
         ...(canManage ? [
           { key: 'edit', label: '编辑', onClick: () => modal.openEdit(record) },
-          {
-            key: 'delete', label: '删除', danger: true,
-            onClick: () => {
-              confirmDelete({
-                title: '确定要删除该表单吗？',
-                content: '表单的全部提交数据将一并删除',
-                onOk: async () => {
-                  await deleteMutation.mutateAsync([record.id]);
-                  Toast.success('删除成功');
-                },
-              });
-            },
-          },
+          deleteAction({
+            title: '确定要删除该表单吗？',
+            content: '表单的全部提交数据将一并删除',
+            run: () => deleteMutation.mutateAsync([record.id]),
+          }),
         ] : []),
       ],
     }),
@@ -182,17 +159,9 @@ export default function FormsPage() {
         {canManage ? <CreateButton onClick={modal.openCreate}>新增表单</CreateButton> : null}
       </SearchToolbar>
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsForm>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无表单；将表单标识填入单页栏目 settings.formCode 即可在前台展示"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无表单；将表单标识填入单页栏目 settings.formCode 即可在前台展示' })}
       />
 
       <SideSheet

@@ -1,5 +1,6 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, inArray, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsSearchWords } from '../../db/schema';
 import type { CmsSearchWordRow } from '../../db/schema';
@@ -31,8 +32,7 @@ export function mapCmsSearchWord(row: CmsSearchWordRow) {
 
 export async function ensureCmsSearchWordExists(id: number): Promise<CmsSearchWordRow> {
   const [row] = await db.select().from(cmsSearchWords).where(eq(cmsSearchWords.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '词条不存在' });
-  return row;
+  return requireRow(row, '词条不存在');
 }
 
 export interface ListCmsSearchWordsQuery {
@@ -54,15 +54,17 @@ export async function listCmsSearchWords(q: ListCmsSearchWordsQuery) {
   if (q.groupName) conditions.push(eq(cmsSearchWords.groupName, q.groupName));
   if (q.status) conditions.push(eq(cmsSearchWords.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(cmsSearchWords, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(cmsSearchWords, where),
+    rows: () => withPagination(
       db.select().from(cmsSearchWords).where(where).orderBy(asc(cmsSearchWords.id)).$dynamic(),
       q.page,
       q.pageSize,
     ),
-  ]);
-  return { list: list.map(mapCmsSearchWord), total, page: q.page, pageSize: q.pageSize };
+    map: mapCmsSearchWord,
+  });
 }
 
 export async function createCmsSearchWord(data: CreateCmsSearchWordInput) {
@@ -84,7 +86,7 @@ export async function updateCmsSearchWord(id: number, data: UpdateCmsSearchWordI
   const word = data.word === undefined ? undefined : assertCmsSearchDictionaryWord(data.word);
   try {
     const [row] = await db.update(cmsSearchWords).set({ ...data, ...(word !== undefined ? { word } : {}) }).where(eq(cmsSearchWords.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '词条不存在' });
+    requireRow(row, '词条不存在');
     await reloadCmsSearchDict(current.siteId);
     return mapCmsSearchWord(row);
   } catch (err) {
@@ -96,7 +98,7 @@ export async function deleteCmsSearchWord(id: number) {
   const current = await ensureCmsSearchWordExists(id);
   await assertSiteAccess(current.siteId);
   const [row] = await db.delete(cmsSearchWords).where(eq(cmsSearchWords.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '词条不存在' });
+  requireRow(row, '词条不存在');
   await reloadCmsSearchDict(current.siteId);
 }
 

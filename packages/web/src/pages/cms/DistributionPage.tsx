@@ -8,7 +8,6 @@ import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import ExportButton from '@/components/ExportButton';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
@@ -29,11 +28,11 @@ import {
   useSaveCmsDistributionRule,
 } from '@/hooks/queries/cms-stage5';
 import { useQueryClient } from '@tanstack/react-query';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 interface RuleSearch {
   keyword: string;
   sourceSiteId?: number;
@@ -279,21 +278,13 @@ export default function DistributionPage() {
           label: rule.status === 'enabled' ? '停用' : '启用',
           onClick: () => void toggleRule(rule),
         });
-        if (hasPermission('cms:distribution:delete')) actions.push({
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `删除分发规则「${rule.name}」？`,
-              content: '已物化内容会保留并解除规则关联；进行中的旧任务会因 revision/rule fence 安全取消。',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([rule.id]);
-                Toast.success('规则已删除');
-              },
-            });
-          },
-        });
+        actions.push(deleteAction({
+          hidden: !hasPermission('cms:distribution:delete'),
+          title: `删除分发规则「${rule.name}」？`,
+          content: '已物化内容会保留并解除规则关联；进行中的旧任务会因 revision/rule fence 安全取消。',
+          run: () => deleteMutation.mutateAsync([rule.id]),
+          successMessage: '规则已删除',
+        }));
         return actions;
       },
     }),
@@ -386,10 +377,10 @@ export default function DistributionPage() {
             style={{ marginBottom: 12 }}
             description="仅同步已发布内容；所有写入都先校验来源与目标 ACL。copy 生成独立草稿，mapping 生成正文跟随的映射草稿，scheduled 按 Cron 提交任务。"
           />
-          <SearchToolbar
-            primary={(
+          <ListSearchToolbar
+            keyword={<KeywordInput placeholder="搜索规则名称" value={ruleDraft.keyword} onChange={(keyword) => setRuleDraft((value) => ({ ...value, keyword }))} onSearch={searchRules} />}
+            filters={(
               <>
-                <KeywordInput placeholder="搜索规则名称" value={ruleDraft.keyword} onChange={(keyword) => setRuleDraft((value) => ({ ...value, keyword }))} onSearch={searchRules} />
                 <FilterSelect
                   placeholder="全部来源站点"
                   items={siteOptions}
@@ -403,12 +394,6 @@ export default function DistributionPage() {
                   value={ruleDraft.mode}
                   onChange={(mode) => setRuleDraft((value) => ({ ...value, mode: mode as string | undefined }))}
                 />
-                <SearchButton onClick={searchRules} />
-                <ResetButton onClick={resetRules} />
-              </>
-            )}
-            filters={(
-              <>
                 <FilterSelect
                   placeholder="全部目标站点"
                   items={siteOptions}
@@ -425,35 +410,20 @@ export default function DistributionPage() {
                 />
               </>
             )}
-            actions={hasPermission('cms:distribution:create') ? (
-              <CreateButton onClick={openCreate} />
-            ) : null}
-            mobilePrimary={(
-              <>
-                <KeywordInput placeholder="搜索规则" value={ruleDraft.keyword} onChange={(keyword) => setRuleDraft((value) => ({ ...value, keyword }))} />
-                <SearchButton onClick={searchRules} />
-                {hasPermission('cms:distribution:create') ? <CreateButton onClick={openCreate} /> : null}
-              </>
-            )}
-            mobileActions={false}
-            onFilterApply={searchRules}
-            onFilterReset={resetRules}
+            onSearch={searchRules}
+            onReset={resetRules}
+            create={hasPermission('cms:distribution:create') ? <CreateButton onClick={openCreate} /> : null}
           />
-          <ConfigurableTable
-            bordered
+          <ConfigurableTable<CmsDistributionRule>
             columns={ruleColumns}
-            dataSource={ruleQuery.data?.list ?? []}
-            loading={ruleQuery.isFetching}
-            rowKey="id"
-            pagination={rulePagination.buildPagination(ruleQuery.data?.total ?? 0)}
-            onRefresh={() => void ruleQuery.refetch()}
-            refreshLoading={ruleQuery.isFetching}
+            {...listTableProps(ruleQuery, { pagination: rulePagination.buildPagination })}
           />
         </TabPane>
 
         <TabPane tab="同步结果" itemKey="runs">
-          <SearchToolbar
-            primary={(
+          <ListSearchToolbar
+            filters={(
+              <>
               <FilterSelect
                 placeholder="全部分发规则"
                 items={ruleOptions}
@@ -462,9 +432,6 @@ export default function DistributionPage() {
                 width={180}
                 filter
               />
-            )}
-            filters={(
-              <>
                 <FilterSelect
                   placeholder="全部站点"
                   items={siteOptions}
@@ -490,10 +457,10 @@ export default function DistributionPage() {
                 />
               </>
             )}
+            onSearch={searchRuns}
+            onReset={resetRuns}
             actions={(
               <>
-                <SearchButton onClick={searchRuns} />
-                <ResetButton onClick={resetRuns} />
                 {hasPermission('cms:distribution:export') ? (
                   <ExportButton
                     entity="cms.distribution-runs"
@@ -508,18 +475,6 @@ export default function DistributionPage() {
                 ) : null}
               </>
             )}
-            mobilePrimary={(
-              <>
-                <FilterSelect
-                  placeholder="全部分发规则"
-                  items={ruleOptions}
-                  value={runDraft.ruleId}
-                  onChange={(ruleId) => setRunDraft((value) => ({ ...value, ruleId: ruleId as number | undefined }))}
-                  width={180}
-                />
-                <SearchButton onClick={searchRuns} />
-              </>
-            )}
             mobileActions={hasPermission('cms:distribution:export') ? (
               <ExportButton entity="cms.distribution-runs" permission="cms:distribution:export" query={{
                 ruleId: runSubmitted.ruleId,
@@ -528,18 +483,10 @@ export default function DistributionPage() {
                 ...formatDateTimeRangeForApi(runSubmitted.range),
               }} variant="flat" />
             ) : null}
-            onFilterApply={searchRuns}
-            onFilterReset={resetRuns}
           />
-          <ConfigurableTable
-            bordered
+          <ConfigurableTable<CmsDistributionRun>
             columns={runColumns}
-            dataSource={runQuery.data?.list ?? []}
-            loading={runQuery.isFetching}
-            rowKey="id"
-            pagination={runPagination.buildPagination(runQuery.data?.total ?? 0)}
-            onRefresh={() => void runQuery.refetch()}
-            refreshLoading={runQuery.isFetching}
+            {...listTableProps(runQuery, { pagination: runPagination.buildPagination })}
           />
         </TabPane>
       </Tabs>
@@ -680,15 +627,9 @@ export default function DistributionPage() {
               description={`规则：${runDetailQuery.data.run.ruleName ?? '-'}；来源 ${runDetailQuery.data.run.sourceSiteName ?? '-'} → 目标 ${runDetailQuery.data.run.targetSiteName ?? '-'}`}
             />
             <div style={{ marginBottom: 12 }}><AsyncTaskProgress task={runDetailQuery.data.run} /></div>
-            <ConfigurableTable
-              bordered
+            <ConfigurableTable<NonNullable<typeof runDetailQuery.data>['items'][number]>
               columns={itemColumns}
-              dataSource={runDetailQuery.data.items}
-              loading={runDetailQuery.isFetching}
-              rowKey="id"
-              pagination={false}
-              onRefresh={() => void runDetailQuery.refetch()}
-              refreshLoading={runDetailQuery.isFetching}
+              {...listTableProps({ ...runDetailQuery, data: runDetailQuery.data.items })}
             />
           </>
         ) : null}

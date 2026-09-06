@@ -1,5 +1,6 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsLinkWords } from '../../db/schema';
 import type { CmsLinkWordRow } from '../../db/schema';
@@ -97,8 +98,7 @@ export function mapCmsLinkWord(row: CmsLinkWordRow) {
 
 export async function ensureCmsLinkWordExists(id: number): Promise<CmsLinkWordRow> {
   const [row] = await db.select().from(cmsLinkWords).where(eq(cmsLinkWords.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '内链词不存在' });
-  return row;
+  return requireRow(row, '内链词不存在');
 }
 
 export interface ListCmsLinkWordsQuery {
@@ -113,15 +113,17 @@ export async function listCmsLinkWords(q: ListCmsLinkWordsQuery) {
   const conditions: (SQL | undefined)[] = [eq(cmsLinkWords.siteId, q.siteId)];
   conditions.push(keywordCondition(q.keyword, [cmsLinkWords.keyword]));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(cmsLinkWords, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(cmsLinkWords, where),
+    rows: () => withPagination(
       db.select().from(cmsLinkWords).where(where).orderBy(asc(cmsLinkWords.id)).$dynamic(),
       q.page,
       q.pageSize,
     ),
-  ]);
-  return { list: list.map(mapCmsLinkWord), total, page: q.page, pageSize: q.pageSize };
+    map: mapCmsLinkWord,
+  });
 }
 
 export async function createCmsLinkWord(data: CreateCmsLinkWordInput) {

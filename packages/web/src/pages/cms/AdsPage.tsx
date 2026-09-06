@@ -25,6 +25,7 @@ import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { dateColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
+import { deleteAction, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 // ─── 广告位 Tab ───────────────────────────────────────────────────────────────
@@ -55,19 +56,11 @@ function SlotsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => canManage ? [
         { key: 'edit', label: '编辑', onClick: () => slotModal.openEdit(record) },
-        {
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该广告位吗？',
-              content: '需先清空广告位下的广告',
-              onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: record.id } });
-                Toast.success('删除成功');
-              },
-            });
-          },
-        },
+        deleteAction({
+          title: '确定要删除该广告位吗？',
+          content: '需先清空广告位下的广告',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ] : [],
     }),
   ];
@@ -77,17 +70,9 @@ function SlotsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
       <SearchToolbar>
         {canManage ? <CreateButton onClick={slotModal.openCreate}>新增广告位</CreateButton> : null}
       </SearchToolbar>
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsAdSlot>
         columns={columns}
-        dataSource={slotsQuery.data ?? []}
-        loading={slotsQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无广告位；默认主题支持 home-ad（首页横幅下方）"
-        onRefresh={() => void slotsQuery.refetch()}
-        refreshLoading={slotsQuery.isFetching}
-        pagination={false}
+        {...listTableProps(slotsQuery, { empty: '暂无广告位；默认主题支持 home-ad（首页横幅下方）' })}
       />
       <AppModal {...slotModal.modalProps} width={480}>
         <Form key={slotModal.formKey} {...slotModal.formProps}>
@@ -159,18 +144,10 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => canManage ? [
         { key: 'edit', label: '编辑', onClick: () => adModal.openEdit(record) },
-        {
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该广告吗？',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        },
+        deleteAction({
+          title: '确定要删除该广告吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ] : [],
     }),
   ];
@@ -187,17 +164,9 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
         />
         {canManage ? <CreateButton onClick={adModal.openCreate}>新增广告</CreateButton> : null}
       </SearchToolbar>
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsAd>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无广告"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无广告' })}
       />
       <AppModal {...adModal.modalProps} width={560}>
         <Form key={adModal.formKey} {...adModal.formProps}>
@@ -386,16 +355,9 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsAdEvent>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        empty={siteId ? '暂无广告事件' : '请先选择站点'}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: siteId ? '暂无广告事件' : '请先选择站点' })}
       />
       <SideSheet title="广告事件详情" visible={!!detail} onCancel={() => setDetail(null)} width={520}>
         {detail ? (
@@ -463,16 +425,12 @@ function StatsTab({ siteId, setSiteId }: Readonly<{
           <Typography.Text>CTR <strong>{statsQuery.data.summary.ctr}%</strong></Typography.Text>
         </div>
       ) : null}
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<NonNullable<typeof statsQuery.data>['trend'][number]>
         columns={columns}
-        dataSource={statsQuery.data?.trend ?? []}
-        loading={statsQuery.isFetching}
-        rowKey="date"
-        empty={siteId ? '暂无统计数据' : '请先选择站点'}
-        onRefresh={() => void statsQuery.refetch()}
-        refreshLoading={statsQuery.isFetching}
-        pagination={false}
+        {...listTableProps({ ...statsQuery, data: statsQuery.data?.trend }, {
+          rowKey: 'date',
+          empty: siteId ? '暂无统计数据' : '请先选择站点',
+        })}
       />
     </>
   );

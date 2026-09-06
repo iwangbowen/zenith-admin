@@ -1,3 +1,4 @@
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, desc, and, inArray, isNull, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -178,9 +179,11 @@ export async function listCmsComments(q: ListCmsCommentsQuery) {
   const where = buildWhere(...conditions);
   // 注意：不能用 RQB `with: { content: ... }`——关系名与评论正文列 content 同名，会覆盖正文字段
   const parentComments = alias(cmsComments, 'parent_comments');
-  const [total, rows] = await Promise.all([
-    db.$count(cmsComments, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(cmsComments, where),
+    rows: () => withPagination(
       db.select({ comment: cmsComments, contentTitle: cmsContents.title, parentNickname: parentComments.nickname, memberUsername: members.username })
         .from(cmsComments)
         .leftJoin(cmsContents, and(
@@ -195,13 +198,8 @@ export async function listCmsComments(q: ListCmsCommentsQuery) {
         .$dynamic(),
       q.page, q.pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => mapCmsComment(r.comment, { contentTitle: r.contentTitle, parentNickname: r.parentNickname, memberUsername: r.memberUsername })),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    map: (r) => mapCmsComment(r.comment, { contentTitle: r.contentTitle, parentNickname: r.parentNickname, memberUsername: r.memberUsername }),
+  });
 }
 
 /** 批量审核（通过/拒绝），返回受影响内容 id（供路由触发静态刷新） */

@@ -1,5 +1,6 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsTags } from '../../db/schema';
 import type { CmsTagRow } from '../../db/schema';
@@ -27,8 +28,7 @@ export function mapCmsTag(row: CmsTagRow) {
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsTagExists(id: number): Promise<CmsTagRow> {
   const [row] = await db.select().from(cmsTags).where(eq(cmsTags.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '标签不存在' });
-  return row;
+  return requireRow(row, '标签不存在');
 }
 
 export async function getCmsTag(id: number) {
@@ -50,15 +50,17 @@ export async function listCmsTags(q: ListCmsTagsQuery) {
   await assertSiteAccess(q.siteId);
   const conditions = [eq(cmsTags.siteId, q.siteId), keywordCondition(q.keyword, [cmsTags.name, cmsTags.slug])];
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(cmsTags, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(cmsTags, where),
+    rows: () => withPagination(
       db.select().from(cmsTags).where(where).orderBy(asc(cmsTags.id)).$dynamic(),
       q.page,
       q.pageSize,
     ),
-  ]);
-  return { list: list.map(mapCmsTag), total, page: q.page, pageSize: q.pageSize };
+    map: mapCmsTag,
+  });
 }
 
 /** 站点全部标签（内容编辑打标下拉用） */
@@ -91,7 +93,7 @@ export async function updateCmsTag(id: number, data: UpdateCmsTagInput) {
     const [row] = await db.update(cmsTags).set(data).where(and(
       eq(cmsTags.id, id),
     )).returning();
-    if (!row) throw new HTTPException(404, { message: '标签不存在' });
+    requireRow(row, '标签不存在');
     await refreshCmsPublicConfiguration(row.siteId, '标签更新', `tag:${row.id}:${row.updatedAt.getTime()}`);
     return mapCmsTag(row);
   } catch (err) {
@@ -105,6 +107,6 @@ export async function deleteCmsTag(id: number) {
   const [row] = await db.delete(cmsTags).where(and(
     eq(cmsTags.id, id),
   )).returning();
-  if (!row) throw new HTTPException(404, { message: '标签不存在' });
+  requireRow(row, '标签不存在');
   await refreshCmsPublicConfiguration(current.siteId, '标签删除', `tag:${current.id}:deleted:${Date.now()}`);
 }

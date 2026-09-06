@@ -7,7 +7,6 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { useCmsCommentList, useCmsCommentAction } from '@/hooks/queries/cms';
-import { confirmDelete } from '@/utils/confirm';
 import { CMS_COMMENT_STATUS_LABELS } from '@zenith/shared/cms';
 import type { CmsComment, CmsCommentStatus } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
@@ -15,6 +14,7 @@ import { dateTimeColumn } from '@/utils/table-columns';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { FilterSelect } from '@/components/search-filters';
+import { confirmAndDelete, deleteAction, listTableProps } from '@/components/list-page';
 const STATUS_COLORS: Record<CmsCommentStatus, 'orange' | 'green' | 'red'> = {
   pending: 'orange',
   approved: 'green',
@@ -101,12 +101,12 @@ export default function CommentsPage() {
           key: 'reject', label: '拒绝', danger: true,
           onClick: () => void runAction('reject', [record.id], '已拒绝'),
         }] : []),
-        ...(canDelete ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({ title: '确定要删除该评论吗？', onOk: () => runAction('delete', [record.id], '删除成功') });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !canDelete,
+          title: '确定要删除该评论吗？',
+          run: () => runAction('delete', [record.id], '删除成功'),
+          successMessage: null,
+        }),
       ],
     }),
   ];
@@ -117,7 +117,11 @@ export default function CommentsPage() {
       {canAudit ? <Button type="warning" onClick={() => void runAction('reject', selectedIds, `已拒绝 ${selectedIds.length} 条`)}>批量拒绝</Button> : null}
       {canDelete ? (
         <Button type="danger" onClick={() => {
-          confirmDelete({ title: `删除 ${selectedIds.length} 条评论？`, onOk: () => runAction('delete', selectedIds, '删除成功') });
+          confirmAndDelete({
+            title: `删除 ${selectedIds.length} 条评论？`,
+            run: () => runAction('delete', selectedIds, '删除成功'),
+            successMessage: null,
+          });
         }}>批量删除</Button>
       ) : null}
     </>
@@ -136,21 +140,17 @@ export default function CommentsPage() {
         />
         {batchBar}
       </SearchToolbar>
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsComment>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey={(record) => String(record?.id ?? '')}
-        size="small"
-        empty="暂无评论"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0, () => setSelectedIds([]))}
-        rowSelection={{
-          selectedRowKeys: selectedIds.map(String),
-          onChange: (keys) => setSelectedIds((keys ?? []).map(Number)),
-        }}
+        {...listTableProps(listQuery, {
+          pagination: (total) => buildPagination(total, () => setSelectedIds([])),
+          rowKey: (record) => String(record?.id ?? ''),
+          empty: '暂无评论',
+          rowSelection: {
+            selectedRowKeys: selectedIds.map(String),
+            onChange: (keys) => setSelectedIds((keys ?? []).map(Number)),
+          },
+        })}
       />
     </>
   );

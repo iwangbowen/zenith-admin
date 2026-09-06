@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -57,8 +59,7 @@ export function mapCmsSensitiveWord(row: CmsSensitiveWordRow) {
 
 export async function ensureCmsSensitiveWordExists(id: number): Promise<CmsSensitiveWordRow> {
   const [row] = await db.select().from(cmsSensitiveWords).where(eq(cmsSensitiveWords.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '敏感词不存在' });
-  return row;
+  return requireRow(row, '敏感词不存在');
 }
 
 export interface ListCmsSensitiveWordsQuery {
@@ -73,15 +74,17 @@ export async function listCmsSensitiveWords(q: ListCmsSensitiveWordsQuery) {
   conditions.push(keywordCondition(q.keyword, [cmsSensitiveWords.word]));
   if (q.status) conditions.push(eq(cmsSensitiveWords.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(cmsSensitiveWords, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(cmsSensitiveWords, where),
+    rows: () => withPagination(
       db.select().from(cmsSensitiveWords).where(where).orderBy(asc(cmsSensitiveWords.id)).$dynamic(),
       q.page,
       q.pageSize,
     ),
-  ]);
-  return { list: list.map(mapCmsSensitiveWord), total, page: q.page, pageSize: q.pageSize };
+    map: mapCmsSensitiveWord,
+  });
 }
 
 export async function createCmsSensitiveWord(data: CreateCmsSensitiveWordInput) {
@@ -97,7 +100,7 @@ export async function createCmsSensitiveWord(data: CreateCmsSensitiveWordInput) 
 export async function updateCmsSensitiveWord(id: number, data: UpdateCmsSensitiveWordInput) {
   try {
     const [row] = await db.update(cmsSensitiveWords).set(data).where(eq(cmsSensitiveWords.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '敏感词不存在' });
+    requireRow(row, '敏感词不存在');
     invalidateSensitiveWordCache();
     return mapCmsSensitiveWord(row);
   } catch (err) {
@@ -107,6 +110,6 @@ export async function updateCmsSensitiveWord(id: number, data: UpdateCmsSensitiv
 
 export async function deleteCmsSensitiveWord(id: number) {
   const [row] = await db.delete(cmsSensitiveWords).where(eq(cmsSensitiveWords.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '敏感词不存在' });
+  requireRow(row, '敏感词不存在');
   invalidateSensitiveWordCache();
 }

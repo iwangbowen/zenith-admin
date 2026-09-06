@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { eq, sql } from 'drizzle-orm';
 import { TaskCancelledError } from '../../lib/task-center';
@@ -5,7 +6,6 @@ import { db } from '../../db';
 import type { DbExecutor, DbTransaction } from '../../db/types';
 import { cmsSites, type CmsSiteRow } from '../../db/schema';
 import type { CmsPublishSubmitInput } from '@zenith/shared/cms';
-import { HTTPException } from 'hono/http-exception';
 
 const writeFenceStore = new AsyncLocalStorage<() => Promise<void>>();
 
@@ -21,8 +21,7 @@ export async function acquireCmsGlobalThemeLifecycleLock(executor: DbExecutor): 
 export async function lockCmsSiteForMutation(tx: DbTransaction, siteId: number): Promise<CmsSiteRow> {
   await acquireCmsSitePublishLock(tx, siteId);
   const [site] = await tx.select().from(cmsSites).where(eq(cmsSites.id, siteId)).for('update').limit(1);
-  if (!site) throw new HTTPException(404, { message: '站点不存在' });
-  return site;
+  return requireRow(site, '站点不存在');
 }
 
 export async function bumpCmsPublicRevision(executor: DbExecutor, siteId: number): Promise<number> {

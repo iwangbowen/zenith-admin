@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Form, SideSheet, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, SideSheet, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { FolderTree } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -19,8 +19,8 @@ import type { CmsFriendLink, CmsFriendLinkGroup } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
+import { deleteAction, listTableProps } from '@/components/list-page';
 
 interface SearchParams { keyword: string; groupId?: number }
 const defaultSearch: SearchParams = { keyword: '', groupId: undefined };
@@ -41,9 +41,6 @@ export default function FriendLinksPage() {
     keyword: submittedParams.keyword || undefined,
     groupId: submittedParams.groupId,
   }, siteId !== undefined);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-
   const saveMutation = useSaveCmsFriendLink();
   const linkModal = useEditModal<CmsFriendLink, Partial<CmsFriendLink>, Record<string, unknown>>({
     entityName: '友链',
@@ -93,20 +90,11 @@ export default function FriendLinksPage() {
           label: '编辑',
           onClick: () => linkModal.openEdit(record),
         }] : []),
-        ...(hasPermission('cms:link:delete') ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该友链吗？',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('cms:link:delete'),
+          title: '确定要删除该友链吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -135,17 +123,9 @@ export default function FriendLinksPage() {
         <Button icon={<FolderTree size={14} />} disabled={!siteId} onClick={() => setGroupSheetVisible(true)}>分组管理</Button>
       </SearchToolbar>
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsFriendLink>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无友情链接"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无友情链接' })}
       />
 
       <AppModal {...linkModal.modalProps} width={520}>
@@ -202,14 +182,11 @@ function FriendLinkGroupSheet({ siteId, visible, onClose }: Readonly<{
       width: 150,
       actions: (record) => [
         { key: 'edit', label: '编辑', hidden: !hasPermission('cms:link:update'), onClick: () => groupModal.openEdit(record) },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('cms:link:delete'),
-          confirm: { title: '删除后组内友链将转为未分组，确定删除？' },
-          onClick: async () => { await deleteMutation.mutateAsync(record.id); Toast.success('删除成功'); },
-        },
+          title: '删除后组内友链将转为未分组，确定删除？',
+          run: () => deleteMutation.mutateAsync(record.id),
+        }),
       ],
     }),
   ];
@@ -221,17 +198,9 @@ function FriendLinkGroupSheet({ siteId, visible, onClose }: Readonly<{
           <CreateButton onClick={groupModal.openCreate}>新增分组</CreateButton>
         ) : null}
       </div>
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsFriendLinkGroup>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无分组"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无分组' })}
       />
       <AppModal {...groupModal.modalProps} width={480}>
         <Form key={groupModal.formKey} {...groupModal.formProps}>

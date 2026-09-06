@@ -22,6 +22,7 @@ import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search
 import { dateTimeColumn } from '@/utils/table-columns';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { listTableProps } from '@/components/list-page';
 interface SearchState {
   subjectType?: CmsSubscriptionSubjectType;
   subjectKeyword: string;
@@ -135,16 +136,12 @@ export default function SubscriptionsPage() {
             onFilterApply={handleSearch}
             onFilterReset={handleReset}
           />
-          <ConfigurableTable
-            bordered
+          <ConfigurableTable<CmsSubscriptionAggregate>
             columns={aggregateColumns}
-            dataSource={aggregateQuery.data ?? []}
-            loading={aggregateQuery.isFetching}
-            rowKey="subjectKey"
-            empty={siteId ? '暂无订阅聚合' : '请先选择站点'}
-            onRefresh={() => void aggregateQuery.refetch()}
-            refreshLoading={aggregateQuery.isFetching}
-            pagination={false}
+            {...listTableProps(aggregateQuery, {
+              rowKey: (record) => `${record?.subjectType}:${record?.subjectKey}`,
+              empty: siteId ? '暂无订阅聚合' : '请先选择站点',
+            })}
           />
         </TabPane>
         <TabPane tab="订阅明细" itemKey="detail">
@@ -163,16 +160,9 @@ export default function SubscriptionsPage() {
             onFilterApply={handleSearch}
             onFilterReset={handleReset}
           />
-          <ConfigurableTable
-            bordered
+          <ConfigurableTable<CmsMemberSubscription>
             columns={detailColumns}
-            dataSource={listQuery.data?.list ?? []}
-            loading={listQuery.isFetching}
-            rowKey="id"
-            empty={siteId ? '暂无订阅明细' : '请先选择站点'}
-            onRefresh={() => void listQuery.refetch()}
-            refreshLoading={listQuery.isFetching}
-            pagination={buildPagination(listQuery.data?.total ?? 0)}
+            {...listTableProps(listQuery, { pagination: buildPagination, empty: siteId ? '暂无订阅明细' : '请先选择站点' })}
           />
         </TabPane>
       </Tabs>

@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -29,8 +31,7 @@ export function mapCmsFriendLinkGroup(row: CmsFriendLinkGroupRow, linkCount?: nu
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsFriendLinkGroupExists(id: number): Promise<CmsFriendLinkGroupRow> {
   const [row] = await db.select().from(cmsFriendLinkGroups).where(eq(cmsFriendLinkGroups.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '友链分组不存在' });
-  return row;
+  return requireRow(row, '友链分组不存在');
 }
 
 /** 校验分组归属站点：跨站点引用会让前台按组取数取到别站数据 */
@@ -56,30 +57,29 @@ export async function listCmsFriendLinkGroups(q: ListCmsFriendLinkGroupsQuery) {
   conditions.push(keywordCondition(q.keyword, [cmsFriendLinkGroups.name]));
   if (q.status) conditions.push(eq(cmsFriendLinkGroups.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(cmsFriendLinkGroups, where),
-    withPagination(
-      db.select().from(cmsFriendLinkGroups).where(where)
-        .orderBy(asc(cmsFriendLinkGroups.sort), asc(cmsFriendLinkGroups.id)).$dynamic(),
-      q.page,
-      q.pageSize,
-    ),
-  ]);
-  // 组内友链数：一次取回本站友链的 groupId 做内存聚合，避免逐组统计造成 N+1
-  const counts = new Map<number, number>();
-  const countRows = await db.select({ groupId: cmsFriendLinks.groupId })
-    .from(cmsFriendLinks)
-    .where(eq(cmsFriendLinks.siteId, q.siteId));
-  for (const row of countRows) {
-    if (row.groupId == null) continue;
-    counts.set(row.groupId, (counts.get(row.groupId) ?? 0) + 1);
-  }
-  return {
-    list: list.map((row) => mapCmsFriendLinkGroup(row, counts.get(row.id) ?? 0)),
-    total,
+  return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
-  };
+    count: () => db.$count(cmsFriendLinkGroups, where),
+    rows: async () => {
+      const list = await withPagination(
+        db.select().from(cmsFriendLinkGroups).where(where)
+          .orderBy(asc(cmsFriendLinkGroups.sort), asc(cmsFriendLinkGroups.id)).$dynamic(),
+        q.page,
+        q.pageSize,
+      );
+      // 组内友链数：一次取回本站友链的 groupId 做内存聚合，避免逐组统计造成 N+1
+      const counts = new Map<number, number>();
+      const countRows = await db.select({ groupId: cmsFriendLinks.groupId })
+        .from(cmsFriendLinks)
+        .where(eq(cmsFriendLinks.siteId, q.siteId));
+      for (const row of countRows) {
+        if (row.groupId == null) continue;
+        counts.set(row.groupId, (counts.get(row.groupId) ?? 0) + 1);
+      }
+      return list.map((row) => mapCmsFriendLinkGroup(row, counts.get(row.id) ?? 0));
+    },
+  });
 }
 
 /** 站点全部启用分组（友链编辑下拉 / 前台按组渲染） */
@@ -110,7 +110,7 @@ export async function updateCmsFriendLinkGroup(id: number, data: UpdateCmsFriend
   try {
     const [row] = await db.update(cmsFriendLinkGroups).set(data)
       .where(eq(cmsFriendLinkGroups.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '友链分组不存在' });
+    requireRow(row, '友链分组不存在');
     await refreshCmsPublicConfiguration(row.siteId, '友链分组更新', `friend-group:${row.id}:${row.updatedAt.getTime()}`);
     return mapCmsFriendLinkGroup(row);
   } catch (err) {
@@ -123,6 +123,6 @@ export async function deleteCmsFriendLinkGroup(id: number) {
   const current = await ensureCmsFriendLinkGroupExists(id);
   await assertSiteAccess(current.siteId);
   const [row] = await db.delete(cmsFriendLinkGroups).where(eq(cmsFriendLinkGroups.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '友链分组不存在' });
+  requireRow(row, '友链分组不存在');
   await refreshCmsPublicConfiguration(current.siteId, '友链分组删除', `friend-group:${current.id}:deleted:${Date.now()}`);
 }

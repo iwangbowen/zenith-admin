@@ -13,12 +13,10 @@ import { Button, Modal, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Upload as UploadIcon, ChevronsDownUp, ChevronsUpDown, ListTree, List as ListIcon } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { createdAtColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
-import { confirmDelete } from '@/utils/confirm';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -35,6 +33,7 @@ import SiteOpenGrantsModal from './sites/SiteOpenGrantsModal';
 import SiteMoveModal from './sites/SiteMoveModal';
 import SiteInheritanceSheet from './sites/SiteInheritanceSheet';
 import SiteStaticSheet from './sites/SiteStaticSheet';
+import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 
 interface SearchParams {
   keyword: string;
@@ -104,11 +103,6 @@ export default function SitesPage() {
   function closeEditSheet() {
     setEditSheetOpen(false);
     setEditingSite(null);
-  }
-
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
   }
 
   function handleGroupPublish(record: CmsSite) {
@@ -199,18 +193,18 @@ export default function SitesPage() {
     createOperationColumn<CmsSite>({
       width: 240,
       desktopInlineKeys: ['visit', 'edit', 'delete'],
-      actions: (record) => [
-        {
+      actions: (record) => {
+        const actions: ResponsiveTableAction[] = [{
           key: 'visit',
           label: '访问',
-          onClick: () => window.open(cmsPreviewUrl(record.code), '_blank'),
-        },
-        ...(hasPermission('cms:publish:build') ? [{
+          onClick: () => { window.open(cmsPreviewUrl(record.code), '_blank'); },
+        }];
+        if (hasPermission('cms:publish:build')) actions.push({
           key: 'static',
           label: '静态化',
           onClick: () => setStaticSheetSite(record),
-        }] : []),
-        ...(hasPermission('cms:site:update') ? [{
+        });
+        if (hasPermission('cms:site:update')) actions.push({
           key: 'edit',
           label: '编辑',
           onClick: () => openEdit(record),
@@ -243,8 +237,8 @@ export default function SitesPage() {
               },
             });
           },
-        }] : []),
-        ...(hasPermission('cms:site:hierarchy') ? [{
+        });
+        if (hasPermission('cms:site:hierarchy')) actions.push({
           key: 'inheritance',
           label: '继承配置',
           onClick: () => setInheritanceSite(record),
@@ -252,25 +246,20 @@ export default function SitesPage() {
           key: 'move',
           label: '移动',
           onClick: () => setMoveSite(record),
-        }] : []),
-        ...(hasPermission('cms:publish:group') ? [{
+        });
+        if (hasPermission('cms:publish:group')) actions.push({
           key: 'group-publish',
           label: '整组重建',
           onClick: () => handleGroupPublish(record),
-        }] : []),
-        ...(hasPermission('cms:site:delete') ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该站点吗？',
-              content: '需先清空站点下的栏目与内容',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        }] : []),
-      ],
+        });
+        actions.push(deleteAction({
+          hidden: !hasPermission('cms:site:delete'),
+          title: '确定要删除该站点吗？',
+          content: '需先清空站点下的栏目与内容',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }));
+        return actions;
+      },
     }),
   ];
 
@@ -286,12 +275,6 @@ export default function SitesPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
   const renderCreateButton = () => hasPermission('cms:site:create') ? (
     <CreateButton onClick={openCreate} />
   ) : null;
@@ -319,35 +302,20 @@ export default function SitesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderViewToggle()}
-            {renderExpandToggle()}
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         actions={(
           <>
-            {renderImportButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
             {renderViewToggle()}
+            {renderExpandToggle()}
+            {renderImportButton()}
           </>
         )}
-        mobileFilters={renderStatusFilter()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable

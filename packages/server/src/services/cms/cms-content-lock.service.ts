@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -49,8 +50,7 @@ export async function assertNoLockedCmsMappedCopies(sourceIds: number | number[]
 }
 
 export async function lockCmsContent(id: number, reason: string) {
-  const current = await db.query.cmsContents.findFirst({ where: eq(cmsContents.id, id) });
-  if (!current) throw new HTTPException(404, { message: '内容不存在' });
+  const current = requireRow(await db.query.cmsContents.findFirst({ where: eq(cmsContents.id, id) }), '内容不存在');
   await assertSiteAccess(current.siteId);
   await assertChannelAccess(current.channelId);
   if (current.lockedAt) throw new HTTPException(409, { message: lockedMessage(current) });
@@ -64,9 +64,9 @@ export async function lockCmsContent(id: number, reason: string) {
       scheduledAt: null,
       version: sql`${cmsContents.version} + 1`,
     }).where(and(eq(cmsContents.id, id), isNull(cmsContents.lockedAt))).returning();
-    if (!row) throw new HTTPException(409, { message: '内容锁状态已变化，请刷新后重试' });
+    const locked = requireRow(row, '内容锁状态已变化，请刷新后重试', 409);
     await logContentOp(tx, id, 'locked', reason.trim());
-    return row;
+    return locked;
   });
   return {
     lockedAt: formatDateTime(updated.lockedAt!),
@@ -76,8 +76,7 @@ export async function lockCmsContent(id: number, reason: string) {
 }
 
 export async function unlockCmsContent(id: number) {
-  const current = await db.query.cmsContents.findFirst({ where: eq(cmsContents.id, id) });
-  if (!current) throw new HTTPException(404, { message: '内容不存在' });
+  const current = requireRow(await db.query.cmsContents.findFirst({ where: eq(cmsContents.id, id) }), '内容不存在');
   await assertSiteAccess(current.siteId);
   await assertChannelAccess(current.channelId);
   if (!current.lockedAt) return;
@@ -88,7 +87,7 @@ export async function unlockCmsContent(id: number) {
       lockReason: null,
       version: sql`${cmsContents.version} + 1`,
     }).where(and(eq(cmsContents.id, id), isNotNull(cmsContents.lockedAt))).returning({ id: cmsContents.id });
-    if (!row) throw new HTTPException(409, { message: '内容锁状态已变化，请刷新后重试' });
+    requireRow(row, '内容锁状态已变化，请刷新后重试', 409);
     await logContentOp(tx, id, 'unlocked');
   });
 }

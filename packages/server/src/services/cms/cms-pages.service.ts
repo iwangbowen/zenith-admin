@@ -1,4 +1,6 @@
 /** 可视化页面（区块装配）CRUD 与前台查询 */
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, inArray, ne, notInArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -48,18 +50,21 @@ export async function listCmsPages(params: { page: number; pageSize: number; sit
   await assertSiteAccess(params.siteId);
   const conds = [eq(cmsPages.siteId, params.siteId), keywordCondition(params.keyword, [cmsPages.name, cmsPages.slug], 'ilike')];
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsPages, where),
-    withPagination(db.select().from(cmsPages).where(where).orderBy(desc(cmsPages.id)).$dynamic(), params.page, params.pageSize),
-  ]);
-  const decorated = await decorateCmsPageBlocksBatch(rows);
-  const list = rows.map((row) => mapCmsPage(row, decorated.get(row.id)));
-  return { list, total, page: params.page, pageSize: params.pageSize };
+  return buildListResult({
+    page: params.page,
+    pageSize: params.pageSize,
+    count: () => db.$count(cmsPages, where),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(cmsPages).where(where).orderBy(desc(cmsPages.id)).$dynamic(), params.page, params.pageSize);
+      const decorated = await decorateCmsPageBlocksBatch(rows);
+      return rows.map((row) => mapCmsPage(row, decorated.get(row.id)));
+    },
+  });
 }
 
 export async function getCmsPage(id: number) {
   const [row] = await db.select().from(cmsPages).where(eq(cmsPages.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '页面不存在' });
+  requireRow(row, '页面不存在');
   await assertSiteAccess(row.siteId);
   return resolveCmsResourcePayload(mapCmsPage(row, await decorateCmsPageBlocks(row)), row.siteId);
 }
@@ -154,7 +159,7 @@ export async function createCmsPage(input: CmsPageInput) {
 
 export async function updateCmsPage(id: number, input: Partial<CmsPageInput>) {
   const [initial] = await db.select().from(cmsPages).where(eq(cmsPages.id, id)).limit(1);
-  if (!initial) throw new HTTPException(404, { message: '页面不存在' });
+  requireRow(initial, '页面不存在');
   await assertSiteAccess(initial.siteId);
   const { blocks: _blocks, siteId: _siteId, ...baseMutations } = input;
   const hasBaseMutations = Object.keys(baseMutations).length > 0;
@@ -168,7 +173,7 @@ export async function updateCmsPage(id: number, input: Partial<CmsPageInput>) {
         .where(eq(cmsPages.id, id))
         .for('update')
         .limit(1);
-      if (!current) throw new HTTPException(404, { message: '页面不存在' });
+      requireRow(current, '页面不存在');
       if (hasBaseMutations && !(await hasPermission('cms:page:update'))) {
         throw new HTTPException(403, { message: '无页面编辑权限，只能修改已获授权的区块内容' });
       }
@@ -212,7 +217,7 @@ export async function updateCmsPage(id: number, input: Partial<CmsPageInput>) {
 
 export async function deleteCmsPage(id: number) {
   const [current] = await db.select().from(cmsPages).where(eq(cmsPages.id, id)).limit(1);
-  if (!current) throw new HTTPException(404, { message: '页面不存在' });
+  requireRow(current, '页面不存在');
   await assertSiteAccess(current.siteId);
   const mutation = await db.transaction(async (tx) => {
     const site = await lockCmsSiteForMutation(tx, current.siteId);

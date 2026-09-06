@@ -1,5 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
 import { and, eq, desc, max, inArray } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsContentVersions, cmsContents } from '../../db/schema';
 import type { CmsContentRow, CmsContentVersionRow } from '../../db/schema';
@@ -111,13 +111,12 @@ export async function ensureVersionExists(contentId: number, versionId: number):
       eq(cmsContentVersions.contentId, contentId),
     ))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '版本不存在' });
-  return row;
+  return requireRow(row, '版本不存在');
 }
 
 async function ensureContentVersionAccess(contentId: number): Promise<CmsContentRow> {
   const [content] = await db.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
-  if (!content) throw new HTTPException(404, { message: '内容不存在' });
+  requireRow(content, '内容不存在');
   await assertSiteAccess(content.siteId);
   await assertChannelAccess(content.channelId);
   return content;

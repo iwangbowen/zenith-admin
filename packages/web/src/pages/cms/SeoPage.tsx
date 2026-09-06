@@ -20,11 +20,11 @@ import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { CMS_PUSH_ENGINE_LABELS } from '@zenith/shared/cms';
 import type { CmsRedirect, CmsLinkWord, CmsPushLog } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
-import { CreateButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 interface KeywordSearch { keyword: string }
@@ -36,7 +36,7 @@ function RedirectsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   const {
     page, pageSize, buildPagination,
     draftParams, setDraftParams, submittedParams,
-    handleSearch,
+    handleSearch, handleReset,
   } = useListSearch<KeywordSearch>({ defaults: defaultKeywordSearch, listKey: cmsRedirectKeys.lists });
   const listQuery = useCmsRedirectList({ page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined }, siteId !== undefined);
   const saveMutation = useSaveCmsRedirect();
@@ -67,40 +67,25 @@ function RedirectsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => canManage ? [
         { key: 'edit', label: '编辑', onClick: () => modal.openEdit(record) },
-        {
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该规则吗？',
-              onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: record.id } });
-                Toast.success('删除成功');
-              },
-            });
-          },
-        },
+        deleteAction({
+          title: '确定要删除该规则吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ] : [],
     }),
   ];
 
   return (
     <>
-      <SearchToolbar>
-        <KeywordInput placeholder="搜索来源路径..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />
-        <SearchButton onClick={handleSearch} />
-        {canManage ? <CreateButton onClick={modal.openCreate} /> : null}
-      </SearchToolbar>
-      <ConfigurableTable
-        bordered
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索来源路径..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canManage ? <CreateButton onClick={modal.openCreate} /> : null}
+      />
+      <ConfigurableTable<CmsRedirect>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无重定向规则"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无重定向规则' })}
       />
       <AppModal {...modal.modalProps} width={520}>
         <Form key={modal.formKey} {...modal.formProps}>
@@ -127,7 +112,7 @@ function LinkWordsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   const {
     page, pageSize, buildPagination,
     draftParams, setDraftParams, submittedParams,
-    handleSearch,
+    handleSearch, handleReset,
   } = useListSearch<KeywordSearch>({ defaults: defaultKeywordSearch, listKey: cmsLinkWordKeys.lists });
   const listQuery = useCmsLinkWordList({ page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined }, siteId !== undefined);
   const saveMutation = useSaveCmsLinkWord();
@@ -158,18 +143,10 @@ function LinkWordsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => canManage ? [
         { key: 'edit', label: '编辑', onClick: () => modal.openEdit(record) },
-        {
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该内链词吗？',
-              onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: record.id } });
-                Toast.success('删除成功');
-              },
-            });
-          },
-        },
+        deleteAction({
+          title: '确定要删除该内链词吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ] : [],
     }),
   ];
@@ -177,22 +154,15 @@ function LinkWordsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   return (
     <>
       <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="内容详情页渲染时自动将正文中的关键词替换为站内链接（跳过已有链接区域），提升 SEO 内链密度。修改后新访问/重新生成的页面生效。" />
-      <SearchToolbar>
-        <KeywordInput placeholder="搜索关键词..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />
-        <SearchButton onClick={handleSearch} />
-        {canManage ? <CreateButton onClick={modal.openCreate} /> : null}
-      </SearchToolbar>
-      <ConfigurableTable
-        bordered
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索关键词..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canManage ? <CreateButton onClick={modal.openCreate} /> : null}
+      />
+      <ConfigurableTable<CmsLinkWord>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无内链词"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无内链词' })}
       />
       <AppModal {...modal.modalProps} width={520}>
         <Form key={modal.formKey} {...modal.formProps}>
@@ -277,17 +247,9 @@ function PushTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
           </Button>
         </div>
       ) : null}
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsPushLog>
         columns={columns}
-        dataSource={logsQuery.data?.list ?? []}
-        loading={logsQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无推送记录"
-        onRefresh={() => void logsQuery.refetch()}
-        refreshLoading={logsQuery.isFetching}
-        pagination={buildPagination(logsQuery.data?.total ?? 0)}
+        {...listTableProps(logsQuery, { pagination: buildPagination, empty: '暂无推送记录' })}
       />
     </>
   );
@@ -328,16 +290,8 @@ function DeadlinkTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
         ) : null}
       </SearchToolbar>
       <ConfigurableTable
-        bordered
         columns={columns}
-        dataSource={tasks}
-        loading={loading}
-        rowKey="id"
-        size="small"
-        empty="暂无检测任务"
-        onRefresh={refresh}
-        refreshLoading={loading}
-        pagination={false}
+        {...listTableProps({ data: tasks, isFetching: loading, refetch: refresh }, { empty: '暂无检测任务' })}
       />
     </>
   );

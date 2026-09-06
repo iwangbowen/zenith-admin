@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import {
   and, desc, eq, gt, inArray, isNull, or, sql,
 } from 'drizzle-orm';
@@ -123,17 +125,21 @@ export async function listCmsWidgets(params: {
   if (params.status) conditions.push(eq(cmsWidgets.status, params.status));
   if (params.type) conditions.push(eq(cmsWidgets.type, params.type));
   const where = and(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsWidgets, where),
-    withPagination(
-      db.select().from(cmsWidgets).where(where).orderBy(desc(cmsWidgets.id)).$dynamic(),
-      params.page,
-      params.pageSize,
-    ),
-  ]);
-  const stats = await referenceStats(rows.map((row) => row.id));
-  const list = rows.map((row) => mapCmsWidget(row, stats.get(row.id)));
-  return resolveCmsResourcePayload({ list, total, page: params.page, pageSize: params.pageSize }, params.siteId);
+  const result = await buildListResult({
+    page: params.page,
+    pageSize: params.pageSize,
+    count: () => db.$count(cmsWidgets, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select().from(cmsWidgets).where(where).orderBy(desc(cmsWidgets.id)).$dynamic(),
+        params.page,
+        params.pageSize,
+      );
+      const stats = await referenceStats(rows.map((row) => row.id));
+      return rows.map((row) => mapCmsWidget(row, stats.get(row.id)));
+    },
+  });
+  return resolveCmsResourcePayload(result, params.siteId);
 }
 
 export async function listPublishedCmsWidgets(siteId: number) {
@@ -155,8 +161,7 @@ export async function listCmsWidgetRenderersForSite(siteId: number, type: CmsWid
 
 export async function ensureCmsWidgetExists(id: number, executor: DbExecutor = db): Promise<CmsWidgetRow> {
   const [row] = await executor.select().from(cmsWidgets).where(eq(cmsWidgets.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '页面部件不存在' });
-  return row;
+  return requireRow(row, '页面部件不存在');
 }
 
 export async function getCmsWidget(id: number) {
@@ -210,20 +215,20 @@ async function assertWidgetSources(
   }).from(cmsChannels).where(eq(cmsChannels.siteId, siteId)));
   for (const contentId of contentIds) {
     const content = contentById.get(contentId);
-    if (!content) throw new HTTPException(400, { message: `引用内容 #${contentId} 不存在` });
-    if (content.siteId !== siteId) throw new HTTPException(400, { message: `引用内容 #${contentId} 不属于当前站点` });
-    if (requirePublished && (content.status !== 'published' || content.deletedAt || content.archivedAt || (content.expireAt && content.expireAt <= new Date()))) {
+    const contentRow = requireRow(content, `引用内容 #${contentId} 不存在`, 400);
+    if (contentRow.siteId !== siteId) throw new HTTPException(400, { message: `引用内容 #${contentId} 不属于当前站点` });
+    if (requirePublished && (contentRow.status !== 'published' || contentRow.deletedAt || contentRow.archivedAt || (contentRow.expireAt && contentRow.expireAt <= new Date()))) {
       throw new HTTPException(400, { message: `引用内容 #${contentId} 必须处于已发布状态` });
     }
   }
   for (const channelId of channelIds) {
     const channel = channelById.get(channelId);
-    if (!channel) throw new HTTPException(400, { message: `引用栏目 #${channelId} 不存在` });
-    if (channel.siteId !== siteId) throw new HTTPException(400, { message: `引用栏目 #${channelId} 不属于当前站点` });
-    if (channel.type !== 'list' || !effectiveChannelIds.has(channel.id)) {
+    const channelRow = requireRow(channel, `引用栏目 #${channelId} 不存在`, 400);
+    if (channelRow.siteId !== siteId) throw new HTTPException(400, { message: `引用栏目 #${channelId} 不属于当前站点` });
+    if (channelRow.type !== 'list' || !effectiveChannelIds.has(channelRow.id)) {
       throw new HTTPException(400, { message: `引用栏目 #${channelId} 必须是有效的列表栏目` });
     }
-    if (requirePublished && channel.status !== 'enabled') {
+    if (requirePublished && channelRow.status !== 'enabled') {
       throw new HTTPException(400, { message: `引用栏目 #${channelId} 必须处于启用状态` });
     }
   }
@@ -285,7 +290,7 @@ export async function updateCmsWidget(id: number, input: UpdateCmsWidgetInput) {
     await db.transaction(async (tx) => {
       await lockCmsSiteForMutation(tx, initial.siteId);
       const [locked] = await tx.select().from(cmsWidgets).where(eq(cmsWidgets.id, id)).for('update').limit(1);
-      if (!locked) throw new HTTPException(404, { message: '页面部件不存在' });
+      requireRow(locked, '页面部件不存在');
       if (locked.draftRevision !== input.expectedRevision) {
         throw new HTTPException(409, { message: '页面部件草稿已被其他人更新，请刷新后再编辑' });
       }
@@ -322,7 +327,7 @@ export async function publishCmsWidget(
   const { updated, eventToken } = await db.transaction(async (tx) => {
     await lockCmsSiteForMutation(tx, initial.siteId);
     const [locked] = await tx.select().from(cmsWidgets).where(eq(cmsWidgets.id, id)).for('update').limit(1);
-    if (!locked) throw new HTTPException(404, { message: '页面部件不存在' });
+    requireRow(locked, '页面部件不存在');
     const data = normalizeWidgetData(locked.draftData);
     await assertWidgetSources(tx, locked.siteId, data, true);
     const [updated] = await tx.update(cmsWidgets).set({
@@ -362,7 +367,7 @@ export async function offlineCmsWidget(
     const [updated] = await tx.update(cmsWidgets).set({ status: 'offline' })
       .where(and(eq(cmsWidgets.id, id), eq(cmsWidgets.status, 'published')))
       .returning();
-    if (!updated) throw new HTTPException(409, { message: '页面部件状态已变化，请刷新后重试' });
+    requireRow(updated, '页面部件状态已变化，请刷新后重试', 409);
     await syncPublishedSourceRefs(tx, updated);
     return { updated, eventToken: locked.updatedAt.getTime() };
   });
@@ -379,7 +384,7 @@ export async function deleteCmsWidget(id: number, options?: { skipAccessCheck?: 
     await lockCmsSiteForMutation(tx, initial.siteId);
     const [locked] = await tx.select({ id: cmsWidgets.id }).from(cmsWidgets)
       .where(eq(cmsWidgets.id, id)).for('update').limit(1);
-    if (!locked) throw new HTTPException(404, { message: '页面部件不存在' });
+    requireRow(locked, '页面部件不存在');
     const count = await tx.$count(cmsWidgetRefs, eq(cmsWidgetRefs.widgetId, id));
     if (count > 0) throw new HTTPException(409, { message: `该页面部件仍被 ${count} 个位置引用，请先解除引用` });
     await deleteCmsResourceRefsForOwner(tx, 'widget', [id], initial.siteId);
@@ -584,9 +589,9 @@ export async function listCmsWidgetSourceReferences(
       }).from(cmsChannels)
       .where(eq(cmsChannels.id, sourceId)).limit(1);
   const source = sourceRows[0];
-  if (!source) throw new HTTPException(404, { message: sourceType === 'content' ? '内容不存在' : '栏目不存在' });
+  const sourceRow = requireRow(source, sourceType === 'content' ? '内容不存在' : '栏目不存在');
   const { assertChannelAccess } = await import('./cms-channels.service');
-  await assertChannelAccess(source.channelId);
+  await assertChannelAccess(sourceRow.channelId);
   const directRows = await db.select({
     widgetId: cmsWidgets.id,
     widgetName: cmsWidgets.name,

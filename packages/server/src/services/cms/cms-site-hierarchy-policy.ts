@@ -1,4 +1,5 @@
 import { CMS_SITE_MAX_DEPTH } from '@zenith/shared/cms';
+import { listCmsSubtreeIds } from './cms-site-tree';
 
 export interface CmsSiteHierarchyNode {
   id: number;
@@ -28,22 +29,6 @@ function depthOf(nodes: ReadonlyMap<number, CmsSiteHierarchyNode>, id: number): 
   return depth;
 }
 
-function subtree(nodes: readonly CmsSiteHierarchyNode[], rootId: number): number[] {
-  const children = new Map<number, number[]>();
-  for (const node of nodes) {
-    if (node.parentId == null) continue;
-    children.set(node.parentId, [...(children.get(node.parentId) ?? []), node.id]);
-  }
-  const result: number[] = [];
-  const queue = [rootId];
-  while (queue.length) {
-    const id = queue.shift()!;
-    result.push(id);
-    queue.push(...(children.get(id) ?? []));
-  }
-  return result;
-}
-
 function subtreeHeight(nodes: ReadonlyMap<number, CmsSiteHierarchyNode>, ids: readonly number[], rootDepth: number): number {
   return Math.max(...ids.map((id) => depthOf(nodes, id) - rootDepth + 1), 1);
 }
@@ -58,7 +43,7 @@ export function planCmsSiteMove(
   const site = byId.get(siteId);
   if (!site) throw new Error('站点不存在');
   if (parentId === siteId) throw new Error('站点不能移动到自身下级');
-  const subtreeIds = subtree(rows, siteId);
+  const subtreeIds = listCmsSubtreeIds(rows, siteId);
   if (parentId != null && subtreeIds.includes(parentId)) throw new Error('不能把站点移动到自身子树中');
   if (parentId != null && !byId.has(parentId)) throw new Error('目标父站点不存在');
   const oldDepth = depthOf(byId, siteId);
@@ -88,7 +73,7 @@ export function validateCmsSiteEnablement(
     }
     return;
   }
-  const enabledDescendant = subtree(rows, siteId)
+  const enabledDescendant = listCmsSubtreeIds(rows, siteId)
     .filter((id) => id !== siteId)
     .map((id) => byId.get(id))
     .find((node) => node?.status === 'enabled');

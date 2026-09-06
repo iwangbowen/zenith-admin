@@ -1,4 +1,4 @@
-import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { CMS_SECRET_MASK, CMS_SITE_INHERITABLE_FIELDS, CMS_SITE_MAX_DEPTH } from '@zenith/shared/cms';
 import type { CmsSiteEffectiveConfig, CmsSiteInheritableField, CmsSiteInheritanceFlags } from '@zenith/shared/cms';
 import { db } from '../../db';
@@ -9,6 +9,8 @@ import {
   type CmsSiteInheritanceRow,
   type CmsSiteRow,
 } from '../../db/schema';
+
+export { listCmsSubtreeIds } from './cms-site-tree';
 
 export const DEFAULT_CMS_SITE_INHERITANCE: CmsSiteInheritanceFlags = {
   seoTitle: false,
@@ -69,7 +71,7 @@ export function buildCmsSiteChain(rows: readonly CmsSiteRow[], siteId: number): 
   const chain: CmsSiteRow[] = [];
   const seen = new Set<number>();
   let current = byId.get(siteId);
-  if (!current) throw new HTTPException(404, { message: '站点不存在' });
+  requireRow(current, '站点不存在');
   while (current) {
     if (seen.has(current.id)) throw new Error(`CMS 站点层级数据存在环：#${current.id}`);
     seen.add(current.id);
@@ -161,22 +163,6 @@ export function buildCmsTemplateScopeChain(
   while (index < chain.length - 1 && (flagMap.get(chain[index].id) ?? DEFAULT_CMS_SITE_INHERITANCE).templates) {
     index += 1;
     result.push(chain[index].id);
-  }
-  return result;
-}
-
-export function listCmsSubtreeIds(rows: readonly Pick<CmsSiteRow, 'id' | 'parentId'>[], rootId: number): number[] {
-  const children = new Map<number, number[]>();
-  for (const row of rows) {
-    if (row.parentId == null) continue;
-    children.set(row.parentId, [...(children.get(row.parentId) ?? []), row.id]);
-  }
-  const result: number[] = [];
-  const queue = [rootId];
-  while (queue.length) {
-    const id = queue.shift()!;
-    result.push(id);
-    queue.push(...(children.get(id) ?? []));
   }
   return result;
 }

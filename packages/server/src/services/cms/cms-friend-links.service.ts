@@ -1,5 +1,6 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and, isNull, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsFriendLinkGroups, cmsFriendLinks } from '../../db/schema';
 import type { CmsFriendLinkRow } from '../../db/schema';
@@ -33,8 +34,7 @@ export function mapCmsFriendLink(row: CmsFriendLinkRow, groupName?: string | nul
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsFriendLinkExists(id: number): Promise<CmsFriendLinkRow> {
   const [row] = await db.select().from(cmsFriendLinks).where(eq(cmsFriendLinks.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '友情链接不存在' });
-  return row;
+  return requireRow(row, '友情链接不存在');
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
@@ -58,24 +58,23 @@ export async function listCmsFriendLinks(q: ListCmsFriendLinksQuery) {
     conditions.push(q.groupId === 0 ? isNull(cmsFriendLinks.groupId) : eq(cmsFriendLinks.groupId, q.groupId));
   }
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(cmsFriendLinks, where),
-    withPagination(
-      db.select({ link: cmsFriendLinks, groupName: cmsFriendLinkGroups.name })
-        .from(cmsFriendLinks)
-        .leftJoin(cmsFriendLinkGroups, eq(cmsFriendLinks.groupId, cmsFriendLinkGroups.id))
-        .where(where)
-        .orderBy(asc(cmsFriendLinks.sort), asc(cmsFriendLinks.id)).$dynamic(),
-      q.page,
-      q.pageSize,
-    ),
-  ]);
-  return {
-    list: await resolveCmsResourcePayload(list.map((row) => mapCmsFriendLink(row.link, row.groupName)), q.siteId),
-    total,
+  return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
-  };
+    count: () => db.$count(cmsFriendLinks, where),
+    rows: async () => {
+      const list = await withPagination(
+        db.select({ link: cmsFriendLinks, groupName: cmsFriendLinkGroups.name })
+          .from(cmsFriendLinks)
+          .leftJoin(cmsFriendLinkGroups, eq(cmsFriendLinks.groupId, cmsFriendLinkGroups.id))
+          .where(where)
+          .orderBy(asc(cmsFriendLinks.sort), asc(cmsFriendLinks.id)).$dynamic(),
+        q.page,
+        q.pageSize,
+      );
+      return resolveCmsResourcePayload(list.map((row) => mapCmsFriendLink(row.link, row.groupName)), q.siteId);
+    },
+  });
 }
 
 /**
@@ -160,7 +159,7 @@ export async function updateCmsFriendLink(id: number, data: UpdateCmsFriendLinkI
       .where(and(
         eq(cmsFriendLinks.id, id),
       )).returning();
-    if (!updated) throw new HTTPException(404, { message: '友情链接不存在' });
+    requireRow(updated, '友情链接不存在');
     await syncCmsResourceRefs(tx, 'friendLink', updated.id, updated.siteId, updated);
     return updated;
   });
@@ -175,7 +174,7 @@ export async function deleteCmsFriendLink(id: number) {
     const [row] = await tx.delete(cmsFriendLinks).where(and(
       eq(cmsFriendLinks.id, id),
     )).returning();
-    if (!row) throw new HTTPException(404, { message: '友情链接不存在' });
+    requireRow(row, '友情链接不存在');
     await deleteCmsResourceRefsForOwner(tx, 'friendLink', [row.id], current.siteId);
   });
   await refreshCmsPublicConfiguration(current.siteId, '友情链接删除', `friend-link:${current.id}:deleted:${Date.now()}`);

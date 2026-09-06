@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import {
   and,
   asc,
@@ -108,15 +110,17 @@ export async function listCmsInteractions(q: ListCmsInteractionsQuery) {
   if (q.kind) conditions.push(eq(cmsInteractions.kind, q.kind));
   if (q.status) conditions.push(eq(cmsInteractions.status, q.status));
   const where = and(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsInteractions, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(cmsInteractions, where),
+    rows: () => withPagination(
       db.select().from(cmsInteractions).where(where).orderBy(desc(cmsInteractions.id)).$dynamic(),
       q.page,
       q.pageSize,
     ),
-  ]);
-  return { list: rows.map((row) => mapCmsInteraction(row)), total, page: q.page, pageSize: q.pageSize };
+    map: (row) => mapCmsInteraction(row),
+  });
 }
 
 export async function getCmsInteraction(id: number) {
@@ -126,8 +130,8 @@ export async function getCmsInteraction(id: number) {
     where: eq(cmsInteractions.id, id),
     with: { questions: true },
   });
-  if (!row) throw new HTTPException(404, { message: '互动问卷不存在' });
-  return mapCmsInteraction(row, row.questions);
+  const interaction = requireRow(row, '互动问卷不存在');
+  return mapCmsInteraction(interaction, interaction.questions);
 }
 
 function assertInteractionDefinition(input: CreateCmsInteractionInput): void {
@@ -210,7 +214,7 @@ export async function updateCmsInteraction(id: number, input: UpdateCmsInteracti
       .where(eq(cmsInteractions.id, id))
       .for('update')
       .limit(1);
-    if (!current) throw new HTTPException(404, { message: '互动问卷不存在' });
+    requireRow(current, '互动问卷不存在');
     if (input.questions && current.responseCount > 0) {
       throw new HTTPException(409, { message: '已有答卷的互动问卷不可替换题目；请用「复制」生成副本后修改' });
     }
@@ -668,7 +672,7 @@ export async function submitCmsInteraction(
     else throw new HTTPException(409, { message: '请求已处理，请勿重复提交' });
     const [existing] = await db.select({ id: cmsInteractionResponses.id }).from(cmsInteractionResponses)
       .where(and(...duplicateConditions)).limit(1);
-    if (!existing) throw new HTTPException(409, { message: '您已参与过本次互动' });
+    requireRow(existing, '您已参与过本次互动', 409);
     if (!requestKey) throw new HTTPException(409, { message: '您已参与过本次互动' });
     responseId = existing.id;
     duplicate = true;

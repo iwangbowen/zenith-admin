@@ -1,8 +1,7 @@
-import { Banner, Form, Tag, Toast } from '@douyinfe/semi-ui';
+import { Banner, Form, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -10,9 +9,9 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useCmsErrorProneWordList, useSaveCmsErrorProneWord, useDeleteCmsErrorProneWords, cmsErrorProneWordKeys } from '@/hooks/queries/cms';
 import type { CmsErrorProneWord } from '@zenith/shared/cms';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 interface SearchParams { keyword: string }
 const defaultSearch: SearchParams = { keyword: '' };
@@ -55,18 +54,10 @@ export default function ErrorProneWordsPage() {
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => canManage ? [
         { key: 'edit', label: '编辑', onClick: () => modal.openEdit(record) },
-        {
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该易错词吗？',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        },
+        deleteAction({
+          title: '确定要删除该易错词吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ] : [],
     }),
   ];
@@ -74,24 +65,16 @@ export default function ErrorProneWordsPage() {
   return (
     <div className="page-container">
       <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="易错词库用于内容编辑辅助：在内容编辑页点击「内容检查」可标出正文中的易错词，并支持一键替换为正确写法。" />
-      <SearchToolbar>
-        <KeywordInput placeholder="搜索易错词/正确写法..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        {canManage ? <CreateButton onClick={modal.openCreate} /> : null}
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索易错词/正确写法..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canManage ? <CreateButton onClick={modal.openCreate} /> : null}
+      />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsErrorProneWord>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无易错词"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无易错词' })}
       />
 
       <AppModal {...modal.modalProps} width={480}>

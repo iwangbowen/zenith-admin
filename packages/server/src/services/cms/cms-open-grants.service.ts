@@ -5,6 +5,7 @@
  * 与人类侧的 `cms_site_users` / `cms_channel_users` 同构 —— 未显式授权一律拒绝（fail-closed）。
  * 直接发布还要三个条件同时成立：`cms:publish` scope + 授权行 `can_publish` + 站点开关。
  */
+import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -54,10 +55,10 @@ export interface SaveCmsOpenAppGrantInput {
 
 export async function saveCmsOpenAppGrant(input: SaveCmsOpenAppGrantInput) {
   const [site] = await db.select({ id: cmsSites.id }).from(cmsSites).where(eq(cmsSites.id, input.siteId)).limit(1);
-  if (!site) throw new HTTPException(404, { message: '站点不存在' });
+  requireRow(site, '站点不存在');
   const [app] = await db.select({ clientId: oauth2Clients.clientId }).from(oauth2Clients)
     .where(eq(oauth2Clients.clientId, input.clientId)).limit(1);
-  if (!app) throw new HTTPException(404, { message: '开放应用不存在' });
+  requireRow(app, '开放应用不存在');
 
   const channelIds = [...new Set(input.channelIds ?? [])].filter((id) => Number.isInteger(id) && id > 0);
   if (channelIds.length > 0) {
@@ -91,7 +92,7 @@ export async function saveCmsOpenAppGrant(input: SaveCmsOpenAppGrantInput) {
 
 export async function deleteCmsOpenAppGrant(id: number) {
   const [row] = await db.select().from(cmsOpenAppGrants).where(eq(cmsOpenAppGrants.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '授权不存在' });
+  requireRow(row, '授权不存在');
   // 站点级 ACL：否则持有 cms:site:update 的用户可以枚举 id，撤销别的站点的开放授权
   await assertSiteAccess(row.siteId);
   await db.delete(cmsOpenAppGrants).where(eq(cmsOpenAppGrants.id, id));

@@ -21,6 +21,7 @@ import { buildCmsModelFieldValues, buildCmsListModelFieldValues, loadCmsListMode
 import { listCmsChannelTree } from './cms-channels.service';
 import { channelUrl, tagUrl, contentUrl, customPageUrl, type CmsUrlChannel } from './cms-urls';
 import { buildCmsLinkResolver, resolveCmsLink, type CmsLinkResolver } from './cms-link.service';
+import { buildCmsPagination } from './cms-render-pagination';
 import {
   listPublishedContents, listHomeContents, getPublishedContent, getAdjacentContents, listContentTags,
   listPublishedContentsByTag, listRelatedContents, resolveContentBodyExtend, findPublishedContentByStaticPath, type ResolvedCmsContentListRow,
@@ -352,23 +353,12 @@ function toContentItem(row: CmsContentListRow & { coverThumb?: string | null }, 
 }
 
 function buildPagination(baseUrl: string, channelPath: string, page: number, pageSize: number, total: number): CmsPagination {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const window = 5;
-  const start = Math.max(1, Math.min(page - Math.floor(window / 2), totalPages - window + 1));
-  const end = Math.min(totalPages, start + window - 1);
-  const pages = [];
-  for (let p = start; p <= end; p++) {
-    pages.push({ page: p, url: channelUrl(baseUrl, channelPath, p), current: p === page });
-  }
-  return {
+  return buildCmsPagination({
     page,
     pageSize,
     total,
-    totalPages,
-    prevUrl: page > 1 ? channelUrl(baseUrl, channelPath, page - 1) : null,
-    nextUrl: page < totalPages ? channelUrl(baseUrl, channelPath, page + 1) : null,
-    pages,
-  };
+    makeUrl: (p) => channelUrl(baseUrl, channelPath, p),
+  });
 }
 
 async function buildBreadcrumbs(site: CmsSiteRow, baseUrl: string, channel: CmsChannelRow): Promise<CmsBreadcrumb[]> {
@@ -1111,13 +1101,6 @@ export async function renderTagPage(site: CmsSiteRow, baseUrl: string, slug: str
   if (page > 1 && rows.length === 0) return renderNotFound(site, baseUrl, tagUrl('', slug, page));
   const channelPathMap = await loadChannelPathMap(site.id);
   const resolveLink = await buildCmsLinkResolver(site.id, baseUrl, rows.map((r) => r.externalLink));
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const window = 5;
-  const start = Math.max(1, Math.min(page - Math.floor(window / 2), totalPages - window + 1));
-  const pages = [];
-  for (let p = start; p <= Math.min(totalPages, start + window - 1); p++) {
-    pages.push({ page: p, url: tagUrl(baseUrl, slug, p), current: p === page });
-  }
   const tagFieldDefs = await loadCmsListModelFieldDefs(rows.map((r) => r.modelId));
   const props = {
     ...base,
@@ -1127,12 +1110,12 @@ export async function renderTagPage(site: CmsSiteRow, baseUrl: string, slug: str
       { name: `标签：${tag.name}`, url: tagUrl(baseUrl, slug) },
     ],
     items: rows.map((r) => toContentItem(r, baseUrl, channelPathMap.get(r.channelId) ?? FALLBACK_URL_CHANNEL, resolveLink, tagFieldDefs)),
-    pagination: {
-      page, pageSize, total, totalPages,
-      prevUrl: page > 1 ? tagUrl(baseUrl, slug, page - 1) : null,
-      nextUrl: page < totalPages ? tagUrl(baseUrl, slug, page + 1) : null,
-      pages,
-    },
+    pagination: buildCmsPagination({
+      page,
+      pageSize,
+      total,
+      makeUrl: (p) => tagUrl(baseUrl, slug, p),
+    }),
   };
   const html = renderDoc(theme.templates.tag, props);
   return { status: 200, html, kind: 'list' };

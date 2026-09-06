@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { eq, asc, and, inArray, isNull, isNotNull, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { pinyin } from 'pinyin-pro';
@@ -73,8 +74,7 @@ function sanitizeChannelPageContent<T extends { pageContent?: string | null }>(d
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsChannelExists(id: number): Promise<CmsChannelRow> {
   const [row] = await db.select().from(cmsChannels).where(eq(cmsChannels.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '栏目不存在' });
-  return row;
+  return requireRow(row, '栏目不存在');
 }
 
 /** 按栏目标识查栏目（开放 API / 模板按 code 引用栏目时用） */
@@ -93,8 +93,8 @@ export async function getCmsChannel(id: number) {
     where: eq(cmsChannels.id, id),
     with: { model: { columns: { name: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '栏目不存在' });
-  return resolveCmsResourcePayload(mapCmsChannel(row, row.model?.name), current.siteId);
+  const channel = requireRow(row, '栏目不存在');
+  return resolveCmsResourcePayload(mapCmsChannel(channel, channel.model?.name), current.siteId);
 }
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
@@ -139,7 +139,7 @@ async function ensureModelValid(modelId: number | null | undefined, siteId: numb
   const [row] = await db.select({ id: cmsModels.id, name: cmsModels.name, ownerSiteId: cmsModels.ownerSiteId }).from(cmsModels).where(and(
     eq(cmsModels.id, modelId),
   )).limit(1);
-  if (!row) throw new HTTPException(400, { message: `指定的内容模型（id=${modelId}）不存在` });
+  requireRow(row, `指定的内容模型（id=${modelId}）不存在`, 400);
   if (row.ownerSiteId != null && row.ownerSiteId !== siteId) {
     throw new HTTPException(400, { message: `模型「${row.name}」归属其他站点，当前站点不可绑定` });
   }
@@ -166,7 +166,7 @@ async function computePath(executor: DbExecutor, siteId: number, parentId: numbe
   const [parent] = await executor.select().from(cmsChannels).where(and(
     eq(cmsChannels.id, parentId),
   )).limit(1);
-  if (!parent) throw new HTTPException(400, { message: '父栏目不存在' });
+  requireRow(parent, '父栏目不存在', 400);
   if (parent.siteId !== siteId) throw new HTTPException(400, { message: '父栏目不属于当前站点' });
   if (selfId && parent.id === selfId) throw new HTTPException(400, { message: '父栏目不能是自身' });
   return `${parent.path}/${slug}`;
@@ -343,7 +343,7 @@ export async function updateCmsChannel(id: number, data: UpdateCmsChannelInput) 
         .where(and(
           eq(cmsChannels.id, id),
         )).returning();
-      if (!updated) throw new HTTPException(404, { message: '栏目不存在' });
+      requireRow(updated, '栏目不存在');
       if (updated.status !== current.status || updated.path !== current.path
         || updated.code !== current.code || updated.detailPathRule !== current.detailPathRule) {
         // 栏目启停等同其下内容的整体上下线（publicWhere / 增量同步都按栏目状态判定可见性）。

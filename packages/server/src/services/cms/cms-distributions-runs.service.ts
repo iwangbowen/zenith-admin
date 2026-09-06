@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import {
   and,
   asc,
@@ -10,8 +12,6 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
-import type { AsyncTaskItem } from '@zenith/shared/tasks';
 import { db } from '../../db';
 import {
   asyncTaskItems,
@@ -27,6 +27,7 @@ import { mapAsyncTask } from '../../lib/task-center';
 import { assertSiteAccess, getAccessibleSiteIds } from './cms-sites.service';
 import { DISTRIBUTION_TASK_TYPE, nextSchedule, SYSTEM_USER } from './cms-distributions-shared';
 import { submitCmsDistributionRun } from './cms-distributions-sync.service';
+import { mapAsyncTaskItem } from './cms-task-shared';
 
 export interface ListCmsDistributionRunsQuery {
   page: number;
@@ -108,34 +109,19 @@ async function mapRuns(rows: Array<typeof asyncTasks.$inferSelect>) {
 
 export async function listCmsDistributionRuns(query: ListCmsDistributionRunsQuery) {
   const where = and(...await buildCmsDistributionRunConditions(query));
-  const [total, rows] = await Promise.all([
-    db.$count(asyncTasks, where),
-    db.select().from(asyncTasks).where(where).orderBy(desc(asyncTasks.id))
-      .limit(query.pageSize).offset(pageOffset(query.page, query.pageSize)),
-  ]);
-  return { list: await mapRuns(rows), total, page: query.page, pageSize: query.pageSize };
+  return buildListResult({
+    page: query.page,
+    pageSize: query.pageSize,
+    count: () => db.$count(asyncTasks, where),
+    rows: async () => mapRuns(await db.select().from(asyncTasks).where(where).orderBy(desc(asyncTasks.id))
+      .limit(query.pageSize).offset(pageOffset(query.page, query.pageSize))),
+  });
 }
 
 async function ensureDistributionRunAccessible(id: number) {
   const conditions = await buildCmsDistributionRunConditions({});
   const [row] = await db.select().from(asyncTasks).where(and(eq(asyncTasks.id, id), ...conditions)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '分发同步记录不存在' });
-  return row;
-}
-
-function mapRunItem(row: typeof asyncTaskItems.$inferSelect): AsyncTaskItem {
-  return {
-    id: row.id,
-    taskId: row.taskId,
-    itemKey: row.itemKey,
-    label: row.label ?? null,
-    status: row.status,
-    message: row.message ?? null,
-    data: row.data ?? null,
-    attempt: row.attempt,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
-  };
+  return requireRow(row, '分发同步记录不存在');
 }
 
 export async function getCmsDistributionRunDetail(id: number) {
@@ -145,7 +131,7 @@ export async function getCmsDistributionRunDetail(id: number) {
     .where(eq(asyncTaskItems.taskId, id))
     .orderBy(asc(asyncTaskItems.id))
     .limit(5000);
-  return { run, items: items.map(mapRunItem) };
+  return { run, items: items.map(mapAsyncTaskItem) };
 }
 
 export async function loadCmsDistributionExportRows(query: Record<string, unknown>) {

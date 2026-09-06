@@ -28,7 +28,7 @@ import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
 import InteractionResultsSheet from './interaction/InteractionResultsSheet';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 interface ListSearch {
@@ -186,20 +186,12 @@ export default function SurveysPage() {
             });
           },
         },
-        {
-          key: 'delete', label: '删除', danger: true,
+        deleteAction({
           hidden: !canManage,
-          onClick: () => {
-            confirmDelete({
-              title: `删除「${record.title}」？`,
-              content: `将级联删除 ${record.responseCount} 份答卷，无法恢复。`,
-              onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: record.id } });
-                Toast.success('删除成功');
-              },
-            });
-          },
-        },
+          title: `删除「${record.title}」？`,
+          content: `将级联删除 ${record.responseCount} 份答卷，无法恢复。`,
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -273,17 +265,14 @@ export default function SurveysPage() {
               <Button type="warning" onClick={() => submitBatch('closed')}>批量关闭</Button>
             </div>
           ) : null}
-          <ConfigurableTable
-            bordered
+          <ConfigurableTable<CmsInteraction>
             columns={listColumns}
-            dataSource={listQuery.data?.list ?? []}
-            loading={listQuery.isFetching}
-            rowKey={(record) => String(record?.id ?? '')}
-            empty={siteId ? '暂无互动问卷' : '请先选择站点'}
-            rowSelection={{ selectedRowKeys: selectedIds.map(String), onChange: (keys) => setSelectedIds((keys ?? []).map(Number)) }}
-            onRefresh={() => void listQuery.refetch()}
-            refreshLoading={listQuery.isFetching}
-            pagination={buildPagination(listQuery.data?.total ?? 0, () => setSelectedIds([]))}
+            {...listTableProps(listQuery, {
+              rowKey: (record) => String(record?.id ?? ''),
+              empty: siteId ? '暂无互动问卷' : '请先选择站点',
+              rowSelection: { selectedRowKeys: selectedIds.map(String), onChange: (keys) => setSelectedIds((keys ?? []).map(Number)) },
+              pagination: (total) => buildPagination(total, () => setSelectedIds([])),
+            })}
           />
         </TabPane>
         <TabPane tab="答卷明细" itemKey="responses">
@@ -316,21 +305,19 @@ export default function SurveysPage() {
               ? <ExportButton entity="cms.interaction-responses" permission="cms:interaction:export" query={responseExportQuery} />
               : null}
           />
-          <ConfigurableTable
-            bordered
+          <ConfigurableTable<CmsInteractionResponse>
             columns={responseColumns}
-            dataSource={responseQuery.data?.list ?? []}
-            loading={responseQuery.isFetching}
-            rowKey={(record) => String(record?.id ?? '')}
-            empty={siteId ? '暂无答卷' : '请先选择站点'}
-            onRefresh={() => void responseQuery.refetch()}
-            refreshLoading={responseQuery.isFetching}
-            pagination={{
-              total: responseQuery.data?.total ?? 0,
-              pageSize,
-              currentPage: responsePage,
-              onPageChange: setResponsePage,
-            }}
+            {...listTableProps(responseQuery, {
+              rowKey: (record) => String(record?.id ?? ''),
+              empty: siteId ? '暂无答卷' : '请先选择站点',
+              pagination: (total) => ({
+                total,
+                pageSize,
+                currentPage: responsePage,
+                onPageChange: setResponsePage,
+                onPageSizeChange: () => undefined,
+              }),
+            })}
           />
         </TabPane>
       </Tabs>

@@ -6,7 +6,6 @@ import dayjs from 'dayjs';
 import { XCircle } from 'lucide-react';
 import { CMS_PUBLISH_ARTIFACT_STATUS_LABELS, CMS_PUBLISH_TARGET_TYPE_LABELS, CMS_PUBLISH_TARGET_TYPES } from '@zenith/shared/cms';
 import type { CmsPublishingTask, CmsPublishArtifact, CmsPublishArtifactStatus, CmsPublishTargetType } from '@zenith/shared/cms';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import AppModal from '@/components/AppModal';
@@ -28,8 +27,9 @@ import {
 import { ASYNC_TASK_STATUS_TAG_MAP } from '@/utils/async-task';
 import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 type TabKey = 'queue' | 'history' | 'artifacts' | 'failed';
@@ -89,9 +89,6 @@ export default function PublishingPage() {
     endTime: submitted.endTime,
     keyword: submitted.keyword || undefined,
   }, activeTab === 'artifacts');
-  const tasks = taskListQuery.data?.list ?? [];
-  const artifacts = artifactListQuery.data?.list ?? [];
-
   // Keep the id independent from the currently loaded tab. Artifact rows can
   // point to a task that is not present in the history page cache.
   const [detailTaskId, setDetailTaskId] = useState<number | null>(null);
@@ -232,19 +229,8 @@ export default function PublishingPage() {
     return [dayjs(draft.startTime).toDate(), dayjs(draft.endTime).toDate()];
   }, [draft.endTime, draft.startTime]);
 
-  const primary = (
-    <>
-      <KeywordInput placeholder="任务/路径关键词" value={draft.keyword} onChange={(keyword) => setDraft((prev) => ({ ...prev, keyword }))} />
-      <SearchButton onClick={applySearch} />
-      <ResetButton onClick={resetSearch} />
-      {selected.length > 0 && canManage ? (
-        <>
-          <Button type="warning" onClick={() => runBatch('cancel')}>批量取消（{selected.length}）</Button>
-          <Button onClick={() => runBatch('resume')}>批量重试</Button>
-          <Button onClick={() => runBatch('rebuild')}>批量重建</Button>
-        </>
-      ) : null}
-    </>
+  const keywordInput = (
+    <KeywordInput placeholder="任务/路径关键词" value={draft.keyword} onChange={(keyword) => setDraft((prev) => ({ ...prev, keyword }))} />
   );
 
   const filters = (
@@ -280,9 +266,18 @@ export default function PublishingPage() {
   };
   const artifactExportQuery = submitted as unknown as Record<string, unknown>;
 
+  const createBuildButton = canBuild ? <CreateButton onClick={() => { setSubmitVisible(true); setSubmitForm((prev) => ({ ...prev, siteId: sites[0]?.id })); }}>新建发布</CreateButton> : null;
+
+  const batchActions = selected.length > 0 && canManage ? (
+    <>
+      <Button type="warning" onClick={() => runBatch('cancel')}>批量取消（{selected.length}）</Button>
+      <Button onClick={() => runBatch('resume')}>批量重试</Button>
+      <Button onClick={() => runBatch('rebuild')}>批量重建</Button>
+    </>
+  ) : null;
+
   const taskActions = (
     <>
-      {canBuild ? <CreateButton onClick={() => { setSubmitVisible(true); setSubmitForm((prev) => ({ ...prev, siteId: sites[0]?.id })); }}>新建发布</CreateButton> : null}
       <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskExportQuery as unknown as Record<string, unknown>} />
       <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskExportQuery as unknown as Record<string, unknown>} />
     </>
@@ -290,7 +285,6 @@ export default function PublishingPage() {
 
   const artifactActions = (
     <>
-      {canBuild ? <CreateButton onClick={() => { setSubmitVisible(true); setSubmitForm((prev) => ({ ...prev, siteId: sites[0]?.id })); }}>新建发布</CreateButton> : null}
       <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={artifactExportQuery} />
       <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={artifactExportQuery} />
     </>
@@ -298,33 +292,30 @@ export default function PublishingPage() {
 
   const taskPane = (tab: Exclude<TabKey, 'artifacts'>) => (
     <>
-      <SearchToolbar
-        primary={primary}
+      <ListSearchToolbar
+        keyword={keywordInput}
         filters={filters}
-        actions={taskActions}
-        mobilePrimary={primary}
+        onSearch={applySearch}
+        onReset={resetSearch}
+        create={createBuildButton}
+        actions={<>{batchActions}{taskActions}</>}
         mobileActions={(
           <>
-            {canBuild ? <Button theme="borderless" type="primary" onClick={() => setSubmitVisible(true)}>新建发布</Button> : null}
+            {batchActions}
             <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskExportQuery as unknown as Record<string, unknown>} variant="flat" />
             <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskExportQuery as unknown as Record<string, unknown>} variant="flat" />
           </>
         )}
-        onFilterApply={applySearch}
-        onFilterReset={resetSearch}
       />
       {taskListQuery.isError ? <Banner type="danger" description="发布任务加载失败，请确认站点权限或网络后刷新重试。" /> : null}
       {tab === 'failed' && taskListQuery.data?.list.length === 0 ? <Banner type="success" description="当前筛选范围内没有失败任务。" /> : null}
-      <ConfigurableTable
-        bordered
-        rowKey={(record) => String(record?.id ?? '')}
+      <ConfigurableTable<CmsPublishingTask>
         columns={taskColumns}
-        dataSource={tasks}
-        loading={taskListQuery.isFetching}
-        pagination={taskPagination.buildPagination(taskListQuery.data?.total ?? 0, () => setSelected([]))}
-        rowSelection={canManage ? { selectedRowKeys: selected.map(String), onChange: (keys) => setSelected((keys ?? []).map(Number)) } : undefined}
-        onRefresh={() => void taskListQuery.refetch()}
-        refreshLoading={taskListQuery.isFetching}
+        {...listTableProps(taskListQuery, {
+          rowKey: (record) => String(record?.id ?? ''),
+          pagination: (total) => taskPagination.buildPagination(total, () => setSelected([])),
+          rowSelection: canManage ? { selectedRowKeys: selected.map(String), onChange: (keys) => setSelected((keys ?? []).map(Number)) } : undefined,
+        })}
       />
     </>
   );
@@ -335,25 +326,22 @@ export default function PublishingPage() {
         <TabPane tab="队列" itemKey="queue">{taskPane('queue')}</TabPane>
         <TabPane tab="历史" itemKey="history">{taskPane('history')}</TabPane>
         <TabPane tab="产物" itemKey="artifacts">
-          <SearchToolbar
-            primary={primary}
+          <ListSearchToolbar
+            keyword={keywordInput}
             filters={filters}
-            actions={artifactActions}
-            mobilePrimary={primary}
+            onSearch={applySearch}
+            onReset={resetSearch}
+            create={createBuildButton}
+            actions={<>{batchActions}{artifactActions}</>}
             mobileActions={artifactActions}
-            onFilterApply={applySearch}
-            onFilterReset={resetSearch}
           />
           {artifactListQuery.isError ? <Banner type="danger" description="发布产物加载失败，请确认任务/站点权限后刷新重试。" /> : null}
-          <ConfigurableTable
-            bordered
-            rowKey={(record) => String(record?.id ?? '')}
+          <ConfigurableTable<CmsPublishArtifact>
             columns={artifactColumns}
-            dataSource={artifacts}
-            loading={artifactListQuery.isFetching}
-            pagination={artifactPagination.buildPagination(artifactListQuery.data?.total ?? 0)}
-            onRefresh={() => void artifactListQuery.refetch()}
-            refreshLoading={artifactListQuery.isFetching}
+            {...listTableProps(artifactListQuery, {
+              rowKey: (record) => String(record?.id ?? ''),
+              pagination: artifactPagination.buildPagination,
+            })}
           />
         </TabPane>
         <TabPane tab="失败" itemKey="failed">{taskPane('failed')}</TabPane>

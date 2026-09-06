@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and, or, isNull, lte, gte, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -49,14 +51,12 @@ export function mapCmsAd(row: CmsAdRow, slotName?: string | null) {
 
 export async function ensureCmsAdSlotExists(id: number): Promise<CmsAdSlotRow> {
   const [row] = await db.select().from(cmsAdSlots).where(eq(cmsAdSlots.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '广告位不存在' });
-  return row;
+  return requireRow(row, '广告位不存在');
 }
 
 export async function ensureCmsAdExists(id: number): Promise<CmsAdRow> {
   const [row] = await db.select().from(cmsAds).where(eq(cmsAds.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '广告不存在' });
-  return row;
+  return requireRow(row, '广告不存在');
 }
 
 // ─── 前台渲染：站点投放中广告（按 slot code 分组）──────────────────────────────
@@ -163,16 +163,15 @@ export async function listCmsAds(q: ListCmsAdsQuery) {
     .from(cmsAds)
     .innerJoin(cmsAdSlots, eq(cmsAds.slotId, cmsAdSlots.id))
     .where(where);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsAds, adWhere),
-    withPagination(base.orderBy(asc(cmsAds.sort), asc(cmsAds.id)).$dynamic(), q.page, q.pageSize),
-  ]);
-  return {
-    list: await resolveCmsResourcePayload(rows.map((r) => mapCmsAd(r.ad, r.slotName)), q.siteId),
-    total,
+  return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
-  };
+    count: () => db.$count(cmsAds, adWhere),
+    rows: async () => {
+      const rows = await withPagination(base.orderBy(asc(cmsAds.sort), asc(cmsAds.id)).$dynamic(), q.page, q.pageSize);
+      return resolveCmsResourcePayload(rows.map((r) => mapCmsAd(r.ad, r.slotName)), q.siteId);
+    },
+  });
 }
 
 export async function createCmsAd(data: CreateCmsAdInput) {

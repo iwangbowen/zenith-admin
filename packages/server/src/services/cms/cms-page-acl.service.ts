@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { CmsPageBlock, SetCmsPageBlockAclInput } from '@zenith/shared/cms';
@@ -14,7 +15,7 @@ import { lockCmsSiteForMutation } from './cms-site-publish-lock.service';
 
 async function ensureCmsPageRow(id: number): Promise<CmsPageRow> {
   const [row] = await db.select().from(cmsPages).where(eq(cmsPages.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '页面不存在' });
+  requireRow(row, '页面不存在');
   await assertSiteAccess(row.siteId);
   return row;
 }
@@ -192,7 +193,7 @@ export async function setCmsPageBlockAcls(pageId: number, input: SetCmsPageBlock
   await db.transaction(async (tx) => {
     await lockCmsSiteForMutation(tx, initial.siteId);
     const [page] = await tx.select().from(cmsPages).where(eq(cmsPages.id, pageId)).for('update').limit(1);
-    if (!page) throw new HTTPException(404, { message: '页面不存在' });
+    requireRow(page, '页面不存在');
     const existingBlockIds = new Set(((page.blocks ?? []) as CmsPageBlock[]).map((block) => block.id));
     if (input.blockIds.some((blockId) => !existingBlockIds.has(blockId))) {
       throw new HTTPException(404, { message: '所选页面区块包含不存在或已被替换的 blockId' });

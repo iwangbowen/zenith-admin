@@ -1,3 +1,4 @@
+import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { CmsAdEventType, CmsDeviceType } from '@zenith/shared/cms';
@@ -254,16 +255,13 @@ export async function listCmsAdEvents(q: ListCmsAdEventsQuery) {
     .leftJoin(cmsAdSlots, eq(cmsAdEvents.slotId, cmsAdSlots.id))
     .where(where)
     .orderBy(desc(cmsAdEvents.occurredAt), desc(cmsAdEvents.id));
-  const [total, rows] = await Promise.all([
-    db.$count(cmsAdEvents, where),
-    withPagination(base.$dynamic(), q.page, q.pageSize),
-  ]);
-  return {
-    list: rows.map((row) => mapCmsAdEvent(row.event, row)),
-    total,
+  return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
-  };
+    count: () => db.$count(cmsAdEvents, where),
+    rows: () => withPagination(base.$dynamic(), q.page, q.pageSize),
+    map: (row) => mapCmsAdEvent(row.event, row),
+  });
 }
 
 export async function* streamCmsAdEvents(

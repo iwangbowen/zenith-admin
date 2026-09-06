@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import {
   createHmac,
   randomUUID,
@@ -124,7 +125,7 @@ export async function issueCmsAdEventTokens(input: {
     eq(cmsSites.id, firstProof.siteId),
     eq(cmsSites.status, 'enabled'),
   )).limit(1);
-  if (!site) throw new HTTPException(404, { message: '站点不存在或未启用' });
+  requireRow(site, '站点不存在或未启用');
   const now = new Date();
   const rows = await db.select({
     id: cmsAds.id,

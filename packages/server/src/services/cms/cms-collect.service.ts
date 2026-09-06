@@ -2,6 +2,8 @@
  * 采集中心：列表页翻页 + CSS 选择器抽取 → 清洗 → 可选图片本地化 → 入库（草稿或直接发布）。
  * 执行走任务中心（进度/取消/行级明细）；URL 级去重防重复采集；全程 http-client SSRF 防护。
  */
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { createRequire } from 'node:module';
 import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -68,9 +70,11 @@ export async function listCollectRules(params: { page: number; pageSize: number;
   }
   conds.push(keywordCondition(params.keyword, [cmsCollectRules.name], 'ilike'));
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsCollectRules, where),
-    withPagination(
+  return buildListResult({
+    page: params.page,
+    pageSize: params.pageSize,
+    count: () => db.$count(cmsCollectRules, where),
+    rows: () => withPagination(
       db.select({ rule: cmsCollectRules, channelName: cmsChannels.name })
         .from(cmsCollectRules)
         .leftJoin(cmsChannels, and(
@@ -81,8 +85,8 @@ export async function listCollectRules(params: { page: number; pageSize: number;
         .$dynamic(),
       params.page, params.pageSize,
     ),
-  ]);
-  return { list: rows.map((r) => mapCollectRule(r.rule, r.channelName)), total, page: params.page, pageSize: params.pageSize };
+    map: (r) => mapCollectRule(r.rule, r.channelName),
+  });
 }
 
 async function ensureRuleChannel(siteId: number, channelId: number) {
@@ -143,7 +147,7 @@ export async function createCollectRule(input: CollectRuleInput) {
 
 export async function updateCollectRule(id: number, input: Partial<CollectRuleInput>) {
   const [current] = await db.select().from(cmsCollectRules).where(eq(cmsCollectRules.id, id)).limit(1);
-  if (!current) throw new HTTPException(404, { message: '采集规则不存在' });
+  requireRow(current, '采集规则不存在');
   await assertSiteAccess(current.siteId);
   await assertChannelAccess(current.channelId);
   await assertCollectAutoPublishPermission(input.autoPublish ?? current.autoPublish);
@@ -163,7 +167,7 @@ export async function updateCollectRule(id: number, input: Partial<CollectRuleIn
 
 export async function deleteCollectRule(id: number) {
   const current = await ensureCollectRuleExists(id);
-  if (!current) throw new HTTPException(404, { message: '采集规则不存在' });
+  requireRow(current, '采集规则不存在');
   await assertSiteAccess(current.siteId);
   await assertChannelAccess(current.channelId);
   await db.delete(cmsCollectRules).where(and(
@@ -182,8 +186,7 @@ export async function ensureCollectRuleRunnable(id: number): Promise<CmsCollectR
 
 async function ensureCollectRuleExists(id: number): Promise<CmsCollectRuleRow> {
   const [rule] = await db.select().from(cmsCollectRules).where(eq(cmsCollectRules.id, id)).limit(1);
-  if (!rule) throw new HTTPException(404, { message: '采集规则不存在' });
-  return rule;
+  return requireRow(rule, '采集规则不存在');
 }
 
 // ─── 采集明细 ─────────────────────────────────────────────────────────────────
@@ -196,21 +199,20 @@ export async function listCollectItems(params: { page: number; pageSize: number;
   ];
   if (params.status) conds.push(eq(cmsCollectItems.status, params.status as 'success' | 'skipped' | 'failed'));
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsCollectItems, where),
-    withPagination(
+  return buildListResult({
+    page: params.page,
+    pageSize: params.pageSize,
+    count: () => db.$count(cmsCollectItems, where),
+    rows: () => withPagination(
       db.select().from(cmsCollectItems).where(where).orderBy(desc(cmsCollectItems.id)).$dynamic(),
       params.page, params.pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => ({
+    map: (r) => ({
       id: r.id, ruleId: r.ruleId, url: r.url, title: r.title ?? null,
       status: r.status, contentId: r.contentId ?? null, error: r.error ?? null,
       createdAt: formatDateTime(r.createdAt),
-    })),
-    total, page: params.page, pageSize: params.pageSize,
-  };
+    }),
+  });
 }
 
 // ─── 抓取执行 ─────────────────────────────────────────────────────────────────

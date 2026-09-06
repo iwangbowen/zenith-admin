@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, sql, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -153,7 +155,7 @@ export async function getInteractionState(contentId: number): Promise<CmsInterac
     db.$count(cmsContentLikes, and(eq(cmsContentLikes.memberId, memberId), eq(cmsContentLikes.contentId, contentId))),
     db.$count(cmsContentFavorites, and(eq(cmsContentFavorites.memberId, memberId), eq(cmsContentFavorites.contentId, contentId))),
   ]);
-  if (!row) throw new HTTPException(404, { message: '内容不存在' });
+  requireRow(row, '内容不存在');
   return { liked: liked > 0, favorited: favorited > 0, likeCount: row.likeCount, favoriteCount: row.favoriteCount };
 }
 
@@ -234,46 +236,48 @@ async function loadChannelPaths(channelIds: number[]): Promise<Map<number, CmsUr
 export async function listMyFavorites(page: number, pageSize: number) {
   const memberId = currentMemberId();
   const where = eq(cmsContentFavorites.memberId, memberId);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsContentFavorites, where),
-    db.query.cmsContentFavorites.findMany({
-      where,
-      with: { content: { columns: { body: false, searchVector: false, extend: false, mediaData: false, attachments: false } } },
-      orderBy: desc(cmsContentFavorites.createdAt),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  const paths = await loadChannelPaths(rows.map((r) => r.content.channelId));
-  const covers = await resolveMemberCovers(rows);
-  return {
-    list: rows.map((r, index) => toMemberContentItem(r.content, paths.get(r.content.channelId), { createdAt: r.createdAt }, covers[index])),
-    total, page, pageSize,
-  };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(cmsContentFavorites, where),
+    rows: async () => {
+      const rows = await db.query.cmsContentFavorites.findMany({
+        where,
+        with: { content: { columns: { body: false, searchVector: false, extend: false, mediaData: false, attachments: false } } },
+        orderBy: desc(cmsContentFavorites.createdAt),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      });
+      const paths = await loadChannelPaths(rows.map((r) => r.content.channelId));
+      const covers = await resolveMemberCovers(rows);
+      return rows.map((r, index) => toMemberContentItem(r.content, paths.get(r.content.channelId), { createdAt: r.createdAt }, covers[index]));
+    },
+  });
 }
 
 /** 我的浏览历史（分页，最近浏览优先） */
 export async function listMyViewHistory(page: number, pageSize: number) {
   const memberId = currentMemberId();
   const where = eq(cmsMemberViewHistory.memberId, memberId);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsMemberViewHistory, where),
-    db.query.cmsMemberViewHistory.findMany({
-      where,
-      with: { content: { columns: { body: false, searchVector: false, extend: false, mediaData: false, attachments: false } } },
-      orderBy: desc(cmsMemberViewHistory.updatedAt),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  const paths = await loadChannelPaths(rows.map((r) => r.content.channelId));
-  const covers = await resolveMemberCovers(rows);
-  return {
-    list: rows.map((r, index) => toMemberContentItem(r.content, paths.get(r.content.channelId), {
-      createdAt: r.createdAt, updatedAt: r.updatedAt, viewCount: r.viewCount,
-    }, covers[index])),
-    total, page, pageSize,
-  };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(cmsMemberViewHistory, where),
+    rows: async () => {
+      const rows = await db.query.cmsMemberViewHistory.findMany({
+        where,
+        with: { content: { columns: { body: false, searchVector: false, extend: false, mediaData: false, attachments: false } } },
+        orderBy: desc(cmsMemberViewHistory.updatedAt),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      });
+      const paths = await loadChannelPaths(rows.map((r) => r.content.channelId));
+      const covers = await resolveMemberCovers(rows);
+      return rows.map((r, index) => toMemberContentItem(r.content, paths.get(r.content.channelId), {
+        createdAt: r.createdAt, updatedAt: r.updatedAt, viewCount: r.viewCount,
+      }, covers[index]));
+    },
+  });
 }
 
 /** 清空我的浏览历史 */
@@ -314,49 +318,50 @@ export async function submitMemberComment(contentId: number, input: { content: s
 export async function listMyComments(page: number, pageSize: number): Promise<PaginatedResponse<CmsMemberComment>> {
   const memberId = currentMemberId();
   const where = eq(cmsComments.memberId, memberId);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsComments, where),
-    withPagination(
-        db.select({ comment: cmsComments, content: {
-          id: cmsContents.id,
-          title: cmsContents.title,
-          slug: cmsContents.slug,
-          staticPath: cmsContents.staticPath,
-          publishedAt: cmsContents.publishedAt,
-          createdAt: cmsContents.createdAt,
-          channelId: cmsContents.channelId,
-          status: cmsContents.status,
-          deletedAt: cmsContents.deletedAt,
-          archivedAt: cmsContents.archivedAt,
-          expireAt: cmsContents.expireAt,
-        } })
-        .from(cmsComments)
-        .leftJoin(cmsContents, eq(cmsComments.contentId, cmsContents.id))
-        .where(where)
-        .orderBy(desc(cmsComments.id))
-        .$dynamic(),
-      page, pageSize,
-    ),
-  ]);
-  const paths = await loadChannelPaths(rows.flatMap((r) => (r.content ? [r.content.channelId] : [])));
-  return {
-    list: rows.map((r) => {
-      const channel = r.content ? paths.get(r.content.channelId) : undefined;
-      const available = r.content && isCmsContentPubliclyVisible(r.content) && channel;
-      return {
-        id: r.comment.id,
-        contentId: r.comment.contentId,
-        contentTitle: r.content?.title ?? null,
-        contentUrl: available ? contentUrl('', channel, r.content!) : null,
-        parentId: r.comment.parentId,
-        content: r.comment.content,
-        likeCount: r.comment.likeCount,
-        status: r.comment.status,
-        createdAt: formatDateTime(r.comment.createdAt),
-      };
-    }),
-    total, page, pageSize,
-  };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(cmsComments, where),
+    rows: async () => {
+      const rows = await withPagination(
+          db.select({ comment: cmsComments, content: {
+            id: cmsContents.id,
+            title: cmsContents.title,
+            slug: cmsContents.slug,
+            staticPath: cmsContents.staticPath,
+            publishedAt: cmsContents.publishedAt,
+            createdAt: cmsContents.createdAt,
+            channelId: cmsContents.channelId,
+            status: cmsContents.status,
+            deletedAt: cmsContents.deletedAt,
+            archivedAt: cmsContents.archivedAt,
+            expireAt: cmsContents.expireAt,
+          } })
+          .from(cmsComments)
+          .leftJoin(cmsContents, eq(cmsComments.contentId, cmsContents.id))
+          .where(where)
+          .orderBy(desc(cmsComments.id))
+          .$dynamic(),
+        page, pageSize,
+      );
+      const paths = await loadChannelPaths(rows.flatMap((r) => (r.content ? [r.content.channelId] : [])));
+      return rows.map((r) => {
+        const channel = r.content ? paths.get(r.content.channelId) : undefined;
+        const available = r.content && isCmsContentPubliclyVisible(r.content) && channel;
+        return {
+          id: r.comment.id,
+          contentId: r.comment.contentId,
+          contentTitle: r.content?.title ?? null,
+          contentUrl: available ? contentUrl('', channel, r.content!) : null,
+          parentId: r.comment.parentId,
+          content: r.comment.content,
+          likeCount: r.comment.likeCount,
+          status: r.comment.status,
+          createdAt: formatDateTime(r.comment.createdAt),
+        };
+      });
+    },
+  });
 }
 
 /** 删除自己的评论；返回内容 id（已审核评论删除需刷新详情页静态文件，否则 null） */
@@ -365,6 +370,6 @@ export async function deleteMyComment(commentId: number): Promise<number | null>
   const [row] = await db.delete(cmsComments)
     .where(and(eq(cmsComments.id, commentId), eq(cmsComments.memberId, memberId)))
     .returning({ contentId: cmsComments.contentId, status: cmsComments.status });
-  if (!row) throw new HTTPException(404, { message: '评论不存在或无权删除' });
+  requireRow(row, '评论不存在或无权删除');
   return row.status === 'approved' ? row.contentId : null;
 }

@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and, or, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -289,8 +291,7 @@ function mapCmsSiteRows(
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsSiteExists(id: number): Promise<CmsSiteRow> {
   const [row] = await db.select().from(cmsSites).where(eq(cmsSites.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '站点不存在' });
-  return row;
+  return requireRow(row, '站点不存在');
 }
 
 export async function getCmsSite(id: number) {
@@ -303,11 +304,11 @@ export async function getCmsSite(id: number) {
     state.inheritances,
     visible,
   );
-  if (!mapped) throw new HTTPException(404, { message: '站点不存在' });
-  if (!mapped.modelId) return resolveCmsResourcePayload(mapped, mapped.id);
+  const site = requireRow(mapped, '站点不存在');
+  if (!site.modelId) return resolveCmsResourcePayload(site, site.id);
   const [model] = await db.select({ name: cmsModels.name }).from(cmsModels)
-    .where(eq(cmsModels.id, mapped.modelId)).limit(1);
-  return resolveCmsResourcePayload({ ...mapped, modelName: model?.name ?? null }, mapped.id);
+    .where(eq(cmsModels.id, site.modelId)).limit(1);
+  return resolveCmsResourcePayload({ ...site, modelName: model?.name ?? null }, site.id);
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
@@ -327,20 +328,24 @@ export async function listCmsSites(q: ListCmsSitesQuery) {
   if (status) conditions.push(eq(cmsSites.status, status));
 
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(cmsSites, where),
-    withPagination(
-      db.select().from(cmsSites).where(where).orderBy(asc(cmsSites.sort), asc(cmsSites.id)).$dynamic(),
-      page,
-      pageSize,
-    ),
-  ]);
-  const [allRows, inheritanceRows] = await Promise.all([
-    db.select().from(cmsSites),
-    db.select().from(cmsSiteInheritances),
-  ]);
-  const mapped = mapCmsSiteRows(list, allRows, inheritanceRows, accessible);
-  return { list: await Promise.all(mapped.map((row) => resolveCmsResourcePayload(row, row.id))), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(cmsSites, where),
+    rows: async () => {
+      const list = await withPagination(
+        db.select().from(cmsSites).where(where).orderBy(asc(cmsSites.sort), asc(cmsSites.id)).$dynamic(),
+        page,
+        pageSize,
+      );
+      const [allRows, inheritanceRows] = await Promise.all([
+        db.select().from(cmsSites),
+        db.select().from(cmsSiteInheritances),
+      ]);
+      const mapped = mapCmsSiteRows(list, allRows, inheritanceRows, accessible);
+      return Promise.all(mapped.map((row) => resolveCmsResourcePayload(row, row.id)));
+    },
+  });
 }
 
 /** 全部启用站点（下拉选择/站点切换器用，绑定用户仅见授权站点） */
@@ -587,7 +592,7 @@ async function ensureSiteModelValid(modelId: number | null | undefined) {
   if (!modelId) return;
   const [row] = await db.select({ id: cmsModels.id }).from(cmsModels)
     .where(eq(cmsModels.id, modelId)).limit(1);
-  if (!row) throw new HTTPException(400, { message: `指定的内容模型（id=${modelId}）不存在` });
+  requireRow(row, `指定的内容模型（id=${modelId}）不存在`, 400);
 }
 
 /**
@@ -740,7 +745,7 @@ export async function updateCmsSite(id: number, data: UpdateCmsSiteInput) {
         .where(and(
           eq(cmsSites.id, id),
         )).returning();
-      if (!updated) throw new HTTPException(404, { message: '站点不存在' });
+      requireRow(updated, '站点不存在');
       await syncCmsResourceRefs(tx, 'site', updated.id, updated.id, updated);
       const tasks = await insertEffectiveConfigRebuildTasks(
         tx,
@@ -808,12 +813,12 @@ export async function moveCmsSite(id: number, parentId: number | null) {
       status: cmsSites.status,
     }).from(cmsSites).orderBy(asc(cmsSites.id)).for('update');
     const current = rows.find((row) => row.id === id);
-    if (!current) throw new HTTPException(404, { message: '站点不存在' });
-    if (current.parentId === parentId) throw new HTTPException(409, { message: '站点已经位于所选父级下' });
+    const currentSite = requireRow(current, '站点不存在');
+    if (currentSite.parentId === parentId) throw new HTTPException(409, { message: '站点已经位于所选父级下' });
     let plan;
     try {
       plan = planCmsSiteMove(rows, id, parentId);
-      if (current.status === 'enabled' && parentId != null) {
+      if (currentSite.status === 'enabled' && parentId != null) {
         const parent = rows.find((row) => row.id === parentId);
         if (parent?.status !== 'enabled') throw new Error('不能把启用站点移动到已停用父站点下');
       }
@@ -862,8 +867,8 @@ export async function updateCmsSiteInheritance(
   await assertSiteAccess(siteId);
   const initialState = await loadCmsInheritanceState();
   const site = initialState.sites.find((row) => row.id === siteId);
-  if (!site) throw new HTTPException(404, { message: '站点不存在' });
-  if (site.parentId == null && Object.values(patch).some(Boolean)) {
+  const currentSite = requireRow(site, '站点不存在');
+  if (currentSite.parentId == null && Object.values(patch).some(Boolean)) {
     throw new HTTPException(400, { message: '根站点没有父级，不能启用继承' });
   }
   const subtreeIds = listCmsSubtreeIds(initialState.sites, siteId);
@@ -925,7 +930,7 @@ export async function deleteCmsSite(id: number) {
    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('cms-site-hierarchy'))`);
     await acquireCmsSitePublishLock(tx, id);
    const [site] = await tx.select().from(cmsSites).where(eq(cmsSites.id, id)).for('update').limit(1);
-    if (!site) throw new HTTPException(404, { message: '站点不存在' });
+    requireRow(site, '站点不存在');
     const [childCount, channelCount, distributionCount] = await Promise.all([
       tx.$count(cmsSites, eq(cmsSites.parentId, id)),
       tx.$count(cmsChannels, eq(cmsChannels.siteId, id)),
@@ -938,7 +943,7 @@ export async function deleteCmsSite(id: number) {
     if (distributionCount > 0) throw new HTTPException(400, { message: `该站点被 ${distributionCount} 条分发规则引用，请先删除规则` });
     if (channelCount > 0) throw new HTTPException(400, { message: `该站点下存在 ${channelCount} 个栏目，请先删除栏目` });
    const [row] = await tx.delete(cmsSites).where(eq(cmsSites.id, id)).returning();
-   if (!row) throw new HTTPException(404, { message: '站点不存在' });
+   requireRow(row, '站点不存在');
     const { clearSiteStatic } = await import('./cms-static.service');
     await clearSiteStatic(row.code);
  });
@@ -972,7 +977,7 @@ export async function enableSiteAnalytics(siteId: number) {
     const [updated] = await tx.update(cmsSites)
       .set({ settings: { ...(locked.settings ?? {}), analyticsSiteKey: analyticsSite.siteKey } })
       .where(eq(cmsSites.id, siteId)).returning();
-    if (!updated) throw new HTTPException(404, { message: '站点不存在' });
+    requireRow(updated, '站点不存在');
     const task = await insertCmsSiteRefsRebuildOutbox(
       tx,
       updated,

@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { eq, and, inArray, isNull, isNotNull, lte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -401,7 +402,7 @@ export async function updateCmsContent(
     const mutation = await db.transaction(async (tx) => {
       let site = await lockCmsSiteForMutation(tx, current.siteId);
       const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
-      if (!locked) throw new HTTPException(404, { message: '内容不存在' });
+      requireRow(locked, '内容不存在');
       if (rest.staticPath !== undefined) await assertContentStaticPathFree(tx, current.siteId, rest.staticPath);
       await assertContentTemplateBySite(current.siteId, data.detailTemplate);
       const oldPublish = locked.status === 'published'
@@ -523,7 +524,7 @@ async function transitionStatus(
     eq(cmsContents.status, current.status),
     isNull(cmsContents.lockedAt),
   )).returning();
-  if (!updated) throw new HTTPException(409, { message: '内容状态已变化，请刷新后重试' });
+  requireRow(updated, '内容状态已变化，请刷新后重试', 409);
   return options?.skipAccessCheck ? mapCmsContent(updated) : getCmsContent(id);
 }
 
@@ -554,7 +555,7 @@ export async function submitCmsContent(id: number, options?: { skipAccessCheck?:
         }
         const [siteCreator] = await db.select({ username: users.username }).from(users)
           .where(eq(users.id, site.createdBy)).limit(1);
-        if (!siteCreator) throw new HTTPException(400, { message: '站点工作流发起人不存在' });
+        requireRow(siteCreator, '站点工作流发起人不存在', 400);
         caller = {
           userId: site.createdBy,
           username: siteCreator.username,
@@ -630,7 +631,7 @@ export async function publishCmsContent(id: number, opts?: PublishCmsContentOpti
   const publication = await db.transaction(async (tx) => {
     const site = await lockCmsSiteForMutation(tx, row.siteId);
     const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
-    if (!locked) throw new HTTPException(404, { message: '内容不存在' });
+    requireRow(locked, '内容不存在');
     assertLockedCmsPublishPreconditions(row.status, locked, opts);
     if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
     const oldPublish = await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true });
@@ -651,7 +652,7 @@ export async function publishCmsContent(id: number, opts?: PublishCmsContentOpti
       rejectReason: null,
       version: sql`${cmsContents.version} + 1`,
     }).where(and(...conditions)).returning();
-    if (!updated) throw new HTTPException(409, { message: '内容已发布或定时发布条件已变化' });
+    requireRow(updated, '内容已发布或定时发布条件已变化', 409);
     await logContentOp(tx, id, 'published', opts?.fromWorkflow ? '工作流审核通过' : null);
     const task = await insertContentPublishOutbox(tx, site, updated, 'publish', oldPublish.deletePaths, { build: true });
     const notificationTask = await insertCmsSubscriptionNotificationOutbox(tx, updated);
@@ -714,7 +715,7 @@ export async function offlineCmsContent(id: number, options?: { skipAccessCheck?
   const mutation = await db.transaction(async (tx) => {
     const site = await lockCmsSiteForMutation(tx, current.siteId);
     const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
-    if (!locked) throw new HTTPException(404, { message: '内容不存在' });
+    requireRow(locked, '内容不存在');
     await assertCmsWidgetSourcesMutable('content', [id], tx);
     if (!canTransitionCmsContentStatus(locked.status, 'offline')) {
       throw new HTTPException(400, { message: `当前状态（${locked.status}）不允许此操作` });
@@ -729,7 +730,7 @@ export async function offlineCmsContent(id: number, options?: { skipAccessCheck?
       isNull(cmsContents.lockedAt),
       ...(options?.expireAtBefore ? [isNotNull(cmsContents.expireAt), lte(cmsContents.expireAt, options.expireAtBefore)] : []),
     )).returning();
-    if (!updated) throw new HTTPException(409, { message: '内容状态已变化，请刷新后重试' });
+    requireRow(updated, '内容状态已变化，请刷新后重试', 409);
     await logContentOp(tx, id, 'offlined');
     const task = await insertContentPublishOutbox(tx, site, updated, 'offline', oldPublish.deletePaths, { build: false });
     const webhookTask = await insertCmsContentWebhookOutbox(tx, 'cms.content.offline', updated);

@@ -1,3 +1,4 @@
+import { buildListResult } from '../../lib/list-query';
 import { eq, desc, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -154,13 +155,15 @@ export async function listCmsPushLogs(q: ListCmsPushLogsQuery) {
   const conditions: SQL[] = [eq(cmsPushLogs.siteId, q.siteId)];
   if (q.engine) conditions.push(eq(cmsPushLogs.engine, q.engine));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(cmsPushLogs, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(cmsPushLogs, where),
+    rows: () => withPagination(
       db.select().from(cmsPushLogs).where(where).orderBy(desc(cmsPushLogs.id)).$dynamic(),
       q.page,
       q.pageSize,
     ),
-  ]);
-  return { list: list.map(mapCmsPushLog), total, page: q.page, pageSize: q.pageSize };
+    map: mapCmsPushLog,
+  });
 }

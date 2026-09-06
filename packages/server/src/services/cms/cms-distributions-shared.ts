@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { CronExpressionParser } from 'cron-parser';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -43,8 +44,7 @@ export async function ensureCmsDistributionRuleExists(id: number) {
       targetChannel: { columns: { name: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '分发规则不存在' });
-  return row;
+  return requireRow(row, '分发规则不存在');
 }
 
 export async function ensureRuleAccessible(id: number) {

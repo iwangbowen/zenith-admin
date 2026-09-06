@@ -40,7 +40,7 @@ function buildSiteTree(sites: CmsSite[]): TreeNodeData[] {
     children.set(parent, [...(children.get(parent) ?? []), site]);
   }
   const toNode = (site: CmsSite): TreeNodeData => ({
-    key: String(site.id),
+    key: `site-${site.id}`,
     value: site.id,
     label: site.name,
     children: (children.get(site.id) ?? []).map(toNode),

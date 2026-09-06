@@ -1,5 +1,6 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsErrorProneWords } from '../../db/schema';
 import type { CmsErrorProneWordRow } from '../../db/schema';
@@ -57,8 +58,7 @@ export function mapCmsErrorProneWord(row: CmsErrorProneWordRow) {
 
 export async function ensureCmsErrorProneWordExists(id: number): Promise<CmsErrorProneWordRow> {
   const [row] = await db.select().from(cmsErrorProneWords).where(eq(cmsErrorProneWords.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '易错词不存在' });
-  return row;
+  return requireRow(row, '易错词不存在');
 }
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
@@ -74,15 +74,17 @@ export async function listCmsErrorProneWords(q: ListCmsErrorProneWordsQuery) {
   conditions.push(keywordCondition(q.keyword, [cmsErrorProneWords.word, cmsErrorProneWords.correction]));
   if (q.status) conditions.push(eq(cmsErrorProneWords.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(cmsErrorProneWords, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(cmsErrorProneWords, where),
+    rows: () => withPagination(
       db.select().from(cmsErrorProneWords).where(where).orderBy(asc(cmsErrorProneWords.id)).$dynamic(),
       q.page,
       q.pageSize,
     ),
-  ]);
-  return { list: list.map(mapCmsErrorProneWord), total, page: q.page, pageSize: q.pageSize };
+    map: mapCmsErrorProneWord,
+  });
 }
 
 // ─── 写入 ─────────────────────────────────────────────────────────────────────
@@ -99,7 +101,7 @@ export async function createCmsErrorProneWord(data: CreateCmsErrorProneWordInput
 export async function updateCmsErrorProneWord(id: number, data: UpdateCmsErrorProneWordInput) {
   try {
     const [row] = await db.update(cmsErrorProneWords).set(data).where(eq(cmsErrorProneWords.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '易错词不存在' });
+    requireRow(row, '易错词不存在');
     invalidateErrorProneCaches();
     return mapCmsErrorProneWord(row);
   } catch (err) {
@@ -109,6 +111,6 @@ export async function updateCmsErrorProneWord(id: number, data: UpdateCmsErrorPr
 
 export async function deleteCmsErrorProneWord(id: number) {
   const [row] = await db.delete(cmsErrorProneWords).where(eq(cmsErrorProneWords.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '易错词不存在' });
+  requireRow(row, '易错词不存在');
   invalidateErrorProneCaches();
 }

@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import {
   desc,
   eq,
@@ -138,9 +140,11 @@ export async function listCmsDistributionRules(query: ListCmsDistributionRulesQu
   if (query.mode) conditions.push(eq(cmsDistributionRules.mode, query.mode));
   if (query.status) conditions.push(eq(cmsDistributionRules.status, query.status));
   const where = buildWhere(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsDistributionRules, where),
-    db.query.cmsDistributionRules.findMany({
+  return buildListResult({
+    page: query.page,
+    pageSize: query.pageSize,
+    count: () => db.$count(cmsDistributionRules, where),
+    rows: () => db.query.cmsDistributionRules.findMany({
       where,
       with: {
         sourceSite: { columns: { name: true } },
@@ -152,8 +156,8 @@ export async function listCmsDistributionRules(query: ListCmsDistributionRulesQu
       limit: query.pageSize,
       offset: pageOffset(query.page, query.pageSize),
     }),
-  ]);
-  return { list: rows.map(mapRule), total, page: query.page, pageSize: query.pageSize };
+    map: mapRule,
+  });
 }
 
 export async function getCmsDistributionRule(id: number) {
@@ -228,6 +232,6 @@ export async function updateCmsDistributionRule(id: number, input: UpdateCmsDist
       : null,
     revision: sql`${cmsDistributionRules.revision} + 1`,
   }).where(eq(cmsDistributionRules.id, id)).returning();
-  if (!updated) throw new HTTPException(404, { message: '分发规则不存在' });
+  requireRow(updated, '分发规则不存在');
   return getCmsDistributionRule(id);
 }

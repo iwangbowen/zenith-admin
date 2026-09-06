@@ -30,6 +30,7 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
+import { confirmAndDelete, deleteAction, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 // ─── 检索测试 Tab ─────────────────────────────────────────────────────────────
@@ -45,7 +46,6 @@ function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | und
   const reindexMutation = useCmsSearchReindex();
   const { tasks, loading: tasksLoading, refresh } = useMyAsyncTasks({ taskTypes: ['cms-search-reindex'] });
 
-  const list = searchQuery.data?.list ?? [];
   const total = searchQuery.data?.total ?? 0;
 
   function handleSearch() {
@@ -120,31 +120,19 @@ function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | und
         </div>
       ) : null}
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsSearchResult>
         columns={columns}
-        dataSource={list}
-        loading={searchQuery.isFetching}
-        rowKey={(record) => String(record?.id ?? '')}
-        size="small"
-        empty={keyword ? '未检索到内容' : '输入关键词开始检索测试'}
-        pagination={{ currentPage: page, pageSize: 10, total, onPageChange: setPage }}
-        onRefresh={() => void searchQuery.refetch()}
-        refreshLoading={searchQuery.isFetching}
+        {...listTableProps({ ...searchQuery, data: searchQuery.data }, {
+          rowKey: (record) => String(record?.id ?? ''),
+          pagination: (total) => ({ currentPage: page, pageSize: 10, total, onPageChange: setPage, onPageSizeChange: () => undefined }),
+          empty: keyword ? '未检索到内容' : '输入关键词开始检索测试',
+        })}
       />
 
       <Typography.Title heading={6} style={{ margin: '20px 0 8px' }}>索引重建任务</Typography.Title>
       <ConfigurableTable
-        bordered
         columns={taskColumns}
-        dataSource={tasks}
-        loading={tasksLoading}
-        rowKey="id"
-        size="small"
-        empty="暂无重建任务"
-        onRefresh={refresh}
-        refreshLoading={tasksLoading}
-        pagination={false}
+        {...listTableProps({ data: tasks, isFetching: tasksLoading, refetch: refresh }, { empty: '暂无重建任务' })}
       />
     </>
   );
@@ -191,24 +179,19 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
       render: renderEnabledStatusTag,
     },
-    {
-      title: '操作', width: 140, fixed: 'right',
-      render: (_: unknown, record: CmsSearchWord) => canManage ? (
-        <span style={{ display: 'flex', gap: 4 }}>
-          <Button theme="borderless" size="small" onClick={() => modal.openEdit(record)}>编辑</Button>
-          <Button theme="borderless" type="danger" size="small" onClick={() => {
-            confirmDelete({
-              title: '确定要删除该词条吗？',
-              content: '词典会即时重建；历史内容索引仍建议重新构建',
-              onOk: async () => {
-                await deleteMutation.mutateAsync(record.id);
-                Toast.success('删除成功');
-              },
-            });
-          }}>删除</Button>
-        </span>
-      ) : null,
-    },
+    createOperationColumn<CmsSearchWord>({
+      width: 150,
+      desktopInlineKeys: ['edit', 'delete'],
+      actions: (record) => [
+        { key: 'edit', label: '编辑', hidden: !canManage, onClick: () => modal.openEdit(record) },
+        deleteAction({
+          hidden: !canManage,
+          title: '确定要删除该词条吗？',
+          content: '词典会即时重建；历史内容索引仍建议重新构建',
+          run: () => deleteMutation.mutateAsync(record.id),
+        }),
+      ],
+    }),
   ];
 
   return (
@@ -249,30 +232,25 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
               });
             }}>批量分组</Button>
             <Button type="danger" onClick={() => {
-              Modal.confirm({
+              confirmAndDelete({
                 title: `删除 ${selectedIds.length} 个词条？`,
                 content: '删除后不可恢复。',
-                onOk: async () => {
-                  await batchMutation.mutateAsync({ action: 'delete', body: { ids: selectedIds } });
-                  setSelectedIds([]);
-                },
+                run: () => batchMutation.mutateAsync({ action: 'delete', body: { ids: selectedIds } }),
+                successMessage: null,
+                onDeleted: () => setSelectedIds([]),
               });
             }}>批量删除</Button>
           </>
         ) : null}
       </SearchToolbar>
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsSearchWord>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey={(record) => String(record?.id ?? '')}
-        size="small"
-        empty="暂无自定义词条"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0, () => setSelectedIds([]))}
-        rowSelection={{ selectedRowKeys: selectedIds.map(String), onChange: (keys) => setSelectedIds((keys ?? []).map(Number)) }}
+        {...listTableProps(listQuery, {
+          rowKey: (record) => String(record?.id ?? ''),
+          pagination: (total) => buildPagination(total, () => setSelectedIds([])),
+          empty: '暂无自定义词条',
+          rowSelection: { selectedRowKeys: selectedIds.map(String), onChange: (keys) => setSelectedIds((keys ?? []).map(Number)) },
+        })}
       />
       <AppModal {...modal.modalProps} width={480}>
         <Form key={modal.formKey} {...modal.formProps}>
@@ -342,12 +320,12 @@ function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | un
             },
           });
         },
-      }, {
-        key: 'delete',
-        label: '删除',
-        danger: true,
-        onClick: () => void deleteHotwordMutation.mutateAsync(record.id!).then(() => Toast.success('热词已删除')),
-      }] : [],
+      },       deleteAction({
+        hidden: !canManage || !record.id,
+        title: `删除热词「${record.keyword}」？`,
+        run: () => deleteHotwordMutation.mutateAsync(record.id!),
+        successMessage: '热词已删除',
+      })] : [],
     }),
   ];
 
@@ -435,17 +413,9 @@ function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | un
           }}>清空热词</Button>
         ) : null}
       </SearchToolbar>
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsHotKeyword>
         columns={columns}
-        dataSource={hotQuery.data ?? []}
-        loading={hotQuery.isFetching}
-        rowKey="keyword"
-        size="small"
-        empty="暂无搜索记录"
-        onRefresh={() => void hotQuery.refetch()}
-        refreshLoading={hotQuery.isFetching}
-        pagination={false}
+        {...listTableProps(hotQuery, { rowKey: 'keyword', empty: '暂无搜索记录' })}
       />
     </>
   );

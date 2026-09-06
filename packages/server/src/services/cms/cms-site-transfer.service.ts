@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { eq, and, isNull, inArray, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -1207,7 +1208,7 @@ export async function importCmsSite(payload: unknown) {
     // helper bump the public revision and capture the final fence atomically.
     const [finalSite] = await tx.select().from(cmsSites)
       .where(eq(cmsSites.id, siteId)).limit(1);
-    if (!finalSite) throw new HTTPException(404, { message: '导入站点不存在' });
+    requireRow(finalSite, '导入站点不存在');
     const publishTask = await insertCmsSiteRefsRebuildOutbox(
       tx,
       finalSite,

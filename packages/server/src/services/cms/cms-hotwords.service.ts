@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { and, asc, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -27,8 +28,7 @@ export function mapCmsHotwordGroup(row: CmsHotwordGroupRow) {
 
 export async function ensureCmsHotwordGroupExists(id: number): Promise<CmsHotwordGroupRow> {
   const [row] = await db.select().from(cmsHotwordGroups).where(eq(cmsHotwordGroups.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '热词分组不存在' });
-  return row;
+  return requireRow(row, '热词分组不存在');
 }
 
 export async function listCmsHotwordGroups(siteId: number) {
@@ -154,7 +154,7 @@ export async function createCmsHotword(input: CreateCmsHotwordInput) {
 
 export async function updateCmsHotword(id: number, input: UpdateCmsHotwordInput) {
   const [current] = await db.select().from(cmsHotwords).where(eq(cmsHotwords.id, id)).limit(1);
-  if (!current) throw new HTTPException(404, { message: '热词不存在' });
+  requireRow(current, '热词不存在');
   await assertSiteAccess(current.siteId);
   await ensureHotwordGroupForSite(current.siteId, input.groupId);
   try {
@@ -167,7 +167,7 @@ export async function updateCmsHotword(id: number, input: UpdateCmsHotwordInput)
 
 export async function deleteCmsHotword(id: number): Promise<void> {
   const [current] = await db.select().from(cmsHotwords).where(eq(cmsHotwords.id, id)).limit(1);
-  if (!current) throw new HTTPException(404, { message: '热词不存在' });
+  requireRow(current, '热词不存在');
   await assertSiteAccess(current.siteId);
   await db.delete(cmsHotwords).where(eq(cmsHotwords.id, id));
 }

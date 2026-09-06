@@ -10,6 +10,7 @@
  *   2. 应用授权：`cms_open_app_grants` 的站点 + 栏目白名单（fail-closed）
  *   3. 站点开关：`openApiPublishEnabled` 决定能否绕过审核直接发布
  */
+import { requireRow } from '../../lib/db-assert';
 import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -62,7 +63,7 @@ async function resolveWritableChannel(site: CmsSiteRow, access: CmsOpenWriteAcce
     eq(cmsChannels.siteId, site.id),
     eq(cmsChannels.code, channelCode),
   )).limit(1);
-  if (!channel) throw new HTTPException(404, { message: `栏目标识「${channelCode}」不存在` });
+  requireRow(channel, `栏目标识「${channelCode}」不存在`);
   if (channel.type !== 'list') throw new HTTPException(400, { message: '仅列表型栏目可写入内容' });
   if (channel.status !== 'enabled' || !(await getEffectivelyEnabledCmsChannelIds(site.id)).has(channel.id)) {
     throw new HTTPException(400, { message: '栏目已停用或其父级栏目不可用' });
@@ -77,7 +78,7 @@ async function ensureWritableContent(site: CmsSiteRow, access: CmsOpenWriteAcces
     eq(cmsContents.id, id),
     eq(cmsContents.siteId, site.id),
   )).limit(1);
-  if (!row) throw new HTTPException(404, { message: '内容不存在' });
+  requireRow(row, '内容不存在');
   assertCmsOpenChannelAllowed(access, row.channelId);
   return row;
 }

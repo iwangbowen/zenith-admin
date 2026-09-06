@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Form, Toast } from '@douyinfe/semi-ui';
+import { Form } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -14,7 +14,7 @@ import type { CmsTag, CreateCmsTagInput } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { slugifyName } from '@/utils/slug';
 import { abortSubmit } from '@/lib/abort-submit';
 
@@ -33,9 +33,6 @@ export default function TagsPage() {
   const listQuery = useCmsTagList({
     page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined,
   }, siteId !== undefined);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-
   const saveMutation = useSaveCmsTag();
   const modal = useEditModal<CmsTag, Partial<CmsTag>, Partial<CreateCmsTagInput>>({
     entityName: '标签',
@@ -80,21 +77,12 @@ export default function TagsPage() {
           label: '编辑',
           onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('cms:tag:delete') ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该标签吗？',
-              content: '删除后关联内容的打标关系将一并移除',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('cms:tag:delete'),
+          title: '确定要删除该标签吗？',
+          content: '删除后关联内容的打标关系将一并移除',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -111,17 +99,9 @@ export default function TagsPage() {
         ) : null}
       </SearchToolbar>
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsTag>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无标签"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无标签' })}
       />
 
       <AppModal {...modal.modalProps} width={480}>

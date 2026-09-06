@@ -2,6 +2,8 @@
  * 会员投稿（前台 C 端）：会员在 member SPA 提交内容 → 进入 CMS 审核（简单/工作流按站点配置）。
  * 全部按 currentMemberId() 过滤防越权；发布仍走后台既有审核/发布管道。
  */
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, isNull, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -78,25 +80,26 @@ export async function listMyContributions(params: { page: number; pageSize: numb
   const conds = [eq(cmsContents.memberId, memberId), isNull(cmsContents.deletedAt)];
   if (params.status) conds.push(eq(cmsContents.status, params.status as CmsContentRow['status']));
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsContents, where),
-    withPagination(
-      db.select({ content: cmsContents, channelName: cmsChannels.name })
-        .from(cmsContents)
-        .leftJoin(cmsChannels, and(
-          eq(cmsContents.channelId, cmsChannels.id),
-        ))
-        .where(where)
-        .orderBy(desc(cmsContents.id))
-        .$dynamic(),
-      params.page, params.pageSize,
-    ),
-  ]);
-  const resolved = await resolveContributionRows(rows.map((r) => r.content));
-  return {
-    list: resolved.map((content, index) => mapContribution(content, rows[index].channelName)),
-    total, page: params.page, pageSize: params.pageSize,
-  };
+  return buildListResult({
+    page: params.page,
+    pageSize: params.pageSize,
+    count: () => db.$count(cmsContents, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select({ content: cmsContents, channelName: cmsChannels.name })
+          .from(cmsContents)
+          .leftJoin(cmsChannels, and(
+            eq(cmsContents.channelId, cmsChannels.id),
+          ))
+          .where(where)
+          .orderBy(desc(cmsContents.id))
+          .$dynamic(),
+        params.page, params.pageSize,
+      );
+      const resolved = await resolveContributionRows(rows.map((r) => r.content));
+      return resolved.map((content, index) => mapContribution(content, rows[index].channelName));
+    },
+  });
 }
 
 async function getOwnContribution(id: number): Promise<CmsContentRow> {
@@ -104,8 +107,7 @@ async function getOwnContribution(id: number): Promise<CmsContentRow> {
   const [row] = await db.select().from(cmsContents)
     .where(and(eq(cmsContents.id, id), eq(cmsContents.memberId, memberId), isNull(cmsContents.deletedAt)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '投稿不存在' });
-  return row;
+  return requireRow(row, '投稿不存在');
 }
 
 export async function getMyContribution(id: number) {

@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -84,8 +86,7 @@ export function mapCmsRedirect(row: CmsRedirectRow) {
 
 export async function ensureCmsRedirectExists(id: number): Promise<CmsRedirectRow> {
   const [row] = await db.select().from(cmsRedirects).where(eq(cmsRedirects.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '重定向规则不存在' });
-  return row;
+  return requireRow(row, '重定向规则不存在');
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -101,15 +102,17 @@ export async function listCmsRedirects(q: ListCmsRedirectsQuery) {
   const conditions: (SQL | undefined)[] = [eq(cmsRedirects.siteId, q.siteId)];
   conditions.push(keywordCondition(q.keyword, [cmsRedirects.fromPath]));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(cmsRedirects, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(cmsRedirects, where),
+    rows: () => withPagination(
       db.select().from(cmsRedirects).where(where).orderBy(asc(cmsRedirects.id)).$dynamic(),
       q.page,
       q.pageSize,
     ),
-  ]);
-  return { list: list.map(mapCmsRedirect), total, page: q.page, pageSize: q.pageSize };
+    map: mapCmsRedirect,
+  });
 }
 
 export async function createCmsRedirect(data: CreateCmsRedirectInput) {

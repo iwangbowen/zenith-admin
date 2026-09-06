@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, desc, and, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -56,8 +58,7 @@ export function mapCmsFormSubmission(row: CmsFormSubmissionRow) {
 
 export async function ensureCmsFormExists(id: number): Promise<CmsFormRow> {
   const [row] = await db.select().from(cmsForms).where(eq(cmsForms.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '表单不存在' });
-  return row;
+  return requireRow(row, '表单不存在');
 }
 
 /** 前台渲染/提交：按站点+标识取启用表单 */
@@ -140,18 +141,22 @@ export async function listCmsForms(q: ListCmsFormsQuery) {
     .from(cmsFormSubmissions)
     .groupBy(cmsFormSubmissions.formId)
     .as('submission_counts');
-  const [total, rows] = await Promise.all([
-    db.$count(cmsForms, where),
-    withPagination(
-      db.select({
-        form: cmsForms,
-        submissionCount: sql<number>`coalesce(${submissionCounts.cnt}, 0)`,
-      }).from(cmsForms).leftJoin(submissionCounts, eq(submissionCounts.formId, cmsForms.id)).where(where).orderBy(asc(cmsForms.id)).$dynamic(),
-      q.page,
-      q.pageSize,
-    ),
-  ]);
-  return { list: await resolveCmsResourcePayload(rows.map((r) => mapCmsForm(r.form, r.submissionCount)), q.siteId), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(cmsForms, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select({
+          form: cmsForms,
+          submissionCount: sql<number>`coalesce(${submissionCounts.cnt}, 0)`,
+        }).from(cmsForms).leftJoin(submissionCounts, eq(submissionCounts.formId, cmsForms.id)).where(where).orderBy(asc(cmsForms.id)).$dynamic(),
+        q.page,
+        q.pageSize,
+      );
+      return resolveCmsResourcePayload(rows.map((r) => mapCmsForm(r.form, r.submissionCount)), q.siteId);
+    },
+  });
 }
 
 export type FormFieldInput = {
@@ -282,15 +287,17 @@ export async function listCmsFormSubmissions(formId: number, page: number, pageS
   const where = and(
     eq(cmsFormSubmissions.formId, formId),
   );
-  const [total, list] = await Promise.all([
-    db.$count(cmsFormSubmissions, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(cmsFormSubmissions, where),
+    rows: () => withPagination(
       db.select().from(cmsFormSubmissions).where(where).orderBy(desc(cmsFormSubmissions.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return { list: list.map(mapCmsFormSubmission), total, page, pageSize };
+    map: mapCmsFormSubmission,
+  });
 }
 
 export async function deleteCmsFormSubmissions(formId: number, ids: number[]) {

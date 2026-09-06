@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { createHash } from 'node:crypto';
 import dayjs from 'dayjs';
 import {
@@ -242,8 +244,7 @@ async function ensureOwnedSubscription(id: number): Promise<CmsMemberSubscriptio
     eq(cmsMemberSubscriptions.id, id),
     eq(cmsMemberSubscriptions.memberId, memberId),
   )).limit(1);
-  if (!row) throw new HTTPException(404, { message: '订阅不存在' });
-  return row;
+  return requireRow(row, '订阅不存在');
 }
 
 export async function cancelMyCmsSubscription(id: number) {
@@ -282,16 +283,13 @@ export async function listMyCmsSubscriptions(q: {
     .innerJoin(cmsSites, eq(cmsMemberSubscriptions.siteId, cmsSites.id))
     .where(where)
     .orderBy(desc(cmsMemberSubscriptions.createdAt), desc(cmsMemberSubscriptions.id));
-  const [total, rows] = await Promise.all([
-    db.$count(cmsMemberSubscriptions, where),
-    withPagination(base.$dynamic(), q.page, q.pageSize),
-  ]);
-  return {
-    list: rows.map((row) => mapCmsMemberSubscription(row.subscription, { siteName: row.siteName })),
-    total,
+  return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
-  };
+    count: () => db.$count(cmsMemberSubscriptions, where),
+    rows: () => withPagination(base.$dynamic(), q.page, q.pageSize),
+    map: (row) => mapCmsMemberSubscription(row.subscription, { siteName: row.siteName }),
+  });
 }
 
 function maskedMemberDisplay(row: {
@@ -354,19 +352,16 @@ export async function listCmsSubscriptions(q: ListCmsSubscriptionsQuery) {
     .innerJoin(members, eq(cmsMemberSubscriptions.memberId, members.id))
     .where(where)
     .orderBy(desc(cmsMemberSubscriptions.createdAt), desc(cmsMemberSubscriptions.id));
-  const [total, rows] = await Promise.all([
-    db.$count(cmsMemberSubscriptions, where),
-    withPagination(base.$dynamic(), q.page, q.pageSize),
-  ]);
-  return {
-    list: rows.map((row) => mapCmsMemberSubscription(row.subscription, {
-      siteName: row.siteName,
-      memberDisplay: maskedMemberDisplay(row),
-    })),
-    total,
+  return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
-  };
+    count: () => db.$count(cmsMemberSubscriptions, where),
+    rows: () => withPagination(base.$dynamic(), q.page, q.pageSize),
+    map: (row) => mapCmsMemberSubscription(row.subscription, {
+      siteName: row.siteName,
+      memberDisplay: maskedMemberDisplay(row),
+    }),
+  });
 }
 
 function rawMemberDisplay(row: {

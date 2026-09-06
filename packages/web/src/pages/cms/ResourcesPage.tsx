@@ -31,6 +31,7 @@ import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { formatBytes, mapTree } from '@zenith/shared/core';
+import { confirmAndDelete, deleteAction, listTableProps } from '@/components/list-page';
 
 const TYPE_COLORS: Record<CmsResourceType, 'blue' | 'purple' | 'cyan' | 'orange' | 'grey'> = {
   image: 'blue', video: 'purple', audio: 'cyan', document: 'orange', other: 'grey',
@@ -204,19 +205,14 @@ function ReferencesModal({ resource, onClose }: Readonly<{ resource: CmsResource
         <Empty title="引用扫描失败" description="请稍后重试或检查权限" style={{ padding: 24 }} />
       ) : (
         <ConfigurableTable<CmsResourceReference>
-          bordered
-          size="small"
           columnSettings={false}
           columns={columns}
-          dataSource={refs}
-          loading={refsQuery.isFetching}
-          // 同一属主可以在多个字段上引用同一素材（如封面 + 正文），仅用 kind+id 会产生重复 key
-          rowKey={(record) => `${record?.kind}-${record?.id}-${record?.field}`}
-          pagination={false}
           scroll={{ y: 360 }}
-          empty="该素材未被站内内容、栏目或广告引用，可安全删除"
-          onRefresh={() => void refsQuery.refetch()}
-          refreshLoading={refsQuery.isFetching}
+          {...listTableProps({ ...refsQuery, data: refs }, {
+            // 同一属主可以在多个字段上引用同一素材（如封面 + 正文），仅用 kind+id 会产生重复 key
+            rowKey: (record) => `${record?.kind}-${record?.id}-${record?.field}`,
+            empty: '该素材未被站内内容、栏目或广告引用，可安全删除',
+          })}
         />
       )}
     </AppModal>
@@ -344,14 +340,11 @@ export default function ResourcesPage() {
   }
 
   function handleDelete(ids: number[]) {
-    confirmDelete({
+    confirmAndDelete({
       title: `删除 ${ids.length} 个素材？`,
       content: '存在站内引用的素材会被拒绝删除；删除会同步移除底层文件，不可恢复。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ body: { ids } });
-        setSelectedIds([]);
-        Toast.success('删除成功');
-      },
+      run: () => deleteMutation.mutateAsync({ body: { ids } }),
+      onDeleted: () => setSelectedIds([]),
     });
   }
 
@@ -402,7 +395,13 @@ export default function ResourcesPage() {
           key: 'crop', label: '裁剪', onClick: () => setCropTarget(record),
         }] : []),
         ...(canUpdate ? [{ key: 'rename', label: '编辑', onClick: () => setRenameTarget(record) }] : []),
-        ...(canDelete ? [{ key: 'delete', label: '删除', danger: true, onClick: () => handleDelete([record.id]) }] : []),
+        deleteAction({
+          hidden: !canDelete,
+          title: '删除 1 个素材？',
+          content: '存在站内引用的素材会被拒绝删除；删除会同步移除底层文件，不可恢复。',
+          run: () => deleteMutation.mutateAsync({ body: { ids: [record.id] } }),
+          onDeleted: () => setSelectedIds([]),
+        }),
       ],
     }),
   ];
@@ -515,21 +514,17 @@ export default function ResourcesPage() {
             </SearchToolbar>
             <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleUploadFile(e)} />
             <input ref={replaceInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleReplaceFile(e)} />
-            <ConfigurableTable
-              bordered
+            <ConfigurableTable<CmsResource>
               columns={columns}
-              dataSource={listQuery.data?.list ?? []}
-              loading={listQuery.isFetching}
-              rowKey={(record) => String(record?.id ?? '')}
-              size="small"
-              empty="暂无素材，请先选择站点后上传"
-              onRefresh={() => void listQuery.refetch()}
-              refreshLoading={listQuery.isFetching}
-              pagination={buildPagination(listQuery.data?.total ?? 0, () => setSelectedIds([]))}
-              rowSelection={{
-                selectedRowKeys: selectedIds.map(String),
-                onChange: (keys) => setSelectedIds((keys ?? []).map(Number)),
-              }}
+              {...listTableProps(listQuery, {
+                rowKey: (record) => String(record?.id ?? ''),
+                empty: '暂无素材，请先选择站点后上传',
+                pagination: (total) => buildPagination(total, () => setSelectedIds([])),
+                rowSelection: {
+                  selectedRowKeys: selectedIds.map(String),
+                  onChange: (keys) => setSelectedIds((keys ?? []).map(Number)),
+                },
+              })}
             />
             <Typography.Title heading={6} style={{ margin: '18px 0 8px' }}>素材治理任务</Typography.Title>
             <SearchToolbar>
@@ -563,7 +558,6 @@ export default function ResourcesPage() {
               }} label="导出治理报告" /> : null}
             </SearchToolbar>
             <ConfigurableTable
-              bordered
               columns={[
                 { title: '任务', dataIndex: 'title', width: 240 },
                 { title: '进度', width: 280, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
@@ -576,13 +570,7 @@ export default function ResourcesPage() {
                 },
                 dateTimeColumn('提交时间', 'createdAt'),
               ]}
-              dataSource={tasks}
-              loading={tasksLoading}
-              rowKey="id"
-              pagination={false}
-              empty="暂无素材治理任务"
-              onRefresh={refreshTasks}
-              refreshLoading={tasksLoading}
+              {...listTableProps({ data: tasks, isFetching: tasksLoading, refetch: refreshTasks }, { empty: '暂无素材治理任务' })}
             />
           </MasterDetailLayout.Body>
         )}

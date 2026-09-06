@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and, or, inArray, isNull, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
@@ -115,8 +117,7 @@ export function mapCmsModel(row: CmsModelRow, fields?: CmsModelFieldRow[], owner
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsModelExists(id: number): Promise<CmsModelRow> {
   const [row] = await db.select().from(cmsModels).where(eq(cmsModels.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '内容模型不存在' });
-  return row;
+  return requireRow(row, '内容模型不存在');
 }
 
 /**
@@ -166,8 +167,8 @@ export async function getCmsModel(id: number, siteId?: number) {
     where: eq(cmsModels.id, id),
     with: { fields: { orderBy: [asc(cmsModelFields.sort), asc(cmsModelFields.id)] } },
   });
-  if (!row) throw new HTTPException(404, { message: '内容模型不存在' });
-  return { ...mapCmsModel(row), fields: await mapCmsModelFieldsResolved(row.fields) };
+  const model = requireRow(row, '内容模型不存在');
+  return { ...mapCmsModel(model), fields: await mapCmsModelFieldsResolved(model.fields) };
 }
 
 /** 获取模型的字段定义（内容编辑动态表单/检索索引用） */
@@ -214,34 +215,35 @@ export async function listCmsModels(q: ListCmsModelsQuery) {
   if (visibility) conditions.push(visibility);
 
   const where = buildWhere(buildWhere(...conditions));
-  const [total, rows] = await Promise.all([
-    db.$count(cmsModels, where),
-    withPagination(
-      db.select({ model: cmsModels, ownerSiteName: cmsSites.name })
-        .from(cmsModels)
-        .leftJoin(cmsSites, eq(cmsModels.ownerSiteId, cmsSites.id))
-        .where(where)
-        .orderBy(asc(cmsModels.sort), asc(cmsModels.id))
-        .$dynamic(),
-      page,
-      pageSize,
-    ),
-  ]);
-  // 附带字段列表（模型数量有限，一次查回避免 N+1）
-  const ids = rows.map((r) => r.model.id);
-  const fields = ids.length > 0
-    ? await db.select().from(cmsModelFields).where(inArray(cmsModelFields.modelId, ids)).orderBy(asc(cmsModelFields.sort), asc(cmsModelFields.id))
-    : [];
-  const fieldMap = new Map<number, CmsModelFieldRow[]>();
-  for (const f of fields) {
-    const arr = fieldMap.get(f.modelId) ?? [];
-    arr.push(f);
-    fieldMap.set(f.modelId, arr);
-  }
-  return {
-    list: rows.map((r) => mapCmsModel(r.model, fieldMap.get(r.model.id) ?? [], r.ownerSiteName)),
-    total, page, pageSize,
-  };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(cmsModels, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select({ model: cmsModels, ownerSiteName: cmsSites.name })
+          .from(cmsModels)
+          .leftJoin(cmsSites, eq(cmsModels.ownerSiteId, cmsSites.id))
+          .where(where)
+          .orderBy(asc(cmsModels.sort), asc(cmsModels.id))
+          .$dynamic(),
+        page,
+        pageSize,
+      );
+      // 附带字段列表（模型数量有限，一次查回避免 N+1）
+      const ids = rows.map((r) => r.model.id);
+      const fields = ids.length > 0
+        ? await db.select().from(cmsModelFields).where(inArray(cmsModelFields.modelId, ids)).orderBy(asc(cmsModelFields.sort), asc(cmsModelFields.id))
+        : [];
+      const fieldMap = new Map<number, CmsModelFieldRow[]>();
+      for (const f of fields) {
+        const arr = fieldMap.get(f.modelId) ?? [];
+        arr.push(f);
+        fieldMap.set(f.modelId, arr);
+      }
+      return rows.map((r) => mapCmsModel(r.model, fieldMap.get(r.model.id) ?? [], r.ownerSiteName));
+    },
+  });
 }
 
 /** 全部启用模型（栏目绑定下拉用） */
@@ -394,13 +396,13 @@ export async function updateCmsModel(id: number, data: UpdateCmsModelInput, site
       }
       const [locked] = await tx.select().from(cmsModels)
         .where(eq(cmsModels.id, id)).for('update').limit(1);
-      if (!locked) throw new HTTPException(404, { message: '内容模型不存在' });
+      requireRow(locked, '内容模型不存在');
       if (locked.ownerSiteId !== current.ownerSiteId) {
         throw new HTTPException(409, { message: '内容模型归属已发生变化，请重试' });
       }
       if (Object.keys(model).length > 0) {
         const [updated] = await tx.update(cmsModels).set(model).where(eq(cmsModels.id, id)).returning();
-        if (!updated) throw new HTTPException(404, { message: '内容模型不存在' });
+        requireRow(updated, '内容模型不存在');
       }
       if (fields) {
         await replaceModelFields(tx, id, fields);
@@ -441,7 +443,7 @@ export async function deleteCmsModel(id: number, siteId?: number) {
     }
     const [locked] = await tx.select().from(cmsModels)
       .where(eq(cmsModels.id, id)).for('update').limit(1);
-    if (!locked) throw new HTTPException(404, { message: '内容模型不存在' });
+    requireRow(locked, '内容模型不存在');
     if (locked.ownerSiteId !== row.ownerSiteId) {
       throw new HTTPException(409, { message: '内容模型归属已发生变化，请重试' });
     }

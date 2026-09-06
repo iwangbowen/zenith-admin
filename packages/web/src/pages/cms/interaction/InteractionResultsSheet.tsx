@@ -222,8 +222,8 @@ function TrendView({ interactionId }: Readonly<{ interactionId: number }>) {
     { title: '答卷数', dataIndex: 'count', width: 90, align: 'right' as const },
     {
       title: '分布',
-      dataIndex: 'count',
-      render: (count: number) => <DataBar value={count} max={max} />,
+      dataIndex: 'distribution',
+      render: (_: unknown, record: { count: number }) => <DataBar value={record.count} max={max} />,
     },
   ];
   return (

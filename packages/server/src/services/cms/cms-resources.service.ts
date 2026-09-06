@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { eq, and, desc, gt, inArray, isNull, notInArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { createRequire } from 'node:module';
@@ -82,23 +84,22 @@ export async function listCmsResources(q: ListCmsResourcesQuery) {
   else if (q.folderId) conditions.push(eq(cmsResources.folderId, q.folderId));
   conditions.push(keywordCondition(q.keyword, [cmsResources.name]));
   const where = buildWhere(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(cmsResources, where),
-    withPagination(
-      db.select({ resource: cmsResources, folderName: cmsResourceFolders.name })
-        .from(cmsResources)
-        .leftJoin(cmsResourceFolders, eq(cmsResources.folderId, cmsResourceFolders.id))
-        .where(where).orderBy(desc(cmsResources.id)).$dynamic(),
-      q.page, q.pageSize,
-    ),
-  ]);
-  const refCounts = await countCmsResourceRefs(rows.map((row) => row.resource.id), q.siteId);
-  return {
-    list: rows.map((row) => mapCmsResource(row.resource, row.folderName, refCounts.get(row.resource.id) ?? 0)),
-    total,
+  return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
-  };
+    count: () => db.$count(cmsResources, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select({ resource: cmsResources, folderName: cmsResourceFolders.name })
+          .from(cmsResources)
+          .leftJoin(cmsResourceFolders, eq(cmsResources.folderId, cmsResourceFolders.id))
+          .where(where).orderBy(desc(cmsResources.id)).$dynamic(),
+        q.page, q.pageSize,
+      );
+      const refCounts = await countCmsResourceRefs(rows.map((row) => row.resource.id), q.siteId);
+      return rows.map((row) => mapCmsResource(row.resource, row.folderName, refCounts.get(row.resource.id) ?? 0));
+    },
+  });
 }
 
 /** 素材上传：图片走站点图片管线（压缩/水印/缩略图），其他类型原样入库 */
@@ -128,7 +129,7 @@ export async function uploadCmsResource(file: File, siteId: number, folderId?: n
 
 async function ensureResource(id: number): Promise<CmsResourceRow> {
   const [row] = await db.select().from(cmsResources).where(eq(cmsResources.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '素材不存在' });
+  requireRow(row, '素材不存在');
   await assertSiteAccess(row.siteId);
   return row;
 }

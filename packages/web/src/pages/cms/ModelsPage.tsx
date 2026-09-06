@@ -1,4 +1,4 @@
-import { Button, Form, Tag, Toast, ArrayField, Row, Col, useFormApi, Spin } from '@douyinfe/semi-ui';
+import { Button, Form, Tag, ArrayField, Row, Col, useFormApi, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
@@ -16,9 +16,9 @@ import { CMS_FIELD_OPTION_SOURCE_LABELS, CMS_FIELD_OPTION_SOURCES, CMS_FIELD_TYP
 import type { CmsModel } from '@zenith/shared/cms';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { abortSubmit } from '@/lib/abort-submit';
+import { deleteAction, listTableProps } from '@/components/list-page';
 
 const FIELD_TYPE_OPTIONS = CMS_FIELD_TYPES.map((t) => ({ value: t, label: CMS_FIELD_TYPE_LABELS[t] }));
 const OPTION_SOURCE_OPTIONS = CMS_FIELD_OPTION_SOURCES.map((s) => ({ value: s, label: CMS_FIELD_OPTION_SOURCE_LABELS[s] }));
@@ -76,9 +76,6 @@ export default function ModelsPage() {
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: cmsModelKeys.lists });
 
   const listQuery = useCmsModelList({ page, pageSize, keyword: submittedParams.keyword || undefined, siteId }, siteId !== undefined);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-
   const saveMutation = useSaveCmsModel(siteId);
   const modal = useEditModal<CmsModel, Record<string, unknown>, Record<string, unknown>>({
     entityName: '模型',
@@ -125,11 +122,6 @@ export default function ModelsPage() {
     },
   });
   const deleteMutation = useDeleteCmsModel(siteId);
-
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync(id);
-    Toast.success('删除成功');
-  }
 
   const columns: ColumnProps<CmsModel>[] = [
     {
@@ -178,14 +170,12 @@ export default function ModelsPage() {
           label: '编辑',
           onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('cms:model:delete') && !record.isSystem ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({ title: '确定要删除该模型吗？', content: '被栏目或内容引用时不可删除', onOk: () => handleDelete(record.id) });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('cms:model:delete') || record.isSystem,
+          title: '确定要删除该模型吗？',
+          content: '被栏目或内容引用时不可删除',
+          run: () => deleteMutation.mutateAsync(record.id),
+        }),
       ],
     }),
   ];
@@ -202,17 +192,9 @@ export default function ModelsPage() {
         ) : null}
       </SearchToolbar>
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CmsModel>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty={siteId ? '暂无内容模型' : '请先选择站点'}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: siteId ? '暂无内容模型' : '请先选择站点' })}
       />
 
       <AppModal {...modal.modalProps} width={860}>

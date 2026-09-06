@@ -7,6 +7,8 @@
  *
  * 安全约束：只读已发布、未回收、未归档、所属栏目启用中的内容。
  */
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { and, asc, eq, gt, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
@@ -254,7 +256,7 @@ async function buildListConditions(site: CmsSiteRow, query: ParsedCmsOpenQuery):
       eq(cmsModels.code, query.modelCode),
       or(isNull(cmsModels.ownerSiteId), eq(cmsModels.ownerSiteId, site.id)),
     )).limit(1);
-    if (!model) throw new HTTPException(404, { message: `内容模型「${query.modelCode}」不存在` });
+    requireRow(model, `内容模型「${query.modelCode}」不存在`);
     conditions.push(eq(cmsContents.modelId, model.id));
   }
   if (query.flags.isTop !== undefined) conditions.push(eq(cmsContents.isTop, query.flags.isTop));
@@ -442,19 +444,18 @@ export async function listOpenCmsContents(site: CmsSiteRow, query: ParsedCmsOpen
   const baseWhere = and(...conditions)!;
   const order = orderByOf(query.sort);
 
-  const [total, rows] = await Promise.all([
-    db.$count(cmsContents, baseWhere),
-    db.select(openContentColumns(query.includes)).from(cmsContents).where(baseWhere).orderBy(...order)
-      .limit(query.pageSize).offset(pageOffset(query.page, query.pageSize)),
-  ]);
-  const resolved = await resolveCmsContentRows(rows, site.id);
-  const opts = await buildMapOptions(site.id, rows, query.includes);
-  return {
-    list: resolved.map((row) => pickCmsOpenFields(mapOpenContent(row, opts), query.fields)),
-    total,
+  return buildListResult({
     page: query.page,
     pageSize: query.pageSize,
-  };
+    count: () => db.$count(cmsContents, baseWhere),
+    rows: async () => {
+      const rows = await db.select(openContentColumns(query.includes)).from(cmsContents).where(baseWhere).orderBy(...order)
+        .limit(query.pageSize).offset(pageOffset(query.page, query.pageSize));
+      const resolved = await resolveCmsContentRows(rows, site.id);
+      const opts = await buildMapOptions(site.id, rows, query.includes);
+      return resolved.map((row) => pickCmsOpenFields(mapOpenContent(row, opts), query.fields));
+    },
+  });
 }
 
 /**
@@ -503,7 +504,7 @@ export async function getOpenCmsContent(site: CmsSiteRow, idOrSlug: string, quer
   const [row] = enabledIds.size > 0
     ? await db.select(openContentColumns(includes)).from(cmsContents).where(and(publicWhere(site.id), inArray(cmsContents.channelId, [...enabledIds]), matcher)).limit(1)
     : [];
-  if (!row) throw new HTTPException(404, { message: '内容不存在或未发布' });
+  requireRow(row, '内容不存在或未发布');
   const [resolved] = await resolveCmsContentRows([row], site.id);
   const opts = await buildMapOptions(site.id, [row], includes);
   return pickCmsOpenFields(mapOpenContent(resolved, opts), query.fields);
