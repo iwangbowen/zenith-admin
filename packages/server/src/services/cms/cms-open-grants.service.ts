@@ -5,6 +5,7 @@
  * 与人类侧的 `cms_site_users` / `cms_channel_users` 同构 —— 未显式授权一律拒绝（fail-closed）。
  * 直接发布还要三个条件同时成立：`cms:publish` scope + 授权行 `can_publish` + 站点开关。
  */
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -60,7 +61,7 @@ export async function saveCmsOpenAppGrant(input: SaveCmsOpenAppGrantInput) {
     .where(eq(oauth2Clients.clientId, input.clientId)).limit(1);
   requireRow(app, '开放应用不存在');
 
-  const channelIds = [...new Set(input.channelIds ?? [])].filter((id) => Number.isInteger(id) && id > 0);
+  const channelIds = uniquePositiveInts(input.channelIds);
   if (channelIds.length > 0) {
     const rows = await db.select({ id: cmsChannels.id }).from(cmsChannels).where(and(
       eq(cmsChannels.siteId, input.siteId),

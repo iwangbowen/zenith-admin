@@ -1,4 +1,5 @@
 // ─── 实例生命周期：创建/撤回/取消/删除/草稿/重新提交（拆分自 workflow-instances.service.ts）───
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { randomUUID } from 'node:crypto';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
@@ -176,7 +177,7 @@ export async function createInstance(data: { definitionId: number; title: string
   const instanceDto = mapInstance(instance);
   // 事件与异步作业均已在事务内入队（outbox + 在库作业）
   // 发起时自选抄送：插入 ccNode 任务（best-effort，失败不影响发起结果；接收人通过「抄送我的」查看）
-  const ccIds = Array.from(new Set((data.ccUserIds ?? []).filter((v) => Number.isInteger(v) && v > 0)));
+  const ccIds = uniquePositiveInts(data.ccUserIds);
   if (ccIds.length > 0) {
     try {
       const [validUsers, existing] = await Promise.all([

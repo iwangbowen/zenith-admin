@@ -5,6 +5,7 @@
  * 本报表按用户归因——每个用户只归属于一条触点，因此各行用户数之和等于总用户数，
  * 可以直接用来比较渠道贡献。
  */
+import { percentOf } from '@zenith/shared/core';
 import { useMemo, useState } from 'react';
 import { Card, Empty, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { AnalyticsAcquisitionDimension, AnalyticsAcquisitionRow, AnalyticsAttributionModel } from '@zenith/shared/analytics';
@@ -67,7 +68,7 @@ export default function AnalyticsAcquisitionTab() {
         <Space spacing={4}>
           <span>{v.toLocaleString()}</span>
           {record.users > 0 && (
-            <Typography.Text type="tertiary" size="small">{`${Math.round((v / record.users) * 1000) / 10}%`}</Typography.Text>
+            <Typography.Text type="tertiary" size="small">{`${percentOf(v, record.users)}%`}</Typography.Text>
           )}
         </Space>
       ),

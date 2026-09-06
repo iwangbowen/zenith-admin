@@ -1,14 +1,15 @@
 import { userAiConfigContract } from '@zenith/shared/ai';
 import type { UserAiConfig } from '@zenith/shared/ai';
+import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 
 const mockUserAiConfigs: UserAiConfig[] = [];
 
-/** 与服务端一致：列表 / 详情只返回脱敏后的 API Key */
+/** 与服务端一致：列表 / 详情只返回脱敏后的 API Key（头 4 + ... + 尾 4） */
 function maskApiKey(apiKey: string) {
-  return `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`;
+  return maskSecret(apiKey, { filler: '...', short: SECRET_PLACEHOLDER });
 }
 
 export const userAiConfigHandlers = [

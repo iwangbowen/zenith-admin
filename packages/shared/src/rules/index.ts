@@ -9,3 +9,4 @@ export * from './contracts';
 export * from './types';
 export * from './validation';
 export * from './cell';
+export * from './decision-table';

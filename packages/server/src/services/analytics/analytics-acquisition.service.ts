@@ -11,6 +11,7 @@
  *    因此各渠道用户数之和 = 总用户数，不会重复计数
  *  - 转化 = 在窗口内触发过 conversionEvent 的用户；转化归属于其被选中的那条触点
  */
+import { percentOf } from '@zenith/shared/core';
 import { and, gte, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { userEvents } from '../../db/schema';
@@ -123,7 +124,7 @@ export async function getAcquisitionReport(input: AcquisitionQuery): Promise<Ana
       newUsers: Number(r.new_users ?? 0),
       sessions: Number(r.sessions ?? 0),
       conversions,
-      conversionRate: users > 0 ? Math.round((conversions / users) * 1000) / 10 : 0,
+      conversionRate: percentOf(conversions, users) ?? 0,
     };
   });
 

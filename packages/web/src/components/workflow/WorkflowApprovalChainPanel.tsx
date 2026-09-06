@@ -9,6 +9,7 @@
  *   （条件分支展开 / 重新解析候选人），刷新期间保留旧链路避免闪烁。
  */
 /* eslint-disable react-refresh/only-export-components */
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { useEffect, useMemo } from 'react';
 import { Button, Empty, Select, Space, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
 import { Clock, Flag, Mail, Send, UserPlus, type LucideIcon } from 'lucide-react';
@@ -41,7 +42,7 @@ const NODE_META: Record<string, { icon: LucideIcon; color: string; status: strin
 
 function normalizeSelectedIds(value: unknown): number[] {
   const list = Array.isArray(value) ? value : [value];
-  return [...new Set(list.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+  return uniquePositiveInts(list);
 }
 
 function pickSelected(value: SelectedInitiatorApprovers, nodeKey: string): number[] {

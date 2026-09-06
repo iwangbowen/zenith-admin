@@ -4,6 +4,7 @@
  * 在线趋势读 iot_online_snapshots（10 分钟桶平均），告警趋势按天分级聚合，
  * 遥测今日量读 Redis 日计数器（ingest 累加，O(1)；明细表按时间列无单列索引，不可 count）。
  */
+import { percentOf } from '@zenith/shared/core';
 import { count, desc, eq, gte, sql } from 'drizzle-orm';
 import type { IotDashboard } from '@zenith/shared/iot';
 import { db } from '../../db';
@@ -104,7 +105,7 @@ export async function getIotDashboard(): Promise<IotDashboard> {
     stats: {
       deviceTotal: total,
       onlineCount: online,
-      onlineRate: total > 0 ? Math.round((online / total) * 1000) / 10 : 0,
+      onlineRate: percentOf(online, total) ?? 0,
       telemetryToday: telemetryToday,
       firingWarning: firingMap.get('warning') ?? 0,
       firingCritical: firingMap.get('critical') ?? 0,
@@ -118,4 +119,3 @@ export async function getIotDashboard(): Promise<IotDashboard> {
     recentEvents: recentEventRows.map((r) => ({ ...mapIotDeviceEvent(r.event), deviceName: r.deviceName })),
   };
 }
-

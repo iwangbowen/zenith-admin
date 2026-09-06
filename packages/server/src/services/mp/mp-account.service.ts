@@ -12,8 +12,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { refreshMpAccessToken, clearMpAccessToken, WechatApiError } from '../../lib/wechat';
 import type { DbExecutor } from '../../db/types';
 import type { CreateMpAccountInput, UpdateMpAccountInput, MpAccountType } from '@zenith/shared/mp';
-
-const SECRET_MASK = '******';
+import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
 
 /** 列表 / 详情 / 写操作返回：appSecret 脱敏 */
 export function mapMpAccountSafe(row: MpAccountRow) {
@@ -22,7 +21,7 @@ export function mapMpAccountSafe(row: MpAccountRow) {
     name: row.name,
     account: row.account ?? null,
     appId: row.appId,
-    appSecret: row.appSecret ? SECRET_MASK : '',
+    appSecret: row.appSecret ? SECRET_PLACEHOLDER : '',
     token: row.token,
     encodingAesKey: row.encodingAesKey ?? null,
     encryptMode: row.encryptMode,

@@ -1,4 +1,5 @@
 import { mpAccountContract, type MpAccount } from '@zenith/shared/mp';
+import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockMpAccounts, getNextMpAccountId } from '@/mocks/data/mp-accounts';
@@ -7,7 +8,7 @@ import { includesKeyword } from '@/mocks/utils/filter';
 
 /** 列表脱敏：appSecret 显示掩码 */
 function maskSafe(a: MpAccount): MpAccount {
-  return { ...a, appSecret: a.appSecret ? '******' : '' };
+  return { ...a, appSecret: a.appSecret ? SECRET_PLACEHOLDER : '' };
 }
 
 /** 编辑回显：appSecret 留空 */

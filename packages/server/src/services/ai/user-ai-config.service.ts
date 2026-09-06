@@ -7,8 +7,7 @@ import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { sealApiKey, unsealApiKey } from './ai-providers.service';
 import type { SaveUserAiConfigInput } from '@zenith/shared/ai';
-
-const MASKED_KEY = '******';
+import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
 
 function mapRow(row: typeof userAiConfigs.$inferSelect) {
   const plainKey = unsealApiKey(row.apiKey);
@@ -18,7 +17,8 @@ function mapRow(row: typeof userAiConfigs.$inferSelect) {
     name: row.name ?? null,
     providerId: row.providerId,
     baseUrl: row.baseUrl,
-    apiKey: plainKey ? `${plainKey.slice(0, 4)}...${plainKey.slice(-4)}` : null,
+    // 与全局服务商配置同口径（头 4 + ... + 尾 4，过短整体占位）
+    apiKey: plainKey ? maskSecret(plainKey, { filler: '...', short: SECRET_PLACEHOLDER }) : null,
     headers: row.headers ?? null,
     models: row.models ?? [],
     defaultModel: row.defaultModel ?? null,
@@ -85,7 +85,7 @@ export async function updateUserAiConfig(id: number, input: SaveUserAiConfigInpu
   assertDefaultInModels(nextModels, nextDefault);
 
   const apiKey =
-    input.apiKey && input.apiKey !== MASKED_KEY && !input.apiKey.includes('...')
+    input.apiKey && input.apiKey !== SECRET_PLACEHOLDER && !input.apiKey.includes('...')
       ? sealApiKey(input.apiKey)
       : (existing.apiKey ?? null);
 

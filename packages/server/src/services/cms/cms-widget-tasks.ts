@@ -1,3 +1,4 @@
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -93,8 +94,8 @@ async function submitRefreshTask(
   input: { widgetIds?: number[]; homeSiteIds?: number[] },
   options?: { enqueue?: boolean; eventKey?: string; debounceBySite?: boolean },
 ): Promise<AsyncTask | null> {
-  const widgetIds = [...new Set(input.widgetIds ?? [])].filter((id) => Number.isInteger(id) && id > 0);
-  let homeSiteIds = [...new Set(input.homeSiteIds ?? [])].filter((id) => Number.isInteger(id) && id > 0);
+  const widgetIds = uniquePositiveInts(input.widgetIds);
+  let homeSiteIds = uniquePositiveInts(input.homeSiteIds);
   if (widgetIds.length === 0 && homeSiteIds.length === 0) return null;
   let idempotencyKey = options?.eventKey ? `cms-widget-refresh:${options.eventKey}` : null;
   if (options?.debounceBySite) {

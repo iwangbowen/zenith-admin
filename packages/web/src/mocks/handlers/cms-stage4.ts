@@ -1,3 +1,4 @@
+import { percentOf } from '@zenith/shared/core';
 import { http, HttpResponse } from 'msw';
 import type * as z from 'zod';
 import { badRequest, unauthorized, forbidden, notFound, conflict, nextIdFrom } from '@/mocks/utils/handlers';
@@ -158,7 +159,7 @@ function interactionStats(interaction: CmsInteraction): CmsInteractionStats {
             label: row.label,
             options: question.options.map((option) => {
               const count = countFor((value) => value === `${row.id}::${option.value}`);
-              return { ...option, count, percent: answered.length ? Math.round((count / answered.length) * 1000) / 10 : 0 };
+              return { ...option, count, percent: percentOf(count, answered.length) ?? 0 };
             }),
           })),
         };
@@ -173,7 +174,7 @@ function interactionStats(interaction: CmsInteraction): CmsInteractionStats {
           const count = option.value === '__other__'
             ? countFor((value) => value === '__other__' || value.startsWith('__other__:'))
             : countFor((value) => value === option.value);
-          return { ...option, count, percent: answered.length ? Math.round((count / answered.length) * 1000) / 10 : 0 };
+          return { ...option, count, percent: percentOf(count, answered.length) ?? 0 };
         }),
       };
     }),
@@ -414,7 +415,7 @@ export const cmsStage4Handlers = [
           value: option.value,
           label: option.label,
           total,
-          cells: cells.map((count) => ({ count, percent: total ? Math.round((count / total) * 1000) / 10 : 0 })),
+          cells: cells.map((count) => ({ count, percent: percentOf(count, total) ?? 0 })),
         };
       }),
     });

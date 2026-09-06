@@ -1,4 +1,5 @@
 // ─── 催办与抄送（转发/已读）（拆分自 workflow-instances.service.ts）───
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { randomUUID } from 'node:crypto';
 import { formatDateTime } from '../../../lib/datetime';
 import { eq, and, desc, inArray } from 'drizzle-orm';
@@ -41,7 +42,7 @@ export async function forwardInstance(instanceId: number, userIds: number[], not
   }
   if (!allowed) throw new HTTPException(403, { message: '仅流程参与者可转发抄送' });
 
-  const targetIds = Array.from(new Set(userIds)).filter((v) => Number.isInteger(v) && v > 0);
+  const targetIds = uniquePositiveInts(userIds);
   if (targetIds.length === 0) throw new HTTPException(400, { message: '请选择抄送人' });
   // 去重：跳过已抄送给的用户
   const existing = await db.select({ assigneeId: workflowTasks.assigneeId }).from(workflowTasks)

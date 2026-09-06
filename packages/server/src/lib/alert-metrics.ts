@@ -4,6 +4,7 @@
  * 各域的「告警指标源」函数（getXxxAlertMetrics）都返回 `Record<指标名, number>`，
  * 由 monitor-history 的快照采集统一汇总后交给告警评估器比对阈值。
  */
+import { percentOf } from '@zenith/shared/core';
 import { eq, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 
@@ -12,7 +13,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
  * 分母为 0 时返回 0——「窗口内没有样本」不是异常，返回 100 会让所有失败率规则在空闲时段误报。
  */
 export function ratePercent(part: number, total: number): number {
-  return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
+  return percentOf(part, total) ?? 0;
 }
 
 /**

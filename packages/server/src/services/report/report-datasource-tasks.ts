@@ -1,3 +1,4 @@
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -81,7 +82,7 @@ export function registerReportDatasourceTaskHandlers(): void {
 }
 
 export async function submitDatasourceHealthCheckTask(ids: number[]) {
-  const normalizedIds = Array.from(new Set(ids.map(Number).filter((id) => Number.isInteger(id) && id > 0)));
+  const normalizedIds = uniquePositiveInts(ids);
   if (normalizedIds.length === 0) throw new HTTPException(400, { message: '请选择至少一个数据源' });
   const rows = await db.select({
     id: reportDatasources.id,

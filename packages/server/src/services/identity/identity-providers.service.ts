@@ -7,6 +7,7 @@ import { SAML, ValidateInResponseTo, type CacheItem, type CacheProvider, type Pr
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { CreateTenantIdentityProviderInput, IdentityProviderConnectionTestResult, IdentityProviderAttributeMapping, IdentityProviderSyncResult, IdentityProviderType, LdapDirectoryUser, UpdateTenantIdentityProviderInput } from '@zenith/shared/identity';
+import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { config } from '../../config';
 import { db } from '../../db';
 import { identityProviderSyncLogs, tenantIdentityProviders, tenants, userIdentityAccounts, userRoles, users, type UserRow } from '../../db/schema';
@@ -24,7 +25,8 @@ import { checkLoginLock, clearLoginAttempts, recordLoginFailure } from '../../li
 import { completeLoginWithMfa, recordLoginLog, type DeviceInfo } from './auth.service';
 import { assertDefaultRolesGrantable, resolveGrantableDefaultRoleIds, userHasPlatformSuperRole } from './role-grant';
 
-const SECRET_MASK = '******';
+/** 凭据字段的展示 / 「未修改」哨兵：`@zenith/shared/core` 的统一占位 */
+const SECRET_MASK = SECRET_PLACEHOLDER;
 const OIDC_STATE_TTL = 5 * 60;
 const OIDC_STATE_PREFIX = `${config.redis.keyPrefix}idp-oidc-state:`;
 const SAML_STATE_TTL = 5 * 60;

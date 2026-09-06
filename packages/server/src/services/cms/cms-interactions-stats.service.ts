@@ -1,3 +1,4 @@
+import { percentOf as sharedPercentOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import {
   and,
@@ -53,13 +54,14 @@ function distributionOf(
     return {
       ...option,
       count,
-      percent: answered > 0 ? Math.round((count / answered) * 1000) / 10 : 0,
+      percent: sharedPercentOf(count, answered) ?? 0,
     };
   });
 }
 
+/** 本文件统计口径：分母为 0 时返回 0（而非 null） */
 function percentOf(count: number, total: number): number {
-  return total > 0 ? Math.round((count / total) * 1000) / 10 : 0;
+  return sharedPercentOf(count, total) ?? 0;
 }
 
 /** NPS 净推荐值：推荐者（9-10）占比 - 贬损者（0-6）占比 */

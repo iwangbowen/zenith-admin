@@ -13,6 +13,7 @@ import { monitorAlertRules, monitorAlertEvents, users } from '../../db/schema';
 import type { MonitorAlertRuleRow, MonitorAlertEventRow } from '../../db/schema';
 import type { CreateMonitorAlertRuleInput, UpdateMonitorAlertRuleInput, MonitorAlertRuleQuery, MonitorAlertEventQuery, HandleMonitorAlertEventInput, MonitorAlertOverview, MonitorAlertOverviewRange, MonitorMetric, MonitorAlertOperator } from '@zenith/shared/platform';
 import { MONITOR_ALERT_LEVELS, MONITOR_METRIC_META, formatMonitorMetricValue } from '@zenith/shared/platform';
+import { compareNumber, uniquePositiveInts } from '@zenith/shared/core';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { currentUserId, currentUsername } from '../../lib/context';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
@@ -31,18 +32,8 @@ function metricLabel(metric: MonitorMetric): string {
   return MONITOR_METRIC_META[metric]?.label ?? metric;
 }
 
-function compare(value: number, op: MonitorAlertOperator, threshold: number): boolean {
-  switch (op) {
-    case 'gt': return value > threshold;
-    case 'gte': return value >= threshold;
-    case 'lt': return value < threshold;
-    case 'lte': return value <= threshold;
-    default: return false;
-  }
-}
-
 function normalizeRecipientUserIds(userIds: readonly number[]): number[] {
-  return [...new Set(userIds.filter((id) => Number.isInteger(id) && id > 0))];
+  return uniquePositiveInts(userIds);
 }
 
 function normalizeRecipientEmails(emails: readonly string[]): string[] {
@@ -668,7 +659,7 @@ export async function evaluateMonitorAlerts(): Promise<{ evaluated: number; fire
 
     const metric = rule.metric as MonitorMetric;
     const value = snapshot[metric] ?? 0;
-    const breaching = compare(value, rule.operator as MonitorAlertOperator, rule.threshold);
+    const breaching = compareNumber(value, rule.operator as MonitorAlertOperator, rule.threshold);
     const label = metricLabel(metric);
     const sym = OPERATOR_SYMBOL[rule.operator as MonitorAlertOperator];
 

@@ -12,9 +12,10 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, count, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL } from 'drizzle-orm';
 import { alias as aliasedTable } from 'drizzle-orm/pg-core';
-import type { CreateIotAlarmRuleInput, IotAlarmLevel, IotAlarmRuleType, IotAlarmStatus, IotCompareOp, UpdateIotAlarmRuleInput } from '@zenith/shared/iot';
+import type { CreateIotAlarmRuleInput, IotAlarmLevel, IotAlarmRuleType, IotAlarmStatus, UpdateIotAlarmRuleInput } from '@zenith/shared/iot';
 import { IOT_ALARM_LEVEL_LABELS, IOT_COMPARE_OP_LABELS, IOT_ONLINE_TTL_SECONDS } from '@zenith/shared/iot';
 import type { IotMetricValue } from '@zenith/shared/iot';
+import { compareNumber } from '@zenith/shared/core';
 import { db } from '../../db';
 import {
   iotAlarmRules, iotAlarms, iotDevices, iotDeviceState, iotProducts,
@@ -330,18 +331,6 @@ function loadActiveRules(productId: number): Promise<IotAlarmRuleRow[]> {
     )));
 }
 
-function compareValue(value: number, op: IotCompareOp, threshold: number): boolean {
-  switch (op) {
-    case 'gt': return value > threshold;
-    case 'gte': return value >= threshold;
-    case 'lt': return value < threshold;
-    case 'lte': return value <= threshold;
-    case 'eq': return value === threshold;
-    case 'neq': return value !== threshold;
-    default: return false;
-  }
-}
-
 /** 触发告警：活跃唯一索引去重，仅真正新建时通知 */
 async function fireIotAlarm(
   rule: IotAlarmRuleRow,
@@ -487,7 +476,7 @@ export async function evaluateIotThresholdRules(device: IotDeviceRow, metrics: R
   for (const rule of rules) {
     const raw = rule.propertyIdentifier ? metrics[rule.propertyIdentifier] : undefined;
     if (typeof raw !== 'number' || rule.operator == null || rule.threshold == null) continue;
-    const breached = compareValue(raw, rule.operator, rule.threshold);
+    const breached = compareNumber(raw, rule.operator, rule.threshold);
     const streakKey = `${STREAK_PREFIX}${rule.id}:${device.id}`;
     if (breached) {
       let streak = rule.consecutiveCount;

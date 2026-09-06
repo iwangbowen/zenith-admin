@@ -16,13 +16,14 @@ import { assertSafeWorkflowUrl, workflowHttp } from '../../lib/workflow-outbound
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
 import type { WorkflowDataSourceRow } from '../../db/schema';
 import type { WorkflowDataSource, WorkflowDataSourceOption, CreateWorkflowDataSourceInput, UpdateWorkflowDataSourceInput } from '@zenith/shared/workflow';
+import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
 
 const OPTIONS_CACHE_TTL = 30_000;
 const optionsCache = new Map<string, { data: WorkflowDataSourceOption[]; expire: number }>();
 const rawItemsCache = new Map<string, { data: Array<Record<string, unknown>>; expire: number }>();
 
 /** 脱敏占位：GET 返回请求头的值统一替换为该占位；更新时值为占位则保留旧值 */
-const HEADER_MASK = '******';
+const HEADER_MASK = SECRET_PLACEHOLDER;
 
 /** 解密请求头（AES-256-GCM 存储的 JSON 键值对；解密失败按无请求头处理） */
 function decryptHeaders(encrypted: string | null | undefined): Record<string, string> | null {

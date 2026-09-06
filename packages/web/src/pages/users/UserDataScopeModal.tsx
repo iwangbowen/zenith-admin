@@ -10,7 +10,7 @@
 import { useState, useEffect } from 'react';
 import { Typography, Divider, Toast, Tag } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
-import { DATA_SCOPES, type Department } from '@zenith/shared/identity';
+import { DATA_SCOPES, mostPermissiveDataScope, type Department } from '@zenith/shared/identity';
 import { enumValueOf } from '@zenith/shared/core';
 import { DataScopePanel, DATA_SCOPE_OPTIONS } from '@/components/permissions/DataScopePanel';
 import { useSaveUserDataPermission, useUserDataPermission } from '@/hooks/queries/users';
@@ -30,12 +30,8 @@ function scopeLabel(scope: string | null): string {
   return DATA_SCOPE_OPTIONS.find((o) => o.value === scope)?.label ?? scope;
 }
 
-const SCOPE_PRIORITY: Record<string, number> = { all: 5, dept: 4, dept_only: 3, custom: 2, self: 1 };
-
 function getMostPermissive(scopes: Array<string | null>): string {
-  const valid = scopes.filter((s): s is string => s !== null);
-  if (valid.length === 0) return 'self';
-  return valid.reduce((best, curr) => ((SCOPE_PRIORITY[curr] ?? 0) > (SCOPE_PRIORITY[best] ?? 0) ? curr : best), valid[0]);
+  return mostPermissiveDataScope(scopes) ?? 'self';
 }
 
 export function UserDataScopeModal({ userId, userName, visible, deptTree, onClose }: Props) {

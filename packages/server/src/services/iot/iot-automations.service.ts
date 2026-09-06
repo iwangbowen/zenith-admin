@@ -15,7 +15,7 @@ import { HTTPException } from 'hono/http-exception';
 import { and, count, desc, eq, gte, inArray, type SQL } from 'drizzle-orm';
 import type { CreateIotAutomationInput, IotMetricValue, UpdateIotAutomationInput } from '@zenith/shared/iot';
 import { IOT_COMPARE_OP_LABELS, IOT_AUTOMATION_TRIGGER_LABELS } from '@zenith/shared/iot';
-import type { IotCompareOp } from '@zenith/shared/iot';
+import { compareNumber } from '@zenith/shared/core';
 import { db } from '../../db';
 import {
   iotAutomationRuns, iotAutomations, iotDeviceGroupMembers, iotDevices, iotProducts,
@@ -266,18 +266,6 @@ function loadActiveAutomations(productId: number): Promise<IotAutomationRow[]> {
     .where(and(eq(iotAutomations.productId, productId), eq(iotAutomations.status, 'enabled'))));
 }
 
-function compareValue(value: number, op: IotCompareOp, threshold: number): boolean {
-  switch (op) {
-    case 'gt': return value > threshold;
-    case 'gte': return value >= threshold;
-    case 'lt': return value < threshold;
-    case 'lte': return value <= threshold;
-    case 'eq': return value === threshold;
-    case 'neq': return value !== threshold;
-    default: return false;
-  }
-}
-
 /** 遥测 ingest 属性触发（逐点） */
 export async function evaluateIotAutomationsOnTelemetry(device: IotDeviceRow, metrics: Record<string, IotMetricValue>): Promise<void> {
   const rows = (await loadActiveAutomations(device.productId))
@@ -285,7 +273,7 @@ export async function evaluateIotAutomationsOnTelemetry(device: IotDeviceRow, me
   for (const automation of rows) {
     const raw = automation.propertyIdentifier ? metrics[automation.propertyIdentifier] : undefined;
     if (typeof raw !== 'number' || automation.operator == null || automation.threshold == null) continue;
-    if (!compareValue(raw, automation.operator, automation.threshold)) continue;
+    if (!compareNumber(raw, automation.operator, automation.threshold)) continue;
     await triggerAutomation(automation, device, {
       trigger: 'property',
       property: automation.propertyIdentifier,

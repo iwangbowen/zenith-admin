@@ -1,5 +1,6 @@
 import { aiChatModelContract, aiProviderContract, AI_COMMON_PROVIDERS, AI_CUSTOM_PROVIDER_ID } from '@zenith/shared/ai';
 import type { AiProviderCatalogEntry, AiProviderConfig } from '@zenith/shared/ai';
+import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockAiProviders, getNextProviderId } from '@/mocks/data/ai';
@@ -24,9 +25,9 @@ const CATALOG_MODELS: Record<string, string[]> = {
   openrouter: ['openai/gpt-4o', 'anthropic/claude-sonnet-4-5'],
 };
 
-/** 与服务端一致：列表 / 详情只返回脱敏后的 API Key */
+/** 与服务端一致：列表 / 详情只返回脱敏后的 API Key（头 4 + ... + 尾 4） */
 function maskApiKey(apiKey: string) {
-  return apiKey.includes('...') ? apiKey : `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`;
+  return apiKey.includes('...') ? apiKey : maskSecret(apiKey, { filler: '...', short: SECRET_PLACEHOLDER });
 }
 
 export const aiProvidersHandlers = [

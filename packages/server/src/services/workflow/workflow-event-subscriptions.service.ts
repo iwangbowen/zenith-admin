@@ -21,11 +21,11 @@ import { assertSafeWorkflowUrl, workflowHttpPost } from '../../lib/workflow-outb
 import { signHmac } from '../../lib/workflow-jobs/handlers/shared';
 import { invokeConnector, getConnectorRowById } from './workflow-connectors.service';
 import type { WorkflowEventType } from '@zenith/shared/workflow';
+import { maskSecret } from '@zenith/shared/core';
 
-function maskSecret(secret: string | null | undefined): string | null {
-  if (!secret) return null;
-  if (secret.length <= 8) return '****';
-  return `${secret.slice(0, 4)}****${secret.slice(-4)}`;
+/** 订阅密钥展示：保留头尾 4 位（`@zenith/shared/core` 默认口径），空值返回 null */
+function maskSubscriptionSecret(secret: string | null | undefined): string | null {
+  return secret ? maskSecret(secret) : null;
 }
 
 /** 解密订阅密钥（AES-256-GCM 存储；解密失败按无密钥处理并保底不抛错） */
@@ -65,7 +65,7 @@ export function mapSubscription(
     definitionName: definitionName ?? null,
     events: (Array.isArray(row.events) ? row.events : []) as WorkflowEventType[],
     url: row.url,
-    secretMasked: maskSecret(decryptSubscriptionSecret(row.secretEncrypted)),
+    secretMasked: maskSubscriptionSecret(decryptSubscriptionSecret(row.secretEncrypted)),
     signMode: row.signMode,
     headers: parseHeaders(row.headers),
     connectorId: row.connectorId ?? null,

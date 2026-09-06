@@ -1,3 +1,4 @@
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, isNotNull, sql, type SQL } from 'drizzle-orm';
@@ -308,7 +309,7 @@ export async function updateSystemSchedulerTaskConfig(name: string, input: Updat
     failureAlertThreshold: Math.max(1, input.failureAlertThreshold),
     alertEnabled: input.alertEnabled,
     alertChannels: alertChannels.length > 0 ? alertChannels : ['inapp'],
-    alertUserIds: Array.from(new Set((input.alertUserIds ?? []).map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0))),
+    alertUserIds: uniquePositiveInts(input.alertUserIds),
     alertEmails: Array.from(new Set((input.alertEmails ?? []).map((item) => String(item ?? '').trim()).filter(Boolean))),
     alertWebhookUrl: input.alertWebhookUrl?.trim() || null,
     manualSingleton: task.allowManualRun ? input.manualSingleton : false,

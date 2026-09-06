@@ -1,3 +1,4 @@
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 /**
  * 动态用户组规则引擎：把 memberRule 物化为 user_group_members 行。
@@ -131,7 +132,7 @@ export async function syncDynamicGroup(groupId: number): Promise<{ added: number
  * 调用点须 catch 记日志不阻断业务主流程；漂移由夜间校准兜底。
  */
 export async function syncUserDynamicMemberships(userIds: number[]): Promise<void> {
-  const uniq = [...new Set(userIds.filter((id) => Number.isInteger(id) && id > 0))];
+  const uniq = uniquePositiveInts(userIds);
   if (uniq.length === 0) return;
   const groups = await db
     .select({ id: userGroups.id, tenantId: userGroups.tenantId, memberRule: userGroups.memberRule })

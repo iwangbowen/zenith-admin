@@ -9,6 +9,7 @@
  *  - 漏斗 segmentId 仅作用于首步，调用前经 ensureSegmentAccessible 校验分群 tenant 归属
  *  - 漏斗步骤属性过滤复用 analytics-property-filter 的白名单 key 正则 + 绑定参数比较
  */
+import { percentOf } from '@zenith/shared/core';
 import { and, eq, gte, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { userEvents } from '../../db/schema';
@@ -100,8 +101,8 @@ async function runFunnel(
     const result: FunnelStepResult = {
       label: step.label,
       users,
-      conversionRate: totalUsers > 0 ? Math.round((users / totalUsers) * 1000) / 10 : 0,
-      stepConversionRate: prevUsers > 0 ? Math.round((users / prevUsers) * 1000) / 10 : 0,
+      conversionRate: percentOf(users, totalUsers) ?? 0,
+      stepConversionRate: percentOf(users, prevUsers) ?? 0,
       dropoff: Math.max(0, prevUsers - users),
       averageConversionMs: i === 0 || avgRaw == null ? null : Math.round(Number(avgRaw)),
     };
@@ -110,7 +111,7 @@ async function runFunnel(
   });
 
   const finalUsers = steps.at(-1)?.users ?? 0;
-  return { steps, totalUsers, overallConversionRate: totalUsers > 0 ? Math.round((finalUsers / totalUsers) * 1000) / 10 : 0 };
+  return { steps, totalUsers, overallConversionRate: percentOf(finalUsers, totalUsers) ?? 0 };
 }
 
 /** 漏斗各步 CTE；下钻复用同一构造，保证「图上的数」与「下钻的人」同源 */
@@ -339,9 +340,8 @@ function buildRetentionCohorts(axis: string[], periods: number[], matrix: Map<st
     const values = periods.map((p) => {
       const targetStr = axis[ci + p];
       if (targetStr === undefined) return null;
-      if (size === 0) return 0;
       const active = matrix.get(`${cohortDate}\u0001${targetStr}`) ?? 0;
-      return Math.round((active / size) * 1000) / 10;
+      return percentOf(active, size) ?? 0;
     });
     return { cohortDate, cohortSize: size, values };
   });
@@ -362,7 +362,7 @@ function summarizeRetention(cohorts: RetentionCohort[], periods: number[]): { av
       activeSum += (value / 100) * cohort.cohortSize;
       sizeSum += cohort.cohortSize;
     }
-    return sizeSum > 0 ? Math.round((activeSum / sizeSum) * 1000) / 10 : null;
+    return percentOf(activeSum, sizeSum);
   });
   return { averages, totalUsers: cohorts.reduce((sum, c) => sum + c.cohortSize, 0) };
 }

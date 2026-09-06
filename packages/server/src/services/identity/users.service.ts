@@ -21,6 +21,7 @@ import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../../lib/ex
 import { clearUserPermissionCache } from '../../lib/permissions';
 import type { JwtPayload } from '../../middleware/auth';
 import type { AlertRecipientUser, User } from '@zenith/shared/identity';
+import { mostPermissiveDataScope } from '@zenith/shared/identity';
 import { currentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -683,13 +684,8 @@ export async function assignRolesToUser(userId: number, roleIds: number[]) {
 
 // ─── 用户级数据权限 ────────────────────────────────────────────────────────────
 
-const SCOPE_PRIORITY: Record<string, number> = { all: 5, dept: 4, dept_only: 3, custom: 2, self: 1 };
-
-function getMostPermissiveScope(scopes: Array<string | null>): string | null {
-  const valid = scopes.filter((s): s is string => s !== null);
-  if (valid.length === 0) return null;
-  return valid.reduce((best, curr) => (SCOPE_PRIORITY[curr] ?? 0) > (SCOPE_PRIORITY[best] ?? 0) ? curr : best, valid[0]);
-}
+/** 取最宽松范围：口径见 `@zenith/shared/identity` 的 `mostPermissiveDataScope`（前端展示与 Mock 同源） */
+const getMostPermissiveScope = mostPermissiveDataScope;
 
 const groupRolesWith = enabledGroupRolesWith({
   columns: { status: true, dataScope: true },

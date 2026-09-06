@@ -19,6 +19,7 @@ import {
 } from '@/hooks/queries/cms';
 import { CMS_AD_EVENT_TYPE_LABELS, CMS_DEVICE_TYPE_LABELS, CMS_AD_EVENT_TYPE_OPTIONS, CMS_DEVICE_TYPE_OPTIONS } from '@zenith/shared/cms';
 import type { CmsAdEvent, CmsAdSlot, CmsAd } from '@zenith/shared/cms';
+import { percentOf } from '@zenith/shared/core';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
@@ -130,7 +131,7 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
     { title: '点击量', dataIndex: 'clickCount', width: 90, align: 'right' },
     {
       title: 'CTR', dataIndex: 'ctr', width: 90, align: 'right',
-      render: (_: unknown, record) => record.viewCount > 0 ? `${Math.round((record.clickCount / record.viewCount) * 1000) / 10}%` : '-',
+      render: (_: unknown, record) => record.viewCount > 0 ? `${percentOf(record.clickCount, record.viewCount)}%` : '-',
     },
     dateTimeColumn('开始时间', 'startAt', { empty: '不限' }),
     dateTimeColumn('结束时间', 'endAt', { empty: '不限' }),

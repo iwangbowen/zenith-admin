@@ -42,6 +42,12 @@ export const DEFAULT_MASK_CHAR = '*';
 /** `redact` 类型的固定输出：不泄露长度 */
 export const REDACTED_TEXT = '******';
 
+/**
+ * 凭据类字段（API Key / Secret / Token / 请求头）的展示占位：与 `REDACTED_TEXT` 同值，
+ * 同时作为「本次未修改」的回传哨兵——服务端收到等于该占位的值时沿用已存密文。
+ */
+export const SECRET_PLACEHOLDER = REDACTED_TEXT;
+
 /** `custom` 类型缺少规则时的兜底（fail-closed：仍然打码，而不是放行明文） */
 export const DEFAULT_CUSTOM_MASK_RULE: CustomMaskRule = { prefixKeep: 1, suffixKeep: 1 };
 
@@ -116,6 +122,29 @@ export function maskCustom(value: string, rule: CustomMaskRule): string {
     maskChar.repeat(parts.length - prefixKeep - suffixKeep) +
     (suffixKeep > 0 ? parts.slice(parts.length - suffixKeep).join('') : '')
   );
+}
+
+export interface MaskSecretOptions {
+  /** 保留的头部字符数，默认 4 */
+  head?: number;
+  /** 保留的尾部字符数，默认 4 */
+  tail?: number;
+  /** 中间替代文本，默认 `****` */
+  filler?: string;
+  /** 总长不足以同时保留头尾（`<= head + tail`）时的整体输出，默认与 `filler` 相同 */
+  short?: string;
+}
+
+/**
+ * 凭据打码：`sk-live-abcdef123456` → `sk-l****3456`。
+ * 与 PII 脱敏不同，凭据只需让持有者认出「是哪一把」，因此保留头尾、中间用固定文本替代；
+ * 长度不足以安全保留头尾时整体输出 `short`（fail-closed，不泄露短密钥）。
+ */
+export function maskSecret(value: string, options: MaskSecretOptions = {}): string {
+  const { head = 4, tail = 4, filler = '****', short = filler } = options;
+  const parts = graphemes(value);
+  if (parts.length <= head + tail) return short;
+  return parts.slice(0, head).join('') + filler + (tail > 0 ? parts.slice(parts.length - tail).join('') : '');
 }
 
 /**

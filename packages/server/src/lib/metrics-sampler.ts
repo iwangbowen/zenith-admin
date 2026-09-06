@@ -8,6 +8,7 @@
  * - 同时维护时序环形缓冲（默认 360 点 / 1h），供前端绘制趋势折线图。
  * - Event Loop Lag、GC、HTTP QPS·P95、每核 CPU、网络吞吐 等深度指标统一在此采集。
  */
+import { percentOf } from '@zenith/shared/core';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -316,7 +317,7 @@ class MetricsSampler {
       const usage = process.cpuUsage(this.lastProcCpuUsage);
       const elapsedMs = performance.now() - this.lastProcCpuTime;
       const usedMs = (usage.user + usage.system) / 1000;
-      if (elapsedMs > 0) procCpu = Math.round((usedMs / elapsedMs) * 1000) / 10;
+      procCpu = percentOf(usedMs, elapsedMs) ?? 0;
     }
     this.lastProcCpuUsage = process.cpuUsage();
     this.lastProcCpuTime = performance.now();

@@ -1,5 +1,6 @@
 import { smsConfigContract } from '@zenith/shared/messaging';
 import type { SmsConfig } from '@zenith/shared/messaging';
+import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockSmsConfigs, getNextSmsConfigId } from '@/mocks/data/sms-configs';
@@ -11,7 +12,7 @@ function toSafe(c: SmsConfig): SmsConfig {
   const { accessKeySecret: _secret, ...safe } = c;
   return {
     ...safe,
-    accessKeyId: c.accessKeyId ? `${c.accessKeyId.slice(0, 4)}******${c.accessKeyId.slice(-4)}` : '',
+    accessKeyId: c.accessKeyId ? maskSecret(c.accessKeyId, { filler: SECRET_PLACEHOLDER }) : '',
   };
 }
 

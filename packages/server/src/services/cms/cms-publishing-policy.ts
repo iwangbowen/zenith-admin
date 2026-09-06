@@ -1,3 +1,4 @@
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { createHash } from 'node:crypto';
 import type { CmsPublishSubmitInput } from '@zenith/shared/cms';
 
@@ -50,7 +51,7 @@ export function buildCmsPublishDedupeFingerprint(
 }
 
 export function stableCmsContentTargets(ids: readonly number[]): number[] {
-  return [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))].sort((a, b) => a - b);
+  return uniquePositiveInts(ids).sort((a, b) => a - b);
 }
 
 export function remainingCmsContentTargets(ids: readonly number[], lastId: number): number[] {

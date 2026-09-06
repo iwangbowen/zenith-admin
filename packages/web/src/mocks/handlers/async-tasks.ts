@@ -1,4 +1,5 @@
 import type { QueryOf } from '@zenith/shared/core';
+import { percentOf } from '@zenith/shared/core';
 import { asyncTaskContract, taskDemoContract } from '@zenith/shared/tasks';
 import type { AsyncTask, AsyncTaskItem, AsyncTaskStats, AsyncTaskStatus, AsyncTaskTypeMeta } from '@zenith/shared/tasks';
 import dayjs from 'dayjs';
@@ -670,7 +671,7 @@ export const asyncTasksHandlers = [
           failed: submitted > 3 ? 1 : 0,
         };
       }),
-      successRate: settled > 0 ? Math.round((counts.success / settled) * 1000) / 10 : null,
+      successRate: percentOf(counts.success, settled),
       backlog: {
         pending: counts.pending,
         oldestPendingMinutes: counts.pending > 0 ? 12 : null,
@@ -699,7 +700,7 @@ export const asyncTasksHandlers = [
             running: row.running,
             success: row.success,
             failed: row.failed,
-            successRate: settledOfType > 0 ? Math.round((row.success / settledOfType) * 1000) / 10 : null,
+            successRate: percentOf(row.success, settledOfType),
             avgDurationMs: row.success > 0 ? 9800 : null,
           };
         })

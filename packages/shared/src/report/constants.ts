@@ -1,4 +1,5 @@
 import { createLabelOptionsFromMap } from '../core/enum-options';
+import { NUMERIC_COMPARE_OPS } from '../core/compare';
 import type { ReportAlertAggregate, ReportChatbiSessionStatus, ReportDatasourceType, ReportDeliveryStatus, ReportDeliveryTriggerType, ReportFieldType, ReportFillRecordStatus, ReportFillSyncStatus, ReportFillTemplateStatus, ReportScheduleMisfirePolicy } from './types';
 
 /** 数据集字段（列）数据类型 */
@@ -20,8 +21,8 @@ export const REPORT_DELIVERY_TRIGGER_TYPES = ['manual', 'scheduled', 'trigger', 
 
 export const REPORT_DELIVERY_STATUSES = ['pending', 'running', 'success', 'partial', 'failed', 'cancelled'] as const;
 
-/** 预警比较运算符 */
-export const REPORT_ALERT_OPS = ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'] as const;
+/** 预警比较运算符：与 `@zenith/shared/core` 的 `NUMERIC_COMPARE_OPS` 同源，判定用 `compareNumber()` */
+export const REPORT_ALERT_OPS = NUMERIC_COMPARE_OPS;
 
 /** 预警聚合方式 */
 export const REPORT_ALERT_AGGREGATES = ['sum', 'avg', 'max', 'min', 'count', 'first'] as const;

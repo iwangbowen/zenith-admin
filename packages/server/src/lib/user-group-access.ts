@@ -13,6 +13,7 @@
  * 动态用户组的成员由规则物化到同一张 user_group_members 表，全部消费方经由
  * 本模块读取即可对静态/动态组保持无感知。
  */
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { userGroupMembers, userGroups, users } from '../db/schema';
@@ -80,7 +81,7 @@ export async function resolveGroupMemberUserIds(
   groupIds: readonly number[],
   exec: DbExecutor = db,
 ): Promise<number[]> {
-  const uniq = [...new Set(groupIds.filter((id) => Number.isInteger(id) && id > 0))];
+  const uniq = uniquePositiveInts(groupIds);
   if (uniq.length === 0) return [];
   const rows = await exec
     .select({ id: users.id })

@@ -5,6 +5,7 @@ import {
   type LoginResponse,
   type TenantIdentityProvider,
 } from '@zenith/shared/identity';
+import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockUsers } from '@/mocks/data/users';
@@ -47,7 +48,7 @@ const providers: TenantIdentityProvider[] = [
     userinfoEndpoint: 'https://idp.example.com/oauth2/userinfo',
     jwksUri: 'https://idp.example.com/.well-known/jwks.json',
     clientId: 'demo-client',
-    clientSecret: '******',
+    clientSecret: SECRET_PLACEHOLDER,
     scopes: 'openid profile email',
     samlSsoUrl: null,
     samlEntityId: null,
@@ -90,7 +91,7 @@ const providers: TenantIdentityProvider[] = [
     scopes: 'openid profile email',
     samlSsoUrl: 'https://idp.example.com/saml/sso',
     samlEntityId: 'https://zenith.example.com/saml/sp',
-    samlCertificate: '******',
+    samlCertificate: SECRET_PLACEHOLDER,
     ldapUrl: null,
     ldapStartTls: false,
     ldapSkipTlsVerify: false,
@@ -135,7 +136,7 @@ const providers: TenantIdentityProvider[] = [
     ldapSkipTlsVerify: false,
     ldapBaseDn: 'dc=example,dc=com',
     ldapBindDn: 'cn=readonly,dc=example,dc=com',
-    ldapBindPassword: '******',
+    ldapBindPassword: SECRET_PLACEHOLDER,
     ldapUserFilter: '(&(objectClass=person)(|(sAMAccountName={{username}})(mail={{username}})))',
     ldapUserSearchFilter: '(&(objectClass=person)(|(displayName=*{{keyword}}*)(sAMAccountName=*{{keyword}}*)(mail=*{{keyword}}*)))',
     ldapSyncFilter: '(&(objectClass=person)(|(sAMAccountName=*)(mail=*)))',
@@ -183,9 +184,9 @@ export const identityProvidersHandlers = [
       id: nextIdFrom(providers),
       tenantId: body.tenantId ?? null,
       tenantName: body.tenantId ? '演示租户' : null,
-      clientSecret: body.clientSecret ? '******' : '',
-      samlCertificate: body.samlCertificate ? '******' : '',
-      ldapBindPassword: body.ldapBindPassword ? '******' : '',
+      clientSecret: body.clientSecret ? SECRET_PLACEHOLDER : '',
+      samlCertificate: body.samlCertificate ? SECRET_PLACEHOLDER : '',
+      ldapBindPassword: body.ldapBindPassword ? SECRET_PLACEHOLDER : '',
       remark: body.remark ?? '',
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
@@ -199,9 +200,9 @@ export const identityProvidersHandlers = [
     if (!item) return notFound('身份源不存在', { status: 404 });
     Object.assign(item, body, {
       tenantName: body.tenantId ? '演示租户' : null,
-      clientSecret: body.clientSecret && body.clientSecret !== '******' ? '******' : item.clientSecret,
-      samlCertificate: body.samlCertificate && body.samlCertificate !== '******' ? '******' : item.samlCertificate,
-      ldapBindPassword: body.ldapBindPassword && body.ldapBindPassword !== '******' ? '******' : item.ldapBindPassword,
+      clientSecret: body.clientSecret && body.clientSecret !== SECRET_PLACEHOLDER ? SECRET_PLACEHOLDER : item.clientSecret,
+      samlCertificate: body.samlCertificate && body.samlCertificate !== SECRET_PLACEHOLDER ? SECRET_PLACEHOLDER : item.samlCertificate,
+      ldapBindPassword: body.ldapBindPassword && body.ldapBindPassword !== SECRET_PLACEHOLDER ? SECRET_PLACEHOLDER : item.ldapBindPassword,
       updatedAt: mockDateTime(),
     });
     return ok(item, '更新成功');

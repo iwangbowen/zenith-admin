@@ -4,6 +4,7 @@ import { Button, Form, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Copy } from 'lucide-react';
 import type { ChatWebhook } from '@zenith/shared/chat';
+import { maskSecret } from '@zenith/shared/core';
 import { UserAvatar } from '@/components/UserAvatar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -50,9 +51,10 @@ function getAbsoluteWebhookUrl(webhookUrl: string): string {
   return `${globalThis.window.location.origin}${webhookUrl.startsWith('/') ? webhookUrl : `/${webhookUrl}`}`;
 }
 
+/** 列表展示只露出 token 前 12 位（复制仍取完整值） */
 function maskToken(token: string): string {
   if (!token) return '—';
-  return `${token.slice(0, 12)}••••`;
+  return maskSecret(token, { head: 12, tail: 0, filler: '••••' });
 }
 
 export default function ChatBotsPage() {

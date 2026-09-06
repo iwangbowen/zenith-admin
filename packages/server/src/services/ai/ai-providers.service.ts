@@ -10,6 +10,7 @@ import { AI_SSRF_OPTIONS } from '../../lib/ai/outbound';
 import { chatOnce } from '../../lib/ai/mastra-chat';
 import { loadMastraLlmModule } from '../../lib/ai/mastra-models';
 import { AI_COMMON_PROVIDERS, AI_CUSTOM_PROVIDER_ID } from '@zenith/shared/ai';
+import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { HTTPException } from 'hono/http-exception';
 import type {
   AiProviderCatalogEntry,
@@ -20,7 +21,8 @@ import type {
 } from '@zenith/shared/ai';
 import { httpRequest } from '../../lib/http-client';
 
-const MASKED_KEY = '******';
+/** API Key 展示口径：头 4 + `...` + 尾 4；过短整体输出占位（`@zenith/shared/core` maskSecret） */
+const API_KEY_MASK_OPTIONS = { filler: '...', short: SECRET_PLACEHOLDER } as const;
 /** 加密存储前缀：`enc:v1:` + AES-256-GCM base64 */
 const ENC_PREFIX = 'enc:v1:';
 
@@ -40,8 +42,7 @@ export function unsealApiKey(stored: string | null | undefined): string {
 function maskApiKey(apiKey: string): string {
   const plain = unsealApiKey(apiKey);
   if (!plain) return '';
-  if (plain.length <= 8) return MASKED_KEY;
-  return `${plain.slice(0, 4)}...${plain.slice(-4)}`;
+  return maskSecret(plain, API_KEY_MASK_OPTIONS);
 }
 
 function mapRow(row: typeof aiProviderConfigs.$inferSelect) {
@@ -194,7 +195,7 @@ export async function updateAiProviderConfig(id: number, input: UpdateAiProvider
 
   // 如果传入的 apiKey 是脱敏格式则保留原始值；新密钥加密入库
   const apiKey =
-    input.apiKey && input.apiKey !== MASKED_KEY && !input.apiKey.includes('...')
+    input.apiKey && input.apiKey !== SECRET_PLACEHOLDER && !input.apiKey.includes('...')
       ? sealApiKey(input.apiKey)
       : existing.apiKey;
 
@@ -258,7 +259,7 @@ export async function getRawDefaultProviderConfig() {
 /** 解析测试/拉模型入参中的 apiKey（脱敏值回落到 DB 真实密钥） */
 async function resolveInputApiKey(apiKey: string | undefined, id: number | undefined): Promise<string> {
   let key = apiKey ?? '';
-  if ((!key || key.includes('...') || key === MASKED_KEY) && id) {
+  if ((!key || key.includes('...') || key === SECRET_PLACEHOLDER) && id) {
     const [row] = await db.select({ apiKey: aiProviderConfigs.apiKey }).from(aiProviderConfigs).where(eq(aiProviderConfigs.id, id));
     requireRow(row, 'AI 服务商配置不存在');
     key = unsealApiKey(row.apiKey);

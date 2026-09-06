@@ -1,5 +1,6 @@
 import { workflowEventSubscriptionContract } from '@zenith/shared/workflow';
 import type { WorkflowEventDelivery, WorkflowEventSubscription } from '@zenith/shared/workflow';
+import { maskSecret as maskSecretValue } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, fail } from '@/mocks/utils/handlers';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
@@ -99,10 +100,9 @@ const mockDeliveries: WorkflowEventDelivery[] = [
   },
 ];
 
+/** 与服务端一致：订阅密钥保留头尾 4 位（`@zenith/shared/core` 默认口径） */
 function maskSecret(secret: string | null | undefined): string | null {
-  if (!secret) return null;
-  if (secret.length <= 8) return '****';
-  return `${secret.slice(0, 4)}****${secret.slice(-4)}`;
+  return secret ? maskSecretValue(secret) : null;
 }
 
 function resolveDefinitionName(definitionId: number | null): string | null {

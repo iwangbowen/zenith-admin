@@ -1,3 +1,4 @@
+import { percentOf } from '@zenith/shared/core';
 import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, lte, max, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowDefinitions, systemSchedulerNodes } from '../../db/schema';
@@ -566,7 +567,7 @@ export async function getWorkflowJobRuntimeStatus(): Promise<WorkflowJobRuntimeS
     backlog,
     deadLetter,
     lastClaimedAt: formatNullableDateTime(lastClaimedRow[0]?.v ?? null),
-    failureRate: recentExecutions > 0 ? Math.round((recentFailed / recentExecutions) * 1000) / 10 : 0,
+    failureRate: percentOf(recentFailed, recentExecutions) ?? 0,
     avgDurationMs: avgRaw != null ? Math.round(Number(avgRaw)) : null,
     recentExecutions,
   };
@@ -594,7 +595,7 @@ export async function getWorkflowJobAlertMetrics(): Promise<WorkflowJobAlertMetr
   ]);
   return {
     workflowDeadLetter: deadLetter,
-    workflowFailureRate: recentTotal > 0 ? Math.round((recentFailed / recentTotal) * 1000) / 10 : 0,
+    workflowFailureRate: percentOf(recentFailed, recentTotal) ?? 0,
     workflowStuckRunning: stuckRunning,
   };
 }

@@ -1,5 +1,5 @@
-import type { RuleDecisionTable, RuleDecisionOutput, RuleDecisionRow, RuleDecisionTableVersion, RuleEvaluateResult, RuleCollectAggregate, RuleTestRunResult, RuleUsageItem, RuleVersionChange } from '@zenith/shared/rules';
-import { decisionTableContract, matchRuleCell, ruleExecutionContract } from '@zenith/shared/rules';
+import type { RuleDecisionTable, RuleDecisionOutput, RuleDecisionRow, RuleDecisionTableVersion, RuleEvaluateResult, RuleTestRunResult, RuleUsageItem, RuleVersionChange } from '@zenith/shared/rules';
+import { decisionTableContract, matchDecisionRows, resolveDecisionHits, ruleExecutionContract } from '@zenith/shared/rules';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mockDecisionTables, getNextTableId, mockDecisionVersions, getNextVersionId, mockTestCases, getNextCaseId, mockExecutions, getNextExecId } from '@/mocks/data/decision-tables';
@@ -19,59 +19,16 @@ function resolveThen(raw: unknown, o: RuleDecisionOutput, scope: Record<string, 
   return raw;
 }
 
-function aggregate(collected: Array<Record<string, unknown>>, outputs: RuleDecisionOutput[], mode: RuleCollectAggregate): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const o of outputs) {
-    const values = collected.map((c) => c[o.key]);
-    if (mode === 'sum') out[o.key] = values.reduce<number>((acc, v) => acc + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
-    else if (mode === 'min' || mode === 'max') {
-      const nums = values.map(Number).filter((n) => Number.isFinite(n));
-      out[o.key] = nums.length === 0 ? null : (mode === 'min' ? Math.min(...nums) : Math.max(...nums));
-    } else if (mode === 'count') out[o.key] = collected.length;
-    else if (mode === 'distinct') {
-      const seen = new Set<string>();
-      out[o.key] = values.filter((v) => { const k = JSON.stringify(v ?? null); if (seen.has(k)) return false; seen.add(k); return true; });
-    } else out[o.key] = values;
-  }
-  return out;
-}
-
+/** 行匹配与 hit-policy 装配来自 `@zenith/shared/rules`（与服务端引擎同源），这里只提供简单路径取值 */
 function evaluate(table: RuleDecisionTable, input: Record<string, unknown>): RuleEvaluateResult {
   const cols = table.inputs.map((i) => get(input, i.expr));
-  const matched = table.rules.filter((r) => table.inputs.every((c, i) => matchRuleCell(r.when[i] ?? '', cols[i], c.type)));
+  const matched = matchDecisionRows(table, cols);
   const build = (row: RuleDecisionRow) => {
     const outputs: Record<string, unknown> = {};
     for (const o of table.outputs) outputs[o.key] = resolveThen(row.then[o.key], o, input);
     return outputs;
   };
-  if (!matched.length) {
-    if (table.settings?.fallbackToDefaults) {
-      const outputs = Object.fromEntries(table.outputs.map((o) => [o.key, o.default ?? null]));
-      return { matched: false, outputs, matchedRowIds: [], hitPolicy: table.hitPolicy, reason: 'no_match', usedFallback: true };
-    }
-    return { matched: false, outputs: {}, matchedRowIds: [], hitPolicy: table.hitPolicy, reason: 'no_match' };
-  }
-  switch (table.hitPolicy) {
-    case 'unique':
-      if (matched.length > 1) return { matched: false, outputs: {}, matchedRowIds: matched.map((r) => r.id), hitPolicy: 'unique', reason: 'unique_conflict' };
-      return { matched: true, outputs: build(matched[0]), matchedRowIds: [matched[0].id], hitPolicy: 'unique' };
-    case 'priority': {
-      const top = [...matched].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))[0];
-      return { matched: true, outputs: build(top), matchedRowIds: [top.id], hitPolicy: 'priority' };
-    }
-    case 'collect': {
-      const collected = matched.map(build);
-      return { matched: true, outputs: aggregate(collected, table.outputs, table.settings?.collectAggregate ?? 'list'), matchedRowIds: matched.map((r) => r.id), hitPolicy: 'collect', collected };
-    }
-    case 'any': {
-      const all = matched.map(build);
-      const head = JSON.stringify(all[0]);
-      if (all.some((o) => JSON.stringify(o) !== head)) return { matched: false, outputs: {}, matchedRowIds: matched.map((r) => r.id), hitPolicy: 'any', reason: 'any_conflict' };
-      return { matched: true, outputs: all[0], matchedRowIds: matched.map((r) => r.id), hitPolicy: 'any' };
-    }
-    default:
-      return { matched: true, outputs: build(matched[0]), matchedRowIds: [matched[0].id], hitPolicy: table.hitPolicy };
-  }
+  return resolveDecisionHits(table, matched, build);
 }
 
 /** 供决策流 mock 复用的决策表求值（与后端引擎语义对齐） */

@@ -4,6 +4,7 @@
  * 当某个流程定义的实例进入终结状态（approved/rejected/withdrawn）时，
  * 触发其上配置的自动化动作（如发起新审批流程、发送站内消息）。
  */
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -307,7 +308,7 @@ async function runSendMessageAction(
   } else if (typeof action.recipients === 'object' && Array.isArray(action.recipients.userIds)) {
     recipientIds = action.recipients.userIds;
   }
-  recipientIds = Array.from(new Set(recipientIds.filter((v) => Number.isInteger(v) && v > 0)));
+  recipientIds = uniquePositiveInts(recipientIds);
   if (!recipientIds.length) return;
   const vars = buildTemplateVars(ctx);
   const title = renderTemplate(action.title, vars);

@@ -1,5 +1,5 @@
 import { Tag } from '@douyinfe/semi-ui';
-import { formatBytes } from '@zenith/shared/core';
+import { formatBytes, percentOf } from '@zenith/shared/core';
 import type { ManagedFile } from '@zenith/shared/platform';
 import { DRIVE_ROLE_RANK, driveNodeContract, type DriveNode, type DriveRole, type DriveShareLink, type DriveShareLinkState, type DriveSpaceType } from '@zenith/shared/drive';
 import { urlOf } from '@/lib/contract-query';
@@ -59,8 +59,8 @@ export const SPACE_TYPE_ICON: Record<DriveSpaceType, string> = {
 
 /** 空间用量百分比（0 配额 = 不限，返回 null） */
 export function usagePercent(space: { usedBytes: number; quotaBytes: number }): number | null {
-  if (!space.quotaBytes) return null;
-  return Math.min(100, Math.round((space.usedBytes / space.quotaBytes) * 1000) / 10);
+  const percent = percentOf(space.usedBytes, space.quotaBytes);
+  return percent == null ? null : Math.min(100, percent);
 }
 
 /** 浅比较两个 id 集合 */

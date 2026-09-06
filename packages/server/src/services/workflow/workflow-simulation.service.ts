@@ -1,6 +1,7 @@
 /**
  * 流程仿真服务：复用真实 DAG 引擎做 dry-run，不落库、不外呼、不创建真实实例。
  */
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -79,7 +80,7 @@ async function resolveFlowData(input: SimulateWorkflowInput): Promise<WorkflowFl
 }
 
 async function resolveUserNames(ids: number[]): Promise<Map<number, string>> {
-  const uniqueIds = [...new Set(ids)].filter((id) => Number.isInteger(id) && id > 0);
+  const uniqueIds = uniquePositiveInts(ids);
   const nameMap = new Map<number, string>();
   if (uniqueIds.length === 0) return nameMap;
   const rows = await db.select({ id: users.id, nickname: users.nickname, username: users.username })

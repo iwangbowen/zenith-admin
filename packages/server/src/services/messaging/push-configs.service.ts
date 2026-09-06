@@ -18,8 +18,7 @@ import { sendPushByProvider } from '../../lib/push-sender';
 import { clearInvalidPushRegistrations } from '../ops/client-devices.service';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
-
-const SECRET_MASK = '******';
+import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
 
 type PushConfigWithApp = PushConfigRow & { app?: { name: string } | null };
 
@@ -31,7 +30,7 @@ export function mapPushConfigSafe(row: PushConfigWithApp) {
     appName: row.app?.name,
     name: row.name,
     provider: row.provider,
-    appKey: row.appKey ? `${row.appKey.slice(0, 4)}${SECRET_MASK}${row.appKey.slice(-4)}` : '',
+    appKey: row.appKey ? maskSecret(row.appKey, { filler: SECRET_PLACEHOLDER }) : '',
     apnsProduction: row.apnsProduction,
     status: row.status,
     remark: row.remark ?? null,

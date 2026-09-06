@@ -1,6 +1,7 @@
 // ─── 任务转办明细（谁在何时因何把任务交给了谁）────────────────────────────────
 // 转办/委派/管理员改派/离职交接/超时升级 5 类流转的统一留痕，
 // 同时支撑「禁止折返」校验与详情页转办时间线。
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { and, eq, inArray, ne, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../../db';
@@ -20,7 +21,7 @@ export async function assertAssigneesNotActiveOnNode(
   exec: DbExecutor,
   args: { instanceId: number; nodeKey: string; activationId: string; userIds: number[]; excludeTaskId?: number },
 ): Promise<void> {
-  const ids = [...new Set(args.userIds)].filter((v) => Number.isInteger(v) && v > 0);
+  const ids = uniquePositiveInts(args.userIds);
   if (ids.length === 0) return;
   const conds = [
     eq(workflowTasks.instanceId, args.instanceId),

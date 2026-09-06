@@ -1,3 +1,4 @@
+import { percentOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
@@ -368,7 +369,7 @@ export async function getAsyncTaskStats(): Promise<AsyncTaskStats> {
       date: row.date, submitted: row.submitted, success: row.success, failed: row.failed,
     })),
     hourly: hourlyRows.map((row) => ({ hour: row.hour, submitted: row.submitted, failed: row.failed })),
-    successRate: settled > 0 ? Math.round((success / settled) * 1000) / 10 : null,
+    successRate: percentOf(success, settled),
     backlog: {
       pending: counts.pending ?? 0,
       oldestPendingMinutes: backlogRow?.oldestMinutes != null
@@ -398,7 +399,7 @@ export async function getAsyncTaskStats(): Promise<AsyncTaskStats> {
         running: row.running,
         success: row.success,
         failed: row.failed,
-        successRate: settledOfType > 0 ? Math.round((row.success / settledOfType) * 1000) / 10 : null,
+        successRate: percentOf(row.success, settledOfType),
         avgDurationMs: row.avgMs != null ? Math.round(Number(row.avgMs)) : null,
       };
     }),

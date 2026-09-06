@@ -1,6 +1,8 @@
+import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { decryptField, encryptField } from '../../lib/encryption';
 
-export const REPORT_SECRET_MASK = '******';
+/** 报表凭据的展示 / 「未修改」哨兵：`@zenith/shared/core` 的统一占位 */
+export const REPORT_SECRET_MASK = SECRET_PLACEHOLDER;
 
 export function isSensitiveReportHeader(name: string): boolean {
   return /(authorization|cookie|token|secret|api[-_]?key|access[-_]?key|credential|signature)/i.test(name);

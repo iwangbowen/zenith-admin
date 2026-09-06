@@ -1,3 +1,4 @@
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db';
 import {
@@ -27,7 +28,7 @@ export function registerCmsResourceTaskHandler(): void {
       const payload = ctx.payload as GovernancePayload;
       await assertSiteAccess(Number(payload.siteId));
       if (payload.operation === 'move') {
-        const ids = [...new Set(payload.resourceIds)].filter((id) => Number.isInteger(id) && id > 0);
+        const ids = uniquePositiveInts(payload.resourceIds);
         let processed = Number(ctx.checkpoint?.processed ?? 0);
         for (let index = processed; index < ids.length; index++) {
           const id = ids[index];

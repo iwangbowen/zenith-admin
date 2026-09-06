@@ -1,3 +1,4 @@
+import { percentOf } from '@zenith/shared/core';
 import type {
   AnalyticsAcquisitionResult,
   AnalyticsDebugEvent,
@@ -601,8 +602,8 @@ export const analyticsHandlers = [
         const r = {
           label: s.label,
           users,
-          conversionRate: Math.round((users / total) * 1000) / 10,
-          stepConversionRate: Math.round((users / prev) * 1000) / 10,
+          conversionRate: percentOf(users, total) ?? 0,
+          stepConversionRate: percentOf(users, prev) ?? 0,
           dropoff: prev - users,
           averageConversionMs: i === 0 ? null : rand(30_000, 3_600_000),
         };
@@ -688,7 +689,7 @@ export const analyticsHandlers = [
         newUsers: Math.floor(users * 0.4),
         sessions: Math.floor(users * 1.7),
         conversions,
-        conversionRate: users > 0 ? Math.round((conversions / users) * 1000) / 10 : 0,
+        conversionRate: percentOf(conversions, users) ?? 0,
       };
     });
     const result: AnalyticsAcquisitionResult = {

@@ -1,4 +1,4 @@
-import { userContract, type DataScope } from '@zenith/shared/identity';
+import { userContract, mostPermissiveDataScope, type DataScope } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockUsers } from '@/mocks/data/users';
@@ -10,13 +10,7 @@ const userMenuMap: Record<number, number[]> = {};
 const userDataScopeMap: Record<number, DataScope | null> = {};
 const userDeptScopeMap: Record<number, number[]> = {};
 
-const SCOPE_PRIORITY: Record<string, number> = { all: 5, dept: 4, dept_only: 3, custom: 2, self: 1 };
-
-function getMostPermissive(scopes: Array<string | null>): string | null {
-  const valid = scopes.filter((s): s is string => s !== null);
-  if (valid.length === 0) return null;
-  return valid.reduce((best, curr) => (SCOPE_PRIORITY[curr] ?? 0) > (SCOPE_PRIORITY[best] ?? 0) ? curr : best, valid[0]);
-}
+const getMostPermissive = mostPermissiveDataScope;
 
 /** 用户所在启用用户组继承的角色/菜单/数据权限 */
 function getGroupInheritance(userId: number) {

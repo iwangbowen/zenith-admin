@@ -1,3 +1,4 @@
+import { percentOf } from '@zenith/shared/core';
 import type {
   IotAlarmRule, IotAutomation, IotDevice, IotDeviceShadow, IotFirmware, IotForwardRule,
   IotMaintenanceWindow, IotOtaTask, IotProduct, IotProductEvent, IotProductProperty, IotProductService, IotSchedule,
@@ -106,7 +107,7 @@ export const iotHandlers = [
       stats: {
         deviceTotal: total,
         onlineCount: online,
-        onlineRate: total > 0 ? Math.round((online / total) * 1000) / 10 : 0,
+        onlineRate: percentOf(online, total) ?? 0,
         telemetryToday: 2880,
         firingWarning: firing.filter((a) => a.level === 'warning').length,
         firingCritical: firing.filter((a) => a.level === 'critical').length,

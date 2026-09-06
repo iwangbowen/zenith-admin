@@ -10,8 +10,7 @@ import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { currentUserOrNull } from '../../lib/context';
 import { config } from '../../config';
 import type { CreateSmsConfigInput, UpdateSmsConfigInput, SmsProvider } from '@zenith/shared/messaging';
-
-const SECRET_MASK = '******';
+import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
 
 /** 列表返回脱敏 */
 export function mapSmsConfigSafe(row: SmsConfigRow) {
@@ -19,7 +18,7 @@ export function mapSmsConfigSafe(row: SmsConfigRow) {
     id: row.id,
     name: row.name,
     provider: row.provider,
-    accessKeyId: row.accessKeyId ? `${row.accessKeyId.slice(0, 4)}${SECRET_MASK}${row.accessKeyId.slice(-4)}` : '',
+    accessKeyId: row.accessKeyId ? maskSecret(row.accessKeyId, { filler: SECRET_PLACEHOLDER }) : '',
     region: row.region ?? null,
     signName: row.signName ?? '',
     isDefault: row.isDefault,

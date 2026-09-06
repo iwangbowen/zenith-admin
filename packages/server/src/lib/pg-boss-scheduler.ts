@@ -4,6 +4,7 @@
  *
  * 用户可配置 Cron 与系统启动任务共用 pg-boss 执行，但日志与注册元数据分离。
  */
+import { uniquePositiveInts } from '@zenith/shared/core';
 import os from 'node:os';
 import { PgBoss, type QueueOptions, type SendOptions, type WorkHandler } from 'pg-boss';
 import { eq, and, isNull, desc, notInArray, sql } from 'drizzle-orm';
@@ -196,7 +197,7 @@ function normalizeAlertChannels(value: unknown): SystemSchedulerAlertChannel[] {
 
 function normalizeNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
-  return Array.from(new Set(value.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)));
+  return uniquePositiveInts(value);
 }
 
 function normalizeStringArray(value: unknown): string[] {

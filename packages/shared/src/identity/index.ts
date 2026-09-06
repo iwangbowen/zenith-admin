@@ -6,5 +6,6 @@
  */
 export * from './constants';
 export * from './contracts';
+export * from './data-scope';
 export * from './types';
 export * from './validation';

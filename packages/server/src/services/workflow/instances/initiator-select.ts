@@ -1,4 +1,5 @@
 // ─── 发起人自选审批人与表单起始权限（拆分自 workflow-instances.service.ts）───
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { advanceTokens } from '../../../lib/workflow-token-engine';
 import type { WorkflowFlowData, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { findNextApproverSelectNodes } from '@zenith/shared/workflow';
@@ -30,7 +31,7 @@ function normalizeSelectedApproverMap(input?: SelectedApproverMap | null): Selec
   const out: SelectedApproverMap = {};
   for (const [nodeKey, ids] of Object.entries(input ?? {})) {
     if (!nodeKey || !Array.isArray(ids)) continue;
-    const normalized = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+    const normalized = uniquePositiveInts(ids);
     if (normalized.length > 0) out[nodeKey] = normalized;
   }
   return out;

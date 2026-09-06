@@ -2,6 +2,7 @@
  * 会员数据看板统计服务（只读聚合）。
  * 概览卡片 + 图表（注册趋势 / 等级分布 / 积分收支 / 签到人数）。
  */
+import { percentOf } from '@zenith/shared/core';
 import { count, sql, and, gte, lt, eq, isNull } from 'drizzle-orm';
 import { db } from '../../db';
 import {
@@ -68,7 +69,7 @@ export async function getMemberStats() {
 
   const totalPoints = pointSumRow[0]?.v ?? 0;
   const totalWalletBalance = walletSumRow[0]?.v ?? 0;
-  const todayCheckinRate = totalMembers > 0 ? Math.round((todayCheckins / totalMembers) * 1000) / 10 : 0;
+  const todayCheckinRate = percentOf(todayCheckins, totalMembers) ?? 0;
 
   return {
     totalMembers,

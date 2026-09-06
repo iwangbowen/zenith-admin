@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, Col, Form, Row, SideSheet, Spin, Toast, useFormState } from '@douyinfe/semi-ui';
 import type { AiModelFallbackRef, AiModelSettings, AiProviderConfig, AiReasoningLevel, SaveUserAiConfigInput, UserAiConfig } from '@zenith/shared/ai';
 import { AI_CUSTOM_PROVIDER_ID, AI_REASONING_LEVELS } from '@zenith/shared/ai';
+import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import {
   useAiProviderDetail,
   useSaveAiProvider,
@@ -304,7 +305,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
         baseUrl: values.baseUrl ?? null,
       };
       const apiKey = values.apiKey ?? '';
-      if (editTarget?.id && (!apiKey || apiKey.includes('...') || apiKey === '******')) {
+      if (editTarget?.id && (!apiKey || apiKey.includes('...') || apiKey === SECRET_PLACEHOLDER)) {
         body.id = editTarget.id;
       } else if (apiKey) {
         body.apiKey = apiKey;
@@ -343,7 +344,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
       // 有 id 时（编辑模式），若 apiKey 为空或含脱敏标记，传 id 让后端取真实密钥
       const id = editTarget?.id;
       const apiKey = values.apiKey ?? '';
-      if (id && (!apiKey || apiKey.includes('...') || apiKey === '******')) {
+      if (id && (!apiKey || apiKey.includes('...') || apiKey === SECRET_PLACEHOLDER)) {
         body.id = id;
       } else if (apiKey) {
         body.apiKey = apiKey;

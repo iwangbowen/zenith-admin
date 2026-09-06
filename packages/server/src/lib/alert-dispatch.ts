@@ -8,6 +8,7 @@
  * 之所以仍然同步等待派发结果，是因为告警列表要展示「有没有真的通知到人」——
  * 只返回「已入队」的话，渠道配错在界面上就完全看不出来了。
  */
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { eq, inArray, or, type SQL } from 'drizzle-orm';
 import type {
   InAppMessageType,
@@ -81,7 +82,7 @@ function isSupportedChannel(value: string): value is NotificationChannel {
  * 停用账号不再接收告警。租户为空的平台级规则不限制租户范围。
  */
 async function resolveRecipientUserIds(target: AlertDispatchTarget): Promise<number[]> {
-  const userIds = [...new Set((target.recipientUserIds ?? []).filter((id) => Number.isInteger(id) && id > 0))];
+  const userIds = uniquePositiveInts(target.recipientUserIds);
   const identifiers = [...new Set((target.recipients ?? []).map((recipient) => recipient.trim()).filter(Boolean))];
   const recipientConditions: SQL[] = [];
   if (userIds.length > 0) recipientConditions.push(inArray(users.id, userIds));

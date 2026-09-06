@@ -4,6 +4,7 @@
  * 将节点配置中的 assigneeType + 多源 IDs 解析为具体的用户 ID 列表，
  * 用于在创建审批任务时展开为多个 workflow_tasks 行。
  */
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { WorkflowAssigneeType, WorkflowNodeConfig, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { db } from '../../db';
@@ -189,7 +190,7 @@ async function getUserDept(exec: DbExecutor, userId: number): Promise<number | n
 }
 
 function uniquePositiveIds(ids: readonly number[] | null | undefined): number[] {
-  return [...new Set((ids ?? []).filter((id) => Number.isInteger(id) && id > 0))];
+  return uniquePositiveInts(ids);
 }
 
 async function enabledUserIds(exec: DbExecutor, ids: readonly number[]): Promise<number[]> {

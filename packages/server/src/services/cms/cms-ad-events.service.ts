@@ -1,3 +1,4 @@
+import { uniquePositiveInts } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -139,7 +140,7 @@ async function recordAcceptedEvents(
 }
 
 export async function recordCmsAdImpressions(ids: number[], meta: CmsAdEventMeta): Promise<number> {
-  const unique = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))].slice(0, 50);
+  const unique = uniquePositiveInts(ids).slice(0, 50);
   if (unique.length === 0) return 0;
   const now = meta.occurredAt ?? new Date();
   const rows = await db.select({ id: cmsAds.id, slotId: cmsAds.slotId, siteId: cmsAdSlots.siteId })

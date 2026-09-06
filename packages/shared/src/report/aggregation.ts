@@ -1,3 +1,4 @@
+import { compareNumber } from '../core/compare';
 import type { ReportAlertAggregate, ReportAlertOp } from './types';
 
 function toFiniteNumber(value: unknown): number | null {
@@ -45,22 +46,8 @@ export function aggregateReportRows(
   }
 }
 
+/** 预警阈值判定；实现见 `@zenith/shared/core` 的 `compareNumber()` */
 export function compare(value: number, op: ReportAlertOp, threshold: number): boolean {
-  switch (op) {
-    case 'gt':
-      return value > threshold;
-    case 'gte':
-      return value >= threshold;
-    case 'lt':
-      return value < threshold;
-    case 'lte':
-      return value <= threshold;
-    case 'eq':
-      return value === threshold;
-    case 'neq':
-      return value !== threshold;
-    default:
-      return false;
-  }
+  return compareNumber(value, op, threshold);
 }
 
