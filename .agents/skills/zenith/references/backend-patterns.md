@@ -16,8 +16,6 @@ Step 1-7 主链路之外、按需接入的后端能力。约束条目见 [constr
 
 ## 数据权限过滤（dataScope）
 
-仅业务数据模块需要；配置数据（角色 / 菜单 / 字典）无需过滤。
-
 ### 前提：业务表有 `department_id`
 
 ```ts
@@ -75,7 +73,7 @@ await db.insert(xxxs).values({ ...data, departmentId: creator?.departmentId ?? n
 
 ## 多租户隔离（tenantScope）
 
-仅当 `MULTI_TENANT_MODE=true` 时生效；关闭时两个工具函数均返回 `undefined` / `null`，与单实例行为兼容。
+仅当 `MULTI_TENANT_MODE=true` 时生效。
 
 ```ts
 // Step 1：Schema
@@ -294,7 +292,7 @@ const payload = { ...values, fileIds: attachments.map((a) => a.fileId) };
 
 ## 外呼 HTTP 调用
 
-服务端**所有**对外 HTTP 请求必须通过 `lib/http-client.ts`，禁止全局 `fetch()`。
+规则（一律经 `lib/http-client.ts`）见 [constraints.md → Route 层](./constraints.md#route-层step-6-7)，写法：
 
 ```ts
 import { httpGet, httpPost, HttpClientError } from '../../lib/http-client';

@@ -1,54 +1,29 @@
 # 菜单与种子数据配置参考（Step 9-10）
 
 如何在 `packages/shared/src/seed/` 中添加新模块的菜单条目与初始数据。
-菜单 ID 分段、显示与操作解耦等约束条目见 [constraints.md → 菜单与权限配置](./constraints.md)，本文件只讲怎么写。
+菜单 ID 分段、显示与操作解耦、种子更新策略等约束条目见
+[constraints.md → 菜单与权限配置](./constraints.md#菜单与权限配置step-9-10)，本文件只讲怎么写。
 
 ---
 
-## 菜单 ID 分段与分片文件
+## 菜单 ID 分配
 
-菜单 ID 按**一级目录分段**管理，每个一级目录独占一个 **1000 段**；平台级独立页占用 1–999
-（首页 = 1，个人中心 = 11，公告中心 = 12，我的消息 = 13）。
+菜单按一级目录段拆成 `seed/menus/*.ts` 分片文件（平台级独立页在 `menus/common.ts`），由 `seed/menus.ts` 聚合；
+新增条目只改对应分片，不要往聚合器里堆。
 
-段内分配：
+分配前先读 `seed/menus.ts`（段顺序与分片清单）与目标分片确认当前占用，再按分段规则取值：
 
-- **一级目录** = 段基数（如 `1000`）
-- **子目录 / 页面菜单**：落在 **10 的倍数**槽位（`1010`、`1020`…），按 `sort` 顺序排列
-- **按钮**：紧跟父菜单 ID **顺延 +1..+n**（页面 `1010` 的按钮为 `1011`、`1012`…）；
-  按钮超过 9 个时自然占用后续 10 槽，下一个页面从其后最近的 10 倍数开始
-
-菜单已按一级目录 ID 段拆分为分片文件，新增条目只改对应分片，不要往聚合器里堆：
-
-| 段基数 | 分片文件 | 段基数 | 分片文件 |
-| --- | --- | --- | --- |
-| — | `menus/common.ts`（首页 / 个人中心 / 公告 / 我的消息） | 8000 | `menus/payment.ts` |
-| 1000 | `menus/system.ts` | 9000 | `menus/member.ts` |
-| 2000 | `menus/settings.ts` | 10000 | `menus/mp.ts` |
-| 3000 | `menus/ai.ts` | 11000 | `menus/biz.ts` |
-| 4000 | `menus/workflow.ts` | 12000 | `menus/report.ts` |
-| 5000 | `menus/messaging.ts` | 13000 | `menus/open-platform.ts` |
-| 6000 | `menus/rules.ts` | 14000 | `menus/cms.ts` |
-| 7000 | `menus/analytics.ts` | 15000 | `menus/alerts.ts` |
-
-分配 ID 前**必须先读源文件**确认当前占用：`seed/menus.ts`（聚合器，确认段顺序与分片清单）
-与目标 `seed/menus/*.ts` 分片。
-
-- 新增**一级目录**：取当前最大段基数 + 1000
+- 新增**一级目录**：取当前最大段基数 + 1000，新建分片
 - 新增**页面**：在目标段内找到最后一个节点，从其后最近的 10 倍数槽位开始
-- 新增**按钮**：父菜单 ID 顺延 +1
+- 新增**按钮**：父菜单 ID 顺延 +1；按钮超过 9 个时自然占用后续 10 槽，下一个页面从其后最近的 10 倍数开始
 
-## 菜单与权限解耦（核心语义）
+## 授权语义
 
-| 节点类型 | 职责 | `permission` 字段 |
-| --- | --- | --- |
-| `directory` / `menu` | **纯显示资源**（侧边栏分组 / 页面可见性） | **必须为空** |
-| `button` | **纯权限点**（含「查询」），承载全部权限码 | 必填 |
+显示与操作解耦（`directory` / `menu` 不带权限码、权限码全部挂 `button`、首个按钮为「查询」）由此产生的授权行为：
 
-- 每个页面菜单的**第一个按钮固定为「查询」**（`sort: 0`，权限码 `xxx:list`），控制页面数据加载；
-  页面本身不带权限码
-- 授权语义：勾选按钮**不会**带出所属页面（后端 `listUserMenuTree` 祖先补全只从目录 / 页面节点出发）；
+- 勾选按钮**不会**带出所属页面（后端 `listUserMenuTree` 祖先补全只从目录 / 页面节点出发）；
   授权面板勾选页面时自动带上其「查询」按钮
-- 典型场景：只授予「查询」按钮 = 仅 API 可用（跨页面下拉等），页面不可见
+- 只授予「查询」按钮 = 仅 API 可用（跨页面下拉等），页面不可见
 
 ---
 
@@ -114,7 +89,6 @@
 
 > **审计字段无需手填**：seed 脚本整体由 `runAsUser(adminId, ...)`（[`lib/audit-context.ts`](../../../../packages/server/src/lib/audit-context.ts)）
 > 包裹，所有写入会被 db Proxy 自动注入 `createdBy = updatedBy = adminId`。
-> **禁止**在种子数据数组中手写 `createdBy` / `updatedBy`。
 
 ### 10a：先在 `shared/src/seed/{业务域}.ts` 声明常量
 
@@ -155,15 +129,11 @@ logger.info('  ✔ Xxxs seeded (onConflictDoNothing)');
 
 ### 菜单种子的更新方式
 
-菜单是系统定义资源，`SEED_MENUS` 决定新菜单的初始定义。seed.ts 对菜单采用**只新增不更新**策略
-（按 id `onConflictDoNothing`），管理后台对已有菜单的改名 / 图标 / 排序 / 禁用 / 隐藏 / 换父级都会保留，
-`npm run dev` 每次启动重跑 seed 也不会回写。由此：
+只新增不更新、结构字段改动须配数据迁移、手工 ID 区间等规则见
+[constraints.md → 菜单与权限配置](./constraints.md#菜单与权限配置step-9-10)。操作上：
 
-- **新增菜单**：只需维护 `SEED_MENUS`，重跑 `npm run db:seed`（或重启 dev）即可插入，无需改 seed.ts
-- **修改既有内置菜单的结构字段**（path / component / 权限码 / 类型 / 父级）：seed 不会同步，
-  必须同时用 `npx drizzle-kit generate --custom` 建独立迁移写 `UPDATE menus ...`，让已初始化的环境跟随代码
-- **删除内置菜单**：同样走数据迁移（先清理 `role_menus` / `user_menus` 引用）
-- 手工创建的菜单 id 从 `100000`（seed.ts `MENU_CUSTOM_ID_START`）起分配，`SEED_MENUS` 不得占用该区间
-
-超管角色在每次 seed 时对当前全部菜单补齐绑定（`onConflictDoNothing`）；其他角色按 `SEED_ROLES.menuIds` 绑定，
-引用菜单 ID 时用 `collectMenuSubtreeIds(rootId)` 等结构化推导（定义在 `shared/src/seed/menus.ts`）。
+- 新增菜单：维护 `SEED_MENUS` 后重跑 `npm run db:seed`（或重启 dev）即可插入，无需改 seed.ts
+- 修改 / 删除既有内置菜单：`npx drizzle-kit generate --custom` 建独立迁移写 `UPDATE menus ...` / `DELETE`
+  （删除前先清理 `role_menus` / `user_menus` 引用）
+- 角色绑定：超管角色每次 seed 对当前全部菜单补齐绑定（`onConflictDoNothing`）；其他角色按 `SEED_ROLES.menuIds` 绑定，
+  菜单 ID 用 `collectMenuSubtreeIds(rootId)` 等推导（定义在 `shared/src/seed/menus.ts`）

@@ -119,7 +119,7 @@ npx concurrently --group --timings --kill-others-on-fail -n lint,test,build,docs
   "npm run docs:build"
 ```
 
-四路全部 `exit code 0` 方可继续。并行墙钟取决于最长的一路（通常是 test 或 build），22 核实测约 6.5 分钟。
+四路全部 `exit code 0` 方可继续。并行墙钟取决于最长的一路（通常是 test 或 build）。
 任一路失败会立即终止其余任务，修复后可只重跑失败的那条命令。
 
 ### 读懂 `--kill-others-on-fail` 的输出
@@ -132,28 +132,11 @@ npx concurrently --group --timings --kill-others-on-fail -n lint,test,build,docs
 | `false` + 非 0 退出码 | 真失败，问题就在这一路 | 定位并修复 |
 | `true` | 被连带终止、根本没跑完 | 无需处理，重跑即可 |
 
-### 并发度与超时：已配置好的旋钮
+### 测试超时
 
-测试耗时的根源是 vitest 的**隔离税**：每个测试文件在独立 worker 里重新转译 + 执行自己的
-整条模块图（详见 [troubleshooting.md → 性能](./troubleshooting.md#性能)）。以下配置共同压住，
-**本步骤无需额外传参**：
-
-| 旋钮 | 位置 | 作用 |
-| --- | --- | --- |
-| `maxWorkers: 8` | `packages/server/vitest.config.ts`、`packages/web/vitest.config.ts` | worker 数默认 = 核数−1，worker 越多重复转译/执行越多，核多时反超并行收益；且与 build（rolldown 全量转译）并行时会打满 CPU、导致 worker 启动超时 |
-| `testTimeout: 15_000` | 两个 vitest.config.ts | 四路并行抢满 CPU 时秒级用例被放大 10-40 倍：exceljs 渲染、Semi 浮层交互都实测撞破过默认 5s——**这是"发布验证偶发竞态失败"的头号来源**，并非真死锁 |
-| `480_000` 超时 | `src/app.contract.test.ts` 的 `beforeAll` | 装配整套 app（转译+执行 1400+ 模块）独占跑约 60-90s，四路并行下可能接近 300s，故留足余量；契约与路由表快照共用这一次装配 |
-| `deps.optimizer.web` | `packages/web/vitest.config.ts` | Semi 的 CJS 里 require CSS，只能走 vite 逐模块管线；esbuild 预打包成单 chunk 后 web 全量 288.6s → 139.4s |
-| 全局 redis 替身 | `packages/server/src/test-setup.ts` | lib/redis 模块加载即建连，全局替身保证测试不发真实 TCP、worker 退出期没有重连竞态 |
-
-> 不要用 `isolate: false` 换测试速度：本套测试重度依赖 per-file `vi.mock`，关闭隔离会产生
-> 跨文件状态泄漏（单跑全绿、混跑必挂），且文件→worker 分配随时序变化、泄漏组合不可复现。
-> vmThreads 池同样禁止——实测 41 个文件因 VM context 链接错误直接崩；threads 池也不要用，
-> 它共享进程级 libuv 线程池，zlib/fs 密集用例在并行下被饿死（原因见 server vitest.config.ts）。
-
-再遇测试超时时：先确认是超时（而非断言失败）且单独跑能过，再按
-[troubleshooting.md → 测试超时](./troubleshooting.md)调对应旋钮。**不要**删掉这里的外层并行——
-单独跑 `npm test`（零外层并发）同样会超时，外层并行不是根因。
+vitest 的并发度、超时与隔离策略已在 `packages/server/vitest.config.ts` / `packages/web/vitest.config.ts`
+配置并注释了理由，本步骤无需额外传参。出现超时（而非断言失败）时按
+[troubleshooting.md → 性能](./troubleshooting.md#性能) 判别与处置，不要为此把四路并行改成串行。
 
 各路的通过标准：
 

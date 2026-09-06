@@ -10,11 +10,11 @@
 | --- | --- |
 | 建表、加字段、枚举、审计列 | [Schema 层](#schema-层step-1) |
 | 契约、实体 schema、Zod 校验、常量、新增业务域 | [Shared 层](#shared-层step-3-4) |
-| 业务逻辑、查询条件、事务、时间解析 | [Service 层](#service-层step-5) |
+| 业务逻辑、查询条件、事务、快照统计、大列投影 | [Service 层](#service-层step-5) |
 | 路由、中间件、响应构造、审计快照 | [Route 层](#route-层step-6-7) |
 | 菜单条目、权限码、种子数据 | [菜单与权限配置](#菜单与权限配置step-9-10) |
 | MSW mock handler | [MSW Mock 层](#msw-mock-层step-11) |
-| 时间格式、图标、分页、依赖引入、异步任务 | [全局约束](#全局约束) |
+| 时间格式与解析、图标、通用工具、数据脱敏、分页、重型依赖、异步任务、Outbox 排空、通知发送、进程级兜底 | [全局约束](#全局约束) |
 | 页面、域 hooks、组件、布局 | → [constraints-frontend.md](./constraints-frontend.md) |
 
 ---
@@ -49,9 +49,7 @@
 ## Shared 层（Step 3-4）
 
 - **域子路径导入**：**禁止**从 `@zenith/shared` 根入口导入（ESLint 报错）。一律用
-  `@zenith/shared/{业务域}`（`core` / `identity` / `platform` / `messaging` / `workflow` / `payment` /
-  `member` / `report` / `analytics` / `ai` / `chat` / `mp` / `cms` / `open-platform` / `rules` / `ops` /
-  `tasks` / `biz` / `settings`），种子数据用 `@zenith/shared/seed`
+  `@zenith/shared/{业务域}`（可用域以 `shared/package.json` 的 `exports` 为准），种子数据用 `@zenith/shared/seed`
 - **Zod Schema 位置**：创建 / 更新 schema 定义在 `shared/src/{业务域}/validation.ts`，前后端共用，
   **禁止**在 server / web 中重复定义
 - **纯业务逻辑放 shared**：任何同时被服务端与前端 / Mock 需要的纯函数或常量（过滤谓词、树构建与层级约束、统计口径、
@@ -84,12 +82,8 @@
 - **全量集合赋值端点**（`PUT /{id}/roles`、`/{id}/members` 等）：集合字段必填（`z.array(...)`），
   **禁止** `.default([])`——字段缺失应返回 400，而不是静默清空
 - **运行时设置进模块注册表**：可在后台修改、影响系统行为的开关 / 阈值 / 策略一律定义为
-  `shared/src/settings/modules/{module}.ts` 的字段（`defineSettingsModule`，新模块在 `registry.ts` 与 `contracts.ts` 各登记一行），
-  **禁止**新建 KV 配置表、逐项种子、环境变量兜底或在字典里存开关。叶子字段**必须** `.default()`、嵌套对象**必须** `.prefault({})`、
-  标签说明写 `.meta({ title, description })`（通用设置页据此渲染）；字符串 / 数组叶子字段名**禁止**含
-  `password` / `secret` / `token` / `apiKey` / `credential`（设置文档进审计快照与前端缓存，密钥走各自的加密存储）；
-  被后台任务 / 无租户上下文中间件读取的模块 `scope` **必须**是 `platform`；匿名 / 登录可见字段在 `visibility` 与
-  `publicSettingsSchema` / `mySettingsSchema` 两处同步声明（`settings.test.ts` 锁定）。见 [docs/backend/settings.md](../../../../docs/backend/settings.md)
+  `shared/src/settings/modules/{module}.ts` 的字段（`defineSettingsModule`），**禁止**新建 KV 配置表、逐项种子、
+  环境变量兜底或在字典里存开关；字段声明、作用域与可见性的判定规则见 [settings.md](./settings.md)
 
 ## Service 层（Step 5）
 
@@ -144,7 +138,6 @@
 | 用户输入参与 LIKE / ILIKE（单列或跨列、包含或前缀匹配） | `keywordCondition(keyword, [colA, colB], mode?, match?)` | 手写 `like(col, '%…%')` / `or(like(a, '%…%'), …)` / 裸 `sql\`… ILIKE …\`` |
 | 时间范围过滤 | `dateRangeConditions(column, start, end)` | 手写 `parseXxx` + `gte`/`lte` |
 | 合并条件数组 / 附加租户与数据权限条件 | `buildWhere(...conditions)` | `conditions.length ? and(...) : undefined` |
-| 分页 | `withPagination(qb.$dynamic(), page, pageSize)` | 手写 `.limit().offset()` |
 
 - 条件数组类型必须是 `(SQL | undefined)[]`；构造函数不适用时返回 `undefined`，`buildWhere` 自动过滤，
   **禁止**为迁就 `SQL[]` 加 `!` 非空断言
@@ -153,17 +146,8 @@
 - 列参数接受裸列或 SQL 表达式（`sql\`coalesce(${col}, '')\``、`sql\`${col}::text\``），
   `match: 'prefix'` 用于路径 / 编号前缀匹配
 - `like` 与 `ilike` 按各表原有语义指定，不得一刀切；`mode` 默认 `like`
-- 时间范围一律闭区间（`gte` / `lte`），禁止 `gt` / `lt`——边界时刻记录会被漏掉
-
-### 时间范围端点解析
-
-- **范围端点必须走 `parseDateRangeStart` / `parseDateRangeEnd`**（或直接用 `dateRangeConditions`）：
-  纯日期时起点取 `00:00:00`、终点取 `23:59:59.999`。**禁止**用 `parseDateTimeInput` 解析范围端点——
-  它把 `2026-08-01` 解析成 `00:00:00`，「筛选到 8 月 1 日」会漏掉整个 8 月 1 日的数据
-- `parseDateTimeInput` **只**用于单点时间（`scheduledAt` / `expireAt` / 投放起止等实体字段）
-- **范围端点查询参数必须校验格式**：契约查询参数用 `dateRangeBound('说明')`（`@zenith/shared/core`），
-  同时接受 `YYYY-MM-DD` 与 `YYYY-MM-DD HH:mm:ss`。**禁止**裸 `z.string().optional()`——
-  `?endTime=abc` 会被静默当成「无筛选」返回全量数据
+- 时间范围一律闭区间（`gte` / `lte`），禁止 `gt` / `lt`——边界时刻记录会被漏掉；
+  端点解析与查询参数校验见[全局约束 → 时间格式](#时间格式)
 
 ## Route 层（Step 6-7）
 
@@ -178,8 +162,6 @@
   `middleware:`；公开接口在契约上标 `public: true`，设备签名 / 开放网关鉴权的接口标
   `security: 'device-signature' | 'open-gateway'`（文档 security 随之变化，校验仍由中间件完成）；
   **禁止**在路由器上 `use('*', authMiddleware)`
-- **进程入口导入顺序**：`src/index.ts` 第二条 import 与 `src/test-setup.ts` 首条 import 固定为
-  `import '@hono/zod-openapi'`（`index.import-order.test.ts` 锁定）；新增进程入口同样如此
 - **批量路由顺序**：`DELETE /batch` 必须注册在 `DELETE /{id}` **之前**，否则 `/batch` 被匹配为 `id="batch"`；
   静态 `/all` 同理早于 `/{id}`
 - **挂载路径取契约**：`routes/{业务域}/index.ts` 的挂载写 `[xxxContract.basePath, xxxRoutes]`，**禁止**路径字面量
@@ -219,8 +201,8 @@
   **禁止** `http.get('/api/...')` 路径字面量、**禁止**自行 `new URL(request.url).searchParams` / `request.json()` 解析入参
 - **失败响应统一**：`mocks/utils/handlers.ts` 的 `fail` / `badRequest` / `unauthorized` / `forbidden` / `notFound` /
   `conflict` / `locked`；**禁止**内联 `HttpResponse.json({ code, message, data })`，**也禁止**在 handler 文件内自建同名局部 helper
-- **分页统一**：用上下文的 `paginate(list)`（按契约解析后的 `page` / `pageSize` 切片）；页码来自 query 之外时用
-  `pageResult(list, page, pageSize)`。**禁止**手写 `(page - 1) * pageSize`
+- **静态路径先于动态路径**：`mock(op)` 把 `{id}` 转成 `:id`，MSW 按数组顺序首个命中即返回——`all`（`/all`）、
+  `removeBatch`（`/batch`）等静态路径的 handler 必须排在 `detail` / `remove`（`/{id}`）**之前**
 - **自增 ID**：用 `nextIdFrom(list)`；**禁止**手写 `Math.max(...list.map((x) => x.id)) + 1`（空列表得 `-Infinity`）
 - **HTTP 状态码**：失败响应显式带 `{ status: N }`，与真实后端一致
 - **`data` 字段的有无是可观察差异**：`ok(x)` 省略 `data` 时响应体不含该字段，需要 `data: null` 就显式传 `null`
@@ -245,8 +227,12 @@
   `formatDateTimeRangeValuesForApi()` 后显式赋值（均来自 `@/utils/date`）。
   **禁止**在页面中手写 `[0]` / `[1]` 两端转换。仅接收 `YYYY-MM-DD` 的纯日期端点用 `formatDateForApi()`
 - **后端格式化**：`lib/datetime.ts` 的 `formatDateTime()` / `formatNullableDateTime()`
-- **后端解析**：范围端点 → `parseDateRangeStart()` / `parseDateRangeEnd()`（或 `dateRangeConditions()`）；
-  单点时间 → `parseDateTimeInput()`。**不要混用**
+- **后端解析**：范围端点**必须**走 `parseDateRangeStart()` / `parseDateRangeEnd()`（或直接用 `dateRangeConditions()`），
+  纯日期时起点取 `00:00:00`、终点取 `23:59:59.999`；`parseDateTimeInput()` **只**用于单点时间
+  （`scheduledAt` / `expireAt` 等实体字段）——它把 `2026-08-01` 解析成 `00:00:00`，用作范围终点会漏掉整天数据
+- **范围端点查询参数必须校验格式**：契约查询参数用 `dateRangeBound('说明')`（`@zenith/shared/core`），
+  同时接受 `YYYY-MM-DD` 与 `YYYY-MM-DD HH:mm:ss`；**禁止**裸 `z.string().optional()`——
+  `?endTime=abc` 会被静默当成「无筛选」返回全量数据
 - **Mock**：`mockDateTime()`（`mocks/utils/date.ts`）
 - **禁止**：`toISOString()` / 原生 `toLocaleString()` / `toLocaleDateString()`
 
@@ -277,10 +263,8 @@
   `sensitive(z.string().nullable(), 'phone')`（`@zenith/shared/core`），所在对象**必须**有 `meta.id`（路由定义期抛错兜底）。
   **禁止**在 service 的 `mapXxx` 里手工调 `maskPhone()` 之类按查看者打码——契约路由出口（`lib/data-mask/boundary.ts`）
   会对所有声明字段按策略统一打码；只有「当前用户查看自己」的自视图端点才在 `op` 上标 `unmasked: true`
-- **写接口天然受保护**：请求体在敏感字段上携带脱敏值会被出口边界 400。编辑表单中的敏感字段一律用
-  `SensitiveFormInput` + `useSensitiveFormFields`（锁定掩码值、点「修改」再输入、`strip()` 剔除未修改字段），
-  **禁止**把详情回填的掩码值原样提交
-- **表格 / 详情展示**敏感字段用 `components/sensitive` 的 `SensitiveText`（按需查看明文按钮，服务端逐次审计）
+- **写接口天然受保护**：请求体在敏感字段上携带脱敏值会被出口边界 400；表单回填与展示的前端配套约束见
+  [constraints-frontend.md → 表单与展示组件](./constraints-frontend.md#表单与展示组件)
 - **需要支持按需查看明文的实体**在 service 里 `registerRevealSource('Entity', (id) => getXxx(id))`，
   加载器必须复用该实体自己的读取函数（携带租户 / 数据范围校验）
 - **导出列**绑定契约字段：`{ key, sensitive: true, maskKey: 'User.phone' }`，**禁止**再写 `maskEntity` / `maskField` 或在导出定义里手工打码
@@ -347,8 +331,10 @@ server 启动时加载全部路由 / 服务模块图，任何模块顶层静态 
 
 - **fire-and-forget 必须自带 catch**：`void promise.catch((err) => logger.error(...))`；
   **禁止**裸悬空 Promise——unhandledRejection 会触发进程级 fatal 兜底并 exit(1)
-- **禁止在 uncaughtException / unhandledRejection 后继续运行**：进程级兜底
-  （`lib/fatal-handlers.ts`，index.ts 第一条 import 自装；第二条固定为 `@hono/zod-openapi`，见 Route 层）只负责崩溃可观测
+- **禁止在 uncaughtException / unhandledRejection 后继续运行**：进程级兜底（`lib/fatal-handlers.ts`）只负责崩溃可观测
   （stderr + 崩溃哨兵 + 尽力 flush 日志/遥测）后 exit(1)；崩溃告警由下次启动补投
   （`services/platform/crash-report.service`），恢复语义靠 outbox 补投与启动 reconcile，
   **不得**在业务代码中自行注册这两个 process 事件
+- **进程入口导入顺序固定**：`src/index.ts` 第一条 import 为 `./lib/fatal-handlers`（自装上述兜底），第二条为
+  `import '@hono/zod-openapi'`（shared schema 须在原型补丁后构造）；`src/test-setup.ts` 首条 import 同为
+  `@hono/zod-openapi`（`index.import-order.test.ts` 锁定）；新增进程入口同样如此

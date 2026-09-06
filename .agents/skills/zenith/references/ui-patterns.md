@@ -45,8 +45,7 @@ return (
   不要放在 TabBar 右侧
 - `page-tabs-page` 只用于页面最外层业务 Tabs；抽屉、弹窗、卡片内代码示例、左右分栏内部小 tabs 不使用
 - 非激活 tab 的查询用 `enabled: activeTab === 'xxx'` 门控，切换时懒加载并缓存
-- `collapsible="auto"` 是**所有** `Tabs` 的统一要求（不限页面级），见
-  [constraints-frontend.md → 布局与响应式](./constraints-frontend.md#布局与响应式)：
+- `collapsible="auto"` 的溢出机理（要求见 [constraints-frontend.md → 布局与响应式](./constraints-frontend.md#布局与响应式)）：
   它把 TabBar 包进 `ResizeObserver`，按「是否折行 + `scrollWidth` 超出」判定溢出，
   仅在真放不下时折叠，空间恢复后自动退出，不占用固定空间
 
@@ -79,9 +78,8 @@ return (
 />
 ```
 
-桌面端默认允许调换 master 左右位置：master 使用 `MasterDetailLayout.Header` 或 `NavListPanel` 时，
-切换按钮自动出现在操作区最右侧，业务页面不得重复渲染 `SideToggle`。
-明确不允许调换时传 `sideSwitchable={false}`。
+master 位置调换按钮由 `MasterDetailLayout.Header` / `NavListPanel` 自动渲染，
+规则（不得重复渲染、`sideSwitchable` 关闭）见 [constraints-frontend.md → 布局与响应式](./constraints-frontend.md#布局与响应式)。
 
 ### 主侧在右（`side="right"`）
 
@@ -159,7 +157,7 @@ return (
 />
 ```
 
-**禁止在窄屏自动选中首项。** 完整窄屏契约（返回入口、`onResponsiveChange` 区分）见
+完整窄屏契约（返回入口、禁止自动选中首项、`onResponsiveChange` 区分）见
 [constraints-frontend.md → 布局与响应式](./constraints-frontend.md#布局与响应式)。
 
 ### 选中项同步到 URL（useUrlSelectionState）
@@ -297,7 +295,7 @@ const pagination = buildPagination(total);
 ### StatCard / StatGrid
 
 ```tsx
-// 无图表的页面直接引具体文件，避免桶文件带入约 2MB 的 vchart
+// 无图表的页面直接引具体文件，不经桶文件（constraints-frontend → 布局与响应式）
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 // 页面本来就有图表时可从桶文件一起引：
 // import { LineChart, chartOptions, StatCard, StatGrid } from '@/components/charts';
@@ -343,7 +341,7 @@ import { StatCard, StatGrid } from '@/components/charts/StatCard';
 ### 图表分栏（`.chart-grid`）
 
 配合 `.zx-flat-panels` 使用：行首通栏横线起头，行内面板之间竖向细线分隔（与首页
-`.dashboard-charts-row` 一致）。**不挂** `.zx-flat-panels` 时 Card 保留边框，会退回旧卡片样式。
+`.dashboard-charts-row` 一致）。**不挂** `.zx-flat-panels` 时 Card 保留自身边框，不呈现无卡片面板形态。
 
 ```tsx
 {/* 等宽多图：最小 380px，xl 以上锁两列（三列以上横轴过密） */}
@@ -428,12 +426,8 @@ Semi Table 只要有任一列 `fixed` / `ellipsis`（或设置了 `scroll.y`）�
 ### 弹性主列
 
 `ConfigurableTable` 的列定义在 `ColumnProps` 之上扩展了 `minWidth`（`components/table-flex-columns.ts`）：
-
-- **有且只有一个**弹性主列：通常是名称 / 标题 / 描述这类长文本列，不写 `width`、写 `minWidth`；
-- 其余列（含时间列、状态列、操作列）一律写固定 `width`；
-- 页面**不写 `scroll.x`**：组件把各列 `width` 与弹性列 `minWidth`（加上勾选列 / 展开列各 48）求和写入
-  `scroll.x`，容器更宽时弹性列吸收全部剩余空间，容器更窄时出现横向滚动而不是把弹性列压到 0。
-  传入的 `scroll.x` 会被忽略并在开发期告警。
+弹性主列写 `minWidth`、其余列写固定 `width`，组件把各列 `width` 与弹性列 `minWidth`（加上勾选列 / 展开列各 48）
+求和写入 `scroll.x`——容器更宽时弹性列吸收全部剩余空间，容器更窄时出现横向滚动而不是把弹性列压到 0。
 
 ```tsx
 const columns: ColumnProps<Xxx>[] = [
@@ -448,7 +442,7 @@ const columns: ColumnProps<Xxx>[] = [
 ```
 
 `minWidth` 取该列内容的典型宽度（名称类 160–220、路径 / 描述类 240–300）；`copyableNoColumn(title, key, { flex: true })`
-可把可复制编号列声明为弹性主列。所有列都写了 `width` 时组件会按启发式挑一列兜底并在控制台告警，不要依赖兜底。
+可把可复制编号列声明为弹性主列。
 
 ### 用户可拖拽列宽（resizable）
 
@@ -501,15 +495,12 @@ const columns: ColumnProps<Xxx>[] = [
 
 ### 内联动作的选择
 
-- 桌面端内联动作**不超过 3 个**（推荐 2 个），其余用 `desktopInlineKeys` 收进「更多」菜单
-  （危险动作移入后仍是红色，`renderActionMenu` 已映射 `danger`）
-- 动作随行状态变化时，内联集合只保留**各状态都存在或宽度相近**的高频动作，状态特有 / 低频动作进「更多」，
-  使各状态行的内容宽接近；不要按最宽的罕见状态配宽，让常见行留下大片空白。
-  例：告警事件的 `认领 / 标记已处理` 内联，`查看日志 / 撤销认领` 进「更多」
+规则（内联上限、按状态取舍、按 Tab 分状态、纯文字 `label`）见
+[constraints-frontend.md → 搜索栏与表格](./constraints-frontend.md#搜索栏与表格)；落地参考：
+
+- 推荐内联 2 个高频动作，其余经 `desktopInlineKeys` 收进「更多」（危险动作移入后仍是红色，`renderActionMenu` 已映射 `danger`）
+- 状态互斥的动作让各状态行的内容宽接近，例：告警事件的 `认领 / 标记已处理` 内联，`查看日志 / 撤销认领` 进「更多」
 - 「设为默认」「测试连接」「重置密钥」这类一次性 / 低频动作进「更多」
-- 按 Tab 分状态的列表（待审核 / 已通过 / 已拒绝），`width` 与 `desktopInlineKeys` 都可按 `activeTab` 分别给值
-- 动作 `label` 只用纯文字；需要确认时在 `onClick` 里调 `Modal.confirm` / `confirmDelete` / `confirmDanger`，
-  不要把 `Popconfirm` 塞进 `label`
 
 ### 常用组合参考
 
@@ -559,5 +550,5 @@ const columns: ColumnProps<Region>[] = [
 虚拟化模式下 Semi 把 `scroll.x` 直接写成 wrapper 的宽度、body 行宽取各列之和、纵向滚动条又占在 body 内部；
 `ConfigurableTable` 量取容器宽度为弹性列计算显式宽度并锁定表头 `<table>` 宽度，页面不需要也不应再监听容器尺寸。
 
-数据量小（< 200 条）且有复杂自定义渲染器的树形表格（如部门管理）**不建议**开启 `virtualized`；
-菜单管理（880+ 节点）、地区管理、进程管理等大数据量表格已开启。开启后受控 `expandedRowKeys` 仍正常工作。
+数据量小（< 200 条）且有复杂自定义渲染器的树形表格（如部门管理）**不建议**开启 `virtualized`。
+开启后受控 `expandedRowKeys` 仍正常工作。

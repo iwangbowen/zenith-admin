@@ -21,8 +21,7 @@ export const xxxStatusEnum = pgEnum('xxx_status', ['enabled', 'disabled']);
 // 复用已有 statusEnum 时无需新建
 
 // ─── 主表 ───────────────────────────────────────────────────────────────
-// 列名由 drizzle 的 casing: 'snake_case' 自动派生（key 驼峰 → 蛇形），不写显式列名；
-// 仅当派生结果与目标列名不一致时（如 wechatApiV3Key → wechat_api_v3_key 的边界情形）才显式指定。
+// 列名由 casing: 'snake_case' 自动派生，不写显式列名（constraints.md → Schema 层）
 export const xxxs = pgTable('xxxs', {
   id:          integer().primaryKey().generatedAlwaysAsIdentity(),
   name:        varchar({ length: 64 }).notNull(),
@@ -40,9 +39,6 @@ export const xxxs = pgTable('xxxs', {
 export type XxxRow = typeof xxxs.$inferSelect;
 export type NewXxx = typeof xxxs.$inferInsert;
 ```
-
-唯一约束命名：驼峰多词列（`orderNo` 等）必须显式蛇形命名——列级 `.unique('xxxs_order_no_unique')`、
-表级 `unique('xxxs_tenant_code_unique').on(t.tenantId, t.code)`；单词列（`code` / `name`）裸 `.unique()` 即可。
 
 Step 0 确认需要租户隔离时，才按 [backend-patterns.md → 多租户隔离](./backend-patterns.md#多租户隔离tenantscope)
 添加 `tenantId`；基础模板不默认调用租户工具。
@@ -86,11 +82,8 @@ export type CreateXxxInput = z.infer<typeof createXxxSchema>;
 export type UpdateXxxInput = z.infer<typeof updateXxxSchema>;
 ```
 
-`.default()` 只属于创建语义。禁止直接调用 `.partial()`（ESLint 封禁）：Zod 的 `.partial()` 保留 `.default()`，
-字段省略时会填入默认值并被服务层 `.set({ ...data })` 写库。全量替换 / upsert 端点（如整体保存的配置表单、
-按 key 覆盖的授权记录）可以带默认值，但必须在 `app.contract.test.ts` 的整体替换例外清单登记理由。
-
-特殊操作（如重置密码）单独建 schema。
+`.default()` 只属于创建语义；部分更新为何必须经 `partialForUpdate` 派生、全量替换 / upsert 端点的例外登记见
+[constraints.md → Shared 层](./constraints.md#shared-层step-3-4)。特殊操作（如重置密码）单独建 schema。
 
 ## Step 4：共享契约（`shared/src/{业务域}/contracts/xxxs.ts`）
 
@@ -265,7 +258,7 @@ const rows = await db.query.users.findMany({
 
 ### 事务与多对多写入
 
-先 delete 再 insert 的 replace 模式若 insert 失败会丢数据，必须保证原子性；
+replace 模式（先删后插）的原子性要求见 [constraints.md → Service 层](./constraints.md#service-层step-5)；
 辅助函数接受 `executor` 参数，事务内外统一调用。
 
 ```ts
@@ -314,8 +307,8 @@ async function ensureYyyExists(yyyId: number | null | undefined): Promise<void> 
 
 ## Step 6：路由（`routes/{业务域}/xxx.ts`）
 
-路由文件只提供 `middleware` 与 `handler`；方法、路径、入参校验、响应 schema、security、tags 与
-`commonErrorResponses` 全部由 `defineContractRoute` 从契约推导。`c.req.valid('param' | 'query' | 'json')`
+路由文件只提供 `middleware` 与 `handler`，其余由 `defineContractRoute` 从契约推导（规则见
+[constraints.md → Route 层](./constraints.md#route-层step-6-7)）；`c.req.valid('param' | 'query' | 'json')`
 与 `c.json(okBody(...), 200)` 都按契约类型检查。
 
 ```ts
@@ -396,9 +389,8 @@ const allRoute = defineContractRoute(xxxContract.all, {
 
 ### 批量删除（契约启用 `removeBatch` 时）
 
-仅用于用户已选中、可在正常 HTTP 请求窗口内快速完成的有界操作。
-大数据量、长耗时或需要进度 / 重试 / 取消的批处理改用[任务中心](./async-tasks.md)。
-`DELETE /batch` 必须注册在 `DELETE /{id}` **之前**，否则 `/batch` 被匹配为 `id = "batch"`。
+适用边界（有界同步操作 vs 任务中心）见 [constraints.md → 异步任务](./constraints.md#异步任务)，
+注册顺序见 [constraints.md → Route 层](./constraints.md#route-层step-6-7)。
 
 先在 service 添加同样受行级权限约束的批量删除（并从 `drizzle-orm` 导入 `inArray`）：
 

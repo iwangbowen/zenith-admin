@@ -12,7 +12,7 @@
 | 域 hooks、弹窗、搜索状态、提交与确认 | [必须复用的公共 hook / 工具](#必须复用的公共-hook--工具) |
 | mutation 失效、query key、下拉源、回填 | [缓存与 query key](#缓存与-query-key) |
 | 搜索栏、筛选控件、表格、List 分页与操作列 | [搜索栏与表格](#搜索栏与表格) |
-| 弹窗表单、枚举标签、上传、时区、Cron、进度条、滑块、分割线 | [表单与展示组件](#表单与展示组件) |
+| 弹窗表单、敏感字段、枚举标签、上传、时区、Cron、进度条、滑块、分割线 | [表单与展示组件](#表单与展示组件) |
 | 多 Tab、左右分栏、统计卡、栅格、抽屉宽度、行内成组间距 | [布局与响应式](#布局与响应式) |
 | 新增页面文件、引入重库 / 图标 / 插画、改启动链路、预算失败 | [打包与首屏性能](#打包与首屏性能) |
 | 拖拽 / 调整尺寸手势、图表或卡片列表重渲染、`useQueries` 聚合 | [渲染性能](#渲染性能拖拽手势--大列表--查询聚合) |
@@ -39,10 +39,8 @@
 | 防抖 / 节流 | `@tanstack/react-pacer`：值防抖 `useDebouncedValue`，回调防抖 `useDebouncedCallback`（需手动 `cancel` / `flush` 时用 `useDebouncer`），节流 `useThrottledCallback`；`useEffect` 内等非 hook 上下文用 `Debouncer` / `Throttler` 类 | `setTimeout` + `clearTimeout` 手写防抖、`Date.now()` 差值手写节流、timer ref + 卸载清理样板 | 各处 wait / 边沿语义不一致；漏写卸载清理导致组件卸载后仍 setState / 发请求 |
 | 复制 / 读取剪贴板 | `utils/clipboard.ts` 的 `copyText` / `copyTextWithToast` / `readClipboardText` / `canWriteClipboardItems` | 裸调 `navigator.clipboard.writeText` / `readText`（ESLint 已封禁）、自写 textarea + `execCommand` | 内网 `http://ip` 访问不是安全上下文，`navigator.clipboard` 为 undefined，点复制直接 TypeError |
 | 带鉴权的非 JSON 请求（流式 / SSE / 二进制 / 第三方上传组件） | `request.fetchRaw(url, init)` 拿原生 Response；纯文本流 `streamText`、SSE 流 `readSseStream`（`utils/streaming.ts`）；二进制 `request.getBlob(url, init?)` / `request.download`；Semi `Upload` / wangEditor 等组件的 `headers` 传 `request.authHeaders()` | 裸 `fetch` + `localStorage.getItem(TOKEN_KEY)` 手拼 `Authorization`、自写 `getReader()` 循环与 `event:` / `data:` 帧解析 | token 过期不刷新直接 401、失败没有统一提示、Demo 模式拦不住；SSE 帧被拆到两个 chunk 时事件丢失 |
-| 列表页枚举筛选下拉 | `components/search-filters.tsx` 的 `FilterSelect`（占位「全部 X」）/ `StatusSelect`；选项用 shared `XXX_OPTIONS` 或字典项 | `<Select showClear style={{ width }} optionList>` 手写、`{ value: '', label: '全部' }` 哨兵选项、「请选择 X」占位、`Object.entries(XXX_LABELS).map(...)` | 同一后台出现「选回全部」「点 ✕ 清除」两套交互，宽度 100–160 参差；哨兵 `''` 混进状态类型，清空与未选语义不一致 |
-| 树形数据转换 | `@zenith/shared/core` 的 `buildTree`（平铺 → 树）与 `mapTree`（树 → Semi `TreeNodeData` 等形态）；CMS 栏目选择树用 `pages/cms/channel-tree.ts` 的 `channelsToTree` / `channelsToSelectTree` | 手写 `Map` + `parent.children.push` 挂接、`nodes.map((n) => ({ ..., children: n.children ? fn(n.children) : undefined }))` 递归 | 各处对孤儿节点 / 空 children 的处理不一致，禁用规则（仅列表型栏目可选）漏抄 |
-| 读取运行时设置 | `hooks/queries/settings.ts`：布局 / 页面开关用 `useMySettings()`（登录用户投影，一次请求全站共享），登录 / 注册 / 改密页用 `usePublicSettings(tenantCode)`，管理某模块用 `useSettings(module)` + `useSaveSettings(module)`（整体替换携带 `version`，409 时提示并 `refetch`）；密码提示用 `@zenith/shared/settings` 的 `validatePassword` / `formatPasswordPolicyHint` | 每个页面单独请求模块信封拿一个开关、手写 `useQuery` 取 `/api/settings/*`、把默认值抄进页面 | 同一开关多处请求且保存后彼此不一致；默认值与 schema 漂移 |
-| 设置模块编辑表单 | `components/settings/SchemaForm.tsx`（由模块 Zod schema 渲染控件、约束、标签，显示已覆盖 / 恢复继承）；通用设置页 `/system/settings` 已覆盖无 `page` 的模块 | 为每个设置字段手写 `Switch` / `InputNumber` 与 min / max | 新增字段要改两处；范围约束与 schema 不一致 |
+| 树形数据转换 | `@zenith/shared/core` 的 `buildTree` / `mapTree`（用法见 [constraints.md → 通用工具函数](./constraints.md#通用工具函数zenithsharedcore)）；CMS 栏目选择树用 `pages/cms/channel-tree.ts` 的 `channelsToTree` / `channelsToSelectTree` | 手写 `Map` + `parent.children.push` 挂接、`nodes.map((n) => ({ ..., children: n.children ? fn(n.children) : undefined }))` 递归 | 各处对孤儿节点 / 空 children 的处理不一致，禁用规则（仅列表型栏目可选）漏抄 |
+| 读取 / 编辑运行时设置 | `hooks/queries/settings.ts` 的 hooks（按场景选型见 [settings.md → 前端读取规则](./settings.md#d-前端读取规则)）；模块编辑表单用 `components/settings/SchemaForm.tsx`（由模块 Zod schema 渲染控件、约束、标签） | 手写 `useQuery` 取 `/api/settings/*`、每个页面单独请求模块信封拿一个开关、把默认值抄进页面、为每个设置字段手写 `Switch` / `InputNumber` 与 min / max | 同一开关多处请求且保存后彼此不一致；默认值 / 范围约束与 schema 漂移 |
 
 各症状的完整诊断见 [troubleshooting.md](./troubleshooting.md)。
 
@@ -93,8 +91,6 @@
   一律复用 `useAllRoles` / `useFlatDepartments` / `useAllUsers` / `useAllPositions` / `useDictItems` 等共享 lookup hook
 - **手写 mutation 的回填红线**：`setQueryData(detail(id), saved)` 仅限写接口与详情接口同源；脱敏口径不一致（`unmasked` 端点 /
   非契约通道的响应）、详情多出关联数据、写接口不回传编辑过的关联字段、列表 / 树含聚合字段这四种情形**必须**改为失效 `detail(id)`
-- **敏感字段（契约 `sensitive()` 声明）的表单与展示**：编辑表单用 `SensitiveFormInput` + `useSensitiveFormFields`
-  （锁定掩码值、`strip()` 剔除未修改字段），表格 / 详情用 `SensitiveText`；**禁止**用普通 `Form.Input` 回填并提交掩码值
 - **失效行为需可证伪**：测试用 `test-utils/query-harness.ts` 断言实际请求数、进入 fetching 的查询与缓存新鲜度；
   **禁止**只 spy「调用了 `invalidateQueries(某 key)`」——`all` 是 `detail` 的前缀，冗余的广播写法下同样通过
 - **轮询**用 `refetchInterval`，禁止手写 `setInterval` 拉数据
@@ -113,8 +109,6 @@
   状态用 `StatusSelect`；占位必须是「全部 X」（描述空值含义），**禁止**「请选择 X」或裸「X」，**禁止**在选项里放
   `{ value: '', label: '全部' }` 之类哨兵项；空值即 `undefined`（`SearchParams` 字段声明为可选、`defaults` 写 `undefined`），
   宽度用默认 120，只在占位或选项文案放不下时传 `width`。多选筛选与没有「全部」语义的必选下拉（视图切换、所属应用）用原生 `Select`
-- **枚举选项**：下拉 / 单选组的选项用 shared 各域导出的 `XXX_OPTIONS`（由 `createLabelOptionsFromMap(XXX_LABELS)` 派生），
-  **禁止**在页面里 `Object.entries(XXX_LABELS).map(([value, label]) => ({ value, label }))`；页面本地标签表同样经 `createLabelOptionsFromMap` 派生
 - **公共按钮**：查询 / 重置 / 新增 / 刷新统一用 `components/toolbar-controls.tsx` 的
   `SearchButton` / `ResetButton` / `CreateButton` / `RefreshButton`，文案不同时用 children 覆盖。
   **例外**：仅复用同一图标的独立操作（「测试发送」「生成链接」）及视觉本就不同的写法保持原生 `Button`
@@ -183,8 +177,13 @@
 - **SideSheet 页脚**：Semi 的 `footer` 槽无对齐样式，**禁止**裸 `<Space>` 放按钮（会靠左）；
   操作按钮一律右对齐，写法、按钮次序与例外见
   [ui-patterns.md → SideSheet 页脚](./ui-patterns.md#sidesheet-页脚)
-- **枚举标签统一来源**：**禁止**在页面 / 组件 / 导出定义中内联 `{ value, label }` 数组或
-  `Record<value, label>` 中文映射。按优先级取：
+- **敏感字段（契约 `sensitive()` 声明）的表单与展示**：编辑表单用 `components/sensitive` 的 `SensitiveFormInput` +
+  `useSensitiveFormFields`（锁定掩码值、点「修改」再输入、`strip()` 剔除未修改字段），表格 / 详情用 `SensitiveText`
+  （按需查看明文按钮，服务端逐次审计）；**禁止**用普通 `Form.Input` 回填并把掩码值原样提交（出口边界会 400）
+- **枚举标签与选项统一来源**：**禁止**在页面 / 组件 / 导出定义中内联 `{ value, label }` 数组或
+  `Record<value, label>` 中文映射；下拉 / 单选组的选项数组用各来源导出的 `XXX_OPTIONS`（由 `createLabelOptionsFromMap(XXX_LABELS)` 派生），
+  **禁止**在页面里 `Object.entries(XXX_LABELS).map(([value, label]) => ({ value, label }))`，页面本地标签表同样经
+  `createLabelOptionsFromMap` 派生。按优先级取：
 
   | 枚举性质 | 来源 |
   | --- | --- |
@@ -338,9 +337,13 @@
 chunk 分层机理、度量脚本与预算数字见 [docs/frontend/bundle-performance.md](../../../../docs/frontend/bundle-performance.md)；
 本节只列改动时必须遵守的规则。违规不会报错，只会表现为 `npm run check:bundle` 预算失败或首屏请求数 / 体积回退。
 
-- **页面文件命名即注册**：只有 `src/pages/**/*Page.tsx`、`pages/biz/**`、`*BusinessForm.tsx`、`*ApprovalView.tsx`
-  进入页面注册表并成为独立动态入口。页面私有的子组件 / Tab / 面板 / 弹窗**禁止**用 `Page.tsx` 后缀
-  （会被拆成独立 chunk 并多一次请求）；能被菜单 `component` 或工作流 `customForm` 引用的组件**必须**符合上述命名
+- **页面文件命名即注册，两张注册表分离**：`utils/page-registry.ts` 收 `src/pages/**/*Page.tsx`（后台菜单路由页，仅后台
+  `App.tsx` 消费）；`utils/business-form-registry.ts` 收 `pages/biz/**`、`*BusinessForm.tsx`、`*ApprovalView.tsx`
+  （工作流业务表单，供 `BusinessFormHost` 解析）。glob 命中的每个文件都是独立动态入口：页面私有的子组件 / Tab / 面板 / 弹窗
+  **禁止**用 `Page.tsx` 后缀（会被拆成独立 chunk 并多一次请求）；能被菜单 `component` 或工作流 `customForm` 引用的组件**必须**符合对应命名
+- **非后台入口禁止触达后台注册表**：会员端 / 审批端 / 任何新入口**禁止**直接或间接 import `utils/page-registry.ts` 与后台 `App.tsx`，
+  业务表单只经 `business-form-registry` 取——否则整套后台页面会被复制进该入口的 `assetsDir`。
+  新增入口在 `entries.json` 登记后须跑 `npm run analyze:bundle -w @zenith/web`，按实测给 `bundle-budget.json` 补预算
 - **公共层禁止静态引入重库**：`src/hooks/`、`src/lib/`、`src/utils/`、`src/providers/`、`src/config/` 以及被 ≥ 10 个页面共享的
   `src/components/**` 模块进入公共 chunk（`app-shared` / `vendor-common`），任何一处静态 `import` 了
   `@visactor/*`、`@douyinfe/semi-illustrations`、`pinyin-pro`、`lottie-web`、`@wangeditor*`、`monaco-editor`、`@xyflow/*`、
@@ -357,9 +360,9 @@ chunk 分层机理、度量脚本与预算数字见 [docs/frontend/bundle-perfor
 - **启动链路的新增网络请求必须并行**：认证后壳层所需的数据（当前用户菜单树、个人设置等）通过 `lib/shell-prefetch.ts`
   与 `/api/auth/me` 并行预取，**禁止**再往 `AdminRouteLoader` 首载 gate 里串行新增查询；
   只在错误 / 兜底路径使用的数据（如完整菜单树）由对应组件自行拉取
-- **提交前必须通过**：`npm run check:bundle -w @zenith/web`（产物预算，`bundle-budget.json`）与
-  `npm run smoke -w @zenith/web`（demo 产物真实启动三入口 + 登录链路）。预算只能因明确的产品决策上调，
-  上调时同步更新 `bundle-performance.md` 的记录表；不得为让 CI 通过而放宽
+- **提交前必须通过**：`npm run check:bundle -w @zenith/web`（`bundle-budget.json`：每入口关键路径预算与
+  `maxTotalJsChunks` / `maxTotalJsMB` 总量门禁）与 `npm run smoke -w @zenith/web`（demo 产物真实启动 `entries.json`
+  全部入口 + 登录链路）。预算只能因明确的产品决策上调，上调时同步更新 `bundle-performance.md` 的记录表；不得为让 CI 通过而放宽
 
 ---
 

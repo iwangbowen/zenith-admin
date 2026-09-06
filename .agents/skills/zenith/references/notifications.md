@@ -1,9 +1,7 @@
 # 通知中心接入（notify 事件规范）
 
-业务域**不再直接调用**邮件 / 短信 / 站内信 / Webhook / 聊天卡片的底层发送函数
-（ESLint `no-restricted-imports` 已封禁，豁免清单维护在 `packages/server/eslint.config.js`）。
-任何「某件事发生了 → 通知相关的人」都按本文接入通知中心；
-硬约束见 [constraints.md → 通知发送](./constraints.md#通知发送)。
+任何「某件事发生了 → 通知相关的人」都按本文接入通知中心，业务域**禁止**直接调用邮件 / 短信 / 站内信 / Webhook /
+聊天卡片的底层发送函数；硬约束（含 ESLint 封禁与豁免清单位置）见 [constraints.md → 通知发送](./constraints.md#通知发送)。
 
 **不属于事件通知、不走本流程的场景**：登录验证码 / 密码重置等事务性发信（`auth.service` / `member-sms`）、
 用户在流程画布里显式编排的发信节点（workflow connectors / compensation）、
@@ -44,9 +42,9 @@
 
 | 字段 | 何时使用 |
 | --- | --- |
-| `mandatory: true` | 仅账号安全 / 告警必达（用户不可关闭，矩阵显示锁定）；业务提醒一律不加 |
+| `mandatory: true` | 账号安全 / 告警必达事件（用户不可关闭，矩阵显示锁定）；业务提醒不加 |
 | `bypassQuietHours: true` | 待办、催办、告警等不该等到早上的事件；`critical` 已自动穿透 |
-| `availableChannels` | **不要**列出没有投递支撑的渠道——用户勾了却永远收不到，比没有开关更糟 |
+| `availableChannels` | 用户可自行开关的渠道全集，只列有投递支撑的渠道——用户勾了却永远收不到，比没有开关更糟 |
 | `hidden: true` | 派发层自身触发的元事件（如摘要），不进偏好矩阵 |
 | `rateLimit` | 同一收件人可能被短时间轰炸的事件；告警必达事件不要配 |
 
@@ -75,8 +73,7 @@ await db.transaction(async (tx) => {
 
 - `notify()` 幂等键命中返回 `null`（已入队过），据此决定是否计数
 - 收件人三种形态：`{ type: 'user', id }`（管理端用户，参与偏好）、`{ type: 'member', id }`（会员）、
-  `{ type: 'external', channel, address }`（告警规则里的裸邮箱 / Webhook URL，无偏好直投；
-  **Webhook 是地址不是人**，只能用 external，否则 N 个收件人会把同一个 URL 打 N 次）
+  `{ type: 'external', channel, address }`（告警规则里的裸邮箱 / Webhook URL，无偏好直投；Webhook 地址只能用这一形态）
 - 失败处理：调用点通常 `catch` 记日志不阻断业务主流程（参考 `services/wiki/notifications.service.ts`）
 
 ## 管理员配置层（可选参数）

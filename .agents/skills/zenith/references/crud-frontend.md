@@ -40,8 +40,7 @@ export const {
 });
 ```
 
-工厂已覆盖的失效契约：保存后失效 `detail(id)` + `lists` +（契约有 `all` 时）`lookup`；
-删除后 `removeQueries(detail(id))` + 失效 `lists` +（有 `all` 时）`lookup`。
+工厂的失效行为见 [query-cache.md → 标准 CRUD 与手写 mutation 的边界](./query-cache.md#标准-crud-与手写-mutation-的边界)。
 列表参数类型即契约查询参数（`QueryOf<typeof xxxContract.list>`），无需单独声明参数接口。
 
 **非标准操作**同样由契约驱动：mutation 变量就是契约输入 `{ params?, query?, headers?, body? }`，
@@ -302,10 +301,8 @@ onSelect={(deptId) => applySearch({ ...draftParams, departmentId: deptId })}
 | `DateRangeFilter` | `dateTimeRange`、占位「开始时间/结束时间」、宽度 360 | `type="dateRange"`（宽度自动 260）/ `placeholder` / `width` |
 
 - 只收敛**装饰性属性**，业务属性（`value` / `onChange` / `items` / `placeholder`）仍显式传入
-- 列表页搜索栏（含 Tab / 抽屉 / 展开行内的子列表）里所有「全部 X」形态的单选枚举筛选都用 `FilterSelect`，状态用 `StatusSelect`；
+- 适用范围、占位 / 哨兵 / 空值规则见 [constraints-frontend.md → 搜索栏与表格](./constraints-frontend.md#搜索栏与表格)；
   `items` 取 shared 导出的 `XXX_OPTIONS` 或 `useDictItems(...).items`，动态数据自行映射为 `{ value, label }`，需分组时传 `groups`
-- 空值统一为 `undefined`（`SearchParams` 中声明为可选字段、`defaults` 写 `undefined`）；选项里不放「全部」哨兵项，占位不写「请选择 X」
-- 多选筛选、必选的上下文选择（视图切换、所属应用等没有「全部」语义的下拉）不属于枚举筛选，用原生 `Select`
 - `DateRangeFilter` 把 Semi 宽松的 `onChange` 收窄为 `[Date, Date] | null`，
   页面不必再写 `Array.isArray(v) && v.length >= 2` 之类的判断
 
@@ -333,9 +330,7 @@ if (!(await confirmDangerAsync({ title: `确认停用「${name}」？`, okText: 
 
 ## 弹窗表单布局
 
-`labelPosition="left"`、`closeOnEsc` 与表单重挂载 `key` 均由 `useEditModal` 的
-`formProps` / `modalProps` 提供，不要在页面重复书写。不经 `useEditModal` 的弹窗（纯展示、确认类）
-仍需自行加 `closeOnEsc`。
+`labelPosition` / `closeOnEsc` 的要求与豁免见 [constraints-frontend.md → 表单与展示组件](./constraints-frontend.md#表单与展示组件)。
 
 **Modal 宽度与表单列数**（`width` 由页面按内容决定，展开 `modalProps` 后单独传）：
 
@@ -371,12 +366,8 @@ const handleBatchDelete = () => confirmAndDelete({
   onDeleted: () => setSelectedRowKeys([]),
 });
 
-// 工具栏：仅选中时显示，放在查询 / 重置按钮之后
-{selectedRowKeys.length > 0 && hasPermission('system:xxx:delete') && (
-  <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-    批量删除 ({selectedRowKeys.length})
-  </Button>
-)}
+// 工具栏 actions 槽：仅「有选中 && 有权限」时渲染（工具栏据此决定移动端是否出现更多菜单）
+{selectedRowKeys.length > 0 && hasPermission('system:xxx:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
 
 <ConfigurableTable<Xxx>
   columns={columns}
@@ -393,5 +384,6 @@ const handleBatchDelete = () => confirmAndDelete({
 
 - 状态选项用 `useDictItems('common_status')`；表格中用
   `<DictTag dictCode="common_status" value={status} />` 或手动 `find` 映射
-- 列渲染用 `createdAtColumn`（自动格式化 + 省略 tooltip）与 `renderEllipsis`（`utils/table-columns`）
+- 时间列用 `utils/table-columns` 的列工厂（`dateTimeColumn` / `dateColumn`，`createdAt` / `updatedAt` 直接用预置的
+  `createdAtColumn` / `updatedAtColumn`），长文本列用 `renderEllipsis`
 - 非列渲染场景可直接 `formatDateTime()`（`utils/date`）

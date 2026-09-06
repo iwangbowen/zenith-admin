@@ -128,7 +128,7 @@ ESM 值环导致 TDZ：某域 `validation.ts` 引用了另一域 `validation.ts`
 **症状**：`?endTime=abc` 或 `?endTime=2026/08/01` 不报错，返回未经筛选的全量列表。
 
 查询参数声明成了裸 `z.string().optional()`，Zod 放行后解析函数返回 `null`，条件被静默丢弃。
-改用 `dateRangeBound('说明')`（`lib/openapi-schemas`），非法输入直接 400。
+改用 `dateRangeBound('说明')`（`@zenith/shared/core`），非法输入直接 400。
 
 ### 关键字搜索把 `%` 当通配符 / 搜不到含下划线的内容
 
@@ -168,15 +168,14 @@ ESM 值环导致 TDZ：某域 `validation.ts` 引用了另一域 `validation.ts`
 
 ### 消费外部 SSE / 流式响应约 5 分钟整点断开（`TypeError: terminated`）
 
-undici（Node 原生 fetch 底层）默认 `bodyTimeout = 300s`，语义是**两次收到 body 字节之间的空闲超时**：
-外部流静默超 5 分钟连接即断。与部署链路的 nginx `proxy_read_timeout 300s`（`docker/nginx.conf`）同值同哲学，
-入站 SSE 静默同样会被 nginx 断开。
+根因是 undici 的 `bodyTimeout`（body 字节之间的空闲超时，默认 300s），机理与接入原则见
+[backend-patterns.md → 流式 / SSE 消费注意事项](./backend-patterns.md#流式--sse-消费注意事项)；
+入站方向 nginx `proxy_read_timeout 300s`（`docker/nginx.conf`）同样会断开静默 SSE。
 
 按场景处置：
 
 - 上游有心跳（间隔 < 5 分钟，如 LLM 流式 API 的 ping 事件）→ 无需处理，默认即安全
-- 长期消费可能静默的外部流 → 断线重连做主体 + 事件幂等，`bodyTimeout` 保留有限值当死链探测，
-  接入规范见 [backend-patterns.md → 流式 / SSE 消费注意事项](./backend-patterns.md#流式--sse-消费注意事项)
+- 长期消费可能静默的外部流 → 断线重连做主体 + 事件幂等，`bodyTimeout` 保留有限值当死链探测
 - 误给流式调用设了 `httpRequest` 的 `timeout` → 它是硬超时，会掐断进行中的流，改回默认 `0`
 
 ### 上游明明可用，新请求却立即报「熔断」
@@ -285,31 +284,24 @@ mock 初始数据应从 `@zenith/shared/seed` 的 `SEED_XXXS` 派生，而非另
 ### `npm test` 报超时，但单独跑那几个文件却能通过
 
 耗时结构的根源是 vitest 的**隔离税**，而不是用例本身慢：`isolate: true` 下每个测试文件
-都在全新 worker 里重新转译 + 重新执行自己那条模块图（22 核实测：server 全量墙钟 89s，
-其中累计 import 492s、真正的断言只有 77s；web 全量 139s，累计 import 551s、断言 58s）。
-装配整个 app 的重用例（`app.contract.test.ts`：一次装配同时喂给契约断言与路由表快照）
-要执行 1400+ 模块，独占跑约 60-90s，本就贴近超时线，CPU 被抢后直接撞破；
-普通秒级用例（exceljs 渲染、Semi 浮层交互）在发布流程四路并行下也会被放大 10-40 倍，
-撞上默认 5s 超时——两包 `testTimeout` 均为 `15_000`。
+都在全新 worker 里重新转译 + 重新执行自己那条模块图，累计 import 时间远大于断言时间。
+装配整个 app 的重用例（`app.contract.test.ts`：一次装配同时喂给契约断言与路由表快照）本就贴近超时线，
+CPU 被抢后直接撞破；普通秒级用例（exceljs 渲染、Semi 浮层交互）在发布流程四路并行下也会被成倍放大。
 
 **据此与真 bug 区分**：失败全是**超时**而非断言失败；单独跑同样的文件能过；
 `Duration` 里 transform / import 累计远大于墙钟。
 
-按症状出现的场景调对应旋钮：
+按症状出现的场景调对应旋钮（取值以配置文件为准，理由见文件内注释）：
 
 | 场景 | 旋钮 |
 | --- | --- |
-| 单独跑 `npm test` 就超时 | 调低 `packages/server/vitest.config.ts` 的 `maxWorkers`（当前 `8`） |
-| 只在发布流程的四路并行下超时 | 放宽超时——它与 lint / build / docs 争抢同一种（转译 + CPU）资源。两包全局 `testTimeout` 当前为 `15_000`；`src/app.contract.test.ts` 的 `beforeAll` 为 `480_000` |
-| web 全量明显变慢 | 确认 `packages/web/vitest.config.ts` 的 `deps.optimizer.web` 还在：Semi 的 CJS 里 require CSS，走不了原生加载，esbuild 预打包（缓存于 `node_modules/.vite/deps`）是 288.6s → 139.4s 的来源 |
+| 单独跑 `npm test` 就超时 | 调低两包 `vitest.config.ts` 的 `maxWorkers`——它是**上限**不是目标值，核数少的机器不受影响 |
+| 只在发布流程的四路并行下超时 | 放宽两包 `vitest.config.ts` 的 `testTimeout`，或 `src/app.contract.test.ts` `beforeAll` 的超时——它们与 lint / build / docs 争抢同一种（转译 + CPU）资源 |
+| web 全量明显变慢 | 确认 `packages/web/vitest.config.ts` 的 `deps.optimizer.web` 还在：Semi 的 CJS 里 require CSS，走不了原生加载，只能靠 esbuild 预打包（缓存于 `node_modules/.vite/deps`） |
 
-`maxWorkers` 是**上限**不是目标值，核数少的机器（如 CI 的 4 核 runner）不受影响。
 放宽超时前先确认它属于「慢但有效」——独占跑能过、且失败是超时而非断言失败；
-真卡死（如顶层 await 死锁）仍应快速失败。
-
-> 不要因此把发布流程的四路并行改成串行——单独跑 `npm test`（零外层并发）同样会超时，
-> 外层并行不是根因。也不要用 `isolate: false` 或 vmThreads 池换速度，
-> 原因见 [release.md → Step 5](./release.md)。
+真卡死（如顶层 await 死锁）仍应快速失败。不要把发布流程的四路并行改成串行（单独跑 `npm test` 同样会超时，
+外层并行不是根因），也不要改 `pool` / `isolate` 换速度——两份 `vitest.config.ts` 的注释写明了原因。
 
 ### 测试输出出现真实的 `[Redis] 连接成功` / worker 退出期 unhandled rejection
 

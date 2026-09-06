@@ -3,7 +3,7 @@
 Demo 演示模式（`VITE_DEMO_MODE=true`）下，MSW 拦截所有 API 请求并返回内存中的静态数据。
 **仅在 Step 0 确认需要 Demo 模式时才实现这部分。**
 
-约束条目见 [constraints.md → MSW Mock 层](./constraints.md)。
+约束条目见 [constraints.md → MSW Mock 层](./constraints.md#msw-mock-层step-11)。
 
 ```text
 packages/web/src/mocks/
@@ -165,7 +165,7 @@ mock(xxxContract.removeBatch, ({ body, ok }) => {
 }),
 ```
 
-`/all`、`/batch` 都是静态路径，必须排在动态 `/{id}` 之前；契约声明的操作在服务端与 Mock 同时实现。
+静态路径 handler 的排序规则见 [constraints.md → MSW Mock 层](./constraints.md#msw-mock-层step-11)；契约声明的操作在服务端与 Mock 同时实现。
 
 上传类操作（`multipart(...)`）的 `body` 是原始 `FormData`；非 JSON 响应（`kind: 'excel'` 等）的 handler 直接返回
 `new HttpResponse(blob, { headers })`。

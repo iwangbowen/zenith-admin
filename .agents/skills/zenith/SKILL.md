@@ -14,41 +14,21 @@ Zenith Admin 是基于 **Hono + React + Drizzle ORM** 的全栈后台管理系�
 
 ## 怎么用这个 skill
 
-1. 按下表识别场景，进入对应流程。
+1. 按下表识别场景，进入对应入口；CRUD 开发按本文件 Step 0 → Step 11 走，每步只读该步指向的模板文件。
 2. **动手改代码前先读硬约束**：后端与全局看 [constraints.md](./references/constraints.md)，
    前端看 [constraints-frontend.md](./references/constraints-frontend.md)；改完按同一份清单核对本次涉及的层。
-3. 其余参考文件**按需读取**，不要预先全部加载。
+3. 报错时看 [troubleshooting.md](./references/troubleshooting.md)（症状 → 定位 → 指回规范）。
+   参考文件**按需读取**，不要预先全部加载。
 
-| 场景 | 触发词 | 流程 |
+| 场景 | 触发词 | 入口 |
 | --- | --- | --- |
 | CRUD 开发 | 实现 XXX CRUD、新增 XXX 模块、开发 XXX 功能、新增管理页面 | 本文件 Step 0 → Step 11 |
-| 修改已有模块 | 给 XXX 加字段、修改 XXX 接口、XXX 添加关联、改枚举、删字段 | [module-modification.md](./references/module-modification.md) |
-| 发送通知 / 新增通知事件 | 发通知、通知用户、订阅提醒、接入通知中心、加通知事件 | [notifications.md](./references/notifications.md) |
-| 异步任务 / 大批量作业 | 批量导入、大数据量处理、后台任务、任务进度、长耗时操作 | [async-tasks.md](./references/async-tasks.md) |
-| 运行时设置 / 系统开关 | 加一个开关、可配置阈值、系统设置项、新增设置模块、读取系统设置 | [settings.md](./references/settings.md) |
+| 修改已有模块 | 给 XXX 加字段、修改 XXX 接口、XXX 添加关联、改枚举、删字段 | [module-modification.md](./references/module-modification.md)：各场景的步骤序列 |
+| 发送通知 / 新增通知事件 | 发通知、通知用户、订阅提醒、接入通知中心、加通知事件 | [notifications.md](./references/notifications.md)：事件注册、`notify()` 调用、渠道策略 |
+| 异步任务 / 大批量作业 | 批量导入、大数据量处理、后台任务、任务进度、长耗时操作 | [async-tasks.md](./references/async-tasks.md)：任务中心接入与选型对照 |
+| 运行时设置 / 系统开关 | 加一个开关、可配置阈值、系统设置项、新增设置模块、读取系统设置 | [settings.md](./references/settings.md)：加字段 / 新模块 / 服务端读取 / 前端读取 / Mock |
 | 发布新版本 | 发布 vX.Y.Z、准备发布、release X.Y.Z | [release.md](./references/release.md) |
 | 报错排查 | 构建失败、迁移失败、类型不匹配、缓存不刷新、启动缓慢 | [troubleshooting.md](./references/troubleshooting.md) |
-
-## 参考文件
-
-| 文件 | 里面有什么 | 什么时候读 |
-| --- | --- | --- |
-| [constraints.md](./references/constraints.md) | 后端与全局硬约束：一句话可核对的「必须 / 禁止」 | 改后端 / 种子 / Mock 前、完成后核对 |
-| [constraints-frontend.md](./references/constraints-frontend.md) | 前端硬约束 | 改前端前、完成后核对 |
-| [crud-intake.md](./references/crud-intake.md) | Step 0 必填信息、可选能力与提问方式 | 从零开发 CRUD 模块时 |
-| [crud-backend.md](./references/crud-backend.md) | Step 1-7 后端主链路模板 | 写后端时 |
-| [backend-patterns.md](./references/backend-patterns.md) | 数据权限、多租户、审计 diff、附件、外呼 HTTP、重依赖懒加载 | 用到对应能力时 |
-| [query-cache.md](./references/query-cache.md) | 前端数据获取架构、缓存一致性契约、query key 结构 | 写域 hooks / 定失效策略时 |
-| [crud-frontend.md](./references/crud-frontend.md) | Step 8 域 hooks 与列表页模板 | 写前端时 |
-| [ui-patterns.md](./references/ui-patterns.md) | 多 Tab、左右分栏、平铺列表、List 分页、统计卡、栅格、虚拟化表格 | 页面结构超出标准列表页时 |
-| [seed-config.md](./references/seed-config.md) | Step 9-10 菜单权限与种子数据 | 配菜单 / 种子时 |
-| [crud-mock.md](./references/crud-mock.md) | Step 11 MSW Mock 模板 | 需要 Demo 模式时 |
-| [async-tasks.md](./references/async-tasks.md) | 任务中心接入与选型对照 | 大数据量、长耗时或需进度 / 重试 / 取消时 |
-| [settings.md](./references/settings.md) | 运行时设置接入：加字段 / 新模块 / 服务端读取 / 前端读取 / Mock | 任何「后台可改、影响系统行为」的开关或阈值 |
-| [notifications.md](./references/notifications.md) | 通知中心接入：事件注册、notify() 调用、渠道策略 | 任何「发生某事 → 通知相关人」的功能 |
-| [module-modification.md](./references/module-modification.md) | 加字段 / 改接口 / 加关联 / 改枚举 / 删字段的步骤序列 | 改已有模块时 |
-| [troubleshooting.md](./references/troubleshooting.md) | 症状 → 定位 → 指回规范 | 报错时 |
-| [release.md](./references/release.md) | 版本发布流程 | 发版时 |
 
 > 规则只在归属文件里写一遍：约束正文在两个 `constraints*.md`，代码写法与展开说明在对应主题文件。
 > 需要引用时给指针，**不要把内容抄到第二处**。
@@ -66,7 +46,8 @@ Zenith Admin 是基于 **Hono + React + Drizzle ORM** 的全栈后台管理系�
 
 ## 第一阶段：后端（Step 1-7）
 
-按顺序执行，模板见 [crud-backend.md](./references/crud-backend.md)。
+按顺序执行，主链路模板见 [crud-backend.md](./references/crud-backend.md)；条件性能力（数据权限、多租户、审计 diff、
+附件、导出、外呼 HTTP、重依赖懒加载）见 [backend-patterns.md](./references/backend-patterns.md)。
 
 | Step | 任务 | 文件 |
 | --- | --- | --- |
@@ -84,9 +65,7 @@ Zenith Admin 是基于 **Hono + React + Drizzle ORM** 的全栈后台管理系�
 ## 第二阶段：前端（Step 8）
 
 先读 [query-cache.md](./references/query-cache.md) 定下失效策略，再按 [crud-frontend.md](./references/crud-frontend.md) 写代码，
-并对照 [constraints-frontend.md](./references/constraints-frontend.md)。
-服务端状态统一走 **TanStack Query v5**，hooks 由契约派生（`createResourceQueries` / `useApiQuery` / `useApiMutation`），
-禁止手写 `loading` / `fetchXxx` / `useEffect` 拉取模式，也禁止书写 `/api/...` 路径字面量。
+并对照 [constraints-frontend.md](./references/constraints-frontend.md)（服务端状态的获取方式、hooks 由契约派生的要求与禁止的手写模式都在那里）。
 
 | Step | 任务 | 文件 |
 | --- | --- | --- |
@@ -107,9 +86,9 @@ Zenith Admin 是基于 **Hono + React + Drizzle ORM** 的全栈后台管理系�
 
 ---
 
-## ✅ CRUD 完成标准
+## CRUD 完成标准
 
-全部通过才算完成：
+全部通过才算完成（修改已有模块时同样按本清单核对，差异项见 [module-modification.md](./references/module-modification.md#修改后的验证)）：
 
 - [ ] `npm run db:generate && npm run db:migrate` 已执行，迁移文件已提交
 - [ ] `npm run build` 无报错

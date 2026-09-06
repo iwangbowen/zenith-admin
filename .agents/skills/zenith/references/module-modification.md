@@ -3,7 +3,7 @@
 修改已有模块（而非从零创建）时，按场景选择步骤序列。Step 编号沿用
 [SKILL.md](../SKILL.md) 的 CRUD 流程，代码模板见对应主题文件。
 
-改完按[修改后的验证清单](#修改后的验证清单)自检。
+改完按[修改后的验证](#修改后的验证)自检。
 
 ---
 
@@ -27,7 +27,7 @@
 - **页面**（Step 8b）：`columns` 加列（新列写固定 `width`，弹性主列仍只有一个）、Modal 的 `<Form>` 加输入组件；
   需要搜索时在 `SearchParams` 与 `SearchToolbar` 中添加；给操作列增删动作后按
   [ui-patterns.md → 操作列](./ui-patterns.md#操作列) 重算 `width` 并复核内联动作数
-- **回填检查**（Step 8a）：`createResourceQueries` 生成的 `useSave` 统一失效 `detail(id)`、不做回填，
+- **回填检查**（Step 8a）：工厂生成的 `useSave` 不做回填（见 [query-cache.md](./query-cache.md#标准-crud-与手写-mutation-的边界)），
   新增字段无需额外判断。仅当域内**手写**了带回填的 mutation 时，才按
   [query-cache.md → 落地要求](./query-cache.md#落地要求)重新判断新字段是否让写接口响应与详情接口不再同源
 
@@ -122,13 +122,10 @@
 
 ---
 
-## 修改后的验证清单
+## 修改后的验证
 
-- [ ] `npm run build` 无报错
-- [ ] `npm run lint` 通过（server 含契约编译期检查）
+按 [SKILL.md → CRUD 完成标准](../SKILL.md#crud-完成标准) 逐项核对（迁移 / build / lint / 测试 / 页面实测 / Mock / 约束对照），另加两项：
+
 - [ ] `/api/docs` 中接口定义已更新
-- [ ] 前端页面正常渲染新字段 / 新布局
-- [ ] 改动涉及 mutation 失效时，已过一遍消费页面确认相关列与面板都刷新，域 hooks 行为测试已同步
-- [ ] MSW Mock 数据已同步（如启用 Demo 模式）
 - [ ] 操作日志 diff 正常显示变更字段；写接口返回 `okBody(null, ...)` 但需展示变更后状态时，
       已调用 `setAuditAfterData(c, after)`（见 [backend-patterns.md](./backend-patterns.md#操作日志变更-diff)）
