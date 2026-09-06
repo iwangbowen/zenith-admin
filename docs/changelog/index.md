@@ -4,6 +4,29 @@
 
 ---
 
+## v2.20.1 - 2026-09-06
+
+**修复 v2.20.0 前端发布产物体积异常**（`zenith-admin-web` zip 94.3 MB → 约 33 MB）。分入口独立构建后，移动审批入口经
+`BusinessFormHost` 触达后台页面注册表 `import.meta.glob('../pages/**/*Page.tsx')`，把 421 个后台页面 chunk 及其重依赖整套复制进了
+`assets-approval/`；字体 / wasm 等静态资源也在每个入口各输出一份；此外预压缩副本 `.gz/.br` 占了发布包近一半体积。
+
+### Changed
+
+- 页面注册表拆分：`utils/business-form-registry.ts` 只收 `pages/biz/**`、`*BusinessForm.tsx`、`*ApprovalView.tsx`，`BusinessFormHost`
+  与流程设计器的组件路径校验只引用它；`utils/page-registry.ts`（`*Page.tsx`）合并两者供后台路由使用，仅后台入口引用
+- `vite.config.ts` 固定 `output.assetFileNames` 为 `assets/`：字体 / wasm / 图片 / CSS 在三个入口构建中按内容 hash 落到同一文件，天然去重
+- 发布包不再包含预压缩副本：`release.yml` 打包前删除 `.gz/.br` 并随包附带 `web/precompress.mjs`，手动部署需要 `gzip_static` 时执行
+  `node web/precompress.mjs web/dist` 生成（Docker 镜像内仍由 `npm run build` 自行产出）；新增 `npm run precompress -w @zenith/web`
+- `bundle-analyze --check` 新增每入口 `maxTotalJsChunks` / `maxTotalJsMB`（含按需加载 chunk 的总量门禁），`bundle-budget.json` 按实测收紧
+  （JS chunk 总数 1000、审批入口 120 个 / 16 MB、会员入口 75 个 / 2 MB）
+
+### Fixed
+
+- `assets-approval/` 1,967 → 283 个文件（78.8 → 21.1 MB raw），不再包含后台页面与 PPT CJK 字体 / pdfium 等重复资源；
+  后台路由、流程设计器校验与移动审批端自定义业务表单渲染行为不变
+
+---
+
 ## v2.20.0 - 2026-09-06
 
 **数据脱敏改为契约声明 + 路由出口强制打码**：敏感字段在共享契约里用 `sensitive()` 标记一次，服务端在契约路由出口按查看者
