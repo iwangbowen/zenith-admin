@@ -3,13 +3,11 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WikiDoc } from '@zenith/shared/wiki';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
 import { usePurgeWikiDoc, useRestoreWikiDoc, useWikiDocRecycleList, wikiDocRecycleKeys } from '@/hooks/queries/wiki-docs';
 
 interface SearchParams {
@@ -32,8 +30,6 @@ export default function WikiRecyclePage() {
     pageSize,
     keyword: submittedParams.keyword || undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const restoreMutation = useRestoreWikiDoc();
   const purgeMutation = usePurgeWikiDoc();
@@ -51,19 +47,15 @@ export default function WikiRecyclePage() {
           key: 'restore', label: '还原',
           onClick: () => restoreMutation.mutate({ params: { id: record.id } }, { onSuccess: () => Toast.success('已还原') }),
         }] : []),
-        ...(hasPermission('wiki:recycle:purge') ? [{
-          key: 'purge', label: '彻底删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `彻底删除「${record.title}」？`,
-              content: '彻底删除后文档及其版本、评论、收藏将全部清除，不可恢复！',
-              onOk: async () => {
-                await purgeMutation.mutateAsync({ params: { id: record.id } });
-                Toast.success('已彻底删除');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          key: 'purge',
+          label: '彻底删除',
+          hidden: !hasPermission('wiki:recycle:purge'),
+          title: `彻底删除「${record.title}」？`,
+          content: '彻底删除后文档及其版本、评论、收藏将全部清除，不可恢复！',
+          run: () => purgeMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '已彻底删除',
+        }),
       ],
     }),
   ];
@@ -79,29 +71,16 @@ export default function WikiRecyclePage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-        </>}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        onSearch={handleSearch}
+        onReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WikiDoc>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="回收站是空的"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
     </div>
   );

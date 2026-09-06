@@ -7,7 +7,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -26,7 +26,6 @@ import {
   MONITOR_ALERT_NOTIFY_STATUS_OPTIONS,
   MONITOR_METRICS,
 } from '@zenith/shared/platform';
-import { NOTIFY_CHANNEL_LABELS } from '@zenith/shared/messaging';
 import {
   monitorAlertKeys,
   useBatchHandleMonitorAlertEvents,
@@ -35,16 +34,16 @@ import {
 } from '@/hooks/queries/monitor-alerts';
 import {
   MONITOR_ALERT_HANDLE_STATUS_CONFIG as HANDLE_CONFIG,
-  MONITOR_ALERT_LEVEL_CONFIG as LEVEL_CONFIG,
   MONITOR_ALERT_NOTIFY_STATUS_CONFIG as NOTIFY_CONFIG,
-  MONITOR_METRIC_GROUPED_OPTIONS as METRIC_GROUPS,
-  MONITOR_METRIC_LABELS as METRIC_LABELS,
   formatMonitorMetricValue,
 } from '../rules/constants';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
-
-const OP_SYMBOL: Record<string, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' };
-const CHANNEL_LABELS: Record<string, string> = NOTIFY_CHANNEL_LABELS;
+import {
+  MonitorAlertLevelTag,
+  MONITOR_CHANNEL_LABELS,
+  MonitorAlertStateTag,
+  MonitorMetricCondition,
+  MonitorMetricFilterSelect,
+} from '../monitor-alert-display';
 
 /** 日志级别计数指标 → 日志文件页深链的级别过滤 */
 const LOG_METRIC_LEVEL: Record<string, 'error' | 'warn'> = {
@@ -86,13 +85,6 @@ const HANDLE_ACTION_META: Record<
     hint: '撤销后清空处理人与备注，告警重新回到待处理列表。',
   },
 };
-
-/** 指标筛选下拉：桌面与移动端共用，按业务域分组并支持搜索（指标已接近 30 个，平铺难以定位） */
-const METRIC_FILTER_GROUPS = METRIC_GROUPS.map((group) => ({ label: group.label, items: group.children }));
-
-function MetricFilterSelect({ value, onChange }: { value: string | undefined; onChange: (v: string | undefined) => void }) {
-  return <FilterSelect placeholder="全部指标" groups={METRIC_FILTER_GROUPS} value={value} onChange={onChange} width={170} filter />;
-}
 
 export default function AlertEventsPage() {
   const { hasPermission } = usePermission();
@@ -139,7 +131,6 @@ export default function AlertEventsPage() {
   }), [submittedParams, ruleId]);
 
   const listQuery = useMonitorAlertEventList({ page, pageSize, ...queryParams });
-  const data = listQuery.data ?? null;
   const handleMutation = useHandleMonitorAlertEvent();
   const batchHandleMutation = useBatchHandleMonitorAlertEvents();
   const submitting = handleMutation.isPending || batchHandleMutation.isPending;
@@ -166,23 +157,15 @@ export default function AlertEventsPage() {
   const columns: ColumnProps<MonitorAlertEvent>[] = [
     dateTimeColumn('触发时间', 'triggeredAt'),
     { title: '规则', dataIndex: 'ruleName', width: 160, render: renderEllipsis },
-    {
-      title: '触发条件', dataIndex: 'metric', width: 210,
-      render: (_: unknown, r: MonitorAlertEvent) => (
-        <span>
-          <Tag size="small" type="ghost">{METRIC_LABELS[r.metric] ?? r.metric}</Tag>
-          {' '}{OP_SYMBOL[r.operator] ?? r.operator} {formatMonitorMetricValue(r.metric, r.threshold)}
-        </span>
-      ),
-    },
+    { title: '触发条件', dataIndex: 'metric', width: 210, render: (_: unknown, r: MonitorAlertEvent) => <MonitorMetricCondition metric={r.metric} operator={r.operator} threshold={r.threshold} /> },
     { title: '实际值', dataIndex: 'value', width: 110, render: (v: number, r: MonitorAlertEvent) => <b>{formatMonitorMetricValue(r.metric, v)}</b> },
-    { title: '级别', dataIndex: 'level', width: 80, render: (v: string) => <Tag color={LEVEL_CONFIG[v]?.color ?? 'grey'} size="small">{LEVEL_CONFIG[v]?.label ?? v}</Tag> },
+    { title: '级别', dataIndex: 'level', width: 80, render: (v: string) => <MonitorAlertLevelTag level={v} /> },
     { title: '描述', dataIndex: 'message', minWidth: 280, render: renderEllipsis },
     {
       title: '通知状态', dataIndex: 'notifyStatus', width: 120,
       render: (_: unknown, r: MonitorAlertEvent) => {
         const config = NOTIFY_CONFIG[r.notifyStatus];
-        const channels = r.notifyChannels.map((c) => CHANNEL_LABELS[c] ?? c).join('、');
+        const channels = r.notifyChannels.map((c) => MONITOR_CHANNEL_LABELS[c] ?? c).join('、');
         const tip = r.notifyError
           ?? (r.notifyStatus === 'skipped' ? '规则未配置任何通知渠道' : channels ? `已尝试渠道：${channels}` : undefined);
         const tag = <Tag color={config?.color ?? 'grey'} size="small">{config?.label ?? r.notifyStatus}</Tag>;
@@ -202,7 +185,7 @@ export default function AlertEventsPage() {
     },
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
-      render: (s: string) => s === 'firing' ? <Tag color="red" size="small">告警中</Tag> : <Tag color="green" size="small">已恢复</Tag>,
+      render: (s: string) => <MonitorAlertStateTag state={s} okText="已恢复" />,
     },
     createOperationColumn<MonitorAlertEvent>({
       desktopInlineKeys: ['ack', 'close'],
@@ -250,7 +233,7 @@ export default function AlertEventsPage() {
   );
 
   const renderMetricFilter = () => (
-    <MetricFilterSelect
+    <MonitorMetricFilterSelect
       value={draftParams.metric}
       onChange={(v) => setDraftParams((p) => ({ ...p, metric: v }))}
     />
@@ -325,40 +308,22 @@ export default function AlertEventsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderRuleFilterTag()}
-            {renderKeywordSearch()}
-            {renderMetricFilter()}
-            {renderLevelFilter()}
-            {renderStatusFilter()}
-            {renderHandleStatusFilter()}
-            {renderNotifyStatusFilter()}
-            {renderTimeRangeFilter()}
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {renderBatchActions()}
-          </>
-        )}
-        actions={renderExportButton()}
-        mobilePrimary={(
-          <>
-            {renderRuleFilterTag()}
-            {renderKeywordSearch()}
-            <SearchButton onClick={handleSearch} />
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderMetricFilter()}
-            {renderLevelFilter()}
-            {renderStatusFilter()}
-            {renderHandleStatusFilter()}
-            {renderNotifyStatusFilter()}
-            {renderTimeRangeFilter()}
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={<>{renderRuleFilterTag()}{renderKeywordSearch()}</>}
+        filters={<>
+          {renderMetricFilter()}
+          {renderLevelFilter()}
+          {renderStatusFilter()}
+          {renderHandleStatusFilter()}
+          {renderNotifyStatusFilter()}
+          {renderTimeRangeFilter()}
+        </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={<>
+          {renderBatchActions()}
+          {renderExportButton()}
+        </>}
         mobileActions={(
           <>
             {renderBatchActions()}
@@ -366,24 +331,17 @@ export default function AlertEventsPage() {
           </>
         )}
         filterTitle="告警事件筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<MonitorAlertEvent>
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无告警记录"
-        rowSelection={canHandle
-          ? { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) }
-          : undefined}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: canHandle
+            ? { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) }
+            : undefined,
+        })}
       />
 
       {/* 处理弹窗不走 useEditModal：它不是实体的新增 / 编辑，而是对既有记录的状态流转 */}

@@ -1,15 +1,15 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Col, Form, Modal, Row, Select, SideSheet, Spin, Switch, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Row, Select, SideSheet, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { CreateWikiSpaceInput, WikiSpace, WikiSpaceMemberRole } from '@zenith/shared/wiki';
 import { WIKI_SPACE_MEMBER_ROLE_LABELS, WIKI_SPACE_MEMBER_ROLE_OPTIONS, WIKI_SPACE_VISIBILITIES, WIKI_SPACE_VISIBILITY_LABELS, WIKI_SPACE_VISIBILITY_OPTIONS } from '@zenith/shared/wiki';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
@@ -17,7 +17,6 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
 import { useAllUsers } from '@/hooks/queries/users';
 import {
   useDeleteWikiSpaces, useSaveWikiSpace, useSaveWikiSpaceMembers, useWikiSpaceDetail,
@@ -51,8 +50,6 @@ export default function WikiSpacesPage() {
     visibility: enumValueOf(WIKI_SPACE_VISIBILITIES, submittedParams.visibility),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const modal = useEditModal<WikiSpace, Partial<CreateWikiSpaceInput>>({
     entityName: '知识空间',
@@ -73,7 +70,14 @@ export default function WikiSpacesPage() {
 
   const toggleStatusMutation = useSaveWikiSpace();
   const deleteMutation = useDeleteWikiSpaces();
-  const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<WikiSpace>({
+    toggle: (record, enabled) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({
+      title: '确认停用',
+      content: `停用后「${record.name}」将不在文档中心展示，确认停用？`,
+    }),
+    disabled: !hasPermission('wiki:space:edit'),
+  });
   const { items: statusItems } = useDictItems('common_status');
 
   // ─── 成员授权抽屉 ──────────────────────────────────────────────────────────
@@ -106,26 +110,6 @@ export default function WikiSpacesPage() {
     );
   }
 
-  async function handleDelete(record: WikiSpace) {
-    await deleteMutation.mutateAsync([record.id]);
-    Toast.success('删除成功');
-  }
-
-  function handleToggleStatus(record: WikiSpace, checked: boolean) {
-    const doToggle = () => {
-      toggleStatusMutation.mutate(
-        { id: record.id, values: { status: checked ? 'enabled' : 'disabled' } },
-        { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
-      );
-    };
-    if (checked) doToggle();
-    else Modal.confirm({
-      title: '确认停用',
-      content: `停用后「${record.name}」将不在文档中心展示，确认停用？`,
-      onOk: doToggle,
-    });
-  }
-
   const columns: ColumnProps<WikiSpace>[] = [
     {
       title: '空间名称', dataIndex: 'name', width: 180,
@@ -151,18 +135,7 @@ export default function WikiSpacesPage() {
       render: (v: boolean) => (v ? '开启' : '关闭'),
     },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, record: WikiSpace) => (
-        <Switch
-          checked={record.status === 'enabled'}
-          loading={togglingId === record.id}
-          disabled={!hasPermission('wiki:space:edit')}
-          onChange={(checked) => handleToggleStatus(record, checked)}
-          size="small"
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<WikiSpace>({
       width: 180,
       desktopInlineKeys: ['members', 'edit'],
@@ -173,16 +146,12 @@ export default function WikiSpacesPage() {
         ...(hasPermission('wiki:space:edit') ? [{
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('wiki:space:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除空间「${record.name}」吗？`,
-              content: '仅空的空间可删除，删除后不可恢复',
-              onOk: () => handleDelete(record),
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('wiki:space:delete'),
+          title: `确定要删除空间「${record.name}」吗？`,
+          content: '仅空的空间可删除，删除后不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -219,40 +188,22 @@ export default function WikiSpacesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          {renderVisibilityFilter()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={renderCreateButton()}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={<>
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={<>
           {renderVisibilityFilter()}
           {renderStatusFilter()}
         </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WikiSpace>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal {...modal.modalProps} width={660}>

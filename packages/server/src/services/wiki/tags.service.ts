@@ -1,10 +1,11 @@
-import { HTTPException } from 'hono/http-exception';
 import { asc, eq, sql } from 'drizzle-orm';
 import type { CreateWikiTagInput, UpdateWikiTagInput } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import { wikiDocTags, wikiTags, type WikiTagRow } from '../../db/schema';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 
 export function mapWikiTag(row: WikiTagRow) {
@@ -40,9 +41,11 @@ export async function listWikiTags(q: ListWikiTagsQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildWikiTagWhere(q);
 
-  const [total, rows] = await Promise.all([
-    db.$count(wikiTags, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(wikiTags, where),
+    rows: () => withPagination(
       db.select({
         tag: wikiTags,
         docCount: sql<number>`count(${wikiDocTags.docId})::int`,
@@ -54,8 +57,8 @@ export async function listWikiTags(q: ListWikiTagsQuery) {
       page,
       pageSize,
     ),
-  ]);
-  return { list: rows.map((r) => ({ ...mapWikiTag(r.tag), docCount: r.docCount })), total, page, pageSize };
+    map: (r) => ({ ...mapWikiTag(r.tag), docCount: r.docCount }),
+  });
 }
 
 /** 全部标签（编辑器打标下拉） */
@@ -66,8 +69,7 @@ export async function listAllWikiTags() {
 
 export async function ensureWikiTagExists(id: number) {
   const [row] = await db.select().from(wikiTags).where(buildWikiTagWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '标签不存在' });
-  return row;
+  return requireRow(row, '标签不存在');
 }
 
 export async function createWikiTag(data: CreateWikiTagInput) {
@@ -83,8 +85,7 @@ export async function createWikiTag(data: CreateWikiTagInput) {
 export async function updateWikiTag(id: number, data: UpdateWikiTagInput) {
   try {
     const [row] = await db.update(wikiTags).set(data).where(buildWikiTagWhere({ id })).returning();
-    if (!row) throw new HTTPException(404, { message: '标签不存在' });
-    return mapWikiTag(row);
+    return mapWikiTag(requireRow(row, '标签不存在'));
   } catch (err) {
     rethrowPgUniqueViolation(err, '标签名称已存在');
     throw err;

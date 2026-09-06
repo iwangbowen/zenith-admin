@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Checkbox, SideSheet, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { useMarketingParticipations } from '@/hooks/queries/marketing-campaigns';
 import { MARKETING_GRANT_STATUS_LABELS } from '@zenith/shared/marketing';
@@ -25,8 +26,6 @@ export default function MarketingRecordsDrawer({ campaign, onClose }: MarketingR
   const { page, pageSize, buildPagination, resetPage } = usePagination();
   const campaignId = campaign?.id ?? null;
   const recordsQuery = useMarketingParticipations(campaignId, { page, pageSize, wonOnly: wonOnly || undefined });
-  const list = recordsQuery.data?.list ?? [];
-  const total = recordsQuery.data?.total ?? 0;
 
   const columns: ColumnProps<MarketingParticipation>[] = [
     { title: '会员', width: 160, render: (_: unknown, r: MarketingParticipation) => r.memberNickname ?? `会员 #${r.memberId}` },
@@ -64,17 +63,10 @@ export default function MarketingRecordsDrawer({ campaign, onClose }: MarketingR
         >
           只看中奖记录
         </Checkbox>
-        <ConfigurableTable
-          bordered
+        <ConfigurableTable<MarketingParticipation>
           columns={columns}
-          dataSource={list}
-          loading={recordsQuery.isFetching}
-          rowKey="id"
-          size="small"
           empty="暂无参与记录"
-          onRefresh={() => void recordsQuery.refetch()}
-          refreshLoading={recordsQuery.isFetching}
-          pagination={buildPagination(total)}
+          {...listTableProps(recordsQuery, { pagination: buildPagination })}
         />
       </div>
     </SideSheet>

@@ -6,6 +6,7 @@ import type { WikiDocStatus, WikiGovernanceDoc, WikiGovernanceKind, WikiNoResult
 import { WIKI_DOC_STATUS_LABELS, WIKI_GOVERNANCE_KIND_LABELS, WIKI_GOVERNANCE_KINDS } from '@zenith/shared/wiki';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AppModal from '@/components/AppModal';
+import { listTableProps } from '@/components/list-page';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -32,8 +33,6 @@ function GovernancePane({ kind }: { kind: WikiGovernanceKind }) {
   const { hasPermission } = usePermission();
   const { page, pageSize, buildPagination } = usePagination();
   const listQuery = useWikiGovernanceDocs(kind, { page, pageSize });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [ownerModalVisible, setOwnerModalVisible] = useState(false);
@@ -135,18 +134,13 @@ function GovernancePane({ kind }: { kind: WikiGovernanceKind }) {
         )}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WikiGovernanceDoc>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty={kind === 'all' ? '当前没有可治理的文档' : '该清单没有需要处理的文档'}
-        rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) }}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: { selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) },
+        })}
       />
 
       {/* 指定负责人 */}
@@ -261,16 +255,10 @@ function NoResultPane() {
   ];
 
   return (
-    <ConfigurableTable
-      bordered
+    <ConfigurableTable<WikiNoResultKeyword>
       columns={columns}
-      dataSource={listQuery.data ?? []}
-      loading={listQuery.isFetching}
-      rowKey="keyword"
-      size="small"
       empty="近 30 天没有搜索无结果的关键词"
-      onRefresh={() => void listQuery.refetch()}
-      refreshLoading={listQuery.isFetching}
+      {...listTableProps(listQuery, { rowKey: 'keyword' })}
     />
   );
 }

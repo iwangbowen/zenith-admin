@@ -20,6 +20,8 @@ import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildShortUrl, ensureShortLink } from '../short-link/short-link.service';
 import { changePoints } from '../member/member-points.service';
@@ -104,14 +106,16 @@ function buildCampaignWhere(q: ListMarketingCampaignsQuery & { id?: number }): S
 export async function listMarketingCampaigns(q: ListMarketingCampaignsQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildCampaignWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(marketingCampaigns, where),
-    withPagination(
+  const { list: rows, total } = await buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(marketingCampaigns, where),
+    rows: () => withPagination(
       db.select().from(marketingCampaigns).where(where).orderBy(desc(marketingCampaigns.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
+  });
 
   const ids = rows.map((r) => r.id);
   const [statRows, linkRows] = ids.length
@@ -150,8 +154,7 @@ export async function listMarketingCampaigns(q: ListMarketingCampaignsQuery) {
 
 export async function ensureMarketingCampaignExists(id: number): Promise<MarketingCampaignRow> {
   const [row] = await db.select().from(marketingCampaigns).where(buildCampaignWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '营销活动不存在' });
-  return row;
+  return requireRow(row, '营销活动不存在');
 }
 
 export async function getMarketingCampaign(id: number) {
@@ -200,8 +203,7 @@ export async function updateMarketingCampaign(id: number, data: UpdateMarketingC
     ...(data.landingUrl !== undefined ? { landingUrl: data.landingUrl } : {}),
     ...(data.description !== undefined ? { description: data.description } : {}),
   }).where(buildCampaignWhere({ id })).returning();
-  if (!row) throw new HTTPException(404, { message: '营销活动不存在' });
-  return mapMarketingCampaign(row);
+  return mapMarketingCampaign(requireRow(row, '营销活动不存在'));
 }
 
 export async function deleteMarketingCampaign(id: number): Promise<void> {
@@ -282,11 +284,11 @@ export async function saveMarketingPrize(campaignId: number, prizeId: number | n
   }
   const [current] = await db.select().from(marketingPrizes)
     .where(and(eq(marketingPrizes.id, prizeId), eq(marketingPrizes.campaignId, campaignId))).limit(1);
-  if (!current) throw new HTTPException(404, { message: '奖品不存在' });
+  const prize = requireRow(current, '奖品不存在');
   // 编辑库存：按增量同步调整剩余库存，已发放部分不受影响
-  const stockDelta = data.stock - current.totalStock;
-  const nextStock = current.stock + stockDelta;
-  if (nextStock < 0) throw new HTTPException(400, { message: `库存不可低于已发放数量（已发放 ${current.totalStock - current.stock}）` });
+  const stockDelta = data.stock - prize.totalStock;
+  const nextStock = prize.stock + stockDelta;
+  if (nextStock < 0) throw new HTTPException(400, { message: `库存不可低于已发放数量（已发放 ${prize.totalStock - prize.stock}）` });
   const [row] = await db.update(marketingPrizes).set({
     ...values,
     totalStock: data.stock,
@@ -320,9 +322,11 @@ export async function listMarketingParticipations(campaignId: number, q: ListPar
     q.memberId !== undefined ? eq(marketingParticipations.memberId, q.memberId) : undefined,
     q.wonOnly ? sql`${marketingParticipations.prizeId} IS NOT NULL` : undefined,
   );
-  const [total, rows] = await Promise.all([
-    db.$count(marketingParticipations, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(marketingParticipations, where),
+    rows: () => withPagination(
       db.select({ participation: marketingParticipations, memberNickname: members.nickname })
         .from(marketingParticipations)
         .leftJoin(members, eq(marketingParticipations.memberId, members.id))
@@ -332,8 +336,8 @@ export async function listMarketingParticipations(campaignId: number, q: ListPar
       page,
       pageSize,
     ),
-  ]);
-  return { list: rows.map((r) => mapParticipation(r.participation, r.memberNickname)), total, page, pageSize };
+    map: (r) => mapParticipation(r.participation, r.memberNickname),
+  });
 }
 
 // ─── C 端抽奖 ─────────────────────────────────────────────────────────────────

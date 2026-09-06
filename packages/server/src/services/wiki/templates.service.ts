@@ -1,9 +1,10 @@
-import { HTTPException } from 'hono/http-exception';
 import { asc, eq } from 'drizzle-orm';
 import type { CreateWikiTemplateInput, UpdateWikiTemplateInput } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import { wikiTemplates, type WikiTemplateRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 
 export function mapWikiTemplate(row: WikiTemplateRow) {
@@ -44,15 +45,17 @@ export async function listWikiTemplates(q: ListWikiTemplatesQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildWikiTemplateWhere(q);
 
-  const [total, rows] = await Promise.all([
-    db.$count(wikiTemplates, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(wikiTemplates, where),
+    rows: () => withPagination(
       db.select().from(wikiTemplates).where(where).orderBy(asc(wikiTemplates.sort), asc(wikiTemplates.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return { list: rows.map(mapWikiTemplate), total, page, pageSize };
+    map: mapWikiTemplate,
+  });
 }
 
 /** 全部启用模板（编辑器选用下拉） */
@@ -65,8 +68,7 @@ export async function listAllWikiTemplates() {
 
 export async function ensureWikiTemplateExists(id: number) {
   const [row] = await db.select().from(wikiTemplates).where(buildWikiTemplateWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '模板不存在' });
-  return row;
+  return requireRow(row, '模板不存在');
 }
 
 export async function getWikiTemplate(id: number) {
@@ -80,8 +82,7 @@ export async function createWikiTemplate(data: CreateWikiTemplateInput) {
 
 export async function updateWikiTemplate(id: number, data: UpdateWikiTemplateInput) {
   const [row] = await db.update(wikiTemplates).set(data).where(buildWikiTemplateWhere({ id })).returning();
-  if (!row) throw new HTTPException(404, { message: '模板不存在' });
-  return mapWikiTemplate(row);
+  return mapWikiTemplate(requireRow(row, '模板不存在'));
 }
 
 export async function deleteWikiTemplate(id: number) {

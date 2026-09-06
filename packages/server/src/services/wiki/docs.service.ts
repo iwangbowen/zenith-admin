@@ -30,6 +30,8 @@ import {
 } from '../../db/schema';
 import { currentUser, currentUserId, isSuperAdmin, setAuditBefore } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { getSettings } from '../../lib/settings';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -170,27 +172,28 @@ export async function listWikiDocs(q: ListWikiDocsQuery) {
     );
   }
 
-  const [total, rows] = await Promise.all([
-    db.$count(wikiDocs, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(wikiDocs, where),
+    rows: async () => attachDocExtras(await withPagination(
       db.select().from(wikiDocs).where(where)
         .orderBy(desc(wikiDocs.isPinned), asc(wikiDocs.sort), desc(wikiDocs.updatedAt)).$dynamic(),
       page,
       pageSize,
-    ),
-  ]);
-
-  return { list: await attachDocExtras(rows, { spaceName: true }), total, page, pageSize };
+    ), { spaceName: true }),
+  });
 }
 
 export async function ensureWikiDocExists(id: number, opts: { allowDeleted?: boolean } = {}) {
   const [row] = await db.select().from(wikiDocs)
     .where(buildWhere(eq(wikiDocs.id, id), tenantCondition(wikiDocs, currentUser())))
     .limit(1);
-  if (!row || (!opts.allowDeleted && row.deletedAt !== null)) {
+  const doc = requireRow(row, '文档不存在');
+  if (!opts.allowDeleted && doc.deletedAt !== null) {
     throw new HTTPException(404, { message: '文档不存在' });
   }
-  return row;
+  return doc;
 }
 
 /** 读取详情：viewer 只能看已发布文档，editor 及以上可见全部状态 */
@@ -561,9 +564,11 @@ export async function listMyProcessedReviews(q: { page?: number; pageSize?: numb
     inArray(wikiReviewRecords.action, ['approve', 'reject']),
   );
 
-  const [total, rows] = await Promise.all([
-    db.$count(wikiReviewRecords, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(wikiReviewRecords, where),
+    rows: () => withPagination(
       db.select({
         id: wikiReviewRecords.id,
         docId: wikiReviewRecords.docId,
@@ -579,13 +584,8 @@ export async function listMyProcessedReviews(q: { page?: number; pageSize?: numb
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => ({ ...r, reason: r.reason ?? null, createdAt: formatDateTime(r.createdAt) })),
-    total,
-    page,
-    pageSize,
-  };
+    map: (r) => ({ ...r, reason: r.reason ?? null, createdAt: formatDateTime(r.createdAt) }),
+  });
 }
 
 // ─── 订阅与阅读确认 ───────────────────────────────────────────────────────────
@@ -647,9 +647,11 @@ export async function listWikiDocVersions(docId: number, q: { page?: number; pag
   const { page = 1, pageSize = 10 } = q;
   const where = eq(wikiDocVersions.docId, docId);
 
-  const [total, rows] = await Promise.all([
-    db.$count(wikiDocVersions, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(wikiDocVersions, where),
+    rows: () => withPagination(
       db.select({
         id: wikiDocVersions.id,
         docId: wikiDocVersions.docId,
@@ -666,10 +668,7 @@ export async function listWikiDocVersions(docId: number, q: { page?: number; pag
       page,
       pageSize,
     ),
-  ]);
-
-  return {
-    list: rows.map((r) => ({
+    map: (r) => ({
       id: r.id,
       docId: r.docId,
       version: r.version,
@@ -678,11 +677,8 @@ export async function listWikiDocVersions(docId: number, q: { page?: number; pag
       authorId: r.authorId ?? null,
       authorName: r.authorName ?? null,
       createdAt: formatDateTime(r.createdAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 export async function getWikiDocVersion(docId: number, version: number) {
@@ -691,17 +687,17 @@ export async function getWikiDocVersion(docId: number, version: number) {
     where: and(eq(wikiDocVersions.docId, docId), eq(wikiDocVersions.version, version)),
     with: { author: { columns: { nickname: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '版本不存在' });
+  const versionRow = requireRow(row, '版本不存在');
   return {
-    id: row.id,
-    docId: row.docId,
-    version: row.version,
-    title: row.title,
-    content: row.content,
-    changeNote: row.changeNote ?? null,
-    authorId: row.authorId ?? null,
-    authorName: row.author?.nickname ?? null,
-    createdAt: formatDateTime(row.createdAt),
+    id: versionRow.id,
+    docId: versionRow.docId,
+    version: versionRow.version,
+    title: versionRow.title,
+    content: versionRow.content,
+    changeNote: versionRow.changeNote ?? null,
+    authorId: versionRow.authorId ?? null,
+    authorName: versionRow.author?.nickname ?? null,
+    createdAt: formatDateTime(versionRow.createdAt),
   };
 }
 
@@ -711,13 +707,13 @@ export async function rollbackWikiDoc(docId: number, version: number) {
   const target = await db.query.wikiDocVersions.findFirst({
     where: and(eq(wikiDocVersions.docId, docId), eq(wikiDocVersions.version, version)),
   });
-  if (!target) throw new HTTPException(404, { message: '版本不存在' });
+  const targetVersion = requireRow(target, '版本不存在');
 
   const nextVersion = row.currentVersion + 1;
   await db.transaction(async (tx) => {
     await tx.update(wikiDocs).set({
-      title: target.title,
-      content: target.content,
+      title: targetVersion.title,
+      content: targetVersion.content,
       currentVersion: nextVersion,
       // 回滚后回到草稿，需重新发布
       status: 'draft',
@@ -725,8 +721,8 @@ export async function rollbackWikiDoc(docId: number, version: number) {
     await tx.insert(wikiDocVersions).values({
       docId,
       version: nextVersion,
-      title: target.title,
-      content: target.content,
+      title: targetVersion.title,
+      content: targetVersion.content,
       changeNote: `回滚自 v${version}`,
       authorId: currentUserId(),
     });
@@ -801,15 +797,16 @@ export async function listMyFavoriteWikiDocs(q: { page?: number; pageSize?: numb
     wikiDocStatusVisibilityCondition(),
   );
 
-  const [total, rows] = await Promise.all([
-    db.$count(wikiDocs, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(wikiDocs, where),
+    rows: async () => attachDocExtras(await withPagination(
       db.select().from(wikiDocs).where(where).orderBy(desc(wikiDocs.updatedAt)).$dynamic(),
       page,
       pageSize,
-    ),
-  ]);
-  return { list: await attachDocExtras(rows, { spaceName: true }), total, page, pageSize };
+    ), { spaceName: true }),
+  });
 }
 
 /** 浏览上报：写浏览日志并累加计数 */
@@ -864,29 +861,33 @@ export async function searchWikiDocs(q: SearchWikiDocsQuery) {
     (case when ${contentHit} then 1 else 0 end)
   )`;
 
-  const [total, rows] = await Promise.all([
-    db.$count(wikiDocs, where),
-    withPagination(
+  const result = await buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(wikiDocs, where),
+    rows: async () => {
+      const rows = await withPagination(
       db.select().from(wikiDocs).where(where)
         .orderBy(desc(rank), desc(wikiDocs.updatedAt)).$dynamic(),
       page,
       pageSize,
-    ),
-  ]);
+      );
+      const docs = await attachDocExtras(rows, { spaceName: true });
+      return docs.map((doc, i) => ({ ...doc, snippet: extractSnippet(rows[i].content, kw) }));
+    },
+  });
 
   // 仅首页记录搜索日志，翻页不重复计数
   if (page === 1) {
     await db.insert(wikiSearchLogs).values({
       keyword: kw.slice(0, 200),
-      resultCount: total,
+      resultCount: result.total,
       userId: currentUserId(),
       tenantId: getCreateTenantId(currentUser()),
     });
   }
 
-  const list = (await attachDocExtras(rows, { spaceName: true }))
-    .map((doc, i) => ({ ...doc, snippet: extractSnippet(rows[i].content, kw) }));
-  return { list, total, page, pageSize };
+  return result;
 }
 
 /** 搜索点击回报：把当前用户最近一条同关键词日志标记为已点击 */

@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { Col, Form, Row, SideSheet, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Col, Form, Row, SideSheet, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import AppModal from '@/components/AppModal';
 import { CreateButton } from '@/components/toolbar-controls';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
-import { confirmDelete } from '@/utils/confirm';
 import { useCouponList } from '@/hooks/queries/member-admin';
 import {
   useCreateMarketingPrize, useDeleteMarketingPrize, useMarketingPrizes, useUpdateMarketingPrize,
@@ -77,11 +77,6 @@ export default function MarketingPrizesDrawer({ campaign, onClose }: MarketingPr
     labelWidth: 90,
   });
 
-  async function handleDelete(prize: MarketingPrize) {
-    await deleteMutation.mutateAsync({ params: { campaignId: campaignId!, prizeId: prize.id } });
-    Toast.success('删除成功');
-  }
-
   const columns: ColumnProps<MarketingPrize>[] = [
     { title: '奖品名称', dataIndex: 'name', minWidth: 160 },
     {
@@ -111,16 +106,11 @@ export default function MarketingPrizesDrawer({ campaign, onClose }: MarketingPr
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => canEdit ? [
         { key: 'edit', label: '编辑', onClick: () => { modal.openEdit(record); } },
-        {
-          key: 'delete', label: '删除', danger: true,
+        deleteAction({
           disabledReason: campaign?.status === 'published' ? '进行中不可删' : undefined,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除奖品「${record.name}」吗？`,
-              onOk: () => handleDelete(record),
-            });
-          },
-        },
+          title: `确定要删除奖品「${record.name}」吗？`,
+          run: () => deleteMutation.mutateAsync({ params: { campaignId: campaignId!, prizeId: record.id } }),
+        }),
       ] : [],
     }),
   ];
@@ -140,16 +130,10 @@ export default function MarketingPrizesDrawer({ campaign, onClose }: MarketingPr
           <Text type="tertiary">按权重抽取；「谢谢参与」不占库存。中奖后积分/优惠券自动发放，实物线下发放。</Text>
           {canEdit && <CreateButton onClick={modal.openCreate}>新增奖品</CreateButton>}
         </div>
-        <ConfigurableTable
-          bordered
+        <ConfigurableTable<MarketingPrize>
           columns={columns}
-          dataSource={prizes}
-          loading={prizesQuery.isFetching}
-          rowKey="id"
-          size="small"
           empty="暂无奖品，发布前请至少配置一个"
-          onRefresh={() => void prizesQuery.refetch()}
-          refreshLoading={prizesQuery.isFetching}
+          {...listTableProps(prizesQuery)}
         />
       </div>
 

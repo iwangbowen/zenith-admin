@@ -3,15 +3,14 @@ import { Col, Form, Modal, Row, Spin, Tag, Toast, Typography } from '@douyinfe/s
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
 import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import {
   marketingCampaignKeys, useDeleteMarketingCampaigns, useEndMarketingCampaign,
@@ -65,8 +64,6 @@ export default function MarketingCampaignsPage() {
     status: enumValueOf(MARKETING_CAMPAIGN_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const modal = useEditModal<MarketingCampaign, MarketingCampaignFormValues, Partial<CreateMarketingCampaignInput>>({
     entityName: '营销活动',
@@ -97,11 +94,6 @@ export default function MarketingCampaignsPage() {
   const deleteMutation = useDeleteMarketingCampaigns();
   const publishMutation = usePublishMarketingCampaign();
   const endMutation = useEndMarketingCampaign();
-
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
 
   function handlePublish(record: MarketingCampaign) {
     Modal.confirm({
@@ -175,17 +167,13 @@ export default function MarketingCampaignsPage() {
         ...(hasPermission('marketing:campaign:update') && record.status !== 'ended' ? [{
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('marketing:campaign:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
+        deleteAction({
+          hidden: !hasPermission('marketing:campaign:delete'),
           disabledReason: record.status === 'published' ? '进行中不可删' : undefined,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除活动「${record.name}」吗？`,
-              content: '删除后奖品与参与记录一并清除，不可恢复',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        }] : []),
+          title: `确定要删除活动「${record.name}」吗？`,
+          content: '删除后奖品与参与记录一并清除，不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -219,40 +207,22 @@ export default function MarketingCampaignsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          {renderStatusFilter()}
-          {renderTimeRangeFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={renderCreateButton()}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={<>
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={<>
           {renderStatusFilter()}
           {renderTimeRangeFilter()}
         </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<MarketingCampaign>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无营销活动"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       {/* 新增 / 编辑 */}

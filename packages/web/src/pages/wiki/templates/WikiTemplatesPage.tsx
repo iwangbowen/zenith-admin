@@ -1,19 +1,18 @@
-import { Col, Form, Modal, Row, Spin, Switch, Toast } from '@douyinfe/semi-ui';
+import { Col, Form, Row, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { CreateWikiTemplateInput, WikiTemplate } from '@zenith/shared/wiki';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
 import {
   useDeleteWikiTemplates, useSaveWikiTemplate, useWikiTemplateDetail, useWikiTemplateList, wikiTemplateKeys,
 } from '@/hooks/queries/wiki-templates';
@@ -40,8 +39,6 @@ export default function WikiTemplatesPage() {
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const modal = useEditModal<WikiTemplate, Partial<CreateWikiTemplateInput>>({
     entityName: '文档模板',
@@ -60,41 +57,22 @@ export default function WikiTemplatesPage() {
 
   const toggleStatusMutation = useSaveWikiTemplate();
   const deleteMutation = useDeleteWikiTemplates();
-  const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
-  const { items: statusItems } = useDictItems('common_status');
-
-  function handleToggleStatus(record: WikiTemplate, checked: boolean) {
-    const doToggle = () => {
-      toggleStatusMutation.mutate(
-        { id: record.id, values: { status: checked ? 'enabled' : 'disabled' } },
-        { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
-      );
-    };
-    if (checked) doToggle();
-    else Modal.confirm({
+  const status = useStatusToggle<WikiTemplate>({
+    toggle: (record, enabled) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({
       title: '确认停用',
       content: `停用后「${record.name}」将不再出现在编辑器模板选择中，确认停用？`,
-      onOk: doToggle,
-    });
-  }
+    }),
+    disabled: !hasPermission('wiki:template:edit'),
+  });
+  const { items: statusItems } = useDictItems('common_status');
 
   const columns: ColumnProps<WikiTemplate>[] = [
     { title: '模板名称', dataIndex: 'name', width: 200, render: renderEllipsis },
     { title: '描述', dataIndex: 'description', minWidth: 260, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 80 },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, record: WikiTemplate) => (
-        <Switch
-          checked={record.status === 'enabled'}
-          loading={togglingId === record.id}
-          disabled={!hasPermission('wiki:template:edit')}
-          onChange={(checked) => handleToggleStatus(record, checked)}
-          size="small"
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<WikiTemplate>({
       width: 150,
       desktopInlineKeys: ['edit', 'delete'],
@@ -102,19 +80,12 @@ export default function WikiTemplatesPage() {
         ...(hasPermission('wiki:template:edit') ? [{
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('wiki:template:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除模板「${record.name}」吗？`,
-              content: '删除后不可恢复，不影响已用模板创建的文档',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('wiki:template:delete'),
+          title: `确定要删除模板「${record.name}」吗？`,
+          content: '删除后不可恢复，不影响已用模板创建的文档',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -141,36 +112,19 @@ export default function WikiTemplatesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={renderCreateButton()}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WikiTemplate>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无模板"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal {...modal.modalProps} width={660}>

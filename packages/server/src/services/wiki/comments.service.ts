@@ -5,6 +5,7 @@ import { db } from '../../db';
 import { users, wikiComments, wikiDocs, type WikiCommentRow } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
 import { getSettings } from '../../lib/settings';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -171,8 +172,7 @@ export async function listWikiComments(q: ListWikiCommentsQuery) {
 
 export async function ensureWikiCommentExists(id: number) {
   const [row] = await db.select().from(wikiComments).where(eq(wikiComments.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '评论不存在' });
-  return row;
+  return requireRow(row, '评论不存在');
 }
 
 export async function updateWikiCommentStatus(id: number, status: WikiCommentStatus) {

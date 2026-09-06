@@ -1,20 +1,19 @@
 import { useState } from 'react';
-import { Button, Col, Collapse, Form, Modal, Row, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Collapse, Form, Modal, Row, SideSheet, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { QRCodeSVG } from 'qrcode.react';
-import { Ban, CircleCheck, Trash2 } from 'lucide-react';
+import { Ban, CircleCheck } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
 import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import {
   shortLinkKeys, useBatchUpdateShortLinkStatus, useDeleteShortLinks,
@@ -90,8 +89,6 @@ export default function ShortLinksPage() {
     bizType: enumValueOf(SHORT_LINK_BIZ_TYPES, submittedParams.bizType),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const modal = useEditModal<ShortLink, ShortLinkFormValues, Partial<CreateShortLinkInput>>({
     entityName: '短链',
@@ -121,7 +118,14 @@ export default function ShortLinksPage() {
   const toggleStatusMutation = useSaveShortLink();
   const deleteMutation = useDeleteShortLinks();
   const batchStatusMutation = useBatchUpdateShortLinkStatus();
-  const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<ShortLink>({
+    toggle: (record, enabled) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({
+      title: '确认停用',
+      content: `停用后短链「${record.code}」将无法访问，确认停用？`,
+    }),
+    disabled: !hasPermission('shortlink:link:update'),
+  });
 
   // 编辑已配置 UTM 的记录时，折叠面板默认展开
   const editing = modal.editing;
@@ -138,35 +142,13 @@ export default function ShortLinksPage() {
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
-  function handleToggleStatus(record: ShortLink, checked: boolean) {
-    const doToggle = () => {
-      toggleStatusMutation.mutate(
-        { id: record.id, values: { status: checked ? 'enabled' : 'disabled' } },
-        { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
-      );
-    };
-    if (checked) doToggle();
-    else Modal.confirm({
-      title: '确认停用',
-      content: `停用后短链「${record.code}」将无法访问，确认停用？`,
-      onOk: doToggle,
-    });
-  }
-
   function handleBatchDelete() {
-    confirmDelete({
+    confirmAndDelete({
       title: `确认删除选中的 ${selectedRowKeys.length} 条短链？`,
       content: '删除后短链立即失效且不可恢复，点击明细一并清除。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync(selectedRowKeys);
-        Toast.success('批量删除成功');
-        setSelectedRowKeys([]);
-      },
+      run: () => deleteMutation.mutateAsync(selectedRowKeys),
+      successMessage: '批量删除成功',
+      onDeleted: () => setSelectedRowKeys([]),
     });
   }
 
@@ -212,18 +194,7 @@ export default function ShortLinksPage() {
     },
     dateTimeColumn('有效期', 'expiresAt', { empty: '永久' }),
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, record: ShortLink) => (
-        <Switch
-          checked={record.status === 'enabled'}
-          loading={togglingId === record.id}
-          disabled={!hasPermission('shortlink:link:update')}
-          onChange={(checked) => handleToggleStatus(record, checked)}
-          size="small"
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<ShortLink>({
       width: 180,
       desktopInlineKeys: ['stats', 'edit'],
@@ -235,16 +206,12 @@ export default function ShortLinksPage() {
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
         }] : []),
         { key: 'qrcode', label: '二维码', onClick: () => setQrLink(record) },
-        ...(hasPermission('shortlink:link:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除短链「${record.code}」吗？`,
-              content: '删除后短链立即失效且不可恢复',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('shortlink:link:delete'),
+          title: `确定要删除短链「${record.code}」吗？`,
+          content: '删除后短链立即失效且不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -295,9 +262,7 @@ export default function ShortLinksPage() {
         </>
       )}
       {hasPermission('shortlink:link:delete') && (
-        <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-          批量删除 ({selectedRowKeys.length})
-        </Button>
+        <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />
       )}
     </>
   ) : null;
@@ -313,48 +278,34 @@ export default function ShortLinksPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={<>
           {renderStatusFilter()}
           {renderBizTypeFilter()}
           {renderTimeRangeFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-          {renderBatchButtons()}
         </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         actions={<>
+          {renderBatchButtons()}
           {renderExportButtons()}
-          {renderCreateButton()}
         </>}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
+        mobileActions={<>
+          {renderBatchButtons()}
+          {renderMobileExportActions()}
         </>}
-        mobileFilters={<>
-          {renderStatusFilter()}
-          {renderBizTypeFilter()}
-          {renderTimeRangeFilter()}
-        </>}
-        mobileActions={renderMobileExportActions()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<ShortLink>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无数据"
-        rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) }}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: { selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) },
+        })}
       />
 
       {/* 新增 / 编辑 */}

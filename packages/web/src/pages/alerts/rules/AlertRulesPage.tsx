@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Form, Space, Spin, Toast, Modal, Switch, Tag, Row, Col, Select, withField } from '@douyinfe/semi-ui';
+import { Button, Form, Space, Spin, Toast, Modal, Tag, Row, Col, Select, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -13,7 +12,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import type { CreateMonitorAlertRuleInput, MonitorAlertRule, MonitorMetric } from '@zenith/shared/platform';
 import { MONITOR_ALERT_LEVELS, MONITOR_ALERT_LEVEL_OPTIONS, MONITOR_ALERT_STATES, MONITOR_METRICS } from '@zenith/shared/platform';
 import { BASIC_COMPARISON_OPERATOR_LABELS, enumValueOf } from '@zenith/shared/core';
-import { NOTIFY_CHANNEL_LABELS, NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
+import { NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
 import {
   monitorAlertKeys,
   useBatchToggleMonitorAlerts,
@@ -24,22 +23,25 @@ import {
   useToggleMonitorAlert,
 } from '@/hooks/queries/monitor-alerts';
 import {
-  MONITOR_ALERT_LEVEL_CONFIG as LEVEL_CONFIG,
   MONITOR_METRIC_GROUPED_OPTIONS as METRIC_GROUPS,
   MONITOR_METRIC_LABELS as METRIC_LABELS,
   MONITOR_METRIC_META as METRIC_META,
   formatMonitorMetricValue,
 } from './constants';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
 import AlertRecipientUserSelect from './AlertRecipientUserSelect';
+import {
+  MonitorAlertLevelTag,
+  MONITOR_CHANNEL_LABELS,
+  MonitorAlertStateTag,
+  MonitorMetricFilterSelect,
+  MONITOR_OPERATOR_SYMBOLS,
+} from '../monitor-alert-display';
 
-const OP_SYMBOL: Record<string, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' };
 const OP_OPTIONS = (['gt', 'gte', 'lt', 'lte'] as const)
   .map((value) => ({ value, label: BASIC_COMPARISON_OPERATOR_LABELS[value] }));
-const CHANNEL_LABELS: Record<string, string> = NOTIFY_CHANNEL_LABELS;
 const FormAlertRecipientUserSelect = withField(AlertRecipientUserSelect);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -66,13 +68,6 @@ function thresholdHint(metric: MonitorMetric | undefined): string {
     case 'score': return '填 0-100 的评分（通常搭配 < 使用）';
     default: return '填数值阈值';
   }
-}
-
-/** 指标筛选下拉：指标接近 30 个，按业务域分组并支持搜索 */
-const METRIC_FILTER_GROUPS = METRIC_GROUPS.map((group) => ({ label: group.label, items: group.children }));
-
-function MetricFilterSelect({ value, onChange }: { value: string | undefined; onChange: (v: string | undefined) => void }) {
-  return <FilterSelect placeholder="全部指标" groups={METRIC_FILTER_GROUPS} value={value} onChange={onChange} width={170} filter />;
 }
 
 export default function AlertRulesPage() {
@@ -102,8 +97,6 @@ export default function AlertRulesPage() {
     enabled: submittedParams.enabled === undefined ? undefined : submittedParams.enabled === 'true',
     state: enumValueOf(MONITOR_ALERT_STATES, submittedParams.state),
   });
-  const data = listQuery.data ?? null;
-
   const canCreate = hasPermission('alert:rule:create');
   const canUpdate = hasPermission('alert:rule:update');
   const canDelete = hasPermission('alert:rule:delete');
@@ -145,12 +138,11 @@ export default function AlertRulesPage() {
   const toggleMutation = useToggleMonitorAlert();
   const batchToggleMutation = useBatchToggleMonitorAlerts();
   const testMutation = useTestMonitorAlert();
-  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.params.id ?? null) : null;
-
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
+  const enabledStatus = useStatusToggle<MonitorAlertRule>({
+    toggle: (record, enabled) => toggleMutation.mutateAsync({ params: { id: record.id }, body: { enabled } }),
+    isEnabled: (record) => record.enabled,
+    disabled: !canUpdate,
+  });
 
   /**
    * 试发通知：按真实派发结果分级提示。
@@ -158,7 +150,7 @@ export default function AlertRulesPage() {
    */
   async function handleTest(record: MonitorAlertRule) {
     const result = await testMutation.mutateAsync({ params: { id: record.id } });
-    const channels = result.channels.map((c) => CHANNEL_LABELS[c] ?? c).join('、');
+    const channels = result.channels.map((c) => MONITOR_CHANNEL_LABELS[c] ?? c).join('、');
     if (result.status === 'skipped') {
       Toast.warning({ content: `「${record.name}」未配置任何通知渠道，没有可试发的目标`, duration: 5 });
       return;
@@ -173,22 +165,13 @@ export default function AlertRulesPage() {
     });
   }
 
-  function handleToggle(record: MonitorAlertRule, checked: boolean) {
-    toggleMutation.mutate(
-      { params: { id: record.id }, body: { enabled: checked } },
-      { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
-    );
-  }
-
   function handleBatchDelete() {
-    confirmDelete({
+    confirmAndDelete({
       title: `确认删除选中的 ${selectedRowKeys.length} 条告警规则？`,
       content: '删除后不可恢复，规则关联的历史告警事件会保留。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync(selectedRowKeys);
-        Toast.success('批量删除成功');
-        setSelectedRowKeys([]);
-      },
+      run: () => deleteMutation.mutateAsync(selectedRowKeys),
+      successMessage: '批量删除成功',
+      onDeleted: () => setSelectedRowKeys([]),
     });
   }
 
@@ -216,7 +199,7 @@ export default function AlertRulesPage() {
       render: (_: unknown, r: MonitorAlertRule) => (
         <span>
           <Tag size="small" type="ghost">{METRIC_LABELS[r.metric] ?? r.metric}</Tag>
-          {' '}{OP_SYMBOL[r.operator] ?? r.operator}{' '}
+          {' '}{MONITOR_OPERATOR_SYMBOLS[r.operator] ?? r.operator}{' '}
           <b>{formatMonitorMetricValue(r.metric, r.threshold)}</b>
           {r.durationMinutes > 0 ? <span style={{ color: 'var(--semi-color-text-2)' }}> · 持续{r.durationMinutes}分</span> : null}
         </span>
@@ -224,11 +207,11 @@ export default function AlertRulesPage() {
     },
     {
       title: '级别', dataIndex: 'level', width: 80,
-      render: (v: string) => <Tag color={LEVEL_CONFIG[v]?.color ?? 'grey'} size="small">{LEVEL_CONFIG[v]?.label ?? v}</Tag>,
+      render: (v: string) => <MonitorAlertLevelTag level={v} />,
     },
     {
       title: '通知渠道', dataIndex: 'channels', width: 160,
-      render: (chs: string[]) => chs?.length ? <Space spacing={4} wrap>{chs.map((c) => <Tag key={c} size="small" type="light">{CHANNEL_LABELS[c] ?? c}</Tag>)}</Space> : <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,
+      render: (chs: string[]) => chs?.length ? <Space spacing={4} wrap>{chs.map((c) => <Tag key={c} size="small" type="light">{MONITOR_CHANNEL_LABELS[c] ?? c}</Tag>)}</Space> : <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,
     },
     {
       title: '当前值', dataIndex: 'lastValue', width: 100,
@@ -237,22 +220,9 @@ export default function AlertRulesPage() {
     dateTimeColumn('最近触发', 'lastTriggeredAt', { empty: '从未' }),
     {
       title: '告警状态', dataIndex: 'state', width: 100, fixed: 'right',
-      render: (state: string) => state === 'firing'
-        ? <Tag color="red" size="small">告警中</Tag>
-        : <Tag color="green" size="small">未触发</Tag>,
+      render: (state: string) => <MonitorAlertStateTag state={state} okText="未触发" />,
     },
-    {
-      title: '启用状态', dataIndex: 'enabled', width: 100, fixed: 'right',
-      render: (enabled: boolean, r: MonitorAlertRule) => (
-        <Switch
-          checked={enabled}
-          loading={togglingId === r.id}
-          disabled={!canUpdate}
-          onChange={(checked) => handleToggle(r, checked)}
-          size="small"
-        />
-      ),
-    },
+    enabledStatus.column({ title: '启用状态', width: 100, dataIndex: 'enabled' }),
     createOperationColumn<MonitorAlertRule>({
       width: 180,
       desktopInlineKeys: ['edit', 'delete'],
@@ -275,19 +245,12 @@ export default function AlertRulesPage() {
           hidden: !canViewEvents,
           onClick: () => navigate(`/alerts/events?ruleId=${record.id}`),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canDelete,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除「${record.name}」吗？`,
-              content: '删除后不可恢复',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: `确定要删除「${record.name}」吗？`,
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -302,7 +265,7 @@ export default function AlertRulesPage() {
   );
 
   const renderMetricFilter = () => (
-    <MetricFilterSelect
+    <MonitorMetricFilterSelect
       value={draftParams.metric}
       onChange={(v) => setDraftParams((p) => ({ ...p, metric: v }))}
     />
@@ -350,9 +313,7 @@ export default function AlertRulesPage() {
         </>
       )}
       {canDelete && (
-        <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-          批量删除 ({selectedRowKeys.length})
-        </Button>
+        <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />
       )}
     </>
   ) : null;
@@ -361,56 +322,32 @@ export default function AlertRulesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderMetricFilter()}
-            {renderLevelFilter()}
-            {renderStateFilter()}
-            {renderEnabledFilter()}
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {renderBatchActions()}
-          </>
-        )}
-        actions={renderCreateButton()}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            <SearchButton onClick={handleSearch} />
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderMetricFilter()}
-            {renderLevelFilter()}
-            {renderStateFilter()}
-            {renderEnabledFilter()}
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={<>
+          {renderMetricFilter()}
+          {renderLevelFilter()}
+          {renderStateFilter()}
+          {renderEnabledFilter()}
+        </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={renderBatchActions()}
         mobileActions={renderBatchActions()}
         filterTitle="告警规则筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
         actionTitle="告警规则操作"
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<MonitorAlertRule>
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无告警规则"
-        rowSelection={canUpdate || canDelete
-          ? { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) }
-          : undefined}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: canUpdate || canDelete
+            ? { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) }
+            : undefined,
+        })}
       />
 
       <AppModal

@@ -5,10 +5,9 @@ import { Check, X } from 'lucide-react';
 import type { WikiDoc, WikiReviewRecord } from '@zenith/shared/wiki';
 import { WIKI_DOC_STATUS_LABELS, WIKI_REVIEW_ACTION_LABELS } from '@zenith/shared/wiki';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { KeywordInput } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import MarkdownPreviewPanel from '@/components/MarkdownPreviewPanel';
 import { renderEllipsis, updatedAtColumn, dateTimeColumn } from '@/utils/table-columns';
@@ -60,8 +59,6 @@ function PendingPane() {
     status: 'pending',
     keyword: submittedParams.keyword || undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const reviewMutation = useReviewWikiDoc();
   const [previewId, setPreviewId] = useState<number>();
@@ -135,29 +132,16 @@ function PendingPane() {
 
   return (
     <>
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-        </>}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        onSearch={handleSearch}
+        onReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WikiDoc>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="没有待审核的文档"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal
@@ -219,8 +203,6 @@ function PendingPane() {
 function MySubmissionsPane() {
   const { page, pageSize, buildPagination } = usePagination();
   const listQuery = useWikiDocList({ page, pageSize, submitted: true });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const withdrawMutation = useWithdrawWikiDoc();
   const [timelineDocId, setTimelineDocId] = useState<number>();
@@ -250,17 +232,10 @@ function MySubmissionsPane() {
 
   return (
     <>
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WikiDoc>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="还没有提交过文档审核"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal
@@ -297,8 +272,6 @@ function MySubmissionsPane() {
 function ProcessedPane() {
   const { page, pageSize, buildPagination } = usePagination();
   const listQuery = useMyProcessedReviews({ page, pageSize });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const columns: ColumnProps<WikiReviewRecord>[] = [
     { title: '文档标题', dataIndex: 'docTitle', width: 260, render: renderEllipsis },
@@ -312,17 +285,10 @@ function ProcessedPane() {
   ];
 
   return (
-    <ConfigurableTable
-      bordered
+    <ConfigurableTable<WikiReviewRecord>
       columns={columns}
-      dataSource={list}
-      loading={listQuery.isFetching}
-      rowKey="id"
-      size="small"
       empty="还没有处理过审核"
-      onRefresh={() => void listQuery.refetch()}
-      refreshLoading={listQuery.isFetching}
-      pagination={buildPagination(total)}
+      {...listTableProps(listQuery, { pagination: buildPagination })}
     />
   );
 }

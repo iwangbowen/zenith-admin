@@ -18,6 +18,8 @@ import { db } from '../../db';
 import { shortLinks, type ShortLinkRow } from '../../db/schema';
 import { config } from '../../config';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { isPgUniqueViolation, rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUser, currentUserOrNull } from '../../lib/context';
@@ -135,21 +137,22 @@ function buildShortLinkWhere(q: ShortLinkWhereInput) {
 export async function listShortLinks(q: ListShortLinksQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildShortLinkWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(shortLinks, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(shortLinks, where),
+    rows: () => withPagination(
       db.select().from(shortLinks).where(where).orderBy(desc(shortLinks.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return { list: rows.map(mapShortLink), total, page, pageSize };
+    map: mapShortLink,
+  });
 }
 
 export async function ensureShortLinkExists(id: number): Promise<ShortLinkRow> {
   const [row] = await db.select().from(shortLinks).where(buildShortLinkWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '短链不存在' });
-  return row;
+  return requireRow(row, '短链不存在');
 }
 
 export async function getShortLink(id: number) {
@@ -237,10 +240,9 @@ export async function updateShortLink(id: number, data: UpdateShortLinkInput) {
     })
     .where(buildShortLinkWhere({ id }))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '短链不存在' });
 
   await invalidateShortLinkCache(before.code);
-  return mapShortLink(row);
+  return mapShortLink(requireRow(row, '短链不存在'));
 }
 
 export async function deleteShortLink(id: number): Promise<void> {

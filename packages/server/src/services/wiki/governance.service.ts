@@ -7,6 +7,7 @@ import {
 } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
 import logger from '../../lib/logger';
 import { getSettings } from '../../lib/settings';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
@@ -75,9 +76,11 @@ export async function listGovernanceDocs(kind: WikiGovernanceKind, q: { page?: n
     : DEFAULT_REVIEW_BACKLOG_HOURS;
   const where = buildWhere(governanceScope(), governanceKindCondition(kind, pendingRemindHours));
 
-  const [total, rows] = await Promise.all([
-    db.$count(wikiDocs, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(wikiDocs, where),
+    rows: () => withPagination(
       db.select({
         doc: wikiDocs,
         spaceName: wikiSpaces.name,
@@ -90,10 +93,7 @@ export async function listGovernanceDocs(kind: WikiGovernanceKind, q: { page?: n
       page,
       pageSize,
     ),
-  ]);
-
-  return {
-    list: rows.map((r) => ({
+    map: (r) => ({
       id: r.doc.id,
       spaceId: r.doc.spaceId,
       spaceName: r.spaceName,
@@ -106,11 +106,8 @@ export async function listGovernanceDocs(kind: WikiGovernanceKind, q: { page?: n
       nextReviewAt: r.doc.nextReviewAt ? formatDateTime(r.doc.nextReviewAt) : null,
       isArchived: r.doc.isArchived,
       updatedAt: formatDateTime(r.doc.updatedAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 /** 无结果搜索关键词（近 30 天，知识缺口） */

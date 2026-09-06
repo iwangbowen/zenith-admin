@@ -6,6 +6,8 @@ import type { DbExecutor } from '../../db/types';
 import { users, wikiDocs, wikiSpaceMembers, wikiSpaces, type WikiSpaceRow } from '../../db/schema';
 import { currentUser, isSuperAdmin } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 
@@ -59,14 +61,16 @@ export async function listWikiSpaces(q: ListWikiSpacesQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildWikiSpaceWhere(q);
 
-  const [total, rows] = await Promise.all([
-    db.$count(wikiSpaces, where),
-    withPagination(
+  const { list: rows, total } = await buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(wikiSpaces, where),
+    rows: () => withPagination(
       db.select().from(wikiSpaces).where(where).orderBy(asc(wikiSpaces.sort), asc(wikiSpaces.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
+  });
 
   const ids = rows.map((r) => r.id);
   const [memberCounts, docCounts] = await Promise.all([
@@ -92,8 +96,7 @@ export async function listWikiSpaces(q: ListWikiSpacesQuery) {
 
 export async function ensureWikiSpaceExists(id: number) {
   const [row] = await db.select().from(wikiSpaces).where(buildWikiSpaceWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '知识空间不存在' });
-  return row;
+  return requireRow(row, '知识空间不存在');
 }
 
 export async function getWikiSpace(id: number) {
@@ -117,8 +120,7 @@ export async function createWikiSpace(data: CreateWikiSpaceInput) {
 export async function updateWikiSpace(id: number, data: UpdateWikiSpaceInput) {
   await ensureSpaceRole(id, 'admin');
   const [row] = await db.update(wikiSpaces).set(data).where(buildWikiSpaceWhere({ id })).returning();
-  if (!row) throw new HTTPException(404, { message: '知识空间不存在' });
-  return mapWikiSpace(row);
+  return mapWikiSpace(requireRow(row, '知识空间不存在'));
 }
 
 export async function deleteWikiSpace(id: number) {

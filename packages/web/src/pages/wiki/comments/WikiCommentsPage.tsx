@@ -6,13 +6,11 @@ import { WIKI_COMMENT_STATUSES, WIKI_COMMENT_STATUS_LABELS, WIKI_COMMENT_STATUS_
 import { enumValueOf } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import {
   useRemoveWikiComment, useUpdateWikiCommentStatus, useWikiCommentList, wikiCommentKeys,
@@ -43,8 +41,6 @@ export default function WikiCommentsPage() {
     status: enumValueOf(WIKI_COMMENT_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const statusMutation = useUpdateWikiCommentStatus();
   const removeMutation = useRemoveWikiComment();
@@ -79,19 +75,12 @@ export default function WikiCommentsPage() {
             { onSuccess: () => Toast.success(record.status === 'visible' ? '已隐藏' : '已恢复') },
           ),
         }] : []),
-        ...(hasPermission('wiki:comment:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除这条评论吗？',
-              content: '删除后其下回复一并删除，不可恢复',
-              onOk: async () => {
-                await removeMutation.mutateAsync({ id: record.id, docId: record.docId });
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('wiki:comment:delete'),
+          title: '确定要删除这条评论吗？',
+          content: '删除后其下回复一并删除，不可恢复',
+          run: () => removeMutation.mutateAsync({ id: record.id, docId: record.docId }),
+        }),
       ],
     }),
   ];
@@ -123,38 +112,21 @@ export default function WikiCommentsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          {renderStatusFilter()}
-          {renderTimeRangeFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-        </>}
-        mobileFilters={<>
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={<>
           {renderStatusFilter()}
           {renderTimeRangeFilter()}
         </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WikiComment>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无评论"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
     </div>
   );
