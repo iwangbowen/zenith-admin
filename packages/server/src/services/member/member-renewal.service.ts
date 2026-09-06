@@ -8,8 +8,10 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import { exactTenantCondition } from '../../lib/tenant';
 import { members, memberVipRenewals, paymentApps, paymentContracts, paymentDeductPlans, paymentOrders, type MemberVipRenewalRow } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
 import logger from '../../lib/logger';
 import {
   advanceVipExpiry,
@@ -30,7 +32,7 @@ async function ensureMemberPaymentApplication(applicationId: number, tenantId: n
   const [app] = await db.select({ id: paymentApps.id }).from(paymentApps).where(and(
     eq(paymentApps.id, applicationId),
     eq(paymentApps.status, 'enabled'),
-    tenantId == null ? sql`${paymentApps.tenantId} is null` : eq(paymentApps.tenantId, tenantId),
+    exactTenantCondition(paymentApps.tenantId, tenantId),
   )).limit(1);
   if (!app) throw new HTTPException(400, { message: '支付应用不存在、未启用或不属于当前会员租户' });
 }
@@ -63,7 +65,7 @@ export async function getMyRenewal(memberId: number, applicationId: number): Pro
       eq(paymentContracts.bizId, String(memberId)),
       eq(paymentContracts.appId, applicationId),
       eq(paymentContracts.currency, 'CNY'),
-      member.tenantId == null ? sql`${paymentContracts.tenantId} is null` : eq(paymentContracts.tenantId, member.tenantId),
+      exactTenantCondition(paymentContracts.tenantId, member.tenantId),
       sql`${paymentContracts.status} in ('pending', 'unknown', 'signed', 'paused')`,
     ),
     with: { plan: { columns: { name: true, period: true, amount: true } } },
@@ -83,7 +85,7 @@ export async function getMyRenewal(memberId: number, applicationId: number): Pro
       eq(memberVipRenewals.memberId, memberId),
       eq(paymentOrders.appId, applicationId),
       eq(paymentOrders.currency, 'CNY'),
-      member.tenantId == null ? sql`${paymentOrders.tenantId} is null` : eq(paymentOrders.tenantId, member.tenantId),
+      exactTenantCondition(paymentOrders.tenantId, member.tenantId),
     ))
     .orderBy(desc(memberVipRenewals.id))
     .limit(20);
@@ -97,7 +99,7 @@ export async function getMyRenewal(memberId: number, applicationId: number): Pro
 /** 签约自动续费（sandbox 渠道即时生效并执行首期扣款） */
 export async function signRenewal(memberId: number, input: MemberSignRenewalInput): Promise<SignContractResult> {
   const member = await ensureMemberExists(memberId);
-  const tenantScope = member.tenantId == null ? sql`${paymentContracts.tenantId} is null` : eq(paymentContracts.tenantId, member.tenantId);
+  const tenantScope = exactTenantCondition(paymentContracts.tenantId, member.tenantId);
   const [existing] = await db.select({ id: paymentContracts.id, appId: paymentContracts.appId }).from(paymentContracts).where(and(
     eq(paymentContracts.bizType, MEMBER_RENEWAL_BIZ_TYPE),
     eq(paymentContracts.bizId, String(memberId)),
@@ -125,17 +127,16 @@ export async function signRenewal(memberId: number, input: MemberSignRenewalInpu
 export async function terminateMyRenewal(memberId: number, applicationId: number): Promise<void> {
   const member = await ensureMemberExists(memberId);
   const contract = await findActiveContractByBiz({ bizType: MEMBER_RENEWAL_BIZ_TYPE, bizId: String(memberId), tenantId: member.tenantId ?? null, applicationId, currency: 'CNY' });
-  if (!contract) throw new HTTPException(404, { message: '未开通自动续费' });
-  await terminateContract(contract);
+  await terminateContract(requireRow(contract, '未开通自动续费'));
 }
 
 /** 会员端手动补扣一期（演示用：到期前手动续费） */
 export async function deductMyRenewalNow(memberId: number, applicationId: number) {
   const member = await ensureMemberExists(memberId);
   const contract = await findActiveContractByBiz({ bizType: MEMBER_RENEWAL_BIZ_TYPE, bizId: String(memberId), tenantId: member.tenantId ?? null, applicationId, currency: 'CNY' });
-  if (!contract) throw new HTTPException(404, { message: '未开通自动续费' });
-  if (contract.status !== 'signed') throw new HTTPException(400, { message: '协议未生效，无法扣款' });
-  return executeDeduction(contract);
+  const activeContract = requireRow(contract, '未开通自动续费');
+  if (activeContract.status !== 'signed') throw new HTTPException(400, { message: '协议未生效，无法扣款' });
+  return executeDeduction(activeContract);
 }
 
 /**
@@ -174,7 +175,7 @@ export async function extendVipOnRenewal(event: { bizId: string; orderNo: string
     const [member] = await tx.select({ vipExpireAt: members.vipExpireAt, status: members.status, deletedAt: members.deletedAt }).from(members).where(and(
       eq(members.id, memberId),
       isNull(members.deletedAt),
-      order.tenantId == null ? sql`${members.tenantId} is null` : eq(members.tenantId, order.tenantId),
+      exactTenantCondition(members.tenantId, order.tenantId),
     )).for('update').limit(1);
     if (!member || member.status === 'banned') {
       logger.warn('[MemberRenewal] 会员不存在，跳过延期', { memberId, orderNo: event.orderNo });
@@ -188,14 +189,14 @@ export async function extendVipOnRenewal(event: { bizId: string; orderNo: string
         eq(paymentContracts.bizId, event.bizId),
         eq(paymentContracts.appId, order.appId),
         eq(paymentContracts.currency, order.currency),
-        order.tenantId == null ? sql`${paymentContracts.tenantId} is null` : eq(paymentContracts.tenantId, order.tenantId),
+        exactTenantCondition(paymentContracts.tenantId, order.tenantId),
       ))
       .orderBy(desc(paymentContracts.id))
       .limit(1);
     const plan = contract
       ? await tx.query.paymentDeductPlans.findFirst({ where: and(
           eq(paymentDeductPlans.id, contract.planId),
-          order.tenantId == null ? sql`${paymentDeductPlans.tenantId} is null` : eq(paymentDeductPlans.tenantId, order.tenantId),
+          exactTenantCondition(paymentDeductPlans.tenantId, order.tenantId),
         ) })
       : null;
 

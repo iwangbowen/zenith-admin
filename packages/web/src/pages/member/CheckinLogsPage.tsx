@@ -7,6 +7,7 @@ import type { MemberCheckin, MemberCheckinCalendarDay } from '@zenith/shared/mem
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import { MemberSelect } from '@/components/MemberSelect';
@@ -18,6 +19,7 @@ import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput } from '@/components/search-filters';
 import { dateColumn, dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
+import { memberCellColumn, renderMemberName } from './member-admin-display';
 
 interface SearchParams {
   memberKeyword?: string;
@@ -65,7 +67,7 @@ function CheckinDayPopoverContent({ day }: Readonly<{ day: MemberCheckinCalendar
               main={(
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.memberNickname || `#${item.memberId}`}
+                    {renderMemberName({ nickname: item.memberNickname, memberId: item.memberId })}
                   </span>
                   <Typography.Text type="tertiary" size="small">{item.createdAt.slice(11, 16)}</Typography.Text>
                   {item.isMakeup && <Tag color="orange" size="small">补签</Tag>}
@@ -119,8 +121,6 @@ export default function CheckinLogsPage() {
     dateStart: dateStart ? formatDateForApi(dateStart) : undefined,
     dateEnd: dateEnd ? formatDateForApi(dateEnd) : undefined,
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const makeupMutation = useMakeupCheckin();
 
   const handleMakeup = async () => {
@@ -138,7 +138,7 @@ export default function CheckinLogsPage() {
 
   const columns: ColumnProps<MemberCheckin>[] = [
     { title: 'ID', dataIndex: 'id', width: 90 },
-    { title: '会员昵称', dataIndex: 'memberNickname', width: 140, render: (value?: string | null, row?: MemberCheckin) => value || `#${row?.memberId}` },
+    memberCellColumn<MemberCheckin>({ title: '会员昵称', width: 140, nameField: 'memberNickname', idField: 'memberId' }),
     dateColumn('签到日期', 'checkinDate'),
     { title: '连续天数', dataIndex: 'consecutiveDays', width: 100, align: 'right' },
     { title: '积分奖励', dataIndex: 'pointsAwarded', width: 100, align: 'right' },
@@ -250,17 +250,9 @@ export default function CheckinLogsPage() {
       />
 
       {view === 'list' ? (
-        <ConfigurableTable
-          bordered
+        <ConfigurableTable<MemberCheckin>
           columns={columns}
-          dataSource={data}
-          loading={listQuery.isFetching}
-          onRefresh={() => void listQuery.refetch()}
-          refreshLoading={listQuery.isFetching}
-          rowKey="id"
-          size="small"
-          pagination={buildPagination(total)}
-          empty="暂无签到记录"
+          {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无签到记录' })}
         />
       ) : (
         <div>

@@ -1,7 +1,7 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Space, Form, Toast, Tag, Row, Col, Typography } from '@douyinfe/semi-ui';
+import { Space, Form, Tag, Row, Col, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { MemberLevel } from '@zenith/shared/member';
 import { usePermission } from '@/hooks/usePermission';
@@ -9,11 +9,11 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { renderEllipsis } from '../../utils/table-columns';
 import { memberAdminKeys, useDeleteMemberLevel, useMemberLevels, useSaveMemberLevel, type MemberLevelFormValues } from '@/hooks/queries/member-admin';
 import { useDictItems } from '@/hooks/useDictItems';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 
 export default function MemberLevelsPage() {
@@ -23,7 +23,6 @@ export default function MemberLevelsPage() {
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const listQuery = useMemberLevels();
-  const data = listQuery.data ?? [];
   const saveMutation = useSaveMemberLevel();
   const deleteMutation = useDeleteMemberLevel();
 
@@ -33,17 +32,6 @@ export default function MemberLevelsPage() {
     defaults: { level: 0, growthThreshold: 0, discount: 100, sort: 0, status: 'enabled' as const, benefits: [] },
     toValues: (record) => ({ name: record.name, level: record.level, growthThreshold: record.growthThreshold, discount: record.discount, benefits: record.benefits, description: record.description, sort: record.sort, status: record.status }),
   });
-
-  const handleDelete = (record: MemberLevel) => {
-    confirmDelete({
-      title: `确认删除等级「${record.name}」？`,
-      content: '删除后该等级下会员的等级将被置空。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id: record.id } });
-        Toast.success('删除成功');
-      },
-    });
-  };
 
   const columns: ColumnProps<MemberLevel>[] = [
     { title: '等级名称', dataIndex: 'name', minWidth: 140, render: renderEllipsis },
@@ -65,7 +53,12 @@ export default function MemberLevelsPage() {
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => [
         { key: 'edit', label: '编辑', hidden: !hasPermission('member:level:update'), onClick: () => levelModal.openEdit(record) },
-        { key: 'delete', label: '删除', danger: true, hidden: !hasPermission('member:level:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !hasPermission('member:level:delete'),
+          title: `确认删除等级「${record.name}」？`,
+          content: '删除后该等级下会员的等级将被置空。',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -89,8 +82,7 @@ export default function MemberLevelsPage() {
         )}
       />
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small" pagination={false} empty="暂无数据" />
+      <ConfigurableTable<MemberLevel> columns={columns} {...listTableProps(listQuery, { empty: '暂无数据' })} />
 
       <AppModal {...levelModal.modalProps} width={660}>
         <Form key={levelModal.formKey} {...levelModal.formProps}>

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Input, Button, PinCode, Toast } from '@douyinfe/semi-ui';
-import { Crown } from 'lucide-react';
+import { Input, Button, Toast } from '@douyinfe/semi-ui';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
 import { useSmsCode } from '../../hooks/useSmsCode';
+import { MemberAuthCard, SmsCodeField } from '../../components/MemberAuthCard';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
 
@@ -47,33 +47,26 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="mc-auth-wrap">
-      <div className="mc-auth-card">
-        <div className="mc-auth-logo">
-          <Crown size={28} />
-        </div>
-        <div className="mc-auth-title">注册会员</div>
-        <div className="mc-auth-sub">手机号快速注册，即刻享受会员权益</div>
-
-        <Input
-          size="large"
-          placeholder="手机号"
-          value={phone}
-          onChange={setPhone}
-          style={{ marginBottom: 12 }}
+    <MemberAuthCard
+      title="注册会员"
+      subtitle="手机号快速注册，即刻享受会员权益"
+      footer={(
+        <>
+          已有账户？
+          <button type="button" className="mc-auth-link" onClick={() => navigate('/login')}>
+            返回登录
+          </button>
+        </>
+      )}
+    >
+        <SmsCodeField
+          phone={phone}
+          smsCode={smsCode}
+          onPhoneChange={setPhone}
+          onSmsCodeChange={setSmsCode}
+          counting={counting}
+          onSend={() => send(phone)}
         />
-        <div style={{ marginBottom: 12 }}>
-          <PinCode
-            count={6}
-            value={smsCode}
-            onChange={setSmsCode}
-          />
-          <div style={{ textAlign: 'right', marginTop: 8 }}>
-            <Button theme="borderless" size="small" disabled={counting > 0} onClick={() => send(phone)}>
-              {counting > 0 ? `${counting}s` : '获取验证码'}
-            </Button>
-          </div>
-        </div>
         <Input
           size="large"
           placeholder="昵称（选填）"
@@ -101,14 +94,6 @@ export default function RegisterPage() {
         >
           注册并登录
         </Button>
-
-        <div className="mc-auth-footer">
-          已有账户？
-          <button type="button" className="mc-auth-link" onClick={() => navigate('/login')}>
-            返回登录
-          </button>
-        </div>
-      </div>
-    </div>
+    </MemberAuthCard>
   );
 }

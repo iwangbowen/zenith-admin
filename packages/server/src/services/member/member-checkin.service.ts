@@ -17,6 +17,8 @@ import { formatDateTime } from '../../lib/datetime';
 import { currentMemberId } from '../../lib/member-context';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { getCheckinSettingsRow } from './checkin-settings.service';
 import { grantCouponInTx } from './coupons.service';
@@ -77,13 +79,12 @@ export async function listMemberCheckins(params: {
     .where(where)
     .orderBy(desc(memberCheckins.createdAt));
 
-  const [total, rows] = await Promise.all([
-    db.$count(memberCheckins, where),
-    withPagination(baseQuery.$dynamic(), params.page, params.pageSize),
-  ]);
-
-  return {
-    list: rows.map((row) => ({
+  return buildListResult({
+    page: params.page,
+    pageSize: params.pageSize,
+    count: () => db.$count(memberCheckins, where),
+    rows: () => withPagination(baseQuery.$dynamic(), params.page, params.pageSize),
+    map: (row) => ({
       id: row.id,
       memberId: row.memberId,
       memberNickname: row.memberNickname ?? null,
@@ -94,11 +95,8 @@ export async function listMemberCheckins(params: {
       isMakeup: row.isMakeup,
       remark: row.remark ?? null,
       createdAt: formatDateTime(row.createdAt),
-    })),
-    total,
-    page: params.page,
-    pageSize: params.pageSize,
-  };
+    }),
+  });
 }
 
 /** 签到日历：按月聚合每日签到人数与补签数（管理端日历视图；明细由悬浮层按日分页懒加载） */
@@ -374,21 +372,17 @@ export async function getMyCheckinHistory(params: { page: number; pageSize: numb
   if (params.dateStart) conds.push(gte(memberCheckins.checkinDate, params.dateStart));
   if (params.dateEnd) conds.push(lte(memberCheckins.checkinDate, params.dateEnd));
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(memberCheckins, where),
-    db.select().from(memberCheckins)
+  return buildListResult({
+    page: params.page,
+    pageSize: params.pageSize,
+    count: () => db.$count(memberCheckins, where),
+    rows: () => db.select().from(memberCheckins)
       .where(where)
       .orderBy(desc(memberCheckins.checkinDate))
       .limit(params.pageSize)
       .offset(pageOffset(params.page, params.pageSize)),
-  ]);
-
-  return {
-    list: rows.map((row) => mapMemberCheckin(row)),
-    total,
-    page: params.page,
-    pageSize: params.pageSize,
-  };
+    map: (row) => mapMemberCheckin(row),
+  });
 }
 
 function isValidDateStr(value: string): boolean {
@@ -415,7 +409,7 @@ export async function doMakeupCheckin(params: { memberId: number; date: string; 
 
   const [member] = await db.select({ id: members.id }).from(members)
     .where(and(eq(members.id, memberId), isNull(members.deletedAt))).limit(1);
-  if (!member) throw new HTTPException(404, { message: '会员不存在' });
+  requireRow(member, '会员不存在');
 
   const [existing] = await db.select({ id: memberCheckins.id }).from(memberCheckins)
     .where(and(eq(memberCheckins.memberId, memberId), eq(memberCheckins.checkinDate, dateStr))).limit(1);

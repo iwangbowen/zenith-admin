@@ -16,6 +16,8 @@ import { currentMemberId } from '../../lib/member-context';
 import { decide } from '../platform/rules-runtime.service';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { trackServerEvent } from '../analytics/analytics-server-events.service';
 import type { CouponType, CouponValidType, CouponTemplateStatus } from '@zenith/shared/member';
@@ -66,8 +68,7 @@ export function mapMemberCoupon(row: MemberCouponRow, coupon?: CouponRow | null,
 // ─── 校验 ─────────────────────────────────────────────────────────────────────
 export async function ensureCouponExists(id: number): Promise<CouponRow> {
   const [row] = await db.select().from(coupons).where(eq(coupons.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '优惠券不存在' });
-  return row;
+  return requireRow(row, '优惠券不存在');
 }
 
 // ─── 模板 CRUD ────────────────────────────────────────────────────────────────
@@ -105,11 +106,13 @@ export async function listCoupons(q: ListCouponsQuery) {
   if (q.type) conds.push(eq(coupons.type, q.type));
   const where = buildWhere(...conds);
 
-  const [total, rows] = await Promise.all([
-    db.$count(coupons, where),
-    withPagination(db.select().from(coupons).where(where).orderBy(desc(coupons.id)).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: rows.map(mapCoupon), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(coupons, where),
+    rows: () => withPagination(db.select().from(coupons).where(where).orderBy(desc(coupons.id)).$dynamic(), q.page, q.pageSize),
+    map: mapCoupon,
+  });
 }
 
 export async function getCoupon(id: number) {
@@ -121,8 +124,8 @@ export async function getMemberCouponBeforeAudit(id: number) {
     where: eq(memberCoupons.id, id),
     with: { coupon: true, member: { columns: { nickname: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '领券记录不存在' });
-  return mapMemberCoupon(row, row.coupon, row.member?.nickname);
+  const memberCoupon = requireRow(row, '领券记录不存在');
+  return mapMemberCoupon(memberCoupon, memberCoupon.coupon, memberCoupon.member?.nickname);
 }
 
 export async function createCoupon(input: CreateCouponInput) {
@@ -278,18 +281,18 @@ async function grantCoupon(
 export async function issueCoupon(couponId: number, memberId: number) {
   return db.transaction(async (tx) => {
     const [coupon] = await tx.select().from(coupons).where(eq(coupons.id, couponId)).limit(1);
-    if (!coupon) throw new HTTPException(404, { message: '优惠券不存在' });
+    const couponRow = requireRow(coupon, '优惠券不存在');
     const [m] = await tx.select({ id: members.id, levelId: members.levelId, growthValue: members.growthValue })
       .from(members).where(and(eq(members.id, memberId), isNull(members.deletedAt))).limit(1);
-    if (!m) throw new HTTPException(404, { message: '会员不存在' });
+    const member = requireRow(m, '会员不存在');
     // 规则中心资格判定（可选）：若已发布 coupon_eligibility 决策表且判定不通过则拒发；表缺失/异常默认放行
     const decision = await decide(
       { kind: 'table', key: 'coupon_eligibility' },
-      { member: m, coupon: { id: coupon.id, faceValue: coupon.faceValue, type: coupon.type } },
+      { member, coupon: { id: couponRow.id, faceValue: couponRow.faceValue, type: couponRow.type } },
       { caller: 'member.coupon', bizRef: `member:${memberId}` },
     );
     if (decision.outputs.eligible === false || decision.outputs.eligible === 'false') throw new HTTPException(400, { message: '该会员不满足此优惠券发放资格' });
-    return mapMemberCoupon(await grantCoupon(tx, coupon, memberId), coupon);
+    return mapMemberCoupon(await grantCoupon(tx, couponRow, memberId), couponRow);
   });
 }
 
@@ -302,8 +305,7 @@ export async function grantCouponInTx(
   opts?: { bizType?: string; bizId?: string },
 ): Promise<MemberCouponRow> {
   const [coupon] = await tx.select().from(coupons).where(eq(coupons.id, couponId)).limit(1);
-  if (!coupon) throw new HTTPException(404, { message: '优惠券不存在' });
-  return grantCoupon(tx, coupon, memberId, opts);
+  return grantCoupon(tx, requireRow(coupon, '优惠券不存在'), memberId, opts);
 }
 
 /** 前台：会员自助领券 */
@@ -311,13 +313,13 @@ export async function receiveCoupon(couponId: number) {
   const memberId = currentMemberId();
   const result = await db.transaction(async (tx) => {
     const [coupon] = await tx.select().from(coupons).where(eq(coupons.id, couponId)).limit(1);
-    if (!coupon) throw new HTTPException(404, { message: '优惠券不存在' });
-    if (coupon.status !== 'active') throw new HTTPException(400, { message: '优惠券不可领取' });
+    const couponRow = requireRow(coupon, '优惠券不存在');
+    if (couponRow.status !== 'active') throw new HTTPException(400, { message: '优惠券不可领取' });
     const now = new Date();
-    if (coupon.validType === 'fixed' && coupon.validEnd && coupon.validEnd < now) {
+    if (couponRow.validType === 'fixed' && couponRow.validEnd && couponRow.validEnd < now) {
       throw new HTTPException(400, { message: '优惠券已过期' });
     }
-    return mapMemberCoupon(await grantCoupon(tx, coupon, memberId), coupon);
+    return mapMemberCoupon(await grantCoupon(tx, couponRow, memberId), couponRow);
   });
   // 服务端权威事件（best-effort，事务已提交后触发）
   trackServerEvent({
@@ -334,15 +336,15 @@ export async function exchangePointsForCoupon(couponId: number) {
   const memberId = currentMemberId();
   return db.transaction(async (tx) => {
     const [coupon] = await tx.select().from(coupons).where(eq(coupons.id, couponId)).limit(1);
-    if (!coupon) throw new HTTPException(404, { message: '优惠券不存在' });
-    if (coupon.status !== 'active' || coupon.exchangePoints <= 0) {
+    const couponRow = requireRow(coupon, '优惠券不存在');
+    if (couponRow.status !== 'active' || couponRow.exchangePoints <= 0) {
       throw new HTTPException(400, { message: '该优惠券不支持积分兑换' });
     }
     const now = new Date();
-    if (coupon.validType === 'fixed' && coupon.validEnd && coupon.validEnd < now) {
+    if (couponRow.validType === 'fixed' && couponRow.validEnd && couponRow.validEnd < now) {
       throw new HTTPException(400, { message: '优惠券已过期' });
     }
-    const cost = coupon.exchangePoints;
+    const cost = couponRow.exchangePoints;
     // 条件扣减防超扣（同补签模式）：余额不足时 UPDATE 不命中
     const deducted = await tx.update(memberPointAccounts).set({
       balance: sql`${memberPointAccounts.balance} - ${cost}`,
@@ -356,11 +358,11 @@ export async function exchangePointsForCoupon(couponId: number) {
       amount: -cost,
       balanceAfter: deducted[0].balance,
       bizType: 'coupon_exchange',
-      bizId: String(coupon.id),
-      remark: `积分兑换「${coupon.name}」`,
+      bizId: String(couponRow.id),
+      remark: `积分兑换「${couponRow.name}」`,
     });
-    const mc = await grantCoupon(tx, coupon, memberId, { bizType: 'points_exchange', bizId: String(coupon.id) });
-    return mapMemberCoupon(mc, coupon);
+    const mc = await grantCoupon(tx, couponRow, memberId, { bizType: 'points_exchange', bizId: String(couponRow.id) });
+    return mapMemberCoupon(mc, couponRow);
   });
 }
 
@@ -370,8 +372,8 @@ export async function getMemberCouponByCode(code: string) {
     where: eq(memberCoupons.code, code.trim()),
     with: { coupon: true, member: { columns: { nickname: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '券码不存在' });
-  return mapMemberCoupon(row, row.coupon, row.member?.nickname);
+  const memberCoupon = requireRow(row, '券码不存在');
+  return mapMemberCoupon(memberCoupon, memberCoupon.coupon, memberCoupon.member?.nickname);
 }
 
 // ─── 核销 / 作废 / 过期 ───────────────────────────────────────────────────────
@@ -407,13 +409,13 @@ export async function redeemCoupon(code: string, opts?: { bizType?: string; bizI
 
   // 未命中：区分券码不存在 / 已过期 / 其它不可用
   const [mc] = await db.select().from(memberCoupons).where(eq(memberCoupons.code, code)).limit(1);
-  if (!mc) throw new HTTPException(404, { message: '券码不存在' });
-  if (mc.status === 'unused' && mc.expireAt && mc.expireAt <= now) {
+  const memberCoupon = requireRow(mc, '券码不存在');
+  if (memberCoupon.status === 'unused' && memberCoupon.expireAt && memberCoupon.expireAt <= now) {
     // 独立落库过期标记（不在抛错事务内，不会被回滚）
     await db
       .update(memberCoupons)
       .set({ status: 'expired' })
-      .where(and(eq(memberCoupons.id, mc.id), eq(memberCoupons.status, 'unused')));
+      .where(and(eq(memberCoupons.id, memberCoupon.id), eq(memberCoupons.status, 'unused')));
     throw new HTTPException(400, { message: '优惠券已过期' });
   }
   throw new HTTPException(400, { message: '优惠券不可用' });
@@ -422,8 +424,8 @@ export async function redeemCoupon(code: string, opts?: { bizType?: string; bizI
 /** 后台作废券码（冻结，未使用的券才能作废）*/
 export async function revokeCoupon(memberCouponId: number) {
   const [mc] = await db.select().from(memberCoupons).where(eq(memberCoupons.id, memberCouponId)).limit(1);
-  if (!mc) throw new HTTPException(404, { message: '领券记录不存在' });
-  if (mc.status === 'used') throw new HTTPException(400, { message: '已使用的券不可作废' });
+  const memberCoupon = requireRow(mc, '领券记录不存在');
+  if (memberCoupon.status === 'used') throw new HTTPException(400, { message: '已使用的券不可作废' });
   await db.update(memberCoupons).set({ status: 'frozen' }).where(eq(memberCoupons.id, memberCouponId));
 }
 
@@ -485,22 +487,19 @@ export function buildMemberCouponWhere(q: { memberId?: number; memberKeyword?: s
 export async function listMemberCoupons(q: ListMemberCouponsQuery) {
   const where = buildMemberCouponWhere(q);
 
-  const [total, rows] = await Promise.all([
-    db.$count(memberCoupons, where),
-    db.query.memberCoupons.findMany({
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(memberCoupons, where),
+    rows: () => db.query.memberCoupons.findMany({
       where,
       with: { coupon: true, member: { columns: { nickname: true } } },
       orderBy: desc(memberCoupons.id),
       limit: q.pageSize,
       offset: pageOffset(q.page, q.pageSize),
     }),
-  ]);
-  return {
-    list: rows.map((r) => mapMemberCoupon(r, r.coupon, r.member?.nickname)),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    map: (r) => mapMemberCoupon(r, r.coupon, r.member?.nickname),
+  });
 }
 
 /** 前台：我的优惠券 */
@@ -510,15 +509,17 @@ export async function listMyCoupons(q: { status?: MemberCouponRow['status']; pag
   if (q.status) conds.push(eq(memberCoupons.status, q.status));
   const where = and(...conds);
 
-  const [total, rows] = await Promise.all([
-    db.$count(memberCoupons, where),
-    db.query.memberCoupons.findMany({
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(memberCoupons, where),
+    rows: () => db.query.memberCoupons.findMany({
       where,
       with: { coupon: true },
       orderBy: desc(memberCoupons.id),
       limit: q.pageSize,
       offset: pageOffset(q.page, q.pageSize),
     }),
-  ]);
-  return { list: rows.map((r) => mapMemberCoupon(r, r.coupon)), total, page: q.page, pageSize: q.pageSize };
+    map: (r) => mapMemberCoupon(r, r.coupon),
+  });
 }

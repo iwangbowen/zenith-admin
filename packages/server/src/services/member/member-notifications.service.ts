@@ -5,7 +5,6 @@
  * - 前台自助：列表 / 未读数 / 标记已读
  */
 import { and, count, desc, eq, isNull } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { memberNotifications } from '../../db/schema';
 import type { MemberNotificationRow } from '../../db/schema';
@@ -13,6 +12,8 @@ import type { DbExecutor } from '../../db/types';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { currentMemberId } from '../../lib/member-context';
 import { pageOffset } from '../../lib/pagination';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 
 export function mapMemberNotification(row: MemberNotificationRow) {
   return {
@@ -65,15 +66,17 @@ export async function listMyNotifications(q: { page: number; pageSize: number; u
   const conds = [eq(memberNotifications.memberId, memberId)];
   if (q.unreadOnly) conds.push(isNull(memberNotifications.readAt));
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(memberNotifications, where),
-    db.select().from(memberNotifications)
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(memberNotifications, where),
+    rows: () => db.select().from(memberNotifications)
       .where(where)
       .orderBy(desc(memberNotifications.id))
       .limit(q.pageSize)
       .offset(pageOffset(q.page, q.pageSize)),
-  ]);
-  return { list: rows.map(mapMemberNotification), total, page: q.page, pageSize: q.pageSize };
+    map: mapMemberNotification,
+  });
 }
 
 export async function getMyUnreadCount(): Promise<number> {
@@ -96,7 +99,7 @@ export async function markMyNotificationRead(id: number): Promise<void> {
   if (updated.length === 0) {
     const [exist] = await db.select({ id: memberNotifications.id }).from(memberNotifications)
       .where(and(eq(memberNotifications.id, id), eq(memberNotifications.memberId, memberId))).limit(1);
-    if (!exist) throw new HTTPException(404, { message: '通知不存在' });
+    requireRow(exist, '通知不存在');
   }
 }
 

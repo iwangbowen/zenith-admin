@@ -13,6 +13,8 @@ import { members, memberLevels, memberPointAccounts, memberWallets, memberLoginL
 import type { MemberRow } from '../../db/schema';
 import { signToken, verifyToken } from '../../lib/jwt';
 import { pageOffset } from '../../lib/pagination';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import {
   generateMemberTokenId,
   registerMemberSession,
@@ -144,8 +146,7 @@ async function findMemberByAccount(account: string): Promise<MemberRow | undefin
 export async function ensureMemberExists(id: number): Promise<MemberRow> {
   const [row] = await db.select().from(members)
     .where(and(eq(members.id, id), isNull(members.deletedAt))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '会员不存在' });
-  return row;
+  return requireRow(row, '会员不存在');
 }
 
 // ─── 登录日志 ─────────────────────────────────────────────────────────────────
@@ -177,16 +178,16 @@ export function recordMemberLoginLog(params: MemberLoginLogParams): void {
 /** 会员端：我的登录历史（本人可见，不附加昵称列） */
 export async function listMyLoginLogs(q: { page: number; pageSize: number }) {
   const { memberId } = currentMember();
-  const [rows, total] = await Promise.all([
-    db.select().from(memberLoginLogs)
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    rows: () => db.select().from(memberLoginLogs)
       .where(eq(memberLoginLogs.memberId, memberId))
       .orderBy(desc(memberLoginLogs.createdAt))
       .limit(q.pageSize)
       .offset(pageOffset(q.page, q.pageSize)),
-    db.$count(memberLoginLogs, eq(memberLoginLogs.memberId, memberId)),
-  ]);
-  return {
-    list: rows.map((r) => ({
+    count: () => db.$count(memberLoginLogs, eq(memberLoginLogs.memberId, memberId)),
+    map: (r) => ({
       id: r.id,
       memberId: r.memberId,
       ip: r.ip,
@@ -197,11 +198,8 @@ export async function listMyLoginLogs(q: { page: number; pageSize: number }) {
       status: r.status,
       message: r.message,
       createdAt: formatDateTime(r.createdAt),
-    })),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    }),
+  });
 }
 
 // ─── 注册 ─────────────────────────────────────────────────────────────────────
@@ -475,11 +473,11 @@ export async function getMyMemberProfile() {
       wallet: { columns: { balance: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '会员不存在' });
-  return mapMember(row, {
-    levelName: row.level?.name ?? null,
-    pointBalance: row.pointAccount?.balance ?? 0,
-    walletBalance: row.wallet?.balance ?? 0,
+  const member = requireRow(row, '会员不存在');
+  return mapMember(member, {
+    levelName: member.level?.name ?? null,
+    pointBalance: member.pointAccount?.balance ?? 0,
+    walletBalance: member.wallet?.balance ?? 0,
   });
 }
 
@@ -513,11 +511,11 @@ export async function changeMyMemberPassword(input: MemberChangePasswordInput): 
   const { memberId } = currentMember();
   const [member] = await db.select().from(members)
     .where(and(eq(members.id, memberId), isNull(members.deletedAt))).limit(1);
-  if (!member) throw new HTTPException(404, { message: '会员不存在' });
+  const current = requireRow(member, '会员不存在');
   // 已设密码时需校验原密码
-  if (member.password) {
+  if (current.password) {
     if (!input.oldPassword) throw new HTTPException(400, { message: '请输入原密码' });
-    const valid = await verifyPassword(input.oldPassword, member.password);
+    const valid = await verifyPassword(input.oldPassword, current.password);
     if (!valid) throw new HTTPException(400, { message: '原密码错误' });
   }
   const hashed = await hashPassword(input.newPassword);
@@ -546,16 +544,16 @@ export async function deactivateMyAccount(input: { password?: string; smsCode?: 
   const { memberId } = currentMember();
   const [member] = await db.select().from(members)
     .where(and(eq(members.id, memberId), isNull(members.deletedAt))).limit(1);
-  if (!member) throw new HTTPException(404, { message: '会员不存在' });
+  const current = requireRow(member, '会员不存在');
 
-  if (member.password) {
+  if (current.password) {
     if (!input.password) throw new HTTPException(400, { message: '请输入登录密码确认注销' });
-    const valid = await verifyPassword(input.password, member.password);
+    const valid = await verifyPassword(input.password, current.password);
     if (!valid) throw new HTTPException(400, { message: '密码错误' });
   } else {
-    if (!member.phone) throw new HTTPException(400, { message: '账户未绑定手机号，请联系客服注销' });
+    if (!current.phone) throw new HTTPException(400, { message: '账户未绑定手机号，请联系客服注销' });
     if (!input.smsCode) throw new HTTPException(400, { message: '请输入短信验证码确认注销' });
-    const ok = await verifyMemberSmsCode(member.phone, 'reset', input.smsCode);
+    const ok = await verifyMemberSmsCode(current.phone, 'reset', input.smsCode);
     if (!ok) throw new HTTPException(400, { message: '验证码错误或已过期' });
   }
 

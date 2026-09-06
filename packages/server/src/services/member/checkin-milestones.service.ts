@@ -9,6 +9,7 @@ import { checkinMilestones, coupons } from '../../db/schema';
 import type { CheckinMilestoneRow } from '../../db/schema';
 import type { CheckinMilestoneRewardType } from '@zenith/shared/member';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
 export function mapCheckinMilestone(row: CheckinMilestoneRow, couponName?: string | null) {
@@ -29,8 +30,7 @@ export function mapCheckinMilestone(row: CheckinMilestoneRow, couponName?: strin
 
 export async function ensureMilestoneExists(id: number): Promise<CheckinMilestoneRow> {
   const [row] = await db.select().from(checkinMilestones).where(eq(checkinMilestones.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '签到里程碑不存在' });
-  return row;
+  return requireRow(row, '签到里程碑不存在');
 }
 
 export async function listCheckinMilestones() {

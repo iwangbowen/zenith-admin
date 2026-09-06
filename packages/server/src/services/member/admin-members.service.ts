@@ -12,6 +12,8 @@ import { mapMember, ensureMemberExists } from './member-auth.service';
 import { forceLogoutAllByMember } from '../../lib/member-session-manager';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import { registerRevealSource } from '../../lib/data-mask/reveal';
@@ -63,29 +65,25 @@ const memberRelationSelect = {
 
 export async function listMembers(q: ListMembersQuery) {
   const where = buildMemberWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(members, where),
-    db.query.members.findMany({
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(members, where),
+    rows: () => db.query.members.findMany({
       where,
       with: memberRelationSelect,
       orderBy: desc(members.id),
       limit: q.pageSize,
       offset: pageOffset(q.page, q.pageSize),
     }),
-  ]);
-  return {
-    list: rows.map((r) =>
+    map: (r) =>
       mapMember(r, {
         levelName: r.level?.name ?? null,
         pointBalance: r.pointAccount?.balance ?? 0,
         walletBalance: r.wallet?.balance ?? 0,
         tags: mapBoundTags(r.tagBindings),
       }),
-    ),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+  });
 }
 
 // ─── 轻量搜索下拉（积分/钱包调整、发券选择会员）───────────────────────────────
@@ -112,12 +110,12 @@ export async function getMemberDetail(id: number) {
     where: and(eq(members.id, id), isNull(members.deletedAt)),
     with: memberRelationSelect,
   });
-  if (!row) throw new HTTPException(404, { message: '会员不存在' });
-  return mapMember(row, {
-    levelName: row.level?.name ?? null,
-    pointBalance: row.pointAccount?.balance ?? 0,
-    walletBalance: row.wallet?.balance ?? 0,
-    tags: mapBoundTags(row.tagBindings),
+  const member = requireRow(row, '会员不存在');
+  return mapMember(member, {
+    levelName: member.level?.name ?? null,
+    pointBalance: member.pointAccount?.balance ?? 0,
+    walletBalance: member.wallet?.balance ?? 0,
+    tags: mapBoundTags(member.tagBindings),
   });
 }
 
@@ -310,7 +308,7 @@ export async function getMemberOverview(id: number) {
     where: and(eq(members.id, id), isNull(members.deletedAt)),
     with: memberRelationSelect,
   });
-  if (!row) throw new HTTPException(404, { message: '会员不存在' });
+  const member = requireRow(row, '会员不存在');
 
   const [pointAcc, wallet, recentPointRows, recentWalletRows, recentLoginRows, activeCouponCount, loginLogCount, checkinTotal, mpFanRows, inviterRow, invitedCount] =
     await Promise.all([
@@ -333,28 +331,28 @@ export async function getMemberOverview(id: number) {
       db.$count(memberCheckins, eq(memberCheckins.memberId, id)),
       db.select({ id: mpFans.id, nickname: mpFans.nickname, openid: mpFans.openid })
         .from(mpFans).where(eq(mpFans.memberId, id)).limit(5),
-      row.invitedBy
-        ? db.select({ id: members.id, nickname: members.nickname }).from(members).where(eq(members.id, row.invitedBy)).limit(1)
+      member.invitedBy
+        ? db.select({ id: members.id, nickname: members.nickname }).from(members).where(eq(members.id, member.invitedBy)).limit(1)
         : Promise.resolve([]),
       db.$count(members, and(eq(members.invitedBy, id), isNull(members.deletedAt))),
     ]);
 
   return {
-    member: mapMember(row, {
-      levelName: row.level?.name ?? null,
-      pointBalance: row.pointAccount?.balance ?? 0,
-      walletBalance: row.wallet?.balance ?? 0,
-      tags: mapBoundTags(row.tagBindings),
+    member: mapMember(member, {
+      levelName: member.level?.name ?? null,
+      pointBalance: member.pointAccount?.balance ?? 0,
+      walletBalance: member.wallet?.balance ?? 0,
+      tags: mapBoundTags(member.tagBindings),
     }),
     points: mapPointAccount(pointAcc),
     wallet: mapWallet(wallet),
     recentPointTxs: recentPointRows.map((r) => mapPointTransaction(r)),
     recentWalletTxs: recentWalletRows.map((r) => mapWalletTransaction(r)),
-    recentLoginLogs: recentLoginRows.map((r) => mapMemberLoginLog({ ...r, memberNickname: row.nickname })),
+    recentLoginLogs: recentLoginRows.map((r) => mapMemberLoginLog({ ...r, memberNickname: member.nickname })),
     activeCouponCount,
     loginLogCount,
     checkinTotal,
-    inviteCode: row.inviteCode ?? null,
+    inviteCode: member.inviteCode ?? null,
     inviter: inviterRow[0] ? { id: inviterRow[0].id, nickname: inviterRow[0].nickname } : null,
     invitedCount,
     mpFans: mpFanRows.map((f) => ({ id: f.id, nickname: f.nickname ?? null, openid: f.openid })),

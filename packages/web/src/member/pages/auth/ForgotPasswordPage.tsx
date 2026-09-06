@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Input, Button, PinCode, Toast } from '@douyinfe/semi-ui';
-import { Crown } from 'lucide-react';
+import { Input, Button, Toast } from '@douyinfe/semi-ui';
 import { useSmsCode } from '../../hooks/useSmsCode';
 import { useResetMemberPassword } from '../../hooks/queries';
+import { MemberAuthCard, SmsCodeField } from '../../components/MemberAuthCard';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
 
@@ -38,33 +38,26 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="mc-auth-wrap">
-      <div className="mc-auth-card">
-        <div className="mc-auth-logo">
-          <Crown size={28} />
-        </div>
-        <div className="mc-auth-title">重置密码</div>
-        <div className="mc-auth-sub">通过手机验证码重置登录密码</div>
-
-        <Input
-          size="large"
-          placeholder="手机号"
-          value={phone}
-          onChange={setPhone}
-          style={{ marginBottom: 12 }}
+    <MemberAuthCard
+      title="重置密码"
+      subtitle="通过手机验证码重置登录密码"
+      footer={(
+        <>
+          想起密码了？
+          <button type="button" className="mc-auth-link" onClick={() => navigate('/login')}>
+            返回登录
+          </button>
+        </>
+      )}
+    >
+        <SmsCodeField
+          phone={phone}
+          smsCode={smsCode}
+          onPhoneChange={setPhone}
+          onSmsCodeChange={setSmsCode}
+          counting={counting}
+          onSend={() => send(phone)}
         />
-        <div style={{ marginBottom: 12 }}>
-          <PinCode
-            count={6}
-            value={smsCode}
-            onChange={setSmsCode}
-          />
-          <div style={{ textAlign: 'right', marginTop: 8 }}>
-            <Button theme="borderless" size="small" disabled={counting > 0} onClick={() => send(phone)}>
-              {counting > 0 ? `${counting}s` : '获取验证码'}
-            </Button>
-          </div>
-        </div>
         <Input
           size="large"
           mode="password"
@@ -85,14 +78,6 @@ export default function ForgotPasswordPage() {
         >
           重置密码
         </Button>
-
-        <div className="mc-auth-footer">
-          想起密码了？
-          <button type="button" className="mc-auth-link" onClick={() => navigate('/login')}>
-            返回登录
-          </button>
-        </div>
-      </div>
-    </div>
+    </MemberAuthCard>
   );
 }

@@ -5,10 +5,10 @@
  * 供订单/支付等消费链路在计价时调用：`应付 = Math.round(原价 * discount / 100)`。
  */
 import { and, asc, eq, gt, isNull } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { memberLevels, members } from '../../db/schema';
 import { currentMemberId } from '../../lib/member-context';
+import { requireRow } from '../../lib/db-assert';
 
 /** 会员当前折扣百分比（无等级 / 等级停用 = 100 原价）*/
 export async function getMemberDiscount(memberId: number): Promise<number> {
@@ -17,9 +17,9 @@ export async function getMemberDiscount(memberId: number): Promise<number> {
     columns: { id: true },
     with: { level: { columns: { discount: true, status: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '会员不存在' });
-  if (!row.level || row.level.status !== 'enabled') return 100;
-  return row.level.discount;
+  const member = requireRow(row, '会员不存在');
+  if (!member.level || member.level.status !== 'enabled') return 100;
+  return member.level.discount;
 }
 
 /** 按折扣计算应付金额（分），四舍五入 */
@@ -36,10 +36,10 @@ export async function getMyBenefits() {
     columns: { growthValue: true },
     with: { level: { columns: { id: true, name: true, discount: true, growthThreshold: true, benefits: true, status: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '会员不存在' });
+  const member = requireRow(row, '会员不存在');
 
-  const growthValue = row.growthValue;
-  const currentLevel = row.level && row.level.status === 'enabled' ? row.level : null;
+  const growthValue = member.growthValue;
+  const currentLevel = member.level && member.level.status === 'enabled' ? member.level : null;
   const [nextLevel] = await db
     .select({ id: memberLevels.id, name: memberLevels.name, growthThreshold: memberLevels.growthThreshold, discount: memberLevels.discount })
     .from(memberLevels)

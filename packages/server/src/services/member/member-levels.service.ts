@@ -2,12 +2,12 @@
  * 会员等级服务：等级 CRUD + 成长值自动定级。
  */
 import { and, asc, count, desc, eq, inArray, isNull, lte } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { memberLevels, members } from '../../db/schema';
 import type { MemberLevelRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
 export interface CreateLevelInput {
@@ -45,8 +45,7 @@ export function mapLevel(row: MemberLevelRow, memberCount?: number) {
 // ─── 校验 ─────────────────────────────────────────────────────────────────────
 export async function ensureLevelExists(id: number): Promise<MemberLevelRow> {
   const [row] = await db.select().from(memberLevels).where(eq(memberLevels.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '会员等级不存在' });
-  return row;
+  return requireRow(row, '会员等级不存在');
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
@@ -138,8 +137,8 @@ export async function applyGrowthDeltaInTx(executor: DbExecutor, memberId: numbe
     .from(members)
     .where(and(eq(members.id, memberId), isNull(members.deletedAt)))
     .limit(1);
-  if (!m) throw new HTTPException(404, { message: '会员不存在' });
-  const newGrowth = Math.max(0, m.growthValue + delta);
+  const member = requireRow(m, '会员不存在');
+  const newGrowth = Math.max(0, member.growthValue + delta);
   const [level] = await executor
     .select({ id: memberLevels.id })
     .from(memberLevels)

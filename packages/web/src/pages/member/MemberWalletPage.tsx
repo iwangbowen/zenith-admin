@@ -8,10 +8,9 @@ import { MEMBER_BIZ_TYPE_LABELS, WALLET_TX_TYPES, WALLET_TX_TYPE_LABELS } from '
 import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { useListDeepLink } from '@/hooks/useListDeepLink';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { MemberSelect } from '@/components/MemberSelect';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
@@ -21,9 +20,9 @@ import {
   useMemberWalletTransactions,
   useRefundMemberWallet,
 } from '@/hooks/queries/member-admin';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
+import { memberCellColumn, signedYuanChange, useMemberKeywordDeepLink } from './member-admin-display';
 
 const typeOptions = (Object.keys(WALLET_TX_TYPE_LABELS) as (keyof typeof WALLET_TX_TYPE_LABELS)[]).map((v) => ({ value: v, label: WALLET_TX_TYPE_LABELS[v] }));
 const TYPE_COLORS: Record<string, string> = { recharge: 'green', consume: 'orange', refund: 'cyan', adjust: 'blue' };
@@ -39,8 +38,7 @@ export default function MemberWalletPage() {
     draftParams, setDraftParams, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.walletLists });
-  // 会员详情等入口的深链筛选（?memberKeyword=，消费后即从 URL 移除）
-  useListDeepLink(['memberKeyword'], (p) => applySearch({ memberKeyword: p.memberKeyword }));
+  useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ memberKeyword }) });
   const [modalVisible, setModalVisible] = useState(false);
   const [mode, setMode] = useState<'adjust' | 'refund'>('adjust');
   const listQuery = useMemberWalletTransactions({
@@ -49,8 +47,6 @@ export default function MemberWalletPage() {
     memberKeyword: submittedParams.memberKeyword || undefined,
     type: enumValueOf(WALLET_TX_TYPES, submittedParams.type),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const adjustMutation = useAdjustMemberWallet();
   const refundMutation = useRefundMemberWallet();
 
@@ -71,9 +67,9 @@ export default function MemberWalletPage() {
   };
 
   const columns: ColumnProps<MemberWalletTransaction>[] = [
-    { title: '会员', dataIndex: 'memberName', width: 140, render: (v?: string, r?: MemberWalletTransaction) => v || `#${r?.memberId}` },
+    memberCellColumn<MemberWalletTransaction>({ width: 140, nameField: 'memberName', idField: 'memberId' }),
     { title: '类型', dataIndex: 'type', width: 100, render: (v: string) => <Tag color={TYPE_COLORS[v] as 'green'}>{WALLET_TX_TYPE_LABELS[v as keyof typeof WALLET_TX_TYPE_LABELS]}</Tag> },
-    { title: '变动(元)', dataIndex: 'amount', width: 110, align: 'right', render: (v: number) => <span style={{ color: v >= 0 ? 'var(--semi-color-success)' : 'var(--semi-color-danger)' }}>{v >= 0 ? `+${yuan(v)}` : yuan(v)}</span> },
+    { title: '变动(元)', dataIndex: 'amount', width: 110, align: 'right', render: signedYuanChange },
     { title: '变动后(元)', dataIndex: 'balanceAfter', width: 110, align: 'right', render: (v: number) => yuan(v) },
     { title: '业务类型', dataIndex: 'bizType', width: 130, render: (v: string | null) => (v ? (MEMBER_BIZ_TYPE_LABELS[v] ?? v) : '-') },
     { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
@@ -93,8 +89,6 @@ export default function MemberWalletPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const buildExportQuery = () => ({
     ...(submittedParams.memberKeyword ? { memberKeyword: submittedParams.memberKeyword } : {}),
     ...(submittedParams.type ? { type: submittedParams.type } : {}),
@@ -111,36 +105,18 @@ export default function MemberWalletPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderTypeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderExportButton()}
-            {renderAdjustButton()}
-            {renderRefundButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderAdjustButton()}
-            {renderRefundButton()}
-          </>
-        )}
-        mobileFilters={renderTypeFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderTypeFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={<>{renderAdjustButton()}{renderRefundButton()}</>}
+        actions={renderExportButton()}
         mobileActions={renderExportButton('flat')}
         filterTitle="钱包流水筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small"
-        pagination={buildPagination(total)} empty="暂无钱包流水" />
+      <ConfigurableTable<MemberWalletTransaction> columns={columns} {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无钱包流水' })} />
 
       <AppModal title={mode === 'adjust' ? '调整会员余额' : '会员钱包退款'} visible={modalVisible} width={480}
         onCancel={() => setModalVisible(false)} onOk={handleSubmit}>

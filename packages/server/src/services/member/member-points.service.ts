@@ -14,6 +14,8 @@ import { currentMemberId } from '../../lib/member-context';
 import { withOptimisticRetry, OptimisticLockError } from '../../lib/optimistic';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { ensureMemberExists } from './member-auth.service';
 import { memberReferenceCondition } from './member-query-helpers';
 import { trackServerEvent } from '../analytics/analytics-server-events.service';
@@ -64,8 +66,7 @@ export async function getPointAccount(memberId: number) {
 
 export async function getPointAccountBeforeAudit(memberId: number) {
   const [acc] = await db.select().from(memberPointAccounts).where(eq(memberPointAccounts.memberId, memberId)).limit(1);
-  if (!acc) throw new HTTPException(404, { message: '积分账户不存在' });
-  return mapPointAccount(acc);
+  return mapPointAccount(requireRow(acc, '积分账户不存在'));
 }
 
 export async function getMyPointAccount() {
@@ -119,18 +120,18 @@ async function applyPointChangeInTransaction(
     .from(memberPointAccounts)
     .where(eq(memberPointAccounts.memberId, input.memberId))
     .limit(1);
-  if (!acc) throw new HTTPException(404, { message: '积分账户不存在' });
+  const account = requireRow(acc, '积分账户不存在');
 
-  const { newBalance, newTotalEarned, newTotalSpent } = computePointChange(acc, input.amount);
+  const { newBalance, newTotalEarned, newTotalSpent } = computePointChange(account, input.amount);
   const updated = await tx
     .update(memberPointAccounts)
     .set({
       balance: newBalance,
       totalEarned: newTotalEarned,
       totalSpent: newTotalSpent,
-      version: acc.version + 1,
+      version: account.version + 1,
     })
-    .where(and(eq(memberPointAccounts.id, acc.id), eq(memberPointAccounts.version, acc.version)))
+    .where(and(eq(memberPointAccounts.id, account.id), eq(memberPointAccounts.version, account.version)))
     .returning();
   if (updated.length === 0) throw new OptimisticLockError();
   await tx.insert(memberPointTransactions).values({
@@ -215,22 +216,19 @@ export function buildPointTxWhere(q: { memberId?: number; memberKeyword?: string
 export async function listPointTransactions(q: ListPointTxQuery) {
   const where = buildPointTxWhere(q);
 
-  const [total, rows] = await Promise.all([
-    db.$count(memberPointTransactions, where),
-    db.query.memberPointTransactions.findMany({
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(memberPointTransactions, where),
+    rows: () => db.query.memberPointTransactions.findMany({
       where,
       with: { member: { columns: { nickname: true } } },
       orderBy: desc(memberPointTransactions.id),
       limit: q.pageSize,
       offset: pageOffset(q.page, q.pageSize),
     }),
-  ]);
-  return {
-    list: rows.map((r) => mapPointTransaction(r, r.member?.nickname)),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    map: (r) => mapPointTransaction(r, r.member?.nickname),
+  });
 }
 
 export function listMyPointTransactions(q: { type?: PointTxType; page: number; pageSize: number }) {

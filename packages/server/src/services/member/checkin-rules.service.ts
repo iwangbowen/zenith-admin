@@ -1,9 +1,9 @@
 import { asc, eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { checkinRules } from '../../db/schema';
 import type { CheckinRuleRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
 function mapCheckinRule(row: CheckinRuleRow) {
@@ -25,8 +25,7 @@ export async function listCheckinRules() {
 
 export async function ensureCheckinRuleExists(id: number): Promise<CheckinRuleRow> {
   const [row] = await db.select().from(checkinRules).where(eq(checkinRules.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '签到规则不存在' });
-  return row;
+  return requireRow(row, '签到规则不存在');
 }
 
 export async function createCheckinRule(data: {

@@ -8,9 +8,9 @@ import { COUPON_TEMPLATE_STATUSES, COUPON_TYPES, COUPON_TYPE_LABELS, COUPON_TEMP
 import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { MemberSelect } from '@/components/MemberSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
@@ -22,9 +22,8 @@ import {
   useIssueCoupon,
   useSaveCoupon,
 } from '@/hooks/queries/member-admin';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete as confirmDeleteModal } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 
@@ -70,8 +69,6 @@ export default function CouponsPage() {
     status: enumValueOf(COUPON_TEMPLATE_STATUSES, submittedParams.status),
     type: enumValueOf(COUPON_TYPES, submittedParams.type),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveCoupon();
   const deleteMutation = useDeleteCoupons();
   const issueMutation = useIssueCoupon();
@@ -128,18 +125,6 @@ export default function CouponsPage() {
     couponModal.openEdit(r);
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('已删除');
-  };
-
-  const confirmDelete = (record: Coupon) => {
-    confirmDeleteModal({
-      title: '确定要删除该优惠券吗？',
-      onOk: () => handleDelete(record.id),
-    });
-  };
-
   const openIssue = (r: Coupon) => { setIssuing(r); setIssueVisible(true); };
 
   // 行内上架/停用：上架时后端校验有效期配置完整性，不完整会拒绝并提示
@@ -189,7 +174,7 @@ export default function CouponsPage() {
             onClick: () => void handleToggleStatus(record),
           },
           { key: 'edit', label: '编辑', hidden: !canEdit, onClick: () => openEdit(record) },
-          { key: 'delete', label: '删除', danger: true, hidden: !canDelete, onClick: () => confirmDelete(record) },
+          deleteAction({ hidden: !canDelete, title: '确定要删除该优惠券吗？', run: () => deleteMutation.mutateAsync([record.id]), successMessage: '已删除' }),
         ],
       }),
     ] : []),
@@ -216,46 +201,27 @@ export default function CouponsPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => hasPermission('member:coupon:create') ? (
     <CreateButton onClick={openCreate} />
   ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderTypeFilter()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderTypeFilter()}
             {renderStatusFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="优惠券筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small"
-        pagination={buildPagination(total)} empty="暂无优惠券" />
+      <ConfigurableTable<Coupon> columns={columns} {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无优惠券' })} />
 
       <SideSheet
         title={couponModal.modalProps.title}

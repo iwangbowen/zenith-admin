@@ -14,10 +14,12 @@ import type { DbTransaction } from '../../db/types';
 import { formatDateTime } from '../../lib/datetime';
 import { currentMemberId, currentMemberOrNull } from '../../lib/member-context';
 import { currentUserOrNull } from '../../lib/context';
-import { tenantCondition } from '../../lib/tenant';
+import { exactTenantCondition, tenantCondition } from '../../lib/tenant';
 import { withOptimisticRetry, OptimisticLockError } from '../../lib/optimistic';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import logger from '../../lib/logger';
 import { createPayment } from '../payment/payment.service';
 import { memberReferenceCondition } from './member-query-helpers';
@@ -67,7 +69,7 @@ async function ensureWalletMember(memberId: number): Promise<void> {
     .from(members)
     .where(and(eq(members.id, memberId), isNull(members.deletedAt), adminMemberScope()))
     .limit(1);
-  if (!member) throw new HTTPException(404, { message: '会员不存在' });
+  requireRow(member, '会员不存在');
 }
 
 // ─── 账户 ─────────────────────────────────────────────────────────────────────
@@ -105,8 +107,7 @@ export async function getWalletBeforeAudit(memberId: number) {
     .innerJoin(members, eq(members.id, memberWallets.memberId))
     .where(and(eq(memberWallets.memberId, memberId), isNull(members.deletedAt), adminMemberScope()))
     .limit(1);
-  if (!wallet) throw new HTTPException(404, { message: '钱包不存在' });
-  return mapWallet(wallet.wallet);
+  return mapWallet(requireRow(wallet, '钱包不存在').wallet);
 }
 
 export async function getMyWallet() {
@@ -158,9 +159,9 @@ export function computeWalletChange(
 /** 事务内应用一次钱包变动（乐观锁 CAS + 原子写流水）。版本冲突抛 OptimisticLockError，由调用方重试整个事务。 */
 async function applyWalletChange(tx: DbTransaction, input: ChangeWalletInput): Promise<MemberWalletRow> {
   const [w] = await tx.select().from(memberWallets).where(eq(memberWallets.memberId, input.memberId)).limit(1);
-  if (!w) throw new HTTPException(404, { message: '钱包不存在' });
+  const wallet = requireRow(w, '钱包不存在');
 
-  const { newBalance, newTotalRecharge, newTotalConsume } = computeWalletChange(w, input.type, input.amount, { allowNegative: input.allowNegative });
+  const { newBalance, newTotalRecharge, newTotalConsume } = computeWalletChange(wallet, input.type, input.amount, { allowNegative: input.allowNegative });
 
   const updated = await tx
     .update(memberWallets)
@@ -168,9 +169,9 @@ async function applyWalletChange(tx: DbTransaction, input: ChangeWalletInput): P
       balance: newBalance,
       totalRecharge: newTotalRecharge,
       totalConsume: newTotalConsume,
-      version: w.version + 1,
+      version: wallet.version + 1,
     })
-    .where(and(eq(memberWallets.id, w.id), eq(memberWallets.version, w.version)))
+    .where(and(eq(memberWallets.id, wallet.id), eq(memberWallets.version, wallet.version)))
     .returning();
   if (updated.length === 0) throw new OptimisticLockError();
 
@@ -263,7 +264,7 @@ export async function creditWalletOnRecharge(event: { eventId: string; bizId: st
     logger.warn('[MemberWallet] 充值事件缺少支付应用', { orderNo: event.orderNo });
     return;
   }
-  const tenantScope = event.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, event.tenantId);
+  const tenantScope = exactTenantCondition(paymentOrders.tenantId, event.tenantId ?? null);
   const [order] = await db
     .select({
       id: paymentOrders.id,
@@ -289,7 +290,7 @@ export async function creditWalletOnRecharge(event: { eventId: string; bizId: st
     logger.warn('[MemberWallet] 充值事件与支付订单不匹配', { orderNo: event.orderNo, bizId: event.bizId });
     return;
   }
-  const memberTenantScope = event.tenantId == null ? isNull(members.tenantId) : eq(members.tenantId, event.tenantId);
+  const memberTenantScope = exactTenantCondition(members.tenantId, event.tenantId ?? null);
   const [member] = await db
     .select({ id: members.id })
     .from(members)
@@ -344,7 +345,7 @@ export async function reverseWalletRechargeOnRefund(event: {
   tenantId?: number | null;
 }): Promise<void> {
   if (event.appId == null || !event.refundNo || !event.refundAmount || event.refundAmount <= 0) return;
-  const tenantScope = event.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, event.tenantId);
+  const tenantScope = exactTenantCondition(paymentOrders.tenantId, event.tenantId ?? null);
   const [matched] = await db
     .select({
       orderNo: paymentOrders.orderNo,
@@ -369,7 +370,7 @@ export async function reverseWalletRechargeOnRefund(event: {
     logger.warn('[MemberWallet] 充值退款事件与支付退款单不匹配', { orderNo: event.orderNo, refundNo: event.refundNo });
     return;
   }
-  const memberTenantScope = event.tenantId == null ? isNull(members.tenantId) : eq(members.tenantId, event.tenantId);
+  const memberTenantScope = exactTenantCondition(members.tenantId, event.tenantId ?? null);
   const [member] = await db
     .select({ id: members.id })
     .from(members)
@@ -431,22 +432,19 @@ export async function listWalletTransactions(q: ListWalletTxQuery) {
     : undefined;
   const where = buildWhere(buildWalletTxWhere(q), scopedMemberIds);
 
-  const [total, rows] = await Promise.all([
-    db.$count(memberWalletTransactions, where),
-    db.query.memberWalletTransactions.findMany({
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(memberWalletTransactions, where),
+    rows: () => db.query.memberWalletTransactions.findMany({
       where,
       with: { member: { columns: { nickname: true } } },
       orderBy: desc(memberWalletTransactions.id),
       limit: q.pageSize,
       offset: pageOffset(q.page, q.pageSize),
     }),
-  ]);
-  return {
-    list: rows.map((r) => mapWalletTransaction(r, r.member?.nickname)),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    map: (r) => mapWalletTransaction(r, r.member?.nickname),
+  });
 }
 
 export function listMyWalletTransactions(q: { type?: WalletTxType; page: number; pageSize: number }) {

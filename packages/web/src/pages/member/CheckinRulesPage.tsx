@@ -10,6 +10,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
 import {
   memberAdminKeys,
@@ -21,7 +22,6 @@ import {
   type CheckinRuleFormValues,
 } from '@/hooks/queries/member-admin';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 
@@ -32,7 +32,6 @@ export default function CheckinRulesPage() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const listQuery = useCheckinRules();
   const settingsQuery = useCheckinSettings(settingsVisible);
-  const data = listQuery.data ?? [];
   const settings = settingsQuery.data ?? null;
   const saveSettingsMutation = useSaveCheckinSettings();
   const saveRuleMutation = useSaveCheckinRule();
@@ -58,17 +57,6 @@ export default function CheckinRulesPage() {
     defaults: { dayNumber: 1, points: 0, experience: 0, remark: '' },
   });
 
-  const handleDelete = (record: CheckinRule) => {
-    confirmDelete({
-      title: `确认删除第 ${record.dayNumber} 天规则？`,
-      content: '删除后该连续天数的奖励配置将失效。',
-      onOk: async () => {
-        await deleteRuleMutation.mutateAsync({ params: { id: record.id } });
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const columns: ColumnProps<CheckinRule>[] = [
     { title: '连续天数', dataIndex: 'dayNumber', width: 100, align: 'right' },
     { title: '积分奖励', dataIndex: 'points', width: 100, align: 'right' },
@@ -85,13 +73,12 @@ export default function CheckinRulesPage() {
           hidden: !hasPermission('member:checkin:rule:update'),
           onClick: () => { ruleModal.openEdit(record); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('member:checkin:rule:delete'),
-          onClick: () => handleDelete(record),
-        },
+          title: `确认删除第 ${record.dayNumber} 天规则？`,
+          content: '删除后该连续天数的奖励配置将失效。',
+          run: () => deleteRuleMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -129,17 +116,9 @@ export default function CheckinRulesPage() {
         mobileActions={renderSettingsButton()}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CheckinRule>
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        pagination={false}
-        empty="暂无签到规则"
+        {...listTableProps(listQuery, { empty: '暂无签到规则' })}
       />
 
       <AppModal

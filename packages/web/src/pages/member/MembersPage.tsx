@@ -12,12 +12,12 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { UserAvatar } from '@/components/UserAvatar';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import ImportButton from '@/components/ImportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createdAtColumn, EMPTY_PLACEHOLDER } from '../../utils/table-columns';
 import { MemberDetailDrawer } from './MemberDetailDrawer';
 import { MemberTagsManageModal } from './MemberTagsManageModal';
@@ -36,9 +36,8 @@ import {
   useSetMemberTags,
   type MemberFormValues,
 } from '@/hooks/queries/member-admin';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useSensitiveFormFields } from '@/hooks/useSensitiveFormFields';
 import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
@@ -92,8 +91,6 @@ export default function MembersPage() {
   });
   const levelsQuery = useMemberLevels();
   const tagsQuery = useMemberTags();
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const levels = levelsQuery.data ?? [];
   const memberTags = tagsQuery.data ?? [];
   const enabledTags = memberTags.filter((t: MemberTag) => t.status === 'enabled');
@@ -140,17 +137,6 @@ export default function MembersPage() {
   const editing = memberModal.editing;
   const sensitiveFields = useSensitiveFormFields<Member>({ entity: 'Member', fields: ['phone', 'email'], record: editing });
   sensitiveFieldsRef.current = sensitiveFields;
-
-  const handleDelete = (record: Member) => {
-    confirmDelete({
-      title: `确认删除会员「${record.nickname}」？`,
-      content: '删除后该会员将无法登录、不再出现在列表中；其积分/钱包流水、券码与签到记录将保留用于审计对账。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([record.id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
 
   // 封禁/恢复的单行快速切换：风控高频动作，不必进编辑弹窗改状态下拉
   const handleQuickStatus = (record: Member, status: 'active' | 'banned') => {
@@ -267,7 +253,12 @@ export default function MembersPage() {
         { key: 'quick-status', label: record.status === 'banned' ? '恢复正常' : '封禁', danger: record.status !== 'banned', hidden: !hasPermission('member:member:update'), onClick: () => handleQuickStatus(record, record.status === 'banned' ? 'active' : 'banned') },
         { key: 'adjust-growth', label: '调整成长值', hidden: !hasPermission('member:member:update'), onClick: () => openAdjustGrowth(record) },
         { key: 'reset-password', label: '重置密码', hidden: !hasPermission('member:member:update'), onClick: () => openResetPwd(record) },
-        { key: 'delete', label: '删除', danger: true, hidden: !hasPermission('member:member:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !hasPermission('member:member:delete'),
+          title: `确认删除会员「${record.nickname}」？`,
+          content: '删除后该会员将无法登录、不再出现在列表中；其积分/钱包流水、券码与签到记录将保留用于审计对账。',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -304,8 +295,6 @@ export default function MembersPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => hasPermission('member:member:create') ? (
     <CreateButton onClick={memberModal.openCreate} />
   ) : null;
@@ -331,39 +320,21 @@ export default function MembersPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderLevelFilter()}
-            {renderTagFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderExportButtons()}
-            {renderImportButton()}
-            {renderTagsManageButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderStatusFilter()}
             {renderLevelFilter()}
             {renderTagFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={<>{renderExportButtons()}{renderImportButton()}{renderTagsManageButton()}</>}
         mobileActions={renderMobileExportActions()}
         filterTitle="会员筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {/* 批量操作栏 */}
@@ -390,10 +361,12 @@ export default function MembersPage() {
         </div>
       )}
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small"
-        rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) }}
-        pagination={buildPagination(total)} empty="暂无数据" />
+      <ConfigurableTable<Member> columns={columns}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) },
+          empty: '暂无数据',
+        })} />
 
       {/* 编辑 / 新增 Modal */}
       <AppModal {...memberModal.modalProps} width={660}>

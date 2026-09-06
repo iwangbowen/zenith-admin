@@ -6,8 +6,8 @@ import type { MemberCoupon, MemberCouponStatus } from '@zenith/shared/member';
 import { MEMBER_COUPON_STATUSES, MEMBER_COUPON_STATUS_LABELS } from '@zenith/shared/member';
 import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -15,9 +15,9 @@ import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '../../utils/ta
 import { memberAdminKeys, useCouponByCode, useCouponRecordList, useRedeemCoupon, useRevokeCouponRecord } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
+import { memberCellColumn } from './member-admin-display';
 
 const statusOptions = (Object.keys(MEMBER_COUPON_STATUS_LABELS) as MemberCouponStatus[]).map((v) => ({ value: v, label: MEMBER_COUPON_STATUS_LABELS[v] }));
 const STATUS_COLORS: Record<string, string> = { unused: 'blue', used: 'green', expired: 'grey', frozen: 'orange' };
@@ -43,8 +43,6 @@ export default function CouponRecordsPage() {
     couponId: submittedParams.couponId,
     status: enumValueOf(MEMBER_COUPON_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const revokeMutation = useRevokeCouponRecord();
   // 核销
   const [redeemVisible, setRedeemVisible] = useState(false);
@@ -87,7 +85,7 @@ export default function CouponRecordsPage() {
 
   const columns: ColumnProps<MemberCoupon>[] = [
     copyableNoColumn('券码', 'code', { width: 200, fixed: 'left' }),
-    { title: '会员', dataIndex: 'memberName', width: 140, render: (v?: string, r?: MemberCoupon) => v || `#${r?.memberId}` },
+    memberCellColumn<MemberCoupon>({ width: 140, nameField: 'memberName', idField: 'memberId' }),
     { title: '优惠券', dataIndex: 'coupon', minWidth: 160, render: (_: unknown, r: MemberCoupon) => renderEllipsis(r.coupon?.name ?? `#${r.couponId}`) },
     { title: '状态', dataIndex: 'status', width: 100, render: (v: MemberCouponStatus) => <Tag color={STATUS_COLORS[v] as 'blue'}>{MEMBER_COUPON_STATUS_LABELS[v]}</Tag> },
     dateTimeColumn('领取时间', 'receivedAt'),
@@ -132,8 +130,6 @@ export default function CouponRecordsPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderRedeemButton = () => hasPermission('member:coupon:update') ? (
     <Button type="primary" icon={<ScanLine size={14} />} onClick={openRedeem}>核销券码</Button>
   ) : null;
@@ -148,40 +144,23 @@ export default function CouponRecordsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderCouponIdFilter()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderExportButton()}
-            {renderRedeemButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderRedeemButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderCouponIdFilter()}
             {renderStatusFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderRedeemButton()}
+        actions={renderExportButton()}
         mobileActions={renderExportButton('flat')}
         filterTitle="领券记录筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small"
-        pagination={buildPagination(total)} empty="暂无领券记录" />
+      <ConfigurableTable<MemberCoupon> columns={columns} {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无领券记录' })} />
 
       {/* 核销券码 Modal */}
       <AppModal title="核销券码" visible={redeemVisible} width={520}

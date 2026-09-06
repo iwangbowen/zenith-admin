@@ -1,40 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate, NavLink } from 'react-router-dom';
-import { Nav, Avatar, Badge, Modal } from '@douyinfe/semi-ui';
-import { Crown, House, Coins, Wallet, Ticket, UserCog, Lock, LogOut, ArrowLeft, History, CalendarCheck, Settings, Bell, BellRing, Gift, User, PenLine, Star, Clock, MessageSquare } from 'lucide-react';
+import { Nav, Avatar, Modal } from '@douyinfe/semi-ui';
+import { Crown } from 'lucide-react';
 import { useMemberAuth } from '../hooks/useMemberAuth';
 import { useUnreadNotificationCount } from '../hooks/queries';
-
-const NAV_ITEMS = [
-  { itemKey: '/home', text: '会员概览', icon: <House size={15} /> },
-  { itemKey: '/points', text: '我的积分', icon: <Coins size={15} /> },
-  { itemKey: '/wallet', text: '我的钱包', icon: <Wallet size={15} /> },
-  { itemKey: '/coupons', text: '我的卡券', icon: <Ticket size={15} /> },
-  { itemKey: '/checkin', text: '每日签到', icon: <CalendarCheck size={15} /> },
-  { itemKey: '/level', text: '等级权益', icon: <Crown size={15} /> },
-  { itemKey: '/messages', text: '消息中心', icon: <Bell size={15} /> },
-  { itemKey: '/contributions', text: '我的投稿', icon: <PenLine size={15} /> },
-  { itemKey: '/favorites', text: '我的收藏', icon: <Star size={15} /> },
-  { itemKey: '/subscriptions', text: '我的关注', icon: <BellRing size={15} /> },
-  { itemKey: '/my-comments', text: '我的评论', icon: <MessageSquare size={15} /> },
-  { itemKey: '/view-history', text: '浏览历史', icon: <Clock size={15} /> },
-  { itemKey: '/invite', text: '邀请有礼', icon: <Gift size={15} /> },
-  { itemKey: '/profile', text: '个人设置', icon: <Settings size={15} /> },
-  { itemKey: '/profile/edit', text: '编辑资料', icon: <UserCog size={15} /> },
-  { itemKey: '/profile/password', text: '修改密码', icon: <Lock size={15} /> },
-  { itemKey: '/login-history', text: '登录历史', icon: <History size={15} /> },
-  { itemKey: '__home__', text: '返回前台', icon: <ArrowLeft size={15} /> },
-  { itemKey: '__logout__', text: '退出登录', icon: <LogOut size={15} /> },
-];
-
-/** 移动端底部 TabBar（<768px 时替代侧边栏）*/
-const TABBAR_ITEMS = [
-  { key: '/home', label: '首页', icon: House },
-  { key: '/coupons', label: '卡券', icon: Ticket },
-  { key: '/checkin', label: '签到', icon: CalendarCheck },
-  { key: '/messages', label: '消息', icon: Bell },
-  { key: '/profile', label: '我的', icon: User },
-];
+import { MEMBER_NAV_ITEMS, MemberNavIcon, getSelectedMemberNavKey } from './member-nav';
 
 export default function MemberLayout() {
   const { member, logout } = useMemberAuth();
@@ -52,16 +22,7 @@ export default function MemberLayout() {
     return () => mql.removeEventListener('change', onChange);
   }, []);
 
-  const selectedKey = (() => {
-    const path = location.pathname;
-    const exact = NAV_ITEMS.find((item) => item.itemKey === path);
-    if (exact) return exact.itemKey;
-    if (path.startsWith('/profile')) return '/profile/edit';
-    const prefix = NAV_ITEMS.find(
-      (item) => item.itemKey !== '__logout__' && path.startsWith(item.itemKey + '/'),
-    );
-    return prefix?.itemKey ?? '/home';
-  })();
+  const selectedKey = getSelectedMemberNavKey(location.pathname);
 
   const handleLogout = () => {
     Modal.confirm({
@@ -108,11 +69,11 @@ export default function MemberLayout() {
   const sidebarWidth = collapsed ? 48 : 220;
 
   // 消息导航项带未读徽标
-  const navItems = NAV_ITEMS.map((item) =>
-    item.itemKey === '/messages' && unread > 0
-      ? { ...item, icon: <Badge count={unread > 99 ? '99+' : unread} type="danger">{item.icon}</Badge> }
-      : item,
-  );
+  const navItems = MEMBER_NAV_ITEMS.map((item) => ({
+    itemKey: item.key,
+    text: item.label,
+    icon: <MemberNavIcon item={item} unread={unread} size={15} />,
+  }));
 
   if (isMobile) {
     return (
@@ -129,8 +90,7 @@ export default function MemberLayout() {
             paddingBottom: 'env(safe-area-inset-bottom)',
           }}
         >
-          {TABBAR_ITEMS.map((tab) => {
-            const Icon = tab.icon;
+          {MEMBER_NAV_ITEMS.filter((item) => item.mobile).map((tab) => {
             const active = location.pathname === tab.key || location.pathname.startsWith(tab.key + '/');
             const color = active ? 'var(--m-primary)' : 'var(--m-text-secondary)';
             return (
@@ -143,10 +103,8 @@ export default function MemberLayout() {
                   gap: 2, background: 'none', border: 'none', cursor: 'pointer', color, minHeight: 44,
                 }}
               >
-                {tab.key === '/messages' && unread > 0
-                  ? <Badge count={unread > 99 ? '99+' : unread} type="danger"><Icon size={20} /></Badge>
-                  : <Icon size={20} />}
-                <span style={{ fontSize: 11 }}>{tab.label}</span>
+                <MemberNavIcon item={tab} active={active} unread={unread} size={20} />
+                <span style={{ fontSize: 11 }}>{tab.mobileLabel ?? tab.label}</span>
               </button>
             );
           })}

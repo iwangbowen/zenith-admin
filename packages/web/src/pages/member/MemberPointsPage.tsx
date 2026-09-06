@@ -6,18 +6,17 @@ import type { AdjustMemberPointsInput, MemberPointTransaction } from '@zenith/sh
 import { MEMBER_BIZ_TYPE_LABELS, POINT_TX_TYPES, POINT_TX_TYPE_LABELS } from '@zenith/shared/member';
 import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { MemberSelect } from '@/components/MemberSelect';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { memberAdminKeys, useAdjustMemberPoints, useMemberPointTransactions } from '@/hooks/queries/member-admin';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { useListDeepLink } from '@/hooks/useListDeepLink';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
+import { memberCellColumn, signedNumberChange, useMemberKeywordDeepLink } from './member-admin-display';
 
 const typeOptions = (Object.keys(POINT_TX_TYPE_LABELS) as (keyof typeof POINT_TX_TYPE_LABELS)[]).map((v) => ({ value: v, label: POINT_TX_TYPE_LABELS[v] }));
 const TYPE_COLORS: Record<string, string> = { earn: 'green', redeem: 'orange', expire: 'grey', adjust: 'blue', refund: 'cyan' };
@@ -37,16 +36,13 @@ export default function MemberPointsPage() {
     draftParams, setDraftParams, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.pointLists });
-  // 会员详情等入口的深链筛选（?memberKeyword=，消费后即从 URL 移除）
-  useListDeepLink(['memberKeyword'], (p) => applySearch({ memberKeyword: p.memberKeyword }));
+  useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ memberKeyword }) });
   const listQuery = useMemberPointTransactions({
     page,
     pageSize,
     memberKeyword: submittedParams.memberKeyword || undefined,
     type: enumValueOf(POINT_TX_TYPES, submittedParams.type),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const adjustMutation = useAdjustMemberPoints();
   const adjustSave = useMemo(() => ({
     mutateAsync: async ({ values }: { id?: number; values: AdjustPointFormValues }) => {
@@ -61,9 +57,9 @@ export default function MemberPointsPage() {
   });
 
   const columns: ColumnProps<MemberPointTransaction>[] = [
-    { title: '会员', dataIndex: 'memberName', width: 140, render: (v?: string, r?: MemberPointTransaction) => v || `#${r?.memberId}` },
+    memberCellColumn<MemberPointTransaction>({ width: 140, nameField: 'memberName', idField: 'memberId' }),
     { title: '类型', dataIndex: 'type', width: 100, render: (v: string) => <Tag color={TYPE_COLORS[v] as 'green'}>{POINT_TX_TYPE_LABELS[v as keyof typeof POINT_TX_TYPE_LABELS]}</Tag> },
-    { title: '变动', dataIndex: 'amount', width: 100, align: 'right', render: (v: number) => <span style={{ color: v >= 0 ? 'var(--semi-color-success)' : 'var(--semi-color-danger)' }}>{v >= 0 ? `+${v}` : v}</span> },
+    { title: '变动', dataIndex: 'amount', width: 100, align: 'right', render: signedNumberChange },
     { title: '变动后', dataIndex: 'balanceAfter', width: 100, align: 'right' },
     { title: '业务类型', dataIndex: 'bizType', width: 130, render: (v: string | null) => (v ? (MEMBER_BIZ_TYPE_LABELS[v] ?? v) : '-') },
     { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
@@ -83,8 +79,6 @@ export default function MemberPointsPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const buildExportQuery = () => ({
     ...(submittedParams.memberKeyword ? { memberKeyword: submittedParams.memberKeyword } : {}),
     ...(submittedParams.type ? { type: submittedParams.type } : {}),
@@ -98,34 +92,18 @@ export default function MemberPointsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderTypeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderExportButton()}
-            {renderAdjustButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderAdjustButton()}
-          </>
-        )}
-        mobileFilters={renderTypeFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderTypeFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderAdjustButton()}
+        actions={renderExportButton()}
         mobileActions={renderExportButton('flat')}
         filterTitle="积分流水筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered columns={columns} dataSource={data} loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small"
-        pagination={buildPagination(total)} empty="暂无积分流水" />
+      <ConfigurableTable<MemberPointTransaction> columns={columns} {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无积分流水' })} />
 
       <AppModal {...adjustModal.modalProps} title="调整会员积分" width={480}>
         <Form key={adjustModal.formKey} {...adjustModal.formProps}>

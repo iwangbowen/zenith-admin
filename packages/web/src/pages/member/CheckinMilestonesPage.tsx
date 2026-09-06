@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Form, Tag, Toast } from '@douyinfe/semi-ui';
+import { Form, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { CheckinMilestone, CheckinMilestoneRewardType } from '@zenith/shared/member';
 import { CHECKIN_MILESTONE_REWARD_TYPE_LABELS } from '@zenith/shared/member';
@@ -9,6 +9,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { renderEllipsis } from '../../utils/table-columns';
 import {
   memberAdminKeys,
@@ -19,7 +20,6 @@ import {
   type CheckinMilestoneFormValues,
 } from '@/hooks/queries/member-admin';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 
 interface CouponOption {
@@ -33,7 +33,6 @@ export default function CheckinMilestonesPage() {
   const [rewardType, setRewardType] = useState<CheckinMilestoneRewardType>('points');
   const listQuery = useCheckinMilestones();
   const couponsQuery = useCouponList({ page: 1, pageSize: 100 });
-  const data = listQuery.data ?? [];
   const coupons: CouponOption[] = (couponsQuery.data?.list ?? []).map((c) => ({ value: c.id, label: c.name }));
   const saveMutation = useSaveCheckinMilestone();
   const deleteMutation = useDeleteCheckinMilestone();
@@ -53,17 +52,6 @@ export default function CheckinMilestonesPage() {
     setRewardType(record?.rewardType ?? 'points');
     if (record) modal.openEdit(record);
     else modal.openCreate();
-  };
-
-  const handleDelete = (record: CheckinMilestone) => {
-    confirmDelete({
-      title: `确认删除里程碑「${record.title}」？`,
-      content: '删除后该累计天数的奖励配置将失效。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id: record.id } });
-        Toast.success('删除成功');
-      },
-    });
   };
 
   const columns: ColumnProps<CheckinMilestone>[] = [
@@ -99,7 +87,12 @@ export default function CheckinMilestonesPage() {
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => [
         { key: 'edit', label: '编辑', hidden: !hasPermission('member:checkin:milestone:update'), onClick: () => openModal(record) },
-        { key: 'delete', label: '删除', danger: true, hidden: !hasPermission('member:checkin:milestone:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !hasPermission('member:checkin:milestone:delete'),
+          title: `确认删除里程碑「${record.title}」？`,
+          content: '删除后该累计天数的奖励配置将失效。',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -123,17 +116,9 @@ export default function CheckinMilestonesPage() {
         )}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CheckinMilestone>
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        pagination={false}
-        empty="暂无里程碑配置"
+        {...listTableProps(listQuery, { empty: '暂无里程碑配置' })}
       />
 
       <AppModal

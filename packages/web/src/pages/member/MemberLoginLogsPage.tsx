@@ -2,16 +2,15 @@ import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { MemberLoginLog } from '@zenith/shared/member';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
 import { formatDateForApi } from '@/utils/date';
 import { memberAdminKeys, useMemberLoginLogList } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
-import { useListDeepLink } from '@/hooks/useListDeepLink';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { memberCellColumn, useMemberKeywordDeepLink } from './member-admin-display';
 
 interface SearchParams {
   keyword?: string;
@@ -33,8 +32,7 @@ export default function MemberLoginLogsPage() {
     draftParams, setDraftParams, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.loginLogLists });
-  // 会员详情等入口的深链筛选（?memberKeyword=，消费后即从 URL 移除）
-  useListDeepLink(['memberKeyword'], (p) => applySearch({ keyword: p.memberKeyword, dateRange: null }));
+  useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ keyword: memberKeyword, dateRange: null }) });
   const [dateStart, dateEnd] = submittedParams.dateRange ?? [];
   const listQuery = useMemberLoginLogList({
     page,
@@ -44,11 +42,9 @@ export default function MemberLoginLogsPage() {
     dateStart: dateStart ? formatDateForApi(dateStart) : undefined,
     dateEnd: dateEnd ? formatDateForApi(dateEnd) : undefined,
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const columns: ColumnProps<MemberLoginLog>[] = [
-    { title: '会员', dataIndex: 'memberNickname', width: 140, render: (v?: string | null, r?: MemberLoginLog) => v || (r?.memberId ? `#${r.memberId}` : '—') },
+    memberCellColumn<MemberLoginLog>({ width: 140, nameField: 'memberNickname', idField: 'memberId' }),
     { title: 'IP', dataIndex: 'ip', width: 140, render: (v: string | null) => v ?? '—' },
     { title: '地点', dataIndex: 'location', width: 140, render: (v: string | null) => renderEllipsis(v ?? '—') },
     { title: '浏览器', dataIndex: 'browser', width: 130, render: (v: string | null) => renderEllipsis(v ?? '—') },
@@ -74,8 +70,6 @@ export default function MemberLoginLogsPage() {
     <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, dateRange: value ? (value as [Date, Date]) : null }))} width={300} />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const buildExportQuery = () => {
     const [ds, de] = submittedParams.dateRange ?? [];
     return {
@@ -91,46 +85,24 @@ export default function MemberLoginLogsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderDateRangeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderExportButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderStatusFilter()}
             {renderDateRangeFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={renderExportButton()}
         mobileActions={renderExportButton('flat')}
         filterTitle="登录日志筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<MemberLoginLog>
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        pagination={buildPagination(total)}
-        empty="暂无登录日志"
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无登录日志' })}
       />
     </div>
   );

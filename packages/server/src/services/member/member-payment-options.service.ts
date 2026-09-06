@@ -1,16 +1,17 @@
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { PAYMENT_DEDUCT_METHODS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS } from '@zenith/shared/payment';
 import type { MemberPaymentApplicationOption } from '@zenith/shared/member';
 import { db } from '../../db';
 import { paymentApps, paymentChannelConfigs } from '../../db/schema';
 import { currentMember } from '../../lib/member-context';
+import { exactTenantCondition } from '../../lib/tenant';
 import { listEffectiveCashierMethods } from '../payment/payment-cashier-capability.service';
 import { evaluateEffectivePaymentOperation } from '../payment/payment-capability-evaluator';
 import { resolveApplicationChannelConfig } from '../payment/payment-apps.service';
 
 export async function listMemberPaymentOptions(): Promise<MemberPaymentApplicationOption[]> {
   const tenantId = currentMember().tenantId ?? null;
-  const tenantScope = tenantId == null ? isNull(paymentApps.tenantId) : eq(paymentApps.tenantId, tenantId);
+  const tenantScope = exactTenantCondition(paymentApps.tenantId, tenantId);
   const apps = await db
     .select({ id: paymentApps.id, name: paymentApps.name })
     .from(paymentApps)
@@ -24,9 +25,7 @@ export async function listMemberPaymentOptions(): Promise<MemberPaymentApplicati
     for (const method of PAYMENT_DEDUCT_METHODS) {
       try {
         const route = await resolveApplicationChannelConfig(app.id, PAYMENT_METHOD_CHANNEL[method], tenantId);
-        const configTenant = tenantId == null
-          ? isNull(paymentChannelConfigs.tenantId)
-          : eq(paymentChannelConfigs.tenantId, tenantId);
+        const configTenant = exactTenantCondition(paymentChannelConfigs.tenantId, tenantId);
         const [config] = await db
           .select()
           .from(paymentChannelConfigs)
