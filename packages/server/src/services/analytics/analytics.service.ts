@@ -2,6 +2,7 @@ import { and, eq, gte, lt, lte, isNotNull, sql, countDistinct, desc, notExists, 
 import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import { userEvents, analyticsSessions, analyticsDailyRollup } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import type { TrackEventInput, AnalyticsEventSource, AnalyticsEnvironment, AnalyticsIdentityType, AnalyticsDeviceType, UserBehaviorEventType } from '@zenith/shared/analytics';
@@ -1039,19 +1040,18 @@ export async function listSessions(q: SessionListQuery) {
   if (q.deviceType) conditions.push(eq(analyticsSessions.deviceType, q.deviceType as 'desktop'));
   const where = buildWhere(...conditions, tenantScope(analyticsSessions));
 
-  const [list, total] = await Promise.all([
-    db
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(analyticsSessions, where),
+    rows: () => db
       .select()
       .from(analyticsSessions)
       .where(where)
       .orderBy(desc(analyticsSessions.startedAt))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-    db.$count(analyticsSessions, where),
-  ]);
-
-  return {
-    list: list.map((r) => ({
+    map: (r) => ({
       id: r.id,
       sessionId: r.sessionId,
       userId: r.userId,
@@ -1073,11 +1073,8 @@ export async function listSessions(q: SessionListQuery) {
       source: r.source,
       appId: r.appId,
       environment: r.environment,
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1510,8 +1507,11 @@ export async function listAnalyticsEvents(q: EventListQuery) {
   const pageSize = clampLimit(q.pageSize, 20, 100);
   const where = buildEventListWhere(q);
 
-  const [list, total] = await Promise.all([
-    db
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(userEvents, where),
+    rows: () => db
       .select({
         id: userEvents.id,
         userId: userEvents.userId,
@@ -1541,11 +1541,7 @@ export async function listAnalyticsEvents(q: EventListQuery) {
       .orderBy(desc(userEvents.createdAt))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-    db.$count(userEvents, where),
-  ]);
-
-  return {
-    list: list.map(({ properties, ...r }) => {
+    map: ({ properties, ...r }) => {
       // $api 事件行内摘要：免去逐条点开详情排查接口问题
       const props = (properties ?? null) as { url?: unknown; status?: unknown } | null;
       const isApi = r.eventType === 'api_request';
@@ -1555,11 +1551,8 @@ export async function listAnalyticsEvents(q: EventListQuery) {
         apiUrl: isApi && typeof props?.url === 'string' ? props.url.slice(0, 512) : null,
         apiStatus: isApi && typeof props?.status === 'number' ? props.status : null,
       };
-    }),
-    total,
-    page,
-    pageSize,
-  };
+    },
+  });
 }
 
 export async function getEventDetail(id: number) {

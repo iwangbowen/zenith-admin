@@ -6,6 +6,7 @@
 import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { analyticsEventQualityDaily, userEvents } from '../../db/schema';
+import { buildListResult } from '../../lib/list-query';
 import type { AnalyticsQualityIssueType } from '@zenith/shared/analytics';
 import { formatDate, formatDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
@@ -85,68 +86,67 @@ export async function listDebugEvents(q: DebugEventsQuery) {
   if (scope) conditions.push(scope);
   const where = buildWhere(...conditions);
 
-  const [rows, total] = await Promise.all([
-    db
-      .select({
-        id: userEvents.id,
-        eventId: userEvents.eventId,
-        eventType: userEvents.eventType,
-        eventName: userEvents.eventName,
-        source: userEvents.source,
-        appId: userEvents.appId,
-        environment: userEvents.environment,
-        distinctId: userEvents.distinctId,
-        memberId: userEvents.memberId,
-        userId: userEvents.userId,
-        pagePath: userEvents.pagePath,
-        properties: userEvents.properties,
-        createdAt: userEvents.createdAt,
-      })
-      .from(userEvents)
-      .where(where)
-      .orderBy(desc(userEvents.createdAt))
-      .limit(pageSize)
-      .offset(pageOffset(page, pageSize)),
-    db.$count(userEvents, where),
-  ]);
-
-  const eventNames = [...new Set(rows.map((r) => r.eventName).filter((n): n is string => !!n))];
-  const issueTypesByEventName = new Map<string, AnalyticsQualityIssueType[]>();
-  if (eventNames.length > 0) {
-    const today = formatDate(new Date());
-    const scopeQ = qualityTenantScope();
-    const issueConditions: SQL[] = [eq(analyticsEventQualityDaily.statDate, today), inArray(analyticsEventQualityDaily.eventName, eventNames)];
-    if (scopeQ) issueConditions.push(scopeQ);
-    const issueRows = await db
-      .select({ eventName: analyticsEventQualityDaily.eventName, issueType: analyticsEventQualityDaily.issueType })
-      .from(analyticsEventQualityDaily)
-      .where(and(...issueConditions));
-    for (const row of issueRows) {
-      const list = issueTypesByEventName.get(row.eventName) ?? [];
-      if (!list.includes(row.issueType)) list.push(row.issueType);
-      issueTypesByEventName.set(row.eventName, list);
-    }
-  }
-
-  return {
-    list: rows.map((r) => ({
-      id: r.id,
-      eventId: r.eventId,
-      eventType: r.eventType,
-      eventName: r.eventName,
-      source: r.source,
-      appId: r.appId,
-      environment: r.environment,
-      distinctId: r.distinctId,
-      memberId: r.memberId,
-      userId: r.userId,
-      pagePath: r.pagePath,
-      properties: r.properties ?? null,
-      createdAt: formatDateTime(r.createdAt),
-      issueTypes: r.eventName ? (issueTypesByEventName.get(r.eventName) ?? []) : [],
-    })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(userEvents, where),
+    rows: async () => {
+      const rows = await db
+        .select({
+          id: userEvents.id,
+          eventId: userEvents.eventId,
+          eventType: userEvents.eventType,
+          eventName: userEvents.eventName,
+          source: userEvents.source,
+          appId: userEvents.appId,
+          environment: userEvents.environment,
+          distinctId: userEvents.distinctId,
+          memberId: userEvents.memberId,
+          userId: userEvents.userId,
+          pagePath: userEvents.pagePath,
+          properties: userEvents.properties,
+          createdAt: userEvents.createdAt,
+        })
+        .from(userEvents)
+        .where(where)
+        .orderBy(desc(userEvents.createdAt))
+        .limit(pageSize)
+        .offset(pageOffset(page, pageSize));
+
+      const eventNames = [...new Set(rows.map((r) => r.eventName).filter((n): n is string => !!n))];
+      const issueTypesByEventName = new Map<string, AnalyticsQualityIssueType[]>();
+      if (eventNames.length > 0) {
+        const today = formatDate(new Date());
+        const scopeQ = qualityTenantScope();
+        const issueConditions: SQL[] = [eq(analyticsEventQualityDaily.statDate, today), inArray(analyticsEventQualityDaily.eventName, eventNames)];
+        if (scopeQ) issueConditions.push(scopeQ);
+        const issueRows = await db
+          .select({ eventName: analyticsEventQualityDaily.eventName, issueType: analyticsEventQualityDaily.issueType })
+          .from(analyticsEventQualityDaily)
+          .where(and(...issueConditions));
+        for (const row of issueRows) {
+          const list = issueTypesByEventName.get(row.eventName) ?? [];
+          if (!list.includes(row.issueType)) list.push(row.issueType);
+          issueTypesByEventName.set(row.eventName, list);
+        }
+      }
+
+      return rows.map((r) => ({
+        id: r.id,
+        eventId: r.eventId,
+        eventType: r.eventType,
+        eventName: r.eventName,
+        source: r.source,
+        appId: r.appId,
+        environment: r.environment,
+        distinctId: r.distinctId,
+        memberId: r.memberId,
+        userId: r.userId,
+        pagePath: r.pagePath,
+        properties: r.properties ?? null,
+        createdAt: formatDateTime(r.createdAt),
+        issueTypes: r.eventName ? (issueTypesByEventName.get(r.eventName) ?? []) : [],
+      }));
+    },
+  });
 }

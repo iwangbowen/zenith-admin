@@ -1,4 +1,5 @@
 import { eq, desc, and } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { aiProviderConfigs } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -121,7 +122,7 @@ export async function listChatModels() {
 
 export async function getAiProviderConfig(id: number) {
   const [row] = await db.select().from(aiProviderConfigs).where(eq(aiProviderConfigs.id, id));
-  if (!row) throw new HTTPException(404, { message: 'AI 服务商配置不存在' });
+  requireRow(row, 'AI 服务商配置不存在');
   return mapRow(row);
 }
 
@@ -173,7 +174,7 @@ export async function createAiProviderConfig(input: CreateAiProviderConfigInput)
 export async function updateAiProviderConfig(id: number, input: UpdateAiProviderConfigInput) {
   const user = currentUser();
   const [existing] = await db.select().from(aiProviderConfigs).where(eq(aiProviderConfigs.id, id));
-  if (!existing) throw new HTTPException(404, { message: 'AI 服务商配置不存在' });
+  requireRow(existing, 'AI 服务商配置不存在');
 
   const merged = {
     providerId: input.providerId ?? existing.providerId,
@@ -230,12 +231,12 @@ export async function updateAiProviderConfig(id: number, input: UpdateAiProvider
 
 export async function deleteAiProviderConfig(id: number) {
   const result = await db.delete(aiProviderConfigs).where(eq(aiProviderConfigs.id, id)).returning();
-  if (result.length === 0) throw new HTTPException(404, { message: 'AI 服务商配置不存在' });
+  requireRow(result[0], 'AI 服务商配置不存在');
 }
 
 export async function setDefaultAiProviderConfig(id: number) {
   const [existing] = await db.select().from(aiProviderConfigs).where(eq(aiProviderConfigs.id, id));
-  if (!existing) throw new HTTPException(404, { message: 'AI 服务商配置不存在' });
+  requireRow(existing, 'AI 服务商配置不存在');
   await db.update(aiProviderConfigs).set({ isDefault: false });
   const [row] = await db.update(aiProviderConfigs).set({ isDefault: true }).where(eq(aiProviderConfigs.id, id)).returning();
   return mapRow(row);
@@ -244,7 +245,7 @@ export async function setDefaultAiProviderConfig(id: number) {
 /** 获取原始（解密后）配置，供内部 AI 调用使用 */
 export async function getRawProviderConfig(id: number) {
   const [row] = await db.select().from(aiProviderConfigs).where(eq(aiProviderConfigs.id, id));
-  if (!row) throw new HTTPException(404, { message: 'AI 服务商配置不存在' });
+  requireRow(row, 'AI 服务商配置不存在');
   return { ...row, apiKey: unsealApiKey(row.apiKey) };
 }
 
@@ -259,7 +260,7 @@ async function resolveInputApiKey(apiKey: string | undefined, id: number | undef
   let key = apiKey ?? '';
   if ((!key || key.includes('...') || key === MASKED_KEY) && id) {
     const [row] = await db.select({ apiKey: aiProviderConfigs.apiKey }).from(aiProviderConfigs).where(eq(aiProviderConfigs.id, id));
-    if (!row) throw new HTTPException(404, { message: 'AI 服务商配置不存在' });
+    requireRow(row, 'AI 服务商配置不存在');
     key = unsealApiKey(row.apiKey);
   }
   if (!key) throw new HTTPException(400, { message: 'API Key 不能为空' });

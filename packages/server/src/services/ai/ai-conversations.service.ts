@@ -1,4 +1,6 @@
 import { eq, desc, and, or, inArray, isNotNull, gt, gte, lte, sql, arrayContains } from 'drizzle-orm';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { aiConversations, aiMessages, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -149,8 +151,7 @@ export async function createConversation(input: { title?: string; agentId?: numb
   let agentId: number | null = null;
   let title = input.title?.trim() || '新对话';
   if (input.agentId) {
-    const agent = await resolveAgentForChat(input.agentId, user.userId);
-    if (!agent) throw new HTTPException(404, { message: '智能体不存在或未上架' });
+    const agent = requireRow(await resolveAgentForChat(input.agentId, user.userId), '智能体不存在或未上架');
     agentId = agent.id;
     if (!input.title) title = agent.name;
   }
@@ -170,7 +171,7 @@ export async function createConversation(input: { title?: string; agentId?: numb
 export async function ensureConversationOwner(id: number) {
   const user = currentUser();
   const [row] = await db.select().from(aiConversations).where(eq(aiConversations.id, id));
-  if (!row) throw new HTTPException(404, { message: '对话不存在' });
+  requireRow(row, '对话不存在');
   if (row.userId !== user.userId) throw new HTTPException(403, { message: '无权访问此对话' });
   return row;
 }
@@ -415,7 +416,7 @@ export async function deleteMessage(conversationId: number, messageId: number) {
     .select()
     .from(aiMessages)
     .where(and(eq(aiMessages.id, messageId), eq(aiMessages.conversationId, conversationId)));
-  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  requireRow(msg, '消息不存在');
   if (msg.role !== 'assistant') throw new HTTPException(400, { message: '只能删除 AI 回复消息' });
   await db.delete(aiMessages).where(eq(aiMessages.id, messageId));
   const { rebuildThreadMirror } = await import('./ai-memory.service');
@@ -509,23 +510,20 @@ export async function listAuditMessages(params: {
     .innerJoin(aiConversations, eq(aiMessages.conversationId, aiConversations.id))
     .where(where);
 
-  const [countRows, list] = await Promise.all([
-    countQuery,
-    withPagination(baseQuery.$dynamic(), page, pageSize),
-  ]);
-  return {
-    total: countRows[0]?.count ?? 0,
-    list: list.map((row) => ({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => countQuery.then((rows) => rows[0]?.count ?? 0),
+    rows: () => withPagination(baseQuery.$dynamic(), page, pageSize),
+    map: (row) => ({
       ...mapMessage(row.message),
       conversationTitle: row.conversationTitle ?? null,
       userId: row.userId ?? null,
       username: row.username ?? null,
       nickname: row.nickname ?? null,
       question: null,
-    })),
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 /**
@@ -538,7 +536,7 @@ export async function submitMessageFeedback(conversationId: number, messageId: n
     .select()
     .from(aiMessages)
     .where(and(eq(aiMessages.id, messageId), eq(aiMessages.conversationId, conversationId)));
-  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  requireRow(msg, '消息不存在');
   if (msg.role !== 'assistant') throw new HTTPException(400, { message: '只能对 AI 回复打分' });
   const isDislike = feedback === -1;
   await db.update(aiMessages).set({
@@ -555,7 +553,7 @@ export async function submitMessageFeedback(conversationId: number, messageId: n
  */
 export async function updateFeedbackStatus(messageId: number, status: AiFeedbackStatus, remark?: string | null) {
   const [msg] = await db.select().from(aiMessages).where(eq(aiMessages.id, messageId));
-  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  requireRow(msg, '消息不存在');
   if (msg.feedback === null) throw new HTTPException(400, { message: '该消息没有用户反馈' });
   await db.update(aiMessages).set({
     feedbackStatus: status,
@@ -580,11 +578,13 @@ export async function listFeedbackMessages(params: {
   const { page, pageSize } = params;
   const where = feedbackConds(params);
   const listQuery = feedbackSelect().where(where).orderBy(desc(aiMessages.createdAt), desc(aiMessages.id));
-  const [total, list] = await Promise.all([
-    db.$count(aiMessages, where),
-    withPagination(listQuery.$dynamic(), page, pageSize),
-  ]);
-  return { total, list: list.map(mapFeedbackRow), page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(aiMessages, where),
+    rows: () => withPagination(listQuery.$dynamic(), page, pageSize),
+    map: mapFeedbackRow,
+  });
 }
 
 /** 该 assistant 消息之前最近一条 user 提问（相关子查询） */
@@ -655,7 +655,7 @@ function mapFeedbackRow(row: FeedbackRow) {
  */
 export async function getFeedbackContext(msgId: number, before = 8, after = 2) {
   const [msg] = await db.select().from(aiMessages).where(eq(aiMessages.id, msgId));
-  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  requireRow(msg, '消息不存在');
   const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, msg.conversationId));
   // 会话属主(发送人)信息:回放时展示真实用户名与头像
   const [owner] = conv

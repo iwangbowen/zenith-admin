@@ -1,4 +1,6 @@
 import { eq, desc, sql } from 'drizzle-orm';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { analyticsEventMeta, analyticsSavedReports, analyticsUserSegments, analyticsExperiments, users } from '../../db/schema';
@@ -75,17 +77,18 @@ export async function listEventMeta(q: EventMetaListQuery) {
   // 事件字典为平台级全局分类（事件名全局唯一，跨租户共享），不做租户隔离
   const where = buildWhere(...conditions);
 
-  const [list, total] = await Promise.all([
-    db.select().from(analyticsEventMeta).where(where).orderBy(desc(analyticsEventMeta.eventCount)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    db.$count(analyticsEventMeta, where),
-  ]);
-  return { list: list.map(mapEventMeta), total, page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(analyticsEventMeta, where),
+    rows: () => db.select().from(analyticsEventMeta).where(where).orderBy(desc(analyticsEventMeta.eventCount)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapEventMeta,
+  });
 }
 
 export async function ensureEventMetaExists(id: number) {
   const [row] = await db.select().from(analyticsEventMeta).where(eq(analyticsEventMeta.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '事件不存在' });
-  return row;
+  return requireRow(row, '事件不存在');
 }
 
 function ensureBlockedStatusPermission(currentStatus: AnalyticsEventMetaRow['status'] | null, nextStatus: AnalyticsEventMetaRow['status'] | null): void {

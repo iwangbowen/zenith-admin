@@ -1,5 +1,6 @@
 import { eq, and, inArray, sql, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { mpMaterials } from '../../db/schema';
 import type { MpMaterialRow } from '../../db/schema';
@@ -30,8 +31,7 @@ export function mapMpMaterial(row: MpMaterialRow) {
 
 export async function ensureMpMaterialExists(id: number): Promise<MpMaterialRow> {
   const [row] = await db.select().from(mpMaterials).where(and(eq(mpMaterials.id, id), tenantScope(mpMaterials))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '素材不存在' });
-  return row;
+  return requireRow(row, '素材不存在');
 }
 
 export async function getMpMaterialBeforeAudit(id: number) {
@@ -54,11 +54,13 @@ export async function listMpMaterials(q: ListMpMaterialsQuery) {
   if (q.type) conditions.push(eq(mpMaterials.type, q.type));
   conditions.push(keywordCondition(q.keyword, [mpMaterials.name], 'ilike'));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpMaterials, where),
-    withPagination(db.select().from(mpMaterials).where(where).orderBy(mpMaterials.id).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpMaterial), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpMaterials, where),
+    rows: () => withPagination(db.select().from(mpMaterials).where(where).orderBy(mpMaterials.id).$dynamic(), q.page, q.pageSize),
+    map: mapMpMaterial,
+  });
 }
 
 export async function createMpMaterial(data: CreateMpMaterialInput) {

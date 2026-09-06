@@ -31,10 +31,14 @@ vi.mock('../../lib/context', () => ({
   currentUser: () => ({ userId: 1, tenantId: 7, roles: ['user'] }),
 }));
 
-vi.mock('../../lib/tenant', () => ({
-  currentCreateTenantId: () => 7,
-  tenantScope: () => undefined,
-}));
+vi.mock('../../lib/tenant', async () => {
+  const { eq, sql } = await import('drizzle-orm');
+  return {
+    currentCreateTenantId: () => 7,
+    tenantScope: () => undefined,
+    exactTenantCondition: (column: Parameters<typeof eq>[0], tenantId: number | null) => (tenantId == null ? sql`${column} IS NULL` : eq(column, tenantId)),
+  };
+});
 
 import {
   createSegment, ensureSegmentExists, ensureSegmentAccessible, buildSegmentDistinctIdSql, materializeSegment,

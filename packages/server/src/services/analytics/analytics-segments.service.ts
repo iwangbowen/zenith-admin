@@ -8,6 +8,8 @@
  *  - 所有读写强制 tenantScope / currentCreateTenantId，物化任务通过 ensureSegmentExists 在任务执行上下文重新校验归属
  */
 import { and, desc, eq, gte, isNotNull, sql, type SQL } from 'drizzle-orm';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { analyticsUserSegments, analyticsSegmentMembers, analyticsUserProfiles, userEvents } from '../../db/schema';
@@ -18,7 +20,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { currentCreateTenantId, tenantScope } from '../../lib/tenant';
+import { currentCreateTenantId, tenantScope, exactTenantCondition } from '../../lib/tenant';
 import { startOfDaysAgo } from '../../lib/analytics-helpers';
 import logger from '../../lib/logger';
 import { buildJsonPropertyCondition, buildColumnCompareCondition, PROPERTY_KEY_RE } from './analytics-property-filter';
@@ -73,19 +75,20 @@ export async function listSegments(q: SegmentListQuery) {
   if (q.status) conditions.push(eq(analyticsUserSegments.status, q.status as 'enabled' | 'disabled'));
   const where = buildWhere(...conditions, tenantScope(analyticsUserSegments));
 
-  const [list, total] = await Promise.all([
-    db.select().from(analyticsUserSegments).where(where).orderBy(desc(analyticsUserSegments.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    db.$count(analyticsUserSegments, where),
-  ]);
-  return { list: list.map(mapSegment), total, page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(analyticsUserSegments, where),
+    rows: () => db.select().from(analyticsUserSegments).where(where).orderBy(desc(analyticsUserSegments.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapSegment,
+  });
 }
 
 /** 取分群行并校验 tenant 归属；不存在或无权访问时抛 404。供路由与物化任务共用作为唯一鉴权入口。 */
 export async function ensureSegmentExists(id: number): Promise<AnalyticsUserSegmentRow> {
   const where = buildWhere(eq(analyticsUserSegments.id, id), tenantScope(analyticsUserSegments));
   const [row] = await db.select().from(analyticsUserSegments).where(where).limit(1);
-  if (!row) throw new HTTPException(404, { message: '分群不存在' });
-  return row;
+  return requireRow(row, '分群不存在');
 }
 
 /** 供其他模块（漏斗 segmentId、事件分析 segmentId）复用的只读归属校验。 */
@@ -149,12 +152,12 @@ export async function listSegmentMembers(id: number, q: SegmentMembersQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
   const where = eq(analyticsSegmentMembers.segmentId, id);
-  const [list, total] = await Promise.all([
-    db.select().from(analyticsSegmentMembers).where(where).orderBy(desc(analyticsSegmentMembers.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    db.$count(analyticsSegmentMembers, where),
-  ]);
-  return {
-    list: list.map((r) => ({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(analyticsSegmentMembers, where),
+    rows: () => db.select().from(analyticsSegmentMembers).where(where).orderBy(desc(analyticsSegmentMembers.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: (r) => ({
       id: r.id,
       segmentId: r.segmentId,
       tenantId: r.tenantId,
@@ -163,24 +166,17 @@ export async function listSegmentMembers(id: number, q: SegmentMembersQuery) {
       userId: r.userId,
       memberId: r.memberId,
       snapshotAt: formatDateTime(r.snapshotAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 // ─── 规则 → distinctId 集合 SQL 构建 ─────────────────────────────────────────
-function tenantEq(column: SQL, tenantId: number | null): SQL {
-  return tenantId === null ? sql`${column} IS NULL` : sql`${column} = ${tenantId}`;
-}
-
 function buildEventConditionSelect(condition: AnalyticsSegmentEventCondition, tenantId: number | null): SQL {
   const conditions: SQL[] = [
     eq(userEvents.eventName, condition.eventName),
     gte(userEvents.createdAt, startOfDaysAgo(condition.days)),
     isNotNull(userEvents.distinctId),
-    tenantEq(sql`${userEvents.tenantId}`, tenantId),
+    exactTenantCondition(sql`${userEvents.tenantId}`, tenantId),
   ];
   for (const f of condition.properties ?? []) conditions.push(buildJsonPropertyCondition(userEvents.properties, f));
   const where = and(...conditions);
@@ -192,7 +188,7 @@ function buildEventConditionSelect(condition: AnalyticsSegmentEventCondition, te
 }
 
 function buildAttributeConditionSelect(condition: AnalyticsSegmentAttributeCondition, tenantId: number | null): SQL {
-  const conditions: SQL[] = [tenantEq(sql`${analyticsUserProfiles.tenantId}`, tenantId)];
+  const conditions: SQL[] = [exactTenantCondition(sql`${analyticsUserProfiles.tenantId}`, tenantId)];
   if (condition.field === 'identityType') {
     conditions.push(buildColumnCompareCondition(analyticsUserProfiles.identityType, condition.op, condition.value));
   } else if (condition.field === 'userId') {

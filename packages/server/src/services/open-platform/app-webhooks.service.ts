@@ -1,5 +1,7 @@
 import { randomBytes, createHmac, randomUUID } from 'node:crypto';
-import { eq, and, or, desc, inArray, isNotNull, isNull, lte, sql, arrayContained, type SQL, type SQLWrapper } from 'drizzle-orm';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
+import { eq, and, or, desc, inArray, isNotNull, isNull, lte, sql, arrayContained, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { appWebhookSubscriptions, appWebhookDeliveries, cmsOpenAppGrants, oauth2Clients, users } from '../../db/schema';
 import type { AppWebhookSubscriptionRow, AppWebhookDeliveryRow } from '../../db/schema';
@@ -18,7 +20,7 @@ import { config } from '../../config';
 import { assertSafeOutboundUrl } from '../../lib/outbound-url';
 import { notify } from '../messaging/notification-outbox.service';
 import { currentUser } from '../../lib/context';
-import { getCreateTenantId } from '../../lib/tenant';
+import { getCreateTenantId, exactTenantCondition, optionalExactTenantCondition } from '../../lib/tenant';
 
 const TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BODY_BYTES = 4096;
@@ -27,10 +29,6 @@ const RETRY_CONCURRENCY = 10;
 const SENSITIVE_WEBHOOK_EVENTS = new Set<string>(PAYMENT_WEBHOOK_EVENTS);
 
 export type AppWebhookDomain = 'all' | 'payment';
-
-function exactTenant(column: SQLWrapper, tenantId: number | null): SQL {
-  return tenantId == null ? sql`${column} is null` : sql`${column} = ${tenantId}`;
-}
 
 function currentTenantId(): number | null {
   return getCreateTenantId(currentUser());
@@ -65,7 +63,7 @@ function assertSubscriptionPolicy(input: {
 }
 
 function clientTenantScope(tenantId: number | null): SQL {
-  return exactTenant(oauth2Clients.tenantId, tenantId);
+  return exactTenantCondition(oauth2Clients.tenantId, tenantId);
 }
 
 function subscriptionDomainScope(domain: AppWebhookDomain): SQL | undefined {
@@ -89,7 +87,7 @@ function externalSubscriptionScope(tenantId: number | null, domain: AppWebhookDo
     .from(oauth2Clients)
     .where(clientTenantScope(tenantId));
   return and(
-    exactTenant(appWebhookSubscriptions.tenantId, tenantId),
+    exactTenantCondition(appWebhookSubscriptions.tenantId, tenantId),
     eq(appWebhookSubscriptions.internal, false),
     isNotNull(appWebhookSubscriptions.clientId),
     inArray(appWebhookSubscriptions.clientId, clientIds),
@@ -103,7 +101,7 @@ function externalDeliveryScope(tenantId: number | null, domain: AppWebhookDomain
     .from(appWebhookSubscriptions)
     .where(externalSubscriptionScope(tenantId, domain));
   return and(
-    exactTenant(appWebhookDeliveries.tenantId, tenantId),
+    exactTenantCondition(appWebhookDeliveries.tenantId, tenantId),
     inArray(appWebhookDeliveries.subscriptionId, subscriptionIds),
   )!;
 }
@@ -174,8 +172,7 @@ async function ensureAppExists(clientId: string, tenantId: number | null) {
     .from(oauth2Clients)
     .where(and(eq(oauth2Clients.clientId, clientId), clientTenantScope(tenantId)))
     .limit(1);
-  if (!row) throw new HTTPException(400, { message: '指定的应用（AppKey）不存在' });
-  return row;
+  return requireRow(row, '指定的应用（AppKey）不存在', 400);
 }
 
 async function getExternalSubscriptionRow(
@@ -188,8 +185,7 @@ async function getExternalSubscriptionRow(
     .from(appWebhookSubscriptions)
     .where(and(eq(appWebhookSubscriptions.id, id), externalSubscriptionScope(tenantId, domain)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: 'Webhook 订阅不存在' });
-  return row;
+  return requireRow(row, 'Webhook 订阅不存在');
 }
 
 async function getExternalDeliveryRow(
@@ -202,8 +198,7 @@ async function getExternalDeliveryRow(
     .from(appWebhookDeliveries)
     .where(and(eq(appWebhookDeliveries.id, id), externalDeliveryScope(tenantId, domain)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '投递记录不存在' });
-  return row;
+  return requireRow(row, '投递记录不存在');
 }
 
 // ─── 订阅 CRUD ────────────────────────────────────────────────────────────────
@@ -222,15 +217,17 @@ export async function listSubscriptions(opts: {
   if (status) conds.push(eq(appWebhookSubscriptions.status, status));
   conds.push(keywordCondition(keyword, [appWebhookSubscriptions.name, appWebhookSubscriptions.url], 'ilike'));
   const where = buildWhere(...conds);
-  const [list, total] = await Promise.all([
-    db.select().from(appWebhookSubscriptions)
-      .where(where)
-      .orderBy(desc(appWebhookSubscriptions.createdAt))
-      .limit(pageSize)
-      .offset(pageOffset(page, pageSize)),
-    db.$count(appWebhookSubscriptions, where),
-  ]);
-  return { list: list.map(mapSubscription), total, page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(appWebhookSubscriptions, where),
+    rows: () => db.select().from(appWebhookSubscriptions)
+  .where(where)
+  .orderBy(desc(appWebhookSubscriptions.createdAt))
+  .limit(pageSize)
+  .offset(pageOffset(page, pageSize)),
+    map: mapSubscription,
+  });
 }
 
 export async function getSubscription(id: number, domain: AppWebhookDomain = 'all') {
@@ -305,7 +302,7 @@ export async function updateSubscription(id: number, input: UpdateAppWebhookInpu
     status: input.status,
     ...(input.status === 'enabled' ? { autoDisabledAt: null } : {}),
   }).where(and(eq(appWebhookSubscriptions.id, id), externalSubscriptionScope(existing.tenantId ?? null, domain))).returning();
-  if (!row) throw new HTTPException(409, { message: 'Webhook 订阅状态已变化，请刷新后重试' });
+  requireRow(row, 'Webhook 订阅状态已变化，请刷新后重试', 409);
   return mapSubscription(row);
 }
 
@@ -324,7 +321,7 @@ export async function deleteSubscription(id: number, domain: AppWebhookDomain = 
   const result = await db.delete(appWebhookSubscriptions)
     .where(and(eq(appWebhookSubscriptions.id, id), externalSubscriptionScope(row.tenantId ?? null, domain)))
     .returning();
-  if (result.length === 0) throw new HTTPException(404, { message: 'Webhook 订阅不存在' });
+  requireRow(result[0], 'Webhook 订阅不存在');
 }
 
 // ─── 投递日志 ─────────────────────────────────────────────────────────────────
@@ -345,15 +342,17 @@ export async function listDeliveries(opts: {
   if (status) conds.push(eq(appWebhookDeliveries.status, status));
   if (eventType) conds.push(eq(appWebhookDeliveries.eventType, eventType));
   const where = buildWhere(...conds);
-  const [list, total] = await Promise.all([
-    db.select().from(appWebhookDeliveries)
-      .where(where)
-      .orderBy(desc(appWebhookDeliveries.createdAt))
-      .limit(pageSize)
-      .offset(pageOffset(page, pageSize)),
-    db.$count(appWebhookDeliveries, where),
-  ]);
-  return { list: list.map(mapDelivery), total, page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(appWebhookDeliveries, where),
+    rows: () => db.select().from(appWebhookDeliveries)
+  .where(where)
+  .orderBy(desc(appWebhookDeliveries.createdAt))
+  .limit(pageSize)
+  .offset(pageOffset(page, pageSize)),
+    map: mapDelivery,
+  });
 }
 
 export async function getDelivery(id: number, domain: AppWebhookDomain = 'all') {
@@ -365,15 +364,14 @@ export async function testSubscription(id: number, domain: AppWebhookDomain = 'a
   const sub = await getExternalSubscriptionRow(id, currentTenantId(), domain);
   if (!sub.clientId) throw new HTTPException(409, { message: 'Webhook 订阅缺少所属应用' });
   const eventId = randomUUID();
-  const delivery = await insertDelivery({
+  const delivery = requireRow(await insertDelivery({
     subscriptionId: sub.id,
     clientId: sub.clientId,
     tenantId: sub.tenantId ?? null,
     eventType: 'app.test',
     eventId,
     payload: { type: 'app.test', eventId, clientId: sub.clientId, occurredAt: formatDateTime(new Date()), data: { message: '这是一条 Webhook 测试投递' } },
-  });
-  if (!delivery) throw new HTTPException(409, { message: '测试事件已存在，请重试' });
+  }), '测试事件已存在，请重试', 409);
   queueMicrotask(() => {
     dispatchDelivery(delivery.id, sub.tenantId ?? null).catch((err) => logger.error('[app-webhook] test dispatch failed', { deliveryId: delivery.id, err }));
   });
@@ -385,13 +383,13 @@ export async function retryDelivery(id: number, domain: AppWebhookDomain = 'all'
   const row = await getExternalDeliveryRow(id, currentTenantId(), domain);
   if (row.status !== 'failed') throw new HTTPException(400, { message: '仅最终失败的投递可手动重试' });
   const claimed = await dispatchDelivery(id, row.tenantId ?? null);
-  if (!claimed) throw new HTTPException(409, { message: '投递已被其他任务处理，请刷新后重试' });
+  requireRow(claimed, '投递已被其他任务处理，请刷新后重试', 409);
   return { deliveryId: id };
 }
 
 export async function scheduleBatchRetryDeliveries(ids: number[], domain: AppWebhookDomain = 'all') {
   const uniqueIds = [...new Set(ids)];
-  if (uniqueIds.length === 0) throw new HTTPException(400, { message: '请选择投递记录' });
+  requireRow(uniqueIds[0], '请选择投递记录', 400);
   if (uniqueIds.length > 100) throw new HTTPException(400, { message: '单次最多重试 100 条投递记录' });
   const tenantId = currentTenantId();
   const rows = await db.update(appWebhookDeliveries)
@@ -445,7 +443,7 @@ async function updateDeliveryAfterAttempt(
   const where = and(
     eq(appWebhookDeliveries.id, id),
     expectedAttempt === undefined ? undefined : eq(appWebhookDeliveries.attempt, expectedAttempt),
-    tenantId === undefined ? undefined : exactTenant(appWebhookDeliveries.tenantId, tenantId),
+    optionalExactTenantCondition(appWebhookDeliveries.tenantId, tenantId),
   );
   const rows = await db.update(appWebhookDeliveries).set(patch).where(where).returning({ id: appWebhookDeliveries.id });
   return rows.length > 0;
@@ -504,7 +502,7 @@ async function handleTerminalFailure(
     .set({ consecutiveFailures: sql`${appWebhookSubscriptions.consecutiveFailures} + 1` })
     .where(and(
       eq(appWebhookSubscriptions.id, sub.id),
-      exactTenant(appWebhookSubscriptions.tenantId, delivery.tenantId ?? null),
+      exactTenantCondition(appWebhookSubscriptions.tenantId, delivery.tenantId ?? null),
     ))
     .returning({
       consecutiveFailures: appWebhookSubscriptions.consecutiveFailures,
@@ -519,7 +517,7 @@ async function handleTerminalFailure(
       .set({ status: 'disabled', autoDisabledAt: new Date() })
       .where(and(
         eq(appWebhookSubscriptions.id, sub.id),
-        exactTenant(appWebhookSubscriptions.tenantId, delivery.tenantId ?? null),
+        exactTenantCondition(appWebhookSubscriptions.tenantId, delivery.tenantId ?? null),
       ));
   }
 
@@ -532,7 +530,7 @@ async function handleTerminalFailure(
     .leftJoin(users, eq(oauth2Clients.ownerId, users.id))
     .where(and(
       eq(oauth2Clients.clientId, sub.clientId),
-      exactTenant(oauth2Clients.tenantId, delivery.tenantId ?? null),
+      exactTenantCondition(oauth2Clients.tenantId, delivery.tenantId ?? null),
     ))
     .limit(1);
   if (!owner?.userId) return;
@@ -599,7 +597,7 @@ async function claimDelivery(deliveryId: number, expectedTenantId: number | null
     finishedAt: null,
   }).where(and(
     eq(appWebhookDeliveries.id, deliveryId),
-    exactTenant(appWebhookDeliveries.tenantId, expectedTenantId),
+    exactTenantCondition(appWebhookDeliveries.tenantId, expectedTenantId),
     or(
       eq(appWebhookDeliveries.status, 'failed'),
       and(
@@ -627,7 +625,7 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
     .from(appWebhookSubscriptions)
     .where(and(
       eq(appWebhookSubscriptions.id, delivery.subscriptionId),
-      exactTenant(appWebhookSubscriptions.tenantId, tenantId),
+      exactTenantCondition(appWebhookSubscriptions.tenantId, tenantId),
     ))
     .limit(1);
   if (!sub || sub.status !== 'enabled') {
@@ -722,7 +720,7 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
       if (!updated) return false;
       await db.update(appWebhookSubscriptions)
         .set({ consecutiveFailures: 0, lastDeliveryAt: new Date() })
-        .where(and(eq(appWebhookSubscriptions.id, sub.id), exactTenant(appWebhookSubscriptions.tenantId, tenantId)));
+        .where(and(eq(appWebhookSubscriptions.id, sub.id), exactTenantCondition(appWebhookSubscriptions.tenantId, tenantId)));
       return true;
     }
     const permanent = isPermanentResponseStatus(resp.status);
@@ -739,7 +737,7 @@ export async function dispatchDelivery(deliveryId: number, expectedTenantId: num
     if (!updated) return false;
     await db.update(appWebhookSubscriptions).set({ lastDeliveryAt: new Date() }).where(and(
       eq(appWebhookSubscriptions.id, sub.id),
-      exactTenant(appWebhookSubscriptions.tenantId, tenantId),
+      exactTenantCondition(appWebhookSubscriptions.tenantId, tenantId),
     ));
     if (!nextRetryAt) await handleTerminalFailure(sub, delivery, `HTTP ${resp.status}`);
   } catch (err) {
@@ -783,7 +781,7 @@ async function findMatchingSubscriptions(event: OpenPlatformEvent): Promise<AppW
     const rows = await db.select().from(appWebhookSubscriptions)
       .where(and(
         eq(appWebhookSubscriptions.clientId, event.clientId),
-        exactTenant(appWebhookSubscriptions.tenantId, client.tenantId ?? null),
+        exactTenantCondition(appWebhookSubscriptions.tenantId, client.tenantId ?? null),
         eq(appWebhookSubscriptions.internal, false),
         eq(appWebhookSubscriptions.status, 'enabled'),
       ));

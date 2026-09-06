@@ -1,5 +1,6 @@
 import { and, eq, gte, lt, desc, isNull, or } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { errorAlertRules, errorAlertLogs, errorEvents, errorGroups } from '../../db/schema';
 import type { ErrorAlertRuleRow, ErrorAlertLogRow } from '../../db/schema';
@@ -35,17 +36,18 @@ export async function listAlertRules(q: AlertRuleListQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
   const where = tenantScope(errorAlertRules);
-  const [list, total] = await Promise.all([
-    db.select().from(errorAlertRules).where(where).orderBy(desc(errorAlertRules.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    db.$count(errorAlertRules, where),
-  ]);
-  return { list: list.map(mapRule), total, page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(errorAlertRules, where),
+    rows: () => db.select().from(errorAlertRules).where(where).orderBy(desc(errorAlertRules.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapRule,
+  });
 }
 
 export async function ensureRuleExists(id: number) {
   const [row] = await db.select().from(errorAlertRules).where(buildWhere(eq(errorAlertRules.id, id), tenantScope(errorAlertRules))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '告警规则不存在' });
-  return row;
+  return requireRow(row, '告警规则不存在');
 }
 
 export async function createAlertRule(input: CreateErrorAlertRuleInput) {
@@ -285,9 +287,11 @@ export async function listAlertLogs(q: AlertLogListQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
   const where = buildWhere(q.ruleId != null ? eq(errorAlertLogs.ruleId, q.ruleId) : undefined, tenantScope(errorAlertLogs));
-  const [list, total] = await Promise.all([
-    db.select().from(errorAlertLogs).where(where).orderBy(desc(errorAlertLogs.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    db.$count(errorAlertLogs, where),
-  ]);
-  return { list: list.map(mapAlertLog), total, page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(errorAlertLogs, where),
+    rows: () => db.select().from(errorAlertLogs).where(where).orderBy(desc(errorAlertLogs.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapAlertLog,
+  });
 }

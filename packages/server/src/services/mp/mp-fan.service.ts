@@ -1,4 +1,6 @@
 import { eq, and, inArray, sql, desc, type SQL } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpFans, mpTags } from '../../db/schema';
@@ -38,8 +40,7 @@ export function mapMpFan(row: MpFanRow) {
 
 export async function ensureMpFanExists(id: number): Promise<MpFanRow> {
   const [row] = await db.select().from(mpFans).where(and(eq(mpFans.id, id), tenantScope(mpFans))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '粉丝不存在' });
-  return row;
+  return requireRow(row, '粉丝不存在');
 }
 
 export async function getMpFanBeforeAudit(id: number) {
@@ -135,11 +136,13 @@ export async function listMpFans(q: ListMpFansQuery) {
   if (q.tagId) conditions.push(sql`${mpFans.tagIds} @> ${JSON.stringify([q.tagId])}::jsonb`);
   if (q.blacklisted !== undefined) conditions.push(eq(mpFans.blacklisted, q.blacklisted));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpFans, where),
-    withPagination(db.select().from(mpFans).where(where).orderBy(desc(mpFans.id)).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpFan), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpFans, where),
+    rows: () => withPagination(db.select().from(mpFans).where(where).orderBy(desc(mpFans.id)).$dynamic(), q.page, q.pageSize),
+    map: mapMpFan,
+  });
 }
 
 export async function updateMpFan(id: number, data: UpdateMpFanInput) {

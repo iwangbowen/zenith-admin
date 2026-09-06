@@ -1,4 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { getMastra } from '../../lib/mastra';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
@@ -265,7 +266,7 @@ export async function runEvalExperiment(
   } catch {
     agent = null;
   }
-  if (!agent) throw new HTTPException(400, { message: '评测目标智能体不存在或未注册' });
+  requireRow(agent, '评测目标智能体不存在或未注册', 400);
 
   const name = input.name?.trim() || `exp-${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
   const scorers = input.scorers && input.scorers.length > 0 ? [...new Set(input.scorers)] : [DEFAULT_SCORER];
@@ -322,7 +323,7 @@ export async function getEvalExperimentResults(
 ): Promise<{ experiment: AiEvalExperiment; results: AiEvalExperimentResult[] }> {
   const dataset = await getDatasetOrThrow(datasetId);
   const exp = (await dataset.getExperiment({ experimentId })) as ExperimentView | null;
-  if (!exp) throw new HTTPException(404, { message: '实验不存在' });
+  const experiment = requireRow(exp, '实验不存在');
 
   const { results: rows } = (await dataset.listExperimentResults({
     experimentId,
@@ -356,5 +357,5 @@ export async function getEvalExperimentResults(
     error: r.error ? r.error.message : null,
   }));
 
-  return { experiment: mapExperiment(exp, datasetId, avgByScorer(scoreRows)), results };
+  return { experiment: mapExperiment(experiment, datasetId, avgByScorer(scoreRows)), results };
 }

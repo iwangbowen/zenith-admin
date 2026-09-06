@@ -8,7 +8,9 @@
  * - startedAt/fromTs/toTs 为客户端时钟（与 rrweb 事件时间戳同源），
  *   lastActivityAt 为服务端时钟（僵尸收尾判定不信任客户端）。
  */
-import { and, eq, desc, or, sql, inArray, isNull, lt, gte } from 'drizzle-orm';
+import { and, eq, desc, or, sql, inArray, lt, gte } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { gzipSync } from 'node:zlib';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -17,7 +19,7 @@ import type { ReplaySessionRow, ReplaySegmentRow } from '../../db/schema';
 import type { ReplaySegmentUploadMetaInput } from '@zenith/shared/analytics';
 import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
-import { tenantScope, getCreateTenantId } from '../../lib/tenant';
+import { tenantScope, getCreateTenantId, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
@@ -224,7 +226,7 @@ async function getReplayQuotaBytes(tenantId: number | null): Promise<number> {
   const [row] = await db
     .select({ quotaMb: analyticsSettings.replayStorageQuotaMb })
     .from(analyticsSettings)
-    .where(tenantId === null ? isNull(analyticsSettings.tenantId) : eq(analyticsSettings.tenantId, tenantId))
+    .where(exactTenantCondition(analyticsSettings.tenantId, tenantId))
     .limit(1);
   return (row?.quotaMb ?? 4096) * 1024 * 1024;
 }
@@ -234,7 +236,7 @@ export async function getReplayUsageBytes(tenantId: number | null): Promise<numb
   const key = usageCacheKey(tenantId);
   const cached = usageCache.get(key);
   if (cached && Date.now() - cached.at < USAGE_CACHE_TTL_MS) return cached.bytes;
-  const scope = tenantId === null ? isNull(replaySessions.tenantId) : eq(replaySessions.tenantId, tenantId);
+  const scope = exactTenantCondition(replaySessions.tenantId, tenantId);
   const [row] = await db
     .select({ bytes: sql<number>`COALESCE(SUM(${replaySessions.totalBytes}), 0)::bigint` })
     .from(replaySessions)
@@ -255,7 +257,7 @@ export async function enforceReplayQuota(tenantId: number | null, quotaBytes: nu
   evictingTenants.add(key);
   try {
     const target = quotaBytes * QUOTA_LOW_WATERMARK;
-    const scope = tenantId === null ? isNull(replaySessions.tenantId) : eq(replaySessions.tenantId, tenantId);
+    const scope = exactTenantCondition(replaySessions.tenantId, tenantId);
     let deleted = 0;
     // 两梯队：无错误（价值低）→ 全部剩余；录制中的活跃会话不淘汰
     for (const tier of [eq(replaySessions.errorCount, 0), undefined]) {
@@ -400,14 +402,14 @@ export async function listReplayAccessLogs(query: { page: number; pageSize: numb
       : undefined,
   ];
   const where = buildWhere(tenantScope(replayAccessLogs), and(...conditions.filter(Boolean)));
-  const [rows, [{ total }]] = await Promise.all([
-    db.select().from(replayAccessLogs).where(where)
+  return buildListResult({
+    page: query.page,
+    pageSize: query.pageSize,
+    count: () => db.select({ total: sql<number>`count(*)::int` }).from(replayAccessLogs).where(where).then((r) => r[0]?.total ?? 0),
+    rows: () => db.select().from(replayAccessLogs).where(where)
       .orderBy(desc(replayAccessLogs.createdAt))
       .limit(query.pageSize).offset(pageOffset(query.page, query.pageSize)),
-    db.select({ total: sql<number>`count(*)::int` }).from(replayAccessLogs).where(where),
-  ]);
-  return {
-    list: rows.map((r) => ({
+    map: (r) => ({
       id: r.id,
       replayId: r.replayId,
       replayOwner: r.replayOwner,
@@ -416,11 +418,8 @@ export async function listReplayAccessLogs(query: { page: number; pageSize: numb
       action: r.action,
       ip: r.ip,
       createdAt: formatDateTime(r.createdAt),
-    })),
-    total,
-    page: query.page,
-    pageSize: query.pageSize,
-  };
+    }),
+  });
 }
 
 /** 错误上报到达时回填回放会话的错误计数（错误服务调用） */
@@ -472,19 +471,21 @@ export async function listReplaySessions(query: ReplayListQuery) {
   ];
   const where = buildWhere(tenantScope(replaySessions), and(...conditions.filter(Boolean)));
 
-  const [rows, [{ total }]] = await Promise.all([
-    db.select().from(replaySessions).where(where)
+  return buildListResult({
+    page: query.page,
+    pageSize: query.pageSize,
+    count: () => db.select({ total: sql<number>`count(*)::int` }).from(replaySessions).where(where).then((r) => r[0]?.total ?? 0),
+    rows: () => db.select().from(replaySessions).where(where)
       .orderBy(desc(replaySessions.startedAt))
       .limit(query.pageSize).offset(pageOffset(query.page, query.pageSize)),
-    db.select({ total: sql<number>`count(*)::int` }).from(replaySessions).where(where),
-  ]);
-  return { list: rows.map(mapReplaySession), total, page: query.page, pageSize: query.pageSize };
+    map: mapReplaySession,
+  });
 }
 
 export async function getReplaySessionDetail(id: string, accessIp?: string | null) {
   const where = buildWhere(tenantScope(replaySessions), eq(replaySessions.id, id));
   const [row] = await db.select().from(replaySessions).where(where).limit(1);
-  if (!row) throw new HTTPException(404, { message: '回放会话不存在' });
+  requireRow(row, '回放会话不存在');
   // 合规留痕：谁查看了这条录像（best-effort，10 分钟去重覆盖 live 轮询）
   recordReplayAccess({ id: row.id, tenantId: row.tenantId, username: row.username, memberId: row.memberId }, accessIp ?? null);
 
@@ -564,13 +565,13 @@ export async function getReplaySessionDetail(id: string, accessIp?: string | nul
 export async function getReplaySegmentData(replayId: string, seq: number): Promise<Buffer> {
   const where = buildWhere(tenantScope(replaySessions), eq(replaySessions.id, replayId));
   const [session] = await db.select({ id: replaySessions.id }).from(replaySessions).where(where).limit(1);
-  if (!session) throw new HTTPException(404, { message: '回放会话不存在' });
+  requireRow(session, '回放会话不存在');
   const [segment] = await db
     .select({ data: replaySegments.data })
     .from(replaySegments)
     .where(and(eq(replaySegments.replayId, replayId), eq(replaySegments.seq, seq)))
     .limit(1);
-  if (!segment) throw new HTTPException(404, { message: '回放分片不存在' });
+  requireRow(segment, '回放分片不存在');
   return segment.data;
 }
 

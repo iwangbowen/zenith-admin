@@ -1,4 +1,6 @@
 import { eq, and, desc, type SQL } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpMessageTemplates, mpTemplateSendLogs } from '../../db/schema';
@@ -42,8 +44,7 @@ export function mapMpTemplateSendLog(row: MpTemplateSendLogRow) {
 
 export async function ensureMpTemplateExists(id: number): Promise<MpMessageTemplateRow> {
   const [row] = await db.select().from(mpMessageTemplates).where(and(eq(mpMessageTemplates.id, id), tenantScope(mpMessageTemplates))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '模板不存在' });
-  return row;
+  return requireRow(row, '模板不存在');
 }
 
 export async function getMpTemplateBeforeAudit(id: number) {
@@ -66,11 +67,13 @@ export async function listMpTemplates(q: ListMpTemplatesQuery) {
   if (tenant) conditions.push(tenant);
   conditions.push(keywordCondition(q.keyword, [mpMessageTemplates.title], 'ilike'));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpMessageTemplates, where),
-    withPagination(db.select().from(mpMessageTemplates).where(where).orderBy(mpMessageTemplates.id).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpTemplate), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpMessageTemplates, where),
+    rows: () => withPagination(db.select().from(mpMessageTemplates).where(where).orderBy(mpMessageTemplates.id).$dynamic(), q.page, q.pageSize),
+    map: mapMpTemplate,
+  });
 }
 
 export async function deleteMpTemplate(id: number) {
@@ -136,11 +139,13 @@ export async function listMpTemplateSendLogs(q: ListMpSendLogsQuery) {
   if (tenant) conditions.push(tenant);
   if (q.status) conditions.push(eq(mpTemplateSendLogs.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpTemplateSendLogs, where),
-    withPagination(db.select().from(mpTemplateSendLogs).where(where).orderBy(desc(mpTemplateSendLogs.id)).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpTemplateSendLog), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpTemplateSendLogs, where),
+    rows: () => withPagination(db.select().from(mpTemplateSendLogs).where(where).orderBy(desc(mpTemplateSendLogs.id)).$dynamic(), q.page, q.pageSize),
+    map: mapMpTemplateSendLog,
+  });
 }
 
 /** 设置账号所属行业（模板消息行业，影响可选模板范围） */

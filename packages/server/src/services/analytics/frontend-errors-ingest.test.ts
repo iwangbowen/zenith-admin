@@ -33,10 +33,14 @@ vi.mock('../../lib/member-context', () => ({
   currentMemberOrNull: () => mockMember,
 }));
 
-vi.mock('../../lib/tenant', () => ({
-  getCreateTenantId: (user: { tenantId: number | null }) => user.tenantId ?? 11,
-  tenantScope: () => undefined,
-}));
+vi.mock('../../lib/tenant', async () => {
+  const { eq, isNull } = await import('drizzle-orm');
+  return {
+    getCreateTenantId: (user: { tenantId: number | null }) => user.tenantId ?? 11,
+    tenantScope: () => undefined,
+    exactTenantCondition: (column: Parameters<typeof eq>[0], tenantId: number | null) => (tenantId == null ? isNull(column) : eq(column, tenantId)),
+  };
+});
 
 vi.mock('../../lib/analytics-helpers', () => ({
   parseClientEnv: () => ({ browser: 'Chrome', browserVersion: '1', os: 'Windows', osVersion: '1', deviceType: 'desktop' }),

@@ -1,10 +1,11 @@
-import { eq, and, isNull, isNotNull, lte, gt } from 'drizzle-orm';
+import { eq, and, isNotNull, lte, gt } from 'drizzle-orm';
 import { db } from '../../db';
 import { tenants, users, userRoles, roles } from '../../db/schema';
 import { forceLogoutAllByUsers } from '../../lib/session-manager';
 import { notify } from '../messaging/notification-outbox.service';
 import { formatDateTime } from '../../lib/datetime';
 import { TENANT_ADMIN_ROLE_CODE } from './tenants.service';
+import { listEnabledPlatformSuperAdmins } from './platform-admins.service';
 import logger from '../../lib/logger';
 
 const DAY_MS = 86_400_000;
@@ -23,17 +24,6 @@ async function getTenantAdminUserIds(tenantId: number): Promise<number[]> {
   return [...new Set(rows.map((r) => r.id))];
 }
 
-/** 平台超管（tenantId 为空且绑定 super_admin 角色）的用户 ID */
-async function getPlatformAdminUserIds(): Promise<number[]> {
-  const rows = await db
-    .select({ id: users.id })
-    .from(users)
-    .innerJoin(userRoles, eq(userRoles.userId, users.id))
-    .innerJoin(roles, eq(roles.id, userRoles.roleId))
-    .where(and(eq(roles.code, 'super_admin'), isNull(users.tenantId), eq(users.status, 'enabled')));
-  return [...new Set(rows.map((r) => r.id))];
-}
-
 function toRecipients(userIds: number[]) {
   return userIds.map((id) => ({ type: 'user' as const, id }));
 }
@@ -46,7 +36,7 @@ function toRecipients(userIds: number[]) {
 async function resolveAdminAudiences(tenantId: number) {
   const [tenantAdminIds, platformAdminIds] = await Promise.all([
     getTenantAdminUserIds(tenantId),
-    getPlatformAdminUserIds(),
+    listEnabledPlatformSuperAdmins().then((admins) => admins.map((admin) => admin.id)),
   ]);
   return { tenantAdminIds, platformAdminIds };
 }

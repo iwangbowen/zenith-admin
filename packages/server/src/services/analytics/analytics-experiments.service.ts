@@ -1,5 +1,7 @@
 
 import { createHash } from 'node:crypto';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { AnalyticsExperimentAssignment, AnalyticsExperimentReport, AnalyticsExperimentReportVariant, AnalyticsExperimentVariant, CreateAnalyticsExperimentInput, UpdateAnalyticsExperimentInput } from '@zenith/shared/analytics';
@@ -10,7 +12,7 @@ import type { AnalyticsExperimentRow } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart, parseDateTimeInput } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
-import { currentCreateTenantId, tenantScope } from '../../lib/tenant';
+import { currentCreateTenantId, tenantScope, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { EXPERIMENT_ALPHA, requiredSamplePerVariant, srmTest, twoProportionZTest } from './analytics-experiment-stats';
 
@@ -101,25 +103,25 @@ export async function listExperiments(q: ListExperimentsQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
   const where = buildExperimentWhere(q);
-  const [list, total] = await Promise.all([
-    db.query.analyticsExperiments.findMany({ where, with: { tenant: true }, orderBy: [desc(analyticsExperiments.id)], limit: pageSize, offset: pageOffset(page, pageSize) }),
-    db.$count(analyticsExperiments, where),
-  ]);
-  return { list: list.map(mapExperiment), total, page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(analyticsExperiments, where),
+    rows: () => db.query.analyticsExperiments.findMany({ where, with: { tenant: true }, orderBy: [desc(analyticsExperiments.id)], limit: pageSize, offset: pageOffset(page, pageSize) }),
+    map: mapExperiment,
+  });
 }
 
 export async function ensureExperimentExists(id: number): Promise<AnalyticsExperimentRow> {
   const [row] = await db.select().from(analyticsExperiments)
     .where(buildWhere(eq(analyticsExperiments.id, id), tenantScope(analyticsExperiments)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '实验不存在' });
-  return row;
+  return requireRow(row, '实验不存在');
 }
 
 export async function getExperiment(id: number) {
   const row = await db.query.analyticsExperiments.findFirst({ where: buildWhere(eq(analyticsExperiments.id, id), tenantScope(analyticsExperiments)), with: { tenant: true } });
-  if (!row) throw new HTTPException(404, { message: '实验不存在' });
-  return mapExperiment(row);
+  return mapExperiment(requireRow(row, '实验不存在'));
 }
 
 export async function createExperiment(input: CreateAnalyticsExperimentInput) {
@@ -211,7 +213,7 @@ async function loadAssignmentExperiments(tenantId: number | null): Promise<Exper
     eq(analyticsExperiments.status, 'running'),
     or(isNull(analyticsExperiments.startAt), lte(analyticsExperiments.startAt, new Date())),
     or(isNull(analyticsExperiments.endAt), gte(analyticsExperiments.endAt, new Date())),
-    tenantId == null ? isNull(analyticsExperiments.tenantId) : eq(analyticsExperiments.tenantId, tenantId),
+    exactTenantCondition(analyticsExperiments.tenantId, tenantId),
   );
   const rows = await db.select({
     expKey: analyticsExperiments.expKey,
@@ -243,9 +245,7 @@ export async function getExperimentReport(id: number, q: ExperimentReportQuery):
   // 事件按"实验自身租户"过滤而非查看者 tenantScope：expKey 允许跨租户重名（唯一索引含
   // COALESCE(tenant_id,0)），平台超管查看某租户实验时若用查看者作用域（undefined=全部租户）
   // 会把其他租户同名 expKey 的曝光/同名指标事件混入报告
-  const experimentTenantFilter = experiment.tenantId == null
-    ? isNull(userEvents.tenantId)
-    : eq(userEvents.tenantId, experiment.tenantId);
+  const experimentTenantFilter = exactTenantCondition(userEvents.tenantId, experiment.tenantId);
   const conditions: SQL[] = [eq(userEvents.eventName, ANALYTICS_EXPERIMENT_EXPOSURE_EVENT), experimentTenantFilter];
   if (start) conditions.push(gte(userEvents.createdAt, start));
   if (end) conditions.push(lte(userEvents.createdAt, end));

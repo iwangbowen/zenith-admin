@@ -3,7 +3,7 @@ import { db } from '../../db';
 import { analyticsSettings } from '../../db/schema';
 import type { AnalyticsSettingsRow } from '../../db/schema';
 import type { UpdateAnalyticsSettingsInput, AnalyticsPublicConfig } from '@zenith/shared/analytics';
-import { currentCreateTenantId, getCreateTenantId } from '../../lib/tenant';
+import { currentCreateTenantId, getCreateTenantId, exactTenantCondition } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
 import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
@@ -107,7 +107,7 @@ const DEFAULT_PUBLIC_CONFIG: AnalyticsPublicConfig = {
 };
 
 function settingsTenantWhere(tenantId: number | null) {
-  return tenantId === null ? isNull(analyticsSettings.tenantId) : eq(analyticsSettings.tenantId, tenantId);
+  return exactTenantCondition(analyticsSettings.tenantId, tenantId);
 }
 
 async function findSettingsWithGlobalFallback(tenantId: number | null): Promise<AnalyticsSettingsRow | undefined> {

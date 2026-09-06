@@ -15,10 +15,14 @@ vi.mock('../../db', () => ({
   db: { select, insert, update },
 }));
 
-vi.mock('../../lib/tenant', () => ({
-  currentCreateTenantId: () => 11,
-  getCreateTenantId: () => 11,
-}));
+vi.mock('../../lib/tenant', async () => {
+  const { eq, isNull } = await import('drizzle-orm');
+  return {
+    currentCreateTenantId: () => 11,
+    getCreateTenantId: () => 11,
+    exactTenantCondition: (column: Parameters<typeof eq>[0], tenantId: number | null) => (tenantId == null ? isNull(column) : eq(column, tenantId)),
+  };
+});
 
 vi.mock('../../lib/context', () => ({
   currentUserOrNull: () => null,

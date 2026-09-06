@@ -1,4 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { eq } from 'drizzle-orm';
 import { OPEN_SIGNATURE_ALGORITHM, OPEN_SIGNATURE_TIMESTAMP_WINDOW, OPEN_SIGNATURE_HEADERS } from '@zenith/shared/open-platform';
 import type { OpenSignatureVerifyInput } from '@zenith/shared/open-platform';
@@ -67,7 +68,7 @@ async function ensureSignatureToolAccess(appKey: string): Promise<void> {
     .from(oauth2Clients)
     .where(eq(oauth2Clients.clientId, appKey))
     .limit(1);
-  if (!row) throw new HTTPException(400, { message: 'AppKey 无效' });
+  requireRow(row, 'AppKey 无效', 400);
   if (row.ownerId !== user.userId) {
     throw new HTTPException(403, { message: '只能对自己名下的应用计算签名' });
   }

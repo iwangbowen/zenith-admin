@@ -1,4 +1,6 @@
 import { eq, and, desc, inArray, isNotNull, lte, type SQL } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpBroadcasts, mpTags, mpAccounts } from '../../db/schema';
@@ -35,8 +37,7 @@ export function mapMpBroadcast(row: MpBroadcastRow) {
 
 export async function ensureMpBroadcastExists(id: number): Promise<MpBroadcastRow> {
   const [row] = await db.select().from(mpBroadcasts).where(and(eq(mpBroadcasts.id, id), tenantScope(mpBroadcasts))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '群发记录不存在' });
-  return row;
+  return requireRow(row, '群发记录不存在');
 }
 
 export async function getMpBroadcastBeforeAudit(id: number) {
@@ -57,11 +58,13 @@ export async function listMpBroadcasts(q: ListMpBroadcastsQuery) {
   if (tenant) conditions.push(tenant);
   if (q.status) conditions.push(eq(mpBroadcasts.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpBroadcasts, where),
-    withPagination(db.select().from(mpBroadcasts).where(where).orderBy(desc(mpBroadcasts.id)).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpBroadcast), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpBroadcasts, where),
+    rows: () => withPagination(db.select().from(mpBroadcasts).where(where).orderBy(desc(mpBroadcasts.id)).$dynamic(), q.page, q.pageSize),
+    map: mapMpBroadcast,
+  });
 }
 
 export async function createMpBroadcast(data: CreateMpBroadcastInput) {
@@ -112,7 +115,7 @@ export async function sendMpBroadcast(id: number) {
     if (!broadcast.tagId) throw new HTTPException(400, { message: '请先指定群发标签' });
     const [tag] = await db.select({ wechatTagId: mpTags.wechatTagId }).from(mpTags)
       .where(and(eq(mpTags.id, broadcast.tagId), tenantScope(mpTags))).limit(1);
-    if (!tag) throw new HTTPException(400, { message: '群发标签不存在' });
+    requireRow(tag, '群发标签不存在', 400);
     if (tag.wechatTagId == null) throw new HTTPException(400, { message: '该标签尚未同步到微信，无法按标签群发' });
     wechatTagId = tag.wechatTagId;
   }

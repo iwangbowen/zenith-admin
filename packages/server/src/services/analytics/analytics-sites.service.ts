@@ -1,7 +1,8 @@
 
 import { randomBytes } from 'node:crypto';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import type { CreateAnalyticsSiteInput, UpdateAnalyticsSiteInput } from '@zenith/shared/analytics';
 import { db } from '../../db';
 import { analyticsSites, userEvents } from '../../db/schema';
@@ -88,35 +89,33 @@ export async function listSites(q: AnalyticsSiteListQuery) {
   if (q.appId) conditions.push(eq(analyticsSites.appId, q.appId));
   if (q.status) conditions.push(eq(analyticsSites.status, q.status));
   const where = buildWhere(...conditions, tenantScope(analyticsSites));
-  const [list, total] = await Promise.all([
-    db.query.analyticsSites.findMany({ where, with: { tenant: true }, orderBy: [desc(analyticsSites.id)], limit: pageSize, offset: pageOffset(page, pageSize) }),
-    db.$count(analyticsSites, where),
-  ]);
-  // 今日用量按 appId 实时统计（含登录态事件）：Redis 配额计数器只覆盖带配额的匿名站点，
-  // 默认站点（admin/member，无 siteKey 采集路径）在计数器里恒为 0，直接查事件表才是真实用量
-  const appIds = [...new Set(list.map((site) => site.appId))];
-  const todayStart = parseDateRangeStart(formatDate(new Date())) ?? new Date();
-  const usageRows = appIds.length > 0
-    ? await db
-      .select({ appId: userEvents.appId, n: sql<number>`COUNT(*)::int` })
-      .from(userEvents)
-      .where(and(inArray(userEvents.appId, appIds), gte(userEvents.createdAt, todayStart)))
-      .groupBy(userEvents.appId)
-    : [];
-  const usageByAppId = new Map(usageRows.map((r) => [r.appId, Number(r.n)]));
-  return {
-    list: list.map((site) => ({ ...mapSite(site), todayUsage: usageByAppId.get(site.appId) ?? 0 })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(analyticsSites, where),
+    rows: async () => {
+      const list = await db.query.analyticsSites.findMany({ where, with: { tenant: true }, orderBy: [desc(analyticsSites.id)], limit: pageSize, offset: pageOffset(page, pageSize) });
+      // 今日用量按 appId 实时统计（含登录态事件）：Redis 配额计数器只覆盖带配额的匿名站点，
+      // 默认站点（admin/member，无 siteKey 采集路径）在计数器里恒为 0，直接查事件表才是真实用量
+      const appIds = [...new Set(list.map((site) => site.appId))];
+      const todayStart = parseDateRangeStart(formatDate(new Date())) ?? new Date();
+      const usageRows = appIds.length > 0
+        ? await db
+          .select({ appId: userEvents.appId, n: sql<number>`COUNT(*)::int` })
+          .from(userEvents)
+          .where(and(inArray(userEvents.appId, appIds), gte(userEvents.createdAt, todayStart)))
+          .groupBy(userEvents.appId)
+        : [];
+      const usageByAppId = new Map(usageRows.map((r) => [r.appId, Number(r.n)]));
+      return list.map((site) => ({ ...mapSite(site), todayUsage: usageByAppId.get(site.appId) ?? 0 }));
+    },
+  });
 }
 
 async function ensureSiteExists(id: number): Promise<AnalyticsSiteRow> {
   const where = buildWhere(eq(analyticsSites.id, id), tenantScope(analyticsSites));
   const [row] = await db.select().from(analyticsSites).where(where).limit(1);
-  if (!row) throw new HTTPException(404, { message: '站点不存在' });
-  return row;
+  return requireRow(row, '站点不存在');
 }
 
 export async function createSite(input: CreateAnalyticsSiteInput) {

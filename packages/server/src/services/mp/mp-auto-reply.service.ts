@@ -1,4 +1,6 @@
 import { eq, and, desc, sql, type SQL } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpAutoReplies, mpUnmatchedKeywords } from '../../db/schema';
@@ -32,8 +34,7 @@ export function mapMpAutoReply(row: MpAutoReplyRow) {
 
 export async function ensureMpAutoReplyExists(id: number): Promise<MpAutoReplyRow> {
   const [row] = await db.select().from(mpAutoReplies).where(and(eq(mpAutoReplies.id, id), tenantScope(mpAutoReplies))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '自动回复不存在' });
-  return row;
+  return requireRow(row, '自动回复不存在');
 }
 
 export async function getMpAutoReplyBeforeAudit(id: number) {
@@ -72,11 +73,13 @@ export async function listMpAutoReplies(q: ListMpAutoRepliesQuery) {
   if (q.replyType) conditions.push(eq(mpAutoReplies.replyType, q.replyType));
   conditions.push(keywordCondition(q.keyword, [mpAutoReplies.keyword], 'ilike'));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpAutoReplies, where),
-    withPagination(db.select().from(mpAutoReplies).where(where).orderBy(mpAutoReplies.replyType, mpAutoReplies.sort, mpAutoReplies.id).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpAutoReply), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpAutoReplies, where),
+    rows: () => withPagination(db.select().from(mpAutoReplies).where(where).orderBy(mpAutoReplies.replyType, mpAutoReplies.sort, mpAutoReplies.id).$dynamic(), q.page, q.pageSize),
+    map: mapMpAutoReply,
+  });
 }
 
 export async function createMpAutoReply(data: CreateMpAutoReplyInput) {
@@ -173,18 +176,17 @@ export async function resolveAutoReply(accountId: number, input: { event?: strin
 export async function listMpUnmatchedKeywords(accountId: number, page: number, pageSize: number) {
   await ensureMpAccountExists(accountId);
   const where = buildWhere(and(eq(mpUnmatchedKeywords.accountId, accountId), tenantScope(mpUnmatchedKeywords)));
-  const [total, list] = await Promise.all([
-    db.$count(mpUnmatchedKeywords, where),
-    withPagination(db.select().from(mpUnmatchedKeywords).where(where).orderBy(desc(mpUnmatchedKeywords.count), desc(mpUnmatchedKeywords.lastAt)).$dynamic(), page, pageSize),
-  ]);
-  return {
-    list: list.map(mapMpUnmatchedKeyword),
-    total, page, pageSize,
-  };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(mpUnmatchedKeywords, where),
+    rows: () => withPagination(db.select().from(mpUnmatchedKeywords).where(where).orderBy(desc(mpUnmatchedKeywords.count), desc(mpUnmatchedKeywords.lastAt)).$dynamic(), page, pageSize),
+    map: mapMpUnmatchedKeyword,
+  });
 }
 
 export async function deleteMpUnmatchedKeyword(id: number): Promise<void> {
   const [row] = await db.select({ id: mpUnmatchedKeywords.id }).from(mpUnmatchedKeywords).where(and(eq(mpUnmatchedKeywords.id, id), tenantScope(mpUnmatchedKeywords))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '记录不存在' });
+  requireRow(row, '记录不存在');
   await db.delete(mpUnmatchedKeywords).where(eq(mpUnmatchedKeywords.id, id));
 }

@@ -1,7 +1,7 @@
-import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { licenses, licenseEvents, systemInstallations, systemSchedulerNodes, users, userRoles, roles } from '../../db/schema';
+import { licenses, licenseEvents, systemInstallations, systemSchedulerNodes } from '../../db/schema';
 import { config } from '../../config';
 import { formatDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
@@ -29,6 +29,7 @@ import {
   type LicenseInstallationInfo,
 } from '@zenith/shared/licensing';
 import { notify } from '../messaging/notification-outbox.service';
+import { listEnabledPlatformSuperAdmins } from '../identity/platform-admins.service';
 import type { LicenseRow } from '../../db/schema/licensing';
 
 const isoToDisplay = (iso: string | null): string | null => (iso ? formatDateTime(new Date(iso)) : null);
@@ -238,17 +239,6 @@ export async function listLicenseEvents(q: { page?: number; pageSize?: number })
   });
 }
 
-/** 平台超管（tenantId 为空且绑定 super_admin 角色）的用户 ID */
-async function getPlatformAdminUserIds(): Promise<number[]> {
-  const rows = await db
-    .select({ id: users.id })
-    .from(users)
-    .innerJoin(userRoles, eq(userRoles.userId, users.id))
-    .innerJoin(roles, eq(roles.id, userRoles.roleId))
-    .where(and(eq(roles.code, 'super_admin'), isNull(users.tenantId), eq(users.status, 'enabled')));
-  return [...new Set(rows.map((r) => r.id))];
-}
-
 /** 到期前提醒节点（天）：每日巡检命中当天恰好剩余 N 天时发送，天然防重复 */
 const REMIND_DAYS = [30, 7, 3, 1];
 const DAY_MS = 86_400_000;
@@ -275,7 +265,7 @@ export async function runLicenseInspection(): Promise<string> {
   }
 
   const verified = verifyLicenseEnvelope(current.envelope);
-  const platformAdminIds = await getPlatformAdminUserIds();
+  const platformAdminIds = (await listEnabledPlatformSuperAdmins()).map((admin) => admin.id);
   const recipients = platformAdminIds.map((id) => ({ type: 'user' as const, id }));
 
   if (!verified.ok) {

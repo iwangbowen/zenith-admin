@@ -22,12 +22,16 @@ vi.mock('../../lib/member-context', () => ({
   currentMemberOrNull: () => undefined,
 }));
 
-vi.mock('../../lib/tenant', () => ({
-  getCreateTenantId: () => 11,
-  tenantScope: () => undefined,
-  getEffectiveTenantId: () => 11,
-  isPlatformAdmin: () => false,
-}));
+vi.mock('../../lib/tenant', async () => {
+  const { eq, isNull } = await import('drizzle-orm');
+  return {
+    getCreateTenantId: () => 11,
+    tenantScope: () => undefined,
+    getEffectiveTenantId: () => 11,
+    isPlatformAdmin: () => false,
+    exactTenantCondition: (column: Parameters<typeof eq>[0], tenantId: number | null) => (tenantId == null ? isNull(column) : eq(column, tenantId)),
+  };
+});
 
 vi.mock('../../lib/analytics-helpers', () => ({
   parseClientEnv: () => ({ browser: 'Chrome', browserVersion: '1', os: 'Windows', osVersion: '1', deviceType: 'desktop' }),

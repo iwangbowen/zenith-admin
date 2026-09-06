@@ -1,4 +1,6 @@
 import { eq, desc, inArray, sql, type SQL } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { apiScopes, oauth2Clients } from '../../db/schema';
 import type { ApiScopeRow } from '../../db/schema';
@@ -56,16 +58,20 @@ export async function listApiScopes(opts: {
   if (status) conditions.push(eq(apiScopes.status, status));
   const where = buildWhere(...conditions);
 
-  const [list, total] = await Promise.all([
-    db.select().from(apiScopes)
-      .where(where)
-      .orderBy(desc(apiScopes.createdAt))
-      .limit(pageSize)
-      .offset(pageOffset(page, pageSize)),
-    db.$count(apiScopes, where),
-  ]);
-  const refs = await countScopeReferences(list.map((row) => row.code));
-  return { list: list.map((row) => mapApiScope(row, refs.get(row.code) ?? 0)), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(apiScopes, where),
+    rows: async () => {
+      const list = await db.select().from(apiScopes)
+        .where(where)
+        .orderBy(desc(apiScopes.createdAt))
+        .limit(pageSize)
+        .offset(pageOffset(page, pageSize));
+      const refs = await countScopeReferences(list.map((row) => row.code));
+      return list.map((row) => mapApiScope(row, refs.get(row.code) ?? 0));
+    },
+  });
 }
 
 /** 全部启用的 scope（供应用配置下拉，无分页） */
@@ -78,7 +84,7 @@ export async function listEnabledApiScopes() {
 
 export async function getApiScope(id: number) {
   const [row] = await db.select().from(apiScopes).where(eq(apiScopes.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: 'API Scope 不存在' });
+  requireRow(row, 'API Scope 不存在');
   return mapApiScope(row);
 }
 
@@ -135,10 +141,10 @@ export async function deleteApiScope(id: number) {
   const [existing] = await db.select({ code: apiScopes.code }).from(apiScopes)
     .where(eq(apiScopes.id, id))
     .limit(1);
-  if (!existing) throw new HTTPException(404, { message: 'API Scope 不存在' });
+  requireRow(existing, 'API Scope 不存在');
   await ensureScopesUnreferenced([existing.code]);
   const result = await db.delete(apiScopes).where(eq(apiScopes.id, id)).returning();
-  if (result.length === 0) throw new HTTPException(404, { message: 'API Scope 不存在' });
+  requireRow(result[0], 'API Scope 不存在');
 }
 
 export async function batchDeleteApiScopes(ids: number[]) {

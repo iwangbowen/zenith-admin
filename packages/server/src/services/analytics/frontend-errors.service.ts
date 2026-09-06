@@ -1,6 +1,7 @@
 import { and, eq, gte, desc, inArray, sql, countDistinct } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { errorGroups, errorEvents, errorGroupIdentities, sourceMaps, users } from '../../db/schema';
 import type { ErrorGroupRow, ErrorEventRow } from '../../db/schema';
 import type { FrontendErrorType, ErrorLevel, ErrorBreadcrumb, UpdateErrorGroupInput, SourceMapUploadInput, AnalyticsEventSource, AnalyticsEnvironment } from '@zenith/shared/analytics';
@@ -255,46 +256,42 @@ export async function listGroups(q: GroupListQuery) {
   if (q.environment) conditions.push(eq(errorGroups.environment, q.environment as 'production'));
   const where = buildWhere(...conditions, tenantScope(errorGroups));
 
-  const [list, total] = await Promise.all([
-    db.select().from(errorGroups).where(where).orderBy(desc(errorGroups.lastSeenAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    db.$count(errorGroups, where),
-  ]);
-
-  // 页内分组的近 7 日发生趋势（迷你曲线），一次查询批量取回
-  const trendByGroup = new Map<number, Map<string, number>>();
-  if (list.length > 0) {
-    const trendStart = startOfDaysAgo(7);
-    const rows = await db
-      .select({
-        groupId: errorEvents.groupId,
-        date: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${errorEvents.createdAt}), 'YYYY-MM-DD')`,
-        count: sql<number>`COUNT(*)::int`,
-      })
-      .from(errorEvents)
-      .where(and(inArray(errorEvents.groupId, list.map((g) => g.id)), gte(errorEvents.createdAt, trendStart)))
-      .groupBy(errorEvents.groupId, sql`2`);
-    for (const r of rows) {
-      if (!trendByGroup.has(r.groupId)) trendByGroup.set(r.groupId, new Map());
-      trendByGroup.get(r.groupId)!.set(r.date, Number(r.count));
-    }
-  }
-  const axis = dateAxis(7);
-
-  return {
-    list: list.map((g) => ({
-      ...mapGroup(g),
-      trend: axis.map((d) => trendByGroup.get(g.id)?.get(d) ?? 0),
-    })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(errorGroups, where),
+    rows: async () => {
+      const list = await db.select().from(errorGroups).where(where).orderBy(desc(errorGroups.lastSeenAt)).limit(pageSize).offset(pageOffset(page, pageSize));
+      // 页内分组的近 7 日发生趋势（迷你曲线），一次查询批量取回
+      const trendByGroup = new Map<number, Map<string, number>>();
+      if (list.length > 0) {
+        const trendStart = startOfDaysAgo(7);
+        const rows = await db
+          .select({
+            groupId: errorEvents.groupId,
+            date: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${errorEvents.createdAt}), 'YYYY-MM-DD')`,
+            count: sql<number>`COUNT(*)::int`,
+          })
+          .from(errorEvents)
+          .where(and(inArray(errorEvents.groupId, list.map((g) => g.id)), gte(errorEvents.createdAt, trendStart)))
+          .groupBy(errorEvents.groupId, sql`2`);
+        for (const r of rows) {
+          if (!trendByGroup.has(r.groupId)) trendByGroup.set(r.groupId, new Map());
+          trendByGroup.get(r.groupId)!.set(r.date, Number(r.count));
+        }
+      }
+      const axis = dateAxis(7);
+      return list.map((g) => ({
+        ...mapGroup(g),
+        trend: axis.map((d) => trendByGroup.get(g.id)?.get(d) ?? 0),
+      }));
+    },
+  });
 }
 
 export async function ensureGroupExists(id: number) {
   const [row] = await db.select().from(errorGroups).where(buildWhere(eq(errorGroups.id, id), tenantScope(errorGroups))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '错误分组不存在' });
-  return row;
+  return requireRow(row, '错误分组不存在');
 }
 
 // ─── 分组详情（趋势 / 分布 / 最近事件 / 堆栈还原）────────────────────────────
@@ -356,7 +353,7 @@ export async function updateGroup(id: number, input: UpdateErrorGroupInput) {
         .from(users)
         .where(buildWhere(eq(users.id, input.assigneeId), tenantScope(users)))
         .limit(1);
-      if (!u) throw new HTTPException(400, { message: '指派用户不存在或不属于当前租户' });
+      requireRow(u, '指派用户不存在或不属于当前租户', 400);
       assigneeName = u.nickname || u.username;
     }
   }
@@ -465,11 +462,13 @@ export async function listErrorEvents(q: ErrorEventListQuery) {
   const conditions = [];
   if (q.groupId) conditions.push(eq(errorEvents.groupId, q.groupId));
   const where = buildWhere(...conditions, tenantScope(errorEvents));
-  const [list, total] = await Promise.all([
-    db.select().from(errorEvents).where(where).orderBy(desc(errorEvents.createdAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    db.$count(errorEvents, where),
-  ]);
-  return { list: list.map(mapEvent), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(errorEvents, where),
+    rows: () => db.select().from(errorEvents).where(where).orderBy(desc(errorEvents.createdAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapEvent,
+  });
 }
 
 export async function cleanErrors(days: number): Promise<number> {
@@ -502,17 +501,19 @@ export async function listSourceMaps(q: SourceMapListQuery) {
   const conditions = [];
   conditions.push(keywordCondition(q.release, [sourceMaps.release]));
   const where = buildWhere(...conditions, tenantScope(sourceMaps));
-  const [list, total] = await Promise.all([
-    db.select({ id: sourceMaps.id, release: sourceMaps.release, fileName: sourceMaps.fileName, size: sourceMaps.size, createdAt: sourceMaps.createdAt, updatedAt: sourceMaps.updatedAt }).from(sourceMaps).where(where).orderBy(desc(sourceMaps.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    db.$count(sourceMaps, where),
-  ]);
-  return { list: list.map((r) => ({ id: r.id, release: r.release, fileName: r.fileName, size: r.size, createdAt: formatDateTime(r.createdAt), updatedAt: formatDateTime(r.updatedAt) })), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(sourceMaps, where),
+    rows: () => db.select({ id: sourceMaps.id, release: sourceMaps.release, fileName: sourceMaps.fileName, size: sourceMaps.size, createdAt: sourceMaps.createdAt, updatedAt: sourceMaps.updatedAt }).from(sourceMaps).where(where).orderBy(desc(sourceMaps.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: (r) => ({ id: r.id, release: r.release, fileName: r.fileName, size: r.size, createdAt: formatDateTime(r.createdAt), updatedAt: formatDateTime(r.updatedAt) }),
+  });
 }
 
 export async function deleteSourceMap(id: number) {
   const where = buildWhere(eq(sourceMaps.id, id), tenantScope(sourceMaps));
   const [row] = await db.select({ id: sourceMaps.id }).from(sourceMaps).where(where).limit(1);
-  if (!row) throw new HTTPException(404, { message: 'Source Map 不存在' });
+  requireRow(row, 'Source Map 不存在');
   await db.delete(sourceMaps).where(where);
   clearSymbolicateCache();
 }

@@ -2,6 +2,7 @@ import { and, gte, lte, eq, desc, sql, count, type SQL } from 'drizzle-orm';
 import dayjs from 'dayjs';
 import { db } from '../../db';
 import { openApiCallLogs, openApiCallStatsDaily } from '../../db/schema';
+import { buildListResult } from '../../lib/list-query';
 import { APP_TIME_ZONE, formatDate, formatDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
@@ -308,19 +309,18 @@ export async function listOpenApiCallLogs(opts: OpenApiCallLogQuery) {
   const { page, pageSize } = opts;
   const where = buildOpenApiCallLogWhere(opts);
 
-  const [list, total] = await Promise.all([
-    db
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(openApiCallLogs, where),
+    rows: () => db
       .select()
       .from(openApiCallLogs)
       .where(where)
       .orderBy(desc(openApiCallLogs.createdAt))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-    db.$count(openApiCallLogs, where),
-  ]);
-
-  return {
-    list: list.map((r) => ({
+    map: (r) => ({
       id: r.id,
       clientId: r.clientId,
       appName: r.appName ?? null,
@@ -338,9 +338,6 @@ export async function listOpenApiCallLogs(opts: OpenApiCallLogQuery) {
       requestId: r.requestId ?? null,
       environment: r.environment as 'production' | 'sandbox',
       createdAt: formatDateTime(r.createdAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }

@@ -1,4 +1,6 @@
 import { and, desc, eq, inArray, ne, type SQL } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import type { CreateAnalyticsCampaignInput, UpdateAnalyticsCampaignInput } from '@zenith/shared/analytics';
 import { db } from '../../db';
@@ -92,20 +94,23 @@ export async function listCampaigns(q: ListCampaignsQuery) {
     .leftJoin(analyticsUserSegments, eq(analyticsSegmentCampaigns.segmentId, analyticsUserSegments.id))
     .where(where)
     .orderBy(desc(analyticsSegmentCampaigns.id));
-  const [rows, total] = await Promise.all([
-    withPagination(base.$dynamic(), page, pageSize),
-    db.$count(analyticsSegmentCampaigns, where),
-  ]);
-  const shortLinkMap = await loadCampaignShortLinks(rows.map((r) => r.campaign.id));
-  return { list: rows.map((r) => mapJoined(r, shortLinkMap)), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(analyticsSegmentCampaigns, where),
+    rows: async () => {
+      const rows = await withPagination(base.$dynamic(), page, pageSize);
+      const shortLinkMap = await loadCampaignShortLinks(rows.map((r) => r.campaign.id));
+      return rows.map((r) => mapJoined(r, shortLinkMap));
+    },
+  });
 }
 
 export async function ensureCampaignExists(id: number): Promise<AnalyticsSegmentCampaignRow> {
   const [row] = await db.select().from(analyticsSegmentCampaigns)
     .where(buildWhere(eq(analyticsSegmentCampaigns.id, id), tenantScope(analyticsSegmentCampaigns)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '触达活动不存在' });
-  return row;
+  return requireRow(row, '触达活动不存在');
 }
 
 async function ensureTemplateForChannel(channel: CreateAnalyticsCampaignInput['channel'], templateId?: number | null) {
@@ -169,7 +174,7 @@ export async function executeCampaign(id: number) {
     eq(analyticsSegmentCampaigns.id, id),
     ne(analyticsSegmentCampaigns.status, 'running'),
   )).returning({ id: analyticsSegmentCampaigns.id });
-  if (!claimed) throw new HTTPException(400, { message: '触达活动正在执行中' });
+  requireRow(claimed, '触达活动正在执行中', 400);
   const minuteBucket = Math.floor(Date.now() / 60_000);
   try {
     return await submitAsyncTask({

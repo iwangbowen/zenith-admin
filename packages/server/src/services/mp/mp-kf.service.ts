@@ -1,5 +1,6 @@
 import { eq, and, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { mpKfAccounts } from '../../db/schema';
 import type { MpKfAccountRow } from '../../db/schema';
@@ -32,8 +33,7 @@ export function mapMpKfAccount(row: MpKfAccountRow) {
 
 export async function ensureMpKfAccountExists(id: number): Promise<MpKfAccountRow> {
   const [row] = await db.select().from(mpKfAccounts).where(and(eq(mpKfAccounts.id, id), tenantScope(mpKfAccounts))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '客服账号不存在' });
-  return row;
+  return requireRow(row, '客服账号不存在');
 }
 
 export async function getMpKfAccountBeforeAudit(id: number) {
@@ -54,11 +54,13 @@ export async function listMpKfAccounts(q: ListMpKfAccountsQuery) {
   if (tenant) conditions.push(tenant);
   conditions.push(keywordCondition(q.keyword, [mpKfAccounts.nickname], 'ilike'));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpKfAccounts, where),
-    withPagination(db.select().from(mpKfAccounts).where(where).orderBy(mpKfAccounts.id).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpKfAccount), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpKfAccounts, where),
+    rows: () => withPagination(db.select().from(mpKfAccounts).where(where).orderBy(mpKfAccounts.id).$dynamic(), q.page, q.pageSize),
+    map: mapMpKfAccount,
+  });
 }
 
 /** 创建客服账号：调微信 kfaccount/add，成功后登记本地。 */

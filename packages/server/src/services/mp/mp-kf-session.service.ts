@@ -10,9 +10,11 @@
  * 回调接入钩子 onFanInboundMessage 与定时任务 runMpKfSessionTimeouts 无登录上下文，按 accountId 直接查询。
  */
 import { eq, and, ne, lt, gte, inArray, desc, asc, sql, type SQL } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   mpKfSessions, mpKfSessionEvents, mpKfRoutingConfigs, mpKfAccounts, mpFans, mpMessages, mpAccounts, users, members, memberLevels,
 } from '../../db/schema';
@@ -330,27 +332,28 @@ export async function listMpKfSessions(q: ListMpKfSessionsQuery) {
     ? [desc(mpKfSessions.priority), asc(mpKfSessions.waitingSince)]
     : [desc(mpKfSessions.lastMsgAt), desc(mpKfSessions.id)];
 
-  const [total, rows] = await Promise.all([
-    db
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db
       .select({ n: sql<number>`count(*)::int` })
       .from(mpKfSessions)
       .leftJoin(mpFans, and(eq(mpFans.accountId, mpKfSessions.accountId), eq(mpFans.openid, mpKfSessions.openid)))
       .where(where)
       .then((r) => r[0]?.n ?? 0),
-    withPagination(sessionSelection().where(where).orderBy(...order).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: rows.map(mapSession), total, page: q.page, pageSize: q.pageSize };
+    rows: () => withPagination(sessionSelection().where(where).orderBy(...order).$dynamic(), q.page, q.pageSize),
+    map: mapSession,
+  });
 }
 
 async function ensureSession(id: number): Promise<MpKfSessionRow> {
   const [row] = await db.select().from(mpKfSessions).where(and(eq(mpKfSessions.id, id), tenantScope(mpKfSessions))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '会话不存在' });
-  return row;
+  return requireRow(row, '会话不存在');
 }
 
 async function ensureKf(accountId: number, kfId: number) {
   const [row] = await db.select().from(mpKfAccounts).where(and(eq(mpKfAccounts.id, kfId), eq(mpKfAccounts.accountId, accountId))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '客服账号不存在' });
+  requireRow(row, '客服账号不存在');
   if (row.status !== 'enabled') throw new HTTPException(400, { message: '该客服账号已禁用' });
   return row;
 }
@@ -358,7 +361,7 @@ async function ensureKf(accountId: number, kfId: number) {
 export async function getMpKfSessionDetail(id: number): Promise<MpKfSessionDetail> {
   const row = await ensureSession(id);
   const base = await loadMappedSession(id);
-  if (!base) throw new HTTPException(404, { message: '会话不存在' });
+  const detail = requireRow(base, '会话不存在');
 
   const fromKf = alias(mpKfAccounts, 'from_kf');
   const toKf = alias(mpKfAccounts, 'to_kf');
@@ -400,7 +403,7 @@ export async function getMpKfSessionDetail(id: number): Promise<MpKfSessionDetai
   }));
   const messages = messageRows.reverse().map(mapMpMessage);
 
-  return { ...base, events, messages };
+  return { ...detail, events, messages };
 }
 
 export async function getMpKfSessionBeforeAudit(id: number): Promise<MpKfSession | null> {
@@ -551,8 +554,7 @@ async function closeSessionRow(session: MpKfSessionRow, reason: MpKfSessionClose
 export async function replyMpKfSession(id: number, data: ReplyMpKfSessionInput): Promise<MpKfSession> {
   const session = await ensureSession(id);
   if (session.status !== 'active') throw new HTTPException(400, { message: '仅进行中的会话可回复' });
-  const account = await getAccountRowById(session.accountId);
-  if (!account) throw new HTTPException(404, { message: '公众号不存在' });
+  const account = requireRow(await getAccountRowById(session.accountId), '公众号不存在');
 
   try {
     await assertContentSafe(account, data.content);

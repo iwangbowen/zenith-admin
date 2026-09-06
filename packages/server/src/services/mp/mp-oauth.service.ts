@@ -1,4 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { ensureMpAccountExists, getMpAccountAuthCredential } from './mp-account.service';
 import { buildWebAuthorizeUrl, exchangeWebAuthCode, getWebAuthUserInfo } from '../../lib/wechat';
 import type { OAuthScope } from '../../lib/wechat';
@@ -21,8 +22,7 @@ export interface MpOAuthResult {
 
 /** 公开回调：用 code 换取 openid/unionid，snsapi_userinfo 时附带用户信息。 */
 export async function handleMpOAuthCallback(accountId: number, code: string): Promise<MpOAuthResult> {
-  const account = await getMpAccountAuthCredential(accountId);
-  if (!account) throw new HTTPException(404, { message: '公众号不存在' });
+  const account = requireRow(await getMpAccountAuthCredential(accountId), '公众号不存在');
   if (!account.appSecret) throw new HTTPException(400, { message: '公众号未配置 AppSecret' });
   try {
     const token = await exchangeWebAuthCode(account.appId, account.appSecret, code);

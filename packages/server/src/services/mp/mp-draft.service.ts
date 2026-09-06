@@ -1,5 +1,6 @@
 import { eq, and, desc, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { mpDrafts } from '../../db/schema';
 import type { MpDraftRow } from '../../db/schema';
@@ -28,8 +29,7 @@ export function mapMpDraft(row: MpDraftRow) {
 
 export async function ensureMpDraftExists(id: number): Promise<MpDraftRow> {
   const [row] = await db.select().from(mpDrafts).where(and(eq(mpDrafts.id, id), tenantScope(mpDrafts))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '图文草稿不存在' });
-  return row;
+  return requireRow(row, '图文草稿不存在');
 }
 
 export async function getMpDraft(id: number) {
@@ -50,11 +50,13 @@ export async function listMpDrafts(q: ListMpDraftsQuery) {
   if (tenant) conditions.push(tenant);
   conditions.push(keywordCondition(q.keyword, [mpDrafts.title], 'ilike'));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpDrafts, where),
-    withPagination(db.select().from(mpDrafts).where(where).orderBy(desc(mpDrafts.id)).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpDraft), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpDrafts, where),
+    rows: () => withPagination(db.select().from(mpDrafts).where(where).orderBy(desc(mpDrafts.id)).$dynamic(), q.page, q.pageSize),
+    map: mapMpDraft,
+  });
 }
 
 export async function createMpDraft(data: CreateMpDraftInput) {
@@ -82,7 +84,7 @@ export async function pushMpDraft(id: number) {
   const row = await ensureMpDraftExists(id);
   const account = await ensureMpAccountExists(row.accountId);
   const articles = (row.articles ?? []) as MpArticle[];
-  if (articles.length === 0) throw new HTTPException(400, { message: '草稿内容为空' });
+  requireRow(articles[0], '草稿内容为空', 400);
   let mediaId: string;
   try {
     mediaId = await addWechatDraft(account, articles);

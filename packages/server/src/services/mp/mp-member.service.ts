@@ -1,4 +1,5 @@
 import { eq, and, asc } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpFans, members, memberPointAccounts, memberWallets, memberLevels } from '../../db/schema';
@@ -9,8 +10,7 @@ import { mapMpFan } from './mp-fan.service';
 
 async function getFanScoped(fanId: number): Promise<MpFanRow> {
   const [fan] = await db.select().from(mpFans).where(and(eq(mpFans.id, fanId), tenantScope(mpFans))).limit(1);
-  if (!fan) throw new HTTPException(404, { message: '粉丝不存在' });
-  return fan;
+  return requireRow(fan, '粉丝不存在');
 }
 
 async function defaultMemberLevelId(): Promise<number | null> {
@@ -52,7 +52,7 @@ export async function createMemberForFan(fanId: number) {
 export async function bindFanToMember(fanId: number, memberId: number) {
   await getFanScoped(fanId);
   const [member] = await db.select({ id: members.id }).from(members).where(and(eq(members.id, memberId), tenantScope(members))).limit(1);
-  if (!member) throw new HTTPException(404, { message: '会员不存在' });
+  requireRow(member, '会员不存在');
   const [f] = await db.update(mpFans).set({ memberId }).where(eq(mpFans.id, fanId)).returning();
   return mapMpFan(f);
 }

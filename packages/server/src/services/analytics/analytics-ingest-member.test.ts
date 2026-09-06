@@ -34,14 +34,18 @@ vi.mock('../../lib/member-context', () => ({
   }),
 }));
 
-vi.mock('../../lib/tenant', () => ({
-  getCreateTenantId: () => {
-    throw new Error('getCreateTenantId should not be called when there is no admin user');
-  },
-  tenantScope: () => undefined,
-  getEffectiveTenantId: () => null,
-  isPlatformAdmin: () => false,
-}));
+vi.mock('../../lib/tenant', async () => {
+  const { eq, isNull } = await import('drizzle-orm');
+  return {
+    getCreateTenantId: () => {
+      throw new Error('getCreateTenantId should not be called when there is no admin user');
+    },
+    tenantScope: () => undefined,
+    getEffectiveTenantId: () => null,
+    isPlatformAdmin: () => false,
+    exactTenantCondition: (column: Parameters<typeof eq>[0], tenantId: number | null) => (tenantId == null ? isNull(column) : eq(column, tenantId)),
+  };
+});
 
 vi.mock('../../lib/analytics-helpers', () => ({
   parseClientEnv: () => ({

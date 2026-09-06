@@ -1,5 +1,6 @@
 import { eq, and, desc, sql, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { mpQrcodes, mpFans } from '../../db/schema';
 import type { MpQrcodeRow } from '../../db/schema';
@@ -33,8 +34,7 @@ export function mapMpQrcode(row: MpQrcodeRow) {
 
 export async function ensureMpQrcodeExists(id: number): Promise<MpQrcodeRow> {
   const [row] = await db.select().from(mpQrcodes).where(and(eq(mpQrcodes.id, id), tenantScope(mpQrcodes))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '二维码不存在' });
-  return row;
+  return requireRow(row, '二维码不存在');
 }
 
 export async function getMpQrcodeBeforeAudit(id: number) {
@@ -55,11 +55,13 @@ export async function listMpQrcodes(q: ListMpQrcodesQuery) {
   if (q.type) conditions.push(eq(mpQrcodes.type, q.type));
   conditions.push(keywordCondition(q.keyword, [mpQrcodes.name, mpQrcodes.sceneStr], 'ilike'));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpQrcodes, where),
-    withPagination(db.select().from(mpQrcodes).where(where).orderBy(desc(mpQrcodes.id)).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpQrcode), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpQrcodes, where),
+    rows: () => withPagination(db.select().from(mpQrcodes).where(where).orderBy(desc(mpQrcodes.id)).$dynamic(), q.page, q.pageSize),
+    map: mapMpQrcode,
+  });
 }
 
 /** 创建带参二维码：调微信 qrcode/create 换取 ticket，落库本地登记。 */

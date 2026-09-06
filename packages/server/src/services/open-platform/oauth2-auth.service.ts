@@ -3,6 +3,7 @@
  * 令牌使用 opaque token（SHA256 哈希存储于 DB），支持精确撤销
  */
 import { randomBytes, createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { requireRow } from '../../lib/db-assert';
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../db';
 import {
@@ -73,7 +74,7 @@ function verifyPkceS256(codeVerifier: string, codeChallenge: string): boolean {
 
 async function ensureClient(clientId: string) {
   const [row] = await db.select().from(oauth2Clients).where(eq(oauth2Clients.clientId, clientId));
-  if (!row) throw new HTTPException(400, { message: 'invalid_client' });
+  requireRow(row, 'invalid_client', 400);
   if (!isClientUsable(row)) {
     throw new HTTPException(403, { message: row.status !== 'enabled' ? '应用已禁用' : '应用尚未审核通过' });
   }
@@ -98,7 +99,7 @@ async function lockUsableClient(tx: DbTransaction, clientId: string) {
     .where(eq(oauth2Clients.clientId, clientId))
     .for('update')
     .limit(1);
-  if (!row) throw new HTTPException(400, { message: 'invalid_client' });
+  requireRow(row, 'invalid_client', 400);
   if (!isClientUsable(row)) {
     throw new HTTPException(403, { message: row.status !== 'enabled' ? '应用已禁用' : '应用尚未审核通过' });
   }

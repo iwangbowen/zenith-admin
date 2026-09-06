@@ -13,6 +13,7 @@
  *    合并幂等：重复 $identify 时 WHERE 条件自然短路。
  */
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { exactTenantCondition } from '../../lib/tenant';
 import { db } from '../../db';
 import { analyticsIdentityMap, analyticsSessions, analyticsUserProfiles, userEvents } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
@@ -30,7 +31,7 @@ export interface IdentityBinding {
 }
 
 function tenantMatch(column: typeof analyticsIdentityMap.tenantId, tenantId: number | null) {
-  return tenantId == null ? isNull(column) : eq(column, tenantId);
+  return exactTenantCondition(column, tenantId);
 }
 
 /** $identify 首绑：写入匿名 → 权威身份映射（已存在时保持首绑不覆盖）。 */
@@ -84,7 +85,7 @@ export async function mergeAnonymousIdentity(binding: IdentityBinding): Promise<
         isNull(userEvents.userId),
         isNull(userEvents.memberId),
         sql`${userEvents.distinctId} <> ${distinctId}`,
-        tenantId == null ? isNull(userEvents.tenantId) : eq(userEvents.tenantId, tenantId),
+        exactTenantCondition(userEvents.tenantId, tenantId),
       ));
 
     // 2) 匿名会话归属登录身份（匿名会话行 distinct_id = sessionId，需经 user_events 关联定位）
@@ -118,7 +119,7 @@ export async function mergeAnonymousIdentity(binding: IdentityBinding): Promise<
       .delete(analyticsUserProfiles)
       .where(and(
         eq(analyticsUserProfiles.distinctId, anonymousId),
-        tenantId == null ? isNull(analyticsUserProfiles.tenantId) : eq(analyticsUserProfiles.tenantId, tenantId),
+        exactTenantCondition(analyticsUserProfiles.tenantId, tenantId),
       ));
   });
 }

@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { requireRow } from '../../lib/db-assert';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { CreateDeveloperOAuth2ClientInput, UpdateDeveloperOAuth2ClientInput } from '@zenith/shared/open-platform';
 import { db } from '../../db';
@@ -28,8 +29,7 @@ async function ensureOwnedApp(id: number) {
     eq(oauth2Clients.ownerId, user.userId),
     tenantCondition(oauth2Clients, user),
   )).limit(1);
-  if (!row) throw new HTTPException(404, { message: '应用不存在或不属于当前用户' });
-  return row;
+  return requireRow(row, '应用不存在或不属于当前用户');
 }
 
 export function listMyOAuth2Clients(opts: {
@@ -100,7 +100,7 @@ export async function submitMyOAuth2ClientForReview(id: number) {
     tenantCondition(oauth2Clients, user),
     inArray(oauth2Clients.reviewStatus, ['draft', 'rejected']),
   )).returning();
-  if (!updated) throw new HTTPException(409, { message: '应用状态已变化，请刷新后重试' });
+  requireRow(updated, '应用状态已变化，请刷新后重试', 409);
 
   const reviewers = await db.selectDistinct({ userId: users.id })
     .from(users)

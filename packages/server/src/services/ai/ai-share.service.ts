@@ -1,4 +1,5 @@
 import { eq, and } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
 import { randomBytes } from 'node:crypto';
 import { db } from '../../db';
 import { aiSharedConversations, aiMessages, aiConversations } from '../../db/schema';
@@ -58,12 +59,12 @@ export async function getSharedConversation(token: string) {
     .select()
     .from(aiSharedConversations)
     .where(eq(aiSharedConversations.token, token));
-  if (!share) throw new HTTPException(404, { message: '分享不存在或已取消' });
+  requireRow(share, '分享不存在或已取消');
   if (share.expiresAt && share.expiresAt.getTime() < Date.now()) {
     throw new HTTPException(410, { message: '分享链接已过期' });
   }
   const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, share.conversationId));
-  if (!conv) throw new HTTPException(404, { message: '对话不存在' });
+  requireRow(conv, '对话不存在');
   const messages = await db
     .select()
     .from(aiMessages)

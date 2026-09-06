@@ -10,7 +10,14 @@ vi.mock('../../db', () => ({
   db: { select, insert, update, delete: del, execute, $count: count, query: { analyticsExperiments: { findMany, findFirst: vi.fn() } } },
 }));
 
-vi.mock('../../lib/tenant', () => ({ currentCreateTenantId: () => null, tenantScope: () => undefined }));
+vi.mock('../../lib/tenant', async () => {
+  const { eq, isNull } = await import('drizzle-orm');
+  return {
+    currentCreateTenantId: () => null,
+    tenantScope: () => undefined,
+    exactTenantCondition: (column: Parameters<typeof eq>[0], tenantId: number | null) => (tenantId == null ? isNull(column) : eq(column, tenantId)),
+  };
+});
 
 const row = {
   id: 1,

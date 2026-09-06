@@ -1,4 +1,5 @@
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { aiKnowledgeBases, aiKbDocuments, aiKbChunks, aiConversations } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -56,7 +57,7 @@ function mapDoc(row: typeof aiKbDocuments.$inferSelect) {
 async function ensureKbOwner(id: number) {
   const user = currentUser();
   const [row] = await db.select().from(aiKnowledgeBases).where(eq(aiKnowledgeBases.id, id));
-  if (!row) throw new HTTPException(404, { message: '知识库不存在' });
+  requireRow(row, '知识库不存在');
   if (row.userId !== user.userId) throw new HTTPException(403, { message: '无权访问此知识库' });
   return row;
 }
@@ -122,7 +123,7 @@ export async function listKbChunks(kbId: number, docId: number) {
   await ensureKbOwner(kbId);
   const [doc] = await db.select().from(aiKbDocuments)
     .where(and(eq(aiKbDocuments.id, docId), eq(aiKbDocuments.kbId, kbId)));
-  if (!doc) throw new HTTPException(404, { message: '文档不存在' });
+  requireRow(doc, '文档不存在');
   const rows = await db.select({ id: aiKbChunks.id, content: aiKbChunks.content, tokenCount: aiKbChunks.tokenCount })
     .from(aiKbChunks)
     .where(and(eq(aiKbChunks.kbId, kbId), eq(aiKbChunks.docId, docId)))
@@ -169,10 +170,9 @@ export async function addKbDocument(kbId: number, input: AddAiKbDocumentInput, s
  * 分块 → （可选）向量化 → 入库（分块文本进 ai_kb_chunks，向量进 Mastra PgVector 索引 kb_{kbId}）。
  */
 export async function ingestKbDocument(kbId: number, input: { name: string; content: string }, sourceUrl: string | null = null) {
-  const kb = await db.query.aiKnowledgeBases.findFirst({ where: eq(aiKnowledgeBases.id, kbId) });
-  if (!kb) throw new HTTPException(404, { message: '知识库不存在' });
+  const kb = requireRow(await db.query.aiKnowledgeBases.findFirst({ where: eq(aiKnowledgeBases.id, kbId) }), '知识库不存在');
   const chunks = await chunkText(input.content);
-  if (chunks.length === 0) throw new HTTPException(400, { message: '内容为空，无法入库' });
+  requireRow(chunks[0], '内容为空，无法入库', 400);
 
   const [existingCount] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -309,7 +309,7 @@ async function deleteDocVectors(kbId: number, docIds: number[]): Promise<void> {
 export async function deleteKbDocument(kbId: number, docId: number) {
   await ensureKbOwner(kbId);
   const [doc] = await db.select().from(aiKbDocuments).where(and(eq(aiKbDocuments.id, docId), eq(aiKbDocuments.kbId, kbId)));
-  if (!doc) throw new HTTPException(404, { message: '文档不存在' });
+  requireRow(doc, '文档不存在');
   await deleteDocVectors(kbId, [docId]);
   await db.delete(aiKbDocuments).where(eq(aiKbDocuments.id, docId));
 }
@@ -418,7 +418,7 @@ export async function retrieveKbContext(kbId: number, ownerId: number, query: st
 export async function setConversationKnowledgeBase(conversationId: number, kbId: number | null) {
   const user = currentUser();
   const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, conversationId));
-  if (!conv) throw new HTTPException(404, { message: '对话不存在' });
+  requireRow(conv, '对话不存在');
   if (conv.userId !== user.userId) throw new HTTPException(403, { message: '无权访问此对话' });
   if (kbId !== null) await ensureKbOwner(kbId);
   await db.update(aiConversations).set({ knowledgeBaseId: kbId }).where(eq(aiConversations.id, conversationId));

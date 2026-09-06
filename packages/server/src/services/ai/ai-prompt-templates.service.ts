@@ -1,4 +1,6 @@
 import { eq, and, or, asc, desc, sql } from 'drizzle-orm';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import type { SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { aiPromptTemplates, aiPromptTemplateVersions, users } from '../../db/schema';
@@ -54,11 +56,13 @@ export async function listPromptTemplates(params: {
     .where(where)
     .orderBy(asc(aiPromptTemplates.sort), desc(aiPromptTemplates.createdAt));
 
-  const [total, list] = await Promise.all([
-    db.$count(aiPromptTemplates, where),
-    withPagination(listQuery.$dynamic(), page, pageSize),
-  ]);
-  return { total, list: list.map(mapTemplate), page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(aiPromptTemplates, where),
+    rows: () => withPagination(listQuery.$dynamic(), page, pageSize),
+    map: mapTemplate,
+  });
 }
 
 /** 聊天选择器用：所有启用的可见模板（不分页） */
@@ -74,7 +78,7 @@ export async function listChatPromptTemplates() {
 async function ensureManageable(id: number) {
   const user = currentUser();
   const [row] = await db.select().from(aiPromptTemplates).where(eq(aiPromptTemplates.id, id));
-  if (!row) throw new HTTPException(404, { message: '提示词模板不存在' });
+  requireRow(row, '提示词模板不存在');
   if (row.scope === 'user' && row.userId !== user.userId) {
     throw new HTTPException(403, { message: '无权操作此模板' });
   }
@@ -190,7 +194,7 @@ export async function restorePromptTemplateVersion(templateId: number, versionId
     .select()
     .from(aiPromptTemplateVersions)
     .where(and(eq(aiPromptTemplateVersions.id, versionId), eq(aiPromptTemplateVersions.templateId, templateId)));
-  if (!ver) throw new HTTPException(404, { message: '历史版本不存在' });
+  requireRow(ver, '历史版本不存在');
   await snapshotTemplateVersion(existing, user.userId);
   const [row] = await db
     .update(aiPromptTemplates)
@@ -214,7 +218,7 @@ export async function incrementPromptUsage(id: number) {
     .select()
     .from(aiPromptTemplates)
     .where(and(eq(aiPromptTemplates.id, id), eq(aiPromptTemplates.isEnabled, true), visibilityCond()));
-  if (!row) throw new HTTPException(404, { message: '提示词模板不存在' });
+  requireRow(row, '提示词模板不存在');
   await db
     .update(aiPromptTemplates)
     .set({ usageCount: sql`${aiPromptTemplates.usageCount} + 1` })

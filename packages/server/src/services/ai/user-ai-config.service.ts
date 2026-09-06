@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { userAiConfigs } from '../../db/schema';
@@ -77,7 +78,7 @@ export async function updateUserAiConfig(id: number, input: SaveUserAiConfigInpu
     .select()
     .from(userAiConfigs)
     .where(and(eq(userAiConfigs.id, id), eq(userAiConfigs.userId, user.userId)));
-  if (!existing) throw new HTTPException(404, { message: '配置不存在' });
+  requireRow(existing, '配置不存在');
 
   const nextModels = input.models ?? existing.models ?? [];
   const nextDefault = input.defaultModel !== undefined ? input.defaultModel : existing.defaultModel;
@@ -116,7 +117,7 @@ export async function deleteUserAiConfig(id: number) {
     .select()
     .from(userAiConfigs)
     .where(and(eq(userAiConfigs.id, id), eq(userAiConfigs.userId, user.userId)));
-  if (!existing) throw new HTTPException(404, { message: '配置不存在' });
+  requireRow(existing, '配置不存在');
   await db.delete(userAiConfigs).where(and(eq(userAiConfigs.id, id), eq(userAiConfigs.userId, user.userId)));
 }
 

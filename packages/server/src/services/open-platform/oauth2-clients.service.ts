@@ -1,4 +1,6 @@
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { isIP } from 'node:net';
 import { and, eq, desc, inArray } from 'drizzle-orm';
 import { db } from '../../db';
@@ -99,15 +101,17 @@ export async function listOAuth2Clients(opts: {
     buildWhere(...conditions),
     tenantCondition(oauth2Clients, currentUser()),
   );
-  const [list, total] = await Promise.all([
-    db.select().from(oauth2Clients)
-      .where(where)
-      .orderBy(desc(oauth2Clients.createdAt))
-      .limit(pageSize)
-      .offset(pageOffset(page, pageSize)),
-    db.$count(oauth2Clients, where),
-  ]);
-  return { list: list.map(mapClientRow), total, page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(oauth2Clients, where),
+    rows: () => db.select().from(oauth2Clients)
+  .where(where)
+  .orderBy(desc(oauth2Clients.createdAt))
+  .limit(pageSize)
+  .offset(pageOffset(page, pageSize)),
+    map: mapClientRow,
+  });
 }
 
 function validateIpAllowlist(values: string[]): void {
@@ -214,7 +218,7 @@ export async function getOAuth2Client(id: number) {
     .select()
     .from(oauth2Clients)
     .where(and(eq(oauth2Clients.id, id), tenantCondition(oauth2Clients, currentUser())));
-  if (!row) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+  requireRow(row, 'OAuth2 应用不存在');
   return mapClientRow(row);
 }
 
@@ -271,7 +275,7 @@ export async function updateOAuth2Client(
         .where(and(eq(oauth2Clients.id, id), tenantCondition(oauth2Clients, user)))
         .for('update')
         .limit(1);
-      if (!locked) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+      requireRow(locked, 'OAuth2 应用不存在');
       validateClientConfiguration({
         redirectUris: input.redirectUris ?? locked.redirectUris,
         grantTypes: input.grantTypes ?? locked.grantTypes,
@@ -306,7 +310,7 @@ export async function updateOAuth2Client(
         })
         .where(and(...updateConditions))
         .returning();
-      if (!row) throw new HTTPException(409, { message: '应用状态已变化，请刷新后重试' });
+      requireRow(row, '应用状态已变化，请刷新后重试', 409);
       if (shouldRevokeTokens) {
         await executor.delete(oauth2AuthorizationCodes)
           .where(eq(oauth2AuthorizationCodes.clientId, locked.clientId));
@@ -355,7 +359,7 @@ export async function deleteOAuth2Client(
       deleteConditions.push(inArray(oauth2Clients.reviewStatus, options.allowedReviewStatuses));
     }
     const result = await tx.delete(oauth2Clients).where(and(...deleteConditions)).returning();
-    if (result.length === 0) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+    requireRow(result[0], 'OAuth2 应用不存在');
 
     // Webhook：先删投递记录再删订阅（投递以订阅为父）
     const subscriptionIds = await tx.select({ id: appWebhookSubscriptions.id })
@@ -386,7 +390,7 @@ export async function regenerateOAuth2ClientSecret(id: number) {
       .where(and(eq(oauth2Clients.id, id), tenantCondition(oauth2Clients, user)))
       .for('update')
       .limit(1);
-    if (!row) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+    requireRow(row, 'OAuth2 应用不存在');
     if (row.isPublic) throw new HTTPException(400, { message: '公开客户端不使用 secret' });
 
     const sec = generateClientSecret();
@@ -448,7 +452,7 @@ export async function reviewOAuth2Client(
       eq(oauth2Clients.reviewStatus, 'pending'),
       tenantCondition(oauth2Clients, user),
     )).returning();
-    if (!row) throw new HTTPException(400, { message: '仅待审核应用可执行审核操作' });
+    requireRow(row, '仅待审核应用可执行审核操作', 400);
     if (input.action === 'reject') {
       await tx.delete(oauth2AuthorizationCodes)
         .where(eq(oauth2AuthorizationCodes.clientId, row.clientId));
@@ -474,24 +478,23 @@ async function ensureScopedClientByClientId(clientId: string) {
       tenantCondition(oauth2Clients, currentUser()),
     ))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
-  return row;
+  return requireRow(row, 'OAuth2 应用不存在');
 }
 
 export async function listClientTokens(clientId: string, opts: { page: number; pageSize: number }) {
   await ensureScopedClientByClientId(clientId);
   const { page, pageSize } = opts;
   const where = eq(oauth2Tokens.clientId, clientId);
-  const [list, total] = await Promise.all([
-    db.select().from(oauth2Tokens)
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(oauth2Tokens, where),
+    rows: () => db.select().from(oauth2Tokens)
       .where(where)
       .orderBy(desc(oauth2Tokens.createdAt))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-    db.$count(oauth2Tokens, where),
-  ]);
-  return {
-    list: list.map((r) => ({
+    map: (r) => ({
       id: r.id,
       tokenType: r.tokenType as 'access' | 'refresh',
       tokenPrefix: r.tokenPrefix,
@@ -501,19 +504,19 @@ export async function listClientTokens(clientId: string, opts: { page: number; p
       expiresAt: formatNullableDateTime(r.expiresAt),
       revoked: r.revoked,
       createdAt: formatDateTime(r.createdAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 export async function listClientGrants(clientId: string, opts: { page: number; pageSize: number }) {
   await ensureScopedClientByClientId(clientId);
   const { page, pageSize } = opts;
   const where = eq(oauth2UserGrants.clientId, clientId);
-  const [rows, total] = await Promise.all([
-    db.select({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(oauth2UserGrants, where),
+    rows: () => db.select({
       id: oauth2UserGrants.id,
       userId: oauth2UserGrants.userId,
       username: users.username,
@@ -529,38 +532,32 @@ export async function listClientGrants(clientId: string, opts: { page: number; p
       .orderBy(desc(oauth2UserGrants.updatedAt))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-    db.$count(oauth2UserGrants, where),
-  ]);
-  return {
-    list: rows.map((row) => ({
+    map: (row) => ({
       ...row,
       scopes: row.scopes ?? [],
       createdAt: formatDateTime(row.createdAt),
       updatedAt: formatDateTime(row.updatedAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 export async function getOAuth2TokenBeforeAudit(id: number) {
   const [row] = await db.select().from(oauth2Tokens).where(eq(oauth2Tokens.id, id));
-  if (!row) throw new HTTPException(404, { message: '令牌不存在' });
+  requireRow(row, '令牌不存在');
   await ensureScopedClientByClientId(row.clientId);
   return mapTokenAuditRow(row);
 }
 
 export async function revokeToken(id: number) {
   const [token] = await db.select({ clientId: oauth2Tokens.clientId }).from(oauth2Tokens).where(eq(oauth2Tokens.id, id)).limit(1);
-  if (!token) throw new HTTPException(404, { message: '令牌不存在' });
+  requireRow(token, '令牌不存在');
   await ensureScopedClientByClientId(token.clientId);
   const result = await db
     .update(oauth2Tokens)
     .set({ revoked: true })
     .where(and(eq(oauth2Tokens.id, id), eq(oauth2Tokens.clientId, token.clientId)))
     .returning();
-  if (result.length === 0) throw new HTTPException(404, { message: '令牌不存在' });
+  requireRow(result[0], '令牌不存在');
 }
 
 // ─── 用户自助授权管理（我的已授权应用）─────────────────────────────────────────
@@ -574,8 +571,11 @@ export async function revokeToken(id: number) {
 export async function listMyGrants(userId: number, opts: { page: number; pageSize: number }) {
   const { page, pageSize } = opts;
   const where = eq(oauth2UserGrants.userId, userId);
-  const [rows, total] = await Promise.all([
-    db.select({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(oauth2UserGrants, where),
+    rows: () => db.select({
       id: oauth2UserGrants.id,
       clientId: oauth2UserGrants.clientId,
       appName: oauth2Clients.name,
@@ -592,10 +592,7 @@ export async function listMyGrants(userId: number, opts: { page: number; pageSiz
       .orderBy(desc(oauth2UserGrants.updatedAt))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-    db.$count(oauth2UserGrants, where),
-  ]);
-  return {
-    list: rows.map((row) => ({
+    map: (row) => ({
       id: row.id,
       clientId: row.clientId,
       appName: row.appName ?? row.clientId,
@@ -605,11 +602,8 @@ export async function listMyGrants(userId: number, opts: { page: number; pageSiz
       scopes: row.scopes ?? [],
       createdAt: formatDateTime(row.createdAt),
       updatedAt: formatDateTime(row.updatedAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 /**
@@ -622,7 +616,7 @@ export async function revokeMyGrant(userId: number, grantId: number): Promise<vo
       .where(and(eq(oauth2UserGrants.id, grantId), eq(oauth2UserGrants.userId, userId)))
       .for('update')
       .limit(1);
-    if (!grant) throw new HTTPException(404, { message: '授权记录不存在' });
+    requireRow(grant, '授权记录不存在');
 
     await tx.delete(oauth2UserGrants).where(eq(oauth2UserGrants.id, grantId));
     await tx.delete(oauth2AuthorizationCodes).where(and(

@@ -1,5 +1,5 @@
 import { eq, desc } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { analyticsSavedReports } from '../../db/schema';
 import type { AnalyticsSavedReportRow } from '../../db/schema';
@@ -48,6 +48,6 @@ export async function deleteSavedReport(id: number) {
     .from(analyticsSavedReports)
     .where(buildWhere(eq(analyticsSavedReports.id, id), tenantScope(analyticsSavedReports)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '报表不存在' });
+  requireRow(row, '报表不存在');
   await db.delete(analyticsSavedReports).where(eq(analyticsSavedReports.id, id));
 }

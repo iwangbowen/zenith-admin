@@ -1,4 +1,5 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import { exactTenantCondition } from '../../lib/tenant';
 import { analyticsUserProfiles } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import type { AnalyticsIdentityType } from '@zenith/shared/analytics';
@@ -46,7 +47,7 @@ export async function upsertUserProfilesBatch(executor: DbExecutor, inputs: Prof
 
   await executor.insert(analyticsUserProfiles).values(values).onConflictDoNothing();
   for (const v of values) {
-    const tenantMatch = v.tenantId == null ? isNull(analyticsUserProfiles.tenantId) : eq(analyticsUserProfiles.tenantId, v.tenantId);
+    const tenantMatch = exactTenantCondition(analyticsUserProfiles.tenantId, v.tenantId);
     await executor
       .update(analyticsUserProfiles)
       .set({

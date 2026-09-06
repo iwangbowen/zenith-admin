@@ -1,4 +1,6 @@
 import { eq, and, sql, type SQL } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpTags } from '../../db/schema';
@@ -27,8 +29,7 @@ export function mapMpTag(row: MpTagRow) {
 
 export async function ensureMpTagExists(id: number): Promise<MpTagRow> {
   const [row] = await db.select().from(mpTags).where(and(eq(mpTags.id, id), tenantScope(mpTags))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '标签不存在' });
-  return row;
+  return requireRow(row, '标签不存在');
 }
 
 export interface ListMpTagsQuery {
@@ -45,11 +46,13 @@ export async function listMpTags(q: ListMpTagsQuery) {
   if (tenant) conditions.push(tenant);
   conditions.push(keywordCondition(q.keyword, [mpTags.name], 'ilike'));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpTags, where),
-    withPagination(db.select().from(mpTags).where(where).orderBy(mpTags.id).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpTag), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpTags, where),
+    rows: () => withPagination(db.select().from(mpTags).where(where).orderBy(mpTags.id).$dynamic(), q.page, q.pageSize),
+    map: mapMpTag,
+  });
 }
 
 /** 审计前快照 */

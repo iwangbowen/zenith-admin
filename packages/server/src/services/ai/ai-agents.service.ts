@@ -1,4 +1,5 @@
 import { eq, desc, sql } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { aiAgents, aiKnowledgeBases, aiProviderConfigs } from '../../db/schema';
@@ -43,7 +44,7 @@ export type AgentView = ReturnType<typeof mapAgent>;
 async function ensureAgentOwner(id: number): Promise<AiAgentRow> {
   const user = currentUser();
   const [row] = await db.select().from(aiAgents).where(eq(aiAgents.id, id));
-  if (!row) throw new HTTPException(404, { message: '智能体不存在' });
+  requireRow(row, '智能体不存在');
   if (row.userId !== user.userId) throw new HTTPException(403, { message: '无权操作此智能体' });
   return row;
 }
@@ -147,8 +148,7 @@ export async function resolveAgentForChat(agentId: number, userId: number): Prom
 export async function getAgentDetail(id: number): Promise<AgentView> {
   const user = currentUser();
   const row = await resolveAgentForChat(id, user.userId);
-  if (!row) throw new HTTPException(404, { message: '智能体不存在' });
-  return mapAgent(row);
+  return mapAgent(requireRow(row, '智能体不存在'));
 }
 
 export async function incrementAgentUsage(agentId: number): Promise<void> {

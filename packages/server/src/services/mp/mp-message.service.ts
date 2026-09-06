@@ -1,4 +1,5 @@
 import { eq, and, desc, sql, type SQL } from 'drizzle-orm';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpMessages, mpFans } from '../../db/schema';
@@ -50,11 +51,13 @@ export async function listMessages(q: ListMpMessagesQuery) {
   if (q.msgType) conditions.push(eq(mpMessages.msgType, q.msgType));
   conditions.push(keywordCondition(q.keyword, [mpMessages.content], 'ilike'));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpMessages, where),
-    withPagination(db.select().from(mpMessages).where(where).orderBy(desc(mpMessages.id)).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpMessage), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpMessages, where),
+    rows: () => withPagination(db.select().from(mpMessages).where(where).orderBy(desc(mpMessages.id)).$dynamic(), q.page, q.pageSize),
+    map: mapMpMessage,
+  });
 }
 
 /** 会话列表：按 openid 聚合，取每个会话最后一条消息 + 消息总数 + 粉丝信息 */

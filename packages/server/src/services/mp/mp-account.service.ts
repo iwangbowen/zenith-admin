@@ -1,11 +1,13 @@
-import { eq, and, or, isNull, type SQL } from 'drizzle-orm';
+import { eq, and, or, type SQL } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpAccounts } from '../../db/schema';
 import type { MpAccountRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
-import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
+import { tenantScope, currentCreateTenantId, exactTenantCondition } from '../../lib/tenant';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { refreshMpAccessToken, clearMpAccessToken, WechatApiError } from '../../lib/wechat';
 import type { DbExecutor } from '../../db/types';
@@ -46,8 +48,7 @@ export function mapMpAccountForEdit(row: MpAccountRow) {
 export async function ensureMpAccountExists(id: number): Promise<MpAccountRow> {
   const [row] = await db.select().from(mpAccounts)
     .where(and(eq(mpAccounts.id, id), tenantScope(mpAccounts))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '公众号不存在' });
-  return row;
+  return requireRow(row, '公众号不存在');
 }
 
 export interface ListMpAccountsQuery {
@@ -63,11 +64,13 @@ export async function listMpAccounts(q: ListMpAccountsQuery) {
   if (q.type) conditions.push(eq(mpAccounts.type, q.type));
   if (q.status) conditions.push(eq(mpAccounts.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(mpAccounts, where),
-    withPagination(db.select().from(mpAccounts).where(where).orderBy(mpAccounts.id).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapMpAccountSafe), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(mpAccounts, where),
+    rows: () => withPagination(db.select().from(mpAccounts).where(where).orderBy(mpAccounts.id).$dynamic(), q.page, q.pageSize),
+    map: mapMpAccountSafe,
+  });
 }
 
 export async function getMpAccount(id: number) {
@@ -80,7 +83,7 @@ export async function getMpAccountBeforeAudit(id: number) {
 
 export async function getMpAccountDefaultAudit(id: number) {
   const target = await ensureMpAccountExists(id);
-  const tenantCond = target.tenantId === null ? isNull(mpAccounts.tenantId) : eq(mpAccounts.tenantId, target.tenantId);
+  const tenantCond = exactTenantCondition(mpAccounts.tenantId, target.tenantId);
   const rows = await db
     .select()
     .from(mpAccounts)
@@ -95,7 +98,7 @@ export async function getMpAccountDefaultAudit(id: number) {
 
 /** 取消同租户内其它默认公众号（保证默认唯一）。按目标账号的 tenantId 精确过滤，避免平台管理员无租户上下文时跨租户清除。 */
 async function clearOtherDefaults(executor: DbExecutor, tenantId: number | null): Promise<void> {
-  const tenantCond = tenantId === null ? isNull(mpAccounts.tenantId) : eq(mpAccounts.tenantId, tenantId);
+  const tenantCond = exactTenantCondition(mpAccounts.tenantId, tenantId);
   await executor.update(mpAccounts).set({ isDefault: false }).where(and(eq(mpAccounts.isDefault, true), tenantCond));
 }
 

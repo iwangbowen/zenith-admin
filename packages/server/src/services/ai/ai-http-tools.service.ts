@@ -1,4 +1,5 @@
 import { eq, desc } from 'drizzle-orm';
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { aiHttpTools } from '../../db/schema';
@@ -65,7 +66,7 @@ export async function createHttpTool(input: CreateAiHttpToolInput) {
 export async function updateHttpTool(id: number, input: UpdateAiHttpToolInput) {
   const user = currentUser();
   const [existing] = await db.select().from(aiHttpTools).where(eq(aiHttpTools.id, id));
-  if (!existing) throw new HTTPException(404, { message: '工具不存在' });
+  requireRow(existing, '工具不存在');
   if (input.name !== undefined) ensureNameAllowed(input.name);
   try {
     const [row] = await db
@@ -91,5 +92,5 @@ export async function updateHttpTool(id: number, input: UpdateAiHttpToolInput) {
 
 export async function deleteHttpTool(id: number) {
   const result = await db.delete(aiHttpTools).where(eq(aiHttpTools.id, id)).returning();
-  if (result.length === 0) throw new HTTPException(404, { message: '工具不存在' });
+  requireRow(result[0], '工具不存在');
 }

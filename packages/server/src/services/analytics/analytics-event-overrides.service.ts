@@ -2,6 +2,8 @@
  * 行为中心阶段 1：租户级事件启停覆盖（Tracking Plan 全局屏蔽之外的租户自助开关）。
  */
 import { and, desc, eq } from 'drizzle-orm';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { analyticsEventOverrides } from '../../db/schema';
@@ -45,18 +47,19 @@ export async function listEventOverrides(q: EventOverrideListQuery) {
   if (q.status) conditions.push(eq(analyticsEventOverrides.status, q.status as 'enabled'));
   const where = and(...conditions);
 
-  const [list, total] = await Promise.all([
-    db.select().from(analyticsEventOverrides).where(where).orderBy(desc(analyticsEventOverrides.updatedAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    db.$count(analyticsEventOverrides, where),
-  ]);
-  return { list: list.map(mapEventOverride), total, page, pageSize };
+  return buildListResult({
+    page: page,
+    pageSize: pageSize,
+    count: () => db.$count(analyticsEventOverrides, where),
+    rows: () => db.select().from(analyticsEventOverrides).where(where).orderBy(desc(analyticsEventOverrides.updatedAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapEventOverride,
+  });
 }
 
 export async function ensureEventOverrideExists(id: number, tenantId: number) {
   const [row] = await db.select().from(analyticsEventOverrides)
     .where(and(eq(analyticsEventOverrides.id, id), eq(analyticsEventOverrides.tenantId, tenantId))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '事件覆盖规则不存在' });
-  return row;
+  return requireRow(row, '事件覆盖规则不存在');
 }
 
 export async function createEventOverride(input: CreateAnalyticsEventOverrideInput) {

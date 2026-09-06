@@ -12,30 +12,17 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { and, eq, isNull } from 'drizzle-orm';
-import { db } from '../../db';
-import { roles, userRoles, users } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { crashSentinelDir, type CrashRecord } from '../../lib/fatal-handlers';
 import logger from '../../lib/logger';
 import { notify } from '../messaging/notification-outbox.service';
+import { listEnabledPlatformSuperAdmins } from '../identity/platform-admins.service';
 
 /**
  * 单次启动最多补投通知的哨兵数量：崩溃循环场景下最新 N 条已足够说明问题，
  * 更早的只留日志、直接归档，避免通知风暴与启动开销
  */
 const MAX_NOTIFY_PER_STARTUP = 20;
-
-/** 平台超管（tenantId 为空且绑定 super_admin 角色）的用户 ID */
-async function getPlatformAdminUserIds(): Promise<number[]> {
-  const rows = await db
-    .select({ id: users.id })
-    .from(users)
-    .innerJoin(userRoles, eq(userRoles.userId, users.id))
-    .innerJoin(roles, eq(roles.id, userRoles.roleId))
-    .where(and(eq(roles.code, 'super_admin'), isNull(users.tenantId), eq(users.status, 'enabled')));
-  return [...new Set(rows.map((r) => r.id))];
-}
 
 function formatCrashedAt(iso: string | undefined): string {
   if (!iso) return '未知时间';
@@ -66,7 +53,7 @@ export async function replayCrashSentinelsOnStartup(): Promise<void> {
     const archiveDir = path.join(dir, 'archived');
     await fs.mkdir(archiveDir, { recursive: true });
 
-    const adminIds = await getPlatformAdminUserIds();
+    const adminIds = (await listEnabledPlatformSuperAdmins()).map((admin) => admin.id);
     const recipients = adminIds.map((id) => ({ type: 'user' as const, id }));
     if (recipients.length === 0) {
       logger.warn('[crash-report] 未找到可通知的平台超管，崩溃记录仅落日志');
