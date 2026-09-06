@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Col, Form, Input, Row, Select, Space, Spin, Tag, Toast, Switch, Banner, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2, Flame } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
@@ -6,7 +7,6 @@ import { MP_AUTO_REPLY_TYPES, MP_REPLY_CONTENT_TYPE_LABELS, MP_REPLY_CONTENT_TYP
 import type { CreateMpAutoReplyInput, MpAutoReply, MpAutoReplyType, MpReplyContentType, MpReplyArticle } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -24,7 +24,7 @@ import {
   useMpUnmatchedKeywords,
   useSaveMpAutoReply,
 } from '@/hooks/queries/mp-auto-replies';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -78,8 +78,6 @@ export default function MpAutoRepliesPage() {
     replyType: submittedParams.filterType,
     keyword: submittedParams.keyword || undefined,
   }, !!currentId);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const materialsQuery = useMpAutoReplyMaterials(currentId);
   const materials = (materialsQuery.data?.list ?? []).filter((m) => m.wechatMediaId);
   const saveMutation = useSaveMpAutoReply();
@@ -216,8 +214,6 @@ export default function MpAutoRepliesPage() {
   const renderKeywordInput = () => (
     <KeywordInput placeholder="搜索关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={180} />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => can('mp:reply:create') ? (
     <CreateButton onClick={openCreate} disabled={!currentId} />
   ) : null;
@@ -227,44 +223,30 @@ export default function MpAutoRepliesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderAccountFilter()}
-            {renderTypeFilter()}
-            {renderKeywordInput()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-            {renderHotwordsButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordInput()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordInput()}
+        filters={(
           <>
             {renderAccountFilter()}
             {renderTypeFilter()}
           </>
         )}
-        mobileActions={renderHotwordsButton()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={renderHotwordsButton()}
+        mobileActions={(renderHotwordsButton())}
         filterTitle="自动回复筛选"
         actionTitle="自动回复操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {!accountsLoading && accounts.length === 0 && (
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...modal.modalProps} width={640}>
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">

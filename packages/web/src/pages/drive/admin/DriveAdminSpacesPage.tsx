@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
+import { listTableProps } from '@/components/list-page';
 import { Button, Form, Input, InputNumber, Progress, Select, Skeleton, Space, Spin, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
@@ -190,9 +191,9 @@ export default function DriveAdminSpacesPage() {
           </>
         )}
       />
-      <ConfigurableTable<DriveSpace> bordered rowKey="id" columns={columns} dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching} onRefresh={() => { void listQuery.refetch(); void statsQuery.refetch(); }} refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)} />
+      <ConfigurableTable<DriveSpace> columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...modal.modalProps} width={600}>
         <Spin spinning={modal.detailLoading}>

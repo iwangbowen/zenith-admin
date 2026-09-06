@@ -1,5 +1,6 @@
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { listTableProps } from '@/components/list-page';
 import { useNavigate } from 'react-router-dom';
 import { DRIVE_ACTIVITY_ACTION_LABELS, DRIVE_ACTIVITY_ACTION_OPTIONS, type DriveActivity, type DriveActivityAction } from '@zenith/shared/drive';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -93,9 +94,9 @@ export default function DriveAdminActivitiesPage() {
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
       />
-      <ConfigurableTable<DriveActivity> bordered rowKey="id" columns={columns} dataSource={query.data?.list ?? []}
-        loading={query.isFetching} onRefresh={() => void query.refetch()} refreshLoading={query.isFetching}
-        pagination={buildPagination(query.data?.total ?? 0)} />
+      <ConfigurableTable<DriveActivity> columns={columns}
+        {...listTableProps(query, { pagination: buildPagination })}
+      />
       {query.data?.total === 0 && <Typography.Text type="tertiary">暂无动态记录。</Typography.Text>}
     </div>
   );

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Col, Form, Modal, Row, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useQueryClient } from '@tanstack/react-query';
@@ -6,7 +7,6 @@ import type { AiPromptTemplate, AiPromptScope, CreateAiPromptTemplateInput } fro
 import { AppModal } from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import {
@@ -18,7 +18,7 @@ import {
 } from '@/hooks/queries/ai-prompts';
 import { useAiPromptVersions, useRestoreAiPromptVersion } from '@/hooks/queries/ai-extras';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -79,7 +79,6 @@ export default function PromptTemplatesPage() {
     keyword: submittedParams.keyword || undefined,
     scope: submittedParams.scope || undefined,
   });
-  const data = listQuery.data ?? null;
   const saveMutation = useSaveAiPrompt();
   const deleteMutation = useDeleteAiPrompts();
 
@@ -170,13 +169,7 @@ export default function PromptTemplatesPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
 
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   const renderCreateButton = () => hasPermission('ai:prompt:create') ? (
     <CreateButton onClick={promptModal.openCreate} />
@@ -184,40 +177,24 @@ export default function PromptTemplatesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderScopeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-          </>
-        )}
-        actions={renderCreateButton()}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderScopeFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderScopeFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="提示词筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable
-        bordered
+
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
+
+
+
+
         empty="暂无提示词模板"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { listTableProps } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import { DatePicker, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -42,7 +43,6 @@ export default function RuleExecutionsPage() {
   const [submitted, setSubmitted] = useState<Filters>({});
 
   const listQuery = useRuleExecutions({ page, pageSize, ...submitted });
-  const data = listQuery.data ?? null;
 
   const handleSearch = () => {
     setPage(1);
@@ -137,19 +137,20 @@ export default function RuleExecutionsPage() {
         )}
       />
       <ConfigurableTable
-        bordered
+
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
+
+
+
+
+
+
         empty="暂无执行记录"
-        pagination={buildPagination(data?.total ?? 0)}
+
         expandedRowRender={renderExpanded}
         hideExpandedColumn={false}
         expandRowByClick
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
     </div>
   );

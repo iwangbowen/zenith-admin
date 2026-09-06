@@ -5,11 +5,10 @@ import { CommonChart, chartOptions, makeMixedBarLineSpec, useChartPalette, StatC
 import { Bot, CircleCheck, Coins, Gauge, MessageCircle, Users, Wallet } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar } from '@/components/list-page';
 import { formatDateForApi } from '@/utils/date';
 import { aiUsageKeys, useAiUsageStats } from '@/hooks/queries/ai-usage';
 import type { AiUsageByModel, AiUsageByUser } from '@/hooks/queries/ai-usage';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter } from '@/components/search-filters';
 import { formatDurationMs } from '@/utils/format';
 
@@ -127,29 +126,13 @@ export default function AiUsagePage() {
       }} width={300} />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
-
   return (
     <div className="page-container zx-flat-panels">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderDateRangeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-          </>
-        )}
-        mobilePrimary={renderSearchButton()}
-        mobileFilters={renderDateRangeFilter()}
+      <ListSearchToolbar
+        filters={renderDateRangeFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="用量筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <Spin spinning={statsQuery.isFetching}>

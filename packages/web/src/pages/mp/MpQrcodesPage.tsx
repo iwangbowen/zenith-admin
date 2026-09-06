@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Form, Image, Select, Spin, Tag, Toast, Banner, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import { MP_QRCODE_TYPES, type CreateMpQrcodeInput, type MpQrcode, type MpQrcodeType } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -13,7 +13,6 @@ import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { mpQrcodeKeys, useCreateMpQrcode, useDeleteMpQrcodes, useMpQrcodeList } from '@/hooks/queries/mp-qrcodes';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -50,8 +49,6 @@ export default function MpQrcodesPage() {
     type: submittedParams.filterType,
     keyword: submittedParams.keyword || undefined,
   }, !!currentId);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const createMutation = useCreateMpQrcode();
   const deleteMutation = useDeleteMpQrcodes();
   const createModal = useEditModal<MpQrcode, QrcodeFormValues, Partial<CreateMpQrcodeInput>>({
@@ -126,49 +123,33 @@ export default function MpQrcodesPage() {
   const renderKeywordInput = () => (
     <KeywordInput placeholder="搜索名称 / 场景值" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => can('mp:qrcode:create') ? (
     <Button type="primary" icon={<Plus size={14} />} disabled={!currentId} onClick={openCreate}>生成二维码</Button>
   ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderAccountFilter()}
-            {renderTypeFilter()}
-            {renderKeywordInput()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordInput()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordInput()}
+        filters={(
           <>
             {renderAccountFilter()}
             {renderTypeFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="二维码筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {!accountsLoading && accounts.length === 0 && (
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...createModal.modalProps} title="生成带参二维码" width={560}>
         <Spin spinning={false} wrapperClassName="modal-spin-wrapper">

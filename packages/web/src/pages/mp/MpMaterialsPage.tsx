@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Form, Input, Modal, Select, Spin, Tag, Toast, Banner, Upload, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, UploadCloud } from 'lucide-react';
 import { MP_MATERIAL_TYPES, MP_MATERIAL_TYPE_LABELS, MP_MATERIAL_TYPE_OPTIONS } from '@zenith/shared/mp';
@@ -6,7 +7,6 @@ import type { CreateMpMaterialInput, MpMaterial, MpMaterialType } from '@zenith/
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -21,7 +21,7 @@ import {
   useSyncMpMaterials,
   useUploadMpMaterial,
 } from '@/hooks/queries/mp-materials';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -46,8 +46,6 @@ export default function MpMaterialsPage() {
     type: submittedParams.filterType,
     keyword: submittedParams.keyword || undefined,
   }, !!currentId);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const [uploadVisible, setUploadVisible] = useState(false);
   const [uploadType, setUploadType] = useState<MpMaterialType>('image');
@@ -126,8 +124,6 @@ export default function MpMaterialsPage() {
   const renderKeywordInput = () => (
     <KeywordInput placeholder="搜索素材名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={180} />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => can('mp:material:create') ? (
     <CreateButton onClick={modal.openCreate} disabled={!currentId} />
   ) : null;
@@ -143,44 +139,30 @@ export default function MpMaterialsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderAccountFilter()}
-            {renderTypeFilter()}
-            {renderKeywordInput()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderMaterialActions()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordInput()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordInput()}
+        filters={(
           <>
             {renderAccountFilter()}
             {renderTypeFilter()}
           </>
         )}
-        mobileActions={renderMaterialActions()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={renderMaterialActions()}
+        mobileActions={(renderMaterialActions())}
         filterTitle="素材筛选"
         actionTitle="素材操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {!accountsLoading && accounts.length === 0 && (
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...modal.modalProps} title={modal.isEdit ? '重命名素材' : '新增素材'} width={520}>
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">

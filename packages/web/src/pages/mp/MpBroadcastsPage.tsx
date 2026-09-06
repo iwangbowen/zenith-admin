@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import { Form, Modal, Select, Spin, Tag, Toast, Banner, Typography, Tooltip, Input, Descriptions } from '@douyinfe/semi-ui';
 import { MP_BROADCAST_TYPE_LABELS, MP_BROADCAST_TYPE_OPTIONS } from '@zenith/shared/mp';
@@ -6,7 +7,6 @@ import type { CreateMpBroadcastInput, MpBroadcast, MpBroadcastType, MpBroadcastT
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { formatDateTimeForApi } from '@/utils/date';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -24,7 +24,7 @@ import {
   useSaveMpBroadcast,
   useSendMpBroadcast,
 } from '@/hooks/queries/mp-broadcasts';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { StatusSelect } from '@/components/search-filters';
@@ -53,8 +53,6 @@ export default function MpBroadcastsPage() {
 
   const listQuery = useMpBroadcastList({ accountId: currentId ?? 0, page, pageSize, status: submittedStatus }, !!currentId);
   const auxQuery = useMpBroadcastAux(currentId);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const tags = auxQuery.data?.tags ?? [];
   const materials = auxQuery.data?.materials ?? [];
   const drafts = auxQuery.data?.drafts ?? [];
@@ -205,47 +203,32 @@ export default function MpBroadcastsPage() {
       onChange={(v) => setDraftStatus(v as MpBroadcastStatus | undefined)}
     />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => can('mp:broadcast:create') ? (
     <CreateButton onClick={openCreate} disabled={!currentId}>新增群发</CreateButton>
   ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderAccountFilter()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        filters={
           <>
             {renderAccountFilter()}
             {renderStatusFilter()}
           </>
-        )}
+        }
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="群发筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {!accountsLoading && accounts.length === 0 && (
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...modal.modalProps} title={modal.isEdit ? '编辑群发草稿' : '新增群发'} width={600}>
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">

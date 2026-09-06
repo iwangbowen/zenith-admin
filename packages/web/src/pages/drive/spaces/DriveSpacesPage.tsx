@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { listTableProps } from '@/components/list-page';
 import { Form, Progress, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -196,9 +197,9 @@ export default function DriveSpacesPage() {
           </>
         )}
       />
-      <ConfigurableTable<DriveSpace> bordered rowKey="id" columns={columns} dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)} />
+      <ConfigurableTable<DriveSpace> columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...modal.modalProps} width={640}>
         <Spin spinning={modal.detailLoading}>

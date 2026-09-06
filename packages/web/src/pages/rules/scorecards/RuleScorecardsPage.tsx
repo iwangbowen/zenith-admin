@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { listTableProps } from '@/components/list-page';
 import { Banner, Button, Divider, Input, InputNumber, Modal, Select, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
@@ -88,7 +89,6 @@ export default function RuleScorecardsPage() {
     keyword: submittedKeyword || undefined,
     status: enumValueOf(RULE_DECISION_STATUSES, submittedStatus),
   });
-  const data = listQuery.data ?? null;
   const saveMutation = useSaveRuleScorecard();
   const deleteMutation = useDeleteRuleScorecard();
   const publishMutation = usePublishRuleScorecard();
@@ -235,16 +235,14 @@ export default function RuleScorecardsPage() {
         )}
       />
       <ConfigurableTable
-        bordered
+
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
+
+
+
+
         empty="暂无评分卡"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       {/* 结构化编辑器：基本信息 + 变量分段 + 等级映射 */}

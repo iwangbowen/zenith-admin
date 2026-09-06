@@ -12,9 +12,8 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ChannelAdmin, ChannelSubscriber } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { UserAvatar } from '@/components/UserAvatar';
 import UserSelect from '@/components/UserSelect';
@@ -25,7 +24,7 @@ import {
   useChannelSubscribers,
   useRemoveChannelSubscriber,
 } from '@/hooks/queries/channels';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton, ResetButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 
@@ -138,33 +137,18 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
         />
       )}
 
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索用户姓名" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canManage && !isSystem && (
+      <ListSearchToolbar
+        keyword={(<KeywordInput placeholder="搜索用户姓名" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={200} />)}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canManage && !isSystem && (
               <CreateButton onClick={openAdd}>添加订阅者</CreateButton>
             )}
-          </>
-        )}
         actions={channel ? <ExportButton entity="channel.subscribers" query={exportQuery} /> : null}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索用户姓名" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-            {canManage && !isSystem && (
-              <CreateButton onClick={openAdd}>添加订阅者</CreateButton>
-            )}
-          </>
-        )}
-        mobileActions={(
-          <>
+        mobileActions={(<>
             <ResetButton onClick={handleReset} />
             {channel && <ExportButton entity="channel.subscribers" query={exportQuery} variant="flat" />}
-          </>
-        )}
+          </>)}
         actionTitle="订阅者操作"
       />
 

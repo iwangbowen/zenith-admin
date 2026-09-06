@@ -9,6 +9,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
@@ -48,11 +49,6 @@ export default function MpTemplateMessagesPage() {
     { accountId: currentId ?? 0, page: logPg.page, pageSize: logPg.pageSize, status: enumValueOf(MP_TEMPLATE_SEND_STATUSES, submittedLogStatus) },
     !!currentId,
   );
-  const templates = templateQuery.data?.list ?? [];
-  const tplTotal = templateQuery.data?.total ?? 0;
-  const logs = logQuery.data?.list ?? [];
-  const logTotal = logQuery.data?.total ?? 0;
-
   const syncMutation = useSyncMpTemplates();
   const sendMutation = useSendMpTemplate();
   const batchSendMutation = useBatchSendMpTemplate();
@@ -211,9 +207,10 @@ export default function MpTemplateMessagesPage() {
             mobileActions={renderTemplateActions()}
             actionTitle="模板库操作"
           />
-          <ConfigurableTable bordered loading={templateQuery.isFetching} onRefresh={() => void templateQuery.refetch()} refreshLoading={templateQuery.isFetching}
-            columns={tplColumns} dataSource={templates} rowKey="id"
-            pagination={tplPg.buildPagination(tplTotal)} />
+          <ConfigurableTable
+            columns={tplColumns}
+            {...listTableProps(templateQuery, { pagination: tplPg.buildPagination })}
+          />
         </TabPane>
         <TabPane tab="发送记录" itemKey="logs">
           <SearchToolbar
@@ -228,9 +225,10 @@ export default function MpTemplateMessagesPage() {
             filterTitle="发送记录筛选"
             onFilterApply={refreshLogs}
           />
-          <ConfigurableTable bordered loading={logQuery.isFetching} onRefresh={() => void logQuery.refetch()} refreshLoading={logQuery.isFetching}
-            columns={logColumns} dataSource={logs} rowKey="id"
-            pagination={logPg.buildPagination(logTotal)} />
+          <ConfigurableTable
+            columns={logColumns}
+            {...listTableProps(logQuery, { pagination: logPg.buildPagination })}
+          />
         </TabPane>
       </Tabs>
 

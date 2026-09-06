@@ -1,17 +1,16 @@
 /** 会话列表：按用户名 / 设备筛选，分页浏览会话并可打开单会话事件时间轴 */
 import { useState } from 'react';
+import { ListSearchToolbar } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import { Empty, Input, SideSheet, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { analyticsKeys, useAnalyticsSessions, useSessionTimeline } from '@/hooks/queries/analytics';
 import type { SessionListItem } from '@zenith/shared/analytics';
 import { ANALYTICS_DEVICE_TYPE_OPTIONS, USER_BEHAVIOR_EVENT_TYPE_LABELS } from '@zenith/shared/analytics';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect } from '@/components/search-filters';
 import { msToReadable, sectionStyle, type DeviceFilter } from './analytics-format';
 
@@ -161,30 +160,15 @@ export default function AnalyticsSessionsTab() {
       width={150}
     />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
 
   return (
     <div style={sectionStyle}>
-      <SearchToolbar
-        primary={(
-          <>
-            {renderUsernameSearch()}
-            {renderDeviceFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderUsernameSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={renderDeviceFilter()}
+      <ListSearchToolbar
+        keyword={renderUsernameSearch()}
+        filters={renderDeviceFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="会话筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
       <ConfigurableTable<SessionListItem>
         bordered

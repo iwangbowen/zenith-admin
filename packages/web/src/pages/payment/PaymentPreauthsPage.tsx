@@ -5,7 +5,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -22,9 +21,8 @@ import {
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CHANNELS, PAYMENT_PREAUTH_STATUS_LABELS, PAYMENT_PREAUTH_STATUS_OPTIONS, PAYMENT_PREAUTH_STATUSES, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { CreatePaymentPreauthInput, PaymentChannel, PaymentPreauth, PaymentPreauthMethod, PaymentPreauthStatus } from '@zenith/shared/payment';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { listTableProps } from '@/components/list-page';
+import { listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useEnabledPaymentAppLookup } from './payment-app-options';
 
@@ -208,42 +206,25 @@ export default function PaymentPreauthsPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
     />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} disabled={effectivePreauthAppId == null} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => canManage ? (
     <Button type="primary" icon={<Plus size={14} />} onClick={() => { setSelectedAppId(null); createModal.openCreate(); }}>发起冻结</Button>
   ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
-            {renderKeywordSearch()}
             {renderAppFilter()}
             {renderStatusFilter()}
             {renderChannelFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
           </>
         )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderStatusFilter()}
-            {renderChannelFilter()}
-          </>
-        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="预授权筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable<PaymentPreauth>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Col, Form, Modal, Row, SideSheet, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
+import { Col, Form, Modal, Row, SideSheet, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { IdentityProviderType, TenantIdentityProvider } from '@zenith/shared/identity';
 import { IDENTITY_PROVIDER_STATUSES, IDENTITY_PROVIDER_TYPES, SUPER_ADMIN_CODE, identityProviderContract } from '@zenith/shared/identity';
@@ -353,20 +354,7 @@ export default function IdentityProvidersPage() {
         onCancel={modal.close}
         closeOnEsc
         width={780}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={modal.close}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={modal.modalProps.okButtonProps.loading}
-              disabled={modal.modalProps.okButtonProps.disabled}
-              onClick={() => void modal.modalProps.onOk()}
-            >
-              保存
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...modal.footerProps} okText="保存" />}
       >
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">
           <Form

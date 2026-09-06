@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ListSearchToolbar } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import { Tabs, TabPane, Select, Button, Toast, Form, Switch, Slider, Input, InputNumber, TagInput, Tag, Typography, SplitButtonGroup, Dropdown, DatePicker, SideSheet, Descriptions, Card, Banner } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -35,7 +36,7 @@ import AnalyticsQualityTab from './AnalyticsQualityTab';
 import AnalyticsDebugTab from './AnalyticsDebugTab';
 import AnalyticsSegmentsTab from './AnalyticsSegmentsTab';
 import AnalyticsSitesTab from './AnalyticsSitesTab';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -854,8 +855,6 @@ export default function AnalyticsDataPage() {
       style={{ width: 330 }}
     />
   );
-  const renderEventSearchButton = () => <SearchButton onClick={handleEventSearch} />;
-  const renderEventResetButton = () => <ResetButton onClick={handleEventReset} />;
   const renderEventExportButtons = () => <ExportButton entity="analytics.events" query={buildExportQuery()} />;
   const renderEventCleanButtons = () => canClean ? (
     <SplitButtonGroup>
@@ -908,8 +907,6 @@ export default function AnalyticsDataPage() {
       onChange={(value) => setMetaSearch((prev) => ({ ...prev, status: value as AnalyticsEventMeta['status'] | undefined }))}
     />
   );
-  const renderMetaSearchButton = () => <SearchButton onClick={handleMetaSearch} />;
-  const renderMetaResetButton = () => <ResetButton onClick={handleMetaReset} />;
   const renderMetaCreateButton = () => <CreateButton onClick={metaModal.openCreate} />;
   const renderRollupDaysFilter = () => (
     <Select value={rollupDays} onChange={handleRollupDaysChange} optionList={ROLLUP_DAY_OPTIONS} style={{ width: 130 }} />
@@ -922,41 +919,28 @@ export default function AnalyticsDataPage() {
     <div className="page-container page-tabs-page zx-flat-panels">
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} type="line" lazyRender keepDOM={false}>
         <TabPane tab="事件明细" itemKey="events">
-          <SearchToolbar
-            primary={(
+          <ListSearchToolbar
+            keyword={renderEventNameSearch()}
+            filters={
               <>
                 {renderEventTypeFilter()}
-                {renderEventNameSearch()}
                 {renderEventUsernameSearch()}
                 {renderEventPagePathSearch()}
                 {renderEventDeviceFilter()}
                 {renderEventTimeRangeFilter()}
-                {renderEventSearchButton()}
-                {renderEventResetButton()}
+              </>
+            }
+            onSearch={handleEventSearch}
+            onReset={handleEventReset}
+            actions={
+              <>
                 {renderEventExportButtons()}
                 {renderEventCleanButtons()}
               </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderEventNameSearch()}
-                {renderEventSearchButton()}
-              </>
-            )}
-            mobileFilters={(
-              <>
-                {renderEventTypeFilter()}
-                {renderEventUsernameSearch()}
-                {renderEventPagePathSearch()}
-                {renderEventDeviceFilter()}
-                {renderEventTimeRangeFilter()}
-              </>
-            )}
+            }
             mobileActions={renderMobileEventActions()}
             filterTitle="事件筛选"
             actionTitle="事件操作"
-            onFilterApply={handleEventSearch}
-            onFilterReset={handleEventReset}
           />
 
           <ConfigurableTable
@@ -992,33 +976,18 @@ export default function AnalyticsDataPage() {
           </SideSheet>
         </TabPane>
         <TabPane tab="事件字典" itemKey="meta">
-          <SearchToolbar
-            primary={(
-              <>
-                {renderMetaKeywordSearch()}
-                {renderMetaCategorySearch()}
-                {renderMetaStatusFilter()}
-                {renderMetaSearchButton()}
-                {renderMetaResetButton()}
-                {renderMetaCreateButton()}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderMetaKeywordSearch()}
-                {renderMetaSearchButton()}
-                {renderMetaCreateButton()}
-              </>
-            )}
-            mobileFilters={(
+          <ListSearchToolbar
+            keyword={renderMetaKeywordSearch()}
+            filters={
               <>
                 {renderMetaCategorySearch()}
                 {renderMetaStatusFilter()}
               </>
-            )}
+            }
+            onSearch={handleMetaSearch}
+            onReset={handleMetaReset}
+            create={renderMetaCreateButton()}
             filterTitle="事件字典筛选"
-            onFilterApply={handleMetaSearch}
-            onFilterReset={handleMetaReset}
           />
 
           <ConfigurableTable

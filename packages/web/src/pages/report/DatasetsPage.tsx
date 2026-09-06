@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, useRef, useMemo } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
 import { Button, Col, Empty, Form, Input, InputNumber, Modal, Row, Select, SideSheet, Space, Spin, Switch, Table, TabPane, Tabs, TextArea, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -641,20 +642,7 @@ export default function DatasetsPage() {
         onCancel={datasetModal.close}
         width={900}
         closeOnEsc
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={datasetModal.close}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={datasetModal.modalProps.okButtonProps.loading}
-              disabled={datasetModal.modalProps.okButtonProps.disabled}
-              onClick={() => void datasetModal.modalProps.onOk()}
-            >
-              保存
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...datasetModal.footerProps} okText="保存" />}
       >
         <Form key={datasetModal.formKey} {...datasetModal.formProps} onValueChange={(v) => {
             if (v.datasourceId === undefined) return;

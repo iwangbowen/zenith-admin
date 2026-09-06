@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -51,7 +53,6 @@ import { enumValueOf } from '@zenith/shared/core';
 import { NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -75,7 +76,7 @@ import {
   useTestFrontendAlert,
   useUpdateFrontendErrorGroup,
 } from '@/hooks/queries/analytics';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
@@ -430,19 +431,14 @@ export default function FrontendErrorsPage() {
     keyword: submittedIssueFilters.keyword.trim() || undefined,
     environment: submittedIssueFilters.environment || undefined,
   }, activeTab === 'issues');
-  const groups = groupsQuery.data ?? null;
   const detailQuery = useFrontendErrorGroupDetail(detailGroupId, detailVisible);
   const detail = detailQuery.data ?? null;
   const adminUsersQuery = useFrontendAdminUsers(detailVisible);
   const adminUsers = adminUsersQuery.data?.list ?? EMPTY_ADMIN_USERS;
   const eventsQuery = useFrontendErrorEvents({ page: eventPage, pageSize: eventPageSize }, activeTab === 'events');
-  const events = eventsQuery.data ?? null;
   const sourceMapsQuery = useFrontendSourceMaps({ page: sourceMapPage, pageSize: sourceMapPageSize, release: submittedSourceRelease.trim() || undefined }, activeTab === 'sourcemaps');
-  const sourceMaps = sourceMapsQuery.data ?? null;
   const alertsQuery = useFrontendAlerts({ page: alertPage, pageSize: alertPageSize }, activeTab === 'alerts');
-  const alerts = alertsQuery.data ?? null;
   const alertLogsQuery = useFrontendAlertLogs({ page: alertLogPage, pageSize: alertLogPageSize }, activeTab === 'alertlogs');
-  const alertLogs = alertLogsQuery.data ?? null;
   const updateGroupMutation = useUpdateFrontendErrorGroup();
   const batchStatusMutation = useBatchUpdateFrontendErrorGroups();
   const batchDeleteMutation = useBatchDeleteFrontendErrorGroups();
@@ -1008,8 +1004,6 @@ export default function FrontendErrorsPage() {
   const renderIssueKeywordSearch = () => (
     <KeywordInput placeholder="错误信息关键词" value={issueFilters.keyword} onChange={(value) => setIssueFilters((prev) => ({ ...prev, keyword: value }))} onSearch={handleIssueSearch} />
   );
-  const renderIssueSearchButton = () => <SearchButton onClick={handleIssueSearch} />;
-  const renderIssueResetButton = () => <ResetButton onClick={handleIssueReset} />;
   const renderIssueBatchActions = () => selectedRowKeys.length > 0 ? (
     <>
       <SplitButtonGroup>
@@ -1064,26 +1058,9 @@ export default function FrontendErrorsPage() {
     <div className="page-container page-tabs-page zx-flat-panels">
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as TabKey)} lazyRender>
         <TabPane tab="错误 Issue" itemKey="issues">
-          <SearchToolbar
-            primary={(
-              <>
-                {renderIssueStatusFilter()}
-                {renderIssueTypeFilter()}
-                {renderIssueLevelFilter()}
-                {renderIssueEnvironmentFilter()}
-                {renderIssueKeywordSearch()}
-                {renderIssueSearchButton()}
-                {renderIssueResetButton()}
-                {renderIssueBatchActions()}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderIssueKeywordSearch()}
-                {renderIssueSearchButton()}
-              </>
-            )}
-            mobileFilters={(
+          <ListSearchToolbar
+            keyword={renderIssueKeywordSearch()}
+            filters={(
               <>
                 {renderIssueStatusFilter()}
                 {renderIssueTypeFilter()}
@@ -1091,27 +1068,24 @@ export default function FrontendErrorsPage() {
                 {renderIssueEnvironmentFilter()}
               </>
             )}
-            mobileActions={renderMobileIssueBatchActions()}
+            onSearch={handleIssueSearch}
+            onReset={handleIssueReset}
+            actions={renderIssueBatchActions()}
+            mobileActions={(renderMobileIssueBatchActions())}
             filterTitle="错误 Issue 筛选"
             actionTitle="Issue 操作"
-            onFilterApply={handleIssueSearch}
-            onFilterReset={handleIssueReset}
           />
 
           <ConfigurableTable<ErrorGroup>
-            bordered
-            rowKey="id"
             columns={issueColumns}
-            dataSource={groups?.list ?? []}
-            loading={groupsQuery.isFetching}
-            onRefresh={() => void groupsQuery.refetch()}
-            refreshLoading={groupsQuery.isFetching}
-            pagination={buildGroupPagination(groups?.total ?? 0)}
-            rowSelection={{
-              selectedRowKeys,
-              onChange: (keys) => setSelectedRowKeys(keys as number[]),
-            }}
-            empty="暂无错误 Issue"
+            {...listTableProps(groupsQuery, {
+              pagination: buildGroupPagination,
+              rowSelection: {
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys as number[]),
+              },
+              empty: '暂无错误 Issue',
+            })}
           />
         </TabPane>
 
@@ -1202,16 +1176,9 @@ export default function FrontendErrorsPage() {
 
         <TabPane tab="错误事件" itemKey="events">
           <ConfigurableTable<ErrorEvent>
-            bordered
-            rowKey="id"
             columns={eventColumns}
-            dataSource={events?.list ?? []}
-            loading={eventsQuery.isFetching}
-            onRefresh={() => void eventsQuery.refetch()}
-            refreshLoading={eventsQuery.isFetching}
-            pagination={buildEventPagination(events?.total ?? 0)}
             style={{ width: '100%' }}
-            empty="暂无错误事件"
+            {...listTableProps(eventsQuery, { pagination: buildEventPagination, empty: '暂无错误事件' })}
           />
         </TabPane>
 
@@ -1234,15 +1201,8 @@ export default function FrontendErrorsPage() {
           />
 
           <ConfigurableTable<SourceMapItem>
-            bordered
-            rowKey="id"
             columns={sourceMapColumns}
-            dataSource={sourceMaps?.list ?? []}
-            loading={sourceMapsQuery.isFetching}
-            onRefresh={() => void sourceMapsQuery.refetch()}
-            refreshLoading={sourceMapsQuery.isFetching}
-            pagination={buildSourceMapPagination(sourceMaps?.total ?? 0)}
-            empty="暂无 Source Map"
+            {...listTableProps(sourceMapsQuery, { pagination: buildSourceMapPagination, empty: '暂无 Source Map' })}
           />
         </TabPane>
 
@@ -1253,29 +1213,15 @@ export default function FrontendErrorsPage() {
           />
 
           <ConfigurableTable<ErrorAlertRule>
-            bordered
-            rowKey="id"
             columns={alertColumns}
-            dataSource={alerts?.list ?? []}
-            loading={alertsQuery.isFetching}
-            onRefresh={() => void alertsQuery.refetch()}
-            refreshLoading={alertsQuery.isFetching}
-            pagination={buildAlertPagination(alerts?.total ?? 0)}
-            empty="暂无告警规则"
+            {...listTableProps(alertsQuery, { pagination: buildAlertPagination, empty: '暂无告警规则' })}
           />
         </TabPane>
 
         <TabPane tab="告警历史" itemKey="alertlogs">
           <ConfigurableTable<ErrorAlertLog>
-            bordered
-            rowKey="id"
             columns={alertLogColumns}
-            dataSource={alertLogs?.list ?? []}
-            loading={alertLogsQuery.isFetching}
-            onRefresh={() => void alertLogsQuery.refetch()}
-            refreshLoading={alertLogsQuery.isFetching}
-            pagination={buildAlertLogPagination(alertLogs?.total ?? 0)}
-            empty="暂无告警触发记录"
+            {...listTableProps(alertLogsQuery, { pagination: buildAlertLogPagination, empty: '暂无告警触发记录' })}
           />
         </TabPane>
       </Tabs>

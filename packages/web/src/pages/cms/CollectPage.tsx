@@ -1,7 +1,8 @@
 /** 采集中心：规则 CRUD + 任务中心执行 + 采集明细（P3 Batch5） */
 import { useMemo, useState } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Col, Form, Row, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Col, Form, Row, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -189,20 +190,7 @@ export default function CollectPage() {
         onCancel={modal.close}
         closeOnEsc
         width={720}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={modal.close}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={modal.modalProps.okButtonProps.loading}
-              disabled={modal.modalProps.okButtonProps.disabled}
-              onClick={() => void modal.modalProps.onOk()}
-            >
-              保存
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...modal.footerProps} okText="保存" />}
       >
         <Form key={modal.formKey} {...modal.formProps}>
           <Form.Section text="基础信息">

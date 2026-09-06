@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Banner, Button, Col, Form, Row, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import ModalFooter from '@/components/ModalFooter';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { Banner, Col, Form, Row, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { MP_ACCOUNT_TYPES, type CreateMpAccountInput, type MpAccount, type MpAccountType } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
@@ -7,7 +9,6 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
 import { config } from '@/config';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -21,7 +22,7 @@ import {
   useSetDefaultMpAccount,
   useTestMpAccount,
 } from '@/hooks/queries/mp-accounts';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 
@@ -70,8 +71,6 @@ export default function MpAccountsPage() {
     type: enumValueOf(MP_ACCOUNT_TYPES, submittedParams.filterType),
     status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveMpAccount();
   const modal = useEditModal<MpAccount, Partial<CreateMpAccountInput>>({
     entityName: '公众号',
@@ -208,45 +207,28 @@ export default function MpAccountsPage() {
       onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
     />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => can('mp:account:create') ? (
     <CreateButton onClick={modal.openCreate} />
   ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordInput()}
-            {renderTypeFilter()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordInput()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordInput()}
+        filters={(
           <>
             {renderTypeFilter()}
             {renderStatusFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="公众号账号筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)}
+      <ConfigurableTable columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <SideSheet
@@ -255,20 +237,7 @@ export default function MpAccountsPage() {
         onCancel={modal.close}
         closeOnEsc
         width={780}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={modal.close}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={modal.modalProps.okButtonProps.loading}
-              disabled={modal.modalProps.okButtonProps.disabled}
-              onClick={() => void modal.modalProps.onOk()}
-            >
-              保存
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...modal.footerProps} okText="保存" />}
       >
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">
           <Form key={modal.formKey} {...modal.formProps}>

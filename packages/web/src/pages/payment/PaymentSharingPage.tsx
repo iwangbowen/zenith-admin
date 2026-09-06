@@ -6,7 +6,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
@@ -29,11 +28,11 @@ import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_SHARING_RECEIVER_TYPE_LABELS, PAYMENT_SHARING_ORDER_STATUS_LABELS, PAYMENT_SHARING_ORDER_STATUSES, PAYMENT_SHARING_REVERSAL_STATUS_LABELS, PAYMENT_SHARING_REVERSAL_STATUSES, PAYMENT_SHARING_RECEIVER_TYPE_OPTIONS, PAYMENT_SHARING_ORDER_STATUS_OPTIONS, PAYMENT_SHARING_REVERSAL_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type { CreatePaymentSharingReceiverInput, DispatchPaymentSharingInput, PaymentSharingOrder, PaymentSharingOrderStatus, PaymentSharingReceiver, PaymentSharingReceiverType, PaymentSharingReversal, PaymentSharingReversalStatus } from '@zenith/shared/payment';
 import { useDictItems } from '@/hooks/useDictItems';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
-import { deleteAction, useStatusToggle } from '@/components/list-page';
+import { deleteAction, useStatusToggle, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const yuan = formatYuan;
@@ -75,23 +74,17 @@ export default function PaymentSharingPage() {
     pageSize: rPageSize,
     keyword: submittedReceiverKeyword || undefined,
   });
-  const receiverData = receiverQuery.data?.list ?? [];
-  const receiverTotal = receiverQuery.data?.total ?? 0;
   const orderQuery = usePaymentSharingOrders({
     page: oPage,
     pageSize: oPageSize,
     keyword: submittedOrderParams.keyword || undefined,
     status: enumValueOf(PAYMENT_SHARING_ORDER_STATUSES, submittedOrderParams.status),
   });
-  const orderData = orderQuery.data?.list ?? [];
-  const orderTotal = orderQuery.data?.total ?? 0;
   const reversalQuery = usePaymentSharingReversals({
     page: vPage,
     pageSize: vPageSize,
     status: enumValueOf(PAYMENT_SHARING_REVERSAL_STATUSES, submittedReversalStatus),
   });
-  const reversalData = reversalQuery.data?.list ?? [];
-  const reversalTotal = reversalQuery.data?.total ?? 0;
   const reversalDetailQuery = usePaymentSharingReversalDetail(reversalDetailTarget?.id, !!reversalDetailTarget);
   const reversalDetail = reversalDetailTarget ? (reversalDetailQuery.data ?? reversalDetailTarget) : null;
   const saveReceiverMutation = useSavePaymentSharingReceiver();
@@ -313,8 +306,6 @@ export default function PaymentSharingPage() {
   const renderReceiverKeywordSearch = () => (
     <KeywordInput placeholder="名称..." value={receiverKeyword} onChange={setReceiverKeyword} onSearch={handleReceiverSearch} width={200} />
   );
-  const renderReceiverSearchButton = () => <SearchButton onClick={handleReceiverSearch} />;
-  const renderReceiverResetButton = () => <ResetButton onClick={handleReceiverReset} />;
   const renderReceiverCreateButton = () => canManage ? (
     <CreateButton onClick={receiverModal.openCreate} />
   ) : null;
@@ -329,8 +320,6 @@ export default function PaymentSharingPage() {
       onChange={setOrderStatus}
     />
   );
-  const renderOrderSearchButton = () => <SearchButton onClick={handleOrderSearch} />;
-  const renderOrderResetButton = () => <ResetButton onClick={handleOrderReset} />;
   const renderDispatchButton = () => canDispatch ? (
     <Button type="primary" icon={<Plus size={14} />} onClick={openDispatch}>发起分账</Button>
   ) : null;
@@ -346,74 +335,41 @@ export default function PaymentSharingPage() {
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as 'receivers' | 'orders' | 'reversals')} type="line" lazyRender keepDOM={false}>
         <TabPane tab="分账接收方" itemKey="receivers">
-          <SearchToolbar
-            primary={(
-              <>
-                {renderReceiverKeywordSearch()}
-                {renderReceiverSearchButton()}
-                {renderReceiverResetButton()}
-                {renderReceiverCreateButton()}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderReceiverKeywordSearch()}
-                {renderReceiverSearchButton()}
-                {renderReceiverCreateButton()}
-              </>
-            )}
+          <ListSearchToolbar
+            keyword={renderReceiverKeywordSearch()}
+            onSearch={handleReceiverSearch}
+            onReset={handleReceiverReset}
+            create={renderReceiverCreateButton()}
           />
           <ConfigurableTable
-            bordered columns={receiverColumns} dataSource={receiverData} loading={receiverQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void receiverQuery.refetch()} refreshLoading={receiverQuery.isFetching} pagination={buildRPagination(receiverTotal)}
+            columns={receiverColumns}
+            {...listTableProps(receiverQuery, { pagination: buildRPagination, empty: '暂无数据' })}
           />
         </TabPane>
         <TabPane tab="分账单" itemKey="orders">
-          <SearchToolbar
-            primary={(
-              <>
-                {renderOrderKeywordSearch()}
-                {renderOrderStatusFilter()}
-                {renderOrderSearchButton()}
-                {renderOrderResetButton()}
-                {renderDispatchButton()}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderOrderKeywordSearch()}
-                {renderOrderSearchButton()}
-                {renderDispatchButton()}
-              </>
-            )}
-            mobileFilters={renderOrderStatusFilter()}
+          <ListSearchToolbar
+            keyword={renderOrderKeywordSearch()}
+            filters={renderOrderStatusFilter()}
+            onSearch={handleOrderSearch}
+            onReset={handleOrderReset}
+            create={renderDispatchButton()}
             filterTitle="分账单筛选"
-            onFilterApply={handleOrderSearch}
-            onFilterReset={handleOrderReset}
           />
           <ConfigurableTable
-            bordered columns={orderColumns} dataSource={orderData} loading={orderQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void orderQuery.refetch()} refreshLoading={orderQuery.isFetching} pagination={buildOPagination(orderTotal)}
+            columns={orderColumns}
+            {...listTableProps(orderQuery, { pagination: buildOPagination, empty: '暂无数据' })}
           />
         </TabPane>
         <TabPane tab="冲正记录" itemKey="reversals">
-          <SearchToolbar
-            primary={(
-              <>
-                {renderReversalStatusFilter()}
-                <SearchButton onClick={handleReversalSearch} />
-                <ResetButton onClick={handleReversalReset} />
-              </>
-            )}
-            mobilePrimary={<SearchButton onClick={handleReversalSearch} />}
-            mobileFilters={renderReversalStatusFilter()}
+          <ListSearchToolbar
+            filters={renderReversalStatusFilter()}
+            onSearch={handleReversalSearch}
+            onReset={handleReversalReset}
             filterTitle="冲正记录筛选"
-            onFilterApply={handleReversalSearch}
-            onFilterReset={handleReversalReset}
           />
           <ConfigurableTable
-            bordered columns={reversalColumns} dataSource={reversalData} loading={reversalQuery.isFetching} rowKey="id" size="small" empty="暂无冲正记录"
-            onRefresh={() => void reversalQuery.refetch()} refreshLoading={reversalQuery.isFetching} pagination={buildVPagination(reversalTotal)}
+            columns={reversalColumns}
+            {...listTableProps(reversalQuery, { pagination: buildVPagination, empty: '暂无冲正记录' })}
           />
         </TabPane>
       </Tabs>

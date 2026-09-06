@@ -1,10 +1,11 @@
 import { useState } from 'react';
+import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Banner, SideSheet, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { OPEN_WEBHOOK_DELIVERY_STATUS_LABELS, OPEN_WEBHOOK_EVENTS, OPEN_WEBHOOK_EVENT_LABELS, PAYMENT_WEBHOOK_EVENTS, OPEN_WEBHOOK_DELIVERY_STATUS_OPTIONS } from '@zenith/shared/open-platform';
 import type { AppWebhookSubscription, AppWebhookDelivery, OpenWebhookEvent, OpenWebhookSignMode } from '@zenith/shared/open-platform';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -26,7 +27,7 @@ import {
 } from '@/hooks/queries/open-platform';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton, ResetButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -99,7 +100,6 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
     clientId: submittedParams.clientId,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   }, scope);
-  const data = listQuery.data ?? null;
   const deliveryQuery = useWebhookDeliveries({
     subscriptionId: drawerSub?.id,
     page: deliveryPage,
@@ -305,10 +305,10 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={(<KeywordInput placeholder="搜索名称 / URL" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />)}
+        filters={(
           <>
-            <KeywordInput placeholder="搜索名称 / URL" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
             <FilterSelect
               placeholder="全部所属应用"
               items={appOptions.map((a) => ({ value: a.clientId, label: a.name }))}
@@ -322,33 +322,26 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
               value={draftParams.status}
               onChange={(v) => setDraftParams({ ...draftParams, status: v as string })}
             />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canManage && <CreateButton onClick={openCreate} />}
           </>
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索名称 / URL" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-            {canManage && <CreateButton onClick={openCreate} />}
-          </>
-        )}
-        mobileActions={<ResetButton onClick={handleReset} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canManage && <CreateButton onClick={openCreate} />}
+        mobileActions={(<ResetButton onClick={handleReset} />)}
         actionTitle="Webhook 操作"
       />
 
       <ConfigurableTable
-        bordered
+
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
+
+
+
+
+
+
         empty={paymentScope ? '暂无支付 Webhook 订阅' : '暂无 Webhook 订阅'}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       {/* 新增 / 编辑 */}

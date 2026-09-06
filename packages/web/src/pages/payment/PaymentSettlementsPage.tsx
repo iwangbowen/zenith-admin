@@ -5,7 +5,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { formatDateForApi } from '@/utils/date';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -24,10 +23,9 @@ import { usePaymentChannelOperationLookup } from '@/hooks/queries/payment-channe
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CHANNELS, PAYMENT_SETTLEMENT_STATUS_LABELS, PAYMENT_SETTLEMENT_STATUSES, PAYMENT_CHANNEL_OPTIONS, PAYMENT_SETTLEMENT_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type { CreatePaymentSettlementInput, PaymentChannel, PaymentSettlementBatch, PaymentSettlementItem, PaymentSettlementStatus } from '@zenith/shared/payment';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { abortSubmit } from '@/lib/abort-submit';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { paymentAppBoundConfigIds, useAppBoundConfigOptions, useEnabledPaymentAppLookup } from './payment-app-options';
 
@@ -239,39 +237,19 @@ export default function PaymentSettlementsPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderGenerateButton = () => hasPermission('payment:settlement:generate') ? (
     <Button type="primary" icon={<Plus size={14} />} onClick={openGenerate}>生成结算</Button>
   ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderChannelFilter()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderGenerateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderChannelFilter()}
-            {renderSearchButton()}
-            {renderGenerateButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderStatusFilter()}
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={renderChannelFilter()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderGenerateButton()}
         filterTitle="结算批次筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable<PaymentSettlementBatch>

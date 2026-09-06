@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Tag, Toast, Tabs, TabPane, SideSheet, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -6,7 +7,6 @@ import { Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -26,7 +26,7 @@ import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { dateColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 // ─── 广告位 Tab ───────────────────────────────────────────────────────────────
@@ -306,15 +306,11 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
 
   return (
     <>
-      <SearchToolbar
-        primary={(
-          <>
-            <CmsSiteSelect value={siteId} onChange={handleSiteChange} />
-            {filterFields}
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={(<CmsSiteSelect value={siteId} onChange={handleSiteChange} />)}
+        filters={filterFields}
+        onSearch={handleSearch}
+        onReset={handleReset}
         actions={(
           <>
             {siteId && hasPermission('cms:ad-event:export')
@@ -342,19 +338,10 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
             ) : null}
           </>
         )}
-        mobilePrimary={(
-          <>
-            <CmsSiteSelect value={siteId} onChange={handleSiteChange} />
-            <SearchButton onClick={handleSearch} />
-          </>
-        )}
-        mobileFilters={filterFields}
-        mobileActions={siteId && hasPermission('cms:ad-event:export')
+        mobileActions={(siteId && hasPermission('cms:ad-event:export')
           ? <ExportButton entity="cms.ad-events" permission="cms:ad-event:export" query={exportQuery} variant="flat" />
-          : null}
+          : null)}
         filterTitle="广告事件筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
       <ConfigurableTable<CmsAdEvent>
         columns={columns}

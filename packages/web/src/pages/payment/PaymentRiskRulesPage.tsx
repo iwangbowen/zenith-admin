@@ -6,7 +6,6 @@ import { Banner, Form, Space, Tabs, TabPane, Tag, TextArea, Toast, Typography } 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
@@ -28,9 +27,9 @@ import type { CreatePaymentRiskRuleInput, PaymentChannel, PaymentRiskAction, Pay
 import { useDictItems } from '@/hooks/useDictItems';
 import { useRuleListList } from '@/hooks/queries/rules';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { deleteAction, useStatusToggle } from '@/components/list-page';
+import { deleteAction, useStatusToggle, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const yuan = formatYuan;
@@ -100,8 +99,6 @@ export default function PaymentRiskRulesPage() {
     scope: enumValueOf(PAYMENT_RISK_SCOPES, submittedParams.scope),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const hitQuery = usePaymentRiskHitList({
     page: hPage,
     pageSize: hPageSize,
@@ -293,8 +290,6 @@ export default function PaymentRiskRulesPage() {
   const renderStatusFilter = () => (
     <StatusSelect items={statusItems} value={draftParams.status} onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => hasPermission('payment:risk:create') ? (
     <CreateButton onClick={openCreate} />
   ) : null;
@@ -328,60 +323,32 @@ export default function PaymentRiskRulesPage() {
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
             两层裁决：规则中心决策表 <Typography.Text code size="small">payment_risk</Typography.Text> 发布后优先接管（输出 block / review / pass，未命中回退本页规则）；名单统一引用规则中心名单库
           </Typography.Text>
-          <SearchToolbar
-            primary={(
-              <>
-                {renderScopeFilter()}
-                {renderStatusFilter()}
-                {renderSearchButton()}
-                {renderResetButton()}
-                {renderCreateButton()}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderScopeFilter()}
-                {renderSearchButton()}
-                {renderCreateButton()}
-              </>
-            )}
-            mobileFilters={renderStatusFilter()}
+          <ListSearchToolbar
+            keyword={renderScopeFilter()}
+            filters={renderStatusFilter()}
+            onSearch={handleSearch}
+            onReset={handleReset}
+            create={renderCreateButton()}
             filterTitle="风控规则筛选"
-            onFilterApply={handleSearch}
-            onFilterReset={handleReset}
           />
           <ConfigurableTable
-            bordered columns={columns} dataSource={data} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(total)}
-          />
+ columns={columns} empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
         </TabPane>
 
         <TabPane tab="拦截记录" itemKey="hits">
-          <SearchToolbar
-            primary={(
-              <>
-                {renderHitKeyword()}
-                {renderHitActionFilter()}
-                {renderHitDimensionFilter()}
-                <SearchButton onClick={handleHitSearch} />
-                <ResetButton onClick={handleHitReset} />
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderHitKeyword()}
-                <SearchButton onClick={handleHitSearch} />
-              </>
-            )}
-            mobileFilters={(
+          <ListSearchToolbar
+            keyword={renderHitKeyword()}
+            filters={(
               <>
                 {renderHitActionFilter()}
                 {renderHitDimensionFilter()}
               </>
             )}
+            onSearch={handleHitSearch}
+            onReset={handleHitReset}
             filterTitle="拦截记录筛选"
-            onFilterApply={handleHitSearch}
-            onFilterReset={handleHitReset}
           />
           <ConfigurableTable
             bordered columns={hitColumns} dataSource={hits} loading={hitQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
@@ -390,25 +357,12 @@ export default function PaymentRiskRulesPage() {
         </TabPane>
 
         <TabPane tab="审核队列" itemKey="reviews">
-          <SearchToolbar
-            primary={(
-              <>
-                {renderReviewKeyword()}
-                {renderReviewStatusFilter()}
-                <SearchButton onClick={handleReviewSearch} />
-                <ResetButton onClick={handleReviewReset} />
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderReviewKeyword()}
-                <SearchButton onClick={handleReviewSearch} />
-              </>
-            )}
-            mobileFilters={renderReviewStatusFilter()}
+          <ListSearchToolbar
+            keyword={renderReviewKeyword()}
+            filters={renderReviewStatusFilter()}
+            onSearch={handleReviewSearch}
+            onReset={handleReviewReset}
             filterTitle="审核队列筛选"
-            onFilterApply={handleReviewSearch}
-            onFilterReset={handleReviewReset}
           />
           <ConfigurableTable
             bordered columns={reviewColumns} dataSource={reviews} loading={reviewQuery.isFetching} rowKey="id" size="small" empty="暂无数据"

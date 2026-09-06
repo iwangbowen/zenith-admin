@@ -2,6 +2,7 @@
  * 行为中心阶段 1：用户分群 CRUD + 成员物化（异步任务）+ 成员明细查看。
  */
 import { useMemo, useState } from 'react';
+import { listTableProps } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, InputNumber, Input, Select, SideSheet, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -149,7 +150,6 @@ function CampaignDrawer({ segment, onClose }: { segment: AnalyticsUserSegment; o
   const createCampaign = useCreateCampaign();
   const deleteCampaign = useDeleteCampaign();
   const executeCampaign = useExecuteCampaign();
-  const campaigns = campaignsQuery.data?.list ?? [];
   const templateOptions = (channel === 'email'
     ? emailTemplatesQuery.data?.list
     : channel === 'sms'
@@ -225,15 +225,16 @@ function CampaignDrawer({ segment, onClose }: { segment: AnalyticsUserSegment; o
           <CreateButton onClick={() => void handleCreate()} loading={createCampaign.isPending} />
         </SearchToolbar>
         <ConfigurableTable
-          bordered
-          rowKey="id"
-          loading={campaignsQuery.isFetching}
+
+
+
           columns={columns}
-          dataSource={campaigns}
-          onRefresh={() => void campaignsQuery.refetch()}
-          refreshLoading={campaignsQuery.isFetching}
+
+
+
           empty="暂无触达活动"
-        />
+        {...listTableProps(campaignsQuery)}
+      />
       </div>
     </SideSheet>
   );

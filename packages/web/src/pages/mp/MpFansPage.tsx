@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Avatar, Button, Form, Modal, Space, Spin, Tag, Toast, Banner } from '@douyinfe/semi-ui';
 import { RefreshCw, Ban } from 'lucide-react';
 import { MP_FAN_SUBSCRIBES, type MpFan, type MpFanSubscribe, type UpdateMpFanInput } from '@zenith/shared/mp';
 import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -24,7 +24,6 @@ import {
 } from '@/hooks/queries/mp-fans';
 import { useMpTagOptions } from '@/hooks/queries/mp-tags';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -60,8 +59,6 @@ export default function MpFansPage() {
     tagId: submittedParams.tagId,
     blacklisted: submittedParams.blacklisted,
   }, !!currentId);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const syncFansMutation = useSyncMpFans();
   const syncBlacklistMutation = useSyncMpBlacklist();
   const blacklistMutation = useBlacklistMpFans();
@@ -222,8 +219,6 @@ export default function MpFansPage() {
       width={140}
     />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderSyncActions = () => {
     const syncButton = can('mp:fan:sync') ? (
       <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>同步粉丝</Button>
@@ -236,26 +231,9 @@ export default function MpFansPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderAccountFilter()}
-            {renderKeywordInput()}
-            {renderSubscribeFilter()}
-            {renderTagFilter()}
-            {renderBlacklistFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderSyncActions()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordInput()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordInput()}
+        filters={(
           <>
             {renderAccountFilter()}
             {renderSubscribeFilter()}
@@ -263,19 +241,21 @@ export default function MpFansPage() {
             {renderBlacklistFilter()}
           </>
         )}
-        mobileActions={renderSyncActions()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={renderSyncActions()}
+        mobileActions={(renderSyncActions())}
         filterTitle="粉丝筛选"
         actionTitle="粉丝操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {!accountsLoading && accounts.length === 0 && (
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...fanModal.modalProps} title="编辑粉丝" width={520}>
         <Spin spinning={false} wrapperClassName="modal-spin-wrapper">

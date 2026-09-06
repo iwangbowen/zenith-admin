@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
 import {
   Button,
@@ -240,20 +241,7 @@ export default function AiAgentsPage() {
         onCancel={modal.close}
         closeOnEsc
         width={640}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={modal.close}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={modal.modalProps.okButtonProps.loading}
-              disabled={modal.modalProps.okButtonProps.disabled}
-              onClick={() => void modal.modalProps.onOk()}
-            >
-              保存
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...modal.footerProps} okText="保存" />}
       >
         <Spin spinning={modal.detailLoading}>
           <Form

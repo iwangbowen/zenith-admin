@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, Checkbox, Col, Form, Modal, Row, SideSheet, Spin, Tag, TagGroup, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -263,20 +264,7 @@ export default function MyAppsPage() {
         onCancel={modal.close}
         closeOnEsc
         width={800}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={modal.close}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={modal.modalProps.okButtonProps.loading}
-              disabled={modal.modalProps.okButtonProps.disabled}
-              onClick={() => void modal.modalProps.onOk()}
-            >
-              保存
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...modal.footerProps} okText="保存" />}
       >
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">
           <Form key={modal.formKey} {...modal.formProps}>

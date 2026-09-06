@@ -1,6 +1,6 @@
 import { useState } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import {
-  Button,
   Form,
   Input,
   Select,
@@ -269,20 +269,7 @@ export default function WorkflowConnectorsPage() {
         onCancel={connectorModal.close}
         closeOnEsc
         width={780}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={connectorModal.close}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={connectorModal.modalProps.okButtonProps.loading}
-              disabled={connectorModal.modalProps.okButtonProps.disabled}
-              onClick={() => void connectorModal.modalProps.onOk()}
-            >
-              保存
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...connectorModal.footerProps} okText="保存" />}
       >
         <Form
           key={connectorModal.formKey} {...connectorModal.formProps}

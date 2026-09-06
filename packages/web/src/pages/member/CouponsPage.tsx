@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
-import { Form, Toast, Tag, Row, Col, Typography, SideSheet, Button } from '@douyinfe/semi-ui';
+import { Form, Toast, Tag, Row, Col, Typography, SideSheet } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { Coupon, CouponType, CouponTemplateStatus, CreateCouponInput } from '@zenith/shared/member';
@@ -229,20 +230,7 @@ export default function CouponsPage() {
         onCancel={couponModal.modalProps.onCancel}
         width={700}
         closeOnEsc
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={couponModal.modalProps.onCancel}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={couponModal.modalProps.okButtonProps.loading}
-              disabled={couponModal.modalProps.okButtonProps.disabled}
-              onClick={() => void couponModal.modalProps.onOk()}
-            >
-              确定
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter onCancel={couponModal.modalProps.onCancel} onOk={() => void couponModal.modalProps.onOk()} loading={couponModal.modalProps.okButtonProps.loading} disabled={couponModal.modalProps.okButtonProps.disabled} />}
       >
         <Form key={couponModal.formKey} {...couponModal.formProps}
           onValueChange={(values) => { if (values.type) setFormType(values.type as CouponType); if (values.validType) setFormValidType(values.validType as 'fixed' | 'relative'); if (values.status) setFormStatus(values.status as CouponTemplateStatus); }}>

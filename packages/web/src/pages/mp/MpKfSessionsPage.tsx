@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { ListSearchToolbar } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Avatar,
@@ -24,7 +25,6 @@ import type { MpKfSessionStatus, MpKfSessionEventType, MpKfSessionCloseReason, M
 import type { WsMessage } from '@zenith/shared/platform';
 import { usePermission } from '@/hooks/usePermission';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -42,7 +42,6 @@ import {
   useSaveMpKfRoutingConfig,
   useTransferMpKfSession,
 } from '@/hooks/queries/mp-kf';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -207,10 +206,6 @@ export default function MpKfSessionsPage() {
   const renderKeywordInput = () => (
     <KeywordInput placeholder="搜索 openid / 粉丝昵称" value={keyword} onChange={setKeyword} onSearch={handleSearch} width={200} />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
   const renderSessionActions = () => {
     const configButton = can('mp:kf:session:config') ? (
       <Button icon={<Settings size={14} />} disabled={!currentId} onClick={openConfig}>路由配置</Button>
@@ -225,28 +220,15 @@ export default function MpKfSessionsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderAccountFilter()}
-            {renderKeywordInput()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderSessionActions()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordInput()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={renderAccountFilter()}
-        mobileActions={renderSessionActions()}
+      <ListSearchToolbar
+        keyword={renderKeywordInput()}
+        filters={renderAccountFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={renderSessionActions()}
+        mobileActions={(renderSessionActions())}
         filterTitle="会话筛选"
         actionTitle="会话操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {!accountsLoading && accounts.length === 0 && (

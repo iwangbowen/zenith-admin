@@ -5,7 +5,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CloudDownload } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { formatDateForApi } from '@/utils/date';
 import { usePagination } from '@/hooks/usePagination';
@@ -26,11 +25,11 @@ import { usePaymentChannelOperationLookup } from '@/hooks/queries/payment-channe
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_RECON_HANDLE_STATUS_LABELS, PAYMENT_RECON_HANDLE_STATUSES, PAYMENT_RECON_RESULT_LABELS, PAYMENT_RECON_RESULTS, PAYMENT_RECON_SOURCE_LABELS, PAYMENT_RECON_STATUS_LABELS, PAYMENT_RECON_STATUSES, PAYMENT_RECON_STATUS_OPTIONS, PAYMENT_RECON_RESULT_OPTIONS, PAYMENT_RECON_HANDLE_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type { AutoPaymentReconInput, CreatePaymentReconBatchInput, PaymentChannel, PaymentReconBatch, PaymentReconHandleStatus, PaymentReconItem, PaymentReconResult, PaymentReconSource, PaymentReconStatus } from '@zenith/shared/payment';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { copyableNoColumn, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { paymentAppBoundConfigIds, useAppBoundConfigOptions, useEnabledPaymentAppLookup } from './payment-app-options';
 
@@ -301,8 +300,6 @@ export default function PaymentReconPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => hasPermission('payment:recon:create') ? (
     <CreateButton onClick={openCreate}>新建对账</CreateButton>
   ) : null;
@@ -312,33 +309,22 @@ export default function PaymentReconPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        filters={(
           <>
             {renderChannelFilter()}
             {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderAutoButton()}
-            {renderCreateButton()}
           </>
         )}
-        mobilePrimary={(
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={(
           <>
-            {renderSearchButton()}
             {renderAutoButton()}
             {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderChannelFilter()}
-            {renderStatusFilter()}
           </>
         )}
         filterTitle="对账批次筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable<PaymentReconBatch>

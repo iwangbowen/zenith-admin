@@ -172,7 +172,9 @@ export default function GovernanceCapacityTab() {
         </Space>
       )}
       <ConfigurableTable columns={trendColumns} {...listTableProps(trendQuery, { rowKey: 'bucket', empty: <Empty title="暂无成本趋势" /> })} />
-      <ConfigurableTable bordered rowKey="id" columns={costColumns} dataSource={costsQuery.data?.list ?? []} loading={costsQuery.isFetching} empty={<Empty title="暂无查询成本日志" />} pagination={buildPagination(costsQuery.data?.total ?? 0)} onRefresh={() => void costsQuery.refetch()} refreshLoading={costsQuery.isFetching} style={{ marginTop: 16 }} />
+      <ConfigurableTable columns={costColumns} empty={<Empty title="暂无查询成本日志" />} style={{ marginTop: 16 }}
+        {...listTableProps(costsQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...quotaModal.modalProps} width={700}>
         <Form key={quotaModal.formKey} {...quotaModal.formProps} onValueChange={(values) => values.scope && setQuotaScope(values.scope as ReportQuotaScope)}>

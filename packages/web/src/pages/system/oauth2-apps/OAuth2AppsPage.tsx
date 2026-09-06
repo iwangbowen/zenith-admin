@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
 import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Checkbox, Spin, Banner, Row, Col, SideSheet, TextArea } from '@douyinfe/semi-ui';
 import { enumValueOf } from '@zenith/shared/core';
@@ -360,20 +361,7 @@ export default function OAuth2AppsPage() {
         onCancel={appModal.close}
         closeOnEsc
         width={800}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={appModal.close}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={appModal.modalProps.okButtonProps.loading}
-              disabled={appModal.modalProps.okButtonProps.disabled}
-              onClick={() => void appModal.modalProps.onOk()}
-            >
-              保存
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...appModal.footerProps} okText="保存" />}
       >
         <Spin spinning={appModal.detailLoading} wrapperClassName="modal-spin-wrapper">
           <Form key={appModal.formKey} {...appModal.formProps}>

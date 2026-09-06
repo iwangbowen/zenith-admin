@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { listTableProps } from '@/components/list-page';
 import { Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
@@ -96,9 +97,9 @@ export default function DriveAdminShareLinksPage() {
         )}
         actions={(<><SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} /></>)}
       />
-      <ConfigurableTable<DriveShareLink> bordered rowKey="id" columns={columns} dataSource={query.data?.list ?? []}
-        loading={query.isFetching} onRefresh={() => void query.refetch()} refreshLoading={query.isFetching}
-        pagination={buildPagination(query.data?.total ?? 0)} />
+      <ConfigurableTable<DriveShareLink> columns={columns}
+        {...listTableProps(query, { pagination: buildPagination })}
+      />
       <AccessLogsModal link={logsOf} onClose={() => setLogsOf(null)} />
       {query.data?.total === 0 && <Typography.Text type="tertiary">暂无外链记录。</Typography.Text>}
     </div>

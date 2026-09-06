@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { listTableProps } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, DatePicker, Form, Input, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -68,7 +69,6 @@ export default function RuleListsPage() {
   const [checkResult, setCheckResult] = useState<{ hit: boolean; listType?: string } | null>(null);
 
   const listQuery = useRuleListList({ page, pageSize, keyword: submittedKeyword || undefined, type: enumValueOf(RULE_LIST_TYPES, submittedType) });
-  const data = listQuery.data ?? null;
   const itemsQuery = useRuleListItems(itemsRow?.id, { page: itemsPage, pageSize: 10, keyword: itemKeyword || undefined }, !!itemsRow);
   const items = itemsQuery.data ?? null;
   const saveMutation = useSaveRuleList();
@@ -196,7 +196,9 @@ export default function RuleListsPage() {
           </>
         )}
       />
-      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据" pagination={buildPagination(data?.total ?? 0)} />
+      <ConfigurableTable columns={columns} empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal
         {...modal.modalProps}

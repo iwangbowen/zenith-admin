@@ -121,6 +121,16 @@ export interface UseEditModalReturn<TRecord extends { id: number }> {
     closeOnEsc: boolean;
   };
   /**
+   * 自定义 footer（`SideSheet` / 不用默认按钮的 `Modal`）时直接展开到 `ModalFooter`：
+   * `footer={<ModalFooter {...modal.footerProps} okText="保存" />}`
+   */
+  readonly footerProps: {
+    onOk: () => Promise<void>;
+    onCancel: () => void;
+    loading: boolean;
+    disabled: boolean;
+  };
+  /**
    * 表单重挂载 key：`<Form key={modal.formKey} {...modal.formProps}>`。
    * 必须直接写在 JSX 上，不能放进 spread 对象——React 要求 key 显式传递。
    */
@@ -269,6 +279,12 @@ export function useEditModal<TRecord extends { id: number }, TValues = Partial<T
       onCancel: close,
       okButtonProps: { loading: save.isPending, disabled: detailLoading },
       closeOnEsc: true,
+    },
+    footerProps: {
+      onOk: submit,
+      onCancel: close,
+      loading: save.isPending,
+      disabled: detailLoading,
     },
     formKey,
     formProps: {

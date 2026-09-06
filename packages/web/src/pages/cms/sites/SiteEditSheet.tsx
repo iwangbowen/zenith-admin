@@ -7,6 +7,7 @@
  * settings JSONB ⇄ 表单字段的映射在 site-form-mapping.ts（有单测锁定）。
  */
 import React, { useEffect, useRef, useState } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import { Banner, Button, Col, Form, Input, InputNumber, Modal, Row, Select, SideSheet, Switch, Tabs, TabPane, TextArea, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ImageUp } from 'lucide-react';
@@ -465,12 +466,7 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
       onCancel={onClose}
       width={720}
       closeOnEsc
-      footer={(
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Button type="tertiary" onClick={onClose}>取消</Button>
-          <Button type="primary" theme="solid" loading={saveMutation.isPending} onClick={() => void handleSave()}>保存</Button>
-        </div>
-      )}
+      footer={<ModalFooter onCancel={onClose} onOk={() => void handleSave()} okText="保存" loading={saveMutation.isPending} />}
     >
       <Form
         key={site?.id ?? 'new'}

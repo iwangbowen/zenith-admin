@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import { ArrayField, Button, Form, SideSheet, Spin, TabPane, Tabs, Tag, Toast, Typography, useFormState, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
@@ -305,19 +306,7 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
         onCancel={modal.modalProps.onCancel}
         closeOnEsc
         width={720}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={modal.modalProps.onCancel}>取消</Button>
-            <Button
-              type="primary" theme="solid"
-              loading={modal.modalProps.okButtonProps.loading}
-              disabled={modal.modalProps.okButtonProps.disabled}
-              onClick={() => void modal.modalProps.onOk()}
-            >
-              确定
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter onCancel={modal.modalProps.onCancel} onOk={() => void modal.modalProps.onOk()} loading={modal.modalProps.okButtonProps.loading} disabled={modal.modalProps.okButtonProps.disabled} />}
       >
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">
           <Form key={modal.formKey} {...modal.formProps}>

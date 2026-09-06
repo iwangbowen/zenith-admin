@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { listTableProps } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Checkbox, DatePicker, Input, InputNumber, Select, Space, Tag, Modal, Form, TextArea, Toast, Typography, SideSheet, List, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -174,7 +175,6 @@ export default function RuleTablesPage() {
   const [draft, setDraft] = useState<{ inputs: RuleDecisionTable['inputs']; outputs: RuleDecisionTable['outputs']; rules: RuleDecisionTable['rules'] }>({ inputs: [], outputs: [], rules: [] });
 
   const listQuery = useRuleDecisionTableList({ page, pageSize, keyword: submittedKeyword || undefined, status: enumValueOf(RULE_DECISION_STATUSES, submittedStatus) });
-  const data = listQuery.data ?? null;
   const versionsQuery = useRuleVersions(verRow?.id, !!verRow);
   const versions = versionsQuery.data ?? [];
   const diffQuery = useRuleVersionDiff(verRow?.id, diffVersion, diffTarget, !!verRow && diffVersion !== null);
@@ -818,7 +818,9 @@ export default function RuleTablesPage() {
           </>
         )}
       />
-      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据" pagination={buildPagination(data?.total ?? 0)} />
+      <ConfigurableTable columns={columns} empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal
         {...modal.modalProps}

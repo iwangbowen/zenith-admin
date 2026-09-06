@@ -1,4 +1,6 @@
 import { useMemo, useState, type CSSProperties } from 'react';
+import ModalFooter from '@/components/ModalFooter';
+import { ListSearchToolbar } from '@/components/list-page';
 import { ArrayField, Banner, Button, Descriptions, Form, Modal, SideSheet, TabPane, Tabs, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
@@ -23,9 +25,8 @@ import {
 import './PaymentLedgerPage.css';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -589,27 +590,9 @@ export default function PaymentLedgerPage() {
       )}
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} type="line" lazyRender keepDOM={false}>
         <TabPane tab="账本账户" itemKey="accounts">
-          <SearchToolbar
-            primary={(
-              <>
-                <KeywordInput placeholder="账户号/账户名称" value={accountSearch.draftParams.keyword} onChange={(keyword) => accountSearch.setDraftParams((prev) => ({ ...prev, keyword }))} onSearch={accountSearch.handleSearch} />
-                {appFilter(accountSearch.draftParams.appId, (appId) => accountSearch.setDraftParams((prev) => ({ ...prev, appId })))}
-                {merchantFilter(accountSearch.draftParams.channelConfigId, (channelConfigId) => accountSearch.setDraftParams((prev) => ({ ...prev, channelConfigId })))}
-                {currencyFilter(accountSearch.draftParams.currency, (currency) => accountSearch.setDraftParams((prev) => ({ ...prev, currency })))}
-                <StatusSelect items={ACCOUNT_STATUS_ITEMS} value={accountSearch.draftParams.status} onChange={(status) => accountSearch.setDraftParams((prev) => ({ ...prev, status }))} />
-                <SearchButton onClick={accountSearch.handleSearch} disabled={!canView} />
-                <ResetButton onClick={accountSearch.handleReset} disabled={!canView} />
-                {canCreateAccount && <CreateButton onClick={accountModal.openCreate}>新建账户</CreateButton>}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                <KeywordInput placeholder="账户号/账户名称" value={accountSearch.draftParams.keyword} onChange={(keyword) => accountSearch.setDraftParams((prev) => ({ ...prev, keyword }))} onSearch={accountSearch.handleSearch} />
-                <SearchButton onClick={accountSearch.handleSearch} disabled={!canView} />
-                {canCreateAccount && <CreateButton onClick={accountModal.openCreate}>新建账户</CreateButton>}
-              </>
-            )}
-            mobileFilters={(
+          <ListSearchToolbar
+            keyword={(<KeywordInput placeholder="账户号/账户名称" value={accountSearch.draftParams.keyword} onChange={(keyword) => accountSearch.setDraftParams((prev) => ({ ...prev, keyword }))} onSearch={accountSearch.handleSearch} />)}
+            filters={(
               <>
                 {appFilter(accountSearch.draftParams.appId, (appId) => accountSearch.setDraftParams((prev) => ({ ...prev, appId })))}
                 {merchantFilter(accountSearch.draftParams.channelConfigId, (channelConfigId) => accountSearch.setDraftParams((prev) => ({ ...prev, channelConfigId })))}
@@ -617,9 +600,10 @@ export default function PaymentLedgerPage() {
                 <StatusSelect items={ACCOUNT_STATUS_ITEMS} value={accountSearch.draftParams.status} onChange={(status) => accountSearch.setDraftParams((prev) => ({ ...prev, status }))} />
               </>
             )}
+            onSearch={accountSearch.handleSearch}
+            onReset={accountSearch.handleReset}
+            create={canCreateAccount && <CreateButton onClick={accountModal.openCreate}>新建账户</CreateButton>}
             filterTitle="账本账户筛选"
-            onFilterApply={accountSearch.handleSearch}
-            onFilterReset={accountSearch.handleReset}
           />
           <ConfigurableTable
             bordered columns={accountColumns} dataSource={accountData} loading={accountQuery.isFetching} rowKey="id" empty="暂无账本账户"
@@ -629,37 +613,20 @@ export default function PaymentLedgerPage() {
         </TabPane>
 
         <TabPane tab="资金凭证" itemKey="journals">
-          <SearchToolbar
-            primary={(
+          <ListSearchToolbar
+            keyword={(<KeywordInput placeholder="来源类型" value={journalSearch.draftParams.sourceType} onChange={(sourceType) => journalSearch.setDraftParams((prev) => ({ ...prev, sourceType }))} onSearch={journalSearch.handleSearch} />)}
+            filters={(
               <>
-                <KeywordInput placeholder="来源类型" value={journalSearch.draftParams.sourceType} onChange={(sourceType) => journalSearch.setDraftParams((prev) => ({ ...prev, sourceType }))} onSearch={journalSearch.handleSearch} />
                 {appFilter(journalSearch.draftParams.appId, (appId) => journalSearch.setDraftParams((prev) => ({ ...prev, appId })))}
                 {merchantFilter(journalSearch.draftParams.channelConfigId, (channelConfigId) => journalSearch.setDraftParams((prev) => ({ ...prev, channelConfigId })))}
                 {currencyFilter(journalSearch.draftParams.currency, (currency) => journalSearch.setDraftParams((prev) => ({ ...prev, currency })))}
                 <DateRangeFilter value={journalSearch.draftParams.timeRange} onChange={(timeRange) => journalSearch.setDraftParams((prev) => ({ ...prev, timeRange }))} width={330} />
-                <SearchButton onClick={journalSearch.handleSearch} disabled={!canView} />
-                <ResetButton onClick={journalSearch.handleReset} disabled={!canView} />
-                {canPostJournal && <CreateButton onClick={openJournalCreate}>新建凭证</CreateButton>}
               </>
             )}
-            mobilePrimary={(
-              <>
-                <KeywordInput placeholder="来源类型" value={journalSearch.draftParams.sourceType} onChange={(sourceType) => journalSearch.setDraftParams((prev) => ({ ...prev, sourceType }))} onSearch={journalSearch.handleSearch} />
-                <SearchButton onClick={journalSearch.handleSearch} disabled={!canView} />
-                {canPostJournal && <CreateButton onClick={openJournalCreate}>新建凭证</CreateButton>}
-              </>
-            )}
-            mobileFilters={(
-              <>
-                {appFilter(journalSearch.draftParams.appId, (appId) => journalSearch.setDraftParams((prev) => ({ ...prev, appId })))}
-                {merchantFilter(journalSearch.draftParams.channelConfigId, (channelConfigId) => journalSearch.setDraftParams((prev) => ({ ...prev, channelConfigId })))}
-                {currencyFilter(journalSearch.draftParams.currency, (currency) => journalSearch.setDraftParams((prev) => ({ ...prev, currency })))}
-                <DateRangeFilter value={journalSearch.draftParams.timeRange} onChange={(timeRange) => journalSearch.setDraftParams((prev) => ({ ...prev, timeRange }))} />
-              </>
-            )}
+            onSearch={journalSearch.handleSearch}
+            onReset={journalSearch.handleReset}
+            create={canPostJournal && <CreateButton onClick={openJournalCreate}>新建凭证</CreateButton>}
             filterTitle="资金凭证筛选"
-            onFilterApply={journalSearch.handleSearch}
-            onFilterReset={journalSearch.handleReset}
           />
           <ConfigurableTable
             bordered columns={journalColumns} dataSource={journalData} loading={journalQuery.isFetching} rowKey="id" empty="暂无资金凭证"
@@ -669,8 +636,9 @@ export default function PaymentLedgerPage() {
         </TabPane>
 
         <TabPane tab="资金预占" itemKey="reservations">
-          <SearchToolbar
-            primary={(
+          <ListSearchToolbar
+            keyword={(<KeywordInput placeholder="来源类型" value={reservationSearch.draftParams.sourceType} onChange={(sourceType) => reservationSearch.setDraftParams((prev) => ({ ...prev, sourceType }))} onSearch={reservationSearch.handleSearch} />)}
+            filters={(
               <>
                 <FilterSelect
                   placeholder="全部账户"
@@ -681,37 +649,13 @@ export default function PaymentLedgerPage() {
                   filter
                 />
                 <StatusSelect items={RESERVATION_STATUS_ITEMS} value={reservationSearch.draftParams.status} onChange={(status) => reservationSearch.setDraftParams((prev) => ({ ...prev, status }))} />
-                <KeywordInput placeholder="来源类型" value={reservationSearch.draftParams.sourceType} onChange={(sourceType) => reservationSearch.setDraftParams((prev) => ({ ...prev, sourceType }))} onSearch={reservationSearch.handleSearch} />
                 <DateRangeFilter value={reservationSearch.draftParams.timeRange} onChange={(timeRange) => reservationSearch.setDraftParams((prev) => ({ ...prev, timeRange }))} width={330} />
-                <SearchButton onClick={reservationSearch.handleSearch} disabled={!canView} />
-                <ResetButton onClick={reservationSearch.handleReset} disabled={!canView} />
-                {canReserve && <CreateButton onClick={reservationModal.openCreate}>新建预占</CreateButton>}
               </>
             )}
-            mobilePrimary={(
-              <>
-                <KeywordInput placeholder="来源类型" value={reservationSearch.draftParams.sourceType} onChange={(sourceType) => reservationSearch.setDraftParams((prev) => ({ ...prev, sourceType }))} onSearch={reservationSearch.handleSearch} />
-                <SearchButton onClick={reservationSearch.handleSearch} disabled={!canView} />
-                {canReserve && <CreateButton onClick={reservationModal.openCreate}>新建预占</CreateButton>}
-              </>
-            )}
-            mobileFilters={(
-              <>
-                <FilterSelect
-                  placeholder="全部账户"
-                  items={accountOptions}
-                  value={reservationSearch.draftParams.accountId}
-                  onChange={(accountId) => reservationSearch.setDraftParams((prev) => ({ ...prev, accountId: accountId as number | undefined }))}
-                  width={180}
-                  filter
-                />
-                <StatusSelect items={RESERVATION_STATUS_ITEMS} value={reservationSearch.draftParams.status} onChange={(status) => reservationSearch.setDraftParams((prev) => ({ ...prev, status }))} />
-                <DateRangeFilter value={reservationSearch.draftParams.timeRange} onChange={(timeRange) => reservationSearch.setDraftParams((prev) => ({ ...prev, timeRange }))} />
-              </>
-            )}
+            onSearch={reservationSearch.handleSearch}
+            onReset={reservationSearch.handleReset}
+            create={canReserve && <CreateButton onClick={reservationModal.openCreate}>新建预占</CreateButton>}
             filterTitle="资金预占筛选"
-            onFilterApply={reservationSearch.handleSearch}
-            onFilterReset={reservationSearch.handleReset}
           />
           <ConfigurableTable
             bordered columns={reservationColumns} dataSource={reservationData} loading={reservationQuery.isFetching} rowKey="id" empty="暂无资金预占"
@@ -739,20 +683,7 @@ export default function PaymentLedgerPage() {
         onCancel={journalModal.modalProps.onCancel}
         width={860}
         closeOnEsc
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={journalModal.modalProps.onCancel}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={journalModal.modalProps.okButtonProps.loading}
-              disabled={journalModal.modalProps.okButtonProps.disabled}
-              onClick={() => void journalModal.modalProps.onOk()}
-            >
-              确定
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter onCancel={journalModal.modalProps.onCancel} onOk={() => void journalModal.modalProps.onOk()} loading={journalModal.modalProps.okButtonProps.loading} disabled={journalModal.modalProps.okButtonProps.disabled} />}
       >
         <Form
           key={journalModal.formKey}

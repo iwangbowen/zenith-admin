@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import dayjs from 'dayjs';
-import { Banner, Button, Col, DatePicker, Form, Row, SideSheet, TabPane, Tabs, Tag, Toast } from '@douyinfe/semi-ui';
+import { Banner, Col, DatePicker, Form, Row, SideSheet, TabPane, Tabs, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CMS_CONTENT_TYPES, CMS_CONTENT_TYPE_LABELS, CMS_DISTRIBUTION_CONFLICT_STRATEGIES, CMS_DISTRIBUTION_CONFLICT_STRATEGY_LABELS, CMS_DISTRIBUTION_MODES, CMS_DISTRIBUTION_MODE_LABELS, CMS_DISTRIBUTION_RUN_OUTCOME_LABELS, CMS_DISTRIBUTION_TASK_STATUSES, CMS_DISTRIBUTION_TASK_STATUS_LABELS } from '@zenith/shared/cms';
 import type { CmsChannel, CmsDistributionRule, CmsDistributionRun } from '@zenith/shared/cms';
@@ -497,20 +498,7 @@ export default function DistributionPage() {
         onCancel={ruleModal.close}
         closeOnEsc
         width={780}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={ruleModal.close}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={ruleModal.modalProps.okButtonProps.loading}
-              disabled={ruleModal.modalProps.okButtonProps.disabled}
-              onClick={() => void ruleModal.modalProps.onOk()}
-            >
-              保存
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...ruleModal.footerProps} okText="保存" />}
       >
         <Form
           key={ruleModal.formKey} {...ruleModal.formProps}

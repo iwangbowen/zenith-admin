@@ -6,7 +6,6 @@ import { Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ExportButton from '@/components/ExportButton';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -31,11 +30,11 @@ import {
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CHANNELS, PAYMENT_CONTRACT_STATUS_LABELS, PAYMENT_CONTRACT_STATUSES, PAYMENT_DEDUCT_PERIOD_LABELS, PAYMENT_DEDUCT_PERIOD_OPTIONS, PAYMENT_CONTRACT_STATUS_OPTIONS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { CreatePaymentContractInput, CreatePaymentDeductPlanInput, PaymentChannel, PaymentContract, PaymentContractSignResult, PaymentContractStatus, PaymentDeductMethod, PaymentDeductPeriod, PaymentDeductPlan } from '@zenith/shared/payment';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useEnabledPaymentAppLookup } from './payment-app-options';
-import { deleteAction } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const yuan = formatYuan;
@@ -335,8 +334,6 @@ export default function PaymentContractsPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
     />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} disabled={effectiveContractAppId == null} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateContract = () => canManage ? (
     <CreateButton onClick={() => { setSelectedAppId(null); signModal.openCreate(); }}>新增签约</CreateButton>
   ) : null;
@@ -345,8 +342,6 @@ export default function PaymentContractsPage() {
   const renderPlanKeywordSearch = () => (
     <KeywordInput placeholder="计划名称..." value={planKeyword} onChange={setPlanKeyword} onSearch={handlePlanSearch} width={200} />
   );
-  const renderPlanSearchButton = () => <SearchButton onClick={handlePlanSearch} />;
-  const renderPlanResetButton = () => <ResetButton onClick={handlePlanReset} />;
   const renderCreatePlan = () => canPlan ? (
     <CreateButton onClick={openCreatePlan} />
   ) : null;
@@ -355,36 +350,21 @@ export default function PaymentContractsPage() {
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as 'contracts' | 'plans')} type="line" lazyRender keepDOM={false}>
         <TabPane tab="签约协议" itemKey="contracts">
-          <SearchToolbar
-            primary={(
+          <ListSearchToolbar
+            keyword={renderKeywordSearch()}
+            filters={(
               <>
-                {renderKeywordSearch()}
                 {renderAppFilter()}
                 {renderStatusFilter()}
                 {renderChannelFilter()}
-                {renderSearchButton()}
-                {renderResetButton()}
-                {renderExportButtons()}
-                {renderCreateContract()}
               </>
             )}
-            mobilePrimary={(
-              <>
-                {renderKeywordSearch()}
-                {renderSearchButton()}
-                {renderCreateContract()}
-              </>
-            )}
-            mobileFilters={(
-              <>
-                {renderStatusFilter()}
-                {renderChannelFilter()}
-              </>
-            )}
+            onSearch={handleSearch}
+            onReset={handleReset}
+            create={renderCreateContract()}
+            actions={renderExportButtons()}
+            mobileActions={(<ExportButton entity="payment.contracts" query={exportQuery} variant="flat" />)}
             filterTitle="签约协议筛选"
-            onFilterApply={handleSearch}
-            onFilterReset={handleReset}
-            mobileActions={<ExportButton entity="payment.contracts" query={exportQuery} variant="flat" />}
           />
           <ConfigurableTable
             bordered columns={contractColumns} dataSource={contracts} loading={appsFetching || contractQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
@@ -392,22 +372,11 @@ export default function PaymentContractsPage() {
           />
         </TabPane>
         <TabPane tab="扣款计划" itemKey="plans">
-          <SearchToolbar
-            primary={(
-              <>
-                {renderPlanKeywordSearch()}
-                {renderPlanSearchButton()}
-                {renderPlanResetButton()}
-                {renderCreatePlan()}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderPlanKeywordSearch()}
-                {renderPlanSearchButton()}
-                {renderCreatePlan()}
-              </>
-            )}
+          <ListSearchToolbar
+            keyword={renderPlanKeywordSearch()}
+            onSearch={handlePlanSearch}
+            onReset={handlePlanReset}
+            create={renderCreatePlan()}
           />
           <ConfigurableTable
             bordered columns={planColumns} dataSource={plans} loading={planQuery.isFetching} rowKey="id" size="small" empty="暂无数据"

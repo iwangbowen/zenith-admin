@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { listTableProps } from '@/components/list-page';
 import { Banner, DatePicker, InputNumber, Select, Typography, Tag, Tooltip, Space, Card } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import dayjs from 'dayjs';
@@ -79,7 +80,6 @@ export default function OpenApiStatsPage() {
   const trend = useMemo(() => trendQuery.data ?? [], [trendQuery.data]);
   const byApp = useMemo(() => byAppQuery.data ?? [], [byAppQuery.data]);
   const byEndpoint = useMemo(() => byEndpointQuery.data ?? [], [byEndpointQuery.data]);
-  const logs = logsQuery.data ?? null;
   const statLoading = overviewQuery.isFetching || trendQuery.isFetching || byAppQuery.isFetching || byEndpointQuery.isFetching;
 
   const trendSpec = useMemo(() => makeAreaSpec({
@@ -321,17 +321,17 @@ export default function OpenApiStatsPage() {
 
       <Card title={<Title heading={6} style={{ margin: 0 }}>调用日志</Title>}>
         <ConfigurableTable
-          bordered
+
           columns={logColumns}
-          dataSource={logs?.list ?? []}
-          loading={logsQuery.isFetching}
-          onRefresh={() => void logsQuery.refetch()}
-          refreshLoading={logsQuery.isFetching}
-          rowKey="id"
-          size="small"
+
+
+
+
+
+
           empty="暂无调用记录"
-          pagination={buildPagination(logs?.total ?? 0)}
-        />
+        {...listTableProps(logsQuery, { pagination: buildPagination })}
+      />
       </Card>
     </div>
   );

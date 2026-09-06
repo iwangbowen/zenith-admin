@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { listTableProps } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, List, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -57,7 +58,6 @@ export default function RuleFlowsPage() {
   const [versionsRow, setVersionsRow] = useState<RuleDecisionFlow | null>(null);
 
   const listQuery = useRuleFlowList({ page, pageSize, keyword: submittedKeyword || undefined });
-  const data = listQuery.data ?? null;
   const saveMutation = useSaveRuleFlow();
   const publishMutation = usePublishRuleFlow();
   const toggleMutation = useToggleRuleFlow();
@@ -162,7 +162,9 @@ export default function RuleFlowsPage() {
           </>
         )}
       />
-      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据" pagination={buildPagination(data?.total ?? 0)} />
+      <ConfigurableTable columns={columns} empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal
         {...modal.modalProps}

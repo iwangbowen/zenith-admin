@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
 import {
   Button,
@@ -723,20 +724,7 @@ export default function RateLimitPage() {
         onCancel={editModal.modalProps.onCancel}
         closeOnEsc
         width={680}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button type="tertiary" onClick={editModal.modalProps.onCancel}>取消</Button>
-            <Button
-              type="primary"
-              theme="solid"
-              loading={editModal.modalProps.okButtonProps.loading}
-              disabled={editModal.modalProps.okButtonProps.disabled}
-              onClick={() => void editModal.modalProps.onOk()}
-            >
-              {editModal.editing ? '保存（立即生效）' : '创建（立即生效）'}
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter onCancel={editModal.modalProps.onCancel} onOk={() => void editModal.modalProps.onOk()} okText="editModal.editing ? '保存（立即生效）' : '创建（立即生效）'" loading={editModal.modalProps.okButtonProps.loading} disabled={editModal.modalProps.okButtonProps.disabled} />}
       >
         <Form key={editModal.formKey} {...editModal.formProps}>
           {!editModal.editing && (
