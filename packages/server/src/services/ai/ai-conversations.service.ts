@@ -7,7 +7,7 @@ import { buildWhere, withPagination, keywordCondition } from '../../lib/where-he
 import { streamToCsv } from '../../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { resolveAgentForChat, incrementAgentUsage } from './ai-agents.service';
-import type { AiFeedbackStatus } from '@zenith/shared/ai';
+import { buildChildrenMap, buildEffectiveParents, descendToLeaf, resolveActivePath, resolveAncestorPath, sortMessagesByTime, type AiFeedbackStatus, type BranchTreeNode } from '@zenith/shared/ai';
 
 function mapConversation(row: typeof aiConversations.$inferSelect) {
   return {
@@ -55,101 +55,15 @@ function mapMessage(row: typeof aiMessages.$inferSelect) {
 }
 
 // ─── 消息分支树 ───────────────────────────────────────────────────────────────
-// 数据模型（对齐 ChatGPT）：消息带 parentId 组成树；对话的 activeLeafMsgId 指定当前
-// 激活分支的叶子，激活路径 = 叶子的祖先链。历史数据 parentId 为 null（线性），按
-// 时间序推导隐式父节点兼容；所有新写入均带显式 parentId。
+// 算法与前端共用 @zenith/shared/ai/branch-tree：服务端在落库行上推导有效父节点并对外输出，
+// 前端在 API 返回行上复用同一实现，两侧不再各自维护一份。
 
-interface MsgNode {
-  id: number;
-  parentId: number | null;
+interface MsgNode extends BranchTreeNode {
   role: 'system' | 'user' | 'assistant';
   content: string;
   createdAt: Date;
 }
 
-function sortByTime<T extends { id: number; createdAt: Date }>(rows: T[]): T[] {
-  return [...rows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id - b.id);
-}
-
-/** 有效父节点：显式 parentId 优先；legacy 空值按时间序链接前一条 legacy 消息 */
-function buildEffectiveParents(rows: MsgNode[]): Map<number, number | null> {
-  const idSet = new Set(rows.map((r) => r.id));
-  const map = new Map<number, number | null>();
-  let prevLegacyId: number | null = null;
-  for (const row of sortByTime(rows)) {
-    if (row.parentId !== null) {
-      map.set(row.id, idSet.has(row.parentId) ? row.parentId : null);
-    } else {
-      map.set(row.id, prevLegacyId);
-      prevLegacyId = row.id;
-    }
-  }
-  return map;
-}
-
-function buildChildren(rows: MsgNode[]): Map<number | null, MsgNode[]> {
-  const parents = buildEffectiveParents(rows);
-  const children = new Map<number | null, MsgNode[]>();
-  for (const row of sortByTime(rows)) {
-    const p = parents.get(row.id) ?? null;
-    const list = children.get(p) ?? [];
-    list.push(row);
-    children.set(p, list);
-  }
-  return children;
-}
-
-/** 从指定节点沿"最新子分支"下探到叶子 */
-function descendToLeaf(rows: MsgNode[], fromId: number): number {
-  const children = buildChildren(rows);
-  let cur = fromId;
-  const guard = new Set<number>();
-  while (!guard.has(cur)) {
-    guard.add(cur);
-    const kids = children.get(cur) ?? [];
-    if (kids.length === 0) return cur;
-    cur = kids[kids.length - 1].id;
-  }
-  return cur;
-}
-
-/** 激活路径：activeLeaf 的祖先链（含自身）；未设置时取时间最新消息为叶子 */
-function resolveActivePath(rows: MsgNode[], activeLeafMsgId: number | null): MsgNode[] {
-  if (rows.length === 0) return [];
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const parents = buildEffectiveParents(rows);
-  const sorted = sortByTime(rows);
-  const leafId = activeLeafMsgId !== null && byId.has(activeLeafMsgId) ? activeLeafMsgId : sorted[sorted.length - 1].id;
-  const path: MsgNode[] = [];
-  let cur: number | null = leafId;
-  const guard = new Set<number>();
-  while (cur !== null && !guard.has(cur)) {
-    guard.add(cur);
-    const node = byId.get(cur);
-    if (!node) break;
-    path.unshift(node);
-    cur = parents.get(cur) ?? null;
-  }
-  return path;
-}
-
-/** 祖先链（含 upToMsgId 自身）——编辑重发时以某条消息为终点构造上下文 */
-function resolveAncestorPath(rows: MsgNode[], upToMsgId: number): MsgNode[] {
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  if (!byId.has(upToMsgId)) return [];
-  const parents = buildEffectiveParents(rows);
-  const path: MsgNode[] = [];
-  let cur: number | null = upToMsgId;
-  const guard = new Set<number>();
-  while (cur !== null && !guard.has(cur)) {
-    guard.add(cur);
-    const node = byId.get(cur);
-    if (!node) break;
-    path.unshift(node);
-    cur = parents.get(cur) ?? null;
-  }
-  return path;
-}
 
 async function loadMsgNodes(conversationId: number): Promise<MsgNode[]> {
   return db
@@ -282,7 +196,7 @@ export async function listMessages(conversationId: number) {
     .where(eq(aiMessages.conversationId, conversationId))
     .orderBy(aiMessages.createdAt, aiMessages.id);
   // 对外统一输出"有效父节点"（legacy 线性数据按时间序推导），前端据此构建分支树
-  const parents = buildEffectiveParents(rows.map((r) => ({ id: r.id, parentId: r.parentId, role: r.role, content: '', createdAt: r.createdAt })));
+  const parents = buildEffectiveParents(rows);
   return rows.map((r) => ({ ...mapMessage(r), parentId: parents.get(r.id) ?? null }));
 }
 
@@ -518,7 +432,7 @@ export async function deleteMessageCascade(conversationId: number, messageId: nu
   if (!nodes.some((n) => n.id === messageId)) throw new HTTPException(404, { message: '消息不存在' });
 
   // BFS 收集子树（基于有效父节点）
-  const children = buildChildren(nodes);
+  const children = buildChildrenMap(nodes);
   const toDelete = new Set<number>([messageId]);
   const queue = [messageId];
   while (queue.length > 0) {
@@ -541,7 +455,7 @@ export async function deleteMessageCascade(conversationId: number, messageId: nu
     if (parentOfDeleted !== null && remaining.some((n) => n.id === parentOfDeleted)) {
       newLeaf = descendToLeaf(remaining, parentOfDeleted);
     } else {
-      newLeaf = sortByTime(remaining)[remaining.length - 1].id;
+      newLeaf = sortMessagesByTime(remaining)[remaining.length - 1].id;
     }
   }
   if (conv.activeLeafMsgId === null || toDelete.has(conv.activeLeafMsgId) || newLeaf === null) {

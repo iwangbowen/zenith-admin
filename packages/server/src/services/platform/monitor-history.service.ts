@@ -20,7 +20,7 @@ import { getPaymentAlertMetrics, type PaymentAlertMetrics } from '../payment/pay
 import { getOpenPlatformAlertMetrics } from '../open-platform/open-platform-alert-metrics.service';
 import { getReplayStorageMbMetric } from '../analytics/session-replays.service';
 import { getLogAlertMetrics } from '../../lib/log-metrics';
-import type { MonitorMetric } from '@zenith/shared/platform';
+import { MONITOR_HISTORY_RANGE_CONFIG, type MonitorHistoryRange, type MonitorMetric } from '@zenith/shared/platform';
 
 export type MetricSnapshot = Record<MonitorMetric, number>;
 
@@ -148,17 +148,9 @@ export async function persistMetricSample(): Promise<boolean> {
   return true;
 }
 
-const RANGE_CONFIG: Record<string, { windowSec: number; bucketSec: number }> = {
-  '1h': { windowSec: 3600, bucketSec: 60 },
-  '6h': { windowSec: 6 * 3600, bucketSec: 120 },
-  '24h': { windowSec: 24 * 3600, bucketSec: 300 },
-  '7d': { windowSec: 7 * 24 * 3600, bucketSec: 1800 },
-  '30d': { windowSec: 30 * 24 * 3600, bucketSec: 7200 },
-};
-
 /** 按时间范围分桶聚合查询历史趋势（每桶取平均值 + 峰值）。 */
 export async function getMonitorHistory(range: string) {
-  const cfg = RANGE_CONFIG[range] ?? RANGE_CONFIG['1h'];
+  const cfg = MONITOR_HISTORY_RANGE_CONFIG[range as MonitorHistoryRange] ?? MONITOR_HISTORY_RANGE_CONFIG['1h'];
   const since = new Date(Date.now() - cfg.windowSec * 1000);
   const bucketExpr = sql<number>`floor(extract(epoch from ${systemMetricSamples.sampledAt}) / ${cfg.bucketSec})`;
   const avg = (col: AnyColumn) => sql<number>`avg(${col})::float`;

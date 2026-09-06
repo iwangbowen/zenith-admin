@@ -6,6 +6,7 @@ import {
   reportDashboardContract,
   reportDatasetContract,
   reportMetricContract,
+  computeWidgetParams,
   type ReportDataResult,
   type ReportDataset,
   type ReportFilter,
@@ -80,14 +81,6 @@ export function useSaveReportDashboardDesign() {
       void qc.invalidateQueries({ queryKey: reportDesignerKeys.metricDataPrefix });
     },
   });
-}
-
-export function computeWidgetParams(widget: ReportWidget, filterValues: Record<string, unknown>): Record<string, unknown> {
-  const params: Record<string, unknown> = {};
-  for (const binding of widget.paramBindings ?? []) {
-    if (binding.filterId && binding.param) params[binding.param] = filterValues[binding.filterId];
-  }
-  return params;
 }
 
 function errorMessage(error: unknown) {

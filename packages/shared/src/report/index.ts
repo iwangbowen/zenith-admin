@@ -13,3 +13,4 @@ export * from './embed';
 export * from './format';
 export * from './print';
 export * from './visual-sql';
+export * from './widget-params';

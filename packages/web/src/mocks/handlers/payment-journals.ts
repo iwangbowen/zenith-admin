@@ -1,4 +1,5 @@
 import {
+  PAYMENT_LEDGER_STANDARD_ACCOUNTS,
   paymentJournalContract,
   type PaymentFundReservation,
   type PaymentJournal,
@@ -9,20 +10,6 @@ import {
 import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
-
-type NormalBalance = PaymentLedgerAccount['normalBalance'];
-
-const ACCOUNT_META: Record<PaymentLedgerAccountCode, { name: string; normalBalance: NormalBalance }> = {
-  provider_clearing: { name: '渠道清算', normalBalance: 'debit' },
-  merchant_pending: { name: '商户待结算', normalBalance: 'credit' },
-  merchant_available: { name: '商户可用', normalBalance: 'credit' },
-  merchant_frozen: { name: '商户冻结', normalBalance: 'credit' },
-  platform_fee: { name: '平台手续费', normalBalance: 'credit' },
-  refund_payable: { name: '退款应付', normalBalance: 'credit' },
-  sharing_payable: { name: '分账应付', normalBalance: 'credit' },
-  payout_payable: { name: '出款应付', normalBalance: 'credit' },
-  suspense: { name: '待查资金', normalBalance: 'credit' },
-};
 
 const accounts: PaymentLedgerAccount[] = [];
 const journals: PaymentJournal[] = [];
@@ -53,7 +40,7 @@ function ensureAccount(scope: Pick<MockSystemJournalInput, 'appId' | 'channelCon
     && account.currency === scope.currency
     && account.code === code);
   if (existing) return existing;
-  const meta = ACCOUNT_META[code];
+  const meta = PAYMENT_LEDGER_STANDARD_ACCOUNTS[code];
   const now = mockDateTime();
   const account: PaymentLedgerAccount = {
     id: nextAccountId++,

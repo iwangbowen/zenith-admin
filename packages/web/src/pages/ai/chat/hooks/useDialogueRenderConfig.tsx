@@ -2,9 +2,9 @@ import React, { useCallback, useMemo } from 'react';
 import { Button, Space, Tooltip } from '@douyinfe/semi-ui';
 import type { RenderActionProps, RenderAvatarProps, RenderTitleProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
 import { ChevronLeft, ChevronRight, Square, Volume2 } from 'lucide-react';
+import type { BranchInfo } from '@zenith/shared/ai';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatMessageTime, type ChatMessage as Message } from '../message-adapters';
-import type { BranchInfo } from '../branch-tree';
 import { dbIdOf } from '../chat-utils';
 
 interface UseDialogueRenderConfigOptions {

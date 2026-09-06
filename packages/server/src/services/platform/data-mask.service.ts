@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { DataMaskEffective, DataMaskField, SaveDataMaskPolicyInput } from '@zenith/shared/platform';
-import { DATA_MASK_REVEAL_PERMISSION } from '@zenith/shared/platform';
+import { DATA_MASK_REVEAL_PERMISSION, matchesDataMaskFieldQuery } from '@zenith/shared/platform';
 import type { MaskDecision } from '@zenith/shared/core';
 import { db } from '../../db';
 import { dataMaskPolicies } from '../../db/schema';
@@ -64,17 +64,9 @@ export interface ListDataMaskFieldsQuery {
 
 export async function listDataMaskFields(query: ListDataMaskFieldsQuery = {}): Promise<DataMaskField[]> {
   const map = await getPolicyMap();
-  const keyword = query.keyword?.trim().toLowerCase();
   return listSensitiveFieldEntries()
     .map((entry) => mapField(resolveEffectivePolicy(entry, map.get(entry.key))))
-    .filter((item) => {
-      if (keyword && ![item.entity, item.field, item.label, item.key].some((v) => v.toLowerCase().includes(keyword))) return false;
-      if (query.entity && item.entity !== query.entity) return false;
-      if (query.maskType && item.maskType !== query.maskType) return false;
-      if (query.enabled !== undefined && item.enabled !== query.enabled) return false;
-      if (query.overridden !== undefined && item.overridden !== query.overridden) return false;
-      return true;
-    });
+    .filter((item) => matchesDataMaskFieldQuery(item, query));
 }
 
 /** 当前登录用户视角：会被打码的字段键 + 是否可按需查看明文 */

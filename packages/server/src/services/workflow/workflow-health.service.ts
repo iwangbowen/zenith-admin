@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, lte, type SQL } from 'drizzle-orm';
-import type { WorkflowHealthIssue, WorkflowHealthSummary } from '@zenith/shared/workflow';
+import { summarizeWorkflowHealth, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import { workflowJobExecutions, workflowJobs, workflowInstances, workflowTasks, workflowTokens } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -295,26 +295,5 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
     }
   }
 
-  issues.sort((a, b) => {
-    const severity = (b.severity === 'critical' ? 1 : 0) - (a.severity === 'critical' ? 1 : 0);
-    return severity || b.ageMinutes - a.ageMinutes;
-  });
-
-  const critical = issues.filter((issue) => issue.severity === 'critical').length;
-  const warning = issues.length - critical;
-  return {
-    healthy: issues.length === 0,
-    checkedAt: formatDateTime(now),
-    thresholdMinutes,
-    stats: {
-      total: issues.length,
-      critical,
-      warning,
-      externalFailed: issues.filter((issue) => issue.type === 'external_dispatch_failed').length,
-      triggerStuck: issues.filter((issue) => issue.type === 'trigger_waiting_no_execution' || issue.type === 'trigger_execution_failed').length,
-      subProcessStuck: issues.filter((issue) => issue.type === 'subprocess_waiting').length,
-      outboxFailed: issues.filter((issue) => issue.type === 'workflow_event_outbox_failed').length,
-    },
-    issues,
-  };
+  return summarizeWorkflowHealth(issues, { thresholdMinutes, checkedAt: formatDateTime(now) });
 }

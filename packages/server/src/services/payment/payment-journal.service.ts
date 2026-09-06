@@ -2,18 +2,19 @@ import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type {
-  CreatePaymentFundReservationInput,
-  CreatePaymentLedgerAccountInput,
-  PaymentActiveReservationAmount,
-  PaymentFundReservation,
-  PaymentFundReservationStatus,
-  PaymentJournal,
-  PaymentJournalLine,
-  PaymentLedgerAccount,
-  PaymentLedgerAccountCode,
-  PostPaymentJournalInput,
-  TransitionPaymentFundReservationInput,
+import {
+  PAYMENT_LEDGER_STANDARD_ACCOUNTS,
+  type CreatePaymentFundReservationInput,
+  type CreatePaymentLedgerAccountInput,
+  type PaymentActiveReservationAmount,
+  type PaymentFundReservation,
+  type PaymentFundReservationStatus,
+  type PaymentJournal,
+  type PaymentJournalLine,
+  type PaymentLedgerAccount,
+  type PaymentLedgerAccountCode,
+  type PostPaymentJournalInput,
+  type TransitionPaymentFundReservationInput,
 } from '@zenith/shared/payment';
 import { db } from '../../db';
 import {
@@ -46,21 +47,6 @@ interface JournalActor {
   tenantId: number | null;
   operatorId: number | null;
 }
-
-const STANDARD_LEDGER_ACCOUNTS: Record<PaymentLedgerAccountCode, {
-  name: string;
-  normalBalance: 'debit' | 'credit';
-}> = {
-  provider_clearing: { name: '渠道清算', normalBalance: 'debit' },
-  merchant_pending: { name: '商户待结算', normalBalance: 'credit' },
-  merchant_available: { name: '商户可用', normalBalance: 'credit' },
-  merchant_frozen: { name: '商户冻结', normalBalance: 'credit' },
-  platform_fee: { name: '平台手续费', normalBalance: 'credit' },
-  refund_payable: { name: '退款应付', normalBalance: 'credit' },
-  sharing_payable: { name: '分账应付', normalBalance: 'credit' },
-  payout_payable: { name: '出款应付', normalBalance: 'credit' },
-  suspense: { name: '待查资金', normalBalance: 'credit' },
-};
 
 function exactTenantCondition(column: SQLWrapper, tenantId: number | null): SQL {
   return tenantId == null ? sql`${column} is null` : sql`${column} = ${tenantId}`;
@@ -181,7 +167,7 @@ export async function createLedgerAccount(input: CreatePaymentLedgerAccountInput
       accountNo: `PLA${randomUUID().replaceAll('-', '')}`,
       name: input.name,
       code: input.code,
-      normalBalance: STANDARD_LEDGER_ACCOUNTS[input.code].normalBalance,
+      normalBalance: PAYMENT_LEDGER_STANDARD_ACCOUNTS[input.code].normalBalance,
       appId: scope.appId,
       channelConfigId: scope.channelConfigId,
       currency: scope.currency,
@@ -491,9 +477,9 @@ async function ensureStandardLedgerAccountsInternal(
     .insert(paymentLedgerAccounts)
     .values(uniqueCodes.map((code) => ({
       accountNo: standardAccountNo(scope, code),
-      name: STANDARD_LEDGER_ACCOUNTS[code].name,
+      name: PAYMENT_LEDGER_STANDARD_ACCOUNTS[code].name,
       code,
-      normalBalance: STANDARD_LEDGER_ACCOUNTS[code].normalBalance,
+      normalBalance: PAYMENT_LEDGER_STANDARD_ACCOUNTS[code].normalBalance,
       appId: scope.appId,
       channelConfigId: scope.channelConfigId,
       currency: scope.currency,

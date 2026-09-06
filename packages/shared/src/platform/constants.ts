@@ -485,6 +485,15 @@ export const MONITOR_HISTORY_RANGES = ['1h', '6h', '24h', '7d', '30d'] as const;
 
 export type MonitorHistoryRange = (typeof MONITOR_HISTORY_RANGES)[number];
 
+/** 各时间范围的回看窗口与聚合分桶（秒）：服务端分桶查询与 Demo Mock 生成同源 */
+export const MONITOR_HISTORY_RANGE_CONFIG: Record<MonitorHistoryRange, { windowSec: number; bucketSec: number }> = {
+  '1h': { windowSec: 3600, bucketSec: 60 },
+  '6h': { windowSec: 6 * 3600, bucketSec: 120 },
+  '24h': { windowSec: 24 * 3600, bucketSec: 300 },
+  '7d': { windowSec: 7 * 24 * 3600, bucketSec: 1800 },
+  '30d': { windowSec: 30 * 24 * 3600, bucketSec: 7200 },
+};
+
 const BYTE_RATE_UNITS = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
 
 function formatByteRate(value: number): string {

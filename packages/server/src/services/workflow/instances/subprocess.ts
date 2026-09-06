@@ -3,6 +3,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks, workflowDefinitions, users } from '../../../db/schema';
 import { validateFlowData, type TaskAction } from '../../../lib/workflow-engine';
+import { stableStringify } from '@zenith/shared/core';
 import type { WorkflowFlowData, WorkflowEventActor } from '@zenith/shared/workflow';
 import { buildStarterContext } from '../workflow-assignee-resolver.service';
 import { resolveFormSnapshot } from '../workflow-forms.service';
@@ -57,15 +58,6 @@ export function buildChildFormData(
     }
   }
   return out;
-}
-
-function stableStringify(value: unknown): string {
-  if (value == null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`);
-  return `{${entries.join(',')}}`;
 }
 
 function buildSubProcessItemKey(parentTaskId: number, index: number, item: unknown): string {

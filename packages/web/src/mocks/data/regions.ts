@@ -55,30 +55,3 @@ let nextRegionId = idCursor;
 export function getNextRegionId(): number {
   return nextRegionId++;
 }
-
-export function buildRegionTree(flat: Region[]): Region[] {
-  const map = new Map<string, Region>();
-  flat.forEach((r) => map.set(r.code, { ...r, children: undefined }));
-  const roots: Region[] = [];
-
-  map.forEach((node) => {
-    if (!node.parentCode) {
-      roots.push(node);
-      return;
-    }
-    const parent = map.get(node.parentCode);
-    if (parent) {
-      parent.children = parent.children ?? [];
-      parent.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  });
-
-  const sortNodes = (nodes: Region[]) => {
-    nodes.sort((a, b) => a.sort - b.sort || a.code.localeCompare(b.code));
-    nodes.forEach((n) => n.children && sortNodes(n.children));
-  };
-  sortNodes(roots);
-  return roots;
-}

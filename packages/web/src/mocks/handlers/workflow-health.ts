@@ -1,5 +1,4 @@
-import { workflowHealthContract } from '@zenith/shared/workflow';
-import type { WorkflowHealthIssue, WorkflowHealthSummary } from '@zenith/shared/workflow';
+import { summarizeWorkflowHealth, workflowHealthContract, type WorkflowHealthIssue } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
 import { mockWorkflowInstances, mockWorkflowTasks } from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -37,22 +36,6 @@ export const workflowHealthHandlers = [
         });
       }
     }
-    const critical = issues.filter((issue) => issue.severity === 'critical').length;
-    const summary: WorkflowHealthSummary = {
-      healthy: issues.length === 0,
-      checkedAt: mockDateTime(),
-      thresholdMinutes,
-      stats: {
-        total: issues.length,
-        critical,
-        warning: issues.length - critical,
-        externalFailed: issues.filter((issue) => issue.type === 'external_dispatch_failed').length,
-        triggerStuck: issues.filter((issue) => issue.type === 'trigger_waiting_no_execution' || issue.type === 'trigger_execution_failed').length,
-        subProcessStuck: issues.filter((issue) => issue.type === 'subprocess_waiting').length,
-        outboxFailed: issues.filter((issue) => issue.type === 'workflow_event_outbox_failed').length,
-      },
-      issues,
-    };
-    return ok(summary);
+    return ok(summarizeWorkflowHealth(issues, { thresholdMinutes, checkedAt: mockDateTime() }));
   }),
 ];

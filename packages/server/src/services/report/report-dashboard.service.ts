@@ -42,7 +42,7 @@ import {
   validateReportResourcePlacement,
 } from './report-resource.service';
 import type { ReportDashboardRow } from '../../db/schema';
-import type { CreateReportDashboardInput, ReportCanvasItem, ReportDashboard, ReportDashboardConfig, ReportDashboardLifecycleStatus, ReportDashboardSnapshot, ReportDatasetQueryOptions, ReportFilter, ReportGridItem, ReportLookupOption, ReportMetricEvaluation, ReportWidget, ReportWidgetDataResult, UpdateReportDashboardInput } from '@zenith/shared/report';
+import { computeWidgetParams, type CreateReportDashboardInput, type ReportCanvasItem, type ReportDashboard, type ReportDashboardConfig, type ReportDashboardLifecycleStatus, type ReportDashboardSnapshot, type ReportDatasetQueryOptions, type ReportFilter, type ReportGridItem, type ReportLookupOption, type ReportMetricEvaluation, type ReportWidget, type ReportWidgetDataResult, type UpdateReportDashboardInput } from '@zenith/shared/report';
 
 type DashboardRowExt = ReportDashboardRow & {
   category?: { name: string } | null;
@@ -559,14 +559,6 @@ export async function assertDashboardSnapshotEvaluableGlobally(
       await assertReportMetricEvaluableGlobally(metricId);
     }),
   ]);
-}
-
-function computeWidgetParams(widget: ReportWidget, filterValues: Record<string, unknown>): Record<string, unknown> {
-  const params: Record<string, unknown> = {};
-  for (const binding of widget.paramBindings ?? []) {
-    if (binding.filterId && binding.param) params[binding.param] = filterValues[binding.filterId];
-  }
-  return params;
 }
 
 const DASHBOARD_DATA_CONCURRENCY = config.report.dashboardMaxConcurrent;

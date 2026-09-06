@@ -1,11 +1,10 @@
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { regions } from '../../db/schema';
-import type { Region } from '@zenith/shared/platform';
+import { buildRegionTree, filterRegionTree, REGION_LEVEL_SHORT_LABELS, validateRegionLevelHierarchy, type Region, type RegionLevel } from '@zenith/shared/platform';
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime } from '../../lib/datetime';
-import { buildTree } from '@zenith/shared/core';
 
 export function mapRegion(row: typeof regions.$inferSelect): Omit<Region, 'children'> {
   return {
@@ -21,60 +20,19 @@ export function mapRegion(row: typeof regions.$inferSelect): Omit<Region, 'child
   };
 }
 
-export function buildRegionTree(list: Omit<Region, 'children'>[]): Region[] {
-  return buildTree<Region>(list, {
-    id: (r) => r.code,
-    parentId: (r) => r.parentCode || null,
-    compare: (a, b) => a.sort - b.sort || a.code.localeCompare(b.code),
-  });
-}
-
-export function filterRegionTree(nodes: Region[], keyword: string, status?: string, level?: string): Region[] {
-  return nodes.reduce<Region[]>((acc, node) => {
-    const children = node.children ? filterRegionTree(node.children, keyword, status, level) : [];
-    const keywordMatched = !keyword || node.name.includes(keyword) || node.code.includes(keyword);
-    const statusMatched = !status || node.status === status;
-    const levelMatched = !level || node.level === level;
-    if ((keywordMatched && statusMatched && levelMatched) || children.length > 0) {
-      acc.push({ ...node, children: children.length > 0 ? children : undefined });
-    }
-    return acc;
-  }, []);
-}
-
 export interface CreateRegionInput {
   code: string;
   name: string;
-  level: 'province' | 'city' | 'county';
+  level: RegionLevel;
   parentCode?: string | null;
   sort?: number;
   status?: 'enabled' | 'disabled';
 }
 export type UpdateRegionInput = Partial<CreateRegionInput>;
 
-// 行政层级约束：province 仅根级、city 父须 province、county 父须 city
-const LEVEL_PARENT: Record<'province' | 'city' | 'county', 'province' | 'city' | null> = {
-  province: null,
-  city: 'province',
-  county: 'city',
-};
-const LEVEL_LABEL: Record<'province' | 'city' | 'county', string> = {
-  province: '省',
-  city: '市',
-  county: '区县',
-};
-
-function ensureLevelHierarchy(level: 'province' | 'city' | 'county', parentLevel: string | null) {
-  const expected = LEVEL_PARENT[level];
-  if (expected === null) {
-    if (parentLevel !== null) {
-      throw new HTTPException(400, { message: '省级地区不能挂载父级地区' });
-    }
-    return;
-  }
-  if (parentLevel !== expected) {
-    throw new HTTPException(400, { message: `${LEVEL_LABEL[level]}级地区的父级必须为${LEVEL_LABEL[expected]}级地区` });
-  }
+function ensureLevelHierarchy(level: RegionLevel, parentLevel: string | null) {
+  const error = validateRegionLevelHierarchy(level, parentLevel);
+  if (error) throw new HTTPException(400, { message: error });
 }
 
 export async function listRegionTree(q: { keyword?: string; status?: string; level?: string }): Promise<Region[]> {
@@ -147,7 +105,7 @@ export async function updateRegion(id: number, data: UpdateRegionInput) {
     if (nextLevel === 'county') throw new HTTPException(400, { message: '区县级地区下不允许存在子级，请先迁移子地区' });
     const expectedChild = nextLevel === 'province' ? 'city' : 'county';
     if ([...childLevels].some((lv) => lv !== expectedChild)) {
-      throw new HTTPException(400, { message: `变更层级后与现有子级地区层级冲突（子级须为${LEVEL_LABEL[expectedChild]}级）` });
+      throw new HTTPException(400, { message: `变更层级后与现有子级地区层级冲突（子级须为${REGION_LEVEL_SHORT_LABELS[expectedChild]}级）` });
     }
   }
   try {

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type { AiConversation, AiMessage } from '@zenith/shared/ai';
+import { computeBranchInfo, resolveActivePath } from '@zenith/shared/ai';
 import { switchConversationBranch } from '@/hooks/queries/ai-extras';
 import { convertApiMessage, type ChatMessage as Message } from '../message-adapters';
-import { computeBranchInfo, resolveActivePath } from '../branch-tree';
 import type { AIChatDialogueInstance } from '../chat-utils';
 
 interface UseMessageTreeOptions {

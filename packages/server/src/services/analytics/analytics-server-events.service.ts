@@ -27,7 +27,7 @@ import { db } from '../../db';
 import { userEvents } from '../../db/schema';
 import type { AnalyticsEnvironment, AnalyticsEventSource, AnalyticsIdentityType, TrackEventInput } from '@zenith/shared/analytics';
 import { ANALYTICS_PROPERTIES_MAX_BYTES } from '@zenith/shared/analytics';
-import { jsonByteLength, jsonDepth } from '@zenith/shared/core';
+import { isPlainObject, jsonByteLength, jsonDepth } from '@zenith/shared/core';
 import { parseDateTimeInput } from '../../lib/datetime';
 import { evaluateEvents, recordSchemaIssues } from './analytics-governance.service';
 import { touchEventMeta } from './analytics-event-meta.service';
@@ -69,10 +69,6 @@ export interface TrackServerEventInput {
   appId?: string;
   /** 属性袋：调用点只应传白名单标量字段，禁止整对象/凭据 */
   properties?: Record<string, unknown> | null;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**

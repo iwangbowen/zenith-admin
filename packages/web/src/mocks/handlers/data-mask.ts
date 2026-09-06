@@ -1,4 +1,4 @@
-import { dataMaskContract, type DataMaskField, type DataMaskPolicy } from '@zenith/shared/platform';
+import { dataMaskContract, matchesDataMaskFieldQuery, type DataMaskField, type DataMaskPolicy } from '@zenith/shared/platform';
 import { previewMask, valuesAtPath, type MaskType } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, nextIdFrom, notFound } from '@/mocks/utils/handlers';
@@ -47,15 +47,7 @@ const REVEAL_SOURCES: Record<string, (id: number) => Record<string, unknown> | u
 
 export const dataMaskHandlers = [
   mock(dataMaskContract.fields, ({ query, ok }) => {
-    const keyword = query.keyword?.trim().toLowerCase();
-    const list = mockSensitiveFieldEntries.map(toField).filter((item) => {
-      if (keyword && ![item.entity, item.field, item.label, item.key].some((v) => v.toLowerCase().includes(keyword))) return false;
-      if (query.entity && item.entity !== query.entity) return false;
-      if (query.maskType && item.maskType !== query.maskType) return false;
-      if (query.enabled !== undefined && item.enabled !== query.enabled) return false;
-      if (query.overridden !== undefined && item.overridden !== query.overridden) return false;
-      return true;
-    });
+    const list = mockSensitiveFieldEntries.map(toField).filter((item) => matchesDataMaskFieldQuery(item, query));
     return ok(list);
   }),
 

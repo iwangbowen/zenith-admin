@@ -9,6 +9,7 @@ import type {
   RuleScorecardGrade,
   RuleScorecardVariable,
 } from '@zenith/shared/rules';
+import { stableStringify } from '@zenith/shared/core';
 import type { CreateRuleScorecardInput, UpdateRuleScorecardInput } from '@zenith/shared/rules';
 import { db } from '../../db';
 import { ruleScorecards, ruleAssetVersions } from '../../db/schema';
@@ -37,15 +38,6 @@ function draftSnapshot(row: Row): ScorecardSnapshot {
     variables: (row.variables ?? []) as RuleScorecardVariable[],
     grades: (row.grades ?? []) as RuleScorecardGrade[],
   };
-}
-
-/** 键序稳定序列化：jsonb 回读会重排对象键序，直接 JSON.stringify 对比会误报 dirty */
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value as object).sort().map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
 }
 
 export function mapRuleScorecard(row: Row) {

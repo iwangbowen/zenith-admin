@@ -1,21 +1,8 @@
-import type { WorkflowCustomFormConfig, WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormSettings, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
+import { normalizeWorkflowFormSnapshot, type WorkflowCustomFormConfig, type WorkflowDefinition, type WorkflowDefinitionSnapshot, type WorkflowFlowData, type WorkflowFormField, type WorkflowFormSettings, type WorkflowFormType, type WorkflowInstance } from '@zenith/shared/workflow';
+
+export { normalizeWorkflowFormSnapshot };
 
 export type WorkflowDetailDefinition = WorkflowDefinition | WorkflowDefinitionSnapshot;
-
-export function normalizeWorkflowFormSnapshot(
-  snapshot: WorkflowInstance['formSnapshot'],
-): WorkflowInstanceFormSnapshot | null {
-  if (!snapshot || typeof snapshot !== 'object') return null;
-  const value = snapshot as Partial<WorkflowInstanceFormSnapshot>;
-  return {
-    formType: value.formType,
-    formId: value.formId ?? null,
-    formName: value.formName ?? null,
-    fields: Array.isArray(value.fields) ? value.fields : [],
-    settings: value.settings ?? null,
-    customForm: value.customForm ?? null,
-  };
-}
 
 export function resolveWorkflowDetailDefinition(
   instance: WorkflowInstance | null | undefined,

@@ -1,5 +1,6 @@
 import { HttpResponse } from 'msw';
 import {
+  MONITOR_HISTORY_RANGE_CONFIG,
   monitorContract,
   type MonitorHistory,
   type MonitorHistoryRange,
@@ -234,20 +235,12 @@ function buildSeries(): MonitorTimeseriesPoint[] {
   return points;
 }
 
-const HISTORY_RANGE_CFG: Record<MonitorHistoryRange, { windowSec: number; bucketSec: number }> = {
-  '1h': { windowSec: 3600, bucketSec: 60 },
-  '6h': { windowSec: 6 * 3600, bucketSec: 120 },
-  '24h': { windowSec: 24 * 3600, bucketSec: 300 },
-  '7d': { windowSec: 7 * 24 * 3600, bucketSec: 1800 },
-  '30d': { windowSec: 30 * 24 * 3600, bucketSec: 7200 },
-};
-
 function fmtHistoryTime(d: Date): string {
   return dayjs(d).format('YYYY-MM-DD HH:mm:ss');
 }
 
 function buildHistory(range: MonitorHistoryRange): MonitorHistory {
-  const cfg = HISTORY_RANGE_CFG[range];
+  const cfg = MONITOR_HISTORY_RANGE_CONFIG[range];
   const count = Math.floor(cfg.windowSec / cfg.bucketSec);
   const now = Date.now();
   const points: MonitorHistory['points'] = [];

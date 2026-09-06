@@ -1,7 +1,7 @@
 // ─── 实例/任务数据映射与定义快照辅助（拆分自 workflow-instances.service.ts）───
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
 import { workflowInstances, workflowTasks, workflowDefinitions } from '../../../db/schema';
-import type { WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
+import { normalizeWorkflowFormSnapshot, type WorkflowDefinitionSnapshot, type WorkflowFlowData, type WorkflowActionButtonKey, type WorkflowActionButtonConfig, type WorkflowFormField, type WorkflowFormSettings, type WorkflowCustomFormConfig, type WorkflowFormType, type WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
 import { type TaskAction } from '../../../lib/workflow-engine';
 import { HTTPException } from 'hono/http-exception';
 
@@ -100,7 +100,7 @@ export function mapInstance(
     allowResubmit: snapshotSettings?.allowResubmit !== false,
     allowComment: snapshotSettings?.allowComment !== false,
     formData: (row.formData ?? null) as Record<string, unknown> | null,
-    formSnapshot: normalizeStoredFormSnapshot(row.formSnapshot),
+    formSnapshot: normalizeWorkflowFormSnapshot(row.formSnapshot),
     status: row.status,
     currentNodeKey: row.currentNodeKey,
     currentNodeKeys,
@@ -142,19 +142,6 @@ function resolveNodeNameFromSnapshot(snapshot: WorkflowDefinitionSnapshot | null
   if (!nodeKey) return null;
   const flowData = snapshot?.flowData;
   return flowData?.nodes?.find((n) => n.data.key === nodeKey)?.data.label ?? null;
-}
-
-function normalizeStoredFormSnapshot(snapshot: unknown): WorkflowInstanceFormSnapshot | null {
-  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return null;
-  const value = snapshot as Partial<WorkflowInstanceFormSnapshot>;
-  return {
-    formType: value.formType,
-    formId: value.formId ?? null,
-    formName: value.formName ?? null,
-    fields: Array.isArray(value.fields) ? value.fields : [],
-    settings: value.settings ?? null,
-    customForm: value.customForm ?? null,
-  };
 }
 
 export function buildInstanceFormSnapshot(
@@ -214,7 +201,7 @@ function sanitizeSnapshotFlowData(flowData: WorkflowFlowData | null): WorkflowFl
 function mapDefinitionSnapshot(snapshot: unknown, formSnapshot: unknown) {
   if (!snapshot || typeof snapshot !== 'object') return null;
   const row = snapshot as Partial<typeof workflowDefinitions.$inferSelect>;
-  const normalizedForm = normalizeStoredFormSnapshot(formSnapshot);
+  const normalizedForm = normalizeWorkflowFormSnapshot(formSnapshot);
   const formType = (row.formType ?? normalizedForm?.formType ?? 'designer') as WorkflowFormType;
   return {
     id: Number(row.id ?? 0),

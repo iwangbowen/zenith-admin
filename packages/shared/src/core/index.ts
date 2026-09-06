@@ -9,6 +9,7 @@ export * from './constants';
 export * from './contract';
 export * from './enum-options';
 export * from './format';
+export * from './json';
 export * from './math';
 export * from './json-shape';
 export * from './random';

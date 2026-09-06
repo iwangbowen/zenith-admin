@@ -409,6 +409,26 @@ export const PAYMENT_LEDGER_NORMAL_BALANCES = ['debit', 'credit'] as const;
 
 export type PaymentLedgerNormalBalance = typeof PAYMENT_LEDGER_NORMAL_BALANCES[number];
 
+/** 标准科目的正常余额方向（会计事实，服务端建账与 Demo Mock 同源） */
+export const PAYMENT_LEDGER_ACCOUNT_NORMAL_BALANCE: Record<PaymentLedgerAccountCode, PaymentLedgerNormalBalance> = {
+  provider_clearing: 'debit',
+  merchant_pending: 'credit',
+  merchant_available: 'credit',
+  merchant_frozen: 'credit',
+  platform_fee: 'credit',
+  refund_payable: 'credit',
+  sharing_payable: 'credit',
+  payout_payable: 'credit',
+  suspense: 'credit',
+};
+
+/** 标准科目元数据：名称 + 正常余额方向 */
+export const PAYMENT_LEDGER_STANDARD_ACCOUNTS: Record<PaymentLedgerAccountCode, { name: string; normalBalance: PaymentLedgerNormalBalance }> =
+  Object.fromEntries(PAYMENT_LEDGER_ACCOUNT_CODES.map((code) => [code, {
+    name: PAYMENT_LEDGER_ACCOUNT_CODE_LABELS[code],
+    normalBalance: PAYMENT_LEDGER_ACCOUNT_NORMAL_BALANCE[code],
+  }])) as Record<PaymentLedgerAccountCode, { name: string; normalBalance: PaymentLedgerNormalBalance }>;
+
 export const PAYMENT_FUND_RESERVATION_STATUSES = ['active', 'captured', 'released', 'expired'] as const;
 
 export type PaymentFundReservationStatus = typeof PAYMENT_FUND_RESERVATION_STATUSES[number];

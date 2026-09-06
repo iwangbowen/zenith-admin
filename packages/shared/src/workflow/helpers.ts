@@ -1,7 +1,24 @@
-import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
+import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
 import type { WorkflowInstanceSummaryItem } from './contracts/instances';
 
 type WorkflowFlowNode = WorkflowFlowData['nodes'][number];
+
+/**
+ * 归一化实例表单快照：落库 JSON / API 返回值 → 结构完整的快照对象；非对象（含数组）视为无快照。
+ * 服务端映射与前端详情渲染共用，保证两侧对缺省字段的补全一致。
+ */
+export function normalizeWorkflowFormSnapshot(snapshot: unknown): WorkflowInstanceFormSnapshot | null {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return null;
+  const value = snapshot as Partial<WorkflowInstanceFormSnapshot>;
+  return {
+    formType: value.formType,
+    formId: value.formId ?? null,
+    formName: value.formName ?? null,
+    fields: Array.isArray(value.fields) ? value.fields : [],
+    settings: value.settings ?? null,
+    customForm: value.customForm ?? null,
+  };
+}
 
 /** 人工审批节点类型（会创建待办、阻断流转，遍历到此即停止） */
 const HUMAN_TASK_TYPES = new Set(['approve', 'handler']);

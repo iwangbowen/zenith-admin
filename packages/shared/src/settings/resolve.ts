@@ -1,12 +1,9 @@
+import { isPlainObject } from '../core/json';
 import type { SettingsVisibility } from './constants';
 import { SETTINGS_MODULES, type SettingsModuleKey, type SettingsOf } from './registry';
 
 /** 任意层级的设置文档（覆盖层是稀疏的，生效层是完整的） */
 export type SettingsDoc = Record<string, unknown>;
-
-function isPlainObject(value: unknown): value is SettingsDoc {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function sameLeaf(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
