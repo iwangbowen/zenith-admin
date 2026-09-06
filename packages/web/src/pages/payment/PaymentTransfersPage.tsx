@@ -1,18 +1,16 @@
 import { useMemo, useRef, useState } from 'react';
-import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
+import { formatYuan } from '@/utils/payment';
 import { Banner, Button, Col, Form, Input, Row, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { SendHorizontal } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useAuth } from '@/hooks/useAuth';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
-import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 import {
   paymentTransferKeys,
   useApprovePaymentTransfer,
@@ -23,7 +21,7 @@ import {
   useRejectPaymentTransfer,
 } from '@/hooks/queries/payment-transfers';
 import { enumValueOf } from '@zenith/shared/core';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_TRANSFER_APPROVAL_STATUS_LABELS, PAYMENT_TRANSFER_APPROVAL_STATUSES, PAYMENT_TRANSFER_STATUS_LABELS, PAYMENT_TRANSFER_STATUS_OPTIONS, PAYMENT_TRANSFER_STATUSES, PAYMENT_TRANSFER_APPROVAL_STATUS_OPTIONS } from '@zenith/shared/payment';
+import { PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_TRANSFER_APPROVAL_STATUS_LABELS, PAYMENT_TRANSFER_APPROVAL_STATUSES, PAYMENT_TRANSFER_STATUS_LABELS, PAYMENT_TRANSFER_STATUS_OPTIONS, PAYMENT_TRANSFER_STATUSES, PAYMENT_TRANSFER_APPROVAL_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type {
   CreatePaymentTransferInput,
   PaymentChannel,
@@ -31,8 +29,10 @@ import type {
   PaymentTransferApprovalStatus,
   PaymentTransferStatus,
 } from '@zenith/shared/payment';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { PaymentChannelTag } from './payment-display';
+import { useEnabledPaymentAppLookup } from './payment-app-options';
 
 const yuan = formatYuan;
 const STATUS_COLOR = { pending: 'grey', processing: 'blue', unknown: 'orange', success: 'green', failed: 'red' } as const satisfies Record<PaymentTransferStatus, string>;
@@ -78,17 +78,9 @@ export default function PaymentTransfersPage() {
     status: enumValueOf(PAYMENT_TRANSFER_STATUSES, submittedParams.status),
     approvalStatus: enumValueOf(PAYMENT_TRANSFER_APPROVAL_STATUSES, submittedParams.approvalStatus),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const summaryQuery = usePaymentTransferSummary();
   const summary = summaryQuery.data ?? null;
-  const appsQuery = usePaymentAppList({ page: 1, pageSize: 100, status: 'enabled' });
-  const paymentApps = useMemo(() => appsQuery.data?.list ?? [], [appsQuery.data?.list]);
-  const appById = useMemo(() => new Map(paymentApps.map((app) => [app.id, app])), [paymentApps]);
-  const appOptions = useMemo(
-    () => paymentApps.map((app) => ({ value: app.id, label: `${app.name} · ${app.environment === 'sandbox' ? '沙箱' : '生产'}` })),
-    [paymentApps],
-  );
+  const { appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
   const createChannelOptions = useMemo(() => {
     const app = selectedAppId == null ? null : appById.get(selectedAppId);
     return [
@@ -172,7 +164,7 @@ export default function PaymentTransfersPage() {
   const columns: ColumnProps<PaymentTransfer>[] = [
     copyableNoColumn('转账单号', 'transferNo'),
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (value: number) => renderEllipsis(appById.get(value)?.name ?? `应用 #${value}`) },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <PaymentChannelTag channel={v} /> },
     { title: '收款账号', dataIndex: 'receiverAccount', width: 180, render: (v: string, r: PaymentTransfer) => (
       <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{r.receiverName ? `${r.receiverName}（${v}）` : v}</Typography.Text>
     ) },
@@ -248,8 +240,6 @@ export default function PaymentTransfersPage() {
       width={140}
     />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => canCreate ? (
     <Button type="primary" icon={<SendHorizontal size={14} />} onClick={() => { setSelectedAppId(null); transferIdempotencyKey.current = crypto.randomUUID(); transferModal.openCreate(); }}>发起转账</Button>
   ) : null;
@@ -260,35 +250,19 @@ export default function PaymentTransfersPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderChannelFilter()}
-            {renderStatusFilter()}
-            {renderApprovalFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderChannelFilter()}
             {renderStatusFilter()}
             {renderApprovalFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="转账单筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {summaryText && (
@@ -297,9 +271,10 @@ export default function PaymentTransfersPage() {
         </div>
       )}
 
-      <ConfigurableTable
-        bordered columns={columns} dataSource={data} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => { void listQuery.refetch(); void summaryQuery.refetch(); }} refreshLoading={listQuery.isFetching} pagination={buildPagination(total)}
+      <ConfigurableTable<PaymentTransfer>
+        columns={columns}
+        empty="暂无数据"
+        {...listTableProps({ ...listQuery, refetch: () => { void listQuery.refetch(); void summaryQuery.refetch(); } }, { pagination: buildPagination })}
       />
 
       <AppModal
@@ -317,7 +292,7 @@ export default function PaymentTransfersPage() {
         <Form key={transferModal.formKey} {...transferModal.formProps}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Select field="applicationId" label="支付应用" style={{ width: '100%' }} optionList={appOptions} filter loading={appsQuery.isFetching}
+              <Form.Select field="applicationId" label="支付应用" style={{ width: '100%' }} optionList={appOptions} filter loading={appsFetching}
                 onChange={(value) => { setSelectedAppId((value as number | undefined) ?? null); transferModal.formApi.current?.setValue('channel', undefined); }} rules={[{ required: true, message: '请选择支付应用' }]} />
             </Col>
             <Col span={12}>

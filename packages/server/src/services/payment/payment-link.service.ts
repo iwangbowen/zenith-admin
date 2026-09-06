@@ -7,9 +7,11 @@ import { and, desc, eq, gt, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomBytes, randomInt } from 'node:crypto';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import { paymentCashierSessions, paymentLinkRedemptions, paymentLinks, paymentOrders, type PaymentLinkRow } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { createPayment } from './payment.service';
@@ -117,17 +119,19 @@ export async function listLinks(q: ListLinksQuery) {
     conds.push(eq(paymentLinks.status, 'disabled'));
   }
   const where = buildWhere(...conds, tenantCondition(paymentLinks, currentUser()));
-  const [total, list] = await Promise.all([
-    db.$count(paymentLinks, where),
-    withPagination(db.select().from(paymentLinks).where(where).orderBy(desc(paymentLinks.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapLink), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentLinks, where),
+    rows: () => withPagination(db.select().from(paymentLinks).where(where).orderBy(desc(paymentLinks.id)).$dynamic(), page, pageSize),
+    map: mapLink,
+  });
 }
 
 async function ensureLink(id: number): Promise<PaymentLinkRow> {
   const tc = tenantCondition(paymentLinks, currentUser());
   const [row] = await db.select().from(paymentLinks).where(and(eq(paymentLinks.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '支付链接不存在' });
+  requireRow(row, '支付链接不存在');
   return row;
 }
 
@@ -216,13 +220,13 @@ export async function updateLink(id: number, input: UpdatePaymentLinkInput): Pro
   return db.transaction(async (tx) => {
     const tc = tenantCondition(paymentLinks, currentUser());
     const [locked] = await tx.select().from(paymentLinks).where(and(eq(paymentLinks.id, id), tc)).for('update').limit(1);
-    if (!locked) throw new HTTPException(404, { message: '支付链接不存在' });
+    requireRow(locked, '支付链接不存在');
     const identityChanged = (input.bizType !== undefined && input.bizType !== locked.bizType)
       || (input.amount !== undefined && (input.amount ?? null) !== (locked.amount ?? null))
       || (input.payMethod !== undefined && (input.payMethod ?? null) !== (locked.payMethod ?? null));
     if (identityChanged) {
       const sessionCount = await tx.$count(paymentCashierSessions, eq(paymentCashierSessions.linkId, id));
-      const orderTenant = locked.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, locked.tenantId);
+      const orderTenant = exactTenantCondition(paymentOrders.tenantId, locked.tenantId);
       const orderCount = await tx.$count(paymentOrders, and(
         eq(paymentOrders.appId, locked.appId),
         eq(paymentOrders.bizType, locked.bizType),
@@ -254,7 +258,7 @@ export async function deleteLink(id: number): Promise<void> {
     and(
       eq(paymentOrders.bizType, link.bizType),
       like(paymentOrders.bizId, `${link.linkNo}:%`),
-      link.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, link.tenantId),
+      exactTenantCondition(paymentOrders.tenantId, link.tenantId),
     ),
   );
   if (linkedOrderCount > 0) {
@@ -287,7 +291,7 @@ export async function rotateLinkToken(id: number): Promise<PaymentLink> {
 // ─── 公开端点 ─────────────────────────────────────────────────────────────────
 async function getLinkRowByToken(token: string): Promise<PaymentLinkRow> {
   const [row] = await db.select().from(paymentLinks).where(eq(paymentLinks.token, token)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '支付链接不存在或已删除' });
+  requireRow(row, '支付链接不存在或已删除');
   return row;
 }
 
@@ -376,7 +380,7 @@ export async function payByLink(token: string, input: PayByLinkInput): Promise<P
     }
     return bound;
   } catch (err) {
-    const tenantScope = row.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, row.tenantId);
+    const tenantScope = exactTenantCondition(paymentOrders.tenantId, row.tenantId);
     const [order] = await db
       .select()
       .from(paymentOrders)
@@ -421,7 +425,7 @@ export async function recordPaymentLinkRedemption(event: {
   const sessionToken = event.bizId.slice(separator + 1);
   if (!sessionToken || sessionToken.includes(':')) return false;
   const tenantId = event.tenantId ?? null;
-  const exactTenant = tenantId == null ? isNull(paymentLinks.tenantId) : eq(paymentLinks.tenantId, tenantId);
+  const exactTenant = exactTenantCondition(paymentLinks.tenantId, tenantId);
   return db.transaction(async (tx) => {
     const [link] = await tx
       .select({ id: paymentLinks.id, maxUses: paymentLinks.maxUses, usedCount: paymentLinks.usedCount })
@@ -438,7 +442,7 @@ export async function recordPaymentLinkRedemption(event: {
         eq(paymentCashierSessions.linkId, link.id),
         eq(paymentCashierSessions.appId, appId),
         eq(paymentCashierSessions.orderNo, event.orderNo),
-        tenantId == null ? isNull(paymentCashierSessions.tenantId) : eq(paymentCashierSessions.tenantId, tenantId),
+        exactTenantCondition(paymentCashierSessions.tenantId, tenantId),
       ))
       .for('update')
       .limit(1);

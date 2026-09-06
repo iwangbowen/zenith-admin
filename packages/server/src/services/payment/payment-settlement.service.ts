@@ -7,6 +7,7 @@ import { and, between, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentApps,
   paymentChannelConfigs,
@@ -17,8 +18,9 @@ import {
   paymentSettlementItems,
   type PaymentSettlementBatchRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { formatDate, formatDateTime, formatNullableDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import { isPgUniqueViolation, rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -85,24 +87,20 @@ export async function listSettlements(q: ListSettlementsQuery) {
   if (q.channel) conds.push(eq(paymentSettlementBatches.channel, q.channel));
   if (q.status) conds.push(eq(paymentSettlementBatches.status, q.status));
   const where = buildWhere(...conds, tenantCondition(paymentSettlementBatches, currentUser()));
-  const [total, list] = await Promise.all([
-    db.$count(paymentSettlementBatches, where),
-    withPagination(db.select().from(paymentSettlementBatches).where(where).orderBy(desc(paymentSettlementBatches.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapSettlementBatch), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentSettlementBatches, where),
+    rows: () => withPagination(db.select().from(paymentSettlementBatches).where(where).orderBy(desc(paymentSettlementBatches.id)).$dynamic(), page, pageSize),
+    map: mapSettlementBatch,
+  });
 }
 
 async function ensureBatch(id: number): Promise<PaymentSettlementBatchRow> {
   const tc = tenantCondition(paymentSettlementBatches, currentUser());
   const [row] = await db.select().from(paymentSettlementBatches).where(and(eq(paymentSettlementBatches.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '结算批次不存在' });
+  requireRow(row, '结算批次不存在');
   return row;
-}
-
-function exactSettlementTenantCondition(tenantId: number | null) {
-  return tenantId == null
-    ? isNull(paymentSettlementBatches.tenantId)
-    : eq(paymentSettlementBatches.tenantId, tenantId);
 }
 
 async function ensureWritableBatch(id: number, tenantId: number | null): Promise<PaymentSettlementBatchRow> {
@@ -111,10 +109,10 @@ async function ensureWritableBatch(id: number, tenantId: number | null): Promise
     .from(paymentSettlementBatches)
     .where(and(
       eq(paymentSettlementBatches.id, id),
-      exactSettlementTenantCondition(tenantId),
+      exactTenantCondition(paymentSettlementBatches.tenantId, tenantId),
     ))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '结算批次不存在' });
+  requireRow(row, '结算批次不存在');
   return row;
 }
 
@@ -153,7 +151,7 @@ export interface GenerateSettlementInput {
 /** 生成结算批次：逐条认领 merchant_available 分录的带符号净额贡献；同一账期允许增量批次，分录行不可重复认领。 */
 export async function generateSettlement(input: GenerateSettlementInput, tenantIdOverride?: number | null): Promise<PaymentSettlementBatch> {
   const tenantId = tenantIdOverride === undefined ? requireTenantScopeId(currentUser()) : tenantIdOverride;
-  const configTenant = tenantId == null ? isNull(paymentChannelConfigs.tenantId) : eq(paymentChannelConfigs.tenantId, tenantId);
+  const configTenant = exactTenantCondition(paymentChannelConfigs.tenantId, tenantId);
   const [scope] = await db
     .select({
       appId: paymentApps.id,
@@ -169,7 +167,7 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
       eq(paymentApps.status, 'enabled'),
       eq(paymentChannelConfigs.status, 'enabled'),
       configTenant,
-      tenantId == null ? isNull(paymentApps.tenantId) : eq(paymentApps.tenantId, tenantId),
+      exactTenantCondition(paymentApps.tenantId, tenantId),
     ))
     .limit(1);
   if (!scope) throw new HTTPException(400, { message: '支付应用或商户配置不存在、未启用或不属于当前租户' });
@@ -185,7 +183,7 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
   if (!start || !end) throw new HTTPException(400, { message: '账期格式不正确（YYYY-MM-DD）' });
   if (start > end) throw new HTTPException(400, { message: '账期开始不能晚于结束' });
   const currency = input.currency ?? 'CNY';
-  const tenantScope = tenantId == null ? isNull(paymentJournals.tenantId) : eq(paymentJournals.tenantId, tenantId);
+  const tenantScope = exactTenantCondition(paymentJournals.tenantId, tenantId);
   const [earliest] = await db
     .select({ postedAt: sql<Date>`min(${paymentJournals.postedAt})` })
     .from(paymentJournalLines)
@@ -382,7 +380,7 @@ export async function transitionSettlement(
       })
       .where(and(
         eq(paymentSettlementBatches.id, id),
-        exactSettlementTenantCondition(tenantId),
+        exactTenantCondition(paymentSettlementBatches.tenantId, tenantId),
         eq(paymentSettlementBatches.status, batch.status),
         eq(paymentSettlementBatches.version, batch.version),
       ))
@@ -445,7 +443,7 @@ export async function deleteSettlement(id: number): Promise<void> {
       .delete(paymentSettlementBatches)
       .where(and(
         eq(paymentSettlementBatches.id, id),
-        exactSettlementTenantCondition(tenantId),
+        exactTenantCondition(paymentSettlementBatches.tenantId, tenantId),
         eq(paymentSettlementBatches.status, 'pending'),
         eq(paymentSettlementBatches.version, batch.version),
       ))

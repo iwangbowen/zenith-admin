@@ -14,15 +14,17 @@
  *   保证业务侧与支付中心数据一致；
  * - 尚未发起支付时（无支付订单），仅执行本地履约演示业务闭环（不存在支付订单，无一致性问题）。
  */
-import { and, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { BizPayDemo, BizPayDemoStatus } from '@zenith/shared/biz';
 import type { PaymentMethod, PaymentCashierMethod, CreatePaymentResult } from '@zenith/shared/payment';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import { bizPayDemos, paymentOrders, type BizPayDemoRow } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import logger from '../../lib/logger';
@@ -62,7 +64,7 @@ function findOwn(id: number) {
 
 async function getOwnRow(id: number): Promise<BizPayDemoRow> {
   const [row] = await db.select().from(bizPayDemos).where(findOwn(id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '示例单不存在' });
+  requireRow(row, '示例单不存在');
   return row;
 }
 
@@ -78,11 +80,13 @@ export async function listBizPayDemos(query: { page?: number; pageSize?: number;
   if (query.status) conds.push(eq(bizPayDemos.status, query.status as BizPayDemoStatus));
   conds.push(keywordCondition(query.keyword, [bizPayDemos.subject]));
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(bizPayDemos, where),
-    db.select().from(bizPayDemos).where(where).orderBy(desc(bizPayDemos.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapBizPayDemo), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(bizPayDemos, where),
+    rows: () => db.select().from(bizPayDemos).where(where).orderBy(desc(bizPayDemos.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapBizPayDemo,
+  });
 }
 
 export async function getBizPayDemo(id: number): Promise<BizPayDemo> {
@@ -191,7 +195,7 @@ export async function markBizPayDemoPaid(event: { bizId: string; orderNo: string
     return;
   }
   if (event.appId == null) return;
-  const tenantScope = event.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, event.tenantId);
+  const tenantScope = exactTenantCondition(paymentOrders.tenantId, event.tenantId ?? null);
   const [order] = await db
     .select({ id: paymentOrders.id, amount: paymentOrders.amount, paidAmount: paymentOrders.paidAmount })
     .from(paymentOrders)
@@ -205,7 +209,7 @@ export async function markBizPayDemoPaid(event: { bizId: string; orderNo: string
     ))
     .limit(1);
   if (!order || (order.amount !== event.amount && order.paidAmount !== event.amount)) return;
-  const demoTenant = event.tenantId == null ? isNull(bizPayDemos.tenantId) : eq(bizPayDemos.tenantId, event.tenantId);
+  const demoTenant = exactTenantCondition(bizPayDemos.tenantId, event.tenantId ?? null);
   const updated = await db.update(bizPayDemos)
     .set({
       status: 'paid',

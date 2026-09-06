@@ -8,8 +8,9 @@ import { db } from '../../db';
 import { paymentMethodConfigs, type PaymentMethodConfigRow } from '../../db/schema';
 import { config } from '../../config';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { getTenantScopeId } from '../../lib/tenant';
+import { getTenantScopeId, exactTenantCondition } from '../../lib/tenant';
 import type { UpdatePaymentMethodConfigInput } from '@zenith/shared/payment';
 import type { PaymentMethod, PaymentMethodConfig } from '@zenith/shared/payment';
 
@@ -43,7 +44,7 @@ function methodConfigTenantCondition() {
   if (scope === undefined) {
     return isNull(paymentMethodConfigs.tenantId);
   }
-  return scope === null ? isNull(paymentMethodConfigs.tenantId) : eq(paymentMethodConfigs.tenantId, scope);
+  return exactTenantCondition(paymentMethodConfigs.tenantId, scope);
 }
 
 export async function listMethodConfigs(): Promise<PaymentMethodConfig[]> {
@@ -70,7 +71,7 @@ async function ensureMethodConfig(id: number): Promise<PaymentMethodConfigRow> {
     .from(paymentMethodConfigs)
     .where(and(eq(paymentMethodConfigs.id, id), methodConfigTenantCondition()))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '支付方式配置不存在' });
+  requireRow(row, '支付方式配置不存在');
   return row;
 }
 
@@ -95,7 +96,7 @@ export async function updateMethodConfig(id: number, input: UpdatePaymentMethodC
 
 /** 下单校验：配置缺失或停用均拒绝。 */
 export async function assertMethodEnabled(method: PaymentMethod, tenantId: number | null): Promise<void> {
-  const exactTenant = tenantId == null ? isNull(paymentMethodConfigs.tenantId) : eq(paymentMethodConfigs.tenantId, tenantId);
+  const exactTenant = exactTenantCondition(paymentMethodConfigs.tenantId, tenantId);
   const [row] = await db
     .select({ enabled: paymentMethodConfigs.enabled, label: paymentMethodConfigs.label })
     .from(paymentMethodConfigs)

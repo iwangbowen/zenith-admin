@@ -1,5 +1,6 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../../db';
+import { exactTenantCondition } from '../../lib/tenant';
 import { oauth2Clients, paymentApps } from '../../db/schema';
 import { openEventBus } from '../../lib/open-event-bus';
 import { paymentEventBus } from '../../lib/payment-event-bus';
@@ -18,7 +19,7 @@ export function registerPaymentOpenWebhookBridge(): void {
       logger.warn('[payment-open-webhook] skipped event without application scope', { eventId: event.eventId, type: event.type });
       return;
     }
-    const tenantScope = event.tenantId == null ? isNull(paymentApps.tenantId) : eq(paymentApps.tenantId, event.tenantId);
+    const tenantScope = exactTenantCondition(paymentApps.tenantId, event.tenantId ?? null);
     const [binding] = await db
       .select({ clientId: oauth2Clients.clientId })
       .from(paymentApps)

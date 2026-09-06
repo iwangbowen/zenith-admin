@@ -2,13 +2,12 @@ import { PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentNotifyLog } from '@zenith/shared/payment';
 import { paymentLogKeys, usePaymentLogList } from '@/hooks/queries/payment-logs';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { compactQuery } from '@/lib/query';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -39,7 +38,6 @@ export default function PaymentLogsPage() {  const {
   }
 
   const listQuery = usePaymentLogList({ page, pageSize, ...buildQuery(submittedParams) });
-  const data = listQuery.data ?? null;
 
   const columns: ColumnProps<PaymentNotifyLog>[] = [
     // 订单号置于首列承载展开箭头；内部日志 ID 移入展开详情
@@ -107,30 +105,12 @@ export default function PaymentLogsPage() {  const {
     <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))} width={330} />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderChannelFilter()}
-            {renderSceneFilter()}
-            {renderSignatureFilter()}
-            {renderTimeRangeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderChannelFilter()}
             {renderSceneFilter()}
@@ -138,14 +118,15 @@ export default function PaymentLogsPage() {  const {
             {renderTimeRangeFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="支付回调日志筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
+        columns={columns}
+        empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
         expandedRowRender={renderExpanded}
         rowExpandable={(r) => !!(r && (r.rawBody || r.headers))}
         expandRowByClick

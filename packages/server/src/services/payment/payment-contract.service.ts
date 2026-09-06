@@ -16,6 +16,7 @@ import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import dayjs from 'dayjs';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentChannelConfigs,
   paymentContracts,
@@ -26,8 +27,9 @@ import {
   type PaymentDeductPlanRow,
   type PaymentOrderRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { isPgUniqueViolation } from '../../lib/db-errors';
@@ -159,9 +161,11 @@ export async function listDeductPlans(q: ListDeductPlansQuery) {
     .where(inArray(paymentContracts.status, ['signed', 'paused']))
     .groupBy(paymentContracts.planId)
     .as('contract_counts');
-  const [total, rows] = await Promise.all([
-    db.$count(paymentDeductPlans, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentDeductPlans, where),
+    rows: () => withPagination(
       db
         .select({
           plan: paymentDeductPlans,
@@ -175,14 +179,14 @@ export async function listDeductPlans(q: ListDeductPlansQuery) {
       page,
       pageSize,
     ),
-  ]);
-  return { list: rows.map((r) => mapDeductPlan({ ...r.plan, contractCount: r.contractCount })), total, page, pageSize };
+    map: (r) => mapDeductPlan({ ...r.plan, contractCount: r.contractCount }),
+  });
 }
 
 /** 全量启用中的扣款计划（下拉/前台可选） */
 export async function allDeductPlans(scope?: { tenantId: number | null }): Promise<PaymentDeductPlan[]> {
   const exactScope = scope
-    ? (scope.tenantId == null ? isNull(paymentDeductPlans.tenantId) : eq(paymentDeductPlans.tenantId, scope.tenantId))
+    ? (exactTenantCondition(paymentDeductPlans.tenantId, scope.tenantId))
     : plansTenantCondition();
   const rows = await db
     .select()
@@ -194,7 +198,7 @@ export async function allDeductPlans(scope?: { tenantId: number | null }): Promi
 
 export async function ensureDeductPlan(id: number): Promise<PaymentDeductPlanRow> {
   const [row] = await db.select().from(paymentDeductPlans).where(and(eq(paymentDeductPlans.id, id), plansTenantCondition())).limit(1);
-  if (!row) throw new HTTPException(404, { message: '扣款计划不存在' });
+  requireRow(row, '扣款计划不存在');
   return row;
 }
 
@@ -283,17 +287,19 @@ export async function listContracts(q: ListContractsQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 10;
   const where = await buildContractsWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(paymentContracts, where),
-    db.query.paymentContracts.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentContracts, where),
+    rows: () => db.query.paymentContracts.findMany({
       where,
       with: { plan: { columns: { name: true, period: true, amount: true } } },
       orderBy: desc(paymentContracts.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapContract), total, page, pageSize };
+    map: mapContract,
+  });
 }
 
 export async function ensureContract(id: number, applicationId: number): Promise<PaymentContractRow> {
@@ -302,7 +308,7 @@ export async function ensureContract(id: number, applicationId: number): Promise
     eq(paymentContracts.appId, applicationId),
     contractsTenantCondition(),
   )).limit(1);
-  if (!row) throw new HTTPException(404, { message: '签约协议不存在' });
+  requireRow(row, '签约协议不存在');
   return row;
 }
 
@@ -313,11 +319,10 @@ export async function ensureWritableContract(id: number, applicationId: number):
 }
 
 export async function getContract(id: number, applicationId: number): Promise<PaymentContract> {
-  const row = await db.query.paymentContracts.findFirst({
+  const row = requireRow(await db.query.paymentContracts.findFirst({
     where: buildWhere(and(eq(paymentContracts.id, id), eq(paymentContracts.appId, applicationId)), contractsTenantCondition()),
     with: { plan: { columns: { name: true, period: true, amount: true } } },
-  });
-  if (!row) throw new HTTPException(404, { message: '签约协议不存在' });
+  }), '签约协议不存在');
   return mapContract(row);
 }
 
@@ -337,7 +342,7 @@ export async function findActiveContractByBiz(input: {
       eq(paymentContracts.bizId, input.bizId),
       eq(paymentContracts.appId, input.applicationId),
       eq(paymentContracts.currency, input.currency),
-      input.tenantId == null ? isNull(paymentContracts.tenantId) : eq(paymentContracts.tenantId, input.tenantId),
+      exactTenantCondition(paymentContracts.tenantId, input.tenantId),
       inArray(paymentContracts.status, ACTIVE_CONTRACT_STATUSES),
     ))
     .limit(1);
@@ -348,7 +353,7 @@ async function loadContractConfig(row: Pick<PaymentContractRow, 'channel' | 'cha
   const [config] = await db.select().from(paymentChannelConfigs).where(and(
     eq(paymentChannelConfigs.id, row.channelConfigId),
     eq(paymentChannelConfigs.channel, row.channel),
-    row.tenantId == null ? isNull(paymentChannelConfigs.tenantId) : eq(paymentChannelConfigs.tenantId, row.tenantId),
+    exactTenantCondition(paymentChannelConfigs.tenantId, row.tenantId),
   )).limit(1);
   if (!config) throw new HTTPException(409, { message: '协议绑定的商户配置不存在或作用域不一致' });
   return config;
@@ -400,20 +405,19 @@ export async function signContract(input: SignContractInput): Promise<SignContra
   const application = await resolveApplicationChannelConfig(input.applicationId, channel, tenantId);
   const [contractConfig] = await db.select().from(paymentChannelConfigs).where(and(
     eq(paymentChannelConfigs.id, application.channelConfigId),
-    tenantId == null ? isNull(paymentChannelConfigs.tenantId) : eq(paymentChannelConfigs.tenantId, tenantId),
+    exactTenantCondition(paymentChannelConfigs.tenantId, tenantId),
   )).limit(1);
   if (!contractConfig) throw new HTTPException(400, { message: '支付应用绑定的商户配置不存在' });
   await assertContractOperation(contractConfig, 'contract.sign', input.payMethod, input.currency);
   const adapter = getAdapter(channel);
   if (!adapter.signContract) throw new HTTPException(400, { message: `CAPABILITY_UNSUPPORTED: ${channel}/contract.sign` });
 
-  const plan = await db.query.paymentDeductPlans.findFirst({
+  const plan = requireRow(await db.query.paymentDeductPlans.findFirst({
     where: and(
       eq(paymentDeductPlans.id, input.planId),
-      tenantId == null ? isNull(paymentDeductPlans.tenantId) : eq(paymentDeductPlans.tenantId, tenantId),
+      exactTenantCondition(paymentDeductPlans.tenantId, tenantId),
     ),
-  });
-  if (!plan) throw new HTTPException(404, { message: '扣款计划不存在' });
+  }), '扣款计划不存在');
   if (plan.status !== 'enabled') throw new HTTPException(400, { message: '扣款计划已停用' });
   const existing = await findActiveContractByBiz({
     bizType: input.bizType,
@@ -510,9 +514,9 @@ async function ensureContractByNo(scope: Pick<PaymentContractRow, 'contractNo' |
     eq(paymentContracts.contractNo, scope.contractNo),
     eq(paymentContracts.appId, scope.appId),
     eq(paymentContracts.currency, scope.currency),
-    scope.tenantId == null ? isNull(paymentContracts.tenantId) : eq(paymentContracts.tenantId, scope.tenantId),
+    exactTenantCondition(paymentContracts.tenantId, scope.tenantId),
   )).limit(1);
-  if (!row) throw new HTTPException(404, { message: '签约协议不存在' });
+  requireRow(row, '签约协议不存在');
   return row;
 }
 
@@ -626,10 +630,10 @@ export async function recoverContract(id: number, applicationId: number): Promis
   }
   if (result.status === 'pending') return mapContract(row);
   if (result.status === 'signed' && operation === 'sign') {
-    const plan = await db.query.paymentDeductPlans.findFirst({ where: and(
+    const plan = requireRow(await db.query.paymentDeductPlans.findFirst({ where: and(
       eq(paymentDeductPlans.id, row.planId),
-      row.tenantId == null ? isNull(paymentDeductPlans.tenantId) : eq(paymentDeductPlans.tenantId, row.tenantId),
-    ) });
+      exactTenantCondition(paymentDeductPlans.tenantId, row.tenantId),
+    ) }), '扣款计划不存在');
     const [signed] = await db.update(paymentContracts).set({
       status: 'signed', unknownOperation: null, channelContractNo: result.channelContractNo ?? row.channelContractNo,
       signedAt: new Date(), nextDeductAt: plan ? advancePeriod(new Date(), plan) : null,
@@ -716,11 +720,10 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
   const row = await ensureContractByNo(input);
   if (row.status !== 'signed') throw new HTTPException(400, { message: '仅已签约协议可执行扣款' });
   if (!row.channelContractNo) throw new HTTPException(400, { message: '协议缺少渠道协议号，无法扣款' });
-  const plan = await db.query.paymentDeductPlans.findFirst({ where: and(
+  const plan = requireRow(await db.query.paymentDeductPlans.findFirst({ where: and(
     eq(paymentDeductPlans.id, row.planId),
-    row.tenantId == null ? isNull(paymentDeductPlans.tenantId) : eq(paymentDeductPlans.tenantId, row.tenantId),
-  ) });
-  if (!plan) throw new HTTPException(404, { message: '扣款计划不存在' });
+    exactTenantCondition(paymentDeductPlans.tenantId, row.tenantId),
+  ) }), '扣款计划不存在');
 
   const contractConfig = await loadContractConfig(row);
   const applicationRoute = await resolveApplicationChannelConfig(row.appId, row.channel, row.tenantId ?? null);
@@ -745,7 +748,7 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
           eq(paymentContracts.id, row.id),
           eq(paymentContracts.appId, row.appId),
           eq(paymentContracts.currency, row.currency),
-          row.tenantId == null ? isNull(paymentContracts.tenantId) : eq(paymentContracts.tenantId, row.tenantId),
+          exactTenantCondition(paymentContracts.tenantId, row.tenantId),
         ))
         .for('update')
         .limit(1);
@@ -754,7 +757,7 @@ export async function executeDeduction(input: PaymentContractRow): Promise<Deduc
       }
       const sequence = lockedContract.totalDeductCount + 1;
       const stableOrderNo = genDeductOrderNo(lockedContract.id, sequence);
-      const orderTenant = lockedContract.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, lockedContract.tenantId);
+      const orderTenant = exactTenantCondition(paymentOrders.tenantId, lockedContract.tenantId);
       let [existingOrder] = await tx
         .select()
         .from(paymentOrders)
@@ -952,13 +955,13 @@ export async function advanceContractOnPaid(event: { orderNo: string; bizType: s
       eq(paymentContracts.appId, order.appId),
       eq(paymentContracts.currency, order.currency),
       eq(paymentContracts.lastOrderNo, event.orderNo),
-      order.tenantId == null ? isNull(paymentContracts.tenantId) : eq(paymentContracts.tenantId, order.tenantId),
+      exactTenantCondition(paymentContracts.tenantId, order.tenantId),
       inArray(paymentContracts.status, ['signed', 'paused', 'terminated']),
     )).for('update').limit(1);
     if (!row) return;
     const plan = await tx.query.paymentDeductPlans.findFirst({ where: and(
       eq(paymentDeductPlans.id, row.planId),
-      row.tenantId == null ? isNull(paymentDeductPlans.tenantId) : eq(paymentDeductPlans.tenantId, row.tenantId),
+      exactTenantCondition(paymentDeductPlans.tenantId, row.tenantId),
     ) });
     if (!plan || plan.amount !== paidAmount) return;
     if (row.lastDeductAt && row.lastDeductAt >= paidAt) return;

@@ -5,10 +5,11 @@
  * 差异处理流：差异项创建时置 handleStatus=pending，人工处理流转为 已调账/挂账/已忽略。
  * 自动对账：sandbox 渠道用本地订单生成模拟账单（演示闭环），真实渠道调 adapter.downloadBill 拉取渠道账单。
  */
-import { and, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentChannelConfigs,
   paymentApps,
@@ -18,8 +19,9 @@ import {
   type PaymentReconBatchRow,
   type PaymentReconItemRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { formatDate, formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { postSystemJournalWithin } from './payment-journal.service';
@@ -178,24 +180,20 @@ export async function listReconBatches(q: ListReconBatchesQuery) {
   if (q.channel) conds.push(eq(paymentReconBatches.channel, q.channel));
   if (q.status) conds.push(eq(paymentReconBatches.status, q.status));
   const where = buildWhere(...conds, tenantCondition(paymentReconBatches, currentUser()));
-  const [total, list] = await Promise.all([
-    db.$count(paymentReconBatches, where),
-    withPagination(db.select().from(paymentReconBatches).where(where).orderBy(desc(paymentReconBatches.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapReconBatch), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentReconBatches, where),
+    rows: () => withPagination(db.select().from(paymentReconBatches).where(where).orderBy(desc(paymentReconBatches.id)).$dynamic(), page, pageSize),
+    map: mapReconBatch,
+  });
 }
 
 export async function getReconBatch(id: number): Promise<PaymentReconBatch> {
   const tc = tenantCondition(paymentReconBatches, currentUser());
   const [row] = await db.select().from(paymentReconBatches).where(and(eq(paymentReconBatches.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '对账批次不存在' });
+  requireRow(row, '对账批次不存在');
   return mapReconBatch(row);
-}
-
-function exactReconBatchTenantCondition(tenantId: number | null): SQL {
-  return tenantId == null
-    ? isNull(paymentReconBatches.tenantId)
-    : eq(paymentReconBatches.tenantId, tenantId);
 }
 
 export interface ListReconItemsQuery {
@@ -213,11 +211,13 @@ export async function listReconItems(batchId: number, q: ListReconItemsQuery) {
   if (q.result) conds.push(eq(paymentReconItems.result, q.result));
   if (q.handleStatus) conds.push(eq(paymentReconItems.handleStatus, q.handleStatus));
   const where = and(...conds);
-  const [total, list] = await Promise.all([
-    db.$count(paymentReconItems, where),
-    withPagination(db.select().from(paymentReconItems).where(where).orderBy(desc(paymentReconItems.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapReconItem), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentReconItems, where),
+    rows: () => withPagination(db.select().from(paymentReconItems).where(where).orderBy(desc(paymentReconItems.id)).$dynamic(), page, pageSize),
+    map: mapReconItem,
+  });
 }
 
 export interface CreateReconInput {
@@ -234,7 +234,7 @@ export interface CreateReconInput {
 export async function createReconBatch(input: CreateReconInput): Promise<PaymentReconBatch> {
   const user = currentUser();
   const tenantId = requireTenantScopeId(user);
-  const orderWhere = tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, tenantId);
+  const orderWhere = exactTenantCondition(paymentOrders.tenantId, tenantId);
   await ensureReconConfig(input.channelConfigId, input.channel, tenantId);
   const appId = await resolveReconApplication(input.channelConfigId, input.channel, tenantId, input.applicationId);
   if (appId !== input.applicationId) throw new HTTPException(400, { message: '支付应用与商户配置绑定关系无效' });
@@ -328,10 +328,10 @@ export async function deleteReconBatch(id: number): Promise<void> {
     .delete(paymentReconBatches)
     .where(and(
       eq(paymentReconBatches.id, id),
-      exactReconBatchTenantCondition(tenantId),
+      exactTenantCondition(paymentReconBatches.tenantId, tenantId),
     ))
     .returning({ id: paymentReconBatches.id });
-  if (!deleted) throw new HTTPException(404, { message: '对账批次不存在' });
+  requireRow(deleted, '对账批次不存在');
 }
 
 // ─── 差异处理流 ───────────────────────────────────────────────────────────────
@@ -366,16 +366,16 @@ export async function handleReconItem(itemId: number, input: HandlePaymentReconI
   const tenantId = requireTenantScopeId(user);
   return db.transaction(async (tx) => {
     const [item] = await tx.select().from(paymentReconItems).where(eq(paymentReconItems.id, itemId)).limit(1);
-    if (!item) throw new HTTPException(404, { message: '对账明细不存在' });
+    requireRow(item, '对账明细不存在');
     const [batch] = await tx
       .select()
       .from(paymentReconBatches)
       .where(and(
         eq(paymentReconBatches.id, item.batchId),
-        exactReconBatchTenantCondition(tenantId),
+        exactTenantCondition(paymentReconBatches.tenantId, tenantId),
       ))
       .limit(1);
-    if (!batch) throw new HTTPException(404, { message: '对账批次不存在' });
+    requireRow(batch, '对账批次不存在');
     if (item.handleStatus == null) throw new HTTPException(400, { message: '该明细比对一致，无需处理' });
     if (input.action === 'adjusted' && batch.source !== 'provider_download') {
       throw new HTTPException(409, { message: '仅渠道下载账单可直接调账；人工上传和沙箱模拟账单只能挂账或忽略' });
@@ -429,7 +429,7 @@ export async function generateSampleBill(input: {
   const tenantId = requireTenantScopeId(currentUser());
   await ensureReconConfig(input.channelConfigId, input.channel, tenantId);
   await resolveReconApplication(input.channelConfigId, input.channel, tenantId, input.applicationId);
-  const exactTenant = tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, tenantId);
+  const exactTenant = exactTenantCondition(paymentOrders.tenantId, tenantId);
   const rows = await loadLocalPaidRowsScoped(
     input.channel,
     input.applicationId,
@@ -448,9 +448,7 @@ export async function generateSampleBill(input: {
 // ─── 自动对账（拉取渠道账单）──────────────────────────────────────────────────
 
 async function ensureReconConfig(id: number, channel: PaymentChannel, tenantId: number | null) {
-  const exactTenant = tenantId == null
-    ? isNull(paymentChannelConfigs.tenantId)
-    : eq(paymentChannelConfigs.tenantId, tenantId);
+  const exactTenant = exactTenantCondition(paymentChannelConfigs.tenantId, tenantId);
   const [configRow] = await db
     .select()
     .from(paymentChannelConfigs)
@@ -471,7 +469,7 @@ async function resolveReconApplication(
   tenantId: number | null,
   expectedAppId?: number,
 ): Promise<number> {
-  const exactTenant = tenantId == null ? isNull(paymentApps.tenantId) : eq(paymentApps.tenantId, tenantId);
+  const exactTenant = exactTenantCondition(paymentApps.tenantId, tenantId);
   const channelBinding = channel === 'wechat'
     ? eq(paymentApps.wechatConfigId, channelConfigId)
     : channel === 'alipay'
@@ -540,7 +538,7 @@ export async function autoReconcileForCurrentUser(input: {
 }): Promise<PaymentReconBatch> {
   const user = currentUser();
   const tenantId = requireTenantScopeId(user);
-  const orderWhere = tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, tenantId);
+  const orderWhere = exactTenantCondition(paymentOrders.tenantId, tenantId);
   return autoReconcile(input, { tenantId, orderWhere });
 }
 
@@ -567,7 +565,7 @@ export async function autoReconcileYesterday(): Promise<{ generated: number; ski
     ));
   for (const { config, applicationId } of routes) {
     const { channel, tenantId } = config;
-    const batchTenant = tenantId == null ? isNull(paymentReconBatches.tenantId) : eq(paymentReconBatches.tenantId, tenantId);
+    const batchTenant = exactTenantCondition(paymentReconBatches.tenantId, tenantId);
     const exists = await db.$count(
       paymentReconBatches,
       and(
@@ -582,7 +580,7 @@ export async function autoReconcileYesterday(): Promise<{ generated: number; ski
       continue;
     }
     try {
-      const orderWhere = tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, tenantId);
+      const orderWhere = exactTenantCondition(paymentOrders.tenantId, tenantId);
       await autoReconcile({ applicationId, channel, channelConfigId: config.id, currency: 'CNY', billDate }, { tenantId, orderWhere });
       generated++;
     } catch (err) {

@@ -14,6 +14,7 @@ import { randomInt } from 'node:crypto';
 import dayjs from 'dayjs';
 import { config } from '../../config';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentChannelConfigs,
   paymentDisputeReplies,
@@ -23,8 +24,9 @@ import {
   type PaymentDisputeReplyRow,
   type PaymentDisputeRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
-import { tenantCondition } from '../../lib/tenant';
+import { tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { refund } from './payment.service';
@@ -125,29 +127,30 @@ export async function listDisputes(q: ListDisputesQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 10;
   const where = await buildDisputesWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(paymentDisputes, where),
-    withPagination(db.select().from(paymentDisputes).where(where).orderBy(desc(paymentDisputes.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: rows.map(mapDispute), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentDisputes, where),
+    rows: () => withPagination(db.select().from(paymentDisputes).where(where).orderBy(desc(paymentDisputes.id)).$dynamic(), page, pageSize),
+    map: mapDispute,
+  });
 }
 
 export async function ensureDispute(id: number): Promise<PaymentDisputeRow> {
   const [row] = await db.select().from(paymentDisputes).where(and(eq(paymentDisputes.id, id), disputesTenantCondition())).limit(1);
-  if (!row) throw new HTTPException(404, { message: '投诉工单不存在' });
+  requireRow(row, '投诉工单不存在');
   return row;
 }
 
 export async function getDisputeDetail(id: number): Promise<PaymentDisputeDetail> {
-  const row = await db.query.paymentDisputes.findFirst({
+  const row = requireRow(await db.query.paymentDisputes.findFirst({
     where: buildWhere(eq(paymentDisputes.id, id), disputesTenantCondition()),
     with: { replies: { with: { operator: { columns: { nickname: true } } }, orderBy: paymentDisputeReplies.id } },
-  });
-  if (!row) throw new HTTPException(404, { message: '投诉工单不存在' });
+  }), '投诉工单不存在');
   const [order] = await db
     .select({ orderNo: paymentOrders.orderNo, subject: paymentOrders.subject, amount: paymentOrders.amount, status: paymentOrders.status, paidAt: paymentOrders.paidAt })
     .from(paymentOrders)
-    .where(and(eq(paymentOrders.orderNo, row.orderNo), row.tenantId == null ? sql`${paymentOrders.tenantId} is null` : eq(paymentOrders.tenantId, row.tenantId)))
+    .where(and(eq(paymentOrders.orderNo, row.orderNo), exactTenantCondition(paymentOrders.tenantId, row.tenantId)))
     .limit(1);
   return {
     ...mapDispute(row),
@@ -192,7 +195,7 @@ export async function triageDispute(row: PaymentDisputeRow): Promise<void> {
     ? await db.$count(paymentDisputes, and(
       eq(paymentDisputes.complainant, complainant),
       gte(paymentDisputes.createdAt, dayjs().subtract(90, 'day').toDate()),
-      row.tenantId == null ? sql`${paymentDisputes.tenantId} is null` : eq(paymentDisputes.tenantId, row.tenantId),
+      exactTenantCondition(paymentDisputes.tenantId, row.tenantId),
     ))
     : 0;
   const decision = await decide(
@@ -256,7 +259,7 @@ export async function refundDispute(id: number, input: RefundPaymentDisputeInput
       .from(paymentRefunds)
       .where(and(
         eq(paymentRefunds.refundNo, row.refundNo),
-        row.tenantId == null ? sql`${paymentRefunds.tenantId} is null` : eq(paymentRefunds.tenantId, row.tenantId),
+        exactTenantCondition(paymentRefunds.tenantId, row.tenantId),
       ))
       .limit(1);
     if (existingRefund?.status !== 'failed') {
@@ -407,7 +410,7 @@ export async function simulateDispute(orderNo?: string): Promise<PaymentDispute>
   const disputeTenant = tenantCondition(paymentDisputes, currentUser());
   if (orderNo) {
     [order] = await base.where(buildWhere(eq(paymentOrders.orderNo, orderNo), orderTenant)).limit(1);
-    if (!order) throw new HTTPException(404, { message: '支付订单不存在' });
+    requireRow(order, '支付订单不存在');
     if (!order.sandbox) throw new HTTPException(400, { message: '仅沙箱商户订单可模拟投诉' });
     const dup = await db.$count(paymentDisputes, buildWhere(and(eq(paymentDisputes.orderNo, orderNo), inArray(paymentDisputes.status, OPEN_STATUSES)), disputeTenant));
     if (dup > 0) throw new HTTPException(400, { message: '该订单已存在未完结投诉' });

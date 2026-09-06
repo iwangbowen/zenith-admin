@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { formatYuan } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Descriptions, Form, SideSheet, Spin, Switch, Tabs, TabPane, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Form, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -31,8 +31,9 @@ import type { CreatePaymentSharingReceiverInput, DispatchPaymentSharingInput, Pa
 import { useDictItems } from '@/hooks/useDictItems';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
+import { deleteAction, useStatusToggle } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const yuan = formatYuan;
@@ -99,7 +100,10 @@ export default function PaymentSharingPage() {
   const createOrderMutation = useCreatePaymentSharingOrder();
   const reverseOrderMutation = useReversePaymentSharingOrder();
   const queryReversalMutation = useQueryPaymentSharingReversal();
-  const togglingId = toggleReceiverMutation.isPending ? (toggleReceiverMutation.variables?.id ?? null) : null;
+  const receiverStatus = useStatusToggle<PaymentSharingReceiver>({
+    toggle: (record, checked) => toggleReceiverMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } }),
+    disabled: !canManage,
+  });
 
   const receiverModal = useEditModal<PaymentSharingReceiver, ReceiverFormValues, Partial<CreatePaymentSharingReceiverInput>>({
     entityName: '分账接收方',
@@ -150,16 +154,6 @@ export default function PaymentSharingPage() {
   const dispatchReceivers = dispatchReceiversQuery.data ?? [];
 
   // ── 接收方处理 ──
-  async function handleReceiverToggle(r: PaymentSharingReceiver, checked: boolean) {
-    await toggleReceiverMutation.mutateAsync({ id: r.id, values: { status: checked ? 'enabled' : 'disabled' } });
-    Toast.success(checked ? '已启用' : '已停用');
-  }
-
-  async function handleDeleteReceiver(id: number) {
-    await deleteReceiverMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
   // ── 分账处理 ──
   function openDispatch() {
     dispatchModal.openCreate();
@@ -213,10 +207,7 @@ export default function PaymentSharingPage() {
     { title: '默认比例', dataIndex: 'ratioBps', width: 110, align: 'right', render: (v: number | null) => (v == null ? '-' : `${(v / 100).toFixed(2)}%`) },
     { title: '自动分账', dataIndex: 'autoShare', width: 100, render: (v: boolean) => (v ? <Tag color="green">自动</Tag> : <Tag color="grey">手动</Tag>) },
     createdAtColumn as ColumnProps<PaymentSharingReceiver>,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, r: PaymentSharingReceiver) => <Switch checked={r.status === 'enabled'} loading={togglingId === r.id} disabled={!canManage} size="small" onChange={(c) => void handleReceiverToggle(r, c)} />,
-    },
+    receiverStatus.column(),
     createOperationColumn<PaymentSharingReceiver>({
       width: 150,
       actions: (r) => [
@@ -224,17 +215,13 @@ export default function PaymentSharingPage() {
           key: 'edit',
           label: '编辑',
           onClick: () => receiverModal.openEdit(r),
-        }, {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              content: '删除后不可恢复',
-              onOk: () => handleDeleteReceiver(r.id),
-            });
-          },
         }] : []),
+        deleteAction({
+          hidden: !canManage,
+          title: '确定要删除吗？',
+          content: '删除后不可恢复',
+          run: () => deleteReceiverMutation.mutateAsync([r.id]),
+        }),
       ],
     }),
   ];

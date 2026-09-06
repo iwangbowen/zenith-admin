@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { useState } from 'react';
 import { formatYuan } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Form, Space, Switch, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Form, Space, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -30,7 +30,7 @@ import { useRuleListList } from '@/hooks/queries/rules';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, useStatusToggle } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const yuan = formatYuan;
@@ -125,7 +125,10 @@ export default function PaymentRiskRulesPage() {
   const deleteMutation = useDeletePaymentRiskRules();
   const approveMutation = useApprovePaymentRiskReview();
   const rejectMutation = useRejectPaymentRiskReview();
-  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<PaymentRiskRule>({
+    toggle: (record, checked) => toggleMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } }),
+    disabled: !hasPermission('payment:risk:update'),
+  });
 
   // 名单库下拉源（黑名单字段可选 black/grey，白名单字段仅 white）
   const ruleListsQuery = useRuleListList({ page: 1, pageSize: 100 }, canReadRuleLists);
@@ -176,16 +179,6 @@ export default function PaymentRiskRulesPage() {
   function openCreate() { setScopeWatch('global'); modal.openCreate(); }
   function openEdit(record: PaymentRiskRule) { setScopeWatch(record.scope); modal.openEdit(record); }
 
-  async function handleToggle(record: PaymentRiskRule, checked: boolean) {
-    await toggleMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
-    Toast.success(checked ? '已启用' : '已停用');
-  }
-
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
   function openReviewDecision(r: PaymentRiskReview, decision: ReviewDecision) {
     setReviewTarget(r);
     setReviewDecision(decision);
@@ -229,12 +222,7 @@ export default function PaymentRiskRulesPage() {
     { title: '黑名单', dataIndex: 'blockListKeys', width: 150, render: (v: string[]) => (v?.length ? <Space spacing={4} wrap>{v.map((k) => <Tag key={k} size="small" color="red">{k}</Tag>)}</Space> : '-') },
     { title: '白名单', dataIndex: 'allowListKeys', width: 150, render: (v: string[]) => (v?.length ? <Space spacing={4} wrap>{v.map((k) => <Tag key={k} size="small" color="green">{k}</Tag>)}</Space> : '-') },
     createdAtColumn as ColumnProps<PaymentRiskRule>,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, r: PaymentRiskRule) => (
-        <Switch checked={r.status === 'enabled'} loading={togglingId === r.id} disabled={!hasPermission('payment:risk:update')} size="small" onChange={(c) => void handleToggle(r, c)} />
-      ),
-    },
+    status.column(),
     createOperationColumn<PaymentRiskRule>({
       width: 150,
       actions: (r) => [
@@ -243,17 +231,12 @@ export default function PaymentRiskRulesPage() {
           label: '编辑',
           onClick: () => openEdit(r),
         }] : []),
-        ...(hasPermission('payment:risk:delete') ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              content: '删除后不可恢复',
-              onOk: () => handleDelete(r.id),
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('payment:risk:delete'),
+          title: '确定要删除吗？',
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync([r.id]),
+        }),
       ],
     }),
   ];

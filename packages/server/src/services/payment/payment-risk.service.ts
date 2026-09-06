@@ -11,6 +11,7 @@ import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentOrders,
   paymentRiskHits,
@@ -21,8 +22,9 @@ import {
   type PaymentRiskReviewRow,
   type PaymentRiskRuleRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
@@ -68,17 +70,19 @@ export async function listRiskRules(q: ListRiskRulesQuery) {
   if (q.scope) conds.push(eq(paymentRiskRules.scope, q.scope));
   if (q.status) conds.push(eq(paymentRiskRules.status, q.status));
   const where = buildWhere(...conds, tenantCondition(paymentRiskRules, currentUser()));
-  const [total, list] = await Promise.all([
-    db.$count(paymentRiskRules, where),
-    withPagination(db.select().from(paymentRiskRules).where(where).orderBy(desc(paymentRiskRules.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapRiskRule), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentRiskRules, where),
+    rows: () => withPagination(db.select().from(paymentRiskRules).where(where).orderBy(desc(paymentRiskRules.id)).$dynamic(), page, pageSize),
+    map: mapRiskRule,
+  });
 }
 
 async function ensureRiskRule(id: number): Promise<PaymentRiskRuleRow> {
   const tc = tenantCondition(paymentRiskRules, currentUser());
   const [row] = await db.select().from(paymentRiskRules).where(and(eq(paymentRiskRules.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '风控规则不存在' });
+  requireRow(row, '风控规则不存在');
   return row;
 }
 
@@ -220,7 +224,7 @@ function createDailyStatsLoader(input: RiskCheckInput) {
     const scopeConds = [gte(paymentOrders.paidAt, startOfToday()), inArray(paymentOrders.status, ['success', 'refunding', 'refunded'])];
     if (scope === 'channel') scopeConds.push(eq(paymentOrders.channel, input.channel));
     if (scope === 'bizType') scopeConds.push(eq(paymentOrders.bizType, input.bizType));
-    const where = input.tenantId == null ? and(...scopeConds, isNull(paymentOrders.tenantId)) : and(...scopeConds, eq(paymentOrders.tenantId, input.tenantId));
+    const where = and(...scopeConds, exactTenantCondition(paymentOrders.tenantId, input.tenantId ?? null));
     const pending = db
       .select({ total: sql<number>`coalesce(sum(${paymentOrders.amount}),0)`, count: sql<number>`count(*)` })
       .from(paymentOrders)
@@ -403,11 +407,13 @@ export async function listRiskHits(q: ListRiskHitsQuery) {
   if (start) conds.push(gte(paymentRiskHits.createdAt, start));
   if (end) conds.push(lte(paymentRiskHits.createdAt, end));
   const where = buildWhere(...conds, tenantCondition(paymentRiskHits, currentUser()));
-  const [total, list] = await Promise.all([
-    db.$count(paymentRiskHits, where),
-    withPagination(db.select().from(paymentRiskHits).where(where).orderBy(desc(paymentRiskHits.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapRiskHit), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentRiskHits, where),
+    rows: () => withPagination(db.select().from(paymentRiskHits).where(where).orderBy(desc(paymentRiskHits.id)).$dynamic(), page, pageSize),
+    map: mapRiskHit,
+  });
 }
 
 // ─── 人工审核队列 ─────────────────────────────────────────────────────────────
@@ -452,7 +458,7 @@ export async function assertNoPendingRiskReview(input: {
     .where(and(
       eq(paymentRiskReviews.bizType, input.bizType),
       eq(paymentRiskReviews.bizId, input.bizId),
-      input.tenantId == null ? isNull(paymentRiskReviews.tenantId) : eq(paymentRiskReviews.tenantId, input.tenantId),
+      exactTenantCondition(paymentRiskReviews.tenantId, input.tenantId),
       input.appId == null ? isNull(paymentRiskReviews.appId) : eq(paymentRiskReviews.appId, input.appId),
       eq(paymentRiskReviews.currency, input.currency),
       eq(paymentRiskReviews.status, 'pending'),
@@ -501,23 +507,25 @@ export async function listRiskReviews(q: ListRiskReviewsQuery) {
   if (q.status) conds.push(eq(paymentRiskReviews.status, q.status));
   if (q.channel) conds.push(eq(paymentRiskReviews.channel, q.channel));
   const where = buildWhere(...conds, tenantCondition(paymentRiskReviews, currentUser()));
-  const [total, rows] = await Promise.all([
-    db.$count(paymentRiskReviews, where),
-    db.query.paymentRiskReviews.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentRiskReviews, where),
+    rows: () => db.query.paymentRiskReviews.findMany({
       where,
       with: { reviewer: { columns: { nickname: true } } },
       orderBy: desc(paymentRiskReviews.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapRiskReview), total, page, pageSize };
+    map: mapRiskReview,
+  });
 }
 
 async function ensureRiskReview(id: number): Promise<PaymentRiskReviewRow> {
   const tc = tenantCondition(paymentRiskReviews, currentUser());
   const [row] = await db.select().from(paymentRiskReviews).where(and(eq(paymentRiskReviews.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '审核单不存在' });
+  requireRow(row, '审核单不存在');
   return row;
 }
 
@@ -551,7 +559,7 @@ export async function approveRiskReview(id: number, remark?: string): Promise<Pa
     .set({ expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000) })
     .where(and(
       eq(paymentOrders.orderNo, row.orderNo),
-      row.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, row.tenantId),
+      exactTenantCondition(paymentOrders.tenantId, row.tenantId),
       inArray(paymentOrders.status, ['pending', 'paying']),
     ));
   return mapRiskReview(updated);
@@ -575,7 +583,7 @@ export async function rejectRiskReview(id: number, remark?: string): Promise<Pay
       .from(paymentOrders)
       .where(and(
         eq(paymentOrders.orderNo, row.orderNo),
-        row.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, row.tenantId),
+        exactTenantCondition(paymentOrders.tenantId, row.tenantId),
       ))
       .limit(1);
     let eventId: number | null = null;

@@ -4,7 +4,6 @@ import { Form, Input, Tag, Toast, Typography, Descriptions } from '@douyinfe/sem
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
@@ -22,7 +21,7 @@ import {
   useRejectPaymentRefund,
   type PaymentRefundListParams,
 } from '@/hooks/queries/payment-refunds';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
 
@@ -57,7 +56,6 @@ export default function PaymentRefundsPage() {
   }
 
   const listQuery = usePaymentRefundList({ page, pageSize, ...buildQuery(submittedParams) });
-  const data = listQuery.data ?? null;
   const detailQuery = usePaymentRefundDetail(detail?.id, !!detail);
   const refundDetail = detail ? (detailQuery.data ?? detail) : null;
   const queryMutation = useQueryPaymentRefund();
@@ -169,49 +167,32 @@ export default function PaymentRefundsPage() {
     <DateRangeFilter placeholder={['创建开始', '创建结束']} value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))} width={330} />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderExportButtons = () => <ExportButton entity="payment.refunds" query={buildQuery(submittedParams)} />;
   const renderMobileExportActions = () => <ExportButton entity="payment.refunds" query={buildQuery(submittedParams)} variant="flat" />;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
-            {renderKeywordSearch()}
             {renderChannelFilter()}
             {renderStatusFilter()}
             {renderApprovalFilter()}
             {renderTimeRangeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         actions={renderExportButtons()}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderChannelFilter()}
-            {renderStatusFilter()}
-            {renderApprovalFilter()}
-            {renderTimeRangeFilter()}
-          </>
-        )}
         mobileActions={renderMobileExportActions()}
         filterTitle="退款记录筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
+        columns={columns}
+        empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal title="退款详情" visible={!!detail} onCancel={() => setDetail(null)} footer={null} width={560} closeOnEsc>

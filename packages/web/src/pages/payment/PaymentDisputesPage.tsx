@@ -5,7 +5,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { FlaskConical } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import { copyableNoColumn, createdAtColumn } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -23,7 +22,7 @@ import {
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_DISPUTE_ROUTE_LABELS, PAYMENT_DISPUTE_ROUTE_OPTIONS, PAYMENT_DISPUTE_ROUTES, PAYMENT_DISPUTE_STATUS_LABELS, PAYMENT_DISPUTE_STATUS_OPTIONS, PAYMENT_DISPUTE_STATUSES, PAYMENT_DISPUTE_TYPE_LABELS, PAYMENT_DISPUTE_TYPE_OPTIONS, PAYMENT_DISPUTE_TYPES, PAYMENT_ORDER_STATUS_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentDispute, PaymentDisputeRoute, PaymentDisputeStatus, PaymentDisputeType } from '@zenith/shared/payment';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 
@@ -57,8 +56,6 @@ export default function PaymentDisputesPage() {
     channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
     route: enumValueOf(PAYMENT_DISPUTE_ROUTES, submittedParams.route),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const statsQuery = usePaymentDisputeStats();
   const stats = statsQuery.data ?? null;
   const detailQuery = usePaymentDisputeDetail(detailId ?? undefined);
@@ -196,8 +193,6 @@ export default function PaymentDisputesPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, route: v }))}
     />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderSimulateButton = () => canHandle ? (
     <Button type="primary" icon={<FlaskConical size={14} />} loading={simulateMutation.isPending} onClick={() => void handleSimulate()}>模拟投诉</Button>
   ) : null;
@@ -210,28 +205,9 @@ export default function PaymentDisputesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderTypeFilter()}
-            {renderChannelFilter()}
-            {renderRouteFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            <ExportButton entity="payment.disputes" query={exportQuery} />
-            {renderSimulateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderSimulateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderStatusFilter()}
             {renderTypeFilter()}
@@ -239,10 +215,12 @@ export default function PaymentDisputesPage() {
             {renderRouteFilter()}
           </>
         )}
-        filterTitle="投诉筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderSimulateButton()}
+        actions={<ExportButton entity="payment.disputes" query={exportQuery} />}
         mobileActions={<ExportButton entity="payment.disputes" query={exportQuery} variant="flat" />}
+        filterTitle="投诉筛选"
       />
 
       {statsText && (
@@ -252,8 +230,9 @@ export default function PaymentDisputesPage() {
       )}
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => { void listQuery.refetch(); void statsQuery.refetch(); }} refreshLoading={listQuery.isFetching} pagination={buildPagination(total)}
+        columns={columns}
+        empty="暂无数据"
+        {...listTableProps({ ...listQuery, refetch: () => { void listQuery.refetch(); void statsQuery.refetch(); } }, { pagination: buildPagination })}
       />
 
       <SideSheet

@@ -7,6 +7,7 @@ import { and, asc, desc, eq, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomBytes } from 'node:crypto';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentApps,
   paymentChannelConfigs,
@@ -21,6 +22,7 @@ import {
   type NewPaymentChannelConfig,
   type PaymentChannelConfigRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, requireTenantScopeId } from '../../lib/tenant';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
@@ -101,21 +103,23 @@ export async function listChannelConfigs(q: ListChannelConfigsQuery) {
   if (q.status) conditions.push(eq(paymentChannelConfigs.status, q.status));
   const where = buildWhere(...conditions);
   const finalWhere = buildWhere(where, tenantCondition(paymentChannelConfigs, currentUser()));
-  const [total, list] = await Promise.all([
-    db.$count(paymentChannelConfigs, finalWhere),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentChannelConfigs, finalWhere),
+    rows: () => withPagination(
       db.select().from(paymentChannelConfigs).where(finalWhere).orderBy(desc(paymentChannelConfigs.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return { list: list.map(mapChannelConfig), total, page, pageSize };
+    map: mapChannelConfig,
+  });
 }
 
 export async function ensureChannelConfigExists(id: number): Promise<PaymentChannelConfigRow> {
   const tc = tenantCondition(paymentChannelConfigs, currentUser());
   const [row] = await db.select().from(paymentChannelConfigs).where(and(eq(paymentChannelConfigs.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '支付渠道配置不存在' });
+  requireRow(row, '支付渠道配置不存在');
   return row;
 }
 
@@ -253,7 +257,7 @@ export async function updateChannelConfig(id: number, input: UpdatePaymentChanne
       .set(set)
       .where(and(eq(paymentChannelConfigs.id, id), tenantCondition(paymentChannelConfigs, user)))
       .returning();
-    if (!row) throw new HTTPException(404, { message: '支付渠道配置不存在' });
+    requireRow(row, '支付渠道配置不存在');
     return mapChannelConfig(row);
   });
 }
@@ -298,7 +302,7 @@ export async function setChannelAsDefault(id: number): Promise<PaymentChannelCon
       .set({ isDefault: true, status: 'enabled' })
       .where(and(eq(paymentChannelConfigs.id, id), tenantCondition(paymentChannelConfigs, user)))
       .returning();
-    if (!row) throw new HTTPException(404, { message: '支付渠道配置不存在' });
+    requireRow(row, '支付渠道配置不存在');
     return mapChannelConfig(row);
   });
 }

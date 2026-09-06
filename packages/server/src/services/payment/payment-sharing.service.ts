@@ -10,6 +10,7 @@ import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentOrders,
   paymentRefunds,
@@ -19,8 +20,9 @@ import {
   type PaymentSharingOrderRow,
   type PaymentSharingReceiverRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { buildAdapterContext, createOrderConfigResolver, loadOrderConfig } from './payment.service';
@@ -112,17 +114,19 @@ export async function listReceivers(q: ListReceiversQuery) {
   conds.push(keywordCondition(q.keyword, [paymentSharingReceivers.name]));
   if (q.status) conds.push(eq(paymentSharingReceivers.status, q.status));
   const where = buildWhere(...conds, tenantCondition(paymentSharingReceivers, currentUser()));
-  const [total, list] = await Promise.all([
-    db.$count(paymentSharingReceivers, where),
-    withPagination(db.select().from(paymentSharingReceivers).where(where).orderBy(desc(paymentSharingReceivers.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapReceiver), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentSharingReceivers, where),
+    rows: () => withPagination(db.select().from(paymentSharingReceivers).where(where).orderBy(desc(paymentSharingReceivers.id)).$dynamic(), page, pageSize),
+    map: mapReceiver,
+  });
 }
 
 async function ensureReceiver(id: number): Promise<PaymentSharingReceiverRow> {
   const tc = tenantCondition(paymentSharingReceivers, currentUser());
   const [row] = await db.select().from(paymentSharingReceivers).where(and(eq(paymentSharingReceivers.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '分账接收方不存在' });
+  requireRow(row, '分账接收方不存在');
   return row;
 }
 
@@ -187,18 +191,19 @@ export async function listSharingOrders(q: ListSharingOrdersQuery) {
   if (q.status) conds.push(eq(paymentSharingOrders.status, q.status));
   if (q.receiverId) conds.push(eq(paymentSharingOrders.receiverId, q.receiverId));
   const where = buildWhere(...conds, tenantCondition(paymentSharingOrders, currentUser()));
-  const [total, rows] = await Promise.all([
-    db.$count(paymentSharingOrders, where),
-    db.query.paymentSharingOrders.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentSharingOrders, where),
+    rows: () => db.query.paymentSharingOrders.findMany({
       where,
       orderBy: desc(paymentSharingOrders.id),
       limit: pageSize,
       offset: (page - 1) * pageSize,
       with: { receiver: { columns: { name: true } } },
     }),
-  ]);
-  const list = rows.map((r) => mapSharingOrder({ ...r, receiverName: r.receiver?.name ?? null }));
-  return { list, total, page, pageSize };
+    map: (r) => mapSharingOrder({ ...r, receiverName: r.receiver?.name ?? null }),
+  });
 }
 
 export interface DispatchSharingInput {
@@ -218,7 +223,7 @@ async function createReservedSharing(input: {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM payment_orders WHERE order_no = ${input.orderNo} FOR UPDATE`);
     const [order] = await tx.select().from(paymentOrders).where(eq(paymentOrders.orderNo, input.orderNo)).limit(1);
-    if (!order) throw new HTTPException(404, { message: '支付订单不存在' });
+    requireRow(order, '支付订单不存在');
     if (!['success', 'refunding'].includes(order.status)) {
       throw new HTTPException(400, { message: '只有已支付且未全额退款的订单可发起分账' });
     }
@@ -390,9 +395,7 @@ export async function autoShareOrder(orderNo: string): Promise<void> {
   if (!order) return;
   if (!['success', 'refunding', 'refunded'].includes(order.status)) return;
 
-  const tenantCond = order.tenantId == null
-    ? isNull(paymentSharingReceivers.tenantId)
-    : eq(paymentSharingReceivers.tenantId, order.tenantId);
+  const tenantCond = exactTenantCondition(paymentSharingReceivers.tenantId, order.tenantId);
   const receivers = await db
     .select()
     .from(paymentSharingReceivers)

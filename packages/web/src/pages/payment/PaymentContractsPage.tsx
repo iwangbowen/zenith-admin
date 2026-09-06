@@ -14,7 +14,6 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 import {
   paymentContractKeys,
   useAllDeductPlans,
@@ -30,11 +29,13 @@ import {
   useTerminatePaymentContract,
 } from '@/hooks/queries/payment-contracts';
 import { enumValueOf } from '@zenith/shared/core';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_CONTRACT_STATUS_LABELS, PAYMENT_CONTRACT_STATUSES, PAYMENT_DEDUCT_PERIOD_LABELS, PAYMENT_DEDUCT_PERIOD_OPTIONS, PAYMENT_CONTRACT_STATUS_OPTIONS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
+import { PAYMENT_CHANNELS, PAYMENT_CONTRACT_STATUS_LABELS, PAYMENT_CONTRACT_STATUSES, PAYMENT_DEDUCT_PERIOD_LABELS, PAYMENT_DEDUCT_PERIOD_OPTIONS, PAYMENT_CONTRACT_STATUS_OPTIONS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { CreatePaymentContractInput, CreatePaymentDeductPlanInput, PaymentChannel, PaymentContract, PaymentContractSignResult, PaymentContractStatus, PaymentDeductMethod, PaymentDeductPeriod, PaymentDeductPlan } from '@zenith/shared/payment';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
+import { useEnabledPaymentAppLookup } from './payment-app-options';
+import { deleteAction } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const yuan = formatYuan;
@@ -80,13 +81,7 @@ export default function PaymentContractsPage() {
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
   const [contractAppId, setContractAppId] = useState<number | null>(null);
 
-  const appsQuery = usePaymentAppList({ page: 1, pageSize: 100, status: 'enabled' });
-  const paymentApps = useMemo(() => appsQuery.data?.list ?? [], [appsQuery.data?.list]);
-  const appById = useMemo(() => new Map(paymentApps.map((app) => [app.id, app])), [paymentApps]);
-  const appOptions = useMemo(
-    () => paymentApps.map((app) => ({ value: app.id, label: `${app.name} · ${app.environment === 'sandbox' ? '沙箱' : '生产'}` })),
-    [paymentApps],
-  );
+  const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
   const effectiveContractAppId = contractAppId ?? paymentApps[0]?.id;
 
   const contractQuery = usePaymentContractList({
@@ -207,21 +202,16 @@ export default function PaymentContractsPage() {
   function openCreatePlan() { setPlanPeriod('monthly'); planModal.openCreate(); }
   function openEditPlan(p: PaymentDeductPlan) { setPlanPeriod(p.period); planModal.openEdit(p); }
 
-  async function handleDeletePlan(id: number) {
-    await deletePlanMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  }
-
   // ── 列定义 ──
   const contractColumns: ColumnProps<PaymentContract>[] = [
     copyableNoColumn('协议号', 'contractNo'),
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (value: number) => renderEllipsis(appById.get(value)?.name ?? `应用 #${value}`) },
-    { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => PAYMENT_CHANNEL_LABELS[v] },
+    { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => <PaymentChannelTag channel={v} textOnly /> },
     { title: '扣款计划', dataIndex: 'planName', minWidth: 200, render: (v: string | null, r) => {
       const text = v ? `${v}（${r.planPeriod ? describePlanPeriod({ period: r.planPeriod, customDays: null }) : '-'}）` : '-';
       return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{text}</Typography.Text>;
     } },
-    { title: '每期金额', dataIndex: 'planAmount', width: 100, align: 'right', render: (v: number | null) => (v == null ? '-' : yuan(v)) },
+    { ...paymentMoneyColumn<PaymentContract>('每期金额', 'planAmount'), width: 100 },
     { title: '签约账号', dataIndex: 'signerAccount', width: 160, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 140 }}>{v}</Typography.Text> },
     { title: '业务', dataIndex: 'bizType', width: 140, render: (v: string, r) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 120 }}>{`${v}:${r.bizId}`}</Typography.Text> },
     { title: '已扣期数', dataIndex: 'totalDeductCount', width: 90, align: 'right' },
@@ -275,7 +265,7 @@ export default function PaymentContractsPage() {
   const planColumns: ColumnProps<PaymentDeductPlan>[] = [
     { title: '计划名称', dataIndex: 'name', minWidth: 200, render: renderEllipsis },
     { title: '扣款周期', dataIndex: 'period', width: 120, render: (_: unknown, p) => describePlanPeriod(p) },
-    { title: '每期金额', dataIndex: 'amount', width: 110, align: 'right', render: (v: number) => yuan(v) },
+    { ...paymentMoneyColumn<PaymentDeductPlan>('每期金额', 'amount'), width: 110 },
     { title: '重试上限', dataIndex: 'maxRetries', width: 100 },
     { title: '签约数', dataIndex: 'contractCount', width: 90, align: 'right', render: (v: number | undefined) => v ?? 0 },
     { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
@@ -287,14 +277,13 @@ export default function PaymentContractsPage() {
         key: 'edit',
         label: '编辑',
         onClick: () => openEditPlan(p),
-      }, {
-        key: 'delete',
-        label: '删除',
-        danger: true,
-        onClick: () => {
-          confirmDelete({ content: '仅无签约协议引用的计划可删除', onOk: () => handleDeletePlan(p.id) });
-        },
-      }] : []),
+      },
+      deleteAction({
+        title: '确定要删除吗？',
+        content: '仅无签约协议引用的计划可删除',
+        run: () => deletePlanMutation.mutateAsync({ params: { id: p.id } }),
+        successMessage: '删除成功',
+      })] : []),
     }),
   ];
 
@@ -331,7 +320,7 @@ export default function PaymentContractsPage() {
       }}
       optionList={appOptions}
       filter
-      loading={appsQuery.isFetching}
+      loading={appsFetching}
       style={{ width: 180 }}
     />
   );
@@ -398,7 +387,7 @@ export default function PaymentContractsPage() {
             mobileActions={<ExportButton entity="payment.contracts" query={exportQuery} variant="flat" />}
           />
           <ConfigurableTable
-            bordered columns={contractColumns} dataSource={contracts} loading={appsQuery.isFetching || contractQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
+            bordered columns={contractColumns} dataSource={contracts} loading={appsFetching || contractQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
             onRefresh={() => void contractQuery.refetch()} refreshLoading={contractQuery.isFetching} pagination={buildCPagination(contractTotal)}
           />
         </TabPane>
@@ -465,7 +454,7 @@ export default function PaymentContractsPage() {
         <Form key={signModal.formKey} {...signModal.formProps} initValues={{ ...signModal.formProps.initValues, currency: 'CNY' }}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Select field="applicationId" label="支付应用" style={{ width: '100%' }} optionList={appOptions} filter loading={appsQuery.isFetching}
+              <Form.Select field="applicationId" label="支付应用" style={{ width: '100%' }} optionList={appOptions} filter loading={appsFetching}
                 onChange={(value) => { setSelectedAppId((value as number | undefined) ?? null); signModal.formApi.current?.setValue('payMethod', undefined); }} rules={[{ required: true, message: '请选择支付应用' }]} />
             </Col>
             <Col span={12}>

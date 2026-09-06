@@ -1,8 +1,9 @@
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
 import type { PaymentCashierMethod } from '@zenith/shared/payment';
 import { db } from '../../db';
+import { exactTenantCondition } from '../../lib/tenant';
 import { paymentChannelConfigs, paymentMethodConfigs } from '../../db/schema';
 import { evaluateEffectivePaymentOperation } from './payment-capability-evaluator';
 import { resolveApplicationChannelConfig } from './payment-apps.service';
@@ -27,9 +28,7 @@ export async function listEffectiveCashierMethods(input: {
     : [...allowedMethods];
   if (candidates.length === 0) return [];
 
-  const methodTenant = input.tenantId == null
-    ? isNull(paymentMethodConfigs.tenantId)
-    : eq(paymentMethodConfigs.tenantId, input.tenantId);
+  const methodTenant = exactTenantCondition(paymentMethodConfigs.tenantId, input.tenantId);
   const methodRows = await db
     .select()
     .from(paymentMethodConfigs)
@@ -52,9 +51,7 @@ export async function listEffectiveCashierMethods(input: {
       );
       let configRow = configCache.get(route.channelConfigId);
       if (!configRow) {
-        const configTenant = input.tenantId == null
-          ? isNull(paymentChannelConfigs.tenantId)
-          : eq(paymentChannelConfigs.tenantId, input.tenantId);
+        const configTenant = exactTenantCondition(paymentChannelConfigs.tenantId, input.tenantId);
         [configRow] = await db
           .select()
           .from(paymentChannelConfigs)

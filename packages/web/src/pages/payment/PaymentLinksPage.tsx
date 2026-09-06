@@ -7,7 +7,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { QRCodeSVG } from 'qrcode.react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { formatDateTimeForApi } from '@/utils/date';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -16,15 +15,17 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS, PAYMENT_LINK_STATUS_LABELS, PAYMENT_LINK_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type { PaymentApp, PaymentCashierMethod, PaymentChannel, PaymentLink, PaymentLinkStatus } from '@zenith/shared/payment';
 import { paymentLinkKeys, useDeletePaymentLinks, usePaymentLinkDetail, usePaymentLinkList, useRotatePaymentLinkToken, useSavePaymentLink, type PaymentLinkSaveValues } from '@/hooks/queries/payment-links';
-import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 import { usePaymentCapabilities } from '@/hooks/queries/payment-capabilities';
 import { usePaymentMethodList } from '@/hooks/queries/payment-methods';
 import { useEnsureShortLink } from '@/hooks/queries/short-links';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { useEnabledPaymentAppLookup } from './payment-app-options';
+import { paymentMoneyColumn } from './payment-display';
 
 const yuan = (cents: number | null | undefined) => formatYuan(cents, '用户填写');
 const LINK_STATUS_COLOR = { active: 'green', disabled: 'grey', expired: 'red' } as const satisfies Record<PaymentLinkStatus, string>;
@@ -61,6 +62,9 @@ interface LinkFormValues {
   remark?: string;
 }
 
+// 收款链接按开放应用名标识支付应用（其它支付页用环境后缀）
+const paymentAppOptionLabel = (app: PaymentApp) => `${app.name} · ${app.openClientName}`;
+
 export default function PaymentLinksPage() {
   const { hasPermission } = usePermission();
   const qrContainerRef = useRef<HTMLDivElement | null>(null);
@@ -82,17 +86,8 @@ export default function PaymentLinksPage() {
     keyword: submittedParams.keyword || undefined,
     status: submittedParams.status || undefined,
   });
-  const data = listQuery.data ?? null;
-  const appLookupQuery = usePaymentAppList({ page: 1, pageSize: 100, status: 'enabled' });
-  const appOptions = useMemo(
-    () => (appLookupQuery.data?.list ?? []).map((app) => ({ value: app.id, label: `${app.name} · ${app.openClientName}` })),
-    [appLookupQuery.data?.list],
-  );
-  const appNameById = useMemo(
-    () => new Map((appLookupQuery.data?.list ?? []).map((app) => [app.id, app.name])),
-    [appLookupQuery.data?.list],
-  );
-  const paymentApps = useMemo(() => appLookupQuery.data?.list ?? [], [appLookupQuery.data?.list]);
+  const { apps: paymentApps, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup({ label: paymentAppOptionLabel });
+  const appNameById = useMemo(() => new Map(paymentApps.map((app) => [app.id, app.name])), [paymentApps]);
   const selectedPaymentApp = paymentApps.find((app) => app.id === selectedApplicationId);
   const canReadCapabilities = hasPermission('payment:channel:list');
   const capabilitiesQuery = usePaymentCapabilities(
@@ -187,11 +182,6 @@ export default function PaymentLinksPage() {
     );
   }
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
   async function handleRotateToken(id: number) {
     await rotateTokenMutation.mutateAsync({ params: { id } });
     Toast.success('token 已重置，旧链接已失效');
@@ -234,7 +224,7 @@ export default function PaymentLinksPage() {
   const columns: ColumnProps<PaymentLink>[] = [
     { title: '标题', dataIndex: 'subject', minWidth: 180, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{v}</Typography.Text> },
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (v: number) => renderEllipsis(appNameById.get(v) ?? `应用 #${v}`) },
-    { title: '金额', dataIndex: 'amount', width: 110, align: 'right', render: (v: number | null) => yuan(v) },
+    { ...paymentMoneyColumn<PaymentLink>('金额', 'amount', { empty: '用户填写' }), width: 110 },
     { title: '支付方式', dataIndex: 'payMethod', width: 130, render: (v: PaymentCashierMethod | null) => (v ? PAYMENT_METHOD_LABELS[v] : '用户选择') },
     { title: '业务类型', dataIndex: 'bizType', width: 140, render: renderEllipsis },
     { title: '已用/预占/上限', dataIndex: 'usedCount', width: 150, align: 'right', render: (_: unknown, r: PaymentLink) => `${r.usedCount} / ${r.reservedCount} / ${r.maxUses ?? '∞'}` },
@@ -277,17 +267,12 @@ export default function PaymentLinksPage() {
             });
           },
         }] : []),
-        ...(hasPermission('payment:link:delete') ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              content: '删除后不可恢复',
-              onOk: () => handleDelete(r.id),
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('payment:link:delete'),
+          title: '确定要删除吗？',
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync([r.id]),
+        }),
       ],
     }),
   ];
@@ -304,40 +289,25 @@ export default function PaymentLinksPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => hasPermission('payment:link:create') ? (
     <CreateButton onClick={openCreate} />
   ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="支付链接筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
+      <ConfigurableTable<PaymentLink>
+        columns={columns}
+        empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal {...modal.modalProps} width={700}>
@@ -352,7 +322,7 @@ export default function PaymentLinksPage() {
               style={{ width: '100%' }}
               optionList={appOptions}
               filter
-              loading={appLookupQuery.isFetching}
+              loading={appsFetching}
               onChange={(value) => {
                 setSelectedApplicationId(value as number | undefined);
                 modal.formApi.current?.setValue('payMethod', undefined);

@@ -6,6 +6,7 @@
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentFeeRules,
   paymentJournalLines,
@@ -15,8 +16,9 @@ import {
   paymentRefunds,
   type PaymentFeeRuleRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
 import { postSystemJournal, postSystemJournalWithin } from './payment-journal.service';
@@ -58,21 +60,23 @@ export async function listFeeRules(q: ListFeeRulesQuery) {
   if (q.channel) conds.push(eq(paymentFeeRules.channel, q.channel));
   if (q.status) conds.push(eq(paymentFeeRules.status, q.status));
   const where = buildWhere(...conds, tenantCondition(paymentFeeRules, currentUser()));
-  const [total, list] = await Promise.all([
-    db.$count(paymentFeeRules, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentFeeRules, where),
+    rows: () => withPagination(
       db.select().from(paymentFeeRules).where(where).orderBy(desc(paymentFeeRules.priority), desc(paymentFeeRules.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return { list: list.map(mapFeeRule), total, page, pageSize };
+    map: mapFeeRule,
+  });
 }
 
 async function ensureFeeRule(id: number): Promise<PaymentFeeRuleRow> {
   const tc = tenantCondition(paymentFeeRules, currentUser());
   const [row] = await db.select().from(paymentFeeRules).where(and(eq(paymentFeeRules.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '费率规则不存在' });
+  requireRow(row, '费率规则不存在');
   return row;
 }
 
@@ -154,7 +158,7 @@ export function computeFeeByRule(rule: PaymentFeeRuleRow, amount: number): numbe
 
 /** 匹配最优费率规则（按 tenant + channel + payMethod，优先 payMethod 精确，再按 priority 降序）。 */
 export async function matchFeeRule(channel: PaymentChannel, payMethod: PaymentMethod, tenantId: number | null): Promise<PaymentFeeRuleRow | null> {
-  const tenantCond = tenantId == null ? isNull(paymentFeeRules.tenantId) : eq(paymentFeeRules.tenantId, tenantId);
+  const tenantCond = exactTenantCondition(paymentFeeRules.tenantId, tenantId);
   const rows = await db
     .select()
     .from(paymentFeeRules)

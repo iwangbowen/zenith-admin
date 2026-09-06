@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, inArray, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type {
   CreatePaymentResult,
@@ -9,6 +9,8 @@ import type {
 } from '@zenith/shared/payment';
 import { config } from '../../config';
 import { db } from '../../db';
+import { exactTenantCondition } from '../../lib/tenant';
+import { requireRow } from '../../lib/db-assert';
 import {
   paymentCashierSessions,
   paymentLinks,
@@ -142,7 +144,7 @@ async function setTerminalSessionState(input: {
     .from(paymentCashierSessions)
     .where(eq(paymentCashierSessions.id, input.id))
     .limit(1);
-  if (!candidate) throw new HTTPException(404, { message: '收银台会话不存在' });
+  requireRow(candidate, '收银台会话不存在');
 
   return db.transaction(async (tx) => {
     // All link/session transactions lock the parent link first. Keeping one
@@ -160,7 +162,7 @@ async function setTerminalSessionState(input: {
       .where(eq(paymentCashierSessions.id, input.id))
       .for('update')
       .limit(1);
-    if (!session) throw new HTTPException(404, { message: '收银台会话不存在' });
+    requireRow(session, '收银台会话不存在');
     if ((input.expectedVersion !== undefined && session.version !== input.expectedVersion)
       || (input.allowedStatuses && !input.allowedStatuses.includes(session.status))) return session;
     if (session.useSlotStatus === 'reserved') {
@@ -323,14 +325,14 @@ export async function getPublicCashierSession(linkToken: string, sessionToken: s
     .innerJoin(paymentLinks, eq(paymentLinks.id, paymentCashierSessions.linkId))
     .where(and(eq(paymentLinks.token, linkToken), eq(paymentCashierSessions.sessionToken, sessionToken)))
     .limit(1);
-  if (!joined) throw new HTTPException(404, { message: '收银台会话不存在或已失效' });
+  requireRow(joined, '收银台会话不存在或已失效');
   let session = joined.session;
   if (session.status === 'succeeded') {
     // A delayed success callback can arrive after an expiry job released the
     // usage slot. Reconcile the redemption from the authoritative order even
     // when the session already looks terminal to the public client.
     if (session.orderNo) {
-      const tenantScope = session.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, session.tenantId);
+      const tenantScope = exactTenantCondition(paymentOrders.tenantId, session.tenantId);
       const [order] = await db.select().from(paymentOrders).where(and(
         eq(paymentOrders.orderNo, session.orderNo),
         eq(paymentOrders.appId, session.appId),
@@ -356,7 +358,7 @@ export async function getPublicCashierSession(linkToken: string, sessionToken: s
     return mapCashierSession(await setTerminalSessionState({ id: session.id, status: 'failed', errorMessage: session.errorMessage ?? '支付未完成' }));
   }
   if (session.orderNo) {
-    const tenantScope = session.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, session.tenantId);
+    const tenantScope = exactTenantCondition(paymentOrders.tenantId, session.tenantId);
     const [order] = await db
       .select()
       .from(paymentOrders)
@@ -388,9 +390,7 @@ export async function updateCashierSessionFromPaymentEvent(
   status: 'succeeded' | 'failed',
 ): Promise<void> {
   if (event.appId == null) return;
-  const tenantScope = event.tenantId == null
-    ? isNull(paymentCashierSessions.tenantId)
-    : eq(paymentCashierSessions.tenantId, event.tenantId);
+  const tenantScope = exactTenantCondition(paymentCashierSessions.tenantId, event.tenantId ?? null);
   const [session] = await db
     .select()
     .from(paymentCashierSessions)

@@ -1,9 +1,10 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
 import type { PaymentMethod } from '@zenith/shared/payment';
 import { config } from '../../config';
 import { db } from '../../db';
+import { exactTenantCondition } from '../../lib/tenant';
 import {
   paymentMethodConfigs,
   type PaymentChannelConfigRow,
@@ -218,9 +219,7 @@ export async function evaluateEffectivePaymentOperation(input: {
       .from(paymentMethodConfigs)
       .where(and(
         eq(paymentMethodConfigs.method, input.method),
-        input.configRow.tenantId == null
-          ? isNull(paymentMethodConfigs.tenantId)
-          : eq(paymentMethodConfigs.tenantId, input.configRow.tenantId),
+        exactTenantCondition(paymentMethodConfigs.tenantId, input.configRow.tenantId),
       ))
       .limit(1)
     : [];

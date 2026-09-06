@@ -15,6 +15,7 @@ import { trySandboxNotify } from './sandbox-notify';
 import { getPlatformCert } from './wechat-certs';
 import { WECHAT_PROVIDER_MANIFEST } from './capabilities';
 import { providerHttpExceptionStatus, providerHttpOptions, readProviderResponseText } from './provider-http';
+import { requireSandboxOperation, sandboxProfitShareReverse } from './adapter-sandbox';
 import { buildSignedSandboxOperation } from './sandbox-operation';
 import type {
   AdapterContext,
@@ -525,36 +526,13 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
   },
 
   async reverseProfitShare(ctx: AdapterContext, order, input: ProfitShareReverseInput): Promise<ProfitShareReverseResult> {
-    if (!ctx.config.sandbox) {
-      throw new HTTPException(400, { message: 'CAPABILITY_UNSUPPORTED: wechat/profit-sharing.reverse/live' });
-    }
-    const signed = buildSignedSandboxOperation(ctx, 'WXPSR', 'profit-sharing.reverse', {
-      orderNo: order.orderNo,
-      outSharingNo: input.outSharingNo,
-      channelSharingNo: input.channelSharingNo,
-      outReversalNo: input.outReversalNo,
-      amount: input.amount,
-      reason: input.reason,
-    });
+    requireSandboxOperation(ctx, 'profit-sharing.reverse', 'wechat');
     logger.info('[wechat-pay] signed sandbox profit-sharing reversal', { outReversalNo: input.outReversalNo, amount: input.amount });
-    await Promise.resolve();
-    return { channelReversalNo: signed.reference, status: 'success', raw: signed.raw };
+    return sandboxProfitShareReverse(ctx, order, input, { prefix: 'WXPSR', label: 'wechat' });
   },
 
   async queryProfitShareReverse(ctx: AdapterContext, order, input: ProfitShareReverseInput): Promise<ProfitShareReverseQueryResult> {
-    if (!ctx.config.sandbox) {
-      throw new HTTPException(400, { message: 'CAPABILITY_UNSUPPORTED: wechat/profit-sharing.reverse/live' });
-    }
-    const signed = buildSignedSandboxOperation(ctx, 'WXPSR', 'profit-sharing.reverse', {
-      orderNo: order.orderNo,
-      outSharingNo: input.outSharingNo,
-      channelSharingNo: input.channelSharingNo,
-      outReversalNo: input.outReversalNo,
-      amount: input.amount,
-      reason: input.reason,
-    });
-    await Promise.resolve();
-    return { channelReversalNo: signed.reference, status: 'success', finishedAt: new Date(), raw: signed.raw };
+    return sandboxProfitShareReverse(ctx, order, input, { prefix: 'WXPSR', label: 'wechat', query: true });
   },
 
   async transfer(ctx: AdapterContext, input: TransferInput): Promise<TransferResult> {
@@ -647,7 +625,7 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
   },
 
   async queryContract(ctx: AdapterContext, input: ContractQueryInput): Promise<ContractQueryResult> {
-    if (!ctx.config.sandbox) throw new HTTPException(400, { message: 'CAPABILITY_UNSUPPORTED: wechat/contract.query/live' });
+    requireSandboxOperation(ctx, 'contract.query', 'wechat');
     const signed = buildSignedSandboxOperation(ctx, 'WXCT', 'contract.sign', { outContractNo: input.outContractNo });
     await Promise.resolve();
     return {

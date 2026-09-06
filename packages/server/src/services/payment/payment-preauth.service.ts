@@ -1,8 +1,9 @@
 /** 支付预授权：应用/商户精确作用域、CAS 状态机与 unknown 查单恢复。 */
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
-import type { SQL, SQLWrapper } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentChannelConfigs,
   paymentOrders,
@@ -12,13 +13,14 @@ import {
   type PaymentPreauthRow,
 } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import type { PaymentEvent } from '../../lib/payment-event-bus';
 import { getAdapter } from '../../lib/payment';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
 import type {
@@ -36,10 +38,6 @@ import { buildAdapterContext, markOrderPaid } from './payment.service';
 
 function genNo(): string {
   return `PRE${Date.now()}${Math.floor(1000 + Math.random() * 9000)}`;
-}
-
-function exactTenant(column: SQLWrapper, tenantId: number | null): SQL {
-  return tenantId == null ? sql`${column} is null` : sql`${column} = ${tenantId}`;
 }
 
 export function mapPreauth(row: PaymentPreauthRow & { operatorName?: string | null }): PaymentPreauth {
@@ -128,7 +126,7 @@ async function loadBoundConfig(row: Pick<PaymentPreauthRow, 'channelConfigId' | 
     .where(and(
       eq(paymentChannelConfigs.id, row.channelConfigId),
       eq(paymentChannelConfigs.channel, row.channel),
-      exactTenant(paymentChannelConfigs.tenantId, row.tenantId),
+      exactTenantCondition(paymentChannelConfigs.tenantId, row.tenantId),
     ))
     .limit(1);
   if (!config) throw new HTTPException(409, { message: '预授权绑定的商户配置不存在或作用域不一致' });
@@ -175,17 +173,19 @@ export async function listPreauths(q: ListPreauthsQuery) {
   if (start) conds.push(gte(paymentPreauths.createdAt, start));
   if (end) conds.push(lte(paymentPreauths.createdAt, end));
   const where = buildWhere(...conds, preauthsTenantCondition());
-  const [total, rows] = await Promise.all([
-    db.$count(paymentPreauths, where),
-    db.query.paymentPreauths.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentPreauths, where),
+    rows: () => db.query.paymentPreauths.findMany({
       where,
       with: { operator: { columns: { nickname: true } } },
       orderBy: desc(paymentPreauths.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map((row) => mapPreauth({ ...row, operatorName: row.operator?.nickname ?? null })), total, page, pageSize };
+    map: (row) => mapPreauth({ ...row, operatorName: row.operator?.nickname ?? null }),
+  });
 }
 
 export async function ensurePreauth(id: number, applicationId: number): Promise<PaymentPreauthRow> {
@@ -194,7 +194,7 @@ export async function ensurePreauth(id: number, applicationId: number): Promise<
     eq(paymentPreauths.appId, applicationId),
     preauthsTenantCondition(),
   )).limit(1);
-  if (!row) throw new HTTPException(404, { message: '预授权单不存在' });
+  requireRow(row, '预授权单不存在');
   return row;
 }
 
@@ -225,7 +225,7 @@ export async function createPreauth(input: CreatePaymentPreauthInput): Promise<P
   const channel = PAYMENT_METHOD_CHANNEL[input.payMethod];
   const application = await resolveApplicationChannelConfig(input.applicationId, channel, tenantId);
   const [config] = await db.select().from(paymentChannelConfigs).where(and(
-    eq(paymentChannelConfigs.id, application.channelConfigId), exactTenant(paymentChannelConfigs.tenantId, tenantId),
+    eq(paymentChannelConfigs.id, application.channelConfigId), exactTenantCondition(paymentChannelConfigs.tenantId, tenantId),
   )).limit(1);
   if (!config) throw new HTTPException(400, { message: '支付应用绑定的商户配置不存在' });
   await assertPreauthOperation(config, 'preauth.freeze', input.payMethod, input.currency);
@@ -441,7 +441,7 @@ export async function recoverPreauth(id: number, applicationId: number): Promise
   }
   if (operation === 'capture' && result.status === 'captured' && row.captureOrderNo) {
     const [order] = await db.select().from(paymentOrders).where(and(
-      eq(paymentOrders.orderNo, row.captureOrderNo), eq(paymentOrders.appId, row.appId), exactTenant(paymentOrders.tenantId, row.tenantId),
+      eq(paymentOrders.orderNo, row.captureOrderNo), eq(paymentOrders.appId, row.appId), exactTenantCondition(paymentOrders.tenantId, row.tenantId),
     )).limit(1);
     if (!order) {
       const [unchanged] = await db.update(paymentPreauths).set({ errorMessage: '渠道确认捕获成功，但本地捕获订单缺失', version: sql`${paymentPreauths.version} + 1` })

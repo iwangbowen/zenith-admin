@@ -6,6 +6,7 @@
 import { and, desc, eq, gte, inArray, like, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   appWebhookDeliveries,
   oauth2Clients,
@@ -18,6 +19,7 @@ import {
   paymentTransfers,
   type PaymentEventRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
@@ -100,17 +102,19 @@ export async function listPaymentEvents(q: ListEventsQuery) {
   if (q.status) conds.push(eq(paymentEvents.status, q.status));
   if (q.type) conds.push(eq(paymentEvents.type, q.type));
   const where = buildWhere(...conds, tenantCondition(paymentEvents, currentUser()));
-  const [total, list] = await Promise.all([
-    db.$count(paymentEvents, where),
-    withPagination(db.select().from(paymentEvents).where(where).orderBy(desc(paymentEvents.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapOutboxEvent), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentEvents, where),
+    rows: () => withPagination(db.select().from(paymentEvents).where(where).orderBy(desc(paymentEvents.id)).$dynamic(), page, pageSize),
+    map: mapOutboxEvent,
+  });
 }
 
 export async function getPaymentEvent(id: number): Promise<PaymentOutboxEvent> {
   const tc = tenantCondition(paymentEvents, currentUser());
   const [row] = await db.select().from(paymentEvents).where(and(eq(paymentEvents.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '事件不存在' });
+  requireRow(row, '事件不存在');
   return mapOutboxEvent(row);
 }
 
@@ -118,7 +122,7 @@ export async function getPaymentEvent(id: number): Promise<PaymentOutboxEvent> {
 export async function redispatchEvent(id: number): Promise<PaymentOutboxEvent> {
   const tc = tenantCondition(paymentEvents, currentUser());
   const [row] = await db.select().from(paymentEvents).where(and(eq(paymentEvents.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '事件不存在' });
+  requireRow(row, '事件不存在');
   await db.update(paymentEvents).set({ status: 'pending', attempts: 0, lastError: null, processedAt: null }).where(eq(paymentEvents.id, id));
   await processEvent(id);
   const [latest] = await db.select().from(paymentEvents).where(eq(paymentEvents.id, id)).limit(1);
@@ -134,7 +138,7 @@ export async function redispatchEvent(id: number): Promise<PaymentOutboxEvent> {
 export async function simulateOrderPaid(id: number, ip = '127.0.0.1'): Promise<PaymentOrder> {
   const tc = tenantCondition(paymentOrders, currentUser());
   const [order] = await db.select().from(paymentOrders).where(and(eq(paymentOrders.id, id), tc)).limit(1);
-  if (!order) throw new HTTPException(404, { message: '支付订单不存在' });
+  requireRow(order, '支付订单不存在');
   if (order.status !== 'pending' && order.status !== 'paying') {
     throw new HTTPException(400, { message: '仅待支付/支付中订单可模拟支付' });
   }

@@ -4,13 +4,12 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 // 直接引组件文件而非 charts 桶文件：后者会连带引入 ~2MB 的 vchart，本页无图表
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { JsonBlock } from '@/components/JsonBlock';
 import { usePermission } from '@/hooks/usePermission';
 import { PAYMENT_OUTBOX_EVENT_STATUSES, type PaymentOutboxEvent } from '@zenith/shared/payment';
 import { paymentEventKeys, usePaymentEventList, usePaymentOpsHealth, useRedispatchPaymentEvent } from '@/hooks/queries/payment-events';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { createLabelOptionsFromMap, enumValueOf } from '@zenith/shared/core';
@@ -55,7 +54,6 @@ export default function PaymentEventsPage() {
     status: enumValueOf(PAYMENT_OUTBOX_EVENT_STATUSES, submittedParams.status),
     type: submittedParams.type || undefined,
   });
-  const data = listQuery.data ?? null;
   const healthQuery = usePaymentOpsHealth();
   const health = healthQuery.data ?? null;
   const redispatchMutation = useRedispatchPaymentEvent();
@@ -131,8 +129,6 @@ export default function PaymentEventsPage() {
     <KeywordInput placeholder="事件类型..." value={draftParams.type} onChange={(v) => setDraftParams((p) => ({ ...p, type: v }))} onSearch={handleSearch} width={180} />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   // 与订单统计等页面统一的无边框统计形态（StatGrid/StatCard）
   const renderHealthCards = () => (
     <StatGrid minItemWidth={148} style={{ marginBottom: 12 }}>
@@ -146,38 +142,25 @@ export default function PaymentEventsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderTypeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderStatusFilter()}
             {renderTypeFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="支付事件筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {renderHealthCards()}
 
       <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
+        columns={columns}
+        empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
         expandedRowRender={renderExpanded}
         expandRowByClick
       />

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { SQL, SQLWrapper } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import {
   PAYMENT_LEDGER_STANDARD_ACCOUNTS,
@@ -17,6 +17,7 @@ import {
   type TransitionPaymentFundReservationInput,
 } from '@zenith/shared/payment';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentApps,
   paymentChannelConfigs,
@@ -30,10 +31,11 @@ import {
 } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { runAsUser } from '../../lib/audit-context';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { isPgUniqueViolation, rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 
 export interface PaymentMoneyScope {
@@ -46,10 +48,6 @@ export interface PaymentMoneyScope {
 interface JournalActor {
   tenantId: number | null;
   operatorId: number | null;
-}
-
-function exactTenantCondition(column: SQLWrapper, tenantId: number | null): SQL {
-  return tenantId == null ? sql`${column} is null` : sql`${column} = ${tenantId}`;
 }
 
 function mapLedgerAccount(row: PaymentLedgerAccountRow): PaymentLedgerAccount {
@@ -91,8 +89,8 @@ function mapFundReservation(row: PaymentFundReservationRow): PaymentFundReservat
 }
 
 async function assertScopeOwnership(executor: DbExecutor, scope: PaymentMoneyScope): Promise<void> {
-  const tenantScopeForApp = scope.tenantId == null ? isNull(paymentApps.tenantId) : eq(paymentApps.tenantId, scope.tenantId);
-  const tenantScopeForConfig = scope.tenantId == null ? isNull(paymentChannelConfigs.tenantId) : eq(paymentChannelConfigs.tenantId, scope.tenantId);
+  const tenantScopeForApp = exactTenantCondition(paymentApps.tenantId, scope.tenantId);
+  const tenantScopeForConfig = exactTenantCondition(paymentChannelConfigs.tenantId, scope.tenantId);
   const [app] = await executor
     .select({
       id: paymentApps.id,
@@ -146,11 +144,13 @@ export async function listLedgerAccounts(q: ListLedgerAccountsQuery) {
   if (q.currency) conditions.push(eq(paymentLedgerAccounts.currency, q.currency));
   if (q.status) conditions.push(eq(paymentLedgerAccounts.status, q.status));
   const where = buildWhere(...conditions, tenantCondition(paymentLedgerAccounts, currentUser()));
-  const [total, rows] = await Promise.all([
-    db.$count(paymentLedgerAccounts, where),
-    withPagination(db.select().from(paymentLedgerAccounts).where(where).orderBy(desc(paymentLedgerAccounts.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: rows.map(mapLedgerAccount), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentLedgerAccounts, where),
+    rows: () => withPagination(db.select().from(paymentLedgerAccounts).where(where).orderBy(desc(paymentLedgerAccounts.id)).$dynamic(), page, pageSize),
+    map: mapLedgerAccount,
+  });
 }
 
 export async function createLedgerAccount(input: CreatePaymentLedgerAccountInput): Promise<PaymentLedgerAccount> {
@@ -270,7 +270,7 @@ async function getJournalRow(id: number): Promise<PaymentJournalRow> {
     .from(paymentJournals)
     .where(and(eq(paymentJournals.id, id), tenantCondition(paymentJournals, currentUser())))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '资金凭证不存在' });
+  requireRow(row, '资金凭证不存在');
   return row;
 }
 
@@ -306,21 +306,20 @@ export async function listJournals(q: ListJournalsQuery) {
   if (q.currency) conditions.push(eq(paymentJournals.currency, q.currency));
   const tenantScope = tenantCondition(paymentJournals, user);
   const where = buildWhere(...conditions, tenantScope);
-  const [total, rows] = await Promise.all([
-    db.$count(paymentJournals, where),
-    withPagination(db.select().from(paymentJournals).where(where).orderBy(desc(paymentJournals.id)).$dynamic(), page, pageSize),
-  ]);
-  const journalIds = rows.map((row) => row.id);
-  const [lines, reversalMap] = await Promise.all([
-    loadJournalLines(journalIds),
-    loadReversalMap(journalIds, tenantScope),
-  ]);
-  return {
-    list: rows.map((row) => mapJournal(row, lines.get(row.id) ?? [], reversalMap.get(row.id))),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(paymentJournals, where),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(paymentJournals).where(where).orderBy(desc(paymentJournals.id)).$dynamic(), page, pageSize);
+      const journalIds = rows.map((row) => row.id);
+      const [lines, reversalMap] = await Promise.all([
+        loadJournalLines(journalIds),
+        loadReversalMap(journalIds, tenantScope),
+      ]);
+      return rows.map((row) => mapJournal(row, lines.get(row.id) ?? [], reversalMap.get(row.id)));
+    },
+  });
 }
 
 function journalRequestHash(input: PostPaymentJournalInput, reversalOfJournalId: number | null): string {
@@ -358,7 +357,7 @@ async function getJournalForTenant(id: number, tenantId: number | null): Promise
     .from(paymentJournals)
     .where(and(eq(paymentJournals.id, id), exactTenantCondition(paymentJournals.tenantId, tenantId)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '资金凭证不存在' });
+  requireRow(row, '资金凭证不存在');
   const tenantScope = exactTenantCondition(paymentJournals.tenantId, tenantId);
   const [lines, reversalMap] = await Promise.all([
     loadJournalLines([row.id]),
@@ -738,7 +737,7 @@ async function getReservationRow(id: number): Promise<PaymentFundReservationRow>
     .from(paymentFundReservations)
     .where(and(eq(paymentFundReservations.id, id), tenantCondition(paymentFundReservations, currentUser())))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '资金预占不存在' });
+  requireRow(row, '资金预占不存在');
   return row;
 }
 
@@ -760,11 +759,13 @@ export async function listFundReservations(q: ListFundReservationsQuery) {
   if (q.status) conditions.push(eq(paymentFundReservations.status, q.status));
   if (q.sourceType) conditions.push(eq(paymentFundReservations.sourceType, q.sourceType));
   const where = buildWhere(...conditions, tenantCondition(paymentFundReservations, currentUser()));
-  const [total, rows] = await Promise.all([
-    db.$count(paymentFundReservations, where),
-    withPagination(db.select().from(paymentFundReservations).where(where).orderBy(desc(paymentFundReservations.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: rows.map(mapFundReservation), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentFundReservations, where),
+    rows: () => withPagination(db.select().from(paymentFundReservations).where(where).orderBy(desc(paymentFundReservations.id)).$dynamic(), page, pageSize),
+    map: mapFundReservation,
+  });
 }
 
 export async function createFundReservation(input: CreatePaymentFundReservationInput): Promise<PaymentFundReservation> {
@@ -784,7 +785,7 @@ export async function createFundReservation(input: CreatePaymentFundReservationI
       .where(and(eq(paymentLedgerAccounts.id, input.accountId), exactTenantCondition(paymentLedgerAccounts.tenantId, tenantId)))
       .for('update')
       .limit(1);
-    if (!account) throw new HTTPException(404, { message: '账本账户不存在' });
+    requireRow(account, '账本账户不存在');
     if (account.status !== 'enabled') throw new HTTPException(400, { message: '账本账户已停用' });
     if (account.code !== 'merchant_available' || account.normalBalance !== 'credit') {
       throw new HTTPException(400, { message: '资金预占只能作用于商户可用账户' });
@@ -905,7 +906,7 @@ export async function getActiveReservationAmount(accountId: number): Promise<Pay
     .from(paymentLedgerAccounts)
     .where(and(eq(paymentLedgerAccounts.id, accountId), tenantCondition(paymentLedgerAccounts, currentUser())))
     .limit(1);
-  if (!account[0]) throw new HTTPException(404, { message: '账本账户不存在' });
+  requireRow(account[0], '账本账户不存在');
   const [row] = await db
     .select({ amount: sql<string>`coalesce(sum(${paymentFundReservations.amount}), 0)::text` })
     .from(paymentFundReservations)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatYuan, getPaymentQrInstruction, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
+import { formatYuan, getPaymentQrInstruction } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Col, Divider, Form, Input, InputNumber, Row, SideSheet, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -9,7 +9,6 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 // 本页无图表：直接引组件文件，避免经桶文件带入 ~2MB 的 vchart
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import PaymentStatsPanel from './PaymentStatsPanel';
@@ -34,7 +33,7 @@ import {
 } from '@/hooks/queries/payment-orders';
 import { usePaymentStats } from '@/hooks/queries/payment-stats';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -44,6 +43,7 @@ import { usePaymentCapabilities } from '@/hooks/queries/payment-capabilities';
 import { usePaymentMethodList } from '@/hooks/queries/payment-methods';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 const STATUS_COLOR = {
   pending: 'grey', paying: 'blue', success: 'green', closed: 'grey', refunding: 'amber', refunded: 'orange', failed: 'red',
   unknown: 'amber',
@@ -170,7 +170,6 @@ export default function PaymentOrdersPage() {
   }
 
   const listQuery = usePaymentOrderList({ page, pageSize, ...buildQuery(submittedParams) });
-  const data = listQuery.data ?? null;
   const statsQuery = usePaymentStats();
   const stats: PaymentStats | null = statsQuery.data ?? null;
   const detailQuery = usePaymentOrderDetail(detail?.id, !!detail);
@@ -319,8 +318,8 @@ export default function PaymentOrdersPage() {
     copyableNoColumn('订单号', 'orderNo'),
     { title: '标题', dataIndex: 'subject', minWidth: 240, render: renderEllipsis },
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (value: number) => renderEllipsis(appNameById.get(value) ?? `应用 #${value}`) },
-    { title: '金额', dataIndex: 'amount', width: 110, align: 'right', render: (v: number) => yuan(v) },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { ...paymentMoneyColumn<PaymentOrder>('金额', 'amount'), width: 110 },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <PaymentChannelTag channel={v} /> },
     { title: '方式', dataIndex: 'payMethod', width: 150, render: (v: PaymentMethod) => PAYMENT_METHOD_LABELS[v] },
     { title: '业务类型', dataIndex: 'bizType', width: 240, render: renderEllipsis },
     dateTimeColumn('支付时间', 'paidAt'),
@@ -366,7 +365,7 @@ export default function PaymentOrdersPage() {
 
   const detailRefundColumns: ColumnProps<PaymentRefund>[] = [
     copyableNoColumn('退款单号', 'refundNo'),
-    { title: '金额', dataIndex: 'refundAmount', width: 90, align: 'right', render: (v: number) => yuan(v) },
+    { ...paymentMoneyColumn<PaymentRefund>('金额', 'refundAmount'), width: 90 },
     { title: '状态', dataIndex: 'status', width: 110, render: (v: PaymentRefundStatus) => <Tag color={REFUND_STATUS_COLOR[v]}>{PAYMENT_REFUND_STATUS_LABELS[v]}</Tag> },
     dateTimeColumn('退款时间', 'refundedAt'),
   ];
@@ -439,8 +438,6 @@ export default function PaymentOrdersPage() {
     <DateRangeFilter placeholder={['创建开始', '创建结束']} value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))} width={330} />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const openCreateOrder = () => {
     setSelectedApplicationId(undefined);
     createOrderModal.openCreate();
@@ -464,35 +461,9 @@ export default function PaymentOrdersPage() {
               <StatCard title="累计退款" value={yuan(stats.refundAmount)} />
             </StatGrid>
           )}
-          <SearchToolbar
-            primary={(
-              <>
-                {renderKeywordSearch()}
-                {renderBizTypeFilter()}
-                {renderChannelFilter()}
-                {renderPayMethodFilter()}
-                {renderStatusFilter()}
-                {renderMinAmountFilter()}
-                {renderMaxAmountFilter()}
-                {renderTimeRangeFilter()}
-                {renderSearchButton()}
-                {renderResetButton()}
-              </>
-            )}
-            actions={(
-              <>
-                {renderExportButtons()}
-                {renderCreateButton()}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderKeywordSearch()}
-                {renderSearchButton()}
-                {renderCreateButton()}
-              </>
-            )}
-            mobileFilters={(
+          <ListSearchToolbar
+            keyword={renderKeywordSearch()}
+            filters={(
               <>
                 {renderBizTypeFilter()}
                 {renderChannelFilter()}
@@ -503,15 +474,17 @@ export default function PaymentOrdersPage() {
                 {renderTimeRangeFilter()}
               </>
             )}
+            onSearch={handleSearch}
+            onReset={handleReset}
+            create={renderCreateButton()}
+            actions={renderExportButtons()}
             mobileActions={renderMobileExportActions()}
             filterTitle="支付订单筛选"
-            onFilterApply={handleSearch}
-            onFilterReset={handleReset}
           />
-
-          <ConfigurableTable
-            bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
+          <ConfigurableTable<PaymentOrder>
+            columns={columns}
+            empty="暂无数据"
+            {...listTableProps(listQuery, { pagination: buildPagination })}
           />
         </TabPane>
         <TabPane tab="统计分析" itemKey="stats">

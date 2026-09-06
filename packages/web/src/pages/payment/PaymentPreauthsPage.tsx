@@ -11,7 +11,6 @@ import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } fro
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 import {
   paymentPreauthKeys,
   useCapturePaymentPreauth,
@@ -21,10 +20,13 @@ import {
   useReleasePaymentPreauth,
 } from '@/hooks/queries/payment-preauths';
 import { enumValueOf } from '@zenith/shared/core';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_PREAUTH_STATUS_LABELS, PAYMENT_PREAUTH_STATUS_OPTIONS, PAYMENT_PREAUTH_STATUSES, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
+import { PAYMENT_CHANNELS, PAYMENT_PREAUTH_STATUS_LABELS, PAYMENT_PREAUTH_STATUS_OPTIONS, PAYMENT_PREAUTH_STATUSES, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { CreatePaymentPreauthInput, PaymentChannel, PaymentPreauth, PaymentPreauthMethod, PaymentPreauthStatus } from '@zenith/shared/payment';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { listTableProps } from '@/components/list-page';
+import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
+import { useEnabledPaymentAppLookup } from './payment-app-options';
 
 const yuan = formatYuan;
 const STATUS_COLOR = { pending: 'grey', unknown: 'orange', frozen: 'blue', captured: 'green', released: 'teal', failed: 'red' } as const satisfies Record<PaymentPreauthStatus, string>;
@@ -53,13 +55,7 @@ export default function PaymentPreauthsPage() {
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
   const [preauthAppId, setPreauthAppId] = useState<number | null>(null);
 
-  const appsQuery = usePaymentAppList({ page: 1, pageSize: 100, status: 'enabled' });
-  const paymentApps = useMemo(() => appsQuery.data?.list ?? [], [appsQuery.data?.list]);
-  const appById = useMemo(() => new Map(paymentApps.map((app) => [app.id, app])), [paymentApps]);
-  const appOptions = useMemo(
-    () => paymentApps.map((app) => ({ value: app.id, label: `${app.name} · ${app.environment === 'sandbox' ? '沙箱' : '生产'}` })),
-    [paymentApps],
-  );
+  const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
   const effectivePreauthAppId = preauthAppId ?? paymentApps[0]?.id;
 
   const listQuery = usePaymentPreauthList({
@@ -70,8 +66,6 @@ export default function PaymentPreauthsPage() {
     status: enumValueOf(PAYMENT_PREAUTH_STATUSES, submittedParams.status),
     channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
   }, effectivePreauthAppId != null);
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const preauthMethodOptions = useMemo(() => {
     const app = selectedAppId == null ? null : appById.get(selectedAppId);
     return PREAUTH_METHOD_OPTIONS.filter((option) => option.value === 'wechat_preauth' ? app?.wechatConfigId != null : app?.alipayConfigId != null);
@@ -153,11 +147,11 @@ export default function PaymentPreauthsPage() {
   const columns: ColumnProps<PaymentPreauth>[] = [
     copyableNoColumn('预授权单号', 'preauthNo'),
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (value: number) => renderEllipsis(appById.get(value)?.name ?? `应用 #${value}`) },
-    { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => PAYMENT_CHANNEL_LABELS[v] },
+    { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => <PaymentChannelTag channel={v} textOnly /> },
     { title: '冻结事由', dataIndex: 'subject', minWidth: 180, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{v}</Typography.Text> },
     { title: '付款人', dataIndex: 'payerAccount', width: 150, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 130 }}>{v}</Typography.Text> },
-    { title: '冻结金额', dataIndex: 'frozenAmount', width: 110, align: 'right', render: (v: number) => yuan(v) },
-    { title: '转支付金额', dataIndex: 'capturedAmount', width: 110, align: 'right', render: (v: number | null) => (v == null ? '-' : yuan(v)) },
+    { ...paymentMoneyColumn<PaymentPreauth>('冻结金额', 'frozenAmount'), width: 110 },
+    { ...paymentMoneyColumn<PaymentPreauth>('转支付金额', 'capturedAmount'), width: 110 },
     copyableNoColumn('转支付订单', 'captureOrderNo'),
     { title: '币种/版本', width: 100, render: (_: unknown, record: PaymentPreauth) => `${record.currency} · v${record.version}` },
     dateTimeColumn('冻结时间', 'frozenAt'),
@@ -199,7 +193,7 @@ export default function PaymentPreauthsPage() {
       }}
       optionList={appOptions}
       filter
-      loading={appsQuery.isFetching}
+      loading={appsFetching}
       style={{ width: 180 }}
     />
   );
@@ -252,9 +246,10 @@ export default function PaymentPreauthsPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered columns={columns} dataSource={data} loading={appsQuery.isFetching || listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(total)}
+      <ConfigurableTable<PaymentPreauth>
+        columns={columns}
+        empty="暂无数据"
+        {...listTableProps({ ...listQuery, isFetching: appsFetching || listQuery.isFetching }, { pagination: buildPagination })}
       />
 
       <AppModal {...createModal.modalProps} title="发起预授权冻结" width={660}>
@@ -263,7 +258,7 @@ export default function PaymentPreauthsPage() {
         <Form key={createModal.formKey} {...createModal.formProps}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Select field="applicationId" label="支付应用" style={{ width: '100%' }} optionList={appOptions} filter loading={appsQuery.isFetching}
+              <Form.Select field="applicationId" label="支付应用" style={{ width: '100%' }} optionList={appOptions} filter loading={appsFetching}
                 onChange={(value) => { setSelectedAppId((value as number | undefined) ?? null); createModal.formApi.current?.setValue('payMethod', undefined); }} rules={[{ required: true, message: '请选择支付应用' }]} />
             </Col>
             <Col span={12}>

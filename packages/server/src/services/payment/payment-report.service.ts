@@ -4,7 +4,7 @@
  * Journal 是唯一资金事实来源：报表只聚合已过账凭证及其双分录行，不再读取旧单边台账或日切快照。
  * 金额口径由 sourceType + 标准科目 + 借贷方向共同确定，避免把同一凭证的两侧重复计入。
  */
-import { and, eq, gte, isNull, lte, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
+import { and, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
 import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentReportGroupBy, PaymentReportRow } from '@zenith/shared/payment';
 import { readSnapshot } from '../../db';
@@ -17,7 +17,7 @@ import {
 } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { currentUser } from '../../lib/context';
-import { getTenantScopeId } from '../../lib/tenant';
+import { getTenantScopeId, optionalExactTenantCondition } from '../../lib/tenant';
 import { APP_TIME_ZONE, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 
 export interface ReportSummaryQuery {
@@ -78,13 +78,6 @@ interface DimensionExpressions {
   label: SQL<string>;
 }
 
-function exactTenantCondition(column: SQLWrapper, tenantId: number | null | undefined): SQL | undefined {
-  // `undefined` means a platform super-admin is viewing all tenants. `null`
-  // remains the explicit global (tenant-less) scope.
-  if (tenantId === undefined) return undefined;
-  return tenantId === null ? isNull(column) : eq(column, tenantId);
-}
-
 function dimensionExpressions(groupBy: PaymentReportGroupBy): DimensionExpressions {
   switch (groupBy) {
     case 'application':
@@ -136,7 +129,7 @@ async function aggregateFromJournals(
   // canonical expression only; the row label is the key itself.
   const selectLabel = groupBy === 'day' ? sql<string>`'day'` : label;
   const conditions: (SQL | undefined)[] = [
-    exactTenantCondition(paymentJournals.tenantId, tenantId),
+    optionalExactTenantCondition(paymentJournals.tenantId, tenantId),
     start ? gte(paymentJournals.postedAt, start) : undefined,
     end ? lte(paymentJournals.postedAt, end) : undefined,
   ];
@@ -185,15 +178,15 @@ async function aggregateFromJournals(
       eq(paymentLedgerAccounts.appId, paymentJournals.appId),
       eq(paymentLedgerAccounts.channelConfigId, paymentJournals.channelConfigId),
       eq(paymentLedgerAccounts.currency, paymentJournals.currency),
-      exactTenantCondition(paymentLedgerAccounts.tenantId, tenantId),
+      optionalExactTenantCondition(paymentLedgerAccounts.tenantId, tenantId),
     ))
     .innerJoin(paymentApps, and(
       eq(paymentApps.id, paymentJournals.appId),
-      exactTenantCondition(paymentApps.tenantId, tenantId),
+      optionalExactTenantCondition(paymentApps.tenantId, tenantId),
     ))
     .innerJoin(paymentChannelConfigs, and(
       eq(paymentChannelConfigs.id, paymentJournals.channelConfigId),
-      exactTenantCondition(paymentChannelConfigs.tenantId, tenantId),
+      optionalExactTenantCondition(paymentChannelConfigs.tenantId, tenantId),
     ))
     .where(and(...conditions))
     .groupBy(...(groupBy === 'day' ? [sql`1`] : [key, label]));

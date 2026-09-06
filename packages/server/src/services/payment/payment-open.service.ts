@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type {
   CreateOpenPaymentIntentInput,
@@ -11,6 +11,8 @@ import type {
   PaymentMethod,
 } from '@zenith/shared/payment';
 import { db } from '../../db';
+import { exactTenantCondition } from '../../lib/tenant';
+import { requireRow } from '../../lib/db-assert';
 import { paymentChannelConfigs, paymentMethodConfigs, paymentOrders, paymentRefunds } from '../../db/schema';
 import type { OpenPrincipal } from '../../middleware/open-gateway';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -18,10 +20,6 @@ import { getProviderManifest, initPaymentAdapters } from '../../lib/payment';
 import { createPayment, refund } from './payment.service';
 import { resolvePaymentApplicationByOpenClient } from './payment-apps.service';
 import { decidePaymentCapability } from './payment-capability-evaluator';
-
-function exactTenant(column: typeof paymentOrders.tenantId, tenantId: number | null) {
-  return tenantId == null ? isNull(column) : eq(column, tenantId);
-}
 
 function mapOpenIntent(row: typeof paymentOrders.$inferSelect): OpenPaymentIntent {
   return {
@@ -74,10 +72,10 @@ async function scopedOrder(principal: OpenPrincipal, orderNo: string) {
     .where(and(
       eq(paymentOrders.orderNo, orderNo),
       eq(paymentOrders.appId, app.id),
-      exactTenant(paymentOrders.tenantId, tenantId),
+      exactTenantCondition(paymentOrders.tenantId, tenantId),
     ))
     .limit(1);
-  if (!order) throw new HTTPException(404, { message: '支付意图不存在' });
+  requireRow(order, '支付意图不存在');
   return { app, tenantId, order };
 }
 
@@ -119,7 +117,7 @@ export async function createOpenPaymentRefund(input: {
     .where(and(
       eq(paymentRefunds.refundNo, result.refundNo),
       eq(paymentRefunds.orderId, order.id),
-      tenantId == null ? isNull(paymentRefunds.tenantId) : eq(paymentRefunds.tenantId, tenantId),
+      exactTenantCondition(paymentRefunds.tenantId, tenantId),
     ))
     .limit(1);
   if (!row) throw new HTTPException(500, { message: '退款已受理但本地记录读取失败' });
@@ -135,11 +133,11 @@ export async function getOpenPaymentRefund(principal: OpenPrincipal, refundNo: s
     .where(and(
       eq(paymentRefunds.refundNo, refundNo),
       eq(paymentOrders.appId, app.id),
-      exactTenant(paymentOrders.tenantId, tenantId),
-      tenantId == null ? isNull(paymentRefunds.tenantId) : eq(paymentRefunds.tenantId, tenantId),
+      exactTenantCondition(paymentOrders.tenantId, tenantId),
+      exactTenantCondition(paymentRefunds.tenantId, tenantId),
     ))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '退款不存在' });
+  requireRow(row, '退款不存在');
   return mapOpenRefund(row.refund);
 }
 
@@ -153,15 +151,13 @@ export async function getOpenPaymentCapabilities(
   const configs = configIds.length > 0
     ? await db.select().from(paymentChannelConfigs).where(and(
         inArray(paymentChannelConfigs.id, configIds),
-        tenantId == null ? isNull(paymentChannelConfigs.tenantId) : eq(paymentChannelConfigs.tenantId, tenantId),
+        exactTenantCondition(paymentChannelConfigs.tenantId, tenantId),
       ))
     : [];
   const methods = await db
     .select()
     .from(paymentMethodConfigs)
-    .where(tenantId == null
-      ? isNull(paymentMethodConfigs.tenantId)
-      : eq(paymentMethodConfigs.tenantId, tenantId));
+    .where(exactTenantCondition(paymentMethodConfigs.tenantId, tenantId));
   const methodByCode = new Map(methods.map((item) => [item.method, item]));
   const capabilities: OpenPaymentCapability[] = [];
   const exposedOperations = new Set(['payment.create', 'payment.query', 'refund.create', 'refund.query']);

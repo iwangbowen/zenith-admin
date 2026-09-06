@@ -10,6 +10,7 @@ import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentChannelConfigs,
   paymentFundReservations,
@@ -18,8 +19,9 @@ import {
   type PaymentChannelConfigRow,
   type PaymentTransferRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -86,7 +88,7 @@ export function mapTransfer(row: PaymentTransferRow & { operatorName?: string | 
 async function ensureTransfer(id: number): Promise<PaymentTransferRow> {
   const tc = tenantCondition(paymentTransfers, currentUser());
   const [row] = await db.select().from(paymentTransfers).where(and(eq(paymentTransfers.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '转账单不存在' });
+  requireRow(row, '转账单不存在');
   return row;
 }
 
@@ -326,7 +328,7 @@ export async function createTransfer(input: CreatePaymentTransferInput & { idemp
     bizType: input.bizType ?? null,
     bizId: input.bizId ?? null,
   })).digest('hex');
-  const exactTenant = tenantId == null ? sql`${paymentTransfers.tenantId} is null` : eq(paymentTransfers.tenantId, tenantId);
+  const exactTenant = exactTenantCondition(paymentTransfers.tenantId, tenantId);
   const [existing] = await db
     .select()
     .from(paymentTransfers)
@@ -447,7 +449,7 @@ export async function rejectTransfer(id: number, input: ApprovePaymentTransferIn
       .where(and(eq(paymentTransfers.id, id), tc))
       .for('update')
       .limit(1);
-    if (!row) throw new HTTPException(404, { message: '转账单不存在' });
+    requireRow(row, '转账单不存在');
     if (row.status !== 'pending' || row.approvalStatus !== 'pending') {
       throw new HTTPException(400, { message: '该转账单无需审批或已处理' });
     }
@@ -515,7 +517,7 @@ export async function syncTransferStatus(id: number): Promise<PaymentTransfer> {
     ? (await db.select().from(paymentChannelConfigs).where(and(
       eq(paymentChannelConfigs.id, row.channelConfigId),
       eq(paymentChannelConfigs.channel, row.channel),
-      row.tenantId == null ? isNull(paymentChannelConfigs.tenantId) : eq(paymentChannelConfigs.tenantId, row.tenantId),
+      exactTenantCondition(paymentChannelConfigs.tenantId, row.tenantId),
     )).limit(1))[0]
     : undefined;
   if (!config) return mapTransfer(row);
@@ -672,18 +674,19 @@ export async function listTransfers(q: ListTransfersQuery) {
   if (q.approvalStatus) conds.push(eq(paymentTransfers.approvalStatus, q.approvalStatus));
   conds.push(...dateRangeConditions(paymentTransfers.createdAt, q.startTime, q.endTime));
   const where = buildWhere(...conds, tenantCondition(paymentTransfers, currentUser()));
-  const [total, rows] = await Promise.all([
-    db.$count(paymentTransfers, where),
-    db.query.paymentTransfers.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentTransfers, where),
+    rows: () => db.query.paymentTransfers.findMany({
       where,
       orderBy: desc(paymentTransfers.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
       with: { operator: { columns: { nickname: true, username: true } } },
     }),
-  ]);
-  const list = rows.map((r) => mapTransfer({ ...r, operatorName: r.operator?.nickname ?? r.operator?.username ?? null }));
-  return { list, total, page, pageSize };
+    map: (r) => mapTransfer({ ...r, operatorName: r.operator?.nickname ?? r.operator?.username ?? null }),
+  });
 }
 
 /** 转账汇总（列表页顶部统计） */

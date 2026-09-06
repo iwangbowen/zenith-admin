@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import { formatMinorAmount, formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
+import { formatMinorAmount, formatYuan } from '@/utils/payment';
 import { Button, Form, SideSheet, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
@@ -21,14 +21,15 @@ import {
   useUpdatePaymentSettlementStatus,
 } from '@/hooks/queries/payment-settlements';
 import { usePaymentChannelOperationLookup } from '@/hooks/queries/payment-channels';
-import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 import { enumValueOf } from '@zenith/shared/core';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_SETTLEMENT_STATUS_LABELS, PAYMENT_SETTLEMENT_STATUSES, PAYMENT_CHANNEL_OPTIONS, PAYMENT_SETTLEMENT_STATUS_OPTIONS } from '@zenith/shared/payment';
+import { PAYMENT_CHANNELS, PAYMENT_SETTLEMENT_STATUS_LABELS, PAYMENT_SETTLEMENT_STATUSES, PAYMENT_CHANNEL_OPTIONS, PAYMENT_SETTLEMENT_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type { CreatePaymentSettlementInput, PaymentChannel, PaymentSettlementBatch, PaymentSettlementItem, PaymentSettlementStatus } from '@zenith/shared/payment';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { abortSubmit } from '@/lib/abort-submit';
-import { confirmDelete } from '@/utils/confirm';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
+import { deleteAction, listTableProps } from '@/components/list-page';
+import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
+import { paymentAppBoundConfigIds, useAppBoundConfigOptions, useEnabledPaymentAppLookup } from './payment-app-options';
 
 const yuan = formatYuan;
 const channelOptions = PAYMENT_CHANNEL_OPTIONS;
@@ -57,32 +58,14 @@ export default function PaymentSettlementsPage() {
     channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
     status: enumValueOf(PAYMENT_SETTLEMENT_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const channelConfigsQuery = usePaymentChannelOperationLookup();
   const operationChannelConfigs = useMemo(() => channelConfigsQuery.data ?? [], [channelConfigsQuery.data]);
-  const appLookupQuery = usePaymentAppList({ page: 1, pageSize: 100, status: 'enabled' });
-  const paymentApps = useMemo(() => appLookupQuery.data?.list ?? [], [appLookupQuery.data?.list]);
-  const appById = useMemo(() => new Map(paymentApps.map((app) => [app.id, app])), [paymentApps]);
-  const appOptions = useMemo(
-    () => paymentApps.map((app) => ({ value: app.id, label: `${app.name} · ${app.environment === 'sandbox' ? '沙箱' : '生产'}` })),
-    [paymentApps],
-  );
-  const channelConfigById = useMemo(
-    () => new Map(operationChannelConfigs.map((config) => [config.id, config])),
-    [operationChannelConfigs],
-  );
-  const merchantConfigOptions = useMemo(
-    () => {
-      const app = selectedAppId == null ? null : appById.get(selectedAppId);
-      const boundConfigIds = new Set([app?.wechatConfigId, app?.alipayConfigId, app?.unionpayConfigId].filter((id): id is number => id != null));
-      return operationChannelConfigs.filter((config) => boundConfigIds.has(config.id)).map((config) => ({
-      value: config.id,
-      label: `${config.name} · ${PAYMENT_CHANNEL_LABELS[config.channel]} · ${config.sandbox ? '沙箱' : '生产'}`,
-      }));
-    },
-    [appById, operationChannelConfigs, selectedAppId],
-  );
+  const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
+  const { configById: channelConfigById, options: merchantConfigOptions } = useAppBoundConfigOptions({
+    selectedAppId,
+    configs: operationChannelConfigs,
+    apps: paymentApps,
+  });
   const generateMutation = useGeneratePaymentSettlement();
   const itemsQuery = usePaymentSettlementItems(detailBatch?.id, !!detailBatch);
   const transitionMutation = useUpdatePaymentSettlementStatus();
@@ -99,8 +82,8 @@ export default function PaymentSettlementsPage() {
     beforeSave: (values) => {
       const config = channelConfigById.get(values.channelConfigId);
       const app = appById.get(values.applicationId);
-      const appConfigIds = [app?.wechatConfigId, app?.alipayConfigId, app?.unionpayConfigId];
-      if (!app || !config || !appConfigIds.includes(config.id)) {
+      const appConfigIds = paymentAppBoundConfigIds(app);
+      if (!app || !config || !appConfigIds.has(config.id)) {
         Toast.error('所选支付应用未绑定该商户配置，请重新选择');
         abortSubmit('validation');
       }
@@ -157,11 +140,6 @@ export default function PaymentSettlementsPage() {
     Toast.success('已进入结算中');
   }
 
-  async function handleDelete(record: PaymentSettlementBatch) {
-    await deleteMutation.mutateAsync({ params: { id: record.id } });
-    Toast.success('结算批次已删除，资金明细已解除认领');
-  }
-
   function openGenerate() {
     setSelectedAppId(null);
     generateModal.openCreate();
@@ -170,7 +148,7 @@ export default function PaymentSettlementsPage() {
   const columns: ColumnProps<PaymentSettlementBatch>[] = [
     copyableNoColumn('批次号', 'batchNo'),
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (v: number) => renderEllipsis(appById.get(v)?.name ?? `应用 #${v}`) },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <PaymentChannelTag channel={v} /> },
     {
       title: '商户配置', dataIndex: 'channelConfigId', width: 220,
       render: (v: number) => renderEllipsis(channelConfigById.get(v)?.name ?? `配置 #${v}`),
@@ -178,9 +156,9 @@ export default function PaymentSettlementsPage() {
     { title: '币种', dataIndex: 'currency', width: 80 },
     { title: '账期', dataIndex: 'periodStart', width: 240, render: (_: unknown, r: PaymentSettlementBatch) => <span style={{ whiteSpace: 'nowrap' }}>{r.periodStart} ~ {r.periodEnd}</span> },
     { title: '订单数', dataIndex: 'orderCount', width: 80, align: 'right' },
-    { title: '收款', dataIndex: 'grossAmount', width: 110, align: 'right', render: (v: number) => yuan(v) },
-    { title: '手续费', dataIndex: 'feeAmount', width: 100, align: 'right', render: (v: number) => yuan(v) },
-    { title: '退款', dataIndex: 'refundAmount', width: 100, align: 'right', render: (v: number) => yuan(v) },
+    { ...paymentMoneyColumn<PaymentSettlementBatch>('收款', 'grossAmount'), width: 110 },
+    { ...paymentMoneyColumn<PaymentSettlementBatch>('手续费', 'feeAmount'), width: 100 },
+    { ...paymentMoneyColumn<PaymentSettlementBatch>('退款', 'refundAmount'), width: 100 },
     { title: '分账', dataIndex: 'sharingAmount', width: 100, align: 'right', render: (v: number) => yuan(v ?? 0) },
     { title: '净额', dataIndex: 'netAmount', width: 120, align: 'right', render: (v: number) => <Typography.Text strong type={v < 0 ? 'danger' : 'success'}>{yuan(v)}</Typography.Text> },
     { title: '到账参考号', dataIndex: 'payoutReference', width: 180, render: renderEllipsis },
@@ -205,19 +183,15 @@ export default function PaymentSettlementsPage() {
             label: '开始结算',
             loading: busy,
             onClick: () => void handleStart(r),
-          }, {
-            key: 'delete',
-            label: '删除',
-            danger: true,
-            loading: deleteMutation.isPending && deleteMutation.variables?.params.id === r.id,
-            onClick: () => {
-              confirmDelete({
-                title: `删除结算批次 ${r.batchNo}？`,
-                content: '删除后该批次认领的资金凭证行会重新变为可结算状态。',
-                onOk: () => handleDelete(r),
-              });
-            },
-          }] : []),
+          },
+          deleteAction({
+            hidden: false,
+            disabled: deleteMutation.isPending && deleteMutation.variables?.params.id === r.id,
+            title: `删除结算批次 ${r.batchNo}？`,
+            content: '删除后该批次认领的资金凭证行会重新变为可结算状态。',
+            run: () => deleteMutation.mutateAsync({ params: { id: r.id } }),
+            successMessage: '结算批次已删除，资金明细已解除认领',
+          })] : []),
           ...(r.status === 'settling' ? [{
             key: 'settled',
             label: '标记到账',
@@ -300,9 +274,10 @@ export default function PaymentSettlementsPage() {
         onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered columns={columns} dataSource={data} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(total)}
+      <ConfigurableTable<PaymentSettlementBatch>
+        columns={columns}
+        empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal {...generateModal.modalProps} title="生成结算批次" width={520}>
@@ -313,7 +288,7 @@ export default function PaymentSettlementsPage() {
             style={{ width: '100%' }}
             optionList={appOptions}
             filter
-            loading={appLookupQuery.isFetching}
+            loading={appsFetching}
             onChange={(value) => {
               setSelectedAppId((value as number | undefined) ?? null);
               generateModal.formApi.current?.setValue('channelConfigId', undefined);

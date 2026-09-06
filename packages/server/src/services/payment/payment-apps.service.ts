@@ -2,9 +2,11 @@
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import { oauth2Clients, paymentApps, paymentChannelConfigs, type PaymentAppRow } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime } from '../../lib/datetime';
@@ -63,17 +65,19 @@ export async function listApps(q: ListAppsQuery) {
     buildWhere(...conditions),
     tenantCondition(paymentApps, currentUser()),
   );
-  const [total, rows] = await Promise.all([
-    db.$count(paymentApps, where),
-    db.query.paymentApps.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentApps, where),
+    rows: () => db.query.paymentApps.findMany({
       where,
       orderBy: desc(paymentApps.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
       with: APP_RELATIONS,
     }),
-  ]);
-  return { list: rows.map(mapApp), total, page, pageSize };
+    map: mapApp,
+  });
 }
 
 async function ensureApp(id: number): Promise<PaymentAppRow> {
@@ -82,14 +86,13 @@ async function ensureApp(id: number): Promise<PaymentAppRow> {
     .from(paymentApps)
     .where(and(eq(paymentApps.id, id), tenantCondition(paymentApps, currentUser())))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '支付应用不存在' });
+  requireRow(row, '支付应用不存在');
   return row;
 }
 
 export async function getApp(id: number): Promise<PaymentApp> {
   await ensureApp(id);
-  const row = await db.query.paymentApps.findFirst({ where: eq(paymentApps.id, id), with: APP_RELATIONS });
-  if (!row) throw new HTTPException(404, { message: '支付应用不存在' });
+  const row = requireRow(await db.query.paymentApps.findFirst({ where: eq(paymentApps.id, id), with: APP_RELATIONS }), '支付应用不存在');
   return mapApp(row);
 }
 
@@ -115,9 +118,7 @@ async function assertConfigChannel(
   environment: 'production' | 'sandbox',
 ): Promise<void> {
   if (configId == null) return;
-  const tenantScope = tenantId == null
-    ? isNull(paymentChannelConfigs.tenantId)
-    : eq(paymentChannelConfigs.tenantId, tenantId);
+  const tenantScope = exactTenantCondition(paymentChannelConfigs.tenantId, tenantId);
   const [row] = await db
     .select({ channel: paymentChannelConfigs.channel, sandbox: paymentChannelConfigs.sandbox })
     .from(paymentChannelConfigs)
@@ -182,7 +183,7 @@ export async function updateApp(id: number, input: UpdatePaymentAppInput): Promi
   const [row] = await db.update(paymentApps).set(set)
     .where(and(eq(paymentApps.id, id), tenantCondition(paymentApps, currentUser())))
     .returning({ id: paymentApps.id });
-  if (!row) throw new HTTPException(404, { message: '支付应用不存在' });
+  requireRow(row, '支付应用不存在');
   return getApp(row.id);
 }
 
@@ -219,9 +220,7 @@ export async function resolveApplicationChannelConfig(
       ? app.alipayConfigId
       : app.unionpayConfigId;
   if (!configId) throw new HTTPException(400, { message: `应用「${app.name}」未绑定${channel}渠道配置` });
-  const configTenant = app.tenantId == null
-    ? isNull(paymentChannelConfigs.tenantId)
-    : eq(paymentChannelConfigs.tenantId, app.tenantId);
+  const configTenant = exactTenantCondition(paymentChannelConfigs.tenantId, app.tenantId);
   const [boundConfig] = await db.select({ id: paymentChannelConfigs.id, sandbox: paymentChannelConfigs.sandbox })
     .from(paymentChannelConfigs)
     .where(and(
@@ -243,7 +242,7 @@ export async function resolveSoleApplicationChannelConfig(
   channel: PaymentChannel,
   tenantId: number | null,
 ): Promise<{ appId: number; channelConfigId: number; tenantId: number | null }> {
-  const tenantScope = tenantId == null ? isNull(paymentApps.tenantId) : eq(paymentApps.tenantId, tenantId);
+  const tenantScope = exactTenantCondition(paymentApps.tenantId, tenantId);
   const rows = await db
     .select({
       id: paymentApps.id,
@@ -262,7 +261,7 @@ export async function resolveSoleApplicationChannelConfig(
 }
 
 export async function resolvePaymentApplicationByOpenClient(openClientId: number, tenantId: number | null) {
-  const tenantScope = tenantId == null ? isNull(paymentApps.tenantId) : eq(paymentApps.tenantId, tenantId);
+  const tenantScope = exactTenantCondition(paymentApps.tenantId, tenantId);
   const app = await db.query.paymentApps.findFirst({
     where: and(eq(paymentApps.openClientId, openClientId), eq(paymentApps.status, 'enabled'), tenantScope),
     with: { openClient: true },

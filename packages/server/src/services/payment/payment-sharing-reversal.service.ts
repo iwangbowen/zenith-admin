@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { PaymentSharingReversal, PaymentSharingReversalStatus } from '@zenith/shared/payment';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentOrders,
   paymentChannelConfigs,
@@ -12,10 +13,11 @@ import {
   type PaymentSharingOrderRow,
   type PaymentSharingReversalRow,
 } from '../../db/schema';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { assertProviderCapability, getAdapter, type AdapterContext, type ProfitShareReverseInput, type ProfitShareReverseResult } from '../../lib/payment';
-import { tenantCondition } from '../../lib/tenant';
+import { tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
 import { buildAdapterContext, loadOrderConfig } from './payment.service';
 import { assertPaymentEngineConfig } from './payment-channel-config-resolver';
@@ -55,7 +57,7 @@ async function loadReversal(id: number): Promise<ReversalWithSharing> {
     .innerJoin(paymentSharingOrders, eq(paymentSharingOrders.id, paymentSharingReversals.sharingOrderId))
     .where(and(eq(paymentSharingReversals.id, id), tenantCondition(paymentSharingReversals, currentUser())))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '分账冲正记录不存在' });
+  requireRow(row, '分账冲正记录不存在');
   return { ...row.reversal, sharingNo: row.sharingNo, orderNo: row.orderNo };
 }
 
@@ -79,9 +81,11 @@ export async function listSharingReversals(q: ListSharingReversalsQuery) {
   if (q.sharingOrderId) conditions.push(eq(paymentSharingReversals.sharingOrderId, q.sharingOrderId));
   if (q.status) conditions.push(eq(paymentSharingReversals.status, q.status));
   const where = buildWhere(...conditions, tenantCondition(paymentSharingReversals, currentUser()));
-  const [total, rows] = await Promise.all([
-    db.$count(paymentSharingReversals, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentSharingReversals, where),
+    rows: () => withPagination(
       db
         .select({ reversal: paymentSharingReversals, sharingNo: paymentSharingOrders.sharingNo, orderNo: paymentSharingOrders.orderNo })
         .from(paymentSharingReversals)
@@ -92,13 +96,8 @@ export async function listSharingReversals(q: ListSharingReversalsQuery) {
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((row) => mapSharingReversal({ ...row.reversal, sharingNo: row.sharingNo, orderNo: row.orderNo })),
-    total,
-    page,
-    pageSize,
-  };
+    map: (row) => mapSharingReversal({ ...row.reversal, sharingNo: row.sharingNo, orderNo: row.orderNo }),
+  });
 }
 
 interface ReversalContext {
@@ -120,7 +119,7 @@ async function resolveReversalContext(sharing: PaymentSharingOrderRow, options?:
       .where(and(
         eq(paymentChannelConfigs.id, order.channelConfigId),
         eq(paymentChannelConfigs.channel, order.channel),
-        order.tenantId == null ? isNull(paymentChannelConfigs.tenantId) : eq(paymentChannelConfigs.tenantId, order.tenantId),
+        exactTenantCondition(paymentChannelConfigs.tenantId, order.tenantId),
       ))
       .limit(1))[0]
     : await loadOrderConfig(order);
@@ -273,7 +272,7 @@ export async function createSharingReversal(input: {
     .from(paymentSharingOrders)
     .where(and(eq(paymentSharingOrders.id, input.sharingOrderId), sharingTenant))
     .limit(1);
-  if (!initialSharing) throw new HTTPException(404, { message: '分账单不存在' });
+  requireRow(initialSharing, '分账单不存在');
   if (initialSharing.status !== 'success' && initialSharing.status !== 'reversed') {
     throw new HTTPException(400, { message: '只有成功分账可以发起冲正' });
   }
@@ -290,7 +289,7 @@ export async function createSharingReversal(input: {
   const created = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM payment_sharing_orders WHERE id = ${initialSharing.id} FOR UPDATE`);
     const [sharing] = await tx.select().from(paymentSharingOrders).where(eq(paymentSharingOrders.id, initialSharing.id)).limit(1);
-    if (!sharing) throw new HTTPException(404, { message: '分账单不存在' });
+    requireRow(sharing, '分账单不存在');
     const [existing] = await tx
       .select()
       .from(paymentSharingReversals)

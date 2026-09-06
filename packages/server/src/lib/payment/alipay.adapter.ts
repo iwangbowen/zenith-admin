@@ -18,6 +18,7 @@ import {
   providerHttpOptions,
   readProviderResponseText,
 } from './provider-http';
+import { requireSandboxOperation, sandboxProfitShareReverse } from './adapter-sandbox';
 import { buildSignedSandboxOperation } from './sandbox-operation';
 import type {
   AdapterContext,
@@ -431,36 +432,13 @@ export const alipayAdapter: PaymentChannelAdapter = {
   },
 
   async reverseProfitShare(ctx: AdapterContext, order, input: ProfitShareReverseInput): Promise<ProfitShareReverseResult> {
-    if (!ctx.config.sandbox) {
-      throw new HTTPException(400, { message: 'CAPABILITY_UNSUPPORTED: alipay/profit-sharing.reverse/live' });
-    }
-    const signed = buildSignedSandboxOperation(ctx, 'ALIPSR', 'profit-sharing.reverse', {
-      orderNo: order.orderNo,
-      outSharingNo: input.outSharingNo,
-      channelSharingNo: input.channelSharingNo,
-      outReversalNo: input.outReversalNo,
-      amount: input.amount,
-      reason: input.reason,
-    });
+    requireSandboxOperation(ctx, 'profit-sharing.reverse', 'alipay');
     logger.info('[alipay] signed sandbox profit-sharing reversal', { outReversalNo: input.outReversalNo, amount: input.amount });
-    await Promise.resolve();
-    return { channelReversalNo: signed.reference, status: 'success', raw: signed.raw };
+    return sandboxProfitShareReverse(ctx, order, input, { prefix: 'ALIPSR', label: 'alipay' });
   },
 
   async queryProfitShareReverse(ctx: AdapterContext, order, input: ProfitShareReverseInput): Promise<ProfitShareReverseQueryResult> {
-    if (!ctx.config.sandbox) {
-      throw new HTTPException(400, { message: 'CAPABILITY_UNSUPPORTED: alipay/profit-sharing.reverse/live' });
-    }
-    const signed = buildSignedSandboxOperation(ctx, 'ALIPSR', 'profit-sharing.reverse', {
-      orderNo: order.orderNo,
-      outSharingNo: input.outSharingNo,
-      channelSharingNo: input.channelSharingNo,
-      outReversalNo: input.outReversalNo,
-      amount: input.amount,
-      reason: input.reason,
-    });
-    await Promise.resolve();
-    return { channelReversalNo: signed.reference, status: 'success', finishedAt: new Date(), raw: signed.raw };
+    return sandboxProfitShareReverse(ctx, order, input, { prefix: 'ALIPSR', label: 'alipay', query: true });
   },
 
   async transfer(ctx: AdapterContext, input: TransferInput): Promise<TransferResult> {
@@ -533,7 +511,7 @@ export const alipayAdapter: PaymentChannelAdapter = {
   },
 
   async queryContract(ctx: AdapterContext, input: ContractQueryInput): Promise<ContractQueryResult> {
-    if (!ctx.config.sandbox) throw new HTTPException(400, { message: 'CAPABILITY_UNSUPPORTED: alipay/contract.query/live' });
+    requireSandboxOperation(ctx, 'contract.query', 'alipay');
     const signed = buildSignedSandboxOperation(ctx, 'ALICT', 'contract.sign', { outContractNo: input.outContractNo });
     await Promise.resolve();
     return {

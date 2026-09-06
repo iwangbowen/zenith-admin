@@ -15,7 +15,6 @@ import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS } from '@zenith/shared/payment';
 import type { BizPayDemo, BizPayDemoStatus, CreateBizPayDemoInput } from '@zenith/shared/biz';
 import type { CreatePaymentResult, PaymentMethod } from '@zenith/shared/payment';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, dateTimeColumn } from '@/utils/table-columns';
@@ -28,10 +27,10 @@ import {
   usePayBizPayDemo,
   useSimulateBizPayDemoPaid,
 } from '@/hooks/queries/biz-pay-demo';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { getPaymentQrInstruction } from '@/utils/payment';
@@ -149,8 +148,6 @@ export default function PayDemoPage() {
     keyword: submittedParams.keyword.trim() || undefined,
     status: submittedParams.status || undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const createMutation = useCreateBizPayDemo();
   const payMutation = usePayBizPayDemo();
   const simulateMutation = useSimulateBizPayDemoPaid();
@@ -192,11 +189,6 @@ export default function PayDemoPage() {
   const handleSimulate = async (record: BizPayDemo) => {
     await simulateMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已模拟支付成功，自动完成履约');
-  };
-
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('已删除');
   };
 
   const columns: ColumnProps<BizPayDemo>[] = [
@@ -253,18 +245,12 @@ export default function PayDemoPage() {
             });
           },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: record.status === 'paid',
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定删除吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
@@ -281,8 +267,6 @@ export default function PayDemoPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => <CreateButton onClick={createModal.openCreate}>新建示例单</CreateButton>;
 
   return (
@@ -295,39 +279,19 @@ export default function PayDemoPage() {
         description="本页演示业务模块如何对接支付中心：新建示例单 → 发起支付（拿到二维码/跳转链接）→ 支付成功后由事件订阅器自动履约。未配置真实微信/支付宝渠道时，可点「模拟支付成功」跑通完整闭环。展开下方「前后端集成示例代码」查看接入方式。"
       />
 
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="支付示例筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable
-        bordered
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
         columnSettingsKey="biz-pay-demo"
-        pagination={buildPagination(total)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <Collapse style={{ marginTop: 16 }}>

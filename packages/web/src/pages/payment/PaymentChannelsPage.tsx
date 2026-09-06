@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
-import { PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
-import { Button, Form, SideSheet, Spin, Toast, Switch, Tag, Row, Col } from '@douyinfe/semi-ui';
+import { Button, Form, SideSheet, Spin, Toast, Tag, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
@@ -21,10 +19,11 @@ import {
 } from '@/hooks/queries/payment-channels';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { PaymentChannelTag } from './payment-display';
 
 interface SearchParams {
   keyword: string;
@@ -51,7 +50,6 @@ export default function PaymentChannelsPage() {
     channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data ?? null;
   const saveMutation = useSavePaymentChannel();
   const modal = useEditModal<PaymentChannelConfig, Record<string, unknown>>({
     entityName: '支付渠道',
@@ -86,7 +84,6 @@ export default function PaymentChannelsPage() {
   const toggleMutation = useSavePaymentChannel();
   const testMutation = useTestPaymentChannel();
   const defaultMutation = useSetDefaultPaymentChannel();
-  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
   const testingId = testMutation.isPending ? (testMutation.variables?.params.id ?? null) : null;
   const defaultingId = defaultMutation.isPending ? (defaultMutation.variables?.params.id ?? null) : null;
 
@@ -105,17 +102,10 @@ export default function PaymentChannelsPage() {
 
   const secretPlaceholder = (has?: boolean) => (modal.isEdit && has ? '已配置，留空则不修改' : '请输入');
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
-  function handleToggle(record: PaymentChannelConfig, checked: boolean) {
-    toggleMutation.mutate(
-      { id: record.id, values: { status: checked ? 'enabled' : 'disabled' } },
-      { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
-    );
-  }
+  const status = useStatusToggle<PaymentChannelConfig>({
+    toggle: (record, checked) => toggleMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } }),
+    disabled: !hasPermission('payment:channel:update'),
+  });
 
   function handleTest(record: PaymentChannelConfig) {
     testMutation.mutate({ params: { id: record.id } }, {
@@ -134,7 +124,7 @@ export default function PaymentChannelsPage() {
 
   const columns: ColumnProps<PaymentChannelConfig>[] = [
     { title: '名称', dataIndex: 'name', minWidth: 200, render: renderEllipsis },
-    { title: '渠道', dataIndex: 'channel', width: 110, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    { title: '渠道', dataIndex: 'channel', width: 110, render: (v: PaymentChannel) => <PaymentChannelTag channel={v} /> },
     {
       // 「设为默认」在此列原位操作（非默认行点击即设），操作列因此无需「更多」收纳
       title: '默认', dataIndex: 'isDefault', width: 120,
@@ -150,12 +140,7 @@ export default function PaymentChannelsPage() {
     },
     { title: '沙箱', dataIndex: 'sandbox', width: 80, render: (v: boolean) => (v ? <Tag color="grey">沙箱</Tag> : '-') },
     dateTimeColumn('创建时间', 'createdAt'),
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, r: PaymentChannelConfig) => (
-        <Switch checked={r.status === 'enabled'} loading={togglingId === r.id} disabled={!hasPermission('payment:channel:update')} size="small" onChange={(c) => handleToggle(r, c)} />
-      ),
-    },
+    status.column(),
     createOperationColumn<PaymentChannelConfig>({
       width: 210,
       actions: (r) => [
@@ -169,18 +154,12 @@ export default function PaymentChannelsPage() {
           label: '编辑',
           onClick: () => openEdit(r),
         }] : []),
-        ...(hasPermission('payment:channel:delete') ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `删除渠道配置「${r.name}」？`,
-              content: '删除后不可恢复；已产生订单或被支付应用绑定的配置无法删除，请改用停用',
-              onOk: () => handleDelete(r.id),
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('payment:channel:delete'),
+          title: `删除渠道配置「${r.name}」？`,
+          content: '删除后不可恢复；已产生订单或被支付应用绑定的配置无法删除，请改用停用',
+          run: () => deleteMutation.mutateAsync([r.id]),
+        }),
       ],
     }),
   ];
@@ -206,54 +185,30 @@ export default function PaymentChannelsPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => hasPermission('payment:channel:create') ? (
     <CreateButton onClick={openCreate} />
   ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderChannelFilter()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderChannelFilter()}
             {renderStatusFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="支付渠道筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<PaymentChannelConfig>
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <SideSheet

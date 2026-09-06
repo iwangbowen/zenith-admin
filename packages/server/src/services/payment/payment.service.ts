@@ -9,6 +9,7 @@ import { and, desc, eq, gte, inArray, isNull, lte, ne, notInArray, sql } from 'd
 import { HTTPException } from 'hono/http-exception';
 import { createHash, randomInt } from 'node:crypto';
 import { db } from '../../db';
+import { buildListResult } from '../../lib/list-query';
 import {
   paymentChannelConfigs,
   paymentApps,
@@ -23,8 +24,9 @@ import {
   type PaymentRefundRow,
 } from '../../db/schema';
 import { config } from '../../config';
+import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -109,9 +111,7 @@ async function assertPaymentOperation(
 
 /** 根据订单快照精确加载渠道配置，禁止按渠道回退到其他商户账户。 */
 export async function loadOrderConfig(order: PaymentOrderRow): Promise<PaymentChannelConfigRow | null> {
-  const tenantScope = order.tenantId == null
-    ? isNull(paymentChannelConfigs.tenantId)
-    : eq(paymentChannelConfigs.tenantId, order.tenantId);
+  const tenantScope = exactTenantCondition(paymentChannelConfigs.tenantId, order.tenantId);
   const [row] = await db
     .select()
     .from(paymentChannelConfigs)
@@ -151,13 +151,13 @@ export function createOrderConfigResolver(): OrderConfigResolver {
 async function getOrderRowByNo(orderNo: string): Promise<PaymentOrderRow> {
   const tc = currentUserOrNull() ? tenantCondition(paymentOrders, currentUser()) : undefined;
   const [row] = await db.select().from(paymentOrders).where(and(eq(paymentOrders.orderNo, orderNo), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '支付订单不存在' });
+  requireRow(row, '支付订单不存在');
   return row;
 }
 
 function channelConfigTenantCondition(tenantId: number | null | undefined) {
   if (tenantId === undefined || !config.multiTenantMode) return undefined;
-  return tenantId === null ? isNull(paymentChannelConfigs.tenantId) : eq(paymentChannelConfigs.tenantId, tenantId);
+  return exactTenantCondition(paymentChannelConfigs.tenantId, tenantId);
 }
 
 async function buildOrderIdWhere(id: number) {
@@ -225,7 +225,7 @@ async function recomputeOrderRefundState(executor: DbExecutor, orderId: number):
     .from(paymentOrders)
     .where(eq(paymentOrders.id, orderId))
     .limit(1);
-  if (!order) throw new HTTPException(404, { message: '原支付订单不存在' });
+  requireRow(order, '原支付订单不存在');
   const refunds = await executor
     .select({ amount: paymentRefunds.refundAmount, status: paymentRefunds.status })
     .from(paymentRefunds)
@@ -380,7 +380,7 @@ interface PaymentOrderScope {
 
 function orderScopeConditions(scope: PaymentOrderScope) {
   return [
-    scope.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, scope.tenantId),
+    exactTenantCondition(paymentOrders.tenantId, scope.tenantId),
     scope.appId == null ? isNull(paymentOrders.appId) : eq(paymentOrders.appId, scope.appId),
     eq(paymentOrders.currency, scope.currency),
   ];
@@ -771,7 +771,7 @@ async function assertProviderResultMatchesOrder(
     throw new ProviderResultMismatchError('CONFIG_MISMATCH', '回调商户配置或租户与订单不一致');
   }
   if (order.appId != null) {
-    const tenantScope = order.tenantId == null ? isNull(paymentApps.tenantId) : eq(paymentApps.tenantId, order.tenantId);
+    const tenantScope = exactTenantCondition(paymentApps.tenantId, order.tenantId);
     const [app] = await db
       .select({ id: paymentApps.id })
       .from(paymentApps)
@@ -1006,7 +1006,7 @@ function hashRefundRequest(input: CreateRefundInput): string {
 }
 
 async function findIdempotentRefund(order: PaymentOrderRow, idempotencyKey: string): Promise<PaymentRefundRow | null> {
-  const exactTenant = order.tenantId == null ? isNull(paymentRefunds.tenantId) : eq(paymentRefunds.tenantId, order.tenantId);
+  const exactTenant = exactTenantCondition(paymentRefunds.tenantId, order.tenantId);
   const [row] = await db
     .select()
     .from(paymentRefunds)
@@ -1031,7 +1031,7 @@ export async function refund(input: CreateRefundInput & { idempotencyKey: string
     and(
       eq(paymentSharingOrders.orderNo, order.orderNo),
       inArray(paymentSharingOrders.status, ['processing', 'success']),
-      order.tenantId == null ? isNull(paymentSharingOrders.tenantId) : eq(paymentSharingOrders.tenantId, order.tenantId),
+      exactTenantCondition(paymentSharingOrders.tenantId, order.tenantId),
     ),
   );
   if (activeSharingCount > 0) {
@@ -1064,7 +1064,7 @@ export async function refund(input: CreateRefundInput & { idempotencyKey: string
   // ── 原子校验 + 插入（事务内 SELECT FOR UPDATE 防并发超退） ──────────────────
   const refundResult = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM payment_orders WHERE id = ${order.id} FOR UPDATE`);
-    const exactTenant = order.tenantId == null ? isNull(paymentRefunds.tenantId) : eq(paymentRefunds.tenantId, order.tenantId);
+    const exactTenant = exactTenantCondition(paymentRefunds.tenantId, order.tenantId);
     const [raced] = await tx
       .select()
       .from(paymentRefunds)
@@ -1125,10 +1125,10 @@ export async function approveRefund(id: number, remark?: string): Promise<{ refu
   const user = currentUser();
   const tc = tenantCondition(paymentRefunds, user);
   const [refundRow] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.id, id), tc)).limit(1);
-  if (!refundRow) throw new HTTPException(404, { message: '退款记录不存在' });
+  requireRow(refundRow, '退款记录不存在');
   if (refundRow.approvalStatus !== 'pending') throw new HTTPException(400, { message: '该退款单无需审批或已处理' });
   const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, refundRow.orderNo)).limit(1);
-  if (!order) throw new HTTPException(404, { message: '原支付订单不存在' });
+  requireRow(order, '原支付订单不存在');
   const config = await loadOrderConfig(order);
   if (!config) throw new HTTPException(400, { message: '支付渠道配置不存在，无法退款' });
 
@@ -1157,10 +1157,10 @@ export async function rejectRefund(id: number, remark: string): Promise<void> {
   const user = currentUser();
   const tc = tenantCondition(paymentRefunds, user);
   const [refundRow] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.id, id), tc)).limit(1);
-  if (!refundRow) throw new HTTPException(404, { message: '退款记录不存在' });
+  requireRow(refundRow, '退款记录不存在');
   if (refundRow.approvalStatus !== 'pending') throw new HTTPException(400, { message: '该退款单无需审批或已处理' });
   const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, refundRow.orderNo)).limit(1);
-  if (!order) throw new HTTPException(404, { message: '原支付订单不存在' });
+  requireRow(order, '原支付订单不存在');
   const eventId = await db.transaction(async (tx) => {
     const updated = await tx
       .update(paymentRefunds)
@@ -1394,40 +1394,42 @@ export async function listOrders(q: ListOrdersQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 10;
   const finalWhere = await buildOrdersWhere(q);
-  const [total, list] = await Promise.all([
-    db.$count(paymentOrders, finalWhere),
-    withPagination(db.select().from(paymentOrders).where(finalWhere).orderBy(desc(paymentOrders.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapOrder), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentOrders, finalWhere),
+    rows: () => withPagination(db.select().from(paymentOrders).where(finalWhere).orderBy(desc(paymentOrders.id)).$dynamic(), page, pageSize),
+    map: mapOrder,
+  });
 }
 
 export async function getOrderDetail(id: number): Promise<PaymentOrder> {
   const [row] = await db.select().from(paymentOrders).where(await buildOrderIdWhere(id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '支付订单不存在' });
+  requireRow(row, '支付订单不存在');
   return mapOrder(row);
 }
 
 export async function getOrderDetailByNo(orderNo: string): Promise<PaymentOrder> {
   const [row] = await db.select().from(paymentOrders).where(await buildOrderNoWhere(orderNo)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '支付订单不存在' });
+  requireRow(row, '支付订单不存在');
   return mapOrder(row);
 }
 
 export async function refreshOrderById(id: number): Promise<PaymentOrder> {
   const [row] = await db.select().from(paymentOrders).where(await buildOrderIdWhere(id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '支付订单不存在' });
+  requireRow(row, '支付订单不存在');
   return mapOrder(await syncOrderStatus(row));
 }
 
 export async function closeOrderById(id: number): Promise<void> {
   const [row] = await db.select({ orderNo: paymentOrders.orderNo }).from(paymentOrders).where(await buildOrderIdWhere(id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '支付订单不存在' });
+  requireRow(row, '支付订单不存在');
   await closePayment(row.orderNo);
 }
 
 export async function listOrderRefunds(orderId: number): Promise<PaymentRefund[]> {
   const [order] = await db.select({ id: paymentOrders.id }).from(paymentOrders).where(await buildOrderIdWhere(orderId)).limit(1);
-  if (!order) throw new HTTPException(404, { message: '支付订单不存在' });
+  requireRow(order, '支付订单不存在');
   const rows = await db
     .select()
     .from(paymentRefunds)
@@ -1462,17 +1464,19 @@ export async function listRefunds(q: ListRefundsQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 10;
   const finalWhere = buildRefundsWhere(q);
-  const [total, list] = await Promise.all([
-    db.$count(paymentRefunds, finalWhere),
-    withPagination(db.select().from(paymentRefunds).where(finalWhere).orderBy(desc(paymentRefunds.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapRefund), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentRefunds, finalWhere),
+    rows: () => withPagination(db.select().from(paymentRefunds).where(finalWhere).orderBy(desc(paymentRefunds.id)).$dynamic(), page, pageSize),
+    map: mapRefund,
+  });
 }
 
 export async function getRefundDetail(id: number): Promise<PaymentRefund> {
   const tc = tenantCondition(paymentRefunds, currentUser());
   const [row] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '退款记录不存在' });
+  requireRow(row, '退款记录不存在');
   return mapRefund(row);
 }
 
@@ -1516,16 +1520,16 @@ export async function syncRefundStatus(
 export async function refreshRefundById(id: number): Promise<PaymentRefund> {
   const tc = tenantCondition(paymentRefunds, currentUser());
   const [refundRow] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.id, id), tc)).limit(1);
-  if (!refundRow) throw new HTTPException(404, { message: '退款记录不存在' });
+  requireRow(refundRow, '退款记录不存在');
   if (refundRow.status === 'success' || refundRow.status === 'failed') return mapRefund(refundRow);
 
-  const exactTenant = refundRow.tenantId == null ? isNull(paymentOrders.tenantId) : eq(paymentOrders.tenantId, refundRow.tenantId);
+  const exactTenant = exactTenantCondition(paymentOrders.tenantId, refundRow.tenantId);
   const [order] = await db
     .select()
     .from(paymentOrders)
     .where(and(eq(paymentOrders.orderNo, refundRow.orderNo), exactTenant))
     .limit(1);
-  if (!order) throw new HTTPException(404, { message: '原支付订单不存在' });
+  requireRow(order, '原支付订单不存在');
   const config = await loadOrderConfig(order);
   if (!config) throw new HTTPException(400, { message: '支付渠道配置不存在，无法查单' });
   try {
@@ -1558,11 +1562,13 @@ export async function listNotifyLogs(q: ListNotifyLogsQuery) {
   conditions.push(...dateRangeConditions(paymentNotifyLogs.createdAt, q.startTime, q.endTime));
   const where = buildWhere(...conditions);
   const finalWhere = buildWhere(where, tenantCondition(paymentNotifyLogs, currentUser()));
-  const [total, list] = await Promise.all([
-    db.$count(paymentNotifyLogs, finalWhere),
-    withPagination(db.select().from(paymentNotifyLogs).where(finalWhere).orderBy(desc(paymentNotifyLogs.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapNotifyLog), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(paymentNotifyLogs, finalWhere),
+    rows: () => withPagination(db.select().from(paymentNotifyLogs).where(finalWhere).orderBy(desc(paymentNotifyLogs.id)).$dynamic(), page, pageSize),
+    map: mapNotifyLog,
+  });
 }
 
 // ─── 纯函数：可供单测直接导入 ──────────────────────────────────────────────────

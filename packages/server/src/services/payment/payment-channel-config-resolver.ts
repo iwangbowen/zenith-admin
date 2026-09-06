@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared/payment';
 import type { PaymentChannel } from '@zenith/shared/payment';
 import { db } from '../../db';
+import { requireRow } from '../../lib/db-assert';
 import { paymentChannelConfigs } from '../../db/schema';
 import type { PaymentChannelConfigRow } from '../../db/schema';
 import { config } from '../../config';
@@ -31,7 +32,7 @@ export async function resolvePaymentChannelConfig(input: {
       .from(paymentChannelConfigs)
       .where(and(eq(paymentChannelConfigs.id, input.channelConfigId), eq(paymentChannelConfigs.status, 'enabled'), input.scope))
       .limit(1);
-    if (!row) throw new HTTPException(404, { message: '支付渠道配置不存在' });
+    requireRow(row, '支付渠道配置不存在');
     assertPaymentEngineConfig(row);
     return row;
   }

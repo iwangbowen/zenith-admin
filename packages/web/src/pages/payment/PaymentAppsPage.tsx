@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Banner, Form, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Form, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useAllPaymentChannelConfigsLookup } from '@/hooks/queries/payment-channels';
@@ -15,9 +14,9 @@ import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CreatePaymentAppInput, PaymentApp, PaymentChannel, PaymentChannelConfig } from '@zenith/shared/payment';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 interface SearchParams { keyword: string; status?: string; }
 const defaultSearch: SearchParams = { keyword: '', status: '' };
@@ -116,11 +115,6 @@ export default function PaymentAppsPage() {
     modal.openEdit(record);
   }
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
   const columns: ColumnProps<PaymentApp>[] = [
     { title: '应用名称', dataIndex: 'name', minWidth: 180, render: renderEllipsis },
     { title: '开放客户端', dataIndex: 'openClientName', width: 180, render: renderEllipsis },
@@ -136,17 +130,11 @@ export default function PaymentAppsPage() {
       width: 150,
       actions: (r) => canManage ? [
         { key: 'edit', label: '编辑', onClick: () => openEdit(r) },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              content: `删除应用「${r.name}」后不可恢复`,
-              onOk: () => handleDelete(r.id),
-            });
-          },
-        },
+        deleteAction({
+          title: '确定要删除吗？',
+          content: `删除应用「${r.name}」后不可恢复`,
+          run: () => deleteMutation.mutateAsync([r.id]),
+        }),
       ] : [],
     }),
   ];
@@ -161,40 +149,25 @@ export default function PaymentAppsPage() {
       onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
     />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => canManage ? <CreateButton onClick={openCreate} /> : null;
 
   return (
     <div className="page-container">
       <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }}
         description="支付应用绑定已审核的 Open OAuth 客户端，并按客户端环境路由同环境商户配置" />
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="支付应用筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered columns={columns} dataSource={listQuery.data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(listQuery.data?.total ?? 0)}
+      <ConfigurableTable<PaymentApp>
+        columns={columns}
+        empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal {...modal.modalProps} width={620}>
