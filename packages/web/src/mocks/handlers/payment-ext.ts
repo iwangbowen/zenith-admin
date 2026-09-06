@@ -12,6 +12,7 @@ import {
 } from '@zenith/shared/payment';
 import { PAYMENT_MOCK_SEED_TIME, mockPaymentChannels, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { recordMockSystemJournal } from './payment-journals';
@@ -114,8 +115,8 @@ const reconHandlers = [
     return ok(batch, '对账完成');
   }),
   mock(paymentReconContract.detail, ({ params, ok }) => {
-    const b = reconBatches.find((x) => x.id === params.id);
-    return b ? ok(b) : notFound('对账批次不存在');
+    const b = requireItem(reconBatches, params.id, '对账批次不存在');
+    return ok(b);
   }),
   mock(paymentReconContract.items, ({ params, query, ok, paginate }) => {
     const items = (reconItemsByBatch[params.id] ?? []).filter((i) => (!query.result || i.result === query.result) && (!query.handleStatus || i.handleStatus === query.handleStatus));
@@ -149,9 +150,8 @@ const reconHandlers = [
     return notFound('对账明细不存在');
   }),
   mock(paymentReconContract.remove, ({ params, ok }) => {
-    const i = reconBatches.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('对账批次不存在');
-    reconBatches.splice(i, 1);
+    requireItem(reconBatches, params.id, '对账批次不存在');
+    removeByIds(reconBatches, [params.id]);
     delete reconItemsByBatch[params.id];
     return ok(null, '删除成功');
   }),
@@ -243,8 +243,7 @@ const opsHandlers = [
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentOpsContract.redispatchEvent, ({ params, ok }) => {
-    const e = outboxEvents.find((x) => x.id === params.id);
-    if (!e) return notFound('事件不存在');
+    const e = requireItem(outboxEvents, params.id, '事件不存在');
     if (e.type === 'payment.succeeded') {
       const order = mockPaymentOrders.find((o) => o.orderNo === e.orderNo);
       if (order) recordMockPaymentSucceeded(order);
@@ -259,8 +258,7 @@ const opsHandlers = [
     return ok(e, '已重投');
   }),
   mock(paymentOpsContract.simulateOrderPaid, ({ params, ok }) => {
-    const o = mockPaymentOrders.find((x) => x.id === params.id);
-    if (!o) return notFound('支付订单不存在');
+    const o = requireItem(mockPaymentOrders, params.id, '支付订单不存在');
     if (o.status !== 'pending' && o.status !== 'paying') return badRequest('仅待支付/支付中订单可模拟支付');
     o.status = 'success';
     o.paidAmount = o.amount;
@@ -275,8 +273,7 @@ const opsHandlers = [
 // ─── 退款审批（approve / reject）──────────────────────────────────────────────
 const refundApprovalHandlers = [
   mock(paymentRefundContract.approveRefund, ({ params, body, ok }) => {
-    const r = mockPaymentRefunds.find((x) => x.id === params.id);
-    if (!r) return notFound('退款记录不存在');
+    const r = requireItem(mockPaymentRefunds, params.id, '退款记录不存在');
     if (r.approvalStatus !== 'pending') return badRequest('该退款单无需审批或已处理');
     r.approvalStatus = 'approved';
     r.approverId = 1;
@@ -295,8 +292,7 @@ const refundApprovalHandlers = [
     return ok({ refundNo: r.refundNo, status: 'success' }, '已审批通过');
   }),
   mock(paymentRefundContract.rejectRefund, ({ params, body, ok }) => {
-    const r = mockPaymentRefunds.find((x) => x.id === params.id);
-    if (!r) return notFound('退款记录不存在');
+    const r = requireItem(mockPaymentRefunds, params.id, '退款记录不存在');
     if (r.approvalStatus !== 'pending') return badRequest('该退款单无需审批或已处理');
     r.approvalStatus = 'rejected';
     r.approverId = 1;

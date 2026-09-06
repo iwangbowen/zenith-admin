@@ -1,11 +1,11 @@
 import { announcementContract } from '@zenith/shared/messaging';
 import type { AnnouncementAttachment, AnnouncementDetail, AnnouncementReadStatsUser } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+
 import { mockAnnouncements, getNextAnnouncementId } from '@/mocks/data/announcements';
 import { mockManagedFiles } from '@/mocks/handlers/files';
 import { mockDateTime } from '@/mocks/utils/date';
-import { removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 
 function buildAnnouncementAttachments(fileIds: string[] = []): AnnouncementAttachment[] {
   return fileIds
@@ -86,8 +86,7 @@ export const announcementsHandlers = [
   mock(announcementContract.markAllRead, ({ ok }) => ok(null)),
 
   mock(announcementContract.detail, ({ params, ok }) => {
-    const notice = mockAnnouncements.find((n) => n.id === params.id);
-    if (!notice) return notFound('公告不存在');
+    const notice = requireItem(mockAnnouncements, params.id, '公告不存在');
     return ok(notice);
   }),
 
@@ -118,8 +117,7 @@ export const announcementsHandlers = [
   }),
 
   mock(announcementContract.update, ({ params, body, ok }) => {
-    const notice = mockAnnouncements.find((n) => n.id === params.id);
-    if (!notice) return notFound('公告不存在');
+    const notice = requireItem(mockAnnouncements, params.id, '公告不存在');
     const { fileIds, recipients, ...announcementPatch } = body;
     Object.assign(notice, announcementPatch, { updatedAt: mockDateTime() });
     if (recipients !== undefined) {
@@ -140,17 +138,15 @@ export const announcementsHandlers = [
   }),
 
   mock(announcementContract.remove, ({ params, ok }) => {
-    const index = mockAnnouncements.findIndex((n) => n.id === params.id);
-    if (index === -1) return notFound('公告不存在');
-    mockAnnouncements.splice(index, 1);
+    requireItem(mockAnnouncements, params.id, '公告不存在');
+    removeByIds(mockAnnouncements, [params.id]);
     return ok(null, '删除成功');
   }),
 
   // 已读统计详情（管理视角）
   mock(announcementContract.readStats, ({ params, query, ok, paginate }) => {
     const tab = query.tab === 'unread' ? 'unread' : 'read';
-    const notice = mockAnnouncements.find((n) => n.id === params.id);
-    if (!notice) return notFound('公告不存在');
+    const notice = requireItem(mockAnnouncements, params.id, '公告不存在');
 
     const readCount = notice.readCount ?? 0;
     const totalCount = readCount + MOCK_UNREAD_USERS.length;

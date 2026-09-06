@@ -1,5 +1,6 @@
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
 import {
   renderPrintContent,
   reportAiContract,
@@ -194,8 +195,8 @@ export const reportHandlers = [
     return ok(paginate(list));
   }),
   mock(reportDatasourceContract.detail, ({ params, ok }) => {
-    const d = mockReportDatasources.find((x) => x.id === params.id);
-    return d ? ok(d) : notFound('数据源不存在');
+    const d = requireItem(mockReportDatasources, params.id, '数据源不存在');
+    return ok(d);
   }),
   mock(reportDatasourceContract.create, ({ body, ok }) => {
     const item: ReportDatasource = {
@@ -207,15 +208,12 @@ export const reportHandlers = [
     return ok(item, '新增成功');
   }),
   mock(reportDatasourceContract.update, ({ params, body, ok }) => {
-    const d = mockReportDatasources.find((x) => x.id === params.id);
-    if (!d) return notFound('数据源不存在');
-    Object.assign(d, body, { updatedAt: mockDateTime() });
+    const d = updateItem(mockReportDatasources, params.id, body, { notFoundMessage: '数据源不存在', now: mockDateTime });
     return ok(d, '更新成功');
   }),
   mock(reportDatasourceContract.remove, ({ params, ok }) => {
-    const i = mockReportDatasources.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('数据源不存在');
-    mockReportDatasources.splice(i, 1);
+    requireItem(mockReportDatasources, params.id, '数据源不存在');
+    removeByIds(mockReportDatasources, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -229,8 +227,7 @@ export const reportHandlers = [
   })),
   mock(reportDatasetContract.data, ({ params, body, ok }) => ok(applyDatasetQuery(getMockDatasetData(params.id), body))),
   mock(reportDatasetContract.materialize, ({ params, ok }) => {
-    const d = mockReportDatasets.find((x) => x.id === params.id);
-    if (!d) return notFound('数据集不存在');
+    const d = requireItem(mockReportDatasets, params.id, '数据集不存在');
     return ok({
       id: d.id,
       taskType: 'report-dataset-materialize',
@@ -261,7 +258,7 @@ export const reportHandlers = [
   // 血缘：扫描 mock 仪表盘 widgets/filters + 打印模板 + 预警
   mock(reportDatasetContract.refs, ({ params, ok }) => {
     const id = params.id;
-    if (!mockReportDatasets.some((x) => x.id === id)) return notFound('数据集不存在');
+    requireItem(mockReportDatasets, id, '数据集不存在');
     const dashboards = mockReportDashboards
       .map((d) => ({
         id: d.id,
@@ -291,8 +288,8 @@ export const reportHandlers = [
     return ok(paginate(list));
   }),
   mock(reportDatasetContract.detail, ({ params, ok }) => {
-    const d = mockReportDatasets.find((x) => x.id === params.id);
-    return d ? ok(d) : notFound('数据集不存在');
+    const d = requireItem(mockReportDatasets, params.id, '数据集不存在');
+    return ok(d);
   }),
   mock(reportDatasetContract.create, ({ body, ok }) => {
     const datasource = mockReportDatasources.find((x) => x.id === body.datasourceId);
@@ -306,9 +303,7 @@ export const reportHandlers = [
     return ok(item, '新增成功');
   }),
   mock(reportDatasetContract.update, ({ params, body, ok }) => {
-    const d = mockReportDatasets.find((x) => x.id === params.id);
-    if (!d) return notFound('数据集不存在');
-    Object.assign(d, body, { updatedAt: mockDateTime() });
+    const d = updateItem(mockReportDatasets, params.id, body, { notFoundMessage: '数据集不存在', now: mockDateTime });
     return ok(d, '更新成功');
   }),
   mock(reportDatasetContract.remove, ({ params, ok }) => {
@@ -334,8 +329,7 @@ export const reportHandlers = [
   mock(reportDashboardOpsContract.versions, ({ params, ok }) =>
     ok(mockReportVersions.filter((v) => v.dashboardId === params.id))),
   mock(reportDashboardOpsContract.createVersion, ({ params, body, ok }) => {
-    const dash = mockReportDashboards.find((x) => x.id === params.id);
-    if (!dash) return notFound('仪表盘不存在');
+    const dash = requireItem(mockReportDashboards, params.id, '仪表盘不存在');
     const existing = mockReportVersions.filter((v) => v.dashboardId === dash.id);
     const item = {
       id: getNextReportVersionId(), dashboardId: dash.id, version: existing.length + 1,
@@ -349,8 +343,7 @@ export const reportHandlers = [
   mock(reportDashboardOpsContract.restoreVersion, ({ ok }) => ok(null, '已恢复到该版本')),
 
   mock(reportDashboardOpsContract.favorite, ({ params, ok }) => {
-    const dash = mockReportDashboards.find((x) => x.id === params.id);
-    if (!dash) return notFound('仪表盘不存在');
+    const dash = requireItem(mockReportDashboards, params.id, '仪表盘不存在');
     dash.favorited = !dash.favorited;
     return ok({ favorited: dash.favorited }, dash.favorited ? '已收藏' : '已取消收藏');
   }),
@@ -369,16 +362,14 @@ export const reportHandlers = [
     return ok(item, '已创建分享链接');
   }),
   mock(reportDashboardOpsContract.updateShare, ({ params, body, ok }) => {
-    const s = mockReportShares.find((x) => x.id === params.shareId);
-    if (!s) return notFound('分享链接不存在');
+    const s = requireItem(mockReportShares, params.shareId, '分享链接不存在');
     const { password, ...rest } = body;
     Object.assign(s, rest, { updatedAt: mockDateTime() }, password === undefined ? {} : { hasPassword: !!password });
     return ok(s, '更新成功');
   }),
   mock(reportDashboardOpsContract.removeShare, ({ params, ok }) => {
-    const i = mockReportShares.findIndex((x) => x.id === params.shareId);
-    if (i === -1) return notFound('分享链接不存在');
-    mockReportShares.splice(i, 1);
+    requireItem(mockReportShares, params.shareId, '分享链接不存在');
+    removeByIds(mockReportShares, [params.shareId]);
     return ok(null, '删除成功');
   }),
 
@@ -397,28 +388,24 @@ export const reportHandlers = [
     return ok(item, '发表成功');
   }),
   mock(reportDashboardOpsContract.updateComment, ({ params, body, ok }) => {
-    const item = mockReportComments.find((c) => c.id === params.commentId);
-    if (!item) return notFound('评论不存在');
+    const item = requireItem(mockReportComments, params.commentId, '评论不存在');
     item.content = body.content;
     item.updatedAt = mockDateTime();
     return ok(item, '更新成功');
   }),
   mock(reportDashboardOpsContract.resolveComment, ({ params, body, ok }) => {
-    const item = mockReportComments.find((c) => c.id === params.commentId);
-    if (!item) return notFound('评论不存在');
+    const item = requireItem(mockReportComments, params.commentId, '评论不存在');
     item.resolvedAt = body.resolved ? mockDateTime() : null;
     return ok(item, '操作成功');
   }),
   mock(reportDashboardOpsContract.removeComment, ({ params, ok }) => {
-    const i = mockReportComments.findIndex((c) => c.id === params.commentId);
-    if (i === -1) return notFound('评论不存在');
-    mockReportComments.splice(i, 1);
+    requireItem(mockReportComments, params.commentId, '评论不存在');
+    removeByIds(mockReportComments, [params.commentId]);
     return ok(null, '删除成功');
   }),
 
   mock(reportDashboardContract.data, ({ params, body, ok }) => {
-    const dash = mockReportDashboards.find((x) => x.id === params.id);
-    if (!dash) return notFound('仪表盘不存在');
+    const dash = requireItem(mockReportDashboards, params.id, '仪表盘不存在');
     return ok(buildDashboardDataFor(dash, body));
   }),
 
@@ -432,8 +419,8 @@ export const reportHandlers = [
     return ok(paginate(list));
   }),
   mock(reportDashboardContract.detail, ({ params, ok }) => {
-    const d = mockReportDashboards.find((x) => x.id === params.id);
-    return d ? ok(d) : notFound('仪表盘不存在');
+    const d = requireItem(mockReportDashboards, params.id, '仪表盘不存在');
+    return ok(d);
   }),
   mock(reportDashboardContract.create, ({ body, ok }) => {
     const item: ReportDashboard = {
@@ -447,16 +434,14 @@ export const reportHandlers = [
     return ok(item, '新增成功');
   }),
   mock(reportDashboardContract.update, ({ params, body, ok }) => {
-    const d = mockReportDashboards.find((x) => x.id === params.id);
-    if (!d) return notFound('仪表盘不存在');
+    const d = requireItem(mockReportDashboards, params.id, '仪表盘不存在');
     const { expectedRevision: _expectedRevision, ...rest } = body;
     Object.assign(d, rest, { updatedAt: mockDateTime() });
     return ok(d, '更新成功');
   }),
   mock(reportDashboardContract.remove, ({ params, ok }) => {
-    const i = mockReportDashboards.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('仪表盘不存在');
-    mockReportDashboards.splice(i, 1);
+    requireItem(mockReportDashboards, params.id, '仪表盘不存在');
+    removeByIds(mockReportDashboards, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -471,22 +456,18 @@ export const reportHandlers = [
     return ok(item, '新增成功');
   }),
   mock(reportCategoryContract.update, ({ params, body, ok }) => {
-    const c = mockReportCategories.find((x) => x.id === params.id);
-    if (!c) return notFound('分类不存在');
-    Object.assign(c, body, { updatedAt: mockDateTime() });
+    const c = updateItem(mockReportCategories, params.id, body, { notFoundMessage: '分类不存在', now: mockDateTime });
     return ok(c, '更新成功');
   }),
   mock(reportCategoryContract.remove, ({ params, ok }) => {
-    const i = mockReportCategories.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('分类不存在');
-    mockReportCategories.splice(i, 1);
+    requireItem(mockReportCategories, params.id, '分类不存在');
+    removeByIds(mockReportCategories, [params.id]);
     return ok(null, '删除成功');
   }),
 
   // ─── 数据预警 ─────────────────────────────────────────────
   mock(reportAlertContract.evaluate, ({ params, ok }) => {
-    const a = mockReportAlerts.find((x) => x.id === params.id);
-    if (!a) return notFound('预警规则不存在');
+    const a = requireItem(mockReportAlerts, params.id, '预警规则不存在');
     const data = getMockDatasetData(a.datasetId);
     const rows = data.rows ?? [];
     const compareOne = (value: number) => a.op === 'gt' ? value > a.threshold : a.op === 'lt' ? value < a.threshold : value === a.threshold;
@@ -546,8 +527,8 @@ export const reportHandlers = [
     return ok(paginate(list));
   }),
   mock(reportAlertContract.detail, ({ params, ok }) => {
-    const a = mockReportAlerts.find((x) => x.id === params.id);
-    return a ? ok(a) : notFound('预警规则不存在');
+    const a = requireItem(mockReportAlerts, params.id, '预警规则不存在');
+    return ok(a);
   }),
   mock(reportAlertContract.create, ({ body, ok }) => {
     const item: ReportAlertRule = {
@@ -565,15 +546,12 @@ export const reportHandlers = [
     return ok(item, '新增成功');
   }),
   mock(reportAlertContract.update, ({ params, body, ok }) => {
-    const a = mockReportAlerts.find((x) => x.id === params.id);
-    if (!a) return notFound('预警规则不存在');
-    Object.assign(a, body, { updatedAt: mockDateTime() });
+    const a = updateItem(mockReportAlerts, params.id, body, { notFoundMessage: '预警规则不存在', now: mockDateTime });
     return ok(a, '更新成功');
   }),
   mock(reportAlertContract.remove, ({ params, ok }) => {
-    const i = mockReportAlerts.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('预警规则不存在');
-    mockReportAlerts.splice(i, 1);
+    requireItem(mockReportAlerts, params.id, '预警规则不存在');
+    removeByIds(mockReportAlerts, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -585,8 +563,7 @@ export const reportHandlers = [
 
   // ─── 打印报表 ─────────────────────────────────────────────
   mock(reportPrintContract.render, ({ params, body, ok }) => {
-    const t = mockReportPrintTemplates.find((x) => x.id === params.id);
-    if (!t) return notFound('打印模板不存在');
+    const t = requireItem(mockReportPrintTemplates, params.id, '打印模板不存在');
     try {
       return ok(renderMockPrintTemplate(t, body.params ?? {}, Math.min(Math.max(body.limit ?? 300, 1), 5000)));
     } catch (error) {
@@ -598,8 +575,8 @@ export const reportHandlers = [
     return ok(paginate(list));
   }),
   mock(reportPrintContract.detail, ({ params, ok }) => {
-    const t = mockReportPrintTemplates.find((x) => x.id === params.id);
-    return t ? ok(t) : notFound('打印模板不存在');
+    const t = requireItem(mockReportPrintTemplates, params.id, '打印模板不存在');
+    return ok(t);
   }),
   mock(reportPrintContract.create, ({ body, ok }) => {
     const item: ReportPrintTemplate = {
@@ -612,22 +589,18 @@ export const reportHandlers = [
     return ok(item, '新增成功');
   }),
   mock(reportPrintContract.update, ({ params, body, ok }) => {
-    const t = mockReportPrintTemplates.find((x) => x.id === params.id);
-    if (!t) return notFound('打印模板不存在');
-    Object.assign(t, body, { updatedAt: mockDateTime() });
+    const t = updateItem(mockReportPrintTemplates, params.id, body, { notFoundMessage: '打印模板不存在', now: mockDateTime });
     return ok(t, '更新成功');
   }),
   mock(reportPrintContract.remove, ({ params, ok }) => {
-    const i = mockReportPrintTemplates.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('打印模板不存在');
-    mockReportPrintTemplates.splice(i, 1);
+    requireItem(mockReportPrintTemplates, params.id, '打印模板不存在');
+    removeByIds(mockReportPrintTemplates, [params.id]);
     return ok(null, '删除成功');
   }),
 
   // ─── 订阅推送 ─────────────────────────────────────────────
   mock(reportSubscriptionContract.run, ({ params, ok }) => {
-    const s = mockReportSubscriptions.find((x) => x.id === params.id);
-    if (!s) return notFound('订阅不存在');
+    const s = requireItem(mockReportSubscriptions, params.id, '订阅不存在');
     const now = mockDateTime();
     s.lastRunAt = now;
     s.lastDeliveryAt = now;
@@ -678,15 +651,12 @@ export const reportHandlers = [
     return ok(item, '新增成功');
   }),
   mock(reportSubscriptionContract.update, ({ params, body, ok }) => {
-    const s = mockReportSubscriptions.find((x) => x.id === params.id);
-    if (!s) return notFound('订阅不存在');
-    Object.assign(s, body, { updatedAt: mockDateTime() });
+    const s = updateItem(mockReportSubscriptions, params.id, body, { notFoundMessage: '订阅不存在', now: mockDateTime });
     return ok(s, '更新成功');
   }),
   mock(reportSubscriptionContract.remove, ({ params, ok }) => {
-    const i = mockReportSubscriptions.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('订阅不存在');
-    mockReportSubscriptions.splice(i, 1);
+    requireItem(mockReportSubscriptions, params.id, '订阅不存在');
+    removeByIds(mockReportSubscriptions, [params.id]);
     return ok(null, '删除成功');
   }),
 

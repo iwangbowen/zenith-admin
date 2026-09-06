@@ -1,4 +1,5 @@
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { notFound, badRequest } from '@/mocks/utils/handlers';
 import { paymentDisputeContract, type PaymentDispute, type PaymentDisputeDetail, type PaymentDisputeReply, type PaymentDisputeStats } from '@zenith/shared/payment';
@@ -131,8 +132,7 @@ export const paymentDisputeHandlers = [
     return d ? ok(toDetail(d)) : notFound('投诉工单不存在');
   }),
   mock(paymentDisputeContract.reply, ({ params, body, ok }) => {
-    const d = disputes.find((x) => x.id === params.id);
-    if (!d) return notFound('投诉工单不存在');
+    const d = requireItem(disputes, params.id, '投诉工单不存在');
     if (d.status !== 'pending' && d.status !== 'processing') return badRequest('工单已完结，无法回复');
     d.replies.push({ id: nextReplyId++, author: 'merchant', content: body.content, operatorName: '管理员', createdAt: mockDateTime() });
     if (d.status === 'pending') d.status = 'processing';
@@ -140,8 +140,7 @@ export const paymentDisputeHandlers = [
     return ok(toDetail(d), '回复成功');
   }),
   mock(paymentDisputeContract.resolve, ({ params, body, ok }) => {
-    const d = disputes.find((x) => x.id === params.id);
-    if (!d) return notFound('投诉工单不存在');
+    const d = requireItem(disputes, params.id, '投诉工单不存在');
     if (d.status !== 'pending' && d.status !== 'processing') return badRequest('工单已完结');
     d.replies.push({ id: nextReplyId++, author: 'system', content: body.remark ? `工单已完结：${body.remark}` : '工单已完结', operatorName: '管理员', createdAt: mockDateTime() });
     d.status = 'resolved';
@@ -150,8 +149,7 @@ export const paymentDisputeHandlers = [
     return ok(toDetail(d), '已完结');
   }),
   mock(paymentDisputeContract.refund, ({ params, body, ok }) => {
-    const d = disputes.find((x) => x.id === params.id);
-    if (!d) return notFound('投诉工单不存在');
+    const d = requireItem(disputes, params.id, '投诉工单不存在');
     if (d.status !== 'pending' && d.status !== 'processing') return badRequest('工单已完结');
     const amount = body.refundAmount ?? d.amount;
     d.refundNo = `REF${Date.now()}`;

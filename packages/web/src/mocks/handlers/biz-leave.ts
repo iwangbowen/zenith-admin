@@ -2,6 +2,7 @@ import { bizLeaveContract } from '@zenith/shared/biz';
 import type { BizLeave } from '@zenith/shared/biz';
 import type { WorkflowInstance, WorkflowTask } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockBizLeaves, getNextLeaveId } from '@/mocks/data/biz-leave';
 import {
@@ -26,15 +27,13 @@ export const bizLeaveHandlers = [
 
   // 审批查看详情（供工作流参与者）
   mock(bizLeaveContract.approvalDetail, ({ params, ok }) => {
-    const leave = mockBizLeaves.find((l) => l.id === params.id);
-    if (!leave) return notFound('请假单不存在');
+    const leave = requireItem(mockBizLeaves, params.id, '请假单不存在');
     return ok(leave);
   }),
 
   // 提交审批：发起并关联工作流（mock 简化：置 pending + 关联一个实例 id）
   mock(bizLeaveContract.submit, ({ params, ok }) => {
-    const leave = mockBizLeaves.find((l) => l.id === params.id);
-    if (!leave) return notFound('请假单不存在');
+    const leave = requireItem(mockBizLeaves, params.id, '请假单不存在');
     if (leave.status !== 'draft') return badRequest('该请假单已提交，无法重复提交');
     const def = mockWorkflowDefinitions.find((item) => item.name === '请假审批' && item.formType === 'external' && item.status === 'published');
     if (!def) return badRequest('未找到已发布的「请假审批」业务系统主导流程定义');
@@ -101,8 +100,7 @@ export const bizLeaveHandlers = [
 
   // 重新编辑：驳回/取消 → 草稿（旧实例已终态，重新提交将发起新流程）
   mock(bizLeaveContract.reopen, ({ params, ok }) => {
-    const leave = mockBizLeaves.find((l) => l.id === params.id);
-    if (!leave) return notFound('请假单不存在');
+    const leave = requireItem(mockBizLeaves, params.id, '请假单不存在');
     if (leave.status !== 'rejected' && leave.status !== 'cancelled') {
       return badRequest('仅已驳回或已取消的请假单可重新编辑');
     }
@@ -115,8 +113,7 @@ export const bizLeaveHandlers = [
 
   // 详情
   mock(bizLeaveContract.detail, ({ params, ok }) => {
-    const leave = mockBizLeaves.find((l) => l.id === params.id);
-    if (!leave) return notFound('请假单不存在');
+    const leave = requireItem(mockBizLeaves, params.id, '请假单不存在');
     return ok(leave);
   }),
 
@@ -145,8 +142,7 @@ export const bizLeaveHandlers = [
 
   // 编辑（仅草稿）
   mock(bizLeaveContract.update, ({ params, body, ok }) => {
-    const leave = mockBizLeaves.find((l) => l.id === params.id);
-    if (!leave) return notFound('请假单不存在');
+    const leave = requireItem(mockBizLeaves, params.id, '请假单不存在');
     if (leave.status !== 'draft') return badRequest('仅草稿状态可编辑');
     Object.assign(leave, {
       leaveType: body.leaveType ?? leave.leaveType,

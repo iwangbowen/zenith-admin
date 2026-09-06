@@ -8,8 +8,9 @@ import {
   type PaymentLedgerAccountCode,
 } from '@zenith/shared/payment';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
-import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
+import { badRequest, conflict } from '@/mocks/utils/handlers';
 import { filterByKeyword } from '@/mocks/utils/filter';
 
 const accounts: PaymentLedgerAccount[] = [];
@@ -155,7 +156,7 @@ export const paymentJournalHandlers = [
   }),
   mock(paymentJournalContract.activeReservation, ({ params, ok }) => {
     const accountId = params.id;
-    if (!accounts.some((account) => account.id === accountId)) return notFound('账本账户不存在');
+    requireItem(accounts, accountId, '账本账户不存在');
     const amount = reservations
       .filter((reservation) => reservation.accountId === accountId && reservation.status === 'active')
       .reduce((sum, reservation) => sum + BigInt(reservation.amount), 0n);
@@ -170,8 +171,7 @@ export const paymentJournalHandlers = [
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentJournalContract.createReservation, ({ body, ok }) => {
-    const account = accounts.find((item) => item.id === body.accountId);
-    if (!account) return notFound('账本账户不存在');
+    const account = requireItem(accounts, body.accountId, '账本账户不存在');
     const now = mockDateTime();
     const reservation: PaymentFundReservation = {
       id: nextReservationId++,
@@ -196,13 +196,11 @@ export const paymentJournalHandlers = [
     return ok(reservation, '预占成功');
   }),
   mock(paymentJournalContract.captureReservation, ({ params, body, ok }) => {
-    const reservation = reservations.find((item) => item.id === params.id);
-    if (!reservation) return notFound('资金预占不存在');
+    const reservation = requireItem(reservations, params.id, '资金预占不存在');
     return reservationTransition(reservation, 'capture', body) ?? ok(reservation, '核销成功');
   }),
   mock(paymentJournalContract.releaseReservation, ({ params, body, ok }) => {
-    const reservation = reservations.find((item) => item.id === params.id);
-    if (!reservation) return notFound('资金预占不存在');
+    const reservation = requireItem(reservations, params.id, '资金预占不存在');
     return reservationTransition(reservation, 'release', body) ?? ok(reservation, '释放成功');
   }),
   mock(paymentJournalContract.list, ({ query, ok, paginate }) => {
@@ -215,8 +213,8 @@ export const paymentJournalHandlers = [
     return ok(paginate(filtered));
   }),
   mock(paymentJournalContract.detail, ({ params, ok }) => {
-    const journal = journals.find((item) => item.id === params.id);
-    return journal ? ok(journal) : notFound('资金凭证不存在');
+    const journal = requireItem(journals, params.id, '资金凭证不存在');
+    return ok(journal);
   }),
   mock(paymentJournalContract.post, ({ body, ok }) => {
     const accountById = new Map(accounts.map((account) => [account.id, account]));
@@ -237,8 +235,7 @@ export const paymentJournalHandlers = [
     return ok(journal, '过账成功');
   }),
   mock(paymentJournalContract.reverse, ({ params, body, ok }) => {
-    const original = journals.find((item) => item.id === params.id);
-    if (!original) return notFound('资金凭证不存在');
+    const original = requireItem(journals, params.id, '资金凭证不存在');
     if (journals.some((journal) => journal.reversalOfJournalId === original.id)) return conflict('该资金凭证已冲正');
     const now = mockDateTime();
     const reversal: PaymentJournal = {

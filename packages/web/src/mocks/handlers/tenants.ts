@@ -1,6 +1,7 @@
 import { tenantContract } from '@zenith/shared/identity';
 import type { Tenant } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockTenants, getNextTenantId } from '@/mocks/data/tenants';
 import { mockTenantPackages } from '@/mocks/data/tenant-packages';
@@ -33,8 +34,7 @@ export const tenantsHandlers = [
   mock(tenantContract.all, ({ ok }) => ok(mockTenants.map(({ id, name, code, status }) => ({ id, name, code, status })))),
 
   mock(tenantContract.stats, ({ params, ok }) => {
-    const t = mockTenants.find((x) => x.id === params.id);
-    if (!t) return notFound('租户不存在');
+    const t = requireItem(mockTenants, params.id, '租户不存在');
     const pkg = t.packageId ? mockTenantPackages.find((p) => p.id === t.packageId) : null;
     const expireAt = t.expireAt ?? null;
     const daysToExpire = expireAt
@@ -83,16 +83,14 @@ export const tenantsHandlers = [
   }),
 
   mock(tenantContract.update, ({ params, body, ok }) => {
-    const tenant = mockTenants.find((t) => t.id === params.id);
-    if (!tenant) return notFound('租户不存在');
+    const tenant = requireItem(mockTenants, params.id, '租户不存在');
     Object.assign(tenant, body, { updatedAt: mockDateTime() });
     return ok(withPackageName(tenant), '更新成功');
   }),
 
   mock(tenantContract.remove, ({ params, ok }) => {
-    const index = mockTenants.findIndex((t) => t.id === params.id);
-    if (index === -1) return notFound('租户不存在');
-    mockTenants.splice(index, 1);
+    requireItem(mockTenants, params.id, '租户不存在');
+    removeByIds(mockTenants, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

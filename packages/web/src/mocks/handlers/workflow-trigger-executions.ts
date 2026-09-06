@@ -1,7 +1,8 @@
 import { workflowTriggerExecutionContract } from '@zenith/shared/workflow';
 import type { WorkflowTriggerExecution } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem } from '@/mocks/utils/crud';
+
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 
 export const mockWorkflowTriggerExecutions: WorkflowTriggerExecution[] = [
@@ -79,8 +80,7 @@ export const workflowTriggerExecutionsHandlers = [
   }),
 
   mock(workflowTriggerExecutionContract.detail, ({ params, ok }) => {
-    const row = mockWorkflowTriggerExecutions.find((item) => item.id === params.id);
-    if (!row) return notFound('触发器执行记录不存在');
+    const row = requireItem(mockWorkflowTriggerExecutions, params.id, '触发器执行记录不存在');
     return ok(row);
   }),
 ];

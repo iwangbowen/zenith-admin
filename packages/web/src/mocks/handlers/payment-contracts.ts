@@ -1,5 +1,6 @@
 import { memberRenewalContract } from '@zenith/shared/member';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { mockDeductPlans, mockPaymentContracts, mockVipRenewals, getNextContractId, getNextPlanId } from '@/mocks/data/payment-contracts';
 import { mockDateTime } from '@/mocks/utils/date';
 import { notFound, badRequest } from '@/mocks/utils/handlers';
@@ -87,8 +88,7 @@ const planHandlers = [
     return ok(item, '创建成功');
   }),
   mock(paymentDeductPlanContract.updateDeductPlan, ({ params, body, ok }) => {
-    const p = mockDeductPlans.find((x) => x.id === params.id);
-    if (!p) return notFound('扣款计划不存在');
+    const p = requireItem(mockDeductPlans, params.id, '扣款计划不存在');
     Object.assign(p, body, { updatedAt: mockDateTime() });
     if (p.period !== 'custom') p.customDays = null;
     return ok(p, '更新成功');
@@ -121,8 +121,7 @@ const contractHandlers = [
     return c ? ok(c) : notFound('签约协议不存在');
   }),
   mock(paymentSigningContract.createContract, ({ body, ok }) => {
-    const plan = mockDeductPlans.find((p) => p.id === body.planId);
-    if (!plan) return notFound('扣款计划不存在');
+    const plan = requireItem(mockDeductPlans, body.planId, '扣款计划不存在');
     if (plan.status !== 'enabled') return badRequest('扣款计划已停用');
     const scope = contractScope(body.applicationId, body.payMethod);
     if (!scope) return badRequest('支付应用未绑定所选代扣方式对应的商户配置');
@@ -241,8 +240,7 @@ const memberRenewalHandlers = [
     ok({ vipExpireAt: memberVipExpireAt(), contract: findMemberContract() ?? null, renewals: mockVipRenewals.slice(0, 20) })),
   mock(memberRenewalContract.sign, ({ body, ok }) => {
     if (findMemberContract()) return badRequest('该业务已存在生效中的签约协议');
-    const plan = mockDeductPlans.find((p) => p.id === body.planId);
-    if (!plan) return notFound('扣款计划不存在');
+    const plan = requireItem(mockDeductPlans, body.planId, '扣款计划不存在');
     const payMethod = body.payMethod;
     const now = mockDateTime();
     const contract: PaymentContract = {

@@ -1,6 +1,8 @@
 import { dictContract, type Dict, type DictItem } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
+
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDicts, mockDictItems, getNextDictId, getNextDictItemId } from '@/mocks/data/dicts';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -22,8 +24,7 @@ export const dictsHandlers = [
 
   // 获取单个字典
   mock(dictContract.detail, ({ params, ok }) => {
-    const dict = mockDicts.find((d) => d.id === params.id);
-    if (!dict) return notFound('字典不存在');
+    const dict = requireItem(mockDicts, params.id, '字典不存在');
     return ok(dict);
   }),
 
@@ -44,17 +45,14 @@ export const dictsHandlers = [
 
   // 更新字典
   mock(dictContract.update, ({ params, body, ok }) => {
-    const dict = mockDicts.find((d) => d.id === params.id);
-    if (!dict) return notFound('字典不存在');
-    Object.assign(dict, body, { updatedAt: mockDateTime() });
+    const dict = updateItem(mockDicts, params.id, body, { notFoundMessage: '字典不存在', now: mockDateTime });
     return ok(dict, '更新成功');
   }),
 
   // 删除字典（同时删除该字典下的所有条目）
   mock(dictContract.remove, ({ params, ok }) => {
-    const index = mockDicts.findIndex((d) => d.id === params.id);
-    if (index === -1) return notFound('字典不存在');
-    mockDicts.splice(index, 1);
+    requireItem(mockDicts, params.id, '字典不存在');
+    removeByIds(mockDicts, [params.id]);
     removeWhere(mockDictItems, (item) => item.dictId === params.id);
     return ok(null, '删除成功');
   }),
@@ -100,17 +98,14 @@ export const dictsHandlers = [
 
   // 更新字典条目
   mock(dictContract.updateItem, ({ params, body, ok }) => {
-    const item = mockDictItems.find((i) => i.id === params.itemId);
-    if (!item) return notFound('字典条目不存在');
-    Object.assign(item, body, { updatedAt: mockDateTime() });
+    const item = updateItem(mockDictItems, params.itemId, body, { notFoundMessage: '字典条目不存在', now: mockDateTime });
     return ok(item, '更新成功');
   }),
 
   // 删除字典条目
   mock(dictContract.removeItem, ({ params, ok }) => {
-    const index = mockDictItems.findIndex((i) => i.id === params.itemId);
-    if (index === -1) return notFound('字典条目不存在');
-    mockDictItems.splice(index, 1);
+    requireItem(mockDictItems, params.itemId, '字典条目不存在');
+    removeByIds(mockDictItems, [params.itemId]);
     return ok(null, '删除成功');
   }),
 ];

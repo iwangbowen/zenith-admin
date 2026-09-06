@@ -10,6 +10,7 @@ import {
 } from '@zenith/shared/iot';
 import type { AsyncTask } from '@zenith/shared/tasks';
 import { mock } from '@/mocks/utils/contract';
+import { removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import {
   buildMockTelemetry, buildMockTelemetryAgg, getNextIotAlarmRuleId, getNextIotAutomationId, getNextIotCommandId, getNextIotDeviceId,
@@ -930,10 +931,7 @@ export const iotHandlers = [
 
   // ─── 设备（静态段 batch 先于 /:id）──────────────────────────────────────────
   mock(iotDeviceContract.removeBatch, ({ body, ok }) => {
-    for (const id of body.ids) {
-      const idx = mockIotDevices.findIndex((d) => d.id === id);
-      if (idx >= 0) mockIotDevices.splice(idx, 1);
-    }
+    removeByIds(mockIotDevices, body.ids);
     return ok(null, `已删除 ${body.ids.length} 台设备`);
   }),
   mock(iotDeviceContract.list, ({ query, ok, paginate }) => {

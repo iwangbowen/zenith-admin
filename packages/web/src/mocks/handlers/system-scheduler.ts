@@ -1,5 +1,6 @@
 import { systemSchedulerContract } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import type { SystemSchedulerNode, SystemSchedulerRun, SystemSchedulerTask } from '@zenith/shared/platform';
@@ -302,14 +303,12 @@ export const systemSchedulerHandlers = [
   }),
 
   mock(systemSchedulerContract.runDetail, ({ params, ok }) => {
-    const run = runs.find((item) => item.id === params.id);
-    if (!run) return notFound('运行日志不存在');
+    const run = requireItem(runs, params.id, '运行日志不存在');
     return ok(run);
   }),
 
   mock(systemSchedulerContract.acknowledgeAlert, ({ params, body, ok }) => {
-    const run = runs.find((item) => item.id === params.id);
-    if (!run) return notFound('运行日志不存在');
+    const run = requireItem(runs, params.id, '运行日志不存在');
     if (!run.alertMessage) return badRequest('该运行日志没有告警');
     run.alertAckAt = mockDateTime();
     run.alertAckBy = 1;

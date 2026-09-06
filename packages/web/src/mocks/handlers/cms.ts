@@ -2,6 +2,7 @@ import { HttpResponse } from 'msw';
 import type * as z from 'zod';
 import { badRequest, notFound, conflict, locked } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
+import { removeByIds } from '@/mocks/utils/crud';
 import type {
   CmsChannel,
   CmsContent,
@@ -533,10 +534,7 @@ export const cmsHandlers = [
     const { ids } = body;
     const widget = ids.map((id) => publishedWidgetUsing('content', id)).find(Boolean);
     if (widget) return conflict(`已发布页面部件「${widget.name}」引用了所选内容`, { status: 409 });
-    for (const id of ids) {
-      const idx = mockCmsContents.findIndex((c) => c.id === id);
-      if (idx >= 0) mockCmsContents.splice(idx, 1);
-    }
+    removeByIds(mockCmsContents, ids);
     return ok(null, '已彻底删除');
   }),
   // ─── 归档 ────────────────────────────────────────────────────────────────
@@ -1072,10 +1070,7 @@ export const cmsP2Handlers = [
     return ok(paginate([...list].sort((a, b) => b.id - a.id)));
   }),
   mock(cmsCommentContract.batchDelete, ({ body, ok }) => {
-    for (const id of body.ids) {
-      const idx = mockCmsComments.findIndex((c) => c.id === id);
-      if (idx >= 0) mockCmsComments.splice(idx, 1);
-    }
+    removeByIds(mockCmsComments, body.ids);
     return ok(null, '删除成功');
   }),
   mock(cmsCommentContract.approve, ({ body, ok }) => {
@@ -1256,10 +1251,7 @@ export const cmsP2Handlers = [
         return badRequest(`素材「${res.name}」仍被 ${refs.length} 处引用，请先处理引用后再删除`, { status: 400 });
       }
     }
-    for (const id of ids) {
-      const idx = mockCmsResources.findIndex((r) => r.id === id);
-      if (idx >= 0) mockCmsResources.splice(idx, 1);
-    }
+    removeByIds(mockCmsResources, ids);
     return ok(null, `已删除 ${ids.length} 个素材`);
   }),
 
@@ -1492,10 +1484,7 @@ export const cmsP2Handlers = [
         moved += 1;
       }
     }
-    for (const id of sourceIds) {
-      const idx = mockCmsChannels.findIndex((c) => c.id === id);
-      if (idx >= 0) mockCmsChannels.splice(idx, 1);
-    }
+    removeByIds(mockCmsChannels, sourceIds);
     return ok(null, `合并完成，已迁移 ${moved} 条内容`);
   }),
   mock(cmsChannelContract.batchCreate, ({ body, ok }) => {

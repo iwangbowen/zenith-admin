@@ -2,6 +2,7 @@ import type { FileStorageConfig, FolderEntry, ManagedFile, StorageBrowseResult, 
 import { fillPath } from '@zenith/shared/core';
 import { fileContract, fileStorageConfigContract } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockFileStorageConfigs, STORAGE_SECRET_FIELDS, type MockFileStorageConfig } from '@/mocks/data/system';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -363,15 +364,13 @@ export const filesHandlers = [
 
   // 测试已保存存储配置连接（必须在 detail 之前）
   mock(fileStorageConfigContract.testExisting, ({ params, ok }) => {
-    const config = mockFileStorageConfigs.find((c) => c.id === params.id);
-    if (!config) return notFound('存储配置不存在');
+    requireItem(mockFileStorageConfigs, params.id, '存储配置不存在');
     return ok(null, '存储连接测试通过');
   }),
 
   // 获取单个存储配置
   mock(fileStorageConfigContract.detail, ({ params, ok }) => {
-    const config = mockFileStorageConfigs.find((c) => c.id === params.id);
-    if (!config) return notFound('存储配置不存在');
+    const config = requireItem(mockFileStorageConfigs, params.id, '存储配置不存在');
     return ok(stripStorageSecrets(config));
   }),
 
@@ -391,8 +390,7 @@ export const filesHandlers = [
 
   // 更新存储配置
   mock(fileStorageConfigContract.update, ({ params, body, ok }) => {
-    const config = mockFileStorageConfigs.find((c) => c.id === params.id);
-    if (!config) return notFound('存储配置不存在');
+    const config = requireItem(mockFileStorageConfigs, params.id, '存储配置不存在');
     // 密钥留空表示不修改，删除空密钥字段后再合并（write-only）
     const patch: Partial<MockFileStorageConfig> = { ...body, publicBaseUrl: body.publicBaseUrl || null };
     for (const field of STORAGE_SECRET_FIELDS) {
@@ -404,16 +402,14 @@ export const filesHandlers = [
 
   // 删除存储配置
   mock(fileStorageConfigContract.remove, ({ params, ok }) => {
-    const index = mockFileStorageConfigs.findIndex((c) => c.id === params.id);
-    if (index === -1) return notFound('存储配置不存在');
-    mockFileStorageConfigs.splice(index, 1);
+    requireItem(mockFileStorageConfigs, params.id, '存储配置不存在');
+    removeByIds(mockFileStorageConfigs, [params.id]);
     return ok(null, '删除成功');
   }),
 
   // 设置默认存储
   mock(fileStorageConfigContract.setDefault, ({ params, ok }) => {
-    const target = mockFileStorageConfigs.find((c) => c.id === params.id);
-    if (!target) return notFound('存储配置不存在');
+    const target = requireItem(mockFileStorageConfigs, params.id, '存储配置不存在');
     mockFileStorageConfigs.forEach((c) => { c.isDefault = c.id === params.id; });
     return ok(stripStorageSecrets(target), '默认文件服务已更新');
   }),

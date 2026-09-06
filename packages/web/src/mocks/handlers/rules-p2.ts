@@ -1,6 +1,7 @@
 import type { RuleDecisionFlow, RuleFlowStep, RuleFlowStepTrace, RuleList, RuleListItem, RuleScorecard, RuleScorecardEvaluateResult, RuleUsageItem } from '@zenith/shared/rules';
 import { decisionFlowContract, ruleListContract, ruleScorecardContract } from '@zenith/shared/rules';
 import { mock } from '@/mocks/utils/contract';
+import { removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mockDecisionFlows, getNextFlowId, mockRuleLists, mockRuleListItems, getNextListId, getNextListItemId, mockRuleScorecards, getNextScorecardId, mockAssetVersions, getNextAssetVersionId } from '@/mocks/data/rules-p2';
 import { mockDecisionTables } from '@/mocks/data/decision-tables';
@@ -107,10 +108,7 @@ export const rulesP2Handlers = [
     return ok(evaluateFlow(r.status === 'published' && r.publishedSteps ? r.publishedSteps : r.steps, input));
   }),
   mock(decisionFlowContract.removeBatch, ({ body, ok }) => {
-    for (const id of body.ids) {
-      const i = mockDecisionFlows.findIndex((t) => t.id === id);
-      if (i >= 0) mockDecisionFlows.splice(i, 1);
-    }
+    removeByIds(mockDecisionFlows, body.ids);
     return ok(null, '删除成功');
   }),
   mock(decisionFlowContract.detail, ({ params, ok }) => {

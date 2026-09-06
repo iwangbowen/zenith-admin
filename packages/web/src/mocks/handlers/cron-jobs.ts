@@ -1,7 +1,8 @@
 import { cronJobContract } from '@zenith/shared/platform';
 import type { CronJob, CronJobLog, CronRunStatus } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
-import { notFound } from '@/mocks/utils/handlers';
+import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
+
 import { mockCronJobs, getNextCronJobId } from '@/mocks/data/system';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -35,8 +36,7 @@ export const cronJobsHandlers = [
 
   // 按任务 ID 查询执行日志（必须在 :id 路由之前声明）
   mock(cronJobContract.jobLogs, ({ params, ok, paginate }) => {
-    const job = mockCronJobs.find((j) => j.id === params.id);
-    if (!job) return notFound('任务不存在');
+    const job = requireItem(mockCronJobs, params.id, '任务不存在');
 
     const statuses: CronRunStatus[] = ['success', 'success', 'fail', 'success', 'running'];
     const logs: CronJobLog[] = Array.from({ length: 10 }, (_, j) => ({
@@ -152,8 +152,7 @@ export const cronJobsHandlers = [
 
   // 获取单个任务
   mock(cronJobContract.detail, ({ params, ok }) => {
-    const job = mockCronJobs.find((j) => j.id === params.id);
-    if (!job) return notFound('任务不存在');
+    const job = requireItem(mockCronJobs, params.id, '任务不存在');
     return ok(job);
   }),
 
@@ -183,9 +182,7 @@ export const cronJobsHandlers = [
 
   // 更新任务
   mock(cronJobContract.update, ({ params, body, ok }) => {
-    const job = mockCronJobs.find((j) => j.id === params.id);
-    if (!job) return notFound('任务不存在');
-    Object.assign(job, body, { updatedAt: mockDateTime() });
+    const job = updateItem(mockCronJobs, params.id, body, { notFoundMessage: '任务不存在', now: mockDateTime });
     return ok(job, '更新成功');
   }),
 
@@ -194,23 +191,20 @@ export const cronJobsHandlers = [
 
   // 清除单任务执行日志（必须在 DELETE /:id 之前声明）
   mock(cronJobContract.clearJobLogs, ({ params, query, ok }) => {
-    const job = mockCronJobs.find((j) => j.id === params.id);
-    if (!job) return notFound('任务不存在');
+    const job = requireItem(mockCronJobs, params.id, '任务不存在');
     return ok(null, `已清除「${job.name}」${query.days} 天前的日志`);
   }),
 
   // 删除任务
   mock(cronJobContract.remove, ({ params, ok }) => {
-    const index = mockCronJobs.findIndex((j) => j.id === params.id);
-    if (index === -1) return notFound('任务不存在');
-    mockCronJobs.splice(index, 1);
+    requireItem(mockCronJobs, params.id, '任务不存在');
+    removeByIds(mockCronJobs, [params.id]);
     return ok(null, '删除成功');
   }),
 
   // 立即执行任务（demo 模式仅更新 lastRunAt）
   mock(cronJobContract.run, ({ params, ok }) => {
-    const job = mockCronJobs.find((j) => j.id === params.id);
-    if (!job) return notFound('任务不存在');
+    const job = requireItem(mockCronJobs, params.id, '任务不存在');
     job.lastRunAt = mockDateTime();
     job.lastRunStatus = 'success';
     job.lastRunMessage = 'Demo 模式：模拟执行成功';
@@ -220,8 +214,7 @@ export const cronJobsHandlers = [
 
   // 更新任务状态
   mock(cronJobContract.setStatus, ({ params, body, ok }) => {
-    const job = mockCronJobs.find((j) => j.id === params.id);
-    if (!job) return notFound('任务不存在');
+    const job = requireItem(mockCronJobs, params.id, '任务不存在');
     job.status = body.status;
     job.updatedAt = mockDateTime();
     return ok(null, '操作成功');

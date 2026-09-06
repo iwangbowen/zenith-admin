@@ -1,4 +1,5 @@
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, fail, forbidden, notFound } from '@/mocks/utils/handlers';
 import { resolveIdempotent } from '@/mocks/utils/idempotency';
 import {
@@ -308,16 +309,14 @@ export const workflowExtraHandlers = [
 
   // ── 复制流程 / 导出导入 / 版本对比（必须在 /definitions/:id 之前注册）──
   mock(workflowDefinitionContract.duplicate, ({ params, ok }) => {
-    const src = mockWorkflowDefinitions.find((d) => d.id === params.id);
-    if (!src) return notFound('流程定义不存在');
+    const src = requireItem(mockWorkflowDefinitions, params.id, '流程定义不存在');
     const now = mockDateTime();
     const def: WorkflowDefinition = { ...src, id: getNextDefinitionId(), name: `${src.name} 副本`, status: 'draft', version: 0, createdAt: now, updatedAt: now };
     mockWorkflowDefinitions.push(def);
     return ok(def, '已复制为新草稿');
   }),
   mock(workflowDefinitionContract.export, ({ params, ok }) => {
-    const src = mockWorkflowDefinitions.find((d) => d.id === params.id);
-    if (!src) return notFound('流程定义不存在');
+    const src = requireItem(mockWorkflowDefinitions, params.id, '流程定义不存在');
     return ok({
       name: src.name,
       description: src.description ?? null,
@@ -355,8 +354,7 @@ export const workflowExtraHandlers = [
     return ok(def, '已导入为新草稿');
   }),
   mock(workflowDefinitionContract.diff, ({ params, query, ok }) => {
-    const src = mockWorkflowDefinitions.find((d) => d.id === params.id);
-    if (!src) return notFound('流程定义不存在');
+    const src = requireItem(mockWorkflowDefinitions, params.id, '流程定义不存在');
     const side = (v: number): WorkflowVersionDiffSide => ({
       version: v === 0 ? (src.version ?? 1) : v,
       name: src.name,
@@ -411,15 +409,12 @@ export const workflowExtraHandlers = [
     return ok(view, '已保存');
   }),
   mock(workflowSavedViewContract.update, ({ params, body, ok }) => {
-    const v = mockSavedViews.find((x) => x.id === params.id);
-    if (!v) return notFound('视图不存在');
-    Object.assign(v, body, { updatedAt: mockDateTime() });
+    const v = updateItem(mockSavedViews, params.id, body, { notFoundMessage: '视图不存在', now: mockDateTime });
     return ok(v, '已更新');
   }),
   mock(workflowSavedViewContract.remove, ({ params, ok }) => {
-    const idx = mockSavedViews.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('视图不存在');
-    mockSavedViews.splice(idx, 1);
+    requireItem(mockSavedViews, params.id, '视图不存在');
+    removeByIds(mockSavedViews, [params.id]);
     return ok(null, '已删除');
   }),
 
@@ -438,21 +433,18 @@ export const workflowExtraHandlers = [
     return ok(s, '已创建');
   }),
   mock(workflowScheduleContract.update, ({ params, body, ok }) => {
-    const s = mockSchedules.find((x) => x.id === params.id);
-    if (!s) return notFound('定时规则不存在');
+    const s = requireItem(mockSchedules, params.id, '定时规则不存在');
     Object.assign(s, body, { updatedAt: mockDateTime() });
     if (body.definitionId) s.definitionName = mockWorkflowDefinitions.find((d) => d.id === body.definitionId)?.name ?? null;
     return ok(s, '已更新');
   }),
   mock(workflowScheduleContract.remove, ({ params, ok }) => {
-    const idx = mockSchedules.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('定时规则不存在');
-    mockSchedules.splice(idx, 1);
+    requireItem(mockSchedules, params.id, '定时规则不存在');
+    removeByIds(mockSchedules, [params.id]);
     return ok(null, '已删除');
   }),
   mock(workflowScheduleContract.run, ({ params, ok }) => {
-    const s = mockSchedules.find((x) => x.id === params.id);
-    if (!s) return notFound('定时规则不存在');
+    const s = requireItem(mockSchedules, params.id, '定时规则不存在');
     s.lastRunAt = mockDateTime(); s.lastRunStatus = 'success'; s.lastRunMessage = `已发起：${s.name}`;
     return ok(s, '已触发一次执行');
   }),
@@ -463,8 +455,7 @@ export const workflowExtraHandlers = [
     return ok(paginate(all));
   }),
   mock(workflowTaskContract.replyConsult, ({ params, body, ok }) => {
-    const c = mockConsults.find((x) => x.id === params.id);
-    if (!c) return notFound('协办记录不存在');
+    const c = requireItem(mockConsults, params.id, '协办记录不存在');
     c.opinion = body.opinion; c.status = 'replied'; c.repliedAt = mockDateTime();
     return ok(c, '已回复');
   }),
@@ -496,8 +487,7 @@ export const workflowExtraHandlers = [
     return ok(tpl, '已保存为模板');
   }),
   mock(workflowTemplateContract.clone, ({ params, body, ok }) => {
-    const tpl = mockTemplates.find((t) => t.id === params.id);
-    if (!tpl) return notFound('模板不存在');
+    const tpl = requireItem(mockTemplates, params.id, '模板不存在');
     const name = body.name || tpl.name;
     const description: string | null = body.description !== undefined ? (body.description?.trim() || null) : (tpl.description ?? null);
     const categoryId: number | null = body.categoryId ?? null;
@@ -541,8 +531,7 @@ export const workflowExtraHandlers = [
     return ok(created, '已发起协办');
   }),
   mock(workflowTaskContract.recall, ({ params, ok }) => {
-    const task = mockWorkflowTasks.find((t) => t.id === params.taskId);
-    if (!task) return notFound('任务不存在');
+    const task = requireItem(mockWorkflowTasks, params.taskId, '任务不存在');
     if (task.assigneeId !== 1) return forbidden('只能撤回自己处理的任务');
     if (task.status !== 'approved' && task.status !== 'rejected') return badRequest('只有已处理的任务可撤回');
     task.status = 'pending'; task.comment = null; task.signature = null; task.actionAt = null;
@@ -585,8 +574,7 @@ export const workflowExtraHandlers = [
 
   // ── 草稿：编辑 / 提交 / 重新提交 ──
   mock(workflowInstanceContract.updateDraft, ({ params, body, ok }) => {
-    const inst = mockWorkflowInstances.find((i) => i.id === params.id);
-    if (!inst) return notFound('流程实例不存在');
+    const inst = requireItem(mockWorkflowInstances, params.id, '流程实例不存在');
     if (inst.status !== 'draft') return badRequest('仅草稿可编辑');
     if (body.title !== undefined) inst.title = body.title;
     if (body.formData !== undefined) inst.formData = body.formData;
@@ -594,16 +582,14 @@ export const workflowExtraHandlers = [
     return ok(inst, '草稿已保存');
   }),
   mock(workflowInstanceContract.submitDraft, ({ params, ok }) => {
-    const inst = mockWorkflowInstances.find((i) => i.id === params.id);
-    if (!inst) return notFound('流程实例不存在');
+    const inst = requireItem(mockWorkflowInstances, params.id, '流程实例不存在');
     if (inst.status !== 'draft') return badRequest('仅草稿可提交');
     inst.status = 'running';
     inst.updatedAt = mockDateTime();
     return ok(inst, '申请已提交');
   }),
   mock(workflowInstanceContract.resubmit, ({ params, ok }) => {
-    const src = mockWorkflowInstances.find((i) => i.id === params.id);
-    if (!src) return notFound('流程实例不存在');
+    const src = requireItem(mockWorkflowInstances, params.id, '流程实例不存在');
     const now = mockDateTime();
     const clone: WorkflowInstance = {
       ...src,
@@ -657,21 +643,18 @@ export const workflowExtraHandlers = [
 
   // ── 实例迁移 ──
   mock(workflowInstanceOpsContract.migratePreflight, ({ params, ok }) => {
-    const inst = mockWorkflowInstances.find((i) => i.id === params.id);
-    if (!inst) return notFound('流程实例不存在');
+    const inst = requireItem(mockWorkflowInstances, params.id, '流程实例不存在');
     return ok({ instanceId: inst.id, fromVersion: 1, toVersion: 1, migratable: false, blocked: [], nodes: [] });
   }),
   mock(workflowInstanceOpsContract.migrate, ({ params, ok }) => {
-    const inst = mockWorkflowInstances.find((i) => i.id === params.id);
-    if (!inst) return notFound('流程实例不存在');
+    requireItem(mockWorkflowInstances, params.id, '流程实例不存在');
     return ok(null, '迁移成功');
   }),
   mock(workflowInstanceOpsContract.migrations, ({ ok }) => ok([])),
 
   // ── 管理员强制操作 ──
   mock(workflowInstanceOpsContract.jump, ({ params, body, ok }) => {
-    const inst = mockWorkflowInstances.find((i) => i.id === params.id);
-    if (!inst) return notFound('流程实例不存在');
+    const inst = requireItem(mockWorkflowInstances, params.id, '流程实例不存在');
     if (inst.status !== 'running') return badRequest('仅审批中的流程可强制跳转');
     mockWorkflowTasks.filter((t) => t.instanceId === inst.id && (t.status === 'pending' || t.status === 'waiting'))
       .forEach((t) => { t.status = 'skipped'; t.actionAt = mockDateTime(); });
@@ -680,8 +663,7 @@ export const workflowExtraHandlers = [
     return ok(inst, '已跳转');
   }),
   mock(workflowTaskContract.reassign, ({ params, body, ok }) => {
-    const task = mockWorkflowTasks.find((t) => t.id === params.taskId);
-    if (!task) return notFound('任务不存在');
+    const task = requireItem(mockWorkflowTasks, params.taskId, '任务不存在');
     task.assigneeId = body.targetUserId;
     task.assigneeName = getMockUserName(body.targetUserId);
     return ok(task, '已改派');
@@ -756,17 +738,15 @@ export const workflowExtraHandlers = [
     return ok(phrase, '已新增');
   }),
   mock(workflowQuickPhraseContract.update, ({ params, body, ok }) => {
-    const p = mockQuickPhrases.find((x) => x.id === params.id);
-    if (!p) return notFound('常用语不存在');
+    const p = requireItem(mockQuickPhrases, params.id, '常用语不存在');
     if (body.content !== undefined) p.content = body.content;
     if (body.sort !== undefined) p.sort = body.sort;
     p.updatedAt = mockDateTime();
     return ok(p, '已更新');
   }),
   mock(workflowQuickPhraseContract.remove, ({ params, ok }) => {
-    const idx = mockQuickPhrases.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('常用语不存在');
-    mockQuickPhrases.splice(idx, 1);
+    requireItem(mockQuickPhrases, params.id, '常用语不存在');
+    removeByIds(mockQuickPhrases, [params.id]);
     return ok(null, '已删除');
   }),
 
@@ -795,16 +775,14 @@ export const workflowExtraHandlers = [
     return ok(row, '已新增');
   }),
   mock(workflowDelegationContract.update, ({ params, body, ok }) => {
-    const row = mockDelegations.find((x) => x.id === params.id);
-    if (!row) return notFound('委托规则不存在');
+    const row = requireItem(mockDelegations, params.id, '委托规则不存在');
     Object.assign(row, body, { updatedAt: mockDateTime() });
     if (body.enabled !== undefined) row.active = body.enabled;
     return ok(row, '已更新');
   }),
   mock(workflowDelegationContract.remove, ({ params, ok }) => {
-    const idx = mockDelegations.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('委托规则不存在');
-    mockDelegations.splice(idx, 1);
+    requireItem(mockDelegations, params.id, '委托规则不存在');
+    removeByIds(mockDelegations, [params.id]);
     return ok(null, '已删除');
   }),
 ];

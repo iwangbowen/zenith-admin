@@ -1,6 +1,7 @@
 import { tenantPackageContract } from '@zenith/shared/identity';
 import type { TenantPackage } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockTenantPackages, getNextTenantPackageId } from '@/mocks/data/tenant-packages';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -43,15 +44,13 @@ export const tenantPackagesHandlers = [
   }),
 
   mock(tenantPackageContract.update, ({ params, body, ok }) => {
-    const pkg = mockTenantPackages.find((p) => p.id === params.id);
-    if (!pkg) return notFound('套餐不存在');
+    const pkg = requireItem(mockTenantPackages, params.id, '套餐不存在');
     Object.assign(pkg, body, { updatedAt: mockDateTime() });
     return ok(withFeatureCount(pkg), '更新成功');
   }),
 
   mock(tenantPackageContract.assignFeatures, ({ params, body, ok }) => {
-    const pkg = mockTenantPackages.find((p) => p.id === params.id);
-    if (!pkg) return notFound('套餐不存在');
+    const pkg = requireItem(mockTenantPackages, params.id, '套餐不存在');
     pkg.features = body.features;
     pkg.featureCount = pkg.features.length;
     pkg.updatedAt = mockDateTime();
@@ -60,17 +59,13 @@ export const tenantPackagesHandlers = [
 
   // DELETE /batch 必须先于 DELETE /:id 注册
   mock(tenantPackageContract.removeBatch, ({ body, ok }) => {
-    for (const id of body.ids) {
-      const idx = mockTenantPackages.findIndex((p) => p.id === id);
-      if (idx !== -1) mockTenantPackages.splice(idx, 1);
-    }
+    removeByIds(mockTenantPackages, body.ids);
     return ok(null, `已删除 ${body.ids.length} 条记录`);
   }),
 
   mock(tenantPackageContract.remove, ({ params, ok }) => {
-    const idx = mockTenantPackages.findIndex((p) => p.id === params.id);
-    if (idx === -1) return notFound('套餐不存在');
-    mockTenantPackages.splice(idx, 1);
+    requireItem(mockTenantPackages, params.id, '套餐不存在');
+    removeByIds(mockTenantPackages, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

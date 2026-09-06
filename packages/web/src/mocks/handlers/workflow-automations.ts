@@ -1,6 +1,7 @@
 import { workflowAutomationContract } from '@zenith/shared/workflow';
 import type { WorkflowAutomation } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -24,8 +25,7 @@ export const workflowAutomationsHandlers = [
   }),
 
   mock(workflowAutomationContract.detail, ({ params, ok }) => {
-    const row = automations.find((a) => a.id === params.id);
-    if (!row) return notFound('自动化规则不存在');
+    const row = requireItem(automations, params.id, '自动化规则不存在');
     return ok(fillDefinitionName(row));
   }),
 
@@ -61,17 +61,13 @@ export const workflowAutomationsHandlers = [
   }),
 
   mock(workflowAutomationContract.remove, ({ params, ok }) => {
-    const idx = automations.findIndex((a) => a.id === params.id);
-    if (idx === -1) return notFound('自动化规则不存在');
-    automations.splice(idx, 1);
+    requireItem(automations, params.id, '自动化规则不存在');
+    removeByIds(automations, [params.id]);
     return ok(null, '已删除');
   }),
 
   mock(workflowAutomationContract.batchDelete, ({ body, ok }) => {
-    for (const id of body.ids) {
-      const i = automations.findIndex((a) => a.id === id);
-      if (i !== -1) automations.splice(i, 1);
-    }
+    removeByIds(automations, body.ids);
     return ok(null, '已删除');
   }),
 ];

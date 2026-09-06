@@ -20,6 +20,7 @@ import {
   mockPaymentLogs,
 } from '@/mocks/data/payment';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { mockDateTime, mockDateTimeOffset, mockDate } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { recordMockPaymentSucceeded, recordMockRefundSucceeded } from './payment-ext';
@@ -125,8 +126,8 @@ export const paymentHandlers = [
     return ok(paginate(filtered));
   }),
   mock(paymentChannelContract.channelDetail, ({ params, ok }) => {
-    const c = mockPaymentChannels.find((x) => x.id === params.id);
-    return c ? ok(c) : notFound('不存在');
+    const c = requireItem(mockPaymentChannels, params.id, '不存在');
+    return ok(c);
   }),
   mock(paymentChannelContract.createChannel, ({ body, ok }) => {
     const now = mockDateTime();
@@ -163,8 +164,7 @@ export const paymentHandlers = [
     return ok(item, '创建成功');
   }),
   mock(paymentChannelContract.updateChannel, ({ params, body, ok }) => {
-    const c = mockPaymentChannels.find((x) => x.id === params.id);
-    if (!c) return notFound('不存在');
+    const c = requireItem(mockPaymentChannels, params.id, '不存在');
     const { wechatApiV3Key, wechatPrivateKey, alipayPrivateKey, unionpayPrivateKey, ...fields } = body;
     Object.assign(c, fields, { updatedAt: mockDateTime() });
     if (unionpayPrivateKey) c.hasUnionpayPrivateKey = true;
@@ -174,23 +174,20 @@ export const paymentHandlers = [
     return ok(c, '更新成功');
   }),
   mock(paymentChannelContract.removeChannel, ({ params, ok }) => {
-    const i = mockPaymentChannels.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('不存在');
-    mockPaymentChannels.splice(i, 1);
+    requireItem(mockPaymentChannels, params.id, '不存在');
+    removeByIds(mockPaymentChannels, [params.id]);
     return ok(null, '删除成功');
   }),
 
   // 渠道连通性测试（Demo 模式模拟 50ms 探测延迟，返回成功）
   mock(paymentChannelContract.testChannel, ({ params, ok }) => {
-    const c = mockPaymentChannels.find((x) => x.id === params.id);
-    if (!c) return notFound('渠道配置不存在');
+    requireItem(mockPaymentChannels, params.id, '渠道配置不存在');
     return ok({ success: true, message: '连通性测试通过（演示模式）', latencyMs: 48 }, '操作成功');
   }),
 
   // 设为默认渠道（同渠道互斥）
   mock(paymentChannelContract.setDefaultChannel, ({ params, ok }) => {
-    const target = mockPaymentChannels.find((x) => x.id === params.id);
-    if (!target) return notFound('渠道配置不存在');
+    const target = requireItem(mockPaymentChannels, params.id, '渠道配置不存在');
     const now = mockDateTime();
     for (const c of mockPaymentChannels) {
       if (c.channel === target.channel) c.isDefault = c.id === target.id;
@@ -245,18 +242,16 @@ export const paymentHandlers = [
     return o ? ok(o) : notFound('不存在');
   }),
   mock(paymentOrderContract.orderDetail, ({ params, ok }) => {
-    const o = mockPaymentOrders.find((x) => x.id === params.id);
-    return o ? ok(o) : notFound('不存在');
+    const o = requireItem(mockPaymentOrders, params.id, '不存在');
+    return ok(o);
   }),
   mock(paymentRefundContract.orderRefunds, ({ params, ok }) => {
-    const order = mockPaymentOrders.find((x) => x.id === params.id);
-    if (!order) return notFound('订单不存在');
+    const order = requireItem(mockPaymentOrders, params.id, '订单不存在');
     const refunds = mockPaymentRefunds.filter((r) => r.orderId === order.id).sort((a, b) => b.id - a.id);
     return ok(refunds);
   }),
   mock(paymentOrderContract.queryOrder, ({ params, ok }) => {
-    const o = mockPaymentOrders.find((x) => x.id === params.id);
-    if (!o) return notFound('不存在');
+    const o = requireItem(mockPaymentOrders, params.id, '不存在');
     if (o.status === 'paying') {
       o.status = 'success';
       o.paidAmount = o.amount;
@@ -268,8 +263,7 @@ export const paymentHandlers = [
     return ok(o, '已同步');
   }),
   mock(paymentOrderContract.closeOrder, ({ params, ok }) => {
-    const o = mockPaymentOrders.find((x) => x.id === params.id);
-    if (!o) return notFound('不存在');
+    const o = requireItem(mockPaymentOrders, params.id, '不存在');
     o.status = 'closed';
     o.version += 1;
     o.updatedAt = mockDateTime();
@@ -320,8 +314,7 @@ export const paymentHandlers = [
   }),
   // 退款查单同步（Demo 模式将处理中退款置为成功）
   mock(paymentRefundContract.queryRefund, ({ params, ok }) => {
-    const r = mockPaymentRefunds.find((x) => x.id === params.id);
-    if (!r) return notFound('退款记录不存在');
+    const r = requireItem(mockPaymentRefunds, params.id, '退款记录不存在');
     if (r.status === 'processing' || r.status === 'pending') {
       r.status = 'success';
       r.refundedAt = mockDateTime();
@@ -337,8 +330,8 @@ export const paymentHandlers = [
     return ok(r, '已同步');
   }),
   mock(paymentRefundContract.refundDetail, ({ params, ok }) => {
-    const r = mockPaymentRefunds.find((x) => x.id === params.id);
-    return r ? ok(r) : notFound('不存在');
+    const r = requireItem(mockPaymentRefunds, params.id, '不存在');
+    return ok(r);
   }),
   // ── 回调日志 ──
   mock(paymentNotifyLogContract.logs, ({ query, ok, paginate }) => {

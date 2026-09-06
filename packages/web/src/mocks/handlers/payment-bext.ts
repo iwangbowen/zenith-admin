@@ -133,7 +133,7 @@ const settlementHandlers = [
   }),
   mock(paymentSettlementContract.items, ({ params, ok }) => {
     const batchId = params.id;
-    if (!settlements.some((batch) => batch.id === batchId)) return notFound('结算批次不存在');
+    requireItem(settlements, batchId, '结算批次不存在');
     const items: PaymentSettlementItem[] = mockSettlementLines
       .filter((line) => line.batchId === batchId)
       .map((line) => ({
@@ -149,8 +149,8 @@ const settlementHandlers = [
     return ok(items);
   }),
   mock(paymentSettlementContract.detail, ({ params, ok }) => {
-    const s = settlements.find((x) => x.id === params.id);
-    return s ? ok(s) : notFound('结算批次不存在');
+    const s = requireItem(settlements, params.id, '结算批次不存在');
+    return ok(s);
   }),
   mock(paymentSettlementContract.generate, ({ body, ok }) => {
     const config = mockPaymentChannels.find((item) => item.id === body.channelConfigId && item.status === 'enabled');
@@ -184,8 +184,7 @@ const settlementHandlers = [
     return ok(item, '生成成功');
   }),
   mock(paymentSettlementContract.transition, ({ params, body, ok }) => {
-    const s = settlements.find((x) => x.id === params.id);
-    if (!s) return notFound('结算批次不存在');
+    const s = requireItem(settlements, params.id, '结算批次不存在');
     const { status, failureReason, payoutReference } = body;
     if (!TRANSITIONS[s.status].includes(status)) return badRequest(`不允许从「${s.status}」流转到「${status}」`);
     if (status === 'failed' && !failureReason?.trim()) return badRequest('标记结算失败时必须填写失败原因');
@@ -269,8 +268,7 @@ const sharingHandlers = [
     const order = mockPaymentOrders.find((o) => o.orderNo === body.orderNo);
     if (!order) return notFound('支付订单不存在');
     if (!['success', 'refunding', 'refunded'].includes(order.status)) return badRequest('仅支付成功的订单可发起分账');
-    const receiver = receivers.find((r) => r.id === body.receiverId);
-    if (!receiver) return notFound('分账接收方不存在');
+    const receiver = requireItem(receivers, body.receiverId, '分账接收方不存在');
     if (receiver.status !== 'enabled') return badRequest('分账接收方已停用');
     const paid = order.paidAmount ?? order.amount;
     const amount = body.amount ?? (receiver.ratioBps != null ? Math.round((paid * receiver.ratioBps) / 10000) : 0);
@@ -293,8 +291,8 @@ const sharingHandlers = [
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentSharingContract.reversalDetail, ({ params, ok }) => {
-    const reversal = sharingReversals.find((record) => record.id === params.id);
-    return reversal ? ok(reversal) : notFound('分账冲正单不存在');
+    const reversal = requireItem(sharingReversals, params.id, '分账冲正单不存在');
+    return ok(reversal);
   }),
   mock(paymentSharingContract.reverse, ({ params, headers, body, ok }) => {
     const sharingOrderId = params.id;
@@ -385,8 +383,7 @@ const linkHandlers = [
     return ok(item, '创建成功');
   }),
   mock(paymentLinkContract.update, ({ params, body, ok }) => {
-    const l = links.find((x) => x.id === params.id);
-    if (!l) return notFound('支付链接不存在');
+    const l = requireItem(links, params.id, '支付链接不存在');
     const next: PaymentLink = { ...l, ...body, updatedAt: mockDateTime() };
     if (next.maxUses != null && next.maxUses < next.usedCount + next.reservedCount) {
       return badRequest('使用上限不能小于已核销次数与有效预占次数之和');
@@ -398,8 +395,7 @@ const linkHandlers = [
     return ok({ ...l, status: computeLinkStatus(l) }, '更新成功');
   }),
   mock(paymentLinkContract.rotateToken, ({ params, ok }) => {
-    const l = links.find((x) => x.id === params.id);
-    if (!l) return notFound('支付链接不存在');
+    const l = requireItem(links, params.id, '支付链接不存在');
     l.token = `demotoken${Date.now()}`;
     l.updatedAt = mockDateTime();
     return ok({ ...l, status: computeLinkStatus(l) }, 'token 已重置');
@@ -591,8 +587,7 @@ const appHandlers = [
     return ok(item, '创建成功');
   }),
   mock(paymentAppContract.update, ({ params, body, ok }) => {
-    const app = apps.find((x) => x.id === params.id);
-    if (!app) return notFound('支付应用不存在');
+    const app = requireItem(apps, params.id, '支付应用不存在');
     Object.assign(app, {
       name: body.name ?? app.name,
       status: body.status ?? app.status,
@@ -658,13 +653,11 @@ const methodHandlers = [
   mock(paymentMethodContract.enabled, ({ ok }) => ok(methodConfigs.filter((m) => m.enabled).sort((a, b) => a.sort - b.sort))),
   mock(paymentMethodContract.list, ({ ok }) => ok([...methodConfigs].sort((a, b) => a.sort - b.sort))),
   mock(paymentMethodContract.detail, ({ params, ok }) => {
-    const m = methodConfigs.find((x) => x.id === params.id);
-    return m ? ok(m) : notFound('支付方式配置不存在');
+    const m = requireItem(methodConfigs, params.id, '支付方式配置不存在');
+    return ok(m);
   }),
   mock(paymentMethodContract.update, ({ params, body, ok }) => {
-    const m = methodConfigs.find((x) => x.id === params.id);
-    if (!m) return notFound('支付方式配置不存在');
-    Object.assign(m, body, { updatedAt: mockDateTime() });
+    const m = updateItem(methodConfigs, params.id, body, { notFoundMessage: '支付方式配置不存在', now: mockDateTime });
     return ok(m, '更新成功');
   }),
 ];
@@ -779,8 +772,8 @@ const transferHandlers = [
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentTransferContract.detail, ({ params, ok }) => {
-    const t = transfers.find((x) => x.id === params.id);
-    return t ? ok(t) : notFound('转账单不存在');
+    const t = requireItem(transfers, params.id, '转账单不存在');
+    return ok(t);
   }),
   mock(paymentTransferContract.create, ({ headers, body, ok }) => {
     const idempotencyKey = headers['x-idempotency-key'];
@@ -825,8 +818,7 @@ const transferHandlers = [
     return ok(item, needsApproval ? '转账申请已提交，等待审批' : '转账已受理');
   }),
   mock(paymentTransferContract.approve, ({ params, body, ok }) => {
-    const t = transfers.find((x) => x.id === params.id);
-    if (!t) return notFound('转账单不存在');
+    const t = requireItem(transfers, params.id, '转账单不存在');
     const remark = body.remark;
     if (t.status !== 'pending' || t.approvalStatus !== 'pending') return badRequest('该转账单无需审批或已处理');
     if (t.appliedById === 1) return forbidden('转账申请人与审批人必须为不同用户');
@@ -845,8 +837,7 @@ const transferHandlers = [
     return ok(t, '转账审批通过并已受理');
   }),
   mock(paymentTransferContract.reject, ({ params, body, ok }) => {
-    const t = transfers.find((x) => x.id === params.id);
-    if (!t) return notFound('转账单不存在');
+    const t = requireItem(transfers, params.id, '转账单不存在');
     const remark = body.remark;
     if (t.status !== 'pending' || t.approvalStatus !== 'pending') return badRequest('该转账单无需审批或已处理');
     const now = mockDateTime();
@@ -862,8 +853,7 @@ const transferHandlers = [
     return ok(t, '转账已驳回');
   }),
   mock(paymentTransferContract.query, ({ params, ok }) => {
-    const t = transfers.find((x) => x.id === params.id);
-    if (!t) return notFound('转账单不存在');
+    const t = requireItem(transfers, params.id, '转账单不存在');
     if (t.status === 'processing') {
       t.status = 'success';
       t.version += 1;

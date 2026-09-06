@@ -1,6 +1,7 @@
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
-import { notFound, badRequest } from '@/mocks/utils/handlers';
+import { badRequest } from '@/mocks/utils/handlers';
 import { paymentRiskOpsContract, type PaymentRiskHit, type PaymentRiskReview } from '@zenith/shared/payment';
 import dayjs from 'dayjs';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -62,8 +63,7 @@ export const paymentRiskOpsHandlers = [
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
   mock(paymentRiskOpsContract.approveReview, ({ params, body, ok }) => {
-    const r = reviews.find((x) => x.id === params.id);
-    if (!r) return notFound('审核单不存在');
+    const r = requireItem(reviews, params.id, '审核单不存在');
     if (r.status !== 'pending') return badRequest('该审核单已处理');
     r.status = 'approved';
     r.reviewerName = '管理员';
@@ -73,8 +73,7 @@ export const paymentRiskOpsHandlers = [
     return ok(r, '已放行');
   }),
   mock(paymentRiskOpsContract.rejectReview, ({ params, body, ok }) => {
-    const r = reviews.find((x) => x.id === params.id);
-    if (!r) return notFound('审核单不存在');
+    const r = requireItem(reviews, params.id, '审核单不存在');
     if (r.status !== 'pending') return badRequest('该审核单已处理');
     r.status = 'rejected';
     r.reviewerName = '管理员';

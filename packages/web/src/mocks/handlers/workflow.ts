@@ -1,4 +1,5 @@
 import { mock } from '@/mocks/utils/contract';
+import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, fail, notFound } from '@/mocks/utils/handlers';
 import type {
   WorkflowDefinition,
@@ -1388,9 +1389,8 @@ export const workflowHandlers = [
   }),
 
   mock(workflowSimulationCaseContract.remove, ({ params, ok }) => {
-    const idx = mockSimulationCases.findIndex((item) => item.id === params.id);
-    if (idx === -1) return notFound('仿真用例不存在');
-    mockSimulationCases.splice(idx, 1);
+    requireItem(mockSimulationCases, params.id, '仿真用例不存在');
+    removeByIds(mockSimulationCases, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -2031,8 +2031,7 @@ export const workflowHandlers = [
 
   // 作业详情（参数路由，必须在 /jobs/* 静态路由之后注册）
   mock(workflowEngineContract.jobDetail, ({ params, ok }) => {
-    const job = mockWorkflowJobs.find((j) => j.id === params.id);
-    if (!job) return notFound('作业不存在');
+    const job = requireItem(mockWorkflowJobs, params.id, '作业不存在');
     const executions = mockWorkflowJobExecutions
       .filter((e) => e.jobId === params.id)
       .sort((a, b) => b.id - a.id);
@@ -2041,8 +2040,7 @@ export const workflowHandlers = [
   }),
 
   mock(workflowEngineContract.retryJob, ({ params, body, ok }) => {
-    const job = mockWorkflowJobs.find((j) => j.id === params.id);
-    if (!job) return notFound('作业不存在');
+    const job = requireItem(mockWorkflowJobs, params.id, '作业不存在');
     if (!['failed', 'dead', 'canceled'].includes(job.status)) return badRequest('仅失败 / 死信 / 已取消的作业可重试');
     if (body.payload) job.payload = body.payload;
     requeueJob(job);
@@ -2050,8 +2048,7 @@ export const workflowHandlers = [
   }),
 
   mock(workflowEngineContract.skipJob, ({ params, ok }) => {
-    const job = mockWorkflowJobs.find((j) => j.id === params.id);
-    if (!job) return notFound('作业不存在');
+    const job = requireItem(mockWorkflowJobs, params.id, '作业不存在');
     if (!['pending', 'failed', 'dead'].includes(job.status)) return badRequest('仅待处理 / 失败 / 死信的作业可跳过');
     job.status = 'canceled';
     job.lockedAt = null;

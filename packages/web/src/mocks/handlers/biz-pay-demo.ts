@@ -2,6 +2,7 @@ import { bizPayDemoContract, type BizPayDemo } from '@zenith/shared/biz';
 import { PAYMENT_METHOD_CHANNEL, type CreatePaymentResult } from '@zenith/shared/payment';
 import { mockBizPayDemos, getNextPayDemoId } from '@/mocks/data/biz-pay-demo';
 import { mock } from '@/mocks/utils/contract';
+import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -18,8 +19,7 @@ export const bizPayDemoHandlers = [
 
   // 详情
   mock(bizPayDemoContract.detail, ({ params, ok }) => {
-    const demo = mockBizPayDemos.find((d) => d.id === params.id);
-    if (!demo) return notFound('示例单不存在');
+    const demo = requireItem(mockBizPayDemos, params.id, '示例单不存在');
     return ok(demo);
   }),
 
@@ -54,8 +54,7 @@ export const bizPayDemoHandlers = [
 
   // 发起支付：返回二维码/跳转链接，并置「支付中」
   mock(bizPayDemoContract.pay, ({ params, body, ok }) => {
-    const demo = mockBizPayDemos.find((d) => d.id === params.id);
-    if (!demo) return notFound('示例单不存在');
+    const demo = requireItem(mockBizPayDemos, params.id, '示例单不存在');
     if (demo.status === 'paid') return badRequest('该示例单已支付，无需重复发起');
     const payMethod = body.payMethod;
     const channel = PAYMENT_METHOD_CHANNEL[payMethod];
@@ -77,8 +76,7 @@ export const bizPayDemoHandlers = [
 
   // 模拟支付成功：履约（置 paid + 发放权益）
   mock(bizPayDemoContract.simulatePaid, ({ params, ok }) => {
-    const demo = mockBizPayDemos.find((d) => d.id === params.id);
-    if (!demo) return notFound('示例单不存在');
+    const demo = requireItem(mockBizPayDemos, params.id, '示例单不存在');
     if (!demo.paymentOrderNo) return badRequest('请先创建支付订单');
     if (demo.status !== 'paid') {
       const now = mockDateTime();

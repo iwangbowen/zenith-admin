@@ -28,7 +28,7 @@ function nextIdFactory(initial: number) {
 
 export const getNextCmsSiteId = nextIdFactory(nextIdFrom(mockCmsSites));
 export const getNextCmsModelId = nextIdFactory(nextIdFrom(mockCmsModels));
-export const getNextCmsModelFieldId = nextIdFactory(Math.max(0, ...mockCmsModels.flatMap((m) => (m.fields ?? []).map((f) => f.id))) + 1);
+export const getNextCmsModelFieldId = nextIdFactory(nextIdFrom(mockCmsModels.flatMap((m) => m.fields ?? [])));
 export const getNextCmsChannelId = nextIdFactory(nextIdFrom(mockCmsChannels));
 export const getNextCmsContentId = nextIdFactory(nextIdFrom(mockCmsContents));
 export const getNextCmsTagId = nextIdFactory(nextIdFrom(mockCmsTags));
