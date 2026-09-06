@@ -2,6 +2,8 @@
  * 报表数据集 CRUD：映射、存在性/全局可求值校验、增删改查、复制、批量状态与血缘引用收集。
  * 对外统一经 report-dataset.service.ts facade 暴露。
  */
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db';
@@ -126,10 +128,10 @@ function validateDatasetDefinitions(
 }
 
 export async function ensureDatasetExists(id: number): Promise<ReportDatasetRow> {
-  const [row] = await db.select().from(reportDatasets)
+  const [rowOrUndefined] = await db.select().from(reportDatasets)
     .where(reportScopedWhere(reportDatasets, eq(reportDatasets.id, id)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '数据集不存在' });
+  const row = requireRow(rowOrUndefined, '数据集不存在');
   if (currentUserOrNull()) await ensureReportResourceAccess('dataset', id, 'viewer');
   return row;
 }
@@ -156,7 +158,7 @@ export async function assertDatasetEvaluableGlobally(datasetId: number): Promise
 }
 
 export async function getDataset(id: number): Promise<ReportDataset> {
-  const row = await db.query.reportDatasets.findFirst({
+  const rowOrUndefined = await db.query.reportDatasets.findFirst({
     where: reportScopedWhere(reportDatasets, eq(reportDatasets.id, id)),
     with: {
       datasource: { columns: { name: true } },
@@ -164,7 +166,7 @@ export async function getDataset(id: number): Promise<ReportDataset> {
       owner: { columns: { nickname: true, username: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '数据集不存在' });
+  const row = requireRow(rowOrUndefined, '数据集不存在');
   return mapDataset(row);
 }
 
@@ -187,21 +189,23 @@ export async function listDatasets(query: {
   }
   if (status === 'enabled' || status === 'disabled') conds.push(eq(reportDatasets.status, status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportDatasets, where),
-    db.query.reportDatasets.findMany({
-      where,
-      with: {
-        datasource: { columns: { name: true } },
-        folder: { columns: { name: true } },
-        owner: { columns: { nickname: true, username: true } },
-      },
-      orderBy: desc(reportDatasets.id),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  return { list: rows.map(mapDataset), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportDatasets, where),
+    rows: () => db.query.reportDatasets.findMany({
+            where,
+            with: {
+              datasource: { columns: { name: true } },
+              folder: { columns: { name: true } },
+              owner: { columns: { nickname: true, username: true } },
+            },
+            orderBy: desc(reportDatasets.id),
+            limit: pageSize,
+            offset: pageOffset(page, pageSize),
+          }),
+    map: mapDataset,
+  });
 }
 
 export async function listDatasetLookup(query: {
@@ -351,7 +355,7 @@ export async function updateDataset(id: number, input: UpdateReportDatasetInput)
     tenantId: current.tenantId ?? null,
   });
   try {
-    const [row] = await db.update(reportDatasets).set({
+    const [rowOrUndefined] = await db.update(reportDatasets).set({
       ownerId: input.ownerId,
       folderId: input.folderId,
       name: input.name,
@@ -367,7 +371,7 @@ export async function updateDataset(id: number, input: UpdateReportDatasetInput)
       status: input.status,
       remark: input.remark,
     }).where(eq(reportDatasets.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '数据集不存在' });
+    const row = requireRow(rowOrUndefined, '数据集不存在');
     await clearDatasetCache(id);
     return mapDataset(row);
   } catch (err) {
@@ -381,11 +385,11 @@ export async function updateDataset(id: number, input: UpdateReportDatasetInput)
 /** 收集数据集的下游引用：仪表盘（组件绑定/筛选器动态选项）、打印模板、预警规则及间接分享链路 */
 export async function collectDatasetRefs(id: number): Promise<ReportDatasetRefs> {
   if (currentUserOrNull()) await ensureReportResourceAccess('dataset', id, 'viewer');
-  const dataset = await db.query.reportDatasets.findFirst({
+  const datasetOrUndefined = await db.query.reportDatasets.findFirst({
     where: reportScopedWhere(reportDatasets, eq(reportDatasets.id, id)),
     with: { datasource: { columns: { id: true, name: true } } },
   });
-  if (!dataset) throw new HTTPException(404, { message: '数据集不存在' });
+  const dataset = requireRow(datasetOrUndefined, '数据集不存在');
   const [dashRows, printRows, metricRows, alertRows] = await Promise.all([
     db.select({
       id: reportDashboards.id,

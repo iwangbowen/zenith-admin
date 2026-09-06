@@ -2,6 +2,8 @@
  * 类 Excel 打印报表模板 Service
  * CRUD + 取数渲染（复用数据集取数 + shared 填充引擎 renderPrintContent）。
  */
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { ReportPrintValidationError, renderPrintContent } from '@zenith/shared/report';
@@ -55,17 +57,17 @@ export function mapPrintTemplate(row: PrintRowExt): ReportPrintTemplate {
 }
 
 export async function ensurePrintTemplateExists(id: number): Promise<ReportPrintTemplateRow> {
-  const [row] = await db.select().from(reportPrintTemplates)
+  const [rowOrUndefined] = await db.select().from(reportPrintTemplates)
     .where(reportScopedWhere(reportPrintTemplates, eq(reportPrintTemplates.id, id)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '打印报表不存在' });
+  const row = requireRow(rowOrUndefined, '打印报表不存在');
   if (currentUserOrNull()) await ensureReportResourceAccess('print_template', id, 'viewer');
   return row;
 }
 
 export async function getPrintTemplate(id: number): Promise<ReportPrintTemplate> {
   if (currentUserOrNull()) await ensureReportResourceAccess('print_template', id, 'viewer');
-  const row = await db.query.reportPrintTemplates.findFirst({
+  const rowOrUndefined = await db.query.reportPrintTemplates.findFirst({
     where: reportScopedWhere(reportPrintTemplates, eq(reportPrintTemplates.id, id)),
     with: {
       dataset: { columns: { name: true } },
@@ -73,7 +75,7 @@ export async function getPrintTemplate(id: number): Promise<ReportPrintTemplate>
       owner: { columns: { nickname: true, username: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '打印报表不存在' });
+  const row = requireRow(rowOrUndefined, '打印报表不存在');
   return mapPrintTemplate(row);
 }
 
@@ -92,21 +94,23 @@ export async function listPrintTemplates(query: {
   conds.push(keywordCondition(keyword, [reportPrintTemplates.name, reportPrintTemplates.remark], 'ilike'));
   if (status === 'enabled' || status === 'disabled') conds.push(eq(reportPrintTemplates.status, status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportPrintTemplates, where),
-    db.query.reportPrintTemplates.findMany({
-      where,
-      with: {
-        dataset: { columns: { name: true } },
-        folder: { columns: { name: true } },
-        owner: { columns: { nickname: true, username: true } },
-      },
-      orderBy: desc(reportPrintTemplates.id),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  return { list: rows.map(mapPrintTemplate), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportPrintTemplates, where),
+    rows: () => db.query.reportPrintTemplates.findMany({
+            where,
+            with: {
+              dataset: { columns: { name: true } },
+              folder: { columns: { name: true } },
+              owner: { columns: { nickname: true, username: true } },
+            },
+            orderBy: desc(reportPrintTemplates.id),
+            limit: pageSize,
+            offset: pageOffset(page, pageSize),
+          }),
+    map: mapPrintTemplate,
+  });
 }
 
 export async function listPrintTemplateLookup(query: {
@@ -230,7 +234,7 @@ export async function updatePrintTemplate(id: number, input: UpdateReportPrintTe
     tenantId: current.tenantId ?? null,
   });
   try {
-    const [row] = await db.update(reportPrintTemplates).set({
+    const [rowOrUndefined] = await db.update(reportPrintTemplates).set({
       ownerId: input.ownerId,
       folderId: input.folderId,
       name: input.name,
@@ -241,7 +245,7 @@ export async function updatePrintTemplate(id: number, input: UpdateReportPrintTe
       status: input.status,
       remark: input.remark,
     }).where(eq(reportPrintTemplates.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '打印报表不存在' });
+    const row = requireRow(rowOrUndefined, '打印报表不存在');
     return mapPrintTemplate(row);
   } catch (err) {
     rethrowPgUniqueViolation(err, '打印报表名称已存在');

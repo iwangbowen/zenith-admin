@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import type { CreateReportEnvironmentInput, CreateReportEnvironmentPromotionInput, CreateReportPublishApprovalInput, CreateReportResourceTransferInput, DecideReportPublishApprovalInput, DecideReportResourceTransferInput, ReportApprovalStatus, ReportDashboardSnapshot, ReportCanvasItem, ReportDashboardConfig, ReportFilter, ReportGridItem, ReportWidget, ReportEnvironment, ReportEnvironmentPromotion, ReportEnvironmentPromotionActionInput, ReportPromotionStatus, ReportPublishApproval, ReportResourceTransfer, ReportResourceType, ReportTransferStatus, UpdateReportEnvironmentInput } from '@zenith/shared/report';
@@ -181,14 +182,14 @@ export async function listReportResourceTransfers(query: {
 }
 
 async function ensureTransfer(id: number) {
-  const row = await db.query.reportResourceTransfers.findFirst({
+  const rowOrUndefined = await db.query.reportResourceTransfers.findFirst({
     where: reportScopedWhere(reportResourceTransfers, eq(reportResourceTransfers.id, id)),
     with: {
       fromOwner: { columns: { nickname: true, username: true } },
       toOwner: { columns: { nickname: true, username: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '资源转移申请不存在' });
+  const row = requireRow(rowOrUndefined, '资源转移申请不存在');
   return row;
 }
 
@@ -207,7 +208,7 @@ export async function decideReportResourceTransfer(
   if (status === 'accepted' && (resource.ownerId ?? resource.createdBy) !== transfer.fromOwnerId) {
     throw new HTTPException(409, { message: '资源负责人已变更，转移申请已失效' });
   }
-  const row = await db.transaction(async (tx) => {
+  const rowOrUndefined = await db.transaction(async (tx) => {
     if (status === 'accepted') {
       await ensureReportOwner(transfer.toOwnerId, resource.tenantId);
       await setReportResourceOwner(tx, transfer.resourceType, transfer.resourceId, transfer.toOwnerId);
@@ -220,7 +221,7 @@ export async function decideReportResourceTransfer(
     }).where(and(eq(reportResourceTransfers.id, id), eq(reportResourceTransfers.status, 'pending'))).returning();
     return updated;
   });
-  if (!row) throw new HTTPException(409, { message: '资源转移申请已处理' });
+  const row = requireRow(rowOrUndefined, '资源转移申请已处理', 409);
   return mapReportResourceTransfer(row, resource.name);
 }
 
@@ -229,13 +230,13 @@ export async function cancelReportResourceTransfer(id: number, reason?: string):
   assertPendingGovernanceStatus(transfer.status, '资源转移申请');
   const userId = currentUserId();
   if (!isSuperAdmin() && transfer.requestedBy !== userId) throw new HTTPException(403, { message: '仅申请人可取消转移' });
-  const [row] = await db.update(reportResourceTransfers).set({
+  const [rowOrUndefined] = await db.update(reportResourceTransfers).set({
     status: 'cancelled',
     decidedBy: userId,
     decidedAt: new Date(),
     decisionNote: reason ?? null,
   }).where(and(eq(reportResourceTransfers.id, id), eq(reportResourceTransfers.status, 'pending'))).returning();
-  if (!row) throw new HTTPException(409, { message: '资源转移申请已处理' });
+  const row = requireRow(rowOrUndefined, '资源转移申请已处理', 409);
   return mapReportResourceTransfer(row);
 }
 
@@ -330,14 +331,14 @@ export async function listReportPublishApprovals(query: {
 }
 
 async function ensureApproval(id: number) {
-  const row = await db.query.reportPublishApprovals.findFirst({
+  const rowOrUndefined = await db.query.reportPublishApprovals.findFirst({
     where: reportScopedWhere(reportPublishApprovals, eq(reportPublishApprovals.id, id)),
     with: {
       requestedByUser: { columns: { nickname: true, username: true } },
       decidedByUser: { columns: { nickname: true, username: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '发布审批不存在' });
+  const row = requireRow(rowOrUndefined, '发布审批不存在');
   return row;
 }
 
@@ -352,10 +353,10 @@ export async function decideReportPublishApproval(
     assertGovernedResourceRevision(resource.revision, approval.requestedRevision, '资源版本已变更，审批请求已失效');
   }
   const decidedBy = currentUserId();
-  const row = await db.transaction(async (tx) => {
+  const rowOrUndefined = await db.transaction(async (tx) => {
     if (input.decision === 'approved' && approval.action === 'publish') {
       if (approval.resourceType === 'dashboard') {
-        const [updated] = await tx.update(reportDashboards).set({
+        const [updatedOrUndefined] = await tx.update(reportDashboards).set({
           lifecycleStatus: 'published',
           publishedSnapshot: dashboardSnapshotFromRecord(approval.snapshot),
           publishedAt: new Date(),
@@ -365,9 +366,9 @@ export async function decideReportPublishApproval(
           eq(reportDashboards.id, approval.resourceId),
           eq(reportDashboards.revision, approval.requestedRevision),
         )).returning({ id: reportDashboards.id });
-        if (!updated) throw new HTTPException(409, { message: '仪表盘版本已变更，审批请求已失效' });
+        requireRow(updatedOrUndefined, '仪表盘版本已变更，审批请求已失效', 409);
       } else if (approval.resourceType === 'metric') {
-        const [updated] = await tx.update(reportMetrics).set({
+        const [updatedOrUndefined] = await tx.update(reportMetrics).set({
           lifecycleStatus: 'published',
           publishedSnapshot: approval.snapshot,
           publishedAt: new Date(),
@@ -377,10 +378,10 @@ export async function decideReportPublishApproval(
           eq(reportMetrics.id, approval.resourceId),
           eq(reportMetrics.revision, approval.requestedRevision),
         )).returning({ id: reportMetrics.id });
-        if (!updated) throw new HTTPException(409, { message: '指标版本已变更，审批请求已失效' });
+        requireRow(updatedOrUndefined, '指标版本已变更，审批请求已失效', 409);
       }
     } else if (input.decision === 'approved' && approval.action === 'deprecate' && approval.resourceType === 'metric') {
-      const [updated] = await tx.update(reportMetrics).set({
+      const [updatedOrUndefined] = await tx.update(reportMetrics).set({
         lifecycleStatus: 'deprecated',
         deprecatedAt: new Date(),
         deprecatedBy: decidedBy,
@@ -390,7 +391,7 @@ export async function decideReportPublishApproval(
         eq(reportMetrics.id, approval.resourceId),
         eq(reportMetrics.revision, approval.requestedRevision),
       )).returning({ id: reportMetrics.id });
-      if (!updated) throw new HTTPException(409, { message: '指标版本已变更，审批请求已失效' });
+      requireRow(updatedOrUndefined, '指标版本已变更，审批请求已失效', 409);
     }
     const [updatedApproval] = await tx.update(reportPublishApprovals).set({
       status: input.decision,
@@ -400,7 +401,7 @@ export async function decideReportPublishApproval(
     }).where(and(eq(reportPublishApprovals.id, id), eq(reportPublishApprovals.status, 'pending'))).returning();
     return updatedApproval;
   });
-  if (!row) throw new HTTPException(409, { message: '发布审批已处理' });
+  const row = requireRow(rowOrUndefined, '发布审批已处理', 409);
   return mapReportPublishApproval(row, resource.name);
 }
 
@@ -409,13 +410,13 @@ export async function cancelReportPublishApproval(id: number, reason?: string): 
   assertPendingGovernanceStatus(approval.status, '发布审批');
   const userId = currentUserId();
   if (!isSuperAdmin() && approval.requestedBy !== userId) throw new HTTPException(403, { message: '仅申请人可取消审批' });
-  const [row] = await db.update(reportPublishApprovals).set({
+  const [rowOrUndefined] = await db.update(reportPublishApprovals).set({
     status: 'cancelled',
     decidedBy: userId,
     decidedAt: new Date(),
     decisionNote: reason ?? null,
   }).where(and(eq(reportPublishApprovals.id, id), eq(reportPublishApprovals.status, 'pending'))).returning();
-  if (!row) throw new HTTPException(409, { message: '发布审批已处理' });
+  const row = requireRow(rowOrUndefined, '发布审批已处理', 409);
   return mapReportPublishApproval(row);
 }
 
@@ -445,9 +446,9 @@ export async function listReportEnvironments(): Promise<ReportEnvironment[]> {
 }
 
 export async function getReportEnvironment(id: number) {
-  const [row] = await db.select().from(reportEnvironments)
+  const [rowOrUndefined] = await db.select().from(reportEnvironments)
     .where(reportScopedWhere(reportEnvironments, eq(reportEnvironments.id, id))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '报表环境不存在' });
+  const row = requireRow(rowOrUndefined, '报表环境不存在');
   return row;
 }
 
@@ -487,7 +488,7 @@ export async function updateReportEnvironment(
 ): Promise<ReportEnvironment> {
   const existing = await getReportEnvironment(id);
   try {
-    const row = await db.transaction(async (tx) => {
+    const rowOrUndefined = await db.transaction(async (tx) => {
       if (input.isDefault) {
         const targetTenant = existing.tenantId == null
           ? isNull(reportEnvironments.tenantId)
@@ -505,7 +506,7 @@ export async function updateReportEnvironment(
       }).where(eq(reportEnvironments.id, id)).returning();
       return updated;
     });
-    if (!row) throw new HTTPException(404, { message: '报表环境不存在' });
+    const row = requireRow(rowOrUndefined, '报表环境不存在');
     return mapReportEnvironment(row);
   } catch (error) {
     rethrowPgUniqueViolation(error, '默认环境已存在');
@@ -661,14 +662,14 @@ export async function listReportEnvironmentPromotions(query: {
 }
 
 async function ensurePromotion(id: number) {
-  const row = await db.query.reportEnvironmentPromotions.findFirst({
+  const rowOrUndefined = await db.query.reportEnvironmentPromotions.findFirst({
     where: reportScopedWhere(reportEnvironmentPromotions, eq(reportEnvironmentPromotions.id, id)),
     with: {
       sourceEnvironment: { columns: { name: true } },
       targetEnvironment: { columns: { name: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '环境发布记录不存在' });
+  const row = requireRow(rowOrUndefined, '环境发布记录不存在');
   return row;
 }
 
@@ -709,11 +710,11 @@ export async function transitionReportEnvironmentPromotion(
       : input.action === 'cancel'
         ? { status: 'cancelled' as const, completedAt: now, errorMessage: input.note ?? null }
         : { status: 'rolled_back' as const, completedAt: now, targetSnapshot: promotion.rollbackSnapshot };
-  const [row] = await db.update(reportEnvironmentPromotions).set(changes)
+  const [rowOrUndefined] = await db.update(reportEnvironmentPromotions).set(changes)
     .where(and(
       eq(reportEnvironmentPromotions.id, id),
       eq(reportEnvironmentPromotions.status, input.expectedStatus),
     )).returning();
-  if (!row) throw new HTTPException(409, { message: '环境发布状态已变化' });
+  const row = requireRow(rowOrUndefined, '环境发布状态已变化', 409);
   return mapReportEnvironmentPromotion(row, resource.name);
 }

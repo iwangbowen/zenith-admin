@@ -3,6 +3,7 @@
  * - draft = 当前设计草稿
  * - publishedSnapshot = 已发布只读快照（查看/公开/嵌入默认读取）
  */
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
@@ -23,6 +24,7 @@ import { assertDatasetEvaluableGlobally, ensureDatasetExists, getDatasetDataExec
 import {
   buildDashboardSnapshot,
 } from './report-dashboard-runtime';
+import { draftSnapshotFromDashboardRow } from './report-dashboard-snapshot';
 import {
   assertReportMetricEvaluableGlobally,
   ensureReportMetricExists,
@@ -105,19 +107,6 @@ export function mapDashboard(
   };
 }
 
-function draftSnapshotFromRow(row: ReportDashboardRow): ReportDashboardSnapshot {
-  return buildDashboardSnapshot({
-    name: row.name,
-    layout: (row.layout ?? []) as ReportGridItem[],
-    canvasLayout: (row.canvasLayout ?? []) as ReportCanvasItem[],
-    widgets: (row.widgets ?? []) as ReportWidget[],
-    filters: (row.filters ?? []) as ReportFilter[],
-    config: (row.config ?? {}) as ReportDashboardConfig,
-    categoryId: row.categoryId ?? null,
-    remark: row.remark ?? null,
-  });
-}
-
 async function canPreviewDraft(dashboardId: number): Promise<boolean> {
   if (!currentUserOrNull()) return false;
   if (!(await hasPermission('report:dashboard:update'))) return false;
@@ -139,7 +128,7 @@ export async function resolveDashboardSnapshotForMode(
     if (!(await canPreviewDraft(row.id))) {
       throw new HTTPException(403, { message: '仅有编辑权限的用户可预览草稿' });
     }
-    return draftSnapshotFromRow(row);
+    return draftSnapshotFromDashboardRow(row);
   }
 
   const published = (row.publishedSnapshot ?? null) as ReportDashboardSnapshot | null;
@@ -152,15 +141,15 @@ export async function resolveDashboardSnapshotForMode(
   }
 
   if (publishedAccessible) return published;
-  if (row.lifecycleStatus === 'draft' && await canPreviewDraft(row.id)) return draftSnapshotFromRow(row);
+  if (row.lifecycleStatus === 'draft' && await canPreviewDraft(row.id)) return draftSnapshotFromDashboardRow(row);
   throw new HTTPException(404, { message: '仪表盘未发布' });
 }
 
 export async function ensureDashboardExists(id: number): Promise<ReportDashboardRow> {
-  const [row] = await db.select().from(reportDashboards)
+  const [rowOrUndefined] = await db.select().from(reportDashboards)
     .where(reportScopedWhere(reportDashboards, eq(reportDashboards.id, id)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '仪表盘不存在' });
+  const row = requireRow(rowOrUndefined, '仪表盘不存在');
   if (currentUserOrNull()) await ensureReportResourceAccess('dashboard', id, 'viewer');
   return row;
 }
@@ -170,7 +159,7 @@ export async function getDashboard(
   options?: { mode?: 'auto' | 'draft' | 'published'; allowOfflinePublished?: boolean },
 ): Promise<ReportDashboard> {
   if (currentUserOrNull()) await ensureReportResourceAccess('dashboard', id, 'viewer');
-  const row = await db.query.reportDashboards.findFirst({
+  const rowOrUndefined = await db.query.reportDashboards.findFirst({
     where: reportScopedWhere(reportDashboards, eq(reportDashboards.id, id)),
     with: {
       category: { columns: { name: true } },
@@ -179,7 +168,7 @@ export async function getDashboard(
       owner: { columns: { nickname: true, username: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '仪表盘不存在' });
+  const row = requireRow(rowOrUndefined, '仪表盘不存在');
   const uid = currentUserOrNull()?.userId;
   let favorited: boolean | undefined;
   if (uid) {
@@ -321,7 +310,7 @@ export async function cloneDashboard(id: number, input?: { name?: string | null 
   const current = await ensureDashboardExists(id);
   const rows = await db.select({ name: reportDashboards.name }).from(reportDashboards).where(reportTenantScope(reportDashboards));
   const name = input?.name?.trim() || buildReportCopyName(current.name, new Set(rows.map((row) => row.name)));
-  const snapshot = draftSnapshotFromRow(current);
+  const snapshot = draftSnapshotFromDashboardRow(current);
   await ensureDashboardReferences(
     snapshot.widgets,
     snapshot.filters,
@@ -512,11 +501,11 @@ export async function ensureDashboardReferences(
     if (crossTenant) throw new HTTPException(400, { message: '仪表盘引用了其他租户的报表资源' });
   }
   if (categoryId) {
-    const [category] = await db.select({ id: reportDashboardCategories.id, tenantId: reportDashboardCategories.tenantId })
+    const [categoryOrUndefined] = await db.select({ id: reportDashboardCategories.id, tenantId: reportDashboardCategories.tenantId })
       .from(reportDashboardCategories)
       .where(reportScopedWhere(reportDashboardCategories, eq(reportDashboardCategories.id, categoryId)))
       .limit(1);
-    if (!category) throw new HTTPException(404, { message: '仪表盘分类不存在' });
+    const category = requireRow(categoryOrUndefined, '仪表盘分类不存在');
     if (tenantId !== undefined && (category.tenantId ?? null) !== tenantId) {
       throw new HTTPException(400, { message: '仪表盘与分类不属于同一租户' });
     }
@@ -525,7 +514,7 @@ export async function ensureDashboardReferences(
 
 export async function assertDashboardEvaluableGlobally(id: number): Promise<void> {
   const dashboard = await ensureDashboardExists(id);
-  await assertDashboardSnapshotEvaluableGlobally(draftSnapshotFromRow(dashboard), dashboard.tenantId ?? null);
+  await assertDashboardSnapshotEvaluableGlobally(draftSnapshotFromDashboardRow(dashboard), dashboard.tenantId ?? null);
 }
 
 export async function assertDashboardSnapshotEvaluableGlobally(

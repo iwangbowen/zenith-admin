@@ -1,10 +1,9 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Form, Modal, Switch, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Modal, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { useExportJobRunner } from '@/hooks/useExportJobRunner';
 import ReportParamDialog from '@/components/ReportParamDialog';
@@ -30,9 +29,9 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 
 interface SearchParams { keyword: string; status?: string; ownerId?: number; folderId?: number }
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, ownerId: undefined, folderId: undefined };
@@ -64,7 +63,6 @@ export default function PrintTemplatesPage() {
     ownerId: submittedParams.ownerId,
     folderId: submittedParams.folderId,
   });
-  const data = listQuery.data ?? null;
   const users = useAllUsers().data ?? [];
   const folders = flattenReportFolders(useReportFolderTree({ resourceType: 'print_template' }).data ?? []);
   const datasetsQuery = useReportDesignerDatasets();
@@ -76,7 +74,11 @@ export default function PrintTemplatesPage() {
   const deleteMutation = useDeleteReportPrintTemplates();
   const renderMutation = useRenderReportPrintTemplate();
   const exportRunner = useExportJobRunner();
-  const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const statusToggle = useStatusToggle<ReportPrintTemplate>({
+    toggle: (record, checked) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({ title: '确认停用', content: `停用后「${record.name}」将不可用于打印报表，确认停用？` }),
+    disabled: !hasPermission('report:print:update'),
+  });
 
   const printModal = useEditModal<ReportPrintTemplate, Record<string, unknown>, CreateReportPrintTemplateInput | UpdateReportPrintTemplateInput>({
     entityName: '打印模板',
@@ -104,11 +106,6 @@ export default function PrintTemplatesPage() {
     },
   });
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
   async function handleClone(record: ReportPrintTemplate) {
     const cloned = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
     Toast.success(`已复制为「${cloned.name}」`);
@@ -124,15 +121,6 @@ export default function PrintTemplatesPage() {
         Toast.success(status === 'enabled' ? '批量启用成功' : '批量停用成功');
       },
     });
-  }
-
-  function handleToggleStatus(record: ReportPrintTemplate, checked: boolean) {
-    const doToggle = async () => {
-      await toggleStatusMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
-      Toast.success(checked ? '已启用' : '已停用');
-    };
-    if (checked) void doToggle();
-    else Modal.confirm({ title: '确认停用', content: `停用后「${record.name}」将不可用于打印报表，确认停用？`, onOk: () => void doToggle() });
   }
 
   async function runPreview(record: ReportPrintTemplate, values: Record<string, unknown>) {
@@ -214,18 +202,7 @@ export default function PrintTemplatesPage() {
     { title: '目录', dataIndex: 'folderName', width: 140, render: (v: string | null) => v || '—' },
     { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, record: ReportPrintTemplate) => (
-        <Switch
-          checked={record.status === 'enabled'}
-          loading={togglingId === record.id}
-          disabled={!hasPermission('report:print:update')}
-          onChange={(checked) => handleToggleStatus(record, checked)}
-          size="small"
-        />
-      ),
-    },
+    statusToggle.column(),
     createOperationColumn<ReportPrintTemplate>({
       width: 240,
       desktopInlineKeys: ['design', 'preview', 'edit'],
@@ -240,10 +217,15 @@ export default function PrintTemplatesPage() {
           { key: 'exportPdf', label: '导出 PDF', loading: exportRunner.isPending, onClick: () => handleExport(record, 'pdf') },
           { key: 'exportDocx', label: '导出 Word', loading: exportRunner.isPending, onClick: () => handleExport(record, 'docx') },
         ] : []),
-        ...(hasPermission('report:print:delete') ? [{
-          key: 'delete', label: '删除', danger: true, dividerBefore: true,
-          onClick: () => { confirmDelete({ content: '删除后不可恢复', onOk: () => handleDelete(record.id) }); },
-        }] : []),
+        {
+          ...deleteAction({
+            hidden: !hasPermission('report:print:delete'),
+            title: '确定要删除吗？',
+            content: '删除后不可恢复',
+            run: () => deleteMutation.mutateAsync([record.id]),
+          }),
+          dividerBefore: true,
+        },
       ],
     }),
   ];
@@ -278,8 +260,6 @@ export default function PrintTemplatesPage() {
       filter
     />
   );
-  const renderSearchBtn = () => <SearchButton onClick={handleSearch} />;
-  const renderResetBtn = () => <ResetButton onClick={handleReset} />;
   const renderCreateBtn = () => hasPermission('report:print:create')
     ? <CreateButton onClick={printModal.openCreate} /> : null;
   const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:print:update')
@@ -289,24 +269,27 @@ export default function PrintTemplatesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>{renderKeyword()}{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}{renderSearchBtn()}{renderResetBtn()}</>}
-        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCreateBtn()}</>}
-        mobilePrimary={<>{renderKeyword()}{renderSearchBtn()}{renderCreateBtn()}</>}
-        mobileFilters={<>{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}</>}
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={<>{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}</>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateBtn()}
+        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="打印模板筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        rowSelection={hasPermission('report:print:update') ? {
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as number[]),
-        } : undefined}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
+      <ConfigurableTable<ReportPrintTemplate>
+        columns={columns}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无数据',
+          rowSelection: hasPermission('report:print:update') ? {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          } : undefined,
+        })}
       />
 
       <AppModal

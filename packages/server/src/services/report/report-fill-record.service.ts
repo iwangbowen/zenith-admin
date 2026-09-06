@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
@@ -69,10 +71,10 @@ async function canReviewFillRecords(): Promise<boolean> {
 }
 
 async function ensureRecordRow(id: number): Promise<RecordRow> {
-  const row = await db.query.reportFillRecords.findFirst({
+  const rowOrUndefined = await db.query.reportFillRecords.findFirst({
     where: reportScopedWhere(reportFillRecords, eq(reportFillRecords.id, id)),
   });
-  if (!row) throw new HTTPException(404, { message: '填报记录不存在' });
+  const row = requireRow(rowOrUndefined, '填报记录不存在');
   return row;
 }
 
@@ -113,13 +115,15 @@ export async function listMyReportFillRecords(query: {
     ));
     where = and(where, inArray(reportFillRecords.templateId, templateIds));
   }
-  const [total, rows] = await Promise.all([
-    db.$count(reportFillRecords, where),
-    selectRecordListRows().where(where)
-      .orderBy(desc(reportFillRecords.updatedAt))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapRecordListRow), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportFillRecords, where),
+    rows: () => selectRecordListRows().where(where)
+            .orderBy(desc(reportFillRecords.updatedAt))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapRecordListRow,
+  });
 }
 
 export async function listAdminReportFillRecords(query: {
@@ -140,13 +144,15 @@ export async function listAdminReportFillRecords(query: {
     query.templateId ? eq(reportFillRecords.templateId, query.templateId) : undefined,
     query.submitterId ? eq(reportFillRecords.submitterId, query.submitterId) : undefined,
   );
-  const [total, rows] = await Promise.all([
-    db.$count(reportFillRecords, where),
-    selectRecordListRows().where(where)
-      .orderBy(desc(reportFillRecords.updatedAt))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapRecordListRow), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportFillRecords, where),
+    rows: () => selectRecordListRows().where(where)
+            .orderBy(desc(reportFillRecords.updatedAt))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapRecordListRow,
+  });
 }
 
 export async function getReportFillRecord(id: number): Promise<ReportFillRecord> {
@@ -186,7 +192,7 @@ export async function updateReportFillRecord(
   }
   assertReportFillRecordRevision(existing.revision, input.expectedRevision);
   validateReportFillValues(existing.templateSchemaSnapshot, input.data);
-  const [row] = await db.update(reportFillRecords).set({
+  const [rowOrUndefined] = await db.update(reportFillRecords).set({
     data: input.data,
     revision: sql`${reportFillRecords.revision} + 1`,
   }).where(and(
@@ -194,7 +200,7 @@ export async function updateReportFillRecord(
     eq(reportFillRecords.revision, input.expectedRevision),
     inArray(reportFillRecords.status, ['draft', 'rejected']),
   )).returning();
-  if (!row) throw new HTTPException(409, { message: '记录已被其他操作更新，请刷新后重试' });
+  const row = requireRow(rowOrUndefined, '记录已被其他操作更新，请刷新后重试', 409);
   return mapReportFillRecord(row);
 }
 
@@ -306,7 +312,7 @@ export async function cancelReportFillRecord(
   if (!isReportFillRecordActionAllowed(existing.status, 'cancel')) {
     throw new HTTPException(409, { message: '当前状态不允许取消或撤回' });
   }
-  const [row] = await db.update(reportFillRecords).set({
+  const [rowOrUndefined] = await db.update(reportFillRecords).set({
     status: 'cancelled',
     reviewComment: input.reason,
     revision: sql`${reportFillRecords.revision} + 1`,
@@ -315,7 +321,7 @@ export async function cancelReportFillRecord(
     eq(reportFillRecords.revision, input.expectedRevision),
     inArray(reportFillRecords.status, ['draft', 'rejected', 'submitted']),
   )).returning();
-  if (!row) throw new HTTPException(409, { message: '记录已被其他操作更新，请刷新后重试' });
+  const row = requireRow(rowOrUndefined, '记录已被其他操作更新，请刷新后重试', 409);
   return mapReportFillRecord(row);
 }
 
@@ -333,7 +339,7 @@ export async function reviewReportFillRecord(
     throw new HTTPException(409, { message: '该记录必须通过绑定的工作流审批，不能直接审核' });
   }
   const status = input.decision;
-  const [row] = await db.update(reportFillRecords).set({
+  const [rowOrUndefined] = await db.update(reportFillRecords).set({
     status,
     reviewedAt: new Date(),
     reviewedBy: currentUser().userId,
@@ -346,7 +352,7 @@ export async function reviewReportFillRecord(
     eq(reportFillRecords.revision, input.expectedRevision),
     inArray(reportFillRecords.status, ['submitted', 'in_review']),
   )).returning();
-  if (!row) throw new HTTPException(409, { message: '记录已被其他审核操作处理，请刷新后重试' });
+  const row = requireRow(rowOrUndefined, '记录已被其他审核操作处理，请刷新后重试', 409);
   if (status === 'approved') await submitReportFillSyncTask(row.id);
   return mapReportFillRecord(await ensureRecordRow(row.id));
 }

@@ -4,6 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportQueryCostLog, ReportQueryCostTrendPoint, ReportQueryQuota, ReportQuotaScope } from '@zenith/shared/report';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -149,7 +150,7 @@ export default function GovernanceCapacityTab() {
         {hasPermission('report:query-quota:create') ? <CreateButton onClick={() => openQuota()}>新增配额</CreateButton> : null}
       </SearchToolbar>
       {quotasQuery.isError && <Banner type="danger" description="查询配额加载失败" />}
-      <ConfigurableTable bordered rowKey="id" columns={quotaColumns} dataSource={quotasQuery.data?.list ?? []} loading={quotasQuery.isFetching} empty={<Empty title="暂无查询配额" />} pagination={buildPagination(quotasQuery.data?.total ?? 0)} onRefresh={() => void quotasQuery.refetch()} refreshLoading={quotasQuery.isFetching} />
+      <ConfigurableTable columns={quotaColumns} {...listTableProps(quotasQuery, { pagination: buildPagination, empty: <Empty title="暂无查询配额" /> })} />
 
       <Typography.Title heading={5} style={{ marginTop: 20 }}>成本与容量趋势</Typography.Title>
       <SearchToolbar>
@@ -170,7 +171,7 @@ export default function GovernanceCapacityTab() {
           <Typography.Text>运行 {statsQuery.data.capacity.running} / {statsQuery.data.capacity.globalLimit}，排队 {statsQuery.data.capacity.queueDepth}</Typography.Text>
         </Space>
       )}
-      <ConfigurableTable bordered rowKey="bucket" columns={trendColumns} dataSource={trendQuery.data ?? []} loading={trendQuery.isFetching} empty={<Empty title="暂无成本趋势" />} pagination={false} onRefresh={() => void trendQuery.refetch()} refreshLoading={trendQuery.isFetching} />
+      <ConfigurableTable columns={trendColumns} {...listTableProps(trendQuery, { rowKey: 'bucket', empty: <Empty title="暂无成本趋势" /> })} />
       <ConfigurableTable bordered rowKey="id" columns={costColumns} dataSource={costsQuery.data?.list ?? []} loading={costsQuery.isFetching} empty={<Empty title="暂无查询成本日志" />} pagination={buildPagination(costsQuery.data?.total ?? 0)} onRefresh={() => void costsQuery.refetch()} refreshLoading={costsQuery.isFetching} style={{ marginTop: 16 }} />
 
       <AppModal {...quotaModal.modalProps} width={700}>

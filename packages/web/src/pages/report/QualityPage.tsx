@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Col, Empty, Form, Modal, Row, SideSheet, Space, Switch, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Col, Empty, Form, Modal, Row, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportDqAnomaly, ReportDqAnomalyStatus, ReportDqRule, ReportDqRuleType, ReportDqRun, ReportDqRunStatus, ReportDqScore } from '@zenith/shared/report';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
@@ -10,7 +10,6 @@ import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import ExportButton from '@/components/ExportButton';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -37,8 +36,8 @@ import {
   formatDqPassRate,
   normalizeDqRuleFormValues,
 } from './report-platform-utils';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
+import { CreateButton } from '@/components/toolbar-controls';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { FilterSelect } from '@/components/search-filters';
@@ -115,6 +114,12 @@ export default function QualityPage() {
   const toggleMutation = useToggleReportDqRule();
   const runMutation = useRunReportDqRule();
   const anomalyMutation = useUpdateReportDqAnomalyStatus();
+  const ruleStatus = useStatusToggle<ReportDqRule>({
+    isEnabled: (record) => record.enabled,
+    toggle: (record) => toggleMutation.mutateAsync({ params: { id: record.id } }),
+    disabled: !hasPermission('report:dq:update'),
+    messages: { enabled: null, disabled: null },
+  });
 
   const applySearch = () => {
     setPage(1);
@@ -182,10 +187,7 @@ export default function QualityPage() {
     { title: 'Cron', dataIndex: 'cron', width: 160, render: (v) => renderEllipsis(v || '仅手动') },
     { title: '时区', dataIndex: 'timezone', width: 150, render: renderEllipsis },
     dateTimeColumn('最近运行', 'lastRunAt'),
-    {
-      title: '状态', dataIndex: 'enabled', width: 90, fixed: 'right',
-      render: (v: boolean, r) => <Switch size="small" checked={v} disabled={!hasPermission('report:dq:update')} loading={toggleMutation.isPending && toggleMutation.variables?.params.id === r.id} onChange={() => toggleMutation.mutate({ params: { id: r.id } })} />,
-    },
+    ruleStatus.column({ dataIndex: 'enabled' }),
     createOperationColumn<ReportDqRule>({
       width: 180,
       desktopInlineKeys: ['run', 'edit'],
@@ -193,13 +195,12 @@ export default function QualityPage() {
         { key: 'run', label: '执行', hidden: !hasPermission('report:dq:run'), loading: runMutation.isPending && runMutation.variables?.params.id === record.id, onClick: () => void runRule(record) },
         { key: 'edit', label: '编辑', hidden: !hasPermission('report:dq:update'), onClick: () => openEdit(record) },
         { key: 'history', label: '运行历史', onClick: () => setHistoryRule(record) },
-        {
-          key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:dq:delete'),
-          onClick: () => { confirmDelete({
-            title: `删除规则「${record.name}」？`,
-            onOk: async () => { await deleteMutation.mutateAsync({ params: { id: record.id } }); Toast.success('规则已删除'); },
-          }); },
-        },
+        deleteAction({
+          hidden: !hasPermission('report:dq:delete'),
+          title: `删除规则「${record.name}」？`,
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '规则已删除',
+        }),
       ],
     }),
   ];
@@ -275,15 +276,13 @@ export default function QualityPage() {
       filter
     />
   );
-  const searchButtons = <><SearchButton onClick={applySearch} /><ResetButton onClick={resetSearch} /></>;
-  const commonToolbar = (extraFilters?: React.ReactNode, actions?: React.ReactNode) => (
-    <SearchToolbar
-      primary={<>{datasetFilter}{searchButtons}</>}
-      filters={extraFilters}
+  const commonToolbar = (extraFilters?: React.ReactNode, actions?: React.ReactNode, create?: React.ReactNode) => (
+    <ListSearchToolbar
+      filters={<>{datasetFilter}{extraFilters}</>}
+      onSearch={applySearch}
+      onReset={resetSearch}
+      create={create}
       actions={actions}
-      mobilePrimary={<>{datasetFilter}<SearchButton onClick={applySearch} />{actions}</>}
-      onFilterApply={applySearch}
-      onFilterReset={resetSearch}
     />
   );
 
@@ -308,10 +307,11 @@ export default function QualityPage() {
                 width={140}
               />
             </>,
+            undefined,
             hasPermission('report:dq:create') ? <CreateButton onClick={openCreate} /> : null,
           )}
           {rulesQuery.isError && <Banner type="danger" description={rulesQuery.error instanceof Error ? rulesQuery.error.message : '质量规则加载失败'} />}
-          <ConfigurableTable bordered rowKey="id" columns={ruleColumns} dataSource={rulesQuery.data?.list ?? []} loading={rulesQuery.isFetching} empty={<Empty title="暂无质量规则" />} pagination={buildPagination(rulesQuery.data?.total ?? 0)} onRefresh={() => void rulesQuery.refetch()} refreshLoading={rulesQuery.isFetching} />
+          <ConfigurableTable<ReportDqRule> columns={ruleColumns} {...listTableProps(rulesQuery, { pagination: buildPagination, empty: <Empty title="暂无质量规则" /> })} />
         </TabPane>
         <TabPane tab="数据集评分" itemKey="scores">
           {commonToolbar()}
@@ -324,7 +324,7 @@ export default function QualityPage() {
               <Typography.Text type={currentScoreQuery.data.failedRules ? 'danger' : 'success'}>失败 {currentScoreQuery.data.failedRules}</Typography.Text>
             </Space>
           )}
-          <ConfigurableTable bordered rowKey="id" columns={scoreColumns} dataSource={scoresQuery.data?.list ?? []} loading={scoresQuery.isFetching} empty={<Empty title="暂无评分历史" />} pagination={buildPagination(scoresQuery.data?.total ?? 0)} onRefresh={() => void scoresQuery.refetch()} refreshLoading={scoresQuery.isFetching} />
+          <ConfigurableTable<ReportDqScore> columns={scoreColumns} {...listTableProps(scoresQuery, { pagination: buildPagination, empty: <Empty title="暂无评分历史" /> })} />
         </TabPane>
         <TabPane tab="质量异常" itemKey="anomalies">
           {commonToolbar(<FilterSelect
@@ -335,7 +335,7 @@ export default function QualityPage() {
             width={150}
           />)}
           {anomaliesQuery.isError && <Banner type="danger" description="质量异常加载失败" />}
-          <ConfigurableTable bordered rowKey="id" columns={anomalyColumns} dataSource={anomaliesQuery.data?.list ?? []} loading={anomaliesQuery.isFetching} empty={<Empty title="暂无质量异常" />} pagination={buildPagination(anomaliesQuery.data?.total ?? 0)} onRefresh={() => void anomaliesQuery.refetch()} refreshLoading={anomaliesQuery.isFetching} />
+          <ConfigurableTable<ReportDqAnomaly> columns={anomalyColumns} {...listTableProps(anomaliesQuery, { pagination: buildPagination, empty: <Empty title="暂无质量异常" /> })} />
         </TabPane>
         <TabPane tab="运行历史" itemKey="runs">
           {commonToolbar(
@@ -349,7 +349,7 @@ export default function QualityPage() {
             <ExportButton entity="report.dq-runs" query={{ datasetId: submitted.datasetId, status: submitted.runStatus }} />,
           )}
           {runsQuery.isError && <Banner type="danger" description="运行历史加载失败" />}
-          <ConfigurableTable bordered rowKey="id" columns={runColumns} dataSource={runsQuery.data?.list ?? []} loading={runsQuery.isFetching} empty={<Empty title="暂无运行记录" />} pagination={buildPagination(runsQuery.data?.total ?? 0)} onRefresh={() => void runsQuery.refetch()} refreshLoading={runsQuery.isFetching} />
+          <ConfigurableTable<ReportDqRun> columns={runColumns} {...listTableProps(runsQuery, { pagination: buildPagination, empty: <Empty title="暂无运行记录" /> })} />
         </TabPane>
       </Tabs>
 

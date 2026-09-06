@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import type { CreateReportFolderInput, MoveReportFolderInput, ReportFolder, ReportFolderTreeNode, ReportResourceType, UpdateReportFolderInput } from '@zenith/shared/report';
@@ -50,9 +51,9 @@ async function ensureFolderManager(row: typeof reportFolders.$inferSelect): Prom
 }
 
 export async function ensureReportFolderExists(id: number) {
-  const [row] = await db.select().from(reportFolders)
+  const [rowOrUndefined] = await db.select().from(reportFolders)
     .where(reportScopedWhere(reportFolders, eq(reportFolders.id, id))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '资源目录不存在' });
+  const row = requireRow(rowOrUndefined, '资源目录不存在');
   return row;
 }
 
@@ -117,11 +118,11 @@ export async function listReportFolderTree(resourceType?: ReportResourceType): P
 }
 
 export async function getReportFolder(id: number): Promise<ReportFolder> {
-  const row = await db.query.reportFolders.findFirst({
+  const rowOrUndefined = await db.query.reportFolders.findFirst({
     where: reportScopedWhere(reportFolders, eq(reportFolders.id, id)),
     with: { owner: { columns: { nickname: true, username: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '资源目录不存在' });
+  const row = requireRow(rowOrUndefined, '资源目录不存在');
   return mapReportFolder(row);
 }
 
@@ -160,14 +161,14 @@ export async function updateReportFolder(id: number, input: UpdateReportFolderIn
   ]);
   if (nextParentId) await ensureNoFolderCycle(id, nextParentId);
   try {
-    const [row] = await db.update(reportFolders).set({
+    const [rowOrUndefined] = await db.update(reportFolders).set({
       parentId: input.parentId,
       name: input.name,
       ownerId: input.ownerId,
       sort: input.sort,
       status: input.status,
     }).where(eq(reportFolders.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '资源目录不存在' });
+    const row = requireRow(rowOrUndefined, '资源目录不存在');
     return mapReportFolder(row);
   } catch (error) {
     rethrowPgUniqueViolation(error, '同级目录名称已存在');

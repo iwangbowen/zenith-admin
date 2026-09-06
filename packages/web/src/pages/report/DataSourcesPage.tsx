@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Col, Form, Row, Switch, Toast, Modal, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Row, Toast, Modal, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -28,10 +27,10 @@ import { renderReportDatasourceTypeTag } from './report-datasource-ui';
 import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 
 interface SearchParams { keyword: string; type?: string; status?: string; ownerId?: number; folderId?: number }
 const defaultSearchParams: SearchParams = { keyword: '', type: undefined, status: undefined, ownerId: undefined, folderId: undefined };
@@ -64,7 +63,6 @@ export default function DataSourcesPage() {
   });
   const users = useAllUsers().data ?? [];
   const folders = flattenReportFolders(useReportFolderTree({ resourceType: 'datasource' }).data ?? []);
-  const data = listQuery.data ?? null;
   const saveMutation = useSaveReportDatasource();
   const toggleMutation = useSaveReportDatasource();
   const batchStatusMutation = useBatchReportDatasourceStatus();
@@ -72,7 +70,11 @@ export default function DataSourcesPage() {
   const healthTaskMutation = useRunReportDatasourceHealthCheck();
   const deleteMutation = useDeleteReportDatasources();
   const testConnectionMutation = useTestReportDatasourceConnection();
-  const togglingId = toggleMutation.isPending ? toggleMutation.variables?.id ?? null : null;
+  const statusToggle = useStatusToggle<ReportDatasource>({
+    toggle: (record, checked) => toggleMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({ title: '确认停用', content: `停用后「${record.name}」将不可用于取数，确认停用？` }),
+    disabled: !hasPermission('report:datasource:update'),
+  });
 
   const datasourceModal = useEditModal<ReportDatasource, Record<string, unknown>>({
     entityName: '数据源',
@@ -179,24 +181,10 @@ export default function DataSourcesPage() {
     }
   }
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
   function healthTag(status: ReportDatasource['lastTestStatus']) {
     if (status === 'success') return <Typography.Text style={{ color: 'var(--semi-color-success)' }}>健康</Typography.Text>;
     if (status === 'failed') return <Typography.Text type="danger">异常</Typography.Text>;
     return <Typography.Text type="tertiary">未检测</Typography.Text>;
-  }
-
-  function handleToggleStatus(record: ReportDatasource, checked: boolean) {
-    const doToggle = async () => {
-      await toggleMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
-      Toast.success(checked ? '已启用' : '已停用');
-    };
-    if (checked) void doToggle();
-    else Modal.confirm({ title: '确认停用', content: `停用后「${record.name}」将不可用于取数，确认停用？`, onOk: () => void doToggle() });
   }
 
   function handleBatchStatus(status: 'enabled' | 'disabled') {
@@ -269,18 +257,7 @@ export default function DataSourcesPage() {
     },
     { title: '备注', dataIndex: 'remark', width: 180, render: renderEllipsis },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, record: ReportDatasource) => (
-        <Switch
-          checked={record.status === 'enabled'}
-          loading={togglingId === record.id}
-          disabled={!hasPermission('report:datasource:update')}
-          onChange={(c) => handleToggleStatus(record, c)}
-          size="small"
-        />
-      ),
-    },
+    statusToggle.column(),
     createOperationColumn<ReportDatasource>({
       width: 180,
       desktopInlineKeys: ['health', 'edit'],
@@ -291,10 +268,12 @@ export default function DataSourcesPage() {
         ...(hasPermission('report:datasource:update') ? [{ key: 'edit', label: '编辑', onClick: () => datasourceModal.openEdit(record) }] : []),
         { key: 'governance', label: '权限与转移', onClick: () => navigate(`/report/governance?resourceType=datasource&resourceId=${record.id}`) },
         ...(hasPermission('report:datasource:create') ? [{ key: 'clone', label: '复制', onClick: () => void handleClone(record) }] : []),
-        ...(hasPermission('report:datasource:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => { confirmDelete({ content: '删除后不可恢复；若被数据集引用将无法删除。', onOk: () => handleDelete(record.id) }); },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('report:datasource:delete'),
+          content: '删除后不可恢复；若被数据集引用将无法删除。',
+          title: '确定要删除吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -338,8 +317,6 @@ export default function DataSourcesPage() {
       filter
     />
   );
-  const renderSearchBtn = () => <SearchButton onClick={handleSearch} />;
-  const renderResetBtn = () => <ResetButton onClick={handleReset} />;
   const renderCreateBtn = () => hasPermission('report:datasource:create')
     ? <CreateButton onClick={datasourceModal.openCreate} /> : null;
   const renderBatchHealthBtn = () => selectedRowKeys.length > 0 && hasPermission('report:datasource:update')
@@ -351,24 +328,27 @@ export default function DataSourcesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>{renderKeyword()}{renderTypeFilter()}{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}{renderSearchBtn()}{renderResetBtn()}</>}
-        actions={<>{renderBatchHealthBtn()}{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCreateBtn()}</>}
-        mobilePrimary={<>{renderKeyword()}{renderSearchBtn()}{renderCreateBtn()}</>}
-        mobileFilters={<>{renderTypeFilter()}{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}</>}
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={<>{renderTypeFilter()}{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}</>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateBtn()}
+        actions={<>{renderBatchHealthBtn()}{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         mobileActions={<>{renderBatchHealthBtn()}{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="数据源筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        rowSelection={hasPermission('report:datasource:update') ? {
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as number[]),
-        } : undefined}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
+      <ConfigurableTable<ReportDatasource>
+        columns={columns}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无数据',
+          rowSelection: hasPermission('report:datasource:update') ? {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          } : undefined,
+        })}
       />
 
       <AppModal

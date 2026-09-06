@@ -5,7 +5,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Play, Upload as UploadIcon, Sparkles, Blocks } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { useExportJobRunner } from '@/hooks/useExportJobRunner';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -35,10 +34,10 @@ import { useAllUsers } from '@/hooks/queries/users';
 import { useReportDqAnomalyList } from '@/hooks/queries/report-dq';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const DatasetRefsModal = lazy(() => import('./components/DatasetRefsModal').then((module) => ({
   default: module.DatasetRefsModal,
@@ -130,7 +129,6 @@ export default function DatasetsPage() {
     ownerId: submittedParams.ownerId,
     folderId: submittedParams.folderId,
   });
-  const data = listQuery.data ?? null;
   const users = useAllUsers().data ?? [];
   const folders = flattenReportFolders(useReportFolderTree({ resourceType: 'dataset' }).data ?? []);
   const anomalyQuery = useReportDqAnomalyList({ page: 1, pageSize: 200, status: 'open' });
@@ -439,11 +437,6 @@ export default function DatasetsPage() {
     Toast.success(`已生成 ${preview.columns.length} 个字段`);
   }
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
   async function handleClone(record: ReportDataset) {
     const cloned = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
     Toast.success(`已复制为「${cloned.name}」`);
@@ -564,10 +557,15 @@ export default function DatasetsPage() {
             onClick: () => exportRunner.runExport({ entity: 'report.dataset', format: 'csv', query: { datasetId: record.id } }),
           },
         ] : []),
-        ...(hasPermission('report:dataset:delete') ? [{
-          key: 'delete', label: '删除', danger: true, dividerBefore: true,
-          onClick: () => { confirmDelete({ content: '删除后不可恢复', onOk: () => handleDelete(record.id) }); },
-        }] : []),
+        {
+          ...deleteAction({
+            hidden: !hasPermission('report:dataset:delete'),
+            title: '确定要删除吗？',
+            content: '删除后不可恢复',
+            run: () => deleteMutation.mutateAsync([record.id]),
+          }),
+          dividerBefore: true,
+        },
       ],
     }),
   ];
@@ -605,8 +603,6 @@ export default function DatasetsPage() {
       filter
     />
   );
-  const renderSearchBtn = () => <SearchButton onClick={handleSearch} />;
-  const renderResetBtn = () => <ResetButton onClick={handleReset} />;
   const renderCreateBtn = () => hasPermission('report:dataset:create')
     ? <CreateButton onClick={openCreate} /> : null;
   const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dataset:update')
@@ -616,24 +612,27 @@ export default function DatasetsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>{renderKeyword()}{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}{renderSearchBtn()}{renderResetBtn()}</>}
-        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCreateBtn()}</>}
-        mobilePrimary={<>{renderKeyword()}{renderSearchBtn()}{renderCreateBtn()}</>}
-        mobileFilters={<>{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}</>}
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={<>{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}</>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateBtn()}
+        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="数据集筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        rowSelection={hasPermission('report:dataset:update') ? {
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as number[]),
-        } : undefined}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
+      <ConfigurableTable<ReportDataset>
+        columns={columns}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无数据',
+          rowSelection: hasPermission('report:dataset:update') ? {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          } : undefined,
+        })}
       />
 
       <SideSheet

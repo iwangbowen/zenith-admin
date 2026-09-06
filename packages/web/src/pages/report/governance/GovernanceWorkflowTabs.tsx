@@ -5,6 +5,7 @@ import type { ReportApprovalStatus, ReportPublishApproval, ReportResourceTransfe
 import { Plus } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
@@ -123,7 +124,7 @@ export function GovernanceApprovalTab() {
         {hasPermission('report:approval:request') ? <Button type="primary" icon={<Plus size={14} />} onClick={approvalModal.openCreate}>申请发布</Button> : null}
       </SearchToolbar>
       {listQuery.isError && <Banner type="danger" description="发布审批加载失败" />}
-      <ConfigurableTable bordered rowKey="id" columns={columns} dataSource={listQuery.data?.list ?? []} loading={listQuery.isFetching} empty={<Empty title="暂无发布审批" />} pagination={buildPagination(listQuery.data?.total ?? 0)} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} />
+      <ConfigurableTable columns={columns} {...listTableProps(listQuery, { pagination: buildPagination, empty: <Empty title="暂无发布审批" /> })} />
       <AppModal {...approvalModal.modalProps} title="申请发布审批" width={640}>
         <Form key={approvalModal.formKey} {...approvalModal.formProps}>
           <Row gutter={16}>
@@ -220,7 +221,7 @@ export function GovernanceTransferTab() {
         {hasPermission('report:resource:transfer') ? <Button type="primary" icon={<Plus size={14} />} onClick={transferModal.openCreate}>申请转移</Button> : null}
       </SearchToolbar>
       {listQuery.isError && <Banner type="danger" description="所有权转移列表加载失败" />}
-      <ConfigurableTable bordered rowKey="id" columns={columns} dataSource={listQuery.data?.list ?? []} loading={listQuery.isFetching} empty={<Empty title="暂无所有权转移" />} pagination={buildPagination(listQuery.data?.total ?? 0)} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} />
+      <ConfigurableTable columns={columns} {...listTableProps(listQuery, { pagination: buildPagination, empty: <Empty title="暂无所有权转移" /> })} />
       <AppModal {...transferModal.modalProps} title="申请所有权转移" width={600}>
         <Form key={transferModal.formKey} {...transferModal.formProps}>
           <Row gutter={16}>

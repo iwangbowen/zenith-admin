@@ -5,7 +5,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportMetric, ReportMetricType } from '@zenith/shared/report';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -25,9 +24,9 @@ import { useEnabledReportDatasets, useReportDatasetDetail } from '@/hooks/querie
 import { useAllUsers } from '@/hooks/queries/users';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { isRevisionConflict, metricLifecyclePayload, normalizeMetricFormValues } from './report-platform-utils';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 interface MetricSearch {
   keyword: string;
@@ -194,17 +193,13 @@ export default function MetricsPage() {
         { key: 'refs', label: '引用关系', onClick: () => { setSheetMetric(record); setSheetMode('refs'); } },
         { key: 'publish', label: '发布', hidden: !hasPermission('report:metric:publish') || record.lifecycleStatus !== 'draft', onClick: () => lifecycle(record, 'publish') },
         { key: 'deprecate', label: '废弃', danger: true, hidden: !hasPermission('report:metric:publish') || record.lifecycleStatus !== 'published', onClick: () => lifecycle(record, 'deprecate') },
-        {
-          key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:metric:delete') || record.lifecycleStatus !== 'draft',
-          onClick: () => confirmDelete({
+        deleteAction({
+          hidden: !hasPermission('report:metric:delete') || record.lifecycleStatus !== 'draft',
             title: `删除指标「${record.name}」？`,
             content: '仅无引用的草稿指标可删除。',
-            onOk: async () => {
-              await deleteMutation.mutateAsync([record.id]);
-              Toast.success('指标已删除');
-            },
-          }),
-        },
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '指标已删除',
+        }),
       ],
     }),
   ];
@@ -255,34 +250,22 @@ export default function MetricsPage() {
       />
     </>
   );
-  const buttons = (
-    <>
-      <SearchButton onClick={handleSearch} />
-      <ResetButton onClick={handleReset} />
-      {hasPermission('report:metric:create') ? <CreateButton onClick={openCreate} /> : null}
-    </>
-  );
-
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>{keyword}{buttons}</>}
+      <ListSearchToolbar
+        keyword={keyword}
         filters={filters}
-        mobilePrimary={<>{keyword}<SearchButton onClick={handleSearch} />{hasPermission('report:metric:create') ? <CreateButton onClick={openCreate} /> : null}</>}
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('report:metric:create') ? <CreateButton onClick={openCreate} /> : null}
       />
       {listQuery.isError && <Banner type="danger" description={listQuery.error instanceof Error ? listQuery.error.message : '指标加载失败'} />}
-      <ConfigurableTable
-        bordered
-        rowKey="id"
+      <ConfigurableTable<ReportMetric>
         columns={columns}
-        dataSource={listQuery.data?.list ?? []}
-        loading={listQuery.isFetching}
-        empty={<Empty title="暂无指标" description="创建指标以统一复用业务口径" />}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: <Empty title="暂无指标" description="创建指标以统一复用业务口径" />,
+        })}
       />
 
       <SideSheet

@@ -1,3 +1,6 @@
+import { exactTenantCondition } from '../../lib/tenant';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { randomUUID } from 'node:crypto';
 import dayjs from 'dayjs';
 import { HTTPException } from 'hono/http-exception';
@@ -500,10 +503,10 @@ export async function getReportAssetUsageTrend(query: {
 }
 
 async function ensureDeprecationNotice(id: number): Promise<DeprecationRow> {
-  const row = await db.query.reportDeprecationNotices.findFirst({
+  const rowOrUndefined = await db.query.reportDeprecationNotices.findFirst({
     where: reportScopedWhere(reportDeprecationNotices, eq(reportDeprecationNotices.id, id)),
   });
-  if (!row) throw new HTTPException(404, { message: '弃用公告不存在' });
+  const row = requireRow(rowOrUndefined, '弃用公告不存在');
   await ensureReportResourceAccess(row.resourceType, row.resourceId, 'editor');
   return row;
 }
@@ -567,9 +570,9 @@ export async function createReportDeprecationNotice(
   input: CreateReportDeprecationNoticeInput,
 ): Promise<ReportDeprecationNotice> {
   const resource = await validateDeprecationReferences(input);
-  const effectiveAt = parseDateTimeInput(input.effectiveAt);
+  const effectiveAtOrUndefined = parseDateTimeInput(input.effectiveAt);
   const expiresAt = parseDateTimeInput(input.expiresAt);
-  if (!effectiveAt) throw new HTTPException(400, { message: '生效时间无效' });
+  const effectiveAt = requireRow(effectiveAtOrUndefined, '生效时间无效', 400);
   if (expiresAt && expiresAt <= effectiveAt) throw new HTTPException(400, { message: '过期时间必须晚于生效时间' });
   const [row] = await db.insert(reportDeprecationNotices).values({
     tenantId: resource.tenantId,
@@ -664,20 +667,20 @@ async function validateAssetTemplatePlacement(input: {
   const ownerId = input.ownerId ?? defaultReportOwnerId();
   await validateReportResourcePlacement('asset_template', { ownerId, folderId: input.folderId, tenantId });
   if (input.previewFileId) {
-    const tenantWhere = tenantId === null ? isNull(managedFiles.tenantId) : eq(managedFiles.tenantId, tenantId);
-    const [file] = await db.select({ id: managedFiles.id }).from(managedFiles)
+    const tenantWhere = exactTenantCondition(managedFiles.tenantId, tenantId);
+    const [fileOrUndefined] = await db.select({ id: managedFiles.id }).from(managedFiles)
       .where(and(eq(managedFiles.id, input.previewFileId), tenantWhere)).limit(1);
-    if (!file) throw new HTTPException(400, { message: '模板预览文件不存在或不属于当前租户' });
+    requireRow(fileOrUndefined, '模板预览文件不存在或不属于当前租户', 400);
   }
   return { tenantId, ownerId };
 }
 
 async function ensureAssetTemplate(id: number, role: 'viewer' | 'editor' | 'owner' = 'viewer'): Promise<AssetTemplateRow> {
   await ensureReportResourceAccess('asset_template', id, role);
-  const row = await db.query.reportAssetTemplates.findFirst({
+  const rowOrUndefined = await db.query.reportAssetTemplates.findFirst({
     where: reportScopedWhere(reportAssetTemplates, eq(reportAssetTemplates.id, id)),
   });
-  if (!row) throw new HTTPException(404, { message: '资产模板不存在' });
+  const row = requireRow(rowOrUndefined, '资产模板不存在');
   return row;
 }
 
@@ -699,12 +702,14 @@ export async function listReportAssetTemplates(query: {
   if (query.type) conds.push(eq(reportAssetTemplates.type, query.type));
   if (query.status) conds.push(eq(reportAssetTemplates.status, query.status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportAssetTemplates, where),
-    db.select().from(reportAssetTemplates).where(where).orderBy(desc(reportAssetTemplates.id))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map((row) => mapReportAssetTemplate(row)), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportAssetTemplates, where),
+    rows: () => db.select().from(reportAssetTemplates).where(where).orderBy(desc(reportAssetTemplates.id))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: (row) => mapReportAssetTemplate(row),
+  });
 }
 
 export async function getReportAssetTemplate(id: number): Promise<ReportAssetTemplate> {

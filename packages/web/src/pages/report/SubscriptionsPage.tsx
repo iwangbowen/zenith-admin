@@ -3,7 +3,6 @@ import { Button, Form, Tag, Toast, Modal, SideSheet, Typography } from '@douyinf
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
@@ -27,9 +26,9 @@ import { NOTIFY_CHANNEL_LABELS } from '@zenith/shared/messaging';
 import type { NotifyChannel } from '@zenith/shared/messaging';
 import { REPORT_DELIVERY_STATUS_LABELS, REPORT_DELIVERY_TRIGGER_LABELS, REPORT_MISFIRE_POLICY_OPTIONS } from '@zenith/shared/report';
 import { useDictItems } from '@/hooks/useDictItems';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 
 const deliveryStatusColorMap: Record<string, 'green' | 'red' | 'orange' | 'grey' | 'blue' | 'amber'> = {
@@ -54,7 +53,6 @@ export default function SubscriptionsPage() {
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['inApp']);
 
   const listQuery = useReportSubscriptionList({ page, pageSize, keyword: submittedKeyword || undefined });
-  const data = listQuery.data ?? null;
   const dashboardsQuery = useReportSubscriptionDashboardOptions();
   const dashboards = dashboardsQuery.data ?? [];
   const saveMutation = useSaveReportSubscription();
@@ -113,11 +111,6 @@ export default function SubscriptionsPage() {
       void queryClient.invalidateQueries({ queryKey: reportSubscriptionKeys.lists });
     }, 4000);
   }
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
   function handleBatchEnabled(enabled: boolean) {
     if (selectedRowKeys.length === 0) return;
     Modal.confirm({
@@ -162,7 +155,11 @@ export default function SubscriptionsPage() {
         ...(hasPermission('report:subscription:update') ? [{ key: 'run', label: '立即推送', onClick: () => handleRun(r.id) }] : []),
         ...(hasPermission('report:subscription:list') ? [{ key: 'history', label: '历史', onClick: () => setHistoryTarget(r) }] : []),
         ...(hasPermission('report:subscription:update') ? [{ key: 'edit', label: '编辑', onClick: () => openEdit(r) }] : []),
-        ...(hasPermission('report:subscription:delete') ? [{ key: 'delete', label: '删除', danger: true, onClick: () => { confirmDelete({ title: '确定删除？', onOk: () => handleDelete(r.id) }); } }] : []),
+        deleteAction({
+          hidden: !hasPermission('report:subscription:delete'),
+          title: '确定删除？',
+          run: () => deleteMutation.mutateAsync([r.id]),
+        }),
       ],
     }),
   ];
@@ -174,18 +171,25 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>{renderKeyword()}<SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} /></>}
-        actions={<>{renderBatchEnable()}{renderBatchDisable()}{renderCreate()}</>}
-        mobilePrimary={<>{renderKeyword()}{renderCreate()}</>}
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreate()}
+        actions={<>{renderBatchEnable()}{renderBatchDisable()}</>}
         mobileActions={<>{renderBatchEnable()}{renderBatchDisable()}</>}
       />
-      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无订阅"
-        rowSelection={hasPermission('report:subscription:update') ? {
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as number[]),
-        } : undefined}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)} />
+      <ConfigurableTable<ReportDashboardSubscription>
+        columns={columns}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无订阅',
+          rowSelection: hasPermission('report:subscription:update') ? {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          } : undefined,
+        })}
+      />
 
       <AppModal {...subscriptionModal.modalProps} width={560}>
         <Form key={subscriptionModal.formKey} {...subscriptionModal.formProps}

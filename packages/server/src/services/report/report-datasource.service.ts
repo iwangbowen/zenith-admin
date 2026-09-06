@@ -5,6 +5,8 @@
  * - sql：内置只读主库，取数时复用只读执行器。
  * - mysql/postgresql：外部数据库，凭据 AES-GCM 加密存储，取数走 report-external-db。
  */
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
@@ -195,10 +197,10 @@ async function assertDatasourceTargetSafe(type: ReportDatasourceType, config: Re
 }
 
 export async function ensureDatasourceExists(id: number): Promise<ReportDatasourceRow> {
-  const [row] = await db.select().from(reportDatasources)
+  const [rowOrUndefined] = await db.select().from(reportDatasources)
     .where(reportScopedWhere(reportDatasources, eq(reportDatasources.id, id)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '数据源不存在' });
+  const row = requireRow(rowOrUndefined, '数据源不存在');
   if (currentUserOrNull()) await ensureReportResourceAccess('datasource', id, 'viewer');
   return row;
 }
@@ -211,14 +213,14 @@ export function ensureDatasourceEnabled(row: Pick<ReportDatasourceRow, 'status'>
 
 export async function getDatasource(id: number): Promise<ReportDatasource> {
   await ensureDatasourceExists(id);
-  const row = await db.query.reportDatasources.findFirst({
+  const rowOrUndefined = await db.query.reportDatasources.findFirst({
     where: reportScopedWhere(reportDatasources, eq(reportDatasources.id, id)),
     with: {
       folder: { columns: { name: true } },
       owner: { columns: { nickname: true, username: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '数据源不存在' });
+  const row = requireRow(rowOrUndefined, '数据源不存在');
   return mapDatasource(row);
 }
 
@@ -241,20 +243,22 @@ export async function listDatasources(query: {
   }
   if (status === 'enabled' || status === 'disabled') conds.push(eq(reportDatasources.status, status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportDatasources, where),
-    db.query.reportDatasources.findMany({
-      where,
-      with: {
-        folder: { columns: { name: true } },
-        owner: { columns: { nickname: true, username: true } },
-      },
-      orderBy: desc(reportDatasources.id),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  return { list: rows.map(mapDatasource), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportDatasources, where),
+    rows: () => db.query.reportDatasources.findMany({
+            where,
+            with: {
+              folder: { columns: { name: true } },
+              owner: { columns: { nickname: true, username: true } },
+            },
+            orderBy: desc(reportDatasources.id),
+            limit: pageSize,
+            offset: pageOffset(page, pageSize),
+          }),
+    map: mapDatasource,
+  });
 }
 
 export async function listDatasourceLookup(query: {
@@ -336,7 +340,7 @@ export async function updateDatasource(id: number, input: UpdateReportDatasource
     if (config && isExternalDbType(nextType)) {
       await invalidateExternalDatasourcePools(nextType, config as ReportExternalDbConfig);
     }
-    const [row] = await db.update(reportDatasources).set({
+    const [rowOrUndefined] = await db.update(reportDatasources).set({
       ownerId: input.ownerId,
       folderId: input.folderId,
       name: input.name,
@@ -345,7 +349,7 @@ export async function updateDatasource(id: number, input: UpdateReportDatasource
       status: input.status,
       remark: input.remark,
     }).where(eq(reportDatasources.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '数据源不存在' });
+    const row = requireRow(rowOrUndefined, '数据源不存在');
     return mapDatasource(row);
   } catch (err) {
     rethrowPgUniqueViolation(err, '数据源名称已存在');

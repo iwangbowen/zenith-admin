@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { createHash } from 'node:crypto';
 import dayjs from 'dayjs';
 import { HTTPException } from 'hono/http-exception';
@@ -200,13 +202,13 @@ export async function beginMaterializationSnapshot(input: {
 }
 
 export async function resumeMaterializationSnapshot(snapshotId: number, datasetId: number): Promise<SnapshotRow> {
-  const row = await db.query.reportMaterializationSnapshots.findFirst({
+  const rowOrUndefined = await db.query.reportMaterializationSnapshots.findFirst({
     where: and(
       eq(reportMaterializationSnapshots.id, snapshotId),
       eq(reportMaterializationSnapshots.datasetId, datasetId),
     ),
   });
-  if (!row) throw new HTTPException(404, { message: '物化任务断点不存在' });
+  const row = requireRow(rowOrUndefined, '物化任务断点不存在');
   if (row.status === 'ready') return row;
   const [updated] = await db.update(reportMaterializationSnapshots).set({
     status: 'building',
@@ -223,10 +225,10 @@ export async function completeMaterializationSnapshot(
   data: ReportDataResult,
   watermark: string | null,
 ): Promise<SnapshotRow> {
-  const row = await db.query.reportMaterializationSnapshots.findFirst({
+  const rowOrUndefined = await db.query.reportMaterializationSnapshots.findFirst({
     where: eq(reportMaterializationSnapshots.id, snapshotId),
   });
-  if (!row) throw new HTTPException(404, { message: '物化快照不存在' });
+  const row = requireRow(rowOrUndefined, '物化快照不存在');
   const json = JSON.stringify({ ...data, total: data.rows.length });
   const buffer = Buffer.from(json, 'utf8');
   if (buffer.byteLength > SNAPSHOT_MAX_BYTES) {
@@ -301,13 +303,15 @@ export async function listMaterializationSnapshots(datasetId: number, page = 1, 
     reportMaterializationSnapshots,
     eq(reportMaterializationSnapshots.datasetId, datasetId),
   );
-  const [total, rows] = await Promise.all([
-    db.$count(reportMaterializationSnapshots, where),
-    db.select().from(reportMaterializationSnapshots).where(where)
-      .orderBy(desc(reportMaterializationSnapshots.revision))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapReportMaterializationSnapshot), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportMaterializationSnapshots, where),
+    rows: () => db.select().from(reportMaterializationSnapshots).where(where)
+            .orderBy(desc(reportMaterializationSnapshots.revision))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapReportMaterializationSnapshot,
+  });
 }
 
 export async function getCurrentMaterializationSnapshot(datasetId: number): Promise<ReportMaterializationSnapshot | null> {
@@ -317,10 +321,10 @@ export async function getCurrentMaterializationSnapshot(datasetId: number): Prom
 }
 
 export async function purgeMaterializationSnapshot(id: number): Promise<void> {
-  const row = await db.query.reportMaterializationSnapshots.findFirst({
+  const rowOrUndefined = await db.query.reportMaterializationSnapshots.findFirst({
     where: reportScopedWhere(reportMaterializationSnapshots, eq(reportMaterializationSnapshots.id, id)),
   });
-  if (!row) throw new HTTPException(404, { message: '物化快照不存在' });
+  const row = requireRow(rowOrUndefined, '物化快照不存在');
   await ensureReportResourceAccess('dataset', row.datasetId, 'editor');
   if (row.fileId) await deleteGeneratedManagedFile(row.fileId, row.tenantId);
   await db.update(reportMaterializationSnapshots).set({

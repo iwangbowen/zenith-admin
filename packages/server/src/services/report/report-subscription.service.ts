@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, lte, isNotNull, sql } from 'drizzle-orm';
 import { aggregateReportRows } from '@zenith/shared/report';
@@ -15,7 +17,6 @@ import {
   buildRunIdempotencyKey,
   claimRetryDeliveryRun,
   computeScheduleClaim,
-  dispatchNotificationChannels,
   ensureDeliveryRun,
   ensureValidReportSchedule,
   listDueRetryRunIds,
@@ -29,6 +30,7 @@ import {
   startManualDeliveryRun,
   validateNotifyChannels,
 } from './report-delivery.service';
+import { dispatchReportNotification } from './report-delivery-dispatch';
 import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
 import {
   maskReportSecret,
@@ -114,10 +116,10 @@ export function mapSubscription(row: SubRowExt): ReportDashboardSubscription {
 }
 
 export async function ensureSubscriptionExists(id: number): Promise<ReportDashboardSubscriptionRow> {
-  const [row] = await db.select().from(reportDashboardSubscriptions)
+  const [rowOrUndefined] = await db.select().from(reportDashboardSubscriptions)
     .where(reportScopedWhere(reportDashboardSubscriptions, eq(reportDashboardSubscriptions.id, id)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '订阅不存在' });
+  const row = requireRow(rowOrUndefined, '订阅不存在');
   return row;
 }
 
@@ -130,18 +132,22 @@ export async function listSubscriptions(query: { page?: number; pageSize?: numbe
   if (dashboardId) conds.push(eq(reportDashboardSubscriptions.dashboardId, dashboardId));
   if (query.enabled !== undefined) conds.push(eq(reportDashboardSubscriptions.enabled, query.enabled));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportDashboardSubscriptions, where),
-    db.query.reportDashboardSubscriptions.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportDashboardSubscriptions, where),
+    rows: async () => {
+      const rows = await db.query.reportDashboardSubscriptions.findMany({
       where,
       with: { dashboard: { columns: { name: true } } },
       orderBy: desc(reportDashboardSubscriptions.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  const latestRunMap = await loadLatestSubscriptionRuns(rows.map((row) => row.id));
-  return { list: rows.map((row) => mapSubscription({ ...row, latestDelivery: latestRunMap.get(row.id) ?? null })), total, page, pageSize };
+      });
+      const latestRunMap = await loadLatestSubscriptionRuns(rows.map((row) => row.id));
+      return rows.map((row) => mapSubscription({ ...row, latestDelivery: latestRunMap.get(row.id) ?? null }));
+    },
+  });
 }
 
 export async function createSubscription(input: CreateReportSubscriptionInput): Promise<ReportDashboardSubscription> {
@@ -182,7 +188,7 @@ export async function updateSubscription(id: number, input: UpdateReportSubscrip
     current.createdBy ?? currentUserOrNull()?.userId ?? null,
   );
   const webhookUrl = prepareReportSecret(input.webhookUrl, current.webhookUrl);
-  const [row] = await db.update(reportDashboardSubscriptions).set({
+  const [rowOrUndefined] = await db.update(reportDashboardSubscriptions).set({
     dashboardId: input.dashboardId,
     cron: input.cron,
     timezone: input.timezone,
@@ -194,7 +200,7 @@ export async function updateSubscription(id: number, input: UpdateReportSubscrip
     enabled: input.enabled,
     remark: input.remark,
   }).where(eq(reportDashboardSubscriptions.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '订阅不存在' });
+  const row = requireRow(rowOrUndefined, '订阅不存在');
   return mapSubscription(row);
 }
 
@@ -326,7 +332,7 @@ async function performSubscriptionDelivery(
   options?: { isCancelRequested?: () => Promise<boolean> },
 ): Promise<{ status: ReportDeliveryStatus; errorMessage: string | null; snapshot?: Record<string, number> }> {
   const summary = await buildSummary(row);
-  const channelResult = await dispatchNotificationChannels({
+  const channelResult = await dispatchReportNotification({
     tenantId: row.tenantId ?? null,
     runId: run.id,
     attempt: run.attempt,

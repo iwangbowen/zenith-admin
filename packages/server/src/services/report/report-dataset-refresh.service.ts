@@ -2,6 +2,7 @@
  * 报表数据集物化快照刷新：手动/任务强制刷新与 Cron 到期分发。
  * 对外统一经 report-dataset.service.ts facade 暴露。
  */
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { CronExpressionParser } from 'cron-parser';
 import { eq } from 'drizzle-orm';
@@ -70,11 +71,11 @@ export async function refreshMaterialization(
 ): Promise<{ rows: number; snapshotId?: number; cancelled?: boolean }> {
   if (await options?.isCancelRequested?.()) return { rows: 0, cancelled: true };
   const startedAt = Date.now();
-  const row = await db.query.reportDatasets.findFirst({
+  const rowOrUndefined = await db.query.reportDatasets.findFirst({
     where: reportScopedWhere(reportDatasets, eq(reportDatasets.id, id)),
     with: { datasource: { columns: { config: true, status: true, updatedAt: true, id: true, name: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '数据集不存在' });
+  const row = requireRow(rowOrUndefined, '数据集不存在');
   if (currentUserOrNull()) await ensureReportResourceAccess('dataset', id, 'editor');
   if (!row.datasource) throw new HTTPException(400, { message: '数据源不存在' });
   ensureDatasourceEnabled(row.datasource);
@@ -94,9 +95,9 @@ export async function refreshMaterialization(
     (row.rowRules ?? []) as ReportRowRule[],
   );
   if (strategy === 'incremental') {
-    if (!keyField) throw new HTTPException(400, { message: '增量物化必须指定增量键' });
-    if (declaredFields.length && !declaredFields.some((field) => field.name === keyField)) {
-      throw new HTTPException(400, { message: `增量键不存在：${keyField}` });
+    const requiredKeyField = requireRow(keyField, '增量物化必须指定增量键', 400);
+    if (declaredFields.length && !declaredFields.some((field) => field.name === requiredKeyField)) {
+      throw new HTTPException(400, { message: `增量键不存在：${requiredKeyField}` });
     }
   }
   const previous = strategy === 'incremental' ? await loadCurrentMaterializationSnapshot(id) : null;

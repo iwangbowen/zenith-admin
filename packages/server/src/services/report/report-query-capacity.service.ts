@@ -1,3 +1,6 @@
+import { exactTenantCondition } from '../../lib/tenant';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { randomUUID } from 'node:crypto';
 import dayjs from 'dayjs';
 import { HTTPException } from 'hono/http-exception';
@@ -371,29 +374,31 @@ export function mapReportQueryCost(row: CostRow): ReportQueryCostLog {
 }
 
 async function ensureQuota(id: number): Promise<QuotaRow> {
-  const row = await db.query.reportQueryQuotas.findFirst({
+  const rowOrUndefined = await db.query.reportQueryQuotas.findFirst({
     where: reportScopedWhere(reportQueryQuotas, eq(reportQueryQuotas.id, id)),
   });
-  if (!row) throw new HTTPException(404, { message: '查询配额不存在' });
+  const row = requireRow(rowOrUndefined, '查询配额不存在');
   return row;
 }
 
 async function validateQuotaUser(scope: 'tenant' | 'user', userId: number | null | undefined): Promise<void> {
   if (scope !== 'user' || !userId) return;
   const tenantId = reportCreateTenantId();
-  const tenantWhere = tenantId === null ? isNull(users.tenantId) : eq(users.tenantId, tenantId);
-  const [user] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, userId), tenantWhere)).limit(1);
-  if (!user) throw new HTTPException(400, { message: '配额用户不存在或不属于当前租户' });
+  const tenantWhere = exactTenantCondition(users.tenantId, tenantId);
+  const [userOrUndefined] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, userId), tenantWhere)).limit(1);
+  requireRow(userOrUndefined, '配额用户不存在或不属于当前租户', 400);
 }
 
 export async function listReportQueryQuotas(page = 1, pageSize = 20) {
   const where = reportTenantScope(reportQueryQuotas);
-  const [total, rows] = await Promise.all([
-    db.$count(reportQueryQuotas, where),
-    db.select().from(reportQueryQuotas).where(where).orderBy(desc(reportQueryQuotas.id))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapReportQueryQuota), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportQueryQuotas, where),
+    rows: () => db.select().from(reportQueryQuotas).where(where).orderBy(desc(reportQueryQuotas.id))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapReportQueryQuota,
+  });
 }
 
 export async function getReportQueryQuota(id: number): Promise<ReportQueryQuota> {
@@ -511,12 +516,14 @@ export async function listReportQueryCostLogs(query: {
   if (query.datasourceId) conds.push(eq(reportQueryCostLogs.datasourceId, query.datasourceId));
   if (query.success !== undefined) conds.push(eq(reportQueryCostLogs.success, query.success));
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportQueryCostLogs, where),
-    db.select().from(reportQueryCostLogs).where(where).orderBy(desc(reportQueryCostLogs.occurredAt))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapReportQueryCost), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportQueryCostLogs, where),
+    rows: () => db.select().from(reportQueryCostLogs).where(where).orderBy(desc(reportQueryCostLogs.occurredAt))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapReportQueryCost,
+  });
 }
 
 export async function getReportQueryCostStats(query: {

@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { GrantReportResourceAclInput, ReportAclRole, ReportAclSubjectType, ReportResourceAcl, ReportResourceType, UpdateReportResourceAclInput } from '@zenith/shared/report';
@@ -291,10 +292,10 @@ async function ensureAclSubject(
 }
 
 async function ensureFolderAclManager(folderId: number, resourceType: ReportResourceType) {
-  const [folder] = await db.select().from(reportFolders)
+  const [folderOrUndefined] = await db.select().from(reportFolders)
     .where(reportScopedWhere(reportFolders, and(eq(reportFolders.id, folderId), eq(reportFolders.resourceType, resourceType))!))
     .limit(1);
-  if (!folder) throw new HTTPException(404, { message: '资源目录不存在' });
+  const folder = requireRow(folderOrUndefined, '资源目录不存在');
   const user = currentUserOrNull();
   if (!user || (!isSuperAdmin() && folder.ownerId !== user.userId && folder.createdBy !== user.userId)) {
     throw new HTTPException(403, { message: '仅目录负责人可管理继承权限' });
@@ -362,9 +363,9 @@ export async function grantReportResourceAcl(input: GrantReportResourceAclInput)
 }
 
 async function ensureAclManageable(id: number) {
-  const [acl] = await db.select().from(reportResourceAcls)
+  const [aclOrUndefined] = await db.select().from(reportResourceAcls)
     .where(reportScopedWhere(reportResourceAcls, eq(reportResourceAcls.id, id))).limit(1);
-  if (!acl) throw new HTTPException(404, { message: '资源权限不存在' });
+  const acl = requireRow(aclOrUndefined, '资源权限不存在');
   if (acl.inheritFromFolder) await ensureFolderAclManager(acl.resourceId, acl.resourceType);
   else await ensureReportResourceAccess(acl.resourceType, acl.resourceId, 'owner');
   return acl;
@@ -375,11 +376,11 @@ export async function updateReportResourceAcl(id: number, input: UpdateReportRes
   if (input.inheritFromFolder !== undefined && input.inheritFromFolder !== current.inheritFromFolder) {
     throw new HTTPException(400, { message: '不能变更授权对象类型，请撤销后重新授权' });
   }
-  const [row] = await db.update(reportResourceAcls).set({
+  const [rowOrUndefined] = await db.update(reportResourceAcls).set({
     role: input.role,
     expiresAt: input.expiresAt === undefined ? undefined : input.expiresAt ? parseDateTimeInput(input.expiresAt) : null,
   }).where(eq(reportResourceAcls.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '资源权限不存在' });
+  const row = requireRow(rowOrUndefined, '资源权限不存在');
   return mapReportResourceAcl(row);
 }
 

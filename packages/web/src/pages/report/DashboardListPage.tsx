@@ -5,7 +5,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { FolderTree, Star } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { ShareModal, VersionModal } from './components/DashboardOpsModals';
 import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
@@ -33,9 +32,10 @@ import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/repor
 import { useAllUsers } from '@/hooks/queries/users';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 interface SearchParams { keyword: string; status?: string; lifecycleStatus?: ReportDashboard['lifecycleStatus']; categoryId?: number; favorited: boolean; ownerId?: number; folderId?: number }
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, lifecycleStatus: undefined, favorited: false, ownerId: undefined, folderId: undefined };
@@ -68,7 +68,6 @@ export default function DashboardListPage() {
     ownerId: submittedParams.ownerId,
     folderId: submittedParams.folderId,
   });
-  const data = listQuery.data ?? null;
   const users = useAllUsers().data ?? [];
   const folders = flattenReportFolders(useReportFolderTree({ resourceType: 'dashboard' }).data ?? []);
   const deprecationQuery = useReportDeprecationList(
@@ -132,11 +131,6 @@ export default function DashboardListPage() {
     }),
     successMessage: ({ isEdit }) => isEdit ? '分类更新成功' : '分类创建成功',
   });
-
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  }
 
   async function handleBatchStatus(status: 'enabled' | 'disabled') {
     if (selectedRowKeys.length === 0) return;
@@ -224,7 +218,12 @@ export default function DashboardListPage() {
         ...(hasPermission('report:dashboard:update') ? [{ key: 'edit', label: '编辑', onClick: () => dashboardModal.openEdit(record) }] : []),
         { key: 'governance', label: '权限与转移', onClick: () => navigate(`/report/governance?resourceType=dashboard&resourceId=${record.id}`) },
         ...(hasPermission('report:dashboard:create') ? [{ key: 'clone', label: '复制', onClick: () => void handleClone(record) }] : []),
-        ...(hasPermission('report:dashboard:delete') ? [{ key: 'delete', label: '删除', danger: true, onClick: () => { confirmDelete({ content: '删除后不可恢复', onOk: () => handleDelete(record.id) }); } }] : []),
+        deleteAction({
+          hidden: !hasPermission('report:dashboard:delete'),
+          title: '确定要删除吗？',
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -272,8 +271,6 @@ export default function DashboardListPage() {
       filter
     />
   );
-  const renderSearchBtn = () => <SearchButton onClick={handleSearch} />;
-  const renderResetBtn = () => <ResetButton onClick={handleReset} />;
   const renderCreateBtn = () => hasPermission('report:dashboard:create')
     ? <CreateButton onClick={dashboardModal.openCreate} /> : null;
   const renderCategoryManageBtn = () => hasPermission('report:dashboard:update')
@@ -302,24 +299,27 @@ export default function DashboardListPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>{renderKeyword()}{renderCategoryFilter()}{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}{renderLifecycleFilter()}{renderFavToggle()}{renderSearchBtn()}{renderResetBtn()}</>}
-        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCategoryManageBtn()}{renderCreateBtn()}</>}
-        mobilePrimary={<>{renderKeyword()}{renderSearchBtn()}{renderCreateBtn()}</>}
-        mobileFilters={<>{renderCategoryFilter()}{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}{renderLifecycleFilter()}{renderFavToggle()}</>}
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={<>{renderCategoryFilter()}{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}{renderLifecycleFilter()}{renderFavToggle()}</>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateBtn()}
+        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCategoryManageBtn()}</>}
         mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCategoryManageBtn()}</>}
         filterTitle="仪表盘筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-        rowSelection={hasPermission('report:dashboard:update') ? {
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as number[]),
-        } : undefined}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
+      <ConfigurableTable<ReportDashboard>
+        columns={columns}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无数据',
+          rowSelection: hasPermission('report:dashboard:update') ? {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          } : undefined,
+        })}
       />
 
       <AppModal

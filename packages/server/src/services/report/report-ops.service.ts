@@ -1,6 +1,7 @@
 /**
  * 报表运营 Service —— 分类 / 生命周期版本 / 收藏 / 公开分享 / 嵌入令牌。
  */
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, count, desc, eq, inArray, lt, max, or, sql } from 'drizzle-orm';
 import { hashPassword, verifyPassword } from '../../lib/password';
@@ -26,7 +27,6 @@ import { config } from '../../config';
 import redis from '../../lib/redis';
 import {
   applyEmbedFilterScope,
-  buildDashboardSnapshot,
   compareDashboardSnapshots,
   ensureAccessAllowedByIp,
   sanitizePublicFilterOptions,
@@ -54,6 +54,7 @@ import { resolveReportSecret } from './report-secrets';
 import { ensureReportResourceAccess } from './report-resource-acl.service';
 import { recordReportAssetUsage } from './report-asset-usage.service';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { draftSnapshotFromDashboardRow } from './report-dashboard-snapshot';
 
 const DEFAULT_SHARE_TTL_DAYS = 30;
 const SHARE_SESSION_TTL_SECONDS = 15 * 60;
@@ -136,10 +137,10 @@ export async function getCategoryDashboardRefCount(id: number): Promise<number> 
 }
 
 export async function ensureCategoryExists(id: number): Promise<ReportDashboardCategoryRow> {
-  const [row] = await db.select().from(reportDashboardCategories)
+  const [rowOrUndefined] = await db.select().from(reportDashboardCategories)
     .where(reportScopedWhere(reportDashboardCategories, eq(reportDashboardCategories.id, id)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '分类不存在' });
+  const row = requireRow(rowOrUndefined, '分类不存在');
   return row;
 }
 
@@ -161,12 +162,12 @@ export async function createCategory(input: CreateReportCategoryInput): Promise<
 export async function updateCategory(id: number, input: UpdateReportCategoryInput): Promise<ReportDashboardCategory> {
   await ensureCategoryExists(id);
   try {
-    const [row] = await db.update(reportDashboardCategories).set({
+    const [rowOrUndefined] = await db.update(reportDashboardCategories).set({
       name: input.name,
       sort: input.sort,
       remark: input.remark,
     }).where(eq(reportDashboardCategories.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '分类不存在' });
+    const row = requireRow(rowOrUndefined, '分类不存在');
     return mapCategory(row);
   } catch (err) {
     rethrowPgUniqueViolation(err, '分类名称已存在');
@@ -180,19 +181,6 @@ export async function deleteCategory(id: number): Promise<void> {
 }
 
 // ─── 版本 / 生命周期 ───────────────────────────────────────────────────────────
-
-function draftSnapshotFromDashboard(row: ReportDashboardRow): ReportDashboardSnapshot {
-  return buildDashboardSnapshot({
-    name: row.name,
-    layout: (row.layout ?? []) as ReportGridItem[],
-    canvasLayout: (row.canvasLayout ?? []) as ReportDashboardSnapshot['canvasLayout'],
-    widgets: (row.widgets ?? []) as ReportWidget[],
-    filters: (row.filters ?? []) as ReportFilter[],
-    config: (row.config ?? {}) as ReportDashboardConfig,
-    categoryId: row.categoryId ?? null,
-    remark: row.remark ?? null,
-  });
-}
 
 export function mapVersion(row: ReportDashboardVersionRow): ReportDashboardVersion {
   return {
@@ -247,11 +235,11 @@ export async function createVersion(dashboardId: number, input?: CreateReportVer
   await ensureDashboardExists(dashboardId);
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT ${reportDashboards.id} FROM ${reportDashboards} WHERE ${reportDashboards.id} = ${dashboardId} FOR UPDATE`);
-    const [locked] = await tx.select().from(reportDashboards)
+    const [lockedOrUndefined] = await tx.select().from(reportDashboards)
       .where(eq(reportDashboards.id, dashboardId))
       .limit(1);
-    if (!locked) throw new HTTPException(404, { message: '仪表盘不存在' });
-    return createVersionFromSnapshot(tx, dashboardId, draftSnapshotFromDashboard(locked), 'manual', input?.remark);
+    const locked = requireRow(lockedOrUndefined, '仪表盘不存在');
+    return createVersionFromSnapshot(tx, dashboardId, draftSnapshotFromDashboardRow(locked), 'manual', input?.remark);
   });
 }
 
@@ -282,7 +270,7 @@ export async function publishDashboard(
   );
   // 发布仅面向登录用户查看（有用户上下文），不要求数据集可全局评估；
   // 全局评估校验只在真正无用户上下文的场景做：公开分享、嵌入令牌、订阅推送、数据预警
-  const snapshot = draftSnapshotFromDashboard(current);
+  const snapshot = draftSnapshotFromDashboardRow(current);
   const row = await db.transaction(async (tx) => {
     const [updated] = await tx.update(reportDashboards).set({
       lifecycleStatus: 'published',
@@ -326,12 +314,12 @@ async function getVersionSnapshotOrCurrentDraft(
 ): Promise<{ label: string; snapshot: ReportDashboardSnapshot }> {
   if (versionId === 0) {
     const dashboard = await ensureDashboardExists(dashboardId);
-    return { label: `当前草稿 r${dashboard.revision}`, snapshot: draftSnapshotFromDashboard(dashboard) };
+    return { label: `当前草稿 r${dashboard.revision}`, snapshot: draftSnapshotFromDashboardRow(dashboard) };
   }
-  const [row] = await db.select().from(reportDashboardVersions)
+  const [rowOrUndefined] = await db.select().from(reportDashboardVersions)
     .where(and(eq(reportDashboardVersions.id, versionId), eq(reportDashboardVersions.dashboardId, dashboardId)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '版本不存在' });
+  const row = requireRow(rowOrUndefined, '版本不存在');
   return { label: `版本 v${row.version}`, snapshot: (row.snapshot ?? {}) as ReportDashboardSnapshot };
 }
 
@@ -358,10 +346,10 @@ export async function restoreVersion(
 ): Promise<ReportDashboard> {
   await ensureReportResourceAccess('dashboard', dashboardId, 'editor');
   const current = await ensureLifecycleRevision(dashboardId, expectedRevision);
-  const [version] = await db.select().from(reportDashboardVersions)
+  const [versionOrUndefined] = await db.select().from(reportDashboardVersions)
     .where(and(eq(reportDashboardVersions.id, versionId), eq(reportDashboardVersions.dashboardId, dashboardId)))
     .limit(1);
-  if (!version) throw new HTTPException(404, { message: '版本不存在' });
+  const version = requireRow(versionOrUndefined, '版本不存在');
   const snapshot = (version.snapshot ?? {}) as ReportDashboardSnapshot;
   await ensureDashboardReferences(
     snapshot.widgets ?? [],
@@ -386,7 +374,7 @@ export async function restoreVersion(
     await createVersionFromSnapshot(
       tx,
       dashboardId,
-      draftSnapshotFromDashboard(current),
+      draftSnapshotFromDashboardRow(current),
       'restore_backup',
       `恢复版本 v${version.version} 前自动备份`,
     );
@@ -507,8 +495,8 @@ export async function createShare(dashboardId: number, input: CreateReportShareI
 }
 
 export async function ensureShareExists(id: number): Promise<ReportDashboardShareRow> {
-  const [row] = await db.select().from(reportDashboardShares).where(eq(reportDashboardShares.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '分享链接不存在' });
+  const [rowOrUndefined] = await db.select().from(reportDashboardShares).where(eq(reportDashboardShares.id, id)).limit(1);
+  const row = requireRow(rowOrUndefined, '分享链接不存在');
   await ensureDashboardExists(row.dashboardId);
   return row;
 }
@@ -518,7 +506,7 @@ export async function updateShare(id: number, input: UpdateReportShareInput): Pr
   await ensureReportResourceAccess('dashboard', share.dashboardId, 'editor');
   const passwordHash = input.password === undefined ? undefined : (input.password ? await hashPassword(input.password) : null);
   const expireAt = parseShareExpireAt(input.expireAt);
-  const [row] = await db.update(reportDashboardShares).set({
+  const [rowOrUndefined] = await db.update(reportDashboardShares).set({
     enabled: input.enabled,
     passwordHash,
     expireAt,
@@ -527,7 +515,7 @@ export async function updateShare(id: number, input: UpdateReportShareInput): Pr
     allowedIps: input.allowedIps,
     sessionVersion: sql`${reportDashboardShares.sessionVersion} + 1`,
   }).where(eq(reportDashboardShares.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '分享链接不存在' });
+  const row = requireRow(rowOrUndefined, '分享链接不存在');
   return mapShare(row);
 }
 
@@ -574,11 +562,11 @@ async function claimShareAccess(share: ReportDashboardShareRow): Promise<void> {
         lt(reportDashboardShares.accessCount, share.maxAccessCount),
       )
     : eq(reportDashboardShares.id, share.id);
-  const [claimed] = await db.update(reportDashboardShares)
+  const [claimedOrUndefined] = await db.update(reportDashboardShares)
     .set({ accessCount: sql`${reportDashboardShares.accessCount} + 1` })
     .where(where)
     .returning({ id: reportDashboardShares.id });
-  if (!claimed) throw new HTTPException(403, { message: '分享访问次数已用尽' });
+  requireRow(claimedOrUndefined, '分享访问次数已用尽', 403);
 }
 
 async function releaseShareAccess(shareId: number): Promise<void> {
@@ -589,10 +577,10 @@ async function releaseShareAccess(shareId: number): Promise<void> {
 
 async function findShareByToken(token: string): Promise<ReportDashboardShareRow> {
   const tokenHash = createHash('sha256').update(token).digest('hex');
-  const [share] = await db.select().from(reportDashboardShares)
+  const [shareOrUndefined] = await db.select().from(reportDashboardShares)
     .where(or(eq(reportDashboardShares.token, tokenHash), eq(reportDashboardShares.token, token)))
     .limit(1);
-  if (!share) throw new HTTPException(404, { message: '链接不存在或已停用' });
+  const share = requireRow(shareOrUndefined, '链接不存在或已停用');
   if (share.token === token && !share.tokenEncrypted) {
     await db.update(reportDashboardShares)
       .set({ token: tokenHash, tokenEncrypted: encryptField(token) })
@@ -640,8 +628,8 @@ async function resolveShareSession(shareToken: string, accessSessionToken: strin
 }
 
 function toPublicDashboard(dashboard: ReportDashboardRow): ReportPublicDashboard {
-  const snapshot = (dashboard.publishedSnapshot ?? null) as ReportDashboardSnapshot | null;
-  if (!snapshot) throw new HTTPException(404, { message: '仪表盘未发布' });
+  const snapshotOrUndefined = (dashboard.publishedSnapshot ?? null) as ReportDashboardSnapshot | null;
+  const snapshot = requireRow(snapshotOrUndefined, '仪表盘未发布');
   return {
     name: snapshot.name,
     layout: snapshot.layout ?? [],
@@ -881,25 +869,25 @@ export async function createEmbedToken(
 }
 
 export async function revokeEmbedToken(id: number): Promise<void> {
-  const [existing] = await db.select({ dashboardId: reportDashboardEmbedTokens.dashboardId })
+  const [existingOrUndefined] = await db.select({ dashboardId: reportDashboardEmbedTokens.dashboardId })
     .from(reportDashboardEmbedTokens)
     .where(eq(reportDashboardEmbedTokens.id, id))
     .limit(1);
-  if (!existing) throw new HTTPException(404, { message: '嵌入令牌不存在' });
+  const existing = requireRow(existingOrUndefined, '嵌入令牌不存在');
   await ensureReportResourceAccess('dashboard', existing.dashboardId, 'editor');
   await ensureDashboardExists(existing.dashboardId);
-  const [row] = await db.update(reportDashboardEmbedTokens).set({ revokedAt: new Date() })
+  const [rowOrUndefined] = await db.update(reportDashboardEmbedTokens).set({ revokedAt: new Date() })
     .where(eq(reportDashboardEmbedTokens.id, id))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '嵌入令牌不存在' });
+  requireRow(rowOrUndefined, '嵌入令牌不存在');
 }
 
 async function resolveEmbedToken(token: string): Promise<ReportDashboardEmbedTokenRow> {
   const tokenHash = createHash('sha256').update(token).digest('hex');
-  const [row] = await db.select().from(reportDashboardEmbedTokens)
+  const [rowOrUndefined] = await db.select().from(reportDashboardEmbedTokens)
     .where(eq(reportDashboardEmbedTokens.token, tokenHash))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '嵌入令牌不存在' });
+  const row = requireRow(rowOrUndefined, '嵌入令牌不存在');
   if (row.revokedAt) throw new HTTPException(403, { message: '嵌入令牌已撤销' });
   if (row.expireAt && new Date(row.expireAt).getTime() < Date.now()) {
     throw new HTTPException(403, { message: '嵌入令牌已过期' });

@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { CronExpressionParser } from 'cron-parser';
@@ -40,8 +41,8 @@ function deliveryAt(row: typeof reportDeliveryRuns.$inferSelect): string | null 
 }
 
 export function ensureValidReportTimezone(timezone: string): void {
-  const value = timezone.trim();
-  if (!value) throw new HTTPException(400, { message: '时区不能为空' });
+  const valueOrUndefined = timezone.trim();
+  const value = requireRow(valueOrUndefined, '时区不能为空', 400);
   try {
     new Intl.DateTimeFormat('zh-CN', { timeZone: value }).format(new Date());
   } catch {
@@ -382,7 +383,7 @@ export async function startManualDeliveryRun(input: {
   triggerType: ReportDeliveryTriggerType;
   payloadSummary?: Record<string, unknown>;
 }): Promise<typeof reportDeliveryRuns.$inferSelect> {
-  const [row] = await db.update(reportDeliveryRuns)
+  const [rowOrUndefined] = await db.update(reportDeliveryRuns)
     .set({
       triggerType: input.triggerType,
       status: 'running',
@@ -396,7 +397,7 @@ export async function startManualDeliveryRun(input: {
     })
     .where(eq(reportDeliveryRuns.id, input.runId))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '投递记录不存在' });
+  const row = requireRow(rowOrUndefined, '投递记录不存在');
   return row;
 }
 
@@ -432,7 +433,7 @@ export async function finalizeDeliveryRun(input: {
   const now = new Date();
   // sql 模板裸插值 Date 无列编码器会导致驱动序列化失败，需绑定格式化串并显式 cast（started_at 为 timestamptz）
   const nowText = formatDateTime(now);
-  const [row] = await db.update(reportDeliveryRuns)
+  const [rowOrUndefined] = await db.update(reportDeliveryRuns)
     .set({
       status: input.status,
       errorMessage: trimMessage(input.errorMessage),
@@ -445,7 +446,7 @@ export async function finalizeDeliveryRun(input: {
     })
     .where(eq(reportDeliveryRuns.id, input.runId))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '投递记录不存在' });
+  const row = requireRow(rowOrUndefined, '投递记录不存在');
   return row;
 }
 
@@ -465,7 +466,7 @@ export async function markDeliveryRunRetryable(input: {
     });
   }
   const nextRetryAt = computeScheduledRetryAt(input.attempt);
-  const [row] = await db.update(reportDeliveryRuns)
+  const [rowOrUndefined] = await db.update(reportDeliveryRuns)
     .set({
       status: 'pending',
       errorMessage: trimMessage(input.errorMessage),
@@ -475,7 +476,7 @@ export async function markDeliveryRunRetryable(input: {
     })
     .where(eq(reportDeliveryRuns.id, input.runId))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '投递记录不存在' });
+  const row = requireRow(rowOrUndefined, '投递记录不存在');
   return row;
 }
 

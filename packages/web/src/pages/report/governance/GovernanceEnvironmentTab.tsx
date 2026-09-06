@@ -6,6 +6,7 @@ import { REPORT_PROMOTION_STATUS_LABELS } from '@zenith/shared/report';
 import { Rocket } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
@@ -153,10 +154,10 @@ export default function GovernanceEnvironmentTab() {
         {hasPermission('report:environment:promote') ? <Button icon={<Rocket size={14} />} onClick={openPromotion}>创建发布</Button> : null}
       </SearchToolbar>
       {environmentsQuery.isError && <Banner type="danger" description="环境列表加载失败" />}
-      <ConfigurableTable bordered rowKey="id" columns={environmentColumns} dataSource={environmentsQuery.data ?? []} loading={environmentsQuery.isFetching} empty={<Empty title="暂无环境" />} pagination={false} onRefresh={() => void environmentsQuery.refetch()} refreshLoading={environmentsQuery.isFetching} />
+      <ConfigurableTable columns={environmentColumns} {...listTableProps(environmentsQuery, { empty: <Empty title="暂无环境" /> })} />
       <Typography.Title heading={5} style={{ marginTop: 20 }}>发布与回滚历史</Typography.Title>
       {promotionsQuery.isError && <Banner type="danger" description="环境发布历史加载失败" />}
-      <ConfigurableTable bordered rowKey="id" columns={promotionColumns} dataSource={promotionsQuery.data?.list ?? []} loading={promotionsQuery.isFetching} empty={<Empty title="暂无环境发布" />} pagination={buildPagination(promotionsQuery.data?.total ?? 0)} onRefresh={() => void promotionsQuery.refetch()} refreshLoading={promotionsQuery.isFetching} />
+      <ConfigurableTable columns={promotionColumns} {...listTableProps(promotionsQuery, { pagination: buildPagination, empty: <Empty title="暂无环境发布" /> })} />
 
       <AppModal {...environmentModal.modalProps} width={650}>
         <Form key={environmentModal.formKey} {...environmentModal.formProps}>

@@ -35,9 +35,9 @@ import { formatDateTime, formatDateTimeForApi, formatDateTimeRangeForApi } from 
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { normalizeTemplateApplyValues, parseJsonObject } from './report-platform-utils';
 import { REPORT_RESOURCE_TYPE_OPTIONS } from './report-platform-options';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { abortSubmit } from '@/lib/abort-submit';
 import { JsonBlock } from '@/components/JsonBlock';
 
@@ -241,13 +241,12 @@ export default function AssetsPage() {
         { key: 'edit', label: '编辑', hidden: !hasPermission('report:asset-template:update'), onClick: () => openTemplate(record) },
         { key: 'preview', label: '预览', onClick: () => setPreviewTemplate(record) },
         { key: 'clone', label: '克隆', hidden: !hasPermission('report:asset-template:create'), onClick: () => cloneTemplate(record) },
-        {
-          key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:asset-template:delete'),
-          onClick: () => { confirmDelete({
-            title: `删除模板「${record.name}」？`,
-            onOk: async () => { await deleteTemplateMutation.mutateAsync({ params: { id: record.id } }); Toast.success('模板已删除'); },
-          }); },
-        },
+        deleteAction({
+          hidden: !hasPermission('report:asset-template:delete'),
+          title: `删除模板「${record.name}」？`,
+          run: () => deleteTemplateMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '模板已删除',
+        }),
       ],
     }),
   ];
@@ -272,13 +271,12 @@ export default function AssetsPage() {
           }); },
         },
         { key: 'edit', label: '编辑', hidden: !hasPermission('report:deprecation:update'), onClick: () => openNotice(record) },
-        {
-          key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:deprecation:delete'),
-          onClick: () => { confirmDelete({
-            title: '删除弃用公告？',
-            onOk: async () => { await deleteNoticeMutation.mutateAsync({ params: { id: record.id } }); Toast.success('公告已删除'); },
-          }); },
-        },
+        deleteAction({
+          hidden: !hasPermission('report:deprecation:delete'),
+          title: '删除弃用公告？',
+          run: () => deleteNoticeMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '公告已删除',
+        }),
       ],
     }),
   ];
@@ -305,12 +303,8 @@ export default function AssetsPage() {
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => { setActiveTab(key as typeof activeTab); setPage(1); }}>
         <TabPane tab="统一资产目录" itemKey="catalog">
-          <SearchToolbar
-            primary={<>
-              <KeywordInput placeholder="搜索资产名称" value={catalogDraft.keyword} onChange={(value) => setCatalogDraft((p) => ({ ...p, keyword: value }))} onSearch={searchCatalog} />
-              <SearchButton onClick={searchCatalog} />
-              <ResetButton onClick={resetCatalog} />
-            </>}
+          <ListSearchToolbar
+            keyword={<KeywordInput placeholder="搜索资产名称" value={catalogDraft.keyword} onChange={(value) => setCatalogDraft((p) => ({ ...p, keyword: value }))} onSearch={searchCatalog} />}
             filters={<>
               <Select multiple placeholder="资产类型" value={catalogDraft.types} optionList={resourceTypeOptions} style={{ width: 210 }} onChange={(value) => setCatalogDraft((p) => ({ ...p, types: value as ReportResourceType[] }))} />
               <FilterSelect
@@ -338,35 +332,25 @@ export default function AssetsPage() {
               />
               <DateRangeFilter value={catalogDraft.timeRange ?? undefined} onChange={(value) => setCatalogDraft((p) => ({ ...p, timeRange: value ? value as [Date, Date] : null }))} width={340} />
             </>}
+            onSearch={searchCatalog}
+            onReset={resetCatalog}
             actions={<ExportButton entity="report.assets" query={catalogQueryParams} />}
-            mobilePrimary={<>
-              <KeywordInput placeholder="搜索资产" value={catalogDraft.keyword} onChange={(value) => setCatalogDraft((p) => ({ ...p, keyword: value }))} />
-              <SearchButton onClick={searchCatalog} />
-            </>}
             mobileActions={<ExportButton entity="report.assets" query={catalogQueryParams} variant="flat" />}
-            onFilterApply={searchCatalog}
-            onFilterReset={resetCatalog}
           />
           {catalogQuery.isError && <Banner type="danger" description={catalogQuery.error instanceof Error ? catalogQuery.error.message : '资产目录加载失败'} />}
-          <ConfigurableTable bordered rowKey={(r) => `${r!.resourceType}-${r!.resourceId}`} columns={catalogColumns} dataSource={catalogQuery.data?.list ?? []} loading={catalogQuery.isFetching} empty={<Empty title="暂无匹配资产" />} pagination={buildPagination(catalogQuery.data?.total ?? 0)} onRefresh={() => void catalogQuery.refetch()} refreshLoading={catalogQuery.isFetching} />
+          <ConfigurableTable<ReportAssetCatalogItem> columns={catalogColumns} {...listTableProps(catalogQuery, { rowKey: (r) => `${r!.resourceType}-${r!.resourceId}`, pagination: buildPagination, empty: <Empty title="暂无匹配资产" /> })} />
         </TabPane>
 
         <TabPane tab="可复用模板" itemKey="templates">
-          <SearchToolbar>
-            <KeywordInput placeholder="搜索模板名称/编码" value={templateKeyword} onChange={setTemplateKeyword} onSearch={searchTemplates} width={230} />
-            <FilterSelect
-              placeholder="全部模板类型"
-              items={templateTypeOptions}
-              value={templateType}
-              onChange={(v) => setTemplateType(v as ReportAssetTemplateType | undefined)}
-              width={150}
-            />
-            <SearchButton onClick={searchTemplates} />
-            <ResetButton onClick={resetTemplates} />
-            {hasPermission('report:asset-template:create') ? <CreateButton onClick={() => openTemplate()} /> : null}
-          </SearchToolbar>
+          <ListSearchToolbar
+            keyword={<KeywordInput placeholder="搜索模板名称/编码" value={templateKeyword} onChange={setTemplateKeyword} onSearch={searchTemplates} width={230} />}
+            filters={<FilterSelect placeholder="全部模板类型" items={templateTypeOptions} value={templateType} onChange={(v) => setTemplateType(v as ReportAssetTemplateType | undefined)} width={150} />}
+            onSearch={searchTemplates}
+            onReset={resetTemplates}
+            create={hasPermission('report:asset-template:create') ? <CreateButton onClick={() => openTemplate()} /> : null}
+          />
           {templatesQuery.isError && <Banner type="danger" description="资产模板加载失败" />}
-          <ConfigurableTable bordered rowKey="id" columns={templateColumns} dataSource={templatesQuery.data?.list ?? []} loading={templatesQuery.isFetching} empty={<Empty title="暂无资产模板" />} pagination={buildPagination(templatesQuery.data?.total ?? 0)} onRefresh={() => void templatesQuery.refetch()} refreshLoading={templatesQuery.isFetching} />
+          <ConfigurableTable<ReportAssetTemplate> columns={templateColumns} {...listTableProps(templatesQuery, { pagination: buildPagination, empty: <Empty title="暂无资产模板" /> })} />
         </TabPane>
 
         <TabPane tab="使用与弃用" itemKey="usage">
@@ -376,13 +360,13 @@ export default function AssetsPage() {
           </SearchToolbar>
           {(topQuery.isError || trendQuery.isError || inactiveQuery.isError || noticesQuery.isError) && <Banner type="danger" description="部分资产使用数据加载失败，可点击对应表格刷新重试。" />}
           <Typography.Title heading={5}>高频资产</Typography.Title>
-          <ConfigurableTable bordered rowKey={(r) => `${r!.resourceType}-${r!.resourceId}`} columns={usageColumns} dataSource={topQuery.data ?? []} loading={topQuery.isFetching} empty={<Empty title="暂无使用数据" />} pagination={false} onRefresh={() => void topQuery.refetch()} refreshLoading={topQuery.isFetching} />
+          <ConfigurableTable<ReportAssetUsageSummary> columns={usageColumns} {...listTableProps(topQuery, { rowKey: (r) => `${r!.resourceType}-${r!.resourceId}`, empty: <Empty title="暂无使用数据" /> })} />
           <Typography.Title heading={5} style={{ marginTop: 20 }}>使用趋势</Typography.Title>
-          <ConfigurableTable bordered rowKey="bucket" columns={trendColumns} dataSource={trendQuery.data ?? []} loading={trendQuery.isFetching} empty={<Empty title="暂无趋势数据" />} pagination={false} onRefresh={() => void trendQuery.refetch()} refreshLoading={trendQuery.isFetching} />
+          <ConfigurableTable<ReportAssetUsageTrendPoint> columns={trendColumns} {...listTableProps(trendQuery, { rowKey: 'bucket', empty: <Empty title="暂无趋势数据" /> })} />
           <Typography.Title heading={5} style={{ marginTop: 20 }}>闲置资产</Typography.Title>
-          <ConfigurableTable bordered rowKey={(r) => `${r!.resourceType}-${r!.resourceId}`} columns={catalogColumns} dataSource={inactiveQuery.data?.list ?? []} loading={inactiveQuery.isFetching} empty={<Empty title="暂无闲置资产" />} pagination={buildPagination(inactiveQuery.data?.total ?? 0)} onRefresh={() => void inactiveQuery.refetch()} refreshLoading={inactiveQuery.isFetching} />
+          <ConfigurableTable<ReportAssetCatalogItem> columns={catalogColumns} {...listTableProps(inactiveQuery, { rowKey: (r) => `${r!.resourceType}-${r!.resourceId}`, pagination: buildPagination, empty: <Empty title="暂无闲置资产" /> })} />
           <Typography.Title heading={5} style={{ marginTop: 20 }}>弃用公告</Typography.Title>
-          <ConfigurableTable bordered rowKey="id" columns={noticeColumns} dataSource={noticesQuery.data?.list ?? []} loading={noticesQuery.isFetching} empty={<Empty title="暂无弃用公告" />} pagination={buildPagination(noticesQuery.data?.total ?? 0)} onRefresh={() => void noticesQuery.refetch()} refreshLoading={noticesQuery.isFetching} />
+          <ConfigurableTable<ReportDeprecationNotice> columns={noticeColumns} {...listTableProps(noticesQuery, { pagination: buildPagination, empty: <Empty title="暂无弃用公告" /> })} />
         </TabPane>
       </Tabs>
 

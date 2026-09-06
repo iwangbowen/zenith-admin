@@ -1,6 +1,7 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { CronExpressionParser } from 'cron-parser';
 import dayjs from 'dayjs';
-import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import type { CreateReportSlaRuleInput, ReportSlaRule, ReportSlaType, ReportSlaViolation, UpdateReportSlaRuleInput, UpdateReportSlaViolationInput } from '@zenith/shared/report';
 import { db } from '../../db';
@@ -101,17 +102,17 @@ export function mapReportSlaViolation(row: SlaViolationRow): ReportSlaViolation 
 }
 
 async function ensureSlaRule(id: number, role: 'viewer' | 'editor' = 'viewer'): Promise<SlaRuleRow> {
-  const row = await db.query.reportSlaRules.findFirst({
+  const rowOrUndefined = await db.query.reportSlaRules.findFirst({
     where: reportScopedWhere(reportSlaRules, eq(reportSlaRules.id, id)),
   });
-  if (!row) throw new HTTPException(404, { message: 'SLA 规则不存在' });
+  const row = requireRow(rowOrUndefined, 'SLA 规则不存在');
   await ensureReportResourceAccess('dataset', row.datasetId, role);
   return row;
 }
 
 async function validateSlaInput(input: CreateReportSlaRuleInput | UpdateReportSlaRuleInput, existing?: SlaRuleRow) {
-  const datasetId = input.datasetId ?? existing?.datasetId;
-  if (!datasetId) throw new HTTPException(400, { message: 'SLA 规则缺少数据集' });
+  const datasetIdOrUndefined = input.datasetId ?? existing?.datasetId;
+  const datasetId = requireRow(datasetIdOrUndefined, 'SLA 规则缺少数据集', 400);
   const dataset = await ensureDatasetExists(datasetId);
   await ensureReportResourceAccess('dataset', datasetId, 'editor');
   const timezone = input.timezone ?? existing?.timezone ?? 'Asia/Shanghai';
@@ -148,12 +149,14 @@ export async function listReportSlaRules(query: {
   if (query.type) conds.push(eq(reportSlaRules.type, query.type));
   if (query.enabled !== undefined) conds.push(eq(reportSlaRules.enabled, query.enabled));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportSlaRules, where),
-    db.select().from(reportSlaRules).where(where).orderBy(desc(reportSlaRules.id))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapReportSlaRule), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportSlaRules, where),
+    rows: () => db.select().from(reportSlaRules).where(where).orderBy(desc(reportSlaRules.id))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapReportSlaRule,
+  });
 }
 
 export async function getReportSlaRule(id: number): Promise<ReportSlaRule> {
@@ -390,22 +393,24 @@ export async function listReportSlaViolations(query: {
   }
   if (query.status) conds.push(eq(reportSlaViolations.status, query.status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportSlaViolations, where),
-    db.select().from(reportSlaViolations).where(where).orderBy(desc(reportSlaViolations.id))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapReportSlaViolation), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportSlaViolations, where),
+    rows: () => db.select().from(reportSlaViolations).where(where).orderBy(desc(reportSlaViolations.id))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapReportSlaViolation,
+  });
 }
 
 export async function updateReportSlaViolation(
   id: number,
   input: UpdateReportSlaViolationInput,
 ): Promise<ReportSlaViolation> {
-  const row = await db.query.reportSlaViolations.findFirst({
+  const rowOrUndefined = await db.query.reportSlaViolations.findFirst({
     where: reportScopedWhere(reportSlaViolations, eq(reportSlaViolations.id, id)),
   });
-  if (!row) throw new HTTPException(404, { message: 'SLA 违规记录不存在' });
+  const row = requireRow(rowOrUndefined, 'SLA 违规记录不存在');
   await ensureReportResourceAccess('dataset', row.datasetId, 'editor');
   const now = new Date();
   const [updated] = await db.update(reportSlaViolations).set({

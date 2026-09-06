@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -61,12 +62,12 @@ function buildDatasetShape(
 }
 
 export async function loadReportFillUserPayload(userId: number): Promise<JwtPayload> {
-  const user = await db.query.users.findFirst({
+  const userOrUndefined = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { id: true, username: true, tenantId: true },
     with: { userRoles: { columns: {}, with: { role: { columns: { code: true } } } } },
   });
-  if (!user) throw new HTTPException(409, { message: '填报模板负责人不存在，无法同步数据集' });
+  const user = requireRow(userOrUndefined, '填报模板负责人不存在，无法同步数据集', 409);
   return {
     userId: user.id,
     username: user.username,
@@ -95,17 +96,17 @@ export async function synchronizeApprovedFillRecords(input: {
   recordId: number;
   isCancelled?: () => Promise<boolean>;
 }) {
-  const record = await db.query.reportFillRecords.findFirst({
+  const recordOrUndefined = await db.query.reportFillRecords.findFirst({
     where: eq(reportFillRecords.id, input.recordId),
   });
-  if (!record) throw new HTTPException(404, { message: '填报记录不存在' });
+  const record = requireRow(recordOrUndefined, '填报记录不存在');
   if (!isApprovedFillRecordConsumable(record.status)) {
     return { skipped: true, reason: '记录未批准，不进入消费数据集' };
   }
-  const template = await db.query.reportFillTemplates.findFirst({
+  const templateOrUndefined = await db.query.reportFillTemplates.findFirst({
     where: eq(reportFillTemplates.id, record.templateId),
   });
-  if (!template) throw new HTTPException(404, { message: '填报模板不存在' });
+  const template = requireRow(templateOrUndefined, '填报模板不存在');
   const ownerId = template.ownerId ?? template.createdBy ?? record.submitterId;
   const owner = await loadReportFillUserPayload(ownerId);
   const release = await acquireTemplateLock(template.id);

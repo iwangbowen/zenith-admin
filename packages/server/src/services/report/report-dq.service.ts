@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { createHash } from 'node:crypto';
 import { CronExpressionParser } from 'cron-parser';
 import dayjs from 'dayjs';
@@ -63,15 +65,15 @@ export function evaluateBuiltinDqRule(
     const tooMany = config.maxRows != null && rows.length > config.maxRows;
     return { checkedRows: rows.length, failedRows: [], failedCount: tooFew || tooMany ? rows.length || 1 : 0 };
   }
-  if (!field) throw new HTTPException(400, { message: '质量规则缺少字段' });
+  const requiredField = requireRow(field, '质量规则缺少字段', 400);
 
   if (type === 'uniqueness') {
     const counts = new Map<string, number>();
     for (const row of rows) {
-      const key = valueKey(row[field]);
+      const key = valueKey(row[requiredField]);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
-    const failedRows = rows.filter((row) => (counts.get(valueKey(row[field])) ?? 0) > 1);
+    const failedRows = rows.filter((row) => (counts.get(valueKey(row[requiredField])) ?? 0) > 1);
     return { checkedRows: rows.length, failedRows, failedCount: failedRows.length };
   }
 
@@ -84,7 +86,7 @@ export function evaluateBuiltinDqRule(
     }
   }
   const failedRows = rows.filter((row) => {
-    const value = row[field];
+    const value = row[requiredField];
     switch (type) {
       case 'not_null':
         return value === null || value === undefined || value === '';
@@ -325,10 +327,10 @@ async function validateRuleInput(input: CreateReportDqRuleInput | UpdateReportDq
 }
 
 async function ensureRule(id: number, role: 'viewer' | 'editor' = 'viewer') {
-  const row = await db.query.reportDqRules.findFirst({
+  const rowOrUndefined = await db.query.reportDqRules.findFirst({
     where: reportScopedWhere(reportDqRules, eq(reportDqRules.id, id)),
   });
-  if (!row) throw new HTTPException(404, { message: '质量规则不存在' });
+  const row = requireRow(rowOrUndefined, '质量规则不存在');
   await ensureReportResourceAccess('dataset', row.datasetId, role);
   return row;
 }
@@ -355,17 +357,19 @@ export async function listReportDqRules(query: {
   if (query.type) conds.push(eq(reportDqRules.type, query.type));
   if (query.enabled !== undefined) conds.push(eq(reportDqRules.enabled, query.enabled));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportDqRules, where),
-    db.select({ rule: reportDqRules, datasetName: reportDatasets.name })
-      .from(reportDqRules)
-      .innerJoin(reportDatasets, eq(reportDatasets.id, reportDqRules.datasetId))
-      .where(where)
-      .orderBy(desc(reportDqRules.id))
-      .limit(pageSize)
-      .offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map((row) => mapReportDqRule(row.rule, row.datasetName)), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportDqRules, where),
+    rows: () => db.select({ rule: reportDqRules, datasetName: reportDatasets.name })
+            .from(reportDqRules)
+            .innerJoin(reportDatasets, eq(reportDatasets.id, reportDqRules.datasetId))
+            .where(where)
+            .orderBy(desc(reportDqRules.id))
+            .limit(pageSize)
+            .offset(pageOffset(page, pageSize)),
+    map: (row) => mapReportDqRule(row.rule, row.datasetName),
+  });
 }
 
 export async function getReportDqRule(id: number): Promise<ReportDqRule> {
@@ -663,12 +667,14 @@ export async function listReportDqRuns(query: {
 export async function listReportDqScores(datasetId: number, page = 1, pageSize = 30) {
   await ensureReportResourceAccess('dataset', datasetId, 'viewer');
   const where = reportScopedWhere(reportDqScores, eq(reportDqScores.datasetId, datasetId));
-  const [total, rows] = await Promise.all([
-    db.$count(reportDqScores, where),
-    db.select().from(reportDqScores).where(where).orderBy(desc(reportDqScores.measuredAt))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapReportDqScore), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportDqScores, where),
+    rows: () => db.select().from(reportDqScores).where(where).orderBy(desc(reportDqScores.measuredAt))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapReportDqScore,
+  });
 }
 
 export async function getCurrentReportDqScore(datasetId: number): Promise<ReportDqScore | null> {
@@ -719,10 +725,10 @@ export async function updateReportDqAnomalyStatus(
   id: number,
   input: UpdateReportDqAnomalyStatusInput,
 ): Promise<ReportDqAnomaly> {
-  const row = await db.query.reportDqAnomalies.findFirst({
+  const rowOrUndefined = await db.query.reportDqAnomalies.findFirst({
     where: reportScopedWhere(reportDqAnomalies, eq(reportDqAnomalies.id, id)),
   });
-  if (!row) throw new HTTPException(404, { message: '质量异常不存在' });
+  const row = requireRow(rowOrUndefined, '质量异常不存在');
   await ensureReportResourceAccess('dataset', row.datasetId, 'editor');
   const now = new Date();
   const [updated] = await db.update(reportDqAnomalies).set({

@@ -7,6 +7,7 @@ import type { ReportAclSubjectType, ReportFolderTreeNode, ReportResourceAcl, Rep
 import { Plus, Shield } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
@@ -183,7 +184,7 @@ export default function GovernanceResourceTab() {
       <SideSheet title="资源权限管理" visible={aclVisible} width={760} onCancel={() => setAclVisible(false)}>
         {hasPermission('report:resource:acl') ? <Button type="primary" icon={<Plus size={14} />} style={{ marginBottom: 12 }} onClick={openGrantAcl}>授予权限</Button> : null}
         {aclsQuery.isError && <Banner type="danger" description="资源权限加载失败" />}
-        <ConfigurableTable bordered rowKey="id" columns={aclColumns} dataSource={aclsQuery.data ?? []} loading={aclsQuery.isFetching} empty={<Empty title="暂无 ACL" />} pagination={false} onRefresh={() => void aclsQuery.refetch()} refreshLoading={aclsQuery.isFetching} />
+        <ConfigurableTable columns={aclColumns} {...listTableProps(aclsQuery, { empty: <Empty title="暂无 ACL" /> })} />
       </SideSheet>
 
       <AppModal {...aclModal.modalProps} title="授予资源权限" width={560}>

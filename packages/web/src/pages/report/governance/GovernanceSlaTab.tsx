@@ -4,6 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportSlaRule, ReportSlaType, ReportSlaViolation, ReportSlaViolationStatus } from '@zenith/shared/report';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -161,7 +162,7 @@ export default function GovernanceSlaTab() {
         {hasPermission('report:sla:create') ? <CreateButton onClick={() => openRule()}>新增规则</CreateButton> : null}
       </SearchToolbar>
       {rulesQuery.isError && <Banner type="danger" description="SLA 规则加载失败" />}
-      <ConfigurableTable bordered rowKey="id" columns={ruleColumns} dataSource={rulesQuery.data?.list ?? []} loading={rulesQuery.isFetching} empty={<Empty title="暂无 SLA 规则" />} pagination={buildPagination(rulesQuery.data?.total ?? 0)} onRefresh={() => void rulesQuery.refetch()} refreshLoading={rulesQuery.isFetching} />
+      <ConfigurableTable columns={ruleColumns} {...listTableProps(rulesQuery, { pagination: buildPagination, empty: <Empty title="暂无 SLA 规则" /> })} />
       <Typography.Title heading={5} style={{ marginTop: 20 }}>SLA 违规</Typography.Title>
       <SearchToolbar>
         <FilterSelect
@@ -173,7 +174,7 @@ export default function GovernanceSlaTab() {
         />
       </SearchToolbar>
       {violationsQuery.isError && <Banner type="danger" description="SLA 违规加载失败" />}
-      <ConfigurableTable bordered rowKey="id" columns={violationColumns} dataSource={violationsQuery.data?.list ?? []} loading={violationsQuery.isFetching} empty={<Empty title="暂无 SLA 违规" />} pagination={buildPagination(violationsQuery.data?.total ?? 0)} onRefresh={() => void violationsQuery.refetch()} refreshLoading={violationsQuery.isFetching} />
+      <ConfigurableTable columns={violationColumns} {...listTableProps(violationsQuery, { pagination: buildPagination, empty: <Empty title="暂无 SLA 违规" /> })} />
 
       <AppModal {...ruleModal.modalProps} width={720}>
         <Form key={ruleModal.formKey} {...ruleModal.formProps}

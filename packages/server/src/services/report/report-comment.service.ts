@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../../db';
@@ -84,10 +85,10 @@ async function ensureDashboardCommentable(dashboardId: number, widgetId?: string
 }
 
 async function ensureCommentExists(dashboardId: number, id: number): Promise<ReportDashboardCommentRow> {
-  const [row] = await db.select().from(reportDashboardComments)
+  const [rowOrUndefined] = await db.select().from(reportDashboardComments)
     .where(and(eq(reportDashboardComments.id, id), eq(reportDashboardComments.dashboardId, dashboardId)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '评论不存在' });
+  const row = requireRow(rowOrUndefined, '评论不存在');
   return row;
 }
 
@@ -210,8 +211,8 @@ export async function updateComment(
   if (row.userId !== user.userId) throw new HTTPException(403, { message: '只能编辑自己的评论' });
   if (row.deletedAt) throw new HTTPException(400, { message: '已删除评论不能编辑' });
   const dashboard = await ensureDashboardCommentable(dashboardId, row.widgetId ?? undefined);
-  const [updated] = await db.update(reportDashboardComments).set({ content: input.content }).where(eq(reportDashboardComments.id, id)).returning();
-  if (!updated) throw new HTTPException(404, { message: '评论不存在' });
+  const [updatedOrUndefined] = await db.update(reportDashboardComments).set({ content: input.content }).where(eq(reportDashboardComments.id, id)).returning();
+  const updated = requireRow(updatedOrUndefined, '评论不存在');
   await notifyMentions(dashboard, input.content, user.userId);
   const full = await db.query.reportDashboardComments.findFirst({
     where: eq(reportDashboardComments.id, id),
@@ -245,12 +246,12 @@ export async function resolveComment(
   if (row.userId !== user.userId && !canManage) {
     throw new HTTPException(403, { message: '只有评论作者或仪表盘编辑者可操作解决状态' });
   }
-  const [updated] = await db.update(reportDashboardComments).set(input.resolved
+  const [updatedOrUndefined] = await db.update(reportDashboardComments).set(input.resolved
     ? { resolvedAt: new Date(), resolvedBy: user.userId }
     : { resolvedAt: null, resolvedBy: null })
     .where(eq(reportDashboardComments.id, id))
     .returning();
-  if (!updated) throw new HTTPException(404, { message: '评论不存在' });
+  const updated = requireRow(updatedOrUndefined, '评论不存在');
   const full = await db.query.reportDashboardComments.findFirst({
     where: eq(reportDashboardComments.id, id),
     with: {

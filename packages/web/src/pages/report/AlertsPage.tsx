@@ -1,11 +1,10 @@
 import { useState, useMemo } from 'react';
-import { Button, Col, Form, Modal, Row, SideSheet, Switch, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Modal, Row, SideSheet, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime } from '@/utils/date';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -29,9 +28,9 @@ import { REPORT_DELIVERY_STATUS_LABELS, REPORT_DELIVERY_TRIGGER_LABELS, REPORT_M
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { switchAlertSource } from './report-platform-utils';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 
 interface SearchParams {
@@ -115,7 +114,6 @@ export default function AlertsPage() {
     metricId: submittedParams.metricId ? Number(submittedParams.metricId) : undefined,
     enabled: submittedParams.enabled ? submittedParams.enabled === 'enabled' : undefined,
   });
-  const data = listQuery.data ?? null;
   const saveMutation = useSaveReportAlert();
   const toggleMutation = useToggleReportAlertEnabled();
   const batchEnabledMutation = useBatchReportAlertEnabled();
@@ -123,7 +121,12 @@ export default function AlertsPage() {
   const deleteMutation = useDeleteReportAlerts();
   const acknowledgeMutation = useAcknowledgeReportAlertRun();
   const historyQuery = useReportAlertHistory(historyTarget?.id, !!historyTarget);
-  const togglingId = toggleMutation.isPending ? toggleMutation.variables?.params.id ?? null : null;
+  const enabledToggle = useStatusToggle<ReportAlertRule>({
+    isEnabled: (record) => record.enabled,
+    toggle: (record, checked) => toggleMutation.mutateAsync({ params: { id: record.id }, body: { enabled: checked } }),
+    confirmDisable: (record) => ({ title: '确认停用', content: `停用后「${record.name}」将不再自动评估，确认停用？` }),
+    disabled: !hasPermission('report:alert:update'),
+  });
 
   const alertModal = useEditModal<ReportAlertRule, Record<string, unknown>, CreateReportAlertInput>({
     entityName: '预警',
@@ -198,20 +201,6 @@ export default function AlertsPage() {
     };
   }
 
-
-  function handleToggleEnabled(record: ReportAlertRule, checked: boolean) {
-    const doToggle = async () => {
-      try {
-        await toggleMutation.mutateAsync({ params: { id: record.id }, body: { enabled: checked } });
-        Toast.success(checked ? '已启用' : '已停用');
-      } catch (error) {
-        Toast.error(error instanceof Error ? error.message : '状态更新失败');
-      }
-    };
-    if (checked) void doToggle();
-    else Modal.confirm({ title: '确认停用', content: `停用后「${record.name}」将不再自动评估，确认停用？`, onOk: () => void doToggle() });
-  }
-
   async function handleEvaluate(id: number) {
     try {
       await evaluateMutation.mutateAsync({ params: { id } });
@@ -228,15 +217,6 @@ export default function AlertsPage() {
       Toast.success('已确认');
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '确认失败');
-    }
-  }
-
-  async function handleDelete(id: number) {
-    try {
-      await deleteMutation.mutateAsync([id]);
-      Toast.success('删除成功');
-    } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 
@@ -315,21 +295,7 @@ export default function AlertsPage() {
       ),
     },
     { title: '备注', dataIndex: 'remark', width: 180, render: renderEllipsis },
-    {
-      title: '状态',
-      dataIndex: 'enabled',
-      width: 80,
-      fixed: 'right',
-      render: (_: unknown, record: ReportAlertRule) => (
-        <Switch
-          checked={record.enabled}
-          loading={togglingId === record.id}
-          disabled={!hasPermission('report:alert:update')}
-          onChange={(checked) => handleToggleEnabled(record, checked)}
-          size="small"
-        />
-      ),
-    },
+    enabledToggle.column({ dataIndex: 'enabled' }),
     createOperationColumn<ReportAlertRule>({
       width: 240,
       desktopInlineKeys: ['edit', 'evaluate', 'history'],
@@ -337,12 +303,12 @@ export default function AlertsPage() {
         ...(hasPermission('report:alert:update') ? [{ key: 'edit', label: '编辑', onClick: () => openEdit(record) }] : []),
         ...(hasPermission('report:alert:list') ? [{ key: 'evaluate', label: '评估', onClick: () => void handleEvaluate(record.id) }] : []),
         ...(hasPermission('report:alert:list') ? [{ key: 'history', label: '历史', onClick: () => setHistoryTarget(record) }] : []),
-        ...(hasPermission('report:alert:delete') ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => { confirmDelete({ content: '删除后不可恢复', onOk: () => handleDelete(record.id) }); },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('report:alert:delete'),
+          title: '确定要删除吗？',
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -377,8 +343,6 @@ export default function AlertsPage() {
       onChange={(value) => setDraftParams((prev) => ({ ...prev, enabled: value }))}
     />
   );
-  const renderSearchBtn = () => <SearchButton onClick={handleSearch} />;
-  const renderResetBtn = () => <ResetButton onClick={handleReset} />;
   const renderCreateBtn = () => hasPermission('report:alert:create')
     ? <CreateButton onClick={openCreate} /> : null;
   const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:alert:update')
@@ -388,24 +352,27 @@ export default function AlertsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>{renderKeyword()}{renderDatasetFilter()}{renderMetricFilter()}{renderStatusFilter()}{renderSearchBtn()}{renderResetBtn()}</>}
-        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCreateBtn()}</>}
-        mobilePrimary={<>{renderKeyword()}{renderSearchBtn()}{renderCreateBtn()}</>}
-        mobileFilters={<>{renderDatasetFilter()}{renderMetricFilter()}{renderStatusFilter()}</>}
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={<>{renderDatasetFilter()}{renderMetricFilter()}{renderStatusFilter()}</>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateBtn()}
+        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="预警筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} rowKey="id" size="small" empty="暂无预警"
-        rowSelection={hasPermission('report:alert:update') ? {
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as number[]),
-        } : undefined}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} pagination={buildPagination(data?.total ?? 0)}
+      <ConfigurableTable<ReportAlertRule>
+        columns={columns}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无预警',
+          rowSelection: hasPermission('report:alert:update') ? {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          } : undefined,
+        })}
       />
 
       <SideSheet

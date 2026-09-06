@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
@@ -36,26 +38,26 @@ export async function ensureReportFillTemplate(
   role: 'viewer' | 'editor' | 'owner' = 'viewer',
 ): Promise<TemplateRow> {
   await ensureReportResourceAccess('fill_template', id, role);
-  const row = await db.query.reportFillTemplates.findFirst({
+  const rowOrUndefined = await db.query.reportFillTemplates.findFirst({
     where: reportScopedWhere(reportFillTemplates, eq(reportFillTemplates.id, id)),
   });
-  if (!row) throw new HTTPException(404, { message: '填报模板不存在' });
+  const row = requireRow(rowOrUndefined, '填报模板不存在');
   return row;
 }
 
 async function validateWorkflowDefinition(id: number | null | undefined, needReview: boolean) {
   if (!id) return;
-  if (!needReview) throw new HTTPException(400, { message: '仅需要审核的模板可以绑定工作流定义' });
+  requireRow(needReview, '仅需要审核的模板可以绑定工作流定义', 400);
   const conditions = [eq(workflowDefinitions.id, id), eq(workflowDefinitions.status, 'published')];
   const scoped = tenantCondition(workflowDefinitions, currentUser());
   if (scoped) conditions.push(scoped);
-  const [definition] = await db.select({
+  const [definitionOrUndefined] = await db.select({
     id: workflowDefinitions.id,
     formType: workflowDefinitions.formType,
     customForm: workflowDefinitions.customForm,
   }).from(workflowDefinitions)
     .where(and(...conditions)).limit(1);
-  if (!definition) throw new HTTPException(400, { message: '工作流定义不存在、未发布或不属于当前租户' });
+  const definition = requireRow(definitionOrUndefined, '工作流定义不存在、未发布或不属于当前租户', 400);
   if (definition.formType !== 'external') {
     throw new HTTPException(400, { message: '填报审批必须绑定业务系统主导（external）工作流定义' });
   }
@@ -91,13 +93,15 @@ export async function listReportFillTemplates(query: {
   if (query.ownerId) conditions.push(eq(reportFillTemplates.ownerId, query.ownerId));
   if (query.folderId) conditions.push(eq(reportFillTemplates.folderId, query.folderId));
   const where = and(...conditions.filter((item): item is NonNullable<typeof item> => Boolean(item)));
-  const [total, rows] = await Promise.all([
-    db.$count(reportFillTemplates, where),
-    db.select().from(reportFillTemplates).where(where)
-      .orderBy(desc(reportFillTemplates.updatedAt))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapReportFillTemplate), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportFillTemplates, where),
+    rows: () => db.select().from(reportFillTemplates).where(where)
+            .orderBy(desc(reportFillTemplates.updatedAt))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapReportFillTemplate,
+  });
 }
 
 export async function listReportFillTemplateLookup() {
@@ -160,7 +164,7 @@ export async function updateReportFillTemplate(
     ownerId: input.ownerId === undefined ? existing.ownerId : input.ownerId,
     folderId: input.folderId === undefined ? existing.folderId : input.folderId,
   });
-  const [row] = await db.update(reportFillTemplates).set({
+  const [rowOrUndefined] = await db.update(reportFillTemplates).set({
     folderId: input.folderId,
     ownerId: input.ownerId,
     name: input.name,
@@ -173,7 +177,7 @@ export async function updateReportFillTemplate(
     eq(reportFillTemplates.id, id),
     eq(reportFillTemplates.revision, input.expectedRevision),
   )).returning();
-  if (!row) throw new HTTPException(409, { message: '模板已被其他人更新，请刷新后重试' });
+  const row = requireRow(rowOrUndefined, '模板已被其他人更新，请刷新后重试', 409);
   return mapReportFillTemplate(row);
 }
 
@@ -188,7 +192,7 @@ export async function changeReportFillTemplateLifecycle(
     validateReportFillSchema(existing.formSchema);
     await validateWorkflowDefinition(existing.workflowDefinitionId, existing.needReview);
     const nextRevision = existing.revision + 1;
-    const [row] = await db.update(reportFillTemplates).set({
+    const [rowOrUndefined] = await db.update(reportFillTemplates).set({
       status: 'published',
       publishedSchema: existing.formSchema,
       publishedRevision: nextRevision,
@@ -199,11 +203,11 @@ export async function changeReportFillTemplateLifecycle(
       eq(reportFillTemplates.id, id),
       eq(reportFillTemplates.revision, input.expectedRevision),
     )).returning();
-    if (!row) throw new HTTPException(409, { message: '模板状态已变化，请刷新后重试' });
+    const row = requireRow(rowOrUndefined, '模板状态已变化，请刷新后重试', 409);
     return mapReportFillTemplate(row);
   }
   if (existing.status !== 'published') throw new HTTPException(409, { message: '仅已发布模板可以下线' });
-  const [row] = await db.update(reportFillTemplates).set({
+  const [rowOrUndefined] = await db.update(reportFillTemplates).set({
     status: 'disabled',
     revision: sql`${reportFillTemplates.revision} + 1`,
   }).where(and(
@@ -211,7 +215,7 @@ export async function changeReportFillTemplateLifecycle(
     eq(reportFillTemplates.revision, input.expectedRevision),
     eq(reportFillTemplates.status, 'published'),
   )).returning();
-  if (!row) throw new HTTPException(409, { message: '模板状态已变化，请刷新后重试' });
+  const row = requireRow(rowOrUndefined, '模板状态已变化，请刷新后重试', 409);
   return mapReportFillTemplate(row);
 }
 

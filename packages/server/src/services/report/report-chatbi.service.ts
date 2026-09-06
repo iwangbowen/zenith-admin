@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { randomUUID } from 'node:crypto';
 import dayjs from 'dayjs';
 import * as z from 'zod';
@@ -151,7 +153,7 @@ async function resolveFrozenContext(input: CreateReportChatbiSessionInput): Prom
       throw new HTTPException(400, { message: '所选数据集没有可冻结的表上下文' });
     }
   }
-  if (!datasourceId) throw new HTTPException(400, { message: '必须选择数据源或数据集上下文' });
+  datasourceId = requireRow(datasourceId, '必须选择数据源或数据集上下文', 400);
   await ensureReportResourceAccess('datasource', datasourceId, 'viewer');
   const datasource = await ensureDatasourceExists(datasourceId);
   if (!isSqlLikeType(datasource.type)) {
@@ -210,13 +212,15 @@ export async function listChatbiSessions(query: {
     keywordCondition(query.keyword, [reportChatbiSessions.title], 'ilike'),
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
   const where = and(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(reportChatbiSessions, where),
-    db.select().from(reportChatbiSessions).where(where)
-      .orderBy(desc(reportChatbiSessions.updatedAt))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapChatbiSession), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportChatbiSessions, where),
+    rows: () => db.select().from(reportChatbiSessions).where(where)
+            .orderBy(desc(reportChatbiSessions.updatedAt))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapChatbiSession,
+  });
 }
 
 export async function createChatbiSession(input: CreateReportChatbiSessionInput): Promise<ReportChatbiSession> {
@@ -548,8 +552,8 @@ export function chatbiSavedResourceMarker(messageId: number, type: 'dataset' | '
 async function acquireSaveLock(messageId: number, type: string) {
   const key = `${config.redis.keyPrefix}report:chatbi:save:${type}:${messageId}`;
   const token = randomUUID();
-  const acquired = await redis.set(key, token, 'EX', 30, 'NX');
-  if (!acquired) throw new HTTPException(409, { message: '该资源正在保存，请稍后重试' });
+  const acquiredOrUndefined = await redis.set(key, token, 'EX', 30, 'NX');
+  requireRow(acquiredOrUndefined, '该资源正在保存，请稍后重试', 409);
   return async () => {
     await redis.eval(
       'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end',
@@ -764,11 +768,13 @@ export async function listChatbiAudit(query: {
     query.userId ? eq(reportChatbiMessages.userId, query.userId) : undefined,
     query.failedOnly ? sql`${reportChatbiMessages.errorMessage} is not null` : undefined,
   );
-  const [total, rows] = await Promise.all([
-    db.$count(reportChatbiMessages, where),
-    db.select().from(reportChatbiMessages).where(where)
-      .orderBy(desc(reportChatbiMessages.createdAt))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapChatbiMessage), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportChatbiMessages, where),
+    rows: () => db.select().from(reportChatbiMessages).where(where)
+            .orderBy(desc(reportChatbiMessages.createdAt))
+            .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapChatbiMessage,
+  });
 }

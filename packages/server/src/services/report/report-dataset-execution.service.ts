@@ -3,6 +3,7 @@
  * 已保存数据集取数（缓存 / 物化快照 / 行级权限 / 配额容量）与缓存清理。
  * 对外统一经 report-dataset.service.ts facade 暴露。
  */
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { createHash } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
@@ -274,14 +275,14 @@ export async function runReportData(
   const queryOptions = normalizeDatasetQueryOptions(query);
 
   if (type === 'sql') {
-    const sqlText = ((content as ReportSqlDatasetContent).sql ?? '').trim();
-    if (!sqlText) throw new HTTPException(400, { message: '数据集 SQL 不能为空' });
+    const sqlTextOrUndefined = ((content as ReportSqlDatasetContent).sql ?? '').trim();
+    const sqlText = requireRow(sqlTextOrUndefined, '数据集 SQL 不能为空', 400);
     return withFieldMetadata(applyComputedFields(await runReadonlySql(sqlText, params, queryOptions), computedFields), fields, computedFields);
   }
 
   if (isExternalDbType(type)) {
-    const sqlText = ((content as ReportSqlDatasetContent).sql ?? '').trim();
-    if (!sqlText) throw new HTTPException(400, { message: '数据集 SQL 不能为空' });
+    const sqlTextOrUndefined = ((content as ReportSqlDatasetContent).sql ?? '').trim();
+    const sqlText = requireRow(sqlTextOrUndefined, '数据集 SQL 不能为空', 400);
     const { text, values } = buildExternalParamSql(sqlText, params, type as 'mysql' | 'postgresql' | 'sqlserver');
     const result = await runExternalQuery(type, config as ReportExternalDbConfig, text, values, queryOptions);
     return withFieldMetadata(applyComputedFields(result, computedFields), fields, computedFields);
@@ -504,11 +505,11 @@ async function getDatasetDataExecutionCore(
   runtime?: DatasetExecutionContext,
 ): Promise<DatasetExecutionResult> {
   const startedAt = Date.now();
-  const row = await db.query.reportDatasets.findFirst({
+  const rowOrUndefined = await db.query.reportDatasets.findFirst({
     where: reportScopedWhere(reportDatasets, eq(reportDatasets.id, id)),
     with: { datasource: { columns: { id: true, name: true, config: true, status: true, updatedAt: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '数据集不存在' });
+  const row = requireRow(rowOrUndefined, '数据集不存在');
   const config = (row.datasource?.config ?? {}) as ReportDatasourceConfig;
   const rawContent = (row.content ?? {}) as ReportDatasetContent;
   const isSqlLike = isSqlLikeType(row.type);
@@ -669,11 +670,11 @@ export async function getDatasetDataExecution(
   query?: DatasetQueryArg,
   runtime?: DatasetExecutionContext,
 ): Promise<DatasetExecutionResult> {
-  const source = await db.query.reportDatasets.findFirst({
+  const sourceOrUndefined = await db.query.reportDatasets.findFirst({
     where: reportScopedWhere(reportDatasets, eq(reportDatasets.id, id)),
     columns: { id: true, tenantId: true, datasourceId: true },
   });
-  if (!source) throw new HTTPException(404, { message: '数据集不存在' });
+  const source = requireRow(sourceOrUndefined, '数据集不存在');
   const identity = resolveReportQueryIdentity(source.tenantId, runtime);
   const requestId = runtime?.requestId ?? newReportQueryRequestId();
   const startedAt = Date.now();

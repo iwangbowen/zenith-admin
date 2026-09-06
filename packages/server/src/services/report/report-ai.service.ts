@@ -4,6 +4,7 @@
  * 给定库表/字段上下文，将自然语言需求转为只读 SELECT（PostgreSQL）。
  * 生成结果仅返回给前端填入 SQL 编辑器，由既有只读执行器预览，绝不自动写库。
  */
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { getRawDefaultProviderConfig } from '../ai/ai-providers.service';
 import { ensureDatasetExists } from './report-dataset.service';
@@ -63,8 +64,8 @@ async function buildSchemaContext(datasetId?: number): Promise<string> {
 
 /** 生成只读 SQL */
 export async function generateReportSql(input: { question: string; datasetId?: number }): Promise<{ sql: string }> {
-  const question = (input.question ?? '').trim();
-  if (!question) throw new HTTPException(400, { message: '请描述你想查询的数据' });
+  const questionOrUndefined = (input.question ?? '').trim();
+  const question = requireRow(questionOrUndefined, '请描述你想查询的数据', 400);
 
   const cfg = await getRawDefaultProviderConfig();
   if (!cfg) throw new HTTPException(503, { message: '系统未配置 AI 服务商，请先在「AI 配置」中设置默认服务商' });

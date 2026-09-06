@@ -8,7 +8,6 @@ import type { ReportFillTemplate } from '@zenith/shared/report';
 import type { WorkflowFormField, WorkflowFormSettings } from '@zenith/shared/workflow';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
@@ -30,10 +29,10 @@ import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import FormDesigner from '@/pages/workflow/designer/components/FormDesigner';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import { isRevisionConflict, validateFillTemplateInput } from './report-p2-utils';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 interface SearchState {
   keyword: string;
@@ -83,7 +82,6 @@ export default function FillTemplatesPage() {
   const lifecycleMutation = useChangeReportFillTemplateLifecycle();
   const cloneMutation = useCloneReportFillTemplate();
   const deleteMutation = useDeleteReportFillTemplate();
-  const templates = listQuery.data?.list ?? [];
   const editorModal = useEditModal<ReportFillTemplate, Record<string, unknown>>({
     entityName: '填报模板',
     save: {
@@ -293,24 +291,15 @@ export default function FillTemplatesPage() {
           hidden: !hasPermission('report:fill:template:clone'),
           onClick: () => cloneModal.openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('report:fill:template:delete'),
           disabled: record.status === 'published',
           disabledReason: '请先下线模板再删除',
-          onClick: () => {
-            confirmDelete({
-              title: `删除模板「${record.name}」？`,
-              content: '已有填报记录的模板不能删除。',
-              onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: record.id } });
-                Toast.success('模板已删除');
-              },
-            });
-          },
-        },
+          title: `删除模板「${record.name}」？`,
+          content: '已有填报记录的模板不能删除。',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '模板已删除',
+        }),
       ],
     }),
   ];
@@ -362,40 +351,16 @@ export default function FillTemplatesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {keywordInput}
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={keywordInput}
         filters={filters}
-        actions={hasPermission('report:fill:template:create') ? (
-          <CreateButton onClick={() => openEditor()} />
-        ) : null}
-        mobilePrimary={(
-          <>
-            {keywordInput}
-            <SearchButton onClick={handleSearch} />
-            {hasPermission('report:fill:template:create') && (
-              <CreateButton onClick={() => openEditor()} />
-            )}
-          </>
-        )}
-        mobileFilters={filters}
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('report:fill:template:create') ? <CreateButton onClick={() => openEditor()} /> : null}
       />
-      <ConfigurableTable
-        bordered
-        rowKey="id"
+      <ConfigurableTable<ReportFillTemplate>
         columns={columns}
-        dataSource={templates}
-        loading={listQuery.isFetching}
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
         columnSettingsKey="report-fill-templates"
       />
 

@@ -1,5 +1,8 @@
+import { exactTenantCondition } from '../../lib/tenant';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { formatReportValue } from '@zenith/shared/report';
 import type { CreateReportMetricInput, ReportFieldFormat, ReportMetric, ReportMetricEvaluation, ReportMetricLifecycleActionInput, ReportMetricRefs, ReportMetricType, ReportWidget, ReportDashboardSnapshot, UpdateReportMetricInput } from '@zenith/shared/report';
 import { db } from '../../db';
@@ -43,7 +46,7 @@ type MetricRowExt = typeof reportMetrics.$inferSelect & {
 const MAX_METRIC_DEPTH = 10;
 
 function metricTenantCondition(tenantId: number | null) {
-  return tenantId === null ? isNull(reportMetrics.tenantId) : eq(reportMetrics.tenantId, tenantId);
+  return exactTenantCondition(reportMetrics.tenantId, tenantId);
 }
 
 export function assertReportMetricRevision(currentRevision: number, expectedRevision: number): void {
@@ -103,7 +106,7 @@ async function ensureMetricAccess(id: number, role: 'viewer' | 'editor' | 'owner
 }
 
 export async function ensureReportMetricExists(id: number) {
-  const row = await db.query.reportMetrics.findFirst({
+  const rowOrUndefined = await db.query.reportMetrics.findFirst({
     where: reportScopedWhere(reportMetrics, eq(reportMetrics.id, id)),
     with: {
       folder: { columns: { name: true } },
@@ -111,7 +114,7 @@ export async function ensureReportMetricExists(id: number) {
       dataset: { columns: { name: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '指标不存在' });
+  const row = requireRow(rowOrUndefined, '指标不存在');
   await ensureMetricAccess(id);
   return row;
 }
@@ -140,28 +143,30 @@ export async function listReportMetrics(query: {
   if (accessibleIds) conds.push(inArray(reportMetrics.id, accessibleIds));
   conds.push(keywordCondition(keyword, [reportMetrics.name, reportMetrics.code], 'ilike'));
   if (datasetId) conds.push(eq(reportMetrics.datasetId, datasetId));
-  if (folderId !== undefined) conds.push(folderId === null ? isNull(reportMetrics.folderId) : eq(reportMetrics.folderId, folderId));
-  if (ownerId !== undefined) conds.push(ownerId === null ? isNull(reportMetrics.ownerId) : eq(reportMetrics.ownerId, ownerId));
+  if (folderId !== undefined) conds.push(exactTenantCondition(reportMetrics.folderId, folderId));
+  if (ownerId !== undefined) conds.push(exactTenantCondition(reportMetrics.ownerId, ownerId));
   if (type) conds.push(eq(reportMetrics.type, type));
   if (status === 'draft' || status === 'published' || status === 'deprecated') {
     conds.push(eq(reportMetrics.lifecycleStatus, status));
   }
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportMetrics, where),
-    db.query.reportMetrics.findMany({
-      where,
-      with: {
-        folder: { columns: { name: true } },
-        owner: { columns: { nickname: true, username: true } },
-        dataset: { columns: { name: true } },
-      },
-      orderBy: desc(reportMetrics.id),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  return { list: rows.map(mapReportMetric), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportMetrics, where),
+    rows: () => db.query.reportMetrics.findMany({
+            where,
+            with: {
+              folder: { columns: { name: true } },
+              owner: { columns: { nickname: true, username: true } },
+              dataset: { columns: { name: true } },
+            },
+            orderBy: desc(reportMetrics.id),
+            limit: pageSize,
+            offset: pageOffset(page, pageSize),
+          }),
+    map: mapReportMetric,
+  });
 }
 
 export async function listReportMetricLookup(query: {
@@ -332,7 +337,7 @@ export async function updateReportMetric(id: number, input: UpdateReportMetricIn
     }),
   ]);
   try {
-    const [row] = await db.update(reportMetrics).set({
+    const [rowOrUndefined] = await db.update(reportMetrics).set({
       ownerId: input.ownerId,
       folderId: input.folderId,
       code: input.code,
@@ -351,7 +356,7 @@ export async function updateReportMetric(id: number, input: UpdateReportMetricIn
       lifecycleStatus: 'draft',
       revision: current.revision + 1,
     }).where(and(eq(reportMetrics.id, id), eq(reportMetrics.revision, input.expectedRevision))).returning();
-    if (!row) throw new HTTPException(409, { message: '指标已被其他人更新，请刷新后重试' });
+    const row = requireRow(rowOrUndefined, '指标已被其他人更新，请刷新后重试', 409);
     return mapReportMetric(row);
   } catch (error) {
     rethrowPgUniqueViolation(error, '指标编码已存在');
@@ -462,7 +467,7 @@ export async function publishReportMetric(
     tenantId: current.tenantId ?? null,
   }, id);
   const snapshot = (await resolveReportResource('metric', id)).snapshot;
-  const [row] = await db.update(reportMetrics).set({
+  const [rowOrUndefined] = await db.update(reportMetrics).set({
     lifecycleStatus: 'published',
     publishedSnapshot: snapshot,
     publishedAt: new Date(),
@@ -472,7 +477,7 @@ export async function publishReportMetric(
     deprecationReason: null,
     revision: current.revision + 1,
   }).where(and(eq(reportMetrics.id, id), eq(reportMetrics.revision, input.expectedRevision))).returning();
-  if (!row) throw new HTTPException(409, { message: '指标版本已变更，请刷新后重试' });
+  const row = requireRow(rowOrUndefined, '指标版本已变更，请刷新后重试', 409);
   return mapReportMetric(row);
 }
 
@@ -483,14 +488,14 @@ export async function deprecateReportMetric(
   await ensureMetricAccess(id, 'editor');
   const current = await ensureReportMetricExists(id);
   assertReportMetricRevision(current.revision, input.expectedRevision);
-  const [row] = await db.update(reportMetrics).set({
+  const [rowOrUndefined] = await db.update(reportMetrics).set({
     lifecycleStatus: 'deprecated',
     deprecatedAt: new Date(),
     deprecatedBy: currentUserId(),
     deprecationReason: input.reason ?? null,
     revision: current.revision + 1,
   }).where(and(eq(reportMetrics.id, id), eq(reportMetrics.revision, input.expectedRevision))).returning();
-  if (!row) throw new HTTPException(409, { message: '指标版本已变更，请刷新后重试' });
+  const row = requireRow(rowOrUndefined, '指标版本已变更，请刷新后重试', 409);
   return mapReportMetric(row);
 }
 
@@ -539,12 +544,12 @@ export async function publishMetricCapturedSnapshot(
   expectedRevision: number,
   snapshot: Record<string, unknown>,
 ): Promise<void> {
-  const [row] = await db.update(reportMetrics).set({
+  const [rowOrUndefined] = await db.update(reportMetrics).set({
     lifecycleStatus: 'published',
     publishedSnapshot: snapshot,
     publishedAt: new Date(),
     publishedBy: currentUserId(),
     revision: expectedRevision + 1,
   }).where(and(eq(reportMetrics.id, id), eq(reportMetrics.revision, expectedRevision))).returning({ id: reportMetrics.id });
-  if (!row) throw new HTTPException(409, { message: '指标版本已变更，审批请求已失效' });
+  requireRow(rowOrUndefined, '指标版本已变更，审批请求已失效', 409);
 }

@@ -1,3 +1,5 @@
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { aggregateReportRows, compare as compareReportValue } from '@zenith/shared/report';
 import { and, desc, eq, inArray, isNotNull, lte } from 'drizzle-orm';
@@ -16,7 +18,6 @@ import {
   buildRunIdempotencyKey,
   claimRetryDeliveryRun,
   computeScheduleClaim,
-  dispatchNotificationChannels,
   ensureDeliveryRun,
   ensureValidReportSchedule,
   finalizeDeliveryRun,
@@ -30,6 +31,7 @@ import {
   startManualDeliveryRun,
   validateNotifyChannels,
 } from './report-delivery.service';
+import { dispatchReportNotification } from './report-delivery-dispatch';
 import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
 import { maskReportSecret, prepareReportSecret } from './report-secrets';
 import type { ReportAlertRuleRow, ReportDeliveryRunRow } from '../../db/schema';
@@ -64,9 +66,9 @@ async function validateAlertDefinition(
     await ensureReportMetricExists(metricId);
     return;
   }
-  if (!datasetId) throw new HTTPException(400, { message: '数据集或指标必须选择一个' });
-  await assertDatasetEvaluableGlobally(datasetId);
-  const dataset = await ensureDatasetExists(datasetId);
+  const requiredDatasetId = requireRow(datasetId, '数据集或指标必须选择一个', 400);
+  await assertDatasetEvaluableGlobally(requiredDatasetId);
+  const dataset = await ensureDatasetExists(requiredDatasetId);
   const fieldMap = buildReportFieldMetadataMap(
     (dataset.fields ?? []) as Array<{ name: string; type?: string; format?: { kind?: string } }>,
     (dataset.computedFields ?? []) as Array<{ name: string; type?: string; format?: { kind?: string } }>,
@@ -75,9 +77,9 @@ async function validateAlertDefinition(
     throw new HTTPException(400, { message: `分组字段不存在：${groupByField}` });
   }
   if (aggregate !== 'count') {
-    if (!field) throw new HTTPException(400, { message: '非 count 聚合必须指定字段' });
-    const meta = fieldMap.get(field);
-    if (!meta) throw new HTTPException(400, { message: `聚合字段不存在：${field}` });
+    const requiredField = requireRow(field, '非 count 聚合必须指定字段', 400);
+    const meta = fieldMap.get(requiredField);
+    if (!meta) throw new HTTPException(400, { message: `聚合字段不存在：${requiredField}` });
     if (!isNumericReportField(meta)) throw new HTTPException(400, { message: '非 count 聚合字段必须可数值化' });
   }
 }
@@ -120,19 +122,19 @@ export function mapAlert(row: AlertRowExt): ReportAlertRule {
 }
 
 export async function ensureAlertExists(id: number): Promise<ReportAlertRuleRow> {
-  const [row] = await db.select().from(reportAlertRules)
+  const [rowOrUndefined] = await db.select().from(reportAlertRules)
     .where(reportScopedWhere(reportAlertRules, eq(reportAlertRules.id, id)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '预警规则不存在' });
+  const row = requireRow(rowOrUndefined, '预警规则不存在');
   return row;
 }
 
 export async function getAlert(id: number): Promise<ReportAlertRule> {
-  const row = await db.query.reportAlertRules.findFirst({
+  const rowOrUndefined = await db.query.reportAlertRules.findFirst({
     where: reportScopedWhere(reportAlertRules, eq(reportAlertRules.id, id)),
     with: { dataset: { columns: { name: true } }, metric: { columns: { name: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '预警规则不存在' });
+  const row = requireRow(rowOrUndefined, '预警规则不存在');
   const latestRunMap = await loadLatestAlertRuns([row.id]);
   return mapAlert({ ...row, latestDelivery: latestRunMap.get(row.id) ?? null });
 }
@@ -147,18 +149,22 @@ export async function listAlerts(query: { page?: number; pageSize?: number; keyw
   if (metricId) conds.push(eq(reportAlertRules.metricId, metricId));
   if (enabled !== undefined) conds.push(eq(reportAlertRules.enabled, enabled));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportAlertRules, where),
-    db.query.reportAlertRules.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportAlertRules, where),
+    rows: async () => {
+      const rows = await db.query.reportAlertRules.findMany({
       where,
       with: { dataset: { columns: { name: true } }, metric: { columns: { name: true } } },
       orderBy: desc(reportAlertRules.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  const latestRunMap = await loadLatestAlertRuns(rows.map((row) => row.id));
-  return { list: rows.map((row) => mapAlert({ ...row, latestDelivery: latestRunMap.get(row.id) ?? null })), total, page, pageSize };
+      });
+      const latestRunMap = await loadLatestAlertRuns(rows.map((row) => row.id));
+      return rows.map((row) => mapAlert({ ...row, latestDelivery: latestRunMap.get(row.id) ?? null }));
+    },
+  });
 }
 
 export async function createAlert(input: CreateReportAlertInput): Promise<ReportAlertRule> {
@@ -215,7 +221,7 @@ export async function updateAlert(id: number, input: UpdateReportAlertInput): Pr
     current.createdBy ?? null,
   );
   const webhookUrl = prepareReportSecret(input.webhookUrl, current.webhookUrl);
-  const [row] = await db.update(reportAlertRules).set({
+  const [rowOrUndefined] = await db.update(reportAlertRules).set({
     name: input.name,
     datasetId: input.datasetId,
     metricId: input.metricId,
@@ -236,7 +242,7 @@ export async function updateAlert(id: number, input: UpdateReportAlertInput): Pr
     enabled: input.enabled,
     remark: input.remark,
   }).where(eq(reportAlertRules.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '预警规则不存在' });
+  const row = requireRow(rowOrUndefined, '预警规则不存在');
   return mapAlert(row);
 }
 
@@ -436,7 +442,7 @@ async function performAlertNotification(
     channelCount: (row.channels ?? []).length,
     recipientCount: parseRecipientEmails(row.recipients, false).length,
   };
-  const channelResult = await dispatchNotificationChannels({
+  const channelResult = await dispatchReportNotification({
     tenantId: row.tenantId ?? null,
     runId: run.id,
     attempt: run.attempt,

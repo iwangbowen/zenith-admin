@@ -9,7 +9,6 @@ import type { ReportFillRecord, ReportFillRecordStatus } from '@zenith/shared/re
 import type { AsyncTask } from '@zenith/shared/tasks';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import AppModal from '@/components/AppModal';
@@ -31,10 +30,10 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { formatDateTime } from '@/utils/date';
 import { canRunFillRecordAction, isRevisionConflict, shouldShowFillReviewTab } from './report-p2-utils';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 interface MineFilters {
@@ -302,89 +301,59 @@ export default function FillRecordsPage() {
 
   const detail = detailQuery.data;
   const detailTask = detail?.syncTaskId ? taskMap.get(detail.syncTaskId) : undefined;
+  const searchMine = () => {
+    minePagination.setPage(1);
+    setMineSubmitted(mineDraft);
+    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
+  };
+  const resetMine = () => {
+    setMineDraft(DEFAULT_MINE);
+    setMineSubmitted(DEFAULT_MINE);
+    minePagination.setPage(1);
+    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
+  };
+  const searchAdmin = () => {
+    adminPagination.setPage(1);
+    setAdminSubmitted(adminDraft);
+    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordAdminLists });
+  };
+  const resetAdmin = () => {
+    setAdminDraft(DEFAULT_ADMIN);
+    setAdminSubmitted(DEFAULT_ADMIN);
+    adminPagination.setPage(1);
+    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordAdminLists });
+  };
 
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)}>
         <TabPane tab="我的填报" itemKey="mine">
-          <SearchToolbar
-            primary={(
-              <>
-                {mineKeyword}
-                <SearchButton onClick={() => {
-                    minePagination.setPage(1);
-                    setMineSubmitted(mineDraft);
-                    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
-                  }} />
-                <ResetButton onClick={() => {
-                    setMineDraft(DEFAULT_MINE);
-                    setMineSubmitted(DEFAULT_MINE);
-                    minePagination.setPage(1);
-                    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
-                  }} />
-              </>
-            )}
+          <ListSearchToolbar
+            keyword={mineKeyword}
             filters={(
               <>
                 {statusFilter(mineDraft.status, (status) => setMineDraft((current) => ({ ...current, status })))}
                 {templateFilter(mineDraft.templateId, (templateId) => setMineDraft((current) => ({ ...current, templateId })))}
               </>
             )}
-            actions={canCreate ? (
+            onSearch={searchMine}
+            onReset={resetMine}
+            create={canCreate ? (
               <Button type="primary" icon={<ClipboardPlus size={14} />} onClick={() => openEntry()}>新增填报</Button>
             ) : null}
-            mobilePrimary={(
-              <>
-                {mineKeyword}
-                <SearchButton onClick={() => {
-                  minePagination.setPage(1);
-                  setMineSubmitted(mineDraft);
-                }} />
-                {canCreate && (
-                  <Button type="primary" icon={<ClipboardPlus size={14} />} onClick={() => openEntry()}>新增</Button>
-                )}
-              </>
-            )}
-            mobileFilters={(
-              <>
-                {statusFilter(mineDraft.status, (status) => setMineDraft((current) => ({ ...current, status })))}
-                {templateFilter(mineDraft.templateId, (templateId) => setMineDraft((current) => ({ ...current, templateId })))}
-              </>
-            )}
           />
-          <ConfigurableTable
-            bordered
-            rowKey="id"
+          <ConfigurableTable<ReportFillRecord>
             columns={mineColumns}
-            dataSource={mineQuery.data?.list ?? []}
-            loading={mineQuery.isFetching}
-            pagination={minePagination.buildPagination(mineQuery.data?.total ?? 0)}
-            onRefresh={() => void mineQuery.refetch()}
-            refreshLoading={mineQuery.isFetching}
+            {...listTableProps(mineQuery, { pagination: minePagination.buildPagination })}
             columnSettingsKey="report-fill-records-mine"
           />
         </TabPane>
         {canReview && (
           <TabPane tab="审核管理" itemKey="admin">
-            <SearchToolbar
-              primary={(
-                <>
-                  {statusFilter(adminDraft.status, (status) => setAdminDraft((current) => ({ ...current, status })))}
-                  <SearchButton onClick={() => {
-                      adminPagination.setPage(1);
-                      setAdminSubmitted(adminDraft);
-                      void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordAdminLists });
-                    }} />
-                  <ResetButton onClick={() => {
-                      setAdminDraft(DEFAULT_ADMIN);
-                      setAdminSubmitted(DEFAULT_ADMIN);
-                      adminPagination.setPage(1);
-                      void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordAdminLists });
-                    }} />
-                </>
-              )}
+            <ListSearchToolbar
               filters={(
                 <>
+                  {statusFilter(adminDraft.status, (status) => setAdminDraft((current) => ({ ...current, status })))}
                   {templateFilter(adminDraft.templateId, (templateId) => setAdminDraft((current) => ({ ...current, templateId })))}
                   <FilterSelect
                     placeholder="全部提交人"
@@ -396,6 +365,8 @@ export default function FillRecordsPage() {
                   />
                 </>
               )}
+              onSearch={searchAdmin}
+              onReset={resetAdmin}
               actions={hasPermission('report:fill:record:export') ? (
                 <ExportButton
                   entity="report.fill-records"
@@ -407,15 +378,6 @@ export default function FillRecordsPage() {
                   executionMode="async"
                 />
               ) : null}
-              mobilePrimary={(
-                <>
-                  {statusFilter(adminDraft.status, (status) => setAdminDraft((current) => ({ ...current, status })))}
-                  <SearchButton onClick={() => {
-                    adminPagination.setPage(1);
-                    setAdminSubmitted(adminDraft);
-                  }} />
-                </>
-              )}
               mobileActions={hasPermission('report:fill:record:export') ? (
                 <ExportButton
                   variant="flat"
@@ -429,15 +391,9 @@ export default function FillRecordsPage() {
                 />
               ) : null}
             />
-            <ConfigurableTable
-              bordered
-              rowKey="id"
+            <ConfigurableTable<ReportFillRecord>
               columns={adminColumns}
-              dataSource={adminQuery.data?.list ?? []}
-              loading={adminQuery.isFetching}
-              pagination={adminPagination.buildPagination(adminQuery.data?.total ?? 0)}
-              onRefresh={() => void adminQuery.refetch()}
-              refreshLoading={adminQuery.isFetching}
+              {...listTableProps(adminQuery, { pagination: adminPagination.buildPagination })}
               columnSettingsKey="report-fill-records-admin"
             />
           </TabPane>
