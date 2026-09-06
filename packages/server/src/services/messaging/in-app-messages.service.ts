@@ -6,6 +6,8 @@ import { inAppMessages, inAppTemplates, users } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { currentUser } from '../../lib/context';
 import { renderTemplate } from '../../lib/sms-sender';
 import { scheduleSendToUsers } from '../../lib/ws-manager';
@@ -72,15 +74,16 @@ function mapInAppMessageRow(r: JoinedMessageRow, username: string | null = null)
 
 /** 按 id（可选限定归属用户）+ 租户范围加载站内信，不存在时抛 404 */
 async function ensureInAppMessageExists(id: number, ownedBy?: number) {
-  const [row] = await db.select().from(inAppMessages)
-    .where(and(
-      eq(inAppMessages.id, id),
-      ownedBy === undefined ? undefined : eq(inAppMessages.userId, ownedBy),
-      tenantScope(inAppMessages),
-    ))
-    .limit(1);
-  if (!row) throw new HTTPException(404, { message: '消息不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(inAppMessages)
+      .where(and(
+        eq(inAppMessages.id, id),
+        ownedBy === undefined ? undefined : eq(inAppMessages.userId, ownedBy),
+        tenantScope(inAppMessages),
+      ))
+      .limit(1),
+    '消息不存在',
+  );
 }
 
 /** 当前用户的站内信收件箱 */
@@ -88,9 +91,11 @@ export async function listMyInAppMessages(q: ListInAppMessagesQuery) {
   const me = currentUser();
   const recipientId = q.recipientId ?? me.userId;
   const where = buildInboxWhere(q, recipientId);
-  const [total, rows] = await Promise.all([
-    db.$count(inAppMessages, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(inAppMessages, where),
+    rows: () => withPagination(
       selectMessageWithJoins()
         .where(where)
         .orderBy(desc(inAppMessages.id))
@@ -98,30 +103,29 @@ export async function listMyInAppMessages(q: ListInAppMessagesQuery) {
       q.page,
       q.pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => mapInAppMessageRow(r)),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    map: (r) => mapInAppMessageRow(r),
+  });
 }
 
 /** 当前用户的站内信详情 */
 export async function getMyInAppMessage(id: number) {
   const me = currentUser();
-  const [row] = await selectMessageWithJoins()
-    .where(and(eq(inAppMessages.id, id), eq(inAppMessages.userId, me.userId), tenantScope(inAppMessages)))
-    .limit(1);
-  if (!row) throw new HTTPException(404, { message: '消息不存在' });
+  const row = await requireFirstRow(
+    selectMessageWithJoins()
+      .where(and(eq(inAppMessages.id, id), eq(inAppMessages.userId, me.userId), tenantScope(inAppMessages)))
+      .limit(1),
+    '消息不存在',
+  );
   return mapInAppMessageRow(row);
 }
 
 export async function getInAppMessageBeforeAudit(id: number) {
-  const [row] = await selectMessageWithJoins()
-    .where(and(eq(inAppMessages.id, id), tenantScope(inAppMessages)))
-    .limit(1);
-  if (!row) throw new HTTPException(404, { message: '消息不存在' });
+  const row = await requireFirstRow(
+    selectMessageWithJoins()
+      .where(and(eq(inAppMessages.id, id), tenantScope(inAppMessages)))
+      .limit(1),
+    '消息不存在',
+  );
   // 审计快照不含 username 字段，保持原有形状
   const { username: _username, ...dto } = mapInAppMessageRow(row);
   return dto;
@@ -142,9 +146,11 @@ export async function listAllInAppMessages(q: Omit<ListInAppMessagesQuery, 'reci
   const sender = alias(users, 'sender');
   const recipient = alias(users, 'recipient');
 
-  const [total, rows] = await Promise.all([
-    db.$count(inAppMessages, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(inAppMessages, where),
+    rows: () => withPagination(
       db.select({
         msg: inAppMessages,
         templateName: inAppTemplates.name,
@@ -162,13 +168,8 @@ export async function listAllInAppMessages(q: Omit<ListInAppMessagesQuery, 'reci
       q.page,
       q.pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => mapInAppMessageRow(r, r.recipientNickname || r.recipientName || null)),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    map: (r) => mapInAppMessageRow(r, r.recipientNickname || r.recipientName || null),
+  });
 }
 
 /** 管理员删除任意站内信 */

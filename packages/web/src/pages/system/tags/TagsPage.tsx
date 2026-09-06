@@ -1,16 +1,16 @@
 import { useEffect, useState, useRef } from 'react';
-import { Button, Form, Input, Space, Spin, Toast, Typography, Switch } from '@douyinfe/semi-ui';
-import { Tags, Trash2 } from 'lucide-react';
+import { Form, Input, Space, Spin, Typography } from '@douyinfe/semi-ui';
+import { Tags } from 'lucide-react';
 import type { CreateTagInput, Tag } from '@zenith/shared/platform';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { createdAtColumn } from '../../../utils/table-columns';
 import {
   tagKeys,
@@ -21,9 +21,8 @@ import {
   useTagList,
   useUpdateTagStatus,
 } from '@/hooks/queries/tags';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
 
 const { Text } = Typography;
 
@@ -136,8 +135,6 @@ export default function TagsPage() {
     status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
     groupName: submittedParams.filterGroup || undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const groupsQuery = useTagGroups();
   const saveMutation = useSaveTag();
   const tagModal = useEditModal<Tag, Partial<CreateTagInput>>({
@@ -156,7 +153,12 @@ export default function TagsPage() {
   });
   const deleteMutation = useDeleteTags();
   const toggleStatusMutation = useUpdateTagStatus();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.params.id ?? null) : null;
+  const status = useStatusToggle<Tag>({
+    toggle: (tag, enabled) => toggleStatusMutation.mutateAsync({ params: { id: tag.id }, body: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (tag) => ({ danger: true, title: `确认禁用标签「${tag.name}」？`, okText: '确认禁用' }),
+    disabled: !can('system:tag:update'),
+    messages: { disabled: '已禁用' },
+  });
 
   useEffect(() => {
     if (tagModal.visible && tagModal.editing) setColorValue(tagModal.editing.color ?? '');
@@ -172,40 +174,15 @@ export default function TagsPage() {
     tagModal.openEdit(record);
   };
 
-  const handleDelete = (id: number) => {
-    confirmDelete({
-      title: '确定要删除该标签吗？',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([id]);
-        Toast.success('删除成功');
-        setSelectedRowKeys(selectedRowKeys.filter((k) => k !== id));
-      },
-    });
-  };
-
   const handleBatchDelete = () => {
     if (!selectedRowKeys.length) return;
-    confirmDelete({
+    confirmAndDelete({
       title: `确认删除选中的 ${selectedRowKeys.length} 条标签？`,
       content: '删除后无法恢复，请谨慎操作。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync(selectedRowKeys);
-        Toast.success(`已删除 ${selectedRowKeys.length} 条标签`);
-        setSelectedRowKeys([]);
-      },
+      run: () => deleteMutation.mutateAsync(selectedRowKeys),
+      successMessage: `已删除 ${selectedRowKeys.length} 条标签`,
+      onDeleted: () => setSelectedRowKeys([]),
     });
-  };
-
-  const handleToggleStatus = async (tag: Tag, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认禁用标签「${tag.name}」？`,
-        okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    await toggleStatusMutation.mutateAsync({ params: { id: tag.id }, body: { status: newStatus } });
-    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
   };
 
   const columns = [
@@ -236,22 +213,7 @@ export default function TagsPage() {
       width: 80,
     },
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center' as const,
-      fixed: 'right' as const,
-      render: (v: string, record: Tag) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!can('system:tag:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<Tag>({
       width: 150,
       actions: (record) => [
@@ -261,13 +223,12 @@ export default function TagsPage() {
           hidden: !can('system:tag:update'),
           onClick: () => openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !can('system:tag:delete'),
-          onClick: () => handleDelete(record.id),
-        },
+          title: '确定要删除该标签吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          onDeleted: () => setSelectedRowKeys((keys) => keys.filter((k) => k !== record.id)),
+        }),
       ],
     }),
   ];
@@ -276,48 +237,9 @@ export default function TagsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索标签名称或描述" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <FilterSelect
-              placeholder="全部所属分组"
-              items={groupOptions}
-              value={draftParams.filterGroup}
-              onChange={(v) => setDraftParams({ ...draftParams, filterGroup: v as string | undefined })}
-              width={160}
-            />
-            <StatusSelect
-              items={statusItems}
-              value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-          </>
-        )}
-        actions={(
-          <>
-            {can('system:tag:delete') && selectedRowKeys.length > 0 && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
-            )}
-            {can('system:tag:create') && (
-              <CreateButton onClick={openCreate} />
-            )}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索标签名称或描述" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-            {can('system:tag:create') && (
-              <CreateButton onClick={openCreate} />
-            )}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索标签名称或描述" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />}
+        filters={(
           <>
             <FilterSelect
               placeholder="全部所属分组"
@@ -333,35 +255,25 @@ export default function TagsPage() {
             />
           </>
         )}
-        mobileActions={can('system:tag:delete') && selectedRowKeys.length > 0 ? (
-          <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-            批量删除 ({selectedRowKeys.length})
-          </Button>
-        ) : null}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={can('system:tag:create') && <CreateButton onClick={openCreate} />}
+        actions={can('system:tag:delete') && selectedRowKeys.length > 0 && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
         filterTitle="标签筛选"
         actionTitle="标签操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+      <ConfigurableTable<Tag>
         columns={columns}
-        dataSource={list}
-        rowKey="id"
-        rowSelection={
-          can('system:tag:delete')
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: can('system:tag:delete')
             ? {
                 selectedRowKeys,
-                onChange: (keys: (string | number)[] | undefined) =>
-                  setSelectedRowKeys((keys ?? []) as number[]),
+                onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
               }
-            : undefined
-        }
-        pagination={buildPagination(total)}
+            : undefined,
+        })}
       />
 
       <AppModal

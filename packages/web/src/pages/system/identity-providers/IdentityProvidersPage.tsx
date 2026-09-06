@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Col, Form, Modal, Row, SideSheet, Spin, Switch, Table, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Modal, Row, SideSheet, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { IdentityProviderType, TenantIdentityProvider } from '@zenith/shared/identity';
 import { IDENTITY_PROVIDER_STATUSES, IDENTITY_PROVIDER_TYPES, SUPER_ADMIN_CODE, identityProviderContract } from '@zenith/shared/identity';
 import { enumValueOf, type BodyOf } from '@zenith/shared/core';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
@@ -25,9 +24,9 @@ import {
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 
 interface SearchParams {
   keyword: string;
@@ -128,8 +127,6 @@ export default function IdentityProvidersPage() {
     status: enumValueOf(IDENTITY_PROVIDER_STATUSES, submittedParams.status),
     tenantId: submittedParams.tenantId ? Number(submittedParams.tenantId) : undefined,
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   // 归属租户只有平台管理员可选；租户管理员的身份源由服务端强制落到自身租户
   const isPlatformAdmin = useIsPlatformAdmin();
   const tenantsQuery = useIdentityProviderTenants({ enabled: isPlatformAdmin });
@@ -205,6 +202,9 @@ export default function IdentityProvidersPage() {
   const ldapSearchMutation = useSearchLdapDirectoryUsers();
   const syncDirectoryMutation = useSyncIdentityProviderDirectory();
   const ldapSearchUsers = ldapSearchMutation.data ?? [];
+  const status = useStatusToggle<TenantIdentityProvider>({
+    toggle: (row, enabled) => toggleStatusMutation.mutateAsync({ id: row.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+  });
 
   useEffect(() => {
     if (modal.editing) setProviderType(modal.editing.type);
@@ -232,24 +232,6 @@ export default function IdentityProvidersPage() {
   function openEdit(row: TenantIdentityProvider) {
     setProviderType(row.type);
     modal.openEdit(row);
-  }
-
-  function handleToggleStatus(row: TenantIdentityProvider, checked: boolean) {
-    toggleStatusMutation.mutate(
-      { id: row.id, values: { status: checked ? 'enabled' : 'disabled' } },
-      { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
-    );
-  }
-
-  function handleDelete(row: TenantIdentityProvider) {
-    confirmDelete({
-      title: `确认删除身份源「${row.name}」？`,
-      content: '删除后，已绑定的企业身份账号关系也会被移除。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([row.id]);
-        Toast.success('删除成功');
-      },
-    });
   }
 
   async function handleTestConnection(row: TenantIdentityProvider) {
@@ -312,20 +294,7 @@ export default function IdentityProvidersPage() {
       render: (_value, row) => renderEllipsis(isDirectoryType(row.type) ? (row.ldapUrl || row.ldapBaseDn) : row.type === 'oidc' ? row.issuer : row.samlEntityId),
     },
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      fixed: 'right',
-      render: (value: string, row) => (
-        <Switch
-          size="small"
-          checked={value === 'enabled'}
-          loading={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === row.id}
-          onChange={(checked: boolean) => handleToggleStatus(row, checked)}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<TenantIdentityProvider>({
       width: 240,
       desktopInlineKeys: ['edit', 'test', 'delete'],
@@ -334,7 +303,7 @@ export default function IdentityProvidersPage() {
         { key: 'test', label: '测试', hidden: !isDirectoryType(row.type), onClick: () => { void handleTestConnection(row); } },
         { key: 'searchUsers', label: '搜索用户', hidden: !isDirectoryType(row.type), onClick: () => openLdapSearch(row) },
         { key: 'sync', label: '同步', hidden: !isDirectoryType(row.type), onClick: () => handleSyncDirectory(row) },
-        { key: 'delete', label: '删除', danger: true, onClick: () => handleDelete(row) },
+        deleteAction({ title: `确认删除身份源「${row.name}」？`, content: '删除后，已绑定的企业身份账号关系也会被移除。', run: () => deleteMutation.mutateAsync([row.id]) }),
       ],
     }),
   ];
@@ -364,39 +333,18 @@ export default function IdentityProvidersPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderTypeFilter()}
-            {renderStatusFilter()}
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            <CreateButton onClick={openCreate} />
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            <SearchButton onClick={handleSearch} />
-            <CreateButton onClick={openCreate} />
-          </>
-        )}
-        mobileFilters={<>{renderTypeFilter()}{renderStatusFilter()}</>}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={<>{renderTypeFilter()}{renderStatusFilter()}</>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={<CreateButton onClick={openCreate} />}
         filterTitle="身份源筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<TenantIdentityProvider>
         columns={columns}
-        dataSource={data}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <SideSheet

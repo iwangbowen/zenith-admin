@@ -1,5 +1,6 @@
 import { eq, and, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { smsTemplates } from '../../db/schema';
 import type { SmsTemplateRow } from '../../db/schema';
@@ -27,9 +28,10 @@ export function mapSmsTemplate(row: SmsTemplateRow) {
 }
 
 export async function ensureSmsTemplateExists(id: number) {
-  const [row] = await db.select().from(smsTemplates).where(and(eq(smsTemplates.id, id), tenantScope(smsTemplates))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '短信模板不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(smsTemplates).where(and(eq(smsTemplates.id, id), tenantScope(smsTemplates))).limit(1),
+    '短信模板不存在',
+  );
 }
 
 export interface ListSmsTemplatesQuery {
@@ -45,11 +47,13 @@ export async function listSmsTemplates(q: ListSmsTemplatesQuery) {
   if (q.provider) conditions.push(eq(smsTemplates.provider, q.provider));
   if (q.status) conditions.push(eq(smsTemplates.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(smsTemplates, where),
-    withPagination(db.select().from(smsTemplates).where(where).orderBy(smsTemplates.id).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapSmsTemplate), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(smsTemplates, where),
+    rows: () => withPagination(db.select().from(smsTemplates).where(where).orderBy(smsTemplates.id).$dynamic(), q.page, q.pageSize),
+    map: mapSmsTemplate,
+  });
 }
 
 export async function getSmsTemplate(id: number) {

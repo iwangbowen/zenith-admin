@@ -1,3 +1,4 @@
+import { buildListResult } from '../../lib/list-query';
 import { desc, eq, and, or, gte, lt, lte, count, sql, inArray } from 'drizzle-orm';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
@@ -34,17 +35,16 @@ export async function listLoginLogs(q: ListLoginLogsQuery) {
   const where = and(...conditions);
   const tc = tenantCondition(loginLogs, user);
   const finalWhere = buildWhere(where, tc);
-  const [total, rows] = await Promise.all([
-    db.$count(loginLogs, finalWhere),
-    withPagination(db.select().from(loginLogs).where(finalWhere).orderBy(desc(loginLogs.createdAt)).$dynamic(), page, pageSize),
-  ]);
-  const nicknameMap = await getNicknameMap(rows.map((r) => r.username));
-  return {
-    list: rows.map((r) => ({ ...r, nickname: nicknameMap.get(r.username) ?? null, createdAt: formatDateTime(r.createdAt) })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(loginLogs, finalWhere),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(loginLogs).where(finalWhere).orderBy(desc(loginLogs.createdAt)).$dynamic(), page, pageSize);
+      const nicknameMap = await getNicknameMap(rows.map((r) => r.username));
+      return rows.map((r) => ({ ...r, nickname: nicknameMap.get(r.username) ?? null, createdAt: formatDateTime(r.createdAt) }));
+    },
+  });
 }
 
 export async function loginLogStats(daysRaw?: number) {

@@ -8,11 +8,11 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import StorageFileBrowser from './StorageFileBrowser';
 import {
   fileStorageConfigKeys,
@@ -23,11 +23,10 @@ import {
   useSetDefaultFileStorageConfig,
   useTestFileStorageConfig,
 } from '@/hooks/queries/file-storage-configs';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, StatusSelect } from '@/components/search-filters';
 
 const STATUS_FILTER_OPTIONS = [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }];
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
 import './FileStorageConfigsPage.css';
 
 const { Text } = Typography;
@@ -219,9 +218,8 @@ export default function FileStorageConfigsPage() {
     status: submittedParams.status || undefined,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const configs = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveFileStorageConfig();
+  const statusMutation = useSaveFileStorageConfig();
   const modal = useEditModal<FileStorageConfig, FileStorageConfigFormValues, CreateFileStorageConfigInput>({
     entityName: '文件配置',
     save: saveMutation,
@@ -330,11 +328,6 @@ export default function FileStorageConfigsPage() {
     Toast.success('存储连接测试通过');
   };
 
-  const handleDelete = async (config: FileStorageConfig) => {
-    await deleteMutation.mutateAsync([config.id]);
-    Toast.success('文件服务配置已删除');
-  };
-
   const handleSetDefault = async (config: FileStorageConfig) => {
     await setDefaultMutation.mutateAsync({ params: { id: config.id } });
     Toast.success('默认文件服务已更新');
@@ -345,23 +338,27 @@ export default function FileStorageConfigsPage() {
     Toast.success('存储连接测试通过');
   };
 
-  const togglingStatusId = saveMutation.isPending ? (saveMutation.variables?.id ?? null) : null;
-
-  const handleToggleStatus = async (config: FileStorageConfig, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      if (config.isDefault) {
+  const status = useStatusToggle<FileStorageConfig>({
+    toggle: async (config, enabled) => {
+      if (!enabled && config.isDefault) {
         Toast.warning('默认配置不能禁用，请先将其他配置设为默认');
-        return;
+        throw new Error('default file storage config cannot be disabled');
       }
-      const confirmed = await confirmDangerAsync({
+      await statusMutation.mutateAsync({ id: config.id, values: { status: enabled ? 'enabled' : 'disabled' } });
+    },
+    confirmDisable: (config) => {
+      if (config.isDefault) {
+        return null;
+      }
+      return {
+        danger: true,
         title: `确认禁用「${config.name}」？`,
         okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    await saveMutation.mutateAsync({ id: config.id, values: { status: newStatus } });
-    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-  };
+      };
+    },
+    disabled: !hasPermission('system:file:config:update'),
+    messages: { disabled: '已禁用' },
+  });
 
   const columns: ColumnProps<FileStorageConfig>[] = [
     {
@@ -451,22 +448,7 @@ export default function FileStorageConfigsPage() {
       },
     },
     dateTimeColumn('更新时间', 'updatedAt'),
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center',
-      fixed: 'right',
-      render: (v: FileStorageConfig['status'], record: FileStorageConfig) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!hasPermission('system:file:config:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<FileStorageConfig>({
       width: 180,
       desktopInlineKeys: ['browse', 'edit'],
@@ -497,20 +479,14 @@ export default function FileStorageConfigsPage() {
           hidden: !hasPermission('system:file:config'),
           onClick: () => { void handleTestSaved(record); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:file:config:delete'),
           disabled: record.isDefault,
-          onClick: () => {
-            confirmDelete({
-              title: '确认删除此文件服务配置？',
-              content: '若已绑定文件记录，后端会阻止删除。',
-              onOk: () => handleDelete(record),
-            });
-          },
-        },
+          title: '确认删除此文件服务配置？',
+          content: '若已绑定文件记录，后端会阻止删除。',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '文件服务配置已删除',
+        }),
       ],
     }),
   ];
@@ -524,8 +500,8 @@ export default function FileStorageConfigsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        filters={(
           <>
             <StatusSelect
               items={STATUS_FILTER_OPTIONS}
@@ -533,52 +509,27 @@ export default function FileStorageConfigsPage() {
               onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
             />
             <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('system:file:config:create') && <CreateButton onClick={openCreate} />}
         actions={(
-          <>
-            <ExportButton entity="system.file-storage-configs" query={buildExportQuery()} />
-            {hasPermission('system:file:config:create') && <CreateButton onClick={openCreate} />}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <StatusSelect
-              items={STATUS_FILTER_OPTIONS}
-              value={draftParams.status}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
-            />
-            <SearchButton onClick={handleSearch} />
-            {hasPermission('system:file:config:create') && <CreateButton onClick={openCreate} />}
-          </>
-        )}
-        mobileFilters={(
-          <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))} />
+          <ExportButton entity="system.file-storage-configs" query={buildExportQuery()} />
         )}
         mobileActions={(
           <ExportButton entity="system.file-storage-configs" query={buildExportQuery()} variant="flat" />
         )}
         filterTitle="文件配置筛选"
         actionTitle="文件配置操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
       <div className="storage-configs-tip" style={{ marginBottom: 0, marginTop: -4 }}>
         <Text type="secondary">当前支持多文件服务配置，但上传时会优先走"默认文件服务"。切换默认服务不会影响历史文件记录。</Text>
       </div>
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<FileStorageConfig>
         columns={columns}
-        dataSource={configs}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
-        size="small"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <SideSheet

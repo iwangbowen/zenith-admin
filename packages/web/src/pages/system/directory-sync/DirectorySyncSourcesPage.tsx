@@ -1,18 +1,17 @@
 import { useMemo, useState } from 'react';
-import { Button, Divider, Form, Modal, SideSheet, Spin, Switch, Tag, Toast, Typography, Row, Col } from '@douyinfe/semi-ui';
+import { Button, Divider, Form, Modal, SideSheet, Spin, Tag, Toast, Typography, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import {
   directorySyncSourceKeys, useDirectorySyncSourceList, useDirectorySyncSourceDetail,
   useSaveDirectorySyncSource, useDeleteDirectorySyncSources,
@@ -81,8 +80,6 @@ export default function DirectorySyncSourcesPage() {
     type: enumValueOf(DIRECTORY_SYNC_SOURCE_TYPES, submittedParams.type),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   // LDAP 绑定下拉：复用身份源域的列表查询（该域无 /all 端点）
   const providersQuery = useIdentityProviderList({ page: 1, pageSize: 100 });
@@ -153,30 +150,16 @@ export default function DirectorySyncSourcesPage() {
   const testMutation = useTestDirectorySyncSource();
   const runMutation = useRunDirectorySyncSource();
   const previewMutation = usePreviewDirectorySyncSource();
-  const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
   const [testingId, setTestingId] = useState<number | null>(null);
 
   const { items: statusItems } = useDictItems('common_status');
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
-  function handleToggleStatus(record: DirectorySyncSource, checked: boolean) {
-    const doToggle = () => {
-      toggleStatusMutation.mutate(
-        { id: record.id, values: { status: checked ? 'enabled' : 'disabled' } },
-        { onSuccess: () => Toast.success(checked ? '已启用，将按 cron 表达式自动同步' : '已停用') },
-      );
-    };
-    if (checked) doToggle();
-    else Modal.confirm({
-      title: '确认停用',
-      content: `停用后「${record.name}」将不再自动同步，确认停用？`,
-      onOk: doToggle,
-    });
-  }
+  const status = useStatusToggle<DirectorySyncSource>({
+    toggle: (record, enabled) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({ title: '确认停用', content: `停用后「${record.name}」将不再自动同步，确认停用？` }),
+    disabled: !hasPermission('system:dirsync-source:edit'),
+    messages: { enabled: '已启用，将按 cron 表达式自动同步' },
+  });
 
   function handleTest(record: DirectorySyncSource) {
     setTestingId(record.id);
@@ -243,18 +226,7 @@ export default function DirectorySyncSourcesPage() {
     },
     dateTimeColumn('上次同步时间', 'lastRunAt'),
     dateTimeColumn('下次运行', 'nextRunAt'),
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, record: DirectorySyncSource) => (
-        <Switch
-          checked={record.status === 'enabled'}
-          loading={togglingId === record.id}
-          disabled={!hasPermission('system:dirsync-source:edit')}
-          onChange={(checked) => handleToggleStatus(record, checked)}
-          size="small"
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<DirectorySyncSource>({
       width: 210,
       desktopInlineKeys: ['run', 'edit'],
@@ -271,16 +243,12 @@ export default function DirectorySyncSourcesPage() {
         ...(record.type !== 'scim' && hasPermission('system:dirsync-source:test') ? [{
           key: 'test', label: testingId === record.id ? '测试中…' : '测试连接', onClick: () => handleTest(record),
         }] : []),
-        ...(hasPermission('system:dirsync-source:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除同步源「${record.name}」吗？`,
-              content: '删除后其绑定关系与同步记录将一并清除，本地已同步的用户和部门保留',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('system:dirsync-source:delete'),
+          title: `确定要删除同步源「${record.name}」吗？`,
+          content: '删除后其绑定关系与同步记录将一并清除，本地已同步的用户和部门保留',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -316,40 +284,21 @@ export default function DirectorySyncSourcesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          {renderTypeFilter()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={renderCreateButton()}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={<>
-          {renderTypeFilter()}
-          {renderStatusFilter()}
-        </>}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={<>{renderTypeFilter()}{renderStatusFilter()}</>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<DirectorySyncSource>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无同步源，点击「新增」接入 LDAP/AD 或钉钉通讯录"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无同步源，点击「新增」接入 LDAP/AD 或钉钉通讯录',
+        })}
       />
 
       <SideSheet

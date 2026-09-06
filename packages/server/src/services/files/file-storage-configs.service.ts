@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { fileStorageConfigs, managedFiles } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import type { createFileStorageConfigSchema } from '@zenith/shared/platform';
@@ -168,11 +170,13 @@ export async function listFileStorageConfigs(q: ListFileStorageConfigsQuery) {
   if (status === 'enabled' || status === 'disabled') conditions.push(eq(fileStorageConfigs.status, status));
   conditions.push(...dateRangeConditions(fileStorageConfigs.updatedAt, startTime, endTime));
   const where = and(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(fileStorageConfigs, where),
-    withPagination(db.select().from(fileStorageConfigs).where(where).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapFileStorageConfig), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(fileStorageConfigs, where),
+    rows: () => withPagination(db.select().from(fileStorageConfigs).where(where).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id)).$dynamic(), page, pageSize),
+    map: mapFileStorageConfig,
+  });
 }
 
 export async function getDefaultFileStorageConfig() {
@@ -193,7 +197,7 @@ export async function createFileStorageConfig(data: StorageInput) {
 
 export async function updateFileStorageConfig(id: number, data: Partial<StorageInput>) {
   const [current] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
-  if (!current) throw new HTTPException(404, { message: '文件配置不存在' });
+  requireRow(current, '文件配置不存在');
   if (current.isDefault && data.status === 'disabled') throw new HTTPException(400, { message: '默认文件服务不能被禁用，请先切换默认服务' });
   // 合并原配置与入参；密钥字段留空表示不修改，沿用数据库原值（write-only）
   const merged = { ...current, ...data } as Record<string, unknown>;
@@ -214,7 +218,7 @@ export async function updateFileStorageConfig(id: number, data: Partial<StorageI
 
 export async function setDefaultFileStorageConfig(id: number) {
   const [target] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
-  if (!target) throw new HTTPException(404, { message: '文件配置不存在' });
+  requireRow(target, '文件配置不存在');
   if (target.status !== 'enabled') throw new HTTPException(400, { message: '只有启用状态的文件配置才能设为默认' });
   const updated = await db.transaction(async (tx) => {
     await clearDefaultFlag(tx);
@@ -226,7 +230,7 @@ export async function setDefaultFileStorageConfig(id: number) {
 
 export async function deleteFileStorageConfig(id: number) {
   const [target] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
-  if (!target) throw new HTTPException(404, { message: '文件配置不存在' });
+  requireRow(target, '文件配置不存在');
   if (target.isDefault) throw new HTTPException(400, { message: '默认文件服务不能删除，请先切换默认服务' });
   const valueCount = await db.$count(managedFiles, eq(managedFiles.storageConfigId, id));
   if (valueCount > 0) throw new HTTPException(400, { message: '该文件配置下已有文件记录，不能删除' });
@@ -235,8 +239,7 @@ export async function deleteFileStorageConfig(id: number) {
 
 export async function getFileStorageConfig(id: number) {
   const [row] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '存储配置不存在' });
-  return mapFileStorageConfig(row);
+  return mapFileStorageConfig(requireRow(row, '存储配置不存在'));
 }
 
 async function testStorageConfigRow(config: typeof fileStorageConfigs.$inferSelect) {
@@ -262,7 +265,7 @@ export async function testFileStorageConfig(data: StorageInput) {
 
 export async function testExistingFileStorageConfig(id: number, data: Partial<StorageInput>) {
   const [current] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
-  if (!current) throw new HTTPException(404, { message: '文件配置不存在' });
+  requireRow(current, '文件配置不存在');
   const merged = { ...current, ...data } as Record<string, unknown>;
   for (const field of STORAGE_SECRET_FIELDS) {
     if (!data[field]) merged[field] = current[field];

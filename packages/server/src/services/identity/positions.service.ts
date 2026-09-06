@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { db } from '../../db';
@@ -58,23 +60,23 @@ export async function listPositions(q: ListPositionsQuery) {
   const tc = tenantCondition(positions, currentUser());
   const finalWhere = buildWhere(where, tc);
 
-  const [total, list] = await Promise.all([
-    db.$count(positions, finalWhere),
-    withPagination(
-      db.select().from(positions).where(finalWhere).orderBy(asc(positions.sort), asc(positions.id)).$dynamic(),
-      page, pageSize,
-    ),
-  ]);
-
-  const memberSummaries = await getScopeMemberSummaries('position', list.map((row) => row.id));
-
-  const mappedList = list.map((row) => ({
-    ...mapPosition(row),
-    userCount: memberSummaries.get(row.id)?.count ?? 0,
-    userPreview: memberSummaries.get(row.id)?.preview ?? [],
-  }));
-
-  return { list: mappedList, total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(positions, finalWhere),
+    rows: async () => {
+      const list = await withPagination(
+        db.select().from(positions).where(finalWhere).orderBy(asc(positions.sort), asc(positions.id)).$dynamic(),
+        page, pageSize,
+      );
+      const memberSummaries = await getScopeMemberSummaries('position', list.map((row) => row.id));
+      return list.map((row) => ({
+        ...mapPosition(row),
+        userCount: memberSummaries.get(row.id)?.count ?? 0,
+        userPreview: memberSummaries.get(row.id)?.preview ?? [],
+      }));
+    },
+  });
 }
 
 export async function createPosition(input: CreatePositionInput) {
@@ -97,7 +99,7 @@ export async function updatePosition(id: number, input: UpdatePositionInput) {
       .set({ ...input })
       .where(and(eq(positions.id, id), tc))
       .returning();
-    if (!row) throw new HTTPException(404, { message: '岗位不存在' });
+    requireRow(row, '岗位不存在');
     return mapPosition(row);
   } catch (err) {
     if (err instanceof HTTPException) throw err;
@@ -108,7 +110,7 @@ export async function updatePosition(id: number, input: UpdatePositionInput) {
 export async function deletePosition(id: number): Promise<void> {
   const tc = tenantCondition(positions, currentUser());
   const [pos] = await db.select({ id: positions.id }).from(positions).where(and(eq(positions.id, id), tc)).limit(1);
-  if (!pos) throw new HTTPException(404, { message: '岗位不存在' });
+  requireRow(pos, '岗位不存在');
 
   const [binding] = await db
     .select({ positionId: userPositions.positionId })
@@ -146,7 +148,7 @@ export async function getPositionsBeforeAudit(ids: number[]) {
 export async function getPosition(id: number) {
   const tc = tenantCondition(positions, currentUser());
   const [row] = await db.select().from(positions).where(and(eq(positions.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '岗位不存在' });
+  requireRow(row, '岗位不存在');
   return mapPosition(row);
 }
 
@@ -182,7 +184,7 @@ async function ensurePositionAccessible(positionId: number) {
     .from(positions)
     .where(and(eq(positions.id, positionId), tc))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '岗位不存在' });
+  requireRow(row, '岗位不存在');
   return row.tenantId;
 }
 

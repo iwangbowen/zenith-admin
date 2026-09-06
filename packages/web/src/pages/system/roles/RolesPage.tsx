@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Form, Toast, Spin, Switch, SideSheet } from '@douyinfe/semi-ui';
+import { Button, Form, Toast, Spin, SideSheet } from '@douyinfe/semi-ui';
 import { DATA_SCOPES, type CreateRoleInput, type Role, type Department } from '@zenith/shared/identity';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { UserPreviewCell } from '@/components/UserPreviewCell';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
@@ -33,9 +32,9 @@ import {
   useSaveRole,
   useUpdateRoleDataScope,
 } from '@/hooks/queries/roles';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 
 export default function RolesPage() {
   const { hasPermission } = usePermission();
@@ -70,8 +69,6 @@ export default function RolesPage() {
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const menuTreeQuery = useMenuTree({ enabled: menuModalVisible });
   const menuRoleDetailQuery = useRoleDetail(menuRole?.id, menuModalVisible);
@@ -96,7 +93,12 @@ export default function RolesPage() {
   const assignMenusMutation = useAssignRoleMenus();
   const assignUsersMutation = useAssignRoleUsers();
   const updateDataScopeMutation = useUpdateRoleDataScope();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<Role>({
+    toggle: (role, enabled) => toggleStatusMutation.mutateAsync({ id: role.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (role) => ({ danger: true, title: `确认禁用角色「${role.name}」？`, content: '禁用后持有该角色的用户将不能登录。', okText: '确认禁用' }),
+    disabled: (role) => role.code === 'super_admin' || !hasPermission('system:role:update'),
+    messages: { disabled: '已禁用' },
+  });
 
   useEffect(() => {
     if (menuModalVisible) setCheckedMenuIds(menuRoleDetailQuery.data?.menuIds ?? []);
@@ -179,24 +181,6 @@ export default function RolesPage() {
     setDataScopeModalVisible(false);
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  };
-
-  const handleToggleStatus = async (role: Role, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认禁用角色「${role.name}」？`,
-        content: '禁用后持有该角色的用户将不能登录。',
-        okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    await toggleStatusMutation.mutateAsync({ id: role.id, values: { status: newStatus } });
-    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-  };
-
   const columns: ColumnProps<Role>[] = [
     { title: '角色名称', dataIndex: 'name', width: 160, render: renderEllipsis },
     { title: '角色编码', dataIndex: 'code', width: 160, render: renderEllipsis },
@@ -218,22 +202,7 @@ export default function RolesPage() {
       render: (_: unknown, record: Role) => <UserPreviewCell preview={record.userPreview} count={record.userCount} scope={{ type: 'role', id: record.id, name: record.name }} />,
     },
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center',
-      fixed: 'right',
-      render: (v: string, record: Role) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={record.code === 'super_admin' || !hasPermission('system:role:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<Role>({
       width: 260,
       desktopInlineKeys: ['edit', 'menu', 'delete'],
@@ -250,20 +219,13 @@ export default function RolesPage() {
           hidden: !hasPermission('system:role:assign'),
           onClick: () => openMenuModal(row),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:role:delete'),
           disabled: row.code === 'super_admin',
           disabledReason: '超级管理员角色不允许删除',
-          onClick: () => {
-            confirmDelete({
-              title: '确认删除此角色？',
-              onOk: () => handleDelete(row.id),
-            });
-          },
-        },
+          title: '确认删除此角色？',
+          run: () => deleteMutation.mutateAsync([row.id]),
+        }),
         {
           key: 'users',
           label: '分配用户',
@@ -304,8 +266,6 @@ export default function RolesPage() {
       : {}),
   });
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderExportButtons = () => <ExportButton entity="system.roles" query={buildExportQuery()} />;
   const renderMobileExportActions = () => <ExportButton entity="system.roles" query={buildExportQuery()} variant="flat" />;
   const renderCreateButton = () => hasPermission('system:role:create') ? (
@@ -314,47 +274,26 @@ export default function RolesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderTimeRangeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderExportButtons()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderStatusFilter()}
             {renderTimeRangeFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={renderExportButtons()}
         mobileActions={renderMobileExportActions()}
         filterTitle="角色筛选"
         actionTitle="角色操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<Role>
         columns={columns}
-        dataSource={data}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       {/* 创建/编辑 Modal */}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Form, Spin, Toast, Switch } from '@douyinfe/semi-ui';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Form, Spin } from '@douyinfe/semi-ui';
 import type { CascaderData } from '@douyinfe/semi-ui/lib/es/cascader';
 import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import type { CreateRegionInput, Region } from '@zenith/shared/platform';
@@ -7,7 +7,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useDictItems } from '@/hooks/useDictItems';
 import { createdAtColumn } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -18,9 +17,9 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import { REGION_LEVELS, REGION_LEVEL_LABELS } from '@zenith/shared/platform';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
 
 const LEVEL_LABELS: Record<string, string> = REGION_LEVEL_LABELS;
 
@@ -78,7 +77,11 @@ export default function RegionsPage() {
   });
   const toggleStatusMutation = useSaveRegion();
   const deleteMutation = useDeleteRegion();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<Region>({
+    toggle: (region, enabled) => toggleStatusMutation.mutateAsync({ id: region.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (region) => ({ danger: true, title: `确认禁用「${region.name}」？`, okText: '确认禁用' }),
+    disabled: !hasPermission('system:region:update'),
+  });
 
   useEffect(() => {
     const el = tableWrapperRef.current;
@@ -141,25 +144,6 @@ export default function RegionsPage() {
     return [parentCode];
   }
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  }
-
-  const handleToggleStatus = useCallback(async (region: Region, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认禁用「${region.name}」？`,
-        okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    toggleStatusMutation.mutate(
-      { id: region.id, values: { status: newStatus } },
-      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用') },
-    );
-  }, [toggleStatusMutation]);
-
   const columns: ColumnProps<Region>[] = [
     {
       title: '地区名称',
@@ -190,22 +174,7 @@ export default function RegionsPage() {
       align: 'center',
     },
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center',
-      fixed: 'right',
-      render: (v: string, record: Region) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!hasPermission('system:region:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<Region>({
       width: 150,
       desktopInlineKeys: ['edit', 'delete'],
@@ -216,19 +185,12 @@ export default function RegionsPage() {
           hidden: !hasPermission('system:region:update'),
           onClick: () => { void openEdit(record); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:region:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该地区吗？',
-              content: '若有子地区，需先删除子地区',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该地区吗？',
+          content: '若有子地区，需先删除子地区',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -254,8 +216,6 @@ export default function RegionsPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderExpandButton = () => (
     <Button
       type="primary"
@@ -282,30 +242,21 @@ export default function RegionsPage() {
 
   return (
     <div className="page-container regions-page" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
-            {renderKeywordSearch()}
             {renderLevelFilter()}
             {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={(
+          <>
             {renderExpandButton()}
             {renderExportButtons()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderLevelFilter()}
-            {renderStatusFilter()}
           </>
         )}
         mobileActions={(
@@ -316,8 +267,6 @@ export default function RegionsPage() {
         )}
         filterTitle="地区筛选"
         actionTitle="地区操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <div ref={tableWrapperRef} style={{ flex: 1, minHeight: 0 }}>

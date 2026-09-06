@@ -17,6 +17,7 @@ import type { ChannelMessageTemplate, ChannelMessageType, CreateChannelTemplateI
 import { enumValueOf } from '@zenith/shared/core';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { ImageUploadField } from '@/components/ImageUploadField';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import {
@@ -25,7 +26,6 @@ import {
   useSaveChannelTemplate,
 } from '@/hooks/queries/channels';
 import { CreateButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
 
 interface Props {
@@ -61,7 +61,6 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
   const [imageUrl, setImageUrl] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
   const listQuery = useChannelTemplates(visible);
-  const list = listQuery.data ?? [];
   const saveMutation = useSaveChannelTemplate();
   const deleteMutation = useDeleteChannelTemplate();
 
@@ -125,11 +124,6 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
     onChanged?.();
   };
 
-  const handleDelete = async (t: ChannelMessageTemplate) => {
-    await deleteMutation.mutateAsync({ params: { id: t.id } });
-    Toast.success('已删除');
-    onChanged?.();
-  };
 
   const columns: ColumnProps<ChannelMessageTemplate>[] = [
     {
@@ -149,17 +143,12 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
           label: '编辑',
           onClick: () => openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除该模板？',
-              onOk: () => { void handleDelete(record); },
-            });
-          },
-        },
+        deleteAction({
+          title: '确定删除该模板？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '已删除',
+          onDeleted: onChanged,
+        }),
       ],
     }),
   ];
@@ -172,14 +161,9 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
         <Typography.Text type="tertiary" size="small">模板仅保存消息内容，可在群发弹窗中一键载入</Typography.Text>
         <CreateButton onClick={openCreate}>新增模板</CreateButton>
       </div>
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<ChannelMessageTemplate>
         columns={columns}
-        dataSource={list}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        pagination={false}
-        size="small"
+        {...listTableProps(listQuery)}
       />
 
       <AppModal

@@ -2,10 +2,9 @@ import { useMemo, useState } from 'react';
 import { SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { DateRangeFilter, FilterSelect, StatusSelect } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -81,8 +80,6 @@ export default function DirectorySyncLogsPage() {
     status: enumValueOf(DIRECTORY_SYNC_RUN_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   // 源筛选下拉：复用同步源列表查询
   const sourcesQuery = useDirectorySyncSourceList({ page: 1, pageSize: 100 });
@@ -205,38 +202,25 @@ export default function DirectorySyncLogsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderSourceFilter()}
-          {renderStatusFilter()}
-          {renderTimeRangeFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        mobilePrimary={<>
-          {renderSourceFilter()}
-          <SearchButton onClick={handleSearch} />
-        </>}
-        mobileFilters={<>
-          {renderStatusFilter()}
-          {renderTimeRangeFilter()}
-        </>}
+      <ListSearchToolbar
+        filters={(
+          <>
+            {renderSourceFilter()}
+            {renderStatusFilter()}
+            {renderTimeRangeFilter()}
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<DirectorySyncRun>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无同步记录"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无同步记录',
+        })}
       />
 
       <SideSheet
@@ -262,17 +246,12 @@ export default function DirectorySyncLogsPage() {
                 }}
               />
             </div>
-            <ConfigurableTable
-              bordered
+            <ConfigurableTable<DirectorySyncRunItem>
               columns={itemColumns}
-              dataSource={itemsQuery.data?.list ?? []}
-              loading={itemsQuery.isFetching}
-              rowKey="id"
-              size="small"
-              empty="该记录没有差异明细"
-              onRefresh={() => void itemsQuery.refetch()}
-              refreshLoading={itemsQuery.isFetching}
-              pagination={itemsPagination.buildPagination(itemsQuery.data?.total ?? 0)}
+              {...listTableProps(itemsQuery, {
+                pagination: itemsPagination.buildPagination,
+                empty: '该记录没有差异明细',
+              })}
             />
           </>
         )}

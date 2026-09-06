@@ -1,14 +1,14 @@
-import { Col, Form, Row, Spin, Tag, Toast, Switch } from '@douyinfe/semi-ui';
+import { Col, Form, Row, Spin, Tag } from '@douyinfe/semi-ui';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CreateInAppTemplateInput, InAppMessageType, InAppTemplate } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
   inAppTemplateKeys,
@@ -18,9 +18,8 @@ import {
   useSaveInAppTemplate,
 } from '@/hooks/queries/in-app-templates';
 import { IN_APP_MESSAGE_TYPE_OPTIONS_WITH_COLOR as TYPE_OPTIONS } from '../in-app-message-constants';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
 
 export default function InAppTemplatesPage() {
   const { hasPermission: can } = usePermission();
@@ -41,8 +40,6 @@ export default function InAppTemplatesPage() {
     type: submittedParams.filterType,
     status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveInAppTemplate();
   const modal = useEditModal<InAppTemplate, Partial<CreateInAppTemplateInput>>({
     entityName: '站内信模板',
@@ -63,29 +60,13 @@ export default function InAppTemplatesPage() {
   });
   const toggleStatusMutation = useSaveInAppTemplate();
   const deleteMutation = useDeleteInAppTemplate();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<InAppTemplate>({
+    toggle: (record, enabled) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({ danger: true, title: `确认禁用模板「${record.name}」？`, okText: '确认禁用' }),
+    disabled: !can('system:in-app-template:update'),
+    messages: { disabled: '已禁用' },
+  });
 
-  const handleDelete = (id: number) => {
-    confirmDelete({
-      title: '确定要删除该站内信模板吗？',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
-  const handleToggleStatus = async (tpl: InAppTemplate, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认禁用模板「${tpl.name}」？`,
-        okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    await toggleStatusMutation.mutateAsync({ id: tpl.id, values: { status: newStatus } });
-    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-  };
 
   const columns = [
     { title: '模板名称', dataIndex: 'name', width: 160 },
@@ -99,18 +80,7 @@ export default function InAppTemplatesPage() {
       },
     },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 90, align: 'center' as const, fixed: 'right' as const,
-      render: (v: string, record: InAppTemplate) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!can('system:in-app-template:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<InAppTemplate>({
       width: 150,
       actions: (record) => [
@@ -120,51 +90,20 @@ export default function InAppTemplatesPage() {
           hidden: !can('system:in-app-template:update'),
           onClick: () => modal.openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !can('system:in-app-template:delete'),
-          onClick: () => handleDelete(record.id),
-        },
+          title: '确定要删除该站内信模板吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索模板名称/编码/标题" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={240} />
-            <FilterSelect
-              placeholder="全部类型"
-              items={TYPE_OPTIONS}
-              value={draftParams.filterType}
-              onChange={(v) => setDraftParams({ ...draftParams, filterType: v as InAppMessageType | undefined })}
-            />
-            <StatusSelect
-              items={statusItems}
-              value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {can('system:in-app-template:create') && (
-              <CreateButton onClick={modal.openCreate} />
-            )}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索模板名称/编码/标题" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={240} />
-            <SearchButton onClick={handleSearch} />
-            {can('system:in-app-template:create') && (
-              <CreateButton onClick={modal.openCreate} />
-            )}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索模板名称/编码/标题" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={240} />}
+        filters={(
           <>
             <FilterSelect
               placeholder="全部类型"
@@ -178,14 +117,19 @@ export default function InAppTemplatesPage() {
               onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
             />
           </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={can('system:in-app-template:create') && (
+          <CreateButton onClick={modal.openCreate} />
         )}
         filterTitle="站内信模板筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable<InAppTemplate>
+        columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...modal.modalProps} width={720}>
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">

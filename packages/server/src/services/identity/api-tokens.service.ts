@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { createHash, randomBytes } from 'node:crypto';
 import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../../db';
@@ -40,5 +41,5 @@ export async function deleteApiToken(id: number) {
   const user = currentUser();
   if (Number.isNaN(id)) throw new HTTPException(400, { message: '无效的 Token ID' });
   const result = await db.delete(userApiTokens).where(and(eq(userApiTokens.id, id), eq(userApiTokens.userId, user.userId))).returning();
-  if (result.length === 0) throw new HTTPException(404, { message: 'Token 不存在' });
+  requireRow(result[0], 'Token 不存在');
 }

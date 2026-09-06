@@ -1,5 +1,7 @@
 import { eq, and, desc, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { emailSendLogs, emailTemplates, users } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
@@ -33,9 +35,11 @@ export function buildListWhere(q: ListEmailSendLogsQuery) {
 
 export async function listEmailSendLogs(q: ListEmailSendLogsQuery) {
   const where = buildListWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(emailSendLogs, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(emailSendLogs, where),
+    rows: () => withPagination(
       db.select({
         log: emailSendLogs,
         templateName: emailTemplates.name,
@@ -50,9 +54,7 @@ export async function listEmailSendLogs(q: ListEmailSendLogsQuery) {
       q.page,
       q.pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => ({
+    map: (r) => ({
       id: r.log.id,
       templateId: r.log.templateId,
       templateName: r.templateName ?? null,
@@ -67,17 +69,15 @@ export async function listEmailSendLogs(q: ListEmailSendLogsQuery) {
       ip: r.log.ip ?? null,
       sentAt: r.log.sentAt ? formatDateTime(r.log.sentAt) : null,
       createdAt: formatDateTime(r.log.createdAt),
-    })),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    }),
+  });
 }
 
 export async function getEmailSendLog(id: number) {
-  const [row] = await db.select().from(emailSendLogs).where(and(eq(emailSendLogs.id, id), tenantScope(emailSendLogs))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '发送记录不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(emailSendLogs).where(and(eq(emailSendLogs.id, id), tenantScope(emailSendLogs))).limit(1),
+    '发送记录不存在',
+  );
 }
 
 export async function deleteEmailSendLog(id: number) {

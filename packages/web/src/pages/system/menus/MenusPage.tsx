@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Form, Radio, Toast, TreeSelect, Row, Col, Spin, Switch, Tooltip, Banner } from '@douyinfe/semi-ui';
+import { Button, Form, Radio, TreeSelect, Row, Col, Spin, Tooltip, Banner } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import type { Menu } from '@zenith/shared/identity';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { renderLucideIcon } from '@/utils/icons';
@@ -18,9 +17,9 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { menuKeys, useDeleteMenu, useMenuDetail, useMenuTree, useSaveMenu, type MenuFormValues } from '@/hooks/queries/menus';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
 
 export default function MenusPage() {
   const { hasPermission } = usePermission();
@@ -191,27 +190,11 @@ export default function MenusPage() {
     menuModal.openEdit(menu);
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  };
-
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
-
-  const handleToggleStatus = useCallback(async (menu: Menu, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认禁用菜单「${menu.title}」？`,
-        content: '禁用后该菜单将不可访问。',
-        okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    toggleStatusMutation.mutate(
-      { id: menu.id, values: { status: newStatus } },
-      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用') },
-    );
-  }, [toggleStatusMutation]);
+  const status = useStatusToggle<Menu>({
+    toggle: (menu, enabled) => toggleStatusMutation.mutateAsync({ id: menu.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (menu) => ({ danger: true, title: `确认禁用菜单「${menu.title}」？`, content: '禁用后该菜单将不可访问。', okText: '确认禁用' }),
+    disabled: !hasPermission('system:menu:update'),
+  });
 
   const columns: ColumnProps<Menu>[] = [
     {
@@ -271,17 +254,8 @@ export default function MenusPage() {
       title: '状态',
       dataIndex: 'status',
       width: 80,
-      align: 'center',
       fixed: 'right',
-      render: (val: string, row: Menu) => row.type === 'button' ? '—' : (
-        <Switch
-          size="small"
-          checked={val === 'enabled'}
-          loading={togglingStatusId === row.id}
-          disabled={!hasPermission('system:menu:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(row, checked ? 'enabled' : 'disabled')}
-        />
-      ),
+      render: (_val: string, row: Menu) => row.type === 'button' ? '—' : status.renderSwitch(row),
     },
     {
       title: '显示',
@@ -307,19 +281,12 @@ export default function MenusPage() {
           hidden: !hasPermission('system:menu:update'),
           onClick: () => openEdit(row),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:menu:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确认删除此菜单？',
-              content: '子菜单也将一并删除',
-              onOk: () => handleDelete(row.id),
-            });
-          },
-        },
+          title: '确认删除此菜单？',
+          content: '子菜单也将一并删除',
+          run: () => deleteMutation.mutateAsync({ params: { id: row.id } }),
+        }),
       ],
     }),
   ];
@@ -330,14 +297,6 @@ export default function MenusPage() {
 
   const renderStatusFilter = () => (
     <StatusSelect items={statusItems} value={pendingStatus} onChange={setPendingStatus} />
-  );
-
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
   );
 
   const renderExpandButton = () => (
@@ -356,30 +315,16 @@ export default function MenusPage() {
 
   return (
     <div className="page-container" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderExpandButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={renderExpandButton()}
         mobileActions={renderExpandButton()}
         filterTitle="菜单筛选"
         actionTitle="菜单操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {menuTreeQuery.isError && (

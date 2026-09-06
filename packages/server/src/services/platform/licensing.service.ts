@@ -5,6 +5,8 @@ import { licenses, licenseEvents, systemInstallations, systemSchedulerNodes, use
 import { config } from '../../config';
 import { formatDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import logger from '../../lib/logger';
 import {
   verifyLicenseEnvelope,
@@ -205,8 +207,10 @@ export async function activateLicense(envelopeRaw: string, operatorUserId: numbe
 
 /** 停用当前 License（回到未授权状态；required 模式将进入受限） */
 export async function deactivateLicense(): Promise<void> {
-  const [row] = await db.select({ id: licenses.id, licenseId: licenses.licenseId }).from(licenses).where(eq(licenses.status, 'active')).limit(1);
-  if (!row) throw new HTTPException(404, { message: '当前没有已激活的 License' });
+  const row = await requireFirstRow(
+    db.select({ id: licenses.id, licenseId: licenses.licenseId }).from(licenses).where(eq(licenses.status, 'active')).limit(1),
+    '当前没有已激活的 License',
+  );
 
   await db.transaction(async (tx) => {
     await tx.update(licenses).set({ status: 'revoked', invalidReason: '管理员手动停用' }).where(eq(licenses.id, row.id));
@@ -218,23 +222,20 @@ export async function deactivateLicense(): Promise<void> {
 
 export async function listLicenseEvents(q: { page?: number; pageSize?: number }) {
   const { page = 1, pageSize = 20 } = q;
-  const [total, rows] = await Promise.all([
-    db.$count(licenseEvents),
-    db.select().from(licenseEvents).orderBy(desc(licenseEvents.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return {
-    list: rows.map((r) => ({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(licenseEvents),
+    rows: () => db.select().from(licenseEvents).orderBy(desc(licenseEvents.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: (r) => ({
       id: r.id,
       licenseId: r.licenseId,
       type: r.type as LicenseEventType,
       typeLabel: LICENSE_EVENT_TYPE_LABELS[r.type as LicenseEventType] ?? r.type,
       detail: r.detail,
       createdAt: formatDateTime(r.createdAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 /** 平台超管（tenantId 为空且绑定 super_admin 角色）的用户 ID */

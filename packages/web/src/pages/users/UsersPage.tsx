@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Button, Select, Space, Modal, Form, Toast, Tag, Row, Col, Tree, Spin, Switch } from '@douyinfe/semi-ui';
+import { Button, Select, Space, Modal, Form, Toast, Tag, Row, Col, Tree, Spin } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Trash2, ChevronsUpDown, ChevronsDownUp, Building2, KeyRound, ToggleLeft, ToggleRight } from 'lucide-react';
+import { ChevronsUpDown, ChevronsDownUp, Building2, KeyRound, ToggleLeft, ToggleRight } from 'lucide-react';
 import type { CreateUserInput, User, Role, Department, Position } from '@zenith/shared/identity';
 import { USER_STATUSES, enumValueOf, type BodyOf } from '@zenith/shared/core';
 import { userContract } from '@zenith/shared/identity';
@@ -16,7 +16,6 @@ import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { usePermission } from '@/hooks/usePermission';
 import { isAllKeysExpanded } from '@/hooks/useTreeExpansion';
 import { useAuth } from '@/hooks/useAuth';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -46,9 +45,10 @@ import {
   useUserList,
   userKeys,
 } from '@/hooks/queries/users';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDanger, confirmDelete, confirmDangerAsync } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useSensitiveFormFields } from '@/hooks/useSensitiveFormFields';
 import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
@@ -132,9 +132,7 @@ export default function UsersPage() {
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const data = listQuery.data ?? null;
-  const userList = data?.list ?? EMPTY_USERS;
-  const total = data?.total ?? 0;
+  const userList = listQuery.data?.list ?? EMPTY_USERS;
   const saveMutation = useSaveUser();
   const resetPasswordMutation = useResetUserPassword();
   const deleteMutation = useDeleteUsers();
@@ -225,7 +223,11 @@ export default function UsersPage() {
     return userList.filter((item) => selectedSet.has(item.id) && !isAdminUser(item)).map((item) => item.id);
   }, [userList, selectedRowKeys]);
 
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.body.ids[0] ?? null) : null;
+  const status = useStatusToggle<User>({
+    toggle: (user, enabled) => toggleStatusMutation.mutateAsync({ body: { ids: [user.id], status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (user) => ({ danger: true, title: `确认停用用户「${user.nickname ?? user.username}」？`, content: '停用后该用户将无法登录。', okText: '确认停用' }),
+    disabled: (user) => isAdminUser(user) || !hasPermission('system:user:update'),
+  });
 
   const handleBatchStatus = (status: 'enabled' | 'disabled') => {
     if (selectedNonAdminIds.length === 0) return;
@@ -252,14 +254,12 @@ export default function UsersPage() {
       return;
     }
 
-    confirmDelete({
+    confirmAndDelete({
       title: `确认删除选中的 ${deletableIds.length} 个用户？`,
       content: '删除后无法恢复，请谨慎操作。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync(deletableIds);
-        Toast.success('批量删除成功');
-        setSelectedRowKeys([]);
-      },
+      run: () => deleteMutation.mutateAsync(deletableIds),
+      successMessage: '批量删除成功',
+      onDeleted: () => setSelectedRowKeys([]),
     });
   };
 
@@ -324,22 +324,6 @@ export default function UsersPage() {
     [allPositions]
   );
 
-  const { mutate: toggleStatus } = toggleStatusMutation;
-  const handleToggleStatus = useCallback(async (user: User, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认停用用户「${user.nickname ?? user.username}」？`,
-        content: '停用后该用户将无法登录。',
-        okText: '确认停用',
-      });
-      if (!confirmed) return;
-    }
-    toggleStatus(
-      { body: { ids: [user.id], status: newStatus } },
-      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已停用') },
-    );
-  }, [toggleStatus]);
-
   const buildExportQuery = useCallback((params: SearchParams = submittedParams) => ({
     ...(params.keyword ? { keyword: params.keyword } : {}),
     ...(params.phone ? { phone: params.phone } : {}),
@@ -353,12 +337,6 @@ export default function UsersPage() {
   const openCreate = modal.openCreate;
   const openEdit = modal.openEdit;
   const openPassword = passwordModal.openEdit;
-
-  const { mutateAsync: deleteUsers } = deleteMutation;
-  const handleDelete = useCallback(async (id: number) => {
-    await deleteUsers([id]);
-    Toast.success('删除成功');
-  }, [deleteUsers]);
 
   const { mutateAsync: unlockUser } = unlockMutation;
   const handleUnlock = useCallback(async (id: number) => {
@@ -454,21 +432,7 @@ export default function UsersPage() {
     },
     dateTimeColumn('最近登录', 'lastLoginAt'),
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      fixed: 'right',
-      render: (status: string, record: User) => (
-        <Switch
-          size="small"
-          checked={status === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={isAdminUser(record) || !hasPermission('system:user:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<User>({
       width: 180,
       desktopInlineKeys: ['edit', 'delete'],
@@ -483,20 +447,13 @@ export default function UsersPage() {
               openEdit(record);
             },
           },
-          {
-            key: 'delete',
-            label: '删除',
-            danger: true,
+          deleteAction({
             hidden: !hasPermission('system:user:delete'),
             disabled: isAdmin,
             disabledReason: 'admin 账号不允许删除',
-            onClick: () => {
-              confirmDelete({
-                title: '确定要删除该用户吗？',
-                onOk: () => handleDelete(record.id),
-              });
-            },
-          },
+            title: '确定要删除该用户吗？',
+            run: () => deleteMutation.mutateAsync([record.id]),
+          }),
           {
             key: 'avatar',
             label: '管理头像',
@@ -569,7 +526,7 @@ export default function UsersPage() {
         ];
       },
     }),
-  ], [hasPermission, togglingStatusId, handleToggleStatus, handleDelete, handleUnlock, kickUserSessions, refetchUserList, openEdit, openPassword]);
+  ], [hasPermission, status, deleteMutation, handleUnlock, kickUserSessions, refetchUserList, openEdit, openPassword]);
 
   const [showDeptTree, setShowDeptTree] = useState(false);
   const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);
@@ -646,14 +603,10 @@ export default function UsersPage() {
     <DateRangeFilter placeholder={["开始时间", "结束时间"]} value={draftParams.timeRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))} />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderBatchActions = () => (
     <>
       {selectedDeletableCount > 0 && hasPermission('system:user:delete') && (
-        <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-          批量删除 ({selectedDeletableCount})
-        </Button>
+        <BatchDeleteButton count={selectedDeletableCount} onClick={handleBatchDelete} />
       )}
       {selectedNonAdminIds.length > 0 && hasPermission('system:user:update') && (
         <>
@@ -699,34 +652,24 @@ export default function UsersPage() {
         master={masterContent}
         detail={
         <div className="users-content">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
-            {renderDepartmentButton()}
-            {renderKeywordSearch()}
             {renderPhoneSearch()}
             {renderStatusFilter()}
             {renderTimeRangeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={(
+          <>
+            {renderDepartmentButton()}
             {renderBatchActions()}
             {renderExportButtons()}
             {renderImportButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderPhoneSearch()}
-            {renderStatusFilter()}
-            {renderTimeRangeFilter()}
           </>
         )}
         mobileActions={(
@@ -739,34 +682,27 @@ export default function UsersPage() {
         )}
         filterTitle="用户筛选"
         actionTitle="用户操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<User>
         columns={columns}
-        dataSource={userList}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
-        rowKey="id"
-        size="small"
-        empty="暂无数据"
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => {
-            const nextKeys = (keys as (string | number)[]).map(Number);
-            const nextKeySet = new Set(nextKeys);
-            const adminIds = userList.filter((item) => isAdminUser(item)).map((item) => item.id);
-            const filtered = nextKeys.filter((id) => !adminIds.includes(id));
-            if (filtered.length < nextKeys.length && adminIds.some((id) => nextKeySet.has(id))) {
-              Toast.warning('admin 账号不支持批量删除');
-            }
-            setSelectedRowKeys(filtered);
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无数据',
+          rowSelection: {
+            selectedRowKeys,
+            onChange: (keys) => {
+              const nextKeys = (keys ?? []).map(Number);
+              const nextKeySet = new Set(nextKeys);
+              const adminIds = userList.filter((item) => isAdminUser(item)).map((item) => item.id);
+              const filtered = nextKeys.filter((id) => !adminIds.includes(id));
+              if (filtered.length < nextKeys.length && adminIds.some((id) => nextKeySet.has(id))) {
+                Toast.warning('admin 账号不支持批量删除');
+              }
+              setSelectedRowKeys(filtered);
+            },
           },
-        }}
+        })}
       />
         </div>
         }

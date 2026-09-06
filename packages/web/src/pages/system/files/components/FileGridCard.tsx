@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Checkbox, Dropdown, Spin, Tooltip } from '@douyinfe/semi-ui';
 import type { ManagedFile } from '@zenith/shared/platform';
 import { getFileTypeIcon, canPreviewFile } from '@/utils/file-utils';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import { CursorContextDropdown } from '@/components/CursorContextDropdown';
 import { formatBytes } from '@zenith/shared/core';
 import '../FilesPage.css';
@@ -98,10 +98,11 @@ export function FileGridCard({
                   <Dropdown.Item
                     type="danger"
                     onClick={() => {
-                      confirmDelete({
+                      confirmAndDelete({
                         title: '确认删除此文件？',
                         content: '删除文件记录后，将同步尝试删除实际存储对象。',
-                        onOk: () => onDelete(file),
+                        run: () => Promise.resolve(onDelete(file)),
+                        successMessage: null,
                       });
                     }}
                   >删除</Dropdown.Item>

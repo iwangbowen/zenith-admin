@@ -110,7 +110,8 @@
   `{ value: '', label: '全部' }` 之类哨兵项；空值即 `undefined`（`SearchParams` 字段声明为可选、`defaults` 写 `undefined`），
   宽度用默认 120，只在占位或选项文案放不下时传 `width`。多选筛选与没有「全部」语义的必选下拉（视图切换、所属应用）用原生 `Select`
 - **公共按钮**：查询 / 重置 / 新增 / 刷新统一用 `components/toolbar-controls.tsx` 的
-  `SearchButton` / `ResetButton` / `CreateButton` / `RefreshButton`，文案不同时用 children 覆盖。
+  `SearchButton` / `ResetButton` / `CreateButton` / `RefreshButton`，文案不同时用 children 覆盖；
+  批量删除用 `BatchDeleteButton`（`count` 拼进文案，是否渲染仍由调用方按「有选中 && 有权限」判断）。
   **例外**：仅复用同一图标的独立操作（「测试发送」「生成链接」）及视觉本就不同的写法保持原生 `Button`
 - **移动端更多菜单**：`mobileActions` 只放低频操作；普通按钮用 `theme="borderless"`
   （危险操作保留 `type="danger"`），导出优先 `ExportButton variant="flat"`

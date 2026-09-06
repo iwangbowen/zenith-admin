@@ -4,6 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RefreshCw, Shield, ShieldOff } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction } from '@/components/list-page';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
@@ -18,7 +19,6 @@ import {
 import type { AddFirewallRuleInput, FirewallRule, FirewallStatus } from '@zenith/shared/ops';
 import { CreateButton, ResetButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
@@ -113,11 +113,6 @@ export default function FirewallPage() {
     ));
   }, [keyword, rules]);
 
-  async function handleDelete(id: string) {
-    await deleteRuleMutation.mutateAsync({ params: { id }, query: {} });
-    Toast.success('规则已删除');
-  }
-
   async function handleToggle(enabled: boolean) {
     await toggleFirewallMutation.mutateAsync(enabled);
     Toast.success(enabled ? '防火墙已启用' : '防火墙已关闭');
@@ -160,17 +155,13 @@ export default function FirewallPage() {
       emptyContent: <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,
       actions: (record) => [
         {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+          ...deleteAction({
+            hidden: !canManageCurrent,
+            title: '确定要删除该规则吗？',
+            run: () => deleteRuleMutation.mutateAsync({ params: { id: record.id }, query: {} }),
+            successMessage: '规则已删除',
+          }),
           loading: deleteRuleMutation.isPending && deleteRuleMutation.variables?.params.id === record.id,
-          hidden: !canManageCurrent,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该规则吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
         },
       ],
     }),

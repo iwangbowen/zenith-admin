@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Col, Form, Modal, Row, Space, Spin, Switch, Tag, TagGroup, Toast, Typography } from '@douyinfe/semi-ui';
+import { Col, Form, Modal, Row, Space, Spin, Tag, TagGroup, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Info } from 'lucide-react';
 import { MASK_TYPES, MASK_TYPE_LABELS, MASK_TYPE_OPTIONS, enumValueOf, previewMask, type CustomMaskRule, type MaskType } from '@zenith/shared/core';
@@ -7,10 +7,10 @@ import type { Menu } from '@zenith/shared/identity';
 import { DATA_MASK_BYPASS_PERMISSION, type DataMaskField, type SaveDataMaskPolicyInput } from '@zenith/shared/platform';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+
 import { dataMaskKeys, useDataMaskFields, useResetDataMaskPolicy, useSaveDataMaskPolicy, type DataMaskFieldsQuery } from '@/hooks/queries/data-mask';
 import { useMenuTree } from '@/hooks/queries/menus';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -144,14 +144,6 @@ export default function DataMaskPage() {
     modal.openEdit(row);
   };
 
-  const handleToggle = async (row: DataMaskFieldRow, enabled: boolean) => {
-    await saveMutation.mutateAsync({
-      params: { entity: row.entity, field: row.field },
-      body: { maskType: row.maskType, customRule: row.customRule, exemptPermissions: row.exemptPermissions, enabled, remark: row.remark },
-    });
-    Toast.success(enabled ? '已启用脱敏' : '已停用脱敏');
-  };
-
   const handleReset2Default = (row: DataMaskFieldRow) => {
     Modal.confirm({
       title: '恢复契约默认策略',
@@ -162,7 +154,17 @@ export default function DataMaskPage() {
     });
   };
 
-  const togglingKey = saveMutation.isPending ? `${saveMutation.variables?.params.entity}.${saveMutation.variables?.params.field}` : null;
+  const enabledStatus = useStatusToggle<DataMaskFieldRow>({
+    getKey: (row) => row.key,
+    isEnabled: (row) => row.enabled,
+    toggle: (row, enabled) => saveMutation.mutateAsync({
+      params: { entity: row.entity, field: row.field },
+      body: { maskType: row.maskType, customRule: row.customRule, exemptPermissions: row.exemptPermissions, enabled, remark: row.remark },
+    }),
+    confirmDisable: (row) => ({ title: '确认停用脱敏', content: `停用后「${row.label}（${row.key}）」在所有接口与脱敏导出中都会以明文返回，确认停用？` }),
+    disabled: !canUpdate,
+    messages: { enabled: '已启用脱敏', disabled: '已停用脱敏' },
+  });
 
   // 标识类列一律单行：列宽按最长的实体 / 字段名（等宽字体）给足，列级 ellipsis 兜底更长的标识。
   // 单元格内用行内文本而不是 Space（inline-flex 是原子行内盒，溢出时会被整体裁掉而不出省略号）。
@@ -208,25 +210,7 @@ export default function DataMaskPage() {
     },
     { title: '备注', dataIndex: 'remark', width: 200, render: (v: string | null) => (v ? renderEllipsis(v) : <Text type="quaternary">{EMPTY_PLACEHOLDER}</Text>) },
     dateTimeColumn<DataMaskFieldRow>('策略更新时间', 'updatedAt'),
-    {
-      title: '启用', dataIndex: 'enabled', width: 80, fixed: 'right' as const,
-      render: (v: boolean, record) => (
-        <Switch
-          checked={v}
-          size="small"
-          loading={togglingKey === record.key}
-          disabled={!canUpdate}
-          onChange={(checked) => {
-            if (checked) { void handleToggle(record, true); return; }
-            Modal.confirm({
-              title: '确认停用脱敏',
-              content: `停用后「${record.label}（${record.key}）」在所有接口与脱敏导出中都会以明文返回，确认停用？`,
-              onOk: () => { void handleToggle(record, false); },
-            });
-          }}
-        />
-      ),
-    },
+    enabledStatus.column({ title: '启用', dataIndex: 'enabled' }),
     createOperationColumn<DataMaskFieldRow>({
       // 「恢复默认」只在已自定义的行出现，收进「更多」：内联 80 + 更多 24 → 150
       width: 150,
@@ -240,25 +224,9 @@ export default function DataMaskPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索实体 / 字段 / 标签" value={draftParams.keyword} onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))} onSearch={handleSearch} />
-            <FilterSelect placeholder="全部实体" items={entityOptions} value={draftParams.entity} onChange={(v) => setDraftParams((prev) => ({ ...prev, entity: v }))} width={160} />
-            <FilterSelect placeholder="全部脱敏类型" items={MASK_TYPE_OPTIONS} value={draftParams.maskType} onChange={(v) => setDraftParams((prev) => ({ ...prev, maskType: v }))} width={150} />
-            <FilterSelect placeholder="全部启用状态" items={ENABLED_FILTER_OPTIONS} value={draftParams.enabled} onChange={(v) => setDraftParams((prev) => ({ ...prev, enabled: v }))} width={140} />
-            <FilterSelect placeholder="全部来源" items={SOURCE_FILTER_OPTIONS} value={draftParams.overridden} onChange={(v) => setDraftParams((prev) => ({ ...prev, overridden: v }))} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索实体 / 字段" value={draftParams.keyword} onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索实体 / 字段 / 标签" value={draftParams.keyword} onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))} onSearch={handleSearch} />}
+        filters={(
           <>
             <FilterSelect placeholder="全部实体" items={entityOptions} value={draftParams.entity} onChange={(v) => setDraftParams((prev) => ({ ...prev, entity: v }))} width={160} />
             <FilterSelect placeholder="全部脱敏类型" items={MASK_TYPE_OPTIONS} value={draftParams.maskType} onChange={(v) => setDraftParams((prev) => ({ ...prev, maskType: v }))} width={150} />
@@ -266,9 +234,9 @@ export default function DataMaskPage() {
             <FilterSelect placeholder="全部来源" items={SOURCE_FILTER_OPTIONS} value={draftParams.overridden} onChange={(v) => setDraftParams((prev) => ({ ...prev, overridden: v }))} />
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="数据脱敏筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <Space spacing={6} align="start">
@@ -280,15 +248,9 @@ export default function DataMaskPage() {
         </Text>
       </Space>
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<DataMaskFieldRow>
         columns={columns}
-        dataSource={rows}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="key"
-        pagination={false}
+        {...listTableProps({ ...listQuery, data: rows }, { rowKey: 'key' })}
       />
 
       <AppModal {...modal.modalProps} title="编辑脱敏策略" okText="保存" width={640}>

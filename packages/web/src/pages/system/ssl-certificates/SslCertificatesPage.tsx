@@ -14,6 +14,7 @@ import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -30,7 +31,6 @@ import {
 } from '@/hooks/queries/ssl-certificates';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 
 interface SearchParams {
   keyword: string;
@@ -80,8 +80,6 @@ export default function SslCertificatesPage() {
     keyword: submittedParams.keyword.trim() || undefined,
     type: enumValueOf(SSL_CERT_TYPES, submittedParams.type),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const detailQuery = useSslCertificateDetail(detail?.id, detailVisible);
   const displayDetail = detail ? (detailQuery.data ?? detail) : null;
   const generateMutation = useGenerateSslCertificate();
@@ -115,15 +113,6 @@ export default function SslCertificatesPage() {
   const openDetail = (record: SslCertificate) => {
     setDetailVisible(true);
     setDetail(record);
-  };
-
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('证书已删除');
-    if (detail?.id === id) {
-      setDetailVisible(false);
-      setDetail(null);
-    }
   };
 
   const handleDownload = async (kind: SslCertDownloadKind) => {
@@ -173,18 +162,18 @@ export default function SslCertificatesPage() {
           label: '查看详情',
           onClick: () => { void openDetail(record); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canDelete,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该证书吗？',
-              onOk: () => { void handleDelete(record.id); },
-            });
+          title: '确定要删除该证书吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '证书已删除',
+          onDeleted: () => {
+            if (detail?.id === record.id) {
+              setDetailVisible(false);
+              setDetail(null);
+            }
           },
-        },
+        }),
       ],
     }),
   ];
@@ -235,15 +224,8 @@ export default function SslCertificatesPage() {
       />
 
       <ConfigurableTable
-        bordered
-        rowKey="id"
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
-        empty="暂无证书"
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无证书' })}
       />
 
       <AppModal

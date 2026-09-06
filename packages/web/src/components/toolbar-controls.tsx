@@ -13,7 +13,7 @@
  */
 import type { ReactNode } from 'react';
 import { Button } from '@douyinfe/semi-ui';
-import { Plus, RotateCcw, Search } from 'lucide-react';
+import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 
 interface ToolbarButtonProps {
   readonly onClick?: () => void;
@@ -58,6 +58,25 @@ export function CreateButton({ onClick, disabled, loading, children = '新增' }
   return (
     <Button type="primary" icon={<Plus size={14} />} onClick={onClick} disabled={disabled} loading={loading}>
       {children}
+    </Button>
+  );
+}
+
+interface BatchDeleteButtonProps extends Omit<ToolbarButtonProps, 'children'> {
+  /** 当前选中数，拼进文案 */
+  readonly count: number;
+  /** 覆盖默认文案「批量删除」，如「删除选中文件」 */
+  readonly label?: ReactNode;
+}
+
+/**
+ * 批量删除按钮（danger + 浅色 + 垃圾桶图标），文案带选中数。
+ * 是否渲染由调用方按「有选中 && 有权限」判断——工具栏据此决定移动端是否出现「更多操作」菜单，组件内部不能自行返回 null。
+ */
+export function BatchDeleteButton({ count, onClick, disabled, loading, label = '批量删除' }: BatchDeleteButtonProps) {
+  return (
+    <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={onClick} disabled={disabled} loading={loading}>
+      {label} ({count})
     </Button>
   );
 }

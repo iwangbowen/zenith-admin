@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, inArray, isNull, lt, lte, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -7,7 +9,7 @@ import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/whe
 import { formatDateTime, formatFileTimestamp, formatNullableDateTime } from '../../lib/datetime';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
 import { getUserPermissions, isSuperAdmin } from '../../lib/permissions';
-import { getCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { getStoredFileForRead, saveGeneratedManagedFile } from '../files/files.service';
 import { deleteStoredFile, readStoredFile } from '../../lib/file-storage';
 import { getExportDefinition, listExportDefinitions } from '../../lib/export-center/registry';
@@ -383,7 +385,7 @@ async function enqueueExportJob(jobId: number) {
 
 export async function runExportJob(jobId: number) {
   const [job] = await db.select().from(exportJobs).where(eq(exportJobs.id, jobId)).limit(1);
-  if (!job) throw new HTTPException(404, { message: '导出任务不存在' });
+  requireRow(job, '导出任务不存在');
   if (job.status !== 'pending' && job.status !== 'running') return;
   const definition = getExportDefinition(job.entity);
   await executeExportJob(job, definition);
@@ -406,7 +408,7 @@ export async function registerExportJobWorker() {
 async function visibleJobWhere(user: JwtPayload): Promise<SQL | undefined> {
   if (await canManageAllJobs(user)) return undefined;
   if (await canManageTenantJobs(user)) {
-    return user.tenantId == null ? isNull(exportJobs.tenantId) : eq(exportJobs.tenantId, user.tenantId);
+    return exactTenantCondition(exportJobs.tenantId, user.tenantId);
   }
   return eq(exportJobs.createdBy, user.userId);
 }
@@ -424,17 +426,19 @@ export async function listExportJobs(query: ListExportJobsQuery) {
   conditions.push(keywordCondition(query.keyword, [exportJobs.moduleName, exportJobs.filename, exportJobs.entity], 'ilike'));
   conditions.push(...dateRangeConditions(exportJobs.createdAt, query.startTime, query.endTime));
   const where = buildWhere(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(exportJobs, where),
-    db.query.exportJobs.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(exportJobs, where),
+    rows: () => db.query.exportJobs.findMany({
       where,
       with: { createdByUser: { columns: { nickname: true, username: true } } },
       orderBy: desc(exportJobs.createdAt),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapExportJob), total, page, pageSize };
+    map: mapExportJob,
+  });
 }
 
 export async function getExportJob(id: number) {
@@ -445,21 +449,19 @@ export async function getExportJob(id: number) {
     where,
     with: { createdByUser: { columns: { nickname: true, username: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '导出任务不存在' });
-  return mapExportJob(row);
+  return mapExportJob(requireRow(row, '导出任务不存在'));
 }
 
 export async function getExportJobDownload(id: number, meta: { ip?: string | null; userAgent?: string | null }) {
   const user = currentUser();
-  const job = await db.query.exportJobs.findFirst({
+  const job = requireRow(await db.query.exportJobs.findFirst({
     where: eq(exportJobs.id, id),
     with: { createdByUser: { columns: { nickname: true, username: true } } },
-  });
-  if (!job) throw new HTTPException(404, { message: '导出任务不存在' });
+  }), '导出任务不存在');
   const visibleWhere = await visibleJobWhere(user);
   if (visibleWhere) {
     const [allowed] = await db.select({ id: exportJobs.id }).from(exportJobs).where(and(eq(exportJobs.id, id), visibleWhere)).limit(1);
-    if (!allowed) throw new HTTPException(403, { message: '无权下载该导出文件' });
+    requireRow(allowed, '无权下载该导出文件', 403);
   }
   if (job.status !== 'success' || !job.fileId) throw new HTTPException(400, { message: '导出文件尚未生成' });
   if (job.fileDeletedAt || (job.expiresAt && job.expiresAt.getTime() < Date.now())) {
@@ -502,8 +504,7 @@ export async function cancelExportJob(id: number) {
   const visibleWhere = await visibleJobWhere(user);
   const where = visibleWhere ? and(eq(exportJobs.id, id), visibleWhere, inArray(exportJobs.status, ['pending', 'running'])) : and(eq(exportJobs.id, id), inArray(exportJobs.status, ['pending', 'running']));
   const [job] = await db.update(exportJobs).set({ status: 'cancelled', completedAt: new Date() }).where(where).returning();
-  if (!job) throw new HTTPException(404, { message: '可取消的导出任务不存在' });
-  return mapExportJob(job);
+  return mapExportJob(requireRow(job, '可取消的导出任务不存在'));
 }
 
 export async function retryExportJob(id: number) {
@@ -514,7 +515,7 @@ export async function retryExportJob(id: number) {
     .set({ status: 'pending', errorMessage: null, startedAt: null, completedAt: null })
     .where(where)
     .returning();
-  if (!job) throw new HTTPException(404, { message: '可重试的导出任务不存在' });
+  requireRow(job, '可重试的导出任务不存在');
   await enqueueExportJob(job.id);
   return mapExportJob(job);
 }
@@ -524,7 +525,7 @@ export async function deleteExportJob(id: number) {
   const visibleWhere = await visibleJobWhere(user);
   const where = visibleWhere ? and(eq(exportJobs.id, id), visibleWhere) : eq(exportJobs.id, id);
   const [job] = await db.delete(exportJobs).where(where).returning();
-  if (!job) throw new HTTPException(404, { message: '导出任务不存在' });
+  requireRow(job, '导出任务不存在');
 }
 
 export async function cleanupExpiredExportFiles() {

@@ -10,6 +10,8 @@ import { currentUser, currentUserOrNull } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 
@@ -45,9 +47,10 @@ export async function ensureRuleList(id: number): Promise<ListRow> {
   const tc = tenantCondition(ruleLists, currentUser());
   const conds = [eq(ruleLists.id, id)];
   if (tc) conds.push(tc);
-  const [row] = await db.select().from(ruleLists).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '名单不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(ruleLists).where(and(...conds)).limit(1),
+    '名单不存在',
+  );
 }
 
 export interface ListRuleListsQuery {
@@ -66,17 +69,22 @@ export async function listRuleLists(q: ListRuleListsQuery) {
   conds.push(keywordCondition(q.keyword, [ruleLists.name]));
   if (q.type) conds.push(eq(ruleLists.type, q.type));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(ruleLists, where),
-    db.select().from(ruleLists).where(where).orderBy(desc(ruleLists.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  const ids = rows.map((r) => r.id);
-  const counts = ids.length
-    ? await db.select({ listId: ruleListItems.listId, count: sql<number>`count(*)::int` })
-      .from(ruleListItems).where(inArray(ruleListItems.listId, ids)).groupBy(ruleListItems.listId)
-    : [];
-  const countByList = new Map(counts.map((c) => [c.listId, c.count]));
-  return { list: rows.map((r) => mapRuleList(r, countByList.get(r.id) ?? 0)), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(ruleLists, where),
+    rows: async () => {
+      const rows = await db.select().from(ruleLists).where(where).orderBy(desc(ruleLists.id)).limit(pageSize).offset(pageOffset(page, pageSize));
+      const ids = rows.map((r) => r.id);
+      const counts = ids.length
+        ? await db.select({ listId: ruleListItems.listId, count: sql<number>`count(*)::int` })
+          .from(ruleListItems).where(inArray(ruleListItems.listId, ids)).groupBy(ruleListItems.listId)
+        : [];
+      const countByList = new Map(counts.map((c) => [c.listId, c.count]));
+      return rows.map((r) => ({ row: r, itemCount: countByList.get(r.id) ?? 0 }));
+    },
+    map: ({ row, itemCount }) => mapRuleList(row, itemCount),
+  });
 }
 
 export interface CreateRuleListInput {
@@ -160,11 +168,13 @@ export async function listRuleListItems(listId: number, q: ListRuleListItemsQuer
   const conds: (SQL | undefined)[] = [eq(ruleListItems.listId, listId)];
   conds.push(keywordCondition(q.keyword, [ruleListItems.value]));
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(ruleListItems, where),
-    db.select().from(ruleListItems).where(where).orderBy(desc(ruleListItems.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapItem), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(ruleListItems, where),
+    rows: () => db.select().from(ruleListItems).where(where).orderBy(desc(ruleListItems.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapItem,
+  });
 }
 
 export interface CreateRuleListItemInput {

@@ -10,7 +10,6 @@ import {
   Select,
   SideSheet,
   Space,
-  Switch,
   TabPane,
   Tabs,
   Tag,
@@ -41,11 +40,12 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, useStatusToggle } from '@/components/list-page';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { DataBar } from '@/components/data-viz/DataBar';
 import {
@@ -144,7 +144,6 @@ export default function RateLimitPage() {
   const apiPaths = apiPathsQuery.data ?? [];
 
   const [detailRuleName, setDetailRuleName] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<number | null>(null);
   /** 详情抽屉趋势范围：24h 小时级 / 30d 天级 */
   const [trendRange, setTrendRange] = useState<'hourly' | 'daily'>('hourly');
   /** 封禁弹窗目标（来自拦截记录行）；null = 关闭 */
@@ -192,27 +191,15 @@ export default function RateLimitPage() {
     labelWidth: 130,
   });
 
-  const handleToggleEnabled = async (rule: RateLimitRule, enabled: boolean) => {
-    setTogglingId(rule.id);
-    try {
-      await saveMutation.mutateAsync({ id: rule.id, values: { enabled } });
-      Toast.success(`${rule.name} 已${enabled ? '启用' : '禁用'}`);
-    } finally {
-      setTogglingId(null);
-    }
-  };
-
-  const handleDelete = (rule: RateLimitRule) => {
-    confirmDelete({
-      title: `删除限流规则 ${rule.name}？`,
-      content: '删除后该规则的限流与统计立即停止，操作不可恢复。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id: rule.id } });
-        if (detailRuleName === rule.name) setDetailRuleName(null);
-        Toast.success('已删除');
-      },
-    });
-  };
+  const statusToggle = useStatusToggle<RateLimitRule>({
+    toggle: (rule, enabled) => saveMutation.mutateAsync({ id: rule.id, values: { enabled } }),
+    isEnabled: (rule) => rule.enabled,
+    disabled: !canManage,
+    messages: {
+      enabled: (rule) => `${rule.name} 已启用`,
+      disabled: (rule) => `${rule.name} 已禁用`,
+    },
+  });
 
   const handleResetStats = (name: string) => {
     confirmDanger({
@@ -384,22 +371,7 @@ export default function RateLimitPage() {
         );
       },
     },
-    {
-      title: '状态',
-      dataIndex: 'enabled',
-      width: 80,
-      fixed: 'right' as const,
-      render: (enabled: boolean, rule: RateLimitRule) => (
-        <Switch
-          size="small"
-          checked={enabled}
-          disabled={!canManage}
-          loading={togglingId === rule.id && saveMutation.isPending}
-          onChange={(checked) => void handleToggleEnabled(rule, checked)}
-          aria-label={`启用 ${rule.name}`}
-        />
-      ),
-    },
+    statusToggle.column({ dataIndex: 'enabled' }),
     createOperationColumn<RateLimitRule>({
       width: 180,
       desktopInlineKeys: ['detail', 'edit'],
@@ -407,7 +379,14 @@ export default function RateLimitPage() {
         { key: 'detail', label: '详情', onClick: () => setDetailRuleName(rule.name) },
         { key: 'edit', label: '编辑', hidden: !canManage, onClick: () => editModal.openEdit(rule) },
         { key: 'reset', label: '重置统计', danger: true, hidden: !canManage, onClick: () => handleResetStats(rule.name) },
-        { key: 'delete', label: '删除', danger: true, hidden: !canManage || rule.predefined, onClick: () => handleDelete(rule) },
+        deleteAction({
+          hidden: !canManage || rule.predefined,
+          title: `删除限流规则 ${rule.name}？`,
+          content: '删除后该规则的限流与统计立即停止，操作不可恢复。',
+          run: () => deleteMutation.mutateAsync({ params: { id: rule.id } }),
+          successMessage: '已删除',
+          onDeleted: () => { if (detailRuleName === rule.name) setDetailRuleName(null); },
+        }),
       ],
     }),
   ];

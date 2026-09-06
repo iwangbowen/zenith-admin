@@ -13,6 +13,7 @@ import { Wrench, Power, PowerOff, RefreshCw } from 'lucide-react';
 import type { MaintenanceLog } from '@zenith/shared/ops';
 import { useQueryClient } from '@tanstack/react-query';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import PageLoading from '@/components/PageLoading';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
@@ -58,8 +59,6 @@ export default function MaintenancePage() {
   const logsQuery = useMaintenanceLogs({ page, pageSize });
   const updateMutation = useUpdateMaintenanceStatus();
   const status = statusQuery.data ?? null;
-  const logs = logsQuery.data?.list ?? [];
-  const logsTotal = logsQuery.data?.total ?? 0;
 
   useEffect(() => {
     if (!status) return;
@@ -293,16 +292,8 @@ export default function MaintenancePage() {
       >
         <Text type="secondary" size="small" style={{ display: 'block', marginBottom: 16 }}>维护记录</Text>
         <ConfigurableTable<MaintenanceLog>
-          bordered
-          size="small"
-          rowKey="id"
           columns={logColumns}
-          dataSource={logs}
-          loading={logsQuery.isFetching}
-          empty="暂无维护记录"
-          onRefresh={() => void logsQuery.refetch()}
-          refreshLoading={logsQuery.isFetching}
-          pagination={buildPagination(logsTotal)}
+          {...listTableProps(logsQuery, { pagination: buildPagination, empty: '暂无维护记录' })}
         />
       </div>
     </div>

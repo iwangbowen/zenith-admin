@@ -1,5 +1,6 @@
 import { eq, and, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { emailTemplates } from '../../db/schema';
 import type { EmailTemplateRow } from '../../db/schema';
@@ -25,9 +26,10 @@ export function mapEmailTemplate(row: EmailTemplateRow) {
 }
 
 export async function ensureEmailTemplateExists(id: number) {
-  const [row] = await db.select().from(emailTemplates).where(and(eq(emailTemplates.id, id), tenantScope(emailTemplates))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '邮件模板不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(emailTemplates).where(and(eq(emailTemplates.id, id), tenantScope(emailTemplates))).limit(1),
+    '邮件模板不存在',
+  );
 }
 
 export interface ListEmailTemplatesQuery {
@@ -41,11 +43,13 @@ export async function listEmailTemplates(q: ListEmailTemplatesQuery) {
   const conditions: (SQL | undefined)[] = [tenantScope(emailTemplates), keywordCondition(q.keyword, [emailTemplates.name, emailTemplates.code], 'ilike')];
   if (q.status) conditions.push(eq(emailTemplates.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(emailTemplates, where),
-    withPagination(db.select().from(emailTemplates).where(where).orderBy(emailTemplates.id).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapEmailTemplate), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(emailTemplates, where),
+    rows: () => withPagination(db.select().from(emailTemplates).where(where).orderBy(emailTemplates.id).$dynamic(), q.page, q.pageSize),
+    map: mapEmailTemplate,
+  });
 }
 
 export async function getEmailTemplate(id: number) {

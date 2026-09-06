@@ -4,18 +4,17 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Tag, Typography } from '@douyinfe/semi-ui';
+import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Plus } from 'lucide-react';
 import type { AsyncTask, ImportEntityMeta } from '@zenith/shared/tasks';
 import { ASYNC_TASK_STATUSES } from '@zenith/shared/tasks';
 import { enumValueOf } from '@zenith/shared/core';
 import { ImportProgressModal } from '@/components/ImportButton';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar } from '@/components/list-page';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -150,37 +149,36 @@ export default function ImportCenterPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <FilterSelect
-          placeholder="全部导入实体"
-          groups={entityOptions.map(([module, items]) => ({ label: module, items: items.map((e) => ({ value: e.entity, label: e.title })) }))}
-          value={draftParams.entity}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, entity: value }))}
-          width={160}
-        />
-        <StatusSelect
-          items={statusOptions}
-          value={draftParams.status}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
-        />
-        <KeywordInput
-          placeholder="搜索任务名/文件名"
-          value={draftParams.keyword}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
-          onSearch={handleSearch}
-          width={220}
-        />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        <Button
-          type="primary"
-          theme="solid"
-          icon={<Plus size={14} />}
-          onClick={() => setNewImportVisible(true)}
-        >
-          新建导入
-        </Button>
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={(
+          <KeywordInput
+            placeholder="搜索任务名/文件名"
+            value={draftParams.keyword}
+            onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
+            onSearch={handleSearch}
+            width={220}
+          />
+        )}
+        filters={(
+          <>
+            <FilterSelect
+              placeholder="全部导入实体"
+              groups={entityOptions.map(([module, items]) => ({ label: module, items: items.map((e) => ({ value: e.entity, label: e.title })) }))}
+              value={draftParams.entity}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, entity: value }))}
+              width={160}
+            />
+            <StatusSelect
+              items={statusOptions}
+              value={draftParams.status}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+            />
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={<CreateButton onClick={() => setNewImportVisible(true)}>新建导入</CreateButton>}
+      />
 
       <ConfigurableTable
         bordered

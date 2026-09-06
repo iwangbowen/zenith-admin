@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Col, Dropdown, SplitButtonGroup, Row, SideSheet, Form, Modal, Popover, Space, Spin, Switch, Table, Tabs, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
+import { Button, Col, Dropdown, SplitButtonGroup, Row, SideSheet, Form, Modal, Popover, Space, Spin, Table, Tabs, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
 import type { CreateCronJobInput, CronJob } from '@zenith/shared/platform';
 import { CRON_RUN_STATUS_LABELS } from '@zenith/shared/platform';
@@ -9,11 +9,11 @@ import { usePermission } from '@/hooks/usePermission';
 import { CronExpressionParser } from 'cron-parser';
 import dayjs from 'dayjs';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import CronJobDashboard from './CronJobDashboard';
@@ -33,9 +33,9 @@ import {
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { CLEAR_LOGS_LABELS } from '@/hooks/useClearLogs';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -123,7 +123,6 @@ export default function CronJobsPage() {
     keyword: submittedParams.keyword || undefined,
   });
   const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const handlersQuery = useCronJobHandlers();
   const handlers = handlersQuery.data ?? [];
   const jobLogsQuery = useCronJobLogs({ jobId: logsJobId ?? 0, page: logsPage, pageSize: logsPageSize }, logsDrawerVisible && logsJobId != null);
@@ -157,7 +156,18 @@ export default function CronJobsPage() {
   const runMutation = useRunCronJob();
   const toggleStatusMutation = useUpdateCronJobStatus();
   const clearLogsMutation = useClearCronJobLogs();
-  const switchLoadingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.params.id ?? null) : null;
+  const status = useStatusToggle<CronJob>({
+    toggle: (job, enabled) => toggleStatusMutation.mutateAsync({ params: { id: job.id }, body: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (job) => ({
+      title: '暂停定时任务',
+      content: `确定要暂停「${job.name}」吗？暂停后该任务将不再自动执行。`,
+      okText: '暂停',
+      okButtonProps: { type: 'warning' },
+      cancelText: '取消',
+    }),
+    disabled: !hasPermission('system:cronjob:update'),
+    messages: { disabled: '已暂停' },
+  });
 
   useEffect(() => {
     if (modal.visible && modal.editing) setCronExprValue(modal.editing.cronExpression ?? '');
@@ -179,11 +189,6 @@ export default function CronJobsPage() {
     });
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  };
-
   const openCreate = () => {
     setCronExprValue('');
     modal.openCreate();
@@ -192,26 +197,6 @@ export default function CronJobsPage() {
   const openEdit = (record: CronJob) => {
     setCronExprValue(record.cronExpression ?? '');
     modal.openEdit(record);
-  };
-
-  const handleToggleStatus = (id: number, currentStatus: string, name: string) => {
-    const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled';
-    const doToggle = async () => {
-      await toggleStatusMutation.mutateAsync({ params: { id }, body: { status: newStatus } });
-      Toast.success(newStatus === 'enabled' ? '已启用' : '已暂停');
-    };
-    if (newStatus === 'disabled') {
-      Modal.confirm({
-        title: '暂停定时任务',
-        content: `确定要暂停「${name}」吗？暂停后该任务将不再自动执行。`,
-        okText: '暂停',
-        okButtonProps: { type: 'warning' },
-        cancelText: '取消',
-        onOk: doToggle,
-      });
-    } else {
-      void doToggle();
-    }
   };
 
   const openLogsDrawer = (record: CronJob) => {
@@ -301,12 +286,12 @@ export default function CronJobsPage() {
     },
     {
       title: '下次执行',
-      dataIndex: 'cronExpression',
+      dataIndex: 'nextRunAt',
       width: 160,
-      render: (expr: string, record: CronJob) => {
+      render: (_: unknown, record: CronJob) => {
         if (record.status !== 'enabled') return <span style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>已停用</span>;
         try {
-          const next = CronExpressionParser.parse(expr).next().toDate();
+          const next = CronExpressionParser.parse(record.cronExpression).next().toDate();
           const t = dayjs(next);
           const dateStr = t.format('YYYY-MM-DD');
           const today = dayjs().format('YYYY-MM-DD');
@@ -326,21 +311,7 @@ export default function CronJobsPage() {
       },
     },
     { title: '描述', dataIndex: 'description', minWidth: 200, render: renderEllipsis },
-    {
-      title: '启用',
-      dataIndex: 'status',
-      width: 70,
-      fixed: 'right',
-      render: (v: string, record: CronJob) => (
-        <Switch
-          checked={v === 'enabled'}
-          loading={switchLoadingId === record.id}
-          size="small"
-          onChange={() => { handleToggleStatus(record.id, v, record.name); }}
-          disabled={!hasPermission('system:cronjob:update')}
-        />
-      ),
-    },
+    status.column({ title: '启用' }),
     createOperationColumn<CronJob>({
       width: 240,
       desktopInlineKeys: ['execute', 'edit', 'delete'],
@@ -357,18 +328,11 @@ export default function CronJobsPage() {
           hidden: !hasPermission('system:cronjob:update'),
           onClick: () => openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:cronjob:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除此任务吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除此任务吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
         {
           key: 'logs',
           label: '执行日志',
@@ -383,43 +347,23 @@ export default function CronJobsPage() {
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" lazyRender activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <Tabs.TabPane tab="任务管理" itemKey="jobs">
-          <SearchToolbar
-            primary={(
-              <>
-                <KeywordInput placeholder="搜索任务名称/处理器" value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={240} />
-                <StatusSelect
-                  items={statusItems}
-                  value={draftParams.status}
-                  onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
-                />
-                <SearchButton onClick={handleSearch} />
-                <ResetButton onClick={handleReset} />
-              </>
-            )}
-            actions={(
-              <>
-                <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); }}>全部执行日志</Button>
-                <ExportButton entity="system.cron-jobs" query={buildExportQuery()} />
-                {hasPermission('system:cronjob:create') && (
-                  <CreateButton onClick={openCreate} />
-                )}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                <KeywordInput placeholder="搜索任务名称/处理器" value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={240} />
-                <SearchButton onClick={handleSearch} />
-                {hasPermission('system:cronjob:create') && (
-                  <CreateButton onClick={openCreate} />
-                )}
-              </>
-            )}
-            mobileFilters={(
+          <ListSearchToolbar
+            keyword={<KeywordInput placeholder="搜索任务名称/处理器" value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={240} />}
+            filters={(
               <StatusSelect
                 items={statusItems}
                 value={draftParams.status}
                 onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
               />
+            )}
+            onSearch={handleSearch}
+            onReset={handleReset}
+            create={hasPermission('system:cronjob:create') && <CreateButton onClick={openCreate} />}
+            actions={(
+              <>
+                <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); }}>全部执行日志</Button>
+                <ExportButton entity="system.cron-jobs" query={buildExportQuery()} />
+              </>
             )}
             mobileActions={(
               <>
@@ -429,20 +373,11 @@ export default function CronJobsPage() {
             )}
             filterTitle="定时任务筛选"
             actionTitle="定时任务操作"
-            onFilterApply={handleSearch}
-            onFilterReset={handleReset}
           />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<CronJob>
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        pagination={buildPagination(total)}
-        empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无数据' })}
       />
         </Tabs.TabPane>
         <Tabs.TabPane tab="执行概览" itemKey="dashboard">

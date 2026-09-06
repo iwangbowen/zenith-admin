@@ -18,6 +18,8 @@ import { currentUserId, currentUsername } from '../../lib/context';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { getMetricSnapshotsByTenant } from './monitor-history.service';
 import { validateAlertDelivery } from '../../lib/alert-validation';
 import { dispatchAlertChannels, type AlertDispatchResult } from '../../lib/alert-dispatch';
@@ -154,17 +156,20 @@ export async function listRules(q: MonitorAlertRuleQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
   const where = buildRuleListWhere(q);
-  const [list, total] = await Promise.all([
-    db.select().from(monitorAlertRules).where(where).orderBy(desc(monitorAlertRules.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    db.$count(monitorAlertRules, where),
-  ]);
-  return { list: list.map(mapRule), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(monitorAlertRules, where),
+    rows: () => db.select().from(monitorAlertRules).where(where).orderBy(desc(monitorAlertRules.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapRule,
+  });
 }
 
 export async function ensureRuleExists(id: number) {
-  const [row] = await db.select().from(monitorAlertRules).where(buildWhere(eq(monitorAlertRules.id, id), tenantScope(monitorAlertRules))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '告警规则不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(monitorAlertRules).where(buildWhere(eq(monitorAlertRules.id, id), tenantScope(monitorAlertRules))).limit(1),
+    '告警规则不存在',
+  );
 }
 
 export async function getMonitorAlertRuleBeforeAudit(id: number) {
@@ -359,9 +364,11 @@ export async function listEvents(q: MonitorAlertEventQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
   const where = buildEventListWhere(q);
-  const [rows, total] = await Promise.all([
-    // 处理人昵称随列表一次带出：逐行查用户会让 20 行的列表打 20 次库
-    db
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(monitorAlertEvents, where),
+    rows: () => db
       .select({ row: monitorAlertEvents, handledByName: users.nickname })
       .from(monitorAlertEvents)
       .leftJoin(users, eq(users.id, monitorAlertEvents.handledBy))
@@ -369,20 +376,20 @@ export async function listEvents(q: MonitorAlertEventQuery) {
       .orderBy(desc(monitorAlertEvents.id))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-    db.$count(monitorAlertEvents, where),
-  ]);
-  return { list: rows.map((item) => mapEvent(item.row, item.handledByName)), total, page, pageSize };
+    map: (item) => mapEvent(item.row, item.handledByName),
+  });
 }
 
 // ─── 人工处理 ─────────────────────────────────────────────────────────────
 async function ensureEventExists(id: number): Promise<MonitorAlertEventRow> {
-  const [row] = await db
-    .select()
-    .from(monitorAlertEvents)
-    .where(buildWhere(eq(monitorAlertEvents.id, id), tenantScope(monitorAlertEvents)))
-    .limit(1);
-  if (!row) throw new HTTPException(404, { message: '告警事件不存在' });
-  return row;
+  return requireFirstRow(
+    db
+      .select()
+      .from(monitorAlertEvents)
+      .where(buildWhere(eq(monitorAlertEvents.id, id), tenantScope(monitorAlertEvents)))
+      .limit(1),
+    '告警事件不存在',
+  );
 }
 
 /**

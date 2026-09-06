@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { randomUUID } from 'node:crypto';
 import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
@@ -28,8 +29,7 @@ async function ensureSession(uploadId: string) {
   const tc = tenantCondition(uploadSessions, user);
   const where = tc ? and(eq(uploadSessions.uploadId, uploadId), tc) : eq(uploadSessions.uploadId, uploadId);
   const [session] = await db.select().from(uploadSessions).where(where).limit(1);
-  if (!session) throw new HTTPException(404, { message: '上传会话不存在或已过期' });
-  return session;
+  return requireRow(session, '上传会话不存在或已过期');
 }
 
 async function getReceivedIndices(sessionId: number): Promise<number[]> {

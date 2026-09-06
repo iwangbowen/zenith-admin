@@ -10,7 +10,7 @@ export interface ListQueryLike<T> {
 }
 
 export interface ListTablePropsOptions<T extends Data> {
-  /** `usePagination().buildPagination`；不传则不分页 */
+  /** `usePagination().buildPagination`；不传则关闭分页（Semi Table 缺省会做客户端分页，这里显式传 `false`） */
   pagination?: (total: number) => PaginationConfig;
   /** 默认 `id` */
   rowKey?: TableProps<T>['rowKey'];
@@ -40,7 +40,7 @@ export function listTableProps<T extends Data>(query: ListQueryLike<T>, options:
     loading: query.isFetching,
     onRefresh: () => { void query.refetch(); },
     refreshLoading: query.isFetching,
-    ...(options.pagination ? { pagination: options.pagination(total) } : {}),
+    pagination: options.pagination ? options.pagination(total) : (false as const),
     ...(options.empty === undefined ? {} : { empty: options.empty }),
     ...(options.rowSelection === undefined ? {} : { rowSelection: options.rowSelection }),
   };

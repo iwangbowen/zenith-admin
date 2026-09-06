@@ -4,9 +4,9 @@ import { Banner, Button, Col, Form, Radio, Row, Tag, TextArea, Toast, Typography
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CheckCircle, RefreshCw } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
@@ -22,9 +22,8 @@ import {
 } from '@/hooks/queries/nginx-sites';
 import type { NginxInfo, NginxSite } from '@zenith/shared/ops';
 import { useQueryClient } from '@tanstack/react-query';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 
 const { Text } = Typography;
@@ -203,16 +202,13 @@ export default function NginxSitesPage() {
           onClick: () => { void handleAction(record.name, record.enabled ? 'disable' : 'enable'); },
         },
         {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+          ...deleteAction({
+            hidden: !canManage,
+            title: '确定要删除该站点吗？',
+            run: () => handleAction(record.name, 'delete'),
+            successMessage: null,
+          }),
           loading: actionMutation.isPending && actionMutation.variables?.name === record.name,
-          hidden: !canManage,
-          onClick: () => {
-            confirmDelete({
-              onOk: () => { void handleAction(record.name, 'delete'); },
-            });
-          },
         },
       ],
     }),
@@ -254,31 +250,19 @@ export default function NginxSitesPage() {
         </StatGrid>
       </div>
 
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索站点名 / 域名 / 配置路径" value={keyword} onChange={setKeyword} width={260} />
-            <SearchButton onClick={() => { void queryClient.invalidateQueries({ queryKey: nginxSiteKeys.lists }); }} />
-            <ResetButton onClick={handleReset} />
-            {canManage && <CreateButton onClick={createModal.openCreate}>新增站点</CreateButton>}
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索站点名 / 域名 / 配置路径" value={keyword} onChange={setKeyword} width={260} />}
+        onSearch={() => { void queryClient.invalidateQueries({ queryKey: nginxSiteKeys.lists }); }}
+        onReset={handleReset}
+        create={canManage && <CreateButton onClick={createModal.openCreate}>新增站点</CreateButton>}
         actions={(
           <>
             {canManage && <Button type="primary" theme="light" icon={<CheckCircle size={14} />} loading={testMutation.isPending} onClick={() => void handleTest()}>测试配置</Button>}
             {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadMutation.isPending} onClick={() => void handleReload()}>重载 Nginx</Button>}
           </>
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索站点名 / 域名 / 配置路径" value={keyword} onChange={setKeyword} width={260} />
-            <SearchButton onClick={() => { void queryClient.invalidateQueries({ queryKey: nginxSiteKeys.lists }); }} />
-            {canManage && <CreateButton onClick={createModal.openCreate}>新增站点</CreateButton>}
-          </>
-        )}
         mobileActions={(
           <>
-            <ResetButton onClick={handleReset} />
             {canManage && <Button type="primary" theme="light" icon={<CheckCircle size={14} />} loading={testMutation.isPending} onClick={() => void handleTest()}>测试配置</Button>}
             {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadMutation.isPending} onClick={() => void handleReload()}>重载 Nginx</Button>}
           </>

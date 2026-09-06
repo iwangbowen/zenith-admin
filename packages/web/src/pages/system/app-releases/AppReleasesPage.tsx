@@ -19,7 +19,6 @@ import {
   Skeleton,
   Space,
   Spin,
-  Switch,
   Table,
   TabPane,
   Tabs,
@@ -71,9 +70,9 @@ import { enumValueOf } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, RefreshButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { SliderInput, FormSliderInput } from '@/components/SliderInput';
 import {
   BarChart,
@@ -88,7 +87,6 @@ import {
   StatGrid,
 } from '@/components/charts';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { confirmDelete } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -161,9 +159,16 @@ function AppsManageModal({ visible, onClose }: { visible: boolean; onClose: () =
   });
   const toggleMutation = useSaveClientApp();
   const deleteMutation = useDeleteClientApps();
-  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
 
   const canUpdate = hasPermission('system:app-release:update');
+  const status = useStatusToggle<ClientApp>({
+    toggle: (record, enabled) => toggleMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({
+      title: '确认停用',
+      content: `停用后「${record.name}」的公开升级接口将不可用，确认停用？`,
+    }),
+    disabled: !canUpdate,
+  });
 
   const columns: ColumnProps<ClientApp>[] = [
     { title: 'appKey', dataIndex: 'appKey', width: 160, render: renderEllipsis },
@@ -173,46 +178,17 @@ function AppsManageModal({ visible, onClose }: { visible: boolean; onClose: () =
       title: '最新版本', dataIndex: 'latestVersion', width: 100,
       render: (v: string | null) => v ?? EMPTY_PLACEHOLDER,
     },
-    {
-      title: '状态', dataIndex: 'status', width: 70,
-      render: (_: unknown, record: ClientApp) => (
-        <Switch
-          checked={record.status === 'enabled'}
-          loading={togglingId === record.id}
-          disabled={!canUpdate}
-          size="small"
-          onChange={(checked) => {
-            const doToggle = () => toggleMutation.mutate(
-              { id: record.id, values: { status: checked ? 'enabled' : 'disabled' } },
-              { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
-            );
-            if (checked) doToggle();
-            else Modal.confirm({
-              title: '确认停用',
-              content: `停用后「${record.name}」的公开升级接口将不可用，确认停用？`,
-              onOk: doToggle,
-            });
-          }}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<ClientApp>({
       width: 150,
       actions: (record) => [
         ...(canUpdate ? [{ key: 'edit', label: '编辑', onClick: () => modal.openEdit(record) }] : []),
-        ...(hasPermission('system:app-release:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除应用「${record.name}」吗？`,
-              content: '需先删除该应用下的全部版本，删除后客户端将无法再检查更新',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('system:app-release:delete'),
+          title: `确定要删除应用「${record.name}」吗？`,
+          content: '需先删除该应用下的全部版本，删除后客户端将无法再检查更新',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -360,19 +336,12 @@ function ArtifactsSheet({ releaseId, onClose }: { releaseId: number | null; onCl
           key: 'copy', label: '复制链接',
           onClick: () => { if (release) copyArtifactLink(release, record); },
         },
-        ...(canDelete ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除制品「${record.fileName}」吗？`,
-              content: '删除后该文件立即不可下载',
-              onOk: async () => {
-                await deleteMutation.mutateAsync({ artifactId: record.id, releaseId: record.releaseId });
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !canDelete,
+          title: `确定要删除制品「${record.fileName}」吗？`,
+          content: '删除后该文件立即不可下载',
+          run: () => deleteMutation.mutateAsync({ artifactId: record.id, releaseId: record.releaseId }),
+        }),
       ],
     }),
   ];
@@ -533,8 +502,6 @@ function ReleaseManageTab({ active }: { active: boolean }) {
     status: enumValueOf(APP_RELEASE_STATUSES, submittedParams.status),
     keyword: submittedParams.keyword || undefined,
   }, active);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const appsQuery = useAllClientApps(active);
   const apps = appsQuery.data ?? [];
@@ -637,19 +604,12 @@ function ReleaseManageTab({ active }: { active: boolean }) {
         ...(canUpdate && record.status === 'published' ? [{
           key: 'rollout', label: '灰度', onClick: () => setRolloutRelease(record),
         }] : []),
-        ...(hasPermission('system:app-release:delete') && record.status !== 'published' ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除版本 v${record.version} 吗？`,
-              content: '版本下的制品文件将一并删除，不可恢复',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('system:app-release:delete') || record.status === 'published',
+          title: `确定要删除版本 v${record.version} 吗？`,
+          content: '版本下的制品文件将一并删除，不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -707,48 +667,27 @@ function ReleaseManageTab({ active }: { active: boolean }) {
 
   return (
     <>
-      <SearchToolbar
-        primary={<>
-          {renderAppFilter()}
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
         filters={<>
+          {renderAppFilter()}
           {renderChannelFilter()}
           {renderStatusFilter()}
         </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
         actions={<>
           {renderAppsManageButton()}
-          {renderCreateButton()}
         </>}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={<>
-          {renderAppFilter()}
-          {renderChannelFilter()}
-          {renderStatusFilter()}
-        </>}
+        create={renderCreateButton()}
         mobileActions={renderAppsManageButton(true)}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<AppRelease>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无版本，点击「新增版本」创建草稿"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal {...modal.modalProps} width={660}>
@@ -966,8 +905,6 @@ function DevicesTab({ active }: { active: boolean }) {
     pushBound: enumValueOf(['true', 'false'] as const, submittedParams.pushBound),
     keyword: submittedParams.keyword || undefined,
   }, active);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const appsQuery = useAllClientApps(active);
   const appOptions = (appsQuery.data ?? []).map((a) => ({ value: a.id, label: a.name }));
@@ -1022,19 +959,12 @@ function DevicesTab({ active }: { active: boolean }) {
             });
           },
         }] : []),
-        ...(hasPermission('system:app-release:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除设备「${record.deviceId}」的档案吗？`,
-              content: '删除后该设备的活跃与版本信息将从统计中消失,下次心跳会重新登记',
-              onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: record.id } });
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('system:app-release:delete'),
+          title: `确定要删除设备「${record.deviceId}」的档案吗？`,
+          content: '删除后该设备的活跃与版本信息将从统计中消失,下次心跳会重新登记',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -1089,44 +1019,23 @@ function DevicesTab({ active }: { active: boolean }) {
 
   return (
     <>
-      <SearchToolbar
-        primary={<>
-          {renderAppFilter()}
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
         filters={<>
-          {renderPlatformFilter()}
-          {renderSubjectFilter()}
-          {renderPushBoundFilter()}
-        </>}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-        </>}
-        mobileFilters={<>
           {renderAppFilter()}
           {renderPlatformFilter()}
           {renderSubjectFilter()}
           {renderPushBoundFilter()}
         </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<ClientDevice>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无设备,客户端检查更新或绑定推送后自动登记"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
     </>
   );

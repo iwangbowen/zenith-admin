@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { CronExpressionParser } from 'cron-parser';
@@ -232,15 +234,17 @@ export async function listSystemSchedulerRuns(query: ListSystemSchedulerRunsQuer
   if (query.alertStatus === 'unacked') conditions.push(and(isNotNull(systemSchedulerRuns.alertMessage), sql`${systemSchedulerRuns.alertAckAt} is null`)!);
   conditions.push(...dateRangeConditions(systemSchedulerRuns.startedAt, query.startTime, query.endTime));
   const where = buildWhere(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(systemSchedulerRuns, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(systemSchedulerRuns, where),
+    rows: () => withPagination(
       db.select().from(systemSchedulerRuns).where(where).orderBy(desc(systemSchedulerRuns.startedAt), desc(systemSchedulerRuns.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return { list: rows.map(mapRun), total, page, pageSize };
+    map: mapRun,
+  });
 }
 
 export async function getSystemSchedulerRun(id: number) {
@@ -249,14 +253,13 @@ export async function getSystemSchedulerRun(id: number) {
     .leftJoin(users, eq(systemSchedulerRuns.alertAckBy, users.id))
     .where(eq(systemSchedulerRuns.id, id))
     .limit(1);
-  if (!record) throw new HTTPException(404, { message: '运行日志不存在' });
-  return mapRunWithAckUser(record.run, record.ackUser);
+  const existing = requireRow(record, '运行日志不存在');
+  return mapRunWithAckUser(existing.run, existing.ackUser);
 }
 
 export async function acknowledgeSystemSchedulerRunAlert(id: number, note?: string | null) {
   const user = currentUserOrNull();
-  const row = await db.query.systemSchedulerRuns.findFirst({ where: eq(systemSchedulerRuns.id, id) });
-  if (!row) throw new HTTPException(404, { message: '运行日志不存在' });
+  const row = requireRow(await db.query.systemSchedulerRuns.findFirst({ where: eq(systemSchedulerRuns.id, id) }), '运行日志不存在');
   if (!row.alertMessage) throw new HTTPException(400, { message: '该运行日志没有告警' });
   const [updated] = await db.update(systemSchedulerRuns).set({
     alertAckAt: new Date(),
@@ -269,16 +272,18 @@ export async function acknowledgeSystemSchedulerRunAlert(id: number, note?: stri
 export async function listSystemSchedulerNodes(query: { page?: number; pageSize?: number } = {}) {
   const page = Number(query.page ?? 1);
   const pageSize = Number(query.pageSize ?? 10);
-  const [total, rows] = await Promise.all([
-    db.$count(systemSchedulerNodes),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(systemSchedulerNodes),
+    rows: () => withPagination(
       db.select().from(systemSchedulerNodes)
         .orderBy(desc(systemSchedulerNodes.active), desc(systemSchedulerNodes.lastHeartbeatAt))
         .$dynamic(),
       page, pageSize,
     ),
-  ]);
-  return { list: rows.map(mapNode), total, page, pageSize };
+    map: mapNode,
+  });
 }
 
 export async function runSystemSchedulerTask(name: string) {

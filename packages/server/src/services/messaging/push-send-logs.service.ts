@@ -8,6 +8,7 @@ import { pushSendLogs, users, type PushSendLogRow } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
+import { buildListResult } from '../../lib/list-query';
 
 export function mapPushSendLog(row: PushSendLogRow & { app?: { name: string } | null }, subjectName?: string | null) {
   return {
@@ -55,31 +56,31 @@ export async function listPushSendLogs(q: ListPushSendLogsQuery) {
     q.status ? eq(pushSendLogs.status, q.status) : undefined,
     ...dateRangeConditions(pushSendLogs.createdAt, q.startTime, q.endTime),
   );
-  const [total, rows] = await Promise.all([
-    db.$count(pushSendLogs, where),
-    db.query.pushSendLogs.findMany({
-      where,
-      with: { app: { columns: { name: true } } },
-      orderBy: desc(pushSendLogs.id),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  ]);
-
-  // 管理端收件人只展示 user 主体的昵称;member 主体显示 ID 即可
-  const userIds = [...new Set(rows.filter((r) => r.subjectType === 'user' && r.subjectId).map((r) => r.subjectId as number))];
-  const nameMap = new Map<number, string>();
-  if (userIds.length > 0) {
-    const nameRows = await db.select({ id: users.id, nickname: users.nickname }).from(users).where(inArray(users.id, userIds));
-    for (const r of nameRows) nameMap.set(r.id, r.nickname);
-  }
-
-  return {
-    list: rows.map((row) => mapPushSendLog(row, row.subjectType === 'user' && row.subjectId ? nameMap.get(row.subjectId) : null)),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(pushSendLogs, where),
+    rows: async () => {
+      const rows = await db.query.pushSendLogs.findMany({
+        where,
+        with: { app: { columns: { name: true } } },
+        orderBy: desc(pushSendLogs.id),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      });
+
+      // 管理端收件人只展示 user 主体的昵称;member 主体显示 ID 即可
+      const userIds = [...new Set(rows.filter((r) => r.subjectType === 'user' && r.subjectId).map((r) => r.subjectId as number))];
+      const nameMap = new Map<number, string>();
+      if (userIds.length > 0) {
+        const nameRows = await db.select({ id: users.id, nickname: users.nickname }).from(users).where(inArray(users.id, userIds));
+        for (const r of nameRows) nameMap.set(r.id, r.nickname);
+      }
+
+      return rows.map((row) => ({ row, subjectName: row.subjectType === 'user' && row.subjectId ? nameMap.get(row.subjectId) : null }));
+    },
+    map: ({ row, subjectName }) => mapPushSendLog(row, subjectName),
+  });
 }
 
 // ─── 送达回执（供应商回调）────────────────────────────────────────────────────

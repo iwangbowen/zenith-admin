@@ -1,5 +1,4 @@
-import React, { useState, useMemo } from 'react';
-import { Skeleton, Spin, Select } from '@douyinfe/semi-ui';
+import { useState, useMemo } from 'react';
 import { LogIn, CheckCircle2, XCircle, Users } from 'lucide-react';
 import {
   AreaChart,
@@ -9,7 +8,6 @@ import {
   EmptyChart,
   useChartPalette,
   chartOptions,
-  sectionTitleStyle,
   makeAreaSpec,
   makeBarSpec,
   makeHeatmapSpec,
@@ -21,16 +19,7 @@ import {
 import dayjs from 'dayjs';
 import { useLoginLogStats } from '@/hooks/queries/login-logs';
 import { buildUserChartLabels } from '@/components/UserDisplay';
-
-const DAYS_OPTIONS = [
-  { label: '最近 7 天', value: 7 },
-  { label: '最近 30 天', value: 30 },
-  { label: '最近 90 天', value: 90 },
-];
-
-const FAIL_COLOR = 'var(--semi-color-danger)';
-
-const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+import { ChartPanel, LogStatsScaffold, WEEKDAY_LABELS, calcSuccessRate, calcSuccessRateDelta, deltaOf } from '@/components/logs/LogStatsScaffold';
 
 interface BarDatum {
   readonly name: string;
@@ -42,59 +31,11 @@ interface PieDatum {
   readonly value: number;
 }
 
-function ChartShell({ title, children, danger }: Readonly<{ title: React.ReactNode; children: React.ReactNode; danger?: boolean }>) {
-  return (
-    <div className="zx-panel">
-      <div style={{ ...sectionTitleStyle, color: danger ? FAIL_COLOR : sectionTitleStyle.color }}>{title}</div>
-      {children}
-    </div>
-  );
-}
-
-/** 首屏加载骨架：按最终布局占位（4 张统计卡 + 趋势图 + 双图行），避免空白闪烁 */
-function StatsSkeleton() {
-  return (
-    <Skeleton
-      loading
-      active
-      placeholder={(
-        <>
-          <StatGrid style={{ marginBottom: 16 }}>
-            {Array.from({ length: 4 }, (_, i) => `sk-stat-${i}`).map((key) => (
-              <div key={key}>
-                <Skeleton.Title style={{ width: 64, height: 26, marginBottom: 10 }} />
-                <Skeleton.Paragraph rows={1} style={{ width: 80, marginBottom: 0 }} />
-              </div>
-            ))}
-          </StatGrid>
-          <div className="zx-panel" style={{ marginBottom: 16 }}>
-            <Skeleton.Title style={{ width: 180, height: 14, marginBottom: 16 }} />
-            <Skeleton.Image style={{ width: '100%', height: 230 }} />
-          </div>
-          <div className="chart-grid">
-            {['sk-chart-a', 'sk-chart-b'].map((key) => (
-              <div key={key} className="zx-panel">
-                <Skeleton.Title style={{ width: 120, height: 14, marginBottom: 16 }} />
-                <Skeleton.Image style={{ width: '100%', height: 260 }} />
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    >{null}</Skeleton>
-  );
-}
-
 /** GPU 名多为 "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 ...)"，提取括号内主体便于坐标轴展示 */
 function shortGpuName(gpu: string): string {
   const inner = /\(([^)]+)\)/.exec(gpu)?.[1] ?? gpu;
   const parts = inner.split(',').map((s) => s.trim());
   return (parts[1] || parts[0] || gpu).slice(0, 40);
-}
-
-/** 环比增量：上一周期无数据时不展示（返回 null） */
-function deltaOf(current: number, prev: number): number | null {
-  return prev > 0 ? current - prev : null;
 }
 
 export default function LoginLogStatsPanel() {
@@ -172,13 +113,8 @@ export default function LoginLogStatsPanel() {
 
   const summary = stats?.summary;
   const prevSummary = stats?.prevSummary;
-  const successRate = summary == null || summary.total === 0
-    ? null
-    : ((summary.successCount / summary.total) * 100).toFixed(1);
-  // 成功率环比（比率差）：两个周期都有数据才展示
-  const successRateDelta = summary && prevSummary && summary.total > 0 && prevSummary.total > 0
-    ? summary.successCount / summary.total - prevSummary.successCount / prevSummary.total
-    : null;
+  const successRate = calcSuccessRate(summary);
+  const successRateDelta = calcSuccessRateDelta(summary, prevSummary);
 
   const statusPieData = useMemo<PieDatum[]>(
     () => (summary
@@ -366,17 +302,7 @@ export default function LoginLogStatsPanel() {
   }), [dowHourData, palette]);
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <Select value={days} onChange={(v) => setDays(v as number)} style={{ width: 140 }}>
-          {DAYS_OPTIONS.map((o) => (
-            <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>
-          ))}
-        </Select>
-      </div>
-
-      {statsQuery.isLoading ? <StatsSkeleton /> : (
-      <Spin spinning={statsQuery.isFetching}>
+    <LogStatsScaffold days={days} onDaysChange={setDays} loading={statsQuery.isLoading} fetching={statsQuery.isFetching}>
         <StatGrid style={{ marginBottom: 16 }}>
           <StatCard
             title="总登录次数"
@@ -417,19 +343,19 @@ export default function LoginLogStatsPanel() {
           />
         </StatGrid>
 
-        <ChartShell title="每日登录趋势（成功 / 失败）">
+        <ChartPanel title="每日登录趋势（成功 / 失败）">
           {isEmptyValues(filledDailyStats) ? <EmptyChart height={230} /> : (
             <AreaChart {...trendSpec} options={chartOptions} height={230} />
           )}
-        </ChartShell>
+        </ChartPanel>
 
         <div className="chart-grid" style={{ marginTop: 16, marginBottom: 16 }}>
-          <ChartShell title="Top 10 登录用户">
+          <ChartPanel title="Top 10 登录用户">
             {userChartData.length === 0 ? <EmptyChart /> : (
               <BarChart {...userBarSpec} options={chartOptions} height={260} />
             )}
-          </ChartShell>
-          <ChartShell
+          </ChartPanel>
+          <ChartPanel
             danger={ipFailChartData.length > 0}
             title={(
               <>
@@ -441,74 +367,72 @@ export default function LoginLogStatsPanel() {
             {ipFailChartData.length === 0 ? <EmptyChart tone="success" text="该时间段无失败登录" /> : (
               <BarChart {...ipFailBarSpec} options={chartOptions} height={260} />
             )}
-          </ChartShell>
+          </ChartPanel>
         </div>
 
         <div className="chart-grid" style={{ marginBottom: 16 }}>
-          <ChartShell title="按小时登录分布">
+          <ChartPanel title="按小时登录分布">
             {isEmptyValues(hourlyChartData) ? <EmptyChart height={240} /> : (
               <BarChart {...hourlySpec} options={chartOptions} height={240} />
             )}
-          </ChartShell>
-          <ChartShell title="成功 / 失败占比">
+          </ChartPanel>
+          <ChartPanel title="成功 / 失败占比">
             {isEmptyValues(statusPieData) ? <EmptyChart height={240} /> : (
               <PieChart {...statusSpec} options={chartOptions} height={240} />
             )}
-          </ChartShell>
+          </ChartPanel>
         </div>
 
         <div className="chart-grid" style={{ marginBottom: 16 }}>
-          <ChartShell title="浏览器分布">
+          <ChartPanel title="浏览器分布">
             {browserData.length === 0 ? <EmptyChart height={260} /> : (
               <PieChart {...browserSpec} options={chartOptions} height={260} />
             )}
-          </ChartShell>
-          <ChartShell title="操作系统分布">
+          </ChartPanel>
+          <ChartPanel title="操作系统分布">
             {osData.length === 0 ? <EmptyChart height={260} /> : (
               <PieChart {...osSpec} options={chartOptions} height={260} />
             )}
-          </ChartShell>
+          </ChartPanel>
         </div>
 
         <div className="chart-grid" style={{ marginBottom: 16 }}>
-          <ChartShell danger={failReasonData.length > 0} title="失败原因分布">
+          <ChartPanel danger={failReasonData.length > 0} title="失败原因分布">
             {failReasonData.length === 0 ? <EmptyChart tone="success" text="该时间段无失败登录" height={260} /> : (
               <PieChart {...failReasonSpec} options={chartOptions} height={260} />
             )}
-          </ChartShell>
-          <ChartShell title="登录地点 Top 10">
+          </ChartPanel>
+          <ChartPanel title="登录地点 Top 10">
             {locationChartData.length === 0 ? <EmptyChart height={260} /> : (
               <BarChart {...locationSpec} options={chartOptions} height={260} />
             )}
-          </ChartShell>
+          </ChartPanel>
         </div>
 
-        <ChartShell title={`星期 × 小时登录热力（近 ${days} 天）`}>
+        <ChartPanel title={`星期 × 小时登录热力（近 ${days} 天）`}>
           {isEmptyValues(dowHourData) ? <EmptyChart height={280} /> : (
             <HeatmapChart {...dowHourSpec} options={chartOptions} height={280} />
           )}
-        </ChartShell>
+        </ChartPanel>
 
         <div className="chart-grid" style={{ marginTop: 16, marginBottom: 16 }}>
-          <ChartShell title="设备分辨率 Top 8">
+          <ChartPanel title="设备分辨率 Top 8">
             {resolutionChartData.length === 0 ? <EmptyChart height={240} /> : (
               <BarChart {...resolutionSpec} options={chartOptions} height={240} />
             )}
-          </ChartShell>
-          <ChartShell title="设备 GPU Top 8">
+          </ChartPanel>
+          <ChartPanel title="设备 GPU Top 8">
             {gpuChartData.length === 0 ? <EmptyChart height={240} /> : (
               <BarChart {...gpuSpec} options={chartOptions} height={240} />
             )}
-          </ChartShell>
+          </ChartPanel>
         </div>
 
-        <ChartShell title={`按星期登录分布（近 ${days} 天）`}>
+        <ChartPanel title={`按星期登录分布（近 ${days} 天）`}>
           {isEmptyValues(weekdayChartData) ? <EmptyChart height={220} /> : (
             <BarChart {...weekdaySpec} options={chartOptions} height={220} />
           )}
-        </ChartShell>
-      </Spin>
-      )}
-    </div>
+        </ChartPanel>
+    </LogStatsScaffold>
   );
 }

@@ -20,7 +20,7 @@ export interface ListSearchToolbarProps {
   className?: string;
 }
 
-const present = (node: ReactNode) => node !== undefined && node !== null && node !== false;
+const present = (node: ReactNode) => Boolean(node);
 
 /**
  * 标准列表页工具栏：把 `SearchToolbar` 的桌面 / 移动槽位排布规则写在一处——

@@ -5,7 +5,7 @@ import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { roles, userRoles } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { isPlatformAdmin, tenantCondition } from '../../lib/tenant';
+import { exactTenantCondition, isPlatformAdmin, tenantCondition } from '../../lib/tenant';
 
 /**
  * 平台保留角色编码：超管判定按 code + 平台归属执行。
@@ -14,7 +14,7 @@ import { isPlatformAdmin, tenantCondition } from '../../lib/tenant';
 export const RESERVED_ROLE_CODES: ReadonlySet<string> = new Set<string>([SUPER_ADMIN_CODE]);
 
 function roleTenantCondition(tenantId: number | null) {
-  return tenantId == null ? isNull(roles.tenantId) : eq(roles.tenantId, tenantId);
+  return exactTenantCondition(roles.tenantId, tenantId);
 }
 
 /** 用户是否绑定平台超管角色（code=super_admin 且角色归属平台） */

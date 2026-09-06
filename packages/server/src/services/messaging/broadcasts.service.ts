@@ -8,6 +8,8 @@
  */
 import { desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import type { BroadcastChannel, BroadcastStatus, CreateBroadcastInput, UpdateBroadcastInput } from '@zenith/shared/messaging';
 import { db } from '../../db';
 import { broadcastCampaigns, members, users, type BroadcastCampaignRow } from '../../db/schema';
@@ -40,9 +42,10 @@ export function mapBroadcast(row: BroadcastCampaignRow & { creator?: { nickname:
 }
 
 export async function ensureBroadcastExists(id: number): Promise<BroadcastCampaignRow> {
-  const [row] = await db.select().from(broadcastCampaigns).where(eq(broadcastCampaigns.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '群发活动不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(broadcastCampaigns).where(eq(broadcastCampaigns.id, id)).limit(1),
+    '群发活动不存在',
+  );
 }
 
 export interface ListBroadcastsQuery {
@@ -58,25 +61,26 @@ export async function listBroadcasts(q: ListBroadcastsQuery) {
     keywordCondition(q.keyword, [broadcastCampaigns.title, broadcastCampaigns.content, broadcastCampaigns.remark]),
     q.status ? eq(broadcastCampaigns.status, q.status) : undefined,
   );
-  const [total, rows] = await Promise.all([
-    db.$count(broadcastCampaigns, where),
-    db.query.broadcastCampaigns.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(broadcastCampaigns, where),
+    rows: () => db.query.broadcastCampaigns.findMany({
       where,
       with: { creator: { columns: { nickname: true } } },
       orderBy: desc(broadcastCampaigns.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapBroadcast), total, page, pageSize };
+    map: mapBroadcast,
+  });
 }
 
 export async function getBroadcast(id: number) {
-  const row = await db.query.broadcastCampaigns.findFirst({
+  const row = requireRow(await db.query.broadcastCampaigns.findFirst({
     where: eq(broadcastCampaigns.id, id),
     with: { creator: { columns: { nickname: true } } },
-  });
-  if (!row) throw new HTTPException(404, { message: '群发活动不存在' });
+  }), '群发活动不存在');
   return mapBroadcast(row);
 }
 

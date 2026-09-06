@@ -14,6 +14,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { UserAvatar } from '@/components/UserAvatar';
 import UserSelect from '@/components/UserSelect';
@@ -26,7 +27,6 @@ import {
 } from '@/hooks/queries/channels';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
 
 interface Props {
@@ -52,7 +52,6 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
     pageSize,
     keyword: submittedKeyword || undefined,
   }, visible && !!channel);
-  const data = listQuery.data ?? null;
   const addMutation = useAddChannelSubscribers();
   const removeMutation = useRemoveChannelSubscriber();
   const exportQuery = channel
@@ -88,11 +87,6 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
     setAddVisible(false);
   };
 
-  const handleRemove = async (sub: ChannelSubscriber) => {
-    if (!channel) return;
-    await removeMutation.mutateAsync({ params: { id: channel.id, userId: sub.userId } });
-    Toast.success('已移除');
-  };
 
   const columns: ColumnProps<ChannelSubscriber>[] = [
     {
@@ -116,17 +110,13 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
     columns.push(createOperationColumn<ChannelSubscriber>({
       width: 100,
       actions: (record) => [
-        {
+        deleteAction({
           key: 'remove',
           label: '移除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定移除订阅者「${record.name}」？`,
-              onOk: () => { void handleRemove(record); },
-            });
-          },
-        },
+          title: `确定移除订阅者「${record.name}」？`,
+          run: () => channel ? removeMutation.mutateAsync({ params: { id: channel.id, userId: record.userId } }) : Promise.resolve(),
+          successMessage: '已移除',
+        }),
       ],
     }));
   }
@@ -178,15 +168,12 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
         actionTitle="订阅者操作"
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<ChannelSubscriber>
         columns={columns}
-        dataSource={data?.list ?? []}
-        rowKey="userId"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, {
+          rowKey: 'userId',
+          pagination: buildPagination,
+        })}
       />
 
       <AppModal

@@ -4,6 +4,7 @@ import { regions } from '../../db/schema';
 import { buildRegionTree, filterRegionTree, REGION_LEVEL_SHORT_LABELS, validateRegionLevelHierarchy, type Region, type RegionLevel } from '@zenith/shared/platform';
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
 
 export function mapRegion(row: typeof regions.$inferSelect): Omit<Region, 'children'> {
@@ -70,8 +71,10 @@ export async function createRegion(data: CreateRegionInput) {
 }
 
 export async function updateRegion(id: number, data: UpdateRegionInput) {
-  const [current] = await db.select({ code: regions.code, level: regions.level, parentCode: regions.parentCode }).from(regions).where(eq(regions.id, id));
-  if (!current) throw new HTTPException(404, { message: '地区不存在' });
+  const current = await requireFirstRow(
+    db.select({ code: regions.code, level: regions.level, parentCode: regions.parentCode }).from(regions).where(eq(regions.id, id)),
+    '地区不存在',
+  );
   const all = await db.select({ code: regions.code, parentCode: regions.parentCode, level: regions.level }).from(regions);
   if (data.parentCode) {
     if (data.parentCode === current.code) throw new HTTPException(400, { message: '父级地区不能选择自身' });
@@ -110,24 +113,27 @@ export async function updateRegion(id: number, data: UpdateRegionInput) {
   }
   try {
     const [row] = await db.update(regions).set({ ...data }).where(eq(regions.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '地区不存在' });
-    return mapRegion(row);
+    return mapRegion(requireRow(row, '地区不存在'));
   } catch (err) {
     rethrowPgUniqueViolation(err, '区划代码已存在');
   }
 }
 
 export async function deleteRegion(id: number) {
-  const [current] = await db.select({ code: regions.code }).from(regions).where(eq(regions.id, id));
-  if (!current) throw new HTTPException(404, { message: '地区不存在' });
+  const current = await requireFirstRow(
+    db.select({ code: regions.code }).from(regions).where(eq(regions.id, id)),
+    '地区不存在',
+  );
   const children = await db.select({ id: regions.id }).from(regions).where(eq(regions.parentCode, current.code));
   if (children.length > 0) throw new HTTPException(400, { message: '该地区下存在子地区，请先删除子地区' });
   await db.delete(regions).where(eq(regions.id, id));
 }
 
 export async function getRegion(id: number) {
-  const [row] = await db.select().from(regions).where(eq(regions.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '地区不存在' });
+  const row = await requireFirstRow(
+    db.select().from(regions).where(eq(regions.id, id)).limit(1),
+    '地区不存在',
+  );
   return mapRegion(row);
 }
 

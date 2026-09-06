@@ -5,9 +5,9 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Copy } from 'lucide-react';
 import type { ChatWebhook } from '@zenith/shared/chat';
 import { UserAvatar } from '@/components/UserAvatar';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { AppModal } from '@/components/AppModal';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePagination } from '@/hooks/usePagination';
@@ -22,9 +22,9 @@ import {
   useRegenerateChatBotToken,
   useSaveChatBot,
 } from '@/hooks/queries/chat-bots';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { abortSubmit } from '@/lib/abort-submit';
 
@@ -68,7 +68,6 @@ export default function ChatBotsPage() {
     pageSize,
     keyword: submittedKeyword.trim() || undefined,
   });
-  const data = listQuery.data ?? null;
   const saveMutation = useSaveChatBot();
   const botModal = useEditModal<ChatWebhook, BotFormValues, SaveChatBotValues>({
     entityName: ' Webhook 机器人',
@@ -145,10 +144,6 @@ export default function ChatBotsPage() {
     setSecretInfo(result);
   }
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  }
 
   const columns: ColumnProps<ChatWebhook>[] = [
     {
@@ -213,59 +208,31 @@ export default function ChatBotsPage() {
             });
           },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('chat:bot:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除该机器人？',
-              onOk: () => { void handleDelete(row.id); },
-            });
-          },
-        },
+          title: '确定删除该机器人？',
+          run: () => deleteMutation.mutateAsync({ params: { id: row.id } }),
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索机器人名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={260} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {hasPermission('chat:bot:create') && (
-              <CreateButton onClick={botModal.openCreate} />
-            )}
-          </>
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索机器人名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={260} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('chat:bot:create') && (
+          <CreateButton onClick={botModal.openCreate} />
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索机器人名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={260} />
-            <SearchButton onClick={handleSearch} />
-            {hasPermission('chat:bot:create') && (
-              <CreateButton onClick={botModal.openCreate} />
-            )}
-          </>
-        )}
-        mobileActions={<ResetButton onClick={handleReset} />}
         actionTitle="机器人操作"
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<ChatWebhook>
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
-        rowKey="id"
-        size="small"
         empty="暂无数据"
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal

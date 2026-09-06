@@ -1,5 +1,5 @@
 import { Tabs, TabPane, InputNumber } from '@douyinfe/semi-ui';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
 import { ClearLogsButtons, ClearLogsMobileButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
@@ -8,7 +8,6 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
 import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/hooks/queries/operation-logs';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { enumValueOf } from '@zenith/shared/core';
 import { OPERATION_LOG_RESULTS } from '@zenith/shared/platform';
@@ -167,10 +166,10 @@ export default function OperationLogsPage() {
         keepDOM={false}
       >
         <TabPane tab="日志列表" itemKey="list">
-          <SearchToolbar
-            primary={(
+          <ListSearchToolbar
+            keyword={renderUsernameSearch()}
+            filters={(
               <>
-                {renderUsernameSearch()}
                 {renderModuleSearch()}
                 {renderDescriptionSearch()}
                 {renderMethodFilter()}
@@ -180,33 +179,14 @@ export default function OperationLogsPage() {
                 {renderStatusFilter()}
                 {renderTimeRangeFilter()}
                 {renderDurationFilters()}
-                <SearchButton onClick={handleSearch} />
-                <ResetButton onClick={handleReset} />
               </>
             )}
+            onSearch={handleSearch}
+            onReset={handleReset}
             actions={(
               <>
                 {renderExportButtons()}
                 {renderClearButtons()}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderUsernameSearch()}
-                <SearchButton onClick={handleSearch} />
-              </>
-            )}
-            mobileFilters={(
-              <>
-                {renderModuleSearch()}
-                {renderDescriptionSearch()}
-                {renderMethodFilter()}
-                {renderPathSearch()}
-                {renderIpSearch()}
-                {renderContentSearch()}
-                {renderStatusFilter()}
-                {renderTimeRangeFilter()}
-                {renderDurationFilters()}
               </>
             )}
             mobileActions={(
@@ -217,8 +197,6 @@ export default function OperationLogsPage() {
             )}
             filterTitle="操作日志筛选"
             actionTitle="日志操作"
-            onFilterApply={handleSearch}
-            onFilterReset={handleReset}
           />
 
           <OperationLogsTable

@@ -7,6 +7,8 @@
  */
 import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import type { CreatePushConfigInput, PushProvider, TestPushSendInput, UpdatePushConfigInput } from '@zenith/shared/messaging';
 import { db } from '../../db';
 import { pushConfigs, pushSendLogs, type PushConfigRow } from '../../db/schema';
@@ -48,9 +50,10 @@ export function mapPushConfigForEdit(row: PushConfigWithApp) {
 }
 
 export async function ensurePushConfigExists(id: number): Promise<PushConfigRow> {
-  const [row] = await db.select().from(pushConfigs).where(eq(pushConfigs.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '推送配置不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(pushConfigs).where(eq(pushConfigs.id, id)).limit(1),
+    '推送配置不存在',
+  );
 }
 
 export interface ListPushConfigsQuery {
@@ -68,25 +71,26 @@ export async function listPushConfigs(q: ListPushConfigsQuery) {
     q.provider ? eq(pushConfigs.provider, q.provider) : undefined,
     q.status ? eq(pushConfigs.status, q.status) : undefined,
   );
-  const [total, rows] = await Promise.all([
-    db.$count(pushConfigs, where),
-    db.query.pushConfigs.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(pushConfigs, where),
+    rows: () => db.query.pushConfigs.findMany({
       where,
       with: { app: { columns: { name: true } } },
       orderBy: pushConfigs.id,
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapPushConfigSafe), total, page, pageSize };
+    map: mapPushConfigSafe,
+  });
 }
 
 export async function getPushConfig(id: number) {
-  const row = await db.query.pushConfigs.findFirst({
+  const row = requireRow(await db.query.pushConfigs.findFirst({
     where: eq(pushConfigs.id, id),
     with: { app: { columns: { name: true } } },
-  });
-  if (!row) throw new HTTPException(404, { message: '推送配置不存在' });
+  }), '推送配置不存在');
   return mapPushConfigForEdit(row);
 }
 
@@ -95,11 +99,10 @@ export async function getPushConfigBeforeAudit(id: number) {
 }
 
 async function findPushConfigSafeById(id: number) {
-  const row = await db.query.pushConfigs.findFirst({
+  const row = requireRow(await db.query.pushConfigs.findFirst({
     where: eq(pushConfigs.id, id),
     with: { app: { columns: { name: true } } },
-  });
-  if (!row) throw new HTTPException(404, { message: '推送配置不存在' });
+  }), '推送配置不存在');
   return mapPushConfigSafe(row);
 }
 

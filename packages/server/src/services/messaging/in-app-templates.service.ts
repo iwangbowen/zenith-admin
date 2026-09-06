@@ -1,5 +1,6 @@
 import { eq, and, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { inAppTemplates } from '../../db/schema';
 import type { InAppTemplateRow } from '../../db/schema';
@@ -26,9 +27,10 @@ export function mapInAppTemplate(row: InAppTemplateRow) {
 }
 
 export async function ensureInAppTemplateExists(id: number) {
-  const [row] = await db.select().from(inAppTemplates).where(and(eq(inAppTemplates.id, id), tenantScope(inAppTemplates))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '站内信模板不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(inAppTemplates).where(and(eq(inAppTemplates.id, id), tenantScope(inAppTemplates))).limit(1),
+    '站内信模板不存在',
+  );
 }
 
 export interface ListInAppTemplatesQuery {
@@ -44,11 +46,13 @@ export async function listInAppTemplates(q: ListInAppTemplatesQuery) {
   if (q.type) conditions.push(eq(inAppTemplates.type, q.type));
   if (q.status) conditions.push(eq(inAppTemplates.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(inAppTemplates, where),
-    withPagination(db.select().from(inAppTemplates).where(where).orderBy(inAppTemplates.id).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapInAppTemplate), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(inAppTemplates, where),
+    rows: () => withPagination(db.select().from(inAppTemplates).where(where).orderBy(inAppTemplates.id).$dynamic(), q.page, q.pageSize),
+    map: mapInAppTemplate,
+  });
 }
 
 export async function getInAppTemplate(id: number) {

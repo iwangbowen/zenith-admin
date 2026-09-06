@@ -8,12 +8,13 @@ import type { LoginRiskEvent } from '@zenith/shared/identity';
 import { identitySecuritySettingsSchema, type IdentitySecuritySettings } from '@zenith/shared/settings';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { identitySecurityKeys, useLoginRiskEventList } from '@/hooks/queries/identity-security';
 import { useSaveSettings, useSettings } from '@/hooks/queries/settings';
 import { ApiError } from '@/lib/query';
-import { RefreshButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { RefreshButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -34,7 +35,6 @@ export default function IdentitySecurityPage() {
   const policyQuery = useSettings('identitySecurity');
   const savePolicyMutation = useSaveSettings('identitySecurity');
   const riskQuery = useLoginRiskEventList({ page, pageSize, keyword: submittedKeyword.trim() || undefined });
-  const riskData = riskQuery.data ?? null;
 
   useEffect(() => {
     if (policyQuery.data) setPolicy(policyQuery.data.effective);
@@ -142,20 +142,14 @@ export default function IdentitySecurityPage() {
         </TabPane>
 
         <TabPane tab="风险事件" itemKey="risk">
-          <SearchToolbar>
-            <KeywordInput placeholder="搜索账号、IP、原因" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleRiskSearch} />
-            <SearchButton onClick={handleRiskSearch} />
-            <ResetButton onClick={handleRiskReset} />
-          </SearchToolbar>
-          <ConfigurableTable
-            bordered
+          <ListSearchToolbar
+            keyword={<KeywordInput placeholder="搜索账号、IP、原因" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleRiskSearch} />}
+            onSearch={handleRiskSearch}
+            onReset={handleRiskReset}
+          />
+          <ConfigurableTable<LoginRiskEvent>
             columns={riskColumns}
-            dataSource={riskData?.list ?? []}
-            rowKey="id"
-            loading={riskQuery.isFetching}
-            onRefresh={() => void riskQuery.refetch()}
-            refreshLoading={riskQuery.isFetching}
-            pagination={buildPagination(riskData?.total ?? 0)}
+            {...listTableProps(riskQuery, { pagination: buildPagination })}
           />
         </TabPane>
       </Tabs>

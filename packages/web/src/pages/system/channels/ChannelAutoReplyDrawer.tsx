@@ -15,6 +15,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction } from '@/components/list-page';
 import {
   ChannelContentFields,
   ChannelNewsBodyField,
@@ -27,7 +28,6 @@ import {
   useSaveChannelAutoReply,
 } from '@/hooks/queries/channels';
 import { CreateButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 
 interface Props {
   channelId: number;
@@ -139,10 +139,6 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
     setEditVisible(false);
   };
 
-  const handleDelete = async (r: ChannelAutoReply) => {
-    await deleteMutation.mutateAsync({ params: { channelId, replyId: r.id } });
-    Toast.success('已删除');
-  };
 
   const columns: ColumnProps<ChannelAutoReply>[] = [
     {
@@ -190,18 +186,12 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
           hidden: !canSave,
           onClick: () => openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canDelete,
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除该规则？',
-              onOk: () => { void handleDelete(record); },
-            });
-          },
-        },
+          title: '确定删除该规则？',
+          run: () => deleteMutation.mutateAsync({ params: { channelId, replyId: record.id } }),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];

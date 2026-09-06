@@ -13,6 +13,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
@@ -84,7 +85,6 @@ const refreshIntervalOptions = [
 
 const EMPTY_TASKS: AsyncTask[] = [];
 const EMPTY_TYPES: AsyncTaskTypeMeta[] = [];
-const EMPTY_ITEMS: AsyncTaskItem[] = [];
 
 function renderJson(value: Record<string, unknown> | null) {
   if (!value || Object.keys(value).length === 0) return <Typography.Text type="tertiary">-</Typography.Text>;
@@ -176,8 +176,6 @@ export default function TaskCenterPage() {
     void typesQuery.refetch();
     void statsQuery.refetch();
   }, [typesQuery, statsQuery]);
-  const items = itemsQuery.data?.list ?? EMPTY_ITEMS;
-  const itemsTotal = itemsQuery.data?.total ?? 0;
   const cancelMutation = useAsyncTaskAction('cancel');
   const resumeMutation = useAsyncTaskAction('resume');
   const restartMutation = useAsyncTaskAction('restart');
@@ -193,6 +191,7 @@ export default function TaskCenterPage() {
     ?? (deleteMutation.isPending ? deleteMutation.variables?.params.id : null)
     ?? null;
   const batchLoading = batchCancelMutation.isPending || batchDeleteMutation.isPending;
+  const itemsTotal = itemsQuery.data?.total ?? 0;
   // 后台轮询不接管表格 loading，否则每次自动刷新都会闪一次遮罩；仅首屏与查询条件/页码变化时展示
   const tableLoading = listQuery.isLoading || (listQuery.isPlaceholderData && listQuery.isFetching);
 
@@ -224,18 +223,6 @@ export default function TaskCenterPage() {
     const mutation = action === 'cancel' ? cancelMutation : action === 'resume' ? resumeMutation : restartMutation;
     await mutation.mutateAsync({ params: { id: record.id } });
     Toast.success(successMsg);
-  };
-
-  const handleDelete = (record: AsyncTask) => {
-    confirmDelete({
-      title: '删除任务记录',
-      content: `将删除任务 #${record.id}「${record.title}」的记录（含任务项明细），不可恢复。`,
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id: record.id } });
-        Toast.success('已删除');
-        setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id));
-      },
-    });
   };
 
   const handleBatchCancel = () => {
@@ -395,12 +382,15 @@ export default function TaskCenterPage() {
           onClick: () => void runAction(record, 'restart', '已重新开始'),
         },
         {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+          ...deleteAction({
+            hidden: !canManage || !['success', 'failed', 'cancelled'].includes(record.status),
+            title: '删除任务记录',
+            content: `将删除任务 #${record.id}「${record.title}」的记录（含任务项明细），不可恢复。`,
+            run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+            successMessage: '已删除',
+            onDeleted: () => setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id)),
+          }),
           dividerBefore: true,
-          hidden: !canManage || !['success', 'failed', 'cancelled'].includes(record.status),
-          onClick: () => handleDelete(record),
         },
       ],
     }),
@@ -619,16 +609,12 @@ export default function TaskCenterPage() {
             </Button>
           </SearchToolbar>
           <ConfigurableTable
-            bordered
             columns={typeColumns}
-            dataSource={typeRows}
-            loading={typesLoading}
-            onRefresh={handleRefreshTypes}
-            refreshLoading={typesLoading}
+            {...listTableProps({ data: typeRows, isFetching: typesLoading, refetch: handleRefreshTypes }, {
+              rowKey: 'taskType',
+              empty: '暂无注册的任务类型',
+            })}
             pagination={false}
-            rowKey="taskType"
-            size="small"
-            empty="暂无注册的任务类型"
             columnSettingsKey="task-center-types"
           />
         </TabPane>
@@ -720,15 +706,9 @@ export default function TaskCenterPage() {
                   size="small"
                 />
               </div>
-              <ConfigurableTable
-                bordered
+              <ConfigurableTable<AsyncTaskItem>
                 columns={itemColumns}
-                dataSource={items}
-                loading={itemsQuery.isFetching}
-                pagination={buildItemsPagination(itemsTotal)}
-                rowKey="id"
-                size="small"
-                empty="该任务未上报行级明细"
+                {...listTableProps(itemsQuery, { pagination: buildItemsPagination, empty: '该任务未上报行级明细' })}
                 scroll={{ x: 670 }}
               />
             </div>

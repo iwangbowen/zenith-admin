@@ -4,7 +4,8 @@ import { db } from '../../db';
 import { tags } from '../../db/schema';
 import type { TagRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
-import { HTTPException } from 'hono/http-exception';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { CreateTagInput, UpdateTagInput } from '@zenith/shared/platform';
 
@@ -27,9 +28,10 @@ export function mapTag(row: TagRow) {
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 
 export async function ensureTagExists(id: number) {
-  const [row] = await db.select().from(tags).where(eq(tags.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '标签不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(tags).where(eq(tags.id, id)).limit(1),
+    '标签不存在',
+  );
 }
 
 export async function getTag(id: number) {
@@ -58,15 +60,17 @@ export async function listTags(q: ListTagsQuery) {
   if (status) conditions.push(eq(tags.status, status));
   conditions.push(keywordCondition(groupName, [tags.groupName]));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(tags, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(tags, where),
+    rows: () => withPagination(
       db.select().from(tags).where(where).orderBy(asc(tags.sortOrder), asc(tags.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return { list: list.map(mapTag), total, page, pageSize };
+    map: mapTag,
+  });
 }
 
 // ─── 创建 ─────────────────────────────────────────────────────────────────────
@@ -85,8 +89,7 @@ export async function createTag(data: CreateTagInput) {
 export async function updateTag(id: number, data: UpdateTagInput) {
   try {
     const [row] = await db.update(tags).set(data).where(eq(tags.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '标签不存在' });
-    return mapTag(row);
+    return mapTag(requireRow(row, '标签不存在'));
   } catch (err) {
     rethrowPgUniqueViolation(err, '标签名称已存在');
   }
@@ -96,7 +99,7 @@ export async function updateTag(id: number, data: UpdateTagInput) {
 
 export async function deleteTag(id: number) {
   const [row] = await db.delete(tags).where(eq(tags.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '标签不存在' });
+  requireRow(row, '标签不存在');
 }
 
 // ─── 批量删除 ─────────────────────────────────────────────────────────────────

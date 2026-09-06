@@ -3,6 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { terminalRecordings, users, type RecordingEvent } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { getSettings } from '../../lib/settings';
 
@@ -114,36 +116,37 @@ export async function listRecordings(params: ListRecordingsParams) {
     .orderBy(desc(terminalRecordings.createdAt))
     .$dynamic();
 
-  const [total, rows] = await Promise.all([
-    db.$count(terminalRecordings, where),
-    withPagination(baseQuery, page, pageSize),
-  ]);
-  return {
-    total,
-    list: rows.map((r) => mapRow({ ...r, nickname: r.nickname ?? null })),
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(terminalRecordings, where),
+    rows: () => withPagination(baseQuery, page, pageSize),
+    map: (r) => mapRow({ ...r, nickname: r.nickname ?? null }),
+  });
 }
 
 /** 获取单条录屏详情（含 events）。管理员审计，可访问任意录屏。 */
 export async function getRecording(id: number) {
-  const [row] = await db
-    .select({ ...recordingBaseColumns, events: terminalRecordings.events })
-    .from(terminalRecordings)
-    .leftJoin(users, eq(terminalRecordings.userId, users.id))
-    .where(eq(terminalRecordings.id, id));
-  if (!row) throw new HTTPException(404, { message: '录屏不存在' });
+  const row = await requireFirstRow(
+    db
+      .select({ ...recordingBaseColumns, events: terminalRecordings.events })
+      .from(terminalRecordings)
+      .leftJoin(users, eq(terminalRecordings.userId, users.id))
+      .where(eq(terminalRecordings.id, id)),
+    '录屏不存在',
+  );
   return { ...mapRow({ ...row, nickname: row.nickname ?? null }), events: row.events };
 }
 
 export async function getRecordingBeforeAudit(id: number) {
-  const [row] = await db
-    .select({ ...recordingBaseColumns, commandCount: commandCountExpr })
-    .from(terminalRecordings)
-    .leftJoin(users, eq(terminalRecordings.userId, users.id))
-    .where(eq(terminalRecordings.id, id));
-  if (!row) throw new HTTPException(404, { message: '录屏不存在' });
+  const row = await requireFirstRow(
+    db
+      .select({ ...recordingBaseColumns, commandCount: commandCountExpr })
+      .from(terminalRecordings)
+      .leftJoin(users, eq(terminalRecordings.userId, users.id))
+      .where(eq(terminalRecordings.id, id)),
+    '录屏不存在',
+  );
   return mapRow({ ...row, nickname: row.nickname ?? null });
 }
 
@@ -173,19 +176,21 @@ function toAsciinemaCast(row: {
 
 /** 导出 asciinema v2 cast 文件。 */
 export async function exportRecordingAsciinema(id: number) {
-  const [row] = await db
-    .select({
-      id: terminalRecordings.id,
-      title: terminalRecordings.title,
-      shell: terminalRecordings.shell,
-      cols: terminalRecordings.cols,
-      rows: terminalRecordings.rows,
-      events: terminalRecordings.events,
-      createdAt: terminalRecordings.createdAt,
-    })
-    .from(terminalRecordings)
-    .where(eq(terminalRecordings.id, id));
-  if (!row) throw new HTTPException(404, { message: '录屏不存在' });
+  const row = await requireFirstRow(
+    db
+      .select({
+        id: terminalRecordings.id,
+        title: terminalRecordings.title,
+        shell: terminalRecordings.shell,
+        cols: terminalRecordings.cols,
+        rows: terminalRecordings.rows,
+        events: terminalRecordings.events,
+        createdAt: terminalRecordings.createdAt,
+      })
+      .from(terminalRecordings)
+      .where(eq(terminalRecordings.id, id)),
+    '录屏不存在',
+  );
   return {
     content: toAsciinemaCast(row),
     filename: `terminal-recording-${row.id}.cast`,

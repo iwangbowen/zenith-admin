@@ -17,6 +17,8 @@ import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { evaluateScorecard, type ScorecardLike } from '../../lib/rules-scorecard';
@@ -66,9 +68,10 @@ export async function ensureRuleScorecard(id: number): Promise<Row> {
   const tc = tenantCondition(ruleScorecards, currentUser());
   const conds = [eq(ruleScorecards.id, id)];
   if (tc) conds.push(tc);
-  const [row] = await db.select().from(ruleScorecards).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '评分卡不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(ruleScorecards).where(and(...conds)).limit(1),
+    '评分卡不存在',
+  );
 }
 
 export interface ListRuleScorecardsQuery {
@@ -87,11 +90,13 @@ export async function listRuleScorecards(q: ListRuleScorecardsQuery) {
   conds.push(keywordCondition(q.keyword, [ruleScorecards.name]));
   if (q.status) conds.push(eq(ruleScorecards.status, q.status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(ruleScorecards, where),
-    db.select().from(ruleScorecards).where(where).orderBy(desc(ruleScorecards.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapRuleScorecard), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(ruleScorecards, where),
+    rows: () => db.select().from(ruleScorecards).where(where).orderBy(desc(ruleScorecards.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapRuleScorecard,
+  });
 }
 
 export async function getRuleScorecard(id: number) {
@@ -208,9 +213,11 @@ export async function listRuleScorecardVersions(id: number) {
 /** 回滚：用历史版本快照覆盖当前编辑态并置为草稿（不动 publishedSnapshot，线上继续跑既有发布） */
 export async function rollbackRuleScorecard(id: number, version: number) {
   await ensureRuleScorecard(id);
-  const [v] = await db.select().from(ruleAssetVersions)
-    .where(and(eq(ruleAssetVersions.refKind, 'scorecard'), eq(ruleAssetVersions.refId, id), eq(ruleAssetVersions.version, version))).limit(1);
-  if (!v) throw new HTTPException(404, { message: `版本 v${version} 不存在` });
+  const v = await requireFirstRow(
+    db.select().from(ruleAssetVersions)
+      .where(and(eq(ruleAssetVersions.refKind, 'scorecard'), eq(ruleAssetVersions.refId, id), eq(ruleAssetVersions.version, version))).limit(1),
+    `版本 v${version} 不存在`,
+  );
   const snapshot = v.snapshot as { name: string; description: string | null; baseScore: number; variables: RuleScorecardVariable[]; grades: RuleScorecardGrade[] };
   const [row] = await db.update(ruleScorecards)
     .set({
@@ -255,7 +262,8 @@ export async function evaluateRuleScorecardByKey(key: string, input: Record<stri
   const conds = [eq(ruleScorecards.key, key), eq(ruleScorecards.status, 'published')];
   if (tc) conds.push(tc);
   const [row] = await db.select().from(ruleScorecards).where(and(...conds)).limit(1);
-  if (!row || row.publishedSnapshot == null) throw new HTTPException(404, { message: `评分卡不可用：${key}` });
+  requireRow(row, `评分卡不可用：${key}`);
+  if (row.publishedSnapshot == null) throw new HTTPException(404, { message: `评分卡不可用：${key}` });
   const res = evaluateScorecard(row.publishedSnapshot as ScorecardLike, snapshotRuleScope(input));
   recordRuleExecution({
     refKind: 'scorecard', refId: row.id, ruleKey: key, version: row.version,

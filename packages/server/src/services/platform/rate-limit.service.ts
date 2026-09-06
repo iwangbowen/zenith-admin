@@ -19,6 +19,7 @@ import {
   type RuleConfig,
   type RecentBlockRecord,
 } from '../../middleware/rate-limit';
+import { requireRow } from '../../lib/db-assert';
 
 const STATS_PREFIX = `${config.redis.keyPrefix}rlstats:`;
 
@@ -78,8 +79,7 @@ export async function listRateLimitRules() {
 
 export async function getRateLimitRuleBeforeAudit(id: number) {
   const [row] = await db.select().from(rateLimitRules).where(eq(rateLimitRules.id, id));
-  if (!row) throw new HTTPException(404, { message: '规则不存在' });
-  return mapRule(row);
+  return mapRule(requireRow(row, '规则不存在'));
 }
 
 export interface UpdateRateLimitRuleInput {
@@ -115,7 +115,7 @@ export interface CreateRateLimitRuleInput {
 
 export async function updateRateLimitRule(id: number, patch: UpdateRateLimitRuleInput) {
   const [row] = await db.select().from(rateLimitRules).where(eq(rateLimitRules.id, id));
-  if (!row) throw new HTTPException(404, { message: '规则不存在' });
+  requireRow(row, '规则不存在');
   await db
     .update(rateLimitRules)
     .set({
@@ -165,8 +165,8 @@ export async function createRateLimitRule(input: CreateRateLimitRuleInput) {
 
 export async function deleteRateLimitRule(id: number) {
   const [row] = await db.select().from(rateLimitRules).where(eq(rateLimitRules.id, id));
-  if (!row) throw new HTTPException(404, { message: '规则不存在' });
-  if (PREDEFINED_NAMES.has(row.name)) throw new HTTPException(400, { message: '内置规则不可删除' });
+  const existingRule = requireRow(row, '规则不存在');
+  if (PREDEFINED_NAMES.has(existingRule.name)) throw new HTTPException(400, { message: '内置规则不可删除' });
   await db.delete(rateLimitRules).where(eq(rateLimitRules.id, id));
   await refreshRateLimitRules();
   return { deleted: true };

@@ -9,6 +9,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { useUrlSelectionState } from '@/hooks/useUrlSelectionState';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction } from '@/components/list-page';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import type { CacheItem, CacheOverview } from '@zenith/shared/platform';
@@ -24,7 +25,7 @@ import {
   useUpdateCacheTtl,
   useUpdateCacheValue,
 } from '@/hooks/queries/cache';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
@@ -209,17 +210,6 @@ export default function CacheManagePage() {
     void queryClient.invalidateQueries({ queryKey: cacheKeys.lists });
   };
 
-  const handleDeleteKey = (item: CacheItem) => {
-    confirmDelete({
-      title: '确定要删除该缓存键吗？',
-      content: <span>Key：<code>{item.displayKey}</code></span>,
-      onOk: async () => {
-        await deleteKeyMutation.mutateAsync({ body: { key: item.key } });
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const handleBatchDelete = () => {
     if (selectedKeys.length === 0) return;
     confirmDelete({
@@ -360,13 +350,12 @@ export default function CacheManagePage() {
           hidden: !canEdit,
           onClick: () => openTtlEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canDelete,
-          onClick: () => handleDeleteKey(record),
-        },
+          title: '确定要删除该缓存键吗？',
+          content: <span>Key：<code>{record.displayKey}</code></span>,
+          run: () => deleteKeyMutation.mutateAsync({ body: { key: record.key } }),
+        }),
       ],
     }),
   ];
@@ -457,9 +446,7 @@ export default function CacheManagePage() {
               <SearchButton onClick={handleSearch} />
               <ResetButton onClick={handleReset} />
               {canDelete && selectedKeys.length > 0 && (
-                <Button type="danger" theme="solid" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-                  批量删除 ({selectedKeys.length})
-                </Button>
+                <BatchDeleteButton count={selectedKeys.length} onClick={handleBatchDelete} />
               )}
             </div>
             <ConfigurableTable<CacheItem>

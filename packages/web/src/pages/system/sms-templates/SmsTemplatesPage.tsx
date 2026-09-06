@@ -1,4 +1,4 @@
-import { Col, Form, Row, Spin, Toast, Switch } from '@douyinfe/semi-ui';
+import { Col, Form, Row, Spin } from '@douyinfe/semi-ui';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { SMS_PROVIDER_OPTIONS } from '@zenith/shared/messaging';
 import type { CreateSmsTemplateInput, SmsProvider, SmsTemplate } from '@zenith/shared/messaging';
@@ -7,10 +7,10 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import InsertShortLinkButton from '@/components/short-link/InsertShortLinkButton';
 import { useListSearch } from '@/hooks/useListSearch';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
   smsTemplateKeys,
@@ -19,9 +19,8 @@ import {
   useSmsTemplateDetail,
   useSmsTemplateList,
 } from '@/hooks/queries/sms-templates';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
 
 export default function SmsTemplatesPage() {
   const { hasPermission: can } = usePermission();
@@ -42,8 +41,6 @@ export default function SmsTemplatesPage() {
     provider: submittedParams.filterProvider,
     status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const saveMutation = useSaveSmsTemplate();
   const templateModal = useEditModal<SmsTemplate, Partial<CreateSmsTemplateInput>>({
@@ -66,29 +63,13 @@ export default function SmsTemplatesPage() {
   });
   const toggleStatusMutation = useSaveSmsTemplate();
   const deleteMutation = useDeleteSmsTemplate();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<SmsTemplate>({
+    toggle: (record, enabled) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({ danger: true, title: `确认禁用模板「${record.name}」？`, okText: '确认禁用' }),
+    disabled: !can('system:sms-template:update'),
+    messages: { disabled: '已禁用' },
+  });
 
-  const handleDelete = (id: number) => {
-    confirmDelete({
-      title: '确定要删除该短信模板吗？',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
-  const handleToggleStatus = async (tpl: SmsTemplate, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认禁用模板「${tpl.name}」？`,
-        okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    await toggleStatusMutation.mutateAsync({ id: tpl.id, values: { status: newStatus } });
-    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-  };
 
   const columns = [
     { title: '模板名称', dataIndex: 'name', width: 160 },
@@ -101,18 +82,7 @@ export default function SmsTemplatesPage() {
     },
     { title: '内容', dataIndex: 'content', render: renderEllipsis },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 90, align: 'center' as const, fixed: 'right' as const,
-      render: (v: string, record: SmsTemplate) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!can('system:sms-template:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<SmsTemplate>({
       width: 150,
       actions: (record) => [
@@ -122,52 +92,20 @@ export default function SmsTemplatesPage() {
           hidden: !can('system:sms-template:update'),
           onClick: () => templateModal.openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !can('system:sms-template:delete'),
-          onClick: () => handleDelete(record.id),
-        },
+          title: '确定要删除该短信模板吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索模板名称/编码" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />
-            <FilterSelect
-              placeholder="全部服务商"
-              items={SMS_PROVIDER_OPTIONS}
-              value={draftParams.filterProvider}
-              onChange={(v) => setDraftParams({ ...draftParams, filterProvider: v as SmsProvider | undefined })}
-              width={140}
-            />
-            <StatusSelect
-              items={statusItems}
-              value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {can('system:sms-template:create') && (
-              <CreateButton onClick={templateModal.openCreate} />
-            )}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索模板名称/编码" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />
-            <SearchButton onClick={handleSearch} />
-            {can('system:sms-template:create') && (
-              <CreateButton onClick={templateModal.openCreate} />
-            )}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索模板名称/编码" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />}
+        filters={(
           <>
             <FilterSelect
               placeholder="全部服务商"
@@ -182,14 +120,19 @@ export default function SmsTemplatesPage() {
               onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
             />
           </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={can('system:sms-template:create') && (
+          <CreateButton onClick={templateModal.openCreate} />
         )}
         filterTitle="短信模板筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable<SmsTemplate>
+        columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...templateModal.modalProps} width={720}>
         <Spin spinning={templateModal.detailLoading} wrapperClassName="modal-spin-wrapper">

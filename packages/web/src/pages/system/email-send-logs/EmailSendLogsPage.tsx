@@ -1,14 +1,14 @@
-import { Button, Form, Input, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Form, Input } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { Plus } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import { SEND_SOURCES } from '@zenith/shared/messaging';
 import type { EmailSendLog, SendEmailInput, SendStatus } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { useEmailTemplateList } from '@/hooks/queries/email-templates';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -20,9 +20,8 @@ import {
   useTestEmailSendLog,
 } from '@/hooks/queries/email-send-logs';
 import { SEND_LOG_STATUS_OPTIONS as STATUS_OPTIONS, SEND_SOURCE_OPTIONS as SOURCE_OPTIONS, parseTemplateVariables } from '../send-log-constants';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { SendStatusTag } from '../send-log-ui';
 
 /** 测试发送表单值：变量以 JSON 文本输入 */
 interface TestEmailFormValues {
@@ -31,11 +30,6 @@ interface TestEmailFormValues {
   subject?: string;
   content?: string;
   variables?: string;
-}
-
-function StatusTag({ value }: Readonly<{ value: SendStatus }>) {
-  const it = STATUS_OPTIONS.find((s) => s.value === value);
-  return <Tag color={it?.color ?? 'grey'} type="light">{it?.label ?? value}</Tag>;
 }
 
 export default function EmailSendLogsPage() {
@@ -57,8 +51,6 @@ export default function EmailSendLogsPage() {
     status: submittedParams.filterStatus,
     source: enumValueOf(SEND_SOURCES, submittedParams.filterSource),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const testMutation = useTestEmailSendLog();
   const testModal = useEditModal<{ id: number }, TestEmailFormValues, SendEmailInput>({
     save: {
@@ -83,15 +75,6 @@ export default function EmailSendLogsPage() {
     ...(draftParams.filterSource ? { source: draftParams.filterSource } : {}),
   });
 
-  const handleDelete = (id: number) => {
-    confirmDelete({
-      title: '确定要删除该记录吗？',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id } });
-        Toast.success('删除成功');
-      },
-    });
-  };
 
   const columns = [
     { title: '收件人', dataIndex: 'toEmail', width: 200 },
@@ -104,65 +87,25 @@ export default function EmailSendLogsPage() {
     { title: '错误信息', dataIndex: 'errorMsg', render: renderEllipsis },
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
-      render: (v: SendStatus) => <StatusTag value={v} />,
+      render: (v: SendStatus) => <SendStatusTag value={v} />,
     },
     createOperationColumn<EmailSendLog>({
       width: 100,
       actions: (record) => [
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !can('system:email-send-log:delete'),
-          onClick: () => handleDelete(record.id),
-        },
+          title: '确定要删除该记录吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="主题/内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <Input placeholder="收件人邮箱" value={draftParams.toEmail} onChange={(v) => setDraftParams({ ...draftParams, toEmail: v })}
-              onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-            <StatusSelect
-              items={STATUS_OPTIONS}
-              value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as SendStatus | undefined })}
-            />
-            <FilterSelect
-              placeholder="全部来源"
-              items={SOURCE_OPTIONS}
-              value={draftParams.filterSource}
-              onChange={(v) => setDraftParams({ ...draftParams, filterSource: v as string | undefined })}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-          </>
-        )}
-        actions={(
-          <>
-            {can('system:email-send-log:export') && (
-              <ExportButton entity="system.email-send-logs" query={buildExportQuery()} />
-            )}
-            {can('system:email-send-log:send') && (
-              <Button type="primary" icon={<Plus size={14} />} onClick={testModal.openCreate}>测试发送</Button>
-            )}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="主题/内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-            {can('system:email-send-log:send') && (
-              <Button type="primary" icon={<Plus size={14} />} onClick={testModal.openCreate}>测试发送</Button>
-            )}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="主题/内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />}
+        filters={(
           <>
             <Input placeholder="收件人邮箱" value={draftParams.toEmail} onChange={(v) => setDraftParams({ ...draftParams, toEmail: v })}
               onEnterPress={handleSearch} showClear style={{ width: 200 }} />
@@ -178,18 +121,26 @@ export default function EmailSendLogsPage() {
               onChange={(v) => setDraftParams({ ...draftParams, filterSource: v as string | undefined })}
             />
           </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={can('system:email-send-log:send') && (
+          <Button type="primary" icon={<Plus size={14} />} onClick={testModal.openCreate}>测试发送</Button>
+        )}
+        actions={can('system:email-send-log:export') && (
+          <ExportButton entity="system.email-send-logs" query={buildExportQuery()} />
         )}
         mobileActions={can('system:email-send-log:export') ? (
           <ExportButton entity="system.email-send-logs" query={buildExportQuery()} variant="flat" />
         ) : null}
         filterTitle="邮件发送日志筛选"
         actionTitle="邮件日志操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable<EmailSendLog>
+        columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...testModal.modalProps} title="测试发送邮件" width={560}>
         <Form key={testModal.formKey} {...testModal.formProps}>

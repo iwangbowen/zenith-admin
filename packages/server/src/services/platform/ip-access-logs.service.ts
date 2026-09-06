@@ -3,6 +3,7 @@ import { db } from '../../db';
 import { ipAccessLogs } from '../../db/schema';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
 import { truncateVarchar } from '../../lib/sanitize';
 import logger from '../../lib/logger';
 
@@ -24,20 +25,17 @@ export async function listIpAccessLogs(q: ListIpAccessLogsQuery) {
   conditions.push(...dateRangeConditions(ipAccessLogs.createdAt, q.startTime, q.endTime));
   const where = and(...conditions);
   const finalWhere = buildWhere(where);
-  const [total, rows] = await Promise.all([
-    db.$count(ipAccessLogs, finalWhere),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(ipAccessLogs, finalWhere),
+    rows: () => withPagination(
       db.select().from(ipAccessLogs).where(finalWhere).orderBy(desc(ipAccessLogs.createdAt)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt), blockType: r.blockType as 'blacklist' | 'whitelist' })),
-    total,
-    page,
-    pageSize,
-  };
+    map: (r) => ({ ...r, createdAt: formatDateTime(r.createdAt), blockType: r.blockType as 'blacklist' | 'whitelist' }),
+  });
 }
 
 export async function writeIpAccessLog(data: {

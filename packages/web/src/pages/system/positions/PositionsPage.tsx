@@ -1,17 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Button, Form, Space, Spin, Switch, Toast, SideSheet, Empty } from '@douyinfe/semi-ui';
-import { Trash2, Users } from 'lucide-react';
+import { Form, Spin } from '@douyinfe/semi-ui';
 import type { Position } from '@zenith/shared/identity';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import type { PositionFormValues } from '@/hooks/queries/positions';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useDictItems } from '@/hooks/useDictItems';
-import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
-import { UserPreviewCell } from '@/components/UserPreviewCell';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -30,9 +26,10 @@ import {
 import { useAllUsers } from '@/hooks/queries/users';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { MemberAssignmentSheet, memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
 
 interface SearchParams {
   keyword: string;
@@ -60,8 +57,6 @@ export default function PositionsPage() {
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const { items: statusItems } = useDictItems('common_status');
 
@@ -92,43 +87,26 @@ export default function PositionsPage() {
   const toggleStatusMutation = useSavePosition();
   const deleteMutation = useDeletePositions();
   const assignMembersMutation = useAssignPositionMembers();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<Position>({
+    toggle: (pos, enabled) => toggleStatusMutation.mutateAsync({ id: pos.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (pos) => ({ danger: true, title: `确认停用岗位「${pos.name}」？`, content: '停用后该岗位将不可选择。', okText: '确认停用' }),
+    disabled: !hasPermission('system:position:update'),
+  });
 
   useEffect(() => {
     if (memberSheetVisible) setMemberIds((membersQuery.data ?? []).map((m) => m.id));
   }, [memberSheetVisible, membersQuery.data]);
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  };
-
-  const handleToggleStatus = async (pos: Position, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认停用岗位「${pos.name}」？`,
-        content: '停用后该岗位将不可选择。',
-        okText: '确认停用',
-      });
-      if (!confirmed) return;
-    }
-    toggleStatusMutation.mutate(
-      { id: pos.id, values: { status: newStatus } },
-      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已停用') },
-    );
-  };
-
   const handleBatchDelete = () => {
-    confirmDelete({
+    if (!selectedRowKeys.length) return;
+    confirmAndDelete({
       title: `确认删除选中的 ${selectedRowKeys.length} 个岗位？`,
       content: '删除后无法恢复，请确认操作',
-      onOk: async () => {
-        await deleteMutation.mutateAsync(selectedRowKeys);
-        Toast.success('删除成功');
-        setSelectedRowKeys([]);
-      },
+      run: () => deleteMutation.mutateAsync(selectedRowKeys),
+      onDeleted: () => setSelectedRowKeys([]),
     });
   };
+
 
   const openMembers = (pos: Position) => {
     setMemberPosition(pos);
@@ -138,7 +116,6 @@ export default function PositionsPage() {
   const handleSaveMembers = async () => {
     if (!memberPosition) return;
     await assignMembersMutation.mutateAsync({ params: { id: memberPosition.id }, body: { userIds: memberIds } });
-    Toast.success('保存成功');
     setMemberSheetVisible(false);
   };
 
@@ -146,10 +123,13 @@ export default function PositionsPage() {
     { title: '岗位名称', dataIndex: 'name', minWidth: 200, render: renderEllipsis },
     { title: '岗位编码', dataIndex: 'code', width: 180, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 90 },
-    {
-      title: '成员', dataIndex: 'userPreview', width: 150,
-      render: (_: unknown, record: Position) => <UserPreviewCell preview={record.userPreview} count={record.userCount} scope={{ type: 'position', id: record.id, name: record.name }} />,
-    },
+    memberPreviewColumn<Position>({
+      dataIndex: 'userPreview',
+      width: 150,
+      getPreview: (record) => record.userPreview,
+      getCount: (record) => record.userCount,
+      getScope: (record) => ({ type: 'position', id: record.id, name: record.name }),
+    }),
     {
       title: '备注',
       dataIndex: 'remark',
@@ -157,21 +137,7 @@ export default function PositionsPage() {
       render: renderEllipsis,
     },
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      fixed: 'right',
-      render: (value: string, record: Position) => (
-        <Switch
-          size="small"
-          checked={value === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!hasPermission('system:position:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<Position>({
       width: 210,
       actions: (record) => [
@@ -187,18 +153,11 @@ export default function PositionsPage() {
           hidden: !hasPermission('system:position:update'),
           onClick: () => { void openMembers(record); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:position:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该岗位吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该岗位吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -219,8 +178,6 @@ export default function PositionsPage() {
     <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))} />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => hasPermission('system:position:create') ? (
     <CreateButton onClick={positionModal.openCreate} />
   ) : null;
@@ -237,70 +194,45 @@ export default function PositionsPage() {
 
   const renderMobileExportActions = () => <ExportButton entity="system.positions" query={buildExportQuery()} variant="flat" />;
 
-  const renderBatchDeleteButton = () => selectedRowKeys.length > 0 && hasPermission('system:position:delete') ? (
-    <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-      批量删除 ({selectedRowKeys.length})
-    </Button>
-  ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
-            {renderKeywordSearch()}
             {renderStatusFilter()}
             {renderTimeRangeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         actions={(
           <>
             {renderExportButtons()}
-            {renderBatchDeleteButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderStatusFilter()}
-            {renderTimeRangeFilter()}
+            {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
           </>
         )}
         mobileActions={(
           <>
             {renderMobileExportActions()}
-            {renderBatchDeleteButton()}
+            {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
           </>
         )}
         filterTitle="岗位筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<Position>
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        pagination={buildPagination(total)}
-        empty="暂无数据"
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as number[]),
-        }}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无数据',
+          rowSelection: {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          },
+        })}
       />
 
       <AppModal {...positionModal.modalProps} width={520}>
@@ -321,34 +253,18 @@ export default function PositionsPage() {
         </Spin>
       </AppModal>
 
-      <SideSheet
-        title={
-          <Space>
-            <Users size={16} />
-            <span>成员管理 - {memberPosition?.name}</span>
-          </Space>
-        }
+      <MemberAssignmentSheet
+        title={`成员管理 - ${memberPosition?.name ?? ''}`}
         visible={memberSheetVisible}
         onCancel={() => setMemberSheetVisible(false)}
-        width={720}
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setMemberSheetVisible(false)}>取消</Button>
-            <Button type="primary" disabled={!membersQuery.isSuccess} loading={assignMembersMutation.isPending} onClick={handleSaveMembers}>保存</Button>
-          </div>
-        }
-      >
-        {allUsers.length === 0 ? (
-          <Empty title="暂无用户" description="请先创建用户" />
-        ) : (
-          <UserTransferSelect
-            dataSource={allUsers}
-            value={memberIds}
-            onChange={setMemberIds}
-            departments={departments}
-          />
-        )}
-      </SideSheet>
+        users={allUsers}
+        value={memberIds}
+        onChange={setMemberIds}
+        departments={departments}
+        canSave={membersQuery.isSuccess}
+        saveLoading={assignMembersMutation.isPending}
+        onSave={handleSaveMembers}
+      />
     </div>
   );
 }

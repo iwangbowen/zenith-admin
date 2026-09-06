@@ -10,9 +10,9 @@ import '@xterm/xterm/css/xterm.css';
 import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
 import { useThemeController } from '@/providers/theme-controller';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useListSearch } from '@/hooks/useListSearch';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { useTerminalPreferences } from './useTerminalPreferences';
@@ -23,7 +23,6 @@ import {
   useTerminalSessionList,
 } from '@/hooks/queries/terminal';
 import type { TerminalSession, TerminalSessionKind } from '@zenith/shared/ops';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 
@@ -140,8 +139,6 @@ export default function TerminalSessionsPage() {
     keyword: submittedParams.keyword || undefined,
     kind: submittedParams.kind || undefined,
   }, { refetchInterval: autoRefresh ? 5000 : false });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const terminateMutation = useTerminateTerminalSession();
 
   const handleTerminate = async (record: TerminalSession) => {
@@ -209,63 +206,31 @@ export default function TerminalSessionsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索用户/主机/IP" value={draftParams.keyword} onChange={(v) => setDraftParams((s) => ({ ...s, keyword: v }))} onSearch={handleSearch} />
-            <FilterSelect
-              placeholder="全部类型"
-              items={KIND_FILTER_OPTIONS}
-              value={draftParams.kind}
-              onChange={(kind) => applySearch({ ...draftParams, kind })}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            <Space spacing={4} style={{ marginLeft: 4 }}>
-              <Switch size="small" checked={autoRefresh} onChange={setAutoRefresh} />
-              <Typography.Text type="tertiary" size="small">自动刷新</Typography.Text>
-            </Space>
-          </>
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索用户/主机/IP" value={draftParams.keyword} onChange={(v) => setDraftParams((s) => ({ ...s, keyword: v }))} onSearch={handleSearch} />}
+        filters={(
+          <FilterSelect
+            placeholder="全部类型"
+            items={KIND_FILTER_OPTIONS}
+            value={draftParams.kind}
+            onChange={(kind) => applySearch({ ...draftParams, kind })}
+          />
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索用户/主机/IP" value={draftParams.keyword} onChange={(v) => setDraftParams((s) => ({ ...s, keyword: v }))} onSearch={handleSearch} />
-            <SearchButton onClick={handleSearch} />
-          </>
-        )}
-        mobileFilters={(
-          <>
-            <FilterSelect
-              placeholder="全部类型"
-              items={KIND_FILTER_OPTIONS}
-              value={draftParams.kind}
-              onChange={(kind) => applySearch({ ...draftParams, kind })}
-            />
-            <Space spacing={4}>
-              <Switch size="small" checked={autoRefresh} onChange={setAutoRefresh} />
-              <Typography.Text type="tertiary" size="small">自动刷新</Typography.Text>
-            </Space>
-          </>
-        )}
-        mobileActions={(
-          <ResetButton onClick={handleReset} />
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={(
+          <Space spacing={4} style={{ marginLeft: 4 }}>
+            <Switch size="small" checked={autoRefresh} onChange={setAutoRefresh} />
+            <Typography.Text type="tertiary" size="small">自动刷新</Typography.Text>
+          </Space>
         )}
         filterTitle="终端会话筛选"
         actionTitle="终端会话操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<TerminalSession>
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="sessionId"
-        pagination={buildPagination(total)}
-        empty="暂无活动终端会话"
+        {...listTableProps(listQuery, { rowKey: 'sessionId', pagination: buildPagination, empty: '暂无活动终端会话' })}
       />
 
       <SideSheet

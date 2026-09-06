@@ -8,6 +8,8 @@ import { currentUser, currentUserOrNull } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation, isPgUniqueViolation } from '../../lib/db-errors';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { evaluateDecisionTable, isOutputExpression } from '../../lib/rules-engine';
@@ -81,9 +83,10 @@ export async function ensureDecisionTable(id: number): Promise<TableRow> {
   const tc = tenantCondition(ruleDecisionTables, currentUser());
   const conds = [eq(ruleDecisionTables.id, id)];
   if (tc) conds.push(tc);
-  const [row] = await db.select().from(ruleDecisionTables).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '决策表不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(ruleDecisionTables).where(and(...conds)).limit(1),
+    '决策表不存在',
+  );
 }
 
 export interface ListDecisionTablesQuery {
@@ -102,18 +105,23 @@ export async function listDecisionTables(q: ListDecisionTablesQuery) {
   conds.push(keywordCondition(q.keyword, [ruleDecisionTables.name]));
   if (q.status) conds.push(eq(ruleDecisionTables.status, q.status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(ruleDecisionTables, where),
-    db.select().from(ruleDecisionTables).where(where).orderBy(desc(ruleDecisionTables.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  // dirty 标记：批量取本页各表最新快照并与编辑态对比
-  const ids = rows.map((r) => r.id);
-  const versionRows = ids.length
-    ? await db.select().from(ruleDecisionTableVersions).where(inArray(ruleDecisionTableVersions.tableId, ids)).orderBy(desc(ruleDecisionTableVersions.version))
-    : [];
-  const latestByTable = new Map<number, VersionRow>();
-  for (const v of versionRows) if (!latestByTable.has(v.tableId)) latestByTable.set(v.tableId, v);
-  return { list: rows.map((r) => mapDecisionTable(r, latestByTable.get(r.id) ?? null)), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(ruleDecisionTables, where),
+    rows: async () => {
+      const rows = await db.select().from(ruleDecisionTables).where(where).orderBy(desc(ruleDecisionTables.id)).limit(pageSize).offset(pageOffset(page, pageSize));
+      // dirty 标记：批量取本页各表最新快照并与编辑态对比
+      const ids = rows.map((r) => r.id);
+      const versionRows = ids.length
+        ? await db.select().from(ruleDecisionTableVersions).where(inArray(ruleDecisionTableVersions.tableId, ids)).orderBy(desc(ruleDecisionTableVersions.version))
+        : [];
+      const latestByTable = new Map<number, VersionRow>();
+      for (const v of versionRows) if (!latestByTable.has(v.tableId)) latestByTable.set(v.tableId, v);
+      return rows.map((r) => ({ row: r, latestVersion: latestByTable.get(r.id) ?? null }));
+    },
+    map: ({ row, latestVersion }) => mapDecisionTable(row, latestVersion),
+  });
 }
 
 export async function getDecisionTable(id: number) {
@@ -190,9 +198,9 @@ export async function updateDecisionTable(id: number, input: UpdateDecisionTable
     patch.reviewComment = '内容在审批期间被修改，发布申请已自动作废，请重新提交';
   }
   const [row] = await db.update(ruleDecisionTables).set(patch).where(and(...conds)).returning();
-  if (!row) throw new HTTPException(404, { message: '决策表不存在' });
+  const updated = requireRow(row, '决策表不存在');
   invalidateRuleRuntimeCache();
-  return mapDecisionTable(row, await latestVersionOf(id));
+  return mapDecisionTable(updated, await latestVersionOf(id));
 }
 
 export async function deleteDecisionTable(id: number): Promise<void> {
@@ -394,9 +402,11 @@ export async function grayActionDecisionTable(id: number, action: 'complete' | '
   }
   // cancel：旧版本前滚为新版本（roll-forward），运行时全量回到灰度前行为
   const prevVersion = row.grayVersion - 1;
-  const [prev] = await db.select().from(ruleDecisionTableVersions)
-    .where(and(eq(ruleDecisionTableVersions.tableId, id), eq(ruleDecisionTableVersions.version, prevVersion))).limit(1);
-  if (!prev) throw new HTTPException(404, { message: `灰度前版本 v${prevVersion} 不存在，无法取消` });
+  const prev = await requireFirstRow(
+    db.select().from(ruleDecisionTableVersions)
+      .where(and(eq(ruleDecisionTableVersions.tableId, id), eq(ruleDecisionTableVersions.version, prevVersion))).limit(1),
+    `灰度前版本 v${prevVersion} 不存在，无法取消`,
+  );
   let mapped;
   try {
     mapped = await db.transaction(async (tx) => {
@@ -597,8 +607,10 @@ export async function evaluateDecisionTableByKey(key: string, input: Record<stri
   const tc = tenantCondition(ruleDecisionTables, currentUser());
   const conds = [eq(ruleDecisionTables.key, key)];
   if (tc) conds.push(tc);
-  const [row] = await db.select().from(ruleDecisionTables).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '决策表不存在' });
+  const row = await requireFirstRow(
+    db.select().from(ruleDecisionTables).where(and(...conds)).limit(1),
+    '决策表不存在',
+  );
   if (row.status === 'disabled') throw new HTTPException(400, { message: '决策表已禁用' });
   let def: Parameters<typeof evaluateDecisionTable>[0] | null = null;
   let version: number | null = null;
@@ -822,8 +834,7 @@ export async function updateTestCase(tableId: number, caseId: number, input: { n
   if (input.expected !== undefined) patch.expected = input.expected;
   try {
     const [row] = await db.update(ruleTestCases).set(patch).where(and(eq(ruleTestCases.id, caseId), eq(ruleTestCases.tableId, tableId))).returning();
-    if (!row) throw new HTTPException(404, { message: '测试用例不存在' });
-    return mapCase(row);
+    return mapCase(requireRow(row, '测试用例不存在'));
   } catch (err) { rethrowPgUniqueViolation(err, '用例名称已存在'); }
 }
 export async function deleteTestCase(tableId: number, caseId: number): Promise<void> {
@@ -858,8 +869,10 @@ const toSnapshot = (r: { name: string; hitPolicy: string; inputs: unknown; outpu
 
 async function loadSnapshot(id: number, version: number, current: TableRow): Promise<{ name: string; hitPolicy: string; inputs: RuleDecisionInput[]; outputs: RuleDecisionOutput[]; rules: RuleDecisionRow[]; settings: RuleDecisionTableSettings }> {
   if (version === 0) return toSnapshot(current);
-  const [v] = await db.select().from(ruleDecisionTableVersions).where(and(eq(ruleDecisionTableVersions.tableId, id), eq(ruleDecisionTableVersions.version, version))).limit(1);
-  if (!v) throw new HTTPException(404, { message: `版本 v${version} 不存在` });
+  const v = await requireFirstRow(
+    db.select().from(ruleDecisionTableVersions).where(and(eq(ruleDecisionTableVersions.tableId, id), eq(ruleDecisionTableVersions.version, version))).limit(1),
+    `版本 v${version} 不存在`,
+  );
   return toSnapshot(v);
 }
 
@@ -873,8 +886,10 @@ export async function diffDecisionTableVersions(id: number, from: number, to: nu
 /** 回滚：用历史版本快照覆盖当前编辑态，置为草稿（不丢历史版本） */
 export async function rollbackDecisionTable(id: number, version: number) {
   await ensureDecisionTable(id);
-  const [v] = await db.select().from(ruleDecisionTableVersions).where(and(eq(ruleDecisionTableVersions.tableId, id), eq(ruleDecisionTableVersions.version, version))).limit(1);
-  if (!v) throw new HTTPException(404, { message: `版本 v${version} 不存在` });
+  const v = await requireFirstRow(
+    db.select().from(ruleDecisionTableVersions).where(and(eq(ruleDecisionTableVersions.tableId, id), eq(ruleDecisionTableVersions.version, version))).limit(1),
+    `版本 v${version} 不存在`,
+  );
   const [row] = await db.update(ruleDecisionTables)
     .set({ name: v.name, description: v.description, hitPolicy: v.hitPolicy, inputs: v.inputs, outputs: v.outputs, rules: v.rules, settings: v.settings ?? {}, status: 'draft' })
     .where(eq(ruleDecisionTables.id, id)).returning();

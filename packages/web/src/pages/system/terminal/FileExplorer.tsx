@@ -22,7 +22,7 @@ import { config } from '@/config';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { getFileIcon, getFolderIcon } from '@/utils/fileIcons';
 import AppModal from '@/components/AppModal';
-import { confirmDelete as confirmDeleteModal } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import {
   entryToTreeNode,
   setTreeChildren,
@@ -356,28 +356,27 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   };
 
   const confirmDelete = (node: FileNode) => {
-    confirmDeleteModal({
+    confirmAndDelete({
       title: `删除${node.fileType === 'dir' ? '目录' : '文件'}`,
       content: `确定删除「${node.label}」吗？${node.fileType === 'dir' ? '目录及其全部内容将被永久删除，' : ''}此操作不可恢复。`,
       okText: '删除',
-      cancelText: '取消',
-      onOk: async () => {
+      run: async () => {
         await fileMutation.mutateAsync({ kind: 'delete', path: node.value });
         Toast.success('已删除');
         if (isFavorite(node.value)) toggleFavorite(node.value, node.label);
         refreshDir(parentNativePath(node.value));
       },
+      successMessage: null,
     });
   };
 
   const handleBatchDelete = () => {
     if (!checkedKeys.length) return;
-    confirmDeleteModal({
+    confirmAndDelete({
       title: `批量删除 ${checkedKeys.length} 项`,
       content: '选中的文件/目录将被永久删除，此操作不可恢复。',
       okText: '确认删除',
-      cancelText: '取消',
-      onOk: async () => {
+      run: async () => {
         let success = 0;
         for (const path of checkedKeys) {
           await fileMutation.mutateAsync({ kind: 'delete', path });
@@ -388,6 +387,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         setMultiSelectMode(false);
         void loadRoot();
       },
+      successMessage: null,
     });
   };
 

@@ -6,8 +6,8 @@ import { db } from '../../db';
 import { channelMessageTemplates, type ChannelMessageTemplateRow } from '../../db/schema';
 import type { ChatMessageExtra } from '@zenith/shared/chat';
 import type { ChannelMessageTemplate, CreateChannelTemplateInput, UpdateChannelTemplateInput } from '@zenith/shared/messaging';
-import { HTTPException } from 'hono/http-exception';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
 
 function mapTemplate(row: ChannelMessageTemplateRow): ChannelMessageTemplate {
   return {
@@ -30,8 +30,7 @@ export async function listChannelTemplates(): Promise<ChannelMessageTemplate[]> 
 }
 
 export async function getChannelTemplateBeforeAudit(id: number): Promise<ChannelMessageTemplate> {
-  const row = await db.query.channelMessageTemplates.findFirst({ where: eq(channelMessageTemplates.id, id) });
-  if (!row) throw new HTTPException(404, { message: '模板不存在' });
+  const row = requireRow(await db.query.channelMessageTemplates.findFirst({ where: eq(channelMessageTemplates.id, id) }), '模板不存在');
   return mapTemplate(row);
 }
 
@@ -47,8 +46,7 @@ export async function createChannelTemplate(input: CreateChannelTemplateInput): 
 }
 
 export async function updateChannelTemplate(id: number, input: UpdateChannelTemplateInput): Promise<ChannelMessageTemplate> {
-  const existing = await db.query.channelMessageTemplates.findFirst({ where: eq(channelMessageTemplates.id, id) });
-  if (!existing) throw new HTTPException(404, { message: '模板不存在' });
+  requireRow(await db.query.channelMessageTemplates.findFirst({ where: eq(channelMessageTemplates.id, id) }), '模板不存在');
   const [row] = await db.update(channelMessageTemplates).set({
     ...(input.name === undefined ? {} : { name: input.name }),
     ...(input.type === undefined ? {} : { type: input.type }),
@@ -60,7 +58,6 @@ export async function updateChannelTemplate(id: number, input: UpdateChannelTemp
 }
 
 export async function deleteChannelTemplate(id: number): Promise<void> {
-  const existing = await db.query.channelMessageTemplates.findFirst({ where: eq(channelMessageTemplates.id, id) });
-  if (!existing) throw new HTTPException(404, { message: '模板不存在' });
+  requireRow(await db.query.channelMessageTemplates.findFirst({ where: eq(channelMessageTemplates.id, id) }), '模板不存在');
   await db.delete(channelMessageTemplates).where(eq(channelMessageTemplates.id, id));
 }

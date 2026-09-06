@@ -6,7 +6,7 @@ import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import PageLoading from '@/components/PageLoading';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction } from '@/components/list-page';
 import { request } from '@/utils/request';
 import {
   useHostFileContent,
@@ -142,20 +142,11 @@ export function RemoteHostFiles({ hostId }: Readonly<{ hostId: number }>) {
             setDialog({ kind: 'chmod', entry });
           },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              content: `确认删除「${entry.name}」${entry.type === 'dir' ? '及其全部内容' : ''}？`,
-              onOk: async () => {
-                await mutation.mutateAsync({ kind: 'delete', path: entry.path });
-                Toast.success('已删除');
-              },
-            });
-          },
-        },
+        deleteAction({
+          title: `确认删除「${entry.name}」${entry.type === 'dir' ? '及其全部内容' : ''}？`,
+          run: () => mutation.mutateAsync({ kind: 'delete', path: entry.path }),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];

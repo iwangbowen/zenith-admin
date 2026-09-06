@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { asc, eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../db';
 import { departments, users } from '../../db/schema';
@@ -146,7 +147,7 @@ export async function updateDepartment(id: number, input: UpdateDepartmentInput)
       .set({ ...input })
       .where(and(eq(departments.id, id), tc))
       .returning();
-    if (!row) throw new HTTPException(404, { message: '部门不存在' });
+    requireRow(row, '部门不存在');
     // 部门挂载点变化影响动态用户组的子树展开结果，整体校准
     if (input.parentId !== undefined) syncAllDynamicGroupsSafe('部门移动');
     const leaderMap = await buildLeaderMap(row.leaderId ? [row.leaderId] : []);
@@ -160,7 +161,7 @@ export async function updateDepartment(id: number, input: UpdateDepartmentInput)
 export async function deleteDepartment(id: number): Promise<void> {
   const tc = tenantCondition(departments, currentUser());
   const [exists] = await db.select({ id: departments.id }).from(departments).where(and(eq(departments.id, id), tc)).limit(1);
-  if (!exists) throw new HTTPException(404, { message: '部门不存在' });
+  requireRow(exists, '部门不存在');
   const [[child], [boundUser]] = await Promise.all([
     db.select({ id: departments.id }).from(departments).where(eq(departments.parentId, id)).limit(1),
     db.select({ id: users.id }).from(users).where(eq(users.departmentId, id)).limit(1),
@@ -173,7 +174,7 @@ export async function deleteDepartment(id: number): Promise<void> {
 export async function getDepartment(id: number) {
   const tc = tenantCondition(departments, currentUser());
   const [row] = await db.select().from(departments).where(and(eq(departments.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '部门不存在' });
+  requireRow(row, '部门不存在');
   const leaderMap = await buildLeaderMap(row.leaderId ? [row.leaderId] : []);
   return mapDepartment(row, row.leaderId ? leaderMap.get(row.leaderId) ?? null : null);
 }

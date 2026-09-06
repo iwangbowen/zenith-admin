@@ -9,8 +9,8 @@ import { config } from '@/config';
 import { urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -28,9 +28,8 @@ import {
   useDeleteChannel,
   useSaveChannel,
 } from '@/hooks/queries/channels';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
 
 const TYPE_META: Record<string, { text: string; color: 'green' | 'blue' }> = {
@@ -61,7 +60,6 @@ export default function ChannelsPage() {
     pageSize,
     keyword: submittedKeyword || undefined,
   });
-  const data = listQuery.data ?? null;
   const saveMutation = useSaveChannel();
   const deleteMutation = useDeleteChannel();
 
@@ -103,16 +101,6 @@ export default function ChannelsPage() {
     else Toast.error('头像上传失败');
   };
 
-  const handleDelete = (ch: ChannelAdmin) => {
-    confirmDelete({
-      title: `确认删除频道「${ch.name}」？`,
-      content: '该频道下的所有消息与订阅将一并删除',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([ch.id]);
-        Toast.success('已删除');
-      },
-    });
-  };
 
   const openPublish = (ch: ChannelAdmin) => { setPublishTarget(ch); setPublishVisible(true); };
 
@@ -171,48 +159,30 @@ export default function ChannelsPage() {
           hidden: record.type !== 'business' || !hasPermission('channel:reply:list'),
           onClick: () => setReplyDrawer(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('channel:channel:delete') || record.builtin,
-          onClick: () => handleDelete(record),
-        },
+          title: `确认删除频道「${record.name}」？`,
+          content: '该频道下的所有消息与订阅将一并删除',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索频道名称/编码" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {hasPermission('channel:channel:create') && <CreateButton onClick={openCreate} />}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索频道名称/编码" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />
-            <SearchButton onClick={handleSearch} />
-            {hasPermission('channel:channel:create') && <CreateButton onClick={openCreate} />}
-          </>
-        )}
-        mobileActions={<ResetButton onClick={handleReset} />}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索频道名称/编码" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('channel:channel:create') && <CreateButton onClick={openCreate} />}
         actionTitle="频道操作"
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<ChannelAdmin>
         columns={columns}
-        dataSource={data?.list ?? []}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal

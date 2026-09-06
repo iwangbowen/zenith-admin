@@ -6,6 +6,8 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { currentUser } from '../../lib/context';
 import { HTTPException } from 'hono/http-exception';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
 export function mapDict(row: typeof dicts.$inferSelect) {
@@ -42,11 +44,13 @@ export async function listDicts(q: ListDictsQuery) {
   const where = and(...conditions);
   const tc = tenantCondition(dicts, user);
   const finalWhere = buildWhere(where, tc);
-  const [total, list] = await Promise.all([
-    db.$count(dicts, finalWhere),
-    withPagination(db.select().from(dicts).where(finalWhere).orderBy(desc(dicts.createdAt)).$dynamic(), page, pageSize),
-  ]);
-  return { list: list.map(mapDict), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(dicts, finalWhere),
+    rows: () => withPagination(db.select().from(dicts).where(finalWhere).orderBy(desc(dicts.createdAt)).$dynamic(), page, pageSize),
+    map: mapDict,
+  });
 }
 
 export async function createDict(data: typeof dicts.$inferInsert) {
@@ -66,8 +70,7 @@ export async function updateDict(id: number, data: Partial<typeof dicts.$inferIn
     .set({ ...data })
     .where(and(eq(dicts.id, id), tenantCondition(dicts, user)))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '字典不存在' });
-  return mapDict(row);
+  return mapDict(requireRow(row, '字典不存在'));
 }
 
 export async function deleteDict(id: number) {
@@ -76,36 +79,42 @@ export async function deleteDict(id: number) {
     .delete(dicts)
     .where(and(eq(dicts.id, id), tenantCondition(dicts, user)))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '字典不存在' });
+  requireRow(row, '字典不存在');
 }
 
 export async function listDictItems(dictId: number) {
   const user = currentUser();
-  const [dict] = await db.select({ id: dicts.id }).from(dicts).where(and(eq(dicts.id, dictId), tenantCondition(dicts, user))).limit(1);
-  if (!dict) throw new HTTPException(404, { message: '字典不存在' });
+  await requireFirstRow(
+    db.select({ id: dicts.id }).from(dicts).where(and(eq(dicts.id, dictId), tenantCondition(dicts, user))).limit(1),
+    '字典不存在',
+  );
   const items = await db.select().from(dictItems).where(eq(dictItems.dictId, dictId)).orderBy(asc(dictItems.sort), asc(dictItems.id));
   return items.map(mapDictItem);
 }
 
 export async function listDictItemsByCode(code: string) {
   const user = currentUser();
-  const [dict] = await db.select({ id: dicts.id }).from(dicts).where(and(eq(dicts.code, code), tenantCondition(dicts, user))).limit(1);
-  if (!dict) throw new HTTPException(404, { message: '字典不存在' });
+  const dict = await requireFirstRow(
+    db.select({ id: dicts.id }).from(dicts).where(and(eq(dicts.code, code), tenantCondition(dicts, user))).limit(1),
+    '字典不存在',
+  );
   const items = await db.select().from(dictItems).where(eq(dictItems.dictId, dict.id)).orderBy(asc(dictItems.sort));
   return items.map(mapDictItem);
 }
 
 export async function createDictItem(dictId: number, data: Omit<typeof dictItems.$inferInsert, 'dictId'>) {
   const user = currentUser();
-  const [dict] = await db.select({ id: dicts.id }).from(dicts).where(and(eq(dicts.id, dictId), tenantCondition(dicts, user))).limit(1);
-  if (!dict) throw new HTTPException(404, { message: '字典不存在' });
+  await requireFirstRow(
+    db.select({ id: dicts.id }).from(dicts).where(and(eq(dicts.id, dictId), tenantCondition(dicts, user))).limit(1),
+    '字典不存在',
+  );
   if (data.parentId) {
     const [parentItem] = await db
       .select({ id: dictItems.id })
       .from(dictItems)
       .where(and(eq(dictItems.id, data.parentId), eq(dictItems.dictId, dictId)))
       .limit(1);
-    if (!parentItem) throw new HTTPException(400, { message: '父级字典项不存在或不属于当前字典' });
+    requireRow(parentItem, '父级字典项不存在或不属于当前字典', 400);
   }
   const [row] = await db.insert(dictItems).values({ ...data, dictId }).returning();
   return mapDictItem(row);
@@ -119,7 +128,7 @@ export async function updateDictItem(itemId: number, data: Partial<typeof dictIt
     .innerJoin(dicts, and(eq(dicts.id, dictItems.dictId), tenantCondition(dicts, user)))
     .where(eq(dictItems.id, itemId))
     .limit(1);
-  if (!item) throw new HTTPException(404, { message: '字典项不存在' });
+  requireRow(item, '字典项不存在');
   if (data.parentId !== undefined && data.parentId !== null) {
     if (data.parentId === itemId) throw new HTTPException(400, { message: '不能将自身设为父级' });
     const [parentItem] = await db
@@ -127,7 +136,7 @@ export async function updateDictItem(itemId: number, data: Partial<typeof dictIt
       .from(dictItems)
       .where(eq(dictItems.id, data.parentId))
       .limit(1);
-    if (!parentItem) throw new HTTPException(400, { message: '父级字典项不存在' });
+    requireRow(parentItem, '父级字典项不存在', 400);
     // 循环引用检测：新父级不能是当前项的子孙节点
     const isDescendant = async (checkId: number): Promise<boolean> => {
       const [row] = await db.select({ parentId: dictItems.parentId }).from(dictItems).where(eq(dictItems.id, checkId)).limit(1);
@@ -145,30 +154,38 @@ export async function updateDictItem(itemId: number, data: Partial<typeof dictIt
 
 export async function deleteDictItem(itemId: number) {
   const user = currentUser();
-  const [item] = await db
-    .select({ id: dictItems.id })
-    .from(dictItems)
-    .innerJoin(dicts, and(eq(dicts.id, dictItems.dictId), tenantCondition(dicts, user)))
-    .where(eq(dictItems.id, itemId))
-    .limit(1);
-  if (!item) throw new HTTPException(404, { message: '字典项不存在' });
+  await requireFirstRow(
+    db
+      .select({ id: dictItems.id })
+      .from(dictItems)
+      .innerJoin(dicts, and(eq(dicts.id, dictItems.dictId), tenantCondition(dicts, user)))
+      .where(eq(dictItems.id, itemId))
+      .limit(1),
+    '字典项不存在',
+  );
   await db.delete(dictItems).where(eq(dictItems.id, itemId));
 }
 
 export async function getDict(id: number) {
   const user = currentUser();
   const tc = tenantCondition(dicts, user);
-  const [row] = await db.select().from(dicts).where(and(eq(dicts.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '字典不存在' });
+  const row = await requireFirstRow(
+    db.select().from(dicts).where(and(eq(dicts.id, id), tc)).limit(1),
+    '字典不存在',
+  );
   return mapDict(row);
 }
 
 export async function getDictItem(dictId: number, itemId: number) {
   const user = currentUser();
-  const [dict] = await db.select({ id: dicts.id }).from(dicts).where(and(eq(dicts.id, dictId), tenantCondition(dicts, user))).limit(1);
-  if (!dict) throw new HTTPException(404, { message: '字典不存在' });
-  const [row] = await db.select().from(dictItems).where(and(eq(dictItems.id, itemId), eq(dictItems.dictId, dictId))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '字典项不存在' });
+  await requireFirstRow(
+    db.select({ id: dicts.id }).from(dicts).where(and(eq(dicts.id, dictId), tenantCondition(dicts, user))).limit(1),
+    '字典不存在',
+  );
+  const row = await requireFirstRow(
+    db.select().from(dictItems).where(and(eq(dictItems.id, itemId), eq(dictItems.dictId, dictId))).limit(1),
+    '字典项不存在',
+  );
   return mapDictItem(row);
 }
 

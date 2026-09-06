@@ -1,4 +1,4 @@
-import { Button, Form, Input, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Form, Input } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { Plus } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
@@ -6,10 +6,10 @@ import { SEND_SOURCES, SMS_PROVIDER_OPTIONS } from '@zenith/shared/messaging';
 import type { SendSmsInput, SendStatus, SmsSendLog } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { useSmsTemplateList } from '@/hooks/queries/sms-templates';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -20,20 +20,14 @@ import {
   useTestSmsSendLog,
 } from '@/hooks/queries/sms-send-logs';
 import { SEND_LOG_STATUS_OPTIONS as STATUS_OPTIONS, SEND_SOURCE_OPTIONS as SOURCE_OPTIONS, parseTemplateVariables } from '../send-log-constants';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { SendStatusTag } from '../send-log-ui';
 
 /** 测试发送表单值：变量以 JSON 文本输入 */
 interface TestSmsFormValues {
   templateId: number;
   phone: string;
   variables?: string;
-}
-
-function StatusTag({ value }: Readonly<{ value: SendStatus }>) {
-  const it = STATUS_OPTIONS.find((s) => s.value === value);
-  return <Tag color={it?.color ?? 'grey'} type="light">{it?.label ?? value}</Tag>;
 }
 
 export default function SmsSendLogsPage() {
@@ -55,8 +49,6 @@ export default function SmsSendLogsPage() {
     status: submittedParams.filterStatus,
     source: enumValueOf(SEND_SOURCES, submittedParams.filterSource),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const testMutation = useTestSmsSendLog();
   const testModal = useEditModal<{ id: number }, TestSmsFormValues, SendSmsInput>({
     save: {
@@ -80,15 +72,6 @@ export default function SmsSendLogsPage() {
     ...(draftParams.filterSource ? { source: draftParams.filterSource } : {}),
   });
 
-  const handleDelete = (id: number) => {
-    confirmDelete({
-      title: '确定要删除该记录吗？',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id } });
-        Toast.success('删除成功');
-      },
-    });
-  };
 
   const columns = [
     { title: '手机号', dataIndex: 'phone', width: 130 },
@@ -104,65 +87,25 @@ export default function SmsSendLogsPage() {
     { title: '错误信息', dataIndex: 'errorMsg', render: renderEllipsis },
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
-      render: (v: SendStatus) => <StatusTag value={v} />,
+      render: (v: SendStatus) => <SendStatusTag value={v} />,
     },
     createOperationColumn<SmsSendLog>({
       width: 100,
       actions: (record) => [
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !can('system:sms-send-log:delete'),
-          onClick: () => handleDelete(record.id),
-        },
+          title: '确定要删除该记录吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={180} />
-            <Input placeholder="手机号" value={draftParams.phone} onChange={(v) => setDraftParams({ ...draftParams, phone: v })}
-              onEnterPress={handleSearch} showClear style={{ width: 160 }} />
-            <StatusSelect
-              items={STATUS_OPTIONS}
-              value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as SendStatus | undefined })}
-            />
-            <FilterSelect
-              placeholder="全部来源"
-              items={SOURCE_OPTIONS}
-              value={draftParams.filterSource}
-              onChange={(v) => setDraftParams({ ...draftParams, filterSource: v as string | undefined })}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-          </>
-        )}
-        actions={(
-          <>
-            {can('system:sms-send-log:export') && (
-              <ExportButton entity="system.sms-send-logs" query={buildExportQuery()} />
-            )}
-            {can('system:sms-send-log:send') && (
-              <Button type="primary" icon={<Plus size={14} />} onClick={testModal.openCreate}>测试发送</Button>
-            )}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={180} />
-            <SearchButton onClick={handleSearch} />
-            {can('system:sms-send-log:send') && (
-              <Button type="primary" icon={<Plus size={14} />} onClick={testModal.openCreate}>测试发送</Button>
-            )}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={180} />}
+        filters={(
           <>
             <Input placeholder="手机号" value={draftParams.phone} onChange={(v) => setDraftParams({ ...draftParams, phone: v })}
               onEnterPress={handleSearch} showClear style={{ width: 160 }} />
@@ -178,18 +121,26 @@ export default function SmsSendLogsPage() {
               onChange={(v) => setDraftParams({ ...draftParams, filterSource: v as string | undefined })}
             />
           </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={can('system:sms-send-log:send') && (
+          <Button type="primary" icon={<Plus size={14} />} onClick={testModal.openCreate}>测试发送</Button>
+        )}
+        actions={can('system:sms-send-log:export') && (
+          <ExportButton entity="system.sms-send-logs" query={buildExportQuery()} />
         )}
         mobileActions={can('system:sms-send-log:export') ? (
           <ExportButton entity="system.sms-send-logs" query={buildExportQuery()} variant="flat" />
         ) : null}
         filterTitle="短信发送日志筛选"
         actionTitle="短信日志操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable<SmsSendLog>
+        columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...testModal.modalProps} title="测试发送短信" width={520}>
         <Form key={testModal.formKey} {...testModal.formProps}>

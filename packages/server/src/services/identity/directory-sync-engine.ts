@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, isNull, lte } from 'drizzle-orm';
 import { CronExpressionParser } from 'cron-parser';
@@ -14,6 +15,7 @@ import {
 import type { DirectorySyncRunStatus, DirectorySyncTriggerType } from '@zenith/shared/identity';
 import { DIRECTORY_SYNC_FIELD_IGNORE } from '@zenith/shared/identity';
 import { reserveTenantSeats } from '../../lib/tenant-quota';
+import { exactTenantCondition } from '../../lib/tenant';
 import { syncAllDynamicGroupsSafe } from './user-group-rules.service';
 import logger from '../../lib/logger';
 import { registerTaskHandler } from '../../lib/task-center';
@@ -88,7 +90,7 @@ function sanitizeCode(value: string): string {
 }
 
 function tenantWhere(tenantId: number | null) {
-  return tenantId == null ? isNull(users.tenantId) : eq(users.tenantId, tenantId);
+  return exactTenantCondition(users.tenantId, tenantId);
 }
 
 /** 按 parent 先序拓扑排序；父节点缺失的按根处理 */
@@ -206,8 +208,7 @@ async function insertRunItems(items: NewDirectorySyncRunItem[]): Promise<void> {
 
 /** 执行一次通讯录同步（dryRun = 仅计算差异不落库） */
 export async function runDirectorySync(sourceId: number, opts: RunOptions): Promise<DirectorySyncEngineResult> {
-  const source = await db.query.directorySyncSources.findFirst({ where: eq(directorySyncSources.id, sourceId) });
-  if (!source) throw new HTTPException(404, { message: '同步源不存在' });
+  const source = requireRow(await db.query.directorySyncSources.findFirst({ where: eq(directorySyncSources.id, sourceId) }), '同步源不存在');
   if (source.type === 'scim') throw new HTTPException(400, { message: 'SCIM 源为 IdP 推送模式，无需拉取同步' });
 
   const running = await db.$count(directorySyncRuns, and(

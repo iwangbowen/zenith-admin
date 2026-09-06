@@ -11,9 +11,8 @@ import { Lock, RotateCcw, Unlock } from 'lucide-react';
 import { NOTIFICATION_CHANNEL_LABELS, NOTIFICATION_DECISION_LABELS, NOTIFICATION_DECISION_OPTIONS, NOTIFICATION_REASON_CODE_LABELS, NOTIFICATION_SEVERITY_LABELS, type NotificationChannel, type NotificationDecision, type NotificationDispatch, type NotificationPolicyEvent, type NotificationReasonCode, NOTIFICATION_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -189,16 +188,10 @@ function PolicyEventsTab() {
   }
   return (
     <ConfigurableTable
-      bordered
       columnSettings={false}
-      dataSource={events}
       columns={columns}
-      rowKey="key"
-      pagination={false}
-      size="small"
       empty="暂无事件"
-      onRefresh={() => void eventsQuery.refetch()}
-      refreshLoading={eventsQuery.isFetching}
+      {...listTableProps(eventsQuery, { rowKey: 'key' })}
       groupBy={(record?: NotificationPolicyEvent) => record?.group ?? ''}
       clickGroupedRowToExpand
       defaultExpandAllGroupRows
@@ -250,8 +243,6 @@ function DispatchLogTab() {
     startTime,
     endTime,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const columns: ColumnProps<NotificationDispatch>[] = [
     dateTimeColumn('派发时间', 'createdAt'),
@@ -279,8 +270,8 @@ function DispatchLogTab() {
 
   return (
     <>
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        filters={(
           <>
             <FilterSelect
               placeholder="全部事件"
@@ -303,20 +294,14 @@ function DispatchLogTab() {
               onChange={(v) => setDraftParams({ ...draftParams, decision: v as NotificationDecision | undefined })}
             />
             <DateRangeFilter value={draftParams.timeRange} onChange={(v) => setDraftParams({ ...draftParams, timeRange: v })} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
       />
       <ConfigurableTable<NotificationDispatch>
-        bordered
-        dataSource={list}
         columns={columns}
-        rowKey="id"
-        loading={listQuery.isPending}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
     </>
   );

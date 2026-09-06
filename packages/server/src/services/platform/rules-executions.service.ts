@@ -14,6 +14,7 @@ import { tenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, dateRangeConditions } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
 
 type NewExecRow = typeof ruleExecutions.$inferInsert;
 
@@ -108,27 +109,30 @@ export async function listRuleExecutions(q: ListRuleExecutionsQuery) {
     q.matched !== undefined ? eq(ruleExecutions.matched, q.matched) : undefined,
     ...dateRangeConditions(ruleExecutions.createdAt, q.dateStart, q.dateEnd),
   );
-  const [total, rows] = await Promise.all([
-    db.$count(ruleExecutions, where),
-    db.select().from(ruleExecutions).where(where).orderBy(desc(ruleExecutions.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  const callerNameOf = await resolveCallerNames(rows.map((r) => r.caller));
-  const list: RuleExecution[] = rows.map((r) => ({
-    id: r.id,
-    refKind: r.refKind as RuleRefKind,
-    refId: r.refId,
-    ruleKey: r.ruleKey,
-    version: r.version,
-    caller: r.caller,
-    callerName: callerNameOf(r.caller),
-    bizRef: r.bizRef,
-    source: r.source as RuleExecutionSource,
-    matched: r.matched,
-    hitPolicy: (r.hitPolicy ?? null) as RuleHitPolicy | null,
-    input: (r.input ?? {}) as Record<string, unknown>,
-    outputs: (r.outputs ?? {}) as Record<string, unknown>,
-    matchedRowIds: (r.matchedRowIds ?? []) as string[],
-    createdAt: formatDateTime(r.createdAt),
-  }));
-  return { list, total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(ruleExecutions, where),
+    rows: async () => {
+      const rows = await db.select().from(ruleExecutions).where(where).orderBy(desc(ruleExecutions.id)).limit(pageSize).offset(pageOffset(page, pageSize));
+      const callerNameOf = await resolveCallerNames(rows.map((r) => r.caller));
+      return rows.map((r): RuleExecution => ({
+        id: r.id,
+        refKind: r.refKind as RuleRefKind,
+        refId: r.refId,
+        ruleKey: r.ruleKey,
+        version: r.version,
+        caller: r.caller,
+        callerName: callerNameOf(r.caller),
+        bizRef: r.bizRef,
+        source: r.source as RuleExecutionSource,
+        matched: r.matched,
+        hitPolicy: (r.hitPolicy ?? null) as RuleHitPolicy | null,
+        input: (r.input ?? {}) as Record<string, unknown>,
+        outputs: (r.outputs ?? {}) as Record<string, unknown>,
+        matchedRowIds: (r.matchedRowIds ?? []) as string[],
+        createdAt: formatDateTime(r.createdAt),
+      }));
+    },
+  });
 }

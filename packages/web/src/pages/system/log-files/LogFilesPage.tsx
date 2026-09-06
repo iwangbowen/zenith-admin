@@ -17,6 +17,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useUrlSelectionState } from '@/hooks/useUrlSelectionState';
 import type { LogFile } from '@zenith/shared/ops';
 import { logFileDownloadUrl, logFileTailUrl, useDeleteLogFile, useLogFileContent, useLogFiles } from '@/hooks/queries/log-files';
+import { confirmAndDelete } from '@/components/list-page';
 import { confirmDelete } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { buildSearchIndex, compileSearchPattern, computeEffectiveLevels, type LogLevel, type MatchRange, type SearchMatch } from './logFilesSearch';
@@ -408,12 +409,11 @@ export default function LogFilesPage() {
   }, [abortTail, setSelectedFileKey]);
 
   const handleDelete = (file: LogFile) => {
-    confirmDelete({
+    confirmAndDelete({
       title: `确定要删除 ${file.name} 吗？`,
       content: '删除后无法恢复，请谨慎操作。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { filename: file.name } });
-        Toast.success('删除成功');
+      run: () => deleteMutation.mutateAsync({ params: { filename: file.name } }),
+      onDeleted: () => {
         if (selected?.name === file.name) deselectFile();
       },
     });

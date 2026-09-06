@@ -1,5 +1,5 @@
 import { Tabs, TabPane } from '@douyinfe/semi-ui';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
 import { ClearLogsButtons, ClearLogsMobileButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
@@ -10,7 +10,6 @@ import { loginLogKeys, useCleanLoginLogs, useLoginLogList } from '@/hooks/querie
 import { enumValueOf } from '@zenith/shared/core';
 import { LOGIN_EVENT_TYPES, LOGIN_STATUSES } from '@zenith/shared/identity';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 
 const STATUS_OPTIONS = [{ value: 'success', label: '成功' }, { value: 'fail', label: '失败' }];
@@ -96,34 +95,21 @@ export default function LoginLogsPage() {
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" lazyRender activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <TabPane tab="日志列表" itemKey="list">
-          <SearchToolbar
-            primary={(
+          <ListSearchToolbar
+            keyword={renderUsernameSearch()}
+            filters={(
               <>
-                {renderUsernameSearch()}
                 {renderEventTypeFilter()}
                 {renderStatusFilter()}
                 {renderTimeRangeFilter()}
-                <SearchButton onClick={handleSearch} />
-                <ResetButton onClick={handleReset} />
               </>
             )}
+            onSearch={handleSearch}
+            onReset={handleReset}
             actions={(
               <>
                 {renderExportButtons()}
                 {renderClearButtons()}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderUsernameSearch()}
-                <SearchButton onClick={handleSearch} />
-              </>
-            )}
-            mobileFilters={(
-              <>
-                {renderEventTypeFilter()}
-                {renderStatusFilter()}
-                {renderTimeRangeFilter()}
               </>
             )}
             mobileActions={(
@@ -134,8 +120,6 @@ export default function LoginLogsPage() {
             )}
             filterTitle="登录日志筛选"
             actionTitle="日志操作"
-            onFilterApply={handleSearch}
-            onFilterReset={handleReset}
           />
 
           <LoginLogsTable

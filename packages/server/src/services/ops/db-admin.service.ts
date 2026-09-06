@@ -20,6 +20,8 @@ import type { DbExecutor } from '../../db/types';
 import { dbAdminQueryHistory, dbQueryFavorites } from '../../db/schema';
 import { currentUserId } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { applyReadonlyTransactionGuards } from '../../lib/db-readonly-role';
 import logger from '../../lib/logger';
 import { assertNoDangerousSqlFunctions } from '../../lib/report-sql-safety';
@@ -1511,16 +1513,16 @@ export async function listQueryHistory(page: number, pageSize: number): Promise<
 }> {
   const userId = currentUserId();
   const offset = (page - 1) * pageSize;
-  const [list, total] = await Promise.all([
-    db.select().from(dbAdminQueryHistory)
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(dbAdminQueryHistory, eq(dbAdminQueryHistory.userId, userId)),
+    rows: () => db.select().from(dbAdminQueryHistory)
       .where(eq(dbAdminQueryHistory.userId, userId))
       .orderBy(desc(dbAdminQueryHistory.id))
       .limit(pageSize)
       .offset(offset),
-    db.$count(dbAdminQueryHistory, eq(dbAdminQueryHistory.userId, userId)),
-  ]);
-  return {
-    list: list.map((r) => ({
+    map: (r) => ({
       id: r.id,
       sqlText: r.sqlText,
       durationMs: r.durationMs,
@@ -1528,11 +1530,8 @@ export async function listQueryHistory(page: number, pageSize: number): Promise<
       success: r.success,
       errorMessage: r.errorMessage,
       executedAt: formatDateTime(r.executedAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 export async function getQueryHistoryBeforeAudit(id: number) {
@@ -1728,12 +1727,14 @@ export async function listQueryFavorites() {
 
 export async function getQueryFavoriteBeforeAudit(id: number) {
   const userId = currentUserId();
-  const [row] = await db
-    .select()
-    .from(dbQueryFavorites)
-    .where(and(eq(dbQueryFavorites.id, id), eq(dbQueryFavorites.userId, userId)))
-    .limit(1);
-  if (!row) throw new HTTPException(404, { message: '收藏记录不存在' });
+  const row = await requireFirstRow(
+    db
+      .select()
+      .from(dbQueryFavorites)
+      .where(and(eq(dbQueryFavorites.id, id), eq(dbQueryFavorites.userId, userId)))
+      .limit(1),
+    '收藏记录不存在',
+  );
   return mapDbQueryFavorite(row);
 }
 
@@ -1762,12 +1763,14 @@ export async function updateQueryFavorite(
   input: Partial<{ name: string; sql: string; description: string; tags: string[] }>,
 ) {
   const userId = currentUserId();
-  const existing = await db
-    .select()
-    .from(dbQueryFavorites)
-    .where(and(eq(dbQueryFavorites.id, id), eq(dbQueryFavorites.userId, userId)))
-    .limit(1);
-  if (!existing[0]) throw new HTTPException(404, { message: '收藏记录不存在' });
+  await requireFirstRow(
+    db
+      .select()
+      .from(dbQueryFavorites)
+      .where(and(eq(dbQueryFavorites.id, id), eq(dbQueryFavorites.userId, userId)))
+      .limit(1),
+    '收藏记录不存在',
+  );
 
   const [updated] = await db
     .update(dbQueryFavorites)

@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Checkbox, Spin, Banner, Row, Col, Switch, SideSheet, TextArea } from '@douyinfe/semi-ui';
+import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Checkbox, Spin, Banner, Row, Col, SideSheet, TextArea } from '@douyinfe/semi-ui';
 import { enumValueOf } from '@zenith/shared/core';
 import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OAUTH2_SCOPES, OPEN_APP_ENVIRONMENT_LABELS, OPEN_APP_ENVIRONMENTS, OPEN_APP_REVIEW_STATUS_LABELS, OPEN_APP_REVIEW_STATUSES } from '@zenith/shared/open-platform';
 import type { OAuth2Client, OAuth2GrantType } from '@zenith/shared/open-platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { copyableNoColumn, createdAtColumn } from '@/utils/table-columns';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -25,9 +25,9 @@ import {
 } from '@/hooks/queries/oauth2-apps';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 
 const { Text, Paragraph } = Typography;
 
@@ -63,23 +63,15 @@ export default function OAuth2AppsPage() {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:oauth2-apps:manage');
   const toggleStatusMutation = useSaveOAuth2App();
-
-  const handleToggleStatus = (record: OAuth2Client, checked: boolean) => {
-    const newStatus = checked ? 'enabled' : 'disabled';
-    const doToggle = async () => {
-      await toggleStatusMutation.mutateAsync({ id: record.id, values: { status: newStatus } });
-      Toast.success(checked ? '已启用' : '已禁用');
-    };
-    if (checked) {
-      void doToggle();
-    } else {
-      Modal.confirm({
-        title: '确认禁用',
-        content: `禁用后「${record.name}」将无法进行 OAuth2 授权，确认禁用？`,
-        onOk: () => void doToggle(),
-      });
-    }
-  };
+  const status = useStatusToggle<OAuth2Client>({
+    toggle: (record, enabled) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({
+      title: '确认禁用',
+      content: `禁用后「${record.name}」将无法进行 OAuth2 授权，确认禁用？`,
+    }),
+    disabled: !canManage,
+    messages: { disabled: '已禁用' },
+  });
   // ─── 状态 ──────────────────────────────────────────────────────────────
   interface SearchParams {
     keyword: string;
@@ -107,7 +99,6 @@ export default function OAuth2AppsPage() {
     environment: submittedParams.environment,
     reviewStatus: submittedParams.reviewStatus,
   });
-  const data = listQuery.data ?? null;
   const ratePlans = useOAuth2RatePlans().data ?? [];
   const scopeOptions = useOAuth2ApiScopes().data ?? [];
   const saveMutation = useSaveOAuth2App();
@@ -153,13 +144,6 @@ export default function OAuth2AppsPage() {
   const deleteMutation = useDeleteOAuth2App();
   const regenerateMutation = useRegenerateOAuth2AppSecret();
   const reviewMutation = useReviewOAuth2App();
-  const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
-
-  // ─── 删除 ──────────────────────────────────────────────────────────────
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  }
 
   // ─── 重置 Secret ────────────────────────────────────────────────────────
   async function handleRegenerate(row: OAuth2Client) {
@@ -278,21 +262,7 @@ export default function OAuth2AppsPage() {
       render: (v: boolean) => (v ? <Tag color="orange" size="small">已开启</Tag> : <Text type="tertiary">仅 Bearer</Text>),
     },
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 80,
-      fixed: 'right' as const,
-      render: (v: string, record: OAuth2Client) => (
-        <Switch
-          checked={v === 'enabled'}
-          loading={togglingId === record.id}
-          disabled={!canManage}
-          onChange={(checked) => handleToggleStatus(record, checked)}
-          size="small"
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<OAuth2Client>({
       width: 180,
       desktopInlineKeys: ['detail', 'edit'],
@@ -340,36 +310,20 @@ export default function OAuth2AppsPage() {
             });
           },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canManage,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除此应用吗？',
-              content: '删除后不可恢复',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除此应用吗？',
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索应用名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canManage && (
-              <CreateButton onClick={appModal.openCreate} />
-            )}
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索应用名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />}
         filters={(
           <>
             <FilterSelect
@@ -387,48 +341,16 @@ export default function OAuth2AppsPage() {
             />
           </>
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索应用名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />
-            <SearchButton onClick={handleSearch} />
-            {canManage && (
-              <CreateButton onClick={appModal.openCreate} />
-            )}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            <FilterSelect
-              placeholder="全部环境"
-              items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
-              value={draftParams.environment}
-              onChange={(environment) => setDraftParams({ ...draftParams, environment: environment as SearchParams['environment'] })}
-              width="100%"
-            />
-            <FilterSelect
-              placeholder="全部审核状态"
-              items={OPEN_APP_REVIEW_STATUSES.map((value) => ({ value, label: OPEN_APP_REVIEW_STATUS_LABELS[value] }))}
-              value={draftParams.reviewStatus}
-              onChange={(reviewStatus) => setDraftParams({ ...draftParams, reviewStatus: reviewStatus as SearchParams['reviewStatus'] })}
-              width="100%"
-            />
-          </>
-        )}
-        mobileActions={<ResetButton onClick={handleReset} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canManage && <CreateButton onClick={appModal.openCreate} />}
         actionTitle="应用操作"
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<OAuth2Client>
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无数据"
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       {/* 新增 / 编辑抽屉 */}

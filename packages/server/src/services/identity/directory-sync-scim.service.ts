@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { hashPassword } from '../../lib/password';
 import crypto from 'node:crypto';
 import { db } from '../../db';
@@ -9,6 +9,7 @@ import {
 import { timingSafeCompare } from '../../lib/wechat/signature';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { reserveTenantSeats } from '../../lib/tenant-quota';
+import { exactTenantCondition } from '../../lib/tenant';
 import { syncUserDynamicMembershipsSafe } from './user-group-rules.service';
 import logger from '../../lib/logger';
 import { forceLogoutAllUserSessions } from './sessions.service';
@@ -59,7 +60,7 @@ export async function authenticateScimSource(key: string, authorization: string 
 }
 
 function tenantWhere(tenantId: number | null) {
-  return tenantId == null ? isNull(users.tenantId) : eq(users.tenantId, tenantId);
+  return exactTenantCondition(users.tenantId, tenantId);
 }
 
 interface ScimUserInput {

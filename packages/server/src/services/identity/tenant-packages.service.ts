@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
@@ -58,22 +60,19 @@ export async function listTenantPackages(q: ListTenantPackagesQuery) {
   conditions.push(keywordCondition(keyword, [tenantPackages.name]));
   if (status === 'enabled' || status === 'disabled') conditions.push(eq(tenantPackages.status, status));
   const where = and(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(tenantPackages, where),
-    db.query.tenantPackages.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(tenantPackages, where),
+    rows: () => db.query.tenantPackages.findMany({
       where,
       orderBy: desc(tenantPackages.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
       with: { packageFeatures: { columns: { featureKey: true } } },
     }),
-  ]);
-  return {
-    list: rows.map((row) => mapTenantPackage(row, { features: row.packageFeatures.map((f) => f.featureKey) })),
-    total,
-    page,
-    pageSize,
-  };
+    map: (row) => mapTenantPackage(row, { features: row.packageFeatures.map((f) => f.featureKey) }),
+  });
 }
 
 export async function listAllTenantPackages() {
@@ -84,11 +83,10 @@ export async function listAllTenantPackages() {
 }
 
 export async function getTenantPackage(id: number) {
-  const row = await db.query.tenantPackages.findFirst({
+  const row = requireRow(await db.query.tenantPackages.findFirst({
     where: eq(tenantPackages.id, id),
     with: { packageFeatures: { columns: { featureKey: true } } },
-  });
-  if (!row) throw new HTTPException(404, { message: '套餐不存在' });
+  }), '套餐不存在');
   return mapTenantPackage(row, { features: row.packageFeatures.map((f) => f.featureKey) });
 }
 
@@ -114,8 +112,7 @@ export async function getTenantPackagesBeforeAudit(ids: number[]) {
 
 export async function ensureTenantPackageExists(id: number) {
   const [row] = await db.select().from(tenantPackages).where(eq(tenantPackages.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '套餐不存在' });
-  return mapTenantPackage(row);
+  return mapTenantPackage(requireRow(row, '套餐不存在'));
 }
 
 interface TenantPackageInput {
@@ -137,7 +134,7 @@ export async function createTenantPackage(data: TenantPackageInput) {
 export async function updateTenantPackage(id: number, data: Partial<TenantPackageInput>) {
   try {
     const [row] = await db.update(tenantPackages).set(data).where(eq(tenantPackages.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '套餐不存在' });
+    requireRow(row, '套餐不存在');
     // 套餐状态（启用/禁用）影响绑定租户的功能集解析（禁用=fail-closed），清空权限缓存即时生效
     await clearUserPermissionCache();
     return getTenantPackage(id);
@@ -163,7 +160,7 @@ export async function deleteTenantPackage(id: number) {
     throw new HTTPException(409, { message: `该套餐已绑定 ${bound} 个租户，请先解绑或迁移后再删除` });
   }
   const [row] = await db.delete(tenantPackages).where(eq(tenantPackages.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '套餐不存在' });
+  requireRow(row, '套餐不存在');
 }
 
 export async function batchDeleteTenantPackages(ids: number[]) {

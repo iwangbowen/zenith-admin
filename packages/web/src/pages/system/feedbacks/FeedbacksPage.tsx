@@ -1,14 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Banner, Button, Descriptions, Form, Rating, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Descriptions, Form, Rating, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Trash2 } from 'lucide-react';
 import type { UserFeedback, UserFeedbackCategory, UserFeedbackStatus } from '@zenith/shared/platform';
 import { USER_FEEDBACK_CATEGORY_LABELS, USER_FEEDBACK_STATUS_LABELS } from '@zenith/shared/platform';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateForApi } from '@/utils/date';
@@ -17,9 +16,8 @@ import { useMySettings } from '@/hooks/queries/settings';
 import { useDeleteFeedbacks, useHandleFeedback, useUserFeedbackList, userFeedbackKeys } from '@/hooks/queries/user-feedbacks';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 
 // 文案统一来自 @zenith/shared；Tag 色为本页特化
 const CATEGORY_OPTIONS: Array<{ value: UserFeedbackCategory; label: string; color: 'blue' | 'red' | 'orange' | 'grey' }> = [
@@ -77,8 +75,6 @@ export default function FeedbacksPage() {
     startTime: rangeStart ? formatDateForApi(rangeStart) : undefined,
     endTime: rangeEnd ? formatDateForApi(rangeEnd) : undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   // ─── 批量选择 ──────────────────────────────────────────────────────────
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
@@ -115,19 +111,16 @@ export default function FeedbacksPage() {
     };
   }
 
-  async function handleDelete(ids: number[]) {
-    await deleteMutation.mutateAsync(ids);
-    Toast.success('删除成功');
-    setSelectedRowKeys((prev) => prev.filter((k) => !ids.includes(k)));
-  }
-
   function confirmBatchDelete() {
-    confirmDelete({
+    confirmAndDelete({
       title: `确认删除选中的 ${selectedRowKeys.length} 条反馈？`,
       content: '删除后不可恢复',
-      onOk: () => handleDelete(selectedRowKeys),
+      run: () => deleteMutation.mutateAsync(selectedRowKeys),
+      successMessage: '删除成功',
+      onDeleted: () => setSelectedRowKeys([]),
     });
   }
+
 
   // ─── 表格列 ────────────────────────────────────────────────────────────
   const columns: ColumnProps<UserFeedback>[] = useMemo(() => [
@@ -169,18 +162,13 @@ export default function FeedbacksPage() {
           label: '处理',
           onClick: () => handleModal.openEdit(record),
         }] : []),
-        ...(hasPermission('system:feedback:delete') ? [{
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除这条反馈吗？',
-              content: '删除后不可恢复',
-              onOk: () => handleDelete([record.id]),
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('system:feedback:delete'),
+          title: '确定要删除这条反馈吗？',
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          onDeleted: () => setSelectedRowKeys((prev) => prev.filter((k) => k !== record.id)),
+        }),
       ],
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -212,18 +200,8 @@ export default function FeedbacksPage() {
     <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setDraftParams((p) => ({ ...p, dateRange: value ? (value as [Date, Date]) : null }))} />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
-
   const renderBatchDeleteButton = () => selectedRowKeys.length > 0 && hasPermission('system:feedback:delete') ? (
-    <Button type="danger" icon={<Trash2 size={14} />} onClick={confirmBatchDelete}>
-      批量删除 ({selectedRowKeys.length})
-    </Button>
+    <BatchDeleteButton count={selectedRowKeys.length} onClick={confirmBatchDelete} />
   ) : null;
 
   const renderExportButton = (variant?: 'flat') => hasPermission('system:feedback:list') ? (
@@ -252,34 +230,21 @@ export default function FeedbacksPage() {
         />
       )}
 
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
-            {renderKeywordSearch()}
             {renderCategoryFilter()}
             {renderStatusFilter()}
             {renderDateRangeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         actions={(
           <>
             {renderBatchDeleteButton()}
             {renderExportButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderCategoryFilter()}
-            {renderStatusFilter()}
-            {renderDateRangeFilter()}
           </>
         )}
         mobileActions={(
@@ -289,25 +254,18 @@ export default function FeedbacksPage() {
           </>
         )}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<UserFeedback>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无反馈"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-        }}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          },
+        })}
       />
 
       <AppModal

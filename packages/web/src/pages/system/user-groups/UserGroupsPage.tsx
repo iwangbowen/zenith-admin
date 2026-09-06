@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Banner, Button, Form, Select, Space, Toast, SideSheet, Empty, Tag, Spin, Switch, Typography } from '@douyinfe/semi-ui';
-import { RefreshCw, Trash2, Users } from 'lucide-react';
+import { Banner, Button, Form, Select, Space, Toast, SideSheet, Empty, Tag, Spin, Typography } from '@douyinfe/semi-ui';
+import { RefreshCw, Users } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import type { CreateUserGroupInput, User, UserGroup, UserGroupMemberRule, UserGroupRulePreview } from '@zenith/shared/identity';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
-import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
-import { SearchToolbar } from '@/components/SearchToolbar';
-import { UserPreviewCell } from '@/components/UserPreviewCell';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -34,9 +31,10 @@ import { useAllRoles } from '@/hooks/queries/roles';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { MemberAssignmentSheet, memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
 
 interface SearchParams {
   keyword: string;
@@ -64,8 +62,6 @@ export default function UserGroupsPage() {
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
 
   // 选项数据
@@ -119,7 +115,11 @@ export default function UserGroupsPage() {
   const deleteMutation = useDeleteUserGroups();
   const assignMembersMutation = useAssignUserGroupMembers();
   const assignRolesMutation = useAssignUserGroupRoles();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<UserGroup>({
+    toggle: (group, enabled) => toggleStatusMutation.mutateAsync({ id: group.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (group) => ({ danger: true, title: `确认禁用用户组「${group.name}」？`, content: '禁用后该用户组将不可选择。', okText: '确认禁用' }),
+    disabled: !hasPermission('system:user-groups:update'),
+  });
 
   const departmentTreeData = useMemo<TreeNodeData[]>(() => {
     const nodeMap = new Map<number, TreeNodeData>();
@@ -163,37 +163,16 @@ export default function UserGroupsPage() {
     if (!groupModal.modalProps.visible) setRulePreview(null);
   }, [groupModal.modalProps.visible]);
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  };
-
-  const handleToggleStatus = async (group: UserGroup, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认禁用用户组「${group.name}」？`,
-        content: '禁用后该用户组将不可选择。',
-        okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    toggleStatusMutation.mutate(
-      { id: group.id, values: { status: newStatus } },
-      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用') },
-    );
-  };
-
   const handleBatchDelete = () => {
-    confirmDelete({
+    if (!selectedRowKeys.length) return;
+    confirmAndDelete({
       title: `确认删除选中的 ${selectedRowKeys.length} 个用户组？`,
       content: '删除后无法恢复，请确认操作',
-      onOk: async () => {
-        await deleteMutation.mutateAsync(selectedRowKeys);
-        Toast.success('删除成功');
-        setSelectedRowKeys([]);
-      },
+      run: () => deleteMutation.mutateAsync(selectedRowKeys),
+      onDeleted: () => setSelectedRowKeys([]),
     });
   };
+
 
   const openMembers = (group: UserGroup) => {
     setMemberGroup(group);
@@ -216,7 +195,6 @@ export default function UserGroupsPage() {
   const handleSaveMembers = async () => {
     if (!memberGroup) return;
     await assignMembersMutation.mutateAsync({ params: { id: memberGroup.id }, body: { userIds: memberIds } });
-    Toast.success('保存成功');
     setMemberSheetVisible(false);
   };
 
@@ -237,10 +215,13 @@ export default function UserGroupsPage() {
         ? <Tag color="teal">动态{record.ruleSyncedAt ? '' : '（未同步）'}</Tag>
         : <Tag color="grey">静态</Tag>,
     },
-    {
-      title: '成员', dataIndex: 'memberPreview', width: 150,
-      render: (_: unknown, record: UserGroup) => <UserPreviewCell preview={record.memberPreview} count={record.memberCount} scope={{ type: 'userGroup', id: record.id, name: record.name }} />,
-    },
+    memberPreviewColumn<UserGroup>({
+      dataIndex: 'memberPreview',
+      width: 150,
+      getPreview: (record) => record.memberPreview,
+      getCount: (record) => record.memberCount,
+      getScope: (record) => ({ type: 'userGroup', id: record.id, name: record.name }),
+    }),
     {
       title: '角色', dataIndex: 'roleCount', width: 80, align: 'right',
       render: (v: number | undefined, record: UserGroup) => (
@@ -251,18 +232,7 @@ export default function UserGroupsPage() {
       ),
     },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
-      render: (v: string, record: UserGroup) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!hasPermission('system:user-groups:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<UserGroup>({
       width: 240,
       desktopInlineKeys: ['members', 'roles', 'edit'],
@@ -293,18 +263,11 @@ export default function UserGroupsPage() {
           hidden: !hasPermission('system:user-groups:update'),
           onClick: () => { groupModal.openEdit(record); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:user-groups:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该用户组吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该用户组吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -321,59 +284,33 @@ export default function UserGroupsPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
-  const renderBatchDeleteButton = () => selectedRowKeys.length > 0 && hasPermission('system:user-groups:delete') ? (
-    <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-      批量删除 ({selectedRowKeys.length})
-    </Button>
-  ) : null;
   const renderCreateButton = () => hasPermission('system:user-groups:create') ? (
     <CreateButton onClick={groupModal.openCreate} />
   ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderBatchDeleteButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
-        mobileActions={renderBatchDeleteButton()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={selectedRowKeys.length > 0 && hasPermission('system:user-groups:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
         filterTitle="用户组筛选"
         actionTitle="用户组操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<UserGroup>
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        pagination={buildPagination(total)}
-        empty="暂无数据"
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as number[]),
-        }}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无数据',
+          rowSelection: {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          },
+        })}
       />
 
       <SideSheet
@@ -507,19 +444,19 @@ export default function UserGroupsPage() {
         </Spin>
       </SideSheet>
 
-      <SideSheet
-        title={
-          <Space>
-            <Users size={16} />
-            <span>成员管理 - {memberGroup?.name}</span>
-            {memberGroup?.memberMode === 'dynamic' && <Tag color="teal" size="small">动态</Tag>}
-          </Space>
-        }
-        visible={memberSheetVisible}
-        onCancel={() => setMemberSheetVisible(false)}
-        width={720}
-        footer={
-          memberGroup?.memberMode === 'dynamic' ? (
+      {memberGroup?.memberMode === 'dynamic' ? (
+        <SideSheet
+          title={
+            <Space>
+              <Users size={16} />
+              <span>成员管理 - {memberGroup?.name}</span>
+              <Tag color="teal" size="small">动态</Tag>
+            </Space>
+          }
+          visible={memberSheetVisible}
+          onCancel={() => setMemberSheetVisible(false)}
+          width={720}
+          footer={(
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <Button onClick={() => setMemberSheetVisible(false)}>关闭</Button>
               {hasPermission('system:user-groups:assign') && (
@@ -536,15 +473,8 @@ export default function UserGroupsPage() {
                 </Button>
               )}
             </div>
-          ) : (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <Button onClick={() => setMemberSheetVisible(false)}>取消</Button>
-              <Button type="primary" disabled={!membersQuery.isSuccess} loading={assignMembersMutation.isPending} onClick={handleSaveMembers}>保存</Button>
-            </div>
-          )
-        }
-      >
-        {memberGroup?.memberMode === 'dynamic' ? (
+          )}
+        >
           <Space vertical align="start" spacing={12} style={{ width: '100%' }}>
             <Banner
               fullMode={false}
@@ -565,17 +495,21 @@ export default function UserGroupsPage() {
               )}
             </Spin>
           </Space>
-        ) : allUsers.length === 0 ? (
-          <Empty title="暂无用户" description="请先创建用户" />
-        ) : (
-          <UserTransferSelect
-            dataSource={allUsers}
-            value={memberIds}
-            onChange={setMemberIds}
-            departments={departments}
-          />
-        )}
-      </SideSheet>
+        </SideSheet>
+      ) : (
+        <MemberAssignmentSheet
+          title={`成员管理 - ${memberGroup?.name ?? ''}`}
+          visible={memberSheetVisible}
+          onCancel={() => setMemberSheetVisible(false)}
+          users={allUsers}
+          value={memberIds}
+          onChange={setMemberIds}
+          departments={departments}
+          canSave={membersQuery.isSuccess}
+          saveLoading={assignMembersMutation.isPending}
+          onSave={handleSaveMembers}
+        />
+      )}
 
       <AppModal
         title={`分配角色 — ${roleGroup?.name ?? ''}`}

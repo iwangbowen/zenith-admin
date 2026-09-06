@@ -42,6 +42,8 @@ import logger from '../../lib/logger';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { deleteManagedFile, saveGeneratedManagedFile } from '../files/files.service';
 import { countActiveDevices, getDeviceVersionDistribution, upsertDeviceHeartbeat } from './client-devices.service';
@@ -155,43 +157,42 @@ function buildClientAppWhere(q: ListClientAppsQuery & { id?: number }) {
 export async function listClientApps(q: ListClientAppsQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildClientAppWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(clientApps, where),
-    withPagination(db.select().from(clientApps).where(where).orderBy(asc(clientApps.id)).$dynamic(), page, pageSize),
-  ]);
-
-  // 列表冗余：版本总数 + 最新已发布版本号
-  const ids = rows.map((r) => r.id);
-  const [countRows, publishedRows] = ids.length
-    ? await Promise.all([
-      db
-        .select({ appId: appReleases.appId, cnt: sql<number>`count(*)::int` })
-        .from(appReleases)
-        .where(inArray(appReleases.appId, ids))
-        .groupBy(appReleases.appId),
-      db
-        .select({ appId: appReleases.appId, version: appReleases.version, publishedAt: appReleases.publishedAt })
-        .from(appReleases)
-        .where(and(inArray(appReleases.appId, ids), eq(appReleases.status, 'published')))
-        .orderBy(desc(appReleases.publishedAt)),
-    ])
-    : [[], []];
-  const countMap = new Map(countRows.map((r) => [r.appId, r.cnt]));
-  const latestMap = new Map<number, string>();
-  for (const r of publishedRows) {
-    if (!latestMap.has(r.appId)) latestMap.set(r.appId, r.version);
-  }
-
-  return {
-    list: rows.map((row) => ({
-      ...mapClientApp(row),
-      releaseCount: countMap.get(row.id) ?? 0,
-      latestVersion: latestMap.get(row.id) ?? null,
-    })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(clientApps, where),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(clientApps).where(where).orderBy(asc(clientApps.id)).$dynamic(), page, pageSize);
+
+      // 列表冗余：版本总数 + 最新已发布版本号
+      const ids = rows.map((r) => r.id);
+      const [countRows, publishedRows] = ids.length
+        ? await Promise.all([
+          db
+            .select({ appId: appReleases.appId, cnt: sql<number>`count(*)::int` })
+            .from(appReleases)
+            .where(inArray(appReleases.appId, ids))
+            .groupBy(appReleases.appId),
+          db
+            .select({ appId: appReleases.appId, version: appReleases.version, publishedAt: appReleases.publishedAt })
+            .from(appReleases)
+            .where(and(inArray(appReleases.appId, ids), eq(appReleases.status, 'published')))
+            .orderBy(desc(appReleases.publishedAt)),
+        ])
+        : [[], []];
+      const countMap = new Map(countRows.map((r) => [r.appId, r.cnt]));
+      const latestMap = new Map<number, string>();
+      for (const r of publishedRows) {
+        if (!latestMap.has(r.appId)) latestMap.set(r.appId, r.version);
+      }
+
+      return rows.map((row) => ({
+        ...mapClientApp(row),
+        releaseCount: countMap.get(row.id) ?? 0,
+        latestVersion: latestMap.get(row.id) ?? null,
+      }));
+    },
+  });
 }
 
 /** 全部启用应用（页面应用切换器） */
@@ -205,9 +206,10 @@ export async function listAllClientApps() {
 }
 
 export async function ensureClientAppExists(id: number): Promise<ClientAppRow> {
-  const [row] = await db.select().from(clientApps).where(eq(clientApps.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '应用不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(clientApps).where(eq(clientApps.id, id)).limit(1),
+    '应用不存在',
+  );
 }
 
 export async function getClientAppBeforeAudit(id: number) {
@@ -261,9 +263,11 @@ function buildAppReleaseWhere(q: ListAppReleasesQuery & { id?: number }) {
 export async function listAppReleases(q: ListAppReleasesQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildAppReleaseWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(appReleases, where),
-    db.query.appReleases.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(appReleases, where),
+    rows: () => db.query.appReleases.findMany({
       where,
       with: {
         app: { columns: { appKey: true, name: true } },
@@ -273,25 +277,25 @@ export async function listAppReleases(q: ListAppReleasesQuery) {
       limit: pageSize,
       offset: (Math.max(page, 1) - 1) * pageSize,
     }),
-  ]);
-  return { list: rows.map(mapAppRelease), total, page, pageSize };
+    map: mapAppRelease,
+  });
 }
 
 export async function ensureAppReleaseExists(id: number): Promise<AppReleaseRow> {
-  const [row] = await db.select().from(appReleases).where(eq(appReleases.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '版本不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(appReleases).where(eq(appReleases.id, id)).limit(1),
+    '版本不存在',
+  );
 }
 
 export async function getAppRelease(id: number) {
-  const row = await db.query.appReleases.findFirst({
+  const row = requireRow(await db.query.appReleases.findFirst({
     where: eq(appReleases.id, id),
     with: {
       app: { columns: { appKey: true, name: true } },
       artifacts: true,
     },
-  });
-  if (!row) throw new HTTPException(404, { message: '版本不存在' });
+  }), '版本不存在');
   return mapAppRelease(row);
 }
 
@@ -441,9 +445,10 @@ export async function addExternalArtifact(releaseId: number, input: CreateExtern
 }
 
 export async function ensureAppArtifactExists(id: number): Promise<AppArtifactRow> {
-  const [row] = await db.select().from(appArtifacts).where(eq(appArtifacts.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '制品不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(appArtifacts).where(eq(appArtifacts.id, id)).limit(1),
+    '制品不存在',
+  );
 }
 
 export async function getAppArtifactBeforeAudit(id: number) {
@@ -465,13 +470,14 @@ export async function deleteAppArtifact(id: number) {
 // ─── 公开侧：检查更新 / 制品分发 / 回执 ──────────────────────────────────────
 
 async function findEnabledAppByKey(appKey: string): Promise<ClientAppRow> {
-  const [row] = await db
-    .select()
-    .from(clientApps)
-    .where(and(eq(clientApps.appKey, appKey), eq(clientApps.status, 'enabled')))
-    .limit(1);
-  if (!row) throw new HTTPException(404, { message: '应用不存在' });
-  return row;
+  return requireFirstRow(
+    db
+      .select()
+      .from(clientApps)
+      .where(and(eq(clientApps.appKey, appKey), eq(clientApps.status, 'enabled')))
+      .limit(1),
+    '应用不存在',
+  );
 }
 
 /** 事件写入失败不影响主流程（统计缺一条 ≪ 客户端升级被 500 打断） */

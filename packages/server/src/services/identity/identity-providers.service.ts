@@ -1,15 +1,17 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import crypto from 'node:crypto';
 import { hashPassword } from '../../lib/password';
 import { Client, InvalidCredentialsError, type Entry } from 'ldapts';
 import { SAML, ValidateInResponseTo, type CacheItem, type CacheProvider, type Profile } from '@node-saml/node-saml';
-import { and, desc, eq, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, ne } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { CreateTenantIdentityProviderInput, IdentityProviderConnectionTestResult, IdentityProviderAttributeMapping, IdentityProviderSyncResult, IdentityProviderType, LdapDirectoryUser, UpdateTenantIdentityProviderInput } from '@zenith/shared/identity';
 import { config } from '../../config';
 import { db } from '../../db';
 import { identityProviderSyncLogs, tenantIdentityProviders, tenants, userIdentityAccounts, userRoles, users, type UserRow } from '../../db/schema';
 import { reserveTenantSeats } from '../../lib/tenant-quota';
-import { isTenantActive, isTenantExpired, resolveManagedTenantId, tenantScope } from '../../lib/tenant';
+import { exactTenantCondition, isTenantActive, isTenantExpired, resolveManagedTenantId, tenantScope } from '../../lib/tenant';
 import { syncUserDynamicMembershipsSafe } from './user-group-rules.service';
 import redis from '../../lib/redis';
 import { formatDateTime } from '../../lib/datetime';
@@ -168,7 +170,7 @@ export function mapIdentityProvider(row: ProviderRow) {
 async function ensureTenantUsable(tenantId: number | null | undefined) {
   if (tenantId == null) return null;
   const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
-  if (!tenant) throw new HTTPException(404, { message: '租户不存在' });
+  requireRow(tenant, '租户不存在');
   if (tenant.status !== 'enabled') throw new HTTPException(403, { message: '租户已禁用' });
   if (isTenantExpired(tenant)) throw new HTTPException(403, { message: '租户已过期' });
   return tenant;
@@ -181,11 +183,10 @@ const PROVIDER_TENANT_SCOPE_MESSAGE = '无权为其他租户或平台配置身�
  * 公开登录流程请用 `getUsableProvider`（不依赖请求用户）。
  */
 async function getManageableProvider(id: number): Promise<ProviderRow> {
-  const row = await db.query.tenantIdentityProviders.findFirst({
+  const row = requireRow(await db.query.tenantIdentityProviders.findFirst({
     where: and(eq(tenantIdentityProviders.id, id), tenantScope(tenantIdentityProviders)),
     with: { tenant: { columns: { name: true, code: true, status: true, expireAt: true } } },
-  });
-  if (!row) throw new HTTPException(404, { message: '身份源不存在' });
+  }), '身份源不存在');
   return row;
 }
 
@@ -248,17 +249,19 @@ export async function listIdentityProviders(query: ListIdentityProvidersQuery) {
     status ? eq(tenantIdentityProviders.status, status) : undefined,
   );
 
-  const [total, rows] = await Promise.all([
-    db.$count(tenantIdentityProviders, where),
-    db.query.tenantIdentityProviders.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(tenantIdentityProviders, where),
+    rows: () => db.query.tenantIdentityProviders.findMany({
       where,
       with: { tenant: { columns: { name: true, code: true, status: true, expireAt: true } } },
       orderBy: desc(tenantIdentityProviders.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapIdentityProvider), total, page, pageSize };
+    map: mapIdentityProvider,
+  });
 }
 
 export async function getIdentityProvider(id: number) {
@@ -292,7 +295,7 @@ export async function updateIdentityProvider(id: number, data: UpdateTenantIdent
       .select({ id: tenantIdentityProviders.id })
       .from(tenantIdentityProviders)
       .where(and(
-        tenantId == null ? isNull(tenantIdentityProviders.tenantId) : eq(tenantIdentityProviders.tenantId, tenantId),
+        exactTenantCondition(tenantIdentityProviders.tenantId, tenantId),
         eq(tenantIdentityProviders.code, data.code),
         ne(tenantIdentityProviders.id, id),
       ))
@@ -303,7 +306,7 @@ export async function updateIdentityProvider(id: number, data: UpdateTenantIdent
   const [updated] = await db.update(tenantIdentityProviders).set(values)
     .where(and(eq(tenantIdentityProviders.id, id), tenantScope(tenantIdentityProviders)))
     .returning();
-  if (!updated) throw new HTTPException(404, { message: '身份源不存在' });
+  requireRow(updated, '身份源不存在');
   return getIdentityProvider(id);
 }
 
@@ -311,7 +314,7 @@ export async function deleteIdentityProvider(id: number) {
   const [row] = await db.delete(tenantIdentityProviders)
     .where(and(eq(tenantIdentityProviders.id, id), tenantScope(tenantIdentityProviders)))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '身份源不存在' });
+  requireRow(row, '身份源不存在');
 }
 
 export async function getIdentityProviderBeforeAudit(id: number) {
@@ -342,7 +345,7 @@ export async function discoverEnterpriseIdentityProviders(tenantCode?: string | 
     .from(tenantIdentityProviders)
     .where(and(
       eq(tenantIdentityProviders.status, 'enabled'),
-      tenantId == null ? isNull(tenantIdentityProviders.tenantId) : eq(tenantIdentityProviders.tenantId, tenantId),
+      exactTenantCondition(tenantIdentityProviders.tenantId, tenantId),
     ))
     .orderBy(tenantIdentityProviders.id);
   return { tenantCode: tenantCode ?? null, providers: rows };
@@ -357,11 +360,10 @@ function assertProviderUsable(row: ProviderRow): ProviderRow {
 
 /** 公开登录流程用：不依赖请求用户，只校验身份源与租户可用 */
 async function getUsableProvider(id: number) {
-  const row = await db.query.tenantIdentityProviders.findFirst({
+  const row = requireRow(await db.query.tenantIdentityProviders.findFirst({
     where: eq(tenantIdentityProviders.id, id),
     with: { tenant: { columns: { name: true, code: true, status: true, expireAt: true } } },
-  });
-  if (!row) throw new HTTPException(404, { message: '身份源不存在' });
+  }), '身份源不存在');
   return assertProviderUsable(row);
 }
 
@@ -747,7 +749,7 @@ async function findLinkableUserByEmail(
 ): Promise<UserRow | null> {
   if (!external.email) return null;
   if (options.requireOptIn && (!provider.autoLinkByEmail || !externalEmailVerified(provider, profile))) return null;
-  const tenant = provider.tenantId == null ? isNull(users.tenantId) : eq(users.tenantId, provider.tenantId);
+  const tenant = exactTenantCondition(users.tenantId, provider.tenantId);
   const matches = await db.select().from(users)
     .where(and(eq(users.email, external.email), tenant))
     .limit(2);

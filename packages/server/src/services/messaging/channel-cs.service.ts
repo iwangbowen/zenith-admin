@@ -14,6 +14,8 @@
  */
 import { and, asc, desc, eq, exists, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import {
   channels, channelMessages, channelMenus, channelAutoReplies, channelMessageTargets, channelQuickReplies,
   channelConversations, users, menus, roleMenus, userRoles,
@@ -33,9 +35,7 @@ import { sanitizeCmsHtml } from '../cms/cms-html-sanitizer';
 // ─── 频道前置校验 ──────────────────────────────────────────────────────────────
 
 async function ensureChannel(channelId: number): Promise<ChannelRow> {
-  const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId) });
-  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
-  return ch;
+  return requireRow(await db.query.channels.findFirst({ where: eq(channels.id, channelId) }), '频道不存在');
 }
 
 async function ensureBusinessChannel(channelId: number): Promise<ChannelRow> {
@@ -150,8 +150,7 @@ export async function listChannelAutoReplies(channelId: number): Promise<Channel
 }
 
 export async function getChannelAutoReplyBeforeAudit(id: number): Promise<ChannelAutoReply> {
-  const row = await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) });
-  if (!row) throw new HTTPException(404, { message: '自动回复规则不存在' });
+  const row = requireRow(await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) }), '自动回复规则不存在');
   return mapAutoReply(row);
 }
 
@@ -172,8 +171,7 @@ export async function createChannelAutoReply(channelId: number, input: CreateCha
 }
 
 export async function updateChannelAutoReply(id: number, input: UpdateChannelAutoReplyInput): Promise<ChannelAutoReply> {
-  const existing = await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) });
-  if (!existing) throw new HTTPException(404, { message: '自动回复规则不存在' });
+  const existing = requireRow(await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) }), '自动回复规则不存在');
   const [row] = await db.update(channelAutoReplies).set({
     ...(input.keyword === undefined ? {} : { keyword: existing.matchType === 'keyword' ? input.keyword : null }),
     ...(input.keywordMode === undefined ? {} : { keywordMode: input.keywordMode }),
@@ -187,8 +185,7 @@ export async function updateChannelAutoReply(id: number, input: UpdateChannelAut
 }
 
 export async function deleteChannelAutoReply(id: number): Promise<void> {
-  const existing = await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) });
-  if (!existing) throw new HTTPException(404, { message: '自动回复规则不存在' });
+  requireRow(await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) }), '自动回复规则不存在');
   await db.delete(channelAutoReplies).where(eq(channelAutoReplies.id, id));
 }
 
@@ -339,8 +336,7 @@ async function activateConversationOnUserMessage(channelId: number, userId: numb
 export async function replyAsAgent(channelId: number, userId: number, content: string): Promise<ChannelMessage> {
   const agent = currentUser();
   await ensureBusinessChannel(channelId);
-  const targetUser = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { id: true } });
-  if (!targetUser) throw new HTTPException(404, { message: '用户不存在' });
+  requireRow(await db.query.users.findFirst({ where: eq(users.id, userId), columns: { id: true } }), '用户不存在');
   const agentName = await getUserName(agent.userId);
   const msg = await deliverOut(channelId, userId, content, agent.userId, agentName);
   // 会话治理：客服回复 → 待处理转为处理中（已解决的也重新进入处理中）
@@ -492,8 +488,7 @@ async function upsertConversation(channelId: number, userId: number, set: Partia
 export async function assignConversation(channelId: number, userId: number, assigneeId: number | null): Promise<void> {
   await ensureBusinessChannel(channelId);
   if (assigneeId != null) {
-    const agent = await db.query.users.findFirst({ where: eq(users.id, assigneeId), columns: { id: true } });
-    if (!agent) throw new HTTPException(404, { message: '指派的客服不存在' });
+    requireRow(await db.query.users.findFirst({ where: eq(users.id, assigneeId), columns: { id: true } }), '指派的客服不存在');
   }
   await upsertConversation(channelId, userId, { assigneeId });
 }
@@ -525,10 +520,9 @@ export async function listCsAgents(): Promise<ChannelCsAgent[]> {
 export async function rateConversation(channelId: number, rating: number, comment: string | null): Promise<void> {
   const me = currentUser().userId;
   await ensureBusinessChannel(channelId);
-  const existing = await db.query.channelConversations.findFirst({
+  requireRow(await db.query.channelConversations.findFirst({
     where: and(eq(channelConversations.channelId, channelId), eq(channelConversations.userId, me)),
-  });
-  if (!existing) throw new HTTPException(404, { message: '会话不存在' });
+  }), '会话不存在');
   await db.update(channelConversations)
     .set({ rating, ratingComment: comment, ratedAt: new Date() })
     .where(and(eq(channelConversations.channelId, channelId), eq(channelConversations.userId, me)));
@@ -589,34 +583,37 @@ export async function listConversationMessages(channelId: number, userId: number
     ),
   );
 
-  const [total, rows] = await Promise.all([
-    db.$count(channelMessages, where),
-    db.select().from(channelMessages).where(where)
-      .orderBy(desc(channelMessages.id))
-      .limit(pageSize)
-      .offset(pageOffset(page, pageSize)),
-  ]);
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(channelMessages, where),
+    rows: async () => {
+      const rows = await db.select().from(channelMessages).where(where)
+        .orderBy(desc(channelMessages.id))
+        .limit(pageSize)
+        .offset(pageOffset(page, pageSize));
 
-  // Q3 已读回执：查该用户对本页 out 消息的已读状态（targets.readAt 非空 = 已读）
-  const outIds = rows.filter((r) => r.direction === 'out' && r.audienceType === 'targeted').map((r) => r.id);
-  const readMap = new Map<number, boolean>();
-  if (outIds.length > 0) {
-    const tg = await db.select({ messageId: channelMessageTargets.messageId, readAt: channelMessageTargets.readAt })
-      .from(channelMessageTargets)
-      .where(and(inArray(channelMessageTargets.messageId, outIds), eq(channelMessageTargets.userId, userId)));
-    tg.forEach((t) => readMap.set(t.messageId, t.readAt != null));
-  }
+      // Q3 已读回执：查该用户对本页 out 消息的已读状态（targets.readAt 非空 = 已读）
+      const outIds = rows.filter((r) => r.direction === 'out' && r.audienceType === 'targeted').map((r) => r.id);
+      const readMap = new Map<number, boolean>();
+      if (outIds.length > 0) {
+        const tg = await db.select({ messageId: channelMessageTargets.messageId, readAt: channelMessageTargets.readAt })
+          .from(channelMessageTargets)
+          .where(and(inArray(channelMessageTargets.messageId, outIds), eq(channelMessageTargets.userId, userId)));
+        tg.forEach((t) => readMap.set(t.messageId, t.readAt != null));
+      }
 
-  const senderIds = [...new Set(rows.map((r) => r.senderUserId).filter((x): x is number => x != null))];
-  const nameMap = await getUserNames(senderIds);
-  const list = rows.map((r) => {
-    const msg = mapChannelMessage(r, true, r.senderUserId != null ? (nameMap.get(r.senderUserId) ?? null) : null);
-    if (r.direction === 'out' && r.audienceType === 'targeted') {
-      msg.readByTarget = readMap.get(r.id) ?? false;
-    }
-    return msg;
+      const senderIds = [...new Set(rows.map((r) => r.senderUserId).filter((x): x is number => x != null))];
+      const nameMap = await getUserNames(senderIds);
+      return rows.map((r) => {
+        const msg = mapChannelMessage(r, true, r.senderUserId != null ? (nameMap.get(r.senderUserId) ?? null) : null);
+        if (r.direction === 'out' && r.audienceType === 'targeted') {
+          msg.readByTarget = readMap.get(r.id) ?? false;
+        }
+        return msg;
+      });
+    },
   });
-  return { list, total, page, pageSize };
 }
 
 // ─── 客服快捷回复库（D） ────────────────────────────────────────────────────────
@@ -647,11 +644,10 @@ export async function listChannelQuickReplies(channelId?: number): Promise<Chann
 }
 
 export async function getChannelQuickReplyBeforeAudit(id: number): Promise<ChannelQuickReply> {
-  const row = await db.query.channelQuickReplies.findFirst({
+  const row = requireRow(await db.query.channelQuickReplies.findFirst({
     where: eq(channelQuickReplies.id, id),
     with: { channel: { columns: { name: true } } },
-  });
-  if (!row) throw new HTTPException(404, { message: '快捷回复不存在' });
+  }), '快捷回复不存在');
   return mapQuickReply(row, row.channel?.name ?? null);
 }
 
@@ -669,8 +665,7 @@ export async function createChannelQuickReply(input: CreateChannelQuickReplyInpu
 
 /** 更新快捷回复 */
 export async function updateChannelQuickReply(id: number, input: UpdateChannelQuickReplyInput): Promise<ChannelQuickReply> {
-  const existing = await db.query.channelQuickReplies.findFirst({ where: eq(channelQuickReplies.id, id) });
-  if (!existing) throw new HTTPException(404, { message: '快捷回复不存在' });
+  requireRow(await db.query.channelQuickReplies.findFirst({ where: eq(channelQuickReplies.id, id) }), '快捷回复不存在');
   if (input.channelId != null) await ensureBusinessChannel(input.channelId);
   const [row] = await db.update(channelQuickReplies).set({
     ...(input.channelId === undefined ? {} : { channelId: input.channelId }),
@@ -683,7 +678,6 @@ export async function updateChannelQuickReply(id: number, input: UpdateChannelQu
 
 /** 删除快捷回复 */
 export async function deleteChannelQuickReply(id: number): Promise<void> {
-  const existing = await db.query.channelQuickReplies.findFirst({ where: eq(channelQuickReplies.id, id) });
-  if (!existing) throw new HTTPException(404, { message: '快捷回复不存在' });
+  requireRow(await db.query.channelQuickReplies.findFirst({ where: eq(channelQuickReplies.id, id) }), '快捷回复不存在');
   await db.delete(channelQuickReplies).where(eq(channelQuickReplies.id, id));
 }

@@ -93,7 +93,7 @@ describe('listTableProps', () => {
     const refetch = vi.fn();
     const props = listTableProps({ data: { list: [{ id: 1 }], total: 7 }, isFetching: true, refetch }, { pagination: buildPagination });
     expect(props).toMatchObject({ bordered: true, rowKey: 'id', size: 'small', dataSource: [{ id: 1 }], loading: true, refreshLoading: true });
-    expect(props.pagination?.total).toBe(7);
+    expect(props.pagination && props.pagination.total).toBe(7);
     props.onRefresh();
     expect(refetch).toHaveBeenCalledTimes(1);
   });
@@ -101,9 +101,9 @@ describe('listTableProps', () => {
   it('数组型数据与未加载态；显式覆盖 rowKey / size / empty / bordered', () => {
     const props = listTableProps<{ code: string }>({ data: [{ code: 'a' }, { code: 'b' }], isFetching: false, refetch: () => {} }, { rowKey: 'code', size: 'default', empty: '暂无数据', bordered: false });
     expect(props).toMatchObject({ rowKey: 'code', size: 'default', empty: '暂无数据', bordered: false, dataSource: [{ code: 'a' }, { code: 'b' }] });
-    expect('pagination' in props).toBe(false);
+    expect(props.pagination).toBe(false);
     const pending = listTableProps({ data: undefined, isFetching: true, refetch: () => {} }, { pagination: buildPagination });
     expect(pending.dataSource).toEqual([]);
-    expect(pending.pagination?.total).toBe(0);
+    expect(pending.pagination && pending.pagination.total).toBe(0);
   });
 });

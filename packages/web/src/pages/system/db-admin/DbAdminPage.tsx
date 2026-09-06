@@ -47,9 +47,10 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePreferences } from '@/hooks/usePreferences';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { RowEditModal } from './RowEditModal';
 import { buildDeleteSql, buildInsertSql, buildUpdateSql, generateCreateTableDdl } from './sql-format';
@@ -283,8 +284,6 @@ export default function DbAdminPage() {
   const structure = structureQuery.data ?? null;
   const structureLoading = structureQuery.isFetching;
   const historyQuery = useDbAdminHistory({ page: historyPage, pageSize: historyPageSize }, activeTab === 'history');
-  const history = historyQuery.data?.list ?? [];
-  const historyTotal = historyQuery.data?.total ?? 0;
   const historyLoading = historyQuery.isFetching;
   const erQuery = useDbAdminErSchema(activeTab === 'er');
   const erSchema = erQuery.data ?? null;
@@ -565,11 +564,6 @@ export default function DbAdminPage() {
   // ─── 查询历史 ────────────────────────────────────────────────────────────────
   const applyHistorySql = (text: string) => {
     openSqlInConsole(text);
-  };
-
-  const deleteHistoryItem = async (id: number) => {
-    await deleteHistoryMutation.mutateAsync({ params: { id } });
-    Toast.success('已删除');
   };
 
   const clearHistory = async () => {
@@ -907,17 +901,11 @@ export default function DbAdminPage() {
           label: '使用',
           onClick: () => applyHistorySql(record.sqlText),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '删除该记录？',
-              onOk: () => deleteHistoryItem(record.id),
-            });
-          },
-        },
+        deleteAction({
+          title: '删除该记录？',
+          run: () => deleteHistoryMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
@@ -1323,19 +1311,16 @@ export default function DbAdminPage() {
               </Popconfirm>
             </Space>
             <ConfigurableTable<HistoryItem>
-              bordered
               columns={historyColumns}
-              dataSource={history}
-              rowKey="id"
-              loading={historyLoading}
-              size="small"
-              pagination={{
-                currentPage: historyPage,
-                pageSize: historyPageSize,
-                total: historyTotal,
-                onPageChange: (p) => { setHistoryPage(p); },
-                onPageSizeChange: (size) => { setHistoryPageSize(size); setHistoryPage(1); },
-              }}
+              {...listTableProps(historyQuery, {
+                pagination: (total) => ({
+                  currentPage: historyPage,
+                  pageSize: historyPageSize,
+                  total,
+                  onPageChange: (p) => { setHistoryPage(p); },
+                  onPageSizeChange: (size) => { setHistoryPageSize(size); setHistoryPage(1); },
+                }),
+              })}
             />
           </div>
         </TabPane>

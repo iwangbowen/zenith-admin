@@ -8,9 +8,9 @@ import { urlOf } from '@/lib/contract-query';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createdAtColumn } from '../../../utils/table-columns';
 import {
   dbBackupKeys,
@@ -19,8 +19,7 @@ import {
   useDeleteDbBackups,
 } from '@/hooks/queries/db-backups';
 import { request } from '@/utils/request';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 
 export default function DbBackupsPage() {
@@ -36,8 +35,6 @@ export default function DbBackupsPage() {
     status: enumValueOf(DB_BACKUP_STATUSES, submittedParams.status),
     type: enumValueOf(DB_BACKUP_TYPES, submittedParams.type),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const createMutation = useCreateDbBackup();
   const createModal = useEditModal<DbBackupCreated, Partial<CreateBackupInput>>({
     save: {
@@ -49,11 +46,6 @@ export default function DbBackupsPage() {
     onSaved: () => setPage(1),
   });
   const deleteMutation = useDeleteDbBackups();
-
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('已删除');
-  };
 
   const handleDownload = async (record: DbBackup) => {
     if (!record.fileId) {
@@ -118,25 +110,20 @@ export default function DbBackupsPage() {
           hidden: !(record.fileId && record.status === 'success'),
           onClick: () => handleDownload(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:db-backup:delete'),
-          onClick: () => {
-            confirmDelete({
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该备份吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        filters={(
           <>
             <FilterSelect
               placeholder="全部备份类型"
@@ -154,53 +141,17 @@ export default function DbBackupsPage() {
               value={draftParams.status}
               onChange={(v) => setDraftParams((prev) => ({ ...prev, status: v as string }))}
             />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {hasPermission('system:db-backup:create') && (
-              <CreateButton onClick={createModal.openCreate}>新增备份</CreateButton>
-            )}
           </>
         )}
-        mobilePrimary={(
-          <>
-            <FilterSelect
-              placeholder="全部备份类型"
-              items={[{ label: 'pg_dump', value: 'pg_dump' },
-                { label: 'Drizzle 导出', value: 'drizzle_export' },]}
-              value={draftParams.type}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, type: v as string }))}
-              width={150}
-            />
-            <SearchButton onClick={handleSearch} />
-            {hasPermission('system:db-backup:create') && (
-              <CreateButton onClick={createModal.openCreate}>新增备份</CreateButton>
-            )}
-          </>
-        )}
-        mobileFilters={(
-          <StatusSelect
-            items={[{ label: '等待中', value: 'pending' },
-              { label: '执行中', value: 'running' },
-              { label: '成功', value: 'success' },
-              { label: '失败', value: 'failed' },]}
-            value={draftParams.status}
-            onChange={(v) => setDraftParams((prev) => ({ ...prev, status: v as string }))}
-          />
-        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('system:db-backup:create') && <CreateButton onClick={createModal.openCreate}>新增备份</CreateButton>}
         filterTitle="备份筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        dataSource={list}
+      <ConfigurableTable<DbBackup>
         columns={columns}
-        rowKey="id"
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal

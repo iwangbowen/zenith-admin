@@ -12,7 +12,8 @@ import { CHANNEL_MESSAGE_STATUS_LABELS, CHANNEL_MESSAGE_TYPE_LABELS } from '@zen
 import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmDelete, confirmDanger } from '@/utils/confirm';
+import { deleteAction } from '@/components/list-page';
+import { confirmDanger } from '@/utils/confirm';
 import { ChannelPublishModal } from './ChannelPublishModal';
 import {
   useChannelMessages,
@@ -77,10 +78,6 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
 
   const openEdit = (m: ChannelMessage) => { setEditing(m); setEditVisible(true); };
 
-  const handleDelete = async (m: ChannelMessage) => {
-    await deleteMutation.mutateAsync({ params: { id: m.id } });
-    Toast.success('已删除');
-  };
 
   const handleSendNow = async (m: ChannelMessage) => {
     await publishNowMutation.mutateAsync({ params: { id: m.id } });
@@ -159,17 +156,11 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
               });
             },
           },
-          {
-            key: 'delete',
-            label: '删除',
-            danger: true,
-            onClick: () => {
-              confirmDelete({
-                title: '确定删除该消息？',
-                onOk: () => { void handleDelete(record); },
-              });
-            },
-          },
+          deleteAction({
+            title: '确定删除该消息？',
+            run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+            successMessage: '已删除',
+          }),
         ];
       },
     }),

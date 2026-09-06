@@ -6,6 +6,7 @@ import { tenantCondition } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, formatDate } from '../../lib/datetime';
 import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nicknames';
+import { buildListResult } from '../../lib/list-query';
 
 export interface ListOperationLogsQuery {
   page?: number;
@@ -54,17 +55,16 @@ export async function listOperationLogs(q: ListOperationLogsQuery) {
   const page = Number(q.page) || 1;
   const pageSize = Number(q.pageSize) || 10;
   const finalWhere = await buildOperationLogsWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(operationLogs, finalWhere),
-    withPagination(db.select().from(operationLogs).where(finalWhere).orderBy(desc(operationLogs.createdAt)).$dynamic(), page, pageSize),
-  ]);
-  const nicknameMap = await getNicknameMap(rows.map((r) => r.username));
-  return {
-    list: rows.map((r) => ({ ...r, nickname: r.username ? nicknameMap.get(r.username) ?? null : null, createdAt: formatDateTime(r.createdAt) })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(operationLogs, finalWhere),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(operationLogs).where(finalWhere).orderBy(desc(operationLogs.createdAt)).$dynamic(), page, pageSize);
+      const nicknameMap = await getNicknameMap(rows.map((r) => r.username));
+      return rows.map((r) => ({ ...r, nickname: r.username ? nicknameMap.get(r.username) ?? null : null, createdAt: formatDateTime(r.createdAt) }));
+    },
+  });
 }
 
 export async function operationLogStats(daysRaw?: number) {

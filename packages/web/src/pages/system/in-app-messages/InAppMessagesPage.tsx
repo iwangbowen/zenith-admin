@@ -4,9 +4,9 @@ import { AppModal } from '@/components/AppModal';
 import { CheckCheck, Plus } from 'lucide-react';
 import type { InAppMessage, InAppMessageType } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -22,9 +22,7 @@ import {
   type SendInAppValues,
 } from '@/hooks/queries/in-app-messages';
 import { IN_APP_MESSAGE_TYPE_OPTIONS_WITH_COLOR as TYPE_OPTIONS } from '../in-app-message-constants';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { parseTemplateVariables } from '../send-log-constants';
 
 const READ_OPTIONS = [
@@ -60,8 +58,6 @@ export default function InAppMessagesPage() {
     type: submittedParams.filterType,
     isRead: submittedParams.filterRead === undefined ? undefined : submittedParams.filterRead === 'true',
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const sendMutation = useSendInAppMessage();
   const sendModal = useEditModal<{ id: number }, SendInAppFormValues, SendInAppValues>({
     save: {
@@ -102,16 +98,6 @@ export default function InAppMessagesPage() {
     });
   };
 
-  const handleDelete = (id: number) => {
-    confirmDelete({
-      title: '确定要删除该消息吗？',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id } });
-        Toast.success('删除成功');
-        globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
-      },
-    });
-  };
 
   const columns = [
     { title: '标题', dataIndex: 'title', render: renderEllipsis },
@@ -140,56 +126,21 @@ export default function InAppMessagesPage() {
           hidden: !can('system:in-app-message:update') || record.isRead,
           onClick: () => handleMarkRead(record.id),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !can('system:in-app-message:delete'),
-          onClick: () => handleDelete(record.id),
-        },
+          title: '确定要删除该消息吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+          onDeleted: () => globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh')),
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="标题/内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <FilterSelect
-              placeholder="全部类型"
-              items={TYPE_OPTIONS}
-              value={draftParams.filterType}
-              onChange={(v) => setDraftParams({ ...draftParams, filterType: v as InAppMessageType | undefined })}
-            />
-            <FilterSelect
-              placeholder="全部阅读状态"
-              items={READ_OPTIONS}
-              value={draftParams.filterRead}
-              onChange={(v) => setDraftParams({ ...draftParams, filterRead: v as string | undefined })}
-              width={140}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {can('system:in-app-message:update') && (
-              <Button type="tertiary" icon={<CheckCheck size={14} />} onClick={handleMarkAllRead}>全部已读</Button>
-            )}
-            {can('system:in-app-message:send') && (
-              <Button type="primary" icon={<Plus size={14} />} onClick={sendModal.openCreate}>发送站内信</Button>
-            )}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="标题/内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-            {can('system:in-app-message:send') && (
-              <Button type="primary" icon={<Plus size={14} />} onClick={sendModal.openCreate}>发送站内信</Button>
-            )}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="标题/内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />}
+        filters={(
           <>
             <FilterSelect
               placeholder="全部类型"
@@ -206,17 +157,22 @@ export default function InAppMessagesPage() {
             />
           </>
         )}
-        mobileActions={can('system:in-app-message:update') ? (
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={can('system:in-app-message:send') && (
+          <Button type="primary" icon={<Plus size={14} />} onClick={sendModal.openCreate}>发送站内信</Button>
+        )}
+        actions={can('system:in-app-message:update') && (
           <Button type="tertiary" icon={<CheckCheck size={14} />} onClick={handleMarkAllRead}>全部已读</Button>
-        ) : null}
+        )}
         filterTitle="站内信筛选"
         actionTitle="站内信操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable<InAppMessage>
+        columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...sendModal.modalProps} title="发送站内信" width={720}>
         <Form key={sendModal.formKey} {...sendModal.formProps}>

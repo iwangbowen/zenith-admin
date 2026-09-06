@@ -1,10 +1,12 @@
-import { eq, and, ne, isNull, inArray, type SQL } from 'drizzle-orm';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
+import { eq, and, ne, inArray, type SQL } from 'drizzle-orm';
 import { hashPassword } from '../../lib/password';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { users, userRoles, roles, departments, positions, userPositions, userMenus, userDeptScopes, menus } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
-import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { reserveTenantSeats } from '../../lib/tenant-quota';
 import { enabledGroupRolesWith, extractEnabledGroupRoles } from '../../lib/user-group-access';
 import { syncUserDynamicMembershipsSafe } from './user-group-rules.service';
@@ -88,8 +90,7 @@ async function ensureUserManageable(userId: number): Promise<{ id: number; tenan
   const cond = await manageableUsersCondition();
   const [row] = await db.select({ id: users.id, tenantId: users.tenantId }).from(users)
     .where(cond ? and(eq(users.id, userId), cond) : eq(users.id, userId)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '用户不存在或超出数据权限范围' });
-  return row;
+  return requireRow(row, '用户不存在或超出数据权限范围');
 }
 
 /** 批量版：全部命中才放行（任一目标越权则整体拒绝，避免部分成功掩盖越权尝试） */
@@ -277,16 +278,19 @@ export async function listUsers(q: ListUsersQuery) {
   const user = currentUser();
   const { page = 1, pageSize = 10 } = q;
   const where = await buildUsersListWhere(q, user);
-  const [total, rawList] = await Promise.all([
-    db.$count(users, where),
-    findUsersWithRelations({ where, limit: pageSize, offset: pageOffset(page, pageSize), orderBy: users.id }),
-  ]);
-  const lockMap = await batchCheckLoginLock(rawList.map((u) => u.username));
-  const onlineSessions = await getOnlineSessions();
-  const onlineUserIds = new Set(onlineSessions.map((s) => s.userId));
-  const mapped = mapUsers(rawList);
-  const list = mapped.map((u) => ({ ...u, isLocked: (lockMap.get(u.username) ?? 0) > 0, isOnline: onlineUserIds.has(u.id) }));
-  return { list, total: Number(total), page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(users, where),
+    rows: async () => {
+      const rawList = await findUsersWithRelations({ where, limit: pageSize, offset: pageOffset(page, pageSize), orderBy: users.id });
+      const lockMap = await batchCheckLoginLock(rawList.map((u) => u.username));
+      const onlineSessions = await getOnlineSessions();
+      const onlineUserIds = new Set(onlineSessions.map((s) => s.userId));
+      const mapped = mapUsers(rawList);
+      return mapped.map((u) => ({ ...u, isLocked: (lockMap.get(u.username) ?? 0) > 0, isOnline: onlineUserIds.has(u.id) }));
+    },
+  });
 }
 
 export interface CreateUserInput {
@@ -311,7 +315,7 @@ export async function createUser(data: CreateUserInput) {
   ]);
   // PostgreSQL NULL != NULL 导致复合唯一约束对 tenantId=NULL 的用户失效，需在应用层显式检查
   const newTenantId = getCreateTenantId(user);
-  const tenantFilter = newTenantId === null ? isNull(users.tenantId) : eq(users.tenantId, newTenantId);
+  const tenantFilter = exactTenantCondition(users.tenantId, newTenantId);
   const [dupUsername, dupEmail, dupPhone] = await Promise.all([
     db.select({ id: users.id }).from(users).where(and(eq(users.username, data.username), tenantFilter)).limit(1),
     data.email
@@ -399,8 +403,7 @@ export async function getUsersBeforeAudit(ids: number[]) {
 export async function getUser(id: number) {
   const cond = await manageableUsersCondition();
   const full = await findUserWithRelations({ where: cond ? and(eq(users.id, id), cond) : eq(users.id, id) });
-  if (!full) throw new HTTPException(404, { message: '用户不存在' });
-  return mapUser(full);
+  return mapUser(requireRow(full, '用户不存在'));
 }
 
 // 按需查看明文：复用 getUser 的租户 / 数据范围口径，不可见即 404，不会成为越权读取通道
@@ -476,7 +479,7 @@ export async function updateUser(id: number, data: UpdateUserInput) {
   if (phoneDup[0]) throw new HTTPException(400, { message: '手机号已存在' });
   if (data.status === 'disabled') {
     if (id === user.userId) throw new HTTPException(400, { message: '不允许禁用当前登录账号' });
-    if (!disabledTarget[0]) throw new HTTPException(404, { message: '用户不存在' });
+    requireRow(disabledTarget[0], '用户不存在');
     if (isProtectedAdminUser(disabledTarget[0].username)) throw new HTTPException(400, { message: 'admin 账号不允许禁用' });
   }
   const nextValues = {
@@ -493,7 +496,7 @@ export async function updateUser(id: number, data: UpdateUserInput) {
     if (nextPositionIds !== undefined) await setUserPositions(tx, id, nextPositionIds);
     return u;
   });
-  if (!updated) throw new HTTPException(404, { message: '用户不存在' });
+  const updatedUser = requireRow(updated, '用户不存在');
   if (nextRoleIds !== undefined) {
     await clearUserPermissionCache(id);
     if (hadPlatformSuper && !(await userHasPlatformSuperRole(id))) {
@@ -503,9 +506,8 @@ export async function updateUser(id: number, data: UpdateUserInput) {
   if (data.status === 'disabled') await revokeUserSessions([id]);
   // 部门/岗位/状态变化可能改变动态用户组归属
   syncUserDynamicMembershipsSafe([id], '管理端更新用户');
-  const full = await findUserWithRelations({ where: eq(users.id, updated.id) });
-  if (!full) throw new HTTPException(404, { message: '用户不存在' });
-  return mapUser(full);
+  const full = await findUserWithRelations({ where: eq(users.id, updatedUser.id) });
+  return mapUser(requireRow(full, '用户不存在'));
 }
 
 export async function deleteUser(id: number) {
@@ -515,7 +517,7 @@ export async function deleteUser(id: number) {
   const tc = tenantCondition(users, user);
   await ensureNoProtectedAdminInIds([id], '删除');
   const [deleted] = await db.delete(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
-  if (!deleted) throw new HTTPException(404, { message: '用户不存在' });
+  requireRow(deleted, '用户不存在');
   await revokeUserSessions([id]);
 }
 
@@ -550,7 +552,7 @@ export async function unlockUserById(id: number) {
   const cond = await manageableUsersCondition();
   const [u] = await db.select({ username: users.username }).from(users)
     .where(cond ? and(eq(users.id, id), cond) : eq(users.id, id)).limit(1);
-  if (!u) throw new HTTPException(404, { message: '用户不存在' });
+  requireRow(u, '用户不存在');
   await unlockUserSession(u.username);
 }
 
@@ -611,7 +613,7 @@ export async function exportUsersAsCsv(): Promise<{ stream: ReadableStream; file
 
 export async function getUserMenuPermissions(userId: number) {
   await ensureUserManageable(userId);
-  const user = await db.query.users.findFirst({
+  const user = requireRow(await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: {},
     with: {
@@ -626,8 +628,7 @@ export async function getUserMenuPermissions(userId: number) {
         },
       },
     },
-  });
-  if (!user) throw new HTTPException(404, { message: '用户不存在' });
+  }), '用户不存在');
   const directMenuIds = user.userMenus.map((m) => m.menuId);
   const roleMenuIds = [...new Set(user.userRoles.flatMap((ur) => ur.role.roleMenus.map((rm) => rm.menuId)))];
   return { directMenuIds, roleMenuIds };
@@ -720,7 +721,7 @@ function extractGroupInheritance(
 
 export async function getUserDataPermission(userId: number) {
   await ensureUserManageable(userId);
-  const user = await db.query.users.findFirst({
+  const user = requireRow(await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { userDataScope: true },
     with: {
@@ -736,8 +737,7 @@ export async function getUserDataPermission(userId: number) {
       },
       userGroupMembers: groupRolesWith,
     },
-  });
-  if (!user) throw new HTTPException(404, { message: '用户不存在' });
+  }), '用户不存在');
   const roleDataScope = getMostPermissiveScope(user.userRoles.map((ur) => ur.role.dataScope));
   const roleDeptScopeIds = [...new Set(
     user.userRoles
@@ -783,7 +783,7 @@ export async function updateUserDataPermission(userId: number, data: { dataScope
 
 export async function getUserEffectivePermissions(userId: number) {
   await ensureUserManageable(userId);
-  const user = await db.query.users.findFirst({
+  const user = requireRow(await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { userDataScope: true },
     with: {
@@ -803,8 +803,7 @@ export async function getUserEffectivePermissions(userId: number) {
       },
       userGroupMembers: groupRolesWith,
     },
-  });
-  if (!user) throw new HTTPException(404, { message: '用户不存在' });
+  }), '用户不存在');
 
   const { groupMenuIds, groupDataScope, groupDeptScopeIds, groups } = extractGroupInheritance(user.userGroupMembers ?? []);
 

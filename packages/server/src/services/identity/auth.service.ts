@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gt, isNull, or, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, loginLogs, tenants, operationLogs, passwordResetTokens, type UserRow } from '../../db/schema';
@@ -564,15 +566,14 @@ export async function saveMyFavoriteMenus(menuIds: number[]): Promise<number[]> 
 export async function getMyProfile() {
   const authUser = currentUser();
   const userId = authUser.userId;
-  const user = await db.query.users.findFirst({
+  const user = requireRow(await db.query.users.findFirst({
     where: eq(users.id, userId),
     with: {
       department: { columns: { id: true, name: true } },
       userPositions: { columns: {}, with: { position: true } },
       userRoles: { columns: {}, with: { role: { columns: { id: true, name: true, code: true, description: true, status: true, createdAt: true, updatedAt: true } } } },
     },
-  });
-  if (!user) throw new HTTPException(404, { message: '用户不存在' });
+  }), '用户不存在');
   const userRoleList = user.userRoles.map(({ role: r }) => ({
     id: r.id, name: r.name, code: r.code, description: r.description, status: r.status,
     createdAt: formatDateTime(r.createdAt), updatedAt: formatDateTime(r.updatedAt),
@@ -641,7 +642,7 @@ export async function updateMyProfile(data: { nickname?: string; email?: string;
 export async function changeMyPassword(oldPassword: string, newPassword: string) {
   const userId = currentUser().userId;
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user) throw new HTTPException(404, { message: '用户不存在' });
+  requireRow(user, '用户不存在');
   const valid = await verifyPassword(oldPassword, user.password);
   if (!valid) throw new HTTPException(400, { message: '原密码错误' });
   const passwordError = validatePassword(newPassword, await passwordPolicyFor(user.tenantId));
@@ -660,11 +661,13 @@ export async function listMyLoginLogs(query: { page?: number; pageSize?: number;
   if (status) conditions.push(eq(loginLogs.status, status));
   conditions.push(...dateRangeConditions(loginLogs.createdAt, startTime, endTime));
   const where = and(...conditions);
-  const [count, rows] = await Promise.all([
-    db.$count(loginLogs, where),
-    withPagination(db.select().from(loginLogs).where(where).orderBy(desc(loginLogs.createdAt)).$dynamic(), page, pageSize),
-  ]);
-  return { list: rows.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt) })), total: count, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(loginLogs, where),
+    rows: () => withPagination(db.select().from(loginLogs).where(where).orderBy(desc(loginLogs.createdAt)).$dynamic(), page, pageSize),
+    map: (r) => ({ ...r, createdAt: formatDateTime(r.createdAt) }),
+  });
 }
 
 export async function listMyOperationLogs(query: { page?: number; pageSize?: number; module?: string; startTime?: string; endTime?: string }) {
@@ -674,11 +677,13 @@ export async function listMyOperationLogs(query: { page?: number; pageSize?: num
   conditions.push(keywordCondition(module, [operationLogs.module]));
   conditions.push(...dateRangeConditions(operationLogs.createdAt, startTime, endTime));
   const where = and(...conditions);
-  const [count, rows] = await Promise.all([
-    db.$count(operationLogs, where),
-    withPagination(db.select().from(operationLogs).where(where).orderBy(desc(operationLogs.createdAt)).$dynamic(), page, pageSize),
-  ]);
-  return { list: rows.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt) })), total: count, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(operationLogs, where),
+    rows: () => withPagination(db.select().from(operationLogs).where(where).orderBy(desc(operationLogs.createdAt)).$dynamic(), page, pageSize),
+    map: (r) => ({ ...r, createdAt: formatDateTime(r.createdAt) }),
+  });
 }
 
 export async function listMySessions() {
@@ -710,7 +715,7 @@ export async function deleteMySession(tokenId: string) {
   if (tokenId === currentTokenId) throw new HTTPException(400, { message: '不能退出当前设备，请使用退出登录功能' });
   const allSessions = await getOnlineSessions();
   const session = allSessions.find((s) => s.tokenId === tokenId && s.userId === userId);
-  if (!session) throw new HTTPException(404, { message: '会话不存在或已过期' });
+  requireRow(session, '会话不存在或已过期');
   await forceLogout(tokenId);
 }
 
@@ -719,7 +724,7 @@ export async function switchTenantView(targetTenantId: number | null, ip: string
   if (!isPlatformAdmin(payload)) throw new HTTPException(403, { message: '仅平台超管可切换租户' });
   if (targetTenantId !== null) {
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, targetTenantId)).limit(1);
-    if (!tenant) throw new HTTPException(404, { message: '租户不存在' });
+    requireRow(tenant, '租户不存在');
     if (tenant.status !== 'enabled') throw new HTTPException(403, { message: '租户已被禁用' });
     if (isTenantExpired(tenant)) throw new HTTPException(403, { message: '租户已过期' });
   }
@@ -811,7 +816,7 @@ export async function resetPassword(token: string, newPassword: string) {
 export async function verifyMyPassword(password: string) {
   const userId = currentUser().userId;
   const [user] = await db.select({ password: users.password }).from(users).where(eq(users.id, userId)).limit(1);
-  if (!user) throw new HTTPException(404, { message: '用户不存在' });
+  requireRow(user, '用户不存在');
   const valid = await verifyPassword(password, user.password);
   if (!valid) throw new HTTPException(401, { message: '密码错误' });
 }

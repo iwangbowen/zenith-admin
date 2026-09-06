@@ -5,7 +5,7 @@
  * 租户管理员编辑本租户覆盖；租户视图里的「默认值」已含平台覆盖，
  * 与派发时 resolver 的求值顺序一致。
  */
-import { and, desc, eq, isNull, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import {
   NOTIFICATION_EVENT_GROUP_LABELS,
@@ -29,8 +29,9 @@ import {
 } from '../../db/schema';
 import { effectiveTenantId } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
-import { tenantScope } from '../../lib/tenant';
+import { exactTenantCondition, inheritedTenantCondition, tenantScope } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
 import { notify } from './notification-outbox.service';
 
 /** 当前管理作用域：平台管理员为 null，租户管理员为其租户 ID。 */
@@ -40,9 +41,7 @@ function policyScopeTenantId(): number | null {
 
 async function loadScopeOverrides(tenantId: number | null): Promise<NotificationEventOverrideRow[]> {
   return db.select().from(notificationEventOverrides).where(
-    tenantId === null
-      ? isNull(notificationEventOverrides.tenantId)
-      : or(isNull(notificationEventOverrides.tenantId), eq(notificationEventOverrides.tenantId, tenantId)),
+    inheritedTenantCondition(notificationEventOverrides.tenantId, tenantId),
   );
 }
 
@@ -105,9 +104,7 @@ export async function saveNotificationOverride(input: SaveNotificationOverrideIn
     await tx.delete(notificationEventOverrides).where(buildWhere(
       eq(notificationEventOverrides.eventKey, input.eventKey),
       eq(notificationEventOverrides.channel, input.channel),
-      tenantId === null
-        ? isNull(notificationEventOverrides.tenantId)
-        : eq(notificationEventOverrides.tenantId, tenantId),
+      exactTenantCondition(notificationEventOverrides.tenantId, tenantId),
     ));
     await tx.insert(notificationEventOverrides).values({
       tenantId,
@@ -125,9 +122,7 @@ export async function resetNotificationOverride(input: ResetNotificationOverride
   await db.delete(notificationEventOverrides).where(buildWhere(
     eq(notificationEventOverrides.eventKey, input.eventKey),
     eq(notificationEventOverrides.channel, input.channel),
-    tenantId === null
-      ? isNull(notificationEventOverrides.tenantId)
-      : eq(notificationEventOverrides.tenantId, tenantId),
+    exactTenantCondition(notificationEventOverrides.tenantId, tenantId),
   ));
 }
 
@@ -182,9 +177,11 @@ export async function listNotificationDispatches(q: ListNotificationDispatchesQu
   ];
   const where = buildWhere(...conditions);
 
-  const [total, rows] = await Promise.all([
-    db.$count(notificationDispatches, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(notificationDispatches, where),
+    rows: () => withPagination(
       db.select({
         dispatch: notificationDispatches,
         username: users.username,
@@ -201,10 +198,7 @@ export async function listNotificationDispatches(q: ListNotificationDispatchesQu
       q.page,
       q.pageSize,
     ),
-  ]);
-
-  return {
-    list: rows.map(({ dispatch, username, nickname }) => ({
+    map: ({ dispatch, username, nickname }) => ({
       id: dispatch.id,
       outboxId: dispatch.outboxId,
       eventKey: dispatch.eventKey,
@@ -222,9 +216,6 @@ export async function listNotificationDispatches(q: ListNotificationDispatchesQu
       providerMsgId: dispatch.providerMsgId,
       tenantId: dispatch.tenantId,
       createdAt: formatDateTime(dispatch.createdAt),
-    })),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    }),
+  });
 }

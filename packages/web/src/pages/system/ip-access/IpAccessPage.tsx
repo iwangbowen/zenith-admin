@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Button, Card, Switch, TextArea, Toast, Spin, Typography, Tabs, TabPane, Tag, Select } from '@douyinfe/semi-ui';
+import { Button, Card, Switch, TextArea, Toast, Spin, Typography, Tabs, TabPane, Tag } from '@douyinfe/semi-ui';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { IP_ACCESS_BLOCK_TYPES, type IpAccessLog } from '@zenith/shared/platform';
 import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { ipAccessKeys, useIpAccessLogs } from '@/hooks/queries/ip-access';
 import { useSaveSettings, useSettings } from '@/hooks/queries/settings';
 import { isIpOrCidr, type IpAccessSettings } from '@zenith/shared/settings';
 import { ApiError } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -45,8 +44,6 @@ interface SearchParams { filterIp: string; filterBlockType: string | undefined; 
     ip: submittedParams.filterIp || undefined,
     blockType: enumValueOf(IP_ACCESS_BLOCK_TYPES, submittedParams.filterBlockType),
   });
-  const logList = logsQuery.data?.list ?? [];
-  const total = logsQuery.data?.total ?? 0;
 
   const columns: ColumnProps<IpAccessLog>[] = [
     { title: 'IP 地址', dataIndex: 'ip', width: 160 },
@@ -66,31 +63,9 @@ interface SearchParams { filterIp: string; filterBlockType: string | undefined; 
 
   return (
     <>
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索 IP 地址" value={draftParams.filterIp} onChange={(v) => { setDraftParams((prev) => ({ ...prev, filterIp: v })); }} width={200} />
-            <Select
-              placeholder="拦截类型"
-              value={draftParams.filterBlockType}
-              onChange={(v) => { setDraftParams((prev) => ({ ...prev, filterBlockType: v as string | undefined })); }}
-              showClear
-              style={{ width: 140 }}
-            >
-              <Select.Option value="blacklist">黑名单</Select.Option>
-              <Select.Option value="whitelist">白名单</Select.Option>
-            </Select>
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索 IP 地址" value={draftParams.filterIp} onChange={(v) => { setDraftParams((prev) => ({ ...prev, filterIp: v })); }} width={200} />
-            <SearchButton onClick={handleSearch} />
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索 IP 地址" value={draftParams.filterIp} onChange={(v) => { setDraftParams((prev) => ({ ...prev, filterIp: v })); }} width={200} />}
+        filters={(
           <FilterSelect
             placeholder="全部拦截类型"
             items={BLOCK_TYPE_OPTIONS}
@@ -99,19 +74,13 @@ interface SearchParams { filterIp: string; filterBlockType: string | undefined; 
             width={140}
           />
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="IP 访问筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IpAccessLog>
         columns={columns}
-        dataSource={logList}
-        loading={logsQuery.isFetching}
-        rowKey="id"
-        pagination={buildPagination(total)}
-        onRefresh={() => void logsQuery.refetch()}
-        refreshLoading={logsQuery.isFetching}
+        {...listTableProps(logsQuery, { pagination: buildPagination })}
       />
     </>
   );

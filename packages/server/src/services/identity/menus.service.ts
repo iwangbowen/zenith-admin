@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { eq, and, ne, asc, inArray, countDistinct } from 'drizzle-orm';
 import { db } from '../../db';
 import { menus, roleMenus, userMenus, roles } from '../../db/schema';
@@ -184,8 +185,7 @@ export async function updateMenu(id: number, input: UpdateMenuInput): Promise<Om
     await ensureMenuParentValid(input.parentId, id);
   }
   const [row] = await db.update(menus).set({ ...input }).where(eq(menus.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '菜单不存在' });
-  return mapMenu(row);
+  return mapMenu(requireRow(row, '菜单不存在'));
 }
 
 export async function deleteMenu(id: number): Promise<void> {
@@ -224,8 +224,7 @@ export async function deleteMenu(id: number): Promise<void> {
 
 export async function getMenu(id: number) {
   const [row] = await db.select().from(menus).where(eq(menus.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '菜单不存在' });
-  return mapMenu(row);
+  return mapMenu(requireRow(row, '菜单不存在'));
 }
 
 export async function getMenuBeforeAudit(id: number) {

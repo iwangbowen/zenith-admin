@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
@@ -58,17 +60,19 @@ async function creatorCondition(createdBy: string): Promise<SQL | null> {
 
 async function queryTasks(conditions: (SQL | undefined)[], page: number, pageSize: number) {
   const where = buildWhere(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(asyncTasks, where),
-    db.query.asyncTasks.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(asyncTasks, where),
+    rows: () => db.query.asyncTasks.findMany({
       where,
       with: { createdByUser: { columns: { nickname: true, username: true } } },
       orderBy: desc(asyncTasks.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapAsyncTask), total, page, pageSize };
+    map: mapAsyncTask,
+  });
 }
 
 /** 管理端全局任务列表（任务中心页面） */
@@ -115,8 +119,7 @@ export function canAccessAsyncTaskForScope(
 }
 
 async function ensureTaskAccessible(id: number, permission: 'system:async-task:list' | 'system:async-task:manage') {
-  const row = await db.query.asyncTasks.findFirst({ where: eq(asyncTasks.id, id) });
-  if (!row) throw new HTTPException(404, { message: '任务不存在' });
+  const row = requireRow(await db.query.asyncTasks.findFirst({ where: eq(asyncTasks.id, id) }), '任务不存在');
   const scope = await resolveAsyncTaskAccessScope(permission);
   if (!canAccessAsyncTaskForScope(row, scope)) {
     throw new HTTPException(403, { message: '无权访问该任务' });
@@ -130,8 +133,7 @@ export async function getAsyncTask(id: number) {
     where: eq(asyncTasks.id, id),
     with: { createdByUser: { columns: { nickname: true, username: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '任务不存在' });
-  return mapAsyncTask(row);
+  return mapAsyncTask(requireRow(row, '任务不存在'));
 }
 
 export async function cancelTask(id: number) {
@@ -152,8 +154,7 @@ export async function restartTask(id: number) {
 const TERMINAL_STATUSES: AsyncTaskStatus[] = ['success', 'failed', 'cancelled'];
 
 export async function deleteAsyncTask(id: number) {
-  const row = await db.query.asyncTasks.findFirst({ where: eq(asyncTasks.id, id) });
-  if (!row) throw new HTTPException(404, { message: '任务不存在' });
+  const row = requireRow(await db.query.asyncTasks.findFirst({ where: eq(asyncTasks.id, id) }), '任务不存在');
   if (!TERMINAL_STATUSES.includes(row.status)) {
     throw new HTTPException(400, { message: '进行中的任务不能删除，请先取消' });
   }
@@ -218,15 +219,15 @@ export async function listAsyncTaskItems(taskId: number, query: ListTaskItemsQue
   if (query.status) conditions.push(eq(asyncTaskItems.status, query.status));
   conditions.push(keywordCondition(query.keyword, [asyncTaskItems.itemKey, asyncTaskItems.label, asyncTaskItems.message], 'ilike'));
   const where = and(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(asyncTaskItems, where),
-    db.select().from(asyncTaskItems).where(where)
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(asyncTaskItems, where),
+    rows: () => db.select().from(asyncTaskItems).where(where)
       .orderBy(desc(asyncTaskItems.id))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-  ]);
-  return {
-    list: rows.map((row) => ({
+    map: (row) => ({
       id: row.id,
       taskId: row.taskId,
       itemKey: row.itemKey,
@@ -237,11 +238,8 @@ export async function listAsyncTaskItems(taskId: number, query: ListTaskItemsQue
       attempt: row.attempt,
       createdAt: formatDateTime(row.createdAt),
       updatedAt: formatDateTime(row.updatedAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 /** 任务中心统计概览（状态计数 + 耗时分位 + 今日概览 + 近 14 天/24h 趋势 + 提交人 Top） */

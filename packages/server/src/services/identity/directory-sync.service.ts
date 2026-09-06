@@ -1,5 +1,7 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import crypto from 'node:crypto';
 import { db } from '../../db';
@@ -17,7 +19,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { resolveManagedTenantId, tenantScope } from '../../lib/tenant';
+import { exactTenantCondition, resolveManagedTenantId, tenantScope } from '../../lib/tenant';
 import { submitAsyncTask, mapAsyncTask } from '../../lib/task-center';
 import { buildDirectoryConnector, type DirectoryConnectorTestResult } from './directory-sync-connectors';
 import { computeNextRunAt, DIRECTORY_SYNC_TASK_TYPE } from './directory-sync-engine';
@@ -158,17 +160,19 @@ function buildSourceWhere(q: ListDirectorySyncSourcesQuery & { id?: number }) {
 export async function listDirectorySyncSources(q: ListDirectorySyncSourcesQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildSourceWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(directorySyncSources, where),
-    db.query.directorySyncSources.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(directorySyncSources, where),
+    rows: () => db.query.directorySyncSources.findMany({
       where,
       with: { identityProvider: { columns: { name: true } } },
       orderBy: desc(directorySyncSources.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapDirectorySyncSource), total, page, pageSize };
+    map: mapDirectorySyncSource,
+  });
 }
 
 /** 管理侧读取：id + 调用者租户作用域，越界一律 404（SCIM 回调与 worker 走各自的按 key / id 加载，不经此处） */
@@ -176,8 +180,7 @@ export async function ensureDirectorySyncSourceExists(id: number): Promise<Direc
   const [row] = await db.select().from(directorySyncSources)
     .where(and(eq(directorySyncSources.id, id), tenantScope(directorySyncSources)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '同步源不存在' });
-  return row;
+  return requireRow(row, '同步源不存在');
 }
 
 export async function getDirectorySyncSource(id: number) {
@@ -185,8 +188,7 @@ export async function getDirectorySyncSource(id: number) {
     where: and(eq(directorySyncSources.id, id), tenantScope(directorySyncSources)),
     with: { identityProvider: { columns: { name: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '同步源不存在' });
-  return mapDirectorySyncSource(row);
+  return mapDirectorySyncSource(requireRow(row, '同步源不存在'));
 }
 
 async function ensureBindingsValid(input: { type?: string; identityProviderId?: number | null; cronExpression?: string | null; tenantId: number | null }) {
@@ -196,10 +198,10 @@ async function ensureBindingsValid(input: { type?: string; identityProviderId?: 
       .from(tenantIdentityProviders)
       .where(and(
         eq(tenantIdentityProviders.id, input.identityProviderId),
-        input.tenantId == null ? isNull(tenantIdentityProviders.tenantId) : eq(tenantIdentityProviders.tenantId, input.tenantId),
+        exactTenantCondition(tenantIdentityProviders.tenantId, input.tenantId),
       ))
       .limit(1);
-    if (!provider) throw new HTTPException(400, { message: '绑定的企业身份源不存在或不属于当前租户' });
+    requireRow(provider, '绑定的企业身份源不存在或不属于当前租户', 400);
     if (provider.type !== 'ldap' && provider.type !== 'ad') {
       throw new HTTPException(400, { message: '绑定的企业身份源必须是 LDAP/AD 类型' });
     }
@@ -349,17 +351,19 @@ function buildRunWhere(q: ListDirectorySyncRunsQuery) {
 export async function listDirectorySyncRuns(q: ListDirectorySyncRunsQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildRunWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(directorySyncRuns, where),
-    db.query.directorySyncRuns.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(directorySyncRuns, where),
+    rows: () => db.query.directorySyncRuns.findMany({
       where,
       with: { source: { columns: { name: true } } },
       orderBy: desc(directorySyncRuns.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapDirectorySyncRun), total, page, pageSize };
+    map: mapDirectorySyncRun,
+  });
 }
 
 export async function getDirectorySyncRun(id: number) {
@@ -367,16 +371,14 @@ export async function getDirectorySyncRun(id: number) {
     where: and(eq(directorySyncRuns.id, id), manageableSourceScope(directorySyncRuns.sourceId)),
     with: { source: { columns: { name: true } } },
   });
-  if (!row) throw new HTTPException(404, { message: '同步记录不存在' });
-  return mapDirectorySyncRun(row);
+  return mapDirectorySyncRun(requireRow(row, '同步记录不存在'));
 }
 
 async function ensureRunManageable(runId: number): Promise<DirectorySyncRunRow> {
   const [run] = await db.select().from(directorySyncRuns)
     .where(and(eq(directorySyncRuns.id, runId), manageableSourceScope(directorySyncRuns.sourceId)))
     .limit(1);
-  if (!run) throw new HTTPException(404, { message: '同步记录不存在' });
-  return run;
+  return requireRow(run, '同步记录不存在');
 }
 
 export interface ListDirectorySyncRunItemsQuery {
@@ -394,15 +396,17 @@ export async function listDirectorySyncRunItems(runId: number, q: ListDirectoryS
     q.action ? eq(directorySyncRunItems.action, q.action) : undefined,
     q.entityType ? eq(directorySyncRunItems.entityType, q.entityType) : undefined,
   );
-  const [total, rows] = await Promise.all([
-    db.$count(directorySyncRunItems, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(directorySyncRunItems, where),
+    rows: () => withPagination(
       db.select().from(directorySyncRunItems).where(where).orderBy(directorySyncRunItems.id).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return { list: rows.map(mapDirectorySyncRunItem), total, page, pageSize };
+    map: mapDirectorySyncRunItem,
+  });
 }
 
 /** 失败重试：对该记录所属同步源重新提交一次全量同步（引擎幂等，仅失败项会产生变化） */
@@ -433,9 +437,11 @@ function buildConflictWhere(q: ListDirectorySyncConflictsQuery) {
 export async function listDirectorySyncConflicts(q: ListDirectorySyncConflictsQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildConflictWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(directorySyncConflicts, where),
-    db.query.directorySyncConflicts.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(directorySyncConflicts, where),
+    rows: () => db.query.directorySyncConflicts.findMany({
       where,
       with: {
         source: { columns: { name: true } },
@@ -445,16 +451,15 @@ export async function listDirectorySyncConflicts(q: ListDirectorySyncConflictsQu
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapDirectorySyncConflict), total, page, pageSize };
+    map: mapDirectorySyncConflict,
+  });
 }
 
 export async function ensureDirectorySyncConflictExists(id: number): Promise<DirectorySyncConflictRow> {
   const [row] = await db.select().from(directorySyncConflicts)
     .where(and(eq(directorySyncConflicts.id, id), manageableSourceScope(directorySyncConflicts.sourceId)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '冲突记录不存在' });
-  return row;
+  return requireRow(row, '冲突记录不存在');
 }
 
 /** 将源侧快照字段应用到本地用户 */
@@ -533,8 +538,7 @@ async function listConflictById(id: number) {
       resolvedByUser: { columns: { nickname: true } },
     },
   });
-  if (!row) throw new HTTPException(404, { message: '冲突记录不存在' });
-  return mapDirectorySyncConflict(row);
+  return mapDirectorySyncConflict(requireRow(row, '冲突记录不存在'));
 }
 
 export async function ignoreDirectorySyncConflicts(ids: number[], resolvedBy: number) {

@@ -12,6 +12,8 @@ import type { SslCertificateRow } from '../../db/schema';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDate, formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { notify } from '../messaging/notification-outbox.service';
 
 const execFileAsync = promisify(execFile);
@@ -209,9 +211,10 @@ async function syncRowStatuses(rows: SslCertificateRow[]) {
 }
 
 async function ensureSslCertificateExists(id: number) {
-  const [row] = await db.select().from(sslCertificates).where(eq(sslCertificates.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '证书不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(sslCertificates).where(eq(sslCertificates.id, id)).limit(1),
+    '证书不存在',
+  );
 }
 
 async function removeCertDirectory(row: SslCertificateRow) {
@@ -232,16 +235,20 @@ async function persistCertFiles(id: number, certContent: string, keyContent: str
 
 export async function listSslCertificates(query: ListSslCertificatesQuery) {
   const where = buildCertificateWhere(query);
-  const [total, rows] = await Promise.all([
-    db.$count(sslCertificates, where),
-    withPagination(
-      db.select().from(sslCertificates).where(where).orderBy(desc(sslCertificates.createdAt)).$dynamic(),
-      query.page,
-      query.pageSize,
-    ),
-  ]);
-  const syncedRows = await syncRowStatuses(rows);
-  return { list: syncedRows.map(mapCert), total, page: query.page, pageSize: query.pageSize };
+  return buildListResult({
+    page: query.page,
+    pageSize: query.pageSize,
+    count: () => db.$count(sslCertificates, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select().from(sslCertificates).where(where).orderBy(desc(sslCertificates.createdAt)).$dynamic(),
+        query.page,
+        query.pageSize,
+      );
+      return syncRowStatuses(rows);
+    },
+    map: mapCert,
+  });
 }
 
 export async function getSslCertificate(id: number) {

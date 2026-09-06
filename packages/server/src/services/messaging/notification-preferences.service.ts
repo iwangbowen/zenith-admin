@@ -8,7 +8,7 @@
  * 偏好持久化保持稀疏：与「无偏好时的生效值」相同的项直接删行，
  * 这样管理员日后调整默认渠道能自动对未显式表态的用户生效。
  */
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import {
   NOTIFICATION_EVENT_GROUP_LABELS,
@@ -37,6 +37,7 @@ import {
 } from '../../db/schema';
 import { currentTenantId, currentUserId } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
+import { inheritedTenantCondition } from '../../lib/tenant';
 import type { UnsubscribePayload } from '../../lib/notification/unsubscribe';
 
 interface RecipientRef {
@@ -51,9 +52,7 @@ function currentRecipient(): RecipientRef {
 /** 当前作用域可见的覆盖行：平台行 + 本租户行（租户行优先）。 */
 async function loadEffectiveOverrides(tenantId: number | null): Promise<NotificationEventOverrideRow[]> {
   return db.select().from(notificationEventOverrides).where(
-    tenantId === null
-      ? isNull(notificationEventOverrides.tenantId)
-      : or(isNull(notificationEventOverrides.tenantId), eq(notificationEventOverrides.tenantId, tenantId)),
+    inheritedTenantCondition(notificationEventOverrides.tenantId, tenantId),
   );
 }
 

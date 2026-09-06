@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { db } from '../../db';
@@ -110,29 +112,28 @@ export async function listUserGroups(q: ListUserGroupsQuery) {
   const tc = tenantCondition(userGroups, currentUser());
   const finalWhere = buildWhere(where, tc);
 
-  const [total, list] = await Promise.all([
-    db.$count(userGroups, finalWhere),
-    withPagination(
-      baseSelect().where(finalWhere).orderBy(desc(userGroups.createdAt)).$dynamic(),
-      page, pageSize,
-    ),
-  ]);
-
-  const memberSummaries = await getScopeMemberSummaries('userGroup', list.map((row) => row.id));
-
-  const mappedList = list.map((row) => ({
-    ...mapGroup(row),
-    memberPreview: memberSummaries.get(row.id)?.preview ?? [],
-  }));
-
-  return { list: mappedList, total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(userGroups, finalWhere),
+    rows: async () => {
+      const list = await withPagination(
+        baseSelect().where(finalWhere).orderBy(desc(userGroups.createdAt)).$dynamic(),
+        page, pageSize,
+      );
+      const memberSummaries = await getScopeMemberSummaries('userGroup', list.map((row) => row.id));
+      return list.map((row) => ({
+        ...mapGroup(row),
+        memberPreview: memberSummaries.get(row.id)?.preview ?? [],
+      }));
+    },
+  });
 }
 
 export async function getUserGroup(id: number) {
   const tc = tenantCondition(userGroups, currentUser());
   const [row] = await baseSelect().where(and(eq(userGroups.id, id), tc)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '用户组不存在' });
-  return mapGroup(row);
+  return mapGroup(requireRow(row, '用户组不存在'));
 }
 
 export async function createUserGroup(input: CreateUserGroupInput) {
@@ -166,7 +167,7 @@ export async function updateUserGroup(id: number, input: UpdateUserGroupInput) {
     .from(userGroups)
     .where(and(eq(userGroups.id, id), tc))
     .limit(1);
-  if (!existing) throw new HTTPException(404, { message: '用户组不存在' });
+  requireRow(existing, '用户组不存在');
 
   // 合并态校验：partial 更新下 mode 与 rule 可能只来其一
   const nextMode = (input.memberMode ?? existing.memberMode) as UserGroupMemberMode;
@@ -185,7 +186,7 @@ export async function updateUserGroup(id: number, input: UpdateUserGroupInput) {
       })
       .where(and(eq(userGroups.id, id), tc))
       .returning();
-    if (!row) throw new HTTPException(404, { message: '用户组不存在' });
+    requireRow(row, '用户组不存在');
 
     const ruleChanged = input.memberRule !== undefined || input.memberMode !== undefined;
     if (nextMode === 'dynamic' && ruleChanged) {
@@ -210,7 +211,7 @@ export async function deleteUserGroup(id: number): Promise<void> {
     .from(userGroups)
     .where(and(eq(userGroups.id, id), tc))
     .limit(1);
-  if (!grp) throw new HTTPException(404, { message: '用户组不存在' });
+  requireRow(grp, '用户组不存在');
   const members = await db.select({ userId: userGroupMembers.userId }).from(userGroupMembers).where(eq(userGroupMembers.groupId, id));
   // 在用保护仅针对静态组：动态组成员是规则物化产物（成员接口只读，无法手工清空），允许直接删除
   if (grp.memberMode === 'static' && members.length > 0) {
@@ -285,7 +286,7 @@ async function ensureGroupAccessible(groupId: number) {
     .from(userGroups)
     .where(and(eq(userGroups.id, groupId), tc))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '用户组不存在' });
+  requireRow(row, '用户组不存在');
   return row;
 }
 

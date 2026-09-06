@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 /**
  * 动态用户组规则引擎：把 memberRule 物化为 user_group_members 行。
  *
@@ -8,14 +9,14 @@
  * - 隐含条件：仅启用用户、与组同租户；exclude 优先级最高，include 是规则外例外；
  * - 写入后清理受影响用户的权限缓存（组可能绑定角色，进出即授/撤权）。
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { UserGroupMemberRule } from '@zenith/shared/identity';
 import { db } from '../../db';
 import { departments, userGroupMembers, userGroups, userPositions, users } from '../../db/schema';
 import { clearUserPermissionCache } from '../../lib/permissions';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
+import { exactTenantCondition } from '../../lib/tenant';
 
 interface DynamicGroupRow {
   id: number;
@@ -55,7 +56,7 @@ async function expandDepartmentIds(rootIds: number[], includeSub: boolean): Prom
 async function computeRuleTargetUserIds(group: DynamicGroupRow): Promise<Set<number>> {
   const rule = group.memberRule;
   if (!rule) return new Set();
-  const tenantCond = group.tenantId == null ? isNull(users.tenantId) : eq(users.tenantId, group.tenantId);
+  const tenantCond = exactTenantCondition(users.tenantId, group.tenantId);
 
   const target = new Set<number>();
   if (hasRuleConditions(rule)) {
@@ -268,7 +269,7 @@ export async function previewDynamicGroupRule(
       .from(userGroups)
       .where(eq(userGroups.id, options.groupId))
       .limit(1);
-    if (!group) throw new HTTPException(404, { message: '用户组不存在' });
+    requireRow(group, '用户组不存在');
     tenantId = group.tenantId;
     const current = await db
       .select({ userId: userGroupMembers.userId })

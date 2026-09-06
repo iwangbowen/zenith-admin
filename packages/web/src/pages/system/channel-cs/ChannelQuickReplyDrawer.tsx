@@ -10,13 +10,13 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ChannelQuickReply } from '@zenith/shared/messaging';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction } from '@/components/list-page';
 import {
   useChannelQuickReplies,
   useDeleteChannelQuickReply,
   useSaveChannelQuickReply,
 } from '@/hooks/queries/channel-cs';
 import { CreateButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 
 interface Props {
   channelId: number;
@@ -56,11 +56,6 @@ export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClo
     onChanged?.();
   };
 
-  const handleDelete = async (r: ChannelQuickReply) => {
-    await deleteMutation.mutateAsync({ params: { id: r.id } });
-    Toast.success('已删除');
-    onChanged?.();
-  };
 
   const columns: ColumnProps<ChannelQuickReply>[] = [
     {
@@ -86,17 +81,12 @@ export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClo
           label: '编辑',
           onClick: () => openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除该快捷回复？',
-              onOk: () => { void handleDelete(record); },
-            });
-          },
-        },
+        deleteAction({
+          title: '确定删除该快捷回复？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '已删除',
+          onDeleted: onChanged,
+        }),
       ],
     }),
   ];

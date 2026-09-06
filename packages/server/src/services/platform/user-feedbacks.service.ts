@@ -1,4 +1,3 @@
-import { HTTPException } from 'hono/http-exception';
 import { desc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db } from '../../db';
 import { userFeedbacks } from '../../db/schema';
@@ -9,6 +8,8 @@ import { currentUser } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { notify } from '../messaging/notification-outbox.service';
 
@@ -38,9 +39,10 @@ export function mapUserFeedback(row: UserFeedbackWithUsers) {
 }
 
 export async function ensureUserFeedbackExists(id: number) {
-  const [row] = await db.select().from(userFeedbacks).where(eq(userFeedbacks.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '反馈不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(userFeedbacks).where(eq(userFeedbacks.id, id)).limit(1),
+    '反馈不存在',
+  );
 }
 
 export interface CreateUserFeedbackData {
@@ -90,9 +92,11 @@ export async function listUserFeedbacks(q: ListUserFeedbacksQuery) {
   const page = Number(q.page) || 1;
   const pageSize = Number(q.pageSize) || 10;
   const where = buildListWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(userFeedbacks, where),
-    db.query.userFeedbacks.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(userFeedbacks, where),
+    rows: () => db.query.userFeedbacks.findMany({
       where,
       with: {
         user: { columns: { nickname: true } },
@@ -102,8 +106,8 @@ export async function listUserFeedbacks(q: ListUserFeedbacksQuery) {
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(mapUserFeedback), total, page, pageSize };
+    map: mapUserFeedback,
+  });
 }
 
 export interface HandleUserFeedbackData {
@@ -120,14 +124,13 @@ export async function handleUserFeedback(id: number, data: HandleUserFeedbackDat
     handledBy: handled ? user.userId : null,
     handledAt: handled ? new Date() : null,
   }).where(eq(userFeedbacks.id, id));
-  const row = await db.query.userFeedbacks.findFirst({
+  const row = requireRow(await db.query.userFeedbacks.findFirst({
     where: eq(userFeedbacks.id, id),
     with: {
       user: { columns: { nickname: true } },
       handler: { columns: { nickname: true } },
     },
-  });
-  if (!row) throw new HTTPException(404, { message: '反馈不存在' });
+  }), '反馈不存在');
 
   // 处理结果通知提交人（自己处理自己的反馈不通知）；失败不阻断处理主流程
   if (handled && row.userId !== user.userId) {

@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { eq, and, inArray } from 'drizzle-orm';
 import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -51,32 +53,31 @@ export async function listRoles(q: ListRolesQuery) {
   const where = and(...conditions);
   const tc = tenantCondition(roles, user);
   const finalWhere = buildWhere(where, tc);
-  const [total, list] = await Promise.all([
-    db.$count(roles, finalWhere),
-    withPagination(db.select().from(roles).where(finalWhere).orderBy(roles.id).$dynamic(), page, pageSize),
-  ]);
-
-  const memberSummaries = await getScopeMemberSummaries('role', list.map((row) => row.id));
-
-  const mappedList = list.map((row) => ({
-    ...mapRole(row),
-    userCount: memberSummaries.get(row.id)?.count ?? 0,
-    userPreview: memberSummaries.get(row.id)?.preview ?? [],
-  }));
-
-  return { list: mappedList, total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(roles, finalWhere),
+    rows: async () => {
+      const list = await withPagination(db.select().from(roles).where(finalWhere).orderBy(roles.id).$dynamic(), page, pageSize);
+      const memberSummaries = await getScopeMemberSummaries('role', list.map((row) => row.id));
+      return list.map((row) => ({
+        ...mapRole(row),
+        userCount: memberSummaries.get(row.id)?.count ?? 0,
+        userPreview: memberSummaries.get(row.id)?.preview ?? [],
+      }));
+    },
+  });
 }
 
 export async function getRole(id: number) {
   const user = currentUser();
-  const role = await db.query.roles.findFirst({
+  const role = requireRow(await db.query.roles.findFirst({
     where: and(eq(roles.id, id), tenantCondition(roles, user)),
     with: {
       roleMenus: { columns: { menuId: true } },
       deptScopes: { columns: { deptId: true } },
     },
-  });
-  if (!role) throw new HTTPException(404, { message: '角色不存在' });
+  }), '角色不存在');
   const menuIds = role.roleMenus.map(({ menuId }) => menuId);
   const deptScopeIds = role.deptScopes.map(({ deptId }) => deptId);
   return mapRole(role, menuIds, deptScopeIds);
@@ -130,7 +131,7 @@ export async function updateRole(id: number, data: Partial<CreateRoleInput>) {
   const { deptScopeIds, ...rest } = data;
   return await db.transaction(async (tx) => {
     const [existing] = await tx.select({ code: roles.code, tenantId: roles.tenantId }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
-    if (!existing) throw new HTTPException(404, { message: '角色不存在' });
+    requireRow(existing, '角色不存在');
     // 保护仅针对平台超管角色（tenantId=null）；租户遗留的同名伪造角色允许禁用/清理
     const isPlatformSuperRole = existing.code === SUPER_ADMIN_CODE && existing.tenantId === null;
     if (isPlatformSuperRole && rest.status === 'disabled') {
@@ -144,7 +145,7 @@ export async function updateRole(id: number, data: Partial<CreateRoleInput>) {
       }
     }
     const [role] = await tx.update(roles).set({ ...rest }).where(and(eq(roles.id, id), tenantCondition(roles, user))).returning();
-    if (!role) throw new HTTPException(404, { message: '角色不存在' });
+    requireRow(role, '角色不存在');
     if (deptScopeIds !== undefined && deptScopeIds !== null) {
       await syncRoleDeptScopes(tx, id, deptScopeIds);
     }
@@ -157,7 +158,7 @@ export async function updateRole(id: number, data: Partial<CreateRoleInput>) {
 export async function deleteRole(id: number) {
   const user = currentUser();
   const [existing] = await db.select({ code: roles.code, tenantId: roles.tenantId }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
-  if (!existing) throw new HTTPException(404, { message: '角色不存在' });
+  requireRow(existing, '角色不存在');
   // 保护仅针对平台超管角色（tenantId=null）；租户遗留的同名伪造角色允许清理
   if (existing.code === SUPER_ADMIN_CODE && existing.tenantId === null) {
     throw new HTTPException(400, { message: '超级管理员角色不允许删除' });
@@ -168,13 +169,13 @@ export async function deleteRole(id: number) {
     throw new HTTPException(409, { message: `该角色已分配给 ${boundUsers} 个用户，请先解除用户关联后再删除` });
   }
   const [deleted] = await db.delete(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).returning();
-  if (!deleted) throw new HTTPException(404, { message: '角色不存在' });
+  requireRow(deleted, '角色不存在');
 }
 
 async function ensureRoleBelongsToTenant(id: number): Promise<{ tenantId: number | null; code: string }> {
   const user = currentUser();
   const [role] = await db.select({ id: roles.id, tenantId: roles.tenantId, code: roles.code }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
-  if (!role) throw new HTTPException(404, { message: '角色不存在' });
+  requireRow(role, '角色不存在');
   return { tenantId: role.tenantId, code: role.code };
 }
 
@@ -199,12 +200,11 @@ export async function assignRoleMenus(id: number, menuIds: number[]) {
 
 export async function getRoleUsers(id: number) {
   const user = currentUser();
-  const role = await db.query.roles.findFirst({
+  const role = requireRow(await db.query.roles.findFirst({
     where: and(eq(roles.id, id), tenantCondition(roles, user)),
     columns: {},
     with: { userRoles: { columns: {}, with: { user: true } } },
-  });
-  if (!role) throw new HTTPException(404, { message: '角色不存在' });
+  }), '角色不存在');
   return role.userRoles.map(({ user: u }) => ({
     id: u.id, username: u.username, nickname: u.nickname, email: u.email,
     avatar: u.avatar, status: u.status,

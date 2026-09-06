@@ -6,6 +6,7 @@ import { createPgDumpBackup, createDrizzleExportBackup } from '../../lib/db-back
 import logger from '../../lib/logger';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatFileTimestamp, formatNullableDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
 
 export interface ListDbBackupsQuery {
   page?: number;
@@ -21,29 +22,26 @@ export async function listDbBackups(q: ListDbBackupsQuery) {
   if (q.status) conditions.push(eq(dbBackups.status, q.status));
   if (q.type) conditions.push(eq(dbBackups.type, q.type));
   const where = and(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(dbBackups, where),
-    db.query.dbBackups.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(dbBackups, where),
+    rows: () => db.query.dbBackups.findMany({
       where,
       with: { createdByUser: { columns: { nickname: true } } },
       orderBy: desc(dbBackups.createdAt),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return {
-    list: rows.map(({ createdByUser, startedAt, completedAt, createdAt, updatedAt, ...rest }) => ({
+    map: ({ createdByUser, startedAt, completedAt, createdAt, updatedAt, ...rest }) => ({
       ...rest,
       createdByName: createdByUser?.nickname ?? null,
       startedAt: formatNullableDateTime(startedAt),
       completedAt: formatNullableDateTime(completedAt),
       createdAt: formatDateTime(createdAt),
       updatedAt: formatDateTime(updatedAt),
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 export async function createDbBackup(input: { type: 'pg_dump' | 'drizzle_export'; name?: string }) {

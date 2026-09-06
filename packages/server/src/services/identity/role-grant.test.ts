@@ -26,6 +26,7 @@ vi.mock('../../lib/redis', () => ({
 vi.mock('../../lib/context', () => ({ currentUser: vi.fn() }));
 
 vi.mock('../../lib/tenant', () => ({
+  exactTenantCondition: vi.fn(() => undefined),
   isPlatformAdmin: vi.fn(),
   tenantCondition: vi.fn(),
 }));

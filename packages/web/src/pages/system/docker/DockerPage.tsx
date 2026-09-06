@@ -25,6 +25,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
 import {
   useDockerAvailable,
@@ -622,18 +623,12 @@ function ImagesTab() {
     createOperationColumn<ImageRow>({
       width: 100,
       actions: (record) => [
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: record.isGroup,
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除此镜像？运行中的容器使用的镜像无法删除。',
-              onOk: () => { void handleRemove(record.id); },
-            });
-          },
-        },
+          title: '确定删除此镜像？运行中的容器使用的镜像无法删除。',
+          run: () => handleRemove(record.id),
+          successMessage: null,
+        }),
       ],
     }),
   ];
@@ -772,18 +767,12 @@ function NetworksTab() {
         ? <Typography.Text type="tertiary" size="small">系统网络</Typography.Text>
         : undefined,
       actions: (record) => [
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: SYSTEM_NETWORKS.has(record.name),
-          onClick: () => {
-            confirmDelete({
-              title: `确定删除网络 ${record.name}？`,
-              onOk: () => { void handleRemove(record.id); },
-            });
-          },
-        },
+          title: `确定删除网络 ${record.name}？`,
+          run: () => handleRemove(record.id),
+          successMessage: null,
+        }),
       ],
     }),
   ];
@@ -884,17 +873,11 @@ function VolumesTab() {
     createOperationColumn<DockerVolume>({
       width: 100,
       actions: (record) => [
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定删除存储卷 ${record.name}？此操作不可恢复。`,
-              onOk: () => { void handleRemove(record.name); },
-            });
-          },
-        },
+        deleteAction({
+          title: `确定删除存储卷 ${record.name}？此操作不可恢复。`,
+          run: () => handleRemove(record.name),
+          successMessage: null,
+        }),
       ],
     }),
   ];

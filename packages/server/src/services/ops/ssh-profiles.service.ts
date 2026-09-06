@@ -6,6 +6,7 @@ import { db } from '../../db';
 import { sshProfiles } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { encryptField, decryptField } from '../../lib/encryption';
+import { requireRow } from '../../lib/db-assert';
 
 export interface SshProfileInput {
   name: string;
@@ -59,8 +60,7 @@ export async function getSshProfile(id: number, userId: number) {
     .select()
     .from(sshProfiles)
     .where(and(eq(sshProfiles.id, id), eq(sshProfiles.userId, userId)));
-  if (!row) throw new HTTPException(404, { message: 'SSH 配置不存在' });
-  return mapRow(row);
+  return mapRow(requireRow(row, 'SSH 配置不存在'));
 }
 
 export async function createSshProfile(userId: number, input: SshProfileInput) {
@@ -121,8 +121,7 @@ async function ensureSshProfile(id: number, userId: number) {
     .select()
     .from(sshProfiles)
     .where(and(eq(sshProfiles.id, id), eq(sshProfiles.userId, userId)));
-  if (!row) throw new HTTPException(404, { message: 'SSH 配置不存在' });
-  return row;
+  return requireRow(row, 'SSH 配置不存在');
 }
 
 /**

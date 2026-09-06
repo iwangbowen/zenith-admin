@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Button, Form, Toast, Spin, Switch, CheckboxGroup, Tag, Space } from '@douyinfe/semi-ui';
+import { Form, Toast, Spin, CheckboxGroup, Tag, Space } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Trash2 } from 'lucide-react';
 import type { CreateTenantPackageInput, TenantPackage } from '@zenith/shared/identity';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { LICENSE_FEATURES, LICENSE_FEATURE_LABELS, LICENSE_FEATURE_OPTIONS, type LicenseFeatureKey } from '@zenith/shared/licensing';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePermission } from '@/hooks/usePermission';
@@ -22,9 +20,9 @@ import {
 } from '@/hooks/queries/tenant-packages';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 
 interface SearchParams {
   keyword: string;
@@ -51,8 +49,6 @@ export default function TenantPackagesPage() {
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   // 新增/编辑弹窗：详情到达时由 useEditModal 自动重挂载表单
   const saveMutation = useSaveTenantPackage();
@@ -80,30 +76,21 @@ export default function TenantPackagesPage() {
   const deleteMutation = useDeleteTenantPackages();
   const assignFeaturesMutation = useAssignTenantPackageFeatures();
 
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
-
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  };
+  const status = useStatusToggle<TenantPackage>({
+    toggle: (pkg, enabled) => toggleStatusMutation.mutateAsync({ id: pkg.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    disabled: !hasPermission('system:tenant-package:update'),
+      messages: { disabled: '已禁用' },
+    });
 
   const handleBatchDelete = () => {
-    confirmDelete({
+    if (!selectedRowKeys.length) return;
+    confirmAndDelete({
       title: `确认删除选中的 ${selectedRowKeys.length} 个套餐？`,
       content: '删除后无法恢复，已绑定该套餐的租户将解除关联。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync(selectedRowKeys);
-        Toast.success('批量删除成功');
-        setSelectedRowKeys([]);
-      },
+      run: () => deleteMutation.mutateAsync(selectedRowKeys),
+      successMessage: '批量删除成功',
+      onDeleted: () => setSelectedRowKeys([]),
     });
-  };
-
-  const handleToggleStatus = (pkg: TenantPackage, newStatus: 'enabled' | 'disabled') => {
-    toggleStatusMutation.mutate(
-      { id: pkg.id, values: { status: newStatus } },
-      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用') },
-    );
   };
 
   function openFeatureModal(pkg: TenantPackage) {
@@ -140,22 +127,7 @@ export default function TenantPackagesPage() {
     { title: '席位上限', dataIndex: 'quotas', width: 100, align: 'center', render: (q?: { maxUsers?: number } | null) => q?.maxUsers ?? '不限' },
     { title: '备注', dataIndex: 'remark', minWidth: 200, render: renderEllipsis },
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center',
-      fixed: 'right',
-      render: (v: string, record: TenantPackage) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!hasPermission('system:tenant-package:update')}
-          onChange={(checked: boolean) => handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<TenantPackage>({
       width: 240,
       desktopInlineKeys: ['edit', 'features', 'delete'],
@@ -172,19 +144,12 @@ export default function TenantPackagesPage() {
           hidden: !hasPermission('system:tenant-package:assign'),
           onClick: () => openFeatureModal(row),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:tenant-package:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确认删除此套餐？',
-              content: '删除后已绑定该套餐的租户将解除关联。',
-              onOk: () => handleDelete(row.id),
-            });
-          },
-        },
+          title: '确认删除此套餐？',
+          content: '删除后已绑定该套餐的租户将解除关联。',
+          run: () => deleteMutation.mutateAsync([row.id]),
+        }),
       ],
     }),
   ];
@@ -201,58 +166,32 @@ export default function TenantPackagesPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
-  const renderBatchDeleteButton = () => selectedRowKeys.length > 0 && hasPermission('system:tenant-package:delete') ? (
-    <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-      批量删除 ({selectedRowKeys.length})
-    </Button>
-  ) : null;
   const renderCreateButton = () => hasPermission('system:tenant-package:create') ? (
     <CreateButton onClick={modal.openCreate} />
   ) : null;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderBatchDeleteButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
-        mobileActions={renderBatchDeleteButton()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={selectedRowKeys.length > 0 && hasPermission('system:tenant-package:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
         filterTitle="套餐筛选"
         actionTitle="套餐操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<TenantPackage>
         columns={columns}
-        dataSource={data}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys((keys as number[]) ?? []),
-        }}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          },
+        })}
       />
 
       <AppModal {...modal.modalProps} width={520}>

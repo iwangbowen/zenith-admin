@@ -14,6 +14,7 @@ vi.mock('../../db', () => ({
 }));
 
 vi.mock('../../lib/tenant', () => ({
+  exactTenantCondition: vi.fn(() => undefined),
   tenantScope: vi.fn(() => undefined),
 }));
 

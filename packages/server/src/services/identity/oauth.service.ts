@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import crypto from 'node:crypto';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../../db';
@@ -256,5 +257,5 @@ export async function unbindOAuthAccount(provider: string) {
     .delete(userOauthAccounts)
     .where(and(eq(userOauthAccounts.userId, user.userId), eq(userOauthAccounts.provider, provider)))
     .returning();
-  if (result.length === 0) throw new HTTPException(404, { message: '未找到该绑定' });
+  requireRow(result[0], '未找到该绑定');
 }

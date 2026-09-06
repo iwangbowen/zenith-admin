@@ -3,15 +3,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Descriptions, Modal, SideSheet, Space, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 import type { ExportEntityMeta, ExportJob, ExportJobDownload, ExportJobFormat, ExportJobStatus } from '@zenith/shared/tasks';
 import { EXPORT_JOB_FORMATS, EXPORT_JOB_STATUSES, exportJobContract } from '@zenith/shared/tasks';
 import { enumValueOf, formatBytes } from '@zenith/shared/core';
 import { urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { formatDateTime } from '@/utils/date';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import {
@@ -25,10 +25,9 @@ import {
   useRerunExportJob,
   useRetryExportJob,
 } from '@/hooks/queries/export-jobs';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
 
 interface SearchParams {
@@ -102,7 +101,6 @@ export default function ExportJobsPage() {
     keyword: submittedParams.keyword || undefined,
   });
   const data = listQuery.data?.list ?? EMPTY_EXPORT_JOBS;
-  const total = listQuery.data?.total ?? 0;
   const downloadsQuery = useExportJobDownloads(currentJob?.id, logsVisible && currentJob != null);
   const cancelMutation = useCancelExportJob();
   const retryMutation = useRetryExportJob();
@@ -180,28 +178,14 @@ export default function ExportJobsPage() {
     });
   };
 
-  const handleDelete = (record: ExportJob) => {
-    confirmDelete({
-      title: '删除导出任务',
-      content: record.fileDeletedAt ? '将删除该任务记录。' : '将删除该任务记录，已生成的导出文件会随保留策略清理。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id: record.id } });
-        Toast.success('已删除');
-        setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id));
-      },
-    });
-  };
-
   const handleBatchDelete = () => {
     if (selectedRowKeys.length === 0) return;
-    confirmDelete({
+    confirmAndDelete({
       title: '批量删除导出任务',
       content: `将删除选中的 ${selectedRowKeys.length} 个导出任务记录。`,
-      onOk: async () => {
-        await batchDeleteMutation.mutateAsync(selectedRowKeys);
-        Toast.success(`已删除 ${selectedRowKeys.length} 个任务`);
-        setSelectedRowKeys([]);
-      },
+      run: () => batchDeleteMutation.mutateAsync(selectedRowKeys),
+      successMessage: `已删除 ${selectedRowKeys.length} 个任务`,
+      onDeleted: () => setSelectedRowKeys([]),
     });
   };
 
@@ -310,11 +294,14 @@ export default function ExportJobsPage() {
           onClick: () => void handleRetry(record),
         },
         {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+          ...deleteAction({
+            title: '删除导出任务',
+            content: record.fileDeletedAt ? '将删除该任务记录。' : '将删除该任务记录，已生成的导出文件会随保留策略清理。',
+            run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+            successMessage: '已删除',
+            onDeleted: () => setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id)),
+          }),
           dividerBefore: true,
-          onClick: () => handleDelete(record),
         },
       ],
     }),
@@ -329,51 +316,50 @@ export default function ExportJobsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <FilterSelect
-          placeholder="全部模块"
-          items={entityOptions}
-          value={draftParams.entity}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, entity: value }))}
-          width={160}
-        />
-        <StatusSelect
-          items={statusOptions}
-          value={draftParams.status}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
-        />
-        <FilterSelect
-          placeholder="全部格式"
-          items={formatOptions}
-          value={draftParams.format}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, format: value }))}
-        />
-        <KeywordInput placeholder="搜索文件名/模块" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={240} />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        <Button icon={<RefreshCw size={14} />} onClick={() => void listQuery.refetch()} loading={listQuery.isFetching}>刷新</Button>
-        {selectedRowKeys.length > 0 && (
-          <Button type="danger" icon={<Trash2 size={14} />} loading={batchDeleting} onClick={handleBatchDelete}>
-            批量删除 ({selectedRowKeys.length})
-          </Button>
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索文件名/模块" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={240} />}
+        filters={(
+          <>
+            <FilterSelect
+              placeholder="全部模块"
+              items={entityOptions}
+              value={draftParams.entity}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, entity: value }))}
+              width={160}
+            />
+            <StatusSelect
+              items={statusOptions}
+              value={draftParams.status}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+            />
+            <FilterSelect
+              placeholder="全部格式"
+              items={formatOptions}
+              value={draftParams.format}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, format: value }))}
+            />
+          </>
         )}
-      </SearchToolbar>
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={(
+          <>
+            <Button icon={<RefreshCw size={14} />} onClick={() => void listQuery.refetch()} loading={listQuery.isFetching}>刷新</Button>
+            {selectedRowKeys.length > 0 && <BatchDeleteButton count={selectedRowKeys.length} loading={batchDeleting} onClick={handleBatchDelete} />}
+          </>
+        )}
+      />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<ExportJob>
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
-        rowKey="id"
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-        }}
-        size="small"
-        empty="暂无导出任务"
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          },
+          empty: '暂无导出任务',
+        })}
       />
 
       <SideSheet

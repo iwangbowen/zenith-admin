@@ -1,5 +1,6 @@
 import { eq, and, isNull, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { smsConfigs } from '../../db/schema';
 import type { SmsConfigRow } from '../../db/schema';
@@ -48,9 +49,10 @@ export function mapSmsConfigForEdit(row: SmsConfigRow) {
 }
 
 export async function ensureSmsConfigExists(id: number) {
-  const [row] = await db.select().from(smsConfigs).where(and(eq(smsConfigs.id, id), tenantScope(smsConfigs))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '短信配置不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(smsConfigs).where(and(eq(smsConfigs.id, id), tenantScope(smsConfigs))).limit(1),
+    '短信配置不存在',
+  );
 }
 
 export interface ListSmsConfigsQuery {
@@ -66,11 +68,13 @@ export async function listSmsConfigs(q: ListSmsConfigsQuery) {
   if (q.provider) conditions.push(eq(smsConfigs.provider, q.provider));
   if (q.status) conditions.push(eq(smsConfigs.status, q.status));
   const where = buildWhere(...conditions);
-  const [total, list] = await Promise.all([
-    db.$count(smsConfigs, where),
-    withPagination(db.select().from(smsConfigs).where(where).orderBy(smsConfigs.id).$dynamic(), q.page, q.pageSize),
-  ]);
-  return { list: list.map(mapSmsConfigSafe), total, page: q.page, pageSize: q.pageSize };
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(smsConfigs, where),
+    rows: () => withPagination(db.select().from(smsConfigs).where(where).orderBy(smsConfigs.id).$dynamic(), q.page, q.pageSize),
+    map: mapSmsConfigSafe,
+  });
 }
 
 export async function getSmsConfig(id: number) {

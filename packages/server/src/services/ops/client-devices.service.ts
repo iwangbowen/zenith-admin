@@ -8,11 +8,12 @@
  * 读取方:推送渠道适配器（按 subject 找在活设备）、升级看板（在网/版本分布)、管理端设备列表。
  */
 import { and, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import type { AppArch, AppPlatform, BindPushDeviceInput, DeviceSubjectType } from '@zenith/shared/ops';
 import { db } from '../../db';
 import { clientApps, clientDevices, members, users, type ClientDeviceRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import logger from '../../lib/logger';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 
@@ -80,12 +81,14 @@ export async function upsertDeviceHeartbeat(input: DeviceHeartbeatInput): Promis
 // ─── 推送绑定（认证链路）──────────────────────────────────────────────────────
 
 export async function bindPushDevice(subjectType: DeviceSubjectType, subjectId: number, input: BindPushDeviceInput) {
-  const [app] = await db
-    .select({ id: clientApps.id })
-    .from(clientApps)
-    .where(and(eq(clientApps.appKey, input.app), eq(clientApps.status, 'enabled')))
-    .limit(1);
-  if (!app) throw new HTTPException(404, { message: '应用不存在' });
+  const app = await requireFirstRow(
+    db
+      .select({ id: clientApps.id })
+      .from(clientApps)
+      .where(and(eq(clientApps.appKey, input.app), eq(clientApps.status, 'enabled')))
+      .limit(1),
+    '应用不存在',
+  );
 
   return db.transaction(async (tx) => {
     // registrationId 唯一:换机/重装后同一 registrationId 出现在新 deviceId 上,先清旧绑定
@@ -210,43 +213,43 @@ export async function listClientDevices(q: ListClientDevicesQuery) {
     q.pushBound ? isNotNull(clientDevices.pushRegistrationId) : undefined,
     keywordCondition(q.keyword, [clientDevices.deviceId, clientDevices.deviceModel, clientDevices.appVersion]),
   );
-  const [total, rows] = await Promise.all([
-    db.$count(clientDevices, where),
-    db.query.clientDevices.findMany({
-      where,
-      with: { app: { columns: { name: true } } },
-      orderBy: [desc(clientDevices.lastActiveAt)],
-      limit: pageSize,
-      offset: (Math.max(page, 1) - 1) * pageSize,
-    }),
-  ]);
-
-  // 绑定人显示名（user → 昵称,member → 昵称/手机号）
-  const userIds = [...new Set(rows.filter((r) => r.subjectType === 'user' && r.subjectId).map((r) => r.subjectId as number))];
-  const memberIds = [...new Set(rows.filter((r) => r.subjectType === 'member' && r.subjectId).map((r) => r.subjectId as number))];
-  const [userRows, memberRows] = await Promise.all([
-    userIds.length ? db.select({ id: users.id, nickname: users.nickname }).from(users).where(inArray(users.id, userIds)) : [],
-    memberIds.length ? db.select({ id: members.id, nickname: members.nickname }).from(members).where(inArray(members.id, memberIds)) : [],
-  ]);
-  const userNameMap = new Map(userRows.map((r) => [r.id, r.nickname]));
-  const memberNameMap = new Map(memberRows.map((r) => [r.id, r.nickname]));
-
-  return {
-    list: rows.map((row) => mapClientDevice(
-      row,
-      row.app?.name,
-      row.subjectType === 'user' ? userNameMap.get(row.subjectId ?? -1) : row.subjectType === 'member' ? memberNameMap.get(row.subjectId ?? -1) : null,
-    )),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(clientDevices, where),
+    rows: async () => {
+      const rows = await db.query.clientDevices.findMany({
+        where,
+        with: { app: { columns: { name: true } } },
+        orderBy: [desc(clientDevices.lastActiveAt)],
+        limit: pageSize,
+        offset: (Math.max(page, 1) - 1) * pageSize,
+      });
+
+      // 绑定人显示名（user → 昵称,member → 昵称/手机号）
+      const userIds = [...new Set(rows.filter((r) => r.subjectType === 'user' && r.subjectId).map((r) => r.subjectId as number))];
+      const memberIds = [...new Set(rows.filter((r) => r.subjectType === 'member' && r.subjectId).map((r) => r.subjectId as number))];
+      const [userRows, memberRows] = await Promise.all([
+        userIds.length ? db.select({ id: users.id, nickname: users.nickname }).from(users).where(inArray(users.id, userIds)) : [],
+        memberIds.length ? db.select({ id: members.id, nickname: members.nickname }).from(members).where(inArray(members.id, memberIds)) : [],
+      ]);
+      const userNameMap = new Map(userRows.map((r) => [r.id, r.nickname]));
+      const memberNameMap = new Map(memberRows.map((r) => [r.id, r.nickname]));
+
+      return rows.map((row) => mapClientDevice(
+        row,
+        row.app?.name,
+        row.subjectType === 'user' ? userNameMap.get(row.subjectId ?? -1) : row.subjectType === 'member' ? memberNameMap.get(row.subjectId ?? -1) : null,
+      ));
+    },
+  });
 }
 
 export async function ensureClientDeviceExists(id: number): Promise<ClientDeviceRow> {
-  const [row] = await db.select().from(clientDevices).where(eq(clientDevices.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '设备不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(clientDevices).where(eq(clientDevices.id, id)).limit(1),
+    '设备不存在',
+  );
 }
 
 export async function getClientDeviceBeforeAudit(id: number) {

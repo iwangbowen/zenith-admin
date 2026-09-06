@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { eq, and, desc, lt, sql } from 'drizzle-orm';
 import { withPagination, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
@@ -34,11 +36,13 @@ export async function listCronJobs(q: { page: number; pageSize: number; keyword?
   const conditions = [];
   conditions.push(keywordCondition(keyword, [cronJobs.name]));
   const where = and(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(cronJobs, where),
-    withPagination(db.select().from(cronJobs).where(where).orderBy(desc(cronJobs.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: rows.map(mapCronJob), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(cronJobs, where),
+    rows: () => withPagination(db.select().from(cronJobs).where(where).orderBy(desc(cronJobs.id)).$dynamic(), page, pageSize),
+    map: mapCronJob,
+  });
 }
 
 export async function createCronJob(data: typeof cronJobs.$inferInsert) {
@@ -53,7 +57,7 @@ export async function createCronJob(data: typeof cronJobs.$inferInsert) {
 export async function updateCronJob(id: number, data: Partial<typeof cronJobs.$inferInsert>) {
   if (data.cronExpression && !validateCronExpression(data.cronExpression)) throw new HTTPException(400, { message: 'Cron 表达式无效' });
   const [row] = await db.update(cronJobs).set({ ...data }).where(eq(cronJobs.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '任务不存在' });
+  requireRow(row, '任务不存在');
   if (row.status === 'enabled') await scheduleJob(row.id, row.name, row.cronExpression, row.handler, row.params, { retryCount: row.retryCount, retryDelay: row.retryInterval, retryBackoff: row.retryBackoff, monitorTimeout: row.monitorTimeout });
   else await stopJob(row.id, row.name);
   return mapCronJob(row);
@@ -61,14 +65,14 @@ export async function updateCronJob(id: number, data: Partial<typeof cronJobs.$i
 
 export async function deleteCronJob(id: number) {
   const [row] = await db.select({ id: cronJobs.id, name: cronJobs.name }).from(cronJobs).where(eq(cronJobs.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '任务不存在' });
+  requireRow(row, '任务不存在');
   await stopJob(row.id, row.name);
   await db.delete(cronJobs).where(eq(cronJobs.id, id));
 }
 
 export async function getCronJob(id: number) {
   const [row] = await db.select().from(cronJobs).where(eq(cronJobs.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '任务不存在' });
+  requireRow(row, '任务不存在');
   return mapCronJob(row);
 }
 
@@ -86,7 +90,7 @@ export async function runCronJob(id: number) {
 
 export async function setCronJobStatus(id: number, status: 'enabled' | 'disabled') {
   const [row] = await db.update(cronJobs).set({ status }).where(eq(cronJobs.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '任务不存在' });
+  requireRow(row, '任务不存在');
   if (status === 'enabled') await scheduleJob(row.id, row.name, row.cronExpression, row.handler, row.params, { retryCount: row.retryCount, retryDelay: row.retryInterval, retryBackoff: row.retryBackoff, monitorTimeout: row.monitorTimeout });
   else await stopJob(row.id, row.name);
   return status === 'enabled' ? '已启用' : '已停用';
@@ -95,20 +99,24 @@ export async function setCronJobStatus(id: number, status: 'enabled' | 'disabled
 export async function listAllCronJobLogs(q: { page: number; pageSize: number; jobId?: number }) {
   const { page, pageSize, jobId } = q;
   const where = jobId ? eq(cronJobLogs.jobId, jobId) : undefined;
-  const [total, rows] = await Promise.all([
-    db.$count(cronJobLogs, where),
-    withPagination(db.select().from(cronJobLogs).where(where).orderBy(desc(cronJobLogs.startedAt)).$dynamic(), page, pageSize),
-  ]);
-  return { list: rows.map(mapLog), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(cronJobLogs, where),
+    rows: () => withPagination(db.select().from(cronJobLogs).where(where).orderBy(desc(cronJobLogs.startedAt)).$dynamic(), page, pageSize),
+    map: mapLog,
+  });
 }
 
 export async function listCronJobLogs(jobId: number, q: { page: number; pageSize: number }) {
   const { page, pageSize } = q;
-  const [total, rows] = await Promise.all([
-    db.$count(cronJobLogs, eq(cronJobLogs.jobId, jobId)),
-    withPagination(db.select().from(cronJobLogs).where(eq(cronJobLogs.jobId, jobId)).orderBy(desc(cronJobLogs.startedAt)).$dynamic(), page, pageSize),
-  ]);
-  return { list: rows.map(mapLog), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(cronJobLogs, eq(cronJobLogs.jobId, jobId)),
+    rows: () => withPagination(db.select().from(cronJobLogs).where(eq(cronJobLogs.jobId, jobId)).orderBy(desc(cronJobLogs.startedAt)).$dynamic(), page, pageSize),
+    map: mapLog,
+  });
 }
 
 function buildClearCronJobLogsWhere(days: number, jobId?: number) {

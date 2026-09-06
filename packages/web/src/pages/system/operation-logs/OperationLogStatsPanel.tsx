@@ -1,5 +1,4 @@
-import React, { useState, useMemo } from 'react';
-import { Skeleton, Spin, Select } from '@douyinfe/semi-ui';
+import { useState, useMemo, type CSSProperties } from 'react';
 import {
   AreaChart,
   BarChart,
@@ -27,14 +26,7 @@ import dayjs from 'dayjs';
 import { useOperationLogStats } from '@/hooks/queries/operation-logs';
 import { ModuleOperationPie } from '@/components/logs/ModuleOperationPie';
 import { buildUserChartLabels, formatUserLabel } from '@/components/UserDisplay';
-
-const DAYS_OPTIONS = [
-  { label: '最近 7 天', value: 7 },
-  { label: '最近 30 天', value: 30 },
-  { label: '最近 90 天', value: 90 },
-];
-
-const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+import { LogStatsScaffold, WEEKDAY_LABELS, calcSuccessRate, calcSuccessRateDelta, deltaOf } from '@/components/logs/LogStatsScaffold';
 
 const METHOD_COLORS: Record<string, string> = {
   GET: '#3b82f6',
@@ -54,46 +46,7 @@ const STATUS_CLASS_COLORS: Record<string, string> = {
   '5xx': '#ef4444',
 };
 
-/** 首屏加载骨架：按最终布局占位（4 张统计卡 + 趋势图 + 双图行），避免空白闪烁 */
-function StatsSkeleton() {
-  return (
-    <Skeleton
-      loading
-      active
-      placeholder={(
-        <>
-          <StatGrid style={{ marginBottom: 16 }}>
-            {Array.from({ length: 4 }, (_, i) => `sk-stat-${i}`).map((key) => (
-              <div key={key}>
-                <Skeleton.Title style={{ width: 64, height: 26, marginBottom: 10 }} />
-                <Skeleton.Paragraph rows={1} style={{ width: 80, marginBottom: 0 }} />
-              </div>
-            ))}
-          </StatGrid>
-          <div className="zx-panel" style={{ marginBottom: 16 }}>
-            <Skeleton.Title style={{ width: 180, height: 14, marginBottom: 16 }} />
-            <Skeleton.Image style={{ width: '100%', height: 230 }} />
-          </div>
-          <div className="chart-grid">
-            {['sk-chart-a', 'sk-chart-b'].map((key) => (
-              <div key={key} className="zx-panel">
-                <Skeleton.Title style={{ width: 120, height: 14, marginBottom: 16 }} />
-                <Skeleton.Image style={{ width: '100%', height: 260 }} />
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    >{null}</Skeleton>
-  );
-}
-
-/** 环比增量：上一周期无数据时不展示（返回 null） */
-function deltaOf(current: number, prev: number): number | null {
-  return prev > 0 ? current - prev : null;
-}
-
-const sectionTitleStyle: React.CSSProperties = {
+const sectionTitleStyle: CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
   color: 'var(--semi-color-text-0)',
@@ -105,7 +58,7 @@ function formatAvgDuration(ms: number): string {
   return `${ms}ms`;
 }
 
-const EMPTY_PLACEHOLDER_STYLE: React.CSSProperties = {
+const EMPTY_PLACEHOLDER_STYLE: CSSProperties = {
   height: 260,
   display: 'flex',
   alignItems: 'center',
@@ -194,14 +147,9 @@ export default function OperationLogStatsPanel() {
 
   const summary = stats?.summary;
   const prevSummary = stats?.prevSummary;
-  const successRate = summary == null || summary.total === 0
-    ? null
-    : ((summary.successCount / summary.total) * 100).toFixed(1);
+  const successRate = calcSuccessRate(summary);
   const avgDuration = summary?.avgDurationMs == null ? null : formatAvgDuration(summary.avgDurationMs);
-  // 成功率环比（比率差）：两个周期都有数据才展示
-  const successRateDelta = summary && prevSummary && summary.total > 0 && prevSummary.total > 0
-    ? summary.successCount / summary.total - prevSummary.successCount / prevSummary.total
-    : null;
+  const successRateDelta = calcSuccessRateDelta(summary, prevSummary);
 
   const moduleSpec = useMemo(() => makeBarSpec({
     data: moduleChartData,
@@ -396,18 +344,7 @@ export default function OperationLogStatsPanel() {
   }), [sankeyData, palette]);
 
   return (
-    <div>
-      {/* 时间选择器 */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <Select value={days} onChange={(v) => setDays(v as number)} style={{ width: 140 }}>
-          {DAYS_OPTIONS.map((o) => (
-            <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>
-          ))}
-        </Select>
-      </div>
-
-      {statsQuery.isLoading ? <StatsSkeleton /> : (
-      <Spin spinning={statsQuery.isFetching}>
+    <LogStatsScaffold days={days} onDaysChange={setDays} loading={statsQuery.isLoading} fetching={statsQuery.isFetching}>
         {/* ── 汇总指标卡 ── */}
         <StatGrid style={{ marginBottom: 16 }}>
           <StatCard
@@ -599,8 +536,6 @@ export default function OperationLogStatsPanel() {
             <BarChart {...weekdaySpec} options={chartOptions} height={220} />
           )}
         </div>
-      </Spin>
-      )}
-    </div>
+    </LogStatsScaffold>
   );
 }

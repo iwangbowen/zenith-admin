@@ -1,3 +1,4 @@
+import { buildListResult } from '../../lib/list-query';
 /**
  * 「成员预览」统一查询：部门 / 角色 / 岗位 / 用户组 → 分页 + 关键字搜索的用户列表。
  *
@@ -8,7 +9,7 @@
  * 四个域返回同一形状（id / username / nickname / avatar），前端因此只需要一个组件与一套渲染，
  * 不必按来源分支——各域原有 DTO 字段并不一致（岗位只有头像+昵称，用户组另有邮箱与加入时间）。
  */
-import { and, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { UserPreview } from '@zenith/shared/identity';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -23,7 +24,7 @@ import {
   userGroupMembers,
 } from '../../db/schema';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
-import { tenantScope } from '../../lib/tenant';
+import { exactTenantCondition, tenantScope } from '../../lib/tenant';
 
 /** 成员归属范围 */
 export type UserScopeType = 'department' | 'role' | 'position' | 'userGroup';
@@ -190,9 +191,7 @@ export async function validateScopeUserIds(
   const uniqueUserIds = [...new Set(userIds)];
   if (uniqueUserIds.length === 0) return uniqueUserIds;
 
-  const tenant = scopeTenantId === null
-    ? isNull(users.tenantId)
-    : eq(users.tenantId, scopeTenantId);
+  const tenant = exactTenantCondition(users.tenantId, scopeTenantId);
   const rows = await db
     .select({ id: users.id })
     .from(users)
@@ -216,9 +215,11 @@ export async function listScopeMembers(
     tenantScope(users),
   );
 
-  const [total, list] = await Promise.all([
-    db.$count(users, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(users, where),
+    rows: () => withPagination(
       db
         .select({ id: users.id, username: users.username, nickname: users.nickname, avatar: users.avatar })
         .from(users)
@@ -228,7 +229,5 @@ export async function listScopeMembers(
       page,
       pageSize,
     ),
-  ]);
-
-  return { list, total, page, pageSize };
+  });
 }

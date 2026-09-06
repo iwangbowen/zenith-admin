@@ -5,6 +5,8 @@ import type { DbExecutor } from '../../db/types';
 import { announcements, announcementRecipients, announcementReads, users, userRoles, roles, departments, businessFiles, managedFiles } from '../../db/schema';
 import { broadcast, sendToUser } from '../../lib/ws-manager';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { buildManagedFileProxyUrl, buildPublicFileUrl } from '../../lib/file-storage';
@@ -245,16 +247,21 @@ export async function listAnnouncements(q: { page?: number; pageSize?: number; t
   const where = and(...conditions);
   const tc = tenantCondition(announcements, user);
   const finalWhere = buildWhere(where, tc);
-  const [total, rows] = await Promise.all([
-    db.$count(announcements, finalWhere),
-    withPagination(db.select().from(announcements).where(finalWhere).orderBy(desc(announcements.createdAt)).$dynamic(), page, pageSize),
-  ]);
-  const announcementIds = rows.map((r) => r.id);
-  const readCountRows = announcementIds.length > 0
-    ? await db.select({ announcementId: announcementReads.announcementId, cnt: count() }).from(announcementReads).where(inArray(announcementReads.announcementId, announcementIds)).groupBy(announcementReads.announcementId)
-    : [];
-  const readCountMap = new Map(readCountRows.map((r) => [r.announcementId, r.cnt]));
-  return { list: rows.map((r) => ({ ...mapAnnouncement(r), readCount: readCountMap.get(r.id) ?? 0 })), total: Number(total), page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(announcements, finalWhere),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(announcements).where(finalWhere).orderBy(desc(announcements.createdAt)).$dynamic(), page, pageSize);
+      const announcementIds = rows.map((r) => r.id);
+      const readCountRows = announcementIds.length > 0
+        ? await db.select({ announcementId: announcementReads.announcementId, cnt: count() }).from(announcementReads).where(inArray(announcementReads.announcementId, announcementIds)).groupBy(announcementReads.announcementId)
+        : [];
+      const readCountMap = new Map(readCountRows.map((r) => [r.announcementId, r.cnt]));
+      return rows.map((r) => ({ row: r, readCount: readCountMap.get(r.id) ?? 0 }));
+    },
+    map: ({ row, readCount }) => ({ ...mapAnnouncement(row), readCount }),
+  });
 }
 
 export async function batchDeleteAnnouncements(ids: number[]) {
@@ -281,8 +288,10 @@ export async function getAnnouncementReadStats(id: number, q: { page?: number; p
   const user = currentUser();
   const { page = 1, pageSize = 10, tab: rawTab } = q;
   const tab = rawTab === 'unread' ? 'unread' : 'read';
-  const [announcement] = await db.select().from(announcements).where(eq(announcements.id, id));
-  if (!announcement) throw new HTTPException(404, { message: '公告不存在' });
+  const announcement = await requireFirstRow(
+    db.select().from(announcements).where(eq(announcements.id, id)),
+    '公告不存在',
+  );
 
   const joinCond = and(eq(announcementReads.announcementId, id), eq(announcementReads.userId, users.id));
   const tabFilter = tab === 'read' ? isNotNull(announcementReads.id) : isNull(announcementReads.id);
@@ -340,8 +349,10 @@ export async function getAnnouncementReadStats(id: number, q: { page?: number; p
 
 export async function getAnnouncementDetail(id: number) {
   const user = currentUser();
-  const [row] = await db.select().from(announcements).where(and(eq(announcements.id, id), tenantCondition(announcements, user)));
-  if (!row) throw new HTTPException(404, { message: '公告不存在' });
+  const row = await requireFirstRow(
+    db.select().from(announcements).where(and(eq(announcements.id, id), tenantCondition(announcements, user))),
+    '公告不存在',
+  );
 
   // 并行查询收件人和附件
   const [recipientRows, attachmentRows] = await Promise.all([
@@ -516,12 +527,12 @@ export async function updateAnnouncement(id: number, data: Partial<CreateAnnounc
     }
     return updated;
   });
-  if (!row) throw new HTTPException(404, { message: '公告不存在' });
-  const announcement = mapAnnouncement(row);
+  const updatedRow = requireRow(row, '公告不存在');
+  const announcement = mapAnnouncement(updatedRow);
   if (data.publishStatus === 'published') {
-    await broadcastAnnouncement(announcement, row.id);
+    await broadcastAnnouncement(announcement, updatedRow.id);
   } else if (data.publishStatus !== 'scheduled') {
-    const audience = await resolveAnnouncementAudience(row.id, announcement.targetType, announcement.tenantId);
+    const audience = await resolveAnnouncementAudience(updatedRow.id, announcement.targetType, announcement.tenantId);
     dispatchToAudience(audience, { type: 'announcement:updated', payload: announcement });
   }
   return announcement;
@@ -529,11 +540,13 @@ export async function updateAnnouncement(id: number, data: Partial<CreateAnnounc
 
 export async function deleteAnnouncement(id: number) {
   const user = currentUser();
-  const [existing] = await db.select({ id: announcements.id, targetType: announcements.targetType, tenantId: announcements.tenantId }).from(announcements).where(and(eq(announcements.id, id), tenantCondition(announcements, user))).limit(1);
-  if (!existing) throw new HTTPException(404, { message: '公告不存在' });
+  const existing = await requireFirstRow(
+    db.select({ id: announcements.id, targetType: announcements.targetType, tenantId: announcements.tenantId }).from(announcements).where(and(eq(announcements.id, id), tenantCondition(announcements, user))).limit(1),
+    '公告不存在',
+  );
   const audience = await resolveAnnouncementAudience(existing.id, existing.targetType, existing.tenantId);
   const [row] = await db.delete(announcements).where(and(eq(announcements.id, id), tenantCondition(announcements, user))).returning();
-  if (!row) throw new HTTPException(404, { message: '公告不存在' });
+  requireRow(row, '公告不存在');
   dispatchToAudience(audience, { type: 'announcement:deleted', payload: { id } });
 }
 

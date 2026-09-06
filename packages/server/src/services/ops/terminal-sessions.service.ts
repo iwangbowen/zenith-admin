@@ -17,6 +17,7 @@ import { db } from '../../db';
 import { terminalSessions } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
 import { getEffectiveTenantId, isPlatformAdmin } from '../../lib/tenant';
@@ -300,22 +301,18 @@ export async function listTerminalSessionHistory(params: ListTerminalSessionHist
   conditions.push(keywordCondition(keyword, [terminalSessions.label, terminalSessions.clientIp]));
   const where = buildWhere(...conditions);
 
-  const [total, rows] = await Promise.all([
-    db.$count(terminalSessions, where),
-    db
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(terminalSessions, where),
+    rows: () => db
       .select()
       .from(terminalSessions)
       .where(where)
       .orderBy(desc(terminalSessions.startedAt))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-  ]);
-
-  return {
-    total,
-    page,
-    pageSize,
-    list: rows.map((r) => ({
+    map: (r) => ({
       sessionId: r.id,
       userId: r.userId,
       kind: r.kind,
@@ -329,6 +326,6 @@ export async function listTerminalSessionHistory(params: ListTerminalSessionHist
       startedAt: formatDateTime(r.startedAt),
       lastActivityAt: formatDateTime(r.lastActivityAt),
       endedAt: r.endedAt ? formatDateTime(r.endedAt) : null,
-    })),
-  };
+    }),
+  });
 }

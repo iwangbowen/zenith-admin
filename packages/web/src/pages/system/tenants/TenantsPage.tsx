@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react';
-import { Button, Modal, Form, Toast, Row, Col, Spin, Switch, SideSheet, Descriptions, Tag, Divider } from '@douyinfe/semi-ui';
+import { Button, Modal, Form, Row, Col, Spin, SideSheet, Descriptions, Tag, Divider } from '@douyinfe/semi-ui';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import type { CreateTenantInput, Tenant } from '@zenith/shared/identity';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -25,9 +24,9 @@ import {
   useTenantList,
   useTenantStats,
 } from '@/hooks/queries/tenants';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { copyTextWithToast } from '@/utils/clipboard';
 
 interface SearchParams {
@@ -61,8 +60,6 @@ export default function TenantsPage() {
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const saveMutation = useSaveTenant();
   // 联系电话是契约敏感字段：对非豁免用户是掩码，编辑时锁定、未修改则不提交
@@ -108,7 +105,11 @@ export default function TenantsPage() {
 
   const toggleStatusMutation = useSaveTenant();
   const deleteMutation = useDeleteTenants();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<Tenant>({
+    toggle: (tenant, enabled) => toggleStatusMutation.mutateAsync({ id: tenant.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (tenant) => ({ danger: true, title: `确认禁用租户「${tenant.name}」？`, content: '禁用后该租户下的用户将无法登录。', okText: '确认禁用' }),
+    disabled: !hasPermission('system:tenant:update'),
+  });
 
   /** 展示自动初始化的管理员账号（初始密码仅此一次可见） */
   function showInitialAdminModal(tenantName: string, admin: { username: string; email: string; password: string }) {
@@ -136,26 +137,6 @@ export default function TenantsPage() {
       ),
     });
   }
-
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  };
-
-  const handleToggleStatus = async (tenant: Tenant, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认禁用租户「${tenant.name}」？`,
-        content: '禁用后该租户下的用户将无法登录。',
-        okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    toggleStatusMutation.mutate(
-      { id: tenant.id, values: { status: newStatus } },
-      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用') },
-    );
-  };
 
   const openStats = (tenant: Tenant) => {
     setStatsTenant(tenant);
@@ -191,22 +172,7 @@ export default function TenantsPage() {
     { title: '套餐', dataIndex: 'packageName', width: 140, render: (v) => renderEllipsis(v || '未分配') },
     dateTimeColumn('到期时间', 'expireAt', { empty: '永不过期' }),
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center',
-      fixed: 'right',
-      render: (v: string, record: Tenant) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!hasPermission('system:tenant:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<Tenant>({
       width: 210,
       desktopInlineKeys: ['stats', 'edit', 'delete'],
@@ -222,19 +188,12 @@ export default function TenantsPage() {
           hidden: !hasPermission('system:tenant:update'),
           onClick: () => { tenantModal.openEdit(row); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:tenant:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确认删除此租户？',
-              content: '删除后该租户下的所有数据将不可访问',
-              onOk: () => handleDelete(row.id),
-            });
-          },
-        },
+          title: '确认删除此租户？',
+          content: '删除后该租户下的所有数据将不可访问',
+          run: () => deleteMutation.mutateAsync([row.id]),
+        }),
       ],
     }),
   ];
@@ -251,8 +210,6 @@ export default function TenantsPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const buildExportQuery = () => ({
     ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
     ...(submittedParams.status ? { status: submittedParams.status } : {}),
@@ -265,41 +222,21 @@ export default function TenantsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderExportButtons()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={renderExportButtons()}
         mobileActions={renderMobileExportActions()}
         filterTitle="租户筛选"
         actionTitle="租户操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<Tenant>
         columns={columns}
-        dataSource={data}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <SideSheet

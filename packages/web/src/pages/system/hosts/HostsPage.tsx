@@ -9,12 +9,13 @@ import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import PageLoading from '@/components/PageLoading';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import {
   useDeleteOpsHosts,
@@ -200,21 +201,12 @@ export default function HostsPage() {
             });
           },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canManage,
-          onClick: () => {
-            confirmDelete({
-              content: `确认删除主机「${record.name}」？`,
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('主机已删除');
-              },
-            });
-          },
-        },
+          title: `确认删除主机「${record.name}」？`,
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '主机已删除',
+        }),
       ],
     }),
   ];
@@ -274,13 +266,8 @@ export default function HostsPage() {
         )}
       />
       <ConfigurableTable
-        bordered
         columns={columns}
-        dataSource={hosts}
-        rowKey="id"
-        pagination={false}
-        onRefresh={() => void hostsQuery.refetch()}
-        refreshLoading={hostsQuery.isFetching}
+        {...listTableProps(hostsQuery)}
       />
 
       <AppModal {...modal.modalProps} width={760}>

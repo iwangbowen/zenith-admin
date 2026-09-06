@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Col, Form, Row, Spin, Switch, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
 import { DEPARTMENT_CATEGORIES, userContract, type Department } from '@zenith/shared/identity';
@@ -13,8 +13,6 @@ import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import { useEditModal } from '@/hooks/useEditModal';
-import { SearchToolbar } from '@/components/SearchToolbar';
-import { UserPreviewCell } from '@/components/UserPreviewCell';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -29,9 +27,10 @@ import {
   useFlatDepartments,
   useSaveDepartment,
 } from '@/hooks/queries/departments';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
+import { memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
 
 interface SearchParams {
   keyword: string;
@@ -182,27 +181,12 @@ export default function DepartmentsPage() {
     modal.openEdit(record);
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  };
+  const status = useStatusToggle<Department>({
+    toggle: (dept, enabled) => toggleStatusMutation.mutateAsync({ id: dept.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (dept) => ({ danger: true, title: `确认停用部门「${dept.name}」？`, content: '停用后该部门将不可选择。', okText: '确认停用' }),
+    disabled: !hasPermission('system:department:update'),
+  });
 
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
-
-  const handleToggleStatus = useCallback(async (dept: Department, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认停用部门「${dept.name}」？`,
-        content: '停用后该部门将不可选择。',
-        okText: '确认停用',
-      });
-      if (!confirmed) return;
-    }
-    toggleStatusMutation.mutate(
-      { id: dept.id, values: { status: newStatus } },
-      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已停用') },
-    );
-  }, [toggleStatusMutation]);
 
   const columns: ColumnProps<Department>[] = [
     { title: '部门名称', dataIndex: 'name', minWidth: 220 },
@@ -212,26 +196,15 @@ export default function DepartmentsPage() {
     { title: '联系电话', dataIndex: 'phone', width: 140, render: (value) => value || '—' },
     { title: '邮箱', dataIndex: 'email', width: 200, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 90 },
-    {
-      title: '成员', dataIndex: 'userPreview', width: 150,
-      render: (_: unknown, record: Department) => <UserPreviewCell preview={record.userPreview} count={record.userCount} scope={{ type: 'department', id: record.id, name: record.name }} />,
-    },
+    memberPreviewColumn<Department>({
+      dataIndex: 'userPreview',
+      width: 150,
+      getPreview: (record) => record.userPreview,
+      getCount: (record) => record.userCount,
+      getScope: (record) => ({ type: 'department', id: record.id, name: record.name }),
+    }),
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      fixed: 'right',
-      render: (value: string, record: Department) => (
-        <Switch
-          size="small"
-          checked={value === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!hasPermission('system:department:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<Department>({
       width: 150,
       actions: (record) => [
@@ -241,18 +214,11 @@ export default function DepartmentsPage() {
           hidden: !hasPermission('system:department:update'),
           onClick: () => { void openEdit(record); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:department:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该部门吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该部门吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -269,8 +235,6 @@ export default function DepartmentsPage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderExpandButton = (flat = false) => (
     <Button
       type="primary"
@@ -293,26 +257,18 @@ export default function DepartmentsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={(
           <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
             {renderExpandButton()}
             {renderExportButtons()}
-            {renderCreateButton()}
           </>
         )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
         mobileActions={(
           <>
             {renderExpandButton(true)}
@@ -321,8 +277,6 @@ export default function DepartmentsPage() {
         )}
         filterTitle="部门筛选"
         actionTitle="部门操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable

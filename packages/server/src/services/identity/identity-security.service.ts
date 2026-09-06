@@ -1,3 +1,4 @@
+import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { createHash, randomBytes } from 'node:crypto';
@@ -49,8 +50,8 @@ export async function listMyMfaFactors() {
 
 export async function beginTotpSetup() {
   const user = currentUser();
-  const [profile] = await db.select({ username: users.username, email: users.email }).from(users).where(eq(users.id, user.userId)).limit(1);
-  if (!profile) throw new HTTPException(404, { message: '用户不存在' });
+  const [profileRow] = await db.select({ username: users.username, email: users.email }).from(users).where(eq(users.id, user.userId)).limit(1);
+  const profile = requireRow(profileRow, '用户不存在');
   const secret = generateTotpSecret();
   const row = await db.transaction(async (tx) => {
     // 重新发起绑定时清理遗留的待验证因子，避免挂起记录堆积
@@ -254,7 +255,7 @@ export async function removeMyTrustedDevice(id: number) {
     .delete(userTrustedDevices)
     .where(and(eq(userTrustedDevices.id, id), eq(userTrustedDevices.userId, userId)))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '可信设备不存在' });
+  requireRow(row, '可信设备不存在');
 }
 
 export async function listLoginRiskEvents(query: { page?: number; pageSize?: number; keyword?: string }) {
@@ -292,8 +293,7 @@ async function ensureOwnTotpFactor(userId: number, factorId: number) {
     .from(userMfaFactors)
     .where(and(eq(userMfaFactors.id, factorId), eq(userMfaFactors.userId, userId), eq(userMfaFactors.type, 'totp')))
     .limit(1);
-  if (!factor) throw new HTTPException(404, { message: 'MFA 因子不存在' });
-  return factor;
+  return requireRow(factor, 'MFA 因子不存在');
 }
 
 function mapMfaFactor(row: typeof userMfaFactors.$inferSelect) {

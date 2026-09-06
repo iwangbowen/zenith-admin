@@ -14,6 +14,8 @@ import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { validateExpression } from '../../lib/workflow-expression';
@@ -51,9 +53,10 @@ export async function ensureDecisionFlow(id: number): Promise<FlowRow> {
   const tc = tenantCondition(ruleDecisionFlows, currentUser());
   const conds = [eq(ruleDecisionFlows.id, id)];
   if (tc) conds.push(tc);
-  const [row] = await db.select().from(ruleDecisionFlows).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '决策流不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(ruleDecisionFlows).where(and(...conds)).limit(1),
+    '决策流不存在',
+  );
 }
 
 export interface ListDecisionFlowsQuery {
@@ -72,11 +75,13 @@ export async function listDecisionFlows(q: ListDecisionFlowsQuery) {
   conds.push(keywordCondition(q.keyword, [ruleDecisionFlows.name]));
   if (q.status) conds.push(eq(ruleDecisionFlows.status, q.status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(ruleDecisionFlows, where),
-    db.select().from(ruleDecisionFlows).where(where).orderBy(desc(ruleDecisionFlows.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapDecisionFlow), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(ruleDecisionFlows, where),
+    rows: () => db.select().from(ruleDecisionFlows).where(where).orderBy(desc(ruleDecisionFlows.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapDecisionFlow,
+  });
 }
 
 export async function getDecisionFlow(id: number) {
@@ -235,9 +240,11 @@ export async function listDecisionFlowVersions(id: number) {
 /** 回滚：用历史版本快照覆盖当前编辑态并置为草稿（不动 publishedSteps，线上继续跑既有发布） */
 export async function rollbackDecisionFlow(id: number, version: number) {
   await ensureDecisionFlow(id);
-  const [v] = await db.select().from(ruleAssetVersions)
-    .where(and(eq(ruleAssetVersions.refKind, 'flow'), eq(ruleAssetVersions.refId, id), eq(ruleAssetVersions.version, version))).limit(1);
-  if (!v) throw new HTTPException(404, { message: `版本 v${version} 不存在` });
+  const v = await requireFirstRow(
+    db.select().from(ruleAssetVersions)
+      .where(and(eq(ruleAssetVersions.refKind, 'flow'), eq(ruleAssetVersions.refId, id), eq(ruleAssetVersions.version, version))).limit(1),
+    `版本 v${version} 不存在`,
+  );
   const snapshot = v.snapshot as { name: string; description: string | null; steps: RuleFlowStep[] };
   const [row] = await db.update(ruleDecisionFlows)
     .set({ name: snapshot.name, description: snapshot.description ?? null, steps: snapshot.steps ?? [], status: 'draft' })
@@ -263,8 +270,10 @@ export async function evaluateDecisionFlowByKey(key: string, input: Record<strin
   const tc = tenantCondition(ruleDecisionFlows, currentUser());
   const conds = [eq(ruleDecisionFlows.key, key)];
   if (tc) conds.push(tc);
-  const [row] = await db.select().from(ruleDecisionFlows).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '决策流不存在' });
+  const row = await requireFirstRow(
+    db.select().from(ruleDecisionFlows).where(and(...conds)).limit(1),
+    '决策流不存在',
+  );
   if (row.status === 'disabled') throw new HTTPException(400, { message: '决策流已禁用' });
   const usePublished = row.status === 'published' && row.publishedSteps;
   const res = usePublished

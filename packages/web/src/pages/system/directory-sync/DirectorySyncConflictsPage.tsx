@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Button, Form, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { ListChecks } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ListChecks } from 'lucide-react';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -76,8 +75,6 @@ export default function DirectorySyncConflictsPage() {
     sourceId: submittedParams.sourceId ? Number(submittedParams.sourceId) : undefined,
     status: enumValueOf(DIRECTORY_SYNC_CONFLICT_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const sourcesQuery = useDirectorySyncSourceList({ page: 1, pageSize: 100 });
   const sourceItems = useMemo(
@@ -216,48 +213,35 @@ export default function DirectorySyncConflictsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          {renderSourceFilter()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-          {selectedRowKeys.length > 0 && hasPermission('system:dirsync-conflict:ignore') && (
-            <Button theme="light" icon={<ListChecks size={14} />} onClick={() => handleIgnore(selectedRowKeys)}>
-              批量忽略 ({selectedRowKeys.length})
-            </Button>
-          )}
-        </>}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-        </>}
-        mobileFilters={<>
-          {renderSourceFilter()}
-          {renderStatusFilter()}
-        </>}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
+          <>
+            {renderSourceFilter()}
+            {renderStatusFilter()}
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={selectedRowKeys.length > 0 && hasPermission('system:dirsync-conflict:ignore') && (
+          <Button theme="light" icon={<ListChecks size={14} />} onClick={() => handleIgnore(selectedRowKeys)}>
+            批量忽略 ({selectedRowKeys.length})
+          </Button>
+        )}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<DirectorySyncConflict>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无冲突，同步产生的挂起项会出现在这里"
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          getCheckboxProps: (record?: DirectorySyncConflict) => ({ disabled: record?.status !== 'pending' }),
-        }}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无冲突，同步产生的挂起项会出现在这里',
+          rowSelection: {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+            getCheckboxProps: (record?: DirectorySyncConflict) => ({ disabled: record?.status !== 'pending' }),
+          },
+        })}
       />
 
       <AppModal

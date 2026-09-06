@@ -5,7 +5,7 @@
  * 厂商通道(华为/小米/OV/荣耀/APNs)在供应商后台配置,本页只管聚合商凭证。
  */
 import { useRef, useState } from 'react';
-import { Banner, Col, Form, Modal, Row, Spin, Switch, Tag, Toast } from '@douyinfe/semi-ui';
+import { Banner, Col, Form, Modal, Row, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
@@ -20,11 +20,10 @@ import {
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
-import { confirmDelete } from '@/utils/confirm';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -111,8 +110,6 @@ export default function PushConfigsPage() {
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const modal = useEditModal<PushConfig, Partial<CreatePushConfigInput>>({
     entityName: '推送配置',
@@ -133,14 +130,18 @@ export default function PushConfigsPage() {
 
   const toggleMutation = useSavePushConfig();
   const deleteMutation = useDeletePushConfigs();
-  const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
+  const canUpdate = hasPermission('system:push:update');
+  const status = useStatusToggle<PushConfig>({
+    toggle: (record, enabled) => toggleMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({ title: '确认停用', content: `停用后「${record.name}」将不再用于推送发送,确认停用？` }),
+    disabled: !canUpdate,
+  });
   const [testConfig, setTestConfig] = useState<PushConfig | null>(null);
 
   const appsQuery = useAllClientApps();
   const appOptions = (appsQuery.data ?? []).map((a) => ({ value: a.id, label: a.name }));
 
   const { items: statusItems } = useDictItems('common_status');
-  const canUpdate = hasPermission('system:push:update');
 
   const columns: ColumnProps<PushConfig>[] = [
     { title: '所属应用', dataIndex: 'appName', width: 140, render: renderEllipsis },
@@ -156,29 +157,7 @@ export default function PushConfigsPage() {
     },
     { title: '备注', dataIndex: 'remark', minWidth: 180, render: renderEllipsis },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, record: PushConfig) => (
-        <Switch
-          checked={record.status === 'enabled'}
-          loading={togglingId === record.id}
-          disabled={!canUpdate}
-          size="small"
-          onChange={(checked) => {
-            const doToggle = () => toggleMutation.mutate(
-              { id: record.id, values: { status: checked ? 'enabled' : 'disabled' } },
-              { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
-            );
-            if (checked) doToggle();
-            else Modal.confirm({
-              title: '确认停用',
-              content: `停用后「${record.name}」将不再用于推送发送,确认停用？`,
-              onOk: doToggle,
-            });
-          }}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<PushConfig>({
       width: 180,
       desktopInlineKeys: ['test', 'edit'],
@@ -187,19 +166,12 @@ export default function PushConfigsPage() {
           key: 'test', label: '测试', onClick: () => setTestConfig(record),
         }] : []),
         ...(canUpdate ? [{ key: 'edit', label: '编辑', onClick: () => modal.openEdit(record) }] : []),
-        ...(hasPermission('system:push:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除推送配置「${record.name}」吗？`,
-              content: '删除后依赖该配置的推送将无法发送',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('system:push:delete'),
+          title: `确定要删除推送配置「${record.name}」吗？`,
+          content: '删除后依赖该配置的推送将无法发送',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -226,36 +198,19 @@ export default function PushConfigsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={renderCreateButton()}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<PushConfig>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无推送配置,新增聚合供应商凭证后即可推送"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal {...modal.modalProps} width={720}>

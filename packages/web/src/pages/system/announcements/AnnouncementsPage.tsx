@@ -2,15 +2,14 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { useDebouncer } from '@tanstack/react-pacer';
 import { useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Tag, Space, Modal, SideSheet, Form, Spin, Toast, Select, RadioGroup, Radio, Tabs, TabPane, Typography } from '@douyinfe/semi-ui';
-import { Trash2 } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import { ANNOUNCEMENT_PUBLISH_STATUSES } from '@zenith/shared/messaging';
 import type { Announcement, AnnouncementTargetType, AnnouncementReadStats, AnnouncementAttachment, CreateAnnouncementInput } from '@zenith/shared/messaging';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { UserAvatar } from '@/components/UserAvatar';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { confirmAndDelete, deleteAction as listDeleteAction, ListSearchToolbar, listTableProps, type ListQueryLike } from '@/components/list-page';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import FileAttachment from '@/components/FileAttachment';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
@@ -33,9 +32,9 @@ import {
   useSaveAnnouncement,
   useUpdateAnnouncementStatus,
 } from '@/hooks/queries/announcements';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete, confirmDanger } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 
 const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
@@ -127,8 +126,6 @@ export default function AnnouncementsPage() {
     publishStatus: submittedParams.publishStatus || undefined,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveAnnouncement();
   const modal = useEditModal<Announcement, AnnouncementFormValues, Partial<CreateAnnouncementInput>>({
     save: saveMutation,
@@ -290,10 +287,6 @@ export default function AnnouncementsPage() {
     await openEditModal(record, true);
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  };
 
   const handlePublish = async (id: number) => {
     await updateStatusMutation.mutateAsync({ params: { id }, body: { publishStatus: 'published' } });
@@ -311,16 +304,14 @@ export default function AnnouncementsPage() {
   };
 
   const handleBatchDelete = () => {
-    confirmDelete({
+    confirmAndDelete({
       title: `确认删除选中的 ${selectedRowKeys.length} 条公告？`,
       content: '删除后无法恢复，请确认操作',
-      onOk: async () => {
-        await deleteMutation.mutateAsync(selectedRowKeys);
-        Toast.success('删除成功');
-        setSelectedRowKeys([]);
-      },
+      run: () => deleteMutation.mutateAsync(selectedRowKeys),
+      onDeleted: () => setSelectedRowKeys([]),
     });
   };
+
 
   /** 渲染已读统计 SideSheet 内容 */
   const renderStatsContent = () => {
@@ -456,17 +447,11 @@ export default function AnnouncementsPage() {
     },
   });
 
-  const deleteAction = (record: Announcement): ResponsiveTableAction => ({
-    key: 'delete',
-    label: '删除',
-    danger: true,
+  const deleteAction = (record: Announcement): ResponsiveTableAction => listDeleteAction({
     hidden: !hasPermission('system:announcement:delete'),
-    onClick: () => {
-      confirmDelete({
-        title: '确定要删除该公告吗？',
-        onOk: () => handleDelete(record.id),
-      });
-    },
+    title: '确定要删除该公告吗？',
+    run: () => deleteMutation.mutateAsync([record.id]),
+    onDeleted: () => setSelectedRowKeys((keys) => keys.filter((k) => k !== record.id)),
   });
 
   const getAnnouncementActions = (record: Announcement): ResponsiveTableAction[] => {
@@ -601,10 +586,10 @@ export default function AnnouncementsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索标题" value={draftParams.title} onChange={(v) => setDraftParams((prev) => ({ ...prev, title: v }))} onSearch={handleSearch} width={200} />}
+        filters={(
           <>
-            <KeywordInput placeholder="搜索标题" value={draftParams.title} onChange={(v) => setDraftParams((prev) => ({ ...prev, title: v }))} onSearch={handleSearch} width={200} />
             <FilterSelect
               placeholder="全部公告类型"
               items={typeItems}
@@ -620,76 +605,40 @@ export default function AnnouncementsPage() {
               width={140}
             />
             <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('system:announcement:create') && <CreateButton onClick={openCreateModal} />}
         actions={(
           <>
             <ExportButton entity="system.announcements" query={buildExportQuery()} />
             {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
+              <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />
             )}
-            {hasPermission('system:announcement:create') && <CreateButton onClick={openCreateModal} />}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索标题" value={draftParams.title} onChange={(v) => setDraftParams((prev) => ({ ...prev, title: v }))} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-            {hasPermission('system:announcement:create') && <CreateButton onClick={openCreateModal} />}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            <FilterSelect
-              placeholder="全部公告类型"
-              items={typeItems}
-              value={draftParams.type}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, type: v }))}
-              width={140}
-            />
-            <FilterSelect
-              placeholder="全部发布状态"
-              items={statusItems}
-              value={draftParams.publishStatus}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, publishStatus: v }))}
-              width={140}
-            />
-            <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))} />
           </>
         )}
         mobileActions={(
           <>
             <ExportButton entity="system.announcements" query={buildExportQuery()} variant="flat" />
             {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
+              <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />
             )}
           </>
         )}
         filterTitle="公告筛选"
         actionTitle="公告操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<Announcement>
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as number[]),
-        }}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery as ListQueryLike<Announcement>, {
+          rowSelection: {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys as number[]),
+          },
+          pagination: buildPagination,
+        })}
       />
 
       <SideSheet

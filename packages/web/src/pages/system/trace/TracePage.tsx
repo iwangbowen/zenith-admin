@@ -9,6 +9,7 @@ import type { TraceFailureEntry, TraceNodeKind, TraceNodeStatus, TraceTimelineNo
 import { TRACE_NODE_KIND_LABELS, TRACE_NODE_KINDS, TRACE_NODE_STATUS_LABELS } from '@zenith/shared/platform';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { listTableProps } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useRecentTraceFailures, useTraceTimeline } from '@/hooks/queries/trace';
 import { useLogFiles, useLogFileContent } from '@/hooks/queries/log-files';
@@ -90,8 +91,6 @@ function RecentFailuresPanel({ onView }: { onView: (traceId: string) => void }) 
   const [days, setDays] = useState(7);
   const [kind, setKind] = useState<TraceNodeKind | undefined>();
   const failuresQuery = useRecentTraceFailures(days, kind);
-  const list = failuresQuery.data ?? [];
-
   const columns: ColumnProps<TraceFailureEntry>[] = [
     {
       title: '类型', dataIndex: 'kind', width: 110,
@@ -124,16 +123,12 @@ function RecentFailuresPanel({ onView }: { onView: (traceId: string) => void }) 
         />
       </div>
       <ConfigurableTable
-        bordered
         columnSettings={false}
         columns={columns}
-        dataSource={list}
-        loading={failuresQuery.isFetching}
-        onRefresh={() => void failuresQuery.refetch()}
-        refreshLoading={failuresQuery.isFetching}
-        rowKey={(r?: TraceFailureEntry) => `${r?.kind}-${r?.refId}`}
-        size="small"
-        empty="时间窗内没有失败记录，一切正常 🎉"
+        {...listTableProps(failuresQuery, {
+          rowKey: (r?: TraceFailureEntry) => `${r?.kind}-${r?.refId}`,
+          empty: '时间窗内没有失败记录，一切正常 🎉',
+        })}
         pagination={false}
       />
       <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>

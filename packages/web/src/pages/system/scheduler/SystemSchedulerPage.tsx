@@ -13,6 +13,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { listTableProps } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -89,8 +90,6 @@ const defaultTaskSearch: TaskSearchParams = { keyword: '', module: undefined, ta
 const defaultRunSearch: RunSearchParams = { taskName: undefined, taskType: undefined, triggerType: undefined, status: undefined, alertStatus: undefined, startTime: '', endTime: '' };
 const FormUserSelect = withField(UserSelect);
 const EMPTY_TASKS: SystemSchedulerTask[] = [];
-const EMPTY_RUNS: SystemSchedulerRun[] = [];
-const EMPTY_NODES: SystemSchedulerNode[] = [];
 
 const taskTypeMap = {
   recurring: { label: '周期任务', color: 'blue' },
@@ -210,10 +209,6 @@ export default function SystemSchedulerPage() {
   const ackAlertMutation = useAcknowledgeSystemSchedulerAlert();
   const cleanupRunsMutation = useCleanupSystemSchedulerRuns();
   const tasks = tasksQuery.data ?? EMPTY_TASKS;
-  const runs = runsQuery.data?.list ?? EMPTY_RUNS;
-  const runsTotal = runsQuery.data?.total ?? 0;
-  const nodes = nodesQuery.data?.list ?? EMPTY_NODES;
-  const nodesTotal = nodesQuery.data?.total ?? 0;
   const runningTaskName = runTaskMutation.isPending ? (runTaskMutation.variables?.params.name ?? null) : null;
 
   const canRun = hasPermission('system:scheduler:run');
@@ -651,16 +646,10 @@ export default function SystemSchedulerPage() {
             </Button>
           </SearchToolbar>
 
-          <ConfigurableTable
-            bordered
-            rowKey="id"
+          <ConfigurableTable<SystemSchedulerRun>
             columns={runColumns}
-            dataSource={runs}
-            loading={runsQuery.isFetching}
-            pagination={buildPagination(runsTotal)}
+            {...listTableProps(runsQuery, { pagination: buildPagination })}
             columnSettingsKey="system-scheduler-runs"
-            onRefresh={() => void runsQuery.refetch()}
-            refreshLoading={runsQuery.isFetching}
           />
         </TabPane>
 
@@ -669,16 +658,10 @@ export default function SystemSchedulerPage() {
             <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void nodesQuery.refetch()} loading={nodesQuery.isFetching}>刷新</Button>
           </SearchToolbar>
 
-          <ConfigurableTable
-            bordered
-            rowKey="nodeId"
+          <ConfigurableTable<SystemSchedulerNode>
             columns={nodeColumns}
-            dataSource={nodes}
-            loading={nodesQuery.isFetching}
-            pagination={buildNodesPagination(nodesTotal)}
+            {...listTableProps(nodesQuery, { rowKey: 'nodeId', pagination: buildNodesPagination })}
             columnSettingsKey="system-scheduler-nodes"
-            onRefresh={() => void nodesQuery.refetch()}
-            refreshLoading={nodesQuery.isFetching}
           />
         </TabPane>
       </Tabs>

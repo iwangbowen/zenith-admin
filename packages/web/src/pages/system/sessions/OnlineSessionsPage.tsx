@@ -4,13 +4,12 @@ import type { OnlineSession } from '@zenith/shared/identity';
 import { TOKEN_KEY } from '@zenith/shared/core';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { sessionKeys, useForceLogoutSession, useForceLogoutUserSessions, useSessionList } from '@/hooks/queries/sessions';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 
@@ -24,8 +23,6 @@ export default function OnlineSessionsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: sessionKeys.lists });
   const listQuery = useSessionList({ page, pageSize, keyword: submittedParams.keyword || undefined });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const forceLogoutMutation = useForceLogoutSession();
   const forceLogoutUserMutation = useForceLogoutUserSessions();
 
@@ -106,36 +103,20 @@ export default function OnlineSessionsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索用户名/昵称/IP" value={draftParams.keyword} onChange={(v) => setDraftParams({ keyword: v })} onSearch={handleSearch} width={240} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索用户名/昵称/IP" value={draftParams.keyword} onChange={(v) => setDraftParams({ keyword: v })} onSearch={handleSearch} width={240} />
-            <SearchButton onClick={handleSearch} />
-          </>
-        )}
-        mobileActions={(
-          <ResetButton onClick={handleReset} />
-        )}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索用户名/昵称/IP" value={draftParams.keyword} onChange={(v) => setDraftParams({ keyword: v })} onSearch={handleSearch} width={240} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
         actionTitle="会话操作"
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<OnlineSession>
         columns={columns}
-        dataSource={data}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="tokenId"
-        pagination={buildPagination(total)}
-        empty="暂无在线用户"
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowKey: 'tokenId',
+          empty: '暂无在线用户',
+        })}
       />
     </div>
   );

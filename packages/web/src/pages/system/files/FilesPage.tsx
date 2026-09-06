@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
-import { Button, Checkbox, DatePicker, Descriptions, Input, List, Pagination, Progress, Space, Spin, Tabs, TabPane, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
-import { Plus, Search, Trash2, FolderDown, LayoutGrid, List as ListIcon, CheckCircle2, XCircle, X } from 'lucide-react';
+import { Button, Checkbox, Descriptions, List, Pagination, Progress, Space, Spin, Tabs, TabPane, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Plus, FolderDown, LayoutGrid, List as ListIcon, CheckCircle2, XCircle, X } from 'lucide-react';
 import type { ManagedFile } from '@zenith/shared/platform';
 import { FILE_STORAGE_PROVIDERS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_TYPE_FILTERS, FILE_TYPE_FILTER_OPTIONS, fileContract } from '@zenith/shared/platform';
 import { enumValueOf } from '@zenith/shared/core';
@@ -21,14 +21,13 @@ import { usePermission } from '@/hooks/usePermission';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePreferences } from '@/hooks/usePreferences';
 import { usePagination } from '@/hooks/usePagination';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useDefaultFileStorageConfig } from '@/hooks/queries/file-storage-configs';
 import { fileKeys, useDeleteFiles, useFileDetail, useFileList, useUploadFile } from '@/hooks/queries/files';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
+import { BatchDeleteButton } from '@/components/toolbar-controls';
+import { confirmAndDelete, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { copyTextWithToast } from '@/utils/clipboard';
 import './FilesPage.css';
 
@@ -36,7 +35,7 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
 import { formatBytes } from '@zenith/shared/core';
-import { FilterSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 const { Text } = Typography;
 
 interface UploadItem { uid: string; name: string; size: number; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; errorMsg?: string }
@@ -247,14 +246,12 @@ export default function FilesPage() {
   };
 
   const handleBatchDelete = () => {
-    confirmDelete({
+    confirmAndDelete({
       title: `确认删除选中的 ${selectedRowKeys.length} 个文件？`,
       content: '删除后将同步尝试删除实际存储对象，无法恢复。',
-      onOk: async () => {
-        await batchDeleteMutation.mutateAsync(selectedRowKeys);
-        Toast.success('批量删除成功');
-        setSelectedRowKeys([]);
-      },
+      run: () => batchDeleteMutation.mutateAsync(selectedRowKeys),
+      successMessage: '批量删除成功',
+      onDeleted: () => setSelectedRowKeys([]),
     });
   };
 
@@ -330,14 +327,12 @@ export default function FilesPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <Input
-      prefix={<Search size={14} />}
+    <KeywordInput
       placeholder="搜索文件名 / 对象键 / 文件服务"
       value={draftParams.keyword}
       onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
-      onEnterPress={handleSearch}
+      onSearch={handleSearch}
       style={{ width: 'min(280px, 100%)' }}
-      showClear
     />
   );
 
@@ -362,9 +357,8 @@ export default function FilesPage() {
   );
 
   const renderTimeRangeFilter = () => (
-    <DatePicker
+    <DateRangeFilter
       type="dateTimeRange"
-      placeholder={['开始时间', '结束时间']}
       value={draftParams.timeRange ?? undefined}
       onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
       style={{ width: 'min(360px, 100%)' }}
@@ -375,16 +369,27 @@ export default function FilesPage() {
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <TabPane tab="文件列表" itemKey="list">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
-            {renderKeywordSearch()}
             {renderProviderFilter()}
             {renderFileTypeFilter()}
             {renderTimeRangeFilter()}
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
           </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('system:file:upload') && (
+          <Button
+            type="primary"
+            icon={<Plus size={14} />}
+            loading={uploadProgressVisible && uploadItems.some(item => item.status === 'uploading' || item.status === 'pending')}
+            disabled={!defaultConfig}
+            onClick={handlePickFile}
+          >
+            上传文件
+          </Button>
         )}
         actions={(
           <>
@@ -394,51 +399,14 @@ export default function FilesPage() {
               </Button>
             )}
             {selectedRowKeys.length > 0 && hasPermission('system:file:delete') && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending} onClick={handleBatchDelete}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
+              <BatchDeleteButton count={selectedRowKeys.length} loading={batchDeleteMutation.isPending} onClick={handleBatchDelete} />
             )}
             {selectedRowKeys.length > 0 && (
               <Button type="tertiary" theme="light" icon={<X size={12} />} onClick={() => setSelectedRowKeys([])}>
                 取消选择
               </Button>
             )}
-            {hasPermission('system:file:upload') && (
-              <Button
-                type="primary"
-                icon={<Plus size={14} />}
-                loading={uploadProgressVisible && uploadItems.some(item => item.status === 'uploading' || item.status === 'pending')}
-                disabled={!defaultConfig}
-                onClick={handlePickFile}
-              >
-                上传文件
-              </Button>
-            )}
             <input ref={fileInputRef} type="file" hidden multiple onChange={handleUpload} />
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            <SearchButton onClick={handleSearch} />
-            {hasPermission('system:file:upload') && (
-              <Button
-                type="primary"
-                icon={<Plus size={14} />}
-                loading={uploadProgressVisible && uploadItems.some(item => item.status === 'uploading' || item.status === 'pending')}
-                disabled={!defaultConfig}
-                onClick={handlePickFile}
-              >
-                上传文件
-              </Button>
-            )}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderProviderFilter()}
-            {renderFileTypeFilter()}
-            {renderTimeRangeFilter()}
           </>
         )}
         mobileActions={selectedRowKeys.length > 0 ? (
@@ -447,9 +415,7 @@ export default function FilesPage() {
               批量下载 ({selectedRowKeys.length})
             </Button>
             {selectedRowKeys.length > 0 && hasPermission('system:file:delete') && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending} onClick={handleBatchDelete}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
+              <BatchDeleteButton count={selectedRowKeys.length} loading={batchDeleteMutation.isPending} onClick={handleBatchDelete} />
             )}
             <Button type="tertiary" theme="light" icon={<X size={12} />} onClick={() => setSelectedRowKeys([])}>
               取消选择
@@ -458,8 +424,6 @@ export default function FilesPage() {
         ) : null}
         filterTitle="文件筛选"
         actionTitle="文件操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <div className="files-default-tip" style={{ padding: '8px 0' }}>
@@ -579,21 +543,16 @@ export default function FilesPage() {
       </AppModal>
 
       {viewMode === 'list' ? (
-        <ConfigurableTable
-          bordered
+        <ConfigurableTable<ManagedFile>
           columns={columns}
-          dataSource={data?.list || []}
-          rowKey="id"
-          rowSelection={hasPermission('system:file:delete') ? {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []).map(String)),
-          } : undefined}
-          loading={listQuery.isFetching}
-          onRefresh={() => void listQuery.refetch()}
-          refreshLoading={listQuery.isFetching}
-          size="small"
           empty="暂无文件记录"
-          pagination={{ ...buildPagination(data?.total ?? 0), pageSizeOpts: FILE_LIST_PAGE_SIZE_OPTIONS }}
+          {...listTableProps(listQuery, {
+            pagination: (total) => ({ ...buildPagination(total), pageSizeOpts: FILE_LIST_PAGE_SIZE_OPTIONS }),
+            rowSelection: hasPermission('system:file:delete') ? {
+              selectedRowKeys,
+              onChange: (keys) => setSelectedRowKeys((keys ?? []).map(String)),
+            } : undefined,
+          })}
         />
       ) : (
         <>

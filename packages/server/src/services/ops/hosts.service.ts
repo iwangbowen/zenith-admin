@@ -13,6 +13,7 @@ import { opsHosts } from '../../db/schema';
 import type { OpsHostRow } from '../../db/schema';
 import { encryptSecret } from '../../lib/secret-crypto';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { requireFirstRow } from '../../lib/db-assert';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { evictHostConnection, getRemoteExecutor } from '../../lib/host-exec';
 import logger from '../../lib/logger';
@@ -43,9 +44,10 @@ function mapHost(row: OpsHostRow): OpsHost {
 }
 
 async function ensureHostExists(id: number): Promise<OpsHostRow> {
-  const [row] = await db.select().from(opsHosts).where(eq(opsHosts.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '主机不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(opsHosts).where(eq(opsHosts.id, id)).limit(1),
+    '主机不存在',
+  );
 }
 
 export async function listOpsHosts(): Promise<OpsHost[]> {

@@ -1,4 +1,4 @@
-import { Col, Form, Row, Spin, Tag, Toast, Switch } from '@douyinfe/semi-ui';
+import { Col, Form, Row, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { SMS_PROVIDER_OPTIONS } from '@zenith/shared/messaging';
 import type { CreateSmsConfigInput, SmsConfig, SmsProvider } from '@zenith/shared/messaging';
@@ -6,10 +6,10 @@ import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
   smsConfigKeys,
@@ -19,9 +19,8 @@ import {
   useSmsConfigDetail,
   useSmsConfigList,
 } from '@/hooks/queries/sms-configs';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
 
 export default function SmsConfigsPage() {
   const { hasPermission: can } = usePermission();
@@ -42,8 +41,6 @@ export default function SmsConfigsPage() {
     provider: submittedParams.filterProvider,
     status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const saveMutation = useSaveSmsConfig();
   const configModal = useEditModal<SmsConfig, Partial<CreateSmsConfigInput>>({
@@ -73,38 +70,18 @@ export default function SmsConfigsPage() {
   const toggleStatusMutation = useSaveSmsConfig();
   const setDefaultMutation = useSetDefaultSmsConfig();
   const deleteMutation = useDeleteSmsConfig();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+  const status = useStatusToggle<SmsConfig>({
+    toggle: (record, enabled) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({ danger: true, title: `确认禁用「${record.name}」？`, okText: '确认禁用' }),
+    disabled: (record) => !can('system:sms-config:update') || record.isDefault,
+    messages: { disabled: '已禁用' },
+  });
 
   const handleSetDefault = async (record: SmsConfig) => {
     await setDefaultMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已设为默认');
   };
 
-  const handleDelete = (id: number) => {
-    confirmDelete({
-      title: '确定要删除该短信配置吗？',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
-  const handleToggleStatus = async (cfg: SmsConfig, newStatus: 'enabled' | 'disabled') => {
-    if (newStatus === 'disabled') {
-      if (cfg.isDefault) {
-        Toast.warning('默认配置不能禁用，请先将其他配置设为默认');
-        return;
-      }
-      const confirmed = await confirmDangerAsync({
-        title: `确认禁用「${cfg.name}」？`,
-        okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    await toggleStatusMutation.mutateAsync({ id: cfg.id, values: { status: newStatus } });
-    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-  };
 
   const columns = [
     { title: '名称', dataIndex: 'name', minWidth: 160 },
@@ -120,18 +97,7 @@ export default function SmsConfigsPage() {
       render: (v: boolean) => (v ? <Tag color="blue" type="light">默认</Tag> : '—'),
     },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 90, align: 'center' as const, fixed: 'right' as const,
-      render: (v: string, record: SmsConfig) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingStatusId === record.id}
-          disabled={!can('system:sms-config:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<SmsConfig>({
       desktopInlineKeys: ['edit', 'delete'],
       width: 180,
@@ -148,52 +114,20 @@ export default function SmsConfigsPage() {
           hidden: !can('system:sms-config:update'),
           onClick: () => configModal.openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !can('system:sms-config:delete'),
-          onClick: () => handleDelete(record.id),
-        },
+          title: '确定要删除该短信配置吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索名称/签名" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <FilterSelect
-              placeholder="全部服务商"
-              items={SMS_PROVIDER_OPTIONS}
-              value={draftParams.filterProvider}
-              onChange={(v) => setDraftParams({ ...draftParams, filterProvider: v as SmsProvider | undefined })}
-              width={140}
-            />
-            <StatusSelect
-              items={statusItems}
-              value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {can('system:sms-config:create') && (
-              <CreateButton onClick={configModal.openCreate} />
-            )}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索名称/签名" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-            {can('system:sms-config:create') && (
-              <CreateButton onClick={configModal.openCreate} />
-            )}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索名称/签名" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />}
+        filters={(
           <>
             <FilterSelect
               placeholder="全部服务商"
@@ -208,14 +142,19 @@ export default function SmsConfigsPage() {
               onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
             />
           </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={can('system:sms-config:create') && (
+          <CreateButton onClick={configModal.openCreate} />
         )}
         filterTitle="短信配置筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable<SmsConfig>
+        columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...configModal.modalProps} width={720}>
         <Spin spinning={configModal.detailLoading} wrapperClassName="modal-spin-wrapper">

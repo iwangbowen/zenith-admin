@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { managedFiles, fileStorageConfigs, users } from '../../db/schema';
 import type { FileStorageConfigRow } from '../../db/schema';
 import type { FileVisibility } from '@zenith/shared/platform';
@@ -39,11 +41,11 @@ export interface ManagedFileUploadOptions {
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
-import { and, desc, asc, eq, inArray, isNull, like, or, gte, sql } from 'drizzle-orm';
+import { and, desc, asc, eq, inArray, like, or, gte, sql } from 'drizzle-orm';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { streamToExcel, formatDateTimeForExcel } from '../../lib/excel-export';
-import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { runAsUser } from '../../lib/audit-context';
@@ -57,15 +59,15 @@ export async function getStorageConfigMap(): Promise<Map<number, FileStorageConf
 export async function getStoredFileForRead(id: string) {
   const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
   // 受控文件只能经归属模块的鉴权接口读取；通用接口按「不存在」处理，不泄露其存在性
-  if (!file || file.visibility === 'restricted') throw new HTTPException(404, { message: '文件不存在' });
-  return withStorageConfig(file);
+  const readableFile = requireRow(file, '文件不存在');
+  if (readableFile.visibility === 'restricted') throw new HTTPException(404, { message: '文件不存在' });
+  return withStorageConfig(readableFile);
 }
 
 /** 归属模块（网盘等）读取受控文件：跳过可见性检查，调用方自行完成鉴权 */
 export async function getRestrictedFileForRead(id: string) {
   const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
-  if (!file) throw new HTTPException(404, { message: '文件不存在' });
-  return withStorageConfig(file);
+  return withStorageConfig(requireRow(file, '文件不存在'));
 }
 
 async function withStorageConfig(file: typeof managedFiles.$inferSelect) {
@@ -74,7 +76,7 @@ async function withStorageConfig(file: typeof managedFiles.$inferSelect) {
     .from(fileStorageConfigs)
     .where(eq(fileStorageConfigs.id, file.storageConfigId))
     .limit(1);
-  if (!storageConfig) throw new HTTPException(404, { message: '文件存储配置不存在' });
+  requireRow(storageConfig, '文件存储配置不存在');
   return { file, storageConfig };
 }
 
@@ -98,15 +100,15 @@ export async function readFileContent(id: string) {
 }
 
 export async function readGeneratedManagedFile(id: string, tenantId: number | null) {
-  const tenantWhere = tenantId === null ? isNull(managedFiles.tenantId) : eq(managedFiles.tenantId, tenantId);
+  const tenantWhere = exactTenantCondition(managedFiles.tenantId, tenantId);
   const [file] = await db.select().from(managedFiles)
     .where(and(eq(managedFiles.id, id), tenantWhere))
     .limit(1);
-  if (!file) throw new HTTPException(404, { message: '生成文件不存在' });
+  requireRow(file, '生成文件不存在');
   const [storageConfig] = await db.select().from(fileStorageConfigs)
     .where(eq(fileStorageConfigs.id, file.storageConfigId))
     .limit(1);
-  if (!storageConfig) throw new HTTPException(404, { message: '文件存储配置不存在' });
+  requireRow(storageConfig, '文件存储配置不存在');
   return readStoredFile(file, storageConfig);
 }
 
@@ -147,26 +149,27 @@ export async function listManagedFiles(query: {
   const where = and(...conditions);
   const tc = tenantCondition(managedFiles, user);
   const finalWhere = buildWhere(where, tc);
-  const [count, paginated, configMap] = await Promise.all([
-    db.$count(managedFiles, finalWhere),
-    withPagination(db.select().from(managedFiles).where(finalWhere).orderBy(desc(managedFiles.createdAt)).$dynamic(), page, pageSize),
-    getStorageConfigMap(),
-  ]);
-  const uploaderIds = [...new Set(paginated.map((f) => f.createdBy).filter((id): id is number => id != null))];
-  const uploaderMap = new Map<number, string>();
-  if (uploaderIds.length > 0) {
-    const uploaders = await db
-      .select({ id: users.id, nickname: users.nickname, username: users.username })
-      .from(users)
-      .where(inArray(users.id, uploaderIds));
-    for (const u of uploaders) uploaderMap.set(u.id, u.nickname || u.username);
-  }
-  return {
-    list: paginated.map((f) => ({ ...mapManagedFile(f, configMap.get(f.storageConfigId)), uploaderName: f.createdBy ? (uploaderMap.get(f.createdBy) ?? null) : null })),
-    total: count,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(managedFiles, finalWhere),
+    rows: async () => {
+      const [paginated, configMap] = await Promise.all([
+        withPagination(db.select().from(managedFiles).where(finalWhere).orderBy(desc(managedFiles.createdAt)).$dynamic(), page, pageSize),
+        getStorageConfigMap(),
+      ]);
+      const uploaderIds = [...new Set(paginated.map((f) => f.createdBy).filter((id): id is number => id != null))];
+      const uploaderMap = new Map<number, string>();
+      if (uploaderIds.length > 0) {
+        const uploaders = await db
+          .select({ id: users.id, nickname: users.nickname, username: users.username })
+          .from(users)
+          .where(inArray(users.id, uploaderIds));
+        for (const u of uploaders) uploaderMap.set(u.id, u.nickname || u.username);
+      }
+      return paginated.map((f) => ({ ...mapManagedFile(f, configMap.get(f.storageConfigId)), uploaderName: f.createdBy ? (uploaderMap.get(f.createdBy) ?? null) : null }));
+    },
+  });
 }
 
 /** 校验上传大小是否超过系统设置上限（files.uploadMaxSizeMb，0 表示不限制）；调用方已持有设置时可传入，避免事务内重复读取 */
@@ -310,7 +313,7 @@ export async function deleteManagedFile(id: string) {
   const tc = tenantCondition(managedFiles, user);
   const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
   const [file] = await db.select().from(managedFiles).where(where).limit(1);
-  if (!file) throw new HTTPException(404, { message: '文件不存在' });
+  requireRow(file, '文件不存在');
   const [storageConfig] = await db
     .select()
     .from(fileStorageConfigs)
@@ -323,7 +326,7 @@ export async function deleteManagedFile(id: string) {
 }
 
 export async function deleteGeneratedManagedFile(id: string, tenantId: number | null): Promise<void> {
-  const tenantWhere = tenantId === null ? isNull(managedFiles.tenantId) : eq(managedFiles.tenantId, tenantId);
+  const tenantWhere = exactTenantCondition(managedFiles.tenantId, tenantId);
   const where = and(eq(managedFiles.id, id), tenantWhere);
   const [file] = await db.select().from(managedFiles).where(where).limit(1);
   if (!file) return;
@@ -338,11 +341,10 @@ export async function getManagedFile(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
-  const file = await db.query.managedFiles.findFirst({
+  const file = requireRow(await db.query.managedFiles.findFirst({
     where,
     with: { createdByUser: { columns: { nickname: true, username: true } } },
-  });
-  if (!file) throw new HTTPException(404, { message: '文件不存在' });
+  }), '文件不存在');
   const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, file.storageConfigId)).limit(1);
   return {
     ...mapManagedFile(file, config),

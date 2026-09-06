@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Dropdown,
-  Input,
   Select,
   Tag,
   Form,
@@ -19,10 +18,9 @@ import {
   Switch,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Pencil, Trash2 } from 'lucide-react';
+import { Plus, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import type { CreateDictInput, CreateDictItemInput, Dict, DictItem } from '@zenith/shared/platform';
 import { formatDateTime } from '@/utils/date';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -50,10 +48,11 @@ import {
   useSaveDict,
   useUpdateDictItem,
 } from '@/hooks/queries/dicts';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
 import { abortSubmit } from '@/lib/abort-submit';
-import { StatusSelect } from '@/components/search-filters';
+import { KeywordInput, StatusSelect } from '@/components/search-filters';
 
 export default function DictsPage() {
   const { hasPermission } = usePermission();
@@ -129,7 +128,6 @@ export default function DictsPage() {
   const updateItemMutation = useUpdateDictItem();
   const toggleItemStatusMutation = useUpdateDictItem();
   const deleteItemMutation = useDeleteDictItem();
-  const togglingItemStatusId = toggleItemStatusMutation.isPending ? (toggleItemStatusMutation.variables?.params.itemId ?? null) : null;
   const togglingDictStatusId = toggleDictStatusMutation.isPending ? (toggleDictStatusMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
@@ -323,18 +321,14 @@ export default function DictsPage() {
     setItemModalVisible(true);
   };
 
-  const handleToggleItemStatus = async (item: DictItem, newStatus: 'enabled' | 'disabled') => {
-    if (!selectedDict) return;
-    if (newStatus === 'disabled') {
-      const confirmed = await confirmDangerAsync({
-        title: `确认禁用字典项「${item.label}」？`,
-        okText: '确认禁用',
-      });
-      if (!confirmed) return;
-    }
-    await toggleItemStatusMutation.mutateAsync({ params: { id: selectedDict.id, itemId: item.id }, body: { status: newStatus } });
-    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-  };
+  const itemStatus = useStatusToggle<DictItem>({
+    toggle: (item, enabled) => {
+      if (!selectedDict) return Promise.resolve();
+      return toggleItemStatusMutation.mutateAsync({ params: { id: selectedDict.id, itemId: item.id }, body: { status: enabled ? 'enabled' : 'disabled' } });
+    },
+    confirmDisable: (item) => ({ danger: true, title: `确认禁用字典项「${item.label}」？`, okText: '确认禁用' }),
+    disabled: !selectedDict || !hasPermission('system:dict:item'),
+  });
 
   const handleToggleDictStatus = async (dict: Dict, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
@@ -476,22 +470,7 @@ export default function DictsPage() {
     { title: '排序', dataIndex: 'sort', width: 70, align: 'center' },
     { title: '备注', dataIndex: 'remark', minWidth: 200, render: renderEllipsis },
     createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center',
-      fixed: 'right',
-      render: (v: string, record: DictItem) => (
-        <Switch
-          size="small"
-          checked={v === 'enabled'}
-          loading={togglingItemStatusId === record.id}
-          disabled={!hasPermission('system:dict:item')}
-          onChange={(checked: boolean) => void handleToggleItemStatus(record, checked ? 'enabled' : 'disabled')}
-        />
-      ),
-    },
+    itemStatus.column(),
     createOperationColumn<DictItem>({
       width: 210,
       desktopInlineKeys: ['child', 'edit', 'delete'],
@@ -508,31 +487,22 @@ export default function DictsPage() {
           hidden: !hasPermission('system:dict:item'),
           onClick: () => openEditItem(row),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('system:dict:item'),
-          onClick: () => {
-            confirmDelete({
-              title: '确认删除此字典项？',
-              onOk: () => handleItemDelete(row.id),
-            });
-          },
-        },
+          title: '确认删除此字典项？',
+          run: () => handleItemDelete(row.id),
+        }),
       ],
     }),
   ];
 
   const renderItemKeywordSearch = () => (
-    <Input
-      prefix={<Search size={14} />}
+    <KeywordInput
       placeholder="标签/键值"
-      showClear
       value={pendingItemKeyword}
       onChange={setPendingItemKeyword}
-      onEnterPress={handleItemSearch}
-      style={{ width: 180, maxWidth: '100%' }}
+      onSearch={handleItemSearch}
+      width={180}
       disabled={!selectedDict}
     />
   );
@@ -544,14 +514,6 @@ export default function DictsPage() {
       onChange={setPendingItemStatus}
       disabled={!selectedDict}
     />
-  );
-
-  const renderItemSearchButton = () => (
-    <SearchButton onClick={handleItemSearch} disabled={!selectedDict} />
-  );
-
-  const renderItemResetButton = () => (
-    <ResetButton onClick={handleItemReset} disabled={!selectedDict} />
   );
 
   const renderItemExpandButton = () => allRowKeys.length > 0 ? (
@@ -592,30 +554,16 @@ export default function DictsPage() {
         )}
       </MasterDetailLayout.Header>
       <MasterDetailLayout.Body>
-        <SearchToolbar
-          primary={(
-            <>
-              {renderItemKeywordSearch()}
-              {renderItemStatusFilter()}
-              {renderItemSearchButton()}
-              {renderItemResetButton()}
-              {renderItemExpandButton()}
-              {renderItemCreateButton()}
-            </>
-          )}
-          mobilePrimary={(
-            <>
-              {renderItemKeywordSearch()}
-              {renderItemSearchButton()}
-              {renderItemCreateButton()}
-            </>
-          )}
-          mobileFilters={renderItemStatusFilter()}
+        <ListSearchToolbar
+          keyword={renderItemKeywordSearch()}
+          filters={renderItemStatusFilter()}
+          onSearch={handleItemSearch}
+          onReset={handleItemReset}
+          create={renderItemCreateButton()}
+          actions={renderItemExpandButton()}
           mobileActions={renderItemExpandButton()}
           filterTitle="字典项筛选"
           actionTitle="字典项操作"
-          onFilterApply={handleItemSearch}
-          onFilterReset={handleItemReset}
         />
         <ConfigurableTable
           bordered

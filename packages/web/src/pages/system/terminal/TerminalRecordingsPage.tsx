@@ -3,9 +3,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Modal, Tag, Toast, Dropdown, SplitButtonGroup, Typography, Space } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Trash2, ChevronDown, Copy, Terminal, Star } from 'lucide-react';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useUserOptions } from '@/hooks/useUserOptions';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -19,9 +19,8 @@ import {
   useTerminalRecordingList,
 } from '@/hooks/queries/terminal';
 import type { TerminalRecording, TerminalRecordingDetail, TerminalRecordingEvent } from '@zenith/shared/ops';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { CLEAR_LOGS_LABELS } from '@/hooks/useClearLogs';
 import { dateTimeColumn } from '@/utils/table-columns';
@@ -133,8 +132,6 @@ export default function TerminalRecordingsPage() {
     operatorUserId: submittedParams.operatorUserId ?? undefined,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const [playId, setPlayId] = useState<number | undefined>();
   const [detailId, setDetailId] = useState<number | undefined>();
   const playQuery = useTerminalRecordingDetail(playId, playId !== undefined);
@@ -161,11 +158,6 @@ export default function TerminalRecordingsPage() {
     const cached = queryClient.getQueryData<TerminalRecordingDetail>(terminalKeys.recordingDetail(id));
     if (cached) setDetailRec(cached);
     setDetailId(id);
-  };
-
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('已删除');
   };
 
   const handleClear = (days: number) => {
@@ -258,27 +250,21 @@ export default function TerminalRecordingsPage() {
           loading: exportingId === record.id,
           onClick: () => { void handleExportAsciinema(record); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除这条录屏吗？',
-              onOk: () => { void handleDelete(record.id); },
-            });
-          },
-        },
+        deleteAction({
+          title: '确定删除这条录屏吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索标题" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />}
+        filters={(
           <>
-            <KeywordInput placeholder="搜索标题" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />
             <FilterSelect
               placeholder="全部操作人"
               items={userOptions}
@@ -290,10 +276,10 @@ export default function TerminalRecordingsPage() {
               onFocus={() => { void ensureLoaded(); }}
             />
             <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams({ ...draftParams, timeRange: v ? (v as [Date, Date]) : null })} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         actions={(
           <SplitButtonGroup>
             <Button
@@ -323,26 +309,8 @@ export default function TerminalRecordingsPage() {
             </Dropdown>
           </SplitButtonGroup>
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索标题" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />
-            <SearchButton onClick={handleSearch} />
-          </>
-        )}
         mobileActions={(
           <>
-            <FilterSelect
-              placeholder="全部操作人"
-              items={userOptions}
-              value={draftParams.operatorUserId ?? undefined}
-              onChange={(v) => setDraftParams({ ...draftParams, operatorUserId: v ?? null })}
-              width={220}
-              loading={userOptionsLoading}
-              filter
-              onFocus={() => { void ensureLoaded(); }}
-            />
-            <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams({ ...draftParams, timeRange: v ? (v as [Date, Date]) : null })} width={260} />
-            <ResetButton onClick={handleReset} />
             {([365, 180, 90, 30] as const).map((m) => (
               <Button
                 key={m}
@@ -361,15 +329,8 @@ export default function TerminalRecordingsPage() {
       />
 
       <ConfigurableTable
-        bordered
-        rowKey="id"
-        dataSource={list}
         columns={columns}
-        loading={listQuery.isFetching}
-        pagination={buildPagination(total)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        empty="暂无录屏记录，使用 Web 终端后会自动保存"
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无录屏记录，使用 Web 终端后会自动保存' })}
       />
 
       <Modal

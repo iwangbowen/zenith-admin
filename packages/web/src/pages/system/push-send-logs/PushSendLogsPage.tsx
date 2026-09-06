@@ -27,22 +27,16 @@ import {
   useChartPalette,
 } from '@/components/charts';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { useListSearch } from '@/hooks/useListSearch';
 import { pushSendLogKeys, usePushSendLogList, usePushSendLogStats } from '@/hooks/queries/push';
 import { SEND_LOG_STATUS_OPTIONS } from '../send-log-constants';
+import { SendStatusTag } from '../send-log-ui';
 
 const { Text } = Typography;
-
-const STATUS_COLORS: Record<SendStatus, 'orange' | 'green' | 'red'> = {
-  pending: 'orange',
-  success: 'green',
-  failed: 'red',
-};
 
 const DELIVERY_COLORS: Record<PushDeliveryStatus, 'green' | 'blue'> = {
   delivered: 'green',
@@ -140,8 +134,6 @@ export default function PushSendLogsPage() {
     status: enumValueOf(SEND_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const columns: ColumnProps<PushSendLog>[] = [
     { title: '应用', dataIndex: 'appName', width: 120, render: renderEllipsis },
@@ -185,7 +177,7 @@ export default function PushSendLogsPage() {
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: SendStatus) => <Tag color={STATUS_COLORS[v]} size="small">{SEND_LOG_STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v}</Tag>,
+      render: (v: SendStatus) => <SendStatusTag value={v} />,
     },
   ];
 
@@ -216,38 +208,23 @@ export default function PushSendLogsPage() {
   return (
     <div className="page-container zx-flat-panels">
       <PushStatsSection />
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          {renderStatusFilter()}
-          {renderTimeRangeFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-        </>}
-        mobileFilters={<>
-          {renderStatusFilter()}
-          {renderTimeRangeFilter()}
-        </>}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
+          <>
+            {renderStatusFilter()}
+            {renderTimeRangeFilter()}
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<PushSendLog>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无推送记录"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
     </div>
   );

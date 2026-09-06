@@ -1,5 +1,7 @@
 import { eq, desc, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { requireFirstRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { smsSendLogs, smsTemplates, smsConfigs, users } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
@@ -35,9 +37,11 @@ export function buildListWhere(q: ListSmsSendLogsQuery) {
 
 export async function listSmsSendLogs(q: ListSmsSendLogsQuery) {
   const where = buildListWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(smsSendLogs, where),
-    withPagination(
+  return buildListResult({
+    page: q.page,
+    pageSize: q.pageSize,
+    count: () => db.$count(smsSendLogs, where),
+    rows: () => withPagination(
       db.select({
         log: smsSendLogs,
         templateName: smsTemplates.name,
@@ -54,9 +58,7 @@ export async function listSmsSendLogs(q: ListSmsSendLogsQuery) {
       q.page,
       q.pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => ({
+    map: (r) => ({
       id: r.log.id,
       configId: r.log.configId,
       configName: r.configName ?? null,
@@ -76,17 +78,15 @@ export async function listSmsSendLogs(q: ListSmsSendLogsQuery) {
       ip: r.log.ip ?? null,
       sentAt: r.log.sentAt ? formatDateTime(r.log.sentAt) : null,
       createdAt: formatDateTime(r.log.createdAt),
-    })),
-    total,
-    page: q.page,
-    pageSize: q.pageSize,
-  };
+    }),
+  });
 }
 
 export async function getSmsSendLog(id: number) {
-  const [row] = await db.select().from(smsSendLogs).where(eq(smsSendLogs.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '发送记录不存在' });
-  return row;
+  return requireFirstRow(
+    db.select().from(smsSendLogs).where(eq(smsSendLogs.id, id)).limit(1),
+    '发送记录不存在',
+  );
 }
 
 export async function deleteSmsSendLog(id: number) {

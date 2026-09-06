@@ -1,3 +1,5 @@
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { eq, and, ne, desc, count, inArray } from 'drizzle-orm';
 import crypto from 'node:crypto';
 import { hashPassword } from '../../lib/password';
@@ -37,46 +39,41 @@ export async function listTenants(q: ListTenantsQuery) {
   conditions.push(keywordCondition(keyword, [tenants.name]));
   if (status === 'enabled' || status === 'disabled') conditions.push(eq(tenants.status, status));
   const where = and(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(tenants, where),
-    db.query.tenants.findMany({
-      where,
-      orderBy: desc(tenants.id),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-      with: { package: { columns: { name: true } } },
-    }),
-  ]);
-  // 单条 GROUP BY 聚合各租户用户数：此前按行 `Promise.all(rows.map(db.$count(...)))`
-  // 会并发发出 pageSize 条 COUNT（上限 200），单个请求即可占满连接池（默认 max=10）。
-  const tenantIds = rows.map((r) => r.id);
-  const countRows = tenantIds.length
-    ? await db
-        .select({ tenantId: users.tenantId, n: count() })
-        .from(users)
-        .where(inArray(users.tenantId, tenantIds))
-        .groupBy(users.tenantId)
-    : [];
-  // 无用户的租户不会出现在聚合结果中，取值兜底 0
-  const userCountMap = new Map(countRows.map((r) => [r.tenantId, r.n]));
-  return {
-    list: rows.map(({ package: pkg, ...row }) => ({
-      ...mapTenant(row, pkg?.name ?? null),
-      userCount: userCountMap.get(row.id) ?? 0,
-    })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(tenants, where),
+    rows: async () => {
+      const rows = await db.query.tenants.findMany({
+        where,
+        orderBy: desc(tenants.id),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+        with: { package: { columns: { name: true } } },
+      });
+      const tenantIds = rows.map((r) => r.id);
+      const countRows = tenantIds.length
+        ? await db
+            .select({ tenantId: users.tenantId, n: count() })
+            .from(users)
+            .where(inArray(users.tenantId, tenantIds))
+            .groupBy(users.tenantId)
+        : [];
+      const userCountMap = new Map(countRows.map((r) => [r.tenantId, r.n]));
+      return rows.map(({ package: pkg, ...row }) => ({
+        ...mapTenant(row, pkg?.name ?? null),
+        userCount: userCountMap.get(row.id) ?? 0,
+      }));
+    },
+  });
 }
 
 /** 单个租户的用量与统计概览 */
 export async function getTenantStats(id: number) {
-  const tenant = await db.query.tenants.findFirst({
+  const tenant = requireRow(await db.query.tenants.findFirst({
     where: eq(tenants.id, id),
     with: { package: { columns: { name: true } } },
-  });
-  if (!tenant) throw new HTTPException(404, { message: '租户不存在' });
+  }), '租户不存在');
 
   const [userCount, departmentCount, roleCount, positionCount, packageFeatureCount] = await Promise.all([
     db.$count(users, eq(users.tenantId, id)),
@@ -113,11 +110,10 @@ export async function listAllTenants() {
 }
 
 export async function getTenant(id: number) {
-  const row = await db.query.tenants.findFirst({
+  const row = requireRow(await db.query.tenants.findFirst({
     where: eq(tenants.id, id),
     with: { package: { columns: { name: true } } },
-  });
-  if (!row) throw new HTTPException(404, { message: '租户不存在' });
+  }), '租户不存在');
   const { package: pkg, ...rest } = row;
   return mapTenant(rest, pkg?.name ?? null);
 }
@@ -245,7 +241,7 @@ export async function updateTenant(id: number, data: Partial<TenantInput>) {
     ...(rawExpireAt === undefined ? {} : { expireAt: parseDateTimeInput(rawExpireAt) }),
   };
   const [row] = await db.update(tenants).set(values).where(eq(tenants.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '租户不存在' });
+  requireRow(row, '租户不存在');
   // 租户套餐变更会影响该租户下用户的有效菜单/权限，清空权限缓存使其即时生效。
   if ('packageId' in data) await clearUserPermissionCache();
   return getTenant(id);
@@ -253,7 +249,7 @@ export async function updateTenant(id: number, data: Partial<TenantInput>) {
 
 export async function deleteTenant(id: number) {
   const [row] = await db.delete(tenants).where(eq(tenants.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '租户不存在' });
+  requireRow(row, '租户不存在');
 }
 
 export async function getTenantBeforeAudit(id: number) {

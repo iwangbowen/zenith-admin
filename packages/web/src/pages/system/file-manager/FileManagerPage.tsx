@@ -24,7 +24,7 @@ import { FolderOpen, Home, UploadCloud } from 'lucide-react';
 import { useTerminalExtract, useTerminalFileOperation, useTerminalSearch } from '@/hooks/queries/terminal-files';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import { permStringToOctal } from './fs-utils';
 import type { EntryActions } from './entry-actions';
 import type { FmDialogState, FsEntry, SortState, ViewMode } from './types';
@@ -189,9 +189,10 @@ function LocalFileManagerPage() {
     onChmod: (entry) => setDialog({ mode: 'chmod', entry, value: permStringToOctal(entry.permissions) }),
     onProps: (entry) => { setPropsChecksumAlgo(null); setPropsEntry(entry); },
     onDelete: (paths) => {
-      confirmDelete({
+      confirmAndDelete({
         title: paths.length > 1 ? `确定删除选中的 ${paths.length} 项吗？` : '确定删除此项吗？',
-        onOk: () => handleDelete(paths),
+        run: () => handleDelete(paths),
+        successMessage: null,
       });
     },
     onUploadTo: (dirPath) => upload.openUploadPicker(dirPath),
