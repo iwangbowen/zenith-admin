@@ -4,6 +4,59 @@
 
 ---
 
+## v2.21.0 - 2026-09-06
+
+**全仓代码去重**：列表页与服务层的样板代码收口为通用构件，跨包重复的纯业务逻辑下沉 `shared`，各业务域抽出域内共用部件。
+精确克隆 435 处 / 8,211 行 → 287 处 / 4,728 行（1.33% → 0.77%），server↔web 漂移源 8 → 0；净删除约 2,100 行。
+全部页面行为、接口响应、错误文案与权限不变；249 个后台路由的工具栏 / 表格结构与改造前基线比对，仅工具栏排布按规范统一
+（新增按钮排在低频操作前、移动端筛选进抽屉），CMS 五主题渲染 HTML 逐字节一致。
+
+### Added
+
+#### 前端通用构件
+
+- `components/list-page`：`ListSearchToolbar`（关键词 → 筛选 → 查询 / 重置 → 新增 → 低频操作，移动端排布内置）、
+  `useStatusToggle`（状态开关列：行内 loading、停用 / 启用确认、成功提示）、`deleteAction` / `confirmAndDelete`、
+  `listTableProps`（数据源 / loading / 刷新 / 分页一次接线，不分页时显式关闭 Semi 客户端分页）；126 个列表页采用
+- `toolbar-controls` 新增 `BatchDeleteButton`；`components/members/MemberAssignmentSheet` 与 `memberPreviewColumn`、
+  `components/logs/LogStatsScaffold`、`components/workflow/WorkflowInstanceListColumns`、`components/ops/CommandOutputPanel`
+- 域内共用：`payment-app-options` / `payment-display`、IoT `iot-form-utils` / `IotSelectors` / `ThingModelFields` / `IotStatus`、
+  `member-admin-display`、会员前台 `member-nav` / `MemberAuthCard` / `CmsContentList`、`monitor-alert-display`、`send-log-ui`、
+  工作流 `AssigneeScopeFields` / `http-integration`、`OpenPlatformPaginatedTab`、`ai-display`、`RuleVersionHistorySheet`、
+  终端 `TerminalTabChrome`
+- MSW Mock：`mocks/utils/{filter,crud,body,idempotency}`，`mock()` 把抛出的 `MockHttpError` 映射为失败响应
+
+#### 服务端 helper
+
+- `lib/list-query.ts` `buildListResult`（count 与 rows 并行 + 分页包络，260 处采用）、`lib/db-assert.ts` `requireRow` / `requireFirstRow`
+  （808 处）、`lib/tenant.ts` `exactTenantCondition` / `optionalExactTenantCondition` / `inheritedTenantCondition`
+  （替换全部 163 处手写租户归属三目及 6 份本地同义 helper）
+- `identity/platform-admins.service` 启用平台超管查询；`lib/payment/adapter-sandbox` 微信 / 支付宝共用沙箱守卫与分账冲正结果构造；
+  CMS `cms-render-pagination` / `cms-task-shared` / `cms-site-tree`；报表 `report-dashboard-snapshot` / `report-delivery-dispatch`；
+  CMS 主题 `_shared.tsx` 新增 `CAPTCHA_SCRIPT` / `CaptchaBox` / `FrontForm` / `PageLinks` / `ThemeFooterLinks`
+
+#### 共享层
+
+- 服务端与前端 / Mock 各写一份的纯逻辑统一为 `shared` 单一实现：`ai/branch-tree`、`workflow/health`、`workflow/helpers`
+  （表单快照归一）、`report/widget-params`、`platform/regions`、`platform/data-mask`、`platform/constants`（监控历史区间）、
+  `payment/constants`（账本科目）、`core/json`
+
+### Changed
+
+- 前端入口清单收敛为 `packages/web/entries.json` 单一来源，`vite.config.ts`、`scripts/build.mjs`、`scripts/bundle-analyze.mjs` 均由它读取，
+  新增入口只需登记一行
+- 工作流 `approveTask` / `rejectTask` 复用既有 `getOwnPendingTask` 前置校验；`materialize` 管理员兜底行构造收口
+- 开发规范：`constraints.md` / `constraints-frontend.md` 新增「四类列表页样板必须复用构件」「纯业务逻辑放 shared、Mock 只导入不重写」
+  「机械 CRUD 用 mocks/utils 工具」；`crud-frontend.md` / `crud-backend.md` / `crud-mock.md` 模板改用上述构件
+
+### Fixed
+
+- `/system/cron-jobs`（两列共用 `dataIndex`）、`/system/data-mask`、`/cms/tags`、`/cms/subscriptions`（订阅聚合行键未含对象类型）的
+  React 重复 key 告警
+- 收件箱批量与单条删除改用统一删除确认，不再使用 `Popconfirm`
+
+---
+
 ## v2.20.1 - 2026-09-06
 
 **修复 v2.20.0 前端发布产物体积异常**（`zenith-admin-web` zip 94.3 MB → 约 33 MB）。分入口独立构建后，移动审批入口经
