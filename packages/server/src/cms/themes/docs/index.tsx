@@ -6,9 +6,7 @@ import type {
 } from '../types';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
 import { renderCmsWidgetHtml } from '../widgets';
-import { Breadcrumbs, Pagination, SeoHead, buildAnalyticsBeacon } from '../_shared';
-
-const CAPTCHA_SCRIPT = `(function(){function load(box){fetch('/api/public/cms/captcha').then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0)return;box.querySelector('input[name="captchaId"]').value=r.data.id;var img=box.querySelector('.cms-captcha-img');img.innerHTML=r.data.svg;img.title='看不清？点击刷新'}).catch(function(){})}document.querySelectorAll('.cms-captcha-box').forEach(function(box){load(box);var img=box.querySelector('.cms-captcha-img');if(img)img.addEventListener('click',function(){load(box)})});})();`;
+import { Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, Pagination, SeoHead, buildAnalyticsBeacon } from '../_shared';
 
 /** 暗色变量组；注册进主题对象 darkVars 供样式装配 */
 export const DOCS_THEME_DARK_VARS = '--text:#dfdfd6; --text-2:#98989f; --border:#3c3f44; --bg:#1b1b1f; --bg-2:#242429;';
@@ -204,54 +202,7 @@ function PageTemplate(ctx: CmsPageContext) {
         <h1>{ctx.channel.name}</h1>
         <div className="body" dangerouslySetInnerHTML={{ __html: ctx.contentHtml }} />
       </article>
-      {ctx.form ? (
-        <form className="front-form" method="post" action={ctx.form.action}>
-          <h2>{ctx.form.name}</h2>
-          <input type="hidden" name="returnUrl" value={ctx.form.returnUrl} />
-          <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-          {ctx.form.fields.map((f) => (
-            <label key={f.name}>
-              {f.label} {f.required ? <span className="req">*</span> : null}
-              {f.fieldType === 'textarea' ? (
-                <textarea name={f.name} required={f.required} minLength={f.minLength ?? undefined} maxLength={f.maxLength ?? 2000} />
-              ) : f.fieldType === 'select' ? (
-                <select name={f.name} required={f.required} defaultValue="">
-                  <option value="" disabled>请选择</option>
-                  {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              ) : f.fieldType === 'radio' ? (
-                <span>
-                  {(f.options ?? []).map((option) => (
-                    <label key={option.value}><input type="radio" name={f.name} value={option.value} required={f.required} /> {option.label}</label>
-                  ))}
-                </span>
-              ) : (
-                <input
-                  type={f.fieldType === 'email' ? 'email' : f.fieldType === 'url' ? 'url' : f.fieldType === 'number' ? 'number' : 'text'}
-                  inputMode={f.fieldType === 'mobile' ? 'tel' : undefined}
-                  name={f.name}
-                  required={f.required}
-                  minLength={f.minLength ?? undefined}
-                  maxLength={f.maxLength ?? 200}
-                  pattern={f.fieldType === 'mobile' ? '1[3-9][0-9]{9}' : (f.pattern ?? undefined)}
-                  min={f.min ?? undefined}
-                  max={f.max ?? undefined}
-                />
-              )}
-            </label>
-          ))}
-          {ctx.form.captcha.provider === 'math' ? (
-            <>
-              <div className="cms-captcha-box"><input type="hidden" name="captchaId" value="" /><label>验证码 <span className="req">*</span><input type="text" name="captchaAnswer" required /></label><span className="cms-captcha-img" /></div>
-              <script dangerouslySetInnerHTML={{ __html: CAPTCHA_SCRIPT }} />
-            </>
-          ) : null}
-          {ctx.form.captcha.provider === 'turnstile' && ctx.form.captcha.siteKey ? (
-            <><div className="cf-turnstile" data-sitekey={ctx.form.captcha.siteKey} /><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer /></>
-          ) : null}
-          <button type="submit">提交</button>
-        </form>
-      ) : null}
+      {ctx.form ? <FrontForm form={ctx.form} /> : null}
     </Layout>
   );
 }

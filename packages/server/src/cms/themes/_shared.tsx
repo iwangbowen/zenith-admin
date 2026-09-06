@@ -6,9 +6,9 @@
  * 主题样式表装配（base.css + 主题 css + 站点覆盖）见 theme-css.ts，
  * SeoHead 统一消费渲染管线注入的 ctx.assets（正式外链 / 预览内联）。
  */
-import type { ReactNode } from 'react';
-import type { CmsContentAttachment } from '@zenith/shared/cms';
-import type { CmsBaseContext, CmsBreadcrumb, CmsContentDetail, CmsModelFieldValue, CmsPagination } from './types';
+import type { CSSProperties, ReactNode } from 'react';
+import type { CmsContentAttachment, CmsFormField } from '@zenith/shared/cms';
+import type { CmsBaseContext, CmsBodyPagination, CmsBreadcrumb, CmsContentDetail, CmsFrontFormConfig, CmsModelFieldValue, CmsPagination } from './types';
 import { serializeJsonForScript } from '../../lib/json-script';
 
 /** 暗色初始化脚本（head 内先行执行防闪烁）+ 切换按钮事件委托 */
@@ -33,6 +33,9 @@ navigator.sendBeacon('/api/analytics/events?siteKey='+encodeURIComponent(K),new 
 if(C){navigator.sendBeacon('/api/public/cms/view',new Blob([JSON.stringify({contentId:C})],{type:'application/json'}));}
 }catch(e){}})();`;
 }
+
+/** 图形验证码加载：为页面上所有 .cms-captcha-box 拉取算术题 SVG，点击图片刷新 */
+export const CAPTCHA_SCRIPT = `(function(){function load(box){fetch('/api/public/cms/captcha').then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0)return;box.querySelector('input[name="captchaId"]').value=r.data.id;var img=box.querySelector('.cms-captcha-img');img.innerHTML=r.data.svg;img.title='看不清？点击刷新'}).catch(function(){})}document.querySelectorAll('.cms-captcha-box').forEach(function(box){load(box);var img=box.querySelector('.cms-captcha-img');if(img)img.addEventListener('click',function(){load(box)})});})();`;
 
 export interface SeoHeadProps {
   ctx: CmsBaseContext;
@@ -96,11 +99,17 @@ export function SeoHead({ ctx, langAlternates = false, children }: SeoHeadProps)
   );
 }
 
-/** 分页条：单页时不渲染 */
-export function Pagination({ p }: { p: CmsPagination }) {
-  if (p.totalPages <= 1) return null;
+interface PageLinksProps {
+  p: CmsPagination | CmsBodyPagination | null;
+  container?: 'div' | 'nav';
+  className: string;
+}
+
+/** 分页链接循环：单页时不渲染 */
+export function PageLinks({ p, container: Container = 'div', className }: PageLinksProps) {
+  if (!p || p.totalPages <= 1) return null;
   return (
-    <div className="pagination">
+    <Container className={className}>
       {p.prevUrl ? <a href={p.prevUrl}>上一页</a> : null}
       {p.pages.map((pg) => (
         pg.current
@@ -108,7 +117,179 @@ export function Pagination({ p }: { p: CmsPagination }) {
           : <a key={pg.page} href={pg.url}>{pg.page}</a>
       ))}
       {p.nextUrl ? <a href={p.nextUrl}>下一页</a> : null}
-    </div>
+    </Container>
+  );
+}
+
+/** 分页条：单页时不渲染 */
+export function Pagination({ p }: { p: CmsPagination }) {
+  return <PageLinks p={p} className="pagination" />;
+}
+
+interface CaptchaBoxProps {
+  provider: CmsFrontFormConfig['captcha']['provider'];
+  siteKey?: string | null;
+  className?: string;
+  mathBoxStyle?: CSSProperties;
+  mathLabelStyle?: CSSProperties;
+  mathInputAutoComplete?: string;
+  mathInputPlaceholder?: string;
+  mathImageStyle?: CSSProperties;
+}
+
+/** 前台表单验证码：math 输出本地挑战，Turnstile 输出官方挂件脚本 */
+export function CaptchaBox({
+  provider,
+  siteKey,
+  className = 'cms-captcha-box',
+  mathBoxStyle,
+  mathLabelStyle,
+  mathInputAutoComplete,
+  mathInputPlaceholder,
+  mathImageStyle,
+}: CaptchaBoxProps) {
+  if (provider === 'none') return null;
+  if (provider === 'math') {
+    return (
+      <>
+        <div className={className} style={mathBoxStyle}>
+          <input type="hidden" name="captchaId" value="" />
+          <label style={mathLabelStyle}>验证码 <span className="req">*</span><input type="text" name="captchaAnswer" required autoComplete={mathInputAutoComplete} placeholder={mathInputPlaceholder} /></label>
+          <span className="cms-captcha-img" style={mathImageStyle} />
+        </div>
+        <script dangerouslySetInnerHTML={{ __html: CAPTCHA_SCRIPT }} />
+      </>
+    );
+  }
+  if (!siteKey) return null;
+  return (
+    <>
+      <div className="cf-turnstile" data-sitekey={siteKey} />
+      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
+    </>
+  );
+}
+
+interface FrontFormProps {
+  form: CmsFrontFormConfig;
+  buttonText?: string;
+  className?: string;
+  radioLabelStyle?: CSSProperties;
+  captchaBox?: Omit<CaptchaBoxProps, 'provider' | 'siteKey'>;
+}
+
+function FieldControl({ field: f, radioLabelStyle }: { field: CmsFormField; radioLabelStyle?: CSSProperties }) {
+  if (f.fieldType === 'textarea') {
+    return <textarea name={f.name} required={f.required} minLength={f.minLength ?? undefined} maxLength={f.maxLength ?? 2000} />;
+  }
+  if (f.fieldType === 'select') {
+    return (
+      <select name={f.name} required={f.required} defaultValue="">
+        <option value="" disabled>请选择</option>
+        {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    );
+  }
+  if (f.fieldType === 'radio') {
+    return (
+      <span>
+        {(f.options ?? []).map((o) => (
+          <label key={o.value} style={radioLabelStyle}>
+            <input type="radio" name={f.name} value={o.value} required={f.required} /> {o.label}
+          </label>
+        ))}
+      </span>
+    );
+  }
+  return (
+    <input
+      type={f.fieldType === 'email' ? 'email' : f.fieldType === 'url' ? 'url' : f.fieldType === 'number' ? 'number' : 'text'}
+      inputMode={f.fieldType === 'mobile' ? 'tel' : undefined}
+      name={f.name}
+      required={f.required}
+      minLength={f.minLength ?? undefined}
+      maxLength={f.maxLength ?? 200}
+      pattern={f.fieldType === 'mobile' ? '1[3-9][0-9]{9}' : (f.pattern ?? undefined)}
+      min={f.min ?? undefined}
+      max={f.max ?? undefined}
+    />
+  );
+}
+
+/** 前台自定义表单（栏目绑定，原生 form POST） */
+export function FrontForm({ form, buttonText = '提交', className = 'front-form', radioLabelStyle, captchaBox }: FrontFormProps) {
+  return (
+    <form className={className} method="post" action={form.action}>
+      <h2>{form.name}</h2>
+      <input type="hidden" name="returnUrl" value={form.returnUrl} />
+      <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+      {form.fields.map((f) => (
+        <label key={f.name}>
+          {f.label} {f.required ? <span className="req">*</span> : null}
+          <FieldControl field={f} radioLabelStyle={radioLabelStyle} />
+        </label>
+      ))}
+      <CaptchaBox provider={form.captcha.provider} siteKey={form.captcha.siteKey} {...captchaBox} />
+      <button type="submit">{buttonText}</button>
+    </form>
+  );
+}
+
+interface ThemeFooterLinksProps {
+  friendLinkGroups: CmsBaseContext['friendLinkGroups'];
+  friendLinks?: CmsBaseContext['friendLinks'];
+  footerText: string | null;
+  site: Pick<CmsBaseContext['site'], 'name' | 'copyright' | 'icp'>;
+  classNames?: {
+    linkGroups?: string;
+    links?: string;
+    extra?: string;
+  };
+  mode?: 'grouped' | 'flat';
+  linkRel?: string;
+  fallbackCopyright?: boolean;
+}
+
+/** 主题页脚友链、附加文案、版权与备案号 */
+export function ThemeFooterLinks({
+  friendLinkGroups,
+  friendLinks,
+  footerText,
+  site,
+  classNames,
+  mode = 'flat',
+  linkRel = 'noopener noreferrer',
+  fallbackCopyright = true,
+}: ThemeFooterLinksProps) {
+  const flatLinks = friendLinks ?? friendLinkGroups.flatMap((group) => group.links);
+  const copyright = site.copyright ?? (fallbackCopyright ? `© ${new Date().getFullYear()} ${site.name}` : null);
+  return (
+    <>
+      {mode === 'grouped' && friendLinkGroups.length > 0 ? (
+        <div className={classNames?.linkGroups}>
+          {friendLinkGroups.map((group) => (
+            <div className={classNames?.links} key={group.code || '__ungrouped'}>
+              <span>{group.name || '友情链接'}：</span>
+              {group.links.map((l) => (
+                <a key={l.url} href={l.url} target="_blank" rel={linkRel}>{l.name}</a>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {mode === 'flat' && flatLinks.length > 0 ? (
+        <div className={classNames?.links}>
+          {flatLinks.map((l) => (
+            <a key={l.url} href={l.url} target="_blank" rel={linkRel}>{l.name}</a>
+          ))}
+        </div>
+      ) : null}
+      {footerText ? <div className={classNames?.extra}>{footerText}</div> : null}
+      {copyright ? <div>{copyright}</div> : null}
+      {site.icp ? (
+        <div><a href="https://beian.miit.gov.cn/" target="_blank" rel={linkRel}>{site.icp}</a></div>
+      ) : null}
+    </>
   );
 }
 

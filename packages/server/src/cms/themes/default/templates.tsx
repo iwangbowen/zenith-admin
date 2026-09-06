@@ -4,7 +4,7 @@ import type { CmsContentAttachment, CmsTitleStyle } from '@zenith/shared/cms';
 import type {
   CmsBaseContext, CmsContentItem, CmsHomeContext, CmsListContext,
   CmsDetailContext, CmsPageContext, CmsSearchContext, CmsNotFoundContext,
-  CmsCommentItem, CmsCommentFormConfig, CmsFrontFormConfig, CmsTagPageContext, CmsCustomPageContext,
+  CmsCommentItem, CmsCommentFormConfig, CmsTagPageContext, CmsCustomPageContext,
   CmsInteractionPageContext,
 } from '../types';
 import {
@@ -12,7 +12,7 @@ import {
   signCmsAdRenderProof,
 } from '../../../services/cms/cms-ad-render-proof';
 import { renderCmsWidgetHtml } from '../widgets';
-import { ArticleNav, Breadcrumbs, MediaBlock, ModelFieldTable, Pagination, RelatedArticles } from '../_shared';
+import { ArticleNav, Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, MediaBlock, ModelFieldTable, PageLinks, Pagination, RelatedArticles } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import type { CmsThemeContentCollection } from '../types';
 import { formatBytes } from '@zenith/shared/core';
@@ -128,11 +128,8 @@ function AdSlot({ ctx, code }: { ctx: CmsBaseContext; code: string }) {
  */
 const COMMENT_MEMBER_SCRIPT = `(function(){var f=document.getElementById('comment-form');if(!f)return;var api=f.getAttribute('data-member-api');var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}if(!t||!api)return;var nickRow=document.getElementById('comment-nick-row');if(nickRow){nickRow.style.display='none';var inp=nickRow.querySelector('input');if(inp){inp.required=false;inp.value='会员'}}var capRow=f.querySelector('.cms-captcha-box');if(capRow){capRow.style.display='none';var ci=capRow.querySelector('input[name="captchaAnswer"]');if(ci)ci.required=false}var hint=document.createElement('p');hint.style.cssText='font-size:12px;color:#59636e;margin:0';hint.textContent='已以会员身份登录，评论将使用会员昵称';f.insertBefore(hint,f.firstChild);f.addEventListener('submit',function(e){e.preventDefault();var content=f.querySelector('textarea[name="content"]').value.trim();if(!content)return;var parentId=Number(document.getElementById('comment-parent-id').value)||0;fetch(api,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({content:content,parentId:parentId})}).then(function(r){return r.json()}).then(function(r){if(r&&r.code===0){f.innerHTML='<p class="survey-done">'+(r.message||'评论已提交，审核通过后显示')+'</p>'}else if(r&&r.code===401){t=null;f.removeAttribute('data-member-api');if(nickRow){nickRow.style.display='';var i2=nickRow.querySelector('input');if(i2){i2.required=true;i2.value=''}}if(capRow){capRow.style.display=''}hint.remove();alert('会员登录已过期，请以游客身份提交或重新登录')}else{alert((r&&r.message)||'提交失败，请稍后再试')}}).catch(function(){alert('提交失败，请稍后再试')})});})();`;
 
-/** 图形验证码加载：为页面上所有 .cms-captcha-box 拉取算术题 SVG，点击图片刷新 */
-const CAPTCHA_SCRIPT = `(function(){function load(box){fetch('/api/public/cms/captcha').then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0)return;box.querySelector('input[name="captchaId"]').value=r.data.id;var img=box.querySelector('.cms-captcha-img');img.innerHTML=r.data.svg;img.title='看不清？点击刷新'}).catch(function(){})}document.querySelectorAll('.cms-captcha-box').forEach(function(box){load(box);var img=box.querySelector('.cms-captcha-img');if(img)img.addEventListener('click',function(){load(box)})});})();`;
-
 /** 验证码行（站点开启时渲染；SVG 由脚本注入，点击刷新） */
-function CaptchaBox({ enabled }: { enabled: boolean }) {
+function CommentCaptchaBox({ enabled }: { enabled: boolean }) {
   if (!enabled) return null;
   return (
     <div className="cms-captcha-box" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -140,20 +137,6 @@ function CaptchaBox({ enabled }: { enabled: boolean }) {
       <label style={{ flex: 1 }}>验证码 <span className="req">*</span><input type="text" name="captchaAnswer" required autoComplete="off" placeholder="计算结果" /></label>
       <span className="cms-captcha-img" style={{ cursor: 'pointer', lineHeight: 0 }} />
     </div>
-  );
-}
-
-function FormCaptcha({ config }: { config: CmsFrontFormConfig['captcha'] }) {
-  if (config.provider === 'none') return null;
-  if (config.provider === 'math') {
-    return <><CaptchaBox enabled /><script dangerouslySetInnerHTML={{ __html: CAPTCHA_SCRIPT }} /></>;
-  }
-  if (!config.siteKey) return null;
-  return (
-    <>
-      <div className="cf-turnstile" data-sitekey={config.siteKey} />
-      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
-    </>
   );
 }
 
@@ -350,7 +333,7 @@ function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: C
         </div>
         <label id="comment-nick-row">昵称 <span className="req">*</span><input type="text" name="nickname" required maxLength={50} /></label>
         <label>评论内容 <span className="req">*</span><textarea name="content" required maxLength={1000} /></label>
-        <CaptchaBox enabled={form.captchaEnabled} />
+        <CommentCaptchaBox enabled={form.captchaEnabled} />
         <button type="submit">提交评论（审核后显示）</button>
       </form>
       <script
@@ -359,52 +342,6 @@ function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: C
         }}
       />
     </section>
-  );
-}
-
-/** 自定义表单（栏目绑定，原生 form POST） */
-function FrontForm({ form }: { form: CmsFrontFormConfig }) {
-  return (
-    <form className="front-form" method="post" action={form.action}>
-      <h2>{form.name}</h2>
-      <input type="hidden" name="returnUrl" value={form.returnUrl} />
-      <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-      {form.fields.map((f) => (
-        <label key={f.name}>
-          {f.label} {f.required ? <span className="req">*</span> : null}
-          {f.fieldType === 'textarea' ? (
-            <textarea name={f.name} required={f.required} minLength={f.minLength ?? undefined} maxLength={f.maxLength ?? 2000} />
-          ) : f.fieldType === 'select' ? (
-            <select name={f.name} required={f.required} defaultValue="">
-              <option value="" disabled>请选择</option>
-              {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          ) : f.fieldType === 'radio' ? (
-            <span>
-              {(f.options ?? []).map((o) => (
-                <label key={o.value} style={{ display: 'inline-flex', flexDirection: 'row', gap: 4, marginRight: 16 }}>
-                  <input type="radio" name={f.name} value={o.value} required={f.required} /> {o.label}
-                </label>
-              ))}
-            </span>
-          ) : (
-            <input
-              type={f.fieldType === 'email' ? 'email' : f.fieldType === 'url' ? 'url' : f.fieldType === 'number' ? 'number' : 'text'}
-              inputMode={f.fieldType === 'mobile' ? 'tel' : undefined}
-              name={f.name}
-              required={f.required}
-              minLength={f.minLength ?? undefined}
-              maxLength={f.maxLength ?? 200}
-              pattern={f.fieldType === 'mobile' ? '1[3-9][0-9]{9}' : (f.pattern ?? undefined)}
-              min={f.min ?? undefined}
-              max={f.max ?? undefined}
-            />
-          )}
-        </label>
-      ))}
-      <FormCaptcha config={form.captcha} />
-      <button type="submit">提交</button>
-    </form>
   );
 }
 
@@ -525,18 +462,7 @@ export function ListTemplate(ctx: CmsListContext) {
 
 /** 正文多页分页导航（单页时不渲染） */
 function BodyPagination({ p }: { p: CmsDetailContext['content']['bodyPagination'] }) {
-  if (!p || p.totalPages <= 1) return null;
-  return (
-    <nav className="body-pagination">
-      {p.prevUrl ? <a href={p.prevUrl}>上一页</a> : null}
-      {p.pages.map((pg) => (
-        pg.current
-          ? <span key={pg.page} className="current">{pg.page}</span>
-          : <a key={pg.page} href={pg.url}>{pg.page}</a>
-      ))}
-      {p.nextUrl ? <a href={p.nextUrl}>下一页</a> : null}
-    </nav>
-  );
+  return <PageLinks p={p} container="nav" className="body-pagination" />;
 }
 
 /**
@@ -607,7 +533,19 @@ export function PageTemplate(ctx: CmsPageContext) {
         <h1>{ctx.channel.name}</h1>
         <div className="body" dangerouslySetInnerHTML={{ __html: ctx.contentHtml }} />
       </article>
-      {ctx.form ? <FrontForm form={ctx.form} /> : null}
+      {ctx.form ? (
+        <FrontForm
+          form={ctx.form}
+          radioLabelStyle={{ display: 'inline-flex', flexDirection: 'row', gap: 4, marginRight: 16 }}
+          captchaBox={{
+            mathBoxStyle: { display: 'flex', alignItems: 'center', gap: 8 },
+            mathLabelStyle: { flex: 1 },
+            mathInputAutoComplete: 'off',
+            mathInputPlaceholder: '计算结果',
+            mathImageStyle: { cursor: 'pointer', lineHeight: 0 },
+          }}
+        />
+      ) : null}
     </Layout>
   );
 }

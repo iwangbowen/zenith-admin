@@ -11,7 +11,7 @@ import type {
   CmsPageContext, CmsSearchContext, CmsTagPageContext, CmsNotFoundContext,
   CmsTheme, CmsThemeContentCollection, CmsNavItem as CmsNavItemType,
 } from '../types';
-import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, buildAnalyticsBeacon } from '../_shared';
+import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import { renderCmsWidgetHtml } from '../widgets';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
@@ -84,18 +84,12 @@ function GovLayout({ ctx, currentUrl, children }: { ctx: CmsBaseContext; current
         </main>
         <footer className="gov-footer">
           <div className="w1200">
-            {friendLinkGroups.length > 0 ? (
-              <div className="links">
-                {friendLinkGroups.flatMap((group) => group.links).map((l) => (
-                  <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer">{l.name}</a>
-                ))}
-              </div>
-            ) : null}
-            {footerText ? <div className="extra">{footerText}</div> : null}
-            <div>{site.copyright ?? `© ${new Date().getFullYear()} ${site.name}`}</div>
-            {site.icp ? (
-              <div><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{site.icp}</a></div>
-            ) : null}
+            <ThemeFooterLinks
+              friendLinkGroups={friendLinkGroups}
+              footerText={footerText}
+              site={site}
+              classNames={{ links: 'links', extra: 'extra' }}
+            />
           </div>
         </footer>
       </body>

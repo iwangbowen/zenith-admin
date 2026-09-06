@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { CmsBaseContext, CmsNavItem } from '../types';
-import { SeoHead, buildAnalyticsBeacon } from '../_shared';
+import { SeoHead, ThemeFooterLinks, buildAnalyticsBeacon } from '../_shared';
 
 function NavLinks({ items, currentUrl }: { items: CmsNavItem[]; currentUrl?: string }) {
   return (
@@ -127,25 +127,13 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
         </main>
         <footer className="site-footer">
           <div className="container">
-            {friendLinkGroups.length > 0 ? (
-              <div className="link-groups">
-                {friendLinkGroups.map((group) => (
-                  <div className="links" key={group.code || '__ungrouped'}>
-                    <span>{group.name || '友情链接'}：</span>
-                    {group.links.map((l) => (
-                      <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer">{l.name}</a>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {footerText ? <div className="extra">{footerText}</div> : null}
-            <div>{site.copyright ?? `© ${new Date().getFullYear()} ${site.name}`}</div>
-            {site.icp ? (
-              <div>
-                <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{site.icp}</a>
-              </div>
-            ) : null}
+            <ThemeFooterLinks
+              friendLinkGroups={friendLinkGroups}
+              footerText={footerText}
+              site={site}
+              classNames={{ linkGroups: 'link-groups', links: 'links', extra: 'extra' }}
+              mode="grouped"
+            />
           </div>
         </footer>
       </body>

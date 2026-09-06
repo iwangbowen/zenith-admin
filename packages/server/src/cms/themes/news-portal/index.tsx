@@ -16,7 +16,7 @@ import type {
   CmsPageContext, CmsSearchContext, CmsTagPageContext, CmsNotFoundContext,
   CmsTheme, CmsThemeContentCollection,
 } from '../types';
-import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, buildAnalyticsBeacon } from '../_shared';
+import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import { renderCmsWidgetHtml } from '../widgets';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
@@ -52,14 +52,15 @@ function NewsLayout({ ctx, currentUrl, children }: { ctx: CmsBaseContext; curren
         <main className="w1200">{children}</main>
         <footer className="news-footer">
           <div className="w1200">
-            {friendLinks.length > 0 ? (
-              <div className="links">
-                {friendLinks.map((l) => <a key={l.url} href={l.url} target="_blank" rel="noopener nofollow">{l.name}</a>)}
-              </div>
-            ) : null}
-            {footerText ? <div className="extra">{footerText}</div> : null}
-            {site.copyright ? <div>{site.copyright}</div> : null}
-            {site.icp ? <div><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener nofollow">{site.icp}</a></div> : null}
+            <ThemeFooterLinks
+              friendLinkGroups={ctx.friendLinkGroups}
+              friendLinks={friendLinks}
+              footerText={footerText}
+              site={site}
+              classNames={{ links: 'links', extra: 'extra' }}
+              linkRel="noopener nofollow"
+              fallbackCopyright={false}
+            />
           </div>
         </footer>
       </body>
