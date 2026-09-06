@@ -6,8 +6,6 @@ import {
   Select,
   Spin,
   Toast,
-  Switch,
-  Modal,
   Row,
   Col,
   Typography,
@@ -19,7 +17,6 @@ import {
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -35,9 +32,10 @@ import {
 } from '@/hooks/queries/workflow-connectors';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { parseHeadersJson } from '../components/http-integration';
 import { useEditModal } from '@/hooks/useEditModal';
 
 /** 可创建的连接器类型（与后端 workflowConnectorTypeSchema 对齐；mq/database 暂无运行时实现不开放） */
@@ -100,8 +98,6 @@ export default function WorkflowConnectorsPage() {
     type: enumValueOf(WORKFLOW_CONNECTOR_TYPES, submittedParams.type),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data ?? null;
-
   const saveMutation = useSaveWorkflowConnector();
   const toggleStatusMutation = useSaveWorkflowConnector();
   const deleteMutation = useDeleteWorkflowConnectors();
@@ -144,10 +140,9 @@ export default function WorkflowConnectorsPage() {
       };
     },
     beforeSave: (values, { isEdit }) => {
-    let headers: Record<string, string> | undefined;
+    const headers = parseHeadersJson(values.headersText, { toastMessage: '请求头需为 JSON 对象' });
     let query: Record<string, string> | undefined;
     try {
-      headers = parseJsonObject(values.headersText, '请求头');
       query = parseJsonObject(values.queryText, '查询参数');
     } catch (e) { Toast.error((e as Error).message); throw e; }
 
@@ -186,19 +181,11 @@ export default function WorkflowConnectorsPage() {
     connectorModal.openEdit(record);
   }
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
-  function handleToggleStatus(record: WorkflowConnector, checked: boolean) {
-    const doToggle = async () => {
-      await toggleStatusMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
-      Toast.success(checked ? '已启用' : '已停用');
-    };
-    if (checked) void doToggle();
-    else Modal.confirm({ title: '确认停用', content: `停用后「${record.name}」将无法被调用，确认停用？`, onOk: () => void doToggle() });
-  }
+  const status = useStatusToggle<WorkflowConnector>({
+    toggle: (record, checked) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({ title: '确认停用', content: `停用后「${record.name}」将无法被调用，确认停用？` }),
+    disabled: !hasPermission('workflow:connector:update'),
+  });
 
   function openTest(record: WorkflowConnector) {
     setTestTarget(record); setTestPath(''); setTestResult(null); setTestVisible(true);
@@ -226,12 +213,7 @@ export default function WorkflowConnectorsPage() {
     { title: '凭据', dataIndex: 'hasCredentials', width: 80, render: (v: boolean) => v ? <Tag size="small" color="green">已配</Tag> : <Tag size="small" color="grey">无</Tag> },
     { title: '熔断', dataIndex: 'breakerState', width: 80, render: (s: WorkflowConnectorBreakerState) => { const m = BREAKER_META[s] ?? BREAKER_META.closed; return <Tag size="small" color={m.color}>{m.text}</Tag>; } },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, record: WorkflowConnector) => (
-        <Switch checked={record.status === 'enabled'} loading={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === record.id} disabled={!hasPermission('workflow:connector:update')} onChange={(checked) => handleToggleStatus(record, checked)} size="small" />
-      ),
-    },
+    status.column(),
     createOperationColumn<WorkflowConnector>({
       width: 240,
       desktopInlineKeys: ['test', 'edit', 'delete'],
@@ -239,10 +221,12 @@ export default function WorkflowConnectorsPage() {
         { key: 'test', label: '测试', hidden: !hasPermission('workflow:connector:test'), onClick: () => openTest(record) },
         { key: 'monitor', label: '监控', hidden: !hasPermission('workflow:connector:list'), onClick: () => openMonitor(record) },
         { key: 'edit', label: '编辑', hidden: !hasPermission('workflow:connector:update'), onClick: () => openEdit(record) },
-        {
-          key: 'delete', label: '删除', danger: true, hidden: !hasPermission('workflow:connector:delete'),
-          onClick: () => { confirmDelete({ content: '删除后引用该连接器的节点将无法调用', onOk: () => handleDelete(record.id) }); },
-        },
+        deleteAction({
+          hidden: !hasPermission('workflow:connector:delete'),
+          title: '确定要删除吗？',
+          content: '删除后引用该连接器的节点将无法调用',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -265,26 +249,18 @@ export default function WorkflowConnectorsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(<>{renderKeyword()}{renderTypeFilter()}{renderStatusFilter()}<SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} />{renderCreate()}</>)}
-        mobilePrimary={(<>{renderKeyword()}<SearchButton onClick={handleSearch} />{renderCreate()}</>)}
-        mobileFilters={(<>{renderTypeFilter()}{renderStatusFilter()}</>)}
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={(<>{renderTypeFilter()}{renderStatusFilter()}</>)}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreate()}
         filterTitle="连接器筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WorkflowConnector>
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无连接器"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无连接器' })}
       />
 
       <SideSheet

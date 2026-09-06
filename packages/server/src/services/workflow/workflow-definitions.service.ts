@@ -74,6 +74,8 @@ import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { pageOffset } from '../../lib/pagination';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { normalizeFlowData } from '../../lib/workflow-engine';
 import { analyzeWorkflowHealth } from '../../lib/workflow-health';
 import { buildVersionDiff } from '../../lib/workflow-version-diff';
@@ -137,9 +139,11 @@ export async function listDefinitions(query: { page?: number; pageSize?: number;
   if (status) conditions.push(eq(workflowDefinitions.status, status as WorkflowDefinitionStatus));
   if (categoryId) conditions.push(eq(workflowDefinitions.categoryId, categoryId));
   const where = buildWhere(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowDefinitions, where),
-    db.query.workflowDefinitions.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowDefinitions, where),
+    rows: () => db.query.workflowDefinitions.findMany({
       where,
       with: {
         createdByUser: { columns: { nickname: true } },
@@ -150,8 +154,8 @@ export async function listDefinitions(query: { page?: number; pageSize?: number;
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  return { list: rows.map(r => mapDefinition(r, r.createdByUser?.nickname ?? null)), total, page, pageSize };
+    map: (r) => mapDefinition(r, r.createdByUser?.nickname ?? null),
+  });
 }
 
 export async function listPublishedDefinitions() {
@@ -188,15 +192,14 @@ function findDefinition(id: number) {
 
 export async function getDefinition(id: number) {
   const where = findDefinition(id);
-  const row = await db.query.workflowDefinitions.findFirst({
+  const row = requireRow(await db.query.workflowDefinitions.findFirst({
     where,
     with: {
       createdByUser: { columns: { nickname: true } },
       category: { columns: { name: true, color: true, icon: true } },
       form: { columns: { name: true, schema: true } },
     },
-  });
-  if (!row) throw new HTTPException(404, { message: '流程定义不存在' });
+  }), '流程定义不存在');
   return mapDefinition(row, row.createdByUser?.nickname ?? null);
 }
 
@@ -231,7 +234,7 @@ export async function updateDefinition(id: number, data: Partial<{
 }>) {
   const where = findDefinition(id);
   const [existing] = await db.select().from(workflowDefinitions).where(where).limit(1);
-  if (!existing) throw new HTTPException(404, { message: '流程定义不存在' });
+  requireRow(existing, '流程定义不存在');
   // 解析最终的表单类型（本次更新值优先，否则取库中现值），用于条件写入两类表单字段
   const nextFormType = (data.formType ?? existing.formType ?? 'designer') as WorkflowFormType;
   if (nextFormType === 'designer' && data.formId != null) await ensureFormExists(data.formId);
@@ -266,8 +269,7 @@ export async function updateDefinition(id: number, data: Partial<{
     .set(updateData as Partial<typeof workflowDefinitions.$inferInsert>)
     .where(where)
     .returning();
-  if (!updated) throw new HTTPException(404, { message: '流程定义不存在' });
-  return getDefinition(updated.id);
+  return getDefinition(requireRow(updated, '流程定义不存在').id);
 }
 
 /** 发布前校验：结构体检硬门禁 + 表单绑定/业务表单配置完整性（publish / enable 共用） */
@@ -324,7 +326,7 @@ export async function publishDefinition(id: number) {
     // 行级锁内校验 + 重算版本号：消除锁外校验与锁内快照间的竞争窗口（并发修改导致
     // 校验对象与实际发布内容不一致），同时避免并发发布争用 (definitionId, version) 唯一约束
     const [locked] = await tx.select().from(workflowDefinitions).where(where).for('update').limit(1);
-    if (!locked) throw new HTTPException(404, { message: '流程定义不存在' });
+    requireRow(locked, '流程定义不存在');
     await assertPublishable(locked);
     const newVersion = locked.version + 1;
     await tx.insert(workflowDefinitionVersions).values({
@@ -357,44 +359,47 @@ export async function listVersions(definitionId: number, query: { page?: number;
   const pageSize = Number(query.pageSize ?? 10);
   // 校验定义存在 + 租户可见
   const [def] = await db.select().from(workflowDefinitions).where(findDefinition(definitionId)).limit(1);
-  if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+  requireRow(def, '流程定义不存在');
   const where = eq(workflowDefinitionVersions.definitionId, definitionId);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowDefinitionVersions, where),
-    db.query.workflowDefinitionVersions.findMany({
-      where,
-      with: { publishedByUser: { columns: { nickname: true } } },
-      orderBy: desc(workflowDefinitionVersions.version),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  const formIds = [...new Set(rows.map((r) => r.formId).filter((v): v is number => v != null))];
-  const formMap = new Map<number, { name: string | null; schema: unknown }>();
-  if (formIds.length > 0) {
-    const forms = await db
-      .select({ id: workflowForms.id, name: workflowForms.name, schema: workflowForms.schema })
-      .from(workflowForms)
-      .where(inArray(workflowForms.id, formIds));
-    for (const f of forms) formMap.set(f.id, { name: f.name, schema: f.schema });
-  }
-  const list = rows.map(r => mapDefinitionVersion(
-    r,
-    r.publishedByUser?.nickname ?? null,
-    // 优先读发布时冻结的表单快照；历史版本（无快照）回退实时表单库行
-    r.formSchema ?? (r.formId != null ? formMap.get(r.formId) ?? null : null),
-  ));
-  return { list, total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowDefinitionVersions, where),
+    rows: async () => {
+      const rows = await db.query.workflowDefinitionVersions.findMany({
+        where,
+        with: { publishedByUser: { columns: { nickname: true } } },
+        orderBy: desc(workflowDefinitionVersions.version),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      });
+      const formIds = [...new Set(rows.map((r) => r.formId).filter((v): v is number => v != null))];
+      const formMap = new Map<number, { name: string | null; schema: unknown }>();
+      if (formIds.length > 0) {
+        const forms = await db
+          .select({ id: workflowForms.id, name: workflowForms.name, schema: workflowForms.schema })
+          .from(workflowForms)
+          .where(inArray(workflowForms.id, formIds));
+        for (const f of forms) formMap.set(f.id, { name: f.name, schema: f.schema });
+      }
+      return rows.map((r) => mapDefinitionVersion(
+        r,
+        r.publishedByUser?.nickname ?? null,
+        // 优先读发布时冻结的表单快照；历史版本（无快照）回退实时表单库行
+        r.formSchema ?? (r.formId != null ? formMap.get(r.formId) ?? null : null),
+      ));
+    },
+  });
 }
 
 export async function restoreVersion(definitionId: number, versionId: number) {
   const where = findDefinition(definitionId);
   const [def] = await db.select().from(workflowDefinitions).where(where).limit(1);
-  if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+  requireRow(def, '流程定义不存在');
   const [ver] = await db.select().from(workflowDefinitionVersions)
     .where(and(eq(workflowDefinitionVersions.id, versionId), eq(workflowDefinitionVersions.definitionId, definitionId)))
     .limit(1);
-  if (!ver) throw new HTTPException(404, { message: '历史版本不存在' });
+  requireRow(ver, '历史版本不存在');
   const [updated] = await db.update(workflowDefinitions).set({
     name: ver.name,
     description: ver.description,
@@ -412,11 +417,10 @@ export async function restoreVersion(definitionId: number, versionId: number) {
 /** G4 复制流程：克隆定义（及其表单）为新草稿 */
 export async function duplicateDefinition(id: number) {
   const where = findDefinition(id);
-  const src = await db.query.workflowDefinitions.findFirst({
+  const src = requireRow(await db.query.workflowDefinitions.findFirst({
     where,
     with: { form: { columns: { name: true, description: true, schema: true } } },
-  });
-  if (!src) throw new HTTPException(404, { message: '流程定义不存在' });
+  }), '流程定义不存在');
   const user = currentUser();
   const tenantId = getCreateTenantId(user);
   const newId = await db.transaction(async (tx) => {
@@ -452,14 +456,13 @@ export async function duplicateDefinition(id: number) {
 
 /** G5 导出流程定义为自包含 JSON（含表单 schema） */
 export async function exportDefinition(id: number) {
-  const row = await db.query.workflowDefinitions.findFirst({
+  const row = requireRow(await db.query.workflowDefinitions.findFirst({
     where: findDefinition(id),
     with: {
       category: { columns: { name: true } },
       form: { columns: { name: true, description: true, schema: true } },
     },
-  });
-  if (!row) throw new HTTPException(404, { message: '流程定义不存在' });
+  }), '流程定义不存在');
   return {
     name: row.name,
     description: row.description ?? null,
@@ -534,7 +537,7 @@ export async function importDefinition(data: {
 export async function diffVersions(definitionId: number, leftId: number, rightId: number) {
   const where = findDefinition(definitionId);
   const [def] = await db.select().from(workflowDefinitions).where(where).limit(1);
-  if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+  requireRow(def, '流程定义不存在');
 
   const loadSide = async (versionId: number) => {
     if (versionId === 0) {
@@ -549,7 +552,7 @@ export async function diffVersions(definitionId: number, leftId: number, rightId
     const [ver] = await db.select().from(workflowDefinitionVersions)
       .where(and(eq(workflowDefinitionVersions.id, versionId), eq(workflowDefinitionVersions.definitionId, definitionId)))
       .limit(1);
-    if (!ver) throw new HTTPException(404, { message: '历史版本不存在' });
+    requireRow(ver, '历史版本不存在');
     return {
       version: ver.version,
       name: ver.name,
@@ -570,25 +573,23 @@ export async function diffVersions(definitionId: number, leftId: number, rightId
 export async function disableDefinition(id: number) {
   const where = findDefinition(id);
   const [updated] = await db.update(workflowDefinitions).set({ status: 'disabled' }).where(where).returning();
-  if (!updated) throw new HTTPException(404, { message: '流程定义不存在' });
-  return mapDefinition(updated);
+  return mapDefinition(requireRow(updated, '流程定义不存在'));
 }
 
 export async function enableDefinition(id: number) {
   const where = and(findDefinition(id), eq(workflowDefinitions.status, 'disabled'));
   const [existing] = await db.select().from(workflowDefinitions).where(where).limit(1);
-  if (!existing) throw new HTTPException(400, { message: '流程定义不存在或不处于禁用状态' });
+  requireRow(existing, '流程定义不存在或不处于禁用状态', 400);
   // 启用同样过发布门禁：防御表单库后续编辑等外部变化导致带病上线（禁用态改内容已在 update 中强制回 draft）
   await assertPublishable(existing);
   const [updated] = await db.update(workflowDefinitions).set({ status: 'published' }).where(where).returning();
-  if (!updated) throw new HTTPException(400, { message: '流程定义不存在或不处于禁用状态' });
-  return mapDefinition(updated);
+  return mapDefinition(requireRow(updated, '流程定义不存在或不处于禁用状态', 400));
 }
 
 export async function deleteDefinition(id: number) {
   const where = findDefinition(id);
   const [existing] = await db.select().from(workflowDefinitions).where(where).limit(1);
-  if (!existing) throw new HTTPException(404, { message: '流程定义不存在' });
+  requireRow(existing, '流程定义不存在');
   if (existing.status === 'published') throw new HTTPException(400, { message: '已发布的流程不能删除，请先禁用' });
   const instanceCount = await db.$count(workflowInstances, eq(workflowInstances.definitionId, id));
   if (instanceCount > 0) {

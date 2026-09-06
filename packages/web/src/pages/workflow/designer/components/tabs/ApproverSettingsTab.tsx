@@ -24,6 +24,7 @@ import {
 } from '../../constants';
 import { ChevronDown, ChevronUp, CircleHelp } from 'lucide-react';
 import ApproverAdvancedSections from './ApproverAdvancedSections';
+import { MultiLevelEndFields, SelectScopeFields, type SelectScopeType } from './AssigneeScopeFields';
 import { useWorkflowDesignerDecisionRefOptions } from '@/hooks/queries/workflow-designer';
 
 function DecisionTableSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -39,7 +40,6 @@ interface UserGroupOption { id: number; name: string; }
 interface PositionOption { id: number; name: string; }
 interface DepartmentOption { id: number; name: string; parentId?: number | null; }
 
-type SelectScopeType = 'user' | 'role' | 'department' | 'userGroup';
 
 const ASSIGNEE_OPTION_MAP = new Map(ASSIGNEE_TYPE_OPTIONS.map(o => [o.value, o]));
 const COMMON_ASSIGNEE_TYPES = new Set(ASSIGNEE_TYPE_GROUPS[0].types);
@@ -329,82 +329,29 @@ export default function ApproverSettingsTab({
 
           {/* 连续多级上级 */}
           {assigneeType === 'multiLevelManager' && (
-            <>
-              <Form.Slot label="审批终点">
-                <Select
-                  value={multiLevelEndType}
-                  onChange={(v) => onChange({ multiLevelEndType: v })}
-                  style={{ width: '100%' }}
-                  optionList={[
-                    { value: 'topLevel', label: '最高层级（直到没有上级）' },
-                    { value: 'level', label: '指定层级' },
-                    { value: 'role', label: '指定角色' },
-                  ]}
-                  placeholder="请选择审批终点"
-                />
-              </Form.Slot>
-              {multiLevelEndType === 'level' && (
-                <Form.Slot label="终止层级">
-                  <InputNumber
-                    value={multiLevelEndLevel}
-                    onChange={(v) => onChange({ multiLevelEndLevel: v })}
-                    min={1}
-                    max={20}
-                    style={{ width: 200 }}
-                    suffix="级"
-                    placeholder="请输入层级"
-                  />
-                </Form.Slot>
-              )}
-              {multiLevelEndType === 'role' && (
-                <Form.Slot label="终止角色">
-                  <Select
-                    value={multiLevelEndRoleId}
-                    onChange={(v) => onChange({ multiLevelEndRoleId: v })}
-                    style={{ width: '100%' }}
-                    placeholder="审批到该角色后停止"
-                    optionList={roles.map(r => ({ value: r.id, label: r.name }))}
-                  />
-                </Form.Slot>
-              )}
-              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
-                从发起人的直属上级开始，逐级向上审批，直至审批终点
-              </Typography.Text>
-            </>
+            <MultiLevelEndFields
+              endType={multiLevelEndType}
+              endLevel={multiLevelEndLevel}
+              endRoleId={multiLevelEndRoleId}
+              roles={roles}
+              includeRole
+              topLevelLabel="最高层级（直到没有上级）"
+              help="从发起人的直属上级开始，逐级向上审批，直至审批终点"
+              onChange={onChange}
+            />
           )}
 
           {/* 连续多级部门负责人 */}
           {assigneeType === 'multiLevelDeptHead' && (
-            <>
-              <Form.Slot label="审批终点">
-                <Select
-                  value={multiLevelEndType}
-                  onChange={(v) => onChange({ multiLevelEndType: v })}
-                  style={{ width: '100%' }}
-                  optionList={[
-                    { value: 'topLevel', label: '最高层级（直到没有上级部门）' },
-                    { value: 'level', label: '指定层级' },
-                  ]}
-                  placeholder="请选择审批终点"
-                />
-              </Form.Slot>
-              {multiLevelEndType === 'level' && (
-                <Form.Slot label="终止层级">
-                  <InputNumber
-                    value={multiLevelEndLevel}
-                    onChange={(v) => onChange({ multiLevelEndLevel: v })}
-                    min={1}
-                    max={20}
-                    style={{ width: 200 }}
-                    suffix="级"
-                    placeholder="请输入层级"
-                  />
-                </Form.Slot>
-              )}
-              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
-                从发起人的直属部门负责人开始，逐级向上审批
-              </Typography.Text>
-            </>
+            <MultiLevelEndFields
+              endType={multiLevelEndType}
+              endLevel={multiLevelEndLevel}
+              roles={roles}
+              includeRole={false}
+              topLevelLabel="最高层级（直到没有上级部门）"
+              help="从发起人的直属部门负责人开始，逐级向上审批"
+              onChange={onChange}
+            />
           )}
 
           {/* 节点审批人 */}
@@ -528,68 +475,28 @@ export default function ApproverSettingsTab({
 
           {/* 发起人自选(指定范围) */}
           {assigneeType === 'initiatorSelectScope' && (
-            <>
-              <Form.Slot label="可选范围类型">
-                <RadioGroup
-                  type="button"
-                  value={selectScopeType}
-                  onChange={(e) => onChange({ selectScopeType: e.target.value, selectScopeIds: [] })}
-                  style={{ width: '100%' }}
-                >
-                  <Radio value="user">成员</Radio>
-                  <Radio value="role">角色</Radio>
-                  <Radio value="department">部门</Radio>
-                  <Radio value="userGroup">用户组</Radio>
-                </RadioGroup>
-              </Form.Slot>
-              <Form.Slot label="可选范围">
-                <Select
-                  value={selectScopeIds}
-                  onChange={(v) => onChange({ selectScopeIds: v })}
-                  multiple
-                  filter
-                  style={{ width: '100%' }}
-                  placeholder="请选择可供发起人挑选的范围"
-                  optionList={selectScopeOptions}
-                />
-              </Form.Slot>
-              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
-                发起人在发起申请时，需在上述范围内挑选具体审批人
-              </Typography.Text>
-            </>
+            <SelectScopeFields
+              scopeType={selectScopeType}
+              scopeIds={selectScopeIds}
+              scopeOptions={selectScopeOptions}
+              label="可选范围"
+              allowEmpty={false}
+              help="发起人在发起申请时，需在上述范围内挑选具体审批人"
+              onChange={onChange}
+            />
           )}
 
           {/* 审批人自选（上一节点选下一节点审批人） */}
           {assigneeType === 'approverSelect' && (
-            <>
-              <Form.Slot label="可选范围类型">
-                <RadioGroup
-                  type="button"
-                  value={selectScopeType}
-                  onChange={(e) => onChange({ selectScopeType: e.target.value, selectScopeIds: [] })}
-                  style={{ width: '100%' }}
-                >
-                  <Radio value="user">成员</Radio>
-                  <Radio value="role">角色</Radio>
-                  <Radio value="department">部门</Radio>
-                  <Radio value="userGroup">用户组</Radio>
-                </RadioGroup>
-              </Form.Slot>
-              <Form.Slot label="可选范围（留空=无范围限制）">
-                <Select
-                  value={selectScopeIds}
-                  onChange={(v) => onChange({ selectScopeIds: v })}
-                  multiple
-                  filter
-                  style={{ width: '100%' }}
-                  placeholder="可选范围，留空则上一审批人可任选"
-                  optionList={selectScopeOptions}
-                />
-              </Form.Slot>
-              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
-                上一节点审批人在审批通过时，需为本节点选择具体审批人
-              </Typography.Text>
-            </>
+            <SelectScopeFields
+              scopeType={selectScopeType}
+              scopeIds={selectScopeIds}
+              scopeOptions={selectScopeOptions}
+              label="可选范围（留空=无范围限制）"
+              allowEmpty
+              help="上一节点审批人在审批通过时，需为本节点选择具体审批人"
+              onChange={onChange}
+            />
           )}
 
           {/* 流程表达式 */}

@@ -15,6 +15,7 @@ import { recordTaskTransfer, assertAssigneesNotActiveOnNode } from './transfers'
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
 import { getInstanceDetail } from './queries';
 import { emitInstanceEvent, emitNodeEvent, emitTaskEvent } from './shared';
+import { requireRow } from '../../../lib/db-assert';
 
 /** 强制跳转：终止当前活动任务，直接推进到指定审批/办理节点 */
 export async function jumpInstance(id: number, targetNodeKey: string, comment?: string) {
@@ -23,7 +24,7 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   const conds = [eq(workflowInstances.id, id)];
   if (tc) conds.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  requireRow(inst, '流程实例不存在');
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可强制跳转' });
   const snapshot = inst.definitionSnapshot;
   const flowData = snapshot?.flowData;
@@ -79,7 +80,7 @@ export async function suspendInstance(id: number, reason: string) {
   const conds = [eq(workflowInstances.id, id)];
   if (tc) conds.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  requireRow(inst, '流程实例不存在');
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可挂起' });
 
   const instance = await db.transaction(async (tx) => {
@@ -119,7 +120,7 @@ export async function resumeInstance(id: number) {
   const conds = [eq(workflowInstances.id, id)];
   if (tc) conds.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  requireRow(inst, '流程实例不存在');
   if (inst.status !== 'suspended') throw new HTTPException(400, { message: '仅已挂起的流程可恢复' });
 
   const { instance, restoredJobs } = await db.transaction(async (tx) => {
@@ -166,17 +167,17 @@ export async function resumeInstance(id: number) {
 export async function reassignTask(taskId: number, targetUserId: number, comment?: string, action: 'reassign' | 'handover' = 'reassign') {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, taskId)).limit(1);
-  if (!task) throw new HTTPException(404, { message: '任务不存在' });
+  requireRow(task, '任务不存在');
   if (task.status !== 'pending' && task.status !== 'waiting') {
     throw new HTTPException(400, { message: '仅未处理的任务可改派' });
   }
   const [tgt] = await db.select({ id: users.id }).from(users).where(eq(users.id, targetUserId)).limit(1);
-  if (!tgt) throw new HTTPException(400, { message: '目标处理人不存在' });
+  requireRow(tgt, '目标处理人不存在', 400);
   const tc = tenantCondition(workflowInstances, user);
   const instConditions = [eq(workflowInstances.id, task.instanceId)];
   if (tc) instConditions.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...instConditions)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '任务不存在或无权操作' });
+  requireRow(inst, '任务不存在或无权操作');
   // 目标人已在本节点同轮持有活动任务时给出友好 409（否则撞 wf_tasks_active_uniq 唯一索引）；
   // 离职交接逐条改派复用本函数，冲突任务会按「单条失败不阻断」记入结果
   await assertAssigneesNotActiveOnNode(db, {
@@ -189,7 +190,7 @@ export async function reassignTask(taskId: number, targetUserId: number, comment
     delegatedFromId: null,
     comment: note,
   }).where(and(eq(workflowTasks.id, taskId), inArray(workflowTasks.status, ['pending', 'waiting']))).returning();
-  if (!updated) throw new HTTPException(409, { message: '任务状态已变化，无法改派' });
+  requireRow(updated, '任务状态已变化，无法改派', 409);
   await recordTaskTransfer(db, {
     taskId, instanceId: inst.id, fromUserId: task.assigneeId, toUserId: targetUserId,
     action, reason: comment ?? null, operatorId: user.userId, tenantId: inst.tenantId,
@@ -203,7 +204,7 @@ export async function reassignTask(taskId: number, targetUserId: number, comment
 export async function recallTask(taskId: number, comment?: string) {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, taskId)).limit(1);
-  if (!task) throw new HTTPException(404, { message: '任务不存在' });
+  requireRow(task, '任务不存在');
   if (task.assigneeId !== user.userId) throw new HTTPException(403, { message: '只能撤回自己处理的任务' });
   if (task.status !== 'approved' && task.status !== 'rejected') {
     throw new HTTPException(400, { message: '只有已处理的任务可撤回' });
@@ -212,7 +213,7 @@ export async function recallTask(taskId: number, comment?: string) {
   const instConditions = [eq(workflowInstances.id, task.instanceId)];
   if (tc) instConditions.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...instConditions)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '任务不存在或无权操作' });
+  requireRow(inst, '任务不存在或无权操作');
   if (inst.status === 'withdrawn' || inst.status === 'cancelled' || inst.status === 'approved' || inst.status === 'rejected') {
     throw new HTTPException(400, { message: '流程已结束，无法撤回' });
   }
@@ -293,12 +294,12 @@ export async function recallTask(taskId: number, comment?: string) {
 async function loadTokenForOps(tokenId: number) {
   const user = currentUser();
   const [tok] = await db.select().from(workflowTokens).where(eq(workflowTokens.id, tokenId)).limit(1);
-  if (!tok) throw new HTTPException(404, { message: '执行 Token 不存在' });
+  requireRow(tok, '执行 Token 不存在');
   const tc = tenantCondition(workflowInstances, user);
   const conds = [eq(workflowInstances.id, tok.instanceId)];
   if (tc) conds.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '实例不存在或无权操作' });
+  requireRow(inst, '实例不存在或无权操作');
   return { user, tok, inst };
 }
 
@@ -409,7 +410,7 @@ export async function previewHandover(fromUserId: number): Promise<WorkflowHando
   const user = currentUser();
   const [from] = await db.select({ id: users.id, nickname: users.nickname, username: users.username })
     .from(users).where(eq(users.id, fromUserId)).limit(1);
-  if (!from) throw new HTTPException(404, { message: '交接人不存在' });
+  requireRow(from, '交接人不存在');
 
   const tc = tenantCondition(workflowInstances, user);
   const taskConds = [
@@ -462,7 +463,7 @@ export async function handoverTasks(input: { fromUserId: number; toUserId: numbe
   const { fromUserId, toUserId, disableDelegations = true, comment } = input;
   if (fromUserId === toUserId) throw new HTTPException(400, { message: '接手人不能与交接人相同' });
   const [tgt] = await db.select({ id: users.id }).from(users).where(eq(users.id, toUserId)).limit(1);
-  if (!tgt) throw new HTTPException(400, { message: '接手人不存在' });
+  requireRow(tgt, '接手人不存在', 400);
 
   const tc = tenantCondition(workflowInstances, user);
   const taskConds = [

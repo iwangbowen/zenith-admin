@@ -2,14 +2,13 @@ import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Modal, Select, Space, Tag, Typography, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Ban, CircleCheck, GitCompare, Layers, LayoutTemplate, Save, Trash2, Upload } from 'lucide-react';
+import { Ban, CircleCheck, GitCompare, Layers, LayoutTemplate, Save, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { importWorkflowDefinitionSchema, workflowDefinitionContract, WORKFLOW_FORM_TYPE_LABELS, type WorkflowDefinition, type WorkflowFormType, type WorkflowVersionDiff as WorkflowVersionDiffData } from '@zenith/shared/workflow';
 import { api } from '@/lib/contract-query';
 import { downloadBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -38,11 +37,12 @@ import {
 } from '@/hooks/queries/workflow-definitions';
 import { WORKFLOW_DIFF_KIND_META as DIFF_KIND_META } from '../constants';
 import { PUBLISHABLE_STATUS_META as STATUS_MAP } from '@/lib/publishable-status';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmDanger } from '@/utils/confirm';
 
 const STATUS_FILTER_OPTIONS = [{ value: 'draft', label: '草稿' }, { value: 'published', label: '已发布' }, { value: 'disabled', label: '已禁用' }];
-import { confirmDelete, confirmDanger } from '@/utils/confirm';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -100,7 +100,6 @@ export default function WorkflowDefinitionsPage() {
     status: submittedParams.status || undefined,
     categoryId: submittedParams.selectedCategoryId ?? undefined,
   });
-  const data = listQuery.data;
   const publishMutation = usePublishWorkflowDefinition();
   const disableMutation = useDisableWorkflowDefinition();
   const enableMutation = useEnableWorkflowDefinition();
@@ -145,10 +144,6 @@ export default function WorkflowDefinitionsPage() {
     Toast.success('已启用');
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  };
 
   const batchDisable = () => {
     if (selectedRowKeys.length === 0) return;
@@ -178,14 +173,11 @@ export default function WorkflowDefinitionsPage() {
 
   const batchDelete = () => {
     if (selectedRowKeys.length === 0) return;
-    confirmDelete({
+    confirmAndDelete({
       title: `确定删除选中的 ${selectedRowKeys.length} 个流程？`,
       content: '仅「非已发布」且无发起实例的流程会被删除，删除后无法恢复。',
-      onOk: async () => {
-        await batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } });
-        Toast.success('删除成功');
-        setSelectedRowKeys([]);
-      },
+      run: () => batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } }),
+      onDeleted: () => setSelectedRowKeys([]),
     });
   };
 
@@ -384,17 +376,14 @@ export default function WorkflowDefinitionsPage() {
             onClick: () => setSaveAsTarget(record),
           },
           {
-            key: 'delete',
-            label: '删除',
-            danger: true,
-            hidden: record.status === 'published' || !hasPermission('workflow:definition:delete'),
+            ...deleteAction({
+              hidden: record.status === 'published' || !hasPermission('workflow:definition:delete'),
+              key: 'delete',
+              label: '删除',
+              title: '确定要删除该流程吗？',
+              run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+            }),
             dividerBefore: true,
-            onClick: () => {
-              confirmDelete({
-                title: '确定要删除该流程吗？',
-                onOk: () => handleDelete(record.id),
-              });
-            },
           },
         ];
       },
@@ -422,13 +411,6 @@ export default function WorkflowDefinitionsPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   const renderCreateButton = () => hasPermission('workflow:definition:create') ? (
     <CreateButton onClick={() => {
@@ -467,9 +449,7 @@ export default function WorkflowDefinitionsPage() {
         </Button>
       )}
       {selectedRowKeys.length > 0 && hasPermission('workflow:definition:delete') && (
-        <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={batchDelete}>
-          批量删除 ({selectedRowKeys.length})
-        </Button>
+        <BatchDeleteButton count={selectedRowKeys.length} onClick={batchDelete} />
       )}
     </>
   );
@@ -504,54 +484,38 @@ export default function WorkflowDefinitionsPage() {
             style={{ display: 'none' }}
             onChange={(event) => { void handleImportFile(event); }}
           />
-          <SearchToolbar
-            primary={(
+          <ListSearchToolbar
+            keyword={renderKeywordSearch()}
+            filters={renderStatusFilter()}
+            onSearch={handleSearch}
+            onReset={handleReset}
+            create={renderCreateButton()}
+            actions={(
               <>
-                {renderCategoryButton()}
-                {renderKeywordSearch()}
-                {renderStatusFilter()}
-                {renderSearchButton()}
-                {renderResetButton()}
-                {renderCreateButton()}
                 {renderImportButton()}
                 {renderTemplateButton()}
                 {renderBatchButtons()}
               </>
             )}
-            mobilePrimary={(
-              <>
-                {renderKeywordSearch()}
-                {renderSearchButton()}
-                {renderCreateButton()}
-              </>
-            )}
-            mobileFilters={renderStatusFilter()}
             mobileActions={(
               <>
                 {renderCategoryButton()}
-                {renderResetButton()}
                 {renderImportButton()}
                 {renderTemplateButton()}
                 {renderBatchButtons()}
               </>
             )}
             filterTitle="流程定义筛选"
-            onFilterApply={handleSearch}
-            onFilterReset={handleReset}
           />
-          <ConfigurableTable
-            bordered
+          <ConfigurableTable<WorkflowDefinition>
             columns={columns}
-            dataSource={data?.list ?? []}
-            rowKey="id"
-            loading={listQuery.isFetching}
-            onRefresh={() => void listQuery.refetch()}
-            refreshLoading={listQuery.isFetching}
-            pagination={buildPagination(data?.total ?? 0)}
-            rowSelection={canBatchOperate ? {
-              selectedRowKeys,
-              onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-            } : undefined}
+            {...listTableProps(listQuery, {
+              pagination: buildPagination,
+              rowSelection: canBatchOperate ? {
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+              } : undefined,
+            })}
           />
           {historyTarget && (
             <WorkflowVersionsSheet
@@ -722,3 +686,4 @@ export default function WorkflowDefinitionsPage() {
     </div>
   );
 }
+

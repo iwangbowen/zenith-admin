@@ -5,7 +5,6 @@
  * - testConnector：一键测试探测
  */
 import { and, desc, eq, gte, sql, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { workflowConnectors, workflowConnectorInvocations, smsConfigs, smsTemplates } from '../../db/schema';
 import type { WorkflowConnectorRow } from '../../db/schema';
@@ -14,6 +13,8 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { encryptField, decryptField } from '../../lib/encryption';
 import { assertSafeWorkflowUrl, buildConnectorUrl, workflowHttp } from '../../lib/workflow-outbound';
@@ -74,8 +75,7 @@ function findConnector(id: number): SQL {
 
 async function ensureConnector(id: number): Promise<WorkflowConnectorRow> {
   const [row] = await db.select().from(workflowConnectors).where(findConnector(id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '连接器不存在' });
-  return row;
+  return requireRow(row, '连接器不存在');
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -97,12 +97,13 @@ export async function listWorkflowConnectors(query: { page?: number; pageSize?: 
   if (status) conds.push(eq(workflowConnectors.status, status));
   conds.push(keywordCondition(keyword, [workflowConnectors.name, workflowConnectors.code], 'ilike'));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowConnectors, where),
-    db.select().from(workflowConnectors).where(where).orderBy(desc(workflowConnectors.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  const list = await Promise.all(rows.map(mapConnector));
-  return { list, total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowConnectors, where),
+    rows: () => db.select().from(workflowConnectors).where(where).orderBy(desc(workflowConnectors.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapConnector,
+  });
 }
 
 export async function getWorkflowConnector(id: number): Promise<WorkflowConnector> {

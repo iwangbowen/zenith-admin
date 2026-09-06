@@ -22,6 +22,7 @@ import { assertLaunchMatchesFormType, buildInstanceFormSnapshot, mapInstance, ma
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
 import { buildSerialNoContext, emitInstanceEvent, emitNodeEvent, emitTaskEvent, toDefinitionSnapshot } from './shared';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
+import { requireRow } from '../../../lib/db-assert';
 
 /**
  * 发起表单校验（服务端强制）：设计器表单按快照 schema 做全量规则校验——
@@ -61,7 +62,7 @@ export async function createInstance(data: { definitionId: number; title: string
   const defTenantCond = tenantCondition(workflowDefinitions, user);
   if (defTenantCond) defConds.push(defTenantCond);
   const [def] = await db.select().from(workflowDefinitions).where(and(...defConds)).limit(1);
-  if (!def) throw new HTTPException(404, { message: '流程定义不存在或未发布' });
+  requireRow(def, '流程定义不存在或未发布');
   const normalizedBizType = data.bizType?.trim() || null;
   const normalizedBizId = data.bizId?.trim() || null;
   const launchData = { ...data, bizType: normalizedBizType, bizId: normalizedBizId };
@@ -271,7 +272,7 @@ export async function withdrawInstance(id: number) {
   const conditions = [eq(workflowInstances.id, id)];
   if (tc) conditions.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conditions)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  requireRow(inst, '流程实例不存在');
   if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只有发起人可以撤回' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '只能撤回进行中的申请' });
   const snapshot = inst.definitionSnapshot;
@@ -313,7 +314,7 @@ export async function cancelInstance(id: number) {
   const conditions = [eq(workflowInstances.id, id)];
   if (tc) conditions.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conditions)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  requireRow(inst, '流程实例不存在');
   if (inst.status !== 'running' && inst.status !== 'suspended') throw new HTTPException(400, { message: '只能取消进行中或已挂起的流程' });
   const { row: updated } = await db.transaction(async (tx) => {
     const [locked] = await tx.select({ status: workflowInstances.status })
@@ -348,7 +349,7 @@ export async function deleteInstance(id: number) {
   const conditions = [eq(workflowInstances.id, id)];
   if (tc) conditions.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conditions)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  requireRow(inst, '流程实例不存在');
   if (inst.status === 'running' || inst.status === 'draft') {
     throw new HTTPException(400, { message: '请先取消进行中的流程再删除' });
   }
@@ -361,7 +362,7 @@ async function loadOwnDraft(id: number) {
   const conds = [eq(workflowInstances.id, id)];
   if (tc) conds.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  requireRow(inst, '流程实例不存在');
   if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只能操作自己的草稿' });
   return inst;
 }
@@ -385,7 +386,7 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
   if (inst.status !== 'draft' && !isResubmitAfterReturn) throw new HTTPException(400, { message: '仅草稿或已退回的申请可提交' });
   const [def] = await db.select().from(workflowDefinitions)
     .where(and(eq(workflowDefinitions.id, inst.definitionId), eq(workflowDefinitions.status, 'published'))).limit(1);
-  if (!def) throw new HTTPException(400, { message: '流程定义不存在或已停用，无法提交' });
+  requireRow(def, '流程定义不存在或已停用，无法提交', 400);
   const baseFlowData = def.flowData as WorkflowFlowData;
   if (!baseFlowData?.nodes?.length) throw new HTTPException(400, { message: '流程定义无效' });
   const flowData = await applyInitiatorSelectedApprovers(baseFlowData, input.selectedInitiatorApprovers);
@@ -455,7 +456,7 @@ export async function resubmitInstance(id: number) {
   const conds = [eq(workflowInstances.id, id)];
   if (tc) conds.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  requireRow(inst, '流程实例不存在');
   if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只有发起人可以重新提交' });
   if (inst.status !== 'rejected' && inst.status !== 'withdrawn') {
     throw new HTTPException(400, { message: '只有已驳回或已撤回的申请可重新提交' });

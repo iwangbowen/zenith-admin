@@ -8,6 +8,8 @@ import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { renameWorkflowFormFieldKeys } from '@zenith/shared/workflow';
 import type { CreateWorkflowFormInput, UpdateWorkflowFormInput, WorkflowFlowData, WorkflowFormField, WorkflowFormSchema, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared/workflow';
 import type { DbExecutor, DbTransaction } from '../../db/types';
@@ -49,8 +51,7 @@ function findForm(id: number) {
 
 export async function ensureFormExists(id: number) {
   const [row] = await db.select().from(workflowForms).where(findForm(id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '表单不存在' });
-  return row;
+  return requireRow(row, '表单不存在');
 }
 
 /**
@@ -97,9 +98,12 @@ export async function listWorkflowForms(query: { page?: number; pageSize?: numbe
   if (status) conds.push(eq(workflowForms.status, status));
   if (categoryId) conds.push(eq(workflowForms.categoryId, categoryId));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowForms, where),
-    db.query.workflowForms.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowForms, where),
+    rows: async () => {
+      const rows = await db.query.workflowForms.findMany({
       where,
       with: {
         category: { columns: { name: true } },
@@ -108,10 +112,11 @@ export async function listWorkflowForms(query: { page?: number; pageSize?: numbe
       orderBy: desc(workflowForms.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  const usage = await countUsage(rows.map((r) => r.id));
-  return { list: rows.map((r) => mapForm(r, usage.get(r.id) ?? 0)), total, page, pageSize };
+      });
+      const usage = await countUsage(rows.map((r) => r.id));
+      return rows.map((r) => mapForm(r, usage.get(r.id) ?? 0));
+    },
+  });
 }
 
 /** 流程设计器下拉选用：仅启用的表单，最小字段 */
@@ -128,14 +133,13 @@ export async function listEnabledWorkflowForms() {
 }
 
 export async function getWorkflowForm(id: number) {
-  const row = await db.query.workflowForms.findFirst({
+  const row = requireRow(await db.query.workflowForms.findFirst({
     where: findForm(id),
     with: {
       category: { columns: { name: true } },
       createdByUser: { columns: { nickname: true } },
     },
-  });
-  if (!row) throw new HTTPException(404, { message: '表单不存在' });
+  }), '表单不存在');
   const usage = await db.$count(workflowDefinitions, eq(workflowDefinitions.formId, id));
   return mapForm(row, usage);
 }

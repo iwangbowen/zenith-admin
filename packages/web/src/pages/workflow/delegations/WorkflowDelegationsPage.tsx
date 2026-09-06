@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
-import { Form, Select, Tag, Toast } from '@douyinfe/semi-ui';
+import { Form, Select, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowDelegation } from '@zenith/shared/workflow';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -17,8 +16,8 @@ import {
   useWorkflowDelegationList,
   workflowDelegationKeys,
 } from '@/hooks/queries/workflow-delegations';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
+import { CreateButton } from '@/components/toolbar-controls';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { dateTimeColumn } from '@/utils/table-columns';
 
@@ -62,10 +61,6 @@ export default function WorkflowDelegationsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowDelegationKeys.lists });
   const listQuery = useWorkflowDelegationList({ page, pageSize, scope: submittedParams.scope });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-
-
   const usersQuery = useWorkflowSelectableUsers();
   const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 });
   const saveMutation = useSaveWorkflowDelegation();
@@ -83,10 +78,6 @@ export default function WorkflowDelegationsPage() {
     [definitionsQuery.data],
   );
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('已删除');
-  };
 
   const delegationModal = useEditModal<WorkflowDelegation, FormValues, Record<string, unknown>>({
     entityName: '审批代理',
@@ -167,18 +158,12 @@ export default function WorkflowDelegationsPage() {
           hidden: !canManage,
           onClick: () => delegationModal.openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canManage,
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除该审批代理？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定删除该审批代理？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
@@ -195,13 +180,6 @@ export default function WorkflowDelegationsPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   const renderCreateButton = () => canManage ? (
     <CreateButton onClick={delegationModal.openCreate} />
@@ -209,36 +187,17 @@ export default function WorkflowDelegationsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderScopeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderScopeFilter()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
+      <ListSearchToolbar
+        filters={renderScopeFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="审批代理筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable<WorkflowDelegation>
-        bordered
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        dataSource={list}
         columns={columns}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       {canManage && (

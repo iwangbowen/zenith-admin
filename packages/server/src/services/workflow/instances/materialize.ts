@@ -32,9 +32,42 @@ interface ExpandedTaskRows {
   autoRejectedNodeKey: string | null;
 }
 
+type ExpandTasksContext = { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: Record<string, number[]>; flowData?: WorkflowFlowData };
+
+async function pushAdminFallbackOrReject(args: {
+  rows: ExpandedTaskRow[];
+  task: TaskAction;
+  ctx: ExpandTasksContext;
+  rejectReason: string;
+}): Promise<boolean> {
+  const adminId = await resolveAdminAssigneeId(args.ctx.executor);
+  if (adminId) {
+    args.rows.push({
+      instanceId: args.ctx.instanceId,
+      nodeKey: args.task.nodeKey,
+      nodeName: args.task.nodeName,
+      nodeType: args.task.nodeType,
+      assigneeId: adminId,
+      status: 'pending' as const,
+    });
+    return true;
+  }
+  args.rows.push({
+    instanceId: args.ctx.instanceId,
+    nodeKey: args.task.nodeKey,
+    nodeName: args.task.nodeName,
+    nodeType: args.task.nodeType,
+    assigneeId: null,
+    status: 'rejected' as const,
+    comment: args.rejectReason,
+    actionAt: new Date(),
+  });
+  return false;
+}
+
 async function expandTasksToRows(
   tasks: TaskAction[],
-  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: Record<string, number[]>; flowData?: WorkflowFlowData },
+  ctx: ExpandTasksContext,
 ): Promise<ExpandedTaskRows> {
   const rows: ExpandedTaskRow[] = [];
   const autoApprovedNodeKeys: string[] = [];
@@ -233,19 +266,7 @@ async function expandTasksToRows(
         if (nodeCatch === 'terminate') {
           pushAutoRow(t, 'rejected', `${emptyReason}，按异常策略终止流程`);
         } else if (nodeCatch === 'toAdmin') {
-          const adminId = await resolveAdminAssigneeId(ctx.executor);
-          if (adminId) {
-            rows.push({
-              instanceId: ctx.instanceId,
-              nodeKey: t.nodeKey,
-              nodeName: t.nodeName,
-              nodeType: t.nodeType,
-              assigneeId: adminId,
-              status: 'pending' as const,
-            });
-          } else {
-            pushAutoRow(t, 'rejected', `${emptyReason}，且无可用管理员接管，自动拒绝`);
-          }
+          if (!await pushAdminFallbackOrReject({ rows, task: t, ctx, rejectReason: `${emptyReason}，且无可用管理员接管，自动拒绝` })) autoRejectedNodeKey = t.nodeKey;
         } else {
           // notify：自动通过本节点并继续 + 通知相关人
           pushAutoRow(t, 'approved', `${emptyReason}，按异常策略自动通过`);
@@ -314,19 +335,7 @@ async function expandTasksToRows(
           });
         });
       } else if (emptyStrategy === 'assignToAdmin') {
-        const adminId = await resolveAdminAssigneeId(ctx.executor);
-        if (adminId) {
-          rows.push({
-            instanceId: ctx.instanceId,
-            nodeKey: t.nodeKey,
-            nodeName: t.nodeName,
-            nodeType: t.nodeType,
-            assigneeId: adminId,
-            status: 'pending' as const,
-          });
-        } else {
-          pushAutoRow(t, 'rejected', `${emptyReason}，且无可用管理员接管，自动拒绝`);
-        }
+        if (!await pushAdminFallbackOrReject({ rows, task: t, ctx, rejectReason: `${emptyReason}，且无可用管理员接管，自动拒绝` })) autoRejectedNodeKey = t.nodeKey;
       } else if (emptyStrategy === 'reject') {
         pushAutoRow(t, 'rejected', `${emptyReason}，按空审批人策略自动拒绝`);
       } else {

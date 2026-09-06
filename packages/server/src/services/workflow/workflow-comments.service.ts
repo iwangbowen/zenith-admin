@@ -10,6 +10,7 @@ import logger from '../../lib/logger';
 import type { WorkflowComment, CreateWorkflowCommentInput } from '@zenith/shared/workflow';
 import { notify } from '../messaging/notification-outbox.service';
 import { loadWorkflowUserDisplays } from './workflow-user-helpers';
+import { requireRow } from '../../lib/db-assert';
 
 type CommentRow = typeof workflowComments.$inferSelect;
 
@@ -41,7 +42,7 @@ async function assertParticipant(instanceId: number): Promise<typeof workflowIns
   const conds = [eq(workflowInstances.id, instanceId)];
   if (tc) conds.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  requireRow(inst, '流程实例不存在');
   if (isSuperAdmin(user) || inst.initiatorId === user.userId) return inst;
   const involved = await db.$count(
     workflowTasks,
@@ -99,8 +100,7 @@ export async function addInstanceComment(instanceId: number, input: CreateWorkfl
     const [parent] = await db.select().from(workflowComments)
       .where(and(eq(workflowComments.id, input.parentId), eq(workflowComments.instanceId, instanceId)))
       .limit(1);
-    if (!parent) throw new HTTPException(400, { message: '被回复的评论不存在' });
-    parentRow = parent;
+    parentRow = requireRow(parent, '被回复的评论不存在', 400);
   }
   const [row] = await db.insert(workflowComments).values({
     instanceId,

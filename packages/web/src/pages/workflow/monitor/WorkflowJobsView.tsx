@@ -10,7 +10,7 @@ import { downloadBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/date';
 import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -32,7 +32,7 @@ import {
   useWorkflowJobSummary,
   workflowMonitorKeys,
 } from '@/hooks/queries/workflow-monitor';
-import { ResetButton, RefreshButton, SearchButton } from '@/components/toolbar-controls';
+import { RefreshButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 // 本页无图表，直接引具体文件，避免桶文件带入 vchart
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
@@ -202,8 +202,6 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
     status: submittedStatus,
     keyword: submittedKeyword.trim() || undefined,
   });
-  const data = listQuery.data ?? null;
-
   const [detailId, setDetailId] = useState<number | undefined>();
   const [detailVisible, setDetailVisible] = useState(false);
   const detailQuery = useWorkflowJobDetail(detailId, detailVisible);
@@ -598,40 +596,26 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
         <Tag size="large" color="grey">已取消 {summary.canceled}</Tag>
       </div>
 
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="幂等键 / TraceId / 节点" value={keyword} onChange={setKeyword} onSearch={handleSearch} />}
+        filters={(
+          <StatusSelect
+            items={JOB_STATUS_OPTIONS}
+            value={status}
+            onChange={(v) => setStatus(v as WorkflowJobStatus | undefined)}
+          />
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={(
           <>
-            <KeywordInput placeholder="幂等键 / TraceId / 节点" value={keyword} onChange={setKeyword} onSearch={handleSearch} />
-            <StatusSelect
-              items={JOB_STATUS_OPTIONS}
-              value={status}
-              onChange={(v) => setStatus(v as WorkflowJobStatus | undefined)}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
             <Button type="tertiary" onClick={() => void openClusters()}>失败聚类</Button>
             {canOperate && (
               <Button type="warning" onClick={() => openReplay()}>重放死信</Button>
             )}
           </>
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="幂等键 / TraceId / 节点" value={keyword} onChange={setKeyword} onSearch={handleSearch} />
-            <SearchButton onClick={handleSearch} />
-          </>
-        )}
-        mobileFilters={(
-          <StatusSelect
-            items={JOB_STATUS_OPTIONS}
-            value={status}
-            onChange={(v) => setStatus(v as WorkflowJobStatus | undefined)}
-            width="100%"
-          />
-        )}
         filterTitle={`${JOB_TYPE_META[jobType].text}筛选`}
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {canOperate && selectedRowKeys.length > 0 && (
@@ -647,22 +631,18 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
         </div>
       )}
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WorkflowJob>
         columns={columns}
-        dataSource={data?.list ?? []}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowSelection={canOperate ? {
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          getCheckboxProps: (record: WorkflowJob) => ({
-            disabled: !(record.status === 'pending' || record.status === 'failed' || record.status === 'dead' || record.status === 'canceled'),
-          }),
-        } : undefined}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: canOperate ? {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+            getCheckboxProps: (record: WorkflowJob) => ({
+              disabled: !(record.status === 'pending' || record.status === 'failed' || record.status === 'dead' || record.status === 'canceled'),
+            }),
+          } : undefined,
+        })}
       />
 
       <SideSheet

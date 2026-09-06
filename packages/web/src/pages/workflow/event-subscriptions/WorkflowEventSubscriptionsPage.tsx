@@ -10,7 +10,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
 import type { CreateWorkflowEventSubscriptionInput, WorkflowDefinition, WorkflowEventDelivery, WorkflowEventSubscription, WorkflowEventType } from '@zenith/shared/workflow';
 import { formatDateTimeForApi } from '@/utils/date';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -32,8 +31,8 @@ import {
 } from '@/hooks/queries/workflow-event-subscriptions';
 import { useWorkflowConnectorList } from '@/hooks/queries/workflow-connectors';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
+import { CreateButton } from '@/components/toolbar-controls';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -99,9 +98,6 @@ export default function WorkflowEventSubscriptionsPage() {
     definitionId: submittedParams.definitionId,
     enabled: submittedParams.enabled === undefined ? undefined : submittedParams.enabled === 'true',
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-
   const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 });
   const defs: WorkflowDefinition[] = definitionsQuery.data?.list ?? [];
   const connectorsQuery = useWorkflowConnectorList({ page: 1, pageSize: 100, status: 'enabled' });
@@ -148,8 +144,6 @@ export default function WorkflowEventSubscriptionsPage() {
     pageSize: deliveryPageSize,
     subscriptionId: deliverySubId ?? undefined,
   }, deliveryVisible);
-  const deliveries = deliveriesQuery.data?.list ?? [];
-  const deliveriesTotal = deliveriesQuery.data?.total ?? 0;
   const retryDeliveryMutation = useRetryWorkflowEventDelivery();
   const replayDeliveriesMutation = useReplayWorkflowEventDeliveries();
 
@@ -199,10 +193,6 @@ export default function WorkflowEventSubscriptionsPage() {
     Toast.success('已切换');
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('已删除');
-  };
 
   const handleViewSecret = async (id: number) => {
     const secret = await secretMutation.mutateAsync({ params: { id } });
@@ -296,18 +286,12 @@ export default function WorkflowEventSubscriptionsPage() {
           hidden: !canManageEventSubscription,
           onClick: () => handleViewSecret(record.id),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canManageEventSubscription,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该订阅吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该订阅吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
@@ -385,13 +369,6 @@ export default function WorkflowEventSubscriptionsPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   const renderCreateButton = () => canManageEventSubscription ? (
     <CreateButton onClick={openCreate} />
@@ -399,44 +376,23 @@ export default function WorkflowEventSubscriptionsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderDefinitionFilter()}
-            {renderEnabledFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderDefinitionFilter()}
             {renderEnabledFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="订阅筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable<WorkflowEventSubscription>
-        bordered
-        loading={listQuery.isFetching}
-        rowKey="id"
-        dataSource={list}
         columns={columns}
-        pagination={buildPagination(total)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <SideSheet
@@ -554,14 +510,8 @@ export default function WorkflowEventSubscriptionsPage() {
           </div>
         )}
         <ConfigurableTable<WorkflowEventDelivery>
-          bordered
-          loading={deliveriesQuery.isFetching}
-          rowKey="id"
-          dataSource={deliveries}
           columns={deliveryColumns}
-          pagination={buildDeliveryPagination(deliveriesTotal)}
-          onRefresh={() => void deliveriesQuery.refetch()}
-          refreshLoading={deliveriesQuery.isFetching}
+          {...listTableProps(deliveriesQuery, { pagination: buildDeliveryPagination })}
         />
       </SideSheet>
 

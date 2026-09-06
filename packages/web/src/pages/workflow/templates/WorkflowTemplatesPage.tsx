@@ -5,12 +5,12 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { LayoutTemplate } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkflowTemplate } from '@zenith/shared/workflow';
-import { KeywordSearchToolbar } from '@/components/KeywordSearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar } from '@/components/list-page';
+import { KeywordInput } from '@/components/search-filters';
 import WorkflowTemplateFormModal, { type WorkflowTemplateFormValues } from '../components/WorkflowTemplateFormModal';
 import {
   useCloneWorkflowTemplate,
@@ -88,10 +88,6 @@ export default function WorkflowTemplatesPage() {
     closeModal();
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('已删除');
-  };
 
   const handleCloneToDefinition = async (record: WorkflowTemplate) => {
     const res = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
@@ -165,33 +161,24 @@ export default function WorkflowTemplatesPage() {
           hidden: !canEdit,
           onClick: () => openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canEdit,
           disabled: record.builtin,
           disabledReason: '系统内置模板不可删除',
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该模板吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该模板吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <KeywordSearchToolbar
-        placeholder="搜索名称 / 编码 / 描述"
-        value={keyword}
-        onChange={setKeyword}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索名称 / 编码 / 描述" value={keyword} onChange={setKeyword} onSearch={handleSearch} width={240} />}
         onSearch={handleSearch}
         onReset={handleReset}
-        width={240}
       />
 
       <ConfigurableTable<WorkflowTemplate>

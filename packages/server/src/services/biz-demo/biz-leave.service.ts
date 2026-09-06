@@ -19,6 +19,8 @@ import { isSuperAdmin, getUserPermissions } from '../../lib/permissions';
 import { keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { startWorkflowForBiz, resolveBizDefinitionId } from '../../lib/workflow-biz-bridge';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 
 /** 业务类型标识（与订阅器、businessKey 保持一致） */
 export const BIZ_LEAVE_TYPE = 'biz_leave';
@@ -108,17 +110,21 @@ export async function listBizLeaves(query: { page?: number; pageSize?: number; k
   if (query.status) conds.push(eq(bizLeaves.status, query.status as BizLeaveStatus));
   conds.push(keywordCondition(query.keyword, [bizLeaves.reason]));
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(bizLeaves, where),
-    db.select().from(bizLeaves).where(where).orderBy(desc(bizLeaves.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  const nameMap = await buildApplicantNameMap(rows.map((r) => r.createdBy));
-  return { list: rows.map((r) => mapBizLeave(r, r.createdBy != null ? nameMap.get(r.createdBy) ?? null : null)), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(bizLeaves, where),
+    rows: async () => {
+      const rows = await db.select().from(bizLeaves).where(where).orderBy(desc(bizLeaves.id)).limit(pageSize).offset(pageOffset(page, pageSize));
+      const nameMap = await buildApplicantNameMap(rows.map((r) => r.createdBy));
+      return rows.map((r) => mapBizLeave(r, r.createdBy != null ? nameMap.get(r.createdBy) ?? null : null));
+    },
+  });
 }
 
 export async function getBizLeave(id: number) {
   const [row] = await db.select().from(bizLeaves).where(findOwnLeave(id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '请假单不存在' });
+  requireRow(row, '请假单不存在');
   const nameMap = await buildApplicantNameMap([row.createdBy]);
   return mapBizLeave(row, row.createdBy != null ? nameMap.get(row.createdBy) ?? null : null);
 }
@@ -132,7 +138,7 @@ export async function getBizLeave(id: number) {
 export async function getBizLeaveDetail(id: number) {
   const user = currentUser();
   const [row] = await db.select().from(bizLeaves).where(eq(bizLeaves.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '请假单不存在' });
+  requireRow(row, '请假单不存在');
   let allowed = row.createdBy === user.userId;
   if (!allowed && row.workflowInstanceId) {
     const [task] = await db
@@ -170,7 +176,7 @@ export async function createBizLeave(data: { leaveType: string; startDate: strin
 
 export async function updateBizLeave(id: number, data: Partial<{ leaveType: string; startDate: string; endDate: string; days: number; reason: string | null }>) {
   const [existing] = await db.select().from(bizLeaves).where(findOwnLeave(id)).limit(1);
-  if (!existing) throw new HTTPException(404, { message: '请假单不存在' });
+  requireRow(existing, '请假单不存在');
   if (existing.status !== 'draft') throw new HTTPException(400, { message: '仅草稿状态可编辑' });
   const patch: Record<string, unknown> = {};
   if (data.leaveType !== undefined) patch.leaveType = data.leaveType;
@@ -192,7 +198,7 @@ export async function updateBizLeave(id: number, data: Partial<{ leaveType: stri
 
 export async function deleteBizLeave(id: number) {
   const [existing] = await db.select().from(bizLeaves).where(findOwnLeave(id)).limit(1);
-  if (!existing) throw new HTTPException(404, { message: '请假单不存在' });
+  requireRow(existing, '请假单不存在');
   if (existing.status !== 'draft') throw new HTTPException(400, { message: '仅草稿状态可删除' });
   await db.delete(bizLeaves).where(eq(bizLeaves.id, id));
 }
@@ -201,7 +207,7 @@ export async function deleteBizLeave(id: number) {
 export async function submitBizLeave(id: number) {
   const user = currentUser();
   const [leave] = await db.select().from(bizLeaves).where(findOwnLeave(id)).limit(1);
-  if (!leave) throw new HTTPException(404, { message: '请假单不存在' });
+  requireRow(leave, '请假单不存在');
   if (leave.status !== 'draft') {
     if (leave.workflowInstanceId) return getBizLeave(id);
     const existingWorkflow = await findExistingLeaveWorkflow(id);
@@ -256,7 +262,7 @@ export async function submitBizLeave(id: number) {
  */
 export async function reopenBizLeave(id: number) {
   const [leave] = await db.select().from(bizLeaves).where(findOwnLeave(id)).limit(1);
-  if (!leave) throw new HTTPException(404, { message: '请假单不存在' });
+  requireRow(leave, '请假单不存在');
   if (leave.status !== 'rejected' && leave.status !== 'cancelled') {
     throw new HTTPException(400, { message: '仅已驳回或已取消的请假单可重新编辑' });
   }

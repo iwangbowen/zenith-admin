@@ -3,7 +3,6 @@ import { Form, Space, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui'
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowSchedule } from '@zenith/shared/workflow';
 import { formatDateTime } from '@/utils/date';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -21,8 +20,8 @@ import {
 } from '@/hooks/queries/workflow-schedules';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
+import { CreateButton } from '@/components/toolbar-controls';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { dateTimeColumn } from '@/utils/table-columns';
@@ -92,9 +91,6 @@ export default function WorkflowSchedulesPage() {
     definitionId: submittedParams.definitionId,
     status: submittedParams.status || undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-
   const definitionsQuery = usePublishedWorkflowDefinitions();
   const usersQuery = useAllUsers();
 
@@ -167,10 +163,6 @@ export default function WorkflowSchedulesPage() {
   const openCreate = () => { setCronExprValue(''); setModalDefinitionId(null); scheduleModal.openCreate(); };
   const openEdit = (row: WorkflowSchedule) => { setCronExprValue(row.cronExpression ?? ''); setModalDefinitionId(row.definitionId); scheduleModal.openEdit(row); };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('已删除');
-  };
 
   const handleRunOnce = async (row: WorkflowSchedule) => {
     await runMutation.mutateAsync({ params: { id: row.id } });
@@ -243,18 +235,12 @@ export default function WorkflowSchedulesPage() {
           disabled: runMutation.isPending,
           onClick: () => handleRunOnce(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canDelete,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该定时发起规则吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该定时发起规则吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
@@ -280,13 +266,6 @@ export default function WorkflowSchedulesPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   const renderCreateButton = () => canCreate ? (
     <CreateButton onClick={openCreate} />
@@ -294,38 +273,22 @@ export default function WorkflowSchedulesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        filters={(
           <>
             {renderDefinitionFilter()}
             {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
           </>
         )}
-        mobilePrimary={(
-          <>
-            {renderDefinitionFilter()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="定时规则筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable<WorkflowSchedule>
-        bordered
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        dataSource={list}
         columns={columns}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <AppModal

@@ -30,6 +30,8 @@ import logger from '../../lib/logger';
 import { notify } from '../messaging/notification-outbox.service';
 import type { WorkflowAutomationTrigger, WorkflowInstance } from '@zenith/shared/workflow';
 import { buildWhere } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 
 export function mapAutomation(row: WorkflowAutomationRow, definitionName?: string | null) {
   return {
@@ -54,8 +56,7 @@ async function ensureAutomationExists(id: number) {
   const conds = [eq(workflowAutomations.id, id)];
   if (tc) conds.push(tc);
   const [row] = await db.select().from(workflowAutomations).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '自动化规则不存在' });
-  return row;
+  return requireRow(row, '自动化规则不存在');
 }
 
 export async function getWorkflowAutomationBeforeAudit(id: number) {
@@ -83,8 +84,7 @@ async function ensureDefinitionExists(definitionId: number) {
   const conds = [eq(workflowDefinitions.id, definitionId)];
   if (tc) conds.push(tc);
   const [row] = await db.select().from(workflowDefinitions).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '流程定义不存在' });
-  return row;
+  return requireRow(row, '流程定义不存在');
 }
 
 async function ensureStartWorkflowActionTarget(definitionId: number) {
@@ -124,18 +124,19 @@ export async function listWorkflowAutomations(q: ListWorkflowAutomationsQuery) {
   if (q.trigger) conds.push(eq(workflowAutomations.trigger, q.trigger));
   if (q.status) conds.push(eq(workflowAutomations.status, q.status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowAutomations, where),
-    db.query.workflowAutomations.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowAutomations, where),
+    rows: () => db.query.workflowAutomations.findMany({
       where,
       orderBy: [asc(workflowAutomations.sort), desc(workflowAutomations.id)],
       limit: pageSize,
       offset: pageOffset(page, pageSize),
       with: { definition: { columns: { name: true } } },
     }),
-  ]);
-  const list = rows.map((r) => mapAutomation(r, r.definition?.name ?? null));
-  return { list, total, page, pageSize };
+    map: (r) => mapAutomation(r, r.definition?.name ?? null),
+  });
 }
 
 export interface ListWorkflowAutomationRunsQuery {
@@ -156,29 +157,30 @@ export async function listWorkflowAutomationRuns(q: ListWorkflowAutomationRunsQu
   if (q.instanceId) conds.push(eq(workflowAutomationRuns.instanceId, q.instanceId));
   if (q.status) conds.push(eq(workflowAutomationRuns.status, q.status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowAutomationRuns, where),
-    db.select().from(workflowAutomationRuns).where(where)
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowAutomationRuns, where),
+    rows: () => db.select().from(workflowAutomationRuns).where(where)
       .orderBy(desc(workflowAutomationRuns.id))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-  ]);
-  const list = rows.map((r) => ({
-    id: r.id,
-    ruleId: r.ruleId,
-    ruleName: r.ruleName,
-    instanceId: r.instanceId,
-    instanceTitle: r.instanceTitle,
-    trigger: r.trigger,
-    actionIndex: r.actionIndex,
-    actionType: r.actionType,
-    status: r.status as 'success' | 'failed' | 'skipped',
-    error: r.error,
-    durationMs: r.durationMs,
-    tenantId: r.tenantId,
-    createdAt: formatDateTime(r.createdAt),
-  }));
-  return { list, total, page, pageSize };
+    map: (r) => ({
+      id: r.id,
+      ruleId: r.ruleId,
+      ruleName: r.ruleName,
+      instanceId: r.instanceId,
+      instanceTitle: r.instanceTitle,
+      trigger: r.trigger,
+      actionIndex: r.actionIndex,
+      actionType: r.actionType,
+      status: r.status as 'success' | 'failed' | 'skipped',
+      error: r.error,
+      durationMs: r.durationMs,
+      tenantId: r.tenantId,
+      createdAt: formatDateTime(r.createdAt),
+    }),
+  });
 }
 
 export async function getWorkflowAutomation(id: number) {
@@ -227,8 +229,7 @@ export async function updateWorkflowAutomation(id: number, input: UpdateWorkflow
   if (input.status !== undefined) patch.status = input.status;
   if (input.sort !== undefined) patch.sort = input.sort;
   const [row] = await db.update(workflowAutomations).set(patch).where(eq(workflowAutomations.id, id)).returning();
-  if (!row) throw new HTTPException(404, { message: '自动化规则不存在' });
-  return mapAutomation(row);
+  return mapAutomation(requireRow(row, '自动化规则不存在'));
 }
 
 export async function deleteWorkflowAutomation(id: number) {

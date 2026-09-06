@@ -9,7 +9,6 @@ import {
   SideSheet,
   Space,
   Spin,
-  Tag,
   TextArea,
   Toast,
   Typography,
@@ -21,7 +20,6 @@ import { escapeHtml } from '@zenith/shared/core';
 import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared/workflow';
 import { buildWorkflowSummaryItems } from '@zenith/shared/workflow';
 import { formatDateTime } from '@/utils/date';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -52,8 +50,8 @@ import {
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
 import { useListSearch } from '@/hooks/useListSearch';
 import { WORKFLOW_TASK_STATUS_LABELS } from '@zenith/shared/workflow';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { workflowInstanceStatusColumn } from '@/components/workflow/WorkflowInstanceListColumns';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 
 const TASK_STATUS_TEXT: Record<string, string> = WORKFLOW_TASK_STATUS_LABELS;
@@ -557,10 +555,6 @@ export default function MyApplicationsPage() {
     });
   };
 
-  const handleDeleteDraft = async (id: number) => {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('已删除');
-  };
 
   const handleResubmit = async (id: number) => {
     await resubmitMutation.mutateAsync({ params: { id } });
@@ -652,16 +646,7 @@ export default function MyApplicationsPage() {
       render: renderEllipsis,
     },
     dateTimeColumn('提交时间', 'createdAt'),
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      fixed: 'right',
-      render: (v: string) => {
-        const s = INSTANCE_STATUS_MAP[v];
-        return <Tag color={s?.color ?? 'grey'}>{s?.text ?? v}</Tag>;
-      },
-    },
+    workflowInstanceStatusColumn<WorkflowInstance>(),
     createOperationColumn<WorkflowInstance>({
       // 草稿：编辑 / 提交 + 更多（删除）；已退回：修改重提 / 详情；已驳回：详情 / 重新提交
       width: 180,
@@ -679,18 +664,13 @@ export default function MyApplicationsPage() {
           hidden: record.status !== 'draft',
           onClick: () => handleSubmitDraftAction(record),
         },
-        {
+        deleteAction({
           key: 'delete-draft',
-          label: '删除',
-          danger: true,
           hidden: record.status !== 'draft',
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除此草稿吗？',
-              onOk: () => handleDeleteDraft(record.id),
-            });
-          },
-        },
+          title: '确定要删除此草稿吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '已删除',
+        }),
         {
           key: 'detail',
           label: '详情',
@@ -748,13 +728,6 @@ export default function MyApplicationsPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={() => { handleSearch(); }} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={() => { handleReset(); }} />
-  );
 
   const renderBatchWithdrawButton = () => selectedWithdrawableIds.length > 0 ? (
     <Button type="tertiary" icon={<Undo2 size={14} />} disabled={selectedWithdrawableIds.length === 0} onClick={openBatchWithdraw}>批量撤回</Button>
@@ -780,51 +753,34 @@ export default function MyApplicationsPage() {
           applySearch(next);
         }}
       />
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        filters={(
           <>
             {renderStatusFilter()}
             {renderPriorityFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderBatchWithdrawButton()}
-            {renderBatchUrgeButton()}
-            {renderCreateButton()}
           </>
         )}
-        mobilePrimary={(
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={(
           <>
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderPriorityFilter()}
-        mobileActions={(
-          <>
-            {renderResetButton()}
             {renderBatchWithdrawButton()}
             {renderBatchUrgeButton()}
           </>
         )}
         filterTitle="我的申请筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WorkflowInstance>
         columns={columns}
-        dataSource={data?.list ?? []}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
-          getCheckboxProps: (record: WorkflowInstance) => ({ disabled: record.status !== 'running' }),
-        }}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
+            getCheckboxProps: (record: WorkflowInstance) => ({ disabled: record.status !== 'running' }),
+          },
+        })}
       />
 
       {/* 申请详情 */}

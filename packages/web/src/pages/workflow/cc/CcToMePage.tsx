@@ -4,15 +4,22 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Input, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowInstance } from '@zenith/shared/workflow';
-import { KeywordSearchToolbar } from '@/components/KeywordSearchToolbar';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
-import { INSTANCE_STATUS_MAP } from '@/components/workflow/workflow-runtime';
-import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
+import { dateTimeColumn } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { KeywordInput } from '@/components/search-filters';
+import {
+  workflowDefinitionNameColumn,
+  workflowInitiatorColumn,
+  workflowInstanceStatusColumn,
+  workflowInstanceTitleColumn,
+  workflowSerialNoColumn,
+} from '@/components/workflow/WorkflowInstanceListColumns';
 import { useWorkflowSelectableUsers } from '@/hooks/queries/workflow-shared';
 import { useCcWorkflowInstances, useForwardWorkflowCc, useMarkWorkflowCcRead, workflowInstanceKeys } from '@/hooks/queries/workflow-instances';
 
@@ -28,7 +35,6 @@ export default function CcToMePage() {
   const [forwardUserIds, setForwardUserIds] = useState<number[]>([]);
   const [forwardNote, setForwardNote] = useState('');
   const listQuery = useCcWorkflowInstances({ page, pageSize, keyword: submittedKeyword || undefined });
-  const data = listQuery.data;
   const markReadMutation = useMarkWorkflowCcRead();
   const forwardMutation = useForwardWorkflowCc();
   const usersQuery = useWorkflowSelectableUsers({ enabled: forwardTarget !== null });
@@ -88,10 +94,10 @@ export default function CcToMePage() {
   };
 
   const columns: ColumnProps<WorkflowInstance>[] = [
-    { title: '申请标题', dataIndex: 'title', minWidth: 200, render: renderEllipsis },
-    { title: '业务编号', dataIndex: 'serialNo', width: 130, render: (v: string | null) => v ?? '—' },
-    { title: '流程名称', dataIndex: 'definitionName', width: 160, render: renderEllipsis },
-    { title: '发起人', dataIndex: 'initiatorName', width: 120, render: (v: string | null) => v ?? '—' },
+    workflowInstanceTitleColumn<WorkflowInstance>(),
+    workflowSerialNoColumn<WorkflowInstance>(),
+    workflowDefinitionNameColumn<WorkflowInstance>(),
+    workflowInitiatorColumn<WorkflowInstance>(),
     dateTimeColumn('抄送时间', 'ccDeliveredAt'),
     {
       title: '阅读',
@@ -99,16 +105,7 @@ export default function CcToMePage() {
       width: 80,
       render: (v: string | null) => (v ? <Tag color="grey" size="small">已读</Tag> : <Tag color="red" size="small">未读</Tag>),
     },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      fixed: 'right',
-      render: (v: string) => {
-        const s = INSTANCE_STATUS_MAP[v];
-        return <Tag color={s?.color ?? 'grey'}>{s?.text ?? v}</Tag>;
-      },
-    },
+    workflowInstanceStatusColumn<WorkflowInstance>(),
     createOperationColumn<WorkflowInstance>({
       width: 150,
       desktopInlineKeys: ['detail', 'forward'],
@@ -132,22 +129,14 @@ export default function CcToMePage() {
           void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
         }}
       />
-      <KeywordSearchToolbar
-        placeholder="搜索标题 / 流程名称"
-        value={draftKeyword}
-        onChange={setDraftKeyword}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索标题 / 流程名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />}
         onSearch={handleSearch}
         onReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WorkflowInstance>
         columns={columns}
-        dataSource={data?.list ?? []}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
       <WorkflowInstanceDetailSheet
         instanceId={selectedId}

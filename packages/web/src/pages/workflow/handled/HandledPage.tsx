@@ -3,14 +3,21 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowInstance } from '@zenith/shared/workflow';
-import { KeywordSearchToolbar } from '@/components/KeywordSearchToolbar';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
-import { INSTANCE_STATUS_MAP } from '@/components/workflow/workflow-runtime';
-import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
+import { dateTimeColumn } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { KeywordInput } from '@/components/search-filters';
+import {
+  workflowDefinitionNameColumn,
+  workflowInitiatorColumn,
+  workflowInstanceStatusColumn,
+  workflowInstanceTitleColumn,
+  workflowSerialNoColumn,
+} from '@/components/workflow/WorkflowInstanceListColumns';
 import { useHandledWorkflowInstances, workflowInstanceKeys } from '@/hooks/queries/workflow-instances';
 
 type TagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
@@ -33,7 +40,6 @@ export default function HandledPage() {
     pageSize,
     keyword: submittedKeyword || undefined,
   });
-  const data = listQuery.data;
 
   const handleSearch = () => {
     setPage(1);
@@ -54,10 +60,10 @@ export default function HandledPage() {
   };
 
   const columns: ColumnProps<WorkflowInstance>[] = [
-    { title: '申请标题', dataIndex: 'title', minWidth: 200, render: renderEllipsis },
-    { title: '业务编号', dataIndex: 'serialNo', width: 130, render: (v: string | null) => v ?? '—' },
-    { title: '流程名称', dataIndex: 'definitionName', width: 160, render: renderEllipsis },
-    { title: '发起人', dataIndex: 'initiatorName', width: 120, render: (v: string | null) => v ?? '—' },
+    workflowInstanceTitleColumn<WorkflowInstance>(),
+    workflowSerialNoColumn<WorkflowInstance>(),
+    workflowDefinitionNameColumn<WorkflowInstance>(),
+    workflowInitiatorColumn<WorkflowInstance>(),
     {
       title: '我的处理',
       dataIndex: 'myTaskStatus',
@@ -68,16 +74,7 @@ export default function HandledPage() {
       },
     },
     dateTimeColumn('处理时间', 'myActionAt'),
-    {
-      title: '流程状态',
-      dataIndex: 'status',
-      width: 100,
-      fixed: 'right',
-      render: (v: string) => {
-        const s = INSTANCE_STATUS_MAP[v];
-        return <Tag color={s?.color ?? 'grey'}>{s?.text ?? v}</Tag>;
-      },
-    },
+    workflowInstanceStatusColumn<WorkflowInstance>({ title: '流程状态' }),
     createOperationColumn<WorkflowInstance>({
       width: 100,
       desktopInlineKeys: ['detail'],
@@ -100,22 +97,14 @@ export default function HandledPage() {
           void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
         }}
       />
-      <KeywordSearchToolbar
-        placeholder="搜索标题 / 流程名称"
-        value={draftKeyword}
-        onChange={setDraftKeyword}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索标题 / 流程名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />}
         onSearch={handleSearch}
         onReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WorkflowInstance>
         columns={columns}
-        dataSource={data?.list ?? []}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
       <WorkflowInstanceDetailSheet
         instanceId={selectedId}

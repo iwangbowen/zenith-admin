@@ -20,6 +20,7 @@ import {
 import { RefreshButton } from '@/components/toolbar-controls';
 import { confirmDanger } from '@/utils/confirm';
 import { StatusSelect } from '@/components/search-filters';
+import { listTableProps } from '@/components/list-page';
 
 const STATUS: Record<string, { text: string; color: string }> = {
   pending: { text: '待修复', color: 'amber' },
@@ -46,7 +47,6 @@ export default function WorkflowCompensationsView() {
   const { page, pageSize, buildPagination } = usePagination();
   const [status, setStatus] = useState<string | undefined>('pending');
   const listQuery = useWorkflowCompensationList({ page, pageSize, status });
-  const data = listQuery.data ?? null;
   const [detailId, setDetailId] = useState<number | undefined>();
   const detailQuery = useWorkflowCompensationDetail(detailId, detailId !== undefined);
   const detail = detailQuery.data ?? null;
@@ -129,7 +129,7 @@ export default function WorkflowCompensationsView() {
           <Typography.Text type="tertiary" size="small">异常捕获 / 补偿产生的修复工单</Typography.Text>
         </Space>
       )} />
-      <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} rowKey="id" size="small" empty="暂无补偿工单" pagination={buildPagination(data?.total ?? 0)} />
+      <ConfigurableTable<WorkflowCompensation> columns={columns} {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无补偿工单' })} />
 
       <SideSheet title={`补偿工单 #${detail?.id ?? ''}`} visible={detailId !== undefined || detailLoading} onCancel={() => setDetailId(undefined)} width={520}>
         {detail && (

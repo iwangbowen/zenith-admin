@@ -13,6 +13,7 @@ import { tenantCondition } from '../../lib/tenant';
 import { buildStarterContext, resolveAdminUserId, resolveAssigneeIds } from './workflow-assignee-resolver.service';
 import { resolveFormSnapshot } from './workflow-forms.service';
 import type { SimulateWorkflowInput, WorkflowConditionGroup, WorkflowEdge, WorkflowEdgeCondition, WorkflowFlowData, WorkflowHealthCheckInput, WorkflowDefinitionHealthReport, WorkflowNodeConfig, WorkflowSimulationEdgeResult, WorkflowSimulationHealthIssue, WorkflowSimulationBlockingPoint, WorkflowSimulationNodeState, WorkflowSimulationResult, WorkflowSimulationTimelineItem, WorkflowStarterContext } from '@zenith/shared/workflow';
+import { requireRow } from '../../lib/db-assert';
 
 type SimulatedRuntimeStatus = 'pending' | 'waiting' | 'approved' | 'rejected' | 'skipped';
 type SimulationDecision = NonNullable<SimulateWorkflowInput['decisions']>[number];
@@ -71,7 +72,7 @@ async function resolveFlowData(input: SimulateWorkflowInput): Promise<WorkflowFl
   const conds = [eq(workflowDefinitions.id, definitionId)];
   if (tc) conds.push(tc);
   const [def] = await db.select().from(workflowDefinitions).where(and(...conds)).limit(1);
-  if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+  requireRow(def, '流程定义不存在');
   const flowData = def.flowData as WorkflowFlowData | null;
   if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程未配置，无法仿真' });
   return flowData;

@@ -6,6 +6,8 @@ import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import logger from '../../lib/logger';
 import type { WorkflowTaskConsult, CreateWorkflowConsultInput, ReplyWorkflowConsultInput } from '@zenith/shared/workflow';
 import { notify } from '../messaging/notification-outbox.service';
@@ -56,7 +58,7 @@ export async function loadInstanceConsultsForDetail(instanceId: number): Promise
 export async function createConsult(taskId: number, input: CreateWorkflowConsultInput): Promise<WorkflowTaskConsult[]> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, taskId)).limit(1);
-  if (!task) throw new HTTPException(404, { message: '任务不存在' });
+  requireRow(task, '任务不存在');
   if (task.assigneeId !== user.userId || task.status !== 'pending') {
     throw new HTTPException(403, { message: '只能在自己的待办任务上发起协办' });
   }
@@ -108,7 +110,7 @@ export async function createConsult(taskId: number, input: CreateWorkflowConsult
 export async function replyConsult(consultId: number, input: ReplyWorkflowConsultInput): Promise<WorkflowTaskConsult> {
   const user = currentUser();
   const [row] = await db.select().from(workflowTaskConsults).where(eq(workflowTaskConsults.id, consultId)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '协办记录不存在' });
+  requireRow(row, '协办记录不存在');
   if (row.consulteeId !== user.userId) throw new HTTPException(403, { message: '只能回复邀请给你的协办' });
   if (row.status !== 'pending') throw new HTTPException(400, { message: '该协办已处理' });
   const [updated] = await db.update(workflowTaskConsults)
@@ -162,21 +164,24 @@ export async function listMyConsults(query: { page?: number; pageSize?: number; 
   if (query.status) conds.push(eq(workflowTaskConsults.status, query.status as ConsultRow['status']));
   if (tc) conds.push(tc);
   const where = and(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowTaskConsults, where),
-    db.select({ consult: workflowTaskConsults, nodeName: workflowTasks.nodeName, instanceTitle: workflowInstances.title, serialNo: workflowInstances.serialNo })
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowTaskConsults, where),
+    rows: async () => {
+      const rows = await db.select({ consult: workflowTaskConsults, nodeName: workflowTasks.nodeName, instanceTitle: workflowInstances.title, serialNo: workflowInstances.serialNo })
       .from(workflowTaskConsults)
       .leftJoin(workflowTasks, eq(workflowTaskConsults.taskId, workflowTasks.id))
       .leftJoin(workflowInstances, eq(workflowTaskConsults.instanceId, workflowInstances.id))
       .where(where)
       .orderBy(desc(workflowTaskConsults.id))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  const names = await loadWorkflowUserDisplays(rows.map((r) => r.consult.inviterId));
-  const list = rows.map((r) => ({
-    ...mapConsult(r.consult, { nodeName: r.nodeName, inviterName: names.get(r.consult.inviterId)?.name ?? null }),
-    instanceTitle: r.instanceTitle ?? '',
-    serialNo: r.serialNo ?? null,
-  }));
-  return { list, total, page, pageSize };
+      .limit(pageSize).offset(pageOffset(page, pageSize));
+      const names = await loadWorkflowUserDisplays(rows.map((r) => r.consult.inviterId));
+      return rows.map((r) => ({
+        ...mapConsult(r.consult, { nodeName: r.nodeName, inviterName: names.get(r.consult.inviterId)?.name ?? null }),
+        instanceTitle: r.instanceTitle ?? '',
+        serialNo: r.serialNo ?? null,
+      }));
+    },
+  });
 }

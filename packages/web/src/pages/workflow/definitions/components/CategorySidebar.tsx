@@ -2,13 +2,13 @@
  * 流程定义页左侧分类侧栏
  */
 import { useState } from 'react';
-import { Button, Dropdown, Toast, Form, Input } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Form, Input } from '@douyinfe/semi-ui';
 import { MoreHorizontal, Plus, Layers, LayoutGrid, Pencil, Trash2 } from 'lucide-react';
 import type { CreateWorkflowCategoryInput, WorkflowCategory } from '@zenith/shared/workflow';
 import AppModal from '@/components/AppModal';
 import { useDeleteWorkflowCategories, useSaveWorkflowCategory } from '@/hooks/useWorkflowCategories';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 
 interface Props {
@@ -65,11 +65,17 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
     modal.openEdit(c);
   };
 
-  const handleDelete = async (c: WorkflowCategory) => {
-    await deleteMutation.mutateAsync([c.id]);
-    Toast.success('已删除');
-    if (selectedId === c.id) onSelect(null);
-    onChanged();
+  const handleDelete = (category: WorkflowCategory) => {
+    confirmAndDelete({
+      title: '确认删除该分类？',
+      content: '分类下若仍有流程将无法删除',
+      run: () => deleteMutation.mutateAsync([category.id]),
+      successMessage: '已删除',
+      onDeleted: () => {
+        if (selectedId === category.id) onSelect(null);
+        onChanged();
+      },
+    });
   };
 
   type ListItem = { id: number | null; name: string; color?: string | null };
@@ -114,13 +120,7 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
                         </Dropdown.Item>
                         <Dropdown.Item
                           type="danger"
-                          onClick={() => {
-                            confirmDelete({
-                              title: '确认删除该分类？',
-                              content: '分类下若仍有流程将无法删除',
-                              onOk: () => void handleDelete(item as WorkflowCategory),
-                            });
-                          }}
+                          onClick={() => handleDelete(item as WorkflowCategory)}
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <Trash2 size={14} /> 删除

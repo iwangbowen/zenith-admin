@@ -18,6 +18,7 @@ import { findExceptionCatchNode, mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, killInstanceTokens, loadLiveTokens } from './materialize';
 import { emitInstanceEvent, emitNodeEvent, emitTaskEvent } from './shared';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
+import { requireRow } from '../../../lib/db-assert';
 
 /**
  * Saga 反序回滚：对该实例此前所有已成功副作用节点（trigger/external/webhook），
@@ -263,7 +264,7 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
   const conds = [eq(workflowCompensations.id, id)];
   if (tc) conds.push(tc);
   const [ticket] = await db.select().from(workflowCompensations).where(and(...conds)).limit(1);
-  if (!ticket) throw new HTTPException(404, { message: '补偿工单不存在' });
+  requireRow(ticket, '补偿工单不存在');
   if (ticket.status !== 'pending') throw new HTTPException(400, { message: '工单已处理' });
   const failedNodeKey = ticket.failedNodeKey ?? ticket.nodeKey;
   const cu = currentUser();

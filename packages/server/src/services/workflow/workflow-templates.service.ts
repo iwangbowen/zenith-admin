@@ -9,6 +9,7 @@ import { formatDateTime } from '../../lib/datetime';
 import type { WorkflowTemplate, WorkflowFlowData, WorkflowFormSchema, CreateWorkflowTemplateInput, UpdateWorkflowTemplateInput, SaveAsTemplateInput } from '@zenith/shared/workflow';
 import { createDefinition } from './workflow-definitions.service';
 import { createWorkflowForm } from './workflow-forms.service';
+import { requireRow } from '../../lib/db-assert';
 
 type TemplateRow = typeof workflowTemplates.$inferSelect;
 
@@ -35,8 +36,7 @@ async function ensureTemplate(id: number): Promise<TemplateRow> {
   const conds = [eq(workflowTemplates.id, id)];
   if (tc) conds.push(tc);
   const [row] = await db.select().from(workflowTemplates).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '模板不存在' });
-  return row;
+  return requireRow(row, '模板不存在');
 }
 
 export async function listWorkflowTemplates(): Promise<WorkflowTemplate[]> {
@@ -127,7 +127,7 @@ export async function saveAsTemplate(input: SaveAsTemplateInput): Promise<Workfl
   const conds = [eq(workflowDefinitions.id, input.definitionId)];
   if (tc) conds.push(tc);
   const [def] = await db.select().from(workflowDefinitions).where(and(...conds)).limit(1);
-  if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+  requireRow(def, '流程定义不存在');
   if (def.formType !== 'designer') {
     throw new HTTPException(400, { message: '模板库暂仅支持表单库设计器流程；自定义业务表单或业务系统主导流程请使用复制流程或导出导入复用' });
   }

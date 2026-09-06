@@ -11,7 +11,6 @@ import { Send } from 'lucide-react';
 import dayjs from 'dayjs';
 import { BIZ_LEAVE_TYPES, type BizLeave, type CreateBizLeaveInput } from '@zenith/shared/biz';
 import { enumValueOf } from '@zenith/shared/core';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -26,9 +25,9 @@ import {
   useSaveBizLeave,
   useSubmitBizLeave,
 } from '@/hooks/queries/biz-leave';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 
@@ -67,8 +66,6 @@ export default function LeavePage() {
     keyword: submittedParams.keyword.trim() || undefined,
     status: submittedParams.status || undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const saveMutation = useSaveBizLeave();
   const saveForApprovalMutation = useSaveBizLeave();
   const submitApprovalMutation = useSubmitBizLeave();
@@ -143,10 +140,6 @@ export default function LeavePage() {
     modal.close();
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('已删除');
-  };
 
   const handleSubmitApproval = async (id: number) => {
     await submitFromListMutation.mutateAsync({ params: { id } });
@@ -216,18 +209,12 @@ export default function LeavePage() {
             });
           },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: record.status !== 'draft',
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定删除吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
@@ -244,45 +231,23 @@ export default function LeavePage() {
     />
   );
 
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => <CreateButton onClick={openCreate}>新建请假</CreateButton>;
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="请假筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<BizLeave>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
         columnSettingsKey="biz-leave"
-        pagination={buildPagination(total)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <Modal

@@ -10,7 +10,6 @@ import { WORKFLOW_ISSUE_SEVERITY_META as ISSUE_SEVERITY_MAP } from './constants'
 import { downloadBlob } from '@/utils/download';
 import { UserAvatar } from '@/components/UserAvatar';
 import AppModal from '@/components/AppModal';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import WorkflowPriorityTag, { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
@@ -58,9 +57,11 @@ import {
   workflowMonitorKeys,
 } from '@/hooks/queries/workflow-monitor';
 import { useAllUsers } from '@/hooks/queries/users';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { workflowInstanceStatusColumn } from '@/components/workflow/WorkflowInstanceListColumns';
+import { confirmDanger } from '@/utils/confirm';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 /** 只读流程设计器（懒加载）：用于在诊断 SideSheet 内查看发起时的流程定义快照 */
@@ -540,18 +541,6 @@ export default function WorkflowMonitorPage() {
     });
   };
 
-  const handleDelete = (record: WorkflowInstanceListItem) => {
-    confirmDelete({
-      title: '删除流程',
-      content: `确定要删除流程「${record.title}」吗？删除后该流程及其审批记录将被永久移除，此操作不可恢复。`,
-      okText: '确定删除',
-      cancelText: '取消',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id: record.id } });
-        Toast.success('流程已删除');
-      },
-    });
-  };
 
   const stats = data?.stats ?? { total: 0, running: 0, suspended: 0, returned: 0, approved: 0, rejected: 0, withdrawn: 0, cancelled: 0 };
   // 首次加载完成前显示占位符，避免统计短暂闪现误导性的 0
@@ -1013,16 +1002,7 @@ export default function WorkflowMonitorPage() {
         return <span style={{ color: 'var(--semi-color-text-1)' }}>{formatDuration(record.createdAt, end)}</span>;
       },
     },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      fixed: 'right',
-      render: (v: string) => {
-        const s = INSTANCE_STATUS_MAP[v];
-        return <Tag color={s?.color ?? 'grey'}>{s?.text ?? v}</Tag>;
-      },
-    },
+    workflowInstanceStatusColumn<WorkflowInstanceListItem>(),
     createOperationColumn<WorkflowInstanceListItem>({
       width: 180,
       desktopInlineKeys: ['detail', 'diagnostics'],
@@ -1061,13 +1041,14 @@ export default function WorkflowMonitorPage() {
             hidden: !canCancel,
             onClick: () => handleCancel(record),
           },
-          {
-            key: 'delete',
-            label: '删除',
-            danger: true,
+          deleteAction({
             hidden: !canDelete,
-            onClick: () => handleDelete(record),
-          },
+            title: '删除流程',
+            content: `确定要删除流程「${record.title}」吗？删除后该流程及其审批记录将被永久移除，此操作不可恢复。`,
+            okText: '确定删除',
+            run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+            successMessage: '流程已删除',
+          }),
         ];
       },
     }),
@@ -1129,13 +1110,6 @@ export default function WorkflowMonitorPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   const buildExportQuery = () => {
     const { keyword, status, categoryId, definitionId, initiator, priority } = draftParams;
@@ -1184,28 +1158,9 @@ export default function WorkflowMonitorPage() {
           applySearch(next);
         }}
       />
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderCategoryFilter()}
-            {renderDefinitionFilter()}
-            {renderInitiatorFilter()}
-            {renderStatusFilter()}
-            {renderPriorityFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderExportButton()}
-            {renderHandoverButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderCategoryFilter()}
             {renderDefinitionFilter()}
@@ -1214,27 +1169,20 @@ export default function WorkflowMonitorPage() {
             {renderPriorityFilter()}
           </>
         )}
-        mobileActions={(
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={(
           <>
-            {renderResetButton()}
             {renderExportButton()}
             {renderHandoverButton()}
           </>
         )}
         filterTitle="实例监控筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WorkflowInstanceListItem>
         columns={columns}
-        dataSource={data?.list ?? []}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
         </TabPane>
         <TabPane tab="任务监控" itemKey="tasks">

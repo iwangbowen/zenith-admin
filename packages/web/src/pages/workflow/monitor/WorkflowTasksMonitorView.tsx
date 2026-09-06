@@ -10,10 +10,8 @@ import { Search } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import { WORKFLOW_TASK_MONITOR_NODE_TYPES, WORKFLOW_TASK_STATUSES, workflowTaskContract, type WorkflowTaskMonitorItem } from '@zenith/shared/workflow';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import {
   WORKFLOW_TASK_NODE_TYPE_OPTIONS,
   taskAssigneeColumn, taskCommentColumn, taskIdColumn, taskNodeColumn, taskStatusColumn, taskStayDurationColumn,
@@ -26,6 +24,7 @@ import { useApiMutation } from '@/lib/contract-query';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { FilterSelect } from '@/components/search-filters';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const STUCK_OPTIONS = [
   { value: 30, label: '停留 > 30 分钟' },
@@ -149,58 +148,58 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
         <StatCard title="已跳过" value={statValue(stats.skipped ?? 0)} accent="#8b5cf6" onClick={() => handleStatCardClick('skipped')} active={draftParams.status === 'skipped'} />
       </StatGrid>
 
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="流程名称 / 申请标题"
-          value={draftParams.keyword}
-          onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))}
-          showClear
-          style={{ width: 200 }}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-        />
-        <Input
-          placeholder="审批人"
-          value={draftParams.assigneeKeyword}
-          onChange={(v) => setDraftParams((prev) => ({ ...prev, assigneeKeyword: v }))}
-          showClear
-          style={{ width: 130 }}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-        />
-        <FilterSelect
-          placeholder="全部节点类型"
-          items={WORKFLOW_TASK_NODE_TYPE_OPTIONS}
-          value={draftParams.nodeType}
-          onChange={(v) => setDraftParams((prev) => ({ ...prev, nodeType: v }))}
-          width={140}
-        />
-        <FilterSelect
-          placeholder="全部停留时长"
-          items={STUCK_OPTIONS}
-          value={draftParams.stuckMinutes}
-          onChange={(v) => setDraftParams((prev) => ({ ...prev, stuckMinutes: v as number | undefined }))}
-          width={150}
-        />
-        <DatePicker
-          type="dateTimeRange"
-          placeholder={['创建时间起', '创建时间止']}
-          value={draftParams.createdRange}
-          onChange={(v) => setDraftParams((prev) => ({ ...prev, createdRange: Array.isArray(v) ? (v as Date[]) : undefined }))}
-          style={{ width: 360 }}
-        />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={(
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="流程名称 / 申请标题"
+            value={draftParams.keyword}
+            onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))}
+            showClear
+            style={{ width: 200 }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+          />
+        )}
+        filters={(
+          <>
+            <Input
+              placeholder="审批人"
+              value={draftParams.assigneeKeyword}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, assigneeKeyword: v }))}
+              showClear
+              style={{ width: 130 }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+            />
+            <FilterSelect
+              placeholder="全部节点类型"
+              items={WORKFLOW_TASK_NODE_TYPE_OPTIONS}
+              value={draftParams.nodeType}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, nodeType: v }))}
+              width={140}
+            />
+            <FilterSelect
+              placeholder="全部停留时长"
+              items={STUCK_OPTIONS}
+              value={draftParams.stuckMinutes}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, stuckMinutes: v as number | undefined }))}
+              width={150}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={['创建时间起', '创建时间止']}
+              value={draftParams.createdRange}
+              onChange={(v) => setDraftParams((prev) => ({ ...prev, createdRange: Array.isArray(v) ? (v as Date[]) : undefined }))}
+              style={{ width: 360 }}
+            />
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+      />
 
       <ConfigurableTable<WorkflowTaskMonitorItem>
-        bordered
-        loading={listQuery.isFetching}
-        rowKey="id"
-        dataSource={data?.list ?? []}
         columns={columns}
-        pagination={buildPagination(data?.total ?? 0)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
     </>
   );

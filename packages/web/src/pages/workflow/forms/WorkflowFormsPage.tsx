@@ -7,7 +7,6 @@ import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { useListSearch } from '@/hooks/useListSearch';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import {
@@ -16,9 +15,9 @@ import {
   useWorkflowFormList,
   workflowFormKeys,
 } from '@/hooks/queries/workflow-forms';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { dateTimeColumn } from '@/utils/table-columns';
 
 type StatusFilter = WorkflowFormStatus | undefined;
@@ -58,7 +57,6 @@ export default function WorkflowFormsPage() {
     status: submittedParams.status || undefined,
     categoryId: submittedParams.categoryId,
   });
-  const data = listQuery.data ?? null;
   const deleteMutation = useDeleteWorkflowForm();
   const duplicateMutation = useDuplicateWorkflowForm();
 
@@ -72,14 +70,6 @@ export default function WorkflowFormsPage() {
     [categories],
   );
 
-  const handleDelete = async (id: number) => {
-    try {
-      await deleteMutation.mutateAsync({ params: { id } });
-      Toast.success('删除成功');
-    } catch (err) {
-      Toast.error(err instanceof Error ? err.message : '删除失败');
-    }
-  };
 
   const handleDuplicate = async (id: number) => {
     try {
@@ -156,20 +146,13 @@ export default function WorkflowFormsPage() {
           hidden: !hasPermission('workflow:form:create'),
           onClick: () => void handleDuplicate(record.id),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('workflow:form:delete'),
           disabled: (record.usageCount ?? 0) > 0,
           disabledReason: `该表单正被 ${record.usageCount} 个流程引用，解除引用后才能删除`,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该表单吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该表单吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -196,13 +179,6 @@ export default function WorkflowFormsPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   const renderCreateButton = () => hasPermission('workflow:form:create') ? (
     <CreateButton onClick={() => navigate('/workflow/forms/designer')}>新建表单</CreateButton>
@@ -210,44 +186,23 @@ export default function WorkflowFormsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderCategoryFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={(
           <>
             {renderStatusFilter()}
             {renderCategoryFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="表单筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable<WorkflowForm>
-        bordered
         columns={columns}
-        dataSource={data?.list ?? []}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
     </div>
   );

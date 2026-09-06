@@ -19,6 +19,8 @@ import { loadInstanceCommentsForDetail } from '../workflow-comments.service';
 import { loadInstanceConsultsForDetail } from '../workflow-consults.service';
 import { loadInstanceTransfersByTask } from './transfers';
 import { mapInstance, mapTask } from './mapping';
+import { buildListResult } from '../../../lib/list-query';
+import { requireRow } from '../../../lib/db-assert';
 
 type InstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn';
 
@@ -89,9 +91,12 @@ export async function listMyInstances(query: { page?: number; pageSize?: number;
   if (priority) conditions.push(eq(workflowInstances.priority, priority));
   if (definitionId !== undefined) conditions.push(eq(workflowInstances.definitionId, definitionId));
   const where = and(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowInstances, where),
-    db.query.workflowInstances.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowInstances, where),
+    rows: async () => {
+      const rows = await db.query.workflowInstances.findMany({
       where,
       with: {
         definition: { columns: { name: true } },
@@ -100,18 +105,16 @@ export async function listMyInstances(query: { page?: number; pageSize?: number;
       orderBy: [priorityRankOrder, desc(workflowInstances.id)],
       limit: pageSize,
       offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.id));
-  return {
-    list: rows.map((r) => mapInstance(r, {
-      definitionName: r.definition?.name ?? null,
-      initiatorName: r.initiator?.nickname ?? null,
-      initiatorAvatar: r.initiator?.avatar ?? null,
-      currentNodeKeys: activeNodeKeys.get(r.id),
-    })),
-    total, page, pageSize,
-  };
+      });
+      const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.id));
+      return rows.map((r) => mapInstance(r, {
+        definitionName: r.definition?.name ?? null,
+        initiatorName: r.initiator?.nickname ?? null,
+        initiatorAvatar: r.initiator?.avatar ?? null,
+        currentNodeKeys: activeNodeKeys.get(r.id),
+      }));
+    },
+  });
 }
 
 type SlaTimeoutInput = { enabled?: boolean; duration?: number; unit?: 'minutes' | 'hours' | 'days' } | null | undefined;
@@ -442,7 +445,7 @@ export async function getInstanceDetail(id: number) {
   const tc = tenantCondition(workflowInstances, user);
   const conditions = [eq(workflowInstances.id, id)];
   if (tc) conditions.push(tc);
-  const row = await db.query.workflowInstances.findFirst({
+  const row = requireRow(await db.query.workflowInstances.findFirst({
     where: and(...conditions),
     with: {
       definition: { columns: { name: true } },
@@ -452,8 +455,7 @@ export async function getInstanceDetail(id: number) {
         orderBy: workflowTasks.id,
       },
     },
-  });
-  if (!row) throw new HTTPException(404, { message: '流程实例不存在' });
+  }), '流程实例不存在');
   const isInitiator = row.initiatorId === user.userId;
   const isAssignee = row.tasks.some((t) => t.assigneeId === user.userId);
   // 流程监控管理员（workflow:instance:monitor）可查看租户可见范围内的任意实例详情，

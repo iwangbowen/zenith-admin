@@ -3,7 +3,6 @@
  * 取代设计器仿真抽屉原先的 localStorage 占位，落库 + 租户隔离 + 重名覆盖（按 definitionId + name 唯一）。
  */
 import { and, desc, eq, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { workflowSimulationCases, workflowDefinitions } from '../../db/schema';
 import type { WorkflowSimulationCaseRow } from '../../db/schema';
@@ -12,6 +11,7 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { WorkflowSimulationCase, WorkflowSimulationDecision, SaveWorkflowSimulationCaseInput } from '@zenith/shared/workflow';
+import { requireRow } from '../../lib/db-assert';
 
 function mapCase(row: WorkflowSimulationCaseRow): WorkflowSimulationCase {
   return {
@@ -35,7 +35,7 @@ async function ensureDefinitionAccess(definitionId: number): Promise<void> {
   const conds: SQL[] = [eq(workflowDefinitions.id, definitionId)];
   if (tc) conds.push(tc);
   const [def] = await db.select({ id: workflowDefinitions.id }).from(workflowDefinitions).where(and(...conds)).limit(1);
-  if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+  requireRow(def, '流程定义不存在');
 }
 
 export async function listSimulationCases(definitionId: number): Promise<WorkflowSimulationCase[]> {
@@ -82,6 +82,6 @@ export async function deleteSimulationCase(id: number): Promise<void> {
   const conds: SQL[] = [eq(workflowSimulationCases.id, id)];
   if (tc) conds.push(tc);
   const [row] = await db.select({ id: workflowSimulationCases.id }).from(workflowSimulationCases).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '仿真用例不存在' });
+  requireRow(row, '仿真用例不存在');
   await db.delete(workflowSimulationCases).where(eq(workflowSimulationCases.id, row.id));
 }

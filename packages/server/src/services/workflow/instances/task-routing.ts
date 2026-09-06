@@ -15,6 +15,7 @@ import { loadTaskHandledUserIds, recordTaskTransfer, assertAssigneesNotActiveOnN
 import logger from '../../../lib/logger';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fill-task.service';
+import { requireRow } from '../../../lib/db-assert';
 
 /** 转办：将当前任务的处理人改为目标用户 */
 export async function transferTask(taskId: number, targetUserId: number, comment?: string, attachments?: WorkflowTaskAttachment[]) {
@@ -32,7 +33,7 @@ export async function transferTask(taskId: number, targetUserId: number, comment
   }
   const [target] = await db.select({ id: users.id, nickname: users.nickname })
     .from(users).where(eq(users.id, targetUserId)).limit(1);
-  if (!target) throw new HTTPException(400, { message: '转办人不存在' });
+  requireRow(target, '转办人不存在', 400);
   const transferSuffix = comment ? `：${comment}` : '';
   const transferComment = `[转办] 由 ${actor.name ?? '系统'} 转办${transferSuffix}`;
   // 事务 + 实例行级锁：任务改派、转办留痕与事件 outbox 原子提交，并与同实例的审批/加减签等并发操作串行化
@@ -56,7 +57,7 @@ export async function transferTask(taskId: number, targetUserId: number, comment
       })
       .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')))
       .returning();
-    if (!row) throw new HTTPException(409, { message: '任务状态已变化，无法转办' });
+    requireRow(row, '任务状态已变化，无法转办', 409);
     await recordTaskTransfer(tx, {
       taskId: task.id, instanceId: inst.id, fromUserId: task.assigneeId, toUserId: targetUserId,
       action: 'transfer', reason: comment ?? null, operatorId: actor.userId, tenantId: inst.tenantId,
@@ -122,7 +123,7 @@ export async function delegateTask(taskId: number, targetUserId: number, comment
   }
   const [target] = await db.select({ id: users.id, nickname: users.nickname })
     .from(users).where(eq(users.id, targetUserId)).limit(1);
-  if (!target) throw new HTTPException(400, { message: '委派人不存在' });
+  requireRow(target, '委派人不存在', 400);
   const delegateSuffix = comment ? `：${comment}` : '';
   const delegateComment = `[委派] 由 ${actor.name ?? '系统'} 委派${delegateSuffix}`;
   // delegatedFromId 仅在首次委派时设置（保留最原始的委派人，以便回执时返还）
@@ -151,7 +152,7 @@ export async function delegateTask(taskId: number, targetUserId: number, comment
       })
       .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')))
       .returning();
-    if (!row) throw new HTTPException(409, { message: '任务状态已变化，无法委派' });
+    requireRow(row, '任务状态已变化，无法委派', 409);
     await recordTaskTransfer(tx, {
       taskId: task.id, instanceId: inst.id, fromUserId: task.assigneeId, toUserId: targetUserId,
       action: 'delegate', reason: comment ?? null, operatorId: actor.userId, tenantId: inst.tenantId,

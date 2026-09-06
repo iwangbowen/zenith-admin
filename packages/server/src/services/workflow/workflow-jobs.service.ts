@@ -1,5 +1,4 @@
 import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, lte, max, type SQL } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowDefinitions, systemSchedulerNodes } from '../../db/schema';
 import type { WorkflowJobRow, WorkflowJobExecutionRow } from '../../db/schema';
@@ -7,6 +6,8 @@ import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { retryJob, skipJob, STUCK_RUNNING_GRACE_MS } from '../../lib/workflow-jobs';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 
 export interface ListWorkflowJobsQuery {
   page?: number;
@@ -74,9 +75,11 @@ export async function listWorkflowJobs(query: ListWorkflowJobsQuery) {
   conds.push(keywordCondition(query.keyword, [workflowJobs.idempotencyKey, workflowJobs.traceId, workflowJobs.nodeKey], 'ilike'));
   const where = buildWhere(...conds);
 
-  const [total, rows] = await Promise.all([
-    db.$count(workflowJobs, where),
-    db.select({ job: workflowJobs, instanceTitle: workflowInstances.title, definitionName: workflowDefinitions.name })
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowJobs, where),
+    rows: () => db.select({ job: workflowJobs, instanceTitle: workflowInstances.title, definitionName: workflowDefinitions.name })
       .from(workflowJobs)
       .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
       .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
@@ -84,9 +87,8 @@ export async function listWorkflowJobs(query: ListWorkflowJobsQuery) {
       .orderBy(desc(workflowJobs.id))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-  ]);
-
-  return { list: rows.map((r) => mapJob(r.job, { instanceTitle: r.instanceTitle, definitionName: r.definitionName })), total, page, pageSize };
+    map: (r) => mapJob(r.job, { instanceTitle: r.instanceTitle, definitionName: r.definitionName }),
+  });
 }
 
 export async function getWorkflowJobDetail(id: number) {
@@ -96,7 +98,7 @@ export async function getWorkflowJobDetail(id: number) {
     .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
     .where(eq(workflowJobs.id, id))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '作业不存在' });
+  requireRow(row, '作业不存在');
   const execs = await db.select().from(workflowJobExecutions)
     .where(eq(workflowJobExecutions.jobId, id))
     .orderBy(desc(workflowJobExecutions.id));
@@ -147,14 +149,12 @@ export async function getWorkflowJobChain(traceId: string) {
 
 export async function retryWorkflowJob(id: number, payload?: Record<string, unknown>) {
   const row = await retryJob(id, payload ? { payload } : undefined);
-  if (!row) throw new HTTPException(400, { message: '仅失败 / 死信 / 已取消的作业可重试' });
-  return mapJob(row);
+  return mapJob(requireRow(row, '仅失败 / 死信 / 已取消的作业可重试', 400));
 }
 
 export async function skipWorkflowJob(id: number) {
   const row = await skipJob(id);
-  if (!row) throw new HTTPException(400, { message: '仅待处理 / 失败 / 死信的作业可跳过' });
-  return mapJob(row);
+  return mapJob(requireRow(row, '仅待处理 / 失败 / 死信的作业可跳过', 400));
 }
 
 export interface WorkflowJobBatchResult {

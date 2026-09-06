@@ -13,12 +13,12 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag/interface';
 import { Plus, Trash2 } from 'lucide-react';
 import type { WorkflowAutomation, WorkflowAutomationAction, WorkflowAutomationRun, WorkflowAutomationTrigger, WorkflowDefinition } from '@zenith/shared/workflow';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePagination } from '@/hooks/usePagination';
 import {
   useDeleteWorkflowAutomations,
   useSaveWorkflowAutomation,
@@ -27,8 +27,8 @@ import {
   useWorkflowAutomationRunList,
   workflowAutomationKeys,
 } from '@/hooks/queries/workflow-automations';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
+import { CreateButton } from '@/components/toolbar-controls';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -114,10 +114,8 @@ const RUN_STATUS_META: Record<WorkflowAutomationRun['status'], { label: string; 
 
 /** 单条规则的动作执行记录抽屉 */
 function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | null; onClose: () => void }) {
-  const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const { page, pageSize, buildPagination } = usePagination(20);
   const runsQuery = useWorkflowAutomationRunList({ ruleId: rule?.id, page, pageSize }, !!rule);
-  const list = runsQuery.data?.list ?? [];
   const total = runsQuery.data?.total ?? 0;
 
   const columns: ColumnProps<WorkflowAutomationRun>[] = [
@@ -168,11 +166,8 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
         <Empty description="暂无执行记录，规则触发后会在这里留痕" style={{ marginTop: 80 }} />
       ) : (
         <ConfigurableTable<WorkflowAutomationRun>
-          rowKey="id"
-          loading={runsQuery.isFetching}
-          dataSource={list}
           columns={columns}
-          pagination={{ currentPage: page, pageSize, total, onPageChange: setPage }}
+          {...listTableProps(runsQuery, { pagination: buildPagination })}
         />
       )}
     </SideSheet>
@@ -328,9 +323,6 @@ export default function WorkflowAutomationsPage() {
     trigger: submittedParams.trigger || undefined,
     status: submittedParams.status || undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-
   const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 });
   const defs: WorkflowDefinition[] = useMemo(() => definitionsQuery.data?.list ?? [], [definitionsQuery.data]);
 
@@ -399,10 +391,6 @@ export default function WorkflowAutomationsPage() {
     automationModal.openEdit(row);
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('已删除');
-  };
 
   const defOptions = useMemo(
     () => defs
@@ -455,18 +443,12 @@ export default function WorkflowAutomationsPage() {
           hidden: !canEditAutomation,
           onClick: () => openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canEditAutomation,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该规则吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该规则吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];
@@ -499,13 +481,6 @@ export default function WorkflowAutomationsPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   const renderCreateButton = () => canEditAutomation ? (
     <CreateButton onClick={openCreate} />
@@ -513,44 +488,23 @@ export default function WorkflowAutomationsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        filters={(
           <>
             {renderDefinitionFilter()}
             {renderTriggerFilter()}
             {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
           </>
         )}
-        mobilePrimary={(
-          <>
-            {renderDefinitionFilter()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={(
-          <>
-            {renderTriggerFilter()}
-            {renderStatusFilter()}
-          </>
-        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="自动化规则筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable<WorkflowAutomation>
-        bordered
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        dataSource={list}
         columns={columns}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <SideSheet

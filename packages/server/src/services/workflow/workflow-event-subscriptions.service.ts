@@ -9,11 +9,13 @@ import {
 } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
-import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { inheritedTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
 import { assertSafeWorkflowUrl, workflowHttpPost } from '../../lib/workflow-outbound';
 import { signHmac } from '../../lib/workflow-jobs/handlers/shared';
@@ -81,8 +83,7 @@ export async function ensureSubscriptionExists(id: number) {
   const conds = [eq(workflowEventSubscriptions.id, id)];
   if (tc) conds.push(tc);
   const [row] = await db.select().from(workflowEventSubscriptions).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '事件订阅不存在' });
-  return row;
+  return requireRow(row, '事件订阅不存在');
 }
 
 export interface ListSubscriptionsQuery {
@@ -105,9 +106,11 @@ export async function listSubscriptions(q: ListSubscriptionsQuery) {
   }
   if (q.enabled !== undefined) conds.push(eq(workflowEventSubscriptions.enabled, q.enabled));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowEventSubscriptions, where),
-    db.select({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowEventSubscriptions, where),
+    rows: () => db.select({
       sub: workflowEventSubscriptions,
       definitionName: workflowDefinitions.name,
     }).from(workflowEventSubscriptions)
@@ -115,8 +118,8 @@ export async function listSubscriptions(q: ListSubscriptionsQuery) {
       .where(where)
       .orderBy(desc(workflowEventSubscriptions.id))
       .limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map((r) => mapSubscription(r.sub, r.definitionName)), total, page, pageSize };
+    map: (r) => mapSubscription(r.sub, r.definitionName),
+  });
 }
 
 export async function getSubscription(id: number) {
@@ -208,8 +211,7 @@ export async function updateSubscription(id: number, input: Partial<UpsertSubscr
   if (input.enabled !== undefined) patch.enabled = input.enabled;
   try {
     const [row] = await db.update(workflowEventSubscriptions).set(patch).where(and(...conds)).returning();
-    if (!row) throw new HTTPException(404, { message: '事件订阅不存在' });
-    return mapSubscription(row);
+    return mapSubscription(requireRow(row, '事件订阅不存在'));
   } catch (err) {
     if (err instanceof HTTPException) throw err;
     rethrowPgUniqueViolation(err, '订阅名称已存在');
@@ -237,9 +239,7 @@ export async function findMatchingSubscriptions(params: {
   tenantId: number | null;
 }) {
   const { definitionId, eventType, tenantId } = params;
-  const tenantCond = tenantId === null
-    ? isNull(workflowEventSubscriptions.tenantId)
-    : or(isNull(workflowEventSubscriptions.tenantId), eq(workflowEventSubscriptions.tenantId, tenantId))!;
+  const tenantCond = inheritedTenantCondition(workflowEventSubscriptions.tenantId, tenantId);
   const defCond = or(isNull(workflowEventSubscriptions.definitionId), eq(workflowEventSubscriptions.definitionId, definitionId))!;
   const rows = await db.select().from(workflowEventSubscriptions).where(and(
     eq(workflowEventSubscriptions.enabled, true),
@@ -365,8 +365,7 @@ export async function getDelivery(id: number) {
     .leftJoin(workflowEventSubscriptions, sql`(${workflowJobs.payload}->>'subscriptionId')::int = ${workflowEventSubscriptions.id}`)
     .where(and(...conds))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '投递记录不存在' });
-  return mapDelivery(row);
+  return mapDelivery(requireRow(row, '投递记录不存在'));
 }
 
 export async function getDeliveryBeforeAudit(id: number) {
@@ -475,7 +474,7 @@ export async function retryDelivery(id: number) {
     .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
     .where(and(...conds))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '投递记录不存在' });
+  requireRow(row, '投递记录不存在');
   await db.update(workflowJobs).set({ status: 'pending', runAt: new Date(), lastError: null }).where(eq(workflowJobs.id, row.jobId));
   return getDelivery(id);
 }

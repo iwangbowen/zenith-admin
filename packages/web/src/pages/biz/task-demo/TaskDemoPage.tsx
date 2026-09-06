@@ -20,6 +20,7 @@ import { ASYNC_TASK_STATUS_TAG_MAP as statusTagMap, ASYNC_TASK_ITEM_STATUS_TAG_M
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useBizTaskDemoAction, useBizTaskDemoItems, useBizTaskDemoTypes, useSubmitTaskDemo } from '@/hooks/queries/biz-pay-demo';
 import { JsonBlock } from '@/components/JsonBlock';
+import { listTableProps } from '@/components/list-page';
 
 const DEMO_TASK_TYPES = ['demo-batch', 'demo-serial'];
 
@@ -97,8 +98,6 @@ export default function TaskDemoPage() {
     page: itemsPage,
     pageSize: itemsPageSize,
   }, !!itemsTask);
-  const items = itemsQuery.data?.list ?? [];
-  const itemsTotal = itemsQuery.data?.total ?? 0;
   const submitMutation = useSubmitTaskDemo();
   const cancelMutation = useBizTaskDemoAction('cancel');
   const resumeMutation = useBizTaskDemoAction('resume');
@@ -291,17 +290,9 @@ export default function TaskDemoPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<AsyncTask>
         columns={columns}
-        dataSource={tasks}
-        loading={loading}
-        onRefresh={() => void refresh()}
-        refreshLoading={loading}
-        pagination={false}
-        rowKey="id"
-        size="small"
-        empty="暂无任务，先在上方提交一个演示任务"
+        {...listTableProps({ data: tasks, isFetching: loading, refetch: refresh }, { empty: '暂无任务，先在上方提交一个演示任务' })}
       />
 
       <Collapse style={{ marginTop: 16 }}>
@@ -320,18 +311,10 @@ export default function TaskDemoPage() {
         width={680}
       >
         {itemsTask && (
-          <ConfigurableTable
-            bordered
+          <ConfigurableTable<AsyncTaskItem>
             columns={itemColumns}
-            dataSource={items}
-            loading={itemsQuery.isFetching}
-            pagination={buildItemsPagination(itemsTotal)}
-            onRefresh={() => void itemsQuery.refetch()}
-            refreshLoading={itemsQuery.isFetching}
-            rowKey="id"
-            size="small"
-            empty="该任务尚未上报行级明细"
             scroll={{ x: 640 }}
+            {...listTableProps(itemsQuery, { pagination: buildItemsPagination, empty: '该任务尚未上报行级明细' })}
           />
         )}
       </SideSheet>

@@ -17,6 +17,8 @@ import logger from '../../lib/logger';
 import { createInstance } from './workflow-instances.service';
 import type { WorkflowSchedule, CreateWorkflowScheduleInput, UpdateWorkflowScheduleInput } from '@zenith/shared/workflow';
 import { buildWhere } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 
 type Row = typeof workflowSchedules.$inferSelect;
 
@@ -70,7 +72,7 @@ async function ensureScheduleDefinitionLaunchable(definitionId: number): Promise
     .from(workflowDefinitions)
     .where(and(...conds))
     .limit(1);
-  if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+  requireRow(def, '流程定义不存在');
   if (def.formType === 'external') {
     throw new HTTPException(400, { message: '业务系统主导流程不能配置定时发起，请由业务模块按业务规则发起' });
   }
@@ -85,9 +87,11 @@ export async function listSchedules(query: { page?: number; pageSize?: number; d
   if (definitionId) conds.push(eq(workflowSchedules.definitionId, definitionId));
   if (status) conds.push(eq(workflowSchedules.status, status as 'enabled' | 'disabled'));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowSchedules, where),
-    db.select({ row: workflowSchedules, definitionName: workflowDefinitions.name, initiatorName: users.nickname })
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowSchedules, where),
+    rows: () => db.select({ row: workflowSchedules, definitionName: workflowDefinitions.name, initiatorName: users.nickname })
       .from(workflowSchedules)
       .leftJoin(workflowDefinitions, eq(workflowSchedules.definitionId, workflowDefinitions.id))
       .leftJoin(users, eq(workflowSchedules.initiatorId, users.id))
@@ -95,8 +99,8 @@ export async function listSchedules(query: { page?: number; pageSize?: number; d
       .orderBy(desc(workflowSchedules.id))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map((r) => mapSchedule(r.row, { definitionName: r.definitionName, initiatorName: r.initiatorName })), total, page, pageSize };
+    map: (r) => mapSchedule(r.row, { definitionName: r.definitionName, initiatorName: r.initiatorName }),
+  });
 }
 
 async function loadScheduleWithNames(id: number): Promise<WorkflowSchedule> {
@@ -106,7 +110,7 @@ async function loadScheduleWithNames(id: number): Promise<WorkflowSchedule> {
     .leftJoin(users, eq(workflowSchedules.initiatorId, users.id))
     .where(eq(workflowSchedules.id, id))
     .limit(1);
-  if (!r) throw new HTTPException(404, { message: '定时规则不存在' });
+  requireRow(r, '定时规则不存在');
   return mapSchedule(r.row, { definitionName: r.definitionName, initiatorName: r.initiatorName });
 }
 
@@ -143,7 +147,7 @@ export async function updateSchedule(id: number, input: UpdateWorkflowScheduleIn
   const conds = [eq(workflowSchedules.id, id)];
   if (tc) conds.push(tc);
   const [existing] = await db.select().from(workflowSchedules).where(and(...conds)).limit(1);
-  if (!existing) throw new HTTPException(404, { message: '定时规则不存在' });
+  requireRow(existing, '定时规则不存在');
   const patch: Partial<typeof workflowSchedules.$inferInsert> = {};
   if (input.definitionId !== undefined) {
     await ensureScheduleDefinitionLaunchable(input.definitionId);
@@ -174,7 +178,7 @@ export async function deleteSchedule(id: number): Promise<void> {
   const conds = [eq(workflowSchedules.id, id)];
   if (tc) conds.push(tc);
   const [existing] = await db.select({ id: workflowSchedules.id }).from(workflowSchedules).where(and(...conds)).limit(1);
-  if (!existing) throw new HTTPException(404, { message: '定时规则不存在' });
+  requireRow(existing, '定时规则不存在');
   await db.delete(workflowSchedules).where(eq(workflowSchedules.id, id));
 }
 
@@ -184,7 +188,7 @@ export async function runScheduleNow(id: number): Promise<WorkflowSchedule> {
   const conds = [eq(workflowSchedules.id, id)];
   if (tc) conds.push(tc);
   const [s] = await db.select().from(workflowSchedules).where(and(...conds)).limit(1);
-  if (!s) throw new HTTPException(404, { message: '定时规则不存在' });
+  requireRow(s, '定时规则不存在');
   await fireSchedule(s);
   return loadScheduleWithNames(id);
 }

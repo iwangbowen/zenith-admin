@@ -12,6 +12,7 @@ import { tenantCondition } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { listSelectableApprovers, resolveAssigneeIds } from './workflow-assignee-resolver.service';
 import type { WorkflowFlowData, WorkflowApproverPreviewNode } from '@zenith/shared/workflow';
+import { requireRow } from '../../lib/db-assert';
 
 const APPROVER_TYPES = new Set(['approve', 'handler']);
 const INITIATOR_SELECT_TYPES = new Set(['initiatorSelect', 'initiatorSelectScope']);
@@ -25,7 +26,7 @@ export async function previewFlow(
   const conds = [eq(workflowDefinitions.id, definitionId)];
   if (tc) conds.push(tc);
   const [def] = await db.select().from(workflowDefinitions).where(and(...conds)).limit(1);
-  if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+  requireRow(def, '流程定义不存在');
   const flowData = def.flowData as WorkflowFlowData | null;
   if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程未配置，无法预览' });
 

@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Button, Form, Spin, Toast, Switch, Modal, Row, Col, Typography, Tag, Empty } from '@douyinfe/semi-ui';
+import { Button, Form, Spin, Row, Col, Typography, Tag, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -18,11 +17,11 @@ import {
 } from '@/hooks/queries/workflow-data-sources';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { parseHeadersJson } from '../components/http-integration';
 import { useEditModal } from '@/hooks/useEditModal';
-import { abortSubmit } from '@/lib/abort-submit';
 
 interface SearchParams { keyword: string; status?: string }
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
@@ -55,8 +54,6 @@ export default function WorkflowDataSourcesPage() {
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data ?? null;
-
   const saveMutation = useSaveWorkflowDataSource();
   const toggleStatusMutation = useSaveWorkflowDataSource();
   const deleteMutation = useDeleteWorkflowDataSources();
@@ -79,17 +76,7 @@ export default function WorkflowDataSourcesPage() {
       remark: record.remark ?? '',
     }),
     beforeSave: (values) => {
-    let headers: Record<string, string> | undefined;
-    if (values.headersText?.trim()) {
-      try {
-        const parsed = JSON.parse(values.headersText);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) headers = parsed as Record<string, string>;
-        else throw new Error('not object');
-      } catch {
-        Toast.error('请求头需为合法的 JSON 对象');
-        abortSubmit('headers');
-      }
-    }
+    const headers = parseHeadersJson(values.headersText);
     const payload = {
       name: values.name,
       method: values.method,
@@ -110,19 +97,11 @@ export default function WorkflowDataSourcesPage() {
   function openCreate() { dataSourceModal.openCreate(); }
   function openEdit(record: WorkflowDataSource) { dataSourceModal.openEdit(record); }
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
-  function handleToggleStatus(record: WorkflowDataSource, checked: boolean) {
-    const doToggle = async () => {
-      await toggleStatusMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } });
-      Toast.success(checked ? '已启用' : '已停用');
-    };
-    if (checked) void doToggle();
-    else Modal.confirm({ title: '确认停用', content: `停用后「${record.name}」将不再可被表单字段使用，确认停用？`, onOk: () => void doToggle() });
-  }
+  const status = useStatusToggle<WorkflowDataSource>({
+    toggle: (record, checked) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: checked ? 'enabled' : 'disabled' } }),
+    confirmDisable: (record) => ({ title: '确认停用', content: `停用后「${record.name}」将不再可被表单字段使用，确认停用？` }),
+    disabled: !hasPermission('workflow:datasource:update'),
+  });
 
   async function handleTest(record: WorkflowDataSource) {
     setTestSource(record);
@@ -144,18 +123,7 @@ export default function WorkflowDataSourcesPage() {
     { title: '取值/显示字段', dataIndex: 'valueField', width: 150, render: (_: unknown, r: WorkflowDataSource) => `${r.valueField} / ${r.labelField}` },
     { title: '备注', dataIndex: 'remark', width: 160, render: renderEllipsis },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, record: WorkflowDataSource) => (
-        <Switch
-          checked={record.status === 'enabled'}
-          loading={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === record.id}
-          disabled={!hasPermission('workflow:datasource:update')}
-          onChange={(checked) => handleToggleStatus(record, checked)}
-          size="small"
-        />
-      ),
-    },
+    status.column(),
     createOperationColumn<WorkflowDataSource>({
       width: 210,
       desktopInlineKeys: ['test', 'edit', 'delete'],
@@ -167,18 +135,12 @@ export default function WorkflowDataSourcesPage() {
           hidden: !hasPermission('workflow:datasource:update'),
           onClick: () => openEdit(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('workflow:datasource:delete'),
-          onClick: () => {
-            confirmDelete({
-              content: '删除后引用该数据源的表单字段将无法加载选项',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除吗？',
+          content: '删除后引用该数据源的表单字段将无法加载选项',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -195,13 +157,6 @@ export default function WorkflowDataSourcesPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   const renderCreateButton = () => hasPermission('workflow:datasource:create') ? (
     <CreateButton onClick={openCreate} />
@@ -209,40 +164,18 @@ export default function WorkflowDataSourcesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderStatusFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="数据源筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<WorkflowDataSource>
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无数据' })}
       />
 
       <AppModal

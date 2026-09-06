@@ -5,7 +5,6 @@ import { AppModal } from '@/components/AppModal';
 import { Button, Select, SideSheet, Tag, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import WorkflowSummaryLine from '@/components/workflow/WorkflowSummaryLine';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -30,8 +29,8 @@ import {
   workflowTaskKeys,
 } from '@/hooks/queries/workflow-tasks';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 interface SearchParams {
   keyword: string;
@@ -86,7 +85,6 @@ export default function PendingApprovalsPage() {
   const batchRejectMutation = useBatchRejectWorkflowTasks();
   const consultMutation = useConsultWorkflowTask();
   const replyMutation = useReplyWorkflowConsult();
-  const data = listQuery.data;
   const definitions = definitionsQuery.data ?? [];
   const userOptions = useMemo(
     () => (usersQuery.data ?? []).map((u) => ({ label: `${u.nickname ?? u.username}`, value: u.id })),
@@ -247,13 +245,6 @@ export default function PendingApprovalsPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   const renderMyConsultsButton = () => (
     <Button type="tertiary" onClick={openMyConsults}>我的协办</Button>
@@ -280,49 +271,30 @@ export default function PendingApprovalsPage() {
           applySearch(next);
         }}
       />
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderDefinitionFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={(
           <>
-            {renderKeywordSearch()}
-            {renderDefinitionFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderMyConsultsButton()}
-            {renderBatchButtons()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={renderDefinitionFilter()}
-        mobileActions={(
-          <>
-            {renderResetButton()}
             {renderMyConsultsButton()}
             {renderBatchButtons()}
           </>
         )}
         filterTitle="待办审批筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<PendingItem>
         columns={columns}
-        dataSource={data?.list ?? []}
-        rowKey="pendingTaskId"
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
-        rowSelection={{
-          selectedRowKeys,
-          getCheckboxProps: (record: PendingItem) => ({ disabled: !!record.requiresIndividual }),
-          onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
-        }}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowKey: 'pendingTaskId',
+          rowSelection: {
+            selectedRowKeys,
+            getCheckboxProps: (record: PendingItem) => ({ disabled: !!record.requiresIndividual }),
+            onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
+          },
+        })}
       />
 
       <WorkflowApprovalDetailSheet

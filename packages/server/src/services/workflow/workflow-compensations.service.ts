@@ -10,6 +10,8 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { enqueueJob } from '../../lib/workflow-jobs/engine';
 import { bridgeReportFillWorkflowOutcome } from '../report/report-fill-workflow-bridge.service';
 import { buildWhere } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 
 type Row = typeof workflowCompensations.$inferSelect;
 const map = (r: Row) => ({
@@ -83,11 +85,13 @@ export async function listCompensations(q: { status?: string; instanceId?: numbe
   if (q.status) conds.push(eq(workflowCompensations.status, q.status));
   if (q.instanceId) conds.push(eq(workflowCompensations.instanceId, q.instanceId));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowCompensations, where),
-    db.select().from(workflowCompensations).where(where).orderBy(desc(workflowCompensations.id)).limit(pageSize).offset((page - 1) * pageSize),
-  ]);
-  return { list: rows.map(map), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowCompensations, where),
+    rows: () => db.select().from(workflowCompensations).where(where).orderBy(desc(workflowCompensations.id)).limit(pageSize).offset((page - 1) * pageSize),
+    map,
+  });
 }
 
 /** 人工修复：resolve=补偿完成放行（保留实例），terminate=终止实例并取消待办 */
@@ -96,7 +100,7 @@ export async function resolveCompensation(id: number, action: 'resolve' | 'termi
   const conds = [eq(workflowCompensations.id, id)];
   if (tc) conds.push(tc);
   const [row] = await db.select().from(workflowCompensations).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '补偿工单不存在' });
+  requireRow(row, '补偿工单不存在');
   if (row.status !== 'pending') throw new HTTPException(400, { message: '工单已处理' });
   return db.transaction(async (tx) => {
     if (action === 'terminate') {
@@ -131,8 +135,7 @@ async function findCompensationOr404(id: number): Promise<Row> {
   const conds = [eq(workflowCompensations.id, id)];
   if (tc) conds.push(tc);
   const [row] = await db.select().from(workflowCompensations).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '补偿工单不存在' });
-  return row;
+  return requireRow(row, '补偿工单不存在');
 }
 
 /** 补偿工单详情（含处理历史时间线）。 */

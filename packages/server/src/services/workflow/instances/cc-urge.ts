@@ -9,12 +9,13 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { mapTask } from './mapping';
 import { emitTaskEvent } from './shared';
+import { requireRow } from '../../../lib/db-assert';
 
 /** T1-2 标记抄送已读：仅本人 ccNode 任务可标记 */
 export async function markCcRead(ccTaskId: number): Promise<void> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, ccTaskId)).limit(1);
-  if (!task) throw new HTTPException(404, { message: '抄送任务不存在' });
+  requireRow(task, '抄送任务不存在');
   if (task.assigneeId !== user.userId || task.nodeType !== 'ccNode') {
     throw new HTTPException(403, { message: '无权操作该抄送' });
   }
@@ -29,7 +30,7 @@ export async function forwardInstance(instanceId: number, userIds: number[], not
   const conds = [eq(workflowInstances.id, instanceId)];
   if (tc) conds.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程不存在' });
+  requireRow(inst, '流程不存在');
   // 参与者校验：发起人 / 管理员 / 任一任务处理人
   const isInitiator = inst.initiatorId === user.userId;
   const isAdmin = (user.roles ?? []).some((r) => r === 'super_admin' || r === 'tenant_admin');
@@ -92,14 +93,14 @@ export async function urgeTask(taskId: number, message?: string) {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks)
     .where(eq(workflowTasks.id, taskId)).limit(1);
-  if (!task) throw new HTTPException(404, { message: '任务不存在' });
+  requireRow(task, '任务不存在');
   if (task.status !== 'pending') throw new HTTPException(400, { message: '仅可催办未处理任务' });
   const tc = tenantCondition(workflowInstances, user);
   const instConditions = [eq(workflowInstances.id, task.instanceId)];
   if (tc) instConditions.push(tc);
   const [inst] = await db.select().from(workflowInstances)
     .where(and(...instConditions)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '任务不存在或无权操作' });
+  requireRow(inst, '任务不存在或无权操作');
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无需催办' });
 
   const isInitiator = inst.initiatorId === user.userId;
@@ -161,7 +162,7 @@ export async function urgeInstance(instanceId: number, message?: string) {
   if (tc) conditions.push(tc);
   const [inst] = await db.select().from(workflowInstances)
     .where(and(...conditions)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程不存在' });
+  requireRow(inst, '流程不存在');
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无需催办' });
   const isInitiator = inst.initiatorId === user.userId;
   const isAdmin = (user.roles ?? []).some((r) => r === 'super_admin' || r === 'tenant_admin');
@@ -224,7 +225,7 @@ export async function addInstanceCc(instanceId: number, nodeKey: string, userIds
   if (tc) conditions.push(tc);
   const [inst] = await db.select().from(workflowInstances)
     .where(and(...conditions)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程不存在' });
+  requireRow(inst, '流程不存在');
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无法补加抄送' });
   const isInitiator = inst.initiatorId === user.userId;
   const isAdmin = (user.roles ?? []).some((r) => r === 'super_admin' || r === 'tenant_admin');

@@ -8,6 +8,7 @@ import { toDefinitionSnapshot } from './instances/shared';
 import { getCreateTenantId } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
 import { buildMigrationNodes } from '../../lib/workflow-migration';
+import { requireRow } from '../../lib/db-assert';
 
 async function activeNodeState(instanceId: number) {
   const [tokens, tasks] = await Promise.all([
@@ -22,9 +23,9 @@ async function activeNodeState(instanceId: number) {
 
 async function loadForMigration(instanceId: number) {
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, instanceId)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '实例不存在' });
+  requireRow(inst, '实例不存在');
   const [def] = await db.select().from(workflowDefinitions).where(eq(workflowDefinitions.id, inst.definitionId)).limit(1);
-  if (!def) throw new HTTPException(400, { message: '流程定义不存在' });
+  requireRow(def, '流程定义不存在', 400);
   const fromVersion = inst.definitionSnapshot?.version ?? 0;
   return { inst, def, fromVersion, toVersion: def.version };
 }

@@ -1,12 +1,12 @@
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowJobExecutions, workflowJobs, workflowTasks, workflowInstances } from '../../db/schema';
-import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime } from '../../lib/datetime';
 import type { WorkflowTriggerExecution, WorkflowTriggerExecutionStatus, WorkflowTriggerType } from '@zenith/shared/workflow';
+import { requireRow } from '../../lib/db-assert';
 
 /**
  * 触发器执行记录的原始行。nodeName 取自 workflow_tasks.node_name（非空列，建任务时冻结），
@@ -135,6 +135,5 @@ export async function getTriggerExecution(id: number) {
     .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
     .where(and(...conds))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '触发器执行记录不存在' });
-  return mapTriggerExecution(row);
+  return mapTriggerExecution(requireRow(row, '触发器执行记录不存在'));
 }

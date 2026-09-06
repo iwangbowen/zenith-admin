@@ -6,10 +6,10 @@ import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, 
 import { tenantCondition } from '../../../lib/tenant';
 import { getDataScopeCondition } from '../../../lib/data-scope';
 import type { WorkflowDefinitionSnapshot, WorkflowInstance, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerExecution, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType, WorkflowExecutionToken, WorkflowExecutionTokenView } from '@zenith/shared/workflow';
-import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { mapInstance, mapTask } from './mapping';
 import { mapTriggerExecution } from '../workflow-trigger-executions.service';
+import { requireRow } from '../../../lib/db-assert';
 
 async function instanceDiagnosticWhere(id: number) {
   const user = currentUser();
@@ -229,14 +229,14 @@ function buildTokenView(instanceId: number, tokens: WorkflowExecutionToken[]): W
 export async function getInstanceExecutionTokens(id: number): Promise<WorkflowExecutionTokenView> {
   const [inst] = await db.select({ id: workflowInstances.id, definitionSnapshot: workflowInstances.definitionSnapshot })
     .from(workflowInstances).where(await instanceDiagnosticWhere(id)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在或无权查看' });
+  requireRow(inst, '流程实例不存在或无权查看');
   const nodeMeta = buildNodeMetaFromSnapshot(inst.definitionSnapshot);
   const rows = await db.select().from(workflowTokens).where(eq(workflowTokens.instanceId, id)).orderBy(workflowTokens.id);
   return buildTokenView(id, rows.map((r) => mapExecutionToken(r, nodeMeta)));
 }
 
 export async function getInstanceRuntimeDiagnostics(id: number): Promise<WorkflowRuntimeDiagnostics> {
-  const row = await db.query.workflowInstances.findFirst({
+  const row = requireRow(await db.query.workflowInstances.findFirst({
     where: await instanceDiagnosticWhere(id),
     with: {
       definition: { columns: { name: true, categoryId: true }, with: { category: { columns: { name: true } } } },
@@ -246,8 +246,7 @@ export async function getInstanceRuntimeDiagnostics(id: number): Promise<Workflo
         orderBy: workflowTasks.id,
       },
     },
-  });
-  if (!row) throw new HTTPException(404, { message: '流程实例不存在或无权查看' });
+  }), '流程实例不存在或无权查看');
 
   const snapshot = row.definitionSnapshot;
   const tasks = row.tasks.map((task) => {
@@ -408,14 +407,13 @@ function buildEngineExplanation(
  * workflow_job_executions）按时间合并，回答"为什么停这儿、在等谁、等什么、下次何时重试"。
  */
 export async function getInstanceTrace(id: number): Promise<WorkflowInstanceTrace> {
-  const row = await db.query.workflowInstances.findFirst({
+  const row = requireRow(await db.query.workflowInstances.findFirst({
     where: await instanceDiagnosticWhere(id),
     columns: { id: true, title: true, status: true, definitionSnapshot: true },
     with: {
       tasks: { with: { assignee: { columns: { nickname: true } } }, orderBy: workflowTasks.id },
     },
-  });
-  if (!row) throw new HTTPException(404, { message: '流程实例不存在或无权查看' });
+  }), '流程实例不存在或无权查看');
 
   const jobs = await db.select().from(workflowJobs).where(eq(workflowJobs.instanceId, id)).orderBy(workflowJobs.id);
   const jobIds = jobs.map((j) => j.id);

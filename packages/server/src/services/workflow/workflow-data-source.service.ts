@@ -9,6 +9,8 @@ import { workflowDataSources } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSafeWorkflowUrl, workflowHttp } from '../../lib/workflow-outbound';
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
@@ -80,8 +82,7 @@ export function mapDataSource(row: WorkflowDataSourceRow): WorkflowDataSource {
 
 export async function ensureDataSourceExists(id: number): Promise<WorkflowDataSourceRow> {
   const [row] = await db.select().from(workflowDataSources).where(eq(workflowDataSources.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '数据源不存在' });
-  return row;
+  return requireRow(row, '数据源不存在');
 }
 
 export async function getDataSource(id: number): Promise<WorkflowDataSource> {
@@ -94,11 +95,13 @@ export async function listDataSources(query: { page?: number; pageSize?: number;
   conds.push(keywordCondition(keyword, [workflowDataSources.name, workflowDataSources.url], 'ilike'));
   if (status === 'enabled' || status === 'disabled') conds.push(eq(workflowDataSources.status, status));
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowDataSources, where),
-    db.select().from(workflowDataSources).where(where).orderBy(desc(workflowDataSources.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapDataSource), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowDataSources, where),
+    rows: () => db.select().from(workflowDataSources).where(where).orderBy(desc(workflowDataSources.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapDataSource,
+  });
 }
 
 export async function createDataSource(input: CreateWorkflowDataSourceInput): Promise<WorkflowDataSource> {
@@ -139,7 +142,7 @@ export async function updateDataSource(id: number, input: UpdateWorkflowDataSour
       status: input.status,
       remark: input.remark,
     }).where(eq(workflowDataSources.id, id)).returning();
-    if (!row) throw new HTTPException(404, { message: '数据源不存在' });
+    requireRow(row, '数据源不存在');
     optionsCache.clear();
     rawItemsCache.clear();
     return mapDataSource(row);

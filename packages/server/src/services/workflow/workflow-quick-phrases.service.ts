@@ -6,6 +6,7 @@ import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
 import type { WorkflowQuickPhrase, CreateWorkflowQuickPhraseInput, UpdateWorkflowQuickPhraseInput } from '@zenith/shared/workflow';
+import { requireRow } from '../../lib/db-assert';
 
 type PhraseRow = typeof workflowQuickPhrases.$inferSelect;
 
@@ -45,7 +46,7 @@ export async function createMyQuickPhrase(input: CreateWorkflowQuickPhraseInput)
 async function ensureOwnPhrase(id: number): Promise<PhraseRow> {
   const user = currentUser();
   const [row] = await db.select().from(workflowQuickPhrases).where(eq(workflowQuickPhrases.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '常用语不存在' });
+  requireRow(row, '常用语不存在');
   if (row.userId !== user.userId) throw new HTTPException(403, { message: '无权操作该常用语' });
   return row;
 }

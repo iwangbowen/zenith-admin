@@ -7,6 +7,8 @@ import { isSuperAdmin } from '../../lib/permissions';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 import type { DbExecutor } from '../../db/types';
 import type { WorkflowDelegation, CreateWorkflowDelegationInput, UpdateWorkflowDelegationInput } from '@zenith/shared/workflow';
 import { buildWhere } from '../../lib/where-helpers';
@@ -70,7 +72,7 @@ export async function resolveActiveDelegate(
 
 async function ensureUserExists(id: number, msg: string) {
   const [row] = await db.select({ id: users.id }).from(users).where(eq(users.id, id)).limit(1);
-  if (!row) throw new HTTPException(400, { message: msg });
+  requireRow(row, msg, 400);
 }
 
 async function ensureDelegationAccess(id: number): Promise<DelegationRow> {
@@ -79,7 +81,7 @@ async function ensureDelegationAccess(id: number): Promise<DelegationRow> {
   const conds = [eq(workflowDelegations.id, id)];
   if (tc) conds.push(tc);
   const [row] = await db.select().from(workflowDelegations).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '委托规则不存在' });
+  requireRow(row, '委托规则不存在');
   if (!isSuperAdmin(user) && row.principalId !== user.userId) {
     throw new HTTPException(403, { message: '无权操作他人的委托规则' });
   }
@@ -117,9 +119,11 @@ export async function listWorkflowDelegations(q: ListWorkflowDelegationsQuery) {
     conds.push(eq(workflowDelegations.principalId, q.principalId));
   }
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowDelegations, where),
-    db.query.workflowDelegations.findMany({
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowDelegations, where),
+    rows: () => db.query.workflowDelegations.findMany({
       where,
       with: {
         principal: { columns: { nickname: true, username: true } },
@@ -130,13 +134,12 @@ export async function listWorkflowDelegations(q: ListWorkflowDelegationsQuery) {
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
-  ]);
-  const list = rows.map((r) => mapDelegation(r, {
-    principalName: r.principal?.nickname ?? r.principal?.username ?? null,
-    delegateName: r.delegate?.nickname ?? r.delegate?.username ?? null,
-    definitionName: r.definition?.name ?? null,
-  }));
-  return { list, total, page, pageSize };
+    map: (r) => mapDelegation(r, {
+      principalName: r.principal?.nickname ?? r.principal?.username ?? null,
+      delegateName: r.delegate?.nickname ?? r.delegate?.username ?? null,
+      definitionName: r.definition?.name ?? null,
+    }),
+  });
 }
 
 export async function createWorkflowDelegation(input: CreateWorkflowDelegationInput) {

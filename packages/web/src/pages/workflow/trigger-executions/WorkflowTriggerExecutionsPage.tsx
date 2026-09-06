@@ -7,7 +7,6 @@ import { InputNumber, SideSheet, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime } from '@/utils/date';
 import { createdAtColumn } from '@/utils/table-columns';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
@@ -22,8 +21,9 @@ import {
   useWorkflowTriggerExecutionList,
   workflowTriggerExecutionKeys,
 } from '@/hooks/queries/workflow-trigger-executions';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useListSearch } from '@/hooks/useListSearch';
 import { JsonBlock } from '@/components/JsonBlock';
 
@@ -65,8 +65,6 @@ export default function WorkflowTriggerExecutionsPage() {
     instanceId: submittedParams.instanceId,
     nodeKey: submittedParams.nodeKey || undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const [detailId, setDetailId] = useState<number | null>(null);
   const detailQuery = useWorkflowTriggerExecutionDetail(detailId, detailId !== null);
   const detail = detailQuery.data ?? null;
@@ -161,52 +159,25 @@ export default function WorkflowTriggerExecutionsPage() {
     />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderNodeKeySearch()}
-            {renderStatusFilter()}
-            {renderInstanceIdFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderNodeKeySearch()}
-            {renderSearchButton()}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={renderNodeKeySearch()}
+        filters={(
           <>
             {renderStatusFilter()}
             {renderInstanceIdFilter()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="执行记录筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
-        rowKey="id"
-        loading={listQuery.isFetching}
-        dataSource={list}
+      <ConfigurableTable<WorkflowTriggerExecution>
         columns={columns}
-        pagination={buildPagination(total)}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <SideSheet

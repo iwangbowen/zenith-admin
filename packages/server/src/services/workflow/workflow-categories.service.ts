@@ -8,6 +8,8 @@ import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 
 export function mapCategory(row: typeof workflowCategories.$inferSelect) {
   return {
@@ -31,8 +33,7 @@ export async function ensureCategoryExists(id: number) {
   const conds = [eq(workflowCategories.id, id)];
   if (tc) conds.push(tc);
   const [row] = await db.select().from(workflowCategories).where(and(...conds)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '流程分类不存在' });
-  return row;
+  return requireRow(row, '流程分类不存在');
 }
 
 export interface ListWorkflowCategoriesQuery {
@@ -47,11 +48,13 @@ export async function listWorkflowCategories(q: ListWorkflowCategoriesQuery) {
   const tc = tenantCondition(workflowCategories, currentUser());
   const conds = [tc, keywordCondition(q.keyword, [workflowCategories.name])];
   const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(workflowCategories, where),
-    db.select().from(workflowCategories).where(where).orderBy(asc(workflowCategories.sort), desc(workflowCategories.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-  ]);
-  return { list: rows.map(mapCategory), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(workflowCategories, where),
+    rows: () => db.select().from(workflowCategories).where(where).orderBy(asc(workflowCategories.sort), desc(workflowCategories.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: mapCategory,
+  });
 }
 
 export async function listAllWorkflowCategories() {
@@ -114,8 +117,7 @@ export async function updateWorkflowCategory(id: number, input: UpdateWorkflowCa
     if (input.sort === undefined) { /* skip */ } else { patch.sort = input.sort; }
     if (input.description === undefined) { /* skip */ } else { patch.description = input.description; }
     const [row] = await db.update(workflowCategories).set(patch).where(and(...conds)).returning();
-    if (!row) throw new HTTPException(404, { message: '流程分类不存在' });
-    return mapCategory(row);
+    return mapCategory(requireRow(row, '流程分类不存在'));
   } catch (err) {
     if (err instanceof HTTPException) throw err;
     rethrowPgUniqueViolation(err, '分类编码已存在');

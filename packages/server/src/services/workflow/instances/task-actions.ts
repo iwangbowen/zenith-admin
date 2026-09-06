@@ -21,6 +21,7 @@ import { hasUserHandledTask } from './transfers';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fill-task.service';
 import type { DbExecutor } from '../../../db/types';
+import { requireRow } from '../../../lib/db-assert';
 
 export type WorkflowTaskAttachment = { name: string; url: string; size?: number };
 
@@ -95,7 +96,7 @@ export async function listTaskSelectableNextApprovers(taskId: number): Promise<W
   const [task] = await db.select().from(workflowTasks)
     .where(eq(workflowTasks.id, taskId))
     .limit(1);
-  if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
+  requireRow(task, '任务不存在或无权操作');
   if (task.assigneeId !== user.userId) {
     // 任务已转办/委派给他人：曾经手的用户返回空组而非 404（审批面板关闭前的缓存刷新会重取本查询）
     const wasMine = task.originalAssigneeId === user.userId
@@ -108,7 +109,7 @@ export async function listTaskSelectableNextApprovers(taskId: number): Promise<W
   // 避免审批成功后前端 invalidateQueries 立即重取本查询时误报「任务不存在或无权操作」
   if (task.status !== 'pending') return [];
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  requireRow(inst, '流程实例不存在');
   const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) return [];
   const nodes = findNextApproverSelectNodes(flowData, task.nodeKey);
@@ -120,13 +121,7 @@ export async function listTaskSelectableNextApprovers(taskId: number): Promise<W
 }
 
 export async function approveTask(taskId: number, comment?: string, attachments?: Array<{ name: string; url: string; size?: number }>, selectedNextApprovers?: Record<string, number[]>, signature?: string, formUpdates?: Record<string, unknown>): Promise<ApproveResult> {
-  const user = currentUser();
-  const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
-  if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
-  if (task.status !== 'pending') throw new HTTPException(400, { message: '任务已处理' });
-  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
-  if (inst.status !== 'running') throw new HTTPException(400, { message: inst.status === 'suspended' ? '流程已挂起，暂不可处理' : '流程实例不在进行中' });
+  const { task, inst, actor } = await getOwnPendingTask(taskId);
   // 校验"操作按钮设置"：通过按钮须启用 + 附件必填（uploadMode === 'required'）
   const flowData = inst.definitionSnapshot?.flowData;
   const nodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
@@ -142,21 +137,21 @@ export async function approveTask(taskId: number, comment?: string, attachments?
     throw new HTTPException(400, { message: '该节点要求手写签名，请先完成签名' });
   }
   // 委派任务：suggest（建议制）由代理人操作时生成回执给委托人确认；full（默认）代理人直接代批，comment 留痕
-  if (task.delegatedFromId && task.delegatedFromId !== user.userId) {
+  if (task.delegatedFromId && task.delegatedFromId !== actor.userId) {
     if (task.delegationMode === 'suggest') {
-      return processDelegatedReceipt(task, inst, 'approved', comment, { userId: user.userId, name: user.username }, attachments, formUpdates);
+      return processDelegatedReceipt(task, inst, 'approved', comment, actor, attachments, formUpdates);
     }
     const principalName = await findUserDisplayName(task.delegatedFromId);
     const decorated = `[代 ${principalName} 审批] ${comment ?? ''}`.trim();
-    return approveTaskCore(task, inst, decorated, { userId: user.userId, name: user.username }, { selectedNextApprovers, signature, attachments, formUpdates });
+    return approveTaskCore(task, inst, decorated, actor, { selectedNextApprovers, signature, attachments, formUpdates });
   }
-  return approveTaskCore(task, inst, comment, { userId: user.userId, name: user.username }, { selectedNextApprovers, signature, attachments, formUpdates });
+  return approveTaskCore(task, inst, comment, actor, { selectedNextApprovers, signature, attachments, formUpdates });
 }
 
 /** 外部审批回调：根据 callbackId 找到 waiting 任务并审批通过 */
 export async function approveTaskByCallback(callbackId: string, comment: string | undefined, approverName: string): Promise<ApproveResult> {
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
-  if (!task) throw new HTTPException(404, { message: '回调任务不存在' });
+  requireRow(task, '回调任务不存在');
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (task.status === 'approved') {
@@ -282,7 +277,7 @@ export async function approveTaskCore(
       attachments: options?.attachments ?? null,
       actionAt: new Date(),
     }).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.status, task.status))).returning();
-    if (!approvedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
+    requireRow(approvedTask, '任务已被处理，请刷新后重试', 409);
 
     // 审批人「可编辑」字段写回：按节点 fieldPermissions 白名单过滤后合并进实例 formData，
     // 在会签早退（节点未推进）时同样持久化，后续推进与分支条件均使用合并后的数据
@@ -382,30 +377,24 @@ export async function approveTaskCore(
 }
 
 export async function rejectTask(taskId: number, comment: string, attachments?: WorkflowTaskAttachment[]): Promise<ApproveResult> {
-  const user = currentUser();
-  const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
-  if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
-  if (task.status !== 'pending') throw new HTTPException(400, { message: '任务已处理' });
-  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
-  if (inst.status !== 'running') throw new HTTPException(400, { message: inst.status === 'suspended' ? '流程已挂起，暂不可处理' : '流程实例不在进行中' });
+  const { task, inst, actor } = await getOwnPendingTask(taskId);
   if (!comment.trim()) throw new HTTPException(400, { message: '请填写拒绝原因' });
   assertActionButtonEnabled(inst, task.nodeKey, 'reject');
   assertActionUploadRequirement(inst, task.nodeKey, 'reject', attachments);
-  if (task.delegatedFromId && task.delegatedFromId !== user.userId) {
+  if (task.delegatedFromId && task.delegatedFromId !== actor.userId) {
     if (task.delegationMode === 'suggest') {
-      return processDelegatedReceipt(task, inst, 'rejected', comment, { userId: user.userId, name: user.username }, attachments);
+      return processDelegatedReceipt(task, inst, 'rejected', comment, actor, attachments);
     }
     const principalName = await findUserDisplayName(task.delegatedFromId);
-    return rejectTaskCore(task, inst, `[代 ${principalName} 审批] ${comment}`, { userId: user.userId, name: user.username }, attachments);
+    return rejectTaskCore(task, inst, `[代 ${principalName} 审批] ${comment}`, actor, attachments);
   }
-  return rejectTaskCore(task, inst, comment, { userId: user.userId, name: user.username }, attachments);
+  return rejectTaskCore(task, inst, comment, actor, attachments);
 }
 
 /** 外部审批回调：根据 callbackId 找到 waiting 任务并驳回 */
 export async function rejectTaskByCallback(callbackId: string, comment: string, approverName: string) {
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
-  if (!task) throw new HTTPException(404, { message: '回调任务不存在' });
+  requireRow(task, '回调任务不存在');
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (task.status === 'rejected') {
@@ -522,7 +511,7 @@ export async function rejectTaskCore(
       .set({ status: 'rejected', comment, attachments: attachments ?? null, actionAt: new Date() })
       .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.status, task.status)))
       .returning();
-    if (!rejectedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
+    requireRow(rejectedTask, '任务已被处理，请刷新后重试', 409);
 
     // 比例会签：本任务驳回后若阈值仍可达成，仅记录该任务驳回、节点保持活动。
     if (rejectedTask.approveMethod === 'ratio' && await keepRatioNodeAliveAfterReject(tx, inst.id, task.nodeKey)) {
@@ -678,7 +667,7 @@ export async function getOwnPendingTask(taskId: number) {
   const [task] = await db.select().from(workflowTasks)
     .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId)))
     .limit(1);
-  if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
+  requireRow(task, '任务不存在或无权操作');
   if (task.status !== 'pending') throw new HTTPException(400, { message: '任务已处理' });
   const [inst] = await db.select().from(workflowInstances)
     .where(eq(workflowInstances.id, task.instanceId)).limit(1);
@@ -710,7 +699,7 @@ async function processDelegatedReceipt(
       attachments: attachments ?? null,
       actionAt: new Date(),
     }).where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, task.status))).returning();
-    if (!closedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
+    requireRow(closedTask, '任务已被处理，请刷新后重试', 409);
     // 委派人同样是节点合法处理人：其「可编辑」字段修改按同一白名单合并进实例表单
     const receiptFlow = inst.definitionSnapshot?.flowData;
     const sanitizedUpdates = sanitizeFormUpdatesByNodePerms(
