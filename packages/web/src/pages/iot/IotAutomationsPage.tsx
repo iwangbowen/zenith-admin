@@ -6,7 +6,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import UserSelect from '@/components/UserSelect';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -14,18 +14,19 @@ import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import {
   IOT_AUTOMATION_ACTION_TYPE_LABELS, IOT_AUTOMATION_ACTION_TYPE_OPTIONS,
   IOT_AUTOMATION_DEFAULT_COOLDOWN_SECONDS, IOT_AUTOMATION_ACTION_MAX,
   IOT_AUTOMATION_TARGET_OPTIONS, IOT_AUTOMATION_TRIGGERS, IOT_AUTOMATION_TRIGGER_LABELS, IOT_AUTOMATION_TRIGGER_OPTIONS,
-  IOT_COMPARE_OP_LABELS, IOT_COMPARE_OP_OPTIONS,
+  IOT_COMPARE_OP_LABELS,
 } from '@zenith/shared/iot';
 import type { CreateIotAutomationInput, IotAutomation, IotAutomationAction, IotAutomationRun } from '@zenith/shared/iot';
-import { useAllIotProducts, useIotThingModel } from '@/hooks/queries/iot-products';
-import { useIotDeviceList } from '@/hooks/queries/iot-devices';
-import { useAllIotGroups } from '@/hooks/queries/iot-groups';
+import { useIotDeviceOptions, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
+import { IotEnabledTag, IotSuccessTag } from './components/IotStatus';
+import { IotEventSelectField, IotPropertyConditionFields, useIotThingModelSelects } from './components/ThingModelFields';
+import { jsonObjectToText, parseJsonObjectInput } from './iot-form-utils';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
 import {
   iotAutomationKeys, useDeleteIotAutomations, useIotAutomationList,
@@ -82,23 +83,11 @@ function toActionRow(a: IotAutomationAction): ActionFormRow {
     targetDeviceId: a.targetDeviceId ?? null,
     targetGroupId: a.targetGroupId ?? null,
     service: a.service ?? null,
-    paramsText: a.params && Object.keys(a.params).length > 0 ? JSON.stringify(a.params) : '',
-    desiredText: a.desired && Object.keys(a.desired).length > 0 ? JSON.stringify(a.desired) : '',
+    paramsText: jsonObjectToText(a.params),
+    desiredText: jsonObjectToText(a.desired),
     userIds: a.userIds ?? [],
     workflowDefinitionId: a.workflowDefinitionId ?? null,
   };
-}
-
-function parseJsonObject(text: string | undefined, label: string): Record<string, never> | undefined {
-  const trimmed = text?.trim();
-  if (!trimmed) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('not object');
-    return parsed as Record<string, never>;
-  } catch {
-    throw new Error(`${label} 需为 JSON 对象，如 {"power":"on"}`);
-  }
 }
 
 function fromActionRow(row: ActionFormRow): IotAutomationAction {
@@ -110,10 +99,10 @@ function fromActionRow(row: ActionFormRow): IotAutomationAction {
   }
   if (row.type === 'command') {
     base.service = row.service ?? null;
-    base.params = parseJsonObject(row.paramsText, '服务参数') ?? null;
+    base.params = (parseJsonObjectInput({ text: row.paramsText, label: '服务参数', empty: 'undefined', toast: false, errorMessage: '服务参数 需为 JSON 对象，如 {"power":"on"}' }) as Record<string, string | number | boolean> | undefined) ?? null;
   }
   if (row.type === 'desired') {
-    const desired = parseJsonObject(row.desiredText, '期望属性');
+    const desired = parseJsonObjectInput({ text: row.desiredText, label: '期望属性', empty: 'undefined', toast: false, errorMessage: '期望属性 需为 JSON 对象，如 {"power":"on"}' }) as Record<string, string | number | boolean> | undefined;
     if (!desired || Object.keys(desired).length === 0) throw new Error('期望属性不能为空');
     base.desired = desired;
   }
@@ -148,8 +137,6 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
     triggerType: enumValueOf(IOT_AUTOMATION_TRIGGERS, submittedParams.triggerType),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const { items: statusItems } = useDictItems('common_status');
 
   const modal = useEditModal<IotAutomation, AutomationFormValues, Partial<CreateIotAutomationInput>>({
@@ -245,9 +232,7 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotAutomation['status']) => (
-        <Tag color={v === 'enabled' ? 'green' : 'red'} size="small">{v === 'enabled' ? '启用' : '禁用'}</Tag>
-      ),
+      render: (v: IotAutomation['status']) => <IotEnabledTag status={v} />,
     },
     createOperationColumn<IotAutomation>({
       width: 240,
@@ -256,19 +241,12 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
         ...(hasPermission('iot:automation:update') ? [{
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('iot:automation:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除联动「${record.name}」吗？`,
-              content: '执行记录将一并删除',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('iot:automation:delete'),
+          title: `确定要删除联动「${record.name}」吗？`,
+          content: '执行记录将一并删除',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -305,39 +283,20 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
 
   return (
     <>
-      <SearchToolbar
-        primary={<>
-          {renderKeyword()}
-          {renderTriggerFilter()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={renderCreateButton()}
-        mobilePrimary={<>
-          {renderKeyword()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={<>
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={<>
           {renderTriggerFilter()}
           {renderStatusFilter()}
         </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotAutomation>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无场景联动，点击「新增联动」创建第一条"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无场景联动，点击「新增联动」创建第一条' })}
       />
 
       <SideSheet
@@ -377,19 +336,11 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
 
 /** 联动表单体：触发器（按物模型联想）+ 动作编排（ArrayField） */
 function AutomationFormBody({ isEdit, values }: Readonly<{ isEdit: boolean; values: Record<string, unknown> }>) {
-  const productsQuery = useAllIotProducts();
-  const products = productsQuery.data ?? [];
+  const { options: productOptions } = useIotProductOptions();
   const productId = (values.productId as number | undefined) ?? null;
   const triggerType = (values.triggerType as string | undefined) ?? 'property';
-  const modelQuery = useIotThingModel(productId);
-  const model = modelQuery.data;
-  const devicesQuery = useIotDeviceList(
-    { page: 1, pageSize: 100, productId: productId ?? undefined },
-    productId !== null,
-  );
-  const devices = devicesQuery.data?.list ?? [];
-  const numericProps = (model?.properties ?? []).filter((p) => p.dataType === 'number');
-  const services = model?.services ?? [];
+  const { items: devices, options: deviceOptions } = useIotDeviceOptions(productId, productId !== null);
+  const { services } = useIotThingModelSelects(productId);
   const { items: statusItems } = useDictItems('common_status');
 
   return (
@@ -400,12 +351,12 @@ function AutomationFormBody({ isEdit, values }: Readonly<{ isEdit: boolean; valu
         field="productId" label="所属产品" placeholder="选择产品" style={{ width: '100%' }}
         disabled={isEdit}
         extraText={isEdit ? '所属产品不可变更' : undefined}
-        optionList={products.map((p) => ({ value: p.id, label: p.name }))}
+        optionList={productOptions}
         rules={isEdit ? [] : [{ required: true, message: '请选择所属产品' }]}
       />
       <Form.Select
         field="deviceId" label="限定设备" placeholder="不限（产品下全部设备）" showClear style={{ width: '100%' }}
-        optionList={devices.map((d) => ({ value: d.id, label: `${d.name}（${d.sn}）` }))}
+        optionList={deviceOptions}
       />
       <Form.RadioGroup field="triggerType" label="触发器" disabled={isEdit}
         extraText={isEdit ? '触发器类型不可变更' : undefined}>
@@ -415,29 +366,10 @@ function AutomationFormBody({ isEdit, values }: Readonly<{ isEdit: boolean; valu
       </Form.RadioGroup>
 
       {triggerType === 'property' && (
-        <>
-          <Form.Select
-            field="propertyIdentifier" label="监控属性" placeholder="选择数值型属性" style={{ width: '100%' }}
-            optionList={numericProps.map((p) => ({ value: p.identifier, label: `${p.name}（${p.identifier}${p.unit ? `，${p.unit}` : ''}）` }))}
-            rules={[{ required: true, message: '请选择监控属性' }]}
-            emptyContent={productId ? '该产品物模型没有数值型属性' : '请先选择产品'}
-          />
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Form.Select field="operator" label="比较符" style={{ width: 110 }}
-              optionList={IOT_COMPARE_OP_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-              rules={[{ required: true, message: '必选' }]} />
-            <Form.InputNumber field="threshold" label="阈值" hideButtons style={{ width: 140 }}
-              rules={[{ required: true, message: '必填' }]} />
-          </div>
-        </>
+        <IotPropertyConditionFields productId={productId} />
       )}
       {triggerType === 'event' && (
-        <Form.Select
-          field="eventIdentifier" label="触发事件" placeholder="选择物模型事件" style={{ width: '100%' }}
-          optionList={(model?.events ?? []).map((e) => ({ value: e.identifier, label: `${e.name}（${e.identifier}）` }))}
-          rules={[{ required: true, message: '请选择触发事件' }]}
-          emptyContent={productId ? '该产品物模型没有声明事件' : '请先选择产品'}
-        />
+        <IotEventSelectField productId={productId} />
       )}
 
       <ActionsArrayField devices={devices} services={services.map((s) => ({ identifier: s.identifier, name: s.name }))} />
@@ -466,8 +398,7 @@ function ActionsArrayField({ devices, services }: Readonly<{
   devices: Array<{ id: number; name: string; sn: string }>;
   services: Array<{ identifier: string; name: string }>;
 }>) {
-  const groupsQuery = useAllIotGroups();
-  const groups = groupsQuery.data ?? [];
+  const { items: groups } = useIotGroupOptions();
   const workflowsQuery = usePublishedWorkflowDefinitions();
   const workflows = workflowsQuery.data ?? [];
 
@@ -604,9 +535,6 @@ function AutomationRunsTab({ filterAutomation, onClearFilter }: Readonly<{
     automationId: filterAutomation?.id,
     success: successFilter ? successFilter === 'true' : undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-
   const columns: ColumnProps<IotAutomationRun>[] = [
     dateTimeColumn<IotAutomationRun>('执行时间', 'createdAt'),
     {
@@ -631,9 +559,7 @@ function AutomationRunsTab({ filterAutomation, onClearFilter }: Readonly<{
     },
     {
       title: '结果', dataIndex: 'success', width: 80, fixed: 'right',
-      render: (v: boolean) => (
-        <Tag size="small" color={v ? 'green' : 'red'}>{v ? '成功' : '失败'}</Tag>
-      ),
+      render: (v: boolean) => <IotSuccessTag success={v} />,
     },
     createOperationColumn<IotAutomationRun>({
       width: 100,
@@ -660,23 +586,18 @@ function AutomationRunsTab({ filterAutomation, onClearFilter }: Readonly<{
           />
         </>}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotAutomationRun>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无执行记录"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          showSizeChanger: true,
-          onChange: (p, s) => { setPage(p); setPageSize(s); },
-        }}
+        {...listTableProps(listQuery, {
+          empty: '暂无执行记录',
+          pagination: (total) => ({
+            currentPage: page,
+            pageSize,
+            total,
+            onPageChange: setPage,
+            onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
+          }),
+        })}
       />
 
       <SideSheet
@@ -703,7 +624,7 @@ function AutomationRunsTab({ filterAutomation, onClearFilter }: Readonly<{
                     background: 'var(--semi-color-fill-0)',
                     display: 'flex', gap: 8, alignItems: 'baseline',
                   }}>
-                    <Tag size="small" color={r.success ? 'green' : 'red'}>{r.success ? '成功' : '失败'}</Tag>
+                    <IotSuccessTag success={r.success} />
                     <Text size="small" strong>{r.type}{r.target ? ` → ${r.target}` : ''}</Text>
                     {r.message && <Text size="small" type="tertiary">{r.message}</Text>}
                   </div>

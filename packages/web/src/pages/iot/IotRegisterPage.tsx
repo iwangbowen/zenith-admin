@@ -1,22 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Banner, Button, Form, Modal, Popconfirm, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { IconRefresh } from '@douyinfe/semi-icons';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { StatCard, StatGrid } from '@/components/charts';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { iotIngestContract } from '@zenith/shared/iot';
 import type { CreateIotWhitelistInput, IotWhitelistEntry } from '@zenith/shared/iot';
-import { useAllIotProducts } from '@/hooks/queries/iot-products';
+import { useIotProductOptions } from './components/IotSelectors';
 import {
   iotWhitelistKeys, useDeleteIotWhitelistEntry, useDisableIotRegistration,
   useImportIotWhitelist, useIotWhitelistList, useIotWhitelistStats, useResetIotRegistrationSecret,
@@ -49,18 +48,11 @@ export default function IotRegisterPage() {
     productId: submittedParams.productId ?? undefined,
     used: submittedParams.used ? submittedParams.used === 'true' : undefined,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const statsQuery = useIotWhitelistStats(submittedParams.productId ?? undefined);
   const stats = statsQuery.data;
 
-  const productsQuery = useAllIotProducts();
-  const products = productsQuery.data ?? [];
-  const productOptions = useMemo(
-    () => products.map((p) => ({ value: p.id, label: p.name })),
-    [products],
-  );
+  const { items: products, options: productOptions } = useIotProductOptions();
 
   // ── 批量导入 ──
   const [importVisible, setImportVisible] = useState(false);
@@ -123,19 +115,13 @@ export default function IotRegisterPage() {
     createOperationColumn<IotWhitelistEntry>({
       width: 100,
       actions: (record) => [
-        ...(canManage && !record.used ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要移除 SN「${record.sn}」吗？`,
-              content: '移除后该 SN 将无法动态注册',
-              onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: record.id } });
-                Toast.success('已移除');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !canManage || record.used,
+          title: `确定要移除 SN「${record.sn}」吗？`,
+          content: '移除后该 SN 将无法动态注册',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+          successMessage: '已移除',
+        }),
       ],
     }),
   ];
@@ -218,40 +204,22 @@ export default function IotRegisterPage() {
         </div>
       )}
 
-      <SearchToolbar
-        primary={<>
-          {renderKeyword()}
-          {renderProductFilter()}
-          {renderUsedFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={canManage ? <CreateButton onClick={() => setImportVisible(true)}>批量导入 SN</CreateButton> : null}
-        mobilePrimary={<>
-          {renderKeyword()}
-          <SearchButton onClick={handleSearch} />
-          {canManage ? <CreateButton onClick={() => setImportVisible(true)}>导入</CreateButton> : null}
-        </>}
-        mobileFilters={<>
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={<>
           {renderProductFilter()}
           {renderUsedFilter()}
         </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canManage ? <CreateButton onClick={() => setImportVisible(true)}>批量导入 SN</CreateButton> : null}
+        mobileActions={false}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotWhitelistEntry>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无白名单，点击「批量导入 SN」把产线 SN 加入白名单"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无白名单，点击「批量导入 SN」把产线 SN 加入白名单' })}
       />
 
       <ImportModal

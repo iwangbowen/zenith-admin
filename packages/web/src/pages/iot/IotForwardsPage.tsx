@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Button, Form, SideSheet, Spin, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, SideSheet, Spin, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -13,14 +13,15 @@ import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import {
   IOT_FORWARD_SOURCES, IOT_FORWARD_SOURCE_LABELS, IOT_FORWARD_SOURCE_OPTIONS, IOT_FORWARD_STATUSES, IOT_FORWARD_STATUS_OPTIONS,
 } from '@zenith/shared/iot';
 import type { CreateIotForwardRuleInput, IotForwardLog, IotForwardRule } from '@zenith/shared/iot';
-import { useAllIotProducts } from '@/hooks/queries/iot-products';
-import { useAllIotGroups } from '@/hooks/queries/iot-groups';
+import { useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
+import { IotEnabledTag, IotSuccessTag } from './components/IotStatus';
+import { jsonObjectToText, parseJsonObjectInput } from './iot-form-utils';
 import {
   iotForwardRuleKeys, useDeleteIotForwardRules, useIotForwardLogList,
   useIotForwardRuleList, useSaveIotForwardRule,
@@ -57,8 +58,6 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
     source: enumValueOf(IOT_FORWARD_SOURCES, submittedParams.source),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const { items: statusItems } = useDictItems('common_status');
 
   const modal = useEditModal<IotForwardRule, ForwardRuleFormValues, Partial<CreateIotForwardRuleInput>>({
@@ -71,23 +70,12 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
       groupId: r.groupId,
       url: r.url,
       secret: '',
-      headersText: r.headers && Object.keys(r.headers).length > 0 ? JSON.stringify(r.headers) : '',
+      headersText: jsonObjectToText(r.headers),
       status: r.status,
     }),
     defaults: { source: 'telemetry', status: 'enabled', secret: '', headersText: '' },
     beforeSave: (values, { isEdit }) => {
-      let headers: Record<string, string> | null = null;
-      const headersText = values.headersText?.trim();
-      if (headersText) {
-        try {
-          const parsed: unknown = JSON.parse(headersText);
-          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('bad');
-          headers = parsed as Record<string, string>;
-        } catch {
-          Toast.warning('自定义请求头需为 JSON 对象，如 {"X-Token":"..."}');
-          throw new Error('invalid headers');
-        }
-      }
+      const headers = parseJsonObjectInput({ text: values.headersText, label: '自定义请求头', empty: 'null', toast: 'warning', objectMessage: '自定义请求头需为 JSON 对象，如 {"X-Token":"..."}', errorMessage: 'invalid headers' }) as Record<string, string> | null;
       const secret = values.secret?.trim();
       return {
         name: values.name,
@@ -149,9 +137,7 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotForwardRule['status']) => (
-        <Tag color={v === 'enabled' ? 'green' : 'red'} size="small">{v === 'enabled' ? '启用' : '禁用'}</Tag>
-      ),
+      render: (v: IotForwardRule['status']) => <IotEnabledTag status={v} />,
     },
     createOperationColumn<IotForwardRule>({
       width: 240,
@@ -160,19 +146,12 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
         ...(hasPermission('iot:forward:update') ? [{
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('iot:forward:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除流转规则「${record.name}」吗？`,
-              content: '投递日志将一并删除',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('iot:forward:delete'),
+          title: `确定要删除流转规则「${record.name}」吗？`,
+          content: '投递日志将一并删除',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -209,39 +188,20 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
 
   return (
     <>
-      <SearchToolbar
-        primary={<>
-          {renderKeyword()}
-          {renderSourceFilter()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={renderCreateButton()}
-        mobilePrimary={<>
-          {renderKeyword()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={<>
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={<>
           {renderSourceFilter()}
           {renderStatusFilter()}
         </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotForwardRule>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无流转规则，点击「新增规则」创建第一条"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无流转规则，点击「新增规则」创建第一条' })}
       />
 
       <AppModal {...modal.modalProps} width={640}>
@@ -256,10 +216,8 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
 }
 
 function ForwardFormBody({ isEdit }: Readonly<{ isEdit: boolean }>) {
-  const productsQuery = useAllIotProducts();
-  const products = productsQuery.data ?? [];
-  const groupsQuery = useAllIotGroups();
-  const groups = groupsQuery.data ?? [];
+  const { options: productOptions } = useIotProductOptions();
+  const { options: groupOptions } = useIotGroupOptions();
   const { items: statusItems } = useDictItems('common_status');
 
   return (
@@ -274,11 +232,11 @@ function ForwardFormBody({ isEdit }: Readonly<{ isEdit: boolean }>) {
       </Form.RadioGroup>
       <Form.Select
         field="productId" label="过滤产品" placeholder="不限（全部产品）" showClear style={{ width: '100%' }}
-        optionList={products.map((p) => ({ value: p.id, label: p.name }))}
+        optionList={productOptions}
       />
       <Form.Select
         field="groupId" label="过滤分组" placeholder="不限（全部分组）" showClear style={{ width: '100%' }}
-        optionList={groups.map((g) => ({ value: g.id, label: g.name }))}
+        optionList={groupOptions}
       />
       <Form.Input field="url" label="目的地 URL" placeholder="https://example.com/hooks/iot"
         rules={[{ required: true, message: '目的地不能为空' }]}
@@ -312,9 +270,6 @@ function ForwardLogsTab({ filterRule, onClearFilter }: Readonly<{
     ruleId: filterRule?.id,
     status: enumValueOf(IOT_FORWARD_STATUSES, statusFilter),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-
   const columns: ColumnProps<IotForwardLog>[] = [
     dateTimeColumn<IotForwardLog>('投递时间', 'createdAt'),
     {
@@ -339,9 +294,7 @@ function ForwardLogsTab({ filterRule, onClearFilter }: Readonly<{
     },
     {
       title: '结果', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotForwardLog['status']) => (
-        <Tag size="small" color={v === 'succeeded' ? 'green' : 'red'}>{v === 'succeeded' ? '成功' : '失败'}</Tag>
-      ),
+      render: (v: IotForwardLog['status']) => <IotSuccessTag success={v === 'succeeded'} />,
     },
     createOperationColumn<IotForwardLog>({
       width: 100,
@@ -368,23 +321,18 @@ function ForwardLogsTab({ filterRule, onClearFilter }: Readonly<{
           />
         </>}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotForwardLog>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无投递日志"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          showSizeChanger: true,
-          onChange: (p, s) => { setPage(p); setPageSize(s); },
-        }}
+        {...listTableProps(listQuery, {
+          empty: '暂无投递日志',
+          pagination: (total) => ({
+            currentPage: page,
+            pageSize,
+            total,
+            onPageChange: setPage,
+            onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
+          }),
+        })}
       />
 
       <SideSheet

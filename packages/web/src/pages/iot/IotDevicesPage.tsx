@@ -4,9 +4,8 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import ExportButton from '@/components/ExportButton';
 import ImportButton from '@/components/ImportButton';
 import AppModal from '@/components/AppModal';
@@ -15,17 +14,19 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useDictItems } from '@/hooks/useDictItems';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { abortSubmit } from '@/lib/abort-submit';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import type { CreateIotDeviceGroupInput, CreateIotDeviceInput, IotDevice, IotDeviceGroup, IotMetricValue } from '@zenith/shared/iot';
 import { IOT_NODE_TYPES, IOT_NODE_TYPE_OPTIONS } from '@zenith/shared/iot';
-import { useAllIotProducts } from '@/hooks/queries/iot-products';
+import { IotEnabledTag } from './components/IotStatus';
+import { useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
+import { parseJsonObjectInput } from './iot-form-utils';
 import {
   iotDeviceKeys, useDeleteIotDevices, useIotDeviceList, useSaveIotDevice,
   useSubmitIotBatchCommand, useSubmitIotBatchDesired,
 } from '@/hooks/queries/iot-devices';
-import { useAllIotGroups, useDeleteIotGroups, useSaveIotGroup } from '@/hooks/queries/iot-groups';
+import { useDeleteIotGroups, useSaveIotGroup } from '@/hooks/queries/iot-groups';
 import IotDeviceDetailDrawer from './IotDeviceDetailDrawer';
 
 const { Text } = Typography;
@@ -50,24 +51,6 @@ function renderMetricValue(v: number | string | boolean): string {
   return String(v);
 }
 
-/** 解析 JSON 输入；空串返回 null，非法抛出提示 */
-function parseJsonOrAbort(text: string, label: string): Record<string, unknown> | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      Toast.error(`${label} 需为 JSON 对象`);
-      abortSubmit();
-    }
-    return parsed as Record<string, unknown>;
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortSubmitError') throw err;
-    Toast.error(`${label} 不是合法 JSON`);
-    abortSubmit();
-  }
-}
-
 export default function IotDevicesPage() {
   const { hasPermission } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
@@ -76,10 +59,8 @@ export default function IotDevicesPage() {
   const [groupsVisible, setGroupsVisible] = useState(false);
   const [batchKind, setBatchKind] = useState<'command' | 'desired' | null>(null);
 
-  const productsQuery = useAllIotProducts();
-  const products = productsQuery.data ?? [];
-  const groupsQuery = useAllIotGroups();
-  const groups = groupsQuery.data ?? [];
+  const { items: products, options: productOptions } = useIotProductOptions();
+  const { items: groups, options: groupOptions, isFetching: groupsFetching } = useIotGroupOptions();
   // 网关设备清单（子设备表单「所属网关」选项）
   const gatewaysQuery = useIotDeviceList({ page: 1, pageSize: 100, nodeType: 'gateway' });
   const gatewayOptions = (gatewaysQuery.data?.list ?? []).map((d) => ({ value: d.id, label: `${d.name}（${d.sn}）` }));
@@ -99,8 +80,6 @@ export default function IotDevicesPage() {
     groupId: submittedParams.groupId ?? undefined,
     nodeType: enumValueOf(IOT_NODE_TYPES, submittedParams.nodeType),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const modal = useEditModal<IotDevice, IotDeviceFormValues, Partial<CreateIotDeviceInput>>({
     entityName: '设备',
@@ -139,12 +118,6 @@ export default function IotDevicesPage() {
 
   const deleteMutation = useDeleteIotDevices();
 
-  async function handleDelete(ids: number[]) {
-    await deleteMutation.mutateAsync(ids);
-    setSelectedRowKeys((keys) => keys.filter((k) => !ids.includes(k)));
-    Toast.success('删除成功');
-  }
-
   // ─── 分组管理 ────────────────────────────────────────────────────────────────
   const groupModal = useEditModal<IotDeviceGroup, IotDeviceGroupFormValues, Partial<CreateIotDeviceGroupInput>>({
     entityName: '分组',
@@ -176,12 +149,12 @@ export default function IotDevicesPage() {
         body: {
           deviceIds: selectedRowKeys,
           service: values.service as string,
-          params: parseJsonOrAbort((values.paramsText as string) ?? '', '参数'),
+          params: parseJsonObjectInput({ text: (values.paramsText as string) ?? '', label: '参数', empty: 'null', toast: 'error', abort: true }),
           ttlSeconds: (values.ttlSeconds as number) || undefined,
         },
       });
     } else {
-      const desired = parseJsonOrAbort((values.desiredText as string) ?? '', '期望属性');
+      const desired = parseJsonObjectInput({ text: (values.desiredText as string) ?? '', label: '期望属性', empty: 'null', toast: 'error', abort: true });
       if (!desired || Object.keys(desired).length === 0) {
         Toast.error('期望属性不能为空');
         abortSubmit();
@@ -270,9 +243,7 @@ export default function IotDevicesPage() {
     dateTimeColumn<IotDevice>('最后在线', 'lastSeenAt'),
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotDevice['status']) => (
-        <Tag color={v === 'enabled' ? 'green' : 'red'} size="small">{v === 'enabled' ? '启用' : '禁用'}</Tag>
-      ),
+      render: (v: IotDevice['status']) => <IotEnabledTag status={v} />,
     },
     createOperationColumn<IotDevice>({
       width: 120,
@@ -284,16 +255,13 @@ export default function IotDevicesPage() {
         ...(hasPermission('iot:device:update') ? [{
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('iot:device:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除设备「${record.name}」吗？`,
-              content: '遥测数据、事件与指令记录将一并清除，不可恢复',
-              onOk: () => handleDelete([record.id]),
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('iot:device:delete'),
+          title: `确定要删除设备「${record.name}」吗？`,
+          content: '遥测数据、事件与指令记录将一并清除，不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+          onDeleted: () => setSelectedRowKeys((keys) => keys.filter((k) => k !== record.id)),
+        }),
       ],
     }),
   ];
@@ -311,13 +279,10 @@ export default function IotDevicesPage() {
         <div style={{ display: 'flex', gap: 8 }}>
           <Button theme="borderless" size="small" onClick={() => groupModal.openEdit(r)}>编辑</Button>
           <Button theme="borderless" size="small" type="danger" onClick={() => {
-            confirmDelete({
+            confirmAndDelete({
               title: `确定要删除分组「${r.name}」吗？`,
               content: '组内设备本身不受影响',
-              onOk: async () => {
-                await deleteGroupMutation.mutateAsync([r.id]);
-                Toast.success('删除成功');
-              },
+              run: () => deleteGroupMutation.mutateAsync([r.id]),
             });
           }}>删除</Button>
         </div>
@@ -383,23 +348,24 @@ export default function IotDevicesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={<>
           {renderProductFilter()}
           {renderGroupFilter()}
           {renderNodeTypeFilter()}
           {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
+        </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={<>
           {canBatch && selectedRowKeys.length > 0 && (
             <>
               <Button theme="light" onClick={() => setBatchKind('command')}>批量指令（{selectedRowKeys.length}）</Button>
               <Button theme="light" onClick={() => setBatchKind('desired')}>批量期望值（{selectedRowKeys.length}）</Button>
             </>
           )}
-        </>}
-        actions={<>
           {hasPermission('iot:device:import') && (
             <ImportButton entity="iot.devices" title="IoT 设备" onFinished={() => void listQuery.refetch()} />
           )}
@@ -407,20 +373,14 @@ export default function IotDevicesPage() {
           {hasPermission('iot:group:manage') && (
             <Button theme="light" onClick={() => setGroupsVisible(true)}>分组管理</Button>
           )}
-          {renderCreateButton()}
-        </>}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={<>
-          {renderProductFilter()}
-          {renderGroupFilter()}
-          {renderNodeTypeFilter()}
-          {renderStatusFilter()}
         </>}
         mobileActions={<>
+          {canBatch && selectedRowKeys.length > 0 && (
+            <>
+              <Button theme="borderless" onClick={() => setBatchKind('command')}>批量指令（{selectedRowKeys.length}）</Button>
+              <Button theme="borderless" onClick={() => setBatchKind('desired')}>批量期望值（{selectedRowKeys.length}）</Button>
+            </>
+          )}
           {hasPermission('iot:device:import') && (
             <ImportButton entity="iot.devices" title="IoT 设备" label="导入设备" onFinished={() => void listQuery.refetch()} />
           )}
@@ -430,25 +390,18 @@ export default function IotDevicesPage() {
           )}
         </>}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotDevice>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无设备，点击「注册设备」接入第一台设备"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
-        rowSelection={canBatch ? {
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-        } : undefined}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          empty: '暂无设备，点击「注册设备」接入第一台设备',
+          rowSelection: canBatch ? {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          } : undefined,
+        })}
       />
 
       {/* 注册 / 编辑设备 */}
@@ -481,7 +434,7 @@ export default function IotDevicesPage() {
                 <>
                   <Form.Select
                     field="productId" label="所属产品" placeholder="选择产品" style={{ width: '100%' }}
-                    optionList={products.map((p) => ({ value: p.id, label: p.name }))}
+                    optionList={productOptions}
                     rules={[{ required: true, message: '请选择所属产品' }]}
                   />
                   <Form.Input field="name" label="设备名称" placeholder="如：机房 A-01 温湿度"
@@ -509,7 +462,7 @@ export default function IotDevicesPage() {
                   )}
                   <Form.Select
                     field="groupIds" label="所属分组" placeholder="选择分组（可多选）" multiple showClear style={{ width: '100%' }}
-                    optionList={groups.map((g) => ({ value: g.id, label: g.name }))}
+                    optionList={groupOptions}
                   />
                   <Row gutter={16}>
                     <Col span={12}>
@@ -557,7 +510,7 @@ export default function IotDevicesPage() {
         </div>
         <Table
           columns={groupColumns} dataSource={groups} rowKey="id"
-          size="small" pagination={false} loading={groupsQuery.isFetching}
+          size="small" pagination={false} loading={groupsFetching}
           empty="暂无分组"
         />
         <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>

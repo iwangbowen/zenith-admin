@@ -4,11 +4,11 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { FileUp } from 'lucide-react';import ConfigurableTable from '@/components/ConfigurableTable';
+import { FileUp } from 'lucide-react';
+import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -16,6 +16,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import {
@@ -23,9 +24,8 @@ import {
   IOT_OTA_TASK_STATUS_LABELS, IOT_OTA_TASK_STATUS_OPTIONS,
 } from '@zenith/shared/iot';
 import type { IotFirmware, IotOtaTask, IotOtaTaskDevice, UpdateIotFirmwareInput } from '@zenith/shared/iot';
-import { useAllIotProducts } from '@/hooks/queries/iot-products';
-import { useAllIotGroups } from '@/hooks/queries/iot-groups';
-import { useIotDeviceList } from '@/hooks/queries/iot-devices';
+import { useIotDeviceOptions, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
+import { IotEnabledTag } from './components/IotStatus';
 import {
   iotFirmwareKeys, iotOtaTaskKeys, useCancelIotOtaTask, useCreateIotOtaTask, useDeleteIotFirmwares,
   useReleaseNextIotOtaBatch, useResumeIotOtaTask,
@@ -54,8 +54,7 @@ const defaultFirmwareSearch: FirmwareSearchParams = { keyword: '', productId: nu
 function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotFirmware) => void }>) {
   const { hasPermission } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
-  const productsQuery = useAllIotProducts();
-  const products = productsQuery.data ?? [];
+  const { items: products, options: productOptions } = useIotProductOptions();
 
   const {
     page, pageSize, buildPagination,
@@ -70,8 +69,6 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
     productId: submittedParams.productId ?? undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   // 上传固件（multipart 手工编排，不走 useEditModal 的 JSON 语义）
   const [uploadVisible, setUploadVisible] = useState(false);
@@ -131,9 +128,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotFirmware['status']) => (
-        <Tag color={v === 'enabled' ? 'green' : 'red'} size="small">{v === 'enabled' ? '启用' : '禁用'}</Tag>
-      ),
+      render: (v: IotFirmware['status']) => <IotEnabledTag status={v} />,
     },
     createOperationColumn<IotFirmware>({
       width: 150,
@@ -147,21 +142,15 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
         }] : []),
         ...(hasPermission('iot:ota:firmware:manage') ? [{
           key: 'edit', label: '编辑', onClick: () => editModal.openEdit(record),
-        }, {
-          key: 'delete', label: '删除', danger: true,
+        }] : []),
+        deleteAction({
+          hidden: !hasPermission('iot:ota:firmware:manage'),
           disabled: (record.taskCount ?? 0) > 0,
           disabledReason: (record.taskCount ?? 0) > 0 ? '存在升级任务' : undefined,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除固件 v${record.version} 吗？`,
-              content: '托管文件一并回收，不可恢复',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+          title: `确定要删除固件 v${record.version} 吗？`,
+          content: '托管文件一并回收，不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -198,39 +187,20 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
 
   return (
     <>
-      <SearchToolbar
-        primary={<>
-          {renderKeyword()}
-          {renderProductFilter()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={renderUploadButton()}
-        mobilePrimary={<>
-          {renderKeyword()}
-          <SearchButton onClick={handleSearch} />
-          {renderUploadButton()}
-        </>}
-        mobileFilters={<>
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={<>
           {renderProductFilter()}
           {renderStatusFilter()}
         </>}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderUploadButton()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotFirmware>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无固件包，点击「上传固件」发布第一个版本"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无固件包，点击「上传固件」发布第一个版本' })}
       />
 
       {/* 上传固件 */}
@@ -246,7 +216,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
         <Form labelPosition="left" labelWidth={100} getFormApi={(api) => setUploadFormApi(api)}>
           <Form.Select
             field="productId" label="所属产品" placeholder="选择产品" style={{ width: '100%' }}
-            optionList={products.map((p) => ({ value: p.id, label: p.name }))}
+            optionList={productOptions}
             rules={[{ required: true, message: '请选择所属产品' }]}
           />
           <Form.Input
@@ -316,8 +286,6 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(IOT_OTA_TASK_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const cancelMutation = useCancelIotOtaTask();
   const releaseMutation = useReleaseNextIotOtaBatch();
@@ -421,33 +389,16 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
 
   return (
     <>
-      <SearchToolbar
-        primary={<>
-          {renderKeyword()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        mobilePrimary={<>
-          {renderKeyword()}
-          <SearchButton onClick={handleSearch} />
-        </>}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotOtaTask>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无升级任务，在「固件包」页签对固件「发起升级」"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无升级任务，在「固件包」页签对固件「发起升级」' })}
       />
       <OtaTaskDetailDrawer task={detailTask} onClose={() => onOpenDetail(null)} />
     </>
@@ -539,13 +490,11 @@ function CreateTaskModal({ firmware, onClose, onCreated }: Readonly<{
 }>) {
   const [formApi, setFormApi] = useState<FormApi | null>(null);
   const createMutation = useCreateIotOtaTask();
-  const groupsQuery = useAllIotGroups();
-  const groups = groupsQuery.data ?? [];
-  const devicesQuery = useIotDeviceList(
-    { page: 1, pageSize: 100, productId: firmware?.productId },
-    firmware !== null,
-  );
-  const devices = (devicesQuery.data?.list ?? []).filter((d) => d.firmwareVersion !== firmware?.version);
+  const { items: groups } = useIotGroupOptions();
+  const { items: deviceItems } = useIotDeviceOptions(firmware?.productId, firmware !== null);
+  const deviceOptions = deviceItems
+    .filter((d) => d.firmwareVersion !== firmware?.version)
+    .map((d) => ({ value: d.id, label: `${d.name}（${d.sn}）` }));
   const [target, setTarget] = useState<'all' | 'group' | 'devices'>('all');
 
   async function handleSubmit() {
@@ -610,7 +559,7 @@ function CreateTaskModal({ firmware, onClose, onCreated }: Readonly<{
           {target === 'devices' && (
             <Form.Select
               field="deviceIds" label="目标设备" placeholder="选择设备（可多选）" multiple showClear style={{ width: '100%' }}
-              optionList={devices.map((d) => ({ value: d.id, label: `${d.name}（${d.sn}）` }))}
+              optionList={deviceOptions}
               rules={[{ required: true, message: '请选择目标设备' }]}
             />
           )}
@@ -663,4 +612,3 @@ export default function IotOtaPage() {
     </div>
   );
 }
-

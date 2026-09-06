@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Col, Form, Row, SideSheet, Spin, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Col, Form, Row, SideSheet, Spin, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -14,16 +14,17 @@ import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import {
   IOT_SCHEDULE_ACTION_LABELS, IOT_SCHEDULE_ACTION_OPTIONS,
   IOT_SCHEDULE_TYPE_LABELS, IOT_SCHEDULE_TYPE_OPTIONS,
 } from '@zenith/shared/iot';
 import type { CreateIotScheduleInput, IotSchedule, IotScheduleRun } from '@zenith/shared/iot';
-import { useAllIotProducts, useIotThingModel } from '@/hooks/queries/iot-products';
-import { useIotDeviceList } from '@/hooks/queries/iot-devices';
-import { useAllIotGroups } from '@/hooks/queries/iot-groups';
+import { useIotDeviceOptions, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
+import { IotEnabledTag } from './components/IotStatus';
+import { IotServiceSelectField } from './components/ThingModelFields';
+import { formatIotDateTime, jsonObjectToText, parseJsonObjectInput, toFiveFieldCron, toSixFieldCron } from './iot-form-utils';
 import {
   iotScheduleKeys, useDeleteIotSchedules, useIotScheduleList,
   useIotScheduleRunList, useSaveIotSchedule,
@@ -34,37 +35,6 @@ const { Text } = Typography;
 function describeScheduleAction(r: IotSchedule): string {
   if (r.actionType === 'command') return `${IOT_SCHEDULE_ACTION_LABELS.command}：${r.service ?? ''}`;
   return `${IOT_SCHEDULE_ACTION_LABELS.desired}：${Object.keys(r.desired ?? {}).join('、')}`;
-}
-
-function parseJsonObject(text: string | undefined, label: string): Record<string, never> | undefined {
-  const trimmed = text?.trim();
-  if (!trimmed) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('bad');
-    return parsed as Record<string, never>;
-  } catch {
-    Toast.warning(`${label} 需为 JSON 对象，如 {"power":"on"}`);
-    throw new Error(`invalid ${label}`);
-  }
-}
-
-// CronBuilderPopover 内部使用 6 段（含秒）cron；计划任务存标准 5 段，故在边界转换
-const toSixField = (expr: string) => {
-  const e = (expr ?? '').trim();
-  return e.split(/\s+/).length === 5 ? `0 ${e}` : e;
-};
-const toFiveField = (expr: string) => {
-  const e = (expr ?? '').trim();
-  const parts = e.split(/\s+/);
-  return parts.length === 6 ? parts.slice(1).join(' ') : e;
-};
-
-function formatDateValue(v: string | Date | undefined | null): string | null {
-  if (!v) return null;
-  if (typeof v === 'string') return v;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())} ${pad(v.getHours())}:${pad(v.getMinutes())}:${pad(v.getSeconds())}`;
 }
 
 /** 计划表单值：执行时刻在表单里可为 Date，参数 / 期望属性以 JSON 文本编辑，提交前由 beforeSave 解析 */
@@ -96,8 +66,6 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const { items: statusItems } = useDictItems('common_status');
 
   const modal = useEditModal<IotSchedule, ScheduleFormValues, Partial<CreateIotScheduleInput>>({
@@ -113,8 +81,8 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
       deviceId: r.deviceId,
       actionType: r.actionType,
       service: r.service,
-      paramsText: r.params && Object.keys(r.params).length > 0 ? JSON.stringify(r.params) : '',
-      desiredText: r.desired && Object.keys(r.desired).length > 0 ? JSON.stringify(r.desired) : '',
+      paramsText: jsonObjectToText(r.params),
+      desiredText: jsonObjectToText(r.desired),
       status: r.status,
     }),
     defaults: { scheduleType: 'cron', actionType: 'desired', cronExpression: '0 22 * * *', status: 'enabled' },
@@ -126,12 +94,12 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
         actionType: values.actionType,
       }),
       cronExpression: values.scheduleType === 'cron' ? (values.cronExpression?.trim() || null) : null,
-      runAt: values.scheduleType === 'once' ? formatDateValue(values.runAt) : null,
+      runAt: values.scheduleType === 'once' ? formatIotDateTime(values.runAt) : null,
       groupId: values.groupId ?? null,
       deviceId: values.deviceId ?? null,
       service: values.actionType === 'command' ? (values.service || null) : null,
-      params: values.actionType === 'command' ? (parseJsonObject(values.paramsText, '服务参数') ?? null) : null,
-      desired: values.actionType === 'desired' ? (parseJsonObject(values.desiredText, '期望属性') ?? null) : null,
+      params: values.actionType === 'command' ? ((parseJsonObjectInput({ text: values.paramsText, label: '服务参数', empty: 'undefined', toast: 'warning', objectMessage: '服务参数 需为 JSON 对象，如 {"power":"on"}' }) as Record<string, string | number | boolean> | undefined) ?? null) : null,
+      desired: values.actionType === 'desired' ? ((parseJsonObjectInput({ text: values.desiredText, label: '期望属性', empty: 'undefined', toast: 'warning', objectMessage: '期望属性 需为 JSON 对象，如 {"power":"on"}' }) as Record<string, string | number | boolean> | undefined) ?? null) : null,
       status: values.status,
     }),
     labelWidth: 110,
@@ -175,9 +143,7 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotSchedule['status']) => (
-        <Tag color={v === 'enabled' ? 'green' : 'red'} size="small">{v === 'enabled' ? '启用' : '禁用'}</Tag>
-      ),
+      render: (v: IotSchedule['status']) => <IotEnabledTag status={v} />,
     },
     createOperationColumn<IotSchedule>({
       width: 240,
@@ -186,19 +152,12 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
         ...(hasPermission('iot:schedule:update') ? [{
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('iot:schedule:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除计划「${record.name}」吗？`,
-              content: '执行记录将一并删除',
-              onOk: async () => {
-                await deleteMutation.mutateAsync([record.id]);
-                Toast.success('删除成功');
-              },
-            });
-          },
-        }] : []),
+        deleteAction({
+          hidden: !hasPermission('iot:schedule:delete'),
+          title: `确定要删除计划「${record.name}」吗？`,
+          content: '执行记录将一并删除',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -225,35 +184,17 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
 
   return (
     <>
-      <SearchToolbar
-        primary={<>
-          {renderKeyword()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={renderCreateButton()}
-        mobilePrimary={<>
-          {renderKeyword()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeyword()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotSchedule>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无计划任务，点击「新增计划」创建第一条（如：每天 22:00 关闭指示灯）"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无计划任务，点击「新增计划」创建第一条（如：每天 22:00 关闭指示灯）' })}
       />
 
       <AppModal {...modal.modalProps} width={660}>
@@ -278,20 +219,12 @@ function ScheduleFormBody({ isEdit, values, onApplyCron }: Readonly<{
   values: Record<string, unknown>;
   onApplyCron: (expr: string) => void;
 }>) {
-  const productsQuery = useAllIotProducts();
-  const products = productsQuery.data ?? [];
-  const groupsQuery = useAllIotGroups();
-  const groups = groupsQuery.data ?? [];
+  const { options: productOptions } = useIotProductOptions();
+  const { options: groupOptions } = useIotGroupOptions();
   const productId = (values.productId as number | undefined) ?? null;
   const scheduleType = (values.scheduleType as string | undefined) ?? 'cron';
   const actionType = (values.actionType as string | undefined) ?? 'desired';
-  const modelQuery = useIotThingModel(productId);
-  const services = modelQuery.data?.services ?? [];
-  const devicesQuery = useIotDeviceList(
-    { page: 1, pageSize: 100, productId: productId ?? undefined },
-    productId !== null,
-  );
-  const devices = devicesQuery.data?.list ?? [];
+  const { options: deviceOptions } = useIotDeviceOptions(productId, productId !== null);
   const { items: statusItems } = useDictItems('common_status');
 
   return (
@@ -321,8 +254,8 @@ function ScheduleFormBody({ isEdit, values, onApplyCron }: Readonly<{
           extraText="五段格式（分 时 日 月 周），如 0 22 * * * = 每天 22:00"
           addonAfter={
             <CronBuilderPopover
-              value={toSixField((values.cronExpression as string | undefined) ?? '')}
-              onApply={(expr) => onApplyCron(toFiveField(expr))}
+              value={toSixFieldCron((values.cronExpression as string | undefined) ?? '')}
+              onApply={(expr) => onApplyCron(toFiveFieldCron(expr))}
             />
           } />
       ) : (
@@ -336,20 +269,20 @@ function ScheduleFormBody({ isEdit, values, onApplyCron }: Readonly<{
             field="productId" label="所属产品" placeholder="选择产品" style={{ width: '100%' }}
             disabled={isEdit}
             extraText={isEdit ? '所属产品不可变更' : undefined}
-            optionList={products.map((p) => ({ value: p.id, label: p.name }))}
+            optionList={productOptions}
             rules={isEdit ? [] : [{ required: true, message: '请选择所属产品' }]}
           />
         </Col>
         <Col span={12}>
           <Form.Select
             field="deviceId" label="限定设备" placeholder="不限" showClear style={{ width: '100%' }}
-            optionList={devices.map((d) => ({ value: d.id, label: `${d.name}（${d.sn}）` }))}
+            optionList={deviceOptions}
           />
         </Col>
       </Row>
       <Form.Select
         field="groupId" label="限定分组" placeholder="不限（产品下全部设备）" showClear style={{ width: '100%' }}
-        optionList={groups.map((g) => ({ value: g.id, label: g.name }))}
+        optionList={groupOptions}
         extraText="目标优先级：设备 > 分组 > 产品全部（上限 500 台）"
       />
       <Form.RadioGroup field="actionType" label="动作类型" disabled={isEdit}
@@ -361,12 +294,7 @@ function ScheduleFormBody({ isEdit, values, onApplyCron }: Readonly<{
       {actionType === 'command' && (
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Select
-              field="service" label="服务" placeholder="选择物模型服务" style={{ width: '100%' }}
-              optionList={services.map((s) => ({ value: s.identifier, label: `${s.name}（${s.identifier}）` }))}
-              rules={[{ required: true, message: '请选择服务' }]}
-              emptyContent={productId ? '该产品物模型没有服务' : '请先选择产品'}
-            />
+            <IotServiceSelectField productId={productId} />
           </Col>
           <Col span={12}>
             <Form.Input field="paramsText" label="服务参数" placeholder='JSON 对象（可空），如 {"speed":2}' />
@@ -395,9 +323,6 @@ function ScheduleRunsTab({ filterSchedule, onClearFilter }: Readonly<{
     pageSize,
     scheduleId: filterSchedule?.id,
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-
   const columns: ColumnProps<IotScheduleRun>[] = [
     dateTimeColumn<IotScheduleRun>('执行时间', 'createdAt'),
     {
@@ -430,23 +355,18 @@ function ScheduleRunsTab({ filterSchedule, onClearFilter }: Readonly<{
           <Tag closable onClose={onClearFilter} color="blue">计划：{filterSchedule.name}</Tag>
         ) : <Text type="tertiary" size="small">全部计划的执行流水</Text>}
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotScheduleRun>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无执行记录"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          showSizeChanger: true,
-          onChange: (p, s) => { setPage(p); setPageSize(s); },
-        }}
+        {...listTableProps(listQuery, {
+          empty: '暂无执行记录',
+          pagination: (total) => ({
+            currentPage: page,
+            pageSize,
+            total,
+            onPageChange: setPage,
+            onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
+          }),
+        })}
       />
 
       <SideSheet

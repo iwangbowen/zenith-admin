@@ -1,20 +1,20 @@
 import { useState } from 'react';
-import { Form, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Form, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useDictItems } from '@/hooks/useDictItems';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { IOT_VALIDATION_MODE_OPTIONS } from '@zenith/shared/iot';
+import { IotEnabledTag } from './components/IotStatus';
 import type { CreateIotProductInput, IotProduct } from '@zenith/shared/iot';
 import {
   iotProductKeys, useDeleteIotProducts, useIotProductList, useSaveIotProduct,
@@ -50,8 +50,6 @@ export default function IotProductsPage() {
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   const modal = useEditModal<IotProduct, IotProductFormValues, Partial<CreateIotProductInput>>({
     entityName: '产品',
@@ -73,11 +71,6 @@ export default function IotProductsPage() {
   });
 
   const deleteMutation = useDeleteIotProducts();
-
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
 
   const columns: ColumnProps<IotProduct>[] = [
     {
@@ -111,9 +104,7 @@ export default function IotProductsPage() {
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotProduct['status']) => (
-        <Tag color={v === 'enabled' ? 'green' : 'red'} size="small">{v === 'enabled' ? '启用' : '禁用'}</Tag>
-      ),
+      render: (v: IotProduct['status']) => <IotEnabledTag status={v} />,
     },
     createOperationColumn<IotProduct>({
       width: 220,
@@ -124,18 +115,14 @@ export default function IotProductsPage() {
         ...(hasPermission('iot:product:update') ? [{
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
         }] : []),
-        ...(hasPermission('iot:product:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
+        deleteAction({
+          hidden: !hasPermission('iot:product:delete'),
           disabled: (record.deviceCount ?? 0) > 0,
           disabledReason: (record.deviceCount ?? 0) > 0 ? '产品下存在设备' : undefined,
-          onClick: () => {
-            confirmDelete({
-              title: `确定要删除产品「${record.name}」吗？`,
-              content: '删除后不可恢复，物模型定义一并删除',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        }] : []),
+          title: `确定要删除产品「${record.name}」吗？`,
+          content: '删除后不可恢复，物模型定义一并删除',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -162,36 +149,18 @@ export default function IotProductsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={renderCreateButton()}
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={renderStatusFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        filters={renderStatusFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
         filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<IotProduct>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无 IoT 产品"
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无 IoT 产品' })}
       />
 
       <AppModal {...modal.modalProps} width={560}>
