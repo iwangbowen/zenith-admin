@@ -5,6 +5,7 @@ import { batchIterable } from '../../excel-export';
 import { currentUser } from '../../context';
 import { tenantCondition } from '../../tenant';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import {
   COMMON_STATUS_LABELS,
 } from '@zenith/shared/core';
@@ -39,7 +40,7 @@ export const shortLinksExportDefinition = defineExport({
   sheetName: '短链列表',
   permissions: { export: 'shortlink:link:export' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async () => db.$count(shortLinks, tenantCondition(shortLinks, currentUser())),
   streamRows: async () => {

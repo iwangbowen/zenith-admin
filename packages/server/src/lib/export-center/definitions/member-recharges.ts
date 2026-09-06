@@ -4,6 +4,7 @@ import { paymentOrders, members } from '../../../db/schema';
 import { buildRechargeWhere } from '../../../services/member/member-recharge.service';
 import { batchIterable } from '../../excel-export';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 import type { PaymentChannel, PaymentOrderStatus } from '@zenith/shared/payment';
 import { PAYMENT_ORDER_STATUS_LABELS, PAYMENT_CHANNEL_LABELS } from '@zenith/shared/payment';
@@ -35,7 +36,7 @@ export const memberRechargesExportDefinition = defineExport<Query & Record<strin
   sheetName: '充值记录',
   permissions: { export: 'member:recharge:list' },
   execution: { mode: 'auto' },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => {
     const joinOn = sql`${members.id}::text = ${paymentOrders.bizId}`;

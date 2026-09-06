@@ -4,6 +4,7 @@ import { paymentRefunds } from '../../../db/schema';
 import { buildRefundsWhere, type ListRefundsQuery } from '../../../services/payment/payment.service';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_REFUND_STATUS_LABELS } from '@zenith/shared/payment';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const EXPORT_LIMIT = 50000;
@@ -29,7 +30,7 @@ export const paymentRefundsExportDefinition = defineExport<ListRefundsQuery & Re
   sheetName: '退款记录',
   permissions: { export: 'payment:refund:list' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => Math.min(await db.$count(paymentRefunds, buildRefundsWhere(query)), EXPORT_LIMIT),
   streamRows: async (query) =>

@@ -11,7 +11,7 @@ import type {
   CmsPageContext, CmsSearchContext, CmsTagPageContext, CmsNotFoundContext,
   CmsTheme, CmsThemeContentCollection, CmsNavItem as CmsNavItemType,
 } from '../types';
-import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon } from '../_shared';
+import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon, searchResultHref, PublishedDate, SinglePageArticle, externalLinkProps } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import { renderCmsWidgetHtml } from '../widgets';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
@@ -105,11 +105,11 @@ function GovList({ items, showTop = false }: { items: CmsContentItem[]; showTop?
     <ul className="gov-list">
       {items.map((item) => (
         <li key={item.id}>
-          <a href={item.url} {...(item.isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {})}>
+          <a href={item.url} {...externalLinkProps(item.isExternal)}>
             {showTop && item.isTop ? <span className="top-badge">置顶</span> : null}
             {item.title}
           </a>
-          {item.publishedAt ? <time>{item.publishedAt.slice(0, 10)}</time> : null}
+          <PublishedDate value={item.publishedAt} />
         </li>
       ))}
     </ul>
@@ -264,10 +264,7 @@ function PageTemplate(ctx: CmsPageContext) {
   return (
     <GovLayout ctx={ctx} currentUrl={ctx.channel.url}>
       <Breadcrumbs items={ctx.breadcrumbs} />
-      <article className="article">
-        <h1>{ctx.channel.name}</h1>
-        <div className="body" dangerouslySetInnerHTML={{ __html: ctx.contentHtml }} />
-      </article>
+      <SinglePageArticle ctx={ctx} />
     </GovLayout>
   );
 }
@@ -282,11 +279,11 @@ function SearchTemplate(ctx: CmsSearchContext) {
         ) : ctx.results.map((r) => (
           <div className="content-item" key={r.id}>
             <a
-              href={r.isExternal ? r.url : `${ctx.baseUrl}${r.url}`}
-              {...(r.isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {})}
+              href={searchResultHref(r, ctx.baseUrl)}
+              {...externalLinkProps(r.isExternal)}
               dangerouslySetInnerHTML={{ __html: r.titleHighlight }}
             />
-            {r.publishedAt ? <time>{r.publishedAt.slice(0, 10)}</time> : null}
+            <PublishedDate value={r.publishedAt} />
           </div>
         ))}
       </div>

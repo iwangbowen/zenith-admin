@@ -5,12 +5,10 @@ import { currentUser } from '../../context';
 import { tenantCondition } from '../../tenant';
 import { buildLeaderMap } from '../../../services/identity/departments.service';
 import { defineExport } from '../registry';
-import { COMMON_STATUS_LABELS } from '@zenith/shared/core';
+import { RETENTION_7_DAYS, STATUS_ENUM_MAP } from '../presets';
 import type { ExportColumn } from '../types';
 
 const CATEGORY_LABELS: Record<string, string> = { group: '集团', company: '公司', department: '部门' };
-const STATUS_LABELS: Record<string, string> = COMMON_STATUS_LABELS;
-
 const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 8, type: 'number' },
   { key: 'name', header: '部门名称', width: 20 },
@@ -18,7 +16,7 @@ const columns: ExportColumn[] = [
   { key: 'category', header: '类别', width: 10, enumMap: CATEGORY_LABELS },
   { key: 'leaderName', header: '负责人', width: 14 },
   { key: 'phone', header: '电话', width: 16 },
-  { key: 'status', header: '状态', width: 10, enumMap: STATUS_LABELS },
+  { key: 'status', header: '状态', width: 10, enumMap: STATUS_ENUM_MAP },
   { key: 'createdAt', header: '创建时间', width: 22, type: 'datetime' },
 ];
 
@@ -30,7 +28,7 @@ export const departmentsExportDefinition = defineExport({
   sheetName: '部门列表',
   permissions: { export: 'system:department:list' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async () => db.$count(departments, tenantCondition(departments, currentUser())),
   streamRows: async () => {

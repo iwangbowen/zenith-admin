@@ -1,6 +1,7 @@
 import { HTTPException } from 'hono/http-exception';
 import { exportChannelSubscribers } from '../../../services/messaging/channel.service';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 function asString(value: unknown): string | undefined {
@@ -28,7 +29,7 @@ export const channelSubscribersExportDefinition = defineExport({
   sheetName: '频道订阅者',
   permissions: { export: 'channel:channel:list' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => {
     const rows = await exportChannelSubscribers(asRequiredPositiveNumber(query.channelId, '频道ID'), asString(query.keyword));

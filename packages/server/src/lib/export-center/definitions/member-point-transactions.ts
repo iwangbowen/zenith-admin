@@ -4,6 +4,7 @@ import { memberPointTransactions, members } from '../../../db/schema';
 import { buildPointTxWhere } from '../../../services/member/member-points.service';
 import { batchIterable } from '../../excel-export';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 import type { PointTxType } from '@zenith/shared/member';
 import { POINT_TX_TYPE_LABELS } from '@zenith/shared/member';
@@ -33,7 +34,7 @@ export const memberPointTxExportDefinition = defineExport<Query & Record<string,
   sheetName: '积分流水',
   permissions: { export: 'member:point:list' },
   execution: { mode: 'auto' },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => db.$count(memberPointTransactions, buildPointTxWhere(query)),
   streamRows: async (query) => {

@@ -5,6 +5,7 @@ import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../da
 import { keywordCondition } from '../../where-helpers';
 import { buildCmsPublishingConditions } from '../../../services/cms/cms-publishing.service';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 interface PublishLogExportRow extends Record<string, unknown> {
@@ -81,7 +82,7 @@ export const cmsPublishLogsExportDefinition = defineExport<Record<string, unknow
   formats: ['xlsx', 'csv'],
   permissions: { export: 'cms:publish:view' },
   execution: { mode: 'sync', syncMaxRows: 5000, syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => {
     const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(asyncTaskItems)

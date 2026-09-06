@@ -5,6 +5,7 @@ import { batchIterable } from '../../excel-export';
 import { currentUser } from '../../context';
 import { tenantCondition } from '../../tenant';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const EVENT_LABELS: Record<string, string> = { login: '登录', logout: '退出登录' };
@@ -31,7 +32,7 @@ export const loginLogsExportDefinition = defineExport({
   sheetName: '登录日志',
   permissions: { export: 'system:log:login' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async () => db.$count(loginLogs, tenantCondition(loginLogs, currentUser())),
   streamRows: async () => {

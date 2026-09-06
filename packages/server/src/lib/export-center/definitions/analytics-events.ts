@@ -1,6 +1,7 @@
 import { listEventsForExport, countEventsForExport, type EventListQuery } from '../../../services/analytics/analytics.service';
 import { parseDateRangeEnd, parseDateRangeStart } from '../../datetime';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 function asString(value: unknown): string | undefined {
@@ -48,7 +49,7 @@ export const analyticsEventsExportDefinition = defineExport({
   sheetName: '埋点事件',
   permissions: { export: 'analytics:export' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => countEventsForExport(normalizeQuery(query)),
   streamRows: async (query) => listEventsForExport(normalizeQuery(query)),

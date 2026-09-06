@@ -2,6 +2,7 @@ import { asc, desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { fileStorageConfigs } from '../../../db/schema';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
@@ -23,7 +24,7 @@ export const fileStorageConfigsExportDefinition = defineExport({
   sheetName: '文件存储配置',
   permissions: { export: 'system:file:config' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async () => db.$count(fileStorageConfigs),
   streamRows: async () =>

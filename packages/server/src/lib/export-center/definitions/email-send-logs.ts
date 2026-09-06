@@ -4,6 +4,7 @@ import { emailSendLogs } from '../../../db/schema';
 import { batchIterable } from '../../excel-export';
 import { buildListWhere, type ListEmailSendLogsQuery } from '../../../services/messaging/email-send-logs.service';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
@@ -25,7 +26,7 @@ export const emailSendLogsExportDefinition = defineExport<ListEmailSendLogsQuery
   sheetName: '邮件发送记录',
   permissions: { export: 'system:email-send-log:export' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => db.$count(emailSendLogs, buildListWhere(query)),
   streamRows: async (query) => {

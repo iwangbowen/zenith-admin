@@ -1,4 +1,4 @@
-import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../db-assert';
 import type { AnyExportDefinition, ExportDefinition } from './types';
 import { DEFAULT_EXPORT_EXECUTION, DEFAULT_EXPORT_RETENTION } from './types';
 
@@ -24,8 +24,8 @@ export function registerExport(definition: AnyExportDefinition): void {
 }
 
 export function getExportDefinition(entity: string): AnyExportDefinition {
-  const definition = registry.get(entity);
-  if (!definition) throw new HTTPException(404, { message: `导出实体不存在: ${entity}` });
+  const maybeDefinition = registry.get(entity);
+  const definition = requireRow(maybeDefinition, `导出实体不存在: ${entity}`);
   return definition;
 }
 

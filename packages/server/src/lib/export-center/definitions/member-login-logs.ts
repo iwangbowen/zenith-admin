@@ -4,6 +4,7 @@ import { memberLoginLogs, members } from '../../../db/schema';
 import { buildLoginLogWhere } from '../../../services/member/admin-members.service';
 import { batchIterable } from '../../excel-export';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const STATUS_LABELS: Record<string, string> = { success: '成功', fail: '失败' };
@@ -30,7 +31,7 @@ export const memberLoginLogsExportDefinition = defineExport<Query & Record<strin
   sheetName: '会员登录日志',
   permissions: { export: 'member:loginlog:list' },
   execution: { mode: 'auto' },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => {
     const rows = await db.select({ v: sql<number>`count(*)::int` })

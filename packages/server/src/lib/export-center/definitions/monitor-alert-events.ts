@@ -13,6 +13,7 @@ import { batchIterable } from '../../excel-export';
 import { buildEventListWhere } from '../../../services/platform/monitor-alert.service';
 import type { MonitorAlertEventQuery } from '@zenith/shared/platform';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const OPERATOR_LABELS: Record<string, string> = { gt: '大于', gte: '大于等于', lt: '小于', lte: '小于等于' };
@@ -51,7 +52,7 @@ export const monitorAlertEventsExportDefinition = defineExport<
   sheetName: '告警事件',
   permissions: { export: 'alert:event:export' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => db.$count(monitorAlertEvents, buildEventListWhere(query)),
   streamRows: async (query) => {

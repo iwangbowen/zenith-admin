@@ -4,6 +4,7 @@ import {
   type WorkflowInstanceExportQuery,
 } from '../../../services/workflow/workflow-analytics.service';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
@@ -26,7 +27,7 @@ export const workflowInstancesExportDefinition = defineExport<WorkflowInstanceEx
   formats: ['xlsx'],
   permissions: { export: 'workflow:instance:monitor' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: (query) => countWorkflowInstancesForExport(query),
   streamRows: (query) => getWorkflowInstancesForExport(query),

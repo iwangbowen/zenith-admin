@@ -12,7 +12,7 @@ import type {
   CmsPageContext, CmsSearchContext, CmsTagPageContext, CmsNotFoundContext,
   CmsTheme, CmsThemeContentCollection, CmsModelFieldValue,
 } from '../types';
-import { SeoHead, Breadcrumbs, Pagination, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon } from '../_shared';
+import { SeoHead, Breadcrumbs, Pagination, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon, searchResultHref, PublishedDate, SinglePageArticle, TagLinks, externalLinkProps } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import { renderCmsWidgetHtml } from '../widgets';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
@@ -86,7 +86,7 @@ function MagCard({ item, ratingName }: { item: CmsContentItem; ratingName: strin
   const typeLabel = TYPE_LABELS[item.contentType] ?? null;
   const cover = item.coverThumb ?? item.coverImage;
   return (
-    <a className="mag-card" href={item.url} {...(item.isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {})}>
+    <a className="mag-card" href={item.url} {...externalLinkProps(item.isExternal)}>
       {cover ? <img className="cover" src={cover} alt={item.title} loading="lazy" /> : null}
       {typeLabel ? <span className="type-badge">{typeLabel}{item.contentType === 'album' && item.imageCount > 1 ? `·${item.imageCount}` : ''}</span> : null}
       {rating ? <span className="rating-corner">{rating.displayValue}</span> : null}
@@ -98,7 +98,7 @@ function MagCard({ item, ratingName }: { item: CmsContentItem; ratingName: strin
           </div>
         ) : null}
         <div className="meta">
-          {item.publishedAt ? <time>{item.publishedAt.slice(0, 10)}</time> : null}
+          <PublishedDate value={item.publishedAt} />
           <span>{item.viewCount} 浏览</span>
         </div>
       </div>
@@ -155,7 +155,7 @@ const HomeTemplate = defineHomeTemplate({
                   {(item.coverThumb ?? item.coverImage) ? <img src={item.coverThumb ?? item.coverImage!} alt={item.title} loading="lazy" /> : null}
                   <span>
                     <span className="t">{item.title}</span>
-                    {item.publishedAt ? <time>{item.publishedAt.slice(0, 10)}</time> : null}
+                    <PublishedDate value={item.publishedAt} />
                   </span>
                 </a>
               ))}
@@ -248,11 +248,7 @@ function DetailTemplate(ctx: CmsDetailContext) {
         <MediaBlock content={content} />
         <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
         <AttachmentList items={content.attachments} />
-        {content.tags.length > 0 ? (
-          <div className="tags-row">
-            {content.tags.map((t) => <a key={t.slug} className="chip" href={t.url}>{t.name}</a>)}
-          </div>
-        ) : null}
+        <TagLinks tags={content.tags} className="tags-row" linkClassName="chip" />
       </article>
       <ArticleNav prev={content.prev} next={content.next} />
       <RelatedArticles items={ctx.related} />
@@ -266,10 +262,7 @@ function PageTemplate(ctx: CmsPageContext) {
   return (
     <MagLayout ctx={ctx} currentUrl={ctx.channel.url}>
       <Breadcrumbs items={ctx.breadcrumbs} />
-      <article className="article">
-        <h1>{ctx.channel.name}</h1>
-        <div className="body" dangerouslySetInnerHTML={{ __html: ctx.contentHtml }} />
-      </article>
+      <SinglePageArticle ctx={ctx} />
     </MagLayout>
   );
 }
@@ -284,11 +277,11 @@ function SearchTemplate(ctx: CmsSearchContext) {
         ) : ctx.results.map((r) => (
           <div className="content-item" key={r.id}>
             <a
-              href={r.isExternal ? r.url : `${ctx.baseUrl}${r.url}`}
-              {...(r.isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {})}
+              href={searchResultHref(r, ctx.baseUrl)}
+              {...externalLinkProps(r.isExternal)}
               dangerouslySetInnerHTML={{ __html: r.titleHighlight }}
             />
-            {r.publishedAt ? <time>{r.publishedAt.slice(0, 10)}</time> : null}
+            <PublishedDate value={r.publishedAt} />
           </div>
         ))}
       </div>

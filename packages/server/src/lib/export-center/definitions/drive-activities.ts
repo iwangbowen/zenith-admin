@@ -1,6 +1,7 @@
 import { DRIVE_ACTIVITY_ACTION_LABELS, DRIVE_ACTIVITY_ACTIONS, type DriveActivity, type DriveActivityAction } from '@zenith/shared/drive';
 import { listDriveActivitiesForAdmin, type ListDriveActivitiesQuery } from '../../../services/drive/drive-activity.service';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 interface DriveActivityExportRow extends Record<string, unknown> {
@@ -87,7 +88,7 @@ export const driveActivitiesExportDefinition = defineExport<Record<string, unkno
   sheetName: '动态审计',
   permissions: { export: 'drive:admin:activity:export' },
   execution: { mode: 'auto', syncMaxRows: 5000 },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => (await listDriveActivitiesForAdmin({ ...normalizeQuery(query), page: 1, pageSize: 1 })).total,
   streamRows: (query) => {

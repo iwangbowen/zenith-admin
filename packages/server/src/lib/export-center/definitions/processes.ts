@@ -1,5 +1,6 @@
 import { listProcesses } from '../../../services/ops/processes.service';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
@@ -28,7 +29,7 @@ export const processesExportDefinition = defineExport({
   sheetName: '进程列表',
   permissions: { export: 'system:process:view' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async () => {
     const { processes } = await listProcesses();

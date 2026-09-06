@@ -5,6 +5,7 @@ import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../da
 import { assertSiteAccess, ensureCmsSiteExists } from '../../../services/cms/cms-sites.service';
 import { resolveAsyncTaskAccessScope } from '../../../services/tasks/async-tasks.service';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 interface GovernanceExportRow extends Record<string, unknown> {
@@ -81,7 +82,7 @@ export const cmsResourceGovernanceExportDefinition = defineExport<Record<string,
   formats: ['xlsx', 'csv'],
   permissions: { export: 'cms:resource:list' },
   execution: { mode: 'sync', syncMaxRows: 5000, syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => loadRows(query).then((rows) => rows.length),
   streamRows: async (query) => loadRows(query),

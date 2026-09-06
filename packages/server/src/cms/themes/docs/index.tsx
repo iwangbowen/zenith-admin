@@ -6,7 +6,7 @@ import type {
 } from '../types';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
 import { renderCmsWidgetHtml } from '../widgets';
-import { Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, Pagination, SeoHead, buildAnalyticsBeacon } from '../_shared';
+import { Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, Pagination, SeoHead, buildAnalyticsBeacon, searchResultHref, SinglePageArticle, TagLinks, externalLinkProps } from '../_shared';
 
 /** 暗色变量组；注册进主题对象 darkVars 供样式装配 */
 export const DOCS_THEME_DARK_VARS = '--text:#dfdfd6; --text-2:#98989f; --border:#3c3f44; --bg:#1b1b1f; --bg-2:#242429;';
@@ -147,11 +147,7 @@ function DetailTemplate(ctx: CmsDetailContext) {
           <span>{content.viewCount} 阅读</span>
         </div>
         <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
-        {content.tags.length > 0 ? (
-          <div className="tags">
-            {content.tags.map((t) => <a key={t.slug} href={t.url}><span>{t.name}</span></a>)}
-          </div>
-        ) : null}
+        <TagLinks tags={content.tags} className="tags" wrapName />
       </article>
       {(content.prev || content.next) ? (
         <nav className="article-nav">
@@ -198,10 +194,7 @@ function PageTemplate(ctx: CmsPageContext) {
   return (
     <Layout ctx={ctx} currentUrl={ctx.channel.url}>
       <Breadcrumbs items={ctx.breadcrumbs} />
-      <article className="article">
-        <h1>{ctx.channel.name}</h1>
-        <div className="body" dangerouslySetInnerHTML={{ __html: ctx.contentHtml }} />
-      </article>
+      <SinglePageArticle ctx={ctx} />
       {ctx.form ? <FrontForm form={ctx.form} /> : null}
     </Layout>
   );
@@ -217,8 +210,8 @@ function SearchTemplate(ctx: CmsSearchContext) {
         ) : ctx.results.map((r) => (
           <div className="doc-item" key={r.id}>
             <h3><a
-              href={r.isExternal ? r.url : `${ctx.baseUrl}${r.url}`}
-              {...(r.isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {})}
+              href={searchResultHref(r, ctx.baseUrl)}
+              {...externalLinkProps(r.isExternal)}
               dangerouslySetInnerHTML={{ __html: r.titleHighlight }}
             /></h3>
             <div className="summary" dangerouslySetInnerHTML={{ __html: r.snippet }} />

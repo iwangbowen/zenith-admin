@@ -4,6 +4,7 @@ import { paymentContracts } from '../../../db/schema';
 import { buildContractsWhere, type ListContractsQuery } from '../../../services/payment/payment-contract.service';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_CONTRACT_STATUS_LABELS } from '@zenith/shared/payment';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const EXPORT_LIMIT = 50000;
@@ -32,7 +33,7 @@ export const paymentContractsExportDefinition = defineExport<ListContractsQuery 
   sheetName: '签约协议',
   permissions: { export: 'payment:contract:list' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => Math.min(await db.$count(paymentContracts, await buildContractsWhere(query)), EXPORT_LIMIT),
   streamRows: async (query) =>

@@ -2,6 +2,7 @@ import { desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { cronJobs } from '../../../db/schema';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
@@ -23,7 +24,7 @@ export const cronJobsExportDefinition = defineExport({
   sheetName: '定时任务',
   permissions: { export: 'system:cronjob:list' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async () => db.$count(cronJobs),
   streamRows: async () => db.select().from(cronJobs).orderBy(desc(cronJobs.id)),

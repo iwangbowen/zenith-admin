@@ -4,6 +4,7 @@ import { operationLogs } from '../../../db/schema';
 import { batchIterable } from '../../excel-export';
 import { buildOperationLogsWhere, type ListOperationLogsQuery } from '../../../services/platform/operation-logs.service';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
@@ -27,7 +28,7 @@ export const operationLogsExportDefinition = defineExport<ListOperationLogsQuery
   sheetName: '操作日志',
   permissions: { export: 'system:log:operation' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => db.$count(operationLogs, await buildOperationLogsWhere(query)),
   streamRows: async (query) => {

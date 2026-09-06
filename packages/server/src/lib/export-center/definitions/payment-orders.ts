@@ -4,6 +4,7 @@ import { paymentOrders } from '../../../db/schema';
 import { buildOrdersWhere, type ListOrdersQuery } from '../../../services/payment/payment.service';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS } from '@zenith/shared/payment';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const EXPORT_LIMIT = 50000;
@@ -31,7 +32,7 @@ export const paymentOrdersExportDefinition = defineExport<ListOrdersQuery & Reco
   sheetName: '支付订单',
   permissions: { export: 'payment:order:list' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => Math.min(await db.$count(paymentOrders, await buildOrdersWhere(query)), EXPORT_LIMIT),
   streamRows: async (query) =>

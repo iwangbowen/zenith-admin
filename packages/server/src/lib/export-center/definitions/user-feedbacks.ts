@@ -3,6 +3,7 @@ import { USER_FEEDBACK_CATEGORY_LABELS, USER_FEEDBACK_STATUS_LABELS } from '@zen
 import { db } from '../../../db';
 import { userFeedbacks } from '../../../db/schema';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const CATEGORY_LABELS: Record<string, string> = USER_FEEDBACK_CATEGORY_LABELS;
@@ -31,7 +32,7 @@ export const userFeedbacksExportDefinition = defineExport({
   sheetName: '意见反馈',
   permissions: { export: 'system:feedback:list' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async () => db.$count(userFeedbacks),
   streamRows: async () => {

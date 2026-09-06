@@ -5,6 +5,7 @@ import { formatDateTime } from '../../datetime';
 import { ensureCmsFormExists } from '../../../services/cms/cms-forms.service';
 import { assertSiteAccess } from '../../../services/cms/cms-sites.service';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 function asPositive(value: unknown): number | undefined {
@@ -61,7 +62,7 @@ export const cmsFormSubmissionsExportDefinition = defineExport<Record<string, un
   formats: ['xlsx', 'csv'],
   permissions: { export: 'cms:form:manage' },
   execution: { mode: 'sync', syncMaxRows: 5000, syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns: [
     { key: 'id', header: '提交ID', width: 10, type: 'number' },
     { key: 'createdAt', header: '提交时间', width: 22, type: 'datetime' },

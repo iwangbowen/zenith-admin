@@ -10,6 +10,7 @@ import { sanitizeCmsHtml } from '../../services/cms/cms-html-sanitizer';
 import type { CmsResolvedWidget } from '@zenith/shared/cms';
 import { CMS_WIDGET_STYLES, renderCmsWidgetHtml } from './widgets';
 import { resolveThemeWidgetRenderer } from './registry';
+import { PublishedDate } from './_shared';
 
 export const BLOCK_STYLES = `
 .pb-hero { text-align: center; padding: 64px 24px; border-radius: 12px; background: var(--bg-2); background-size: cover; background-position: center; margin-bottom: 32px; }
@@ -75,7 +76,7 @@ function ContentListBlock({ props, items }: { props: Record<string, unknown>; it
       {items.length === 0 ? <div style={{ color: 'var(--text-2)', fontSize: 14 }}>暂无内容</div> : items.map((item) => (
         <div className="pb-item" key={item.id}>
           <a href={item.url}>{item.title}</a>
-          {item.publishedAt ? <time>{item.publishedAt.slice(0, 10)}</time> : null}
+          <PublishedDate value={item.publishedAt} />
         </div>
       ))}
     </section>

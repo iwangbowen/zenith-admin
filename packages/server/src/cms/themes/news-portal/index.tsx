@@ -16,7 +16,7 @@ import type {
   CmsPageContext, CmsSearchContext, CmsTagPageContext, CmsNotFoundContext,
   CmsTheme, CmsThemeContentCollection,
 } from '../types';
-import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon } from '../_shared';
+import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon, externalLinkProps, searchResultHref, PublishedDate, SinglePageArticle, TagLinks } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import { renderCmsWidgetHtml } from '../widgets';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
@@ -69,7 +69,7 @@ function NewsLayout({ ctx, currentUrl, children }: { ctx: CmsBaseContext; curren
 }
 
 function externalProps(item: CmsContentItem) {
-  return item.isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {};
+  return externalLinkProps(item.isExternal);
 }
 
 /** 标题流列表：lead 指定前 N 条渲染为加粗标题+摘要 */
@@ -253,7 +253,7 @@ function ListPhotoTemplate(ctx: CmsListContext) {
               {item.contentType === 'media' ? <span className="count-badge">▶ 视频</span> : null}
               <span className="cap">
                 <h3>{item.title}</h3>
-                {item.publishedAt ? <time>{item.publishedAt.slice(0, 10)}</time> : null}
+                <PublishedDate value={item.publishedAt} />
               </span>
             </a>
           ))}
@@ -283,11 +283,7 @@ function ArticleBody({ ctx, wide = false, plain = false }: { ctx: CmsDetailConte
         <MediaBlock content={content} />
         <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
         <AttachmentList items={content.attachments} />
-        {content.tags.length > 0 ? (
-          <div className="tags">
-            {content.tags.map((t) => <a key={t.slug} href={t.url}>{t.name}</a>)}
-          </div>
-        ) : null}
+        <TagLinks tags={content.tags} className="tags" />
         {!plain && content.author ? <div className="footnote">责任编辑：{content.author}</div> : null}
       </article>
       <ArticleNav prev={content.prev} next={content.next} />
@@ -331,10 +327,7 @@ function PageTemplate(ctx: CmsPageContext) {
   return (
     <NewsLayout ctx={ctx} currentUrl={ctx.channel.url}>
       <Breadcrumbs items={ctx.breadcrumbs} />
-      <article className="article">
-        <h1>{ctx.channel.name}</h1>
-        <div className="body" dangerouslySetInnerHTML={{ __html: ctx.contentHtml }} />
-      </article>
+      <SinglePageArticle ctx={ctx} />
     </NewsLayout>
   );
 }
@@ -351,12 +344,12 @@ function SearchTemplate(ctx: CmsSearchContext) {
             <div className="ci-body">
               <h3>
                 <a
-                  href={r.isExternal ? r.url : `${ctx.baseUrl}${r.url}`}
-                  {...(r.isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {})}
+                  href={searchResultHref(r, ctx.baseUrl)}
+                  {...externalLinkProps(r.isExternal)}
                   dangerouslySetInnerHTML={{ __html: r.titleHighlight }}
                 />
               </h3>
-              <div className="meta">{r.publishedAt ? <time>{r.publishedAt.slice(0, 10)}</time> : null}</div>
+              <div className="meta"><PublishedDate value={r.publishedAt} /></div>
             </div>
           </div>
         ))}

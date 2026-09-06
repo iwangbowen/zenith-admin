@@ -8,7 +8,7 @@
  */
 import type { CSSProperties, ReactNode } from 'react';
 import type { CmsContentAttachment, CmsFormField } from '@zenith/shared/cms';
-import type { CmsBaseContext, CmsBodyPagination, CmsBreadcrumb, CmsContentDetail, CmsFrontFormConfig, CmsModelFieldValue, CmsPagination } from './types';
+import type { CmsBaseContext, CmsBodyPagination, CmsBreadcrumb, CmsContentDetail, CmsFrontFormConfig, CmsModelFieldValue, CmsPageContext, CmsPagination } from './types';
 import { serializeJsonForScript } from '../../lib/json-script';
 
 /** 暗色初始化脚本（head 内先行执行防闪烁）+ 切换按钮事件委托 */
@@ -349,6 +349,48 @@ export function AttachmentList({ items }: { items: CmsContentAttachment[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** 外链新窗口打开并阻断 referrer / 权重传递；站内链接不加属性 */
+export function externalLinkProps(isExternal: boolean): { target?: string; rel?: string } {
+  return isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {};
+}
+
+/** 搜索结果链接：外链原样，站内链接补站点 baseUrl */
+export function searchResultHref(result: { url: string; isExternal: boolean }, baseUrl: string): string {
+  return result.isExternal ? result.url : `${baseUrl}${result.url}`;
+}
+
+/** 发布日期（`YYYY-MM-DD` 部分）；无值不渲染 */
+export function PublishedDate({ value }: { value: string | null | undefined }) {
+  return value ? <time>{value.slice(0, 10)}</time> : null;
+}
+
+/** 内容标签链接组：无标签不渲染。容器 / 链接 class 与「标签名是否包 span」由主题指定 */
+export function TagLinks({ tags, className, linkClassName, wrapName = false }: {
+  tags: CmsContentDetail['tags'];
+  className: string;
+  linkClassName?: string;
+  wrapName?: boolean;
+}) {
+  if (tags.length === 0) return null;
+  return (
+    <div className={className}>
+      {tags.map((t) => (
+        <a key={t.slug} className={linkClassName} href={t.url}>{wrapName ? <span>{t.name}</span> : t.name}</a>
+      ))}
+    </div>
+  );
+}
+
+/** 单页正文：栏目名作标题 + 富文本正文。样式钩子 .article / .body */
+export function SinglePageArticle({ ctx }: { ctx: CmsPageContext }) {
+  return (
+    <article className="article">
+      <h1>{ctx.channel.name}</h1>
+      <div className="body" dangerouslySetInnerHTML={{ __html: ctx.contentHtml }} />
+    </article>
   );
 }
 

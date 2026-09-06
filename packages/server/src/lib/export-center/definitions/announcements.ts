@@ -1,9 +1,7 @@
 import { desc } from 'drizzle-orm';
-import { db } from '../../../db';
 import { announcements } from '../../../db/schema';
-import { currentUser } from '../../context';
-import { tenantCondition } from '../../tenant';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS, tenantScopedTableSource } from '../presets';
 import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
@@ -24,9 +22,7 @@ export const announcementsExportDefinition = defineExport({
   sheetName: '公告',
   permissions: { export: 'system:announcement:list' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
-  countRows: async () => db.$count(announcements, tenantCondition(announcements, currentUser())),
-  streamRows: async () =>
-    db.select().from(announcements).where(tenantCondition(announcements, currentUser())).orderBy(desc(announcements.id)),
+  ...tenantScopedTableSource(announcements, desc(announcements.id)),
 });

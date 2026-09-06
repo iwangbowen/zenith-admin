@@ -9,6 +9,7 @@ import { currentUser } from '../../context';
 import { isCmsPlatformAdmin } from '../../../services/cms/cms-access';
 import { dateRangeConditions, keywordCondition } from '../../where-helpers';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 interface CmsContentExportRow extends Record<string, unknown> {
@@ -126,7 +127,7 @@ export const cmsContentsExportDefinition = defineExport<Record<string, unknown>,
   formats: ['xlsx', 'csv'],
   permissions: { export: 'cms:content:export' },
   execution: { mode: 'sync', syncMaxRows: 5000, syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => loadRows(query).then((rows) => rows.length),
   streamRows: async (query) => loadRows(query),

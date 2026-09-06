@@ -4,6 +4,7 @@ import { coupons, memberCoupons, members } from '../../../db/schema';
 import { buildMemberCouponWhere } from '../../../services/member/coupons.service';
 import { batchIterable } from '../../excel-export';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 import { MEMBER_COUPON_STATUS_LABELS } from '@zenith/shared/member';
 
@@ -31,7 +32,7 @@ export const memberCouponRecordsExportDefinition = defineExport<Query & Record<s
   sheetName: '领券记录',
   permissions: { export: 'member:coupon:list' },
   execution: { mode: 'auto' },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => db.$count(memberCoupons, buildMemberCouponWhere(query)),
   streamRows: async (query) => {

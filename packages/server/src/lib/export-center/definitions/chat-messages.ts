@@ -1,5 +1,6 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { requireRow } from '../../db-assert';
 import { db } from '../../../db';
 import { chatConversationMembers, chatMessages, users } from '../../../db/schema';
 import { batchIterable } from '../../excel-export';
@@ -34,13 +35,13 @@ function parseConversationId(query: ChatMessagesExportQuery): number {
 /** 导出人必须是会话成员，且只导出对其可见（未被删除隐藏）的消息 */
 async function assertMemberAndBuildWhere(query: ChatMessagesExportQuery, user: JwtPayload) {
   const conversationId = parseConversationId(query);
-  const member = await db.query.chatConversationMembers.findFirst({
+  const maybeMember = await db.query.chatConversationMembers.findFirst({
     where: and(
       eq(chatConversationMembers.conversationId, conversationId),
       eq(chatConversationMembers.userId, user.userId),
     ),
   });
-  if (!member) throw new HTTPException(403, { message: '无权导出该会话' });
+  requireRow(maybeMember, '无权导出该会话', 403);
   return and(
     eq(chatMessages.conversationId, conversationId),
     sql`NOT COALESCE(${chatMessages.extra}->'hiddenFor', '[]'::jsonb) @> to_jsonb(CAST(${user.userId} AS integer))`,

@@ -4,6 +4,7 @@ import { memberWalletTransactions, members } from '../../../db/schema';
 import { buildWalletTxWhere } from '../../../services/member/member-wallet.service';
 import { batchIterable } from '../../excel-export';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 import type { WalletTxType } from '@zenith/shared/member';
 import { WALLET_TX_TYPE_LABELS } from '@zenith/shared/member';
@@ -33,7 +34,7 @@ export const memberWalletTxExportDefinition = defineExport<Query & Record<string
   sheetName: '钱包流水',
   permissions: { export: 'member:wallet:list' },
   execution: { mode: 'auto' },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => db.$count(memberWalletTransactions, buildWalletTxWhere(query)),
   streamRows: async (query) => {

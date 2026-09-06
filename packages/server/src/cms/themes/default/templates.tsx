@@ -12,7 +12,7 @@ import {
   signCmsAdRenderProof,
 } from '../../../services/cms/cms-ad-render-proof';
 import { renderCmsWidgetHtml } from '../widgets';
-import { ArticleNav, Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, MediaBlock, ModelFieldTable, PageLinks, Pagination, RelatedArticles } from '../_shared';
+import { ArticleNav, Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, MediaBlock, ModelFieldTable, PageLinks, Pagination, RelatedArticles, searchResultHref, PublishedDate, SinglePageArticle, TagLinks, externalLinkProps } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import type { CmsThemeContentCollection } from '../types';
 import { formatBytes } from '@zenith/shared/core';
@@ -70,7 +70,7 @@ function ContentItemRow({ item }: { item: CmsContentItem }) {
           <a
             href={item.url}
             style={titleStyleOf(item.titleStyle)}
-            {...(item.isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {})}
+            {...externalLinkProps(item.isExternal)}
           >
             {item.title}{item.isExternal ? ' ↗' : ''}
           </a>
@@ -509,11 +509,7 @@ export function DetailTemplate(ctx: CmsDetailContext) {
         <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
         <BodyPagination p={content.bodyPagination} />
         <AttachmentSection items={content.attachments} />
-        {content.tags.length > 0 ? (
-          <div className="tags">
-            {content.tags.map((t) => <a key={t.slug} href={t.url}><span>{t.name}</span></a>)}
-          </div>
-        ) : null}
+        <TagLinks tags={content.tags} className="tags" wrapName />
         <InteractionBar content={content} />
       </article>
       <ArticleNav prev={content.prev} next={content.next} />
@@ -529,10 +525,7 @@ export function PageTemplate(ctx: CmsPageContext) {
   return (
     <Layout ctx={ctx} currentUrl={ctx.channel.url}>
       <Breadcrumbs items={ctx.breadcrumbs} />
-      <article className="article">
-        <h1>{ctx.channel.name}</h1>
-        <div className="body" dangerouslySetInnerHTML={{ __html: ctx.contentHtml }} />
-      </article>
+      <SinglePageArticle ctx={ctx} />
       {ctx.form ? (
         <FrontForm
           form={ctx.form}
@@ -562,8 +555,8 @@ export function SearchTemplate(ctx: CmsSearchContext) {
           <div className="content-item" key={r.id}>
             <div>
               <h3><a
-                href={r.isExternal ? r.url : `${ctx.baseUrl}${r.url}`}
-                {...(r.isExternal ? { target: '_blank', rel: 'noopener nofollow' } : {})}
+                href={searchResultHref(r, ctx.baseUrl)}
+                {...externalLinkProps(r.isExternal)}
                 dangerouslySetInnerHTML={{ __html: r.titleHighlight }}
               /></h3>
               <div className="summary" dangerouslySetInnerHTML={{ __html: r.snippet }} />
@@ -689,7 +682,7 @@ export function ListCompactTemplate(ctx: CmsListContext) {
                 {item.isTop ? <span className="badge">置顶</span> : null}
                 {item.title}
               </a>
-              {item.publishedAt ? <time>{item.publishedAt.slice(0, 10)}</time> : null}
+              <PublishedDate value={item.publishedAt} />
             </li>
           ))}
         </ul>

@@ -4,6 +4,7 @@ import { paymentDisputes } from '../../../db/schema';
 import { buildDisputesWhere, type ListDisputesQuery } from '../../../services/payment/payment-dispute.service';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_DISPUTE_STATUS_LABELS, PAYMENT_DISPUTE_TYPE_LABELS } from '@zenith/shared/payment';
 import { defineExport } from '../registry';
+import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
 
 const EXPORT_LIMIT = 50000;
@@ -31,7 +32,7 @@ export const paymentDisputesExportDefinition = defineExport<ListDisputesQuery & 
   sheetName: '投诉工单',
   permissions: { export: 'payment:dispute:list' },
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
-  retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+  retention: RETENTION_7_DAYS,
   columns,
   countRows: async (query) => Math.min(await db.$count(paymentDisputes, await buildDisputesWhere(query)), EXPORT_LIMIT),
   streamRows: async (query) =>
