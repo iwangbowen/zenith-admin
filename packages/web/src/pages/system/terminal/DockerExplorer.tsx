@@ -14,8 +14,6 @@ import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import {
   Activity,
   Box,
-  File,
-  Folder,
   MoreHorizontal,
   Play,
   RefreshCw,
@@ -24,8 +22,8 @@ import {
   Square,
   TerminalSquare,
 } from 'lucide-react';
-import { Icon } from '@iconify/react';
-import { getFileIcon } from '@/utils/fileIcons';
+import { setTreeChildren, sortEntriesDirFirst } from './fileTree';
+import { fileIcon } from './fileIcon';
 import { fetchDockerDir, useDockerExplorerAction } from '@/hooks/queries/terminal-files';
 import { fetchDockerContainerLogs, useDockerContainers, useDockerFetchStats } from '@/hooks/queries/docker';
 import type { DockerContainer, DockerFileEntry } from '@zenith/shared/ops';
@@ -65,13 +63,6 @@ const STATE_ICON: Record<string, string> = {
   dead: '🔴',
 };
 
-function fileIcon(name: string, type: string): React.ReactNode {
-  if (type === 'dir') return <Folder size={14} style={{ color: 'var(--semi-color-warning)', flexShrink: 0 }} />;
-  const iconId = getFileIcon(name);
-  if (iconId) return <Icon icon={iconId} width={14} height={14} style={{ flexShrink: 0 }} />;
-  return <File size={14} style={{ color: 'var(--semi-color-text-3)', flexShrink: 0 }} />;
-}
-
 function formatPercent(value: number): string {
   return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)}%`;
 }
@@ -108,12 +99,7 @@ function buildContainerNode(c: DockerContainer): DockerTreeNode {
 }
 
 function buildFileNodes(entries: DockerFileEntry[], containerId: string): DockerTreeNode[] {
-  return entries
-    .sort((a, b) => {
-      if (a.type === 'dir' && b.type !== 'dir') return -1;
-      if (a.type !== 'dir' && b.type === 'dir') return 1;
-      return a.name.localeCompare(b.name);
-    })
+  return sortEntriesDirFirst(entries)
     .map((e) => ({
       key: e.type === 'dir' ? makeDirKey(containerId, e.path) : makeFileKey(containerId, e.path),
       value: e.type === 'dir' ? makeDirKey(containerId, e.path) : makeFileKey(containerId, e.path),
@@ -124,15 +110,6 @@ function buildFileNodes(entries: DockerFileEntry[], containerId: string): Docker
       containerId,
       filePath: e.path,
     } as DockerTreeNode));
-}
-
-/** 深度更新 treeData 中指定 key 节点的 children */
-function patchTreeChildren(nodes: DockerTreeNode[], key: string, children: DockerTreeNode[]): DockerTreeNode[] {
-  return nodes.map((n) => {
-    if (n.key === key) return { ...n, children };
-    if (n.children) return { ...n, children: patchTreeChildren(n.children as DockerTreeNode[], key, children) };
-    return n;
-  });
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -260,9 +237,9 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
       try {
         const res = await fetchDockerDir(queryClient, containerId, '/', { silent: true });
         const children = buildFileNodes(res as DockerFileEntry[], containerId);
-        setTreeData((prev) => patchTreeChildren(prev, key, children));
+        setTreeData((prev) => setTreeChildren(prev, key, children));
       } catch {
-        setTreeData((prev) => patchTreeChildren(prev, key, []));
+        setTreeData((prev) => setTreeChildren(prev, key, []));
       }
     } else if (key.startsWith('dir:')) {
       // key: "dir:<containerId>:<filePath>" — path 本身不含冒号
@@ -275,9 +252,9 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
       try {
         const res = await fetchDockerDir(queryClient, containerId, filePath, { silent: true });
         const children = buildFileNodes(res as DockerFileEntry[], containerId);
-        setTreeData((prev) => patchTreeChildren(prev, key, children));
+        setTreeData((prev) => setTreeChildren(prev, key, children));
       } catch {
-        setTreeData((prev) => patchTreeChildren(prev, key, []));
+        setTreeData((prev) => setTreeChildren(prev, key, []));
       }
     }
   }, [queryClient]);

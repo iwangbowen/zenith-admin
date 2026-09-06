@@ -27,15 +27,9 @@ import {
 import { useCreateWikiComment, useDeleteMyWikiComment, useResolveWikiComment, useWikiDocComments } from '@/hooks/queries/wiki-comments';
 import { useImportWikiDocs } from '@/hooks/queries/wiki-governance';
 import './WikiDocCenterPage.css';
+import { WIKI_DOC_STATUS_TAG_COLOR } from '../wiki-tag-colors';
 
 const { Text, Title } = Typography;
-
-const STATUS_TAG_COLOR: Record<string, 'grey' | 'orange' | 'green' | 'red'> = {
-  draft: 'grey',
-  pending: 'orange',
-  published: 'green',
-  rejected: 'red',
-};
 
 /** 与 .md-preview-content 相同的阅读列（860px 居中 + 40px 水平内边距），附件与评论跟随正文对齐 */
 const READING_COLUMN_STYLE = { maxWidth: 860, margin: '0 auto', padding: '0 40px' } as const;
@@ -52,7 +46,7 @@ function toTreeData(nodes: WikiDocTreeNode[], renderNodeActions?: (node: WikiDoc
           {n.isPinned ? <Pin size={12} style={{ color: 'var(--semi-color-warning)', flexShrink: 0 }} /> : null}
           <span>{n.title}</span>
           {n.status !== 'published' ? (
-            <Tag size="small" color={STATUS_TAG_COLOR[n.status]}>{WIKI_DOC_STATUS_LABELS[n.status]}</Tag>
+            <Tag size="small" color={WIKI_DOC_STATUS_TAG_COLOR[n.status]}>{WIKI_DOC_STATUS_LABELS[n.status]}</Tag>
           ) : null}
         </Space>
         {renderNodeActions ? (
@@ -560,7 +554,7 @@ export default function WikiDocCenterPage() {
         <div style={{ minWidth: 0 }}>
           <Space spacing={8}>
             <Title heading={4} style={{ margin: 0 }}>{doc.title}</Title>
-            <Tag color={STATUS_TAG_COLOR[doc.status]}>{WIKI_DOC_STATUS_LABELS[doc.status]}</Tag>
+            <Tag color={WIKI_DOC_STATUS_TAG_COLOR[doc.status]}>{WIKI_DOC_STATUS_LABELS[doc.status]}</Tag>
             {doc.isPinned ? <Tag color="amber">置顶</Tag> : null}
           </Space>
           <div style={{ marginTop: 6 }}>
@@ -1019,7 +1013,7 @@ export default function WikiDocCenterPage() {
                           <div style={{ minWidth: 0 }}>
                             <Space spacing={4}>
                               <Text ellipsis={{ showTooltip: true }}>{item.title}</Text>
-                              <Tag size="small" color={STATUS_TAG_COLOR[item.status]}>{WIKI_DOC_STATUS_LABELS[item.status]}</Tag>
+                              <Tag size="small" color={WIKI_DOC_STATUS_TAG_COLOR[item.status]}>{WIKI_DOC_STATUS_LABELS[item.status]}</Tag>
                             </Space>
                             <div><Text type="tertiary" size="small">{item.spaceName} · {item.updatedAt}</Text></div>
                           </div>

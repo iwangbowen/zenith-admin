@@ -6,7 +6,6 @@ import {
 } from '@douyinfe/semi-ui';
 import { usePagination } from '@/hooks/usePagination';
 import { IllustrationIdle, IllustrationIdleDark } from '@douyinfe/semi-illustrations';
-import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { InAppMessage } from '@zenith/shared/messaging';
 import { formatDateTime } from '@/utils/date';
@@ -27,13 +26,7 @@ import {
 import { useMyInAppMessageUnreadCount } from '@/hooks/queries/in-app-messages';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-const TYPE_COLOR: Record<string, TagColor> = {
-  info: 'blue',
-  success: 'green',
-  warning: 'orange',
-  error: 'red',
-};
-
+import { IN_APP_MESSAGE_TYPE_COLORS } from '@/pages/system/in-app-message-constants';
 const TYPE_LABEL: Record<string, string> = {
   info: '通知',
   success: '成功',
@@ -205,7 +198,7 @@ export default function InboxPage() {
                       <Text strong={!item.isRead} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {item.title}
                       </Text>
-                      <Tag color={TYPE_COLOR[item.type] ?? 'blue'} size="small" style={{ flexShrink: 0 }}>
+                      <Tag color={IN_APP_MESSAGE_TYPE_COLORS[item.type] ?? 'blue'} size="small" style={{ flexShrink: 0 }}>
                         {TYPE_LABEL[item.type] ?? item.type}
                       </Tag>
                       <Text style={{ fontSize: 12, color: 'var(--semi-color-text-3)', marginLeft: 'auto', flexShrink: 0 }}>

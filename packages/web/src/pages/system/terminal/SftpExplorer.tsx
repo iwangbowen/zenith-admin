@@ -11,11 +11,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Tree, Button, Typography, Toast, Tooltip, Spin, Dropdown, Input } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { Icon } from '@iconify/react';
 import {
-  RefreshCw, Home, FilePlus, FolderPlus, Upload as UploadIcon, Folder, File as FileIcon,
+  RefreshCw, Home, FilePlus, FolderPlus, Upload as UploadIcon,
 } from 'lucide-react';
-import { getFileIcon } from '@/utils/fileIcons';
+import { fileIcon } from './fileIcon';
 import { request } from '@/utils/request';
 import type { SshProfile } from './SshProfilesManager';
 import AppModal from '@/components/AppModal';
@@ -185,19 +184,14 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
     );
   }, [onOpenFile, profile.id, handleDownload, triggerUpload, handleDelete]);
 
-  const renderLabel = useCallback((label: React.ReactNode, node: SftpNode) => {
-    const iconId = node.fileType === 'file' ? getFileIcon(node.label as string) : '';
-    return (
-      <Dropdown trigger="contextMenu" position="bottomLeft" render={renderContextMenu(node)}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, width: '100%', minWidth: 0 }}>
-          {node.fileType === 'dir'
-            ? <Folder size={14} style={{ color: 'var(--semi-color-warning)', flexShrink: 0 }} />
-            : (iconId ? <Icon icon={iconId} width={14} height={14} style={{ flexShrink: 0 }} /> : <FileIcon size={14} style={{ color: 'var(--semi-color-text-3)', flexShrink: 0 }} />)}
-          <Typography.Text size="small" ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{label}</Typography.Text>
-        </span>
-      </Dropdown>
-    );
-  }, [renderContextMenu]);
+  const renderLabel = useCallback((label: React.ReactNode, node: SftpNode) => (
+    <Dropdown trigger="contextMenu" position="bottomLeft" render={renderContextMenu(node)}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, width: '100%', minWidth: 0 }}>
+        {fileIcon(node.label as string, node.fileType)}
+        <Typography.Text size="small" ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{label}</Typography.Text>
+      </span>
+    </Dropdown>
+  ), [renderContextMenu]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>

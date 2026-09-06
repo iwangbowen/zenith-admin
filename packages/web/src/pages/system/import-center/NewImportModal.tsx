@@ -2,12 +2,12 @@
  * 新建导入弹窗：选实体 → 看字段说明 → 下载模板 / 预检 / 上传导入。
  * 需要页面上下文的实体（如 CMS 内容）引导到业务页面操作。
  */
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Banner, Button, Descriptions, Modal, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Download, FileSearch, Upload } from 'lucide-react';
 import type { ImportEntityMeta } from '@zenith/shared/tasks';
-import { useUploadFile } from '@/hooks/queries/files';
-import { downloadImportTemplate, useSubmitImportJob } from '@/hooks/queries/import-jobs';
+import { downloadImportTemplate } from '@/hooks/queries/import-jobs';
+import { useImportUpload } from '@/hooks/useImportUpload';
 
 const { Text } = Typography;
 
@@ -22,14 +22,13 @@ interface NewImportModalProps {
 
 export default function NewImportModal({ visible, entities, entitiesLoading, onClose, onSubmitted }: Readonly<NewImportModalProps>) {
   const [selectedEntity, setSelectedEntity] = useState<string>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const dryRunRef = useRef(false);
-
-  const uploadMutation = useUploadFile();
-  const submitMutation = useSubmitImportJob();
-  const submitting = uploadMutation.isPending || submitMutation.isPending;
 
   const entity = entities.find((e) => e.entity === selectedEntity) ?? null;
+
+  const { fileInput, pickFile, submitting, isDryRun } = useImportUpload({
+    resolveTarget: () => (entity ? { entity: entity.entity } : null),
+    onSubmitted: (task) => { if (entity) onSubmitted(task.id, entity.title); },
+  });
 
   const entityGroups = useMemo(() => {
     const byModule = new Map<string, ImportEntityMeta[]>();
@@ -40,22 +39,6 @@ export default function NewImportModal({ visible, entities, entitiesLoading, onC
     }
     return [...byModule.entries()];
   }, [entities]);
-
-  function pickFile(dryRun: boolean) {
-    dryRunRef.current = dryRun;
-    fileInputRef.current?.click();
-  }
-
-  async function handleFileSelected(file: File) {
-    if (!entity) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    const uploaded = await uploadMutation.mutateAsync({ formData });
-    const fileId = uploaded[0]?.id;
-    if (!fileId) return;
-    const row = await submitMutation.mutateAsync({ body: { entity: entity.entity, fileId, dryRun: dryRunRef.current } });
-    onSubmitted(row.id, entity.title);
-  }
 
   const requiredColumns = entity?.columns.filter((c) => c.required) ?? [];
 
@@ -68,17 +51,7 @@ export default function NewImportModal({ visible, entities, entitiesLoading, onC
       width={560}
       afterClose={() => setSelectedEntity('')}
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".xlsx,.csv"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = '';
-          if (file) void handleFileSelected(file);
-        }}
-      />
+      {fileInput}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 12 }}>
         <Spin spinning={entitiesLoading}>
           <Select
@@ -129,7 +102,7 @@ export default function NewImportModal({ visible, entities, entitiesLoading, onC
                 </Button>
                 <Button
                   icon={<FileSearch size={14} />}
-                  loading={submitting && dryRunRef.current}
+                  loading={submitting && isDryRun()}
                   onClick={() => pickFile(true)}
                 >
                   预检文件
@@ -138,7 +111,7 @@ export default function NewImportModal({ visible, entities, entitiesLoading, onC
                   type="primary"
                   theme="solid"
                   icon={<Upload size={14} />}
-                  loading={submitting && !dryRunRef.current}
+                  loading={submitting && !isDryRun()}
                   onClick={() => pickFile(false)}
                 >
                   上传导入

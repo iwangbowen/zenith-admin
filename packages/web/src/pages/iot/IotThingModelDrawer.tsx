@@ -19,8 +19,7 @@ import {
   useDeleteIotEvent, useDeleteIotProperty, useDeleteIotService, useImportIotTsl,
   useIotThingModel, useSaveIotEvent, useSaveIotProperty, useSaveIotService,
 } from '@/hooks/queries/iot-products';
-
-const EVENT_LEVEL_COLORS = { info: 'blue', warn: 'orange', fault: 'red' } as const;
+import { IOT_EVENT_LEVEL_COLORS } from './iot-tag-colors';
 
 /** 属性表单值：枚举取值以「每行 值=显示名」文本编辑，提交前由 beforeSave 解析；记录里的 null 归一为空串 */
 interface PropertyFormValues extends Partial<Omit<CreateIotPropertyInput, 'enumOptions'>> {
@@ -363,7 +362,7 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
     {
       title: '级别', dataIndex: 'level', width: 80,
       render: (v: IotProductEvent['level']) => (
-        <Tag size="small" color={EVENT_LEVEL_COLORS[v]}>{IOT_EVENT_LEVEL_LABELS[v]}</Tag>
+        <Tag size="small" color={IOT_EVENT_LEVEL_COLORS[v]}>{IOT_EVENT_LEVEL_LABELS[v]}</Tag>
       ),
     },
     { title: '参数', render: (_: unknown, r: IotProductEvent) => renderParamsSummary(r.params) },

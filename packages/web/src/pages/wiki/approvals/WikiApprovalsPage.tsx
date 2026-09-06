@@ -19,6 +19,7 @@ import {
   useMyProcessedReviews, useReviewWikiDoc, useWikiDocDetail, useWikiDocList,
   useWikiDocReviewRecords, useWithdrawWikiDoc, wikiDocKeys,
 } from '@/hooks/queries/wiki-docs';
+import { WIKI_DOC_STATUS_TAG_COLOR } from '../wiki-tag-colors';
 
 const { Text } = Typography;
 
@@ -33,13 +34,6 @@ const ACTION_TAG_COLOR: Record<WikiReviewRecord['action'], 'blue' | 'green' | 'r
   approve: 'green',
   reject: 'red',
   withdraw: 'grey',
-};
-
-const STATUS_TAG_COLOR: Record<string, 'grey' | 'orange' | 'green' | 'red'> = {
-  draft: 'grey',
-  pending: 'orange',
-  published: 'green',
-  rejected: 'red',
 };
 
 /** 待审核 Tab */
@@ -213,7 +207,7 @@ function MySubmissionsPane() {
     { title: '所属空间', dataIndex: 'spaceName', width: 140, render: renderEllipsis },
     {
       title: '状态', dataIndex: 'status', width: 90,
-      render: (v: WikiDoc['status']) => <Tag color={STATUS_TAG_COLOR[v]}>{WIKI_DOC_STATUS_LABELS[v]}</Tag>,
+      render: (v: WikiDoc['status']) => <Tag color={WIKI_DOC_STATUS_TAG_COLOR[v]}>{WIKI_DOC_STATUS_LABELS[v]}</Tag>,
     },
     { title: '驳回意见', dataIndex: 'rejectReason', width: 220, render: renderEllipsis },
     updatedAtColumn,

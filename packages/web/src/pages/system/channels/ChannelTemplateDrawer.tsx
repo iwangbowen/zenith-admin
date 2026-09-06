@@ -27,6 +27,7 @@ import {
 } from '@/hooks/queries/channels';
 import { CreateButton } from '@/components/toolbar-controls';
 import { dateTimeColumn } from '@/utils/table-columns';
+import { CHANNEL_MESSAGE_TYPE_COLOR } from './channel-tag-colors';
 
 interface Props {
   visible: boolean;
@@ -34,12 +35,6 @@ interface Props {
   /** 模板增删改后通知父级刷新（如发布弹窗的模板下拉） */
   onChanged?: () => void;
 }
-
-const TYPE_COLOR: Partial<Record<ChannelMessageType, 'blue' | 'cyan' | 'purple'>> = {
-  text: 'blue',
-  image: 'cyan',
-  news: 'purple',
-};
 
 /** 群发模板只支持文本 / 图片 / 图文（不含聊天卡片） */
 type TemplateType = CreateChannelTemplateInput['type'];
@@ -132,7 +127,7 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
     },
     {
       title: '类型', dataIndex: 'type', width: 90,
-      render: (v: ChannelMessageType) => <Tag color={TYPE_COLOR[v] ?? 'grey'} size="small">{TYPE_LABELS[v] ?? v}</Tag>,
+      render: (v: ChannelMessageType) => <Tag color={CHANNEL_MESSAGE_TYPE_COLOR[v] ?? 'grey'} size="small">{TYPE_LABELS[v] ?? v}</Tag>,
     },
     dateTimeColumn('更新时间', 'updatedAt'),
     createOperationColumn<ChannelMessageTemplate>({

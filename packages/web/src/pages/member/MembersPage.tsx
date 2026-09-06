@@ -42,8 +42,8 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useSensitiveFormFields } from '@/hooks/useSensitiveFormFields';
 import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
 import { abortSubmit } from '@/lib/abort-submit';
+import { MEMBER_STATUS_COLORS } from './member-tag-colors';
 
-const STATUS_COLORS: Record<string, 'green' | 'grey' | 'red'> = { active: 'green', inactive: 'grey', banned: 'red' };
 const statusOptions = (['active', 'inactive', 'banned'] as const).map((v) => ({ value: v, label: MEMBER_STATUS_LABELS[v] }));
 const TAG_FALLBACK_COLOR = 'blue';
 
@@ -241,7 +241,7 @@ export default function MembersPage() {
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
-      render: (v: string) => <Tag color={STATUS_COLORS[v]}>{MEMBER_STATUS_LABELS[v as keyof typeof MEMBER_STATUS_LABELS]}</Tag>,
+      render: (v: string) => <Tag color={MEMBER_STATUS_COLORS[v]}>{MEMBER_STATUS_LABELS[v as keyof typeof MEMBER_STATUS_LABELS]}</Tag>,
     },
     createOperationColumn<Member>({
       width: 180,

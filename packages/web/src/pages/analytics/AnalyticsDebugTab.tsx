@@ -4,7 +4,6 @@
 import { useState } from 'react';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
@@ -16,15 +15,7 @@ import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
-
-const ISSUE_COLOR: Record<AnalyticsQualityIssueType, TagColor> = {
-  missing_required: 'orange',
-  type_mismatch: 'amber',
-  invalid_enum: 'red',
-  event_disabled: 'grey',
-  origin_rejected: 'red',
-  quota_exceeded: 'orange',
-};
+import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
 
 function nullableText(value: string | number | null | undefined) {
   return value == null || value === '' ? '–' : String(value);
@@ -80,7 +71,7 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
       width: 200,
       render: (value: AnalyticsQualityIssueType[]) => (
         value.length
-          ? <>{value.map((t) => <Tag key={t} color={ISSUE_COLOR[t]} size="small" style={{ marginRight: 4 }}>{ANALYTICS_QUALITY_ISSUE_TYPE_LABELS[t]}</Tag>)}</>
+          ? <>{value.map((t) => <Tag key={t} color={ANALYTICS_ISSUE_TAG_COLOR[t]} size="small" style={{ marginRight: 4 }}>{ANALYTICS_QUALITY_ISSUE_TYPE_LABELS[t]}</Tag>)}</>
           : <Typography.Text type="tertiary" size="small">–</Typography.Text>
       ),
     },

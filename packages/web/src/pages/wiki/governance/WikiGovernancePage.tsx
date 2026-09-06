@@ -18,15 +18,9 @@ import {
   useArchiveGovernanceDocs, useRemindGovernanceOwners, useSetGovernanceOwner,
   useSetGovernanceReview, useWikiGovernanceDocs, useWikiNoResultKeywords,
 } from '@/hooks/queries/wiki-governance';
+import { WIKI_DOC_STATUS_TAG_COLOR } from '../wiki-tag-colors';
 
 const { Text } = Typography;
-
-const STATUS_TAG_COLOR: Record<string, 'grey' | 'orange' | 'green' | 'red'> = {
-  draft: 'grey',
-  pending: 'orange',
-  published: 'green',
-  rejected: 'red',
-};
 
 /** 单个治理清单面板：表格 + 批量操作 */
 function GovernancePane({ kind }: { kind: WikiGovernanceKind }) {
@@ -72,7 +66,7 @@ function GovernancePane({ kind }: { kind: WikiGovernanceKind }) {
     { title: '所属空间', dataIndex: 'spaceName', width: 130, render: renderEllipsis },
     {
       title: '状态', dataIndex: 'status', width: 90,
-      render: (v: WikiDocStatus) => <Tag color={STATUS_TAG_COLOR[v]}>{WIKI_DOC_STATUS_LABELS[v]}</Tag>,
+      render: (v: WikiDocStatus) => <Tag color={WIKI_DOC_STATUS_TAG_COLOR[v]}>{WIKI_DOC_STATUS_LABELS[v]}</Tag>,
     },
     { title: '负责人', dataIndex: 'ownerName', width: 110, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     dateTimeColumn('有效期', 'expireAt', { empty: '不限' }),

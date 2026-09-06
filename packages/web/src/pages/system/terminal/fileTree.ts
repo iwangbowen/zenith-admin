@@ -27,6 +27,15 @@ export interface FsTreeEntrySource {
   type: 'dir' | 'file';
 }
 
+/** 目录优先、同类按名称排序（各文件树列目录时的统一顺序） */
+export function sortEntriesDirFirst<T extends { name: string; type: string }>(entries: readonly T[]): T[] {
+  return [...entries].sort((a, b) => {
+    if (a.type === 'dir' && b.type !== 'dir') return -1;
+    if (a.type !== 'dir' && b.type === 'dir') return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 /** 条目 → 树节点。目录留空 children 以触发懒加载，文件标记为叶子。 */
 export function entryToTreeNode(entry: FsTreeEntrySource): FsTreeNode {
   return {

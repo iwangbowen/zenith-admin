@@ -23,14 +23,9 @@ import {
   useSaveNotificationPreferences,
   useSaveNotificationSettings,
 } from '@/hooks/queries/notification-preferences';
+import { NOTIFICATION_SEVERITY_TAG_COLOR } from '../system/notify-policies/notify-tag-colors';
 
 const { Text } = Typography;
-
-const SEVERITY_TAG_COLOR: Record<string, 'grey' | 'orange' | 'red'> = {
-  normal: 'grey',
-  important: 'orange',
-  critical: 'red',
-};
 
 /** 半小时粒度的 HH:mm 选项（免打扰起止） */
 const CLOCK_OPTIONS = Array.from({ length: 48 }, (_, i) => {
@@ -61,7 +56,7 @@ function EventRow({ event }: Readonly<{ event: NotificationMatrixEvent }>) {
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Text>{event.label}</Text>
           {event.severity !== 'normal' && (
-            <Tag size="small" color={SEVERITY_TAG_COLOR[event.severity]}>{NOTIFICATION_SEVERITY_LABELS[event.severity]}</Tag>
+            <Tag size="small" color={NOTIFICATION_SEVERITY_TAG_COLOR[event.severity]}>{NOTIFICATION_SEVERITY_LABELS[event.severity]}</Tag>
           )}
           {event.mandatory && (
             <Tooltip content="必达通知，不可关闭">

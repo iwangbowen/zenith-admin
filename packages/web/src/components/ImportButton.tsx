@@ -13,9 +13,9 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronDown, Upload } from 'lucide-react';
 import type { AsyncTaskItem } from '@zenith/shared/tasks';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
-import { useUploadFile } from '@/hooks/queries/files';
 import { useAsyncTaskItems } from '@/hooks/queries/async-tasks';
-import { downloadImportTemplate, useImportTaskPolling, useSubmitImportJob } from '@/hooks/queries/import-jobs';
+import { downloadImportTemplate, useImportTaskPolling } from '@/hooks/queries/import-jobs';
+import { useImportUpload } from '@/hooks/useImportUpload';
 
 const { Text } = Typography;
 
@@ -152,42 +152,15 @@ interface ImportButtonProps {
 }
 
 export function ImportButton({ entity, title, label = '导入', context, beforeSubmit, onFinished }: Readonly<ImportButtonProps>) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [taskId, setTaskId] = useState<number | null>(null);
-  const dryRunRef = useRef(false);
-
-  const uploadMutation = useUploadFile();
-  const submitMutation = useSubmitImportJob();
-
-  async function handleFileSelected(file: File) {
-    if (beforeSubmit && !beforeSubmit()) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    const uploaded = await uploadMutation.mutateAsync({ formData });
-    const fileId = uploaded[0]?.id;
-    if (!fileId) return;
-    const row = await submitMutation.mutateAsync({ body: { entity, fileId, dryRun: dryRunRef.current, context } });
-    setTaskId(row.id);
-  }
-
-  function pickFile(dryRun: boolean) {
-    dryRunRef.current = dryRun;
-    fileInputRef.current?.click();
-  }
+  const { fileInput, pickFile, submitting } = useImportUpload({
+    resolveTarget: () => (beforeSubmit && !beforeSubmit() ? null : { entity, context }),
+    onSubmitted: (task) => setTaskId(task.id),
+  });
 
   return (
     <>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".xlsx,.csv"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = '';
-          if (file) void handleFileSelected(file);
-        }}
-      />
+      {fileInput}
       <Dropdown
         trigger="click"
         position="bottomLeft"
@@ -203,7 +176,7 @@ export function ImportButton({ entity, title, label = '导入', context, beforeS
         <Button
           icon={<Upload size={14} />}
           iconPosition="left"
-          loading={uploadMutation.isPending || submitMutation.isPending}
+          loading={submitting}
         >
           {label} <ChevronDown size={12} style={{ verticalAlign: 'middle' }} />
         </Button>

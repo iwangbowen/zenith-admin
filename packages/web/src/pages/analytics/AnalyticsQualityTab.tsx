@@ -26,18 +26,10 @@ import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { dateColumn, dateTimeColumn } from '@/utils/table-columns';
+import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
 
 const PAGE_SIZE = 20;
 const DAY_OPTIONS = [7, 30, 90].map((value) => ({ value, label: `${value} 天` }));
-
-const ISSUE_COLOR: Record<AnalyticsQualityIssueType, 'red' | 'orange' | 'amber' | 'grey'> = {
-  missing_required: 'orange',
-  type_mismatch: 'amber',
-  invalid_enum: 'red',
-  event_disabled: 'grey',
-  origin_rejected: 'red',
-  quota_exceeded: 'orange',
-};
 
 interface QualityFilter {
   days: number;
@@ -134,7 +126,7 @@ export default function AnalyticsQualityTab() {
       title: '问题类型',
       dataIndex: 'issueType',
       width: 140,
-      render: (value: AnalyticsQualityIssueType) => <Tag color={ISSUE_COLOR[value]} size="small">{ANALYTICS_QUALITY_ISSUE_TYPE_LABELS[value]}</Tag>,
+      render: (value: AnalyticsQualityIssueType) => <Tag color={ANALYTICS_ISSUE_TAG_COLOR[value]} size="small">{ANALYTICS_QUALITY_ISSUE_TYPE_LABELS[value]}</Tag>,
     },
     { title: '次数', dataIndex: 'count', width: 90, align: 'right' },
     {

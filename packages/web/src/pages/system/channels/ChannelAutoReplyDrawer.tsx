@@ -28,6 +28,7 @@ import {
   useSaveChannelAutoReply,
 } from '@/hooks/queries/channels';
 import { CreateButton } from '@/components/toolbar-controls';
+import { CHANNEL_MESSAGE_TYPE_COLOR } from './channel-tag-colors';
 
 interface Props {
   channelId: number;
@@ -53,12 +54,6 @@ const MATCH_COLOR: Record<string, 'green' | 'blue' | 'orange'> = {
   subscribe: 'green',
   keyword: 'blue',
   default: 'orange',
-};
-
-const REPLY_TYPE_COLOR: Partial<Record<ChannelMessageType, 'blue' | 'cyan' | 'purple'>> = {
-  text: 'blue',
-  image: 'cyan',
-  news: 'purple',
 };
 
 export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClose }: Readonly<Props>) {
@@ -158,7 +153,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
     },
     {
       title: '回复类型', dataIndex: 'replyType', width: 90,
-      render: (v: ChannelMessageType) => <Tag color={REPLY_TYPE_COLOR[v] ?? 'grey'} size="small">{REPLY_TYPE_LABELS[v] ?? v}</Tag>,
+      render: (v: ChannelMessageType) => <Tag color={CHANNEL_MESSAGE_TYPE_COLOR[v] ?? 'grey'} size="small">{REPLY_TYPE_LABELS[v] ?? v}</Tag>,
     },
     {
       title: '回复内容', dataIndex: 'replyContent',

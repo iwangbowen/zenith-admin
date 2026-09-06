@@ -26,14 +26,9 @@ import {
   useSaveNotificationOverride,
   useTestFireNotification,
 } from '@/hooks/queries/notification-policies';
+import { NOTIFICATION_SEVERITY_TAG_COLOR } from './notify-tag-colors';
 
 const { Text } = Typography;
-
-const SEVERITY_TAG_COLOR: Record<string, 'grey' | 'orange' | 'red'> = {
-  normal: 'grey',
-  important: 'orange',
-  critical: 'red',
-};
 
 const DECISION_TAG_COLOR: Record<NotificationDecision, 'green' | 'grey' | 'blue' | 'cyan' | 'red'> = {
   sent: 'green',
@@ -144,7 +139,7 @@ function PolicyEventsTab() {
     {
       title: '级别', dataIndex: 'severity', width: 80,
       render: (v: NotificationPolicyEvent['severity']) => (
-        <Tag size="small" color={SEVERITY_TAG_COLOR[v]}>{NOTIFICATION_SEVERITY_LABELS[v]}</Tag>
+        <Tag size="small" color={NOTIFICATION_SEVERITY_TAG_COLOR[v]}>{NOTIFICATION_SEVERITY_LABELS[v]}</Tag>
       ),
     },
     {

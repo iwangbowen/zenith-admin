@@ -31,6 +31,7 @@ import {
   DIRECTORY_SYNC_CALLBACK_TYPES, DIRECTORY_SYNC_MAPPABLE_SOURCE_FIELDS,
   DIRECTORY_SYNC_SOURCE_FIELD_LABELS, DIRECTORY_SYNC_FIELD_IGNORE,
 } from '@zenith/shared/identity';
+import { DIRECTORY_SYNC_RUN_STATUS_TAG_COLOR } from './directory-sync-tag-colors';
 
 const CALLBACK_TYPE_SET = new Set<string>(DIRECTORY_SYNC_CALLBACK_TYPES);
 
@@ -56,14 +57,6 @@ interface SearchParams {
 }
 
 const defaultSearchParams: SearchParams = { keyword: '', type: undefined, status: '' };
-
-const RUN_STATUS_TAG_COLOR: Record<string, 'green' | 'red' | 'orange' | 'blue' | 'grey'> = {
-  success: 'green',
-  partial: 'orange',
-  failed: 'red',
-  aborted: 'red',
-  running: 'blue',
-};
 
 export default function DirectorySyncSourcesPage() {
   const { hasPermission } = usePermission();
@@ -222,7 +215,7 @@ export default function DirectorySyncSourcesPage() {
     {
       title: '上次同步', dataIndex: 'lastRunStatus', width: 110,
       render: (_: unknown, r: DirectorySyncSource) => r.lastRunStatus
-        ? <Tag color={RUN_STATUS_TAG_COLOR[r.lastRunStatus] ?? 'grey'}>{DIRECTORY_SYNC_RUN_STATUS_LABELS[r.lastRunStatus]}</Tag>
+        ? <Tag color={DIRECTORY_SYNC_RUN_STATUS_TAG_COLOR[r.lastRunStatus] ?? 'grey'}>{DIRECTORY_SYNC_RUN_STATUS_LABELS[r.lastRunStatus]}</Tag>
         : EMPTY_PLACEHOLDER,
     },
     dateTimeColumn('上次同步时间', 'lastRunAt'),

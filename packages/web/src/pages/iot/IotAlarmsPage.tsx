@@ -35,12 +35,11 @@ import {
   useIotAlarmList, useIotAlarmRuleList, useIotMaintenanceWindowList,
   useResolveIotAlarm, useSaveIotAlarmRule, useSaveIotMaintenanceWindow,
 } from '@/hooks/queries/iot-alarms';
+import { IOT_ALARM_LEVEL_COLORS } from './iot-tag-colors';
 
 const { Text } = Typography;
 
 const FormUserSelect = withField(UserSelect);
-
-const ALARM_LEVEL_COLORS = { warning: 'orange', critical: 'red' } as const;
 
 const ALARM_STATUS_COLORS = { firing: 'red', acknowledged: 'blue', resolved: 'green' } as const;
 
@@ -92,7 +91,7 @@ function AlarmRecordsTab() {
     {
       title: '级别', dataIndex: 'level', width: 80,
       render: (v: IotAlarm['level']) => (
-        <Tag size="small" color={ALARM_LEVEL_COLORS[v]}>{IOT_ALARM_LEVEL_LABELS[v]}</Tag>
+        <Tag size="small" color={IOT_ALARM_LEVEL_COLORS[v]}>{IOT_ALARM_LEVEL_LABELS[v]}</Tag>
       ),
     },
     {
@@ -285,7 +284,7 @@ function AlarmRecordsTab() {
               { key: 'SN', value: detailTarget.deviceSn ?? EMPTY_PLACEHOLDER },
               {
                 key: '级别',
-                value: <Tag size="small" color={ALARM_LEVEL_COLORS[detailTarget.level]}>{IOT_ALARM_LEVEL_LABELS[detailTarget.level]}</Tag>,
+                value: <Tag size="small" color={IOT_ALARM_LEVEL_COLORS[detailTarget.level]}>{IOT_ALARM_LEVEL_LABELS[detailTarget.level]}</Tag>,
               },
               { key: '类型', value: IOT_ALARM_RULE_TYPE_LABELS[detailTarget.ruleType] },
               { key: '告警内容', value: detailTarget.message, span: 2 },
@@ -418,7 +417,7 @@ function AlarmRulesTab() {
     {
       title: '级别', dataIndex: 'level', width: 80,
       render: (v: IotAlarmRule['level']) => (
-        <Tag size="small" color={ALARM_LEVEL_COLORS[v]}>{IOT_ALARM_LEVEL_LABELS[v]}</Tag>
+        <Tag size="small" color={IOT_ALARM_LEVEL_COLORS[v]}>{IOT_ALARM_LEVEL_LABELS[v]}</Tag>
       ),
     },
     {

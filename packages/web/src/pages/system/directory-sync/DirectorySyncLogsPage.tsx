@@ -22,6 +22,7 @@ import {
   DIRECTORY_SYNC_ITEM_ACTIONS, DIRECTORY_SYNC_ITEM_ACTION_LABELS,
   DIRECTORY_SYNC_ENTITY_TYPE_LABELS,
 } from '@zenith/shared/identity';
+import { DIRECTORY_SYNC_RUN_STATUS_TAG_COLOR } from './directory-sync-tag-colors';
 
 interface SearchParams {
   sourceId?: string;
@@ -30,14 +31,6 @@ interface SearchParams {
 }
 
 const defaultSearchParams: SearchParams = { sourceId: undefined, status: undefined, timeRange: null };
-
-const RUN_STATUS_TAG_COLOR: Record<string, 'green' | 'red' | 'orange' | 'blue' | 'grey'> = {
-  success: 'green',
-  partial: 'orange',
-  failed: 'red',
-  aborted: 'red',
-  running: 'blue',
-};
 
 const ITEM_ACTION_TAG_COLOR: Record<string, 'green' | 'red' | 'orange' | 'blue' | 'grey' | 'cyan'> = {
   create: 'green',
@@ -139,7 +132,7 @@ export default function DirectorySyncLogsPage() {
     {
       title: '状态', dataIndex: 'status', width: 100, fixed: 'right',
       render: (_: unknown, r: DirectorySyncRun) => (
-        <Tag color={RUN_STATUS_TAG_COLOR[r.status] ?? 'grey'}>{DIRECTORY_SYNC_RUN_STATUS_LABELS[r.status]}</Tag>
+        <Tag color={DIRECTORY_SYNC_RUN_STATUS_TAG_COLOR[r.status] ?? 'grey'}>{DIRECTORY_SYNC_RUN_STATUS_LABELS[r.status]}</Tag>
       ),
     },
     createOperationColumn<DirectorySyncRun>({

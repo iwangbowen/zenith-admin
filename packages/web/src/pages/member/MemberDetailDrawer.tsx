@@ -6,6 +6,7 @@ import { MEMBER_STATUS_LABELS, POINT_TX_TYPE_LABELS, WALLET_TX_TYPE_LABELS } fro
 import { useMemberOverview } from '@/hooks/queries/member-admin';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { dateTimeColumn } from '@/utils/table-columns';
+import { MEMBER_STATUS_COLORS } from './member-tag-colors';
 
 const { Text } = Typography;
 
@@ -14,7 +15,6 @@ interface Props {
   onClose: () => void;
 }
 
-const STATUS_COLORS: Record<string, 'green' | 'grey' | 'red'> = { active: 'green', inactive: 'grey', banned: 'red' };
 const POINT_TX_COLORS: Record<string, 'green' | 'red' | 'blue' | 'orange'> = {
   earn: 'green', redeem: 'red', expire: 'grey' as 'red', adjust: 'orange', refund: 'blue',
 };
@@ -84,7 +84,7 @@ export function MemberDetailDrawer({ memberId, onClose }: Readonly<Props>) {
               </Avatar>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
                 <span style={{ fontSize: 16, fontWeight: 600 }}>{m?.nickname}</span>
-                <Tag color={STATUS_COLORS[m?.status ?? 'inactive']} size="small">
+                <Tag color={MEMBER_STATUS_COLORS[m?.status ?? 'inactive']} size="small">
                   {MEMBER_STATUS_LABELS[m?.status as keyof typeof MEMBER_STATUS_LABELS]}
                 </Tag>
                 {m?.levelName && <Tag color="amber" size="small">{m.levelName}</Tag>}

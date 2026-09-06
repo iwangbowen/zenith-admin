@@ -3,7 +3,7 @@ import type { InAppMessageType } from '@zenith/shared/messaging';
 
 type InAppMessageTypeColor = 'blue' | 'green' | 'orange' | 'red';
 
-const IN_APP_MESSAGE_TYPE_COLORS: Record<InAppMessageType, InAppMessageTypeColor> = {
+export const IN_APP_MESSAGE_TYPE_COLORS: Record<InAppMessageType, InAppMessageTypeColor> = {
   info: 'blue',
   success: 'green',
   warning: 'orange',

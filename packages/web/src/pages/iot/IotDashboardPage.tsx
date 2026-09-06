@@ -12,12 +12,9 @@ import {
 } from '@zenith/shared/iot';
 import type { IotAlarm, IotDeviceEvent } from '@zenith/shared/iot';
 import { useIotDashboard } from '@/hooks/queries/iot-dashboard';
+import { IOT_ALARM_LEVEL_COLORS, IOT_EVENT_LEVEL_COLORS } from './iot-tag-colors';
 
 const { Text } = Typography;
-
-const ALARM_LEVEL_COLORS = { warning: 'orange', critical: 'red' } as const;
-
-const EVENT_LEVEL_COLORS = { info: 'blue', warn: 'orange', fault: 'red' } as const;
 
 const PIE_COLORS = ['#4c8bf5', '#07c160', '#fa8c16', '#9254de', '#13c2c2', '#f5576c'];
 
@@ -73,7 +70,7 @@ export default function IotDashboardPage() {
     {
       title: '级别', dataIndex: 'level', width: 80,
       render: (v: IotAlarm['level']) => (
-        <Tag size="small" color={ALARM_LEVEL_COLORS[v]}>{IOT_ALARM_LEVEL_LABELS[v]}</Tag>
+        <Tag size="small" color={IOT_ALARM_LEVEL_COLORS[v]}>{IOT_ALARM_LEVEL_LABELS[v]}</Tag>
       ),
     },
     { title: '规则', dataIndex: 'ruleName', width: 140, render: (v: string) => renderEllipsis(v) },
@@ -95,7 +92,7 @@ export default function IotDashboardPage() {
     {
       title: '级别', dataIndex: 'level', width: 80,
       render: (v: RecentEvent['level']) => (
-        <Tag size="small" color={EVENT_LEVEL_COLORS[v]}>{IOT_EVENT_LEVEL_LABELS[v]}</Tag>
+        <Tag size="small" color={IOT_EVENT_LEVEL_COLORS[v]}>{IOT_EVENT_LEVEL_LABELS[v]}</Tag>
       ),
     },
   ];
