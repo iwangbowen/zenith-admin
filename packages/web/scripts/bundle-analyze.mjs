@@ -22,7 +22,9 @@ import { TraceMap, decodedMappings } from '@jridgewell/trace-mapping';
 const args = parseArgs(process.argv.slice(2));
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = resolve(args.dist ?? join(webRoot, 'dist'));
-const entries = (args.entries ?? 'index.html,member.html,approval.html').split(',').filter((h) => existsSync(join(dist, h)));
+// 默认分析全部入口：清单唯一来源 entries.json（与 vite.config.ts / build.mjs 一致）
+const defaultEntries = Object.values(JSON.parse(readFileSync(join(webRoot, 'entries.json'), 'utf8')).entries).map((e) => e.input).join(',');
+const entries = (args.entries ?? defaultEntries).split(',').filter((h) => existsSync(join(dist, h)));
 const budgetFile = resolve(args.budget ?? join(webRoot, 'bundle-budget.json'));
 
 if (!existsSync(dist) || entries.length === 0) {

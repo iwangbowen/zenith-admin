@@ -3,6 +3,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileViewerRenderers } from '@file-viewer/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
+import entriesManifest from './entries.json';
 
 /**
  * 三个 SPA 入口的内容安全策略（构建期注入 <meta http-equiv="Content-Security-Policy">）。
@@ -48,18 +49,18 @@ function cspMetaPlugin(): Plugin {
 }
 
 /**
- * 构建入口：三个 SPA 各自独立构建（同一 dist、不同 assetsDir），由 `scripts/build.mjs` 顺序驱动。
- * 原因：rolldown 的 `$initial`（入口静态闭包）标签对「任一用户入口」取并集，三入口共建时
+ * 构建入口：各 SPA 独立构建（同一 dist、不同 assetsDir），由 `scripts/build.mjs` 顺序驱动。
+ * 原因：rolldown 的 `$initial`（入口静态闭包）标签对「任一用户入口」取并集，多入口共建时
  * 后台入口的关键路径会混入会员 / 审批入口的模块，且每个共享模块的「入口集合」都掺进几十个懒加载页面，
  * 关键路径无法收敛成少数几个 chunk。管理后台、C 端会员、移动审批面向三类用户，跨入口共享 chunk 收益≈0。
- * 未设置 ZENITH_WEB_ENTRY 时保留三入口共建（dev server 与直接 `vite build` 仍可用）。
+ * 未设置 ZENITH_WEB_ENTRY 时保留多入口共建（dev server 与直接 `vite build` 仍可用）。
+ *
+ * 入口清单的唯一来源是 `entries.json`（build.mjs / bundle-analyze.mjs 同样读取它）；新增入口只需在那里加一行。
  */
-const ENTRY_INPUTS = {
-  main: { input: 'index.html', assetsDir: 'assets' },
-  member: { input: 'member.html', assetsDir: 'assets-member' },
-  approval: { input: 'approval.html', assetsDir: 'assets-approval' },
-} as const;
+const ENTRY_INPUTS = entriesManifest.entries as Record<string, { input: string; assetsDir: string }>;
 type BuildEntry = keyof typeof ENTRY_INPUTS;
+/** 第一个入口负责清空 dist，其余入口追加写入 */
+const FIRST_ENTRY = Object.keys(ENTRY_INPUTS)[0];
 
 function resolveBuildEntry(): BuildEntry | null {
   const raw = process.env.ZENITH_WEB_ENTRY;
@@ -195,8 +196,8 @@ export default defineConfig(({ mode }) => {
       ...(buildTarget ? { target: buildTarget } : {}),
       chunkSizeWarningLimit: 900,
       assetsDir: entry ? ENTRY_INPUTS[entry].assetsDir : 'assets',
-      // 多入口分三次构建写入同一 dist：只有第一次（main）清空目录，由 scripts/build.mjs 控制
-      emptyOutDir: entry === null || entry === 'main',
+      // 多入口分多次构建写入同一 dist：只有第一个入口清空目录，由 scripts/build.mjs 控制顺序
+      emptyOutDir: entry === null || entry === FIRST_ENTRY,
       rollupOptions: {
         // 影子 barrel（semi-ui-barrel.ts）是纯 re-export，但 @zenith/web 未声明
         // package.json#sideEffects，源码文件默认被视为有副作用、无法摇树；
@@ -212,9 +213,8 @@ export default defineConfig(({ mode }) => {
           ),
         output: {
           /**
-           * 静态资源（字体 / wasm / 图片 / CSS）三个入口共用 `assets/`：文件名含内容 hash，相同内容在各入口构建中
-           * 得到相同文件名，落到同一目录即天然去重（PPT CJK 字体 15.7 MB、pdfium wasm 4.4 MB 等此前被每个入口复制一份）。
-           * JS chunk 仍按入口分目录（`assetsDir`），互不干扰。
+           * 静态资源（字体 / wasm / 图片 / CSS）各入口共用 `assets/`：文件名含内容 hash，相同内容在各入口构建中
+           * 得到相同文件名，落到同一目录即只保留一份。JS chunk 仍按入口分目录（`assetsDir`），互不干扰。
            */
           assetFileNames: 'assets/[name]-[hash][extname]',
           /**

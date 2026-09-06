@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 生产构建编排：三个 SPA 入口各自独立构建到同一 dist（不同 assetsDir），随后生成预压缩文件。
+ * 生产构建编排：entries.json 中的各 SPA 入口各自独立构建到同一 dist（不同 assetsDir），随后生成预压缩文件。
  *
  *   node scripts/build.mjs                 # 生产
  *   node scripts/build.mjs --mode demo     # Demo（MSW）
@@ -10,7 +10,7 @@
  * build 脚本在本脚本之前执行。
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +19,13 @@ const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const mode = readArg('--mode');
 const only = readArg('--entry');
-const entries = only ? [only] : ['main', 'member', 'approval'];
+// 入口清单唯一来源：entries.json（vite.config.ts / bundle-analyze.mjs 同样读取）
+const ENTRY_INPUTS = JSON.parse(readFileSync(resolve(webRoot, 'entries.json'), 'utf8')).entries;
+if (only && !(only in ENTRY_INPUTS)) {
+  console.error(`✖ 未知入口 ${only}，可选：${Object.keys(ENTRY_INPUTS).join(' / ')}`);
+  process.exit(1);
+}
+const entries = only ? [only] : Object.keys(ENTRY_INPUTS);
 const outDir = resolve(webRoot, 'dist');
 // 直接执行 vite 的 bin 脚本：不经 shell，跨平台且无参数转义问题
 const viteBin = resolve(dirname(createRequire(import.meta.url).resolve('vite/package.json')), 'bin/vite.js');

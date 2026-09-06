@@ -23,18 +23,22 @@ lucide 图标全表（615 KB / 153 KB gz）在任何口径下都是运行时按�
 
 `npm run build -w @zenith/web` = `tsc -b` + `scripts/build.mjs`：
 
-1. 三个入口各自独立 `vite build`（环境变量 `ZENITH_WEB_ENTRY=main|member|approval`），JS chunk 写入同一 `dist/` 的不同 `assetsDir`
-   （`assets/`、`assets-member/`、`assets-approval/`），只有 main 清空目录；静态资源（字体 / wasm / 图片 / CSS）三个入口共用 `assets/`
-   （`output.assetFileNames`）——文件名含内容 hash，相同内容在各入口构建中得到同名文件，落到同一目录即天然去重；
+1. 入口清单唯一来源是 `packages/web/entries.json`（`vite.config.ts`、`scripts/build.mjs`、`scripts/bundle-analyze.mjs` 共同读取）。
+   各入口各自独立 `vite build`（环境变量 `ZENITH_WEB_ENTRY=<entry>`），JS chunk 写入同一 `dist/` 的各自 `assetsDir`
+   （`assets/`、`assets-member/`、`assets-approval/`），清单中第一个入口负责清空目录；静态资源（字体 / wasm / 图片 / CSS）各入口共用 `assets/`
+   （`output.assetFileNames`）——文件名含内容 hash，相同内容在各入口构建中得到同名文件，落到同一目录即只保留一份；
 2. `scripts/precompress.mjs` 用 worker 线程为 ≥ 1 KB 的文本资源生成 `.gz`（level 9）与 `.br`（quality 11），供 nginx `gzip_static` / `brotli_static` 直接下发。
-   预压缩副本随 Docker 镜像一起构建，但**不进 GitHub Release 的 web zip**（同一份 JS/CSS 的另一种编码、zip 无法再压缩，约占包体一半）；
+   预压缩副本随 Docker 镜像一起构建，**不进 GitHub Release 的 web zip**（同一份 JS/CSS 的另一种编码、zip 无法再压缩）；
    手动部署时执行随包提供的 `node web/precompress.mjs web/dist` 生成。
 
-分入口构建的原因：rolldown 的 `$initial` 标签取「任一用户入口静态可达」的并集，三入口共建时后台关键路径会混入会员 / 审批入口的模块，
-并且每个共享模块的「入口集合」都掺进几十个懒加载页面，关键路径无法收敛为少数几个 chunk。三个入口面向三类用户，跨入口共享 chunk 的收益≈0。
-未设置 `ZENITH_WEB_ENTRY` 时仍是三入口共建（dev server 与直接 `vite build` 可用），但产物结构不满足预算。
+新增入口：新建 `<input>.html` 与 `src/<entry>/main-*.tsx`，在 `entries.json` 加一行，跑一次 `npm run analyze:bundle` 后在 `bundle-budget.json`
+补该入口预算（关键路径 + `maxTotalJsChunks / maxTotalJsMB`，实测留 ~10% 余量），并在 `scripts/smoke.mjs` 补启动检查。
 
-分入口构建的代价：任何被多个入口触达的模块都会在各入口产物中各输出一份。因此**非后台入口绝不能触达后台页面注册表**
+分入口构建的原因：rolldown 的 `$initial` 标签取「任一用户入口静态可达」的并集，多入口共建时后台关键路径会混入会员 / 审批入口的模块，
+并且每个共享模块的「入口集合」都掺进几十个懒加载页面，关键路径无法收敛为少数几个 chunk。各入口面向不同用户群，跨入口共享 chunk 的收益≈0。
+未设置 `ZENITH_WEB_ENTRY` 时仍是多入口共建（dev server 与直接 `vite build` 可用），但产物结构不满足预算。
+
+分入口构建的代价：任何被多个入口触达的模块都会在各入口产物中各输出一份。因此**非后台入口不得触达后台页面注册表**
 （`utils/page-registry.ts` 的 `import.meta.glob('../pages/**/*Page.tsx')`）：glob 在构建期按模块展开，引用它的入口会把几百个后台页面 chunk
 及其重依赖全部打进自己的 `assetsDir`。工作流自定义业务表单单独收在 `utils/business-form-registry.ts`（`pages/biz/**`、`*BusinessForm.tsx`、
 `*ApprovalView.tsx`），`BusinessFormHost` 与流程设计器只引用它；`bundle-budget.json` 的 `maxTotalJsChunks / maxTotalJsMB`
@@ -121,7 +125,7 @@ nginx 侧的 `gzip_static`、HTML `no-cache`、静态资源一年 immutable 与 
 | --- | --- | --- |
 | `npm run analyze:bundle` | 文本报告；`-- --json out.json --md out.md` 落盘；`-- --dist <dir>` 指定产物 | 已构建的 `dist/` |
 | `npm run check:bundle` | 按 `bundle-budget.json` 检查，超限 exit 1（CI `Bundle budget` 步骤） | 已构建的 `dist/` |
-| `npm run smoke` | 自起 `vite preview` 用系统 Chrome 真实启动三个入口 + 登录 → 仪表盘 → 用户管理，控制台错误 / 错误边界即失败（CI `smoke` job 基于 demo 产物）。`-- --url <url> --no-serve` 复用已有服务 | 系统 Chrome；非 demo 产物需要可用的 API |
+| `npm run smoke` | 自起 `vite preview` 用系统 Chrome 真实启动全部入口 + 登录 → 仪表盘 → 用户管理，控制台错误 / 错误边界即失败（CI `smoke` job 基于 demo 产物）。`-- --url <url> --no-serve` 复用已有服务 | 系统 Chrome；非 demo 产物需要可用的 API |
 | `npm run bench:runtime` | 冷缓存首屏基准：匿名 `/login` 与已登录 `/` 的请求数 / 字节 / 可交互 / LCP，取多次中位数；`-- --latency 50 --download 10` 经 CDP 注入网络条件；`-- --json out.json` 落盘 | 另一终端 `npm run preview`；API 可用 |
 
 `bundle-budget.json` 的阈值 = 当前实测留约 10% 余量。分包改动或新增首屏依赖导致超限时，先证明必要性再上调，并同步更新下方记录表。
@@ -148,12 +152,11 @@ nginx 侧的 `gzip_static`、HTML `no-cache`、静态资源一年 immutable 与 
 | 会员端 critical | 94 个 / 329.9 KB gz | 5 个 / 237.5 KB gz |
 | 审批端 critical | 55 个 / 258.3 KB gz | 5 个 / 191.6 KB gz |
 | 注册表动态入口 | 544 | 276 |
-| JS chunk 总数（其中 < 4 KB） | 1,711（922） | 1,542（764） |
-| dist JS 总量 | 38.5 MB | 75.8 MB |
+| JS chunk 总数（其中 < 4 KB） | 1,711（922） | 904（438） |
+| dist JS 总量 | 38.5 MB | 53.1 MB |
 
-认证首屏的 gz 体积 +6%（Semi 核心整包、公共层一次装载）换来文件数 −84%。上表「dist JS 总量」翻倍来自审批入口独立构建时
-复制了一份页面注册表（`BusinessFormHost` 曾复用 `lazyPageComponent`），v2.20.1 起注册表拆分、静态资源跨入口共用后，
-dist JS 总量 53.1 MB / 904 个 chunk；发布 zip 由 94.3 MB 回落到约 33 MB（不含预压缩副本；较 v2.19 多出的约 4 MB 为各入口独立的按需 chunk）。
+认证首屏的 gz 体积 +6%（Semi 核心整包、公共层一次装载）换来文件数 −84%。dist JS 总量中约 4 MB 是会员 / 审批入口各自的按需 chunk
+（分入口构建的固定成本，单个用户只下载自己入口的部分）；发布 zip 约 33 MB（不含预压缩副本）。
 
 ### 运行时（冷缓存中位数）
 

@@ -47,9 +47,10 @@ tasks, wiki, workflow
 
 ## `packages/web`
 
-前端基于 **React 19 + Vite 8 + Semi Design v2**。Vite 多入口，`npm run build` 由 `scripts/build.mjs` 对每个入口分别构建（环境变量 `ZENITH_WEB_ENTRY`）并预压缩产物：
+前端基于 **React 19 + Vite 8 + Semi Design v2**。Vite 多入口，入口清单在 `entries.json`（唯一来源），`npm run build` 由 `scripts/build.mjs`
+对每个入口分别构建（环境变量 `ZENITH_WEB_ENTRY`）并预压缩产物；字体 / wasm / 图片 / CSS 等静态资源各入口共用 `dist/assets/`：
 
-| 入口 | 产物目录 | 说明 |
+| 入口 | JS 产物目录 | 说明 |
 | --- | --- | --- |
 | `index.html` | `dist/assets/` | 后台管理主应用 |
 | `member.html` | `dist/assets-member/` | C 端会员前台 SPA |
@@ -59,7 +60,7 @@ tasks, wiki, workflow
 
 | 目录 | 职责 |
 | --- | --- |
-| `src/pages/` | 后台页面，按业务域拆分（含 `rules`、`wiki`、`drive`、`open-platform`、`system/app-releases` 等）；`*Page.tsx` 进入页面注册表 |
+| `src/pages/` | 后台页面，按业务域拆分（含 `rules`、`wiki`、`drive`、`open-platform`、`system/app-releases` 等）；`*Page.tsx` 进入页面注册表（`utils/page-registry.ts`，仅后台入口引用），`pages/biz/**`、`*BusinessForm.tsx`、`*ApprovalView.tsx` 进入业务表单注册表（`utils/business-form-registry.ts`） |
 | `src/member/` | 会员前台独立应用 |
 | `src/approval/` | 移动审批入口 |
 | `src/layouts/` | 后台主布局、偏好面板、多账号切换、Electron 标题栏承载 |
@@ -70,7 +71,8 @@ tasks, wiki, workflow
 | `src/webrtc/` | Chat 音视频通话管理 |
 | `src/styles/` | 全局样式与响应式规则 |
 | `scripts/` | 构建编排（`build.mjs`、`precompress.mjs`）与性能守卫（`bundle-analyze.mjs`、`bench-runtime.mjs`、`smoke.mjs`） |
-| `bundle-budget.json` | CI 产物预算阈值 |
+| `entries.json` | SPA 入口清单（html 与 JS 产物目录），构建编排与产物分析共同读取 |
+| `bundle-budget.json` | CI 产物预算阈值（关键路径 + 各入口 JS 总量） |
 
 chunk 分层与度量方式见 [打包与首屏性能](../frontend/bundle-performance.md)。
 

@@ -1,0 +1,8 @@
+{
+  "$comment": "前端 SPA 入口清单（唯一来源）：vite.config.ts、scripts/build.mjs、scripts/bundle-analyze.mjs 都从这里读取。新增入口 = 新建 <input>.html 与 src/<entry>/main-*.tsx，再在此加一行，并在 bundle-budget.json 补预算、scripts/smoke.mjs 补启动检查。顺序即构建顺序，第一个入口负责清空 dist。",
+  "entries": {
+    "main": { "input": "index.html", "assetsDir": "assets" },
+    "member": { "input": "member.html", "assetsDir": "assets-member" },
+    "approval": { "input": "approval.html", "assetsDir": "assets-approval" }
+  }
+}
