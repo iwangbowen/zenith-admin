@@ -4,6 +4,119 @@
 
 ---
 
+## v2.20.0 - 2026-09-06
+
+**数据脱敏改为契约声明 + 路由出口强制打码**：敏感字段在共享契约里用 `sensitive()` 标记一次，服务端在契约路由出口按查看者
+自动打码，后台只维护「脱敏方式 / 豁免权限 / 启停」策略；新增按需查看明文（逐次审计）与掩码值回写保护。
+同时完成三项性能专项：前端三层分包与启动链路并行化（后台关键路径 85 → 5 个文件）、CMS 列表读路径列投影
+（栏目分页 33.1 → 9.9ms）、通知 outbox 批量认领与有界并发（补投吞吐 3.1 → 24.6 行/s）。
+专题见 [安全体系 → 数据脱敏](/backend/security#数据脱敏)、[打包与首屏性能](/frontend/bundle-performance)。
+
+> 本版含数据库迁移 `0002_cms_content_excerpt_and_public_indexes`（`cms_contents` 新增生成列 `excerpt`、公开可见部分索引，删除
+> `status` / `published_at` 单列索引）与 `0003_data_mask_policies`（`data_mask_configs` 表**删除**、新建 `data_mask_policies` 仅存覆盖记录，
+> `mask_type` 枚举新增 `address` / `redact`，菜单删除「新增规则 / 删除规则」按钮）。升级后执行 `npm run db:migrate && npm run db:seed`
+> 写入 `system:data-mask:bypass` / `system:data-mask:reveal` 权限。
+> 接口变更：`/api/data-mask-configs/*` 移除，改为 `/api/data-mask/{fields,effective,reveal}`；CMS 后台内容列表响应不再包含
+> `body` / `extend` / `mediaData`；原按角色 code 配置的脱敏豁免改为按权限码，需在策略页重新配置。
+
+### Added
+
+#### 数据脱敏：契约与服务端
+
+- `shared/core/sensitive.ts`：`sensitive(schema, kind, label?)` 元数据声明、`collectSensitiveFields()` 静态遍历响应 schema
+  （对象 / 数组 / 分页 / 包装类型，敏感字段所在对象必须有 `meta.id`）、fail-closed 脱敏原语（格式不符退回尾部保留，新增 `address` / `redact`）、
+  `looksMasked()` 回写检测与写时复制 `maskAtPath()`；操作可标 `unmasked` 供 `/auth/me`、会员 `me/profile` 等自视图端点跳过脱敏
+- 标记 PII 字段：`User` / `RoleUser` / `PositionMember` / `UserGroupMember` 的邮箱与手机、`Tenant.contactPhone`、`Member` / `MemberOption` /
+  `MemberRecharge`、`PaymentDispute.complainantPhone`、`SmsSendLog.phone`、`EmailSendLog.toEmail`
+- `dataMaskContract`（`/api/data-mask`）：`fields` 注册表 + 生效策略、`effective` 当前用户视角、`savePolicy` / `resetPolicy`
+  （`custom` 必带规则、掩码字符单字符）、`reveal` 按需查看明文
+- `lib/data-mask`：注册表由 `defineContractRoute` 在路由定义期自动登记；出口边界对含敏感字段的 JSON 契约路由自动包裹，
+  按查看者（平台超管 / 策略停用 / 豁免权限）沿路径打码，写操作请求体携带脱敏值一律 400；策略缓存接入 PG LISTEN/NOTIFY 失效总线；
+  `reveal` 数据源注册（User / Member / Tenant 复用各自读取函数的可见性口径），逐次审计且不落明文
+- 导出中心列以 `sensitive` + `maskKey` 绑定契约字段，用户 / 会员 / 租户 / 短信 / 邮件导出重新受脱敏策略管控
+
+#### 数据脱敏：前端
+
+- 策略页改为「契约敏感字段清单 + 生效策略」视图：脱敏类型与自定义规则实时预览、豁免权限（来自菜单按钮权限码）、启停、恢复契约默认
+- `components/sensitive`：`SensitiveText`（表格按需查看明文，30 秒后自动恢复掩码）、`SensitiveFormInput` + `useSensitiveFormFields`
+  （编辑表单锁定掩码字段、点「修改」后再输入、提交时剔除未修改字段），接入用户 / 会员 / 租户页
+- MSW Demo：注册表由契约推导，策略保存 / 恢复、`reveal` 从 Mock 数据取值
+
+#### 前端构建与首屏
+
+- `vite.config.ts` 三层分包（关键路径层 `initial-vendor` / `initial-app`、壳层 `vendor-semi` + `vendor-common` / `app-shared`、页面层按消费页面集合分组），
+  Semi markdown / media 族独立成组
+- 启动链路：登录页静态进入关键路径；存在 token 时 `shell-prefetch` 与 `/api/auth/me` 并行预热壳层 chunk、图标表、用户菜单树与个人设置；
+  行为采集 SDK 延后到 idle；MSW 仅 Demo 模式动态引入；页面注册表只收 `*Page.tsx` / `biz/**` 等入口（544 → 276 个动态入口）
+- `scripts/build.mjs` 三入口独立构建 + worker 线程预压缩 `.gz` / `.br`；`bundle-analyze.mjs` 关键路径 / 壳层增量 / 认证首屏归因，
+  `--check` 按 `bundle-budget.json` 做预算门禁；`bench-runtime.mjs` 冷缓存首屏基准（支持 CDP 限速）；`smoke.mjs` 真实启动三入口 + 登录链路
+- CI：Build 后新增 Bundle budget 步骤；新增 smoke job 基于 Demo 产物无后端启动验证
+- 新增 [打包与首屏性能](/frontend/bundle-performance) 专题与 `docs/frontend/perf` 基准数据
+
+#### 企业网盘
+
+- 动态审计接入导出中心（`drive.activities`，按当前筛选导出，权限 `drive:admin:activity:export`）
+- 详情抽屉外链面板改为列表卡片（复制 / 编辑 / 撤销 / 删除），编辑外链新增「移除访问密码」；目录选择器树数据到达后自动展开根节点
+
+#### 基准脚本
+
+- `scripts/bench-cms-lists.ts`：生成确定性基准站点（默认 3000 篇 × 30KB 正文），逐项计时并记录 `cms_contents` 堆块 / TOAST 块数与下游 JSON 字节数
+- `scripts/bench-notification-outbox.ts`：隔离库 + 假 webhook 适配器度量补投吞吐与在飞投递峰值；基线与结果见 `docs/backend/perf`
+
+### Changed
+
+#### CMS 列表读路径（性能）
+
+- `cms_contents` 新增生成列 `excerpt`（正文纯文本前 400 字，PG 自动重算），`listSummaryOf()` 成为列表 / 搜索 / RSS 导语的唯一来源
+- 投影分层 `cms-content-columns.ts`：`cmsContentListColumns`（无 `body` / `search_vector` / `attachments`）与 `cmsContentLinkColumns`，
+  列表读 `body` 在编译期失败；栏目分页、首页三组、标签页、Theme API / 页面区块、部件内容源、RSS、上下篇与相关文章、搜索、后台列表、
+  会员收藏 / 历史、Open API 列表 / 游标 / 增量同步 / 详情全部改为按需投影；全站静态构建按 100 篇一批取，不再把全站正文装入内存
+- 栏目分页谓词重排，扫描量随栏目而非站点内容数增长；新增公开可见部分索引
+- 基准（3000 篇 × 30.5KB）：栏目分页 33.1 → 9.9ms、交给渲染层 1118 → 32KB；首页 26.1 → 5.7ms；后台列表响应 636 → 25KB；
+  Theme API `limit=100` 140.8 → 21.1ms；RSS 60.9 → 8.4ms
+
+#### 通知 outbox 补投（性能）
+
+- 认领即取行：`UPDATE … WHERE id IN (SELECT … ORDER BY id LIMIT 32 FOR UPDATE SKIP LOCKED) RETURNING *`，多实例互不重叠、先进先出；
+  一批内 8 行并发，循环认领直到排空或用完 45s 预算
+- 派发引擎新增进程级限流器（`lib/concurrency.ts`），跨补投与请求内立即派发的在飞投递总数钉在 32；失败保留认领时间作为 5 分钟重试间隔
+- `lib/email.ts` 按 SMTP 配置指纹缓存 nodemailer 连接池（5 连接 / 200 封轮换，连接 10s / socket 30s 超时），配置变更即换池
+- 基准：200 行 × 1 收件人 64.1s → 8.1s；40 行 × 25 收件人 12.8s → 10.0s，在飞投递峰值由无上限变为 32 硬上限
+
+#### 前端交互性能
+
+- 表单设计器列宽拖拽改为手势内临时状态、释放时一次性提交（历史栈只记一步），`CanvasFieldPreview` memo；`WorkflowFormInlineEditor` 的 schema
+  序列化改为按需计算
+- 报表看板 `WidgetRenderer` / `WidgetFrame` / `DesignerWidgetCard` memo 化，轮询刷新不再让所有图表重建 spec；
+  `useReportWidgetData` 等聚合 hooks 的 `combine` 改为稳定引用使 TanStack 结构共享生效
+
+#### 布局与页面
+
+- 系统设置 / 缓存管理 / 用户管理 / 流程定义 / 内容管理分栏页面建立高度链，左右两侧各自滚动；设置页选中项改为渲染期派生
+- 企业网盘全页面列宽巡检：各视图列集全部固定宽度 + 唯一弹性列，长文件名 / 大小 / 修改人单行省略，状态列固定右侧；
+  详情抽屉宽度 760、标题区收缩省略；空间治理所有者字段改用 `withField(UserSelect)` 实时回显
+- 按名渲染图标统一为 `components/DynamicIcon` + `renderLucideIcon`；`semi-illustrations` 与偏好设置面板正文懒加载
+- nginx：`gzip_static` 直接下发预压缩产物、HTML 入口 `no-cache`、补 woff2 / wasm / manifest 类型
+
+#### 文档与开发规范
+
+- 数据库、安全体系、导出中心、通知、平台基础能力、CMS 开放接口 / 搜索 / 渲染、路由、项目结构、部署 / Docker 文档同步；
+  硬约束新增打包与首屏性能、拖拽手势期间禁止提交业务状态等条目
+
+### Fixed
+
+- 非豁免用户原样保存编辑表单会把掩码值写回数据库；脱敏此前仅覆盖 `users.service` 三处而其他接口明文返回；
+  租户自建同 code 角色可绕过豁免；多实例策略缓存最长 5 分钟不一致；脱敏原语对非标准格式原样放行
+- `useUrlSelectionState` 清除无效深链参数时与自身导航互相触发 `Maximum update depth exceeded`（设置页 `?module=bogus`、字典页 `?dict=abc`）
+- 网盘目录选择器 `disabledNodeIds` 默认值每次渲染变身份导致隐藏挂载时无限循环（公开分享页持续报错）
+- 网盘共享空间成员管理弹窗因 `footer={undefined}` 触发 Semi 隐藏默认 footer 而无法保存；外链治理直接进入页面时 `.drive-nowrap` 样式未加载导致权限列换行
+- 网盘目录表格长文件名在带收藏 / 锁定标记时被压缩为 0 宽
+- nginx `/index(.html)` 与 `try_files` 内部重定向互相匹配的 301 循环
+- 通知补投无 `ORDER BY` 的 `LIMIT` 在积压时不保证先进先出；一次 300 人群发同时打开 300 个 SMTP 连接
+- 内容管理矮窗口下表格尾部与分页被裁切
+
+---
+
 ## v2.19.0 - 2026-09-05
 
 **运行时设置（Settings）取代 KV 系统配置**：可在后台修改、影响系统行为的开关与阈值按 13 个模块组织为带默认值的类型化 Zod 文档，
