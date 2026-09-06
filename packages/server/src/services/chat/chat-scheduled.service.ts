@@ -5,6 +5,7 @@ import { db } from '../../db';
 import { chatConversations, chatConversationMembers, chatScheduledMessages, users } from '../../db/schema';
 import type { ChatScheduledMessageRow } from '../../db/schema/chat';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
+import { requireRow } from '../../lib/db-assert';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { sendMessage } from './chat.service';
@@ -68,7 +69,7 @@ export async function createScheduledMessage(
       eq(chatConversationMembers.userId, me.userId),
     ),
   });
-  if (!member) throw new HTTPException(403, { message: '无权向该会话发送消息' });
+  requireRow(member, '无权向该会话发送消息', 403);
 
   const now = dayjs();
   const at = dayjs(scheduledAt);
@@ -121,8 +122,8 @@ export async function cancelScheduledMessage(id: number): Promise<void> {
   const row = await db.query.chatScheduledMessages.findFirst({
     where: and(eq(chatScheduledMessages.id, id), eq(chatScheduledMessages.senderId, me.userId)),
   });
-  if (!row) throw new HTTPException(404, { message: '定时消息不存在' });
-  if (row.status !== 'pending') throw new HTTPException(400, { message: '仅待发送的定时消息可取消' });
+  const scheduled = requireRow(row, '定时消息不存在');
+  if (scheduled.status !== 'pending') throw new HTTPException(400, { message: '仅待发送的定时消息可取消' });
   await db.update(chatScheduledMessages)
     .set({ status: 'canceled' })
     .where(eq(chatScheduledMessages.id, id));

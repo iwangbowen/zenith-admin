@@ -6,6 +6,7 @@ import { db } from '../../db';
 import { chatConversationMembers, chatConversations, chatGroupInvites, chatGroupJoinRequests, users } from '../../db/schema';
 import type { ChatGroupInviteRow } from '../../db/schema/chat';
 import { currentUser } from '../../lib/context';
+import { requireRow } from '../../lib/db-assert';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { invalidateConversationMembers } from '../../lib/chat-member-cache';
@@ -29,9 +30,9 @@ function mapInvite(row: ChatGroupInviteRow): ChatGroupInvite {
 
 async function getGroupOrThrow(conversationId: number) {
   const conv = await db.query.chatConversations.findFirst({ where: eq(chatConversations.id, conversationId) });
-  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
-  if (conv.type !== 'group') throw new HTTPException(400, { message: '仅群聊支持该操作' });
-  return conv;
+  const conversation = requireRow(conv, '会话不存在');
+  if (conversation.type !== 'group') throw new HTTPException(400, { message: '仅群聊支持该操作' });
+  return conversation;
 }
 
 async function ensureGroupManager(conversationId: number, userId: number) {
@@ -155,7 +156,7 @@ async function addMemberViaInvite(conversationId: number, userId: number, invite
     where: eq(users.id, userId),
     columns: { id: true, nickname: true, avatar: true },
   });
-  if (!user) throw new HTTPException(404, { message: '用户不存在' });
+  const targetUser = requireRow(user, '用户不存在');
 
   await db.insert(chatConversationMembers).values({ conversationId, userId });
   await db.update(chatGroupInvites)
@@ -165,11 +166,11 @@ async function addMemberViaInvite(conversationId: number, userId: number, invite
 
   // 复用现有系统消息 + WS 事件链路
   const { appendSystemMessage } = await import('./chat.service');
-  await appendSystemMessage(conversationId, `${user.nickname} 通过邀请链接加入了群聊`);
+  await appendSystemMessage(conversationId, `${targetUser.nickname} 通过邀请链接加入了群聊`);
   const members = await memberIdsOf(conversationId);
   scheduleSendToUsers(members.map((id) => ({ userId: id })), {
     type: 'chat:member-join',
-    payload: { conversationId, user: { id: user.id, nickname: user.nickname, avatar: user.avatar ?? null } },
+    payload: { conversationId, user: { id: targetUser.id, nickname: targetUser.nickname, avatar: targetUser.avatar ?? null } },
   });
 }
 
@@ -250,19 +251,19 @@ export async function listJoinRequests(conversationId: number): Promise<ChatGrou
 export async function handleJoinRequest(requestId: number, approve: boolean): Promise<void> {
   const me = currentUser();
   const req = await db.query.chatGroupJoinRequests.findFirst({ where: eq(chatGroupJoinRequests.id, requestId) });
-  if (!req) throw new HTTPException(404, { message: '申请不存在' });
-  if (req.status !== 'pending') throw new HTTPException(400, { message: '该申请已处理' });
-  await ensureGroupManager(req.conversationId, me.userId);
+  const request = requireRow(req, '申请不存在');
+  if (request.status !== 'pending') throw new HTTPException(400, { message: '该申请已处理' });
+  await ensureGroupManager(request.conversationId, me.userId);
 
   if (approve) {
     const alreadyIn = await db.query.chatConversationMembers.findFirst({
       where: and(
-        eq(chatConversationMembers.conversationId, req.conversationId),
-        eq(chatConversationMembers.userId, req.userId),
+        eq(chatConversationMembers.conversationId, request.conversationId),
+        eq(chatConversationMembers.userId, request.userId),
       ),
     });
     if (!alreadyIn) {
-      await addMemberViaInvite(req.conversationId, req.userId, req.inviteId ?? 0);
+      await addMemberViaInvite(request.conversationId, request.userId, request.inviteId ?? 0);
     }
   }
 
@@ -270,10 +271,10 @@ export async function handleJoinRequest(requestId: number, approve: boolean): Pr
     .set({ status: approve ? 'approved' : 'rejected', handledBy: me.userId, handledAt: new Date() })
     .where(eq(chatGroupJoinRequests.id, requestId));
 
-  const managers = await managerIdsOf(req.conversationId);
-  scheduleSendToUsers([...managers, req.userId].map((id) => ({ userId: id })), {
+  const managers = await managerIdsOf(request.conversationId);
+  scheduleSendToUsers([...managers, request.userId].map((id) => ({ userId: id })), {
     type: 'chat:member-update',
-    payload: { conversationId: req.conversationId },
+    payload: { conversationId: request.conversationId },
   });
 }
 

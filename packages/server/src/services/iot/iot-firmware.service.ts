@@ -12,6 +12,8 @@ import { IOT_FIRMWARE_VERSION_PATTERN } from '@zenith/shared/iot';
 import { db } from '../../db';
 import { iotFirmwares, iotOtaTasks, iotProducts, type IotFirmwareRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUser } from '../../lib/context';
@@ -61,40 +63,38 @@ function buildFirmwareWhere(q: ListIotFirmwaresQuery & { id?: number }): SQL | u
 export async function listIotFirmwares(q: ListIotFirmwaresQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildFirmwareWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(iotFirmwares, where),
-    withPagination(
-      db.select({ firmware: iotFirmwares, productName: iotProducts.name })
-        .from(iotFirmwares)
-        .leftJoin(iotProducts, eq(iotFirmwares.productId, iotProducts.id))
-        .where(where)
-        .orderBy(desc(iotFirmwares.id))
-        .$dynamic(),
-      page,
-      pageSize,
-    ),
-  ]);
-  const ids = rows.map((r) => r.firmware.id);
-  const taskCounts = ids.length > 0
-    ? await db.select({ firmwareId: iotOtaTasks.firmwareId, cnt: count() })
-      .from(iotOtaTasks).where(inArray(iotOtaTasks.firmwareId, ids)).groupBy(iotOtaTasks.firmwareId)
-    : [];
-  const countMap = new Map(taskCounts.map((r) => [r.firmwareId, Number(r.cnt)]));
-  return {
-    list: rows.map((r) => mapIotFirmware(r.firmware, {
-      productName: r.productName,
-      taskCount: countMap.get(r.firmware.id) ?? 0,
-    })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(iotFirmwares, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select({ firmware: iotFirmwares, productName: iotProducts.name })
+          .from(iotFirmwares)
+          .leftJoin(iotProducts, eq(iotFirmwares.productId, iotProducts.id))
+          .where(where)
+          .orderBy(desc(iotFirmwares.id))
+          .$dynamic(),
+        page,
+        pageSize,
+      );
+      const ids = rows.map((r) => r.firmware.id);
+      const taskCounts = ids.length > 0
+        ? await db.select({ firmwareId: iotOtaTasks.firmwareId, cnt: count() })
+          .from(iotOtaTasks).where(inArray(iotOtaTasks.firmwareId, ids)).groupBy(iotOtaTasks.firmwareId)
+        : [];
+      const countMap = new Map(taskCounts.map((r) => [r.firmwareId, Number(r.cnt)]));
+      return rows.map((r) => mapIotFirmware(r.firmware, {
+        productName: r.productName,
+        taskCount: countMap.get(r.firmware.id) ?? 0,
+      }));
+    },
+  });
 }
 
 export async function ensureIotFirmwareExists(id: number): Promise<IotFirmwareRow> {
   const [row] = await db.select().from(iotFirmwares).where(buildFirmwareWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '固件不存在' });
-  return row;
+  return requireRow(row, '固件不存在');
 }
 
 export interface CreateFirmwareMeta {

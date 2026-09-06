@@ -21,6 +21,8 @@ import {
 } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { clampDays, clampLimit } from '../../lib/analytics-helpers';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { withPagination } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { ensureIotDeviceExists } from './iot-devices.service';
@@ -279,15 +281,17 @@ export async function listIotCommands(deviceId: number, q: ListCommandsQuery) {
   await expireStaleCommands(deviceId);
   const { page = 1, pageSize = 10 } = q;
   const where = eq(iotCommands.deviceId, deviceId);
-  const [total, rows] = await Promise.all([
-    db.$count(iotCommands, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(iotCommands, where),
+    rows: () => withPagination(
       db.select().from(iotCommands).where(where).orderBy(desc(iotCommands.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return { list: rows.map(mapIotCommand), total, page, pageSize };
+    map: mapIotCommand,
+  });
 }
 
 // ─── 设备侧接口（ingest / WS 帧共用）──────────────────────────────────────────
@@ -321,7 +325,7 @@ export async function ackIotCommand(device: IotDeviceRow, commandId: number, inp
       inArray(iotCommands.status, ['pending', 'delivered']),
     ))
     .returning({ id: iotCommands.id });
-  if (!row) throw new HTTPException(404, { message: '指令不存在或已结束' });
+  requireRow(row, '指令不存在或已结束');
 }
 
 /** 设备 WS 上线时补推全部 pending 指令 */

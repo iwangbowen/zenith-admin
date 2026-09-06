@@ -8,7 +8,6 @@
  * 连续失败达 IOT_FORWARD_AUTO_DISABLE_THRESHOLD 自动停用规则。
  */
 import { createHmac } from 'node:crypto';
-import { HTTPException } from 'hono/http-exception';
 import { and, count, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import type { CreateIotForwardRuleInput, IotForwardSource, UpdateIotForwardRuleInput } from '@zenith/shared/iot';
 import { IOT_FORWARD_AUTO_DISABLE_THRESHOLD } from '@zenith/shared/iot';
@@ -18,6 +17,8 @@ import {
   type IotForwardLogRow, type IotForwardRuleRow,
 } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
@@ -92,45 +93,43 @@ function buildRuleWhere(q: ListIotForwardRulesQuery & { id?: number }): SQL | un
 export async function listIotForwardRules(q: ListIotForwardRulesQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildRuleWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(iotForwardRules, where),
-    withPagination(
-      db.select({ rule: iotForwardRules, productName: iotProducts.name, groupName: iotDeviceGroups.name })
-        .from(iotForwardRules)
-        .leftJoin(iotProducts, eq(iotForwardRules.productId, iotProducts.id))
-        .leftJoin(iotDeviceGroups, eq(iotForwardRules.groupId, iotDeviceGroups.id))
-        .where(where)
-        .orderBy(desc(iotForwardRules.id))
-        .$dynamic(),
-      page,
-      pageSize,
-    ),
-  ]);
-  const ids = rows.map((r) => r.rule.id);
-  const since = new Date(Date.now() - 24 * 3600_000);
-  const deliveryCounts = ids.length > 0
-    ? await db.select({ ruleId: iotForwardLogs.ruleId, cnt: count() })
-      .from(iotForwardLogs)
-      .where(and(inArray(iotForwardLogs.ruleId, ids), gte(iotForwardLogs.createdAt, since)))
-      .groupBy(iotForwardLogs.ruleId)
-    : [];
-  const countMap = new Map(deliveryCounts.map((r) => [r.ruleId, Number(r.cnt)]));
-  return {
-    list: rows.map((r) => mapIotForwardRule(r.rule, {
-      productName: r.productName,
-      groupName: r.groupName,
-      recentDeliveryCount: countMap.get(r.rule.id) ?? 0,
-    })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(iotForwardRules, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select({ rule: iotForwardRules, productName: iotProducts.name, groupName: iotDeviceGroups.name })
+          .from(iotForwardRules)
+          .leftJoin(iotProducts, eq(iotForwardRules.productId, iotProducts.id))
+          .leftJoin(iotDeviceGroups, eq(iotForwardRules.groupId, iotDeviceGroups.id))
+          .where(where)
+          .orderBy(desc(iotForwardRules.id))
+          .$dynamic(),
+        page,
+        pageSize,
+      );
+      const ids = rows.map((r) => r.rule.id);
+      const since = new Date(Date.now() - 24 * 3600_000);
+      const deliveryCounts = ids.length > 0
+        ? await db.select({ ruleId: iotForwardLogs.ruleId, cnt: count() })
+          .from(iotForwardLogs)
+          .where(and(inArray(iotForwardLogs.ruleId, ids), gte(iotForwardLogs.createdAt, since)))
+          .groupBy(iotForwardLogs.ruleId)
+        : [];
+      const countMap = new Map(deliveryCounts.map((r) => [r.ruleId, Number(r.cnt)]));
+      return rows.map((r) => mapIotForwardRule(r.rule, {
+        productName: r.productName,
+        groupName: r.groupName,
+        recentDeliveryCount: countMap.get(r.rule.id) ?? 0,
+      }));
+    },
+  });
 }
 
 export async function ensureIotForwardRuleExists(id: number): Promise<IotForwardRuleRow> {
   const [row] = await db.select().from(iotForwardRules).where(buildRuleWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '流转规则不存在' });
-  return row;
+  return requireRow(row, '流转规则不存在');
 }
 
 export async function createIotForwardRule(data: CreateIotForwardRuleInput) {
@@ -163,9 +162,9 @@ export async function updateIotForwardRule(id: number, data: UpdateIotForwardRul
     // 手动启停时清零失败计数与自动停用标记
     ...(data.status !== undefined ? { status: data.status, consecutiveFailures: 0, autoDisabledAt: null } : {}),
   }).where(buildRuleWhere({ id })).returning();
-  if (!row) throw new HTTPException(404, { message: '流转规则不存在' });
+  const updated = requireRow(row, '流转规则不存在');
   invalidateForwardCache();
-  return mapIotForwardRule(row);
+  return mapIotForwardRule(updated);
 }
 
 export async function deleteIotForwardRule(id: number): Promise<void> {
@@ -187,20 +186,20 @@ export async function listIotForwardLogs(q: ListForwardLogsQuery) {
     q.ruleId ? eq(iotForwardLogs.ruleId, q.ruleId) : undefined,
     q.status ? eq(iotForwardLogs.status, q.status) : undefined,
   );
-  const [countRows, rows] = await Promise.all([
-    db.select({ value: count() }).from(iotForwardLogs).where(where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: async () => {
+      const [row] = await db.select({ value: count() }).from(iotForwardLogs).where(where);
+      return Number(row?.value ?? 0);
+    },
+    rows: () => withPagination(
       db.select().from(iotForwardLogs).where(where).orderBy(desc(iotForwardLogs.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map(mapIotForwardLog),
-    total: Number(countRows[0]?.value ?? 0),
-    page,
-    pageSize,
-  };
+    map: mapIotForwardLog,
+  });
 }
 
 // ─── 运行时派发 ───────────────────────────────────────────────────────────────

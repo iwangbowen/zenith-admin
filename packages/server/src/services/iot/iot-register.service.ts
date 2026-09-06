@@ -18,6 +18,8 @@ import {
   type IotDeviceWhitelistRow,
 } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
@@ -33,7 +35,7 @@ export async function resetIotRegistrationSecret(productId: number): Promise<{ r
     .set({ registrationSecret: secret })
     .where(eq(iotProducts.id, productId))
     .returning({ id: iotProducts.id });
-  if (!row) throw new HTTPException(404, { message: '产品不存在' });
+  requireRow(row, '产品不存在');
   return { registrationSecret: secret };
 }
 
@@ -43,7 +45,7 @@ export async function disableIotRegistration(productId: number): Promise<void> {
     .set({ registrationSecret: null })
     .where(eq(iotProducts.id, productId))
     .returning({ id: iotProducts.id });
-  if (!row) throw new HTTPException(404, { message: '产品不存在' });
+  requireRow(row, '产品不存在');
 }
 
 // ─── 白名单管理 ───────────────────────────────────────────────────────────────
@@ -86,9 +88,11 @@ function buildWhitelistWhere(q: ListWhitelistQuery & { id?: number }): SQL | und
 export async function listIotWhitelist(q: ListWhitelistQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildWhitelistWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(iotDeviceWhitelist, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(iotDeviceWhitelist, where),
+    rows: () => withPagination(
       db.select({ entry: iotDeviceWhitelist, productName: iotProducts.name, deviceName: iotDevices.name })
         .from(iotDeviceWhitelist)
         .leftJoin(iotProducts, eq(iotDeviceWhitelist.productId, iotProducts.id))
@@ -99,20 +103,15 @@ export async function listIotWhitelist(q: ListWhitelistQuery) {
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => mapIotWhitelistEntry(r.entry, { productName: r.productName, deviceName: r.deviceName })),
-    total,
-    page,
-    pageSize,
-  };
+    map: (r) => mapIotWhitelistEntry(r.entry, { productName: r.productName, deviceName: r.deviceName }),
+  });
 }
 
 /** 批量导入白名单（重复 SN 跳过并计数） */
 export async function createIotWhitelistEntries(data: CreateIotWhitelistInput) {
   const [product] = await db.select({ id: iotProducts.id }).from(iotProducts)
     .where(eq(iotProducts.id, data.productId)).limit(1);
-  if (!product) throw new HTTPException(400, { message: '产品不存在' });
+  requireRow(product, '产品不存在', 400);
   const unique = [...new Set(data.sns)];
   const inserted = await db.insert(iotDeviceWhitelist)
     .values(unique.map((sn) => ({
@@ -128,8 +127,8 @@ export async function createIotWhitelistEntries(data: CreateIotWhitelistInput) {
 
 export async function deleteIotWhitelistEntry(id: number): Promise<void> {
   const [row] = await db.select().from(iotDeviceWhitelist).where(buildWhitelistWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '白名单条目不存在' });
-  if (row.used) throw new HTTPException(400, { message: '已核销的条目不可删除（保留注册追溯）' });
+  const entry = requireRow(row, '白名单条目不存在');
+  if (entry.used) throw new HTTPException(400, { message: '已核销的条目不可删除（保留注册追溯）' });
   await db.delete(iotDeviceWhitelist).where(eq(iotDeviceWhitelist.id, id));
 }
 
@@ -158,10 +157,10 @@ export async function registerIotDevice(
     throw new HTTPException(401, { message: '签名时间戳已过期' });
   }
   const [product] = await db.select().from(iotProducts).where(eq(iotProducts.id, input.productId)).limit(1);
-  if (!product) throw new HTTPException(404, { message: '产品不存在' });
-  if (!product.registrationSecret) throw new HTTPException(403, { message: '该产品未开启动态注册' });
-  if (product.status !== 'enabled') throw new HTTPException(403, { message: '产品已禁用' });
-  if (!verifyRegistrationSign(product.registrationSecret, input.sn, auth.ts, auth.rawBody, auth.sign)) {
+  const productRow = requireRow(product, '产品不存在');
+  if (!productRow.registrationSecret) throw new HTTPException(403, { message: '该产品未开启动态注册' });
+  if (productRow.status !== 'enabled') throw new HTTPException(403, { message: '产品已禁用' });
+  if (!verifyRegistrationSign(productRow.registrationSecret, input.sn, auth.ts, auth.rawBody, auth.sign)) {
     throw new HTTPException(401, { message: '注册签名校验失败' });
   }
 
@@ -178,7 +177,7 @@ export async function registerIotDevice(
       eq(iotDeviceWhitelist.used, false),
     ))
     .returning();
-  if (!entry) throw new HTTPException(403, { message: 'SN 不在该产品的可注册白名单中' });
+  const whitelistEntry = requireRow(entry, 'SN 不在该产品的可注册白名单中', 403);
 
   const secret = generateDeviceSecret();
   const device = await db.transaction(async (tx) => {
@@ -189,10 +188,10 @@ export async function registerIotDevice(
       name: input.name?.trim() || input.sn,
       firmwareVersion: input.firmwareVersion ?? null,
       remark: '动态注册',
-      tenantId: entry.tenantId,
+      tenantId: whitelistEntry.tenantId,
     }).returning();
     await tx.insert(iotDeviceState).values({ deviceId: created.id });
-    await tx.update(iotDeviceWhitelist).set({ deviceId: created.id }).where(eq(iotDeviceWhitelist.id, entry.id));
+    await tx.update(iotDeviceWhitelist).set({ deviceId: created.id }).where(eq(iotDeviceWhitelist.id, whitelistEntry.id));
     return created;
   });
   await recordIotLifecycleEvent(device.id, 'activated', { via: 'dynamic-registration' }).catch(() => { /* 打点失败不阻断注册 */ });

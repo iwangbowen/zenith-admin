@@ -11,6 +11,8 @@ import { db } from '../../db';
 import { chatWebhooks, chatConversations } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { keywordCondition } from '../../lib/where-helpers';
@@ -60,25 +62,25 @@ async function ensureConversationExists(conversationId: number): Promise<void> {
     where: eq(chatConversations.id, conversationId),
     columns: { id: true },
   });
-  if (!conv) throw new HTTPException(400, { message: '目标会话不存在' });
+  requireRow(conv, '目标会话不存在', 400);
 }
 
 export async function listChatWebhooks(params: { page: number; pageSize: number; keyword?: string }) {
   const where = keywordCondition(params.keyword, [chatWebhooks.name], 'ilike');
 
-  const [total, rows] = await Promise.all([
-    db.$count(chatWebhooks, where),
-    db.query.chatWebhooks.findMany({
+  return buildListResult({
+    page: params.page,
+    pageSize: params.pageSize,
+    count: () => db.$count(chatWebhooks, where),
+    rows: () => db.query.chatWebhooks.findMany({
       where,
       with: { conversation: { columns: { name: true } } },
       orderBy: desc(chatWebhooks.id),
       limit: params.pageSize,
       offset: pageOffset(params.page, params.pageSize),
     }),
-  ]);
-
-  const list = rows.map((r) => mapChatWebhook(r, r.conversation?.name ?? null));
-  return { list, total, page: params.page, pageSize: params.pageSize };
+    map: (r) => mapChatWebhook(r, r.conversation?.name ?? null),
+  });
 }
 
 export async function getChatWebhookBeforeAudit(id: number) {
@@ -114,8 +116,7 @@ export async function createChatWebhook(input: CreateChatWebhookInput): Promise<
 
 async function getWebhookOr404(id: number): Promise<WebhookRow> {
   const row = await db.query.chatWebhooks.findFirst({ where: eq(chatWebhooks.id, id) });
-  if (!row) throw new HTTPException(404, { message: 'Webhook 不存在' });
-  return row;
+  return requireRow(row, 'Webhook 不存在');
 }
 
 export async function updateChatWebhook(id: number, input: UpdateChatWebhookInput): Promise<ChatWebhook> {

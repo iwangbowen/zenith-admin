@@ -17,6 +17,8 @@ import {
   type IotDeviceRow, type IotFirmwareRow, type IotOtaTaskDeviceRow, type IotOtaTaskRow,
 } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
@@ -94,9 +96,11 @@ function buildTaskWhere(q: ListIotOtaTasksQuery & { id?: number }): SQL | undefi
 export async function listIotOtaTasks(q: ListIotOtaTasksQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildTaskWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(iotOtaTasks, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(iotOtaTasks, where),
+    rows: () => withPagination(
       db.select({ task: iotOtaTasks, productName: iotProducts.name })
         .from(iotOtaTasks)
         .leftJoin(iotProducts, eq(iotOtaTasks.productId, iotProducts.id))
@@ -106,19 +110,13 @@ export async function listIotOtaTasks(q: ListIotOtaTasksQuery) {
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => mapIotOtaTask(r.task, { productName: r.productName })),
-    total,
-    page,
-    pageSize,
-  };
+    map: (r) => mapIotOtaTask(r.task, { productName: r.productName }),
+  });
 }
 
 export async function ensureIotOtaTaskExists(id: number): Promise<IotOtaTaskRow> {
   const [row] = await db.select().from(iotOtaTasks).where(buildTaskWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '升级任务不存在' });
-  return row;
+  return requireRow(row, '升级任务不存在');
 }
 
 export async function getIotOtaTask(id: number) {
@@ -141,9 +139,14 @@ export async function listIotOtaTaskDevices(taskId: number, q: ListOtaTaskDevice
     eq(iotOtaTaskDevices.taskId, taskId),
     q.status ? eq(iotOtaTaskDevices.status, q.status) : undefined,
   );
-  const [countRows, rows] = await Promise.all([
-    db.select({ value: count() }).from(iotOtaTaskDevices).where(where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: async () => {
+      const [row] = await db.select({ value: count() }).from(iotOtaTaskDevices).where(where);
+      return Number(row?.value ?? 0);
+    },
+    rows: () => withPagination(
       db.select({ row: iotOtaTaskDevices, deviceName: iotDevices.name, deviceSn: iotDevices.sn })
         .from(iotOtaTaskDevices)
         .innerJoin(iotDevices, eq(iotOtaTaskDevices.deviceId, iotDevices.id))
@@ -153,13 +156,8 @@ export async function listIotOtaTaskDevices(taskId: number, q: ListOtaTaskDevice
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => mapIotOtaTaskDevice(r.row, { deviceName: r.deviceName, deviceSn: r.deviceSn })),
-    total: Number(countRows[0]?.value ?? 0),
-    page,
-    pageSize,
-  };
+    map: (r) => mapIotOtaTaskDevice(r.row, { deviceName: r.deviceName, deviceSn: r.deviceSn }),
+  });
 }
 
 // ─── 任务创建与取消 ───────────────────────────────────────────────────────────

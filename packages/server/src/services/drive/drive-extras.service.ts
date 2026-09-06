@@ -13,6 +13,7 @@ import {
 import { db } from '../../db';
 import { driveNodeComments, driveNodes, driveNodeTags, driveTags } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
+import { requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { getCreateTenantId } from '../../lib/tenant';
@@ -44,10 +45,10 @@ export async function createDriveTag(data: CreateDriveTagInput): Promise<DriveTa
 
 async function ensureTagEditable(id: number) {
   const [row] = await db.select().from(driveTags).where(eq(driveTags.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '标签不存在' });
-  const space = await ensureDriveSpaceExists(row.spaceId);
+  const tag = requireRow(row, '标签不存在');
+  const space = await ensureDriveSpaceExists(tag.spaceId);
   await ensureSpaceRole(space, 'editor');
-  return row;
+  return tag;
 }
 
 export async function updateDriveTag(id: number, data: UpdateDriveTagInput): Promise<DriveTag> {
@@ -107,7 +108,7 @@ export async function createDriveNodeComment(nodeId: number, data: CreateDriveNo
   if (data.parentId) {
     const [parent] = await db.select({ id: driveNodeComments.id }).from(driveNodeComments)
       .where(and(eq(driveNodeComments.id, data.parentId), eq(driveNodeComments.nodeId, nodeId))).limit(1);
-    if (!parent) throw new HTTPException(400, { message: '回复的评论不存在' });
+    requireRow(parent, '回复的评论不存在', 400);
   }
   const uid = currentUserId();
   const [row] = await db.transaction(async (tx) => {
@@ -127,9 +128,9 @@ export async function createDriveNodeComment(nodeId: number, data: CreateDriveNo
 export async function deleteDriveNodeComment(nodeId: number, commentId: number): Promise<void> {
   const node = await ensureDriveNodeExists(nodeId, { allowDeleted: true });
   const [comment] = await db.select().from(driveNodeComments).where(and(eq(driveNodeComments.id, commentId), eq(driveNodeComments.nodeId, nodeId))).limit(1);
-  if (!comment) throw new HTTPException(404, { message: '评论不存在' });
+  const nodeComment = requireRow(comment, '评论不存在');
   const subjects = await loadDriveSubjects();
-  if (comment.authorId !== subjects.userId) await ensureNodeRole(node, 'manager', '只能删除自己的评论');
+  if (nodeComment.authorId !== subjects.userId) await ensureNodeRole(node, 'manager', '只能删除自己的评论');
   await db.delete(driveNodeComments).where(eq(driveNodeComments.id, commentId));
 }
 

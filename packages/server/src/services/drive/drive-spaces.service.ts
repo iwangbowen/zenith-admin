@@ -17,8 +17,10 @@ import { departments, driveFileVersions, driveNodes, driveSpaceMembers, driveSpa
 import { currentUser, currentUserId, isSuperAdmin } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { accessibleSpaceIdsSubquery, ensureSpaceRole, loadDriveSubjects, resolveSpaceRoles } from './drive-access.service';
 import { mapDriveSpace, resolveSubjectNames, resolveUserNames, subjectKey } from './drive-common';
@@ -63,8 +65,7 @@ function buildSpaceWhere(q: SpaceWhereInput, extra?: SQL): SQL | undefined {
 
 export async function ensureDriveSpaceExists(id: number): Promise<DriveSpaceRow> {
   const [row] = await db.select().from(driveSpaces).where(buildSpaceWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '空间不存在' });
-  return row;
+  return requireRow(row, '空间不存在');
 }
 
 // ─── 行 → DTO（含名称与计数）─────────────────────────────────────────────────
@@ -179,11 +180,15 @@ export async function listDriveSpaces(q: ListDriveSpacesQuery) {
       subjects.isAdmin ? undefined : inArray(driveSpaces.id, accessibleSpaceIdsSubquery(subjects)),
     ),
   );
-  const [total, rows] = await Promise.all([
-    db.$count(driveSpaces, where),
-    withPagination(db.select().from(driveSpaces).where(where).orderBy(asc(driveSpaces.sort), asc(driveSpaces.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: await decorateSpaces(rows, { withRole: true, withCounts: true }), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(driveSpaces, where),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(driveSpaces).where(where).orderBy(asc(driveSpaces.sort), asc(driveSpaces.id)).$dynamic(), page, pageSize);
+      return decorateSpaces(rows, { withRole: true, withCounts: true });
+    },
+  });
 }
 
 /** 管理端：全部空间分页（租户 + 数据权限收窄） */
@@ -195,11 +200,15 @@ export async function listDriveSpacesForAdmin(q: ListDriveSpacesQuery) {
     ownerColumn: driveSpaces.ownerId,
   });
   const where = buildSpaceWhere(q, scope);
-  const [total, rows] = await Promise.all([
-    db.$count(driveSpaces, where),
-    withPagination(db.select().from(driveSpaces).where(where).orderBy(asc(driveSpaces.type), asc(driveSpaces.sort), asc(driveSpaces.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: await decorateSpaces(rows, { withCounts: true }), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(driveSpaces, where),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(driveSpaces).where(where).orderBy(asc(driveSpaces.type), asc(driveSpaces.sort), asc(driveSpaces.id)).$dynamic(), page, pageSize);
+      return decorateSpaces(rows, { withCounts: true });
+    },
+  });
 }
 
 export async function getDriveSpace(id: number): Promise<DriveSpace> {
@@ -235,17 +244,17 @@ export async function createDepartmentSpace(data: CreateDepartmentDriveSpaceInpu
   const user = currentUser();
   const [dept] = await db.select().from(departments)
     .where(buildWhere(eq(departments.id, data.departmentId), tenantCondition(departments, user))).limit(1);
-  if (!dept) throw new HTTPException(400, { message: '指定的部门不存在' });
+  const department = requireRow(dept, '指定的部门不存在', 400);
   try {
     const [created] = await db.insert(driveSpaces).values({
       type: 'department',
-      name: data.name ?? `${dept.name} 部门空间`,
+      name: data.name ?? `${department.name} 部门空间`,
       icon: 'Building2',
-      departmentId: dept.id,
-      ownerId: dept.leaderId ?? null,
+      departmentId: department.id,
+      ownerId: department.leaderId ?? null,
       defaultMemberRole: data.defaultMemberRole,
       quotaBytes: gbToBytes(data.quotaGb),
-      tenantId: dept.tenantId ?? getCreateTenantId(user),
+      tenantId: department.tenantId ?? getCreateTenantId(user),
     }).returning();
     const [space] = await decorateSpaces([created], { withCounts: true });
     return space;
@@ -268,8 +277,8 @@ export async function updateDriveSpace(id: number, data: UpdateDriveSpaceInput):
   // 个人空间不存在隐式成员，不允许设置默认角色
   if (before.type === 'personal') delete patch.defaultMemberRole;
   const [row] = await db.update(driveSpaces).set(patch).where(buildSpaceWhere({ id })).returning();
-  if (!row) throw new HTTPException(404, { message: '空间不存在' });
-  const [space] = await decorateSpaces([row], { withRole: true, withCounts: true });
+  const updated = requireRow(row, '空间不存在');
+  const [space] = await decorateSpaces([updated], { withRole: true, withCounts: true });
   return space;
 }
 
@@ -288,7 +297,7 @@ export async function transferDriveSpace(id: number, ownerId: number): Promise<D
   if (row.type !== 'team') throw new HTTPException(400, { message: '只有协作空间支持转让' });
   const [target] = await db.select({ id: users.id }).from(users)
     .where(buildWhere(eq(users.id, ownerId), eq(users.status, 'enabled'), tenantCondition(users, currentUser()))).limit(1);
-  if (!target) throw new HTTPException(400, { message: '目标用户不存在或已禁用' });
+  requireRow(target, '目标用户不存在或已禁用', 400);
   const [updated] = await db.update(driveSpaces).set({ ownerId }).where(eq(driveSpaces.id, id)).returning();
   const [space] = await decorateSpaces([updated], { withRole: true, withCounts: true });
   return space;
@@ -348,8 +357,8 @@ export async function adminUpdateDriveSpace(id: number, data: AdminUpdateDriveSp
   const patch: Partial<typeof driveSpaces.$inferInsert> = { ...rest };
   if (quotaGb !== undefined) patch.quotaBytes = gbToBytes(quotaGb);
   const [row] = await db.update(driveSpaces).set(patch).where(buildSpaceWhere({ id })).returning();
-  if (!row) throw new HTTPException(404, { message: '空间不存在' });
-  const [space] = await decorateSpaces([row], { withCounts: true });
+  const updated = requireRow(row, '空间不存在');
+  const [space] = await decorateSpaces([updated], { withCounts: true });
   return space;
 }
 
@@ -372,14 +381,14 @@ export async function recalcSpaceUsage(spaceId: number, executor: DbExecutor = d
  */
 export async function getSpaceQuotaState(spaceId: number, executor: DbExecutor = db, settings?: DriveSettings) {
   const [row] = await executor.select().from(driveSpaces).where(eq(driveSpaces.id, spaceId)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '空间不存在' });
+  const space = requireRow(row, '空间不存在');
   settings ??= await getDriveSettings();
-  const quotaBytes = effectiveQuotaBytes(settings, row);
+  const quotaBytes = effectiveQuotaBytes(settings, space);
   return {
-    space: row,
+    space,
     quotaBytes,
-    usedBytes: row.usedBytes,
-    remaining: quotaBytes === 0 ? null : Math.max(0, quotaBytes - row.usedBytes),
+    usedBytes: space.usedBytes,
+    remaining: quotaBytes === 0 ? null : Math.max(0, quotaBytes - space.usedBytes),
     warningPercent: settings.quotaWarningPercent,
   };
 }

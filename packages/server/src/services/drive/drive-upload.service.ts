@@ -16,6 +16,7 @@ import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { driveFileVersions, driveNodes, driveUploadBindings, managedFiles, type DriveNodeRow, type DriveSpaceRow } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
+import { requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { uploadManagedFile, assertUploadSizeAllowed } from '../files/files.service';
@@ -340,8 +341,7 @@ async function ensureBinding(uploadId: string) {
   const [binding] = await db.select().from(driveUploadBindings)
     .where(and(eq(driveUploadBindings.uploadId, uploadId), eq(driveUploadBindings.createdBy, currentUserId())))
     .limit(1);
-  if (!binding) throw new HTTPException(404, { message: '上传会话不存在' });
-  return binding;
+  return requireRow(binding, '上传会话不存在');
 }
 
 export async function uploadDriveChunk(uploadId: string, index: number, chunk: File) {
@@ -410,8 +410,7 @@ export async function listDriveNodeVersions(nodeId: number): Promise<DriveFileVe
 export async function ensureVersionExists(nodeId: number, version: number) {
   const [row] = await db.select().from(driveFileVersions)
     .where(and(eq(driveFileVersions.nodeId, nodeId), eq(driveFileVersions.version, version))).limit(1);
-  if (!row) throw new HTTPException(404, { message: '版本不存在' });
-  return row;
+  return requireRow(row, '版本不存在');
 }
 
 /** 回滚：以历史版本内容生成新版本（不删除历史） */
@@ -445,4 +444,3 @@ export async function deleteDriveNodeVersion(nodeId: number, version: number): P
   });
   await releaseUnreferencedFiles([target.fileId]);
 }
-

@@ -22,6 +22,8 @@ import {
   type IotAutomationActionDef, type IotAutomationRow, type IotAutomationRunRow, type IotDeviceRow,
 } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
@@ -100,45 +102,43 @@ function buildAutomationWhere(q: ListIotAutomationsQuery & { id?: number }): SQL
 export async function listIotAutomations(q: ListIotAutomationsQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildAutomationWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(iotAutomations, where),
-    withPagination(
-      db.select({ automation: iotAutomations, productName: iotProducts.name, deviceName: iotDevices.name })
-        .from(iotAutomations)
-        .leftJoin(iotProducts, eq(iotAutomations.productId, iotProducts.id))
-        .leftJoin(iotDevices, eq(iotAutomations.deviceId, iotDevices.id))
-        .where(where)
-        .orderBy(desc(iotAutomations.id))
-        .$dynamic(),
-      page,
-      pageSize,
-    ),
-  ]);
-  const ids = rows.map((r) => r.automation.id);
-  const since = new Date(Date.now() - 24 * 3600_000);
-  const runCounts = ids.length > 0
-    ? await db.select({ automationId: iotAutomationRuns.automationId, cnt: count() })
-      .from(iotAutomationRuns)
-      .where(and(inArray(iotAutomationRuns.automationId, ids), gte(iotAutomationRuns.createdAt, since)))
-      .groupBy(iotAutomationRuns.automationId)
-    : [];
-  const countMap = new Map(runCounts.map((r) => [r.automationId, Number(r.cnt)]));
-  return {
-    list: rows.map((r) => mapIotAutomation(r.automation, {
-      productName: r.productName,
-      deviceName: r.deviceName,
-      recentRunCount: countMap.get(r.automation.id) ?? 0,
-    })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(iotAutomations, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select({ automation: iotAutomations, productName: iotProducts.name, deviceName: iotDevices.name })
+          .from(iotAutomations)
+          .leftJoin(iotProducts, eq(iotAutomations.productId, iotProducts.id))
+          .leftJoin(iotDevices, eq(iotAutomations.deviceId, iotDevices.id))
+          .where(where)
+          .orderBy(desc(iotAutomations.id))
+          .$dynamic(),
+        page,
+        pageSize,
+      );
+      const ids = rows.map((r) => r.automation.id);
+      const since = new Date(Date.now() - 24 * 3600_000);
+      const runCounts = ids.length > 0
+        ? await db.select({ automationId: iotAutomationRuns.automationId, cnt: count() })
+          .from(iotAutomationRuns)
+          .where(and(inArray(iotAutomationRuns.automationId, ids), gte(iotAutomationRuns.createdAt, since)))
+          .groupBy(iotAutomationRuns.automationId)
+        : [];
+      const countMap = new Map(runCounts.map((r) => [r.automationId, Number(r.cnt)]));
+      return rows.map((r) => mapIotAutomation(r.automation, {
+        productName: r.productName,
+        deviceName: r.deviceName,
+        recentRunCount: countMap.get(r.automation.id) ?? 0,
+      }));
+    },
+  });
 }
 
 export async function ensureIotAutomationExists(id: number): Promise<IotAutomationRow> {
   const [row] = await db.select().from(iotAutomations).where(buildAutomationWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '联动规则不存在' });
-  return row;
+  return requireRow(row, '联动规则不存在');
 }
 
 /** 触发引用校验：属性/事件需在物模型中声明，限定设备需属于该产品 */
@@ -204,9 +204,9 @@ export async function updateIotAutomation(id: number, data: UpdateIotAutomationI
     ...(data.actions !== undefined ? { actions: data.actions } : {}),
     ...(data.status !== undefined ? { status: data.status } : {}),
   }).where(buildAutomationWhere({ id })).returning();
-  if (!row) throw new HTTPException(404, { message: '联动规则不存在' });
+  const updated = requireRow(row, '联动规则不存在');
   invalidateAutomationCache();
-  return mapIotAutomation(row);
+  return mapIotAutomation(updated);
 }
 
 export async function deleteIotAutomation(id: number): Promise<void> {
@@ -230,9 +230,14 @@ export async function listIotAutomationRuns(q: ListAutomationRunsQuery) {
     q.deviceId ? eq(iotAutomationRuns.deviceId, q.deviceId) : undefined,
     q.success !== undefined ? eq(iotAutomationRuns.success, q.success) : undefined,
   );
-  const [countRows, rows] = await Promise.all([
-    db.select({ value: count() }).from(iotAutomationRuns).where(where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: async () => {
+      const [row] = await db.select({ value: count() }).from(iotAutomationRuns).where(where);
+      return Number(row?.value ?? 0);
+    },
+    rows: () => withPagination(
       db.select({ run: iotAutomationRuns, deviceName: iotDevices.name, deviceSn: iotDevices.sn })
         .from(iotAutomationRuns)
         .innerJoin(iotDevices, eq(iotAutomationRuns.deviceId, iotDevices.id))
@@ -242,13 +247,8 @@ export async function listIotAutomationRuns(q: ListAutomationRunsQuery) {
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => mapIotAutomationRun(r.run, { deviceName: r.deviceName, deviceSn: r.deviceSn })),
-    total: Number(countRows[0]?.value ?? 0),
-    page,
-    pageSize,
-  };
+    map: (r) => mapIotAutomationRun(r.run, { deviceName: r.deviceName, deviceSn: r.deviceSn }),
+  });
 }
 
 // ─── 运行时评估 ───────────────────────────────────────────────────────────────

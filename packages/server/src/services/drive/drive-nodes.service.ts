@@ -33,6 +33,7 @@ import { currentUser, currentUserId } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { deleteStoredFile } from '../../lib/file-storage';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { ensureNodeRole, ensureSpaceRole, filterVisibleNodes, loadDriveSubjects, resolveNodeRole, resolveNodeRoles, resolveSpaceRoles } from './drive-access.service';
@@ -512,14 +513,18 @@ export async function listRecycleNodes(q: ListRecycleQuery) {
     tenantCondition(driveNodes, currentUser()),
     await recycleVisibilityCondition(),
   );
-  const [total, rows] = await Promise.all([
-    db.$count(driveNodes, where),
-    withPagination(db.select().from(driveNodes).where(where).orderBy(desc(driveNodes.deletedAt), asc(driveNodes.id)).$dynamic(), page, pageSize),
-  ]);
-  const spaceRows = rows.length ? await db.select({ id: driveSpaces.id, name: driveSpaces.name }).from(driveSpaces).where(inArray(driveSpaces.id, [...new Set(rows.map((r) => r.spaceId))])) : [];
-  const spaceNames = new Map(spaceRows.map((s) => [s.id, s.name]));
-  const list = await decorateNodes(rows);
-  return { list: list.map((n) => ({ ...n, spaceName: spaceNames.get(n.spaceId) ?? '' })), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(driveNodes, where),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(driveNodes).where(where).orderBy(desc(driveNodes.deletedAt), asc(driveNodes.id)).$dynamic(), page, pageSize);
+      const spaceRows = rows.length ? await db.select({ id: driveSpaces.id, name: driveSpaces.name }).from(driveSpaces).where(inArray(driveSpaces.id, [...new Set(rows.map((r) => r.spaceId))])) : [];
+      const spaceNames = new Map(spaceRows.map((s) => [s.id, s.name]));
+      const list = await decorateNodes(rows);
+      return list.map((n) => ({ ...n, spaceName: spaceNames.get(n.spaceId) ?? '' }));
+    },
+  });
 }
 
 async function loadRecycleRoots(ids: number[]): Promise<DriveNodeRow[]> {

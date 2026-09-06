@@ -8,6 +8,8 @@ import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { iotDeviceGroupMembers, iotDeviceGroups, iotDevices, type IotDeviceGroupRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
@@ -52,21 +54,20 @@ async function loadMemberCounts(groupIds: number[]): Promise<Map<number, number>
 export async function listIotDeviceGroups(q: ListIotDeviceGroupsQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildGroupWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(iotDeviceGroups, where),
-    withPagination(
-      db.select().from(iotDeviceGroups).where(where).orderBy(desc(iotDeviceGroups.id)).$dynamic(),
-      page,
-      pageSize,
-    ),
-  ]);
-  const countMap = await loadMemberCounts(rows.map((r) => r.id));
-  return {
-    list: rows.map((r) => mapIotDeviceGroup(r, { deviceCount: countMap.get(r.id) ?? 0 })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(iotDeviceGroups, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select().from(iotDeviceGroups).where(where).orderBy(desc(iotDeviceGroups.id)).$dynamic(),
+        page,
+        pageSize,
+      );
+      const countMap = await loadMemberCounts(rows.map((r) => r.id));
+      return rows.map((r) => mapIotDeviceGroup(r, { deviceCount: countMap.get(r.id) ?? 0 }));
+    },
+  });
 }
 
 /** 下拉源：全部分组（含设备数） */
@@ -80,8 +81,7 @@ export async function listAllIotDeviceGroups() {
 
 export async function ensureIotDeviceGroupExists(id: number): Promise<IotDeviceGroupRow> {
   const [row] = await db.select().from(iotDeviceGroups).where(buildGroupWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '设备分组不存在' });
-  return row;
+  return requireRow(row, '设备分组不存在');
 }
 
 export async function getIotDeviceGroup(id: number) {
@@ -131,7 +131,7 @@ export async function updateIotDeviceGroup(id: number, data: UpdateIotDeviceGrou
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.description !== undefined ? { description: data.description } : {}),
     }).where(eq(iotDeviceGroups.id, id)).returning();
-    if (!updated) throw new HTTPException(404, { message: '设备分组不存在' });
+    requireRow(updated, '设备分组不存在');
     if (data.deviceIds !== undefined) await setGroupMembers(tx, id, data.deviceIds);
   });
   return getIotDeviceGroup(id);

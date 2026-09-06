@@ -4,6 +4,7 @@ import { db } from '../../db';
 import { chatQuickReplies } from '../../db/schema';
 import type { ChatQuickReplyRow } from '../../db/schema/chat';
 import { currentUser } from '../../lib/context';
+import { requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
 import type { ChatQuickReply } from '@zenith/shared/chat';
 
@@ -49,8 +50,7 @@ async function ensureMyQuickReply(id: number): Promise<ChatQuickReplyRow> {
   const row = await db.query.chatQuickReplies.findFirst({
     where: and(eq(chatQuickReplies.id, id), eq(chatQuickReplies.userId, me.userId)),
   });
-  if (!row) throw new HTTPException(404, { message: '常用语不存在' });
-  return row;
+  return requireRow(row, '常用语不存在');
 }
 
 /** 更新常用语（仅本人） */

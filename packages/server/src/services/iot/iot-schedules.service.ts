@@ -18,6 +18,8 @@ import {
   type IotDeviceRow, type IotScheduleRow, type IotScheduleRunRow,
 } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
@@ -106,47 +108,45 @@ function buildScheduleWhere(q: ListIotSchedulesQuery & { id?: number }): SQL | u
 export async function listIotSchedules(q: ListIotSchedulesQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildScheduleWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(iotSchedules, where),
-    withPagination(
-      db.select({ schedule: iotSchedules, productName: iotProducts.name, groupName: iotDeviceGroups.name, deviceName: iotDevices.name })
-        .from(iotSchedules)
-        .leftJoin(iotProducts, eq(iotSchedules.productId, iotProducts.id))
-        .leftJoin(iotDeviceGroups, eq(iotSchedules.groupId, iotDeviceGroups.id))
-        .leftJoin(iotDevices, eq(iotSchedules.deviceId, iotDevices.id))
-        .where(where)
-        .orderBy(desc(iotSchedules.id))
-        .$dynamic(),
-      page,
-      pageSize,
-    ),
-  ]);
-  const ids = rows.map((r) => r.schedule.id);
-  const since = new Date(Date.now() - 24 * 3600_000);
-  const runCounts = ids.length > 0
-    ? await db.select({ scheduleId: iotScheduleRuns.scheduleId, cnt: count() })
-      .from(iotScheduleRuns)
-      .where(and(inArray(iotScheduleRuns.scheduleId, ids), gte(iotScheduleRuns.createdAt, since)))
-      .groupBy(iotScheduleRuns.scheduleId)
-    : [];
-  const countMap = new Map(runCounts.map((r) => [r.scheduleId, Number(r.cnt)]));
-  return {
-    list: rows.map((r) => mapIotSchedule(r.schedule, {
-      productName: r.productName,
-      groupName: r.groupName,
-      deviceName: r.deviceName,
-      recentRunCount: countMap.get(r.schedule.id) ?? 0,
-    })),
-    total,
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(iotSchedules, where),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select({ schedule: iotSchedules, productName: iotProducts.name, groupName: iotDeviceGroups.name, deviceName: iotDevices.name })
+          .from(iotSchedules)
+          .leftJoin(iotProducts, eq(iotSchedules.productId, iotProducts.id))
+          .leftJoin(iotDeviceGroups, eq(iotSchedules.groupId, iotDeviceGroups.id))
+          .leftJoin(iotDevices, eq(iotSchedules.deviceId, iotDevices.id))
+          .where(where)
+          .orderBy(desc(iotSchedules.id))
+          .$dynamic(),
+        page,
+        pageSize,
+      );
+      const ids = rows.map((r) => r.schedule.id);
+      const since = new Date(Date.now() - 24 * 3600_000);
+      const runCounts = ids.length > 0
+        ? await db.select({ scheduleId: iotScheduleRuns.scheduleId, cnt: count() })
+          .from(iotScheduleRuns)
+          .where(and(inArray(iotScheduleRuns.scheduleId, ids), gte(iotScheduleRuns.createdAt, since)))
+          .groupBy(iotScheduleRuns.scheduleId)
+        : [];
+      const countMap = new Map(runCounts.map((r) => [r.scheduleId, Number(r.cnt)]));
+      return rows.map((r) => mapIotSchedule(r.schedule, {
+        productName: r.productName,
+        groupName: r.groupName,
+        deviceName: r.deviceName,
+        recentRunCount: countMap.get(r.schedule.id) ?? 0,
+      }));
+    },
+  });
 }
 
 export async function ensureIotScheduleExists(id: number): Promise<IotScheduleRow> {
   const [row] = await db.select().from(iotSchedules).where(buildScheduleWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '计划任务不存在' });
-  return row;
+  return requireRow(row, '计划任务不存在');
 }
 
 /** 目标与动作引用校验：设备/分组归属、服务在物模型中声明 */
@@ -220,8 +220,7 @@ export async function updateIotSchedule(id: number, data: UpdateIotScheduleInput
     ...(data.status !== undefined ? { status: data.status } : {}),
     nextRunAt,
   }).where(buildScheduleWhere({ id })).returning();
-  if (!row) throw new HTTPException(404, { message: '计划任务不存在' });
-  return mapIotSchedule(row);
+  return mapIotSchedule(requireRow(row, '计划任务不存在'));
 }
 
 export async function deleteIotSchedule(id: number): Promise<void> {
@@ -240,20 +239,20 @@ export async function listIotScheduleRuns(q: ListScheduleRunsQuery) {
   const where = buildWhere(
     q.scheduleId ? eq(iotScheduleRuns.scheduleId, q.scheduleId) : undefined,
   );
-  const [countRows, rows] = await Promise.all([
-    db.select({ value: count() }).from(iotScheduleRuns).where(where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: async () => {
+      const [row] = await db.select({ value: count() }).from(iotScheduleRuns).where(where);
+      return Number(row?.value ?? 0);
+    },
+    rows: () => withPagination(
       db.select().from(iotScheduleRuns).where(where).orderBy(desc(iotScheduleRuns.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map(mapIotScheduleRun),
-    total: Number(countRows[0]?.value ?? 0),
-    page,
-    pageSize,
-  };
+    map: mapIotScheduleRun,
+  });
 }
 
 // ─── 调度执行 ─────────────────────────────────────────────────────────────────

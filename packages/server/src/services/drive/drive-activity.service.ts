@@ -6,6 +6,7 @@ import type { DbExecutor } from '../../db/types';
 import { driveActivities, driveRecentAccess, driveSpaces, type DriveActivityRow } from '../../db/schema';
 import { currentUserOrNull, isSuperAdmin, type AppEnv } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
 import { getClientIp } from '../../lib/request-helpers';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -101,16 +102,20 @@ async function listActivitiesWhere(q: ListDriveActivitiesQuery, extra?: SQL): Pr
 }
 
 async function paginateActivities(where: SQL | undefined, page: number, pageSize: number) {
-  const [total, rows] = await Promise.all([
-    db.$count(driveActivities, where),
-    withPagination(db.select().from(driveActivities).where(where).orderBy(desc(driveActivities.id)).$dynamic(), page, pageSize),
-  ]);
-  const [names, spaceRows] = await Promise.all([
-    resolveUserNames(rows.map((r) => r.actorId)),
-    rows.length ? db.select({ id: driveSpaces.id, name: driveSpaces.name }).from(driveSpaces).where(inArray(driveSpaces.id, [...new Set(rows.map((r) => r.spaceId))])) : Promise.resolve([]),
-  ]);
-  const spaceNames = new Map(spaceRows.map((s) => [s.id, s.name]));
-  return { list: rows.map((r) => mapDriveActivity(r, names, spaceNames)), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(driveActivities, where),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(driveActivities).where(where).orderBy(desc(driveActivities.id)).$dynamic(), page, pageSize);
+      const [names, spaceRows] = await Promise.all([
+        resolveUserNames(rows.map((r) => r.actorId)),
+        rows.length ? db.select({ id: driveSpaces.id, name: driveSpaces.name }).from(driveSpaces).where(inArray(driveSpaces.id, [...new Set(rows.map((r) => r.spaceId))])) : Promise.resolve([]),
+      ]);
+      const spaceNames = new Map(spaceRows.map((s) => [s.id, s.name]));
+      return rows.map((r) => mapDriveActivity(r, names, spaceNames));
+    },
+  });
 }
 
 /** 节点动态（调用方已校验节点 viewer 权限） */

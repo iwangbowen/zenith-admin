@@ -9,6 +9,7 @@ import { and, count, desc, eq, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { iotDevices, iotDeviceState, iotProducts, type IotDeviceRow } from '../../db/schema';
 import { formatNullableDateTime } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
 import { withPagination, keywordCondition } from '../../lib/where-helpers';
 import { getOnlineMap, isDeviceOnline } from './iot-access.service';
 
@@ -48,23 +49,25 @@ export async function listOpenIotDevices(q: ListOpenIotDevicesQuery) {
   const base = db.select({ device: iotDevices, productName: iotProducts.name })
     .from(iotDevices)
     .innerJoin(iotProducts, eq(iotDevices.productId, iotProducts.id));
-  const [countRows, rows] = await Promise.all([
-    db.select({ value: count() }).from(iotDevices)
-      .innerJoin(iotProducts, eq(iotDevices.productId, iotProducts.id))
-      .where(where),
-    withPagination(base.where(where).orderBy(desc(iotDevices.id)).$dynamic(), page, pageSize),
-  ]);
-  const onlineMap = await getOnlineMap(rows.map((r) => r.device.id));
-  return {
-    list: rows.map((r) => mapOpenIotDevice(r.device, {
-      productId: r.device.productId,
-      productName: r.productName,
-      online: onlineMap.get(r.device.id) ?? false,
-    })),
-    total: Number(countRows[0]?.value ?? 0),
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: async () => {
+      const [row] = await db.select({ value: count() }).from(iotDevices)
+        .innerJoin(iotProducts, eq(iotDevices.productId, iotProducts.id))
+        .where(where);
+      return Number(row?.value ?? 0);
+    },
+    rows: async () => {
+      const rows = await withPagination(base.where(where).orderBy(desc(iotDevices.id)).$dynamic(), page, pageSize);
+      const onlineMap = await getOnlineMap(rows.map((r) => r.device.id));
+      return rows.map((r) => mapOpenIotDevice(r.device, {
+        productId: r.device.productId,
+        productName: r.productName,
+        online: onlineMap.get(r.device.id) ?? false,
+      }));
+    },
+  });
 }
 
 /** 按 SN 查设备行（供指令/期望值下发做前置解析），不存在返回 null */

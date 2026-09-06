@@ -4,6 +4,8 @@ import { chatConversations, chatConversationMembers, chatMessages, chatMessageFa
 import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
 import type { ForwardMessagesInput, ChatMessage, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, SendChatMessageInput } from '@zenith/shared/chat';
@@ -71,6 +73,33 @@ function buildMessageSearchSnippet(message: ChatMessage): string {
   if (message.type === 'card') return `[卡片] ${message.extra?.card?.title ?? ''}`.trim();
   if (message.type === 'system') return `[系统] ${message.content}`;
   return message.content;
+}
+
+type MessageSenderRow = {
+  msg: typeof chatMessages.$inferSelect;
+  nickname: string | null;
+  avatar: string | null;
+};
+
+function markFavorited(rows: MessageSenderRow[]): ChatMessage[] {
+  return rows.map((r) => {
+    const mapped = mapChatMessage(r.msg, rowSender(r));
+    mapped.extra = { ...(mapped.extra ?? {}), isFavorited: true };
+    return mapped;
+  });
+}
+
+function mapSearchRows(rows: MessageSenderRow[]) {
+  return rows.map((r) => {
+    const message = mapChatMessage(
+      r.msg,
+      rowSender(r),
+    );
+    return {
+      message,
+      snippet: buildMessageSearchSnippet(message),
+    };
+  });
 }
 
 export async function appendSystemMessage(
@@ -179,13 +208,18 @@ export async function listFavoriteMessages(conversationId: number, page: number,
     notHiddenFor(me.userId),
   );
 
-  const [countRows, rows] = await Promise.all([
-    db
-      .select({ count: sql<number>`count(*)` })
-      .from(chatMessages)
-      .innerJoin(chatMessageFavorites, eq(chatMessageFavorites.messageId, chatMessages.id))
-      .where(where),
-    db
+  return buildListResult({
+    page,
+    pageSize,
+    count: async () => {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(chatMessages)
+        .innerJoin(chatMessageFavorites, eq(chatMessageFavorites.messageId, chatMessages.id))
+        .where(where);
+      return Number(row?.count ?? 0);
+    },
+    rows: async () => markFavorited(await db
       .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
       .from(chatMessages)
       .innerJoin(chatMessageFavorites, eq(chatMessageFavorites.messageId, chatMessages.id))
@@ -193,19 +227,8 @@ export async function listFavoriteMessages(conversationId: number, page: number,
       .where(where)
       .orderBy(desc(chatMessageFavorites.createdAt), desc(chatMessages.id))
       .limit(pageSize)
-      .offset(pageOffset(page, pageSize)),
-  ]);
-
-  return {
-    list: rows.map((r) => {
-      const mapped = mapChatMessage(r.msg, rowSender(r));
-      mapped.extra = { ...(mapped.extra ?? {}), isFavorited: true };
-      return mapped;
-    }),
-    total: Number(countRows[0]?.count ?? 0),
-    page,
-    pageSize,
-  };
+      .offset(pageOffset(page, pageSize))),
+  });
 }
 
 export async function listGlobalFavoriteMessages(page: number, pageSize: number) {
@@ -218,14 +241,19 @@ export async function listGlobalFavoriteMessages(page: number, pageSize: number)
     notHiddenFor(me.userId),
   );
 
-  const [countRows, rows] = await Promise.all([
-    db
-      .select({ count: sql<number>`count(*)` })
-      .from(chatMessages)
-      .innerJoin(chatMessageFavorites, eq(chatMessageFavorites.messageId, chatMessages.id))
-      .innerJoin(chatConversationMembers, eq(chatConversationMembers.conversationId, chatMessages.conversationId))
-      .where(where),
-    db
+  return buildListResult({
+    page,
+    pageSize,
+    count: async () => {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(chatMessages)
+        .innerJoin(chatMessageFavorites, eq(chatMessageFavorites.messageId, chatMessages.id))
+        .innerJoin(chatConversationMembers, eq(chatConversationMembers.conversationId, chatMessages.conversationId))
+        .where(where);
+      return Number(row?.count ?? 0);
+    },
+    rows: async () => markFavorited(await db
       .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
       .from(chatMessages)
       .innerJoin(chatMessageFavorites, eq(chatMessageFavorites.messageId, chatMessages.id))
@@ -234,19 +262,8 @@ export async function listGlobalFavoriteMessages(page: number, pageSize: number)
       .where(where)
       .orderBy(desc(chatMessageFavorites.createdAt), desc(chatMessages.id))
       .limit(pageSize)
-      .offset(pageOffset(page, pageSize)),
-  ]);
-
-  return {
-    list: rows.map((r) => {
-      const mapped = mapChatMessage(r.msg, rowSender(r));
-      mapped.extra = { ...(mapped.extra ?? {}), isFavorited: true };
-      return mapped;
-    }),
-    total: Number(countRows[0]?.count ?? 0),
-    page,
-    pageSize,
-  };
+      .offset(pageOffset(page, pageSize))),
+  });
 }
 
 export async function toggleMessageFavorite(messageId: number, favorite: boolean): Promise<ChatMessage> {
@@ -327,8 +344,8 @@ export async function deleteAnnouncementHistory(conversationId: number, messageI
   const conv = await db.query.chatConversations.findFirst({
     where: eq(chatConversations.id, conversationId),
   });
-  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
-  if (conv.type !== 'group') throw new HTTPException(400, { message: '只有群聊才有公告历史' });
+  const conversation = requireRow(conv, '会话不存在');
+  if (conversation.type !== 'group') throw new HTTPException(400, { message: '只有群聊才有公告历史' });
 
   const member = await db.query.chatConversationMembers.findFirst({
     where: and(
@@ -389,39 +406,26 @@ export async function searchConversationMessages(
     ], 'ilike'),
   );
 
-  const [countRows, rows] = await Promise.all([
-    db
-      .select({ count: sql<number>`count(*)` })
-      .from(chatMessages)
-      .leftJoin(users, eq(chatMessages.senderId, users.id))
-      .where(where),
-    db
+  return buildListResult({
+    page: params.page,
+    pageSize: params.pageSize,
+    count: async () => {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(chatMessages)
+        .leftJoin(users, eq(chatMessages.senderId, users.id))
+        .where(where);
+      return Number(row?.count ?? 0);
+    },
+    rows: async () => mapSearchRows(await db
       .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
       .from(chatMessages)
       .leftJoin(users, eq(chatMessages.senderId, users.id))
       .where(where)
       .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
       .limit(params.pageSize)
-      .offset(pageOffset(params.page, params.pageSize)),
-  ]);
-
-  const list = rows.map((r) => {
-    const message = mapChatMessage(
-      r.msg,
-      rowSender(r),
-    );
-    return {
-      message,
-      snippet: buildMessageSearchSnippet(message),
-    };
+      .offset(pageOffset(params.page, params.pageSize))),
   });
-
-  return {
-    list,
-    total: Number(countRows[0]?.count ?? 0),
-    page: params.page,
-    pageSize: params.pageSize,
-  };
 }
 
 // ─── 消息上下文定位 ─────────────────────────────────────────────────────────
@@ -445,7 +449,7 @@ export async function getMessageContext(
     ))
     .limit(1);
 
-  if (target.length === 0) throw new HTTPException(404, { message: '消息不存在' });
+  const targetRow = requireRow(target[0], '消息不存在');
 
   const [beforeRows, afterRows] = await Promise.all([
     db
@@ -473,7 +477,7 @@ export async function getMessageContext(
   const reversedBefore = [...beforeRows].reverse();
   const allRows = [
     ...reversedBefore,
-    ...target,
+    targetRow,
     ...afterRows,
   ];
   const msgIds = allRows.map((r) => r.msg.id);
@@ -522,13 +526,13 @@ export async function sendMessage(conversationId: number, input: SendChatMessage
       columns: { id: true, muteAll: true },
     }),
   ]);
-  if (!member) throw new HTTPException(403, { message: '无权向该会话发送消息' });
+  const sendMember = requireRow(member, '无权向该会话发送消息', 403);
 
   // 禁言校验：个人禁言优先，全员禁言豁免群主/管理员
-  if (member.mutedUntil && member.mutedUntil > new Date()) {
+  if (sendMember.mutedUntil && sendMember.mutedUntil > new Date()) {
     throw new HTTPException(403, { message: '你已被禁言，暂时无法发言' });
   }
-  if (conv?.muteAll && member.role === 'member') {
+  if (conv?.muteAll && sendMember.role === 'member') {
     throw new HTTPException(403, { message: '全员禁言中，仅群主和管理员可发言' });
   }
 
@@ -720,10 +724,9 @@ export async function deleteMessagesForUser(messageIds: number[]): Promise<void>
 export async function recallMessage(messageId: number): Promise<void> {
   const me = currentUser();
 
-  const msg = await db.query.chatMessages.findFirst({
+  const msg = requireRow(await db.query.chatMessages.findFirst({
     where: eq(chatMessages.id, messageId),
-  });
-  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  }), '消息不存在');
   if (msg.senderId !== me.userId) throw new HTTPException(403, { message: '只能撤回自己的消息' });
 
   // 2 分钟内可撤回
@@ -747,10 +750,9 @@ export async function recallMessage(messageId: number): Promise<void> {
 export async function editMessage(messageId: number, content: string): Promise<ChatMessage> {
   const me = currentUser();
 
-  const msg = await db.query.chatMessages.findFirst({
+  const msg = requireRow(await db.query.chatMessages.findFirst({
     where: eq(chatMessages.id, messageId),
-  });
-  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  }), '消息不存在');
   if (msg.senderId !== me.userId) throw new HTTPException(403, { message: '只能编辑自己的消息' });
   if (msg.isRecalled) throw new HTTPException(400, { message: '消息已撤回，无法编辑' });
   if (msg.type !== 'text') throw new HTTPException(400, { message: '只能编辑文本消息' });
@@ -850,16 +852,7 @@ export async function searchGlobalMessages(
     }
   }
 
-  const list = rows.map((r) => {
-    const message = mapChatMessage(
-      r.msg,
-      rowSender(r),
-    );
-    return {
-      message,
-      snippet: buildMessageSearchSnippet(message),
-    };
-  });
+  const list = mapSearchRows(rows);
 
   return {
     list,

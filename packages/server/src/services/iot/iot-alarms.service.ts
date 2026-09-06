@@ -22,6 +22,8 @@ import {
 } from '../../db/schema';
 import { users } from '../../db/schema/core';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser, currentUserId } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
@@ -88,9 +90,11 @@ function buildRuleWhere(q: ListIotAlarmRulesQuery & { id?: number }): SQL | unde
 export async function listIotAlarmRules(q: ListIotAlarmRulesQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildRuleWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(iotAlarmRules, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(iotAlarmRules, where),
+    rows: () => withPagination(
       db.select({ rule: iotAlarmRules, productName: iotProducts.name, deviceName: iotDevices.name })
         .from(iotAlarmRules)
         .leftJoin(iotProducts, eq(iotAlarmRules.productId, iotProducts.id))
@@ -101,19 +105,13 @@ export async function listIotAlarmRules(q: ListIotAlarmRulesQuery) {
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => mapIotAlarmRule(r.rule, { productName: r.productName, deviceName: r.deviceName })),
-    total,
-    page,
-    pageSize,
-  };
+    map: (r) => mapIotAlarmRule(r.rule, { productName: r.productName, deviceName: r.deviceName }),
+  });
 }
 
 export async function ensureIotAlarmRuleExists(id: number): Promise<IotAlarmRuleRow> {
   const [row] = await db.select().from(iotAlarmRules).where(buildRuleWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '告警规则不存在' });
-  return row;
+  return requireRow(row, '告警规则不存在');
 }
 
 /** threshold/event 规则的标识符必须在产品物模型中已声明 */
@@ -185,9 +183,9 @@ export async function updateIotAlarmRule(id: number, data: UpdateIotAlarmRuleInp
     ...(data.escalateUserIds !== undefined ? { escalateUserIds: data.escalateUserIds } : {}),
     ...(data.status !== undefined ? { status: data.status } : {}),
   }).where(buildRuleWhere({ id })).returning();
-  if (!row) throw new HTTPException(404, { message: '告警规则不存在' });
+  const updated = requireRow(row, '告警规则不存在');
   invalidateRuleCache();
-  return mapIotAlarmRule(row);
+  return mapIotAlarmRule(updated);
 }
 
 export async function deleteIotAlarmRule(id: number): Promise<void> {
@@ -261,24 +259,24 @@ export async function listIotAlarms(q: ListIotAlarmsQuery) {
     .innerJoin(iotDevices, eq(iotAlarms.deviceId, iotDevices.id))
     .leftJoin(users, eq(iotAlarms.acknowledgedBy, users.id))
     .leftJoin(resolvers, eq(iotAlarms.resolvedBy, resolvers.id));
-  const [countRows, rows] = await Promise.all([
-    db.select({ value: count() }).from(iotAlarms)
-      .innerJoin(iotDevices, eq(iotAlarms.deviceId, iotDevices.id))
-      .where(where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: async () => {
+      const [row] = await db.select({ value: count() }).from(iotAlarms)
+        .innerJoin(iotDevices, eq(iotAlarms.deviceId, iotDevices.id))
+        .where(where);
+      return Number(row?.value ?? 0);
+    },
+    rows: () => withPagination(
       base.where(where).orderBy(desc(iotAlarms.firedAt), desc(iotAlarms.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => mapIotAlarm(r.alarm, {
+    map: (r) => mapIotAlarm(r.alarm, {
       deviceName: r.deviceName, deviceSn: r.deviceSn, acknowledgedByName: r.acknowledgedByName, resolvedByName: r.resolvedByName,
-    })),
-    total: Number(countRows[0]?.value ?? 0),
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 /** 认领告警：接手处理，升级计时停止（幂等拒绝重复认领） */
@@ -287,8 +285,7 @@ export async function acknowledgeIotAlarm(id: number) {
     .set({ status: 'acknowledged', acknowledgedAt: new Date(), acknowledgedBy: currentUserId() })
     .where(and(eq(iotAlarms.id, id), eq(iotAlarms.status, 'firing')))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '告警不存在或已被认领/恢复' });
-  return mapIotAlarm(row);
+  return mapIotAlarm(requireRow(row, '告警不存在或已被认领/恢复'));
 }
 
 /** 管理员手动处理（恢复）告警：firing/acknowledged 均可直接处理，可附处理备注 */
@@ -297,21 +294,21 @@ export async function resolveIotAlarm(id: number, note?: string | null) {
     .set({ status: 'resolved', resolvedAt: new Date(), resolvedBy: currentUserId(), resolveNote: note ?? null })
     .where(and(eq(iotAlarms.id, id), inArray(iotAlarms.status, ['firing', 'acknowledged'])))
     .returning();
-  if (!row) throw new HTTPException(404, { message: '告警不存在或已恢复' });
+  const resolved = requireRow(row, '告警不存在或已恢复');
   const [device] = await db.select({ sn: iotDevices.sn, name: iotDevices.name, productId: iotDevices.productId, tenantId: iotDevices.tenantId })
-    .from(iotDevices).where(eq(iotDevices.id, row.deviceId)).limit(1);
+    .from(iotDevices).where(eq(iotDevices.id, resolved.deviceId)).limit(1);
   openEventBus.emit({
     type: 'iot.alarm.resolved',
     tenantId: device?.tenantId ?? null,
-    data: { alarmId: row.id, ruleName: row.ruleName, deviceId: row.deviceId, sn: device?.sn ?? null, deviceName: device?.name ?? null, message: '管理员手动处理', resolvedBy: 'manual' },
+    data: { alarmId: resolved.id, ruleName: resolved.ruleName, deviceId: resolved.deviceId, sn: device?.sn ?? null, deviceName: device?.name ?? null, message: '管理员手动处理', resolvedBy: 'manual' },
   });
   if (device) {
-    dispatchIotForward('alarm', { id: row.deviceId, sn: device.sn, productId: device.productId }, {
-      alarmId: row.id, action: 'resolved', ruleName: row.ruleName, deviceId: row.deviceId,
+    dispatchIotForward('alarm', { id: resolved.deviceId, sn: device.sn, productId: device.productId }, {
+      alarmId: resolved.id, action: 'resolved', ruleName: resolved.ruleName, deviceId: resolved.deviceId,
       sn: device.sn, deviceName: device.name, message: '管理员手动处理', resolvedBy: 'manual',
     });
   }
-  return mapIotAlarm(row);
+  return mapIotAlarm(resolved);
 }
 
 // ─── 运行时判定 ───────────────────────────────────────────────────────────────

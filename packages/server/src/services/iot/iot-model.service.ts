@@ -16,6 +16,7 @@ import {
   type IotProductEventRow, type IotProductPropertyRow, type IotProductRow, type IotProductServiceRow,
 } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { TtlCache } from '../../lib/ttl-cache';
 import { invalidateAnomalyBaselines } from './iot-anomaly.service';
@@ -24,7 +25,7 @@ import { invalidateAnomalyBaselines } from './iot-anomaly.service';
 async function ensureProductRow(productId: number): Promise<void> {
   const [row] = await db.select({ id: iotProducts.id }).from(iotProducts)
     .where(eq(iotProducts.id, productId)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '产品不存在' });
+  requireRow(row, '产品不存在');
 }
 
 // ─── 映射 ─────────────────────────────────────────────────────────────────────
@@ -157,8 +158,7 @@ export async function ensureIotPropertyExists(productId: number, propertyId: num
   const [row] = await db.select().from(iotProductProperties)
     .where(and(eq(iotProductProperties.id, propertyId), eq(iotProductProperties.productId, productId)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '属性不存在' });
-  return row;
+  return requireRow(row, '属性不存在');
 }
 
 export async function updateIotProperty(productId: number, propertyId: number, data: UpdateIotPropertyInput) {
@@ -211,8 +211,7 @@ export async function ensureIotServiceExists(productId: number, serviceId: numbe
   const [row] = await db.select().from(iotProductServices)
     .where(and(eq(iotProductServices.id, serviceId), eq(iotProductServices.productId, productId)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '服务不存在' });
-  return row;
+  return requireRow(row, '服务不存在');
 }
 
 export async function updateIotService(productId: number, serviceId: number, data: UpdateIotServiceInput) {
@@ -259,8 +258,7 @@ export async function ensureIotEventExists(productId: number, eventId: number): 
   const [row] = await db.select().from(iotProductEvents)
     .where(and(eq(iotProductEvents.id, eventId), eq(iotProductEvents.productId, productId)))
     .limit(1);
-  if (!row) throw new HTTPException(404, { message: '事件不存在' });
-  return row;
+  return requireRow(row, '事件不存在');
 }
 
 export async function updateIotEvent(productId: number, eventId: number, data: UpdateIotEventInput) {

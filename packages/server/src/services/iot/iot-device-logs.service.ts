@@ -6,6 +6,7 @@ import type { IotLogIngestInput, IotLogLevel } from '@zenith/shared/iot';
 import { db } from '../../db';
 import { iotDeviceLogs, type IotDeviceLogRow, type IotDeviceRow } from '../../db/schema';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 
 export function mapIotDeviceLog(row: IotDeviceLogRow) {
@@ -53,18 +54,18 @@ export async function listIotDeviceLogs(deviceId: number, q: ListDeviceLogsQuery
   if (start) conditions.push(gte(iotDeviceLogs.reportedAt, start));
   if (end) conditions.push(lte(iotDeviceLogs.reportedAt, end));
   const where = buildWhere(...conditions);
-  const [countRows, rows] = await Promise.all([
-    db.select({ value: count() }).from(iotDeviceLogs).where(where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: async () => {
+      const [row] = await db.select({ value: count() }).from(iotDeviceLogs).where(where);
+      return Number(row?.value ?? 0);
+    },
+    rows: () => withPagination(
       db.select().from(iotDeviceLogs).where(where).orderBy(desc(iotDeviceLogs.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map(mapIotDeviceLog),
-    total: Number(countRows[0]?.value ?? 0),
-    page,
-    pageSize,
-  };
+    map: mapIotDeviceLog,
+  });
 }

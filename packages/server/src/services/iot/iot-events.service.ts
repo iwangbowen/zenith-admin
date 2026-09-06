@@ -10,6 +10,7 @@ import { IOT_LIFECYCLE_EVENTS, type IotDeviceEventKind, type IotEventLevel, type
 import { db } from '../../db';
 import { iotDeviceEvents, iotDevices, type IotDeviceEventRow, type IotDeviceRow } from '../../db/schema';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { openEventBus } from '../../lib/open-event-bus';
@@ -139,16 +140,18 @@ export async function listIotDeviceEvents(deviceId: number, q: ListDeviceEventsQ
     q.kind ? eq(iotDeviceEvents.kind, q.kind) : undefined,
     q.level ? eq(iotDeviceEvents.level, q.level) : undefined,
   );
-  const [total, rows] = await Promise.all([
-    db.$count(iotDeviceEvents, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(iotDeviceEvents, where),
+    rows: () => withPagination(
       db.select().from(iotDeviceEvents).where(where)
         .orderBy(desc(iotDeviceEvents.reportedAt), desc(iotDeviceEvents.id)).$dynamic(),
       page,
       pageSize,
     ),
-  ]);
-  return { list: rows.map(mapIotDeviceEvent), total, page, pageSize };
+    map: mapIotDeviceEvent,
+  });
 }
 
 /** 保留最近事件的辅助查询（设备详情时间线首屏） */

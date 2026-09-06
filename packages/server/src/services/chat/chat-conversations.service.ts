@@ -7,6 +7,7 @@ import {
 import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { invalidateConversationMembers } from '../../lib/chat-member-cache';
 import { currentUser } from '../../lib/context';
+import { requireRow } from '../../lib/db-assert';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { HTTPException } from 'hono/http-exception';
 import type { ChatConversation, ChatMessageExtra, ChatReadState } from '@zenith/shared/chat';
@@ -208,15 +209,15 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
       userPositions: { with: { position: { columns: { name: true } } } },
     },
   });
-  if (!targetUserRow) throw new HTTPException(404, { message: '用户不存在' });
+  const targetUserEntity = requireRow(targetUserRow, '用户不存在');
   const targetUser = {
-    id: targetUserRow.id,
-    nickname: targetUserRow.nickname,
-    avatar: targetUserRow.avatar,
-    phone: targetUserRow.phone ?? null,
-    email: targetUserRow.email ?? null,
-    departmentName: targetUserRow.department?.name ?? null,
-    positionNames: (targetUserRow.userPositions as Array<{ position: { name: string } }>).map((up) => up.position.name),
+    id: targetUserEntity.id,
+    nickname: targetUserEntity.nickname,
+    avatar: targetUserEntity.avatar,
+    phone: targetUserEntity.phone ?? null,
+    email: targetUserEntity.email ?? null,
+    departmentName: targetUserEntity.department?.name ?? null,
+    positionNames: (targetUserEntity.userPositions as Array<{ position: { name: string } }>).map((up) => up.position.name),
   };
 
   // 查找已有的 direct 会话（双方都在的）
@@ -288,7 +289,7 @@ export async function pinConversation(conversationId: number, pin: boolean): Pro
       eq(chatConversationMembers.userId, me.userId),
     ))
     .returning({ id: chatConversationMembers.conversationId });
-  if (!updated) throw new HTTPException(403, { message: '无权操作该会话' });
+  requireRow(updated, '无权操作该会话', 403);
 }
 
 // ─── 标记星标 / 取消星标 ──────────────────────────────────────────────────
@@ -302,7 +303,7 @@ export async function starConversation(conversationId: number, star: boolean): P
       eq(chatConversationMembers.userId, me.userId),
     ))
     .returning({ id: chatConversationMembers.conversationId });
-  if (!updated) throw new HTTPException(403, { message: '无权操作该会话' });
+  requireRow(updated, '无权操作该会话', 403);
 }
 
 // ─── 免打扰 / 取消免打扰 ──────────────────────────────────────────────────
@@ -316,7 +317,7 @@ export async function muteConversation(conversationId: number, mute: boolean): P
       eq(chatConversationMembers.userId, me.userId),
     ))
     .returning({ id: chatConversationMembers.conversationId });
-  if (!updated) throw new HTTPException(403, { message: '无权操作该会话' });
+  requireRow(updated, '无权操作该会话', 403);
 }
 
 // ─── 归档 / 取消归档 ──────────────────────────────────────────────────────────
@@ -330,7 +331,7 @@ export async function archiveConversation(conversationId: number, archive: boole
       eq(chatConversationMembers.userId, me.userId),
     ))
     .returning({ id: chatConversationMembers.conversationId });
-  if (!updated) throw new HTTPException(403, { message: '无权操作该会话' });
+  requireRow(updated, '无权操作该会话', 403);
 }
 
 // ─── 标记已读 ─────────────────────────────────────────────────────────────────
@@ -396,7 +397,7 @@ export async function removeConversation(conversationId: number): Promise<void> 
   const myNickname = await getUserNickname(me.userId);
 
   const conv = await db.query.chatConversations.findFirst({ where: eq(chatConversations.id, conversationId) });
-  if (!conv) throw new HTTPException(404, { message: '会话不存在或无权操作' });
+  const conversation = requireRow(conv, '会话不存在或无权操作');
 
   const member = await db.query.chatConversationMembers.findFirst({
     where: and(
@@ -404,10 +405,10 @@ export async function removeConversation(conversationId: number): Promise<void> 
       eq(chatConversationMembers.userId, me.userId),
     ),
   });
-  if (!member) throw new HTTPException(404, { message: '会话不存在或无权操作' });
+  const membership = requireRow(member, '会话不存在或无权操作');
 
   // 群主退群守卫：还有其他成员时必须先转让群主或解散群聊，避免产生无主群
-  if (conv.type === 'group' && member.role === 'owner') {
+  if (conversation.type === 'group' && membership.role === 'owner') {
     const otherCount = await db.$count(chatConversationMembers, and(
       eq(chatConversationMembers.conversationId, conversationId),
       ne(chatConversationMembers.userId, me.userId),
@@ -424,7 +425,7 @@ export async function removeConversation(conversationId: number): Promise<void> 
   invalidateConversationMembers(conversationId);
 
   const remainCount = await db.$count(chatConversationMembers, eq(chatConversationMembers.conversationId, conversationId));
-  if (conv.type === 'group' && remainCount > 0) {
+  if (conversation.type === 'group' && remainCount > 0) {
     await appendSystemMessage(conversationId, `${myNickname ?? '成员'} 退出了群聊`);
   }
   if (remainCount === 0) {
@@ -438,8 +439,8 @@ export async function disbandConversation(conversationId: number): Promise<void>
   const me = currentUser();
 
   const conv = await db.query.chatConversations.findFirst({ where: eq(chatConversations.id, conversationId) });
-  if (!conv) throw new HTTPException(404, { message: '会话不存在或无权操作' });
-  if (conv.type !== 'group') throw new HTTPException(400, { message: '仅群聊支持解散' });
+  const conversation = requireRow(conv, '会话不存在或无权操作');
+  if (conversation.type !== 'group') throw new HTTPException(400, { message: '仅群聊支持解散' });
 
   const member = await db.query.chatConversationMembers.findFirst({
     where: and(

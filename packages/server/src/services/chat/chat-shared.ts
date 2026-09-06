@@ -3,8 +3,8 @@ import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { chatConversationMembers, chatMessages, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
+import { requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
-import { HTTPException } from 'hono/http-exception';
 import type { ChatMessage, ChatReactionGroup } from '@zenith/shared/chat';
 
 /** 生成排除当前用户已删除消息的 SQL 条件 */
@@ -83,8 +83,7 @@ export async function ensureConversationMember(conversationId: number) {
       eq(chatConversationMembers.userId, me.userId),
     ),
   });
-  if (!member) throw new HTTPException(403, { message: '无权访问该会话' });
-  return member;
+  return requireRow(member, '无权访问该会话', 403);
 }
 
 export async function getUserNickname(userId: number): Promise<string | null> {
@@ -97,7 +96,7 @@ export async function getUserNickname(userId: number): Promise<string | null> {
 
 export async function ensureMessageAccessible(messageId: number) {
   const msg = await db.query.chatMessages.findFirst({ where: eq(chatMessages.id, messageId) });
-  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
-  await ensureConversationMember(msg.conversationId);
-  return msg;
+  const message = requireRow(msg, '消息不存在');
+  await ensureConversationMember(message.conversationId);
+  return message;
 }

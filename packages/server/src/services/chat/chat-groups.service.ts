@@ -4,6 +4,7 @@ import { chatConversations, chatConversationMembers, users } from '../../db/sche
 import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { invalidateConversationMembers } from '../../lib/chat-member-cache';
 import { currentUser } from '../../lib/context';
+import { requireRow } from '../../lib/db-assert';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { HTTPException } from 'hono/http-exception';
 import type { ChatConversation } from '@zenith/shared/chat';
@@ -74,8 +75,8 @@ export async function addGroupMember(conversationId: number, targetUserId: numbe
   const conv = await db.query.chatConversations.findFirst({
     where: eq(chatConversations.id, conversationId),
   });
-  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
-  if (conv.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能添加成员' });
+  const conversation = requireRow(conv, '会话不存在');
+  if (conversation.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能添加成员' });
 
   // 鉴权：操作者需是成员
   const isMember = await db.query.chatConversationMembers.findFirst({
@@ -84,7 +85,7 @@ export async function addGroupMember(conversationId: number, targetUserId: numbe
       eq(chatConversationMembers.userId, me.userId),
     ),
   });
-  if (!isMember) throw new HTTPException(403, { message: '无权操作该群聊' });
+  requireRow(isMember, '无权操作该群聊', 403);
 
   // 成员上限
   const memberCount = await db.$count(chatConversationMembers, eq(chatConversationMembers.conversationId, conversationId));
@@ -92,7 +93,7 @@ export async function addGroupMember(conversationId: number, targetUserId: numbe
 
   // 目标用户存在校验
   const target = await fetchUserBrief(targetUserId);
-  if (!target) throw new HTTPException(404, { message: '用户不存在' });
+  const targetUser = requireRow(target, '用户不存在');
 
   // 幂等插入
   const alreadyIn = await db.query.chatConversationMembers.findFirst({
@@ -106,12 +107,12 @@ export async function addGroupMember(conversationId: number, targetUserId: numbe
   await db.insert(chatConversationMembers).values({ conversationId, userId: targetUserId });
   invalidateConversationMembers(conversationId);
 
-  await appendSystemMessage(conversationId, `${target.nickname} 加入了群聊`);
+  await appendSystemMessage(conversationId, `${targetUser.nickname} 加入了群聊`);
 
   // 推送 WS 通知（群内所有成员）
   const members = await listConversationMemberIds(conversationId);
 
-  scheduleSendToUsers(members, { type: 'chat:member-join', payload: { conversationId, user: target } });
+  scheduleSendToUsers(members, { type: 'chat:member-join', payload: { conversationId, user: targetUser } });
 }
 
 // ─── 群成员列表 ──────────────────────────────────────────────────────────────
@@ -125,7 +126,7 @@ export async function listGroupMembers(conversationId: number) {
       eq(chatConversationMembers.userId, me.userId),
     ),
   });
-  if (!isMember) throw new HTTPException(403, { message: '无权访问该会话' });
+  requireRow(isMember, '无权访问该会话', 403);
 
   const rows = await db
     .select({
@@ -154,8 +155,8 @@ export async function removeGroupMember(conversationId: number, targetUserId: nu
   const conv = await db.query.chatConversations.findFirst({
     where: eq(chatConversations.id, conversationId),
   });
-  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
-  if (conv.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能移除成员' });
+  const conversation = requireRow(conv, '会话不存在');
+  if (conversation.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能移除成员' });
 
   // 操作者必须是群主或管理员
   const operatorMember = await db.query.chatConversationMembers.findFirst({
@@ -178,13 +179,11 @@ export async function removeGroupMember(conversationId: number, targetUserId: nu
       eq(chatConversationMembers.userId, targetUserId),
     ),
   });
-  if (!targetMemberExists) {
-    throw new HTTPException(404, { message: '该用户不在群聊中' });
-  }
-  if (targetMemberExists.role === 'owner') {
+  const targetMember = requireRow(targetMemberExists, '该用户不在群聊中');
+  if (targetMember.role === 'owner') {
     throw new HTTPException(400, { message: '不能移除群主' });
   }
-  if (operatorMember.role === 'admin' && targetMemberExists.role === 'admin') {
+  if (operatorMember.role === 'admin' && targetMember.role === 'admin') {
     throw new HTTPException(403, { message: '管理员不能移除其他管理员' });
   }
 
@@ -222,8 +221,8 @@ export async function updateGroupInfo(
   const conv = await db.query.chatConversations.findFirst({
     where: eq(chatConversations.id, conversationId),
   });
-  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
-  if (conv.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能修改信息' });
+  const conversation = requireRow(conv, '会话不存在');
+  if (conversation.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能修改信息' });
 
   // owner / admin 可改
   const member = await db.query.chatConversationMembers.findFirst({
@@ -238,8 +237,8 @@ export async function updateGroupInfo(
 
   const normalizedName = updates.name === undefined ? undefined : (updates.name.trim() || null);
   const normalizedAnnouncement = 'announcement' in updates ? (updates.announcement ?? null) : undefined;
-  const nameChanged = normalizedName !== undefined && normalizedName !== (conv.name ?? null);
-  const announcementChanged = normalizedAnnouncement !== undefined && normalizedAnnouncement !== (conv.announcement ?? null);
+  const nameChanged = normalizedName !== undefined && normalizedName !== (conversation.name ?? null);
+  const announcementChanged = normalizedAnnouncement !== undefined && normalizedAnnouncement !== (conversation.announcement ?? null);
 
   const set: Record<string, unknown> = {};
   if (normalizedName !== undefined) set.name = normalizedName;
@@ -282,8 +281,8 @@ export async function transferGroupOwnership(conversationId: number, newOwnerId:
   const conv = await db.query.chatConversations.findFirst({
     where: eq(chatConversations.id, conversationId),
   });
-  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
-  if (conv.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能转让群主' });
+  const conversation = requireRow(conv, '会话不存在');
+  if (conversation.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能转让群主' });
 
   const currentMember = await db.query.chatConversationMembers.findFirst({
     where: and(
@@ -301,9 +300,7 @@ export async function transferGroupOwnership(conversationId: number, newOwnerId:
       eq(chatConversationMembers.userId, newOwnerId),
     ),
   });
-  if (!targetMember) {
-    throw new HTTPException(404, { message: '目标用户不在群聊中' });
-  }
+  requireRow(targetMember, '目标用户不在群聊中');
 
   const newOwner = await db.query.users.findFirst({
     where: eq(users.id, newOwnerId),
@@ -346,9 +343,9 @@ async function getGroupConversation(conversationId: number) {
   const conv = await db.query.chatConversations.findFirst({
     where: eq(chatConversations.id, conversationId),
   });
-  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
-  if (conv.type !== 'group') throw new HTTPException(400, { message: '仅群聊支持该操作' });
-  return conv;
+  const conversation = requireRow(conv, '会话不存在');
+  if (conversation.type !== 'group') throw new HTTPException(400, { message: '仅群聊支持该操作' });
+  return conversation;
 }
 
 async function getConversationMember(conversationId: number, userId: number) {
@@ -385,9 +382,9 @@ export async function setMemberRole(conversationId: number, targetUserId: number
   }
 
   const target = await getConversationMember(conversationId, targetUserId);
-  if (!target) throw new HTTPException(404, { message: '该用户不在群聊中' });
-  if (target.role === 'owner') throw new HTTPException(400, { message: '不能修改群主角色' });
-  if (target.role === role) return;
+  const targetMember = requireRow(target, '该用户不在群聊中');
+  if (targetMember.role === 'owner') throw new HTTPException(400, { message: '不能修改群主角色' });
+  if (targetMember.role === role) return;
 
   await db.update(chatConversationMembers)
     .set({ role })
@@ -420,9 +417,9 @@ export async function muteMember(conversationId: number, targetUserId: number, m
   }
 
   const target = await getConversationMember(conversationId, targetUserId);
-  if (!target) throw new HTTPException(404, { message: '该用户不在群聊中' });
-  if (target.role === 'owner') throw new HTTPException(400, { message: '不能禁言群主' });
-  if (operator.role === 'admin' && target.role === 'admin') {
+  const targetMember = requireRow(target, '该用户不在群聊中');
+  if (targetMember.role === 'owner') throw new HTTPException(400, { message: '不能禁言群主' });
+  if (operator.role === 'admin' && targetMember.role === 'admin') {
     throw new HTTPException(403, { message: '管理员不能禁言其他管理员' });
   }
 

@@ -20,6 +20,7 @@ import { config } from '../../config';
 import { currentUser, currentUserId, currentUserOrNull, isSuperAdmin, type AppEnv } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
 import { decryptField, encryptField } from '../../lib/encryption';
 import { readStoredFile } from '../../lib/file-storage';
 import type { StoredFileRange } from '../../lib/file-storage';
@@ -28,6 +29,7 @@ import { hashPassword, verifyPassword } from '../../lib/password';
 import redis from '../../lib/redis';
 import { getClientIp } from '../../lib/request-helpers';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { getRestrictedFileForRead } from '../files/files.service';
 import { ensureNodeRole, loadDriveSubjects, resolveNodeRole } from './drive-access.service';
@@ -193,11 +195,15 @@ async function buildShareWhere(q: ListShareLinksQuery, extra?: SQL): Promise<SQL
 }
 
 async function paginateShares(where: SQL | undefined, page: number, pageSize: number) {
-  const [total, rows] = await Promise.all([
-    db.$count(driveShareLinks, where),
-    withPagination(db.select().from(driveShareLinks).where(where).orderBy(desc(driveShareLinks.id)).$dynamic(), page, pageSize),
-  ]);
-  return { list: await mapShareLinks(rows), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(driveShareLinks, where),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(driveShareLinks).where(where).orderBy(desc(driveShareLinks.id)).$dynamic(), page, pageSize);
+      return mapShareLinks(rows);
+    },
+  });
 }
 
 /** 我创建的外链 */
@@ -231,14 +237,14 @@ export async function listShareLinksForAdmin(q: ListShareLinksQuery) {
 
 async function ensureShareEditable(id: number): Promise<{ share: DriveShareLinkRow; node: DriveNodeRow }> {
   const [share] = await db.select().from(driveShareLinks).where(buildWhere(eq(driveShareLinks.id, id), tenantCondition(driveShareLinks, currentUser()))).limit(1);
-  if (!share) throw new HTTPException(404, { message: '外链不存在' });
-  const node = await ensureDriveNodeExists(share.nodeId, { allowDeleted: true });
+  const shareRow = requireRow(share, '外链不存在');
+  const node = await ensureDriveNodeExists(shareRow.nodeId, { allowDeleted: true });
   const subjects = await loadDriveSubjects();
-  if (share.createdBy !== subjects.userId && !subjects.isAdmin) {
+  if (shareRow.createdBy !== subjects.userId && !subjects.isAdmin) {
     const role = await resolveNodeRole(node);
     if (role !== 'manager') throw new HTTPException(403, { message: '只能管理自己创建的外链' });
   }
-  return { share, node };
+  return { share: shareRow, node };
 }
 
 export async function updateDriveShareLink(id: number, data: UpdateDriveShareLinkInput): Promise<DriveShareLink> {
@@ -296,8 +302,8 @@ export async function deleteDriveShareLink(id: number): Promise<void> {
 /** 管理端撤销：不校验创建者（数据权限由列表收窄，此处只做租户校验） */
 export async function adminRevokeDriveShareLink(id: number): Promise<void> {
   const [share] = await db.select().from(driveShareLinks).where(buildWhere(eq(driveShareLinks.id, id), tenantCondition(driveShareLinks, currentUser()))).limit(1);
-  if (!share) throw new HTTPException(404, { message: '外链不存在' });
-  const [node] = await db.select().from(driveNodes).where(eq(driveNodes.id, share.nodeId)).limit(1);
+  const shareRow = requireRow(share, '外链不存在');
+  const [node] = await db.select().from(driveNodes).where(eq(driveNodes.id, shareRow.nodeId)).limit(1);
   await db.transaction(async (tx) => {
     await tx.update(driveShareLinks)
       .set({ revokedAt: new Date(), enabled: false, sessionVersion: sql`${driveShareLinks.sessionVersion} + 1` })
@@ -322,8 +328,7 @@ function logShareAccess(share: DriveShareLinkRow, action: string, ok: boolean) {
 
 async function findShareByToken(token: string): Promise<DriveShareLinkRow> {
   const [share] = await db.select().from(driveShareLinks).where(eq(driveShareLinks.token, hashToken(token))).limit(1);
-  if (!share) throw new HTTPException(404, { message: '链接不存在或已失效' });
-  return share;
+  return requireRow(share, '链接不存在或已失效');
 }
 
 function assertShareUsable(share: DriveShareLinkRow, action: string) {
@@ -509,12 +514,11 @@ export async function saveFromDriveShare(token: string, sessionToken: string, da
 export async function listShareAccessLogs(shareId: number, page = 1, pageSize = 20) {
   await ensureShareEditable(shareId);
   const where = eq(driveShareAccessLogs.shareId, shareId);
-  const [total, rows] = await Promise.all([
-    db.$count(driveShareAccessLogs, where),
-    withPagination(db.select().from(driveShareAccessLogs).where(where).orderBy(desc(driveShareAccessLogs.id)).$dynamic(), page, pageSize),
-  ]);
-  return {
-    list: rows.map((r) => ({ id: r.id, shareId: r.shareId, nodeId: r.nodeId, action: r.action, clientIp: r.clientIp ?? null, ok: r.ok, createdAt: formatDateTime(r.createdAt) })),
-    total, page, pageSize,
-  };
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(driveShareAccessLogs, where),
+    rows: () => withPagination(db.select().from(driveShareAccessLogs).where(where).orderBy(desc(driveShareAccessLogs.id)).$dynamic(), page, pageSize),
+    map: (r) => ({ id: r.id, shareId: r.shareId, nodeId: r.nodeId, action: r.action, clientIp: r.clientIp ?? null, ok: r.ok, createdAt: formatDateTime(r.createdAt) }),
+  });
 }

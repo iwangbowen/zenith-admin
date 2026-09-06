@@ -14,6 +14,8 @@ import {
   type IotMaintenanceWindowRow,
 } from '../../db/schema';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
@@ -60,9 +62,11 @@ function buildWindowWhere(q: ListMaintenanceWindowsQuery & { id?: number }): SQL
 export async function listIotMaintenanceWindows(q: ListMaintenanceWindowsQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = buildWindowWhere(q);
-  const [total, rows] = await Promise.all([
-    db.$count(iotMaintenanceWindows, where),
-    withPagination(
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(iotMaintenanceWindows, where),
+    rows: () => withPagination(
       db.select({
         window: iotMaintenanceWindows,
         productName: iotProducts.name,
@@ -79,21 +83,15 @@ export async function listIotMaintenanceWindows(q: ListMaintenanceWindowsQuery) 
       page,
       pageSize,
     ),
-  ]);
-  return {
-    list: rows.map((r) => mapIotMaintenanceWindow(r.window, {
+    map: (r) => mapIotMaintenanceWindow(r.window, {
       productName: r.productName, groupName: r.groupName, deviceName: r.deviceName,
-    })),
-    total,
-    page,
-    pageSize,
-  };
+    }),
+  });
 }
 
 export async function ensureIotMaintenanceWindowExists(id: number): Promise<IotMaintenanceWindowRow> {
   const [row] = await db.select().from(iotMaintenanceWindows).where(buildWindowWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: '维护窗口不存在' });
-  return row;
+  return requireRow(row, '维护窗口不存在');
 }
 
 export async function createIotMaintenanceWindow(data: CreateIotMaintenanceWindowInput) {
@@ -127,9 +125,9 @@ export async function updateIotMaintenanceWindow(id: number, data: Partial<Creat
     ...(endAt ? { endAt } : {}),
     ...(data.reason !== undefined ? { reason: data.reason } : {}),
   }).where(buildWindowWhere({ id })).returning();
-  if (!row) throw new HTTPException(404, { message: '维护窗口不存在' });
+  const updated = requireRow(row, '维护窗口不存在');
   invalidateMaintenanceCache();
-  return mapIotMaintenanceWindow(row);
+  return mapIotMaintenanceWindow(updated);
 }
 
 export async function deleteIotMaintenanceWindow(id: number): Promise<void> {
