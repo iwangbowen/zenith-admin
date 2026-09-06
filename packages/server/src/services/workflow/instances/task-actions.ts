@@ -16,7 +16,7 @@ import { assertSelectedNextApprovers } from './initiator-select';
 import { mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, checkNodeCompletion, filterCurrentActivation, killInstanceTokens } from './materialize';
 import type { MaterializeTrigger } from './materialize';
-import { emitInstanceEvent, emitNodeEvent, emitTaskEvent } from './shared';
+import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, lockInstanceExpecting } from './shared';
 import { hasUserHandledTask } from './transfers';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fill-task.service';
@@ -501,11 +501,7 @@ export async function rejectTaskCore(
   const updated = await db.transaction(async (tx) => {
     const res = await (async () => {
     // 实例行级锁：序列化同一实例上的并发审批/驳回，避免与并发审批互相覆盖推进
-    const [lockedInst] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
-    if (!lockedInst || lockedInst.status !== 'running') {
-      throw new HTTPException(409, { message: '流程实例状态已变化，请刷新后重试' });
-    }
+    await lockInstanceExpecting(tx, inst.id, 'running', '流程实例状态已变化，请刷新后重试');
     // 当前任务 → rejected（乐观并发保护：状态变更则中止，防止并发重复驳回）
     const [rejectedTask] = await tx.update(workflowTasks)
       .set({ status: 'rejected', comment, attachments: attachments ?? null, actionAt: new Date() })

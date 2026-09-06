@@ -7,7 +7,7 @@ import { HTTPException } from 'hono/http-exception';
 import { buildStarterContext } from '../workflow-assignee-resolver.service';
 import { mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, checkNodeCompletion } from './materialize';
-import { emitInstanceEvent, emitNodeEvent, emitTaskEvent } from './shared';
+import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, lockInstanceExpecting } from './shared';
 import { assertActionButtonEnabled, assertActionUploadRequirement, getOwnPendingTask, rejectTaskCore } from './task-actions';
 import type { WorkflowTaskAttachment } from './task-actions';
 import { WORKFLOW_RETURN_TO_INITIATOR_KEY } from '@zenith/shared/workflow';
@@ -38,11 +38,7 @@ export async function transferTask(taskId: number, targetUserId: number, comment
   const transferComment = `[转办] 由 ${actor.name ?? '系统'} 转办${transferSuffix}`;
   // 事务 + 实例行级锁：任务改派、转办留痕与事件 outbox 原子提交，并与同实例的审批/加减签等并发操作串行化
   const updated = await db.transaction(async (tx) => {
-    const [lockedInst] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
-    if (!lockedInst || lockedInst.status !== 'running') {
-      throw new HTTPException(409, { message: '流程实例状态已变化，无法转办' });
-    }
+    await lockInstanceExpecting(tx, inst.id, 'running', '流程实例状态已变化，无法转办');
     // 目标人已在本节点同轮持有活动任务时给出友好 409（否则撞 wf_tasks_active_uniq 唯一索引）
     await assertAssigneesNotActiveOnNode(tx, {
       instanceId: inst.id, nodeKey: task.nodeKey, activationId: task.activationId,
@@ -130,11 +126,7 @@ export async function delegateTask(taskId: number, targetUserId: number, comment
   const delegatedFromId = task.delegatedFromId ?? task.assigneeId ?? null;
   // 事务 + 实例行级锁：与转办一致，保证改派、留痕与事件 outbox 原子提交
   const updated = await db.transaction(async (tx) => {
-    const [lockedInst] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
-    if (!lockedInst || lockedInst.status !== 'running') {
-      throw new HTTPException(409, { message: '流程实例状态已变化，无法委派' });
-    }
+    await lockInstanceExpecting(tx, inst.id, 'running', '流程实例状态已变化，无法委派');
     // 委派人已在本节点同轮持有活动任务时给出友好 409（否则撞 wf_tasks_active_uniq 唯一索引）
     await assertAssigneesNotActiveOnNode(tx, {
       instanceId: inst.id, nodeKey: task.nodeKey, activationId: task.activationId,
@@ -192,11 +184,7 @@ export async function addSignTask(
 
   const created = await db.transaction(async (tx) => {
     // 实例行级锁 + 锁内重校验：避免与并发审批（节点已完成/任务被跳过）竞态产生悬挂加签任务
-    const [lockedInst] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
-    if (!lockedInst || lockedInst.status !== 'running') {
-      throw new HTTPException(409, { message: '流程状态已变化，无法加签' });
-    }
+    await lockInstanceExpecting(tx, inst.id, 'running', '流程状态已变化，无法加签');
     const [freshTask] = await tx.select({ status: workflowTasks.status })
       .from(workflowTasks).where(eq(workflowTasks.id, task.id)).limit(1);
     if (!freshTask || freshTask.status !== 'pending') {
@@ -279,11 +267,7 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
 
   const result = await db.transaction(async (tx) => {
     // 实例行级锁：序列化与并发审批/驳回，确保减签后的节点完成判定与推进原子一致
-    const [lockedInst] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
-    if (!lockedInst || lockedInst.status !== 'running') {
-      throw new HTTPException(409, { message: '流程状态已变化，无法减签' });
-    }
+    await lockInstanceExpecting(tx, inst.id, 'running', '流程状态已变化，无法减签');
     const updated = await tx.update(workflowTasks).set({
       status: 'skipped',
       actionAt: new Date(),

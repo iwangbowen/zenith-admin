@@ -1,11 +1,30 @@
 // ─── 工作流事件发射与流水号上下文（拆分自 workflow-instances.service.ts）───
+import { eq } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import type { WorkflowTask as WorkflowTaskDto, WorkflowCustomFormConfig, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormType, WorkflowSerialNoConfig } from '@zenith/shared/workflow';
 import { currentUserOrNull, currentUserDetail } from '../../../lib/context';
 import type { DbExecutor } from '../../../db/types';
-import type { WorkflowDefinitionRow } from '../../../db/schema';
+import { workflowInstances, type WorkflowDefinitionRow } from '../../../db/schema';
 import { workflowEventBus } from '../../../lib/workflow-event-bus';
 import { type SerialNoGenContext } from '../workflow-serial.service';
 import { mapInstance } from './mapping';
+
+/**
+ * 事务内对实例加行级锁并在锁内重校验状态：把同一实例上的并发审批 / 推进 / 管理操作串行化，
+ * 避免状态互相覆盖或残留任务。状态与预期不符时抛 409，文案由调用方按操作给出。
+ */
+export async function lockInstanceExpecting(
+  tx: DbExecutor,
+  instanceId: number,
+  expectedStatus: typeof workflowInstances.$inferSelect['status'],
+  conflictMessage: string,
+): Promise<void> {
+  const [locked] = await tx.select({ status: workflowInstances.status })
+    .from(workflowInstances).where(eq(workflowInstances.id, instanceId)).for('update').limit(1);
+  if (!locked || locked.status !== expectedStatus) {
+    throw new HTTPException(409, { message: conflictMessage });
+  }
+}
 
 /**
  * 定义行 → 实例定义快照（发起 / 提交草稿 / 子流程 / 版本迁移共用）。

@@ -14,7 +14,7 @@ import { mapInstance, mapTask } from './mapping';
 import { recordTaskTransfer, assertAssigneesNotActiveOnNode } from './transfers';
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
 import { getInstanceDetail } from './queries';
-import { emitInstanceEvent, emitNodeEvent, emitTaskEvent } from './shared';
+import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, lockInstanceExpecting } from './shared';
 import { requireRow } from '../../../lib/db-assert';
 
 /** 强制跳转：终止当前活动任务，直接推进到指定审批/办理节点 */
@@ -38,11 +38,7 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   const starter = await buildStarterContext(inst.initiatorId);
   const note = `[管理员强制跳转至「${targetNode.data.label}」]${comment ? ' ' + comment : ''}`;
   const instance = await db.transaction(async (tx) => {
-    const [locked] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(eq(workflowInstances.id, id)).for('update').limit(1);
-    if (!locked || locked.status !== 'running') {
-      throw new HTTPException(409, { message: '流程状态已变化，无法跳转' });
-    }
+    await lockInstanceExpecting(tx, id, 'running', '流程状态已变化，无法跳转');
     await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
       .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])));
     await killInstanceTokens(tx, id);
@@ -84,11 +80,7 @@ export async function suspendInstance(id: number, reason: string) {
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可挂起' });
 
   const instance = await db.transaction(async (tx) => {
-    const [locked] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(eq(workflowInstances.id, id)).for('update').limit(1);
-    if (!locked || locked.status !== 'running') {
-      throw new HTTPException(409, { message: '流程状态已变化，无法挂起' });
-    }
+    await lockInstanceExpecting(tx, id, 'running', '流程状态已变化，无法挂起');
     const now = new Date();
     // 冻结计时作业：payload 记录剩余时长，runAt 推远期（暂停计时而非恢复即超时）
     const jobs = await tx.select({ id: workflowJobs.id, runAt: workflowJobs.runAt, payload: workflowJobs.payload })
@@ -124,11 +116,7 @@ export async function resumeInstance(id: number) {
   if (inst.status !== 'suspended') throw new HTTPException(400, { message: '仅已挂起的流程可恢复' });
 
   const { instance, restoredJobs } = await db.transaction(async (tx) => {
-    const [locked] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(eq(workflowInstances.id, id)).for('update').limit(1);
-    if (!locked || locked.status !== 'suspended') {
-      throw new HTTPException(409, { message: '流程状态已变化，无法恢复' });
-    }
+    await lockInstanceExpecting(tx, id, 'suspended', '流程状态已变化，无法恢复');
     const now = new Date();
     const jobs = await tx.select({ id: workflowJobs.id, payload: workflowJobs.payload })
       .from(workflowJobs)
@@ -318,8 +306,7 @@ export async function skipStuckToken(tokenId: number, reason?: string) {
   const note = `[运营·跳过卡死 Token #${tokenId}]${reason ? ' ' + reason : ''}`;
 
   const result = await db.transaction(async (tx) => {
-    const [locked] = await tx.select({ status: workflowInstances.status }).from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
-    if (!locked || locked.status !== 'running') throw new HTTPException(409, { message: '实例状态已变化，请刷新后重试' });
+    await lockInstanceExpecting(tx, inst.id, 'running', '实例状态已变化，请刷新后重试');
     await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
       .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, tok.nodeKey), inArray(workflowTasks.status, ['pending', 'waiting'])));
     const formData = (inst.formData ?? {}) as Record<string, unknown>;

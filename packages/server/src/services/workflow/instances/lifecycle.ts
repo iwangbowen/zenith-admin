@@ -21,7 +21,7 @@ import { applyInitiatorSelectedApprovers, hasExecutableEntry, sanitizeFormByStar
 import type { SelectedApproverMap } from './initiator-select';
 import { assertLaunchMatchesFormType, buildInstanceFormSnapshot, mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
-import { buildSerialNoContext, emitInstanceEvent, emitNodeEvent, emitTaskEvent, toDefinitionSnapshot } from './shared';
+import { buildSerialNoContext, emitInstanceEvent, emitNodeEvent, emitTaskEvent, toDefinitionSnapshot, lockInstanceExpecting } from './shared';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { requireRow } from '../../../lib/db-assert';
 
@@ -282,11 +282,7 @@ export async function withdrawInstance(id: number) {
   }
   const { row: updated } = await db.transaction(async (tx) => {
     // 实例行级锁 + 锁内重校验：避免与并发审批推进竞态（撤回时流程正被推进，导致状态互相覆盖或残留任务）
-    const [locked] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(eq(workflowInstances.id, id)).for('update').limit(1);
-    if (!locked || locked.status !== 'running') {
-      throw new HTTPException(409, { message: '流程实例状态已变化，请刷新后重试' });
-    }
+    await lockInstanceExpecting(tx, id, 'running', '流程实例状态已变化，请刷新后重试');
     const cancelled = await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: '[发起人撤回] 流程已撤回，本待办作废' })
       .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])))
       .returning();
