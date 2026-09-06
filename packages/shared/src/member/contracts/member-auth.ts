@@ -51,8 +51,8 @@ export const memberAuthContract = defineContract('/api/member/auth', {
   refresh: op.post('/refresh', { body: memberRefreshTokenSchema, response: memberRefreshResultSchema, summary: '刷新会员令牌', public: true }),
   resetPassword: op.post('/reset-password', { body: memberResetPasswordSchema, summary: '会员重置密码（短信验证码）', public: true }),
   logout: op.post('/logout', { summary: '会员退出登录' }),
-  me: op.get('/me', { response: memberSchema, summary: '获取当前会员' }),
-  updateProfile: op.put('/profile', { body: memberUpdateProfileSchema, response: memberSchema, summary: '修改会员资料' }),
+  me: op.get('/me', { response: memberSchema, summary: '获取当前会员', unmasked: true }),
+  updateProfile: op.put('/profile', { body: memberUpdateProfileSchema, response: memberSchema, summary: '修改会员资料', unmasked: true }),
   changePassword: op.put('/password', { body: memberChangePasswordSchema, summary: '修改会员密码' }),
   deactivate: op.post('/deactivate', { body: memberDeactivateSchema, summary: '自助注销账户（软删除）' }),
 }, { tags: ['MemberAuth'] });

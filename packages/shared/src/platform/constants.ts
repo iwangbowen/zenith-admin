@@ -207,10 +207,15 @@ export const USER_FEEDBACK_STATUS_LABELS: Record<UserFeedbackStatus, string> = {
 };
 
 // ─── 数据脱敏 ─────────────────────────────────────────────────────────────────
+// 脱敏类型枚举与原语定义在 core/sensitive.ts（契约声明 `sensitive()` 需要它，且不能反向依赖 platform）
 
-export const MASK_TYPES = ['phone', 'email', 'id_card', 'name', 'bank_card', 'custom'] as const;
+export { MASK_TYPES, MASK_TYPE_LABELS, MASK_TYPE_OPTIONS, type MaskType } from '../core/sensitive';
 
-export type MaskType = (typeof MASK_TYPES)[number];
+/** 免脱敏权限：拥有者对全部字段直接看到明文（策略可另配更细的豁免权限） */
+export const DATA_MASK_BYPASS_PERMISSION = 'system:data-mask:bypass';
+
+/** 按需查看明文权限：逐次调用 reveal 接口并留审计 */
+export const DATA_MASK_REVEAL_PERMISSION = 'system:data-mask:reveal';
 
 export const CRON_JOB_STATUSES = ['enabled', 'disabled'] as const;
 

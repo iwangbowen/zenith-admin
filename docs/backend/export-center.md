@@ -57,11 +57,11 @@
 
 ## 敏感列与数据脱敏
 
-列声明 `sensitive: true` 后，任务会根据用户选择的列计算 `sensitive` 标记。脱敏导出（`masked=true`）执行时预加载数据脱敏中心规则 `getExportMaskRuleMap()`：
+列声明 `sensitive: true` 后，任务会根据用户选择的列计算 `sensitive` 标记。脱敏导出（`masked=true`）执行时预加载数据脱敏中心的生效策略 `getExportMaskRuleMap()`（契约声明 ⊕ 策略覆盖，键为 `Entity.field`）：
 
-- 优先按 `maskEntity` / `maskField` 匹配规则；
-- 未命中时按字段名回退到内置脱敏类型；
-- `raw=true` 跳过脱敏，并使用明文导出留存策略。
+- 列带 `maskKey: 'User.phone'` 时按该契约敏感字段的生效策略打码（类型 / 自定义规则），策略停用即该列不再打码，与页面展示同一口径；
+- 未绑定 `maskKey` 的敏感列按 `sensitive: 'phone'` 这类显式类型打码，或按字段名推断内置类型（推断不出时保留前后各 1 位，不放行明文）；
+- 导出不考虑查看者的豁免权限（文件可能外发，统一打码）；`raw=true` 跳过脱敏，并使用明文导出留存策略。
 
 ## 留存与清理
 
@@ -116,7 +116,7 @@ export const positionsExportDefinition = defineExport({
 定义要点：
 
 - `entity` 是前端传入的稳定编码，例如 `system.positions`、`payment.orders`、`report.dataset`。
-- `columns` 支持 `children`、`enumMap`、`transform`、`sensitive`、`maskEntity`、`maskField`、`style`、`headerStyle`。
+- `columns` 支持 `children`、`enumMap`、`transform`、`sensitive`（`true` 或脱敏类型）、`maskKey`、`style`、`headerStyle`。
 - `streamRows` 可返回数组、同步 Iterable 或 async generator；大数据量导出配合 `cursor-stream.ts` 分批产出。
 - `resolveColumns(query, user)` 可按运行时数据生成动态列，适用于报表数据集、表单提交等场景。
 - `execution` 与 `retention` 均为部分覆盖，缺省值来自 `DEFAULT_EXPORT_EXECUTION` / `DEFAULT_EXPORT_RETENTION`。

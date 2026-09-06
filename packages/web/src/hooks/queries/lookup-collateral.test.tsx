@@ -20,7 +20,7 @@ import {
 const api = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => api) }));
 
-import { useDataMaskList, useSaveDataMask } from './data-mask';
+import { dataMaskKeys, useDataMaskFields, useEffectiveMask, useSaveDataMaskPolicy } from './data-mask';
 import { roleKeys, useAllRoles } from './roles';
 import {
   fileStorageConfigKeys,
@@ -47,8 +47,9 @@ beforeEach(() => {
   api.reset();
   api
     .on('GET', '/api/roles/all', [{ id: 1, code: 'admin', name: '管理员' }])
-    .on('GET', '/api/data-mask-configs', { list: [], total: 0, page: 1, pageSize: 10 })
-    .on('POST', '/api/data-mask-configs', { id: 1 })
+    .on('GET', '/api/data-mask/fields', [])
+    .on('GET', '/api/data-mask/effective', { masked: ['User.phone'], canReveal: false })
+    .on('PUT', /\/api\/data-mask\/fields\//, { key: 'User.phone', entity: 'User', field: 'phone', label: '手机号', kind: 'phone', maskType: 'phone', customRule: null, exemptPermissions: [], enabled: true, remark: null, overridden: true, policyId: 1, preview: '138****1234', updatedAt: null })
     .on('GET', '/api/file-storage-configs', { list: [], total: 0, page: 1, pageSize: 10 })
     .on('POST', '/api/file-storage-configs', { id: 1 })
     .on('GET', /\/api\/files\/browse/, { entries: [] })
@@ -66,24 +67,30 @@ beforeEach(() => {
     .on('POST', '/api/ai/user-configs', { id: 1 });
 });
 
-describe('data-mask：角色下拉源归还 roles 域', () => {
-  it('does not refetch the role lookup when a mask config is saved', async () => {
+describe('data-mask：保存策略只刷新本域的字段清单与生效视图', () => {
+  it('refetches fields + effective and leaves the role lookup untouched', async () => {
     const qc = createTestQueryClient();
     const { result } = renderHook(
-      () => ({ list: useDataMaskList(LIST_PARAMS), roles: useAllRoles(), save: useSaveDataMask() }),
+      () => ({ fields: useDataMaskFields({}), effective: useEffectiveMask(), roles: useAllRoles(), save: useSaveDataMaskPolicy() }),
       { wrapper: createWrapper(qc) },
     );
     await waitFor(() => {
-      expect(result.current.list.isSuccess).toBe(true);
+      expect(result.current.fields.isSuccess).toBe(true);
+      expect(result.current.effective.isSuccess).toBe(true);
       expect(result.current.roles.isSuccess).toBe(true);
     });
 
     api.resetCalls();
-    await result.current.save.mutateAsync({ values: { entity: 'users', field: 'phone', label: '手机号' } });
-    await waitFor(() => expect(result.current.list.isFetching).toBe(false));
+    const fetches = observeFetches(qc);
+    await result.current.save.mutateAsync({ params: { entity: 'User', field: 'phone' }, body: { exemptPermissions: [], enabled: true } });
+    await waitFor(() => {
+      expect(fetches.countOf(dataMaskKeys.fields)).toBe(1);
+      expect(fetches.countOf(dataMaskKeys.effective)).toBe(1);
+    });
 
     expect(api.countOf('GET', '/api/roles/all')).toBe(0);
     expect(isFresh(qc, roleKeys.allRoles)).toBe(true);
+    fetches.stop();
   });
 });
 

@@ -4,6 +4,7 @@ import { menuContract, type Menu } from '@zenith/shared/identity';
 import { api, useApiMutation } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { authKeys } from './auth';
+import { dataMaskKeys } from './data-mask';
 
 /** 保存载荷：创建入参的部分形态，同一表单同时服务新增与编辑，必填字段由表单 rules 与服务端 schema 保证 */
 export type MenuFormValues = Partial<BodyOf<typeof menuContract.create>>;
@@ -85,4 +86,6 @@ export function useDeleteMenu() {
 export function invalidateCurrentUserAccess(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: menuKeys.userTree });
   void qc.invalidateQueries({ queryKey: authKeys.me });
+  // 豁免 / 查看明文都是权限，权限来源变了脱敏视角随之变化
+  void qc.invalidateQueries({ queryKey: dataMaskKeys.effective });
 }

@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { auditFieldsSchema, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { sensitive } from '../../core/sensitive';
 import { DATA_SCOPES } from '../constants';
 import { assignRoleMenusSchema, assignRoleUsersSchema, createRoleSchema, updateRoleSchema } from '../validation';
 import { memberPreviewOp } from './scope-members';
@@ -33,7 +34,7 @@ export const roleUserSchema = z.object({
   id: z.int(),
   username: z.string(),
   nickname: z.string(),
-  email: z.string().nullable(),
+  email: sensitive(z.string().nullable(), 'email'),
   avatar: z.string().nullable(),
   status: entityStatusSchema,
   createdAt: z.string(),

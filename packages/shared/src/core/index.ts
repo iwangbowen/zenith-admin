@@ -12,6 +12,7 @@ export * from './format';
 export * from './math';
 export * from './json-shape';
 export * from './random';
+export * from './sensitive';
 export * from './text';
 export * from './tree';
 export * from './types';

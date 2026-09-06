@@ -50,6 +50,8 @@ import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-co
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger, confirmDelete, confirmDangerAsync } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
+import { useSensitiveFormFields } from '@/hooks/useSensitiveFormFields';
+import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
 import { abortSubmit } from '@/lib/abort-submit';
 
 interface SearchParams {
@@ -142,6 +144,8 @@ export default function UsersPage() {
   const batchPasswordMutation = useBatchUserPassword();
   const assignRolesMutation = useAssignUserRoles();
   const kickSessionsMutation = useKickUserSessions();
+  // 敏感字段（手机号 / 邮箱）对非豁免用户是掩码：编辑时锁定，提交前剔除未修改的锁定字段
+  const sensitiveFieldsRef = useRef<ReturnType<typeof useSensitiveFormFields<User>> | null>(null);
   const modal = useEditModal<User, UserFormValues, UserSavePayload>({
     entityName: '用户',
     save: saveMutation,
@@ -162,7 +166,9 @@ export default function UsersPage() {
       roleIds: user.roles.map((r) => r.id),
       status: user.status,
     }),
-    beforeSave: (values, { editing }) => {
+    beforeSave: (rawValues, { editing }) => {
+      const control = sensitiveFieldsRef.current;
+      const values = (control ? control.strip(rawValues as unknown as Record<string, unknown>) : rawValues) as UserFormValues;
       const payload: UserSavePayload = {
         ...values,
         email: values.email ?? undefined,
@@ -172,6 +178,9 @@ export default function UsersPage() {
         positionIds: values.positionIds ?? [],
         roleIds: values.roleIds ?? [],
       };
+      // 被剔除的锁定字段不出现在载荷里（服务端只更新提交了的字段）
+      if (!('email' in values)) delete payload.email;
+      if (!('phone' in values)) delete payload.phone;
 
       if (editing && isAdminUser(editing) && values.status === 'disabled') {
         Toast.warning('admin 账号不允许禁用');
@@ -182,6 +191,8 @@ export default function UsersPage() {
     labelWidth: 72,
   });
   const editingUser = modal.editing;
+  const sensitiveFields = useSensitiveFormFields<User>({ entity: 'User', fields: ['email', 'phone'], record: editingUser });
+  sensitiveFieldsRef.current = sensitiveFields;
   const passwordModal = useEditModal<User, ResetPasswordFormValues>({
     save: {
       mutateAsync: async ({ id, values }) => {
@@ -393,14 +404,14 @@ export default function UsersPage() {
     {
       title: '手机号码',
       dataIndex: 'phone',
-      width: 150,
-      render: renderEllipsis,
+      width: 170,
+      render: (v: string | null | undefined, record: User) => <SensitiveText entity="User" id={record.id} field="phone" value={v} />,
     },
     {
       title: '邮箱',
       dataIndex: 'email',
-      width: 220,
-      render: renderEllipsis,
+      width: 240,
+      render: (v: string | null | undefined, record: User) => <SensitiveText entity="User" id={record.id} field="email" value={v} />,
     },
     {
       title: '性别',
@@ -791,7 +802,8 @@ export default function UsersPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Input
+                  <SensitiveFormInput
+                    control={sensitiveFields}
                     field="phone"
                     label="手机号码"
                     placeholder="请输入手机号码"
@@ -835,7 +847,8 @@ export default function UsersPage() {
           )}
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Input
+              <SensitiveFormInput
+                control={sensitiveFields}
                 field="email"
                 label="邮箱"
                 placeholder="请输入邮箱"

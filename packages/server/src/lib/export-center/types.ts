@@ -52,9 +52,17 @@ export interface ExportColumn<TRow extends Record<string, unknown> = Record<stri
   width?: number;
   type?: ExportColumnType;
   enumMap?: Record<string, string>;
-  sensitive?: boolean;
-  maskEntity?: string;
-  maskField?: string;
+  /**
+   * 敏感列：脱敏导出（`masked=true`）时打码。
+   * - `true`：按 `maskKey` 命中数据脱敏中心的生效策略；未绑定时按字段名推断内置类型
+   * - 直接给脱敏类型（`'phone'`）：无策略绑定，固定按该类型打码
+   */
+  sensitive?: boolean | MaskType;
+  /**
+   * 绑定契约敏感字段（`entity.field`，如 `User.phone`）：脱敏导出按数据脱敏中心对该字段的
+   * 生效策略打码（类型 / 自定义规则 / 停用），与页面展示同一口径
+   */
+  maskKey?: string;
   style?: Partial<ExcelJS.Style>;
   headerStyle?: Partial<ExcelJS.Style>;
   transform?: (value: unknown, row: TRow) => unknown;
@@ -83,7 +91,7 @@ export interface ExportLayout<TRow extends Record<string, unknown> = Record<stri
 
 export interface ExportMaskRule {
   maskType: MaskType;
-  customRule: CustomMaskRule | null;
+  customRule?: CustomMaskRule | null;
 }
 
 export interface ExportRuntimeContext<TQuery extends Record<string, unknown> = Record<string, unknown>> {
@@ -101,9 +109,9 @@ export interface ExportRuntimeContext<TQuery extends Record<string, unknown> = R
   createdByName: string | null;
   exportedAt: Date;
   /**
-   * 脱敏导出时预加载的规则映射（key: `entity.field`）。
-   * `masked=true` 时由导出任务执行器注入；敏感列渲染时按 maskEntity/maskField 匹配规则打码，
-   * 未命中规则的敏感列按字段名回退到内置脱敏类型。
+   * 脱敏导出时预加载的规则映射（key: `entity.field`，即契约敏感字段键）。
+   * `masked=true` 时由导出任务执行器注入；敏感列渲染时按 `maskKey` 匹配生效策略打码，
+   * 未绑定策略的敏感列按声明类型或字段名回退到内置脱敏。
    */
   maskRules?: Map<string, ExportMaskRule> | null;
   /** 渲染阶段行数兜底上限（来自执行策略 maxRows）；写入行数超过即中止任务 */

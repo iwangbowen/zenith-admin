@@ -1,5 +1,5 @@
 import { formatDate, formatDateTime } from '../datetime';
-import { applyMask, maskCustom, maskEmail, maskIdCard, maskPhone } from '../masking';
+import { applyMask, type MaskType } from '../masking';
 import type { ExportColumn, ExportRuntimeContext } from './types';
 
 export function formatExportValue<TRow extends Record<string, unknown>>(
@@ -20,18 +20,21 @@ export function formatExportValue<TRow extends Record<string, unknown>>(
   return value;
 }
 
-/** 敏感列在无 DB 规则时的回退脱敏：按字段名匹配内置类型，兜底保留前后各 1 位 */
-function fallbackMask(fieldName: string, value: string): string {
-  if (/phone|mobile/i.test(fieldName)) return maskPhone(value);
-  if (/email/i.test(fieldName)) return maskEmail(value);
-  if (/id_?card/i.test(fieldName)) return maskIdCard(value);
-  return maskCustom(value, { prefixKeep: 1, suffixKeep: 1 });
+/** 敏感列未绑定策略也未声明类型时按字段名推断；无法判断则兜底保留前后各 1 位（不放行明文） */
+function inferMaskType(fieldName: string): MaskType {
+  if (/phone|mobile/i.test(fieldName)) return 'phone';
+  if (/email/i.test(fieldName)) return 'email';
+  if (/id_?card/i.test(fieldName)) return 'id_card';
+  if (/bank/i.test(fieldName)) return 'bank_card';
+  if (/address/i.test(fieldName)) return 'address';
+  return 'custom';
 }
 
 /**
  * 格式化 + 脱敏一体的单元格取值。
- * 脱敏导出（masked）时敏感列统一打码：优先命中数据脱敏中心规则（maskEntity/maskField），
- * 未配置规则的敏感列按字段名回退内置脱敏，确保 raw=false 时绝不输出明文敏感数据。
+ * 脱敏导出（masked）时敏感列统一打码：绑定 `maskKey` 的列按数据脱敏中心对该契约字段的生效策略打码
+ * （策略停用即该列不再视为敏感，与页面口径一致）；未绑定的列按声明类型或字段名回退内置脱敏，
+ * 确保 raw=false 时绝不输出明文敏感数据。
  */
 export function formatExportCell<TRow extends Record<string, unknown>>(
   column: ExportColumn<TRow>,
@@ -41,9 +44,11 @@ export function formatExportCell<TRow extends Record<string, unknown>>(
   const value = formatExportValue(column, row);
   if (ctx.raw || !column.sensitive) return value;
   if (typeof value !== 'string' || value === '') return value;
-  const rule = column.maskEntity && column.maskField
-    ? ctx.maskRules?.get(`${column.maskEntity}.${column.maskField}`)
-    : undefined;
-  if (rule) return applyMask(value, rule.maskType, rule.customRule) ?? value;
-  return fallbackMask(column.maskField ?? column.key ?? '', value);
+  if (column.maskKey && ctx.maskRules) {
+    const rule = ctx.maskRules.get(column.maskKey);
+    // 有策略映射但该字段不在其中 = 策略已停用，按页面口径放行
+    return rule ? applyMask(value, rule.maskType, rule.customRule) : value;
+  }
+  const maskType = typeof column.sensitive === 'string' ? column.sensitive : inferMaskType(column.key ?? '');
+  return applyMask(value, maskType, maskType === 'custom' ? { prefixKeep: 1, suffixKeep: 1 } : null);
 }

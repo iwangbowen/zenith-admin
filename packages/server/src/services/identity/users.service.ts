@@ -22,7 +22,7 @@ import type { AlertRecipientUser, User } from '@zenith/shared/identity';
 import { currentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
-import { applyEntityMasking } from '../platform/data-mask.service';
+import { registerRevealSource } from '../../lib/data-mask/reveal';
 import logger from '../../lib/logger';
 import { userHasPlatformSuperRole } from './role-grant';
 
@@ -162,19 +162,8 @@ export function mapUsers(rows: UserWithRelations[]): User[] {
   return rows.map(mapUser);
 }
 
-/**
- * 带数据脱敏的用户映射。
- * viewerRoleCodes 传空数组时，所有字段均脱敏（最严格）。
- * 超管角色 ('super_admin') 通常配置在豁免列表中，无需特殊处理。
- */
-export async function mapUserWithMask(row: UserWithRelations, viewerRoleCodes: string[]): Promise<User> {
-  const base = mapUser(row);
-  return applyEntityMasking('user', base as unknown as Record<string, unknown>, viewerRoleCodes) as unknown as User;
-}
-
-export async function mapUsersWithMask(rows: UserWithRelations[], viewerRoleCodes: string[]): Promise<User[]> {
-  return Promise.all(rows.map((r) => mapUserWithMask(r, viewerRoleCodes)));
-}
+// 脱敏不再在 service 内手工调用：契约路由出口按 `User` 实体的敏感字段声明与策略统一打码
+// （lib/data-mask/boundary.ts），列表 / 详情 / 写接口响应因此口径一致。
 
 // ─── 关联关系设置 ─────────────────────────────────────────────────────────────
 
@@ -231,15 +220,11 @@ export async function ensurePositionIdsExist(positionIds: number[], user?: JwtPa
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
 
-function viewerRoleCodes(): string[] {
-  try { return currentUser().roles ?? []; } catch { return []; }
-}
-
 export async function listAllUsers() {
   // 与分页列表同一口径：租户隔离 + 数据范围（防止 self/dept 范围用户经 /all 绕过拿全租户名单）
   const cond = await manageableUsersCondition();
   const rawList = await findUsersWithRelations({ where: cond, orderBy: users.id });
-  return mapUsersWithMask(rawList, viewerRoleCodes());
+  return mapUsers(rawList);
 }
 
 export async function listAlertRecipientUsers(): Promise<AlertRecipientUser[]> {
@@ -299,7 +284,7 @@ export async function listUsers(q: ListUsersQuery) {
   const lockMap = await batchCheckLoginLock(rawList.map((u) => u.username));
   const onlineSessions = await getOnlineSessions();
   const onlineUserIds = new Set(onlineSessions.map((s) => s.userId));
-  const mapped = await mapUsersWithMask(rawList, viewerRoleCodes());
+  const mapped = mapUsers(rawList);
   const list = mapped.map((u) => ({ ...u, isLocked: (lockMap.get(u.username) ?? 0) > 0, isOnline: onlineUserIds.has(u.id) }));
   return { list, total: Number(total), page, pageSize };
 }
@@ -415,8 +400,11 @@ export async function getUser(id: number) {
   const cond = await manageableUsersCondition();
   const full = await findUserWithRelations({ where: cond ? and(eq(users.id, id), cond) : eq(users.id, id) });
   if (!full) throw new HTTPException(404, { message: '用户不存在' });
-  return mapUserWithMask(full, viewerRoleCodes());
+  return mapUser(full);
 }
+
+// 按需查看明文：复用 getUser 的租户 / 数据范围口径，不可见即 404，不会成为越权读取通道
+registerRevealSource('User', (id) => getUser(id) as Promise<Record<string, unknown>>);
 
 export async function getUserBeforeAudit(id: number) {
   const user = currentUser();

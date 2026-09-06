@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Modal, Form, Toast, Row, Col, Spin, Switch, SideSheet, Descriptions, Tag, Divider } from '@douyinfe/semi-ui';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import type { CreateTenantInput, Tenant } from '@zenith/shared/identity';
@@ -8,6 +8,8 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
+import { useSensitiveFormFields } from '@/hooks/useSensitiveFormFields';
+import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -63,26 +65,36 @@ export default function TenantsPage() {
   const total = listQuery.data?.total ?? 0;
 
   const saveMutation = useSaveTenant();
+  // 联系电话是契约敏感字段：对非豁免用户是掩码，编辑时锁定、未修改则不提交
+  const sensitiveFieldsRef = useRef<ReturnType<typeof useSensitiveFormFields<Tenant>> | null>(null);
   const tenantModal = useEditModal<Tenant, TenantFormValues, Partial<CreateTenantInput>>({
     entityName: '租户',
     save: saveMutation,
     useDetail: useTenantDetail,
     defaults: { status: 'enabled' },
-    beforeSave: (values) => ({
-      ...values,
-      contactName: values.contactName ?? undefined,
-      contactPhone: values.contactPhone ?? undefined,
-      logo: values.logo ?? undefined,
-      remark: values.remark ?? undefined,
-      expireAt: values.expireAt ? formatDateTimeForApi(values.expireAt) : null,
-      packageId: values.packageId ?? null,
-    }),
+    beforeSave: (rawValues) => {
+      const control = sensitiveFieldsRef.current;
+      const values = (control ? control.strip(rawValues as unknown as Record<string, unknown>) : rawValues) as TenantFormValues;
+      const payload: Partial<CreateTenantInput> = {
+        ...values,
+        contactName: values.contactName ?? undefined,
+        contactPhone: values.contactPhone ?? undefined,
+        logo: values.logo ?? undefined,
+        remark: values.remark ?? undefined,
+        expireAt: values.expireAt ? formatDateTimeForApi(values.expireAt) : null,
+        packageId: values.packageId ?? null,
+      };
+      if (!('contactPhone' in values)) delete payload.contactPhone;
+      return payload;
+    },
     onSaved: (saved, { isEdit }) => {
       // 初始密码仅此一次可见，必须在保存成功后立刻展示
       if (!isEdit && saved?.initialAdmin) showInitialAdminModal(saved.name, saved.initialAdmin);
     },
   });
   const editingTenant = tenantModal.editing;
+  const sensitiveFields = useSensitiveFormFields<Tenant>({ entity: 'Tenant', fields: ['contactPhone'], record: editingTenant });
+  sensitiveFieldsRef.current = sensitiveFields;
 
   const packageOptionsQuery = useAllTenantPackages();
   const packageOptions = (packageOptionsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name }));
@@ -161,7 +173,7 @@ export default function TenantsPage() {
     { title: '租户名称', dataIndex: 'name', minWidth: 160, render: renderEllipsis },
     { title: '租户编码', dataIndex: 'code', width: 140, render: renderEllipsis },
     { title: '联系人', dataIndex: 'contactName', width: 120, render: renderEllipsis },
-    { title: '联系电话', dataIndex: 'contactPhone', width: 140, render: renderEllipsis },
+    { title: '联系电话', dataIndex: 'contactPhone', width: 160, render: (v: string | null | undefined, record: Tenant) => <SensitiveText entity="Tenant" id={record.id} field="contactPhone" value={v} /> },
     { title: '用户数', dataIndex: 'userCount', width: 150, align: 'right', render: (v: number | undefined, record: Tenant) => {
         const used = v ?? 0;
         const max = record.maxUsers;
@@ -326,7 +338,7 @@ export default function TenantsPage() {
               <Form.Input field="contactName" label="联系人" placeholder="请输入联系人" />
             </Col>
             <Col span={12}>
-              <Form.Input field="contactPhone" label="联系电话" placeholder="请输入联系电话" />
+              <SensitiveFormInput control={sensitiveFields} field="contactPhone" label="联系电话" placeholder="请输入联系电话" />
             </Col>
           </Row>
           <Row gutter={16}>

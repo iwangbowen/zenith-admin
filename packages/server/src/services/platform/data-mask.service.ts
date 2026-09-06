@@ -1,245 +1,137 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { DataMaskEffective, DataMaskField, SaveDataMaskPolicyInput } from '@zenith/shared/platform';
+import { DATA_MASK_REVEAL_PERMISSION } from '@zenith/shared/platform';
+import type { MaskDecision } from '@zenith/shared/core';
 import { db } from '../../db';
-import { dataMaskConfigs } from '../../db/schema';
+import { dataMaskPolicies } from '../../db/schema';
+import { hasPermission } from '../../lib/context';
+import { getPolicyMap, invalidatePolicyCache, resolveEffectivePolicy, resolveEnabledRules, resolveMaskDecisions, type EffectiveMaskPolicy } from '../../lib/data-mask/policies';
+import { findSensitiveFieldEntry, listSensitiveFieldEntries, type SensitiveFieldEntry } from '../../lib/data-mask/registry';
+import { loadRevealValue } from '../../lib/data-mask/reveal';
 import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { applyMask } from '../../lib/masking';
-import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
-import type { DataMaskConfigRow } from '../../db/schema';
-import type { DataMaskConfig, CustomMaskRule, MaskType, CreateDataMaskConfigInput, UpdateDataMaskConfigInput, SensitiveField } from '@zenith/shared/platform';
-
-// ─── 内存缓存（TTL 5 分钟）───────────────────────────────────────────────────
-
-let cachedRules: DataMaskConfigRow[] | null = null;
-let cacheExpiry = 0;
-
-async function getActiveRules(): Promise<DataMaskConfigRow[]> {
-  if (cachedRules && Date.now() < cacheExpiry) return cachedRules;
-  cachedRules = await db.select().from(dataMaskConfigs).where(eq(dataMaskConfigs.enabled, true));
-  cacheExpiry = Date.now() + 5 * 60 * 1000;
-  return cachedRules;
-}
-
-export function invalidateMaskCache(): void {
-  cachedRules = null;
-}
 
 /**
- * 供导出中心使用：全部启用规则的 `entity.field` → 脱敏规则映射。
- * 不应用 exemptRoleCodes 豁免——脱敏导出所见即所得（文件可能外发，统一打码）。
+ * 数据脱敏策略中心。
+ *
+ * 敏感字段来自契约注册表（`lib/data-mask/registry`），策略表只保存覆盖记录；
+ * 打码本身发生在契约路由出口（`lib/data-mask/boundary`），本模块负责策略的读写、
+ * 当前用户视角的生效视图与按需查看明文。
  */
-export async function getExportMaskRuleMap(): Promise<Map<string, { maskType: MaskType; customRule: CustomMaskRule | null }>> {
-  const rules = await getActiveRules();
-  return new Map(rules.map((r) => [
-    `${r.entity}.${r.field}`,
-    { maskType: r.maskType as MaskType, customRule: (r.customRule as CustomMaskRule) ?? null },
-  ]));
-}
 
 // ─── 映射 ─────────────────────────────────────────────────────────────────────
 
-export function mapDataMaskConfig(row: DataMaskConfigRow): DataMaskConfig {
+function mapField(effective: EffectiveMaskPolicy): DataMaskField {
   return {
-    id:              row.id,
-    entity:          row.entity,
-    field:           row.field,
-    label:           row.label,
-    maskType:        row.maskType as MaskType,
-    customRule:      (row.customRule as CustomMaskRule) ?? null,
-    exemptRoleCodes: (row.exemptRoleCodes as string[]) ?? [],
-    enabled:         row.enabled,
-    remark:          row.remark ?? null,
-    createdAt:       formatDateTime(row.createdAt),
-    updatedAt:       formatDateTime(row.updatedAt),
+    key: effective.key,
+    entity: effective.entity,
+    field: effective.field,
+    label: effective.label,
+    kind: effective.kind,
+    maskType: effective.maskType,
+    customRule: effective.customRule,
+    exemptPermissions: [...effective.exemptPermissions],
+    enabled: effective.enabled,
+    remark: effective.remark,
+    overridden: effective.overridden,
+    policyId: effective.policyId,
+    preview: effective.preview,
+    updatedAt: effective.updatedAt ? formatDateTime(effective.updatedAt) : null,
   };
 }
 
-// ─── CRUD ─────────────────────────────────────────────────────────────────────
-
-export async function listDataMaskConfigs(query: { page?: number; pageSize?: number; keyword?: string; maskType?: MaskType; enabled?: boolean } = {}) {
-  const { page = 1, pageSize = 20, keyword, maskType, enabled } = query;
-  const conditions = [];
-  conditions.push(keywordCondition(keyword, [dataMaskConfigs.entity, dataMaskConfigs.field, dataMaskConfigs.label], 'ilike'));
-  if (maskType) conditions.push(eq(dataMaskConfigs.maskType, maskType));
-  if (enabled !== undefined) conditions.push(eq(dataMaskConfigs.enabled, enabled));
-  const where = buildWhere(...conditions);
-  const [total, rows] = await Promise.all([
-    db.$count(dataMaskConfigs, where),
-    withPagination(
-      db.select().from(dataMaskConfigs).where(where).orderBy(dataMaskConfigs.entity, dataMaskConfigs.field).$dynamic(),
-      page, pageSize,
-    ),
-  ]);
-  return { list: rows.map(mapDataMaskConfig), total, page, pageSize };
+function requireEntry(entity: string, field: string): SensitiveFieldEntry {
+  const entry = findSensitiveFieldEntry(entity, field);
+  if (!entry) throw new HTTPException(404, { message: `契约中不存在敏感字段 ${entity}.${field}` });
+  return entry;
 }
 
-export async function getDataMaskConfig(id: number): Promise<DataMaskConfig> {
-  const [row] = await db.select().from(dataMaskConfigs).where(eq(dataMaskConfigs.id, id)).limit(1);
-  if (!row) throw new HTTPException(404, { message: '脱敏规则不存在' });
-  return mapDataMaskConfig(row);
+async function fieldView(entry: SensitiveFieldEntry): Promise<DataMaskField> {
+  const map = await getPolicyMap();
+  return mapField(resolveEffectivePolicy(entry, map.get(entry.key)));
 }
 
-export async function createDataMaskConfig(input: CreateDataMaskConfigInput): Promise<DataMaskConfig> {
-  try {
-    const [row] = await db.insert(dataMaskConfigs).values({
-      entity:          input.entity,
-      field:           input.field,
-      label:           input.label,
-      maskType:        input.maskType,
-      customRule:      input.customRule ?? null,
-      exemptRoleCodes: input.exemptRoleCodes,
-      enabled:         input.enabled,
-      remark:          input.remark ?? null,
-    }).returning();
-    invalidateMaskCache();
-    return mapDataMaskConfig(row);
-  } catch (err) {
-    rethrowPgUniqueViolation(err, `实体 ${input.entity} 的字段 ${input.field} 脱敏规则已存在`);
-    throw err;
-  }
+// ─── 查询 ─────────────────────────────────────────────────────────────────────
+
+export interface ListDataMaskFieldsQuery {
+  keyword?: string;
+  entity?: string;
+  maskType?: string;
+  enabled?: boolean;
+  overridden?: boolean;
 }
 
-export async function updateDataMaskConfig(id: number, input: UpdateDataMaskConfigInput): Promise<DataMaskConfig> {
-  const [row] = await db.update(dataMaskConfigs)
-    .set({
-      ...(input.entity          !== undefined && { entity:          input.entity }),
-      ...(input.field           !== undefined && { field:           input.field }),
-      ...(input.label           !== undefined && { label:           input.label }),
-      ...(input.maskType        !== undefined && { maskType:        input.maskType }),
-      ...(input.customRule      !== undefined && { customRule:      input.customRule }),
-      ...(input.exemptRoleCodes !== undefined && { exemptRoleCodes: input.exemptRoleCodes }),
-      ...(input.enabled         !== undefined && { enabled:         input.enabled }),
-      ...(input.remark          !== undefined && { remark:          input.remark }),
-    })
-    .where(eq(dataMaskConfigs.id, id))
-    .returning();
-  if (!row) throw new Error('规则不存在');
-  invalidateMaskCache();
-  return mapDataMaskConfig(row);
-}
-
-export async function deleteDataMaskConfig(id: number): Promise<void> {
-  await db.delete(dataMaskConfigs).where(eq(dataMaskConfigs.id, id));
-  invalidateMaskCache();
-}
-
-// ─── 脱敏应用 ─────────────────────────────────────────────────────────────────
-
-/**
- * 对目标实体的某个对象应用数据脱敏。
- * @param entity    实体名称，如 'user'
- * @param obj       需要脱敏的对象（会克隆，不修改原对象）
- * @param viewerRoleCodes  当前查看者的角色 code 列表
- */
-export async function applyEntityMasking<T extends Record<string, unknown>>(
-  entity: string,
-  obj: T,
-  viewerRoleCodes: string[],
-): Promise<T> {
-  const rules = await getActiveRules();
-  const entityRules = rules.filter((r) => r.entity === entity);
-  if (entityRules.length === 0) return obj;
-
-  const result = { ...obj };
-  for (const rule of entityRules) {
-    const exempt = (rule.exemptRoleCodes as string[]) ?? [];
-    const isBypassed = viewerRoleCodes.some((code) => exempt.includes(code));
-    if (isBypassed) continue;
-
-    const raw = result[rule.field];
-    if (typeof raw !== 'string') continue;
-    (result as Record<string, unknown>)[rule.field] = applyMask(raw, rule.maskType as MaskType, rule.customRule as CustomMaskRule | null) as unknown;
-  }
-  return result;
-}
-
-// ─── 扫描敏感字段 ──────────────────────────────────────────────────────────────
-
-const SENSITIVE_PATTERNS: Array<{ test: (col: string) => boolean; maskType: MaskType; label: string }> = [
-  { test: (c) => /phone|mobile|cellphone|phoneno|phone_no/i.test(c),                                                 maskType: 'phone',     label: '手机号' },
-  { test: (c) => /email|emailaddr/i.test(c),                                                                          maskType: 'email',     label: '邮箱' },
-  { test: (c) => /id_card|idcard|idno|id_no|idnumber|id_number|certno|cert_no|identity|cert_num|certnum/i.test(c),   maskType: 'id_card',   label: '身份证号' },
-  { test: (c) => /bank|bankcard|bank_card|bankno|bank_no|cardno|card_no/i.test(c),                                   maskType: 'bank_card', label: '银行卡号' },
-  { test: (c) => /real_name|realname|full_name|fullname|truename|true_name|chinesename/i.test(c),                     maskType: 'name',      label: '姓名' },
-];
-
-export async function scanSensitiveFields(): Promise<SensitiveField[]> {
-  const [columnRows, existingRules] = await Promise.all([
-    db.execute(sql`
-      SELECT table_name, column_name, data_type
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND (
-          column_name ILIKE '%phone%'       OR column_name ILIKE '%mobile%'      OR
-          column_name ILIKE '%cellphone%'   OR column_name ILIKE '%phoneno%'     OR
-          column_name ILIKE '%phone_no%'    OR
-          column_name ILIKE '%email%'       OR
-          column_name ILIKE '%id_card%'     OR column_name ILIKE '%idcard%'      OR
-          column_name ILIKE '%idno%'        OR column_name ILIKE '%id_no%'       OR
-          column_name ILIKE '%idnumber%'    OR column_name ILIKE '%id_number%'   OR
-          column_name ILIKE '%certno%'      OR column_name ILIKE '%cert_no%'     OR
-          column_name ILIKE '%certnum%'     OR column_name ILIKE '%identity%'    OR
-          column_name ILIKE '%bank%'        OR column_name ILIKE '%bankcard%'    OR
-          column_name ILIKE '%bank_card%'   OR column_name ILIKE '%bankno%'      OR
-          column_name ILIKE '%bank_no%'     OR column_name ILIKE '%cardno%'      OR
-          column_name ILIKE '%card_no%'     OR
-          column_name ILIKE '%real_name%'   OR column_name ILIKE '%realname%'    OR
-          column_name ILIKE '%full_name%'   OR column_name ILIKE '%fullname%'    OR
-          column_name ILIKE '%truename%'    OR column_name ILIKE '%true_name%'   OR
-          column_name ILIKE '%chinesename%'
-        )
-      ORDER BY table_name, column_name
-    `),
-    db.select({ entity: dataMaskConfigs.entity, field: dataMaskConfigs.field }).from(dataMaskConfigs),
-  ]);
-
-  const existingSet = new Set(existingRules.map((r) => `${r.entity}:${r.field}`));
-
-  return (columnRows as unknown as Array<{ table_name: string; column_name: string; data_type: string }>)
-    .map((row) => {
-      const pattern = SENSITIVE_PATTERNS.find((p) => p.test(row.column_name));
-      return {
-        tableName:         row.table_name,
-        columnName:        row.column_name,
-        dataType:          row.data_type,
-        suggestedMaskType: pattern?.maskType ?? 'custom',
-        suggestedLabel:    pattern?.label ?? row.column_name,
-        hasRule:           existingSet.has(`${row.table_name}:${row.column_name}`),
-      };
+export async function listDataMaskFields(query: ListDataMaskFieldsQuery = {}): Promise<DataMaskField[]> {
+  const map = await getPolicyMap();
+  const keyword = query.keyword?.trim().toLowerCase();
+  return listSensitiveFieldEntries()
+    .map((entry) => mapField(resolveEffectivePolicy(entry, map.get(entry.key))))
+    .filter((item) => {
+      if (keyword && ![item.entity, item.field, item.label, item.key].some((v) => v.toLowerCase().includes(keyword))) return false;
+      if (query.entity && item.entity !== query.entity) return false;
+      if (query.maskType && item.maskType !== query.maskType) return false;
+      if (query.enabled !== undefined && item.enabled !== query.enabled) return false;
+      if (query.overridden !== undefined && item.overridden !== query.overridden) return false;
+      return true;
     });
 }
 
-// ─── 批量创建 ──────────────────────────────────────────────────────────────────
+/** 当前登录用户视角：会被打码的字段键 + 是否可按需查看明文 */
+export async function getEffectiveMaskForViewer(): Promise<DataMaskEffective> {
+  const entries = listSensitiveFieldEntries();
+  const [decisions, canReveal] = await Promise.all([
+    resolveMaskDecisions(entries.map((entry) => ({ path: [entry.field], entity: entry.entity, field: entry.field, kind: entry.kind, label: entry.label }))),
+    hasPermission(DATA_MASK_REVEAL_PERMISSION),
+  ]);
+  return { masked: decisions.map(({ ref }) => `${ref.entity}.${ref.field}`), canReveal };
+}
 
-export async function batchCreateDataMaskConfigs(
-  items: Array<{ entity: string; field: string; label: string; maskType: string; exemptRoleCodes?: string[]; enabled?: boolean }>,
-): Promise<{ created: number; skipped: number }> {
-  if (items.length === 0) return { created: 0, skipped: 0 };
+// ─── 策略写入 ─────────────────────────────────────────────────────────────────
 
-  const existing = await db
-    .select({ entity: dataMaskConfigs.entity, field: dataMaskConfigs.field })
-    .from(dataMaskConfigs);
-  const existingSet = new Set(existing.map((r) => `${r.entity}:${r.field}`));
-
-  const toInsert = items.filter((item) => !existingSet.has(`${item.entity}:${item.field}`));
-  const skipped = items.length - toInsert.length;
-
-  if (toInsert.length > 0) {
-    await db.insert(dataMaskConfigs).values(
-      toInsert.map((item) => ({
-        entity:          item.entity,
-        field:           item.field,
-        label:           item.label,
-        maskType:        item.maskType as MaskType,
-        customRule:      null,
-        exemptRoleCodes: item.exemptRoleCodes ?? [],
-        enabled:         item.enabled ?? true,
-        remark:          null,
-      })),
-    );
-    invalidateMaskCache();
+export async function saveDataMaskPolicy(entity: string, field: string, input: SaveDataMaskPolicyInput): Promise<DataMaskField> {
+  const entry = requireEntry(entity, field);
+  const maskType = input.maskType ?? entry.kind;
+  const values = {
+    maskType,
+    customRule: maskType === 'custom' ? (input.customRule ?? null) : null,
+    exemptPermissions: Array.from(new Set(input.exemptPermissions)),
+    enabled: input.enabled,
+    remark: input.remark?.trim() || null,
+  };
+  try {
+    await db.insert(dataMaskPolicies)
+      .values({ entity, field, ...values })
+      .onConflictDoUpdate({ target: [dataMaskPolicies.entity, dataMaskPolicies.field], set: values });
+  } catch (err) {
+    rethrowPgUniqueViolation(err, `字段 ${entity}.${field} 的策略已存在`);
+    throw err;
   }
+  invalidatePolicyCache();
+  return fieldView(entry);
+}
 
-  return { created: toInsert.length, skipped };
+/** 删除覆盖记录，字段回到契约默认策略 */
+export async function resetDataMaskPolicy(entity: string, field: string): Promise<DataMaskField> {
+  const entry = requireEntry(entity, field);
+  await db.delete(dataMaskPolicies).where(and(eq(dataMaskPolicies.entity, entity), eq(dataMaskPolicies.field, field)));
+  invalidatePolicyCache();
+  return fieldView(entry);
+}
+
+// ─── 按需查看明文 ─────────────────────────────────────────────────────────────
+
+export async function revealSensitiveValue(entity: string, id: number, field: string): Promise<{ value: string | null }> {
+  requireEntry(entity, field);
+  return { value: await loadRevealValue(entity, id, field) };
+}
+
+// ─── 导出中心 ─────────────────────────────────────────────────────────────────
+
+/**
+ * 供导出中心使用：全部启用字段的 `entity.field` → 脱敏规则。
+ * 不考虑查看者豁免——脱敏导出所见即所得（文件可能外发，统一打码）。
+ */
+export async function getExportMaskRuleMap(): Promise<Map<string, MaskDecision>> {
+  return resolveEnabledRules(listSensitiveFieldEntries());
 }

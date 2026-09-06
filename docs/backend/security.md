@@ -92,9 +92,36 @@ IP 访问控制由 `packages/server/src/middleware/ip-access.ts` 实现，配置
 
 ## 数据脱敏
 
-数据脱敏规则表为 `data_mask_configs`，接口位于 `/api/data-mask-configs`。支持类型：`phone`、`email`、`id_card`、`name`、`bank_card`、`custom`。
+数据脱敏是**契约驱动、出口强制**的：
 
-`applyEntityMasking(entity, obj, viewerRoleCodes)` 会按实体与字段应用规则，并尊重角色豁免。导出中心使用 `getExportMaskRuleMap()` 读取脱敏规则，导出场景不应用角色豁免。
+- **声明**：敏感字段在 `@zenith/shared` 契约实体上用 `sensitive(z.string(), 'phone')` 标记（`core/sensitive.ts`），
+  这是「哪些字段是 PII」的唯一真相。已声明：`User.email / phone`、`RoleUser.email`、`PositionMember.email`、
+  `UserGroupMember.email`、`Tenant.contactPhone`、`Member.email / phone`、`MemberOption.phone`、`MemberRecharge.memberPhone`、
+  `PaymentDispute.complainantPhone`、`SmsSendLog.phone`、`EmailSendLog.toEmail`。
+- **注册表**：`defineContractRoute` 在路由定义时静态遍历响应 schema（`collectSensitiveFields`），把敏感字段登记进
+  `lib/data-mask/registry.ts`——注册表即「本进程实际对外暴露的敏感字段全集」，不再扫描数据库列名猜测。
+- **策略**：`data_mask_policies` 只保存与契约默认不同的覆盖记录（脱敏类型 / 自定义规则 / 豁免权限 / 停用）；
+  没有记录的字段按契约默认类型脱敏、仅平台超管免脱敏。策略进程内缓存，`data_mask_policies` 表的
+  `notify_cache_invalidate` 触发器经 `invalidation-bus` 让所有实例即时失效。
+- **响应出口**：含敏感字段的 JSON 契约路由由 `lib/data-mask/boundary.ts` 自动包裹：handler 经 `c.json(okBody(...))`
+  出口时按当前查看者的决策沿路径打码（顶层 / 分页 / 嵌套实体统一处理，写时复制不改写 handler 持有的对象）。
+  决策：平台超管明文；策略停用不打码；拥有任一豁免权限（`exemptPermissions`）明文；其余打码。
+  匿名 / 会员端 / 开放 API 请求按最严格口径打码。`unmasked: true` 的自视图端点（`/api/auth/me`、`/api/member/auth/me` 等）除外。
+- **请求入口**：写操作请求体在敏感字段上携带「像脱敏输出」的值（`138****1234`）一律 400——
+  这是非豁免用户把详情回填进表单再原样保存时会发生的事，放行等于把掩码写进数据库。前端配套
+  `useSensitiveFormFields` + `SensitiveFormInput`：被打码的字段在编辑表单中锁定，点「修改」才可输入，未修改不提交。
+- **按需查看明文**：`POST /api/data-mask/reveal`（权限 `system:data-mask:reveal`）按实体登记的加载器
+  （`registerRevealSource`，复用该实体自己的读取函数与可见性口径）返回单个字段明文，逐次写操作日志
+  （记录实体 / 记录 ID / 字段，不记录明文）。前端 `SensitiveText` 提供查看按钮，明文 30 秒后自动恢复掩码。
+- **脱敏原语 fail-closed**：手机号 / 邮箱 / 证件号等格式不符合预期时退回尾部保留策略，不放行明文；
+  `custom` 缺规则用默认规则；类型：`phone`、`email`、`id_card`、`name`、`bank_card`、`address`、`redact`、`custom`。
+- **导出中心**：列声明 `sensitive: true, maskKey: 'User.phone'` 绑定契约字段，脱敏导出按同一生效策略打码
+  （策略停用即不再视为敏感，与页面口径一致）；导出不考虑查看者豁免。
+
+接口位于 `/api/data-mask`：`GET /fields`（注册表 + 生效策略，`system:data-mask:list`）、
+`GET /effective`（当前用户视角：被打码的字段键与是否可查看明文，登录即可）、
+`PUT / DELETE /fields/{entity}/{field}`（保存 / 恢复默认策略，`system:data-mask:update`，多租户模式仅平台管理员）、
+`POST /reveal`。权限 `system:data-mask:bypass` 是推荐配置到策略 `exemptPermissions` 的通用免脱敏权限码。
 
 ## 安全头、CORS、CSRF
 
@@ -117,4 +144,4 @@ IP 访问控制由 `packages/server/src/middleware/ip-access.ts` 实现，配置
 | MFA 因子 | `user_mfa_factors` |
 | 可信设备 | `user_trusted_devices` |
 | 登录风险事件 | `login_risk_events` |
-| 数据脱敏规则 | `data_mask_configs` |
+| 数据脱敏策略 | `data_mask_policies` |

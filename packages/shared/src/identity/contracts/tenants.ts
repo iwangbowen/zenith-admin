@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { sensitive } from '../../core/sensitive';
 import { createTenantSchema, updateTenantSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
@@ -11,7 +12,7 @@ export const tenantSchema = z.object({
   code: z.string().meta({ example: 'demo' }),
   logo: z.string().nullable().optional(),
   contactName: z.string().nullable().optional(),
-  contactPhone: z.string().nullable().optional(),
+  contactPhone: sensitive(z.string().nullable(), 'phone', '联系电话').optional(),
   status: entityStatusSchema,
   expireAt: z.string().nullable().optional(),
   maxUsers: z.int().nullable().optional(),

@@ -252,7 +252,23 @@
 | 树 → 另一种节点形态（如 Semi `TreeNodeData`） | `mapTree(nodes, (node) => ({ ... }))`，children 自动递归 |
 
 - 前端毫秒耗时展示用 `@/utils/format` 的 `formatDurationMs(ms)`；空值统一渲染 `EMPTY_PLACEHOLDER`
-- 服务端手机号脱敏用 `lib/masking.ts` 的 `maskPhone()`；等待用 `node:timers/promises` 的 `setTimeout`
+- 日志 / 文案里的局部脱敏用 `@zenith/shared/core` 的 `maskPhone()` / `maskEmail()`（server 经 `lib/masking.ts` 转发）；
+  等待用 `node:timers/promises` 的 `setTimeout`
+
+### 数据脱敏（PII）
+
+- **敏感字段在契约声明**：手机号 / 邮箱 / 证件号 / 银行卡 / 姓名 / 地址等 PII 字段在契约实体 schema 上写
+  `sensitive(z.string().nullable(), 'phone')`（`@zenith/shared/core`），所在对象**必须**有 `meta.id`（路由定义期抛错兜底）。
+  **禁止**在 service 的 `mapXxx` 里手工调 `maskPhone()` 之类按查看者打码——契约路由出口（`lib/data-mask/boundary.ts`）
+  会对所有声明字段按策略统一打码；只有「当前用户查看自己」的自视图端点才在 `op` 上标 `unmasked: true`
+- **写接口天然受保护**：请求体在敏感字段上携带脱敏值会被出口边界 400。编辑表单中的敏感字段一律用
+  `SensitiveFormInput` + `useSensitiveFormFields`（锁定掩码值、点「修改」再输入、`strip()` 剔除未修改字段），
+  **禁止**把详情回填的掩码值原样提交
+- **表格 / 详情展示**敏感字段用 `components/sensitive` 的 `SensitiveText`（按需查看明文按钮，服务端逐次审计）
+- **需要支持按需查看明文的实体**在 service 里 `registerRevealSource('Entity', (id) => getXxx(id))`，
+  加载器必须复用该实体自己的读取函数（携带租户 / 数据范围校验）
+- **导出列**绑定契约字段：`{ key, sensitive: true, maskKey: 'User.phone' }`，**禁止**再写 `maskEntity` / `maskField` 或在导出定义里手工打码
+- 策略只保存覆盖记录（`data_mask_policies`），**禁止**为脱敏另建规则表、扫描数据库列名或按角色 code 豁免（豁免只认权限码）
 
 ### 分页格式
 

@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { dateRangeBound, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { sensitive } from '../../core/sensitive';
 import {
   PAYMENT_CHANNELS,
   PAYMENT_DISPUTE_REPLY_AUTHORS,
@@ -26,7 +27,7 @@ export const paymentDisputeSchema = z.object({
   channel: z.enum(PAYMENT_CHANNELS),
   orderNo: z.string(),
   complainant: z.string().nullable().optional(),
-  complainantPhone: z.string().nullable().optional(),
+  complainantPhone: sensitive(z.string().nullable(), 'phone', '投诉人手机号').optional(),
   type: z.enum(PAYMENT_DISPUTE_TYPES),
   content: z.string(),
   amount: z.int().meta({ description: '涉诉金额（分）' }),

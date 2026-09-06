@@ -1,4 +1,4 @@
-import type { CronJob, DataMaskConfig, Dict, DictItem, Tag, UserFeedback } from '../platform/contracts';
+import type { CronJob, DataMaskPolicy, Dict, DictItem, Tag, UserFeedback } from '../platform/contracts';
 import type { MonitorAlertLevel, MonitorAlertOperator, MonitorMetric } from '../platform/constants';
 import { SEED_DATE } from './_base';
 
@@ -651,12 +651,14 @@ export const SEED_TAGS: Tag[] = [
   { id: 7, name: '已完成', color: '#10b981', groupName: '状态标签', description: '已完成的事项',   status: 'enabled', sortOrder: 2, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
-// ─── 数据脱敏规则 ─────────────────────────────────────────────────────────────
+// ─── 数据脱敏策略 ─────────────────────────────────────────────────────────────
+// 敏感字段由契约 `sensitive()` 声明，未写策略的字段按契约默认类型脱敏、仅平台超管免脱敏。
+// 这里只种「与默认不同」的策略作为示例：用户联系方式对拥有免脱敏权限者放行、租户联系电话不脱敏。
 
-export const SEED_DATA_MASK_CONFIGS: DataMaskConfig[] = [
-  { id: 1, entity: 'user', field: 'phone',  label: '手机号',   maskType: 'phone',   customRule: null, exemptRoleCodes: ['super_admin'], enabled: true,  remark: '手机号脱敏，超管豁免',           createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, entity: 'user', field: 'email',  label: '邮箱',     maskType: 'email',   customRule: null, exemptRoleCodes: ['super_admin'], enabled: true,  remark: '邮箱脱敏，超管豁免',             createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 3, entity: 'user', field: 'idCard', label: '身份证号', maskType: 'id_card', customRule: null, exemptRoleCodes: ['super_admin'], enabled: false, remark: '身份证脱敏规则（示例，默认禁用）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+export const SEED_DATA_MASK_POLICIES: DataMaskPolicy[] = [
+  { id: 1, entity: 'User',   field: 'phone',        maskType: 'phone', customRule: null, exemptPermissions: ['system:data-mask:bypass'], enabled: true,  remark: '用户手机号：免脱敏权限可见明文', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, entity: 'User',   field: 'email',        maskType: 'email', customRule: null, exemptPermissions: ['system:data-mask:bypass'], enabled: true,  remark: '用户邮箱：免脱敏权限可见明文',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, entity: 'Tenant', field: 'contactPhone', maskType: 'phone', customRule: null, exemptPermissions: [],                          enabled: false, remark: '租户联系电话为企业信息，不脱敏', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 监控告警规则 ─────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { sensitive } from '../../core/sensitive';
 import { LOGIN_STATUSES } from '../../identity/constants';
 import { MEMBER_STATUSES } from '../constants';
 import {
@@ -25,8 +26,8 @@ import { memberWalletSchema, memberWalletTransactionSchema } from './member-wall
 export const memberSchema = z.object({
   id: z.int(),
   username: z.string().nullable(),
-  phone: z.string().nullable(),
-  email: z.string().nullable(),
+  phone: sensitive(z.string().nullable(), 'phone'),
+  email: sensitive(z.string().nullable(), 'email'),
   nickname: z.string(),
   avatar: z.string().nullable(),
   gender: z.string().nullable(),
@@ -56,7 +57,7 @@ export type Member = z.infer<typeof memberSchema>;
 export const memberOptionSchema = z.object({
   id: z.int(),
   nickname: z.string(),
-  phone: z.string().nullable(),
+  phone: sensitive(z.string().nullable(), 'phone'),
   username: z.string().nullable(),
   levelName: z.string().nullable(),
 }).meta({ id: 'MemberOption' });

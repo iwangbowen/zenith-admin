@@ -21,7 +21,7 @@
 | 地区 | `/api/regions` | 地区树、平铺列表、详情与增删改 |
 | 标签 | `/api/tags` | 标签维护、分组查询与批量删除 |
 | 意见反馈 | `/api/feedbacks` | 登录用户提交反馈，管理端查询、处理与删除 |
-| 数据脱敏 | `/api/data-mask-configs` | 脱敏规则、敏感字段扫描与批量创建；详见[安全体系](../backend/security.md#数据脱敏) |
+| 数据脱敏 | `/api/data-mask` | 契约声明的敏感字段清单与生效策略、当前用户视角、按需查看明文（审计）；详见[安全体系](../backend/security.md#数据脱敏) |
 | 操作审计 | `/api/operation-logs` | 操作记录、筛选与变更前后快照；详见[操作日志与变更记录](../backend/audit-log-changes.md) |
 | IP 访问与限流 | `/api/ip-access-logs`、`/api/rate-limit` | IP 拦截日志、限流规则、统计与拦截处置；IP 黑白名单配置及中间件行为见[安全体系](../backend/security.md) |
 | 缓存 | `/api/cache` | Redis 概览、key 浏览与清理等管理操作；详见[数据库、缓存与保留策略](../ops/data-platform.md) |

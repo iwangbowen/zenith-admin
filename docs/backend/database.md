@@ -117,7 +117,7 @@ import { users, roles } from '../db/schema';
 | `db-admin.ts` | 数据库运维 | `db_backups`、`db_admin_query_history`、`db_query_favorites` |
 | `monitor.ts` | 监控告警 | `system_metric_samples`、`monitor_alert_rules`、`monitor_alert_events`、`ssl_certificates` |
 | `terminal.ts` | 终端 / SSH | `terminal_sessions`、`terminal_recordings`、`ssh_profiles` |
-| `data-mask.ts` | 数据脱敏 | `data_mask_configs` |
+| `data-mask.ts` | 数据脱敏 | `data_mask_policies` |
 | `tags.ts` | 通用标签 | `tags` |
 | `workflow.ts` | 工作流 | 流程分类、表单、定义、版本、实例、任务、作业、事件订阅、调度、健康快照等表 |
 | `payment.ts` | 支付中心 | 应用、订单、退款、回调、事件、对账、分账、结算、风控、合约等表 |

@@ -84,6 +84,11 @@ export interface OperationConfig<
   readonly security?: Exclude<SecurityScheme, 'none'>;
   /** 默认 `json` */
   readonly kind?: TKind;
+  /**
+   * 响应不施加数据脱敏：仅用于「当前用户查看自己」的自视图（`/auth/me`、会员资料）等
+   * 明文即语义的端点。其余含 `sensitive()` 字段的响应一律在契约路由出口按策略打码
+   */
+  readonly unmasked?: boolean;
   /** 覆盖契约组的 tags */
   readonly tags?: readonly string[];
   readonly deprecated?: boolean;
@@ -114,6 +119,8 @@ export interface UnboundOperation<
   readonly public: boolean;
   readonly security: SecurityScheme;
   readonly kind: TKind;
+  /** 响应不施加数据脱敏（自视图端点） */
+  readonly unmasked: boolean;
   readonly tags?: readonly string[];
   readonly deprecated: boolean;
 }
@@ -213,6 +220,7 @@ function createOperation<
     public: security === 'none',
     security,
     kind: (config.kind ?? 'json') as TKind,
+    unmasked: config.unmasked ?? false,
     tags: config.tags,
     deprecated: config.deprecated ?? false,
   };

@@ -12,8 +12,8 @@ type MembersExportQuery = { keyword?: string; status?: MemberStatus; levelId?: n
 const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 8, type: 'number' },
   { key: 'username', header: '用户名', width: 16 },
-  { key: 'phone', header: '手机号', width: 16 },
-  { key: 'email', header: '邮箱', width: 22 },
+  { key: 'phone', header: '手机号', width: 16, sensitive: true, maskKey: 'Member.phone' },
+  { key: 'email', header: '邮箱', width: 22, sensitive: true, maskKey: 'Member.email' },
   { key: 'nickname', header: '昵称', width: 16 },
   { key: 'levelName', header: '等级', width: 12 },
   { key: 'status', header: '状态', width: 10, enumMap: MEMBER_STATUS_LABELS },

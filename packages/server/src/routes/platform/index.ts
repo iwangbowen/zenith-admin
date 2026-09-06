@@ -3,7 +3,7 @@ import { licensingContract } from '@zenith/shared/licensing';
 import { settingsContract } from '@zenith/shared/settings';
 import {
   cacheContract,
-  dataMaskConfigContract,
+  dataMaskContract,
   dictContract,
   healthContract,
   ipAccessLogContract,
@@ -25,7 +25,7 @@ import {
 } from '@zenith/shared/rules';
 import { defineRouteDomain } from '../_kit';
 import cacheRoutes from './cache';
-import dataMaskConfigsRoutes from './data-mask-configs';
+import dataMaskRoutes from './data-mask';
 import dictsRoutes from './dicts';
 import healthRoutes from './health';
 import ipAccessLogsRoutes from './ip-access-logs';
@@ -59,7 +59,7 @@ export default defineRouteDomain({
     // License 管理面永不打 feature 标（受限模式下也必须可达，否则无法自救）
     [licensingContract.basePath, licensingRoutes],
     [userFeedbackContract.basePath, userFeedbacksRoutes],
-    [dataMaskConfigContract.basePath, dataMaskConfigsRoutes],
+    [dataMaskContract.basePath, dataMaskRoutes],
     [regionContract.basePath, regionsRoutes],
     [cacheContract.basePath, cacheRoutes],
     [decisionTableContract.basePath, rulesRoutes, { feature: 'rules' }],

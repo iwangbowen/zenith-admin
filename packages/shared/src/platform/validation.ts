@@ -320,30 +320,40 @@ export type UpdateTagInput = z.infer<typeof updateTagSchema>;
 
 // ─── AI 分享 / 知识库 Schema ──────────────────────────────────────────────────
 
-// ─── 数据脱敏配置 Schema ──────────────────────────────────────────────────────
+// ─── 数据脱敏策略 Schema ─────────────────────────────────────────────────────
 
 export const customMaskRuleSchema = z.object({
   prefixKeep: z.number().int().min(0).max(20),
   suffixKeep: z.number().int().min(0).max(20),
-  maskChar:   z.string().max(1).optional(),
+  maskChar:   z.string().min(1, '掩码字符不能为空').max(2).optional(),
+}).refine((rule) => Array.from(rule.maskChar ?? '*').length === 1, { message: '掩码字符只能是单个字符', path: ['maskChar'] });
+
+/**
+ * 保存某个契约敏感字段的脱敏策略（整体替换：字段由契约声明，这里只有策略本身）。
+ * `maskType` 省略 = 沿用契约声明的默认类型；`custom` 必须带规则；非 custom 的规则会被丢弃。
+ */
+export const saveDataMaskPolicySchema = z.object({
+  maskType:          z.enum(MASK_TYPES).optional(),
+  customRule:        customMaskRuleSchema.nullable().optional(),
+  exemptPermissions: z.array(z.string().min(1).max(64)).max(20).default([]),
+  enabled:           z.boolean().default(true),
+  remark:            z.string().max(256).nullable().optional(),
+}).superRefine((value, ctx) => {
+  if (value.maskType === 'custom' && !value.customRule) {
+    ctx.addIssue({ code: 'custom', path: ['customRule'], message: '自定义脱敏类型必须配置保留位数' });
+  }
 });
 
-export const createDataMaskConfigSchema = z.object({
-  entity:          z.string().min(1, '实体名称不能为空').max(64),
-  field:           z.string().min(1, '字段名称不能为空').max(64),
-  label:           z.string().min(1, '字段标签不能为空').max(64),
-  maskType:        z.enum(MASK_TYPES),
-  customRule:      customMaskRuleSchema.nullable().optional(),
-  exemptRoleCodes: z.array(z.string().max(64)).default([]),
-  enabled:         z.boolean().default(true),
-  remark:          z.string().max(256).optional(),
+export type SaveDataMaskPolicyInput = z.infer<typeof saveDataMaskPolicySchema>;
+
+/** 按需查看明文 */
+export const revealSensitiveValueSchema = z.object({
+  entity: z.string().min(1).max(64),
+  id:     z.number().int().positive(),
+  field:  z.string().min(1).max(64),
 });
 
-export const updateDataMaskConfigSchema = partialForUpdate(createDataMaskConfigSchema);
-
-export type CreateDataMaskConfigInput = z.infer<typeof createDataMaskConfigSchema>;
-
-export type UpdateDataMaskConfigInput = z.infer<typeof updateDataMaskConfigSchema>;
+export type RevealSensitiveValueInput = z.infer<typeof revealSensitiveValueSchema>;
 
 // ─── 系统监控告警规则 ─────────────────────────────────────────────────────────
 // 指标全集是 constants.ts 的 MONITOR_METRICS（枚举 SSOT），此处只做引用

@@ -1,311 +1,239 @@
-import { useState } from 'react';
-import {
-  Button,
-  Input,
-  Select,
-  Tag,
-  Space,
-  Modal,
-  Form,
-  Toast,
-  Typography,
-  Row,
-  Col,
-  Spin,
-  Switch,
-  Table,
-} from '@douyinfe/semi-ui';
-import { Database } from 'lucide-react';
-import { MASK_TYPES, type DataMaskConfig, type MaskType, type SensitiveField } from '@zenith/shared/platform';
+import { useMemo, useState } from 'react';
+import { Col, Form, Modal, Row, Space, Spin, Switch, Tag, TagGroup, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { createLabelOptionsFromMap, enumValueOf } from '@zenith/shared/core';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { Info } from 'lucide-react';
+import { MASK_TYPES, MASK_TYPE_LABELS, MASK_TYPE_OPTIONS, enumValueOf, previewMask, type CustomMaskRule, type MaskType } from '@zenith/shared/core';
+import type { Menu } from '@zenith/shared/identity';
+import { DATA_MASK_BYPASS_PERMISSION, type DataMaskField, type SaveDataMaskPolicyInput } from '@zenith/shared/platform';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePermission } from '@/hooks/usePermission';
-import { useListSearch } from '@/hooks/useListSearch';
-import { useEditModal } from '@/hooks/useEditModal';
-import {
-  dataMaskKeys,
-  useBatchCreateDataMask,
-  useDataMaskDetail,
-  useDataMaskList,
-  useDataMaskRoleOptions,
-  useDeleteDataMasks,
-  useSaveDataMask,
-  useScanDataMaskFields,
-} from '@/hooks/queries/data-mask';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { dataMaskKeys, useDataMaskFields, useResetDataMaskPolicy, useSaveDataMaskPolicy, type DataMaskFieldsQuery } from '@/hooks/queries/data-mask';
+import { useMenuTree } from '@/hooks/queries/menus';
+import { useEditModal } from '@/hooks/useEditModal';
+import { useListSearch } from '@/hooks/useListSearch';
+import { usePermission } from '@/hooks/usePermission';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 
 const { Text } = Typography;
 
-const MASK_TYPE_LABELS: Record<MaskType, string> = {
-  phone:     '手机号',
-  email:     '邮箱',
-  id_card:   '身份证',
-  name:      '姓名',
-  bank_card: '银行卡',
-  custom:    '自定义',
-};
+/**
+ * 数据脱敏策略中心。
+ *
+ * 敏感字段由接口契约的 `sensitive()` 声明并在服务端汇总成注册表，这里不再「新增 / 删除规则」：
+ * 列表就是全部会被脱敏的字段及其生效策略，管理员只能改某个字段的脱敏方式、豁免权限或停用；
+ * 「恢复默认」删除覆盖记录，字段回到契约声明的默认脱敏。
+ */
 
-const MASK_TYPE_PREVIEWS: Record<MaskType, string> = {
-  phone:     '138****1234',
-  email:     'adm***@example.com',
-  id_card:   '110101********1234',
-  name:      '张*丰',
-  bank_card: '************7890',
-  custom:    '—',
-};
-
-const MASK_TYPE_OPTIONS = Object.entries(MASK_TYPE_LABELS).map(([v, l]) => ({
-  value: v as MaskType,
-  label: `${l}（${MASK_TYPE_PREVIEWS[v as MaskType]}）`,
-}));
-const MASK_TYPE_FILTER_OPTIONS = createLabelOptionsFromMap(MASK_TYPE_LABELS);
-const ENABLED_FILTER_OPTIONS = [{ value: 'true', label: '启用' }, { value: 'false', label: '停用' }];
+/** 表格行：注册表字段没有主键，用列表序号作 useEditModal 需要的 id（仅用于表单重挂载） */
+type DataMaskFieldRow = DataMaskField & { id: number };
 
 type FormValues = {
-  entity: string;
-  field: string;
-  label: string;
   maskType: MaskType;
-  exemptRoleCodes: string[];
-  enabled: boolean;
-  remark?: string;
   prefixKeep?: number;
   suffixKeep?: number;
   maskChar?: string;
+  exemptPermissions: string[];
+  enabled: boolean;
+  remark?: string;
 };
 
-function buildDataMaskPayload(values: FormValues) {
-  return {
-    entity:          values.entity.trim(),
-    field:           values.field.trim(),
-    label:           values.label.trim(),
-    maskType:        values.maskType,
-    exemptRoleCodes: values.exemptRoleCodes ?? [],
-    enabled:         values.enabled,
-    remark:          values.remark?.trim() || undefined,
-    customRule: values.maskType === 'custom'
-      ? { prefixKeep: values.prefixKeep ?? 3, suffixKeep: values.suffixKeep ?? 4, maskChar: values.maskChar || '*' }
-      : undefined,
-  };
-}
+type SavePayload = { entity: string; field: string; body: SaveDataMaskPolicyInput };
+
+const ENABLED_FILTER_OPTIONS = [{ value: 'true', label: '启用' }, { value: 'false', label: '停用' }];
+const SOURCE_FILTER_OPTIONS = [{ value: 'true', label: '已自定义' }, { value: 'false', label: '契约默认' }];
 
 interface SearchParams {
   keyword: string;
+  entity?: string;
   maskType?: string;
   enabled?: string;
+  overridden?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', maskType: undefined, enabled: undefined };
+const defaultSearchParams: SearchParams = { keyword: '', entity: undefined, maskType: undefined, enabled: undefined, overridden: undefined };
+
+function toQuery(params: SearchParams): DataMaskFieldsQuery {
+  return {
+    keyword: params.keyword || undefined,
+    entity: params.entity,
+    maskType: enumValueOf(MASK_TYPES, params.maskType),
+    enabled: params.enabled === undefined ? undefined : params.enabled === 'true',
+    overridden: params.overridden === undefined ? undefined : params.overridden === 'true',
+  };
+}
+
+function customRuleOf(values: Pick<FormValues, 'maskType' | 'prefixKeep' | 'suffixKeep' | 'maskChar'>): CustomMaskRule | null {
+  if (values.maskType !== 'custom') return null;
+  return { prefixKeep: values.prefixKeep ?? 3, suffixKeep: values.suffixKeep ?? 4, maskChar: values.maskChar?.trim() || '*' };
+}
+
+/** 菜单树里的全部按钮权限码：作为豁免权限的选项来源（label 带所属页面便于辨认） */
+function collectPermissionOptions(tree: Menu[] | undefined): { value: string; label: string }[] {
+  const out = new Map<string, string>();
+  const walk = (nodes: Menu[], parents: string[]) => {
+    for (const node of nodes) {
+      if (node.permission && !out.has(node.permission)) {
+        out.set(node.permission, `${[...parents.slice(-1), node.title].join(' / ')}（${node.permission}）`);
+      }
+      if (node.children?.length) walk(node.children, [...parents, node.title]);
+    }
+  };
+  walk(tree ?? [], []);
+  return [...out.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.value.localeCompare(b.value));
+}
 
 export default function DataMaskPage() {
   const { hasPermission } = usePermission();
+  const canUpdate = hasPermission('system:data-mask:update');
   const {
-    page, pageSize, buildPagination,
     draftParams, setDraftParams, submittedParams,
     handleSearch, handleReset,
-  } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: dataMaskKeys.lists });
-  const [maskTypePreview, setMaskTypePreview] = useState<MaskType>('phone');
+  } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: dataMaskKeys.fields });
 
-  // ─── 扫描状态 ─────────────────────────────────────────────────────────────────
-  const [scanVisible, setScanVisible] = useState(false);
-  const [scanLoading, setScanLoading] = useState(false);
-  const [scanResults, setScanResults] = useState<SensitiveField[] | null>(null);
-  const [scanSelected, setScanSelected] = useState<string[]>([]);
-  const [scanEdits, setScanEdits] = useState<Record<string, { maskType: MaskType; label: string; entity: string }>>({});
-  const [creatingBatch, setCreatingBatch] = useState(false);
-  const listQuery = useDataMaskList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    maskType: enumValueOf(MASK_TYPES, submittedParams.maskType),
-    enabled: submittedParams.enabled === undefined ? undefined : submittedParams.enabled === 'true',
-  });
-  const data = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
-  const roleOptions = useDataMaskRoleOptions().data ?? [];
-  const saveMutation = useSaveDataMask();
-  const modal = useEditModal<DataMaskConfig, FormValues, ReturnType<typeof buildDataMaskPayload>>({
-    entityName: '脱敏规则',
-    save: saveMutation,
-    useDetail: useDataMaskDetail,
-    defaults: { enabled: true, exemptRoleCodes: [], maskType: 'phone', prefixKeep: 3, suffixKeep: 4, maskChar: '*' },
+  const listQuery = useDataMaskFields(toQuery(submittedParams));
+  const rows = useMemo<DataMaskFieldRow[]>(() => (listQuery.data ?? []).map((item, index) => ({ ...item, id: index + 1 })), [listQuery.data]);
+  const entityOptions = useMemo(() => {
+    const entities = Array.from(new Set((listQuery.data ?? []).map((item) => item.entity))).sort();
+    return entities.map((value) => ({ value, label: value }));
+  }, [listQuery.data]);
+  const permissionOptions = collectPermissionOptions(useMenuTree().data);
+
+  const saveMutation = useSaveDataMaskPolicy();
+  const resetMutation = useResetDataMaskPolicy();
+  const [preview, setPreview] = useState<{ maskType: MaskType; rule: CustomMaskRule | null }>({ maskType: 'phone', rule: null });
+
+  const modal = useEditModal<DataMaskFieldRow, FormValues, SavePayload>({
+    entityName: '脱敏策略',
+    // 保存目标由行的 entity / field 决定，不是主键：适配成 useEditModal 需要的 { id, values } 形态
+    save: {
+      mutateAsync: async ({ values }) => {
+        const saved = await saveMutation.mutateAsync({ params: { entity: values.entity, field: values.field }, body: values.body });
+        return { ...saved, id: 0 };
+      },
+      isPending: saveMutation.isPending,
+    },
     toValues: (record) => ({
-      entity: record.entity,
-      field: record.field,
-      label: record.label,
       maskType: record.maskType,
-      exemptRoleCodes: record.exemptRoleCodes,
-      enabled: record.enabled,
-      remark: record.remark ?? undefined,
       prefixKeep: record.customRule?.prefixKeep ?? 3,
       suffixKeep: record.customRule?.suffixKeep ?? 4,
       maskChar: record.customRule?.maskChar ?? '*',
+      exemptPermissions: record.exemptPermissions,
+      enabled: record.enabled,
+      remark: record.remark ?? undefined,
     }),
-    beforeSave: buildDataMaskPayload,
+    beforeSave: (values, { editing }) => ({
+      entity: editing!.entity,
+      field: editing!.field,
+      body: {
+        maskType: values.maskType,
+        customRule: customRuleOf(values),
+        exemptPermissions: values.exemptPermissions ?? [],
+        enabled: values.enabled,
+        remark: values.remark?.trim() || null,
+      },
+    }),
+    successMessage: () => '策略已保存',
   });
-  const toggleStatusMutation = useSaveDataMask();
-  const deleteMutation = useDeleteDataMasks();
-  const scanMutation = useScanDataMaskFields();
-  const batchCreateMutation = useBatchCreateDataMask();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
-  const handleToggleStatus = (record: DataMaskConfig, checked: boolean) => {
-    const doToggle = async () => {
-      await toggleStatusMutation.mutateAsync({ id: record.id, values: { enabled: checked } });
-      Toast.success(checked ? '已启用' : '已停用');
-    };
-    if (checked) {
-      void doToggle();
-    } else {
-      Modal.confirm({
-        title: '确认停用',
-        content: `停用后「${record.label}（${record.entity}.${record.field}）」的脱敏规则将不再生效，确认停用？`,
-        onOk: () => void doToggle(),
-      });
-    }
-  };
-
-  const openCreate = () => {
-    setMaskTypePreview('phone');
-    modal.openCreate();
-  };
-
-  const openEdit = (row: DataMaskConfig) => {
-    setMaskTypePreview(row.maskType);
+  const openEdit = (row: DataMaskFieldRow) => {
+    setPreview({ maskType: row.maskType, rule: row.customRule });
     modal.openEdit(row);
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  };
-
-  // ─── 扫描处理 ──────────────────────────────────────────────────────────────────
-
-  const openScan = () => {
-    setScanVisible(true);
-    setScanResults(null);
-    setScanSelected([]);
-    setScanEdits({});
-  };
-
-  const closeScan = () => {
-    setScanVisible(false);
-    setScanResults(null);
-    setScanSelected([]);
-    setScanEdits({});
-  };
-
-  const handleScan = async () => {
-    setScanLoading(true);
-    try {
-      const results = await scanMutation.mutateAsync();
-      setScanResults(results);
-      setScanSelected(results.filter((r) => !r.hasRule).map((r) => `${r.tableName}:${r.columnName}`));
-      setScanEdits({});
-    } finally {
-      setScanLoading(false);
-    }
-  };
-
-  const getScanEdit = (record: SensitiveField) => {
-    const key = `${record.tableName}:${record.columnName}`;
-    return scanEdits[key] ?? { entity: record.tableName, label: record.suggestedLabel, maskType: record.suggestedMaskType };
-  };
-
-  const setScanEdit = (record: SensitiveField, patch: Partial<{ maskType: MaskType; label: string; entity: string }>) => {
-    const key = `${record.tableName}:${record.columnName}`;
-    setScanEdits((prev) => ({
-      ...prev,
-      [key]: { ...getScanEdit(record), ...patch },
-    }));
-  };
-
-  const handleBatchCreate = async () => {
-    if (scanSelected.length === 0) return;
-    const items = scanSelected.map((key) => {
-      const record = scanResults!.find((r) => `${r.tableName}:${r.columnName}` === key)!;
-      const edit = scanEdits[key] ?? { entity: record.tableName, label: record.suggestedLabel, maskType: record.suggestedMaskType };
-      return {
-        entity:          edit.entity,
-        field:           record.columnName,
-        label:           edit.label,
-        maskType:        edit.maskType,
-        exemptRoleCodes: [] as string[],
-        enabled:         true,
-      };
+  const handleToggle = async (row: DataMaskFieldRow, enabled: boolean) => {
+    await saveMutation.mutateAsync({
+      params: { entity: row.entity, field: row.field },
+      body: { maskType: row.maskType, customRule: row.customRule, exemptPermissions: row.exemptPermissions, enabled, remark: row.remark },
     });
-    setCreatingBatch(true);
-    try {
-      const res = await batchCreateMutation.mutateAsync({ body: { items } });
-      const skippedMsg = res.skipped > 0 ? `，跳过 ${res.skipped} 条（已有规则）` : '';
-      Toast.success(`已生成 ${res.created} 条规则${skippedMsg}`);
-      closeScan();
-    } finally {
-      setCreatingBatch(false);
-    }
+    Toast.success(enabled ? '已启用脱敏' : '已停用脱敏');
   };
 
+  const handleReset2Default = (row: DataMaskFieldRow) => {
+    Modal.confirm({
+      title: '恢复契约默认策略',
+      content: `「${row.label}（${row.key}）」将删除自定义策略，恢复为契约默认：按 ${MASK_TYPE_LABELS[row.kind]} 脱敏、启用、仅平台超管免脱敏。`,
+      onOk: () => {
+        void resetMutation.mutateAsync({ params: { entity: row.entity, field: row.field } }).then(() => Toast.success('已恢复默认'));
+      },
+    });
+  };
 
-  const columns: ColumnProps<DataMaskConfig>[] = [
-    { title: '实体', dataIndex: 'entity', width: 100 },
-    { title: '字段名', dataIndex: 'field', width: 110 },
-    { title: '字段标签', dataIndex: 'label', width: 100 },
+  const togglingKey = saveMutation.isPending ? `${saveMutation.variables?.params.entity}.${saveMutation.variables?.params.field}` : null;
+
+  // 标识类列一律单行：列宽按最长的实体 / 字段名（等宽字体）给足，列级 ellipsis 兜底更长的标识。
+  // 单元格内用行内文本而不是 Space（inline-flex 是原子行内盒，溢出时会被整体裁掉而不出省略号）。
+  const columns: ColumnProps<DataMaskFieldRow>[] = [
+    { title: '实体', dataIndex: 'entity', width: 230, ellipsis: { showTitle: false }, render: (v: string) => <Text code>{v}</Text> },
     {
-      title: '脱敏类型', dataIndex: 'maskType', width: 200,
-      render: (v: MaskType) => (
-        <Space>
-          <Text>{MASK_TYPE_LABELS[v]}</Text>
-          <Text type="quaternary" size="small">{MASK_TYPE_PREVIEWS[v]}</Text>
-        </Space>
+      title: '字段', dataIndex: 'field', minWidth: 280, ellipsis: { showTitle: false },
+      render: (v: string, record) => (
+        <>
+          <Text code>{v}</Text>
+          <Text type="tertiary" size="small" style={{ marginLeft: 6 }}>{record.label}</Text>
+        </>
       ),
     },
     {
-      title: '豁免角色', dataIndex: 'exemptRoleCodes', width: 160,
-      render: (codes: string[]) => codes.length === 0
-        ? <Text type="quaternary">—</Text>
-        : <Space wrap>{codes.map((c) => <Tag key={c} size="small" color="blue">{roleOptions.find((r) => r.value === c)?.label ?? c}</Tag>)}</Space>,
+      title: '生效脱敏', dataIndex: 'maskType', width: 240, ellipsis: { showTitle: false },
+      render: (v: MaskType, record) => (
+        <>
+          <Text>{MASK_TYPE_LABELS[v]}</Text>
+          {v === 'custom' && record.customRule && (
+            <Text type="tertiary" size="small" style={{ marginLeft: 6 }}>前 {record.customRule.prefixKeep} 后 {record.customRule.suffixKeep} · {record.customRule.maskChar || '*'}</Text>
+          )}
+          <Text type="quaternary" size="small" style={{ marginLeft: 6, fontFamily: 'monospace' }}>{record.preview}</Text>
+        </>
+      ),
     },
-    { title: '备注', dataIndex: 'remark', ellipsis: true },
     {
-      title: '启用状态', dataIndex: 'enabled', width: 90, fixed: 'right' as const,
-      render: (v: boolean, record: DataMaskConfig) => (
+      title: '豁免权限', dataIndex: 'exemptPermissions', width: 240,
+      render: (codes: string[]) => codes.length === 0
+        ? <Text type="quaternary">仅平台超管</Text>
+        : (
+          <TagGroup
+            maxTagCount={1}
+            showPopover
+            size="small"
+            tagList={codes.map((code) => ({ tagKey: code, children: code, color: 'blue' as const, size: 'small' as const }))}
+          />
+        ),
+    },
+    {
+      title: '来源', dataIndex: 'overridden', width: 100,
+      render: (v: boolean) => (v ? <Tag size="small" color="orange">已自定义</Tag> : <Tag size="small" color="grey">契约默认</Tag>),
+    },
+    { title: '备注', dataIndex: 'remark', width: 200, render: (v: string | null) => (v ? renderEllipsis(v) : <Text type="quaternary">{EMPTY_PLACEHOLDER}</Text>) },
+    dateTimeColumn<DataMaskFieldRow>('策略更新时间', 'updatedAt'),
+    {
+      title: '启用', dataIndex: 'enabled', width: 80, fixed: 'right' as const,
+      render: (v: boolean, record) => (
         <Switch
           checked={v}
-          loading={togglingStatusId === record.id}
-          disabled={!hasPermission('system:data-mask:update')}
-          onChange={(checked) => handleToggleStatus(record, checked)}
           size="small"
+          loading={togglingKey === record.key}
+          disabled={!canUpdate}
+          onChange={(checked) => {
+            if (checked) { void handleToggle(record, true); return; }
+            Modal.confirm({
+              title: '确认停用脱敏',
+              content: `停用后「${record.label}（${record.key}）」在所有接口与脱敏导出中都会以明文返回，确认停用？`,
+              onOk: () => { void handleToggle(record, false); },
+            });
+          }}
         />
       ),
     },
-    createOperationColumn<DataMaskConfig>({
+    createOperationColumn<DataMaskFieldRow>({
+      // 「恢复默认」只在已自定义的行出现，收进「更多」：内联 80 + 更多 24 → 150
       width: 150,
+      desktopInlineKeys: ['edit'],
       actions: (record) => [
-        {
-          key: 'edit',
-          label: '编辑',
-          hidden: !hasPermission('system:data-mask:update'),
-          onClick: () => openEdit(record),
-        },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          hidden: !hasPermission('system:data-mask:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该规则吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+        { key: 'edit', label: '编辑策略', hidden: !canUpdate, onClick: () => openEdit(record) },
+        { key: 'reset', label: '恢复默认', hidden: !canUpdate || !record.overridden, onClick: () => handleReset2Default(record) },
       ],
     }),
   ];
@@ -315,296 +243,111 @@ export default function DataMaskPage() {
       <SearchToolbar
         primary={(
           <>
-            <KeywordInput placeholder="搜索实体 / 字段" value={draftParams.keyword} onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))} onSearch={handleSearch} width={200} />
-            <FilterSelect
-              placeholder="全部脱敏类型"
-              items={MASK_TYPE_FILTER_OPTIONS}
-              value={draftParams.maskType}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, maskType: v }))}
-              width={160}
-            />
-            <FilterSelect
-              placeholder="全部启用状态"
-              items={ENABLED_FILTER_OPTIONS}
-              value={draftParams.enabled}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, enabled: v }))}
-              width={140}
-            />
+            <KeywordInput placeholder="搜索实体 / 字段 / 标签" value={draftParams.keyword} onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))} onSearch={handleSearch} />
+            <FilterSelect placeholder="全部实体" items={entityOptions} value={draftParams.entity} onChange={(v) => setDraftParams((prev) => ({ ...prev, entity: v }))} width={160} />
+            <FilterSelect placeholder="全部脱敏类型" items={MASK_TYPE_OPTIONS} value={draftParams.maskType} onChange={(v) => setDraftParams((prev) => ({ ...prev, maskType: v }))} width={150} />
+            <FilterSelect placeholder="全部启用状态" items={ENABLED_FILTER_OPTIONS} value={draftParams.enabled} onChange={(v) => setDraftParams((prev) => ({ ...prev, enabled: v }))} width={140} />
+            <FilterSelect placeholder="全部来源" items={SOURCE_FILTER_OPTIONS} value={draftParams.overridden} onChange={(v) => setDraftParams((prev) => ({ ...prev, overridden: v }))} />
             <SearchButton onClick={handleSearch} />
             <ResetButton onClick={handleReset} />
-          </>
-        )}
-        actions={(
-          <>
-            {hasPermission('system:data-mask:list') && (
-              <Button icon={<Database size={14} />} onClick={openScan}>扫描敏感字段</Button>
-            )}
-            {hasPermission('system:data-mask:create') && (
-              <CreateButton onClick={openCreate}>新增规则</CreateButton>
-            )}
           </>
         )}
         mobilePrimary={(
           <>
             <KeywordInput placeholder="搜索实体 / 字段" value={draftParams.keyword} onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))} onSearch={handleSearch} width={200} />
             <SearchButton onClick={handleSearch} />
-            {hasPermission('system:data-mask:create') && (
-              <CreateButton onClick={openCreate}>新增规则</CreateButton>
-            )}
           </>
         )}
         mobileFilters={(
           <>
-            <FilterSelect
-              placeholder="全部脱敏类型"
-              items={MASK_TYPE_FILTER_OPTIONS}
-              value={draftParams.maskType}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, maskType: v }))}
-              width={160}
-            />
-            <FilterSelect
-              placeholder="全部启用状态"
-              items={ENABLED_FILTER_OPTIONS}
-              value={draftParams.enabled}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, enabled: v }))}
-              width={140}
-            />
+            <FilterSelect placeholder="全部实体" items={entityOptions} value={draftParams.entity} onChange={(v) => setDraftParams((prev) => ({ ...prev, entity: v }))} width={160} />
+            <FilterSelect placeholder="全部脱敏类型" items={MASK_TYPE_OPTIONS} value={draftParams.maskType} onChange={(v) => setDraftParams((prev) => ({ ...prev, maskType: v }))} width={150} />
+            <FilterSelect placeholder="全部启用状态" items={ENABLED_FILTER_OPTIONS} value={draftParams.enabled} onChange={(v) => setDraftParams((prev) => ({ ...prev, enabled: v }))} width={140} />
+            <FilterSelect placeholder="全部来源" items={SOURCE_FILTER_OPTIONS} value={draftParams.overridden} onChange={(v) => setDraftParams((prev) => ({ ...prev, overridden: v }))} />
           </>
         )}
-        mobileActions={hasPermission('system:data-mask:list') ? (
-          <Button icon={<Database size={14} />} onClick={openScan}>扫描敏感字段</Button>
-        ) : null}
         filterTitle="数据脱敏筛选"
-        actionTitle="数据脱敏操作"
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
       />
 
+      <Space spacing={6} align="start">
+        <Info size={14} style={{ marginTop: 3, color: 'var(--semi-color-text-2)' }} />
+        <Text type="tertiary" size="small">
+          敏感字段由接口契约声明，下表即全部会被脱敏的字段。未自定义的字段按契约默认类型脱敏、仅平台超管可见明文；
+          拥有豁免权限的用户直接看到明文，拥有「按需查看明文」权限的用户可逐条查看并留下审计记录。
+          脱敏对列表 / 详情 / 写接口响应与脱敏导出统一生效。
+        </Text>
+      </Space>
+
       <ConfigurableTable
         bordered
         columns={columns}
-        dataSource={data}
+        dataSource={rows}
         loading={listQuery.isFetching}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        pagination={buildPagination(total)}
+        rowKey="key"
+        pagination={false}
       />
 
-      <AppModal
-        {...modal.modalProps}
-        okText={modal.isEdit ? '保存' : '创建'}
-        width={660}
-      >
+      <AppModal {...modal.modalProps} title="编辑脱敏策略" okText="保存" width={640}>
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">
-        <Form
-          key={modal.formKey} {...modal.formProps}
-          onValueChange={(vals: Record<string, unknown>) => {
-            if (vals.maskType) setMaskTypePreview(vals.maskType as unknown as MaskType);
-          }}
-        >
-          {/* 第一行：实体 + 字段名 */}
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Input field="entity" label="实体" placeholder="如 user" rules={[{ required: true, message: '请填写实体名称' }]} />
-            </Col>
-            <Col span={12}>
-              <Form.Input field="field" label="字段名" placeholder="如 phone" rules={[{ required: true, message: '请填写字段名' }]} />
-            </Col>
-          </Row>
-
-          {/* 第二行：字段标签 + 脱敏类型 */}
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Input field="label" label="字段标签" placeholder="如 手机号" rules={[{ required: true, message: '请填写字段标签' }]} />
-            </Col>
-            <Col span={12}>
-              <Form.Select
-                field="maskType"
-                label="脱敏类型"
-                style={{ width: '100%' }}
-                rules={[{ required: true }]}
-                optionList={MASK_TYPE_OPTIONS}
-              />
-            </Col>
-          </Row>
-
-          {/* 效果预览 — 整行 */}
-          <Row>
-            <Col span={24}>
-              <Form.Slot label="效果预览">
-                <Tag color="orange" size="large" style={{ fontFamily: 'monospace' }}>
-                  {MASK_TYPE_PREVIEWS[maskTypePreview]}
-                </Tag>
-              </Form.Slot>
-            </Col>
-          </Row>
-
-          {/* 自定义规则 — 仅 custom 时显示 */}
-          {maskTypePreview === 'custom' && (
+          <Form
+            key={modal.formKey}
+            {...modal.formProps}
+            onValueChange={(vals: Record<string, unknown>) => {
+              const v = vals as Partial<FormValues>;
+              const maskType = (v.maskType ?? preview.maskType) as MaskType;
+              setPreview({ maskType, rule: customRuleOf({ maskType, prefixKeep: v.prefixKeep, suffixKeep: v.suffixKeep, maskChar: v.maskChar }) });
+            }}
+          >
+            <Form.Slot label="字段">
+              <Space spacing={6}>
+                <Text code>{modal.editing?.key}</Text>
+                <Text type="tertiary">{modal.editing?.label}</Text>
+                <Text type="quaternary" size="small">契约默认：{modal.editing ? MASK_TYPE_LABELS[modal.editing.kind] : ''}</Text>
+              </Space>
+            </Form.Slot>
             <Row gutter={16}>
               <Col span={12}>
-                <Form.InputNumber field="prefixKeep" label="保留前N位" min={0} max={20} style={{ width: '100%' }} />
+                <Form.Select field="maskType" label="脱敏类型" style={{ width: '100%' }} rules={[{ required: true }]} optionList={MASK_TYPE_OPTIONS} />
               </Col>
               <Col span={12}>
-                <Form.InputNumber field="suffixKeep" label="保留后N位" min={0} max={20} style={{ width: '100%' }} />
+                <Form.Slot label="效果预览">
+                  <Tag color="orange" size="large" style={{ fontFamily: 'monospace' }}>{previewMask(preview.maskType, preview.rule)}</Tag>
+                </Form.Slot>
               </Col>
             </Row>
-          )}
-          {maskTypePreview === 'custom' && (
-            <Row>
-              <Col span={12}>
-                <Form.Input field="maskChar" label="掩码字符" maxLength={1} placeholder="默认 *" />
-              </Col>
-            </Row>
-          )}
-
-          {/* 豁免角色 + 启用 — 同一行，各占一半 */}
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Select
-                field="exemptRoleCodes"
-                label="豁免角色"
-                multiple
-                style={{ width: '100%' }}
-                optionList={roleOptions}
-                placeholder="拥有此角色的用户将看到原始数据"
-              />
-            </Col>
-            <Col span={12}>
-              <Form.Select
-                field="enabled"
-                label="是否启用"
-                style={{ width: '100%' }}
-                optionList={[
-                  { value: true, label: '启用' },
-                  { value: false, label: '禁用' },
-                ] as unknown as Array<{ value: string | number; label: string }>}
-              />
-            </Col>
-          </Row>
-
-          {/* 备注 — 单独整行 */}
-          <Row>
-            <Col span={24}>
-              <Form.TextArea field="remark" label="备注" maxCount={256} rows={1} />
-            </Col>
-          </Row>
-        </Form>
+            {preview.maskType === 'custom' && (
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.InputNumber field="prefixKeep" label="保留前 N 位" min={0} max={20} style={{ width: '100%' }} rules={[{ required: true, message: '请填写保留位数' }]} />
+                </Col>
+                <Col span={8}>
+                  <Form.InputNumber field="suffixKeep" label="保留后 N 位" min={0} max={20} style={{ width: '100%' }} rules={[{ required: true, message: '请填写保留位数' }]} />
+                </Col>
+                <Col span={8}>
+                  <Form.Input field="maskChar" label="掩码字符" maxLength={1} placeholder="默认 *" />
+                </Col>
+              </Row>
+            )}
+            <Form.Select
+              field="exemptPermissions"
+              label="豁免权限"
+              multiple
+              filter
+              allowCreate
+              style={{ width: '100%' }}
+              optionList={permissionOptions}
+              placeholder={`拥有任一权限即看到明文；平台超管无需配置。推荐 ${DATA_MASK_BYPASS_PERMISSION}`}
+              extraText="按钮权限码来自菜单管理；也可输入自定义权限码"
+            />
+            <Form.Switch field="enabled" label="启用脱敏" />
+            <Form.TextArea field="remark" label="备注" maxCount={256} rows={2} />
+          </Form>
         </Spin>
       </AppModal>
-
-      {/* ─── 扫描敏感字段对话框 ───────────────────────────────────────────────── */}
-      <AppModal
-        title="扫描数据库敏感字段"
-        visible={scanVisible}
-        onCancel={closeScan}
-        onOk={() => void handleBatchCreate()}
-        okText={scanSelected.length > 0 ? `生成规则（${scanSelected.length}）` : '生成规则'}
-        okButtonProps={{ loading: creatingBatch, disabled: !scanResults || scanResults.length === 0 || scanSelected.length === 0 }}
-        cancelText="关闭"
-        width={980}
-      >
-        {scanResults === null ? (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 20 }}>
-              自动识别数据库表中字段名含 <Typography.Text code>phone</Typography.Text>、<Typography.Text code>email</Typography.Text>、<Typography.Text code>id_card</Typography.Text>、<Typography.Text code>bank</Typography.Text> 等关键字的列，并给出脱敏建议。
-            </Typography.Text>
-            <Button type="primary" icon={<Database size={14} />} loading={scanLoading} onClick={() => void handleScan()}>
-              开始扫描
-            </Button>
-          </div>
-        ) : null}
-        {scanResults !== null && scanResults.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <Typography.Text type="secondary">未发现敏感字段，或所有敏感字段已配置规则。</Typography.Text>
-            <div style={{ marginTop: 16 }}>
-              <Button size="small" type="tertiary" loading={scanLoading} onClick={() => void handleScan()}>重新扫描</Button>
-            </div>
-          </div>
-        )}
-        {scanResults !== null && scanResults.length > 0 && (
-          <>
-            <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Button size="small" type="tertiary" loading={scanLoading} onClick={() => void handleScan()}>重新扫描</Button>
-              <Typography.Text size="small" type="secondary">可编辑实体名、字段标签、脱敏类型后批量生成规则</Typography.Text>
-            </div>
-            <Table
-              size="small"
-              bordered
-              rowKey={(r: SensitiveField | undefined) => r ? `${r.tableName}:${r.columnName}` : ''}
-              rowSelection={{
-                selectedRowKeys: scanSelected,
-                onChange: (keys) => setScanSelected(keys as string[]),
-              }}
-              dataSource={scanResults}
-              pagination={false}
-              scroll={{ y: 400, x: 1050 }}
-              columns={[
-                {
-                  title: '表名', dataIndex: 'tableName', minWidth: 160,
-                  render: (v: string) => <Typography.Text code size="small">{v}</Typography.Text>,
-                },
-                {
-                  title: '字段名', dataIndex: 'columnName', width: 140,
-                  render: (v: string) => <Typography.Text code size="small">{v}</Typography.Text>,
-                },
-                {
-                  title: '数据类型', dataIndex: 'dataType', width: 160,
-                  render: (v: string) => <Typography.Text type="quaternary" size="small">{v}</Typography.Text>,
-                },
-                {
-                  title: <span>实体名 <Typography.Text type="quaternary" size="small">（可编辑）</Typography.Text></span>,
-                  dataIndex: 'tableName',
-                  width: 150,
-                  render: (_: unknown, record: SensitiveField) => (
-                    <Input
-                      size="small"
-                      value={getScanEdit(record).entity}
-                      onChange={(v) => setScanEdit(record, { entity: v })}
-                      style={{ width: '100%' }}
-                    />
-                  ),
-                },
-                {
-                  title: <span>字段标签 <Typography.Text type="quaternary" size="small">（可编辑）</Typography.Text></span>,
-                  dataIndex: 'suggestedLabel',
-                  width: 160,
-                  render: (_: unknown, record: SensitiveField) => (
-                    <Input
-                      size="small"
-                      value={getScanEdit(record).label}
-                      onChange={(v) => setScanEdit(record, { label: v })}
-                      style={{ width: '100%' }}
-                    />
-                  ),
-                },
-                {
-                  title: '脱敏类型',
-                  dataIndex: 'suggestedMaskType',
-                  width: 150,
-                  render: (_: unknown, record: SensitiveField) => (
-                    <Select
-                      size="small"
-                      value={getScanEdit(record).maskType}
-                      style={{ width: '100%' }}
-                      onChange={(v) => setScanEdit(record, { maskType: v as MaskType })}
-                      optionList={MASK_TYPE_OPTIONS}
-                    />
-                  ),
-                },
-                {
-                  title: '状态', dataIndex: 'hasRule', width: 100, fixed: 'right' as const,
-                  render: (v: boolean) => v
-                    ? <Tag color="orange" size="small">已有规则</Tag>
-                    : <Tag color="green" size="small">新规则</Tag>,
-                },
-              ]}
-            />
-          </>
-        )}
-      </AppModal>
-
     </div>
   );
 }

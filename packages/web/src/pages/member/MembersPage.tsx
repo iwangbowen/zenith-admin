@@ -18,7 +18,7 @@ import ImportButton from '@/components/ImportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER } from '../../utils/table-columns';
 import { MemberDetailDrawer } from './MemberDetailDrawer';
 import { MemberTagsManageModal } from './MemberTagsManageModal';
 import {
@@ -40,6 +40,8 @@ import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-co
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
+import { useSensitiveFormFields } from '@/hooks/useSensitiveFormFields';
+import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
 import { abortSubmit } from '@/lib/abort-submit';
 
 const STATUS_COLORS: Record<string, 'green' | 'grey' | 'red'> = { active: 'green', inactive: 'grey', banned: 'red' };
@@ -114,15 +116,20 @@ export default function MembersPage() {
     };
   };
 
+  // 敏感字段（手机号 / 邮箱）对非豁免用户是掩码：编辑时锁定，提交前剔除未修改的锁定字段
+  const sensitiveFieldsRef = useRef<ReturnType<typeof useSensitiveFormFields<Member>> | null>(null);
   const memberModal = useEditModal<Member, MemberFormValues>({
     entityName: '会员',
     save: saveMutation,
     defaults: { status: 'active' as const },
     toValues: (record) => ({ nickname: record.nickname, phone: record.phone, email: record.email, gender: record.gender, levelId: record.levelId, status: record.status, remark: record.remark }),
-    beforeSave: (values, ctx) => {
-      // 与前台注册契约一致：无任何登录凭证的会员无法登录也无法找回密码
+    beforeSave: (rawValues, ctx) => {
+      const control = sensitiveFieldsRef.current;
+      const values = (control ? control.strip(rawValues as unknown as Record<string, unknown>) : rawValues) as MemberFormValues;
+      // 与前台注册契约一致：无任何登录凭证的会员无法登录也无法找回密码（锁定字段沿用原值，视为已填）
       const username = ctx.editing?.username ?? values.username;
-      const { phone, email } = values;
+      const phone = 'phone' in values ? values.phone : ctx.editing?.phone;
+      const email = 'email' in values ? values.email : ctx.editing?.email;
       if (!username?.toString().trim() && !phone?.toString().trim() && !email?.toString().trim()) {
         Toast.warning('用户名、手机号、邮箱至少填写一个，否则该会员将无法登录');
         abortSubmit('validation');
@@ -131,6 +138,8 @@ export default function MembersPage() {
     },
   });
   const editing = memberModal.editing;
+  const sensitiveFields = useSensitiveFormFields<Member>({ entity: 'Member', fields: ['phone', 'email'], record: editing });
+  sensitiveFieldsRef.current = sensitiveFields;
 
   const handleDelete = (record: Member) => {
     confirmDelete({
@@ -232,8 +241,8 @@ export default function MembersPage() {
       ),
     },
     { title: '用户名', dataIndex: 'username', width: 150, render: (v: string | null) => (v ? <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 130 }}>{v}</Typography.Text> : EMPTY_PLACEHOLDER) },
-    { title: '手机号', dataIndex: 'phone', width: 130, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
-    { title: '邮箱', dataIndex: 'email', width: 180, render: renderEllipsis },
+    { title: '手机号', dataIndex: 'phone', width: 150, render: (v: string | null, record: Member) => <SensitiveText entity="Member" id={record.id} field="phone" value={v} /> },
+    { title: '邮箱', dataIndex: 'email', width: 200, render: (v: string | null, record: Member) => <SensitiveText entity="Member" id={record.id} field="email" value={v} /> },
     { title: '等级', dataIndex: 'levelName', width: 100, render: (v: string | null) => (v ? <Tag color="amber">{v}</Tag> : EMPTY_PLACEHOLDER) },
     {
       title: '标签', dataIndex: 'tags', width: 160,
@@ -392,8 +401,8 @@ export default function MembersPage() {
           <Row gutter={16}>
             <Col span={12}><Form.Input field="nickname" label="昵称" placeholder="请输入昵称" rules={[{ required: true, message: '请输入昵称' }]} /></Col>
             <Col span={12}><Form.Input field="username" label="用户名" placeholder="用户名/手机号/邮箱至少填一个" disabled={!!editing} /></Col>
-            <Col span={12}><Form.Input field="phone" label="手机号" placeholder="用户名/手机号/邮箱至少填一个" /></Col>
-            <Col span={12}><Form.Input field="email" label="邮箱" placeholder="用户名/手机号/邮箱至少填一个" /></Col>
+            <Col span={12}><SensitiveFormInput control={sensitiveFields} field="phone" label="手机号" placeholder="用户名/手机号/邮箱至少填一个" /></Col>
+            <Col span={12}><SensitiveFormInput control={sensitiveFields} field="email" label="邮箱" placeholder="用户名/手机号/邮箱至少填一个" /></Col>
             {!editing && <Col span={12}><Form.Input field="password" label="密码" type="password" placeholder="选填，留空则无密码" /></Col>}
             <Col span={12}>
               <Form.Select field="levelId" label="会员等级" placeholder="请选择" style={{ width: '100%' }} showClear

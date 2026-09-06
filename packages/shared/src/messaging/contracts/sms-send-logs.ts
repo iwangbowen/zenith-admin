@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { sensitive } from '../../core/sensitive';
 import { SEND_SOURCES, SEND_STATUSES, SMS_PROVIDERS } from '../constants';
 import { sendSmsSchema } from '../validation';
 
@@ -13,7 +14,7 @@ export const smsSendLogSchema = z.object({
   templateId: z.int().nullable(),
   templateName: z.string().nullable(),
   provider: z.enum(SMS_PROVIDERS),
-  phone: z.string(),
+  phone: sensitive(z.string(), 'phone', '接收手机号'),
   content: z.string(),
   status: z.enum(SEND_STATUSES),
   errorMsg: z.string().nullable(),

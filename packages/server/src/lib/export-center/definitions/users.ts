@@ -100,8 +100,9 @@ export const usersExportDefinition = defineExport<Record<string, unknown>, UserE
     {
       header: '联系方式',
       children: [
-        { key: 'email', header: '邮箱', width: 28 },
-        { key: 'phone', header: '手机号', width: 18 },
+        // 脱敏导出按数据脱敏中心对 User.email / User.phone 的生效策略打码，与用户列表页同一口径
+        { key: 'email', header: '邮箱', width: 28, sensitive: true, maskKey: 'User.email' },
+        { key: 'phone', header: '手机号', width: 18, sensitive: true, maskKey: 'User.phone' },
       ],
     },
     {

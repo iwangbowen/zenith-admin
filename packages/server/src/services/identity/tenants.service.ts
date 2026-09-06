@@ -12,6 +12,7 @@ import { clearUserPermissionCache } from '../../lib/permissions';
 import { validatePassword } from '@zenith/shared/settings';
 import { getSettings } from '../../lib/settings';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { registerRevealSource } from '../../lib/data-mask/reveal';
 
 export function mapTenant(row: typeof tenants.$inferSelect, packageName: string | null = null) {
   return {
@@ -120,6 +121,9 @@ export async function getTenant(id: number) {
   const { package: pkg, ...rest } = row;
   return mapTenant(rest, pkg?.name ?? null);
 }
+
+// 按需查看明文（联系电话）：租户管理仅平台管理员可达，路由权限已收口
+registerRevealSource('Tenant', (id) => getTenant(id) as Promise<Record<string, unknown>>);
 
 interface TenantInput {
   name: string;

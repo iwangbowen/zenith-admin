@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { sensitive } from '../../core/sensitive';
 import { SEND_SOURCES, SEND_STATUSES } from '../constants';
 import { sendEmailSchema } from '../validation';
 
@@ -10,7 +11,7 @@ export const emailSendLogSchema = z.object({
   id: z.int(),
   templateId: z.int().nullable(),
   templateName: z.string().nullable(),
-  toEmail: z.string(),
+  toEmail: sensitive(z.string(), 'email', '收件邮箱'),
   subject: z.string(),
   content: z.string(),
   status: z.enum(SEND_STATUSES),

@@ -12,7 +12,7 @@ const columns: ExportColumn[] = [
   { key: 'name', header: '租户名称', width: 20 },
   { key: 'code', header: '租户编码', width: 16 },
   { key: 'contactName', header: '联系人', width: 14 },
-  { key: 'contactPhone', header: '联系电话', width: 16 },
+  { key: 'contactPhone', header: '联系电话', width: 16, sensitive: true, maskKey: 'Tenant.contactPhone' },
   { key: 'status', header: '状态', width: 10, enumMap: STATUS_LABELS },
   { key: 'expireAt', header: '到期时间', width: 22, type: 'datetime' },
   { key: 'maxUsers', header: '最大用户数', width: 12, type: 'number' },

@@ -17,7 +17,7 @@ const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 10, type: 'number' },
   { key: 'orderNo', header: '订单号', width: 26 },
   { key: 'memberName', header: '会员昵称', width: 16 },
-  { key: 'memberPhone', header: '会员手机号', width: 16, sensitive: true },
+  { key: 'memberPhone', header: '会员手机号', width: 16, sensitive: true, maskKey: 'MemberRecharge.memberPhone' },
   { key: 'amount', header: '充值金额(元)', width: 14, type: 'money' },
   { key: 'paidAmount', header: '实付金额(元)', width: 14, type: 'money' },
   { key: 'channel', header: '支付渠道', width: 12, enumMap: CHANNEL_LABELS },

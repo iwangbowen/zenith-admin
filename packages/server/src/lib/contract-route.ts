@@ -13,11 +13,12 @@
  * ```
  */
 import { createRoute, defineOpenAPIRoute, type OpenAPIRoute, type RouteConfig, type RouteHandler, type RouteHook } from '@hono/zod-openapi';
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import type { z } from 'zod';
 import { isMultipart, MULTIPART_CONTENT_TYPE, type AnyOperation, type MultipartBody, type ParamsSchema, type SecurityScheme } from '@zenith/shared/core';
 import { IOT_SIGN_HEADER, IOT_SN_HEADER, IOT_TIMESTAMP_HEADER } from '@zenith/shared/iot';
 import { OPEN_SIGNATURE_HEADERS } from '@zenith/shared/open-platform';
+import { withDataMasking } from './data-mask/boundary';
 import { apiResponse, commonErrorResponses, jsonContent, okCsv, okExcel, okFile } from './openapi-schemas';
 
 /**
@@ -182,6 +183,9 @@ export type ContractRouteDefinition<
 /**
  * 由契约定义一条路由：等价于 `defineOpenAPIRoute({ route: toRoute(op, options), handler })`，
  * 产物直接交给 `router.openapiRoutes([...] as const)`。
+ *
+ * 响应 schema 含 `sensitive()` 字段的 JSON 操作会自动套上数据脱敏边界（`lib/data-mask/boundary.ts`）：
+ * 出口按查看者策略打码，写操作拒绝把脱敏值回写；契约上标 `unmasked: true` 的自视图端点除外。
  */
 export function defineContractRoute<
   Op extends AnyOperation,
@@ -190,6 +194,7 @@ export function defineContractRoute<
 >(op: Op, def: ContractRouteDefinition<Op, M, Extra>): Registered<RouteOf<Op, M, Extra>> {
   const { middleware, responses, hide, handler, hook } = def;
   const route = toRoute(op, { middleware, responses, hide });
+  const masked = withDataMasking(op, handler as unknown as (c: Context) => Response | Promise<Response>);
   // 同 toRoute：泛型 Op 下 RouteOf 无法静态满足 RouteConfig 约束，具体实例的类型由返回类型给出
-  return defineOpenAPIRoute({ route: route as RouteConfig, handler: handler as never, hook: hook as never }) as unknown as Registered<RouteOf<Op, M, Extra>>;
+  return defineOpenAPIRoute({ route: route as RouteConfig, handler: masked as never, hook: hook as never }) as unknown as Registered<RouteOf<Op, M, Extra>>;
 }

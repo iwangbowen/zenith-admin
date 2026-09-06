@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { sensitive } from '../../core/sensitive';
 import { DATA_SCOPES } from '../constants';
 import {
   assignUserMenusSchema,
@@ -21,8 +22,8 @@ export const userSchema = z.object({
   id: z.int().meta({ example: 1 }),
   username: z.string().meta({ example: 'admin' }),
   nickname: z.string().meta({ example: '系统管理员' }),
-  email: z.string().nullable().meta({ example: 'admin@example.com' }),
-  phone: z.string().nullable().optional(),
+  email: sensitive(z.string().nullable().meta({ example: 'admin@example.com' }), 'email'),
+  phone: sensitive(z.string().nullable(), 'phone').optional(),
   gender: z.string().nullable().optional(),
   avatar: z.string().nullable().optional(),
   departmentId: z.int().nullable().optional(),

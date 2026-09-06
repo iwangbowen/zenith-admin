@@ -14,6 +14,7 @@ import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
+import { registerRevealSource } from '../../lib/data-mask/reveal';
 import { mapPointAccount, mapPointTransaction, ensurePointAccount } from './member-points.service';
 import { mapWallet, mapWalletTransaction, ensureWallet } from './member-wallet.service';
 import type { MemberStatus } from '@zenith/shared/member';
@@ -119,6 +120,9 @@ export async function getMemberDetail(id: number) {
     tags: mapBoundTags(row.tagBindings),
   });
 }
+
+// 按需查看明文（手机号 / 邮箱）：复用后台详情的可见性口径
+registerRevealSource('Member', (id) => getMemberDetail(id) as Promise<Record<string, unknown>>);
 
 export async function getMemberBeforeAudit(id: number) {
   return getMemberDetail(id);

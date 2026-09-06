@@ -8,7 +8,7 @@ import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 8, type: 'number' },
-  { key: 'toEmail', header: '收件邮箱', width: 26 },
+  { key: 'toEmail', header: '收件邮箱', width: 26, sensitive: true, maskKey: 'EmailSendLog.toEmail' },
   { key: 'subject', header: '主题', width: 30 },
   { key: 'status', header: '状态', width: 10 },
   { key: 'errorMsg', header: '错误信息', width: 24 },

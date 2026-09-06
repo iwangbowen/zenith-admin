@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { dateRangeBound, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { sensitive } from '../../core/sensitive';
 import { PAYMENT_CHANNELS, PAYMENT_ORDER_STATUSES } from '../../payment/constants';
 import { MEMBER_RECHARGE_STATUSES } from '../constants';
 
@@ -14,7 +15,7 @@ export const memberRechargeSchema = z.object({
   channelTradeNo: z.string().nullable(),
   memberId: z.int().nullable(),
   memberNickname: z.string().nullable(),
-  memberPhone: z.string().nullable(),
+  memberPhone: sensitive(z.string().nullable(), 'phone', '会员手机号'),
   subject: z.string(),
   amount: z.int().meta({ description: '充值金额（分）' }),
   channel: z.enum(PAYMENT_CHANNELS),

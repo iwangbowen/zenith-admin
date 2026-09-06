@@ -87,8 +87,10 @@
   静态 lookup、数据库元数据与昂贵派生取数不与列表同前缀
 - **下拉源归属所有者域**：**禁止**用本域 key 请求别域资源（所有者域增删改时无人失效它，界面静默显示旧列表），
   一律复用 `useAllRoles` / `useFlatDepartments` / `useAllUsers` / `useAllPositions` / `useDictItems` 等共享 lookup hook
-- **手写 mutation 的回填红线**：`setQueryData(detail(id), saved)` 仅限写接口与详情接口同源；详情按查看者脱敏、
-  详情多出关联数据、写接口不回传编辑过的关联字段、列表 / 树含聚合字段这四种情形**必须**改为失效 `detail(id)`
+- **手写 mutation 的回填红线**：`setQueryData(detail(id), saved)` 仅限写接口与详情接口同源；脱敏口径不一致（`unmasked` 端点 /
+  非契约通道的响应）、详情多出关联数据、写接口不回传编辑过的关联字段、列表 / 树含聚合字段这四种情形**必须**改为失效 `detail(id)`
+- **敏感字段（契约 `sensitive()` 声明）的表单与展示**：编辑表单用 `SensitiveFormInput` + `useSensitiveFormFields`
+  （锁定掩码值、`strip()` 剔除未修改字段），表格 / 详情用 `SensitiveText`；**禁止**用普通 `Form.Input` 回填并提交掩码值
 - **失效行为需可证伪**：测试用 `test-utils/query-harness.ts` 断言实际请求数、进入 fetching 的查询与缓存新鲜度；
   **禁止**只 spy「调用了 `invalidateQueries(某 key)`」——`all` 是 `detail` 的前缀，冗余的广播写法下同样通过
 - **轮询**用 `refetchInterval`，禁止手写 `setInterval` 拉数据
