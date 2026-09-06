@@ -7,7 +7,7 @@
  * 每次命中均落留痕（payment_risk_hits）；审核放行后用户重新下单复用挂起订单继续支付，
  * 拒绝则本地关闭挂起订单（渠道侧从未下单）。
  */
-import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { db } from '../../db';
@@ -24,7 +24,7 @@ import {
 } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
+import { requireTenantScopeId, tenantCondition, exactTenantCondition, inheritedTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
@@ -245,7 +245,7 @@ function createDailyStatsLoader(input: RiskCheckInput) {
  * 返回第一条命中的决策（block/review）；全部通过返回 pass。不抛异常，由调用方决定拦截/挂起。
  */
 export async function evaluateRisk(input: RiskCheckInput): Promise<RiskDecision> {
-  const tenantCond = input.tenantId == null ? isNull(paymentRiskRules.tenantId) : or(eq(paymentRiskRules.tenantId, input.tenantId), isNull(paymentRiskRules.tenantId));
+  const tenantCond = inheritedTenantCondition(paymentRiskRules.tenantId, input.tenantId ?? null);
   const rules = await db.select().from(paymentRiskRules).where(and(eq(paymentRiskRules.status, 'enabled'), tenantCond));
   const applicable = rules.filter((r) => ruleApplies(r, input));
 
