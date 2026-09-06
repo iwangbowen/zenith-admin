@@ -8,9 +8,9 @@ import { useDeleteDriveNodeVersion, useDriveNodeVersions, useRestoreDriveNodeVer
 import { usePermission } from '@/hooks/usePermission';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
-import { formatDateTime } from '@/utils/date';
 import { fetchProtectedFile } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { roleAtLeast } from '../drive-utils';
 
 interface DriveVersionsPanelProps {
@@ -47,17 +47,17 @@ export function DriveVersionsPanel({ node }: DriveVersionsPanelProps) {
     {
       title: '版本', dataIndex: 'version', minWidth: 120,
       render: (v: number, r: DriveFileVersion) => (
-        <div>
-          <span>v{v} {r.isCurrent && <Tag color="green" size="small">当前</Tag>}</span>
-          {r.comment && <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{r.comment}</Typography.Text>}
+        <div className="drive-name-cell">
+          <span className="drive-nowrap">v{v} {r.isCurrent && <Tag color="green" size="small">当前</Tag>}</span>
+          {r.comment && <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ minWidth: 0 }}>{r.comment}</Typography.Text>}
         </div>
       ),
     },
-    { title: '大小', dataIndex: 'size', width: 90, render: (v: number) => formatBytes(v) },
-    { title: '上传人', dataIndex: 'authorName', width: 90, render: (v: string | null) => v ?? '—' },
-    { title: '时间', dataIndex: 'createdAt', width: 150, render: (v: string) => formatDateTime(v) },
+    { title: '大小', dataIndex: 'size', width: 100, render: (v: number) => <span className="drive-nowrap">{formatBytes(v)}</span> },
+    { title: '上传人', dataIndex: 'authorName', width: 100, render: renderEllipsis },
+    dateTimeColumn('时间', 'createdAt'),
     createOperationColumn<DriveFileVersion>({
-      width: 140,
+      width: 180,
       desktopInlineKeys: ['download', 'restore'],
       actions: (r): ResponsiveTableAction[] => [
         { key: 'download', label: '下载', hidden: !canDownload, onClick: () => download(r) },

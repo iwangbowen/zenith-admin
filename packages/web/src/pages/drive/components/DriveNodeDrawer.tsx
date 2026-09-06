@@ -69,14 +69,14 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
   };
 
   const title = node ? (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-      {getFileTypeIcon(node.type === 'folder' ? 'inode/directory' : node.mimeType, 18, node.type === 'folder' ? undefined : node.name)}
-      <Typography.Text ellipsis={{ showTooltip: true }} strong style={{ minWidth: 0 }}>{node.name}</Typography.Text>
+    <div className="drive-drawer__title">
+      <span className="drive-drawer__title-icon">{getFileTypeIcon(node.type === 'folder' ? 'inode/directory' : node.mimeType, 18, node.type === 'folder' ? undefined : node.name)}</span>
+      <Typography.Text ellipsis={{ showTooltip: true }} strong>{node.name}</Typography.Text>
     </div>
   ) : '详情';
 
   return (
-    <SideSheet visible={nodeId !== null} onCancel={onClose} title={title} width={640} closeOnEsc footer={null} bodyStyle={{ padding: '0 16px 16px' }}>
+    <SideSheet visible={nodeId !== null} onCancel={onClose} title={title} width={760} closeOnEsc footer={null} className="drive-node-drawer" bodyStyle={{ padding: '0 16px 16px' }}>
       <Spin spinning={query.isPending}>
         {node && (
           <>

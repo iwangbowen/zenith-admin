@@ -19,7 +19,7 @@ import { batchDownloadDriveNodes, driveKeys, useCopyDriveNodes, useCreateDriveFo
 import { confirmDelete } from '@/utils/confirm';
 import { canPreviewFile, fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DriveFolderPicker, type FolderTarget } from './DriveFolderPicker';
 import { DriveNodeCard } from './DriveNodeCard';
 import type { UploaderTarget } from '../hooks/useDriveUploader';
@@ -175,7 +175,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
 
   const columns: ColumnProps<DriveNode>[] = [
     {
-      title: '名称', dataIndex: 'name', minWidth: 220, ellipsis: { showTitle: false },
+      title: '名称', dataIndex: 'name', minWidth: 260, ellipsis: { showTitle: false },
       render: (_: unknown, node: DriveNode) => (
         <div className="drive-name-cell">
           <FileNameCell name={node.name} mimeType={node.type === 'folder' ? 'inode/directory' : node.mimeType} onClick={() => openNode(node)} />
@@ -185,11 +185,11 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
         </div>
       ),
     },
-    { title: '大小', dataIndex: 'size', width: 90, render: (v: number, node: DriveNode) => (node.type === 'folder' ? '—' : formatBytes(v)) },
-    { title: '修改人', dataIndex: 'updatedByName', width: 100, render: (v: string | null) => v ?? '—' },
+    { title: '大小', dataIndex: 'size', width: 100, render: (v: number, node: DriveNode) => <span className="drive-nowrap">{node.type === 'folder' ? EMPTY_PLACEHOLDER : formatBytes(v)}</span> },
+    { title: '修改人', dataIndex: 'updatedByName', width: 110, render: renderEllipsis },
     dateTimeColumn('修改时间', 'updatedAt'),
-    { title: '角色', dataIndex: 'myRole', width: 80, render: (v: DriveNode['myRole']) => (v ? DRIVE_ROLE_LABELS[v] : '—') },
-    createOperationColumn<DriveNode>({ width: 170, desktopInlineKeys: ['preview', 'download'], actions: nodeActions }),
+    // 「我的角色」在目录内几乎恒定，改到头部展示；节点级差异在详情抽屉查看，让名称列拿到更多宽度
+    createOperationColumn<DriveNode>({ width: 180, desktopInlineKeys: ['preview', 'download'], actions: nodeActions }),
   ];
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -212,7 +212,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
       onDrop={onDrop}
     >
       <div className="drive-browser__header">
-        <Breadcrumb compact={false} className="drive-browser__crumbs">
+        <Breadcrumb compact={false} className="drive-browser__crumbs" showTooltip={{ width: 320 }}>
           <Breadcrumb.Item onClick={() => onNavigate(null)}>{data?.space.name ?? '…'}</Breadcrumb.Item>
           {(data?.breadcrumbs ?? []).map((b, idx, arr) => (
             <Breadcrumb.Item key={b.id} onClick={idx < arr.length - 1 ? () => onNavigate(b.id) : undefined}>{b.name}</Breadcrumb.Item>
@@ -220,7 +220,8 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
         </Breadcrumb>
         {data && (
           <div className="drive-browser__usage">
-            <Typography.Text type="tertiary" size="small">
+            {myRole && <Tag size="small" color="light-blue" className="drive-browser__role">我的角色：{DRIVE_ROLE_LABELS[myRole]}</Tag>}
+            <Typography.Text type="tertiary" size="small" className="drive-nowrap">
               {formatBytes(data.space.usedBytes)}{data.space.quotaBytes ? ` / ${formatBytes(data.space.quotaBytes)}` : ' · 不限'}
             </Typography.Text>
             {usage !== null && <Progress percent={usage} size="small" style={{ width: 80 }} stroke={usage >= 90 ? 'var(--semi-color-danger)' : undefined} aria-label="空间用量" />}

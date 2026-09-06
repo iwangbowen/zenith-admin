@@ -21,7 +21,7 @@ import {
   driveKeys, useDeleteDriveSpaces, useDriveSpaceDetail, useDriveSpaceList, useDriveSpaceMembers, useSaveDriveSpace, useSaveDriveSpaceMembers, useTransferDriveSpace,
 } from '@/hooks/queries/drive';
 import { confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DriveSubjectPicker, type SubjectGrant } from '../components/DriveSubjectPicker';
 import { roleAtLeast, usagePercent } from '../drive-utils';
 import '../drive.css';
@@ -50,8 +50,9 @@ function MembersModal({ space, onClose }: { readonly space: DriveSpace | null; r
   useEffect(() => { setDraft((query.data ?? []).map((m) => ({ subjectType: m.subjectType, subjectId: m.subjectId, role: m.role, subjectName: m.subjectName }))); }, [query.data]);
   const canEdit = roleAtLeast(space?.myRole, 'manager');
   return (
+    // 只读时才显式传 footer={null}：Semi 以 `'footer' in props` 判定，传 undefined 也会吞掉默认页脚
     <AppModal visible={!!space} title={`成员管理 · ${space?.name ?? ''}`} width={760} closeOnEsc onCancel={onClose}
-      footer={canEdit ? undefined : null}
+      {...(canEdit ? {} : { footer: null })}
       okText="保存" okButtonProps={{ loading: save.isPending }}
       onOk={async () => {
         if (!space) return;
@@ -143,32 +144,32 @@ export default function DriveSpacesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // 页面宽约 1190px：去掉低价值的创建时间列、收窄辅助列，让名称列保持可读；打开空间点名称即可
   const columns: ColumnProps<DriveSpace>[] = [
     { title: '名称', dataIndex: 'name', minWidth: 200, ellipsis: { showTitle: false },
       render: (v: string, s: DriveSpace) => (
         <Typography.Text link ellipsis={{ showTooltip: true }} onClick={() => navigate(`/drive?space=${s.id}`)}>{v}</Typography.Text>
       ) },
     { title: '类型', dataIndex: 'type', width: 100, render: (v: DriveSpaceType) => <Tag size="small" color={v === 'personal' ? 'grey' : v === 'department' ? 'green' : 'blue'}>{DRIVE_SPACE_TYPE_LABELS[v]}</Tag> },
-    { title: '所有者 / 部门', width: 140, render: (_: unknown, s: DriveSpace) => s.ownerName ?? s.departmentName ?? EMPTY_PLACEHOLDER },
+    { title: '所有者 / 部门', width: 130, render: (_: unknown, s: DriveSpace) => renderEllipsis(s.ownerName ?? s.departmentName) },
     { title: '我的角色', dataIndex: 'myRole', width: 90, render: (v: DriveRole | null | undefined) => (v ? DRIVE_ROLE_LABELS[v] : EMPTY_PLACEHOLDER) },
-    { title: '默认成员角色', dataIndex: 'defaultMemberRole', width: 110, render: (v: DriveRole | null) => (v ? DRIVE_ROLE_LABELS[v] : '不开放') },
+    { title: '默认角色', dataIndex: 'defaultMemberRole', width: 90, render: (v: DriveRole | null) => (v ? DRIVE_ROLE_LABELS[v] : '不开放') },
     { title: '成员', dataIndex: 'memberCount', width: 70, render: (v?: number) => v ?? EMPTY_PLACEHOLDER },
-    { title: '用量', width: 200, render: (_: unknown, s: DriveSpace) => {
+    { title: '用量', width: 170, render: (_: unknown, s: DriveSpace) => {
       const pct = usagePercent(s);
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 12 }}>{formatBytes(s.usedBytes)}{s.quotaBytes ? ` / ${formatBytes(s.quotaBytes)}` : ' · 不限'}</span>
+          <span className="drive-nowrap" style={{ fontSize: 12 }}>{formatBytes(s.usedBytes)}{s.quotaBytes ? ` / ${formatBytes(s.quotaBytes)}` : ' · 不限'}</span>
           {pct !== null && <Progress percent={pct} size="small" showInfo={false} stroke={pct >= 90 ? 'var(--semi-color-danger)' : undefined} aria-label={`用量 ${pct}%`} />}
         </div>
       );
     } },
-    { title: '状态', dataIndex: 'status', width: 80, render: (v: string) => (v === 'enabled' ? <Tag size="small" color="green">启用</Tag> : <Tag size="small" color="grey">停用</Tag>) },
-    dateTimeColumn('创建时间', 'createdAt'),
-    createOperationColumn<DriveSpace>({ width: 190, desktopInlineKeys: ['open', 'members'], actions: (s) => {
+    { title: '状态', dataIndex: 'status', width: 80, fixed: 'right', render: (v: string) => (v === 'enabled' ? <Tag size="small" color="green">启用</Tag> : <Tag size="small" color="grey">停用</Tag>) },
+    createOperationColumn<DriveSpace>({ width: 150, desktopInlineKeys: ['members'], actions: (s) => {
       const isManager = roleAtLeast(s.myRole, 'manager');
       return [
-        { key: 'open', label: '打开', onClick: () => navigate(`/drive?space=${s.id}`) },
         { key: 'members', label: s.type === 'personal' ? '成员' : (isManager ? '成员管理' : '查看成员'), hidden: s.type === 'personal', onClick: () => setMembersOf(s) },
+        { key: 'open', label: '打开', onClick: () => navigate(`/drive?space=${s.id}`) },
         { key: 'edit', label: '编辑', hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:edit'), onClick: () => modal.openEdit(s) },
         { key: 'transfer', label: '转让', hidden: s.type !== 'team' || !isManager, onClick: () => setTransferOf(s) },
         { key: 'delete', label: '删除', danger: true, dividerBefore: true, hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:delete'),

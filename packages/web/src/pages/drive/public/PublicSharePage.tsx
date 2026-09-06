@@ -15,7 +15,7 @@ import { accessDrivePublicShare, drivePublicContentUrl, useDrivePublicChildren, 
 import { canPreviewFile } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/date';
-import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { DriveFolderPicker, type FolderTarget } from '../components/DriveFolderPicker';
 import '../drive.css';
 
@@ -123,9 +123,9 @@ export default function PublicSharePage() {
   const columns: ColumnProps<DrivePublicNode>[] = [
     { title: '名称', dataIndex: 'name', ellipsis: { showTitle: false },
       render: (_: unknown, n: DrivePublicNode) => <FileNameCell name={n.name} mimeType={n.type === 'folder' ? 'inode/directory' : n.mimeType} onClick={() => openNode(n)} /> },
-    { title: '大小', dataIndex: 'size', width: 100, render: (v: number, n: DrivePublicNode) => (n.type === 'folder' ? EMPTY_PLACEHOLDER : formatBytes(v)) },
-    { title: '修改时间', dataIndex: 'updatedAt', width: 160, render: (v: string) => formatDateTime(v) },
-    { title: '操作', width: canDownload && isLoggedIn ? 220 : 150, render: (_: unknown, n: DrivePublicNode) => (
+    { title: '大小', dataIndex: 'size', width: 100, render: (v: number, n: DrivePublicNode) => <span className="drive-nowrap">{n.type === 'folder' ? EMPTY_PLACEHOLDER : formatBytes(v)}</span> },
+    dateTimeColumn<DrivePublicNode>('修改时间', 'updatedAt'),
+    { title: '操作', width: canDownload && isLoggedIn ? 250 : 170, render: (_: unknown, n: DrivePublicNode) => (
       <div style={{ display: 'flex', gap: 4 }}>
         {n.type === 'file' && canPreviewFile(n.mimeType, n.name) && <Button size="small" theme="borderless" onClick={() => openNode(n)}>预览</Button>}
         {n.type === 'file' && canDownload && <Button size="small" theme="borderless" icon={<Download size={14} />} onClick={() => void download(n)}>下载</Button>}

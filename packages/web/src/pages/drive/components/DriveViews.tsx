@@ -25,7 +25,7 @@ import { confirmDanger } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { canPreviewFile, fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
-import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { nodeDownloadUrl, nodeToManagedFile, roleAtLeast, shareLinkStateTag } from '../drive-utils';
 
 type ListView = Exclude<DriveView, 'space'>;
@@ -118,32 +118,33 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
       <FileNameCell name={node.name} mimeType={node.type === 'folder' ? 'inode/directory' : node.mimeType} onClick={view === 'recycle' ? undefined : () => openNode(node)} />
     ),
   };
-  const spaceColumn: ColumnProps<AnyNode> = { title: '所在空间', dataIndex: 'spaceName', width: 140, render: (v: string | undefined) => v ?? EMPTY_PLACEHOLDER };
-  const sizeColumn: ColumnProps<AnyNode> = { title: '大小', dataIndex: 'size', width: 100, render: (v: number, n: AnyNode) => (n.type === 'folder' ? EMPTY_PLACEHOLDER : formatBytes(v)) };
+  const spaceColumn: ColumnProps<AnyNode> = { title: '所在空间', dataIndex: 'spaceName', width: 130, render: renderEllipsis };
+  const sizeColumn: ColumnProps<AnyNode> = { title: '大小', dataIndex: 'size', width: 100, render: (v: number, n: AnyNode) => <span className="drive-nowrap">{n.type === 'folder' ? EMPTY_PLACEHOLDER : formatBytes(v)}</span> };
 
+  // 工作台右侧区域在 1440 宽下约 900px：每个视图只保留高频列，保证名称列有足够宽度且不出横向滚动
   const nodeColumns: ColumnProps<AnyNode>[] = (() => {
     switch (view) {
       case 'shared':
-        return [nameColumn, spaceColumn, sizeColumn,
-          { title: '授权来源', dataIndex: 'grantedVia', width: 110, render: (v: DriveSharedItem['grantedVia']) => DRIVE_SUBJECT_TYPE_LABELS[v] },
-          { title: '角色', dataIndex: 'grantedRole', width: 90, render: (v: DriveSharedItem['grantedRole']) => DRIVE_ROLE_LABELS[v] },
+        return [nameColumn, spaceColumn,
+          { title: '授权', width: 130, render: (_: unknown, n: AnyNode) => {
+            const item = n as unknown as DriveSharedItem;
+            return <span className="drive-nowrap">{DRIVE_ROLE_LABELS[item.grantedRole]} · {DRIVE_SUBJECT_TYPE_LABELS[item.grantedVia]}</span>;
+          } },
           dateTimeColumn('修改时间', 'updatedAt'),
-          createOperationColumn<AnyNode>({ width: 170, desktopInlineKeys: ['preview', 'download'], actions: nodeActions })];
+          createOperationColumn<AnyNode>({ width: 180, desktopInlineKeys: ['preview', 'download'], actions: nodeActions })];
       case 'recent':
-        return [nameColumn, spaceColumn, sizeColumn,
-          { title: '最近操作', dataIndex: 'lastAction', width: 110, render: (v: DriveRecentItem['lastAction']) => DRIVE_ACTIVITY_ACTION_LABELS[v] },
+        return [nameColumn, spaceColumn,
+          { title: '最近操作', dataIndex: 'lastAction', width: 100, render: (v: DriveRecentItem['lastAction']) => DRIVE_ACTIVITY_ACTION_LABELS[v] },
           dateTimeColumn('访问时间', 'lastAccessAt'),
-          createOperationColumn<AnyNode>({ width: 170, desktopInlineKeys: ['preview', 'download'], actions: nodeActions })];
+          createOperationColumn<AnyNode>({ width: 180, desktopInlineKeys: ['preview', 'download'], actions: nodeActions })];
       case 'recycle':
         return [nameColumn, spaceColumn, sizeColumn,
-          { title: '删除人', dataIndex: 'deletedByName', width: 110, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
           dateTimeColumn('删除时间', 'deletedAt'),
           createOperationColumn<AnyNode>({ width: 180, actions: nodeActions })];
       default:
         return [nameColumn, spaceColumn, sizeColumn,
-          { title: '修改人', dataIndex: 'updatedByName', width: 110, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
           dateTimeColumn('修改时间', 'updatedAt'),
-          createOperationColumn<AnyNode>({ width: 170, desktopInlineKeys: ['preview', 'download'], actions: nodeActions })];
+          createOperationColumn<AnyNode>({ width: 180, desktopInlineKeys: ['preview', 'download'], actions: nodeActions })];
     }
   })();
 
@@ -151,12 +152,15 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
     { title: '文件', dataIndex: 'nodeName', minWidth: 220, ellipsis: { showTitle: false },
       render: (_: unknown, l: DriveShareLink) => <FileNameCell name={l.nodeName} mimeType={l.nodeType === 'folder' ? 'inode/directory' : null} onClick={() => onOpenDetail(l.nodeId)} /> },
     { title: '状态', dataIndex: 'state', width: 90, render: (v: DriveShareLink['state']) => shareLinkStateTag(v) },
-    { title: '权限', dataIndex: 'permission', width: 90, render: (v: DriveShareLink['permission']) => DRIVE_SHARE_PERMISSION_LABELS[v] },
-    { title: '密码', dataIndex: 'hasPassword', width: 70, render: (v: boolean) => (v ? <Tag size="small" color="orange">有</Tag> : '无') },
-    { title: '访问 / 下载', width: 110, render: (_: unknown, l: DriveShareLink) => `${l.accessCount}${l.maxAccessCount ? `/${l.maxAccessCount}` : ''} · ${l.downloadCount}` },
-    dateTimeColumn('过期时间', 'expireAt'),
-    dateTimeColumn('创建时间', 'createdAt'),
-    createOperationColumn<DriveShareLink>({ width: 170, desktopInlineKeys: ['copy'], actions: (l) => [
+    { title: '权限', dataIndex: 'permission', width: 110, render: (v: DriveShareLink['permission'], l: DriveShareLink) => (
+      <Space spacing={4} className="drive-nowrap">
+        <span>{DRIVE_SHARE_PERMISSION_LABELS[v]}</span>
+        {l.hasPassword && <Tag size="small" color="orange">密码</Tag>}
+      </Space>
+    ) },
+    { title: '访问 / 下载', width: 110, render: (_: unknown, l: DriveShareLink) => <span className="drive-nowrap">{`${l.accessCount}${l.maxAccessCount ? `/${l.maxAccessCount}` : ''} · ${l.downloadCount}`}</span> },
+    dateTimeColumn('过期时间', 'expireAt', { empty: '永久' }),
+    createOperationColumn<DriveShareLink>({ width: 150, desktopInlineKeys: ['copy'], actions: (l) => [
       { key: 'copy', label: '复制链接', disabled: l.state !== 'active', onClick: () => void copyTextWithToast(`${globalThis.location.origin}${l.url}`, { success: '链接已复制' }) },
       { key: 'node', label: '查看文件', onClick: () => onOpenDetail(l.nodeId) },
       { key: 'revoke', label: '撤销', hidden: l.state === 'revoked', onClick: () => { confirmDanger({ title: '撤销这条外链？', content: '撤销后链接立即失效。', okText: '撤销',
@@ -245,10 +249,10 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
           {n.snippet && <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ display: 'block', paddingLeft: 24 }}>{n.snippet}</Typography.Text>}
         </div>
       ) },
-    { title: '所在空间', dataIndex: 'spaceName', width: 140 },
-    { title: '大小', dataIndex: 'size', width: 100, render: (v: number, n: DriveSearchItem) => (n.type === 'folder' ? EMPTY_PLACEHOLDER : formatBytes(v)) },
+    { title: '所在空间', dataIndex: 'spaceName', width: 130, render: renderEllipsis },
+    { title: '大小', dataIndex: 'size', width: 100, render: (v: number, n: DriveSearchItem) => <span className="drive-nowrap">{n.type === 'folder' ? EMPTY_PLACEHOLDER : formatBytes(v)}</span> },
     dateTimeColumn('修改时间', 'updatedAt'),
-    createOperationColumn<DriveSearchItem>({ width: 170, desktopInlineKeys: ['preview', 'download'], actions: (n) => [
+    createOperationColumn<DriveSearchItem>({ width: 180, desktopInlineKeys: ['preview', 'download'], actions: (n) => [
       ...(n.type === 'file' && canPreviewFile(n.mimeType, n.name) ? [{ key: 'preview', label: '预览', onClick: () => openNode(n) }] : []),
       ...(n.type === 'file' && hasPermission('drive:node:download') && roleAtLeast(n.myRole, 'downloader')
         ? [{ key: 'download', label: '下载', onClick: async () => downloadBlob(await fetchManagedFileBlob(nodeDownloadUrl(n)), n.name) }] : []),

@@ -188,11 +188,32 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
+  container-type: inline-size;
 }
 
+/* 文件名按剩余宽度省略；标签 / 图标不参与收缩，名称列很窄时隐藏标签（详情抽屉仍可见） */
 .drive-name-cell > .file-name-cell {
+  flex: 1 1 auto;
   min-width: 0;
-  flex: 1;
+}
+
+.drive-name-cell > .semi-tag {
+  flex: 0 0 auto;
+  max-width: 96px;
+}
+
+@container (max-width: 260px) {
+  .drive-name-cell > .semi-tag {
+    display: none;
+  }
+}
+
+.drive-nowrap {
+  white-space: nowrap;
+}
+
+.drive-browser__role {
+  flex-shrink: 0;
 }
 
 .drive-name-cell__star {
@@ -362,6 +383,24 @@
 }
 
 /* ─── 详情抽屉 ───────────────────────────────────────────────────────────── */
+/* 标题是长文件名：让标题区在 header 里可收缩，名称省略并出 tooltip，关闭按钮始终可见 */
+.drive-node-drawer .semi-sidesheet-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.drive-drawer__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drive-drawer__title-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
 .drive-drawer__actions {
   display: flex;
   gap: 8px;
@@ -420,6 +459,67 @@
   gap: 4px;
   font-size: 13px;
   color: var(--semi-color-text-1);
+}
+
+/* ─── 外链列表（抽屉内，宽度有限，用条目而不是多列表格）──────────────────── */
+.drive-link-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.drive-link-list__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.drive-link-list__item:last-child {
+  border-bottom: 0;
+}
+
+.drive-link-list__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.drive-link-list__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+.drive-link-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.drive-link-list__url {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.drive-link-list__url-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.drive-link-list__remark {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
 }
 
 /* ─── 授权主体选择器 ─────────────────────────────────────────────────────── */

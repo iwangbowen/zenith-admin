@@ -50,6 +50,7 @@ import { cmsDistributionRunsExportDefinition } from './cms-distribution-runs';
 import { monitorAlertEventsExportDefinition } from './monitor-alert-events';
 import { shortLinksExportDefinition } from './short-links';
 import { iotDevicesExportDefinition } from './iot-devices';
+import { driveActivitiesExportDefinition } from './drive-activities';
 
 let registered = false;
 
@@ -105,6 +106,7 @@ const definitions = [
   monitorAlertEventsExportDefinition,
   shortLinksExportDefinition,
   iotDevicesExportDefinition,
+  driveActivitiesExportDefinition,
 ] as unknown as AnyExportDefinition[];
 
 export function registerExportDefinitions(): void {

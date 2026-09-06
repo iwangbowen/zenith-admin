@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { DRIVE_SHARE_PERMISSION_LABELS, type DriveShareLink, type DriveShareLinkState } from '@zenith/shared/drive';
@@ -17,8 +17,9 @@ import { driveKeys, useAdminRevokeDriveShareLink, useDriveAdminShareLinks, useDr
 import { copyTextWithToast } from '@/utils/clipboard';
 import { confirmDanger } from '@/utils/confirm';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { SHARE_STATE_LABELS, shareLinkAbsoluteUrl, shareLinkStateTag } from '../drive-utils';
+import '../drive.css';
 
 interface SearchParams {
   keyword: string;
@@ -28,12 +29,15 @@ interface SearchParams {
 
 const STATE_OPTIONS = (Object.keys(SHARE_STATE_LABELS) as DriveShareLinkState[]).map((v) => ({ value: v, label: SHARE_STATE_LABELS[v] }));
 
+/** 外链访问日志动作文案（服务端 logShareAccess 的 action 取值） */
+const ACCESS_ACTION_LABELS: Record<string, string> = { access: '访问', list: '浏览目录', download: '下载', preview: '预览', password_fail: '密码错误', save: '转存' };
+
 function AccessLogsModal({ link, onClose }: { readonly link: DriveShareLink | null; readonly onClose: () => void }) {
   const { page, pageSize, buildPagination } = usePagination(20);
   const query = useDriveShareAccessLogs(link?.id, { page, pageSize }, !!link);
   const columns: ColumnProps<{ id: number; action: string; clientIp: string | null; ok: boolean; createdAt: string }>[] = [
-    { title: '动作', dataIndex: 'action', width: 100, render: (v: string) => ({ access: '访问', download: '下载', preview: '预览', password_fail: '密码错误', save: '转存' }[v] ?? v) },
-    { title: 'IP', dataIndex: 'clientIp', minWidth: 140, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
+    { title: '动作', dataIndex: 'action', width: 110, render: (v: string) => ACCESS_ACTION_LABELS[v] ?? v },
+    { title: 'IP', dataIndex: 'clientIp', minWidth: 140, render: renderEllipsis },
     { title: '结果', dataIndex: 'ok', width: 80, render: (v: boolean) => (v ? <Tag size="small" color="green">成功</Tag> : <Tag size="small" color="red">失败</Tag>) },
     dateTimeColumn('时间', 'createdAt'),
   ];
@@ -56,18 +60,22 @@ export default function DriveAdminShareLinksPage() {
   const revoke = useAdminRevokeDriveShareLink();
   const [logsOf, setLogsOf] = useState<DriveShareLink | null>(null);
 
+  // 页面宽约 1190px：密码并入权限列、去掉创建时间列，状态紧贴操作列并固定右侧
   const columns: ColumnProps<DriveShareLink>[] = [
     { title: '文件', dataIndex: 'nodeName', minWidth: 220, ellipsis: { showTitle: false },
       render: (_: unknown, l: DriveShareLink) => <FileNameCell name={l.nodeName} mimeType={l.nodeType === 'folder' ? 'inode/directory' : null} onClick={() => navigate(`/drive?space=${l.spaceId}`)} /> },
-    { title: '分享人', dataIndex: 'createdByName', width: 110, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
-    { title: '状态', dataIndex: 'state', width: 90, render: (v: DriveShareLinkState) => shareLinkStateTag(v) },
-    { title: '权限', dataIndex: 'permission', width: 90, render: (v: DriveShareLink['permission']) => DRIVE_SHARE_PERMISSION_LABELS[v] },
-    { title: '密码', dataIndex: 'hasPassword', width: 70, render: (v: boolean) => (v ? <Tag size="small" color="orange">有</Tag> : '无') },
-    { title: '访问 / 下载', width: 110, render: (_: unknown, l: DriveShareLink) => `${l.accessCount}${l.maxAccessCount ? `/${l.maxAccessCount}` : ''} · ${l.downloadCount}` },
-    { title: '备注', dataIndex: 'remark', width: 140, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
-    dateTimeColumn('过期时间', 'expireAt'),
-    dateTimeColumn('创建时间', 'createdAt'),
-    createOperationColumn<DriveShareLink>({ width: 170, desktopInlineKeys: ['logs', 'revoke'], actions: (l) => [
+    { title: '分享人', dataIndex: 'createdByName', width: 110, render: renderEllipsis },
+    { title: '权限', dataIndex: 'permission', width: 110, render: (v: DriveShareLink['permission'], l: DriveShareLink) => (
+      <Space spacing={4} className="drive-nowrap">
+        <span>{DRIVE_SHARE_PERMISSION_LABELS[v]}</span>
+        {l.hasPassword && <Tag size="small" color="orange">密码</Tag>}
+      </Space>
+    ) },
+    { title: '访问 / 下载', width: 110, render: (_: unknown, l: DriveShareLink) => <span className="drive-nowrap">{`${l.accessCount}${l.maxAccessCount ? `/${l.maxAccessCount}` : ''} · ${l.downloadCount}`}</span> },
+    { title: '备注', dataIndex: 'remark', width: 140, render: renderEllipsis },
+    dateTimeColumn('过期时间', 'expireAt', { empty: '永久' }),
+    { title: '状态', dataIndex: 'state', width: 90, fixed: 'right', render: (v: DriveShareLinkState) => shareLinkStateTag(v) },
+    createOperationColumn<DriveShareLink>({ width: 210, desktopInlineKeys: ['logs', 'revoke'], actions: (l) => [
       { key: 'logs', label: '访问记录', onClick: () => setLogsOf(l) },
       { key: 'copy', label: '复制链接', disabled: l.state !== 'active', onClick: () => void copyTextWithToast(shareLinkAbsoluteUrl(l), { success: '链接已复制' }) },
       { key: 'revoke', label: '撤销', danger: true, hidden: l.state === 'revoked' || !hasPermission('drive:admin:link:revoke'),

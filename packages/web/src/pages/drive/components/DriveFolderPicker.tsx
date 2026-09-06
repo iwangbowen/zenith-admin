@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Select, Tree, Typography } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Folder, HardDrive } from 'lucide-react';
@@ -30,9 +30,10 @@ interface DriveFolderPickerProps {
 }
 
 const ROOT_KEY = 'root';
+const NO_DISABLED_IDS: readonly number[] = [];
 
 /** 目标目录选择：空间下拉 + 懒加载的文件夹树（只加载文件夹） */
-export function DriveFolderPicker({ visible, title, okText = '确定', defaultSpaceId, disabledNodeIds = [], loading, writableOnly = true, onCancel, onOk }: DriveFolderPickerProps) {
+export function DriveFolderPicker({ visible, title, okText = '确定', defaultSpaceId, disabledNodeIds = NO_DISABLED_IDS, loading, writableOnly = true, onCancel, onOk }: DriveFolderPickerProps) {
   const spacesQuery = useMyDriveSpaces();
   const spaces = useMemo(
     () => (spacesQuery.data ?? []).filter((s) => !writableOnly || roleAtLeast(s.myRole, 'editor')),
@@ -40,8 +41,12 @@ export function DriveFolderPicker({ visible, title, okText = '确定', defaultSp
   );
   const [spaceId, setSpaceId] = useState<number | undefined>(defaultSpaceId);
   const [treeData, setTreeData] = useState<TreeNodeData[]>([]);
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([ROOT_KEY]);
   const [selectedKey, setSelectedKey] = useState<string>(ROOT_KEY);
   const [labelPath, setLabelPath] = useState<string>('');
+  // 调用方多以内联数组传入；用 ref 读取最新值，避免 loadChildren 每次渲染变身份触发树重载
+  const disabledNodeIdsRef = useRef(disabledNodeIds);
+  disabledNodeIdsRef.current = disabledNodeIds;
 
   useEffect(() => {
     if (!visible) return;
@@ -54,6 +59,7 @@ export function DriveFolderPicker({ visible, title, okText = '确定', defaultSp
 
   const loadChildren = useCallback(async (parentId: number | null): Promise<TreeNodeData[]> => {
     if (!spaceId) return [];
+    const disabled = disabledNodeIdsRef.current;
     const res = await api(driveNodeContract.list, {
       query: { spaceId: parentId ? undefined : spaceId, parentId: parentId ?? undefined, type: 'folder', pageSize: 200, sortBy: 'name' },
     });
@@ -62,17 +68,22 @@ export function DriveFolderPicker({ visible, title, okText = '确定', defaultSp
       label: n.name,
       value: n.id,
       icon: <Folder size={14} style={{ marginRight: 6, color: 'var(--semi-color-warning)' }} />,
-      disabled: disabledNodeIds.includes(n.id) || n.ancestorIds.some((id) => disabledNodeIds.includes(id)),
+      disabled: disabled.includes(n.id) || n.ancestorIds.some((id) => disabled.includes(id)),
       isLeaf: false,
     }));
-  }, [disabledNodeIds, spaceId]);
+  }, [spaceId]);
 
   useEffect(() => {
-    if (!visible || !spaceId) { setTreeData([]); return; }
+    if (!visible || !spaceId) {
+      setTreeData((prev) => (prev.length ? [] : prev));
+      return;
+    }
     let cancelled = false;
     setTreeData([]);
     loadChildren(null).then((children) => {
       if (cancelled) return;
+      // 数据到达后再展开根节点：Tree 的 defaultExpandedKeys 只在挂载时生效，此时数据尚未加载
+      setExpandedKeys([ROOT_KEY]);
       setTreeData([{
         key: ROOT_KEY,
         label: space?.name ?? '根目录',
@@ -109,7 +120,8 @@ export function DriveFolderPicker({ visible, title, okText = '确定', defaultSp
             treeData={treeData}
             loadData={onLoad}
             value={selectedKey}
-            defaultExpandedKeys={[ROOT_KEY]}
+            expandedKeys={expandedKeys}
+            onExpand={(keys) => setExpandedKeys(keys)}
             onSelect={(key, _selected, node) => {
               setSelectedKey(String(key));
               setLabelPath(String((node as TreeNodeData | undefined)?.label ?? ''));

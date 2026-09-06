@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
-import { Button, Form, Input, InputNumber, Progress, Select, Skeleton, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Input, InputNumber, Progress, Select, Skeleton, Space, Spin, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Files, HardDrive, Link2, RefreshCcw, Search, Upload } from 'lucide-react';
@@ -24,11 +24,13 @@ import {
   driveKeys, useAdminDeleteDriveSpace, useAdminUpdateDriveSpace, useCreateDepartmentDriveSpace, useDriveAdminSpaces, useDriveAdminStats, useDriveSpaceDetail, useSubmitDriveAdminTask,
 } from '@/hooks/queries/drive';
 import { confirmDanger } from '@/utils/confirm';
-import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { renderEllipsis } from '@/utils/table-columns';
 import { usagePercent } from '../drive-utils';
 import '../drive.css';
 
 const DriveAdminCharts = lazy(() => import('./DriveAdminCharts'));
+/** 所有者作为受控表单字段（原先直读 formApi 不触发重渲染，选择后不回显） */
+const FormUserSelect = withField(UserSelect);
 
 interface SearchParams {
   keyword: string;
@@ -120,26 +122,30 @@ export default function DriveAdminSpacesPage() {
   };
 
   const stats = statsQuery.data;
+  // 页面宽约 1190px：创建时间 / 外链开关移出列表（外链关闭以标签提示，编辑弹窗可改），保证名称列可读且无横向滚动
   const columns: ColumnProps<DriveSpace>[] = [
     { title: '名称', dataIndex: 'name', minWidth: 200, ellipsis: { showTitle: false },
       render: (v: string, s: DriveSpace) => <Typography.Text link ellipsis={{ showTooltip: true }} onClick={() => navigate(`/drive?space=${s.id}`)}>{v}</Typography.Text> },
     { title: '类型', dataIndex: 'type', width: 100, render: (v: DriveSpaceType) => <Tag size="small" color={v === 'personal' ? 'grey' : v === 'department' ? 'green' : 'blue'}>{DRIVE_SPACE_TYPE_LABELS[v]}</Tag> },
-    { title: '所有者 / 部门', width: 150, render: (_: unknown, s: DriveSpace) => s.ownerName ?? s.departmentName ?? EMPTY_PLACEHOLDER },
-    { title: '默认成员角色', dataIndex: 'defaultMemberRole', width: 110, render: (v: DriveRole | null) => (v ? DRIVE_ROLE_LABELS[v] : '不开放') },
-    { title: '成员 / 节点', width: 100, render: (_: unknown, s: DriveSpace) => `${s.memberCount ?? 0} / ${s.nodeCount ?? 0}` },
-    { title: '用量', width: 210, render: (_: unknown, s: DriveSpace) => {
+    { title: '所有者 / 部门', width: 130, render: (_: unknown, s: DriveSpace) => renderEllipsis(s.ownerName ?? s.departmentName) },
+    { title: '默认角色', dataIndex: 'defaultMemberRole', width: 90, render: (v: DriveRole | null) => (v ? DRIVE_ROLE_LABELS[v] : '不开放') },
+    { title: '成员 / 节点', width: 110, render: (_: unknown, s: DriveSpace) => <span className="drive-nowrap">{`${s.memberCount ?? 0} / ${s.nodeCount ?? 0}`}</span> },
+    { title: '用量', width: 200, render: (_: unknown, s: DriveSpace) => {
       const pct = usagePercent(s);
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 12 }}>{formatBytes(s.usedBytes)}{s.quotaBytes ? ` / ${formatBytes(s.quotaBytes)}` : ' · 不限'}{s.customQuotaBytes !== null && <Typography.Text type="tertiary" size="small">（自定义）</Typography.Text>}</span>
+          <span className="drive-nowrap" style={{ fontSize: 12 }}>{formatBytes(s.usedBytes)}{s.quotaBytes ? ` / ${formatBytes(s.quotaBytes)}` : ' · 不限'}{s.customQuotaBytes !== null && <Typography.Text type="tertiary" size="small">（自定义）</Typography.Text>}</span>
           {pct !== null && <Progress percent={pct} size="small" showInfo={false} stroke={pct >= 90 ? 'var(--semi-color-danger)' : undefined} aria-label={`用量 ${pct}%`} />}
         </div>
       );
     } },
-    { title: '外链', dataIndex: 'allowExternalShare', width: 70, render: (v: boolean) => (v ? '允许' : '禁止') },
-    { title: '状态', dataIndex: 'status', width: 80, render: (v: string) => (v === 'enabled' ? <Tag size="small" color="green">启用</Tag> : <Tag size="small" color="grey">停用</Tag>) },
-    dateTimeColumn('创建时间', 'createdAt'),
-    createOperationColumn<DriveSpace>({ width: 190, desktopInlineKeys: ['open', 'edit'], actions: (s) => [
+    { title: '状态', dataIndex: 'status', width: 130, fixed: 'right', render: (v: string, s: DriveSpace) => (
+      <Space spacing={4} className="drive-nowrap">
+        {v === 'enabled' ? <Tag size="small" color="green">启用</Tag> : <Tag size="small" color="grey">停用</Tag>}
+        {!s.allowExternalShare && <Tag size="small" color="orange">禁外链</Tag>}
+      </Space>
+    ) },
+    createOperationColumn<DriveSpace>({ width: 180, desktopInlineKeys: ['open', 'edit'], actions: (s) => [
       { key: 'open', label: '打开', onClick: () => navigate(`/drive?space=${s.id}`) },
       { key: 'edit', label: '编辑', hidden: !canEdit, onClick: () => modal.openEdit(s) },
       { key: 'recalc', label: '重算容量', hidden: !canEdit, onClick: () => runTask('recalc', s.id) },
@@ -198,9 +204,7 @@ export default function DriveAdminSpacesPage() {
             <Form.Switch field="allowExternalShare" label="允许外链分享" />
             {modal.editing?.type !== 'personal' && <Form.Select field="defaultMemberRole" label="默认成员角色" optionList={ROLE_OPTIONS_WITH_NONE} style={{ width: '100%' }} />}
             {modal.editing?.type === 'team' && (
-              <Form.Slot label="所有者">
-                <UserSelect value={modal.formApi.current?.getValue('ownerId') as number | undefined} onChange={(v) => modal.formApi.current?.setValue('ownerId', typeof v === 'number' ? v : undefined)} style={{ width: '100%' }} />
-              </Form.Slot>
+              <FormUserSelect field="ownerId" label="所有者" style={{ width: '100%' }} placeholder="选择所有者" />
             )}
             <Form.RadioGroup field="status" label="状态" type="button"><Form.Radio value="enabled">启用</Form.Radio><Form.Radio value="disabled">停用</Form.Radio></Form.RadioGroup>
           </Form>
