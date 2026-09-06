@@ -281,6 +281,22 @@ server 启动时加载全部路由 / 服务模块图，任何模块顶层静态 
   用户已选中且可在正常 HTTP 请求窗口内快速完成的有界表格批量操作可以使用同步 `/batch`；
   **禁止**自建任务表、后台轮询线程或 `setInterval` 驱动的作业。见 [async-tasks.md](./async-tasks.md)
 
+### Outbox / 兜底扫描的排空
+
+面向外部 I/O（邮件、短信、Webhook、第三方 API）的 outbox 补投与重试扫描，**禁止**「`SELECT id … LIMIT n` 后 `for … await` 逐条处理」：
+单次外呼几百毫秒时一轮跑不完就撞上下一个周期，且没有 ORDER BY 的 LIMIT 在积压时不保证先进先出。
+
+- **认领即取行**：`UPDATE … SET claimed_at = now() WHERE id IN (SELECT id … WHERE <可认领条件> ORDER BY id LIMIT <批> FOR UPDATE SKIP LOCKED) RETURNING *`，
+  一条语句完成认领与取行，多实例互不重叠；批大小取并发数的 2 倍左右——它同时是实例崩溃时要等认领超时才重入队的行数上限
+- **有界并发 + 循环排空**：一批内 `mapWithConcurrency(rows, N, …)`，mapper 自行 catch 使单行失败不中断本批；
+  循环认领直到没有可认领的行或用完时间预算（小于任务周期），不靠单轮扫描条数限制吞吐
+- **跨入口的总在飞数用进程级限流器**（`createConcurrencyLimiter`，`lib/concurrency.ts`）：定时补投与请求内立即派发会叠加，
+  下游连接数（SMTP 池、数据库池、服务商并发）有硬上限，只限制「一批之内」不够
+- **失败重试要有间隔**：失败后保留认领时间（认领超时即重试间隔），**禁止**清空认领时间让紧接着的轮次立刻重打
+- **外呼必须带超时**；SMTP 用 `lib/email.ts` 的连接池化 `sendMail`，**禁止**每封邮件 `createTransport`
+- 参考实现：`services/messaging/notification-outbox.service.ts`（`claimOutboxBatch` / `dispatchPendingNotifications`）、
+  `lib/notification/dispatch.ts`（进程级投递限流器）
+
 ### 通知发送
 
 - **事件通知唯一入口是 `notify()` / `notifyWithin()`**（`services/messaging/notification-outbox.service`）；

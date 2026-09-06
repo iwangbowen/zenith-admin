@@ -5,7 +5,7 @@
  * 渠道选择、偏好、免打扰、幂等与留痕全部由派发层负责。
  * 这样新增一个渠道或改一次偏好规则，不需要回头去改任何业务代码。
  */
-import { and, eq, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type {
   NotificationChannelOptions,
   NotificationChannelPolicy,
@@ -16,7 +16,9 @@ import type {
 import { isNotificationEventKey, getNotificationEvent } from '@zenith/shared/messaging';
 import { db } from '../../db';
 import { notificationOutbox } from '../../db/schema';
+import type { NotificationOutboxRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
+import { mapWithConcurrency } from '../../lib/concurrency';
 import { currentTraceId, currentParentRef } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { escapeHtml } from '@zenith/shared/core';
@@ -26,8 +28,18 @@ import { renderTemplate } from '../../lib/sms-sender';
 import { buildWhere } from '../../lib/where-helpers';
 
 const MAX_ATTEMPTS = 5;
+/**
+ * 认领超时：超过这个时长仍未完成的认领视为实例崩溃，行可被重新认领。
+ * 派发失败的行也保留认领时间，因此它同时是失败重试的间隔——同一条坏 Webhook 不会在一轮补投里被连打 5 次。
+ */
 const CLAIM_TIMEOUT_MS = 5 * 60_000;
 const SCAN_LIMIT = 200;
+/** 补投每轮认领的行数：小批量认领，实例在处理中途崩溃时最多这么多行要等认领超时才重入队 */
+const CLAIM_BATCH = 32;
+/** 同时派发的 outbox 行数；行内「收件人 × 渠道」的并发由派发引擎的进程级限流器约束 */
+const ROW_CONCURRENCY = 8;
+/** 单次补投的时间预算：任务每分钟触发一次，留出余量避免与下一轮重叠 */
+const DRAIN_BUDGET_MS = 45_000;
 
 export interface NotifyInput<K extends NotificationEventKey> {
   /** 收件人列表；空数组直接跳过，不产生 outbox 行 */
@@ -116,6 +128,43 @@ export function flushNotification(id: number): void {
   });
 }
 
+/** 可被认领的行：pending、未超重试上限、未被其他实例占用（或占用已超时）、已到投递时间、非摘要行 */
+function claimableCondition(now: Date) {
+  const claimBefore = new Date(now.getTime() - CLAIM_TIMEOUT_MS);
+  return and(
+    eq(notificationOutbox.status, 'pending'),
+    // 摘要行不走逐条派发，由聚合任务合并处理
+    isNull(notificationOutbox.digestKey),
+    lt(notificationOutbox.attempts, MAX_ATTEMPTS),
+    or(isNull(notificationOutbox.claimedAt), lt(notificationOutbox.claimedAt, claimBefore)),
+    or(isNull(notificationOutbox.scheduledAt), lte(notificationOutbox.scheduledAt, now)),
+  )!;
+}
+
+/**
+ * 派发一条已认领的行并落最终状态。
+ *
+ * 渠道失败已逐条留痕；只要事件展开成功就置 done，
+ * 否则一个坏邮箱会让整条事件反复重试，把其他人重复轰炸一遍。
+ */
+async function deliverClaimedRow(row: NotificationOutboxRow): Promise<void> {
+  try {
+    const summary = await deliverOutboxRow(row);
+    await db.update(notificationOutbox).set({ status: 'done' }).where(eq(notificationOutbox.id, row.id));
+    if (summary.failed > 0) {
+      logger.warn('[notification-outbox] 部分渠道投递失败', { id: row.id, eventKey: row.eventKey, ...summary });
+    }
+  } catch (err) {
+    const attempts = row.attempts + 1;
+    const status = attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
+    const lastError = (err instanceof Error ? err.message : String(err)).slice(0, 500);
+    // 保留认领时间：下一次重试要等认领超时，而不是被紧接着的补投轮次立刻再打一遍
+    await db.update(notificationOutbox).set({ attempts, status, lastError, claimedAt: new Date() })
+      .where(eq(notificationOutbox.id, row.id));
+    logger.error('[notification-outbox] 派发失败', { id: row.id, attempts, lastError });
+  }
+}
+
 /**
  * 处理单条 outbox 事件。
  *
@@ -123,64 +172,60 @@ export function flushNotification(id: number): void {
  * 多实例部署下同一条事件不会被并发派发两次。
  */
 export async function processNotificationOutbox(id: number): Promise<void> {
-  const claimBefore = new Date(Date.now() - CLAIM_TIMEOUT_MS);
   const now = new Date();
   const [row] = await db
     .update(notificationOutbox)
     .set({ claimedAt: now })
-    .where(and(
-      eq(notificationOutbox.id, id),
-      eq(notificationOutbox.status, 'pending'),
-      // 摘要行不走逐条派发，由聚合任务合并处理
-      isNull(notificationOutbox.digestKey),
-      lt(notificationOutbox.attempts, MAX_ATTEMPTS),
-      or(isNull(notificationOutbox.claimedAt), lt(notificationOutbox.claimedAt, claimBefore)),
-      or(isNull(notificationOutbox.scheduledAt), lte(notificationOutbox.scheduledAt, now)),
-    ))
+    .where(and(eq(notificationOutbox.id, id), claimableCondition(now)))
     .returning();
   if (!row) return;
-
-  try {
-    const summary = await deliverOutboxRow(row);
-    // 渠道失败已逐条留痕；只要事件展开成功就置 done，
-    // 否则一个坏邮箱会让整条事件反复重试，把其他人重复轰炸一遍
-    await db.update(notificationOutbox).set({ status: 'done' }).where(eq(notificationOutbox.id, id));
-    if (summary.failed > 0) {
-      logger.warn('[notification-outbox] 部分渠道投递失败', { id, eventKey: row.eventKey, ...summary });
-    }
-  } catch (err) {
-    const attempts = row.attempts + 1;
-    const status = attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
-    const lastError = (err instanceof Error ? err.message : String(err)).slice(0, 500);
-    await db.update(notificationOutbox).set({
-      attempts,
-      status,
-      lastError,
-      claimedAt: status === 'pending' ? null : new Date(),
-    }).where(eq(notificationOutbox.id, id));
-    logger.error('[notification-outbox] 派发失败', { id, attempts, lastError });
-  }
+  await deliverClaimedRow(row);
 }
 
-/** Cron 兜底：补投 pending 事件（含进程崩溃遗留与免打扰延后到期的行）。返回扫描条数。 */
-export async function dispatchPendingNotifications(): Promise<number> {
-  const claimBefore = new Date(Date.now() - CLAIM_TIMEOUT_MS);
+/**
+ * 批量认领一组可派发的行（按入队顺序）。
+ *
+ * `FOR UPDATE SKIP LOCKED` 让多实例各取互不重叠的一批：没有重复扫描、没有逐行认领的往返，
+ * 认领与取行同一条语句完成。
+ */
+async function claimOutboxBatch(limit: number): Promise<NotificationOutboxRow[]> {
   const now = new Date();
-  const rows = await db
-    .select({ id: notificationOutbox.id })
+  const candidates = db.select({ id: notificationOutbox.id })
     .from(notificationOutbox)
-    .where(buildWhere(
-      eq(notificationOutbox.status, 'pending'),
-      isNull(notificationOutbox.digestKey),
-      lt(notificationOutbox.attempts, MAX_ATTEMPTS),
-      or(isNull(notificationOutbox.claimedAt), lt(notificationOutbox.claimedAt, claimBefore)),
-      or(isNull(notificationOutbox.scheduledAt), lte(notificationOutbox.scheduledAt, now)),
-    ))
-    .limit(SCAN_LIMIT);
-  for (const row of rows) {
-    await processNotificationOutbox(row.id);
+    .where(claimableCondition(now))
+    .orderBy(asc(notificationOutbox.id))
+    .limit(limit)
+    .for('update', { skipLocked: true });
+  return db.update(notificationOutbox)
+    .set({ claimedAt: now })
+    .where(inArray(notificationOutbox.id, candidates))
+    .returning();
+}
+
+/**
+ * Cron 兜底：补投 pending 事件（含进程崩溃遗留与免打扰延后到期的行）。
+ *
+ * 小批量认领 → 有界并发派发，循环直到没有可认领的行或用完本轮时间预算；
+ * 单行的失败只影响它自己。返回本轮处理的行数。
+ */
+export async function dispatchPendingNotifications(): Promise<number> {
+  const deadline = Date.now() + DRAIN_BUDGET_MS;
+  let processed = 0;
+  for (;;) {
+    const rows = await claimOutboxBatch(CLAIM_BATCH);
+    if (rows.length === 0) break;
+    await mapWithConcurrency(rows, ROW_CONCURRENCY, async (row) => {
+      try {
+        await deliverClaimedRow(row);
+      } catch (err) {
+        // deliverClaimedRow 已吸收派发错误，这里只剩落状态本身失败的情况；行仍处于认领中，超时后重入队
+        logger.error('[notification-outbox] 补投落状态失败', { id: row.id, err });
+      }
+    });
+    processed += rows.length;
+    if (rows.length < CLAIM_BATCH || Date.now() >= deadline) break;
   }
-  return rows.length;
+  return processed;
 }
 
 /**

@@ -5,7 +5,7 @@
  * 异常传播、空数组。
  */
 import { describe, it, expect } from 'vitest';
-import { mapWithConcurrency } from './concurrency';
+import { createConcurrencyLimiter, mapWithConcurrency } from './concurrency';
 
 function deferred() {
   let resolve!: () => void;
@@ -72,5 +72,65 @@ describe('mapWithConcurrency', () => {
     gate.resolve();
     await task;
     expect([...seen].sort()).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+describe('createConcurrencyLimiter', () => {
+  it('跨调用方的总在飞数不超过上限，排队任务按先来后到获得名额', async () => {
+    const limiter = createConcurrencyLimiter(2);
+    let active = 0;
+    let peak = 0;
+    const started: number[] = [];
+    const gates = [deferred(), deferred(), deferred(), deferred()];
+    const tasks = gates.map((gate, i) => limiter.run(async () => {
+      started.push(i);
+      active += 1;
+      peak = Math.max(peak, active);
+      await gate.promise;
+      active -= 1;
+      return i;
+    }));
+    await Promise.resolve();
+    expect(started).toEqual([0, 1]);
+    expect(limiter.active).toBe(2);
+    expect(limiter.pending).toBe(2);
+
+    gates[1].resolve();
+    await tasks[1];
+    await Promise.resolve();
+    // 名额直接交给最早排队的 2 号，而不是先减一再由新来者抢占
+    expect(started).toEqual([0, 1, 2]);
+    expect(limiter.active).toBe(2);
+
+    gates[0].resolve();
+    gates[2].resolve();
+    gates[3].resolve();
+    expect(await Promise.all(tasks)).toEqual([0, 1, 2, 3]);
+    expect(peak).toBe(2);
+    expect(limiter.active).toBe(0);
+    expect(limiter.pending).toBe(0);
+  });
+
+  it('任务抛错同样释放名额，且错误只传给该任务的调用方', async () => {
+    const limiter = createConcurrencyLimiter(1);
+    await expect(limiter.run(async () => {
+      throw new Error('boom');
+    })).rejects.toThrow('boom');
+    expect(limiter.active).toBe(0);
+    expect(await limiter.run(async () => 'ok')).toBe('ok');
+  });
+
+  it('上限 ≤ 0 时按 1 串行执行（防御非法入参）', async () => {
+    const limiter = createConcurrencyLimiter(0);
+    let active = 0;
+    let peak = 0;
+    await Promise.all([1, 2, 3].map((n) => limiter.run(async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 2));
+      active -= 1;
+      return n;
+    })));
+    expect(peak).toBe(1);
   });
 });

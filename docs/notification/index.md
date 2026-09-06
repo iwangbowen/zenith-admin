@@ -24,6 +24,25 @@
 5. 派发时展开为“收件人 × 渠道”，每个结论写入 `notification_dispatches`。
 6. 单个渠道或收件人失败不影响同一事件的其他渠道/收件人。
 
+### 补投与并发边界
+
+系统任务「补投通知事件」每分钟运行一次 `dispatchPendingNotifications()`：
+
+- **批量认领**：`UPDATE … WHERE id IN (SELECT id … ORDER BY id LIMIT 32 FOR UPDATE SKIP LOCKED) RETURNING *`，一条语句完成取行与认领，按入队顺序处理；多实例各取互不重叠的一批，没有重复扫描与认领竞争。
+- **有界并发**：一批内最多 8 行同时派发；派发引擎另有进程级限流器把「收件人 × 渠道」的在飞投递总数钉在 32（`NOTIFICATION_DELIVERY_CONCURRENCY`），跨补投与请求内立即派发两个入口共用——一次 300 人的群发不会同时打开 300 个 SMTP / HTTP 连接。
+- **循环排空**：认领 → 派发 → 再认领，直到没有可认领的行或用完 45 s 预算，不再受单轮扫描条数限制；下一分钟的任务与仍在运行的上一轮互不干扰（行已被认领）。
+- **失败重试**：单行失败只影响自身，`attempts + 1` 且保留认领时间，因此下一次重试要等认领超时（5 分钟）；5 次仍失败置 `failed`。认领超时同时兜住实例崩溃：崩溃时已认领未完成的行（最多一批 32 行）在 5 分钟后重新可认领。
+- **SMTP 连接池**：`lib/email.ts` 按 SMTP 配置指纹缓存一个 nodemailer 连接池（5 连接、每连接 200 封后轮换、连接 / 握手 10 s、socket 30 s 超时），配置变更即换池；邮件不再逐封握手，超出池容量的发送在池内排队。
+
+基准（`packages/server/scripts/bench-notification-outbox.ts`，假 webhook 适配器固定 300 ms 延迟，隔离数据库；原始数据 [`docs/backend/perf/`](https://github.com/iwangbowen/zenith-admin/tree/master/docs/backend/perf)）：
+
+| 场景 | 排空耗时 | 吞吐 | 在飞投递峰值 |
+| --- | --- | --- | --- |
+| 200 行 × 1 收件人 | 64.1 s → **8.1 s** | 3.1 → 24.6 行/s | 1 → 8 |
+| 40 行 × 25 收件人（1,000 次投递） | 12.8 s → 10.0 s | 3.1 → 4.0 行/s | 25（= 单行扇出，无上限）→ **32（硬上限）** |
+
+单收件人场景此前一轮 200 行要 64 s，超过任务的 1 分钟周期；大扇出场景的收益不在耗时而在边界：并发从「随扇出无界增长」变为固定上限。
+
 `NotificationRecipient` 支持：
 
 - `{ type: 'user'; id }`：管理端用户，参与偏好与免打扰。

@@ -1,0 +1,20 @@
+{
+  "generatedAt": "2026-09-06T01:01:56.878Z",
+  "params": {
+    "rows": 40,
+    "fanout": 25,
+    "latencyMs": 300
+  },
+  "totalMs": 12847,
+  "rowsPerSecond": 3.1,
+  "deliveries": 1000,
+  "peakConcurrentDeliveries": 25,
+  "cronCalls": 1,
+  "rowsPerCall": [
+    40
+  ],
+  "msPerCall": [
+    12845
+  ],
+  "remainingPending": 0
+}
