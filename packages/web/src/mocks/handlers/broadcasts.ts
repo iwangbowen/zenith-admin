@@ -8,11 +8,12 @@ import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { createProgressingMockTask } from './async-tasks';
 import { getNextBroadcastId, mockBroadcasts } from '../data/broadcasts';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const broadcastHandlers = [
   mock(broadcastContract.list, ({ query, ok, paginate }) => {
     let list = [...mockBroadcasts];
-    if (query.keyword) list = list.filter((b) => b.title.includes(query.keyword!) || b.content.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(b) => b.title, (b) => b.content]);
     if (query.status) list = list.filter((b) => b.status === query.status);
     return ok(paginate(list));
   }),

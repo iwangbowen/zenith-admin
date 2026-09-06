@@ -5,6 +5,7 @@ import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mockWorkflowForms, getNextWorkflowFormId } from '@/mocks/data/workflow-forms';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 function usageCount(formId: number) {
   return mockWorkflowDefinitions.filter((definition) => definition.formId === formId).length;
@@ -19,7 +20,7 @@ export const workflowFormsHandlers = [
     const keyword = (query.keyword ?? '').toLowerCase();
 
     let list = [...mockWorkflowForms];
-    if (keyword) list = list.filter((form) => form.name.toLowerCase().includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(form) => form.name], { caseInsensitive: true });
     if (query.status) list = list.filter((form) => form.status === query.status);
     if (query.categoryId) list = list.filter((form) => form.categoryId === query.categoryId);
 

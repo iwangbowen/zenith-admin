@@ -1,16 +1,17 @@
 import { tagContract, type Tag } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
-import { removeWhere } from '@/mocks/utils/array';
 import { mockTags, getNextTagId, getTagGroups } from '@/mocks/data/tags';
 import { mockDateTime } from '@/mocks/utils/date';
+import { removeByIds } from '@/mocks/utils/crud';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const tagsHandlers = [
   // 标签列表（支持分页 + 关键字/状态/分组筛选）
   mock(tagContract.list, ({ query, ok, paginate }) => {
     const { keyword, status, groupName } = query;
     const filtered = mockTags.filter((t) => {
-      if (keyword && !t.name.includes(keyword) && !(t.description ?? '').includes(keyword)) return false;
+      if (keyword && !includesKeyword(keyword, t.name, t.description)) return false;
       if (status && t.status !== status) return false;
       if (groupName && t.groupName !== groupName) return false;
       return true;
@@ -62,8 +63,7 @@ export const tagsHandlers = [
 
   // 批量删除（静态 /batch 早于动态 /{id}）
   mock(tagContract.removeBatch, ({ body, ok }) => {
-    const ids = new Set(body.ids);
-    const count = removeWhere(mockTags, (tag) => ids.has(tag.id));
+    const count = removeByIds(mockTags, body.ids);
     return ok(null, `已删除 ${count} 条标签`);
   }),
 

@@ -4,6 +4,7 @@ import { notFound } from '@/mocks/utils/handlers';
 import { mockDepartments, getNextDeptId } from '@/mocks/data/departments';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 function withLeaderName(dept: Department): Department {
   const leader = dept.leaderId ? mockUsers.find((u) => u.id === dept.leaderId) : undefined;
@@ -35,7 +36,7 @@ function filterDepartments(list: Department[], keyword?: string, status?: string
   const byId = new Map(list.map((d) => [d.id, d]));
   const keep = new Set<number>();
   for (const dept of list) {
-    if (keyword && !dept.name.includes(keyword) && !dept.code.includes(keyword)) continue;
+    if (keyword && !includesKeyword(keyword, dept.name, dept.code)) continue;
     if (status && dept.status !== status) continue;
     let current: Department | undefined = dept;
     while (current && !keep.has(current.id)) {

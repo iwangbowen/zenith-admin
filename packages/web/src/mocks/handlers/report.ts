@@ -26,6 +26,7 @@ import {
 } from '@/mocks/data/report';
 import { createImmediateMockTask } from '@/mocks/handlers/async-tasks';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
 import type {
   ReportAlertRule,
   ReportDashboard,
@@ -189,7 +190,7 @@ export const reportHandlers = [
   mock(reportDatasourceContract.test, ({ ok }) => ok({ ok: true, message: '连接成功（Demo 模拟）', latencyMs: 12 })),
   mock(reportDatasourceContract.list, ({ query, ok, paginate }) => {
     const list = mockReportDatasources.filter((d) =>
-      (!query.keyword || d.name.includes(query.keyword)) && (!query.type || d.type === query.type) && (!query.status || d.status === query.status));
+      includesKeyword(query.keyword, d.name) && (!query.type || d.type === query.type) && (!query.status || d.status === query.status));
     return ok(paginate(list));
   }),
   mock(reportDatasourceContract.detail, ({ params, ok }) => {
@@ -284,7 +285,7 @@ export const reportHandlers = [
   }),
   mock(reportDatasetContract.list, ({ query, ok, paginate }) => {
     const list = mockReportDatasets.filter((d) =>
-      (!query.keyword || d.name.includes(query.keyword))
+      includesKeyword(query.keyword, d.name)
       && (!query.datasourceId || d.datasourceId === query.datasourceId)
       && (!query.status || d.status === query.status));
     return ok(paginate(list));
@@ -424,7 +425,7 @@ export const reportHandlers = [
   // ─── 仪表盘 CRUD ─────────────────────────────────────────
   mock(reportDashboardContract.list, ({ query, ok, paginate }) => {
     const list = mockReportDashboards.filter((d) =>
-      (!query.keyword || d.name.includes(query.keyword))
+      includesKeyword(query.keyword, d.name)
       && (!query.status || d.status === query.status)
       && (!query.categoryId || d.categoryId === query.categoryId)
       && (!query.favorited || !!d.favorited));
@@ -541,7 +542,7 @@ export const reportHandlers = [
     }), '任务已提交，可在任务中心查看进度');
   }),
   mock(reportAlertContract.list, ({ query, ok, paginate }) => {
-    const list = mockReportAlerts.filter((a) => !query.keyword || a.name.includes(query.keyword));
+    const list = filterByKeyword(mockReportAlerts, query.keyword, [(a) => a.name]);
     return ok(paginate(list));
   }),
   mock(reportAlertContract.detail, ({ params, ok }) => {
@@ -593,7 +594,7 @@ export const reportHandlers = [
     }
   }),
   mock(reportPrintContract.list, ({ query, ok, paginate }) => {
-    const list = mockReportPrintTemplates.filter((t) => !query.keyword || t.name.includes(query.keyword));
+    const list = filterByKeyword(mockReportPrintTemplates, query.keyword, [(t) => t.name]);
     return ok(paginate(list));
   }),
   mock(reportPrintContract.detail, ({ params, ok }) => {
@@ -662,7 +663,7 @@ export const reportHandlers = [
     }), '任务已提交，可在任务中心查看进度');
   }),
   mock(reportSubscriptionContract.list, ({ query, ok, paginate }) => {
-    const list = mockReportSubscriptions.filter((s) => !query.keyword || (s.dashboardName ?? '').includes(query.keyword));
+    const list = filterByKeyword(mockReportSubscriptions, query.keyword, [(s) => s.dashboardName]);
     return ok(paginate(list));
   }),
   mock(reportSubscriptionContract.create, ({ body, ok }) => {

@@ -8,6 +8,7 @@ import {
   mockMarketingCampaigns, mockMarketingParticipations, mockMarketingPrizes,
 } from '../data/marketing';
 import { mockDateTime } from '../utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 /** 优惠券名称按模板关联回填（与服务端 leftJoin coupons 口径一致） */
 function withCouponName(prize: MarketingPrize): MarketingPrize {
@@ -23,7 +24,7 @@ export const marketingHandlers = [
     let list = [...mockMarketingCampaigns].sort((a, b) => b.id - a.id);
     if (query.keyword) {
       const keyword = query.keyword;
-      list = list.filter((c) => c.name.includes(keyword) || (c.description ?? '').includes(keyword));
+      list = filterByKeyword(list, keyword, [(c) => c.name, (c) => c.description]);
     }
     if (query.status) list = list.filter((c) => c.status === query.status);
     return ok(paginate(list));

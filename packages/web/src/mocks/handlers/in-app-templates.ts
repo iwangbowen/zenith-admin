@@ -4,11 +4,12 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockInAppTemplates, getNextInAppTemplateId } from '@/mocks/data/in-app-templates';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const inAppTemplatesHandlers = [
   mock(inAppTemplateContract.list, ({ query, ok, paginate }) => {
     const filtered = mockInAppTemplates.filter((t) => {
-      if (query.keyword && !t.name.includes(query.keyword) && !t.code.includes(query.keyword) && !t.title.includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, t.name, t.code, t.title)) return false;
       if (query.type && t.type !== query.type) return false;
       if (query.status && t.status !== query.status) return false;
       return true;

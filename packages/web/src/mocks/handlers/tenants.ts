@@ -5,6 +5,7 @@ import { notFound } from '@/mocks/utils/handlers';
 import { mockTenants, getNextTenantId } from '@/mocks/data/tenants';
 import { mockTenantPackages } from '@/mocks/data/tenant-packages';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 function withPackageName(t: Tenant): Tenant {
   return {
@@ -21,7 +22,7 @@ function mockUserCount(t: Tenant): number {
 export const tenantsHandlers = [
   mock(tenantContract.list, ({ query, ok, paginate }) => {
     const filtered = mockTenants.filter((t) => {
-      if (query.keyword && !t.name.includes(query.keyword) && !t.code.includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, t.name, t.code)) return false;
       if (query.status && t.status !== query.status) return false;
       return true;
     });

@@ -3,6 +3,7 @@ import { frontendErrorContract } from '@zenith/shared/analytics';
 import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '../utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const rand = (min: number, max: number) => Math.floor(min + Math.random() * (max - min));
 
@@ -128,7 +129,7 @@ export const frontendErrorsHandlers = [
     if (query.status) list = list.filter((g) => g.status === query.status);
     if (query.errorType) list = list.filter((g) => g.errorType === query.errorType);
     if (query.level) list = list.filter((g) => g.level === query.level);
-    if (query.keyword) list = list.filter((g) => g.message.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(g) => g.message]);
     if (query.environment) list = list.filter((g) => g.environment === query.environment);
     return ok(paginate(list));
   }),

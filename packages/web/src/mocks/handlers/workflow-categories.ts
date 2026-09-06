@@ -4,6 +4,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockWorkflowCategories, getNextCategoryId } from '@/mocks/data/workflow-categories';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const workflowCategoriesHandlers = [
   // 全量列表（useWorkflowCategories hook 使用）
@@ -11,7 +12,7 @@ export const workflowCategoriesHandlers = [
 
   mock(workflowCategoryContract.list, ({ query, ok, paginate }) => {
     let list = [...mockWorkflowCategories];
-    if (query.keyword) list = list.filter((c) => c.name.includes(query.keyword!) || (c.code ?? '').includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(c) => c.name, (c) => c.code]);
     return ok(paginate(list.toSorted((a, b) => a.sort - b.sort)));
   }),
 

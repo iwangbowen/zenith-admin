@@ -7,6 +7,7 @@ import {
 } from '@/mocks/data/mp-kf-sessions';
 import { mockMpKfAccounts } from '@/mocks/data/mp-kf-accounts';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 function kfNick(kfId: number | null): string | null {
   if (!kfId) return null;
@@ -20,7 +21,7 @@ export const mpKfSessionsHandlers = [
       s.accountId === query.accountId
       && (!query.status || s.status === query.status)
       && (!query.kfId || s.kfId === query.kfId)
-      && (!query.keyword || s.openid.includes(query.keyword) || (s.fanNickname ?? '').includes(query.keyword)));
+      && includesKeyword(query.keyword, s.openid, s.fanNickname));
     return ok(paginate(filtered));
   }),
 

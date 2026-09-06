@@ -12,6 +12,7 @@ import {
   mockWorkflowTasks,
 } from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const bizLeaveHandlers = [
   // 列表（我的请假）
@@ -19,7 +20,7 @@ export const bizLeaveHandlers = [
     const keyword = (query.keyword ?? '').trim().toLowerCase();
     let list = [...mockBizLeaves].sort((a, b) => b.id - a.id);
     if (query.status) list = list.filter((l) => l.status === query.status);
-    if (keyword) list = list.filter((l) => (l.reason ?? '').toLowerCase().includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(l) => l.reason], { caseInsensitive: true });
     return ok(paginate(list));
   }),
 

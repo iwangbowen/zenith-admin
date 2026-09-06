@@ -4,11 +4,12 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockSmsTemplates, getNextSmsTemplateId } from '@/mocks/data/sms-templates';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const smsTemplatesHandlers = [
   mock(smsTemplateContract.list, ({ query, ok, paginate }) => {
     const filtered = mockSmsTemplates.filter((t) => {
-      if (query.keyword && !t.name.includes(query.keyword) && !t.code.includes(query.keyword) && !t.templateCode.includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, t.name, t.code, t.templateCode)) return false;
       if (query.provider && t.provider !== query.provider) return false;
       if (query.status && t.status !== query.status) return false;
       return true;

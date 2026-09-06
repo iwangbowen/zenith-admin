@@ -9,6 +9,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 import {
   getNextWikiCommentId, getNextWikiDocId, getNextWikiSpaceId, getNextWikiTagId,
   getNextWikiTemplateId, getNextWikiVersionId, mockWikiComments, mockWikiDocVersions,
@@ -226,11 +227,7 @@ const spaceHandlers = [
 const docHandlers = [
   mock(wikiDocContract.search, ({ query, ok, paginate }) => {
     const keyword = query.keyword.toLowerCase();
-    let list = mockWikiDocs.filter((d) => !d.deletedAt && (
-      d.title.toLowerCase().includes(keyword)
-      || (d.summary ?? '').toLowerCase().includes(keyword)
-      || d.content.toLowerCase().includes(keyword)
-    ));
+    let list = mockWikiDocs.filter((d) => !d.deletedAt && includesKeyword(keyword, d.title, d.summary, d.content, { caseInsensitive: true }));
     const { spaceId, status, tagId } = query;
     if (spaceId !== undefined) list = list.filter((d) => d.spaceId === spaceId);
     if (status) list = list.filter((d) => d.status === status);

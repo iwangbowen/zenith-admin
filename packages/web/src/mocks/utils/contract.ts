@@ -46,6 +46,12 @@ export interface MockContext<Op extends AnyOperation> {
 
 export type MockResolver<Op extends AnyOperation> = (ctx: MockContext<Op>) => Response | Promise<Response>;
 
+export class MockHttpError extends Error {
+  constructor(public readonly response: Response) {
+    super('Mock HTTP error');
+  }
+}
+
 type ParseOutcome = { ok: true; value: unknown } | { ok: false; message: string };
 
 function parseWith(schema: z.ZodType | undefined, value: unknown, label: string): ParseOutcome {
@@ -103,7 +109,12 @@ export function mock<Op extends AnyOperation>(op: Op, resolver: MockResolver<Op>
       ok: (data, message, init) => ok(data, message, init),
       paginate: (list) => pageResult([...list], pageOf.page ?? 1, pageOf.pageSize ?? 10),
     };
-    return resolver(ctx);
+    try {
+      return await resolver(ctx);
+    } catch (error) {
+      if (error instanceof MockHttpError) return error.response;
+      throw error;
+    }
   });
 }
 

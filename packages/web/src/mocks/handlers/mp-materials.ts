@@ -3,13 +3,14 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockMpMaterials, getNextMpMaterialId } from '@/mocks/data/mp-materials';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const mpMaterialsHandlers = [
   mock(mpMaterialContract.list, ({ query, ok, paginate }) => {
     const filtered = mockMpMaterials.filter((m) => {
       if (m.accountId !== query.accountId) return false;
       if (query.type && m.type !== query.type) return false;
-      if (query.keyword && !m.name.includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, m.name)) return false;
       return true;
     });
     return ok(paginate(filtered));

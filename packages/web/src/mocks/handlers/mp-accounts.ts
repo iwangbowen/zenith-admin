@@ -3,6 +3,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockMpAccounts, getNextMpAccountId } from '@/mocks/data/mp-accounts';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 /** 列表脱敏：appSecret 显示掩码 */
 function maskSafe(a: MpAccount): MpAccount {
@@ -17,7 +18,7 @@ function maskForEdit(a: MpAccount): MpAccount {
 export const mpAccountsHandlers = [
   mock(mpAccountContract.list, ({ query, ok, paginate }) => {
     const filtered = mockMpAccounts.filter((a) => {
-      if (query.keyword && !a.name.includes(query.keyword) && !(a.account ?? '').includes(query.keyword) && !a.appId.includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, a.name, a.account, a.appId)) return false;
       if (query.type && a.type !== query.type) return false;
       if (query.status && a.status !== query.status) return false;
       return true;

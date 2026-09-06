@@ -1,5 +1,6 @@
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, fail, forbidden, notFound } from '@/mocks/utils/handlers';
+import { resolveIdempotent } from '@/mocks/utils/idempotency';
 import {
   workflowDefinitionContract,
   workflowDelegationContract,
@@ -37,6 +38,7 @@ import { SEED_WORKFLOW_TEMPLATES } from '@zenith/shared/seed';
 import { mockWorkflowInstances, mockWorkflowTasks, mockWorkflowDefinitions, getNextInstanceId, getNextDefinitionId } from '@/mocks/data/workflow';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 /** 批量审批的幂等缓存：同一 X-Idempotency-Key 重复提交时原样回放首次结果 */
 const batchActionCache = new Map<string, { data: WorkflowBatchActionResponse; message: string }>();
@@ -252,7 +254,7 @@ export const workflowExtraHandlers = [
   mock(workflowInstanceContract.ccMine, ({ query, ok, paginate }) => {
     const keyword = (query.keyword ?? '').toLowerCase();
     let all = mockWorkflowInstances.filter((i) => i.status !== 'draft');
-    if (keyword) all = all.filter((i) => i.title.toLowerCase().includes(keyword) || (i.definitionName ?? '').toLowerCase().includes(keyword));
+    if (keyword) all = filterByKeyword(all, keyword, [(i) => i.title, (i) => i.definitionName], { caseInsensitive: true });
     const list: WorkflowInstance[] = all.map((i, idx) => {
       const ccTaskId = 90000 + idx;
       return { ...i, ccTaskId, ccReadAt: ccReadState.has(ccTaskId) ? mockDateTime() : null };
@@ -272,7 +274,7 @@ export const workflowExtraHandlers = [
   mock(workflowInstanceContract.handledMine, ({ query, ok, paginate }) => {
     const keyword = (query.keyword ?? '').toLowerCase();
     let all = mockWorkflowInstances.filter((i) => i.status === 'approved' || i.status === 'rejected');
-    if (keyword) all = all.filter((i) => i.title.toLowerCase().includes(keyword) || (i.definitionName ?? '').toLowerCase().includes(keyword));
+    if (keyword) all = filterByKeyword(all, keyword, [(i) => i.title, (i) => i.definitionName], { caseInsensitive: true });
     const list: WorkflowInstance[] = all.map((i) => ({
       ...i,
       myTaskStatus: i.status === 'approved' ? 'approved' : 'rejected',
@@ -393,7 +395,7 @@ export const workflowExtraHandlers = [
     const keyword = (query.keyword ?? '').toLowerCase();
     let all = mockWorkflowInstances.filter((i) => i.status !== 'draft');
     if (query.definitionId) all = all.filter((i) => i.definitionId === query.definitionId);
-    if (keyword) all = all.filter((i) => i.title.toLowerCase().includes(keyword) || (i.serialNo ?? '').toLowerCase().includes(keyword));
+    if (keyword) all = filterByKeyword(all, keyword, [(i) => i.title, (i) => i.serialNo], { caseInsensitive: true });
     return ok(all.slice(0, 20).map((i) => ({
       instanceId: i.id, title: i.title, serialNo: i.serialNo ?? null,
       definitionName: i.definitionName ?? null, status: i.status, createdAt: i.createdAt,
@@ -686,59 +688,63 @@ export const workflowExtraHandlers = [
   }),
 
   // ── 批量审批 ──
-  mock(workflowTaskContract.batchApprove, ({ body, request, ok }) => {
-    const idempotencyKey = request.headers.get('X-Idempotency-Key');
-    const cached = idempotencyKey ? batchActionCache.get(idempotencyKey) : undefined;
-    if (cached) return ok(cached.data, cached.message);
+  mock(workflowTaskContract.batchApprove, async ({ body, request, ok }) => {
     const { taskIds, comment } = body;
-    const results = taskIds.map((taskId) => {
-      const task = mockWorkflowTasks.find((t) => t.id === taskId);
-      if (task && task.status === 'pending') {
-        const now = mockDateTime();
-        task.status = 'approved'; task.comment = comment ?? null; task.actionAt = now;
-        syncInstanceApprovedIfComplete(task.instanceId, now);
-        return { taskId, success: true };
-      }
-      return { taskId, success: false, message: '任务不存在或已处理' };
+    const { data, message } = await resolveIdempotent({
+      request,
+      cache: batchActionCache,
+      run: () => {
+        const results = taskIds.map((taskId) => {
+          const task = mockWorkflowTasks.find((t) => t.id === taskId);
+          if (task && task.status === 'pending') {
+            const now = mockDateTime();
+            task.status = 'approved'; task.comment = comment ?? null; task.actionAt = now;
+            syncInstanceApprovedIfComplete(task.instanceId, now);
+            return { taskId, success: true };
+          }
+          return { taskId, success: false, message: '任务不存在或已处理' };
+        });
+        const succeeded = results.filter((r) => r.success).length;
+        const data: WorkflowBatchActionResponse = { succeeded, failed: results.length - succeeded, results };
+        return { data, message: `成功 ${succeeded} 条` };
+      },
     });
-    const succeeded = results.filter((r) => r.success).length;
-    const data: WorkflowBatchActionResponse = { succeeded, failed: results.length - succeeded, results };
-    const message = `成功 ${succeeded} 条`;
-    if (idempotencyKey) batchActionCache.set(idempotencyKey, { data, message });
     return ok(data, message);
   }),
-  mock(workflowTaskContract.batchReject, ({ body, request, ok }) => {
-    const idempotencyKey = request.headers.get('X-Idempotency-Key');
-    const cached = idempotencyKey ? batchActionCache.get(idempotencyKey) : undefined;
-    if (cached) return ok(cached.data, cached.message);
+  mock(workflowTaskContract.batchReject, async ({ body, request, ok }) => {
     const { taskIds, comment } = body;
-    const results = taskIds.map((taskId) => {
-      const task = mockWorkflowTasks.find((t) => t.id === taskId);
-      if (task && task.status === 'pending') {
-        const now = mockDateTime();
-        task.status = 'rejected'; task.comment = comment; task.actionAt = now;
-        const inst = mockWorkflowInstances.find((i) => i.id === task.instanceId);
-        if (inst) {
-          inst.status = 'rejected';
-          inst.currentNodeKey = null;
-          inst.updatedAt = now;
-          mockWorkflowTasks
-            .filter((item) => item.instanceId === inst.id && (item.status === 'pending' || item.status === 'waiting'))
-            .forEach((item) => {
-              if (item.id !== task.id) {
-                item.status = 'skipped';
-                item.actionAt = now;
-              }
-            });
-        }
-        return { taskId, success: true };
-      }
-      return { taskId, success: false, message: '任务不存在或已处理' };
+    const { data, message } = await resolveIdempotent({
+      request,
+      cache: batchActionCache,
+      run: () => {
+        const results = taskIds.map((taskId) => {
+          const task = mockWorkflowTasks.find((t) => t.id === taskId);
+          if (task && task.status === 'pending') {
+            const now = mockDateTime();
+            task.status = 'rejected'; task.comment = comment; task.actionAt = now;
+            const inst = mockWorkflowInstances.find((i) => i.id === task.instanceId);
+            if (inst) {
+              inst.status = 'rejected';
+              inst.currentNodeKey = null;
+              inst.updatedAt = now;
+              mockWorkflowTasks
+                .filter((item) => item.instanceId === inst.id && (item.status === 'pending' || item.status === 'waiting'))
+                .forEach((item) => {
+                  if (item.id !== task.id) {
+                    item.status = 'skipped';
+                    item.actionAt = now;
+                  }
+                });
+            }
+            return { taskId, success: true };
+          }
+          return { taskId, success: false, message: '任务不存在或已处理' };
+        });
+        const succeeded = results.filter((r) => r.success).length;
+        const data: WorkflowBatchActionResponse = { succeeded, failed: results.length - succeeded, results };
+        return { data, message: `成功 ${succeeded} 条` };
+      },
     });
-    const succeeded = results.filter((r) => r.success).length;
-    const data: WorkflowBatchActionResponse = { succeeded, failed: results.length - succeeded, results };
-    const message = `成功 ${succeeded} 条`;
-    if (idempotencyKey) batchActionCache.set(idempotencyKey, { data, message });
     return ok(data, message);
   }),
 

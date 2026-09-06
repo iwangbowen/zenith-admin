@@ -2,10 +2,10 @@ import { announcementContract } from '@zenith/shared/messaging';
 import type { AnnouncementAttachment, AnnouncementDetail, AnnouncementReadStatsUser } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
-import { removeWhere } from '@/mocks/utils/array';
 import { mockAnnouncements, getNextAnnouncementId } from '@/mocks/data/announcements';
 import { mockManagedFiles } from '@/mocks/handlers/files';
 import { mockDateTime } from '@/mocks/utils/date';
+import { removeByIds } from '@/mocks/utils/crud';
 
 function buildAnnouncementAttachments(fileIds: string[] = []): AnnouncementAttachment[] {
   return fileIds
@@ -135,8 +135,7 @@ export const announcementsHandlers = [
   }),
 
   mock(announcementContract.removeBatch, ({ body, ok }) => {
-    const selected = new Set(body.ids);
-    const deleted = removeWhere(mockAnnouncements, (n) => selected.has(n.id));
+    const deleted = removeByIds(mockAnnouncements, body.ids);
     return ok(null, `已删除 ${deleted} 条公告`);
   }),
 

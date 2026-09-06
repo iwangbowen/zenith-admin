@@ -2,6 +2,7 @@ import { terminalSessionContract, type TerminalSession } from '@zenith/shared/op
 import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTimeOffset } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 const mockTerminalSessions: TerminalSession[] = [
   {
@@ -30,7 +31,7 @@ export const terminalSessionsHandlers = [
     const keyword = (query.keyword ?? '').toLowerCase();
     const list = mockTerminalSessions.filter((s) => {
       if (query.kind && s.kind !== query.kind) return false;
-      if (keyword && !(s.username.toLowerCase().includes(keyword) || s.label.toLowerCase().includes(keyword) || s.clientIp.includes(keyword))) return false;
+      if (keyword && !includesKeyword(keyword, s.username, s.label, s.clientIp, { caseInsensitive: true })) return false;
       return true;
     });
     return ok(paginate(list));

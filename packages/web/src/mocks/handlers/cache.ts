@@ -3,6 +3,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDate } from '../utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 interface MockCacheItem extends CacheItem {
   /** 非 string 类型的完整值（序列化 JSON），供取值操作返回 */
@@ -173,7 +174,7 @@ export const cacheHandlers = [
   mock(cacheContract.list, ({ query, ok }) => {
     let list = [...mockCacheItems];
     if (query.keyword) {
-      list = list.filter((item) => item.key.includes(query.keyword!));
+      list = filterByKeyword(list, query.keyword, [(item) => item.key]);
     }
     return ok({ list: list.map(toCacheItem), total: list.length });
   }),

@@ -41,6 +41,8 @@ import { SEED_PAYMENT_METHOD_CONFIGS } from '@zenith/shared/seed';
 import { recordMockPaymentSucceeded } from './payment-ext';
 import { recordMockSystemJournal } from './payment-journals';
 import { mockOAuth2Clients } from './oauth2-apps';
+import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 
 const SEED = PAYMENT_MOCK_SEED_TIME;
 const methodConfigs: PaymentMethodConfig[] = SEED_PAYMENT_METHOD_CONFIGS.map((m) => ({
@@ -76,8 +78,8 @@ const feeHandlers = [
     return ok(paginate([...filtered].sort((a, b) => b.priority - a.priority)));
   }),
   mock(paymentFeeRuleContract.detail, ({ params, ok }) => {
-    const r = feeRules.find((x) => x.id === params.id);
-    return r ? ok(r) : notFound('费率规则不存在');
+    const r = requireItem(feeRules, params.id, '费率规则不存在');
+    return ok(r);
   }),
   mock(paymentFeeRuleContract.create, ({ body, ok }) => {
     const now = mockDateTime();
@@ -90,15 +92,12 @@ const feeHandlers = [
     return ok(item, '创建成功');
   }),
   mock(paymentFeeRuleContract.update, ({ params, body, ok }) => {
-    const r = feeRules.find((x) => x.id === params.id);
-    if (!r) return notFound('费率规则不存在');
-    Object.assign(r, body, { updatedAt: mockDateTime() });
+    const r = updateItem(feeRules, params.id, body, { notFoundMessage: '费率规则不存在', now: mockDateTime });
     return ok(r, '更新成功');
   }),
   mock(paymentFeeRuleContract.remove, ({ params, ok }) => {
-    const i = feeRules.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('费率规则不存在');
-    feeRules.splice(i, 1);
+    const deleted = removeByIds(feeRules, [params.id]);
+    if (deleted === 0) return notFound('费率规则不存在');
     return ok(null, '删除成功');
   }),
 ];
@@ -236,12 +235,12 @@ const sharingReversalIdempotency = new Map<string, { requestHash: string; revers
 
 const sharingHandlers = [
   mock(paymentSharingContract.receivers, ({ query, ok, paginate }) => {
-    const filtered = receivers.filter((r) => (!query.keyword || r.name.includes(query.keyword)) && (!query.status || r.status === query.status));
+    const filtered = filterByKeyword(receivers, query.keyword, [(r) => r.name]).filter((r) => !query.status || r.status === query.status);
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentSharingContract.receiverDetail, ({ params, ok }) => {
-    const r = receivers.find((x) => x.id === params.id);
-    return r ? ok(r) : notFound('分账接收方不存在');
+    const r = requireItem(receivers, params.id, '分账接收方不存在');
+    return ok(r);
   }),
   mock(paymentSharingContract.createReceiver, ({ body, ok }) => {
     const now = mockDateTime();
@@ -253,19 +252,17 @@ const sharingHandlers = [
     return ok(item, '创建成功');
   }),
   mock(paymentSharingContract.updateReceiver, ({ params, body, ok }) => {
-    const r = receivers.find((x) => x.id === params.id);
-    if (!r) return notFound('分账接收方不存在');
-    Object.assign(r, body, { updatedAt: mockDateTime() });
+    const r = updateItem(receivers, params.id, body, { notFoundMessage: '分账接收方不存在', now: mockDateTime });
     return ok(r, '更新成功');
   }),
   mock(paymentSharingContract.removeReceiver, ({ params, ok }) => {
-    const i = receivers.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('分账接收方不存在');
-    receivers.splice(i, 1);
+    const deleted = removeByIds(receivers, [params.id]);
+    if (deleted === 0) return notFound('分账接收方不存在');
     return ok(null, '删除成功');
   }),
   mock(paymentSharingContract.orders, ({ query, ok, paginate }) => {
-    const filtered = sharingOrders.filter((o) => (!query.keyword || o.orderNo.includes(query.keyword)) && (!query.status || o.status === query.status) && (!query.receiverId || o.receiverId === query.receiverId));
+    const filtered = filterByKeyword(sharingOrders, query.keyword, [(o) => o.orderNo])
+      .filter((o) => (!query.status || o.status === query.status) && (!query.receiverId || o.receiverId === query.receiverId));
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentSharingContract.dispatch, ({ body, ok }) => {
@@ -364,7 +361,7 @@ function computeLinkStatus(l: PaymentLink): PaymentLinkStatus {
 
 const linkHandlers = [
   mock(paymentLinkContract.list, ({ query, ok, paginate }) => {
-    const filtered = links.filter((l) => (!query.keyword || l.subject.includes(query.keyword)) && (!query.status || computeLinkStatus(l) === query.status));
+    const filtered = filterByKeyword(links, query.keyword, [(l) => l.subject]).filter((l) => !query.status || computeLinkStatus(l) === query.status);
     return ok(paginate([...filtered].reverse().map((l) => ({ ...l, status: computeLinkStatus(l) }))));
   }),
   mock(paymentLinkContract.detail, ({ params, ok }) => {
@@ -408,9 +405,8 @@ const linkHandlers = [
     return ok({ ...l, status: computeLinkStatus(l) }, 'token 已重置');
   }),
   mock(paymentLinkContract.remove, ({ params, ok }) => {
-    const i = links.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('支付链接不存在');
-    links.splice(i, 1);
+    const deleted = removeByIds(links, [params.id]);
+    if (deleted === 0) return notFound('支付链接不存在');
     return ok(null, '删除成功');
   }),
   mock(paymentLinkPublicContract.detail, ({ params, ok }) => {
@@ -569,7 +565,8 @@ function fillPaymentAppConfigNames(app: PaymentApp) {
 
 const appHandlers = [
   mock(paymentAppContract.list, ({ query, ok, paginate }) => {
-    const filtered = apps.filter((a) => (!query.keyword || a.name.includes(query.keyword) || a.openClientKey.includes(query.keyword) || a.openClientName.includes(query.keyword)) && (!query.status || a.status === query.status));
+    const filtered = filterByKeyword(apps, query.keyword, [(a) => a.name, (a) => a.openClientKey, (a) => a.openClientName])
+      .filter((a) => !query.status || a.status === query.status);
     return ok(paginate([...filtered].reverse().map((a) => fillPaymentAppConfigNames({ ...a }))));
   }),
   mock(paymentAppContract.detail, ({ params, ok }) => {
@@ -611,9 +608,8 @@ const appHandlers = [
     return ok(fillPaymentAppConfigNames(app), '更新成功');
   }),
   mock(paymentAppContract.remove, ({ params, ok }) => {
-    const i = apps.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('支付应用不存在');
-    apps.splice(i, 1);
+    const deleted = removeByIds(apps, [params.id]);
+    if (deleted === 0) return notFound('支付应用不存在');
     return ok(null, '删除成功');
   }),
 ];
@@ -632,8 +628,8 @@ const riskHandlers = [
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentRiskRuleContract.detail, ({ params, ok }) => {
-    const r = riskRules.find((x) => x.id === params.id);
-    return r ? ok(r) : notFound('风控规则不存在');
+    const r = requireItem(riskRules, params.id, '风控规则不存在');
+    return ok(r);
   }),
   mock(paymentRiskRuleContract.create, ({ body, ok }) => {
     const now = mockDateTime();
@@ -647,15 +643,12 @@ const riskHandlers = [
     return ok(item, '创建成功');
   }),
   mock(paymentRiskRuleContract.update, ({ params, body, ok }) => {
-    const r = riskRules.find((x) => x.id === params.id);
-    if (!r) return notFound('风控规则不存在');
-    Object.assign(r, body, { updatedAt: mockDateTime() });
+    const r = updateItem(riskRules, params.id, body, { notFoundMessage: '风控规则不存在', now: mockDateTime });
     return ok(r, '更新成功');
   }),
   mock(paymentRiskRuleContract.remove, ({ params, ok }) => {
-    const i = riskRules.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('风控规则不存在');
-    riskRules.splice(i, 1);
+    const deleted = removeByIds(riskRules, [params.id]);
+    if (deleted === 0) return notFound('风控规则不存在');
     return ok(null, '删除成功');
   }),
 ];
@@ -776,7 +769,7 @@ const transferHandlers = [
   mock(paymentTransferContract.list, ({ query, ok, paginate }) => {
     const filtered = transfers.filter(
       (t) =>
-        (!query.keyword || t.transferNo.includes(query.keyword) || t.receiverAccount.includes(query.keyword)) &&
+        includesKeyword(query.keyword, t.transferNo, t.receiverAccount) &&
         (!query.channel || t.channel === query.channel) &&
         (!query.status || t.status === query.status) &&
         (!query.approvalStatus || t.approvalStatus === query.approvalStatus) &&

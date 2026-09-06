@@ -3,12 +3,13 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockMpFans } from '@/mocks/data/mp-fans';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const mpFansHandlers = [
   mock(mpFanContract.list, ({ query, ok, paginate }) => {
     const filtered = mockMpFans.filter((f) => {
       if (f.accountId !== query.accountId) return false;
-      if (query.keyword && !(f.nickname ?? '').includes(query.keyword) && !f.openid.includes(query.keyword) && !(f.remark ?? '').includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, f.nickname, f.openid, f.remark)) return false;
       if (query.subscribe && f.subscribe !== query.subscribe) return false;
       if (query.tagId && !f.tagIds.includes(query.tagId)) return false;
       if (query.blacklisted !== undefined && f.blacklisted !== query.blacklisted) return false;

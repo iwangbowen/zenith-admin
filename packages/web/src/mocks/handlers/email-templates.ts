@@ -4,11 +4,12 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockEmailTemplates, getNextEmailTemplateId } from '@/mocks/data/email-templates';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const emailTemplatesHandlers = [
   mock(emailTemplateContract.list, ({ query, ok, paginate }) => {
     const filtered = mockEmailTemplates.filter((t) => {
-      if (query.keyword && !t.name.includes(query.keyword) && !t.code.includes(query.keyword) && !t.subject.includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, t.name, t.code, t.subject)) return false;
       if (query.status && t.status !== query.status) return false;
       return true;
     });

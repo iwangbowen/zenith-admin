@@ -14,6 +14,7 @@ import {
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 import {
   memberView,
   mockMembers,
@@ -345,7 +346,7 @@ export const memberAdminHandlers = [
   }),
   mock(couponContract.list, ({ query, ok, paginate }) => {
     let rows = mockCoupons;
-    if (query.keyword) rows = rows.filter((c) => c.name.includes(query.keyword!));
+    if (query.keyword) rows = filterByKeyword(rows, query.keyword, [(c) => c.name]);
     if (query.status) rows = rows.filter((c) => c.status === query.status);
     if (query.type) rows = rows.filter((c) => c.type === query.type);
     return ok(paginate(rows));

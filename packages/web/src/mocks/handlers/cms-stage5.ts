@@ -34,6 +34,7 @@ import {
 } from '../data/cms-stage5';
 import { createProgressingMockTask, setMockTaskItems } from './async-tasks';
 import { mockDateTime } from '../utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const EMPTY_INHERITANCE: CmsSiteInheritanceFlags = {
   seoTitle: false,
@@ -295,7 +296,7 @@ export const cmsStage5Handlers = [
   mock(cmsSiteContract.list, ({ query, paginate, ok }) => {
     const { keyword, status } = query;
     let rows = [...mockCmsSites];
-    if (keyword) rows = rows.filter((site) => site.name.includes(keyword) || site.code.includes(keyword) || (site.domain ?? '').includes(keyword));
+    if (keyword) rows = filterByKeyword(rows, keyword, [(site) => site.name, (site) => site.code, (site) => site.domain]);
     if (status) rows = rows.filter((site) => site.status === status);
     return ok(paginate(rows.map(withEffectiveSummary)));
   }),
@@ -333,7 +334,7 @@ export const cmsStage5Handlers = [
   mock(cmsSiteContract.tree, ({ query, ok }) => {
     const { keyword, status } = query;
     let rows = [...mockCmsSites];
-    if (keyword) rows = rows.filter((site) => site.name.includes(keyword) || site.code.includes(keyword));
+    if (keyword) rows = filterByKeyword(rows, keyword, [(site) => site.name, (site) => site.code]);
     if (status) rows = rows.filter((site) => site.status === status);
     return ok(treeSites(rows));
   }),
@@ -424,7 +425,7 @@ export const cmsStage5Handlers = [
   mock(cmsDistributionContract.list, ({ query, paginate, ok }) => {
     const { keyword, mode, status } = query;
     let rows = [...mockCmsDistributionRules];
-    if (keyword) rows = rows.filter((rule) => rule.name.includes(keyword));
+    if (keyword) rows = filterByKeyword(rows, keyword, [(rule) => rule.name]);
     if (mode) rows = rows.filter((rule) => rule.mode === mode);
     if (status) rows = rows.filter((rule) => rule.status === status);
     return ok(paginate(rows));

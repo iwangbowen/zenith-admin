@@ -5,11 +5,12 @@ import { notFound } from '@/mocks/utils/handlers';
 import { mockEmailSendLogs, getNextEmailSendLogId } from '@/mocks/data/email-send-logs';
 import { mockEmailTemplates } from '@/mocks/data/email-templates';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const emailSendLogsHandlers = [
   mock(emailSendLogContract.list, ({ query, ok, paginate }) => {
     const filtered = mockEmailSendLogs.filter((l) => {
-      if (query.keyword && !l.subject.includes(query.keyword) && !l.toEmail.includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, l.subject, l.toEmail)) return false;
       if (query.toEmail && !l.toEmail.includes(query.toEmail)) return false;
       if (query.status && l.status !== query.status) return false;
       if (query.source && l.source !== query.source) return false;

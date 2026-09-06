@@ -4,6 +4,7 @@ import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mockRoles, getNextRoleId } from '@/mocks/data/roles';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const rolesHandlers = [
   // 所有角色（不分页，供下拉框使用）
@@ -15,7 +16,7 @@ export const rolesHandlers = [
   mock(roleContract.list, ({ query, ok, paginate }) => {
     const { keyword, status } = query;
     const filtered = mockRoles.filter((r) => {
-      if (keyword && !r.name.includes(keyword) && !r.code.includes(keyword)) return false;
+      if (keyword && !includesKeyword(keyword, r.name, r.code)) return false;
       if (status && r.status !== status) return false;
       return true;
     });

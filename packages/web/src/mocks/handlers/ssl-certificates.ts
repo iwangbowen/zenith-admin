@@ -3,6 +3,7 @@ import { sslCertificateContract, type SslCertificate } from '@zenith/shared/ops'
 import { mock } from '@/mocks/utils/contract';
 import { notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 const mockCerts: SslCertificate[] = [
   {
@@ -68,7 +69,7 @@ export const sslCertificatesHandlers = [
   mock(sslCertificateContract.list, ({ query, ok, paginate }) => {
     const keyword = (query.keyword ?? '').toLowerCase();
     const filtered = mockCerts.filter((cert) => {
-      const matchesKeyword = !keyword || cert.name.toLowerCase().includes(keyword) || cert.domain.toLowerCase().includes(keyword);
+      const matchesKeyword = includesKeyword(keyword, cert.name, cert.domain, { caseInsensitive: true });
       const matchesType = !query.type || cert.type === query.type;
       return matchesKeyword && matchesType;
     });

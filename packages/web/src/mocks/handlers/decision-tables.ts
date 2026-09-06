@@ -4,6 +4,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mockDecisionTables, getNextTableId, mockDecisionVersions, getNextVersionId, mockTestCases, getNextCaseId, mockExecutions, getNextExecId } from '@/mocks/data/decision-tables';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const get = (obj: Record<string, unknown>, path: string) => path.split('.').reduce<unknown>((o, k) => (o == null ? o : (o as Record<string, unknown>)[k]), obj);
 const SIMPLE_PATH = /^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*)*$/;
@@ -110,7 +111,7 @@ export const decisionTablesHandlers = [
   mock(decisionTableContract.list, ({ query, ok, paginate }) => {
     const { keyword, status } = query;
     let list = [...mockDecisionTables];
-    if (keyword) list = list.filter((t) => t.name.includes(keyword) || t.key.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(t) => t.name, (t) => t.key]);
     if (status) list = list.filter((t) => t.status === status);
     return ok(paginate(list));
   }),

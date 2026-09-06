@@ -4,6 +4,7 @@ import type { ExportEntityMeta, ExportJob, ExportJobDownload } from '@zenith/sha
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 const entities: ExportEntityMeta[] = [
   {
@@ -272,7 +273,7 @@ function filterJobs(query: QueryOf<typeof exportJobContract.list>) {
     if (query.entity && job.entity !== query.entity) return false;
     if (query.status && job.status !== query.status) return false;
     if (query.format && job.format !== query.format) return false;
-    if (query.keyword && !job.moduleName.includes(query.keyword) && !(job.filename ?? '').includes(query.keyword) && !job.entity.includes(query.keyword)) return false;
+    if (query.keyword && !includesKeyword(query.keyword, job.moduleName, job.filename, job.entity)) return false;
     return true;
   });
 }

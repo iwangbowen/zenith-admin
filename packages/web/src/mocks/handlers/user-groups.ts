@@ -6,6 +6,7 @@ import { mockUserGroups, getNextUserGroupId } from '@/mocks/data/user-groups';
 import { mockUsers } from '@/mocks/data/users';
 import { mockRoles } from '@/mocks/data/roles';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 const DYNAMIC_GROUP_MEMBERS_MESSAGE = '动态用户组的成员由规则自动维护，请通过编辑规则调整（支持强制包含/排除名单）';
 
@@ -63,7 +64,7 @@ export const userGroupsHandlers = [
   mock(userGroupContract.list, ({ query, ok, paginate }) => {
     const { keyword, status } = query;
     const filtered = mockUserGroups.filter((g) => {
-      if (keyword && !g.name.includes(keyword) && !g.code.includes(keyword)) return false;
+      if (keyword && !includesKeyword(keyword, g.name, g.code)) return false;
       if (status && g.status !== status) return false;
       return true;
     });

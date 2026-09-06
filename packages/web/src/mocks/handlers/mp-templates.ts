@@ -3,6 +3,7 @@ import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockMpTemplates, mockMpTemplateLogs, getNextMpTemplateLogId } from '@/mocks/data/mp-templates';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const mpTemplatesHandlers = [
   mock(mpTemplateContract.logs, ({ query, ok, paginate }) => {
@@ -26,7 +27,7 @@ export const mpTemplatesHandlers = [
   }),
 
   mock(mpTemplateContract.list, ({ query, ok, paginate }) => {
-    const filtered = mockMpTemplates.filter((t) => t.accountId === query.accountId && (!query.keyword || t.title.includes(query.keyword)));
+    const filtered = filterByKeyword(mockMpTemplates, query.keyword, [(t) => t.title]).filter((t) => t.accountId === query.accountId);
     return ok(paginate(filtered));
   }),
 

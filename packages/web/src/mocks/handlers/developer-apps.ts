@@ -5,6 +5,7 @@ import { urlOf } from '@/lib/contract-query';
 import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 let nextId = 102;
 let apps: OAuth2Client[] = [{
@@ -49,7 +50,7 @@ const DEBUG_ENDPOINTS: OpenApiDebugEndpoint[] = [
 export const developerAppsHandlers = [
   mock(developerAppContract.list, ({ query, ok, paginate }) => {
     const filtered = apps.filter((app) =>
-      (!query.keyword || app.name.includes(query.keyword))
+      includesKeyword(query.keyword, app.name)
       && (!query.environment || app.environment === query.environment)
       && (!query.reviewStatus || app.reviewStatus === query.reviewStatus),
     );

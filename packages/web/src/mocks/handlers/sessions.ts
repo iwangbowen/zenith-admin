@@ -3,13 +3,14 @@ import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockOnlineSessions } from '@/mocks/data/system';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const sessionsHandlers = [
   // 在线用户列表
   mock(sessionContract.list, ({ query, ok, paginate }) => {
     const keyword = query.keyword ?? '';
     const list = mockOnlineSessions.filter((s) => {
-      if (keyword && !s.username.includes(keyword) && !s.nickname.includes(keyword) && !s.ip.includes(keyword)) return false;
+      if (keyword && !includesKeyword(keyword, s.username, s.nickname, s.ip)) return false;
       return true;
     });
     return ok(paginate(list));

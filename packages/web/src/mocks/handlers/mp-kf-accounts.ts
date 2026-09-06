@@ -3,10 +3,11 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockMpKfAccounts, getNextMpKfAccountId } from '@/mocks/data/mp-kf-accounts';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const mpKfAccountsHandlers = [
   mock(mpKfAccountContract.list, ({ query, ok, paginate }) => {
-    const filtered = mockMpKfAccounts.filter((k) => k.accountId === query.accountId && (!query.keyword || k.nickname.includes(query.keyword)));
+    const filtered = filterByKeyword(mockMpKfAccounts, query.keyword, [(k) => k.nickname]).filter((k) => k.accountId === query.accountId);
     return ok(paginate(filtered));
   }),
 

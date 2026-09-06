@@ -6,6 +6,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockAiConversations, mockAiMessages, getNextConvId, getNextMsgId } from '@/mocks/data/ai';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 const convStore: AiConversation[] = [...mockAiConversations];
 const msgStore: Record<number, AiMessage[]> = { ...mockAiMessages };
@@ -45,8 +46,8 @@ export const aiConversationsHandlers = [
     let list = convStore.filter((c) => c.isArchived === archived);
     if (keyword) {
       list = list.filter((c) =>
-        c.title.toLowerCase().includes(keyword) ||
-        (msgStore[c.id] ?? []).some((m) => m.content.toLowerCase().includes(keyword)),
+        includesKeyword(keyword, c.title, { caseInsensitive: true }) ||
+        (msgStore[c.id] ?? []).some((m) => includesKeyword(keyword, m.content, { caseInsensitive: true })),
       );
     }
     let sorted = [...list].sort((a, b) =>

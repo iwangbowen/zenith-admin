@@ -1,11 +1,12 @@
 import { positionContract, type Position } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
-import { removeWhere } from '@/mocks/utils/array';
 import { mockPositions, getNextPositionId } from '@/mocks/data/positions';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDepartments } from '@/mocks/data/departments';
 import { mockDateTime } from '@/mocks/utils/date';
+import { removeByIds } from '@/mocks/utils/crud';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 function findDepartmentName(departmentId: number | null | undefined): string | null {
   if (!departmentId) return null;
@@ -29,7 +30,7 @@ export const positionsHandlers = [
   mock(positionContract.list, ({ query, ok, paginate }) => {
     const { keyword, status } = query;
     const filtered = mockPositions.filter((p) => {
-      if (keyword && !p.name.includes(keyword) && !p.code.includes(keyword)) return false;
+      if (keyword && !includesKeyword(keyword, p.name, p.code)) return false;
       if (status && p.status !== status) return false;
       return true;
     });
@@ -38,8 +39,7 @@ export const positionsHandlers = [
 
   // 批量删除岗位
   mock(positionContract.removeBatch, ({ body, ok }) => {
-    const ids = new Set(body.ids);
-    removeWhere(mockPositions, (p) => ids.has(p.id));
+    removeByIds(mockPositions, body.ids);
     return ok(null, `已删除 ${body.ids.length} 个岗位`);
   }),
 

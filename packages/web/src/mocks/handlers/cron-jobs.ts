@@ -4,6 +4,7 @@ import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockCronJobs, getNextCronJobId } from '@/mocks/data/system';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const cronJobsHandlers = [
   // 获取可用任务处理器列表（必须在 :id 路由之前声明）
@@ -145,7 +146,7 @@ export const cronJobsHandlers = [
 
   // 定时任务列表（分页）
   mock(cronJobContract.list, ({ query, ok, paginate }) => {
-    const list = mockCronJobs.filter((j) => !query.keyword || j.name.includes(query.keyword) || j.handler.includes(query.keyword));
+    const list = filterByKeyword(mockCronJobs, query.keyword, [(j) => j.name, (j) => j.handler]);
     return ok(paginate(list));
   }),
 

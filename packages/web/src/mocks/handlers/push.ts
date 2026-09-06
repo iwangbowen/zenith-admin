@@ -7,6 +7,7 @@ import { clientDeviceContract } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 import {
   getNextPushConfigId,
   getNextPushSendLogId,
@@ -19,7 +20,7 @@ export const pushHandlers = [
   // ─── 推送配置 ───────────────────────────────────────────────────────────────
   mock(pushConfigContract.list, ({ query, ok, paginate }) => {
     let list = [...mockPushConfigs];
-    if (query.keyword) list = list.filter((c) => c.name.includes(query.keyword!) || (c.remark ?? '').includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(c) => c.name, (c) => c.remark]);
     if (query.provider) list = list.filter((c) => c.provider === query.provider);
     if (query.status) list = list.filter((c) => c.status === query.status);
     return ok(paginate(list));
@@ -124,7 +125,7 @@ export const pushHandlers = [
   mock(pushSendLogContract.list, ({ query, ok, paginate }) => {
     let list = [...mockPushSendLogs];
     if (query.keyword) {
-      list = list.filter((l) => l.title.includes(query.keyword!) || l.content.includes(query.keyword!) || (l.eventKey ?? '').includes(query.keyword!));
+      list = filterByKeyword(list, query.keyword, [(l) => l.title, (l) => l.content, (l) => l.eventKey]);
     }
     if (query.provider) list = list.filter((l) => l.provider === query.provider);
     if (query.status) list = list.filter((l) => l.status === query.status);
@@ -139,7 +140,7 @@ export const pushHandlers = [
     if (query.subjectType) list = list.filter((d) => d.subjectType === query.subjectType);
     if (query.pushBound === 'true') list = list.filter((d) => d.pushRegistrationId);
     if (query.keyword) {
-      list = list.filter((d) => d.deviceId.includes(query.keyword!) || (d.deviceModel ?? '').includes(query.keyword!) || (d.appVersion ?? '').includes(query.keyword!));
+      list = filterByKeyword(list, query.keyword, [(d) => d.deviceId, (d) => d.deviceModel, (d) => d.appVersion]);
     }
     return ok(paginate(list));
   }),

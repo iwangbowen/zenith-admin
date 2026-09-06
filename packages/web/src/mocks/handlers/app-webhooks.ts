@@ -4,6 +4,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockWebhookSubscriptions, mockWebhookDeliveries } from '@/mocks/data/app-webhooks';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const subs: AppWebhookSubscription[] = mockWebhookSubscriptions.map((s) => ({ ...s }));
 let deliveries: AppWebhookDelivery[] = mockWebhookDeliveries.map((d) => ({ ...d }));
@@ -91,7 +92,7 @@ function createAppWebhookHandlers(contract: AppWebhookContract, paymentScope = f
     // 订阅 CRUD
     mock(contract.list, ({ query, ok, paginate }) => {
       let filtered = subs.filter(inScope);
-      if (query.keyword) filtered = filtered.filter((s) => s.name.includes(query.keyword!) || s.url.includes(query.keyword!));
+      if (query.keyword) filtered = filterByKeyword(filtered, query.keyword, [(s) => s.name, (s) => s.url]);
       if (query.clientId) filtered = filtered.filter((s) => s.clientId === query.clientId);
       if (query.status) filtered = filtered.filter((s) => s.status === query.status);
       return ok(paginate(filtered));

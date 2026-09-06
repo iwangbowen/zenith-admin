@@ -1,10 +1,11 @@
 import { apiScopeContract } from '@zenith/shared/open-platform';
 import type { ApiScope } from '@zenith/shared/open-platform';
 import { mock } from '@/mocks/utils/contract';
-import { removeWhere } from '@/mocks/utils/array';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockApiScopes } from '@/mocks/data/api-scopes';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
+import { removeByIds } from '@/mocks/utils/crud';
 
 const scopes: ApiScope[] = mockApiScopes.map((s) => ({ ...s }));
 let nextId = nextIdFrom(scopes);
@@ -14,7 +15,7 @@ export const apiScopesHandlers = [
 
   mock(apiScopeContract.list, ({ query, ok, paginate }) => {
     let filtered = scopes;
-    if (query.keyword) filtered = filtered.filter((s) => s.code.includes(query.keyword!) || s.name.includes(query.keyword!));
+    if (query.keyword) filtered = filterByKeyword(filtered, query.keyword, [(s) => s.code, (s) => s.name]);
     if (query.scopeGroup) filtered = filtered.filter((s) => s.scopeGroup === query.scopeGroup);
     if (query.status) filtered = filtered.filter((s) => s.status === query.status);
     return ok(paginate(filtered));
@@ -41,8 +42,7 @@ export const apiScopesHandlers = [
   }),
 
   mock(apiScopeContract.removeBatch, ({ body, ok }) => {
-    const selected = new Set(body.ids);
-    const deleted = removeWhere(scopes, (s) => selected.has(s.id));
+    const deleted = removeByIds(scopes, body.ids);
     return ok(null, `已删除 ${deleted} 条记录`);
   }),
 

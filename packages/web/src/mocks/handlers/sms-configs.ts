@@ -4,6 +4,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockSmsConfigs, getNextSmsConfigId } from '@/mocks/data/sms-configs';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 /** 列表 / 写操作响应：脱敏 accessKeyId 且不含 accessKeySecret */
 function toSafe(c: SmsConfig): SmsConfig {
@@ -22,7 +23,7 @@ function toEditable(c: SmsConfig): SmsConfig {
 export const smsConfigsHandlers = [
   mock(smsConfigContract.list, ({ query, ok, paginate }) => {
     const filtered = mockSmsConfigs.filter((c) => {
-      if (query.keyword && !c.name.includes(query.keyword) && !c.signName.includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, c.name, c.signName)) return false;
       if (query.provider && c.provider !== query.provider) return false;
       if (query.status && c.status !== query.status) return false;
       return true;

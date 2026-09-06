@@ -10,6 +10,7 @@ import {
 import { mockCmsSites } from '../data/cms';
 import { mockDateTime } from '../utils/date';
 import { createProgressingMockTask } from './async-tasks';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 function toPublishingTask(task: AsyncTask, targetType: CmsPublishTargetType, siteId: number) {
   const siteName = mockCmsSites.find((site) => site.id === siteId)?.name ?? null;
@@ -31,7 +32,7 @@ export const cmsStage3Handlers = [
     if (siteId) rows = rows.filter((item) => item.siteId === siteId);
     if (targetType) rows = rows.filter((item) => item.targetType === targetType);
     if (status) rows = rows.filter((item) => item.status === status);
-    if (keyword) rows = rows.filter((item) => item.path.includes(keyword) || item.url?.includes(keyword));
+    if (keyword) rows = filterByKeyword(rows, keyword, [(item) => item.path, (item) => item.url]);
     if (startTime) rows = rows.filter((item) => (item.generatedAt ?? item.updatedAt) >= startTime);
     if (endTime) rows = rows.filter((item) => (item.generatedAt ?? item.updatedAt) <= endTime);
     return ok(paginate(rows), 'success');
@@ -114,7 +115,7 @@ export const cmsStage3Handlers = [
     if (status === 'active') rows = rows.filter((item) => ['pending', 'running'].includes(item.status));
     else if (status === 'terminal') rows = rows.filter((item) => ['success', 'failed', 'cancelled'].includes(item.status));
     else if (status) rows = rows.filter((item) => item.status === status);
-    if (keyword) rows = rows.filter((item) => item.title.includes(keyword) || item.taskType.includes(keyword));
+    if (keyword) rows = filterByKeyword(rows, keyword, [(item) => item.title, (item) => item.taskType]);
     if (startTime) rows = rows.filter((item) => item.createdAt >= startTime);
     if (endTime) rows = rows.filter((item) => item.createdAt <= endTime);
     rows.forEach((task) => {

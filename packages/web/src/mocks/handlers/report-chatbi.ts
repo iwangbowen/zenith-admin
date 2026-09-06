@@ -17,6 +17,7 @@ import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, forbidden, notFound } from '@/mocks/utils/handlers';
 import { DEMO_TENANT_ID, DEMO_USER_ID } from './report-mock-utils';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 const SAFE_TABLES = ['menus', 'departments', 'users'] as const;
 
@@ -47,7 +48,7 @@ export const reportChatbiHandlers = [
   mock(reportChatbiContract.sessions, ({ query, ok, paginate }) => {
     const list = mockReportChatbiSessions.filter((item) =>
       item.userId === DEMO_USER_ID
-      && (!query.keyword || item.title.includes(query.keyword))
+      && includesKeyword(query.keyword, item.title)
       && (!query.status || item.status === query.status)
       && (!query.userId || item.userId === query.userId));
     return ok(paginate(list));

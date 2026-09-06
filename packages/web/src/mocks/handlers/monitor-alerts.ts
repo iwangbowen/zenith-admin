@@ -7,8 +7,9 @@ import {
 } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import { notFound, nextIdFrom } from '@/mocks/utils/handlers';
-import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime, mockDateTimeOffset } from '../utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
+import { removeByIds } from '@/mocks/utils/crud';
 
 /** N 分钟前的时间字符串 */
 const minsAgo = (m: number) => mockDateTimeOffset(-m * 60 * 1000);
@@ -222,8 +223,7 @@ export const monitorAlertsHandlers = [
 
     let filtered = [...events];
     if (keyword) {
-      filtered = filtered.filter((e) =>
-        e.ruleName.toLowerCase().includes(keyword) || e.message.toLowerCase().includes(keyword));
+      filtered = filterByKeyword(filtered, keyword, [(e) => e.ruleName, (e) => e.message], { caseInsensitive: true });
     }
     if (metric) filtered = filtered.filter((e) => e.metric === metric);
     if (level) filtered = filtered.filter((e) => e.level === level);
@@ -260,7 +260,7 @@ export const monitorAlertsHandlers = [
     const { metric, level, enabled, state } = query;
 
     let filtered = [...rules];
-    if (keyword) filtered = filtered.filter((r) => r.name.toLowerCase().includes(keyword));
+    if (keyword) filtered = filterByKeyword(filtered, keyword, [(r) => r.name], { caseInsensitive: true });
     if (metric) filtered = filtered.filter((r) => r.metric === metric);
     if (level) filtered = filtered.filter((r) => r.level === level);
     if (enabled !== undefined) filtered = filtered.filter((r) => r.enabled === enabled);
@@ -297,8 +297,7 @@ export const monitorAlertsHandlers = [
   }),
 
   mock(monitorAlertContract.removeBatch, ({ body, ok }) => {
-    const ids = new Set(body.ids);
-    removeWhere(rules, (r) => ids.has(r.id));
+    removeByIds(rules, body.ids);
     return ok(null, '删除成功');
   }),
 

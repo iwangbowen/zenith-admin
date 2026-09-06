@@ -2,16 +2,17 @@ import { inAppMessageContract } from '@zenith/shared/messaging';
 import type { InAppMessage } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
-import { removeWhere } from '@/mocks/utils/array';
 import { mockInAppMessages, getNextInAppMessageId } from '@/mocks/data/in-app-messages';
 import { mockInAppTemplates } from '@/mocks/data/in-app-templates';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
+import { removeByIds } from '@/mocks/utils/crud';
 
 /** 按关键词 / 类型 / 已读状态过滤（我的收件箱与管理员视角共用） */
 function filterMessages(list: InAppMessage[], query: { keyword?: string; type?: InAppMessage['type']; isRead?: boolean }) {
   return list.filter((m) => {
-    if (query.keyword && !m.title.includes(query.keyword) && !m.content.includes(query.keyword)) return false;
+    if (query.keyword && !includesKeyword(query.keyword, m.title, m.content)) return false;
     if (query.type && m.type !== query.type) return false;
     if (query.isRead !== undefined && m.isRead !== query.isRead) return false;
     return true;
@@ -115,8 +116,7 @@ export const inAppMessagesHandlers = [
   }),
 
   mock(inAppMessageContract.removeBatch, ({ body, ok }) => {
-    const ids = new Set(body.ids);
-    const count = removeWhere(mockInAppMessages, (message) => ids.has(message.id));
+    const count = removeByIds(mockInAppMessages, body.ids);
     return ok(null, `已删除 ${count} 条记录`);
   }),
 

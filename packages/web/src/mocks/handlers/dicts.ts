@@ -4,13 +4,14 @@ import { notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDicts, mockDictItems, getNextDictId, getNextDictItemId } from '@/mocks/data/dicts';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const dictsHandlers = [
   // 字典列表（支持服务端分页）
   mock(dictContract.list, ({ query, ok, paginate }) => {
     const { keyword, status, startDate, endDate } = query;
     const filtered = mockDicts.filter((d) => {
-      if (keyword && !d.name.includes(keyword) && !d.code.includes(keyword)) return false;
+      if (keyword && !includesKeyword(keyword, d.name, d.code)) return false;
       if (status && d.status !== status) return false;
       if (startDate && d.createdAt < startDate) return false;
       if (endDate && d.createdAt > `${endDate} 23:59:59`) return false;

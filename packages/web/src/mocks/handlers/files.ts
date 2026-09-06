@@ -5,6 +5,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockFileStorageConfigs, STORAGE_SECRET_FIELDS, type MockFileStorageConfig } from '@/mocks/data/system';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 function mockUuidV7() {
   const timeHex = Date.now().toString(16).padStart(12, '0').slice(-12);
@@ -193,7 +194,7 @@ export const filesHandlers = [
   // 文件列表（分页）
   mock(fileContract.list, ({ query, ok, paginate }) => {
     const list = mockManagedFiles.filter((f) => {
-      if (query.keyword && !f.originalName.includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, f.originalName)) return false;
       return true;
     });
     return ok(paginate(list));

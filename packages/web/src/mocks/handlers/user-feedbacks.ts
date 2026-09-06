@@ -1,16 +1,17 @@
 import { userFeedbackContract, type UserFeedback } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
-import { removeWhere } from '@/mocks/utils/array';
 import { mockUserFeedbacks, getNextUserFeedbackId } from '../data/user-feedbacks';
 import { mockDateTime } from '../utils/date';
+import { removeByIds } from '@/mocks/utils/crud';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const userFeedbacksHandlers = [
   // 分页列表 + 筛选
   mock(userFeedbackContract.list, ({ query, ok, paginate }) => {
     const { keyword, category, status, startTime, endTime } = query;
     let list = [...mockUserFeedbacks].sort((a, b) => b.id - a.id);
-    if (keyword) list = list.filter((f) => (f.content ?? '').includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(f) => f.content]);
     if (category) list = list.filter((f) => f.category === category);
     if (status) list = list.filter((f) => f.status === status);
     if (startTime) list = list.filter((f) => f.createdAt >= startTime);
@@ -66,8 +67,7 @@ export const userFeedbacksHandlers = [
     if (body.ids.length === 0) {
       return badRequest('请选择要删除的记录', { status: 400 });
     }
-    const ids = new Set(body.ids);
-    const deleted = removeWhere(mockUserFeedbacks, (f) => ids.has(f.id));
+    const deleted = removeByIds(mockUserFeedbacks, body.ids);
     return ok(null, `已删除 ${deleted} 条记录`);
   }),
 

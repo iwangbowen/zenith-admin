@@ -9,6 +9,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const directoryUsers: LdapDirectoryUser[] = [
   {
@@ -164,7 +165,7 @@ export const identityProvidersHandlers = [
   mock(identityProviderContract.list, ({ query, ok, paginate }) => {
     const { keyword, type, status } = query;
     let list = [...providers];
-    if (keyword) list = list.filter((item) => item.name.includes(keyword) || item.code.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(item) => item.name, (item) => item.code]);
     if (type) list = list.filter((item) => item.type === type);
     if (status) list = list.filter((item) => item.status === status);
     return ok(paginate(list));
@@ -216,9 +217,7 @@ export const identityProvidersHandlers = [
     const item = providers.find((provider) => provider.id === params.id);
     if (!item) return notFound('身份源不存在', { status: 404 });
     const keyword = (query.keyword ?? '').toLowerCase();
-    const list = keyword
-      ? directoryUsers.filter((user) => [user.username, user.nickname, user.email, user.department].some((value) => value?.toLowerCase().includes(keyword)))
-      : directoryUsers;
+    const list = filterByKeyword(directoryUsers, keyword, [(user) => user.username, (user) => user.nickname, (user) => user.email, (user) => user.department], { caseInsensitive: true });
     return ok(list.slice(0, query.limit));
   }),
 

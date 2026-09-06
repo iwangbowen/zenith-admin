@@ -3,9 +3,10 @@ import type { ChannelAnalysisResult, ShortLink, ShortLinkStats } from '@zenith/s
 import { CHANNEL_ANALYSIS_UNSET, SHORT_LINK_CODE_ALPHABET, SHORT_LINK_CODE_LENGTH } from '@zenith/shared/short-link';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
-import { removeWhere } from '@/mocks/utils/array';
 import { mockShortLinks, getNextShortLinkId } from '../data/short-links';
 import { mockDateTime } from '../utils/date';
+import { removeByIds } from '@/mocks/utils/crud';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 function generateMockCode(): string {
   let code = '';
@@ -84,9 +85,7 @@ export const shortLinksHandlers = [
     let list = [...mockShortLinks].sort((a, b) => b.id - a.id);
     if (query.keyword) {
       const keyword = query.keyword;
-      list = list.filter((x) => x.code.includes(keyword)
-        || (x.title ?? '').includes(keyword)
-        || x.targetUrl.includes(keyword));
+      list = filterByKeyword(list, keyword, [(x) => x.code, (x) => x.title, (x) => x.targetUrl]);
     }
     if (query.status) list = list.filter((x) => x.status === query.status);
     if (query.bizType) list = list.filter((x) => x.bizType === query.bizType);
@@ -96,8 +95,7 @@ export const shortLinksHandlers = [
   // ─── 批量删除（静态路径先于 /{id}）─────────────────────────────────────────
   mock(shortLinkContract.removeBatch, ({ body, ok }) => {
     if (body.ids.length === 0) return badRequest('请选择要删除的记录', { status: 400 });
-    const selected = new Set(body.ids);
-    const deleted = removeWhere(mockShortLinks, (x) => selected.has(x.id));
+    const deleted = removeByIds(mockShortLinks, body.ids);
     return ok(null, `已删除 ${deleted} 条记录`);
   }),
 

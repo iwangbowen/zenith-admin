@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as z from 'zod';
 import type { HttpHandler } from 'msw';
 import { defineContract, idParam, op, paginated, paginationQuery } from '@zenith/shared/core';
-import { mock } from './contract';
+import { MockHttpError, mock } from './contract';
 import { notFound } from './handlers';
 
 const itemSchema = z.object({ id: z.int(), name: z.string() });
@@ -85,5 +85,33 @@ describe('mock(op, resolver)', () => {
   it('does not match paths outside the contract', async () => {
     expect(await call('GET', '/api/items/1/extra')).toBeNull();
     expect(await call('PATCH', '/api/items/1')).toBeNull();
+  });
+
+  it('turns thrown MockHttpError into its prepared response', async () => {
+    const errorHandlers = [
+      mock(itemContract.detail, () => {
+        throw new MockHttpError(notFound('抛出的不存在', { status: 404 }));
+      }),
+    ];
+    const handler = errorHandlers[0];
+    const request = new Request(`${ORIGIN}/api/items/1`, { method: 'GET' });
+    const result = await (handler as unknown as {
+      run: (args: unknown) => Promise<{ response?: Response } | null>;
+    }).run({ request, requestId: 'mock-http-error' });
+    expect(result?.response?.status).toBe(404);
+    await expect(result?.response?.json()).resolves.toEqual({ code: 404, message: '抛出的不存在', data: null });
+  });
+
+  it('lets unexpected resolver errors propagate', async () => {
+    const errorHandlers = [
+      mock(itemContract.detail, () => {
+        throw new Error('boom');
+      }),
+    ];
+    const handler = errorHandlers[0];
+    const request = new Request(`${ORIGIN}/api/items/1`, { method: 'GET' });
+    await expect((handler as unknown as {
+      run: (args: unknown) => Promise<{ response?: Response } | null>;
+    }).run({ request, requestId: 'plain-error' })).rejects.toThrow('boom');
   });
 });

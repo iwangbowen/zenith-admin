@@ -4,6 +4,7 @@
  */
 import { http, HttpResponse } from 'msw';
 import { oauth2AuthContract, OAUTH2_SCOPE_DESCRIPTIONS } from '@zenith/shared/open-platform';
+import { readFormOrJsonBody } from '@/mocks/utils/body';
 import { mock } from '@/mocks/utils/contract';
 import { ok } from '@/mocks/utils/handlers';
 
@@ -43,15 +44,7 @@ export const oauth2AuthHandlers = [
 
   // 令牌端点（form-urlencoded，mock 接受 JSON 也行）
   http.post(`${BASE}/token`, async ({ request: req }) => {
-    const contentType = req.headers.get('content-type') ?? '';
-    let body: Record<string, string>;
-    if (contentType.includes('application/x-www-form-urlencoded')) {
-      const text = await req.text();
-      body = Object.fromEntries(new URLSearchParams(text));
-    } else {
-      body = await req.json() as Record<string, string>;
-    }
-
+    const body = await readFormOrJsonBody(req);
     const grantType = body.grant_type;
     if (grantType === 'authorization_code' || grantType === 'client_credentials') {
       const token = `oat_mock_${Date.now()}`;
@@ -68,20 +61,16 @@ export const oauth2AuthHandlers = [
   }),
 
   // 令牌撤销
-  http.post(`${BASE}/token/revoke`, async () => {
+  http.post(`${BASE}/token/revoke`, async ({ request: req }) => {
+    if (req.headers.has('content-type') || req.headers.has('content-length')) {
+      await readFormOrJsonBody(req);
+    }
     return ok(null, '已撤销');
   }),
 
   // 令牌自省
   http.post(`${BASE}/token/introspect`, async ({ request: req }) => {
-    const contentType = req.headers.get('content-type') ?? '';
-    let body: Record<string, string>;
-    if (contentType.includes('application/x-www-form-urlencoded')) {
-      const text = await req.text();
-      body = Object.fromEntries(new URLSearchParams(text));
-    } else {
-      body = await req.json() as Record<string, string>;
-    }
+    const body = await readFormOrJsonBody(req);
     const token = body.token ?? '';
     const info = accessTokens.get(token);
     if (!info) {

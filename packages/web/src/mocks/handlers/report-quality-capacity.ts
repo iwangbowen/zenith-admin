@@ -31,6 +31,7 @@ import { mockDate, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { createProgressingMockTask } from './async-tasks';
 import { DEMO_TENANT_ID, DEMO_USER_ID, DEMO_USER_NAME } from './report-mock-utils';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 function dqRuleView(rule: ReportDqRule): ReportDqRule {
   return { ...rule, datasetName: mockReportDatasets.find((item) => item.id === rule.datasetId)?.name ?? null };
@@ -521,7 +522,7 @@ export const reportQualityCapacityHandlers = [
   mock(reportAssetContract.catalog, ({ query, ok, paginate }) => {
     const types = (query.types ?? '').split(',').filter(Boolean);
     const list = assetCatalog().filter((item) =>
-      (!query.keyword || item.name.includes(query.keyword))
+      includesKeyword(query.keyword, item.name)
       && (!types.length || types.includes(item.resourceType))
       && (!query.ownerId || item.ownerId === query.ownerId)
       && (!query.folderId || item.folderId === query.folderId)
@@ -616,7 +617,7 @@ export const reportQualityCapacityHandlers = [
 
   mock(reportAssetContract.templates, ({ query, ok, paginate }) => {
     const list = mockReportAssetTemplates.filter((item) =>
-      (!query.keyword || item.name.includes(query.keyword) || item.code.includes(query.keyword))
+      includesKeyword(query.keyword, item.name, item.code)
       && (!query.type || item.type === query.type)
       && (!query.status || item.status === query.status));
     return ok(paginate(list));

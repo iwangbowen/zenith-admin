@@ -7,6 +7,7 @@ import { mockRoles } from '@/mocks/data/roles';
 import { mockPositions } from '@/mocks/data/positions';
 import { mockDepartments } from '@/mocks/data/departments';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 // Demo 模式下新增/重置用户时使用的默认初始口令（明文仅用于演示环境）
 const DEMO_INITIAL_CREDENTIAL = ['1', '2', '3', '4', '5', '6'].join('');
@@ -63,7 +64,7 @@ export const usersHandlers = [
   mock(userContract.list, ({ query, ok, paginate }) => {
     const { keyword, phone, status, departmentId } = query;
     const list = mockUsers.filter((u) => {
-      if (keyword && !u.username.includes(keyword) && !u.nickname.includes(keyword)) return false;
+      if (keyword && !includesKeyword(keyword, u.username, u.nickname)) return false;
       if (phone && !(u.phone ?? '').includes(phone)) return false;
       if (status && u.status !== status) return false;
       if (departmentId && u.departmentId !== departmentId) return false;

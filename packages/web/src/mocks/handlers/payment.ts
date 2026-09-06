@@ -23,6 +23,7 @@ import { mock } from '@/mocks/utils/contract';
 import { mockDateTime, mockDateTimeOffset, mockDate } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { recordMockPaymentSucceeded, recordMockRefundSucceeded } from './payment-ext';
+import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
 
 interface MockRefundIdempotencyRecord {
   requestHash: string;
@@ -119,9 +120,8 @@ export const paymentHandlers = [
       .map(({ id, name, channel, sandbox }) => ({ id, name, channel, sandbox })),
   )),
   mock(paymentChannelContract.channels, ({ query, ok, paginate }) => {
-    const filtered = mockPaymentChannels.filter(
-      (c) => (!query.keyword || c.name.includes(query.keyword)) && (!query.channel || c.channel === query.channel) && (!query.status || c.status === query.status),
-    );
+    const filtered = filterByKeyword(mockPaymentChannels, query.keyword, [(c) => c.name])
+      .filter((c) => (!query.channel || c.channel === query.channel) && (!query.status || c.status === query.status));
     return ok(paginate(filtered));
   }),
   mock(paymentChannelContract.channelDetail, ({ params, ok }) => {
@@ -204,7 +204,7 @@ export const paymentHandlers = [
   mock(paymentOrderContract.orders, ({ query, ok, paginate }) => {
     const filtered = mockPaymentOrders.filter(
       (o) =>
-        (!query.keyword || o.orderNo.includes(query.keyword) || o.subject.includes(query.keyword)) &&
+        includesKeyword(query.keyword, o.orderNo, o.subject) &&
         (!query.channel || o.channel === query.channel) &&
         (!query.status || o.status === query.status) &&
         (!query.bizType || o.bizType === query.bizType) &&
@@ -309,7 +309,7 @@ export const paymentHandlers = [
   mock(paymentRefundContract.refunds, ({ query, ok, paginate }) => {
     const filtered = mockPaymentRefunds.filter(
       (r) =>
-        (!query.keyword || r.refundNo.includes(query.keyword) || r.orderNo.includes(query.keyword)) &&
+        includesKeyword(query.keyword, r.refundNo, r.orderNo) &&
         (!query.channel || r.channel === query.channel) &&
         (!query.status || r.status === query.status) &&
         (!query.approvalStatus || r.approvalStatus === query.approvalStatus) &&
@@ -344,7 +344,7 @@ export const paymentHandlers = [
   mock(paymentNotifyLogContract.logs, ({ query, ok, paginate }) => {
     const filtered = mockPaymentLogs.filter(
       (l) =>
-        (!query.keyword || (l.orderNo ?? '').includes(query.keyword)) &&
+        includesKeyword(query.keyword, l.orderNo) &&
         (!query.channel || l.channel === query.channel) &&
         (!query.scene || l.scene === query.scene) &&
         (query.signatureValid == null || l.signatureValid === query.signatureValid) &&

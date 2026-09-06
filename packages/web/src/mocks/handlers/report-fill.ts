@@ -16,6 +16,7 @@ import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { createProgressingMockTask } from './async-tasks';
 import { DEMO_TENANT_ID, DEMO_USER_ID, DEMO_USER_NAME } from './report-mock-utils';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 function templateView(template: ReportFillTemplate): ReportFillTemplate {
   return {
@@ -119,7 +120,7 @@ export const reportFillHandlers = [
 
   mock(reportFillContract.templates, ({ query, ok, paginate }) => {
     const list = mockReportFillTemplates.filter((item) =>
-      (!query.keyword || item.name.includes(query.keyword) || item.code.includes(query.keyword))
+      includesKeyword(query.keyword, item.name, item.code)
       && (!query.status || item.status === query.status)
       && (!query.ownerId || item.ownerId === query.ownerId)
       && (!query.folderId || item.folderId === query.folderId))
@@ -237,7 +238,7 @@ export const reportFillHandlers = [
   mock(reportFillContract.myRecords, ({ query, ok, paginate }) => {
     const list = mockReportFillRecords.filter((item) =>
       item.submitterId === DEMO_USER_ID
-      && (!query.keyword || (item.templateName ?? '').includes(query.keyword))
+      && includesKeyword(query.keyword, item.templateName)
       && (!query.status || item.status === query.status)
       && (!query.templateId || item.templateId === query.templateId))
       .map(recordView);

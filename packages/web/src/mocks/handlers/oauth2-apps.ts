@@ -3,6 +3,7 @@ import type { OAuth2Client, OAuth2ClientCreated, OAuth2MyGrant, OAuth2Token, OAu
 import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 let nextId = 1;
 
@@ -138,7 +139,7 @@ function grantsOf(client: OAuth2Client): OAuth2UserGrant[] {
 export const oauth2AppsHandlers = [
   mock(oauth2ClientContract.list, ({ query, ok, paginate }) => {
     const filtered = mockOAuth2Clients.filter((client) =>
-      (!query.keyword || client.name.includes(query.keyword))
+      includesKeyword(query.keyword, client.name)
       && (!query.environment || client.environment === query.environment)
       && (!query.reviewStatus || client.reviewStatus === query.reviewStatus),
     );

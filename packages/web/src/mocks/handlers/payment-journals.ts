@@ -10,6 +10,7 @@ import {
 import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const accounts: PaymentLedgerAccount[] = [];
 const journals: PaymentJournal[] = [];
@@ -137,8 +138,8 @@ function reservationTransition(reservation: PaymentFundReservation, action: 'cap
 export const paymentJournalHandlers = [
   mock(paymentJournalContract.accounts, ({ query, ok, paginate }) => {
     const keyword = query.keyword?.trim() ?? '';
-    const filtered = accounts.filter((account) => (!keyword || account.accountNo.includes(keyword) || account.name.includes(keyword))
-      && (!query.appId || account.appId === query.appId)
+    const filtered = filterByKeyword(accounts, keyword, [(account) => account.accountNo, (account) => account.name]).filter((account) =>
+      (!query.appId || account.appId === query.appId)
       && (!query.channelConfigId || account.channelConfigId === query.channelConfigId)
       && (!query.currency || account.currency === query.currency)
       && (!query.status || account.status === query.status));

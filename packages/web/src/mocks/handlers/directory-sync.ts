@@ -3,6 +3,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { createImmediateMockTask } from './async-tasks';
+import { filterByKeyword } from '@/mocks/utils/filter';
 import {
   mockDirectorySyncSources, getNextDirectorySyncSourceId,
   mockDirectorySyncRuns, mockDirectorySyncRunItems, mockDirectorySyncConflicts,
@@ -18,7 +19,7 @@ export const directorySyncHandlers = [
   mock(directorySyncSourceContract.list, ({ query, ok, paginate }) => {
     const { keyword, type, status } = query;
     let list = [...mockDirectorySyncSources];
-    if (keyword) list = list.filter((s) => s.name.includes(keyword) || (s.remark ?? '').includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(s) => s.name, (s) => s.remark]);
     if (type) list = list.filter((s) => s.type === type);
     if (status) list = list.filter((s) => s.status === status);
     return ok(paginate(list));
@@ -164,7 +165,7 @@ export const directorySyncHandlers = [
   mock(directorySyncContract.listConflicts, ({ query, ok, paginate }) => {
     const { keyword, sourceId, status } = query;
     let list = [...mockDirectorySyncConflicts];
-    if (keyword) list = list.filter((c) => (c.name ?? '').includes(keyword) || c.externalId.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(c) => c.name, (c) => c.externalId]);
     if (sourceId) list = list.filter((c) => c.sourceId === sourceId);
     if (status) list = list.filter((c) => c.status === status);
     return ok(paginate(list));

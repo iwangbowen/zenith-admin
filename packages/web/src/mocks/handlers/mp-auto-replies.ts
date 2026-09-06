@@ -3,6 +3,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockMpAutoReplies, getNextMpAutoReplyId } from '@/mocks/data/mp-auto-replies';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const mpAutoRepliesHandlers = [
   mock(mpAutoReplyContract.unmatched, ({ query, ok, paginate }) => {
@@ -20,7 +21,7 @@ export const mpAutoRepliesHandlers = [
     const filtered = mockMpAutoReplies.filter((r) => {
       if (r.accountId !== query.accountId) return false;
       if (query.replyType && r.replyType !== query.replyType) return false;
-      if (query.keyword && !(r.keyword ?? '').includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, r.keyword)) return false;
       return true;
     });
     return ok(paginate(filtered));

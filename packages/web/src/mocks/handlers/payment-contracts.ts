@@ -7,6 +7,7 @@ import { PAYMENT_METHOD_CHANNEL, paymentDeductPlanContract, paymentSigningContra
 import type { MemberVipRenewal } from '@zenith/shared/member';
 import type { PaymentContract, PaymentContractDeductOutcome, PaymentDeductMethod, PaymentDeductPeriod, PaymentDeductPlan } from '@zenith/shared/payment';
 import dayjs from 'dayjs';
+import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
 
 const DEMO_MEMBER_BIZ = { bizType: 'member_renewal', bizId: '1' };
 
@@ -62,8 +63,8 @@ function findScopedContract(id: number, applicationId: number): PaymentContract 
 const planHandlers = [
   mock(paymentDeductPlanContract.deductPlansAll, ({ ok }) => ok(mockDeductPlans.filter((p) => p.status === 'enabled'))),
   mock(paymentDeductPlanContract.deductPlans, ({ query, ok, paginate }) => {
-    const filtered = mockDeductPlans
-      .filter((p) => (!query.keyword || p.name.includes(query.keyword)) && (!query.status || p.status === query.status))
+    const filtered = filterByKeyword(mockDeductPlans, query.keyword, [(p) => p.name])
+      .filter((p) => !query.status || p.status === query.status)
       .map((p) => ({ ...p, contractCount: mockPaymentContracts.filter((c) => c.planId === p.id).length }));
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
@@ -107,7 +108,7 @@ const planHandlers = [
 const contractHandlers = [
   mock(paymentSigningContract.contracts, ({ query, ok, paginate }) => {
     const filtered = mockPaymentContracts.filter((c) => c.appId === query.applicationId &&
-      (!query.keyword || c.contractNo.includes(query.keyword) || c.signerAccount.includes(query.keyword) || c.bizId.includes(query.keyword)) &&
+      includesKeyword(query.keyword, c.contractNo, c.signerAccount, c.bizId) &&
       (!query.status || c.status === query.status) &&
       (!query.channel || c.channel === query.channel) &&
       (!query.planId || c.planId === query.planId) &&

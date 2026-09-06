@@ -4,6 +4,7 @@ import { notFound, badRequest } from '@/mocks/utils/handlers';
 import { PAYMENT_METHOD_CHANNEL, paymentPreauthContract } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentPreauth } from '@zenith/shared/payment';
 import dayjs from 'dayjs';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 let nextId = 4;
 
@@ -43,7 +44,7 @@ function findScopedPreauth(id: number, applicationId: number): PaymentPreauth | 
 export const paymentPreauthHandlers = [
   mock(paymentPreauthContract.list, ({ query, ok, paginate }) => {
     const filtered = preauths.filter((p) => p.appId === query.applicationId &&
-      (!query.keyword || p.preauthNo.includes(query.keyword) || p.payerAccount.includes(query.keyword) || p.subject.includes(query.keyword)) &&
+      includesKeyword(query.keyword, p.preauthNo, p.payerAccount, p.subject) &&
       (!query.status || p.status === query.status) && (!query.channel || p.channel === query.channel) &&
       (!query.startTime || p.createdAt >= query.startTime) && (!query.endTime || p.createdAt <= query.endTime),
     );

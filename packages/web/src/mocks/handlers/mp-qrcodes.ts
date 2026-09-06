@@ -3,13 +3,14 @@ import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockMpQrcodes, getNextMpQrcodeId } from '@/mocks/data/mp-qrcodes';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const mpQrcodesHandlers = [
   mock(mpQrcodeContract.list, ({ query, ok, paginate }) => {
     const filtered = mockMpQrcodes.filter((q) => {
       if (q.accountId !== query.accountId) return false;
       if (query.type && q.type !== query.type) return false;
-      if (query.keyword && !q.name.includes(query.keyword) && !q.sceneStr.includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, q.name, q.sceneStr)) return false;
       return true;
     });
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));

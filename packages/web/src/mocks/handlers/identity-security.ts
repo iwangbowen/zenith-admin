@@ -1,6 +1,7 @@
 import { identitySecurityContract, type LoginRiskEvent } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const riskEvents: LoginRiskEvent[] = [
   {
@@ -22,7 +23,7 @@ export const identitySecurityHandlers = [
   mock(identitySecurityContract.riskEvents, ({ query, ok, paginate }) => {
     const keyword = query.keyword ?? '';
     const list = keyword
-      ? riskEvents.filter((item) => item.username.includes(keyword) || item.reason.includes(keyword) || (item.ip ?? '').includes(keyword))
+      ? filterByKeyword(riskEvents, keyword, [(item) => item.username, (item) => item.reason, (item) => item.ip])
       : riskEvents;
     return ok(paginate(list));
   }),

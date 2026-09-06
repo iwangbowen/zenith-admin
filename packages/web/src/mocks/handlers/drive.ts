@@ -24,6 +24,7 @@ import { badRequest, forbidden, notFound, unauthorized } from '@/mocks/utils/han
 import { mockDateTime } from '@/mocks/utils/date';
 import { removeWhere } from '@/mocks/utils/array';
 import { createImmediateMockTask } from './async-tasks';
+import { filterByKeyword } from '@/mocks/utils/filter';
 import {
   MOCK_USER,
   getNextDriveCommentId,
@@ -207,7 +208,8 @@ interface NodeFilter {
 
 function filterNodes<T extends DriveNode>(list: T[], q: NodeFilter): T[] {
   const keyword = q.keyword?.trim().toLowerCase();
-  return list.filter((n) => (!keyword || n.name.toLowerCase().includes(keyword)) && (!q.spaceId || n.spaceId === q.spaceId) && (!q.type || n.type === q.type));
+  return filterByKeyword(list, keyword, [(n) => n.name], { caseInsensitive: true })
+    .filter((n) => (!q.spaceId || n.spaceId === q.spaceId) && (!q.type || n.type === q.type));
 }
 
 function quotaFallbackGb(type: DriveSpace['type']): number {
@@ -240,7 +242,7 @@ const spaceHandlers = [
     const keyword = query.keyword?.trim();
     recalcMockDriveUsage();
     let list = mockDriveSpaces.filter((s) => s.type !== 'personal' || s.ownerId === MOCK_USER.id);
-    if (keyword) list = list.filter((s) => s.name.includes(keyword) || (s.ownerName ?? '').includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(s) => s.name, (s) => s.ownerName]);
     if (query.type) list = list.filter((s) => s.type === query.type);
     if (query.status) list = list.filter((s) => s.status === query.status);
     return ok(paginate(list));
@@ -652,7 +654,7 @@ const nodeItemHandlers = [
 const shareLinkHandlers = [
   mock(driveShareLinkContract.list, ({ query, ok, paginate }) => {
     let list = mockDriveShareLinks.map(withState);
-    if (query.keyword) list = list.filter((l) => l.nodeName.includes(query.keyword!) || (l.remark ?? '').includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(l) => l.nodeName, (l) => l.remark]);
     if (query.state) list = list.filter((l) => l.state === query.state);
     return ok(paginate(list));
   }),
@@ -834,7 +836,7 @@ const adminHandlers = [
     const keyword = query.keyword?.trim();
     recalcMockDriveUsage();
     let list = [...mockDriveSpaces];
-    if (keyword) list = list.filter((s) => s.name.includes(keyword) || (s.ownerName ?? '').includes(keyword) || (s.departmentName ?? '').includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(s) => s.name, (s) => s.ownerName, (s) => s.departmentName]);
     if (query.type) list = list.filter((s) => s.type === query.type);
     if (query.status) list = list.filter((s) => s.status === query.status);
     return ok(paginate(list));
@@ -869,14 +871,14 @@ const adminHandlers = [
   mock(driveAdminContract.removeSpace, ({ params, ok }) => removeSpace(params.id) ?? ok(null, '删除成功')),
   mock(driveAdminContract.shareLinks, ({ query, ok, paginate }) => {
     let list = mockDriveShareLinks.map(withState);
-    if (query.keyword) list = list.filter((l) => l.nodeName.includes(query.keyword!) || (l.remark ?? '').includes(query.keyword!) || (l.createdByName ?? '').includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(l) => l.nodeName, (l) => l.remark, (l) => l.createdByName]);
     if (query.state) list = list.filter((l) => l.state === query.state);
     return ok(paginate(list));
   }),
   mock(driveAdminContract.revokeShareLink, ({ params, ok }) => (revokeShareLink(params.id) ? ok(null, '已撤销') : notFound('外链不存在', { status: 404 }))),
   mock(driveAdminContract.activities, ({ query, ok, paginate }) => {
     let list = [...mockDriveActivities].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    if (query.keyword) list = list.filter((a) => a.nodeName.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(a) => a.nodeName]);
     if (query.spaceId) list = list.filter((a) => a.spaceId === query.spaceId);
     if (query.actorId) list = list.filter((a) => a.actorId === query.actorId);
     if (query.action) list = list.filter((a) => a.action === query.action);

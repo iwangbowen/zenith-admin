@@ -4,6 +4,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, fail } from '@/mocks/utils/handlers';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 type StoredSubscription = WorkflowEventSubscription & { secret: string | null };
 
@@ -173,10 +174,7 @@ export const workflowEventSubscriptionsHandlers = [
 
     let list = mockSubscriptions.map(toPublicSubscription);
     if (keyword) {
-      list = list.filter((item) =>
-        item.name.toLowerCase().includes(keyword) ||
-        item.url.toLowerCase().includes(keyword),
-      );
+      list = filterByKeyword(list, keyword, [(item) => item.name, (item) => item.url], { caseInsensitive: true });
     }
     if (query.definitionId) list = list.filter((item) => item.definitionId === query.definitionId);
     if (query.enabled !== undefined) list = list.filter((item) => item.enabled === query.enabled);

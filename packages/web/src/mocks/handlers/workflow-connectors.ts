@@ -4,13 +4,14 @@ import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockWorkflowConnectors, getNextConnectorId } from '@/mocks/data/workflow-connectors';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const hasCred = (c?: Record<string, string | undefined>) => !!c && Object.values(c).some((v) => v != null && v !== '');
 
 export const workflowConnectorsHandlers = [
   mock(workflowConnectorContract.list, ({ query, ok, paginate }) => {
     let list = [...mockWorkflowConnectors];
-    if (query.keyword) list = list.filter((x) => x.name.includes(query.keyword!) || x.code.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(x) => x.name, (x) => x.code]);
     if (query.type) list = list.filter((x) => x.type === query.type);
     if (query.status) list = list.filter((x) => x.status === query.status);
     return ok(paginate(list));

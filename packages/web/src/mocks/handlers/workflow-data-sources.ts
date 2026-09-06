@@ -4,6 +4,7 @@ import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockWorkflowDataSources, getNextDataSourceId, MOCK_DATA_SOURCE_OPTIONS } from '@/mocks/data/workflow-data-sources';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const workflowDataSourcesHandlers = [
   // 代理拉取选项（demo 返回示例数据 + 关键词过滤）
@@ -25,7 +26,7 @@ export const workflowDataSourcesHandlers = [
   mock(workflowDataSourceContract.list, ({ query, ok, paginate }) => {
     const keyword = query.keyword ?? '';
     let list = [...mockWorkflowDataSources];
-    if (keyword) list = list.filter((x) => x.name.includes(keyword) || x.url.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(x) => x.name, (x) => x.url]);
     if (query.status) list = list.filter((x) => x.status === query.status);
     return ok(paginate(list));
   }),

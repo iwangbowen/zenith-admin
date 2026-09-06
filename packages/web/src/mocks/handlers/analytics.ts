@@ -46,6 +46,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, nextIdFrom, notFound, pageResult } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '../utils/date';
 import { createProgressingMockTask } from './async-tasks';
+import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
 
 function daysAxis(days: number): string[] {
   const arr: string[] = [];
@@ -843,7 +844,7 @@ export const analyticsHandlers = [
 
   // ─── 事件字典 CRUD ─────────────────────────────────────────────────────────
   mock(analyticsContract.eventMeta, ({ query, ok, paginate }) => {
-    const list = mockEventMeta.filter((m) => !query.keyword || m.eventName.includes(query.keyword));
+    const list = filterByKeyword(mockEventMeta, query.keyword, [(m) => m.eventName]);
     return ok(paginate(list));
   }),
   mock(analyticsContract.createEventMeta, ({ body, ok }) => {
@@ -1040,7 +1041,7 @@ export const analyticsHandlers = [
   // ─── 用户分群 CRUD + 成员物化 ──────────────────────────────────────────────
   mock(analyticsContract.segments, ({ query, ok, paginate }) => {
     const list = mockSegments.filter((s) =>
-      (!query.keyword || s.name.includes(query.keyword) || (s.description ?? '').includes(query.keyword))
+      includesKeyword(query.keyword, s.name, s.description)
       && (!query.status || s.status === query.status));
     return ok(paginate(list));
   }),

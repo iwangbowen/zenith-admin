@@ -12,6 +12,7 @@ import {
 import { mock } from '@/mocks/utils/contract';
 import { mockUsers, type MockUser } from '@/mocks/data/users';
 import { mockUserGroups } from '@/mocks/data/user-groups';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 type MemberPreviewOp = typeof departmentContract.memberPreview;
 
@@ -22,7 +23,7 @@ function memberPreviewHandler(op: MemberPreviewOp, isMember: (user: MockUser, sc
 
     const list = mockUsers
       .filter((u) => isMember(u, params.id))
-      .filter((u) => !keyword || u.nickname.toLowerCase().includes(keyword) || u.username.toLowerCase().includes(keyword))
+      .filter((u) => includesKeyword(keyword, u.nickname, u.username, { caseInsensitive: true }))
       .map((u) => ({ id: u.id, username: u.username, nickname: u.nickname, avatar: u.avatar ?? null }));
 
     return ok(paginate(list));

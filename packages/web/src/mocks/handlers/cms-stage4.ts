@@ -42,6 +42,7 @@ import {
 } from '../data/cms';
 import { mockDate, mockDateTime } from '../utils/date';
 import { createProgressingMockTask } from './async-tasks';
+import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
 
 type InteractionQuestionInput = z.output<typeof cmsInteractionQuestionSchema>;
 type InteractionSubmitInput = z.output<typeof submitCmsInteractionSchema>;
@@ -370,7 +371,7 @@ export const cmsStage4Handlers = [
             createdAt: response.createdAt,
           }));
       })
-      .filter((item) => !keyword || item.value.includes(keyword))
+      .filter((item) => includesKeyword(keyword, item.value))
       .reverse();
     return ok(paginate(list));
   }),
@@ -449,7 +450,7 @@ export const cmsStage4Handlers = [
     const { siteId, kind, status } = query;
     const keyword = query.keyword?.trim() ?? '';
     let list = mockCmsInteractions.filter((interaction) => interaction.siteId === siteId);
-    if (keyword) list = list.filter((interaction) => interaction.title.includes(keyword) || interaction.code.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(interaction) => interaction.title, (interaction) => interaction.code]);
     if (kind) list = list.filter((interaction) => interaction.kind === kind);
     if (status) list = list.filter((interaction) => interaction.status === status);
     return ok(paginate(list));

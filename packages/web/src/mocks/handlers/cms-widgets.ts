@@ -14,6 +14,7 @@ import {
 } from '../data/cms';
 import { mockDateTime } from '../utils/date';
 import { createProgressingMockTask } from './async-tasks';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 function refreshCounts() {
   for (const widget of mockCmsWidgets) {
@@ -298,7 +299,7 @@ export const cmsWidgetsHandlers = [
     const { siteId, keyword, status, type } = query;
     refreshCounts();
     let list = mockCmsWidgets.filter((widget) => widget.siteId === siteId);
-    if (keyword) list = list.filter((widget) => widget.name.includes(keyword) || widget.code.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(widget) => widget.name, (widget) => widget.code]);
     if (status) list = list.filter((widget) => widget.status === status);
     if (type) list = list.filter((widget) => widget.type === type);
     return ok(paginate(list));

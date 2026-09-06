@@ -4,6 +4,7 @@ import { SEED_AI_PROMPT_TEMPLATES } from '@zenith/shared/seed';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const store: AiPromptTemplate[] = SEED_AI_PROMPT_TEMPLATES.map((item) => ({ ...item }));
 let nextId = nextIdFrom(store);
@@ -22,12 +23,7 @@ export const aiPromptTemplatesHandlers = [
     let list = sortTemplates(store);
     if (query.scope) list = list.filter((item) => item.scope === query.scope);
     if (keyword) {
-      list = list.filter((item) =>
-        item.name.toLowerCase().includes(keyword) ||
-        item.content.toLowerCase().includes(keyword) ||
-        (item.description ?? '').toLowerCase().includes(keyword) ||
-        (item.category ?? '').toLowerCase().includes(keyword),
-      );
+      list = filterByKeyword(list, keyword, [(item) => item.name, (item) => item.content, (item) => item.description, (item) => item.category], { caseInsensitive: true });
     }
     return ok(paginate(list), 'success');
   }),

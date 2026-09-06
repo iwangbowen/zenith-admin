@@ -12,6 +12,7 @@ import {
 import { mockDepartments } from '@/mocks/data/departments';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 // 当前 demo 用户 ID（对应 admin = 1）
 const CURRENT_USER_ID = 1;
@@ -146,8 +147,7 @@ export const chatHandlers = [
     const keyword = query.keyword.toLowerCase();
     const all = mockChatMessages.filter((m) => {
       if (m.isRecalled) return false;
-      return (m.content ?? '').toLowerCase().includes(keyword)
-        || (m.extra?.asset?.name ?? '').toLowerCase().includes(keyword);
+      return includesKeyword(keyword, m.content, m.extra?.asset?.name, { caseInsensitive: true });
     });
     const page = paginate(all);
     const conversationNames: Record<string, string> = {};

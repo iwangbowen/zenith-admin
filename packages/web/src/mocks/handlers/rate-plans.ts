@@ -4,6 +4,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockRatePlans } from '@/mocks/data/rate-plans';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const plans: RatePlan[] = mockRatePlans.map((p) => ({ ...p }));
 let nextId = nextIdFrom(plans);
@@ -20,7 +21,7 @@ export const ratePlansHandlers = [
 
   mock(ratePlanContract.list, ({ query, ok, paginate }) => {
     let filtered = plans;
-    if (query.keyword) filtered = filtered.filter((p) => p.code.includes(query.keyword!) || p.name.includes(query.keyword!));
+    if (query.keyword) filtered = filterByKeyword(filtered, query.keyword, [(p) => p.code, (p) => p.name]);
     if (query.status) filtered = filtered.filter((p) => p.status === query.status);
     return ok(paginate(filtered));
   }),

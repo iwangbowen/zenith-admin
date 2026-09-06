@@ -15,6 +15,7 @@ import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { recordMockSystemJournal } from './payment-journals';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const SEED = PAYMENT_MOCK_SEED_TIME;
 
@@ -237,7 +238,8 @@ const MOCK_OPS_HEALTH: PaymentOpsHealth = {
 const opsHandlers = [
   mock(paymentOpsContract.health, ({ ok }) => ok(MOCK_OPS_HEALTH)),
   mock(paymentOpsContract.events, ({ query, ok, paginate }) => {
-    const filtered = outboxEvents.filter((e) => (!query.status || e.status === query.status) && (!query.type || e.type === query.type) && (!query.keyword || e.orderNo.includes(query.keyword)));
+    const filtered = filterByKeyword(outboxEvents, query.keyword, [(e) => e.orderNo])
+      .filter((e) => (!query.status || e.status === query.status) && (!query.type || e.type === query.type));
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentOpsContract.redispatchEvent, ({ params, ok }) => {

@@ -19,6 +19,7 @@ import {
   mockIotProducts, mockIotProperties, mockIotScheduleRuns, mockIotSchedules, mockIotServices, mockIotShadows, mockIotWhitelist, withGroupInfo,
 } from '../data/iot';
 import { mockDateTime } from '../utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 function randomHex(len: number): string {
   const chars = '0123456789abcdef';
@@ -132,7 +133,7 @@ export const iotHandlers = [
       ...f,
       taskCount: mockIotOtaTasks.filter((t) => t.firmwareId === f.id).length,
     }));
-    if (query.keyword) list = list.filter((f) => f.version.includes(query.keyword!) || f.fileName.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(f) => f.version, (f) => f.fileName]);
     if (query.productId) list = list.filter((f) => f.productId === query.productId);
     if (query.status) list = list.filter((f) => f.status === query.status);
     return ok(paginate(list.sort((a, b) => b.id - a.id)));
@@ -183,7 +184,7 @@ export const iotHandlers = [
   // ─── OTA 升级任务 ────────────────────────────────────────────────────────────
   mock(iotOtaTaskContract.list, ({ query, ok, paginate }) => {
     let list = [...mockIotOtaTasks];
-    if (query.keyword) list = list.filter((t) => t.title.includes(query.keyword!) || t.firmwareVersion.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(t) => t.title, (t) => t.firmwareVersion]);
     if (query.productId) list = list.filter((t) => t.productId === query.productId);
     if (query.status) list = list.filter((t) => t.status === query.status);
     return ok(paginate(list.sort((a, b) => b.id - a.id)));
@@ -313,7 +314,7 @@ export const iotHandlers = [
     ok(mockIotProducts.filter((p) => p.status === 'enabled').map(productWithCounts))),
   mock(iotProductContract.list, ({ query, ok, paginate }) => {
     let list = mockIotProducts.map(productWithCounts);
-    if (query.keyword) list = list.filter((p) => p.name.includes(query.keyword!) || (p.description ?? '').includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(p) => p.name, (p) => p.description]);
     if (query.status) list = list.filter((p) => p.status === query.status);
     return ok(paginate([...list].sort((a, b) => b.id - a.id)));
   }),
@@ -482,7 +483,7 @@ export const iotHandlers = [
     ok(mockIotGroups.map((g) => ({ ...g, deviceCount: g.deviceIds.length })))),
   mock(iotDeviceGroupContract.list, ({ query, ok, paginate }) => {
     let list = mockIotGroups.map((g) => ({ ...g, deviceCount: g.deviceIds.length }));
-    if (query.keyword) list = list.filter((g) => g.name.includes(query.keyword!) || (g.description ?? '').includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(g) => g.name, (g) => g.description]);
     return ok(paginate([...list].sort((a, b) => b.id - a.id)));
   }),
   mock(iotDeviceGroupContract.create, ({ body, ok }) => {
@@ -550,7 +551,7 @@ export const iotHandlers = [
   // ─── 告警规则 ────────────────────────────────────────────────────────────────
   mock(iotAlarmRuleContract.list, ({ query, ok, paginate }) => {
     let list = [...mockIotAlarmRules];
-    if (query.keyword) list = list.filter((r) => r.name.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(r) => r.name]);
     if (query.productId) list = list.filter((r) => r.productId === query.productId);
     if (query.ruleType) list = list.filter((r) => r.ruleType === query.ruleType);
     if (query.status) list = list.filter((r) => r.status === query.status);
@@ -639,7 +640,7 @@ export const iotHandlers = [
   // ─── 维护窗口 ────────────────────────────────────────────────────────────────
   mock(iotMaintenanceWindowContract.list, ({ query, ok, paginate }) => {
     let list = [...mockIotMaintenanceWindows];
-    if (query.keyword) list = list.filter((w) => w.name.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(w) => w.name]);
     return ok(paginate(list.sort((a, b) => b.id - a.id)));
   }),
   mock(iotMaintenanceWindowContract.create, ({ body, ok }) => {
@@ -683,7 +684,7 @@ export const iotHandlers = [
   }),
   mock(iotScheduleContract.list, ({ query, ok, paginate }) => {
     let list = [...mockIotSchedules];
-    if (query.keyword) list = list.filter((s) => s.name.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(s) => s.name]);
     if (query.productId) list = list.filter((s) => s.productId === query.productId);
     if (query.status) list = list.filter((s) => s.status === query.status);
     return ok(paginate(list.sort((a, b) => b.id - a.id)));
@@ -751,7 +752,7 @@ export const iotHandlers = [
   }),
   mock(iotWhitelistContract.list, ({ query, ok, paginate }) => {
     let list = [...mockIotWhitelist];
-    if (query.keyword) list = list.filter((e) => e.sn.includes(query.keyword!) || (e.remark ?? '').includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(e) => e.sn, (e) => e.remark]);
     if (query.productId) list = list.filter((e) => e.productId === query.productId);
     if (query.used !== undefined) list = list.filter((e) => e.used === query.used);
     return ok(paginate(list.sort((a, b) => b.id - a.id)));
@@ -798,7 +799,7 @@ export const iotHandlers = [
   }),
   mock(iotAutomationContract.list, ({ query, ok, paginate }) => {
     let list = [...mockIotAutomations];
-    if (query.keyword) list = list.filter((a) => a.name.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(a) => a.name]);
     if (query.productId) list = list.filter((a) => a.productId === query.productId);
     if (query.triggerType) list = list.filter((a) => a.triggerType === query.triggerType);
     if (query.status) list = list.filter((a) => a.status === query.status);
@@ -867,7 +868,7 @@ export const iotHandlers = [
   }),
   mock(iotForwardRuleContract.list, ({ query, ok, paginate }) => {
     let list = [...mockIotForwardRules];
-    if (query.keyword) list = list.filter((r) => r.name.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(r) => r.name]);
     if (query.source) list = list.filter((r) => r.source === query.source);
     if (query.status) list = list.filter((r) => r.status === query.status);
     return ok(paginate(list.sort((a, b) => b.id - a.id)));
@@ -936,7 +937,7 @@ export const iotHandlers = [
   }),
   mock(iotDeviceContract.list, ({ query, ok, paginate }) => {
     let list = mockIotDevices.map(withGroupInfo);
-    if (query.keyword) list = list.filter((d) => d.sn.includes(query.keyword!) || d.name.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(d) => d.sn, (d) => d.name]);
     if (query.status) list = list.filter((d) => d.status === query.status);
     if (query.productId) list = list.filter((d) => d.productId === query.productId);
     if (query.groupId) list = list.filter((d) => d.groupIds.includes(query.groupId!));
@@ -990,7 +991,7 @@ export const iotHandlers = [
   mock(iotDeviceContract.logs, ({ params, query, ok, paginate }) => {
     let list = mockIotDeviceLogs.filter((l) => l.deviceId === params.id);
     if (query.level) list = list.filter((l) => l.level === query.level);
-    if (query.keyword) list = list.filter((l) => l.content.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(l) => l.content]);
     return ok(paginate([...list].sort((a, b) => b.id - a.id)));
   }),
   mock(iotDeviceContract.topology, ({ params, ok }) => {

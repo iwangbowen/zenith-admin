@@ -70,6 +70,7 @@ import { removeWhere } from '@/mocks/utils/array';
 import dayjs from 'dayjs';
 import { DATE_TIME_FORMAT } from '@/utils/date';
 import { mockWorkflowTriggerExecutions } from './workflow-trigger-executions';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 /** 业务编号内存计数器（按 定义ID:周期键 自增），模拟后端的 workflow_serial_counters */
 const mockSerialCounters = new Map<string, number>();
@@ -1348,7 +1349,7 @@ export const workflowHandlers = [
     const status = query.status ?? '';
 
     let list = [...mockWorkflowDefinitions];
-    if (keyword) list = list.filter(d => d.name.includes(keyword) || (d.description ?? '').includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(d) => d.name, (d) => d.description]);
     if (status) list = list.filter(d => d.status === status);
 
     const page = paginate(list);
@@ -1756,7 +1757,7 @@ export const workflowHandlers = [
       return [{ ...toInstanceListItem(inst), pendingTaskId: taskId, pendingSignatureRequired: signatureRequired, requiresIndividual, ...sla, summary }];
     });
 
-    if (keyword) list = list.filter(i => i.title?.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(i) => i.title]);
     if (definitionId !== null) list = list.filter(i => i.definitionId === definitionId);
 
     return ok(paginate(list));
@@ -1777,7 +1778,7 @@ export const workflowHandlers = [
     };
 
     let list = [...mockWorkflowInstances];
-    if (keyword) list = list.filter(i => i.title.includes(keyword) || (i.definitionName ?? '').includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(i) => i.title, (i) => i.definitionName]);
     if (query.status) list = list.filter(i => i.status === query.status);
     if (query.categoryId) list = list.filter(i => i.categoryId === query.categoryId);
     if (query.definitionId) list = list.filter(i => i.definitionId === query.definitionId);
@@ -1869,10 +1870,7 @@ export const workflowHandlers = [
     if (query.jobType) list = list.filter((j) => j.jobType === query.jobType);
     if (query.status) list = list.filter((j) => j.status === query.status);
     if (keyword) {
-      list = list.filter((j) =>
-        (j.idempotencyKey ?? '').toLowerCase().includes(keyword)
-        || (j.traceId ?? '').toLowerCase().includes(keyword)
-        || (j.nodeKey ?? '').toLowerCase().includes(keyword));
+      list = filterByKeyword(list, keyword, [(j) => j.idempotencyKey, (j) => j.traceId, (j) => j.nodeKey], { caseInsensitive: true });
     }
     return ok(paginate(list));
   }),

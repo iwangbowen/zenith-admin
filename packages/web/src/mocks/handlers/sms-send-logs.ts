@@ -5,11 +5,12 @@ import { notFound } from '@/mocks/utils/handlers';
 import { mockSmsSendLogs, getNextSmsSendLogId } from '@/mocks/data/sms-send-logs';
 import { mockSmsTemplates } from '@/mocks/data/sms-templates';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const smsSendLogsHandlers = [
   mock(smsSendLogContract.list, ({ query, ok, paginate }) => {
     const filtered = mockSmsSendLogs.filter((l) => {
-      if (query.keyword && !l.phone.includes(query.keyword) && !(l.templateName ?? '').includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, l.phone, l.templateName)) return false;
       if (query.phone && !l.phone.includes(query.phone)) return false;
       if (query.provider && l.provider !== query.provider) return false;
       if (query.status && l.status !== query.status) return false;

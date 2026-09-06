@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateOffset, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 /**
  * 任务中心 Mock：用「按读取时间推进」策略模拟异步任务执行。
@@ -598,7 +599,7 @@ function filterTasks(query: TaskListQuery, source: AsyncTask[]) {
   return source.filter((task) => {
     if (query.taskType && task.taskType !== query.taskType) return false;
     if (query.status && task.status !== query.status) return false;
-    if (query.keyword && !task.title.includes(query.keyword) && !task.taskType.includes(query.keyword)) return false;
+    if (query.keyword && !includesKeyword(query.keyword, task.title, task.taskType)) return false;
     if (content && !(
       JSON.stringify(task.payload ?? {}).toLowerCase().includes(content)
       || JSON.stringify(task.result ?? {}).toLowerCase().includes(content)

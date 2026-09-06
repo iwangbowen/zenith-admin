@@ -3,10 +3,11 @@ import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockMpDrafts, getNextMpDraftId } from '@/mocks/data/mp-drafts';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const mpDraftsHandlers = [
   mock(mpDraftContract.list, ({ query, ok, paginate }) => {
-    const filtered = mockMpDrafts.filter((d) => d.accountId === query.accountId && (!query.keyword || d.title.includes(query.keyword)));
+    const filtered = filterByKeyword(mockMpDrafts, query.keyword, [(d) => d.title]).filter((d) => d.accountId === query.accountId);
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
 

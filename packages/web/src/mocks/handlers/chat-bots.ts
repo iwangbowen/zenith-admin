@@ -6,6 +6,7 @@ import { notFound } from '@/mocks/utils/handlers';
 import { mockChatWebhooks, getNextWebhookId, genWebhookToken } from '@/mocks/data/chat-bots';
 import { mockChatConversations } from '@/mocks/data/chat';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 function convName(conversationId: number): string | null {
   const conv = mockChatConversations.find((c) => c.id === conversationId);
@@ -20,7 +21,7 @@ function webhookUrl(token: string): string {
 
 export const chatBotsHandlers = [
   mock(chatBotContract.list, ({ query, ok, paginate }) => {
-    const filtered = mockChatWebhooks.filter((w) => !query.keyword || w.name.includes(query.keyword));
+    const filtered = filterByKeyword(mockChatWebhooks, query.keyword, [(w) => w.name]);
     return ok(paginate(filtered));
   }),
 

@@ -22,6 +22,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 import {
   getNextAppArtifactId,
   getNextAppReleaseId,
@@ -69,7 +70,7 @@ export const appReleasesHandlers = [
 
   mock(clientAppContract.list, ({ query, ok, paginate }) => {
     let list = mockClientApps.map(decorateApp);
-    if (query.keyword) list = list.filter((a) => a.name.includes(query.keyword!) || a.appKey.includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(a) => a.name, (a) => a.appKey]);
     if (query.status) list = list.filter((a) => a.status === query.status);
     return ok(paginate(list));
   }),
@@ -163,7 +164,7 @@ export const appReleasesHandlers = [
     if (query.appId) list = list.filter((r) => r.appId === query.appId);
     if (query.channel) list = list.filter((r) => r.channel === query.channel);
     if (query.status) list = list.filter((r) => r.status === query.status);
-    if (query.keyword) list = list.filter((r) => r.version.includes(query.keyword!) || (r.notes ?? '').includes(query.keyword!));
+    if (query.keyword) list = filterByKeyword(list, query.keyword, [(r) => r.version, (r) => r.notes]);
     list = list.sort((a, b) => b.id - a.id);
     return ok(paginate(list));
   }),

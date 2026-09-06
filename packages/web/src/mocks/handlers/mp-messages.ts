@@ -3,6 +3,7 @@ import { mock } from '@/mocks/utils/contract';
 import { mockMpMessages, getNextMpMessageId } from '@/mocks/data/mp-messages';
 import { mockMpFans } from '@/mocks/data/mp-fans';
 import { mockDateTime } from '@/mocks/utils/date';
+import { includesKeyword } from '@/mocks/utils/filter';
 
 export const mpMessagesHandlers = [
   mock(mpMessageContract.conversations, ({ query, ok }) => {
@@ -39,7 +40,7 @@ export const mpMessagesHandlers = [
       if (query.openid && m.openid !== query.openid) return false;
       if (query.direction && m.direction !== query.direction) return false;
       if (query.msgType && m.msgType !== query.msgType) return false;
-      if (query.keyword && !(m.content ?? '').includes(query.keyword)) return false;
+      if (query.keyword && !includesKeyword(query.keyword, m.content)) return false;
       return true;
     });
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));

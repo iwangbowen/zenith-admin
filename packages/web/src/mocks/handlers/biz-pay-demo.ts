@@ -4,6 +4,7 @@ import { mockBizPayDemos, getNextPayDemoId } from '@/mocks/data/biz-pay-demo';
 import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const bizPayDemoHandlers = [
   // 列表
@@ -11,7 +12,7 @@ export const bizPayDemoHandlers = [
     const keyword = (query.keyword ?? '').trim().toLowerCase();
     let list = [...mockBizPayDemos].sort((a, b) => b.id - a.id);
     if (query.status) list = list.filter((d) => d.status === query.status);
-    if (keyword) list = list.filter((d) => d.subject.toLowerCase().includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(d) => d.subject], { caseInsensitive: true });
     return ok(paginate(list));
   }),
 

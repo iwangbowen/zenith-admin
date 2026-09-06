@@ -15,6 +15,7 @@ import {
   type MockChannelMessage,
 } from '@/mocks/data/channels';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 const CURRENT_USER_NAME = '超级管理员';
 let nextMenuId = 1000;
@@ -245,7 +246,7 @@ export const channelsHandlers = [
     const ch = mockChannels.find((c) => c.id === params.id);
     const keyword = (query.keyword ?? '').trim();
     const all = listSubscribers(params.id, ch?.type === 'system');
-    const filtered = keyword ? all.filter((s) => s.name.includes(keyword) || String(s.userId).includes(keyword)) : all;
+    const filtered = filterByKeyword(all, keyword, [(s) => s.name, (s) => s.userId]);
     return ok(paginate(filtered));
   }),
   mock(channelContract.addSubscribers, ({ params, body, ok }) => {
@@ -586,7 +587,7 @@ export const channelsHandlers = [
   // ── 管理后台 ──────────────────────────────────────────────
   mock(channelContract.list, ({ query, ok, paginate }) => {
     const keyword = query.keyword ?? '';
-    const filtered = mockChannels.filter((c) => !keyword || c.name.includes(keyword) || c.code.includes(keyword));
+    const filtered = filterByKeyword(mockChannels, keyword, [(c) => c.name, (c) => c.code]);
     const page = paginate(filtered);
     return ok({ ...page, list: page.list.map(toAdminView) });
   }),
@@ -652,7 +653,7 @@ export const channelsHandlers = [
   mock(channelContract.discoverable, ({ query, ok }) => {
     const keyword = (query.keyword ?? '').trim().toLowerCase();
     let list = mockChannels.filter((ch) => ch.type === 'business' && !ch.isSubscribed);
-    if (keyword) list = list.filter((ch) => ch.name.toLowerCase().includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(ch) => ch.name], { caseInsensitive: true });
     return ok(list);
   }),
 

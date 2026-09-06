@@ -23,6 +23,7 @@ import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, forbidden, notFound } from '@/mocks/utils/handlers';
 import { DEMO_TENANT_ID, DEMO_USER_ID, DEMO_USER_NAME } from './report-mock-utils';
+import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
 
 type MutableResource = {
   id: number;
@@ -192,8 +193,8 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportMetricContract.lookup, ({ query, ok }) => {
-    const list = mockReportMetrics
-      .filter((item) => (!query.keyword || item.name.includes(query.keyword) || item.code.includes(query.keyword)) && (!query.status || item.lifecycleStatus === query.status))
+    const list = filterByKeyword(mockReportMetrics, query.keyword, [(item) => item.name, (item) => item.code])
+      .filter((item) => !query.status || item.lifecycleStatus === query.status)
       .slice(0, query.limit)
       .map((item) => ({ id: item.id, name: item.name, code: item.code, status: item.lifecycleStatus, datasetId: item.datasetId, type: 'metric' as const }));
     return ok(list);
@@ -201,7 +202,7 @@ export const reportPlatformHandlers = [
 
   mock(reportMetricContract.list, ({ query, ok, paginate }) => {
     const list = mockReportMetrics.filter((item) =>
-      (!query.keyword || item.name.includes(query.keyword) || item.code.includes(query.keyword))
+      includesKeyword(query.keyword, item.name, item.code)
       && (!query.datasetId || item.datasetId === query.datasetId)
       && (!query.folderId || item.folderId === query.folderId)
       && (!query.ownerId || item.ownerId === query.ownerId)

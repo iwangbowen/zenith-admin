@@ -4,10 +4,11 @@ import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockMpTags, getNextMpTagId } from '@/mocks/data/mp-tags';
 import { mockMpFans } from '@/mocks/data/mp-fans';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const mpTagsHandlers = [
   mock(mpTagContract.list, ({ query, ok, paginate }) => {
-    const filtered = mockMpTags.filter((t) => t.accountId === query.accountId && (!query.keyword || t.name.includes(query.keyword)));
+    const filtered = filterByKeyword(mockMpTags, query.keyword, [(t) => t.name]).filter((t) => t.accountId === query.accountId);
     return ok(paginate(filtered));
   }),
 

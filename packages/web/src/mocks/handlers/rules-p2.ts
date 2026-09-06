@@ -7,6 +7,7 @@ import { mockDecisionTables } from '@/mocks/data/decision-tables';
 import { mockPaymentRiskRules } from './payment-bext';
 import { evaluateMockDecisionTable } from './decision-tables';
 import { mockDateTime } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 /** mock 决策流求值：与后端 rules-flow 引擎语义对齐（条件跳过/命名空间合并/逐步 trace） */
 function evaluateFlow(steps: RuleFlowStep[], input: Record<string, unknown>) {
@@ -88,7 +89,7 @@ export const rulesP2Handlers = [
   mock(decisionFlowContract.list, ({ query, ok, paginate }) => {
     const { keyword, status } = query;
     let list = [...mockDecisionFlows];
-    if (keyword) list = list.filter((t) => t.name.includes(keyword) || t.key.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(t) => t.name, (t) => t.key]);
     if (status) list = list.filter((t) => t.status === status);
     return ok(paginate(list));
   }),
@@ -173,7 +174,7 @@ export const rulesP2Handlers = [
   mock(ruleScorecardContract.list, ({ query, ok, paginate }) => {
     const { keyword, status } = query;
     let list = [...mockRuleScorecards];
-    if (keyword) list = list.filter((t) => t.name.includes(keyword) || t.key.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(t) => t.name, (t) => t.key]);
     if (status) list = list.filter((t) => t.status === status);
     return ok(paginate(list));
   }),
@@ -252,7 +253,7 @@ export const rulesP2Handlers = [
   mock(ruleListContract.list, ({ query, ok, paginate }) => {
     const { keyword, type } = query;
     let list: RuleList[] = mockRuleLists.map((l) => ({ ...l, itemCount: mockRuleListItems.filter((i) => i.listId === l.id).length }));
-    if (keyword) list = list.filter((t) => t.name.includes(keyword) || t.key.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(t) => t.name, (t) => t.key]);
     if (type) list = list.filter((t) => t.type === type);
     return ok(paginate(list));
   }),
@@ -293,7 +294,7 @@ export const rulesP2Handlers = [
   mock(ruleListContract.items, ({ params, query, ok, paginate }) => {
     const { keyword } = query;
     let list = mockRuleListItems.filter((i) => i.listId === params.id);
-    if (keyword) list = list.filter((i) => i.value.includes(keyword));
+    if (keyword) list = filterByKeyword(list, keyword, [(i) => i.value]);
     return ok(paginate([...list].reverse()));
   }),
   mock(ruleListContract.createItemsBatch, ({ params, body, ok }) => {
