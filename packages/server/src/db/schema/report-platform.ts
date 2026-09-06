@@ -4,7 +4,7 @@ import {
 import { REPORT_ACL_ROLES, REPORT_ACL_SUBJECT_TYPES, REPORT_APPROVAL_STATUSES, REPORT_ASSET_TEMPLATE_TYPES, REPORT_CHATBI_MESSAGE_ROLES, REPORT_CHATBI_SESSION_STATUSES, REPORT_DQ_ANOMALY_STATUSES, REPORT_DQ_RULE_TYPES, REPORT_DQ_RUN_STATUSES, REPORT_DQ_SEVERITIES, REPORT_ENVIRONMENT_KINDS, REPORT_FILL_RECORD_STATUSES, REPORT_FILL_SYNC_STATUSES, REPORT_FILL_TEMPLATE_STATUSES, REPORT_MATERIALIZATION_STRATEGIES, REPORT_METRIC_LIFECYCLE_STATUSES, REPORT_METRIC_TYPES, REPORT_PROMOTION_STATUSES, REPORT_QUOTA_SCOPES, REPORT_SLA_TYPES, REPORT_SLA_VIOLATION_STATUSES, REPORT_SNAPSHOT_STATUSES, REPORT_TRANSFER_STATUSES } from '@zenith/shared/report';
 import type { ReportChatbiChartSuggestion, ReportChatbiContextSnapshot, ReportDataResult, ReportDqRuleConfig, ReportNotifyChannel } from '@zenith/shared/report';
 import type { WorkflowFormSchema } from '@zenith/shared/workflow';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 import { managedFiles } from './files';
 import {
@@ -67,8 +67,7 @@ export const reportMetrics = pgTable('report_metrics', {
   deprecatedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   deprecationReason: varchar({ length: 500 }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('report_metrics_tenant_code_uq').on(t.tenantId, t.code).where(sql`${t.tenantId} is not null`),
   uniqueIndex('report_metrics_global_code_uq').on(t.code).where(sql`${t.tenantId} is null`),
@@ -90,8 +89,7 @@ export const reportResourceAcls = pgTable('report_resource_acls', {
   expiresAt: timestamp({ withTimezone: true }),
   grantedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('report_resource_acls_tenant_subject_uq')
     .on(t.tenantId, t.resourceType, t.resourceId, t.subjectType, t.subjectId, t.inheritFromFolder)
@@ -119,8 +117,7 @@ export const reportPublishApprovals = pgTable('report_publish_approvals', {
   decidedAt: timestamp({ withTimezone: true }),
   decisionNote: varchar({ length: 1000 }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('report_publish_approvals_resource_idx').on(t.tenantId, t.resourceType, t.resourceId),
   index('report_publish_approvals_status_time_idx').on(t.tenantId, t.status, t.requestedAt),
@@ -141,8 +138,7 @@ export const reportResourceTransfers = pgTable('report_resource_transfers', {
   decidedAt: timestamp({ withTimezone: true }),
   decisionNote: varchar({ length: 500 }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('report_resource_transfers_resource_idx').on(t.tenantId, t.resourceType, t.resourceId),
   index('report_resource_transfers_owner_status_idx').on(t.toOwnerId, t.status, t.createdAt),
@@ -160,8 +156,7 @@ export const reportEnvironments = pgTable('report_environments', {
   isDefault: boolean().notNull().default(false),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('report_environments_tenant_code_uq').on(t.tenantId, t.code).where(sql`${t.tenantId} is not null`),
   uniqueIndex('report_environments_global_code_uq').on(t.code).where(sql`${t.tenantId} is null`),
@@ -189,8 +184,7 @@ export const reportEnvironmentPromotions = pgTable('report_environment_promotion
   completedAt: timestamp({ withTimezone: true }),
   errorMessage: varchar({ length: 1000 }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('report_environment_promotions_resource_idx').on(t.tenantId, t.resourceType, t.resourceId, t.createdAt),
   index('report_environment_promotions_target_status_idx').on(t.targetEnvironmentId, t.status, t.createdAt),
@@ -211,8 +205,7 @@ export const reportDqRules = pgTable('report_dq_rules', {
   lastRunAt: timestamp({ withTimezone: true }),
   lastStatus: reportDqRunStatusEnum(),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('report_dq_rules_tenant_dataset_name_uq').on(t.tenantId, t.datasetId, t.name).where(sql`${t.tenantId} is not null`),
   uniqueIndex('report_dq_rules_global_dataset_name_uq').on(t.datasetId, t.name).where(sql`${t.tenantId} is null`),
@@ -239,8 +232,7 @@ export const reportDqRuns = pgTable('report_dq_runs', {
   errorMessage: varchar({ length: 1000 }),
   schemaSignature: varchar({ length: 128 }),
   requestedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('report_dq_runs_rule_time_idx').on(t.ruleId, t.createdAt),
   index('report_dq_runs_dataset_status_time_idx').on(t.datasetId, t.status, t.createdAt),
@@ -281,8 +273,7 @@ export const reportDqAnomalies = pgTable('report_dq_anomalies', {
   acknowledgementNote: varchar({ length: 1000 }),
   resolvedAt: timestamp({ withTimezone: true }),
   resolvedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('report_dq_anomalies_dataset_status_idx').on(t.datasetId, t.status, t.createdAt),
   index('report_dq_anomalies_tenant_severity_status_idx').on(t.tenantId, t.severity, t.status),
@@ -309,8 +300,7 @@ export const reportMaterializationSnapshots = pgTable('report_materialization_sn
   expiresAt: timestamp({ withTimezone: true }),
   errorMessage: varchar({ length: 1000 }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('report_materialization_snapshots_dataset_revision_uq').on(t.datasetId, t.revision),
   index('report_materialization_snapshots_dataset_status_idx').on(t.datasetId, t.status, t.createdAt),
@@ -330,8 +320,7 @@ export const reportQueryQuotas = pgTable('report_query_quotas', {
   resetTimezone: varchar({ length: 64 }).notNull().default('Asia/Shanghai'),
   enabled: boolean().notNull().default(true),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('report_query_quotas_tenant_scope_uq').on(t.tenantId, t.scope)
     .where(sql`${t.tenantId} is not null and ${t.scope} = 'tenant' and ${t.userId} is null`),
@@ -388,8 +377,7 @@ export const reportSlaRules = pgTable('report_sla_rules', {
   lastEvaluatedAt: timestamp({ withTimezone: true }),
   lastNotifiedAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('report_sla_rules_tenant_dataset_name_uq').on(t.tenantId, t.datasetId, t.name).where(sql`${t.tenantId} is not null`),
   uniqueIndex('report_sla_rules_global_dataset_name_uq').on(t.datasetId, t.name).where(sql`${t.tenantId} is null`),
@@ -412,8 +400,7 @@ export const reportSlaViolations = pgTable('report_sla_violations', {
   resolvedAt: timestamp({ withTimezone: true }),
   resolvedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   resolutionNote: varchar({ length: 1000 }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('report_sla_violations_rule_time_idx').on(t.ruleId, t.createdAt),
   index('report_sla_violations_tenant_status_idx').on(t.tenantId, t.status, t.createdAt),
@@ -452,8 +439,7 @@ export const reportDeprecationNotices = pgTable('report_deprecation_notices', {
   publishedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   processedAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('report_deprecation_notices_resource_idx').on(t.tenantId, t.resourceType, t.resourceId),
   index('report_deprecation_notices_effective_idx').on(t.tenantId, t.effectiveAt, t.expiresAt),
@@ -474,8 +460,7 @@ export const reportAssetTemplates = pgTable('report_asset_templates', {
   usageCount: integer().notNull().default(0),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('report_asset_templates_tenant_code_uq').on(t.tenantId, t.code).where(sql`${t.tenantId} is not null`),
   uniqueIndex('report_asset_templates_global_code_uq').on(t.code).where(sql`${t.tenantId} is null`),
@@ -497,8 +482,7 @@ export const reportChatbiSessions = pgTable('report_chatbi_sessions', {
   totalTokens: bigint({ mode: 'number' }).notNull().default(0),
   totalCostUnits: doublePrecision().notNull().default(0),
   lastMessageAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [index('report_chatbi_sessions_user_idx').on(t.userId), 
   index('report_chatbi_sessions_user_status_time_idx').on(t.tenantId, t.userId, t.status, t.updatedAt),
   index('report_chatbi_sessions_dataset_idx').on(t.datasetId),
@@ -552,8 +536,7 @@ export const reportFillTemplates = pgTable('report_fill_templates', {
   publishedAt: timestamp({ withTimezone: true }),
   publishedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('report_fill_templates_tenant_code_uq').on(t.tenantId, t.code).where(sql`${t.tenantId} is not null`),
   uniqueIndex('report_fill_templates_global_code_uq').on(t.code).where(sql`${t.tenantId} is null`),
@@ -587,8 +570,7 @@ export const reportFillRecords = pgTable('report_fill_records', {
   syncedAt: timestamp({ withTimezone: true }),
   revision: integer().notNull().default(1),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('report_fill_records_template_status_time_idx').on(t.templateId, t.status, t.createdAt),
   index('report_fill_records_submitter_status_time_idx').on(t.tenantId, t.submitterId, t.status, t.createdAt),

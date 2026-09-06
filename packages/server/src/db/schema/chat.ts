@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, jsonb, index } from 'drizzle-orm/pg-core';
 import { auditColumns, tenants, users } from './core';
 
@@ -17,8 +18,7 @@ export const chatConversations = pgTable('chat_conversations', {
   joinApproval: boolean().notNull().default(false),
   ...auditColumns(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('chat_conversations_tenant_idx').on(t.tenantId)]);
 
 export type ChatConversationRow = typeof chatConversations.$inferSelect;
@@ -60,8 +60,7 @@ export const chatMessages = pgTable('chat_messages', {
   isRecalled: boolean().notNull().default(false),
   isEdited: boolean().notNull().default(false),
   extra: jsonb(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   // 会话消息游标分页（WHERE conversation_id = ? AND id < ? ORDER BY id DESC）及最新消息聚合
   index('chat_messages_conversation_id_idx').on(t.conversationId, t.id),
@@ -113,8 +112,7 @@ export const chatWebhooks = pgTable('chat_webhooks', {
   lastUsedAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('chat_webhooks_conversation_idx').on(t.conversationId), index('chat_webhooks_tenant_idx').on(t.tenantId)]);
 
 export type ChatWebhookRow = typeof chatWebhooks.$inferSelect;
@@ -127,8 +125,7 @@ export const chatQuickReplies = pgTable('chat_quick_replies', {
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   content: varchar({ length: 500 }).notNull(),
   sort: integer().notNull().default(0),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('chat_quick_replies_user_idx').on(t.userId),
 ]);
@@ -151,8 +148,7 @@ export const chatScheduledMessages = pgTable('chat_scheduled_messages', {
   failReason: varchar({ length: 255 }),
   /** 发送成功后关联的正式消息 ID */
   sentMessageId: integer(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('chat_scheduled_messages_conversation_idx').on(t.conversationId), 
   // 派发器扫描到期任务
   index('chat_scheduled_messages_due_idx').on(t.status, t.scheduledAt),
@@ -192,8 +188,7 @@ export const chatGroupInvites = pgTable('chat_group_invites', {
   maxUses: integer(),
   usedCount: integer().notNull().default(0),
   enabled: boolean().notNull().default(true),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('chat_group_invites_conv_idx').on(t.conversationId),
 ]);
@@ -213,8 +208,7 @@ export const chatGroupJoinRequests = pgTable('chat_group_join_requests', {
   message: varchar({ length: 255 }),
   handledBy: integer().references(() => users.id, { onDelete: 'set null' }),
   handledAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('chat_group_join_requests_conv_status_idx').on(t.conversationId, t.status),
   index('chat_group_join_requests_user_idx').on(t.userId),

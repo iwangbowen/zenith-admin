@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 // 报表中心 jsonb 列形态（前后端共享契约；type-only 导入，编译期即擦除）
 import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportComputedField, ReportCanvasItem, ReportPrintContent, ReportPrintPageConfig, ReportDatasetMaterialize, ReportNotifyChannel, ReportRowRule, ReportScheduleMisfirePolicy, ReportDeliveryStatus, ReportDeliveryTargetType, ReportDeliveryTriggerType, ReportDashboardLifecycleStatus, ReportDashboardVersionSource, ReportDashboardSnapshot, ReportResourceType } from '@zenith/shared/report';
 import { REPORT_RESOURCE_TYPES } from '@zenith/shared/report';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -29,8 +29,7 @@ export const reportFolders = pgTable('report_folders', {
   sort: integer().notNull().default(0),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('report_folders_tenant_root_name_uq').on(t.tenantId, t.resourceType, t.name)
     .where(sql`${t.tenantId} is not null and ${t.parentId} is null`),
@@ -66,8 +65,7 @@ export const reportDatasources = pgTable('report_datasources', {
   consecutiveFailures: integer().notNull().default(0),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('report_datasources_tenant_name_uq').on(t.tenantId, t.name).where(sql`${t.tenantId} is not null`),
   uniqueIndex('report_datasources_global_name_uq').on(t.name).where(sql`${t.tenantId} is null`),
@@ -107,8 +105,7 @@ export const reportDatasets = pgTable('report_datasets', {
   status: statusEnum().notNull().default('enabled'),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('report_datasets_tenant_name_uq').on(t.tenantId, t.name).where(sql`${t.tenantId} is not null`),
   uniqueIndex('report_datasets_global_name_uq').on(t.name).where(sql`${t.tenantId} is null`),
@@ -170,8 +167,7 @@ export const reportPrintTemplates = pgTable('report_print_templates', {
   status: statusEnum().notNull().default('enabled'),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('report_print_templates_tenant_name_uq').on(t.tenantId, t.name).where(sql`${t.tenantId} is not null`),
   uniqueIndex('report_print_templates_global_name_uq').on(t.name).where(sql`${t.tenantId} is null`),
@@ -226,8 +222,7 @@ export const reportAlertRules = pgTable('report_alert_rules', {
   lastDeliveryError: varchar({ length: 512 }),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('report_alert_rules_tenant_idx').on(t.tenantId),
   index('report_alert_rules_dataset_idx').on(t.datasetId),
@@ -253,8 +248,7 @@ export const reportDashboardComments = pgTable('report_dashboard_comments', {
   resolvedBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   deletedAt: timestamp(),
   deletedBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('report_dashboard_comments_user_idx').on(t.userId), 
   index('report_dashboard_comments_dashboard_idx').on(t.dashboardId),
   index('report_dashboard_comments_parent_idx').on(t.parentId),
@@ -292,8 +286,7 @@ export const reportDashboards = pgTable('report_dashboards', {
   publishedBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('report_dashboards_tenant_name_uq').on(t.tenantId, t.name).where(sql`${t.tenantId} is not null`),
   uniqueIndex('report_dashboards_global_name_uq').on(t.name).where(sql`${t.tenantId} is null`),
@@ -315,8 +308,7 @@ export const reportDashboardCategories = pgTable('report_dashboard_categories', 
   sort: integer().notNull().default(0),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('report_dashboard_categories_tenant_idx').on(t.tenantId)]);
 
 export type ReportDashboardCategoryRow = typeof reportDashboardCategories.$inferSelect;
@@ -332,8 +324,7 @@ export const reportDashboardVersions = pgTable('report_dashboard_versions', {
   source: reportDashboardVersionSourceEnum().$type<ReportDashboardVersionSource>().notNull().default('manual'),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [uniqueIndex('report_dashboard_versions_dash_ver_uq').on(t.dashboardId, t.version)]);
 
 export type ReportDashboardVersionRow = typeof reportDashboardVersions.$inferSelect;
@@ -355,8 +346,7 @@ export const reportDashboardShares = pgTable('report_dashboard_shares', {
   allowedCidrs: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   allowedIps: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type ReportDashboardShareRow = typeof reportDashboardShares.$inferSelect;
@@ -375,8 +365,7 @@ export const reportDashboardEmbedTokens = pgTable('report_dashboard_embed_tokens
   revokedAt: timestamp({ withTimezone: true }),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('report_dashboard_embed_tokens_dashboard_idx').on(t.dashboardId)]);
 
 export type ReportDashboardEmbedTokenRow = typeof reportDashboardEmbedTokens.$inferSelect;
@@ -433,8 +422,7 @@ export const reportDashboardSubscriptions = pgTable('report_dashboard_subscripti
   /** 上次推送的 KPI 快照（widgetId → 数值），用于下次推送计算环比趋势 */
   lastSummary: jsonb().$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('report_dashboard_subscriptions_tenant_idx').on(t.tenantId),
   index('report_dashboard_subscriptions_dashboard_idx').on(t.dashboardId),
@@ -472,8 +460,7 @@ export const reportDeliveryRuns = pgTable('report_delivery_runs', {
   completedAt: timestamp({ withTimezone: true }),
   nextRetryAt: timestamp({ withTimezone: true }),
   requestedBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('report_delivery_runs_idempotency_uq').on(t.idempotencyKey),
   index('report_delivery_runs_target_idx').on(t.targetType, t.subscriptionId, t.alertRuleId, t.id),
@@ -497,8 +484,7 @@ export const reportDeliveryAttempts = pgTable('report_delivery_attempts', {
   payloadSummary: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   startedAt: timestamp({ withTimezone: true }),
   completedAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('report_delivery_attempts_run_channel_attempt_uq').on(t.runId, t.channel, t.attempt),
   index('report_delivery_attempts_run_idx').on(t.runId, t.id),

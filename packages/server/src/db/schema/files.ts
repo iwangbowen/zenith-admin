@@ -1,6 +1,6 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, smallint, uuid as pgUuid, index } from 'drizzle-orm/pg-core';
 import { v7 as uuidv7 } from 'uuid';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants } from './core';
 
 export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp']);
@@ -82,8 +82,7 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   sftpBaseUrl: varchar({ length: 512 }),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type FileStorageConfigRow = typeof fileStorageConfigs.$inferSelect;
@@ -109,8 +108,7 @@ export const managedFiles = pgTable('managed_files', {
   contentHash: varchar({ length: 64 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('managed_files_tenant_idx').on(t.tenantId),
   index('managed_files_content_hash_idx').on(t.tenantId, t.contentHash),
@@ -142,8 +140,7 @@ export const uploadSessions = pgTable('upload_sessions', {
   status: uploadSessionStatusEnum().notNull().default('uploading'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('upload_sessions_tenant_idx').on(t.tenantId), 
   index('upload_sessions_created_at_idx').on(t.createdAt),
   index('upload_sessions_status_idx').on(t.status),

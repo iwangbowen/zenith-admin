@@ -1,6 +1,6 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, uniqueIndex, index, jsonb, date, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 import { loginStatusEnum } from './logs';
 
@@ -36,8 +36,7 @@ export const memberLevels = pgTable('member_levels', {
   sort: integer().notNull().default(0),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('member_levels_level_unique').on(t.level)]);
 
 export type MemberLevelRow = typeof memberLevels.$inferSelect;
@@ -80,8 +79,7 @@ export const members = pgTable('members', {
   invitedBy: integer().references((): AnyPgColumn => members.id, { onDelete: 'set null' }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('members_tenant_idx').on(t.tenantId), 
   // 部分唯一索引：仅约束未删除的会员，软删除后手机号/邮箱/用户名可再次注册
   uniqueIndex('members_phone_unique').on(t.phone).where(sql`${t.deletedAt} is null`),
@@ -124,8 +122,7 @@ export const memberTags = pgTable('member_tags', {
   sort: integer().notNull().default(0),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('member_tags_name_unique').on(t.name)]);
 
 export type MemberTagRow = typeof memberTags.$inferSelect;
@@ -161,8 +158,7 @@ export const memberPointAccounts = pgTable('member_point_accounts', {
   totalSpent: integer().notNull().default(0),
   /** 乐观锁版本号 */
   version: integer().notNull().default(0),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [uniqueIndex('member_point_accounts_member_unique').on(t.memberId)]);
 
 export type MemberPointAccountRow = typeof memberPointAccounts.$inferSelect;
@@ -208,8 +204,7 @@ export const memberWallets = pgTable('member_wallets', {
   totalConsume: integer().notNull().default(0),
   /** 乐观锁版本号 */
   version: integer().notNull().default(0),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [uniqueIndex('member_wallets_member_unique').on(t.memberId)]);
 
 export type MemberWalletRow = typeof memberWallets.$inferSelect;
@@ -273,8 +268,7 @@ export const coupons = pgTable('coupons', {
   description: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('coupons_tenant_idx').on(t.tenantId), index('coupons_status_idx').on(t.status)]);
 
 export type CouponRow = typeof coupons.$inferSelect;
@@ -296,8 +290,7 @@ export const memberCoupons = pgTable('member_coupons', {
   /** 核销业务类型 / 单号（预留给未来订单系统）*/
   bizType: varchar({ length: 64 }),
   bizId: varchar({ length: 128 }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('member_coupons_member_idx').on(t.memberId),
   index('member_coupons_coupon_idx').on(t.couponId),
@@ -337,8 +330,7 @@ export const checkinRules = pgTable('checkin_rules', {
   experience: integer().notNull().default(0),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('checkin_rules_day_number_unique').on(t.dayNumber),
 ]);
@@ -394,8 +386,7 @@ export const checkinMilestones = pgTable('checkin_milestones', {
   enabled: boolean().notNull().default(true),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('checkin_milestones_cumulative_days_unique').on(t.cumulativeDays),
 ]);

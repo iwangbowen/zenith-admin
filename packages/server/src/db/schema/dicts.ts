@@ -1,5 +1,5 @@
-import { pgTable, varchar, timestamp, integer, unique, uniqueIndex, jsonb, type AnyPgColumn, index } from 'drizzle-orm/pg-core';
-import { statusEnum } from './common';
+import { pgTable, varchar, integer, unique, uniqueIndex, jsonb, type AnyPgColumn, index } from 'drizzle-orm/pg-core';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants } from './core';
 
 // ─── 字典表 ───────────────────────────────────────────────────────────────────
@@ -11,8 +11,7 @@ export const dicts = pgTable('dicts', {
   status: statusEnum().notNull().default('enabled'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('dicts_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type DictRow = typeof dicts.$inferSelect;
@@ -32,8 +31,7 @@ export const dictItems = pgTable('dict_items', {
   remark: varchar({ length: 256 }),
   metadata: jsonb(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (table) => [index('dict_items_parent_idx').on(table.parentId), 
   uniqueIndex('dict_items_dict_id_value_unique').on(table.dictId, table.value),
 ]);

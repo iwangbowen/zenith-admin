@@ -1,6 +1,6 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, uniqueIndex, index, customType, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, users, departments } from './core';
 import { members } from './member';
 import { asyncTasks } from './tasks';
@@ -97,8 +97,7 @@ export const cmsSites = pgTable('cms_sites', {
   sort: integer().notNull().default(0),
   remark: text(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_sites_domain_uq').on(t.domain).where(sql`${t.domain} is not null`),
   uniqueIndex('cms_sites_default_uq').on(t.isDefault).where(sql`${t.isDefault} = true`),
@@ -123,8 +122,7 @@ export const cmsSiteInheritances = pgTable('cms_site_inheritances', {
   templates: boolean().notNull().default(false),
   revision: integer().notNull().default(0),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type CmsSiteInheritanceRow = typeof cmsSiteInheritances.$inferSelect;
@@ -142,8 +140,7 @@ export const cmsModels = pgTable('cms_models', {
   status: statusEnum().notNull().default('enabled'),
   sort: integer().notNull().default(0),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type CmsModelRow = typeof cmsModels.$inferSelect;
@@ -178,8 +175,7 @@ export const cmsModelFields = pgTable('cms_model_fields', {
   options: jsonb().$type<{ label: string; value: string }[]>(),
   sort: integer().notNull().default(0),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_model_fields_model_name_uq').on(t.modelId, t.name),
 ]);
@@ -230,8 +226,7 @@ export const cmsChannels = pgTable('cms_channels', {
   sort: integer().notNull().default(0),
   settings: jsonb().$type<Record<string, unknown>>().notNull().default({}),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_channels_site_path_uq').on(t.siteId, t.path),
   uniqueIndex('cms_channels_site_code_uq').on(t.siteId, t.code),
@@ -266,8 +261,7 @@ export const cmsDistributionRules = pgTable('cms_distribution_rules', {
   revision: integer().notNull().default(1),
   remark: varchar({ length: 500 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('cms_distribution_rules_source_idx').on(t.sourceSiteId, t.sourceChannelId, t.status),
   index('cms_distribution_rules_target_idx').on(t.targetSiteId, t.targetChannelId, t.status),
@@ -378,8 +372,7 @@ export const cmsContents = pgTable('cms_contents', {
   lockedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   lockReason: varchar({ length: 500 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('cms_contents_channel_idx').on(t.channelId), 
   index('cms_contents_site_channel_idx').on(t.siteId, t.channelId),
   // 公开可见内容的时间序部分索引：首页最新 / 推荐、RSS、标签页、Open API 默认排序走站点版；
@@ -435,8 +428,7 @@ export const cmsErrorProneWords = pgTable('cms_error_prone_words', {
   status: statusEnum().notNull().default('enabled'),
   remark: varchar({ length: 200 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type CmsErrorProneWordRow = typeof cmsErrorProneWords.$inferSelect;
@@ -476,8 +468,7 @@ export const cmsMemberViewHistory = pgTable('cms_member_view_history', {
   siteId: integer().notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   /** 重复浏览累计次数 */
   viewCount: integer().notNull().default(1),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('cms_member_view_history_content_idx').on(t.contentId), 
   uniqueIndex('cms_member_view_history_uq').on(t.memberId, t.contentId),
   index('cms_member_view_history_member_idx').on(t.memberId, t.updatedAt),
@@ -501,8 +492,7 @@ export const cmsMemberSubscriptions = pgTable('cms_member_subscriptions', {
   active: boolean().notNull().default(true),
   /** 首次有效订阅积分已发放的持久化标记；取消/重新关注不会清除。 */
   pointsAwardedAt: timestamp(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_member_subscriptions_subject_uq').on(t.memberId, t.siteId, t.subjectType, t.subjectKey),
   index('cms_member_subscriptions_member_idx').on(t.memberId, t.active, t.createdAt),
@@ -532,8 +522,7 @@ export const cmsInteractions = pgTable('cms_interactions', {
   endAt: timestamp(),
   responseCount: integer().notNull().default(0),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_interactions_site_code_uq').on(t.siteId, t.code),
   index('cms_interactions_site_status_idx').on(t.siteId, t.status, t.kind),
@@ -715,8 +704,7 @@ export const cmsTags = pgTable('cms_tags', {
   /** 冗余计数（打标/移除时由 service 维护） */
   contentCount: integer().notNull().default(0),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_tags_site_name_uq').on(t.siteId, t.name),
   uniqueIndex('cms_tags_site_slug_uq').on(t.siteId, t.slug),
@@ -744,8 +732,7 @@ export const cmsFriendLinkGroups = pgTable('cms_friend_link_groups', {
   sort: integer().notNull().default(0),
   remark: text(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_friend_link_groups_site_code_uq').on(t.siteId, t.code),
   index('cms_friend_link_groups_site_sort_idx').on(t.siteId, t.sort, t.id),
@@ -767,8 +754,7 @@ export const cmsFriendLinks = pgTable('cms_friend_links', {
   sort: integer().notNull().default(0),
   remark: text(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('cms_friend_links_site_group_idx').on(t.siteId, t.groupId, t.sort, t.id),
 ]);
@@ -810,8 +796,7 @@ export const cmsRedirects = pgTable('cms_redirects', {
   status: statusEnum().notNull().default('enabled'),
   remark: varchar({ length: 200 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_redirects_site_from_uq').on(t.siteId, t.fromPath),
 ]);
@@ -828,8 +813,7 @@ export const cmsLinkWords = pgTable('cms_link_words', {
   maxReplaces: integer().notNull().default(1),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_link_words_site_keyword_uq').on(t.siteId, t.keyword),
 ]);
@@ -854,8 +838,7 @@ export const cmsComments = pgTable('cms_comments', {
   riskFlag: varchar({ length: 32 }),
   ip: varchar({ length: 64 }),
   userAgent: varchar({ length: 255 }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('cms_comments_content_idx').on(t.contentId, t.status),
   index('cms_comments_member_idx').on(t.memberId),
@@ -872,8 +855,7 @@ export const cmsAdSlots = pgTable('cms_ad_slots', {
   name: varchar({ length: 100 }).notNull(),
   remark: varchar({ length: 200 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_ad_slots_site_code_uq').on(t.siteId, t.code),
 ]);
@@ -896,8 +878,7 @@ export const cmsAds = pgTable('cms_ads', {
   sort: integer().notNull().default(0),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type CmsAdRow = typeof cmsAds.$inferSelect;
@@ -922,8 +903,7 @@ export const cmsForms = pgTable('cms_forms', {
   turnstileSecret: varchar({ length: 500 }),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_forms_site_code_uq').on(t.siteId, t.code),
 ]);
@@ -951,8 +931,7 @@ export const cmsSensitiveWords = pgTable('cms_sensitive_words', {
   replaceWith: varchar({ length: 50 }),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type CmsSensitiveWordRow = typeof cmsSensitiveWords.$inferSelect;
@@ -1007,8 +986,7 @@ export const cmsSearchWords = pgTable('cms_search_words', {
   status: statusEnum().notNull().default('enabled'),
   remark: varchar({ length: 200 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_search_words_site_type_word_uq').on(t.siteId, t.type, t.word),
   index('cms_search_words_site_group_idx').on(t.siteId, t.type, t.groupName),
@@ -1024,8 +1002,7 @@ export const cmsHotwordGroups = pgTable('cms_hotword_groups', {
   sort: integer().notNull().default(0),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_hotword_groups_site_name_uq').on(t.siteId, t.name),
   index('cms_hotword_groups_site_sort_idx').on(t.siteId, t.sort),
@@ -1041,8 +1018,7 @@ export const cmsHotwords = pgTable('cms_hotwords', {
   sort: integer().notNull().default(0),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_hotwords_site_keyword_uq').on(t.siteId, t.keyword),
   index('cms_hotwords_site_group_sort_idx').on(t.siteId, t.groupId, t.sort),
@@ -1083,8 +1059,7 @@ export const cmsCollectRules = pgTable('cms_collect_rules', {
   lastRunAt: timestamp(),
   remark: varchar({ length: 200 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('cms_collect_rules_channel_idx').on(t.channelId), 
   index('cms_collect_rules_site_idx').on(t.siteId),
 ]);
@@ -1128,8 +1103,7 @@ export const cmsWidgets = pgTable('cms_widgets', {
   defaultRendererKey: varchar({ length: 50 }).notNull().default('list-sidebar'),
   remark: varchar({ length: 200 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_widgets_site_code_uq').on(t.siteId, t.code),
   index('cms_widgets_site_status_idx').on(t.siteId, t.status),
@@ -1153,8 +1127,7 @@ export const cmsWidgetRefs = pgTable('cms_widget_refs', {
   field: varchar({ length: 100 }).notNull(),
   rendererKey: varchar({ length: 50 }).notNull(),
   styleProps: jsonb().$type<Record<string, unknown>>().notNull().default({}),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_widget_refs_owner_field_uq').on(t.ownerType, t.ownerId, t.field),
   index('cms_widget_refs_widget_idx').on(t.widgetId),
@@ -1209,8 +1182,7 @@ export const cmsPages = pgTable('cms_pages', {
   status: statusEnum().notNull().default('enabled'),
   remark: varchar({ length: 200 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_pages_site_slug_uq').on(t.siteId, t.slug),
   // path 可空，仅对已设置的行做站点内唯一约束
@@ -1255,8 +1227,7 @@ export const cmsPublishArtifacts = pgTable('cms_publish_artifacts', {
   status: cmsPublishArtifactStatusEnum().notNull(),
   error: text(),
   generatedAt: timestamp(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('cms_publish_artifacts_content_idx').on(t.contentId), index('cms_publish_artifacts_channel_idx').on(t.channelId), 
   uniqueIndex('cms_publish_artifacts_task_path_uq').on(t.taskId, t.path),
   index('cms_publish_artifacts_site_time_idx').on(t.siteId, t.createdAt),
@@ -1279,8 +1250,7 @@ export const cmsResourceFolders = pgTable('cms_resource_folders', {
   name: varchar({ length: 100 }).notNull(),
   sort: integer().notNull().default(0),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('cms_resource_folders_parent_idx').on(t.parentId), 
   uniqueIndex('cms_resource_folders_site_parent_name_uq').on(t.siteId, t.parentId, t.name)
     .where(sql`${t.parentId} is not null`),
@@ -1315,8 +1285,7 @@ export const cmsResources = pgTable('cms_resources', {
   mimeType: varchar({ length: 128 }),
   remark: varchar({ length: 200 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('cms_resources_site_type_idx').on(t.siteId, t.type),
   index('cms_resources_site_folder_idx').on(t.siteId, t.folderId),
@@ -1371,8 +1340,7 @@ export const cmsOpenAppGrants = pgTable('cms_open_app_grants', {
   status: statusEnum().notNull().default('enabled'),
   remark: varchar({ length: 200 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_open_app_grants_client_site_uq').on(t.clientId, t.siteId),
   index('cms_open_app_grants_client_idx').on(t.clientId),

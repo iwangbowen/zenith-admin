@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { bigint, boolean, check, date, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, varchar, type AnyPgColumn } from 'drizzle-orm/pg-core';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 import { cmsSites } from './cms';
 
@@ -53,8 +53,7 @@ export const oauth2Clients = pgTable('oauth2_clients', {
   /** 外部调用的租户权威来源，不接受请求参数覆盖。 */
   tenantId: integer().references((): AnyPgColumn => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('oauth2_clients_tenant_idx').on(t.tenantId)]);
 
 export type OAuth2ClientRow = typeof oauth2Clients.$inferSelect;
@@ -93,8 +92,7 @@ export const oauth2TokenFamilies = pgTable('oauth2_token_families', {
   userId: integer().references(() => users.id, { onDelete: 'cascade' }),
   compromised: boolean().notNull().default(false),
   revoked: boolean().notNull().default(false),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('oauth2_token_families_client_idx').on(t.clientId),
   index('oauth2_token_families_user_idx').on(t.userId),
@@ -141,8 +139,7 @@ export const oauth2UserGrants = pgTable('oauth2_user_grants', {
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   clientId: varchar({ length: 64 }).notNull(),
   scopes: text().array().notNull().default([]),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('oauth2_user_grants_user_client_unique').on(t.userId, t.clientId),
   index('oauth2_user_grants_client_idx').on(t.clientId),
@@ -166,8 +163,7 @@ export const apiScopes = pgTable('api_scopes', {
   scopeGroup: varchar({ length: 64 }).notNull().default('general'),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type ApiScopeRow = typeof apiScopes.$inferSelect;
@@ -194,8 +190,7 @@ export const ratePlans = pgTable('rate_plans', {
   isDefault: boolean().notNull().default(false),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type RatePlanRow = typeof ratePlans.$inferSelect;
@@ -251,8 +246,7 @@ export const openApiCallStatsDaily = pgTable('open_api_call_stats_daily', {
   failedCalls: bigint({ mode: 'number' }).notNull().default(0),
   durationSumMs: bigint({ mode: 'number' }).notNull().default(0),
   maxDurationMs: integer().notNull().default(0),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('open_api_call_stats_daily_unique').on(t.statDate, t.clientId, t.path, t.environment),
   index('open_api_call_stats_daily_date_idx').on(t.statDate),
@@ -295,8 +289,7 @@ export const appWebhookSubscriptions = pgTable('app_webhook_subscriptions', {
   /** 外部订阅与 OAuth2 客户端保持同一租户；内部 CMS 订阅为平台级 null。 */
   tenantId: integer().references((): AnyPgColumn => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('app_webhook_subscriptions_tenant_client_idx').on(t.tenantId, t.clientId),
   index('app_webhook_subscriptions_cms_site_idx').on(t.cmsSiteId),

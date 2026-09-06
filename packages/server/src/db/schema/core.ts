@@ -1,7 +1,7 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, index, text, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { TenantPackageQuotas } from '@zenith/shared/licensing';
 import type { UserGroupMemberRule } from '@zenith/shared/identity';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
 
@@ -33,8 +33,7 @@ export const tenants = pgTable('tenants', {
   packageId: integer().references((): AnyPgColumn => tenantPackages.id, { onDelete: 'restrict' }),
   remark: text(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type TenantRow = typeof tenants.$inferSelect;
@@ -52,8 +51,7 @@ export const tenantPackages = pgTable('tenant_packages', {
   quotas: jsonb().$type<TenantPackageQuotas>(),
   remark: text(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type TenantPackageRow = typeof tenantPackages.$inferSelect;
@@ -80,8 +78,7 @@ export const departments = pgTable('departments', {
   status: statusEnum().notNull().default('enabled'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('departments_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type DepartmentRow = typeof departments.$inferSelect;
@@ -98,8 +95,7 @@ export const positions = pgTable('positions', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('positions_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type PositionRow = typeof positions.$inferSelect;
@@ -125,8 +121,7 @@ export const users = pgTable('users', {
   passwordUpdatedAt: timestamp().defaultNow().notNull(),
   lastLoginAt: timestamp(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('users_tenant_username_unique').on(t.tenantId, t.username),
   unique('users_tenant_email_unique').on(t.tenantId, t.email),
@@ -163,8 +158,7 @@ export const menus = pgTable('menus', {
   /** 所属可授权功能（null = 核心能力）；由功能目录经种子派生，权限解析按套餐/License 功能交集过滤 */
   featureKey: varchar({ length: 50 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type MenuRow = typeof menus.$inferSelect;
@@ -181,8 +175,7 @@ export const roles = pgTable('roles', {
   dataScope: dataScopeEnum().notNull().default('all'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('roles_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type RoleRow = typeof roles.$inferSelect;
@@ -226,8 +219,7 @@ export const userGroups = pgTable('user_groups', {
   status: statusEnum().notNull().default('enabled'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('user_groups_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type UserGroupRow = typeof userGroups.$inferSelect;

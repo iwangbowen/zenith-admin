@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, text, real, index } from 'drizzle-orm/pg-core';
 import { auditColumns, tenants } from './core';
 
@@ -18,8 +19,7 @@ export const bizLeaves = pgTable('biz_leaves', {
   workflowStatus: varchar({ length: 16 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('biz_leaves_tenant_idx').on(t.tenantId)]);
 
 export type BizLeaveRow = typeof bizLeaves.$inferSelect;
@@ -46,8 +46,7 @@ export const bizPayDemos = pgTable('biz_pay_demos', {
   fulfillRemark: varchar({ length: 255 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('biz_pay_demos_tenant_idx').on(t.tenantId)]);
 
 export type BizPayDemoRow = typeof bizPayDemos.$inferSelect;

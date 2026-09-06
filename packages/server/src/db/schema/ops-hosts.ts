@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, text, jsonb, boolean, index } from 'drizzle-orm/pg-core';
 import { OPS_HOST_AUTH_TYPES, OPS_HOST_STATUSES } from '@zenith/shared/ops';
 import type { OpsHostSnapshot } from '@zenith/shared/ops';
@@ -37,8 +38,7 @@ export const opsHosts = pgTable('ops_hosts', {
   probeError: text(),
   enabled: boolean().notNull().default(true),
   remark: varchar({ length: 500 }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
   ...auditColumns(),
 }, (t) => [
   index('ops_hosts_enabled_idx').on(t.enabled, t.status),

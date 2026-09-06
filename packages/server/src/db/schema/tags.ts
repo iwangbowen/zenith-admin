@@ -1,5 +1,5 @@
-import { pgTable, varchar, timestamp, integer, text } from 'drizzle-orm/pg-core';
-import { statusEnum } from './common';
+import { pgTable, varchar, integer, text } from 'drizzle-orm/pg-core';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns } from './core';
 
 export const tags = pgTable('tags', {
@@ -11,8 +11,7 @@ export const tags = pgTable('tags', {
   status:      statusEnum().notNull().default('enabled'),
   sortOrder:   integer().notNull().default(0),
   ...auditColumns(),
-  createdAt:   timestamp().defaultNow().notNull(),
-  updatedAt:   timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type TagRow = typeof tags.$inferSelect;

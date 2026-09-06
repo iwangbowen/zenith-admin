@@ -1,4 +1,5 @@
-import { pgTable, varchar, timestamp, pgEnum, boolean, unique, jsonb, integer } from 'drizzle-orm/pg-core';
+import { timestampColumns } from './common';
+import { pgTable, varchar, pgEnum, boolean, unique, jsonb, integer } from 'drizzle-orm/pg-core';
 import { MASK_TYPES, type CustomMaskRule } from '@zenith/shared/core';
 import { auditColumns } from './core';
 
@@ -25,8 +26,7 @@ export const dataMaskPolicies = pgTable('data_mask_policies', {
   enabled:           boolean().notNull().default(true),
   remark:            varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt:         timestamp().defaultNow().notNull(),
-  updatedAt:         timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('data_mask_policies_entity_field_unique').on(t.entity, t.field)]);
 
 export type DataMaskPolicyRow = typeof dataMaskPolicies.$inferSelect;

@@ -1,5 +1,5 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, index } from 'drizzle-orm/pg-core';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 
 // ─── Channel（站内公众号 / 系统号）────────────────────────────────────────────
@@ -32,8 +32,7 @@ export const channels = pgTable('channels', {
   status: statusEnum().notNull().default('enabled'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('channels_tenant_idx').on(t.tenantId)]);
 
 export type ChannelRow = typeof channels.$inferSelect;
@@ -89,8 +88,7 @@ export const channelMenus = pgTable('channel_menus', {
   type: channelMenuTypeEnum().notNull().default('click'),
   value: varchar({ length: 500 }),
   sort: integer().notNull().default(0),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('channel_menus_channel_idx').on(t.channelId)]);
 
 export type ChannelMenuRow = typeof channelMenus.$inferSelect;
@@ -108,8 +106,7 @@ export const channelAutoReplies = pgTable('channel_auto_replies', {
   hitCount: integer().notNull().default(0),
   status: statusEnum().notNull().default('enabled'),
   sort: integer().notNull().default(0),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('channel_auto_replies_channel_idx').on(t.channelId)]);
 
 export type ChannelAutoReplyRow = typeof channelAutoReplies.$inferSelect;
@@ -122,8 +119,7 @@ export const channelQuickReplies = pgTable('channel_quick_replies', {
   content: text().notNull(),
   sort: integer().notNull().default(0),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('channel_quick_replies_channel_idx').on(t.channelId)]);
 
 export type ChannelQuickReplyRow = typeof channelQuickReplies.$inferSelect;
@@ -142,8 +138,7 @@ export const channelConversations = pgTable('channel_conversations', {
   ratingComment: text(),
   ratedAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('channel_conversations_user_idx').on(t.userId), primaryKey({ columns: [t.channelId, t.userId] })]);
 
 export type ChannelConversationRow = typeof channelConversations.$inferSelect;
@@ -159,8 +154,7 @@ export const channelMessageTemplates = pgTable('channel_message_templates', {
   content: text().notNull().default(''),
   extra: jsonb(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type ChannelMessageTemplateRow = typeof channelMessageTemplates.$inferSelect;

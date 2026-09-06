@@ -6,7 +6,7 @@
  * - short_link_daily_stats 按日聚合（P2 起由定时任务物化，长周期趋势与明细瘦身后的数据源）
  */
 import { pgTable, pgEnum, varchar, timestamp, integer, text, boolean, date, index, uniqueIndex, bigint } from 'drizzle-orm/pg-core';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants } from './core';
 
 /** 跳转方式：302 临时（默认，可统计可改址）/ 301 永久（浏览器缓存，改址不生效） */
@@ -41,8 +41,7 @@ export const shortLinks = pgTable('short_links', {
   lastVisitAt:  timestamp(),
   tenantId:     integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:    timestamp().defaultNow().notNull(),
-  updatedAt:    timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_short_links_biz').on(t.bizType, t.bizRef),
   index('idx_short_links_tenant').on(t.tenantId),

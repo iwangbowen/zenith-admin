@@ -1,6 +1,6 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, text, uniqueIndex, index, jsonb, smallint, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 import { members } from './member';
 
@@ -41,8 +41,7 @@ export const mpAccounts = pgTable('mp_accounts', {
   remark: text(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('mp_accounts_tenant_idx').on(t.tenantId),
 ]);
@@ -62,8 +61,7 @@ export const mpTags = pgTable('mp_tags', {
   fansCount: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_tags_tenant_idx').on(t.tenantId), 
   uniqueIndex('mp_tags_account_name_uq').on(t.accountId, t.name),
   index('mp_tags_account_idx').on(t.accountId),
@@ -102,8 +100,7 @@ export const mpFans = pgTable('mp_fans', {
   blacklisted: boolean().notNull().default(false),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_fans_tenant_idx').on(t.tenantId), 
   uniqueIndex('mp_fans_account_openid_uq').on(t.accountId, t.openid),
   index('mp_fans_account_idx').on(t.accountId),
@@ -182,8 +179,7 @@ export const mpAutoReplies = pgTable('mp_auto_replies', {
   sort: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_auto_replies_tenant_idx').on(t.tenantId), 
   index('mp_auto_replies_account_type_idx').on(t.accountId, t.replyType),
 ]);
@@ -221,8 +217,7 @@ export const mpMenus = pgTable('mp_menus', {
   publishedAt: timestamp({ withTimezone: true }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_menus_tenant_idx').on(t.tenantId)]);
 
 export type MpMenuRow = typeof mpMenus.$inferSelect;
@@ -245,8 +240,7 @@ export const mpConditionalMenus = pgTable('mp_conditional_menus', {
   publishedAt: timestamp({ withTimezone: true }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_conditional_menus_tenant_idx').on(t.tenantId), 
   index('mp_conditional_menus_account_idx').on(t.accountId),
 ]);
@@ -271,8 +265,7 @@ export const mpMaterials = pgTable('mp_materials', {
   fileSize: integer(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_materials_tenant_idx').on(t.tenantId), 
   index('mp_materials_account_type_idx').on(t.accountId, t.type),
   // 同步 upsert 的冲突目标：微信 media_id 在同一公众号内唯一（本地上传未回填时为 null，故用部分索引）
@@ -298,8 +291,7 @@ export const mpDrafts = pgTable('mp_drafts', {
   status: mpDraftStatusEnum().notNull().default('draft'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_drafts_tenant_idx').on(t.tenantId), 
   index('mp_drafts_account_idx').on(t.accountId),
 ]);
@@ -319,8 +311,7 @@ export const mpMessageTemplates = pgTable('mp_message_templates', {
   example: text(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_message_templates_tenant_idx').on(t.tenantId), 
   uniqueIndex('mp_message_templates_account_tpl_uq').on(t.accountId, t.templateId),
 ]);
@@ -381,8 +372,7 @@ export const mpBroadcasts = pgTable('mp_broadcasts', {
   sentAt: timestamp(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_broadcasts_tenant_idx').on(t.tenantId), 
   index('mp_broadcasts_account_idx').on(t.accountId),
   index('mp_broadcasts_account_status_idx').on(t.accountId, t.status),
@@ -415,8 +405,7 @@ export const mpQrcodes = pgTable('mp_qrcodes', {
   rewardPoints: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_qrcodes_tenant_idx').on(t.tenantId), 
   index('mp_qrcodes_account_idx').on(t.accountId),
   index('mp_qrcodes_account_scene_idx').on(t.accountId, t.sceneStr),
@@ -443,8 +432,7 @@ export const mpKfAccounts = pgTable('mp_kf_accounts', {
   status: statusEnum().notNull().default('enabled'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_kf_accounts_tenant_idx').on(t.tenantId), 
   uniqueIndex('mp_kf_accounts_account_kf_uq').on(t.accountId, t.kfAccount),
   index('mp_kf_accounts_account_idx').on(t.accountId),
@@ -491,8 +479,7 @@ export const mpKfSessions = pgTable('mp_kf_sessions', {
   remark: varchar({ length: 255 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_kf_sessions_tenant_idx').on(t.tenantId), 
   // 同一公众号下，一个粉丝至多存在一个未结束会话
   uniqueIndex('mp_kf_sessions_open_uq').on(t.accountId, t.openid).where(sql`${t.status} <> 'closed'`),
@@ -543,8 +530,7 @@ export const mpKfRoutingConfigs = pgTable('mp_kf_routing_configs', {
   welcomeText: varchar({ length: 500 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('mp_kf_routing_configs_tenant_idx').on(t.tenantId), 
   uniqueIndex('mp_kf_routing_configs_account_uq').on(t.accountId),
 ]);

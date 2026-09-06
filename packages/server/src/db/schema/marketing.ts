@@ -5,6 +5,7 @@
  * - marketing_prizes          奖品（按权重抽取，库存原子扣减；prize_type=none 为「谢谢参与」不占库存）
  * - marketing_participations  参与记录（追加型：prizeId 为 null 表示未中奖，中奖时带发放状态）
  */
+import { timestampColumns } from './common';
 import { pgTable, pgEnum, varchar, timestamp, integer, text, index } from 'drizzle-orm/pg-core';
 import { auditColumns, tenants } from './core';
 import { coupons } from './member';
@@ -33,8 +34,7 @@ export const marketingCampaigns = pgTable('marketing_campaigns', {
   description:         text(),
   tenantId:            integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:           timestamp().defaultNow().notNull(),
-  updatedAt:           timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_marketing_campaigns_status').on(t.status),
   index('idx_marketing_campaigns_tenant').on(t.tenantId),
@@ -59,8 +59,7 @@ export const marketingPrizes = pgTable('marketing_prizes', {
   /** 抽取权重，越大越易中 */
   weight:     integer().notNull().default(1),
   sort:       integer().notNull().default(0),
-  createdAt:  timestamp().defaultNow().notNull(),
-  updatedAt:  timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_marketing_prizes_campaign').on(t.campaignId),
 ]);

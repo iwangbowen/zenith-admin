@@ -34,7 +34,7 @@
  */
 import { pgTable, pgEnum, varchar, timestamp, integer, text, jsonb, boolean, doublePrecision, bigint, uuid, index, uniqueIndex, primaryKey, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants } from './core';
 import { managedFiles } from './files';
 
@@ -83,8 +83,7 @@ export const iotProducts = pgTable('iot_products', {
   registrationSecret: varchar({ length: 64 }),
   tenantId:       integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:      timestamp().defaultNow().notNull(),
-  updatedAt:      timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_products_tenant').on(t.tenantId),
 ]);
@@ -127,8 +126,7 @@ export const iotProductProperties = pgTable('iot_product_properties', {
   sort:        integer().notNull().default(0),
   description: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt:   timestamp().defaultNow().notNull(),
-  updatedAt:   timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('uq_iot_product_properties_ident').on(t.productId, t.identifier),
 ]);
@@ -149,8 +147,7 @@ export const iotProductServices = pgTable('iot_product_services', {
   sort:        integer().notNull().default(0),
   description: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt:   timestamp().defaultNow().notNull(),
-  updatedAt:   timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('uq_iot_product_services_ident').on(t.productId, t.identifier),
 ]);
@@ -170,8 +167,7 @@ export const iotProductEvents = pgTable('iot_product_events', {
   sort:        integer().notNull().default(0),
   description: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt:   timestamp().defaultNow().notNull(),
-  updatedAt:   timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('uq_iot_product_events_ident').on(t.productId, t.identifier),
 ]);
@@ -206,8 +202,7 @@ export const iotDevices = pgTable('iot_devices', {
   remark:          varchar({ length: 256 }),
   tenantId:        integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:       timestamp().defaultNow().notNull(),
-  updatedAt:       timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_devices_product').on(t.productId),
   index('idx_iot_devices_tenant').on(t.tenantId),
@@ -304,8 +299,7 @@ export const iotCommands = pgTable('iot_commands', {
   response:  jsonb().$type<Record<string, unknown>>(),
   errorMsg:  varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_commands_device_time').on(t.deviceId, t.createdAt),
   index('idx_iot_commands_status').on(t.status),
@@ -343,8 +337,7 @@ export const iotAlarmRules = pgTable('iot_alarm_rules', {
   status:             statusEnum().notNull().default('enabled'),
   tenantId:           integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:          timestamp().defaultNow().notNull(),
-  updatedAt:          timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_alarm_rules_product').on(t.productId),
 ]);
@@ -376,8 +369,7 @@ export const iotAlarms = pgTable('iot_alarms', {
   resolvedBy: integer(),
   /** 处理备注（手动 resolve 时填写） */
   resolveNote: varchar({ length: 512 }),
-  createdAt:  timestamp().defaultNow().notNull(),
-  updatedAt:  timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_alarms_device_time').on(t.deviceId, t.firedAt),
   index('idx_iot_alarms_status').on(t.status),
@@ -396,8 +388,7 @@ export const iotDeviceGroups = pgTable('iot_device_groups', {
   description: varchar({ length: 256 }),
   tenantId:    integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:   timestamp().defaultNow().notNull(),
-  updatedAt:   timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_device_groups_tenant').on(t.tenantId),
 ]);
@@ -469,8 +460,7 @@ export const iotFirmwares = pgTable('iot_firmwares', {
   status:       statusEnum().notNull().default('enabled'),
   tenantId:     integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:    timestamp().defaultNow().notNull(),
-  updatedAt:    timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('uq_iot_firmwares_product_version').on(t.productId, t.version),
 ]);
@@ -500,8 +490,7 @@ export const iotOtaTasks = pgTable('iot_ota_tasks', {
   failedCount:     integer().notNull().default(0),
   tenantId:        integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:       timestamp().defaultNow().notNull(),
-  updatedAt:       timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_ota_tasks_product').on(t.productId),
   index('idx_iot_ota_tasks_status').on(t.status),
@@ -525,8 +514,7 @@ export const iotOtaTaskDevices = pgTable('iot_ota_task_devices', {
   errorMsg:    varchar({ length: 256 }),
   notifiedAt:  timestamp(),
   finishedAt:  timestamp(),
-  createdAt:   timestamp().defaultNow().notNull(),
-  updatedAt:   timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('uq_iot_ota_task_devices').on(t.taskId, t.deviceId),
   index('idx_iot_ota_task_devices_device').on(t.deviceId, t.status),
@@ -579,8 +567,7 @@ export const iotAutomations = pgTable('iot_automations', {
   status:             statusEnum().notNull().default('enabled'),
   tenantId:           integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:          timestamp().defaultNow().notNull(),
-  updatedAt:          timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_automations_product').on(t.productId),
 ]);
@@ -630,8 +617,7 @@ export const iotForwardRules = pgTable('iot_forward_rules', {
   autoDisabledAt:      timestamp(),
   tenantId:            integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:           timestamp().defaultNow().notNull(),
-  updatedAt:           timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_forward_rules_source').on(t.source),
   index('idx_iot_forward_rules_tenant').on(t.tenantId),
@@ -690,8 +676,7 @@ export const iotMaintenanceWindows = pgTable('iot_maintenance_windows', {
   reason:    varchar({ length: 256 }),
   tenantId:  integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_maintenance_windows_time').on(t.startAt, t.endAt),
 ]);
@@ -723,8 +708,7 @@ export const iotSchedules = pgTable('iot_schedules', {
   lastRunAt:      timestamp(),
   tenantId:       integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt:      timestamp().defaultNow().notNull(),
-  updatedAt:      timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_schedules_next_run').on(t.status, t.nextRunAt),
   index('idx_iot_schedules_product').on(t.productId),
@@ -763,8 +747,7 @@ export const iotDeviceWhitelist = pgTable('iot_device_whitelist', {
   remark:    varchar({ length: 256 }),
   tenantId:  integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('idx_iot_device_whitelist_product').on(t.productId, t.used),
 ]);

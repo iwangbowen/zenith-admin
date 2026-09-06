@@ -1,7 +1,7 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { auditColumns, tenants, users } from './core';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { workflowCategories, workflowDefinitionStatusEnum } from './workflow';
 
 // ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
@@ -35,8 +35,7 @@ export const ruleDecisionTables = pgTable('rule_decision_tables', {
   reviewComment: varchar({ length: 255 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('rule_decision_tables_key_uniq').on(t.tenantId, t.key)]);
 
 export type RuleDecisionTableRow = typeof ruleDecisionTables.$inferSelect;
@@ -73,8 +72,7 @@ export const ruleTestCases = pgTable('rule_test_cases', {
   expected: jsonb().notNull().default(sql`'{}'::jsonb`),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('rule_test_cases_tenant_idx').on(t.tenantId), unique('rule_test_cases_name_uniq').on(t.tableId, t.name)]);
 
 export type RuleTestCaseRow = typeof ruleTestCases.$inferSelect;
@@ -144,8 +142,7 @@ export const ruleDecisionFlows = pgTable('rule_decision_flows', {
   publishedAt: timestamp({ withTimezone: true }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('rule_decision_flows_key_uniq').on(t.tenantId, t.key)]);
 
 export type RuleDecisionFlowRow = typeof ruleDecisionFlows.$inferSelect;
@@ -162,8 +159,7 @@ export const ruleLists = pgTable('rule_lists', {
   status: statusEnum().notNull().default('enabled'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('rule_lists_key_uniq').on(t.tenantId, t.key)]);
 
 export type RuleListRow = typeof ruleLists.$inferSelect;
@@ -203,8 +199,7 @@ export const ruleScorecards = pgTable('rule_scorecards', {
   publishedAt: timestamp({ withTimezone: true }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('rule_scorecards_key_uniq').on(t.tenantId, t.key)]);
 
 export type RuleScorecardRow = typeof ruleScorecards.$inferSelect;

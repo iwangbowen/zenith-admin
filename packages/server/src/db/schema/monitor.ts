@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, text, index, jsonb, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { MONITOR_ALERT_HANDLE_STATUSES, MONITOR_ALERT_NOTIFY_STATUSES, MONITOR_METRICS } from '@zenith/shared/platform';
 import { auditColumns, tenants, users } from './core';
@@ -83,8 +84,7 @@ export const monitorAlertRules = pgTable('monitor_alert_rules', {
   lastTriggeredAt: timestamp({ withTimezone: true }),
   lastValue: real(),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('monitor_alert_rules_tenant_idx').on(t.tenantId),
   index('monitor_alert_rules_enabled_idx').on(t.enabled),
@@ -159,8 +159,7 @@ export const sslCertificates = pgTable('ssl_certificates', {
   status: sslCertStatusEnum().notNull().default('valid'),
   autoRenew: boolean().notNull().default(false),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 });
 
 export type SslCertificateRow = typeof sslCertificates.$inferSelect;

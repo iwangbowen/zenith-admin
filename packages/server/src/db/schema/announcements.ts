@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, integer, unique, text, index } from 'drizzle-orm/pg-core';
 import { auditColumns, tenants } from './core';
 
@@ -15,8 +16,7 @@ export const announcements = pgTable('announcements', {
   createByName: varchar({ length: 32 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [index('announcements_tenant_idx').on(t.tenantId)]);
 
 export type AnnouncementRow = typeof announcements.$inferSelect;

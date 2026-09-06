@@ -1,5 +1,5 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, index, text, type AnyPgColumn } from 'drizzle-orm/pg-core';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 
 // ─── 枚举 ─────────────────────────────────────────────────────────────────────
@@ -30,8 +30,7 @@ export const wikiSpaces = pgTable('wiki_spaces', {
   aiSyncEnabled: boolean().notNull().default(false),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type WikiSpaceRow = typeof wikiSpaces.$inferSelect;
@@ -86,8 +85,7 @@ export const wikiDocs = pgTable('wiki_docs', {
   deletedAt: timestamp(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('wiki_docs_space_idx').on(t.spaceId),
   index('wiki_docs_parent_idx').on(t.parentId),
@@ -125,8 +123,7 @@ export const wikiTemplates = pgTable('wiki_templates', {
   status: statusEnum().notNull().default('enabled'),
   sort: integer().notNull().default(0),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type WikiTemplateRow = typeof wikiTemplates.$inferSelect;
@@ -137,8 +134,7 @@ export const wikiTags = pgTable('wiki_tags', {
   /** 展示色（hex），空则前端取默认色板 */
   color: varchar({ length: 20 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type WikiTagRow = typeof wikiTags.$inferSelect;

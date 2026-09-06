@@ -6,7 +6,7 @@
  * app_release_events 是追加型日志（检查 / 下载 / 安装回执），供升级看板统计。
  */
 import { pgTable, pgEnum, varchar, text, integer, smallint, bigint, boolean, timestamp, unique, index, uuid, uniqueIndex } from 'drizzle-orm/pg-core';
-import { statusEnum, pushProviderEnum } from './common';
+import { statusEnum, pushProviderEnum, timestampColumns } from './common';
 import { auditColumns } from './core';
 import { managedFiles } from './files';
 
@@ -27,8 +27,7 @@ export const clientApps = pgTable('client_apps', {
   description: text(),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type ClientAppRow = typeof clientApps.$inferSelect;
@@ -52,8 +51,7 @@ export const appReleases = pgTable('app_releases', {
   rolloutPercent: smallint().notNull().default(100),
   publishedAt: timestamp(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('app_releases_app_channel_version_unique').on(t.appId, t.channel, t.version)]);
 
 export type AppReleaseRow = typeof appReleases.$inferSelect;
@@ -77,8 +75,7 @@ export const appArtifacts = pgTable('app_artifacts', {
   sha256: varchar({ length: 64 }),
   downloadCount: integer().notNull().default(0),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('app_artifacts_release_filename_unique').on(t.releaseId, t.fileName),
   index('app_artifacts_release_idx').on(t.releaseId),

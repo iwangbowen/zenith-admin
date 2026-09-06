@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, uniqueIndex, text, index, jsonb, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { auditColumns, tenants, users } from './core';
@@ -44,8 +45,7 @@ export const exportJobs = pgTable('export_jobs', {
   ...auditColumns(),
   startedAt: timestamp(),
   completedAt: timestamp(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('export_jobs_entity_idx').on(t.entity),
   index('export_jobs_status_idx').on(t.status),
@@ -104,8 +104,7 @@ export const asyncTasks = pgTable('async_tasks', {
   ...auditColumns(),
   startedAt: timestamp(),
   completedAt: timestamp(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('async_tasks_type_idx').on(t.taskType),
   index('async_tasks_status_idx').on(t.status),
@@ -145,8 +144,7 @@ export const asyncTaskItems = pgTable('async_task_items', {
   data: jsonb().$type<Record<string, unknown>>(),
   /** 在第几次执行中处理 */
   attempt: integer().notNull().default(1),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('uniq_async_task_item').on(t.taskId, t.itemKey),
   index('async_task_items_task_idx').on(t.taskId),
@@ -168,8 +166,7 @@ export const asyncTaskTypeConfigs = pgTable('async_task_type_configs', {
   retryDelayMs: integer().notNull().default(5000),
   /** 已结束任务保留天数；null = 跟随全局（30 天） */
   retentionDays: integer(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type AsyncTaskTypeConfigRow = typeof asyncTaskTypeConfigs.$inferSelect;

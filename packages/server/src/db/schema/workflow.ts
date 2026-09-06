@@ -1,7 +1,7 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { WorkflowDefinitionSnapshot } from '@zenith/shared/workflow';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 
 // ─── 工作流引擎健康快照表（append-only，由定时任务 platform-wide 采集，驱动健康趋势 + 告警指标源）───
@@ -80,8 +80,7 @@ export const workflowCategories = pgTable('workflow_categories', {
   description: text(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('workflow_categories_code_uniq').on(t.tenantId, t.code)]);
 
 export type WorkflowCategoryRow = typeof workflowCategories.$inferSelect;
@@ -100,8 +99,7 @@ export const workflowForms = pgTable('workflow_forms', {
   revision: integer().notNull().default(1), // 乐观锁版本号，每次更新 +1
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('workflow_forms_code_uniq').on(t.tenantId, t.code)]);
 
 export type WorkflowFormRow = typeof workflowForms.$inferSelect;
@@ -124,8 +122,7 @@ export const workflowDefinitions = pgTable('workflow_definitions', {
   version: integer().default(1).notNull(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   // 发起工作台 / 交接扫描 / 自动化均按 (租户, published) 过滤
   index('workflow_definitions_tenant_status_idx').on(t.tenantId, t.status),
@@ -206,8 +203,7 @@ export const workflowAutomations = pgTable('workflow_automations', {
   sort: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('workflow_automations_definition_idx').on(t.definitionId), index('workflow_automations_tenant_idx').on(t.tenantId)]);
 
 export type WorkflowAutomationRow = typeof workflowAutomations.$inferSelect;
@@ -262,8 +258,7 @@ export const workflowSchedules = pgTable('workflow_schedules', {
   nextRunAt: timestamp({ withTimezone: true }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('workflow_schedules_definition_idx').on(t.definitionId), index('workflow_schedules_tenant_idx').on(t.tenantId)]);
 
 export type WorkflowScheduleRow = typeof workflowSchedules.$inferSelect;
@@ -282,8 +277,7 @@ export const workflowSavedViews = pgTable('workflow_saved_views', {
   isDefault: boolean().notNull().default(false),
   sort: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('workflow_saved_views_user_idx').on(t.userId), index('workflow_saved_views_tenant_idx').on(t.tenantId)]);
 
 export type WorkflowSavedViewRow = typeof workflowSavedViews.$inferSelect;
@@ -310,8 +304,7 @@ export const workflowDataSources = pgTable('workflow_data_sources', {
   status: statusEnum().notNull().default('enabled'),
   remark: varchar({ length: 256 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type WorkflowDataSourceRow = typeof workflowDataSources.$inferSelect;
@@ -350,8 +343,7 @@ export const workflowConnectors = pgTable('workflow_connectors', {
   status: statusEnum().notNull().default('enabled'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('workflow_connectors_code_uniq').on(t.tenantId, t.code)]);
 
 export type WorkflowConnectorRow = typeof workflowConnectors.$inferSelect;
@@ -389,8 +381,7 @@ export const workflowSimulationCases = pgTable('workflow_simulation_cases', {
   decisions: jsonb().notNull().default(sql`'[]'::jsonb`),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('workflow_simulation_cases_tenant_idx').on(t.tenantId), unique('workflow_simulation_cases_name_uniq').on(t.definitionId, t.name)]);
 
 export type WorkflowSimulationCaseRow = typeof workflowSimulationCases.$inferSelect;
@@ -487,8 +478,7 @@ export const workflowInstances = pgTable('workflow_instances', {
   /** 挂起原因（管理员填写） */
   suspendReason: varchar({ length: 500 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('workflow_instances_definition_idx').on(t.definitionId), 
   // 业务键租户内唯一（仅活跃实例）：终态（approved/rejected/withdrawn/cancelled）实例不占用业务键，
   // 允许业务记录被驳回/撤回后重新发起；returned（退回待修改重提）仍占用业务键——重提是同一行
@@ -613,8 +603,7 @@ export const workflowTokens = pgTable('workflow_tokens', {
   /** 子流程/多实例项作用域（预留） */
   scopeKey: varchar({ length: 128 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
   consumedAt: timestamp(),
 }, (t) => [index('workflow_tokens_tenant_idx').on(t.tenantId), 
   index('workflow_tokens_instance_status_idx').on(t.instanceId, t.status),
@@ -714,8 +703,7 @@ export const workflowJobs = pgTable('workflow_jobs', {
   result: jsonb(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'set null' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('workflow_jobs_task_idx').on(t.taskId), index('workflow_jobs_tenant_idx').on(t.tenantId), 
   index('workflow_jobs_due_idx').on(t.status, t.runAt),
   index('workflow_jobs_type_status_idx').on(t.jobType, t.status),
@@ -786,8 +774,7 @@ export const workflowQuickPhrases = pgTable('workflow_quick_phrases', {
   content: varchar({ length: 255 }).notNull(),
   sort: integer().default(0).notNull(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('workflow_quick_phrases_user_idx').on(t.userId), index('workflow_quick_phrases_tenant_idx').on(t.tenantId)]);
 
 export type WorkflowQuickPhraseRow = typeof workflowQuickPhrases.$inferSelect;
@@ -814,8 +801,7 @@ export const workflowDelegations = pgTable('workflow_delegations', {
   enabled: boolean().default(true).notNull(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('workflow_delegations_definition_idx').on(t.definitionId), index('workflow_delegations_tenant_idx').on(t.tenantId)]);
 
 export type WorkflowDelegationRow = typeof workflowDelegations.$inferSelect;
@@ -853,8 +839,7 @@ export const workflowTemplates = pgTable('workflow_templates', {
   builtin: boolean().default(false).notNull(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('workflow_templates_tenant_idx').on(t.tenantId), unique('workflow_templates_code_uniq').on(t.code)]);
 
 export type WorkflowTemplateRow = typeof workflowTemplates.$inferSelect;

@@ -1,5 +1,5 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 
 export const systemSchedulerTaskTypeEnum = pgEnum('system_scheduler_task_type', ['recurring', 'queue']);
@@ -23,8 +23,7 @@ export const systemSettings = pgTable('system_settings', {
   /** 乐观锁版本：每次保存 +1；客户端携带的 version 不一致时拒绝（409） */
   version: integer().notNull().default(1),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   // NULLS NOT DISTINCT（PG15+）：平台行 (module, NULL) 同样受唯一约束，ON CONFLICT 可直接以 (module, tenant_id) 为目标
   unique('system_settings_module_tenant_unique').on(t.module, t.tenantId).nullsNotDistinct(),
@@ -65,8 +64,7 @@ export const cronJobs = pgTable('cron_jobs', {
   lastRunStatus: cronRunStatusEnum(),
   lastRunMessage: varchar({ length: 1024 }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type CronJobRow = typeof cronJobs.$inferSelect;
@@ -146,8 +144,7 @@ export const systemSchedulerTaskConfigs = pgTable('system_scheduler_task_configs
   alertEmails: jsonb().$type<string[]>().notNull().default([]),
   alertWebhookUrl: varchar({ length: 512 }),
   manualSingleton: boolean().notNull().default(true),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 });
 
 export type SystemSchedulerTaskConfigRow = typeof systemSchedulerTaskConfigs.$inferSelect;
@@ -166,8 +163,7 @@ export const systemSchedulerNodes = pgTable('system_scheduler_nodes', {
   runningJobCount: integer().notNull().default(0),
   active: boolean().notNull().default(true),
   metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('system_scheduler_nodes_active_idx').on(t.active),
   index('system_scheduler_nodes_last_heartbeat_idx').on(t.lastHeartbeatAt),
@@ -190,8 +186,7 @@ export const retentionPolicies = pgTable('retention_policies', {
   batchSize: integer().notNull().default(5000),
   lastRunAt: timestamp({ withTimezone: true }),
   lastDeleted: integer().notNull().default(0),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 });
 
 export type RetentionPolicyRow = typeof retentionPolicies.$inferSelect;
@@ -275,8 +270,7 @@ export const userFeedbacks = pgTable('user_feedbacks', {
   handleRemark: varchar({ length: 500 }),
   handledBy:    integer().references(() => users.id, { onDelete: 'set null' }),
   handledAt:    timestamp(),
-  createdAt:    timestamp().defaultNow().notNull(),
-  updatedAt:    timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('user_feedbacks_status_idx').on(t.status),
   index('user_feedbacks_user_idx').on(t.userId),

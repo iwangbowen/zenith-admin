@@ -1,6 +1,6 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, primaryKey, unique, index, uniqueIndex, text, jsonb, smallint, uuid as pgUuid, customType, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, departments, tenants, users } from './core';
 import { managedFiles } from './files';
 
@@ -55,8 +55,7 @@ export const driveSpaces = pgTable('drive_spaces', {
   sort: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('drive_spaces_personal_owner_uq').on(t.ownerId).where(sql`${t.type} = 'personal'`),
   uniqueIndex('drive_spaces_department_uq').on(t.departmentId).where(sql`${t.type} = 'department'`),
@@ -114,8 +113,7 @@ export const driveNodes = pgTable('drive_nodes', {
   deletedRootId: integer(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('drive_nodes_space_parent_idx').on(t.spaceId, t.parentId, t.deletedAt),
   index('drive_nodes_ancestors_gin_idx').using('gin', t.ancestorIds),
@@ -144,8 +142,7 @@ export const driveNodePermissions = pgTable('drive_node_permissions', {
   expireAt: timestamp(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('drive_node_permissions_node_subject_unique').on(t.nodeId, t.subjectType, t.subjectId),
   index('drive_node_permissions_subject_idx').on(t.subjectType, t.subjectId),
@@ -192,8 +189,7 @@ export const driveShareLinks = pgTable('drive_share_links', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('drive_share_links_node_idx').on(t.nodeId),
   index('drive_share_links_tenant_idx').on(t.tenantId),
@@ -291,8 +287,7 @@ export const driveTags = pgTable('drive_tags', {
   color: varchar({ length: 20 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('drive_tags_space_name_unique').on(t.spaceId, t.name)]);
 
 export type DriveTagRow = typeof driveTags.$inferSelect;
@@ -313,8 +308,7 @@ export const driveNodeComments = pgTable('drive_node_comments', {
   content: varchar({ length: 2000 }).notNull(),
   authorId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('drive_node_comments_node_idx').on(t.nodeId)]);
 
 export type DriveNodeCommentRow = typeof driveNodeComments.$inferSelect;

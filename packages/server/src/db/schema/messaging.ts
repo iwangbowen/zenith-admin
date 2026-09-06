@@ -12,7 +12,7 @@ import type {
   NotificationChannelPolicy,
   NotificationRecipient,
 } from '@zenith/shared/messaging';
-import { statusEnum, pushProviderEnum } from './common';
+import { statusEnum, pushProviderEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 import { clientApps } from './app-releases';
 
@@ -30,8 +30,7 @@ export const emailConfigs = pgTable('email_configs', {
   encryption: emailEncryptionEnum().notNull().default('ssl'),
   status: statusEnum().notNull().default('enabled'),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type EmailConfigRow = typeof emailConfigs.$inferSelect;
@@ -60,8 +59,7 @@ export const emailTemplates = pgTable('email_templates', {
   remark: text(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('email_templates_tenant_idx').on(t.tenantId)]);
 
 export type EmailTemplateRow = typeof emailTemplates.$inferSelect;
@@ -106,8 +104,7 @@ export const smsConfigs = pgTable('sms_configs', {
   remark: text(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('sms_configs_tenant_idx').on(t.tenantId)]);
 
 export type SmsConfigRow = typeof smsConfigs.$inferSelect;
@@ -128,8 +125,7 @@ export const smsTemplates = pgTable('sms_templates', {
   remark: text(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('sms_templates_tenant_idx').on(t.tenantId)]);
 
 export type SmsTemplateRow = typeof smsTemplates.$inferSelect;
@@ -180,8 +176,7 @@ export const pushConfigs = pgTable('push_configs', {
   status: statusEnum().default('enabled').notNull(),
   remark: text(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [unique('push_configs_app_unique').on(t.appId)]);
 
 export type PushConfigRow = typeof pushConfigs.$inferSelect;
@@ -258,8 +253,7 @@ export const broadcastCampaigns = pgTable('broadcast_campaigns', {
   remark: text(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('broadcast_campaigns_status_idx').on(t.status),
   index('broadcast_campaigns_created_at_idx').on(t.createdAt),
@@ -282,8 +276,7 @@ export const inAppTemplates = pgTable('in_app_templates', {
   remark: text(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('in_app_templates_tenant_idx').on(t.tenantId)]);
 
 export type InAppTemplateRow = typeof inAppTemplates.$inferSelect;
@@ -348,8 +341,7 @@ export const notificationEventOverrides = pgTable('notification_event_overrides'
   enabled: boolean().notNull(),
   locked: boolean().notNull().default(false),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('notification_event_overrides_tenant_uq').on(t.tenantId, t.eventKey, t.channel).where(sql`${t.tenantId} is not null`),
   uniqueIndex('notification_event_overrides_global_uq').on(t.eventKey, t.channel).where(sql`${t.tenantId} is null`),
@@ -372,8 +364,7 @@ export const notificationPreferences = pgTable('notification_preferences', {
   eventKey: varchar({ length: 100 }).notNull(),
   channel: notificationChannelEnum().notNull(),
   enabled: boolean().notNull(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('notification_preferences_uq').on(t.recipientType, t.recipientId, t.eventKey, t.channel),
   index('notification_preferences_recipient_idx').on(t.recipientType, t.recipientId),
@@ -396,8 +387,7 @@ export const notificationRecipientSettings = pgTable('notification_recipient_set
   quietEnd: varchar({ length: 5 }),
   digestMode: notificationDigestModeEnum().notNull().default('realtime'),
   digestHour: smallint().notNull().default(9),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('notification_recipient_settings_uq').on(t.recipientType, t.recipientId),
 ]);

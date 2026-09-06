@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, text, uuid as pgUuid, index } from 'drizzle-orm/pg-core';
 import { auditColumns, users } from './core';
 import { managedFiles } from './files';
@@ -20,8 +21,7 @@ export const dbBackups = pgTable('db_backups', {
   durationMs: integer(),
   errorMessage: text(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type DbBackupRow = typeof dbBackups.$inferSelect;
@@ -55,8 +55,7 @@ export const dbQueryFavorites = pgTable('db_query_favorites', {
   sql: text().notNull(),
   description: text(),
   tags: text().array().notNull().default([]),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('db_query_favorites_user_idx').on(t.userId)]);
 
 export type DbQueryFavoriteRow = typeof dbQueryFavorites.$inferSelect;

@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, text, uniqueIndex, index, jsonb, smallint, real, date, uuid, primaryKey, customType, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { AnalyticsEnvironment, AnalyticsEventPropertyDef, AnalyticsExperimentVariant, AnalyticsSegmentRule, ReplayTrigger } from '@zenith/shared/analytics';
@@ -163,8 +164,7 @@ export const analyticsSessions = pgTable('analytics_sessions', {
   appId: varchar({ length: 64 }).notNull().default('admin'),
   environment: varchar({ length: 32 }).notNull().default('production').$type<AnalyticsEnvironment>(),
   memberId: integer().references((): AnyPgColumn => members.id, { onDelete: 'set null' }),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('analytics_sessions_sid_uq').on(t.sessionId),
   index('analytics_sessions_started_idx').on(t.startedAt),
@@ -189,8 +189,7 @@ export const analyticsDailyRollup = pgTable('analytics_daily_rollup', {
   dimType: varchar({ length: 32 }).notNull().default('overall'),
   dimValue: varchar({ length: 256 }).notNull().default(''),
   value: bigint({ mode: 'number' }).notNull().default(0),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('analytics_rollup_uq').on(t.tenantId, t.statDate, t.metric, t.dimType, t.dimValue),
   index('analytics_rollup_date_idx').on(t.statDate),
@@ -224,8 +223,7 @@ export const analyticsEventMeta = pgTable('analytics_event_meta', {
   // 严格模式：开启后采集入口对不符合 propertySchema 的属性做质量记录（阶段 1 仅落库标识，校验逻辑在采集服务落地）
   strictMode: boolean().notNull().default(false),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('analytics_event_meta_name_uq').on(t.eventName),
   index('analytics_event_meta_status_idx').on(t.status),
@@ -267,8 +265,7 @@ export const analyticsSettings = pgTable('analytics_settings', {
   // 回放存储配额（MB，0=不限制）：超限滚动淘汰旧回放（无错误优先），超硬顶（120%）拒收采样录制
   replayStorageQuotaMb: integer().notNull().default(4096),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('analytics_settings_tenant_uq').on(sql`coalesce(${t.tenantId}, 0)`),
 ]);
@@ -309,8 +306,7 @@ export const errorGroups = pgTable('error_groups', {
   lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   resolvedAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('error_groups_fingerprint_uq').on(t.fingerprint),
   index('error_groups_status_idx').on(t.status),
@@ -405,8 +401,7 @@ export const errorAlertRules = pgTable('error_alert_rules', {
   enabled: boolean().notNull().default(true),
   lastTriggeredAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('error_alert_rules_tenant_idx').on(t.tenantId),
 ]);
@@ -445,8 +440,7 @@ export const sourceMaps = pgTable('source_maps', {
   content: text().notNull(),
   size: integer().notNull().default(0),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('source_maps_release_idx').on(t.release, t.fileName),
   index('source_maps_tenant_idx').on(t.tenantId),
@@ -465,8 +459,7 @@ export const analyticsSavedReports = pgTable('analytics_saved_reports', {
   config: jsonb().$type<Record<string, unknown>>().notNull(),
   createdBy: integer(),
   createdByName: varchar({ length: 64 }),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('analytics_saved_reports_tenant_idx').on(t.tenantId),
   index('analytics_saved_reports_type_idx').on(t.reportType),
@@ -487,8 +480,7 @@ export const analyticsEventOverrides = pgTable('analytics_event_overrides', {
   status: analyticsEventOverrideStatusEnum().notNull().default('enabled'),
   reason: text(),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('analytics_event_overrides_tenant_name_uq').on(t.tenantId, t.eventName),
   index('analytics_event_overrides_status_idx').on(t.status),
@@ -511,8 +503,7 @@ export const analyticsSites = pgTable('analytics_sites', {
   status: analyticsEventOverrideStatusEnum().notNull().default('enabled'),
   remark: varchar({ length: 500 }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('analytics_sites_site_key_uq').on(t.siteKey),
   index('analytics_sites_tenant_idx').on(t.tenantId),
@@ -538,8 +529,7 @@ export const analyticsEventQualityDaily = pgTable('analytics_event_quality_daily
   // 命中样本（脱敏后的属性快照片段），便于排查，非追责用途
   sample: jsonb().$type<Record<string, unknown>>(),
   lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('analytics_event_quality_daily_uq').on(t.tenantId, t.statDate, t.eventName, t.issueType),
   index('analytics_event_quality_daily_date_idx').on(t.statDate),
@@ -564,8 +554,7 @@ export const analyticsUserProfiles = pgTable('analytics_user_profiles', {
   properties: jsonb().$type<Record<string, unknown>>(),
   firstSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [index('analytics_user_profiles_tenant_idx').on(t.tenantId), 
   // tenantId 可空（全局/无租户场景），coalesce 归一后与 distinct_id 联合唯一
   uniqueIndex('analytics_user_profiles_tenant_distinct_uq').on(sql`coalesce(${t.tenantId}, 0)`, t.distinctId),
@@ -591,8 +580,7 @@ export const analyticsUserSegments = pgTable('analytics_user_segments', {
   estimatedSize: integer().notNull().default(0),
   snapshotAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   // 全局分群（tenantId 为 NULL）与租户内分群分别做 name 唯一约束
   uniqueIndex('analytics_user_segments_tenant_name_uq').on(t.tenantId, t.name).where(sql`${t.tenantId} is not null`),
@@ -647,8 +635,7 @@ export const replaySessions = pgTable('replay_sessions', {
   os: varchar({ length: 48 }),
   deviceType: analyticsDeviceTypeEnum(),
   sdkVersion: varchar({ length: 32 }),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('replay_sessions_session_idx').on(t.sessionId),
   index('replay_sessions_started_idx').on(t.startedAt),
@@ -763,8 +750,7 @@ export const analyticsExperiments = pgTable('analytics_experiments', {
   startAt: timestamp({ withTimezone: true }),
   endAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   uniqueIndex('analytics_experiments_tenant_key_uq').on(sql`coalesce(${t.tenantId}, 0)`, t.expKey),
   index('analytics_experiments_tenant_idx').on(t.tenantId),
@@ -793,8 +779,7 @@ export const analyticsSegmentCampaigns = pgTable('analytics_segment_campaigns', 
   lastRunAt: timestamp({ withTimezone: true }),
   lastError: varchar({ length: 500 }),
   ...auditColumns(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('analytics_segment_campaigns_tenant_idx').on(t.tenantId),
   index('analytics_segment_campaigns_segment_idx').on(t.segmentId),

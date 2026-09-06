@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, uniqueIndex, index, jsonb } from 'drizzle-orm/pg-core';
 import { OAUTH_PROVIDERS } from '@zenith/shared/identity';
 import { auditColumns, tenants, users } from './core';
@@ -25,8 +26,7 @@ export const userOauthAccounts = pgTable('user_oauth_accounts', {
   refreshToken: varchar({ length: 512 }),
   expiresAt: timestamp({ withTimezone: true }),
   raw: text(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('user_oauth_accounts_user_idx').on(t.userId), unique('uniq_provider_open_id').on(t.provider, t.openId)]);
 
 export type UserOauthAccountRow = typeof userOauthAccounts.$inferSelect;
@@ -45,8 +45,7 @@ export const oauthConfigs = pgTable('oauth_configs', {
   // 登录时允许按提供方断言的「已验证邮箱」自动关联既有本地账号（默认关闭；平台超管永不自动关联）
   autoLinkByEmail: boolean().notNull().default(false),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type OauthConfigRow = typeof oauthConfigs.$inferSelect;
@@ -67,8 +66,7 @@ export const userApiTokens = pgTable('user_api_tokens', {
   lastUsedAt: timestamp({ withTimezone: true }),
   expiresAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('user_api_tokens_user_idx').on(t.userId)]);
 
 export type UserApiTokenRow = typeof userApiTokens.$inferSelect;
@@ -100,8 +98,7 @@ export const userMfaFactors = pgTable('user_mfa_factors', {
   status: mfaFactorStatusEnum().notNull().default('pending'),
   verifiedAt: timestamp({ withTimezone: true }),
   lastUsedAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   index('user_mfa_factors_user_idx').on(t.userId),
   index('user_mfa_factors_status_idx').on(t.status),
@@ -184,8 +181,7 @@ export const rateLimitRules = pgTable('rate_limit_rules', {
   blockedMessage: varchar({ length: 255 }),
   pathPatterns: text().array().notNull().default([]),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type RateLimitRuleRow = typeof rateLimitRules.$inferSelect;

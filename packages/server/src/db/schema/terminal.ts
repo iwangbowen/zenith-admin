@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, text, jsonb, real, uuid as pgUuid, index } from 'drizzle-orm/pg-core';
 import { v7 as uuidv7 } from 'uuid';
 import { TERMINAL_SESSION_KINDS, TERMINAL_SESSION_STATES } from '@zenith/shared/ops';
@@ -36,8 +37,7 @@ export const terminalSessions = pgTable('terminal_sessions', {
   endedAt: timestamp(),
   /** 结束原因，取值见 @zenith/shared/ops 的 TERMINAL_END_REASONS */
   endReason: varchar({ length: 32 }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   // 「我的会话」与配额统计：按用户过滤活动会话
   index('terminal_sessions_user_state_idx').on(t.userId, t.state),
@@ -65,8 +65,7 @@ export const terminalRecordings = pgTable('terminal_recordings', {
   rows: integer().notNull().default(24),
   duration: real().notNull().default(0), // 秒
   events: jsonb().$type<RecordingEvent[]>().notNull().default([]),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('terminal_recordings_user_idx').on(t.userId), index('terminal_recordings_tenant_idx').on(t.tenantId)]);
 
 export type TerminalRecordingRow = typeof terminalRecordings.$inferSelect;
@@ -101,8 +100,7 @@ export const sshProfiles = pgTable('ssh_profiles', {
   tags: jsonb().$type<string[]>().notNull().default([]),
   /** 列表排序权重（数字越小越靠前） */
   orderNum: integer().notNull().default(0),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('ssh_profiles_user_idx').on(t.userId)]);
 
 export type SshProfileRow = typeof sshProfiles.$inferSelect;

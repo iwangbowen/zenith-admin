@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, text, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import type { AiModelSettings, AiModelFallbackRef, AiUserSettingsPatch } from '@zenith/shared/ai';
 import { auditColumns, tenants, users } from './core';
@@ -44,8 +45,7 @@ export const aiProviderConfigs = pgTable('ai_provider_configs', {
   /** 并发流上限（null / 0 = 不限制），超限排队等待 */
   maxConcurrent: integer(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 });
 
 export type AiProviderConfigRow = typeof aiProviderConfigs.$inferSelect;
@@ -69,8 +69,7 @@ export const aiConversations = pgTable('ai_conversations', {
   tags: text().array(),
   /** 分支树当前激活叶子消息 ID（null = 线性对话取最新） */
   activeLeafMsgId: integer(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('ai_conversations_user_idx').on(t.userId), index('ai_conversations_tenant_idx').on(t.tenantId)]);
 
 export type AiConversationRow = typeof aiConversations.$inferSelect;
@@ -152,8 +151,7 @@ export const userAiConfigs = pgTable('user_ai_configs', {
   capabilities: jsonb().$type<AiModelCapabilities>(),
   systemPrompt: text(),
   isEnabled: boolean().notNull().default(true),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('user_ai_configs_user_idx').on(t.userId)]);
 
 export type UserAiConfigRow = typeof userAiConfigs.$inferSelect;
@@ -176,8 +174,7 @@ export const aiPromptTemplates = pgTable('ai_prompt_templates', {
   usageCount: integer().notNull().default(0),
   isEnabled: boolean().notNull().default(true),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('ai_prompt_templates_user_idx').on(t.userId)]);
 
 export type AiPromptTemplateRow = typeof aiPromptTemplates.$inferSelect;
@@ -189,8 +186,7 @@ export const aiUserSettings = pgTable('ai_user_settings', {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   settings: jsonb().$type<AiUserSettingsPatch>().notNull().default({}),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [uniqueIndex('ai_user_settings_user_id_uq').on(t.userId)]);
 
 export type AiUserSettingsRow = typeof aiUserSettings.$inferSelect;
@@ -228,8 +224,7 @@ export const aiKnowledgeBases = pgTable('ai_knowledge_bases', {
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   /** 向量化所用 embedding 模型快照（空 = 未向量化，走关键词检索） */
   embeddingModel: varchar({ length: 100 }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('ai_knowledge_bases_user_idx').on(t.userId)]);
 
 export type AiKnowledgeBaseRow = typeof aiKnowledgeBases.$inferSelect;
@@ -293,8 +288,7 @@ export const aiAgents = pgTable('ai_agents', {
   suggestedQuestions: text().array(),
   usageCount: integer().notNull().default(0),
   isEnabled: boolean().notNull().default(true),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('ai_agents_user_idx').on(t.userId)]);
 
 export type AiAgentRow = typeof aiAgents.$inferSelect;
@@ -326,8 +320,7 @@ export const aiHttpTools = pgTable('ai_http_tools', {
   params: jsonb().$type<AiHttpToolParam[]>(),
   isEnabled: boolean().notNull().default(true),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [uniqueIndex('ai_http_tools_name_uq').on(t.name)]);
 
 export type AiHttpToolRow = typeof aiHttpTools.$inferSelect;

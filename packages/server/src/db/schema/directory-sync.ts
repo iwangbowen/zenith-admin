@@ -1,5 +1,5 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users, departments } from './core';
 import { tenantIdentityProviders } from './identity-providers';
 
@@ -72,8 +72,7 @@ export const directorySyncSources = pgTable('directory_sync_sources', {
   lastRunStatus: directorySyncRunStatusEnum(),
   remark: text(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('directory_sync_sources_tenant_name_unique').on(t.tenantId, t.name),
   unique('directory_sync_sources_callback_key_unique').on(t.callbackUrlKey),
@@ -159,8 +158,7 @@ export const directorySyncConflicts = pgTable('directory_sync_conflicts', {
   resolution: varchar({ length: 16 }),
   resolvedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   resolvedAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('directory_sync_conflicts_source_idx').on(t.sourceId),
   index('directory_sync_conflicts_status_idx').on(t.status),
@@ -178,8 +176,7 @@ export const directorySyncUserLinks = pgTable('directory_sync_user_links', {
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   externalData: jsonb().$type<Record<string, unknown> | null>(),
   lastSeenAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('directory_sync_user_links_source_external_unique').on(t.sourceId, t.externalId),
   unique('directory_sync_user_links_source_user_unique').on(t.sourceId, t.userId),
@@ -197,8 +194,7 @@ export const directorySyncDeptLinks = pgTable('directory_sync_dept_links', {
   externalId: varchar({ length: 256 }).notNull(),
   departmentId: integer().notNull().references(() => departments.id, { onDelete: 'cascade' }),
   lastSeenAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('directory_sync_dept_links_source_external_unique').on(t.sourceId, t.externalId),
   index('directory_sync_dept_links_department_idx').on(t.departmentId),

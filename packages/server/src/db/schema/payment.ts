@@ -1,7 +1,7 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, uniqueIndex, text, index, jsonb, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { CreatePaymentResult } from '@zenith/shared/payment';
-import { statusEnum } from './common';
+import { statusEnum, timestampColumns } from './common';
 import { auditColumns, departments, tenants, users } from './core';
 import { oauth2Clients } from './open-platform';
 
@@ -66,8 +66,7 @@ export const paymentChannelConfigs = pgTable('payment_channel_configs', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('payment_channel_configs_tenant_idx').on(t.tenantId),
   uniqueIndex('payment_channel_configs_default_tenant_channel_uq')
@@ -123,8 +122,7 @@ export const paymentOrders = pgTable('payment_orders', {
   version: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_orders_user_idx').on(t.userId), index('payment_orders_tenant_idx').on(t.tenantId), 
   unique('payment_orders_config_out_trade_no_uq').on(t.channelConfigId, t.outTradeNo),
   // 业务幂等：同一业务单（bizType+bizId）最多存在一笔进行中订单（pending/paying），
@@ -171,8 +169,7 @@ export const paymentRefunds = pgTable('payment_refunds', {
   version: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_refunds_order_idx').on(t.orderId), index('payment_refunds_operator_idx').on(t.operatorId), index('payment_refunds_tenant_idx').on(t.tenantId), 
   index('payment_refunds_order_no_idx').on(t.orderNo),
   index('payment_refunds_status_idx').on(t.status),
@@ -264,8 +261,7 @@ export const paymentReconBatches = pgTable('payment_recon_batches', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('payment_recon_batches_tenant_idx').on(t.tenantId),
   index('payment_recon_batches_date_idx').on(t.billDate),
@@ -315,8 +311,7 @@ export const paymentFeeRules = pgTable('payment_fee_rules', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_fee_rules_tenant_idx').on(t.tenantId), index('payment_fee_rules_channel_idx').on(t.channel)]);
 
 export type PaymentFeeRuleRow = typeof paymentFeeRules.$inferSelect;
@@ -350,8 +345,7 @@ export const paymentSettlementBatches = pgTable('payment_settlement_batches', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_settlement_batches_tenant_idx').on(t.tenantId), 
   index('payment_settlement_batches_app_idx').on(t.appId),
   index('payment_settlement_batches_status_idx').on(t.status),
@@ -382,8 +376,7 @@ export const paymentSharingReceivers = pgTable('payment_sharing_receivers', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_sharing_receivers_tenant_idx').on(t.tenantId)]);
 
 export type PaymentSharingReceiverRow = typeof paymentSharingReceivers.$inferSelect;
@@ -405,8 +398,7 @@ export const paymentSharingOrders = pgTable('payment_sharing_orders', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_sharing_orders_tenant_idx').on(t.tenantId), index('payment_sharing_orders_order_no_idx').on(t.orderNo), index('payment_sharing_orders_receiver_idx').on(t.receiverId)]);
 
 export type PaymentSharingOrderRow = typeof paymentSharingOrders.$inferSelect;
@@ -431,8 +423,7 @@ export const paymentSharingReversals = pgTable('payment_sharing_reversals', {
   finishedAt: timestamp({ withTimezone: true }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'restrict' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('payment_sharing_reversals_sharing_order_unique').on(t.sharingOrderId),
   uniqueIndex('payment_sharing_reversals_idempotency_scope_uq')
@@ -464,8 +455,7 @@ export const paymentLinks = pgTable('payment_links', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_links_tenant_idx').on(t.tenantId), index('payment_links_app_idx').on(t.appId)]);
 
 export type PaymentLinkRow = typeof paymentLinks.$inferSelect;
@@ -523,8 +513,7 @@ export const paymentCashierSessions = pgTable('payment_cashier_sessions', {
   expiresAt: timestamp({ withTimezone: true }).notNull(),
   version: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('payment_cashier_sessions_order_no_unique').on(t.orderNo).where(sql`${t.orderNo} is not null`),
   index('payment_cashier_sessions_link_idx').on(t.linkId),
@@ -562,8 +551,7 @@ export const paymentRiskRules = pgTable('payment_risk_rules', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_risk_rules_tenant_idx').on(t.tenantId), index('payment_risk_rules_scope_idx').on(t.scope)]);
 
 export type PaymentRiskRuleRow = typeof paymentRiskRules.$inferSelect;
@@ -626,8 +614,7 @@ export const paymentRiskReviews = pgTable('payment_risk_reviews', {
   reviewRemark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_risk_reviews_tenant_idx').on(t.tenantId), 
   uniqueIndex('payment_risk_reviews_pending_biz_scope_uq')
     .on(sql`coalesce(${t.tenantId}, 0)`, sql`coalesce(${t.appId}, 0)`, t.bizType, t.bizId, t.currency)
@@ -677,8 +664,7 @@ export const paymentPreauths = pgTable('payment_preauths', {
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_preauths_operator_idx').on(t.operatorId), index('payment_preauths_tenant_idx').on(t.tenantId), 
   // 同一业务单最多一笔进行中预授权（发起中/冻结中）
   uniqueIndex('payment_preauths_active_biz_uq')
@@ -730,8 +716,7 @@ export const paymentTransfers = pgTable('payment_transfers', {
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_transfers_operator_idx').on(t.operatorId), index('payment_transfers_tenant_idx').on(t.tenantId), 
   unique('payment_transfers_config_out_no_uq').on(t.channelConfigId, t.outTransferNo),
   uniqueIndex('payment_transfers_idempotency_scope_uq').on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.idempotencyKey),
@@ -755,8 +740,7 @@ export const paymentApps = pgTable('payment_apps', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('payment_apps_tenant_idx').on(t.tenantId),
   unique('payment_apps_open_client_unique').on(t.openClientId),
@@ -776,8 +760,7 @@ export const paymentMethodConfigs = pgTable('payment_method_configs', {  id: int
   sort: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   index('payment_method_configs_tenant_idx').on(t.tenantId),
   uniqueIndex('payment_method_configs_tenant_method_uq').on(sql`coalesce(${t.tenantId}, 0)`, t.method),
@@ -804,8 +787,7 @@ export const paymentDeductPlans = pgTable('payment_deduct_plans', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_deduct_plans_tenant_idx').on(t.tenantId)]);
 
 export type PaymentDeductPlanRow = typeof paymentDeductPlans.$inferSelect;
@@ -850,8 +832,7 @@ export const paymentContracts = pgTable('payment_contracts', {
   remark: varchar({ length: 256 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_contracts_tenant_idx').on(t.tenantId), 
   // 同一业务单（bizType+bizId）最多一份未终止协议，防止重复签约
   uniqueIndex('payment_contracts_active_biz_uq')
@@ -908,8 +889,7 @@ export const paymentDisputes = pgTable('payment_disputes', {
   resolvedAt: timestamp({ withTimezone: true }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [index('payment_disputes_tenant_idx').on(t.tenantId), 
   index('payment_disputes_status_idx').on(t.status),
   index('payment_disputes_order_no_idx').on(t.orderNo),
@@ -963,8 +943,7 @@ export const paymentLedgerAccounts = pgTable('payment_ledger_accounts', {
   status: statusEnum().notNull().default('enabled'),
   tenantId: integer().references(() => tenants.id, { onDelete: 'restrict' }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('payment_ledger_accounts_scope_code_uq')
     .on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.channelConfigId, t.currency, t.code),
@@ -1051,8 +1030,7 @@ export const paymentFundReservations = pgTable('payment_fund_reservations', {
   expiresAt: timestamp({ withTimezone: true }),
   finalizedAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('payment_fund_reservations_source_scope_uq')
     .on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.channelConfigId, t.currency, t.sourceType, t.sourceId),

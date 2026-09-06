@@ -1,3 +1,4 @@
+import { timestampColumns } from './common';
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
 import { auditColumns, tenants, users } from './core';
 
@@ -50,8 +51,7 @@ export const tenantIdentityProviders = pgTable('tenant_identity_providers', {
   defaultRoleIds: jsonb().$type<number[]>().notNull().default([]),
   remark: text(),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns(),
 }, (t) => [
   unique('tenant_identity_providers_tenant_code_unique').on(t.tenantId, t.code),
   index('tenant_identity_providers_tenant_idx').on(t.tenantId),
@@ -72,8 +72,7 @@ export const userIdentityAccounts = pgTable('user_identity_accounts', {
   displayName: varchar({ length: 128 }),
   rawProfile: jsonb().$type<Record<string, unknown> | null>(),
   lastLoginAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp({ withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+  ...timestampColumns({ withTimezone: true }),
 }, (t) => [
   unique('user_identity_accounts_provider_subject_unique').on(t.providerId, t.subject),
   unique('user_identity_accounts_user_provider_unique').on(t.userId, t.providerId),
