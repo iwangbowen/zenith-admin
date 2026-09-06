@@ -9,7 +9,7 @@ import { ArrowLeft, Check, Download, Eye, History, Minus, Play, Plus, Redo2, Rot
 import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared/workflow';
 import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared/workflow';
 import { downloadBlob } from '@/utils/download';
-import { hasPageComponent } from '@/utils/page-registry';
+import { hasBusinessFormComponent } from '@/utils/business-form-registry';
 
 import WorkflowVersionsSheet from '../components/WorkflowVersionsSheet';
 
@@ -580,11 +580,11 @@ export default function WorkflowDesignerPage({
     const viewPath = customForm?.viewComponent?.trim() ?? '';
     if (formType === 'custom') {
       if (!createPath) return fail('请先在「表单」步骤配置创建/填写页组件路径');
-      if (!hasPageComponent(createPath)) return fail(`未找到创建页组件「${createPath}」，请确认已在 src/pages 下创建`);
+      if (!hasBusinessFormComponent(createPath)) return fail(`未找到创建页组件「${createPath}」，请确认已在 src/pages 下创建`);
     } else {
       if (!viewPath) return fail('请先在「表单」步骤配置审批查看页组件路径');
     }
-    if (viewPath && !hasPageComponent(viewPath)) return fail(`未找到查看页组件「${viewPath}」，请确认已在 src/pages 下创建`);
+    if (viewPath && !hasBusinessFormComponent(viewPath)) return fail(`未找到查看页组件「${viewPath}」，请确认已在 src/pages 下创建`);
     return true;
   };
 

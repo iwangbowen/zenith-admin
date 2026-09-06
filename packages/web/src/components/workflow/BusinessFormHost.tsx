@@ -11,7 +11,7 @@ import { Suspense, useMemo } from 'react';
 import { Empty, Spin, Typography } from '@douyinfe/semi-ui';
 import { IllustrationFailure, IllustrationFailureDark } from '@douyinfe/semi-illustrations';
 import type { WorkflowCustomFormConfig, WorkflowCustomFormVariable } from '@zenith/shared/workflow';
-import { lazyPageComponent } from '@/utils/page-registry';
+import { lazyBusinessFormComponent } from '@/utils/business-form-registry';
 
 export type WorkflowBusinessFormMode = 'create' | 'view' | 'approve';
 
@@ -98,7 +98,7 @@ export default function BusinessFormHost({
     return customForm.viewComponent || customForm.createComponent || null;
   }, [customForm, mode]);
 
-  const Component = useMemo(() => lazyPageComponent(componentPath), [componentPath]);
+  const Component = useMemo(() => lazyBusinessFormComponent(componentPath), [componentPath]);
 
   if (!Component) return <MissingComponent path={componentPath} />;
 

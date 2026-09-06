@@ -23,13 +23,20 @@ lucide 图标全表（615 KB / 153 KB gz）在任何口径下都是运行时按�
 
 `npm run build -w @zenith/web` = `tsc -b` + `scripts/build.mjs`：
 
-1. 三个入口各自独立 `vite build`（环境变量 `ZENITH_WEB_ENTRY=main|member|approval`），写入同一 `dist/` 的不同 `assetsDir`
-   （`assets/`、`assets-member/`、`assets-approval/`），只有 main 清空目录；
+1. 三个入口各自独立 `vite build`（环境变量 `ZENITH_WEB_ENTRY=main|member|approval`），JS chunk 写入同一 `dist/` 的不同 `assetsDir`
+   （`assets/`、`assets-member/`、`assets-approval/`），只有 main 清空目录；静态资源（字体 / wasm / 图片 / CSS）三个入口共用 `assets/`
+   （`output.assetFileNames`）——文件名含内容 hash，相同内容在各入口构建中得到同名文件，落到同一目录即天然去重；
 2. `scripts/precompress.mjs` 用 worker 线程为 ≥ 1 KB 的文本资源生成 `.gz`（level 9）与 `.br`（quality 11），供 nginx `gzip_static` / `brotli_static` 直接下发。
 
 分入口构建的原因：rolldown 的 `$initial` 标签取「任一用户入口静态可达」的并集，三入口共建时后台关键路径会混入会员 / 审批入口的模块，
 并且每个共享模块的「入口集合」都掺进几十个懒加载页面，关键路径无法收敛为少数几个 chunk。三个入口面向三类用户，跨入口共享 chunk 的收益≈0。
 未设置 `ZENITH_WEB_ENTRY` 时仍是三入口共建（dev server 与直接 `vite build` 可用），但产物结构不满足预算。
+
+分入口构建的代价：任何被多个入口触达的模块都会在各入口产物中各输出一份。因此**非后台入口绝不能触达后台页面注册表**
+（`utils/page-registry.ts` 的 `import.meta.glob('../pages/**/*Page.tsx')`）：glob 在构建期按模块展开，引用它的入口会把几百个后台页面 chunk
+及其重依赖全部打进自己的 `assetsDir`。工作流自定义业务表单单独收在 `utils/business-form-registry.ts`（`pages/biz/**`、`*BusinessForm.tsx`、
+`*ApprovalView.tsx`），`BusinessFormHost` 与流程设计器只引用它；`bundle-budget.json` 的 `maxTotalJsChunks / maxTotalJsMB`
+按入口 assetsDir 统计全部 JS（含按需加载）作为门禁——误引注册表时关键路径指标不变，但这两项会成倍增长。
 
 ## chunk 分层
 
@@ -142,8 +149,9 @@ nginx 侧的 `gzip_static`、HTML `no-cache`、静态资源一年 immutable 与 
 | JS chunk 总数（其中 < 4 KB） | 1,711（922） | 1,542（764） |
 | dist JS 总量 | 38.5 MB | 75.8 MB |
 
-认证首屏的 gz 体积 +6%（Semi 核心整包、公共层一次装载）换来文件数 −84%；dist 总量翻倍来自审批入口独立构建时复制了一份页面注册表
-（`BusinessFormHost` 复用 `lazyPageComponent`），只占磁盘，不影响任何入口的下载量。
+认证首屏的 gz 体积 +6%（Semi 核心整包、公共层一次装载）换来文件数 −84%。上表「dist JS 总量」翻倍来自审批入口独立构建时
+复制了一份页面注册表（`BusinessFormHost` 曾复用 `lazyPageComponent`），v2.20.1 起注册表拆分、静态资源跨入口共用后，
+dist JS 总量 53.1 MB / 904 个 chunk，发布 zip 由 94.3 MB 回落到约 60 MB（其余高于 v2.19 的部分为 `.gz/.br` 预压缩产物与各入口独立的按需 chunk）。
 
 ### 运行时（冷缓存中位数）
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SEED_MENUS } from '@zenith/shared/seed';
 import { hasPageComponent, lazyPageComponent } from './page-registry';
+import { businessFormModules, hasBusinessFormComponent, lazyBusinessFormComponent } from './business-form-registry';
 
 describe('page registry', () => {
   it('reuses the same lazy component identity across parent rerenders', () => {
@@ -43,5 +44,24 @@ describe('page registry', () => {
     expect(hasPageComponent('workflow/monitor/WorkflowJobsView')).toBe(false);
     expect(hasPageComponent('ai/chat/components/ChatComposer')).toBe(false);
     expect(hasPageComponent('analytics/AnalyticsUsersTab')).toBe(false);
+  });
+});
+
+describe('business form registry', () => {
+  it('resolves seeded custom business form components', () => {
+    expect(hasBusinessFormComponent('biz/demo/DemoBusinessForm')).toBe(true);
+    expect(hasBusinessFormComponent('biz/leave/LeaveApprovalView')).toBe(true);
+    expect(hasBusinessFormComponent('cms/ContentApprovalView')).toBe(true);
+    expect(lazyBusinessFormComponent('biz/leave/LeaveApprovalView')).toBe(lazyBusinessFormComponent('/biz/leave/LeaveApprovalView.tsx'));
+  });
+
+  it('does not contain admin route pages, so the approval entry never bundles them', () => {
+    expect(hasBusinessFormComponent('users/UsersPage')).toBe(false);
+    expect(hasBusinessFormComponent('alerts/rules/AlertRulesPage')).toBe(false);
+    expect(lazyBusinessFormComponent('system/monitor/MonitorPage')).toBeNull();
+    // 只允许 biz/**、*BusinessForm.tsx、*ApprovalView.tsx 三类文件
+    for (const key of Object.keys(businessFormModules)) {
+      expect(key).toMatch(/^\.\.\/pages\/(biz\/|.*BusinessForm\.tsx$|.*ApprovalView\.tsx$)/);
+    }
   });
 });

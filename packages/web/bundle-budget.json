@@ -1,26 +1,41 @@
 {
-  "$comment": "构建产物预算（npm run check:bundle）。数值 = 当前实测留 ~10% 余量；改动分包或新增首屏依赖使其超限时，先证明必要性再上调。口径见 scripts/bundle-analyze.mjs。",
-  "maxJsChunks": 1700,
+  "$comment": "构建产物预算（npm run check:bundle）。数值 = 当前实测留 ~10% 余量；改动分包或新增首屏依赖使其超限时，先证明必要性再上调。口径见 scripts/bundle-analyze.mjs。maxTotalJsChunks / maxTotalJsMB 是入口 assetsDir 内全部 JS（含按需加载）的总量：某入口误引后台页面注册表时关键路径指标不变、但这里会成倍增长。",
+  "maxJsChunks": 1000,
   "entries": {
     "index.html": {
       "maxCriticalFiles": 8,
       "maxCriticalGzKB": 520,
       "maxCriticalCssFiles": 4,
       "routes": {
-        "AdminLayout": { "maxFiles": 40, "maxGzKB": 450 },
-        "DashboardPage": { "maxFiles": 30, "maxGzKB": 420 }
+        "AdminLayout": {
+          "maxFiles": 40,
+          "maxGzKB": 450
+        },
+        "DashboardPage": {
+          "maxFiles": 30,
+          "maxGzKB": 420
+        }
       },
-      "authenticatedFirstScreen": { "maxFiles": 60, "maxGzKB": 1000 }
+      "authenticatedFirstScreen": {
+        "maxFiles": 60,
+        "maxGzKB": 1000
+      },
+      "maxTotalJsChunks": 810,
+      "maxTotalJsMB": 41
     },
     "member.html": {
       "maxCriticalFiles": 8,
       "maxCriticalGzKB": 270,
-      "maxCriticalCssFiles": 4
+      "maxCriticalCssFiles": 4,
+      "maxTotalJsChunks": 75,
+      "maxTotalJsMB": 2
     },
     "approval.html": {
       "maxCriticalFiles": 8,
       "maxCriticalGzKB": 220,
-      "maxCriticalCssFiles": 4
+      "maxCriticalCssFiles": 4,
+      "maxTotalJsChunks": 120,
+      "maxTotalJsMB": 16
     }
   }
 }

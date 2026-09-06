@@ -212,6 +212,12 @@ export default defineConfig(({ mode }) => {
           ),
         output: {
           /**
+           * 静态资源（字体 / wasm / 图片 / CSS）三个入口共用 `assets/`：文件名含内容 hash，相同内容在各入口构建中
+           * 得到相同文件名，落到同一目录即天然去重（PPT CJK 字体 15.7 MB、pdfium wasm 4.4 MB 等此前被每个入口复制一份）。
+           * JS chunk 仍按入口分目录（`assetsDir`），互不干扰。
+           */
+          assetFileNames: 'assets/[name]-[hash][extname]',
+          /**
            * 三层分包（rolldown 原生 codeSplitting.groups，分组指派是权威的）：
            *
            * ① 关键路径层 `initial-*`：入口静态闭包内的全部模块（第三方 / 应用各一个 chunk）。

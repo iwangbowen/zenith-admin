@@ -10,7 +10,7 @@ import { Button, Input, Select, Typography, Space, Banner } from '@douyinfe/semi
 import { Plus, Trash2, CircleCheck, CircleAlert } from 'lucide-react';
 import type { WorkflowCustomFormConfig, WorkflowCustomFormVariable } from '@zenith/shared/workflow';
 import IconPicker from '@/components/IconPicker';
-import { hasPageComponent } from '@/utils/page-registry';
+import { hasBusinessFormComponent } from '@/utils/business-form-registry';
 
 /** 变量 key 规范：字母/下划线开头，仅字母数字下划线（与表单字段 key、表达式 form.* 引用一致） */
 export const CUSTOM_FORM_VARIABLE_KEY_PATTERN = /^[A-Za-z_$][\w$]*$/;
@@ -54,7 +54,7 @@ const EMPTY_CONFIG: WorkflowCustomFormConfig = { createComponent: '', viewCompon
 /** 组件路径解析状态提示 */
 function ComponentStatus({ path }: Readonly<{ path: string }>) {
   if (!path.trim()) return null;
-  const ok = hasPageComponent(path);
+  const ok = hasBusinessFormComponent(path);
   return ok ? (
     <Typography.Text type="success" size="small" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
       <CircleCheck size={13} /> 已找到组件

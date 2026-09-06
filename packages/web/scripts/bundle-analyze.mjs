@@ -107,6 +107,18 @@ function measureCss(names) {
   return { files: names.length, rawKB: kb(raw), gzKB: kb(g) };
 }
 
+/** 某个 assetsDir 内全部 JS chunk 的数量与原始体积（不压缩，避免全量 gzip 拖慢分析） */
+function totalOf(assetsDir) {
+  let files = 0;
+  let raw = 0;
+  for (const c of chunks.values()) {
+    if (assetsDir && c.assetsDir !== assetsDir) continue;
+    files++;
+    raw += c.size;
+  }
+  return { files, rawMB: Math.round((raw / 1024 / 1024) * 10) / 10 };
+}
+
 // ─── sourcemap 归因（无 .map 时跳过）────────────────────────────────────────
 
 function attribute(set, top = 30) {
@@ -192,6 +204,9 @@ for (const html of entries) {
     dynamicTargets: dynamicTargets.size,
     heavyInCritical: [...critical].filter((n) => heavyRe.test(n)),
     attribution: attribute(critical),
+    // 入口 assetsDir 内全部 JS chunk（含按需加载）：分入口构建后各自独立输出，某个入口若误引后台页面注册表，
+    // 关键路径指标不变但这里会成倍增长——这是产物体积失控的直接口径
+    total: totalOf(entryAssetsDir),
     routes: {},
   };
   if (html === 'index.html') {
@@ -233,6 +248,8 @@ function checkBudget(rep, budget) {
     if (limits.maxCriticalGzKB !== undefined && e.critical.gzKB > limits.maxCriticalGzKB) out.push(`${html} 关键路径 gz ${e.critical.gzKB} KB > ${limits.maxCriticalGzKB} KB`);
     if (limits.maxCriticalCssFiles !== undefined && e.critical.css.files > limits.maxCriticalCssFiles) out.push(`${html} 关键路径 CSS 文件数 ${e.critical.css.files} > ${limits.maxCriticalCssFiles}`);
     if (e.heavyInCritical.length) out.push(`${html} 关键路径包含重型库：${e.heavyInCritical.join(', ')}`);
+    if (limits.maxTotalJsChunks !== undefined && e.total.files > limits.maxTotalJsChunks) out.push(`${html} 入口产物 JS chunk 总数 ${e.total.files} > ${limits.maxTotalJsChunks}（是否误引了后台页面注册表？）`);
+    if (limits.maxTotalJsMB !== undefined && e.total.rawMB > limits.maxTotalJsMB) out.push(`${html} 入口产物 JS 总体积 ${e.total.rawMB} MB > ${limits.maxTotalJsMB} MB`);
     for (const [route, rl] of Object.entries(limits.routes ?? {})) {
       const r = e.routes?.[route];
       if (!r) continue;
@@ -255,7 +272,7 @@ function renderText(rep) {
   L.push(`JS chunk：${rep.totals.jsChunks} 个，共 ${rep.totals.jsTotalMB} MB；体积分布 ${JSON.stringify(rep.totals.histogram)}`);
   for (const [html, e] of Object.entries(rep.entries)) {
     L.push(`\n===== ${html} =====`);
-    L.push(`入口脚本 ${e.scripts.length} 个，modulepreload ${e.modulepreloadHints} 条，静态闭包 ${e.critical.files} 个文件（${e.critical.tiny} 个 < 4KB）`);
+    L.push(`入口脚本 ${e.scripts.length} 个，modulepreload ${e.modulepreloadHints} 条，静态闭包 ${e.critical.files} 个文件（${e.critical.tiny} 个 < 4KB）；入口产物 JS 共 ${e.total.files} 个 chunk / ${e.total.rawMB} MB`);
     L.push(`关键路径 JS：${e.critical.rawKB} KB raw / ${e.critical.gzKB} KB gz / ${e.critical.brKB} KB br；CSS：${e.critical.css.files} 个 / ${e.critical.css.gzKB} KB gz`);
     if (e.heavyInCritical.length) L.push(`⚠ 关键路径含重型库：${e.heavyInCritical.join(', ')}`);
     L.push(`最大文件：${e.critical.files_list.slice(0, 8).map((n) => `${n}(${kb(chunks.get(n).size)}KB)`).join(', ')}`);
