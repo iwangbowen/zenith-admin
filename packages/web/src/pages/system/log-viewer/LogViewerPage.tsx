@@ -11,6 +11,7 @@ import { logViewerDownloadUrl, logViewerKeys, logViewerStreamUrl, useLogViewerCo
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { FilterSelect } from '@/components/search-filters';
+import { CommandOutputPanel } from '@/components/ops/CommandOutputPanel';
 
 // ─── ANSI 颜色解析器 ────────────────────────────────────────────────────────
 const ANSI_FG = ['#3c3c3c','#c0392b','#27ae60','#d4ac0d','#2980b9','#8e44ad','#17a589','#bdc3c7'];
@@ -313,7 +314,7 @@ export default function LogViewerPage() {
       </div>
 
       {/* 输出区（ANSI 色彩渲染） */}
-      <div style={{ flex: 1, minHeight: 0, borderRadius: 'var(--semi-border-radius-medium)', overflow: 'hidden', border: '1px solid var(--semi-color-border)' }}>
+      <CommandOutputPanel output={content} emptyText={contentQuery.isFetching ? '加载中...' : '请选择日志文件并点击「加载」'}>
         <div
           ref={scrollRef}
           style={{
@@ -340,7 +341,7 @@ export default function LogViewerPage() {
             )
           }
         </div>
-      </div>
+      </CommandOutputPanel>
     </div>
   );
 }

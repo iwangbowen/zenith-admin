@@ -4,6 +4,7 @@ import { Play, Square, Wifi, Search } from 'lucide-react';
 import { streamText } from '@/utils/streaming';
 import { DNS_RECORD_TYPES, NET_DIAG_STREAM_TYPES, type DnsRecordType } from '@zenith/shared/ops';
 import { enumValueOf } from '@zenith/shared/core';
+import { CommandOutputPanel } from '@/components/ops/CommandOutputPanel';
 import {
   networkDiagStreamUrl,
   useDnsLookup,
@@ -306,9 +307,9 @@ export default function NetworkDiagPage() {
       </div>
 
       {/* 输出区 */}
-      <div style={{ flex: 1, minHeight: 0, borderRadius: 'var(--semi-border-radius-medium)', overflow: 'hidden', border: '1px solid var(--semi-color-border)' }}>
-        {tool === 'traceroute'
-          ? (
+      {tool === 'traceroute'
+        ? (
+          <CommandOutputPanel output={output} emptyText="等待运行...">
             <Tabs collapsible="auto" type="line" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
               tabBarExtraContent={running ? <Tag color="green" size="small" style={{ marginRight: 8 }}>● 运行中</Tag> : undefined}>
               <TabPane tab="可视化" itemKey="viz" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 0 }}>
@@ -326,24 +327,18 @@ export default function NetworkDiagPage() {
                 </pre>
               </TabPane>
             </Tabs>
-          )
-          : (
-            <>
-              <div style={{ padding: '4px 12px', background: 'var(--semi-color-fill-1)', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography.Text size="small" type="secondary">输出</Typography.Text>
-                {running && <Tag color="green" size="small">● 运行中</Tag>}
-              </div>
-              <pre ref={preRef} style={{
-                margin: 0, padding: 12, fontFamily: 'Consolas, "Courier New", monospace', fontSize: 13, lineHeight: 1.6,
-                whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--surface-card)',
-                height: 'calc(100% - 32px)', overflow: 'auto', color: 'var(--semi-color-text-0)',
-              }}>
-                {output || <Typography.Text type="tertiary" style={{ fontStyle: 'italic' }}>等待运行...</Typography.Text>}
-              </pre>
-            </>
-          )
-        }
-      </div>
+          </CommandOutputPanel>
+        )
+        : (
+          <CommandOutputPanel
+            output={output}
+            running={running}
+            emptyText="等待运行..."
+            preRef={preRef}
+            header="输出"
+          />
+        )
+      }
     </div>
   );
 }

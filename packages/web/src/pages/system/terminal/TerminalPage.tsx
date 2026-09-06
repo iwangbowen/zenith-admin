@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button, Typography, Space, Dropdown, Tooltip } from '@douyinfe/semi-ui';
-import { Plus, TerminalSquare, ChevronDown, ChevronLeft, ChevronRight, X, PanelLeft, Settings, Server, Package } from 'lucide-react';
+import { Plus, TerminalSquare, ChevronDown, ChevronLeft, ChevronRight, X, Settings, Server } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import FileExplorer from './FileExplorer';
 import TerminalSettings from './TerminalSettings';
@@ -13,7 +13,7 @@ import { useTerminalPreferences } from './useTerminalPreferences';
 import { terminalFileContract, type TerminalShellInfo } from '@zenith/shared/ops';
 import { api } from '@/lib/contract-query';
 import { TOKEN_KEY } from '@zenith/shared/core';
-import { getFileIcon, getShellIcon } from '@/utils/fileIcons';
+import { getShellIcon } from '@/utils/fileIcons';
 import { CursorContextDropdown } from '@/components/CursorContextDropdown';
 import { terminalSessionStore } from './terminalSessionStore';
 import { useOpsHosts } from '@/hooks/queries/ops-hosts';
@@ -34,6 +34,7 @@ import {
   type SplitDirection,
 } from './paneTree';
 import { confirmDanger } from '@/utils/confirm';
+import { TerminalPanelButton, TerminalTabIcon, type TerminalPanelKey } from './TerminalTabChrome';
 
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
 
@@ -567,6 +568,17 @@ export default function TerminalPage() {
     </Dropdown.Menu>
   );
 
+  const activePanel: TerminalPanelKey | null = showExplorer ? 'explorer' : showSshProfiles ? 'ssh' : showDocker ? 'docker' : null;
+  const togglePanel = (panel: TerminalPanelKey) => {
+    if (panel === 'explorer') setShowExplorer((v) => !v);
+    else setShowExplorer(false);
+    if (panel === 'ssh') setShowSshProfiles((v) => !v);
+    else setShowSshProfiles(false);
+    if (panel === 'docker') setShowDocker((v) => !v);
+    else setShowDocker(false);
+    setShowSftp(false);
+  };
+
   /** 渲染单个 tab 的图标+标题+脏标记 */
   const renderTabInfo = (s: Session) => {
     const leaf = activeLeafOf(s);
@@ -584,40 +596,29 @@ export default function TerminalPage() {
         borderTop: tabPosition === 'bottom' ? '1px solid var(--semi-color-border)' : undefined,
       }}
     >
-      <Tooltip content={showExplorer ? '隐藏文件浏览器' : '显示文件浏览器'}>
-        <Button
-          icon={<PanelLeft size={14} />}
-          size="small"
-          theme="borderless"
-          type={showExplorer ? 'primary' : 'tertiary'}
-          onClick={() => { setShowExplorer((v) => !v); setShowSshProfiles(false); setShowDocker(false); setShowSftp(false); }}
-          style={{ margin: '0 2px 0 4px', flexShrink: 0, alignSelf: 'center' }}
-        />
-      </Tooltip>
-      <Tooltip content={showSshProfiles ? '隐藏 SSH 连接' : '管理 SSH 连接'}>
-        <Button
-          icon={<Server size={14} />}
-          size="small"
-          theme="borderless"
-          type={showSshProfiles ? 'primary' : 'tertiary'}
-          onClick={() => { setShowSshProfiles((v) => !v); setShowExplorer(false); setShowDocker(false); setShowSftp(false); }}
-          style={{ marginRight: 2, flexShrink: 0, alignSelf: 'center' }}
-        />
-      </Tooltip>
-      <Tooltip content={showDocker ? '隐藏 Docker 容器' : '浏览 Docker 容器'}>
-        <Button
-          icon={<Package size={14} />}
-          size="small"
-          theme="borderless"
-          type={showDocker ? 'primary' : 'tertiary'}
-          onClick={() => { setShowDocker((v) => !v); setShowExplorer(false); setShowSshProfiles(false); setShowSftp(false); }}
-          style={{ marginRight: 4, flexShrink: 0, alignSelf: 'center' }}
-        />
-      </Tooltip>
+      <TerminalPanelButton
+        panel="explorer"
+        activePanel={activePanel}
+        onToggle={togglePanel}
+        style={{ margin: '0 2px 0 4px', flexShrink: 0, alignSelf: 'center' }}
+      />
+      <TerminalPanelButton
+        panel="ssh"
+        activePanel={activePanel}
+        onToggle={togglePanel}
+        style={{ marginRight: 2, flexShrink: 0, alignSelf: 'center' }}
+      />
+      <TerminalPanelButton
+        panel="docker"
+        activePanel={activePanel}
+        onToggle={togglePanel}
+        style={{ marginRight: 4, flexShrink: 0, alignSelf: 'center' }}
+      />
       <div className="admin-tabs-bar__scroll">
         {sessions.map((s) => {
           const isActive = s.id === activeId;
           const { leaf, tabDirty } = renderTabInfo(s);
+          const title = `${tabDirty ? '● ' : ''}${leaf.title}`;
           return (
             <div
               key={s.id}
@@ -634,16 +635,9 @@ export default function TerminalPage() {
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveId(s.id); } }}
             >
               <span className="admin-tab-item__icon">
-                {leaf.kind === 'editor' ? (
-                  <Icon icon={getFileIcon(leaf.title)} width={13} height={13} />
-                ) : (
-                  <Icon icon={getShellIcon(leaf.shell)} width={13} height={13} />
-                )}
+                <TerminalTabIcon leaf={leaf} size={13} />
               </span>
-              <span className="admin-tab-item__text">
-                {tabDirty ? '● ' : ''}
-                {leaf.title}
-              </span>
+              <span className="admin-tab-item__text">{title}</span>
               <button
                 className="admin-tab-item__close"
                 aria-label="关闭标签"
@@ -691,33 +685,9 @@ export default function TerminalPage() {
         ) : (
           /* 展开态：横排按钮 */
           <>
-            <Tooltip content={showExplorer ? '隐藏文件浏览器' : '显示文件浏览器'}>
-              <Button
-                icon={<PanelLeft size={14} />}
-                size="small"
-                theme="borderless"
-                type={showExplorer ? 'primary' : 'tertiary'}
-                onClick={() => { setShowExplorer((v) => !v); setShowSshProfiles(false); setShowDocker(false); setShowSftp(false); }}
-              />
-            </Tooltip>
-            <Tooltip content={showSshProfiles ? '隐藏 SSH 连接' : '管理 SSH 连接'}>
-              <Button
-                icon={<Server size={14} />}
-                size="small"
-                theme="borderless"
-                type={showSshProfiles ? 'primary' : 'tertiary'}
-                onClick={() => { setShowSshProfiles((v) => !v); setShowExplorer(false); setShowDocker(false); setShowSftp(false); }}
-              />
-            </Tooltip>
-            <Tooltip content={showDocker ? '隐藏 Docker 容器' : '浏览 Docker 容器'}>
-              <Button
-                icon={<Package size={14} />}
-                size="small"
-                theme="borderless"
-                type={showDocker ? 'primary' : 'tertiary'}
-                onClick={() => { setShowDocker((v) => !v); setShowExplorer(false); setShowSshProfiles(false); setShowSftp(false); }}
-              />
-            </Tooltip>
+            <TerminalPanelButton panel="explorer" activePanel={activePanel} onToggle={togglePanel} />
+            <TerminalPanelButton panel="ssh" activePanel={activePanel} onToggle={togglePanel} />
+            <TerminalPanelButton panel="docker" activePanel={activePanel} onToggle={togglePanel} />
             <div style={{ flex: 1 }} />
             <Button icon={<Plus size={13} />} size="small" theme="borderless" type="tertiary" onClick={() => addTerminal()} title="新建终端" />
             <Dropdown trigger="click" position="bottomLeft" render={shellMenu}>
@@ -757,11 +727,7 @@ export default function TerminalPage() {
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveId(s.id); } }}
               >
                 <span className="terminal-sidebar__item__icon">
-                  {leaf.kind === 'editor' ? (
-                    <Icon icon={getFileIcon(leaf.title)} width={14} height={14} />
-                  ) : (
-                    <Icon icon={getShellIcon(leaf.shell)} width={14} height={14} />
-                  )}
+                  <TerminalTabIcon leaf={leaf} size={14} />
                 </span>
                 {!tabCollapsed && (
                   <>
@@ -783,9 +749,7 @@ export default function TerminalPage() {
 
         {(tabCollapsed && !isLeft) && (
           <div style={{ padding: '4px 0', borderTop: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-            <Tooltip content={showExplorer ? '隐藏文件浏览器' : '显示文件浏览器'} position="left">
-              <Button icon={<PanelLeft size={14} />} size="small" theme="borderless" type={showExplorer ? 'primary' : 'tertiary'} onClick={() => setShowExplorer((v) => !v)} />
-            </Tooltip>
+            <TerminalPanelButton panel="explorer" activePanel={showExplorer ? 'explorer' : null} onToggle={() => setShowExplorer((v) => !v)} tooltipPosition="left" />
             <Tooltip content="新建终端" position="left">
               <Button icon={<Plus size={13} />} size="small" theme="borderless" type="tertiary" onClick={() => addTerminal()} />
             </Tooltip>
@@ -796,9 +760,7 @@ export default function TerminalPage() {
         )}
         {(tabCollapsed && isLeft) && (
           <div style={{ padding: '4px 0', borderTop: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-            <Tooltip content={showExplorer ? '隐藏文件浏览器' : '显示文件浏览器'} position="right">
-              <Button icon={<PanelLeft size={14} />} size="small" theme="borderless" type={showExplorer ? 'primary' : 'tertiary'} onClick={() => setShowExplorer((v) => !v)} />
-            </Tooltip>
+            <TerminalPanelButton panel="explorer" activePanel={showExplorer ? 'explorer' : null} onToggle={() => setShowExplorer((v) => !v)} tooltipPosition="right" />
             <Tooltip content="新建终端" position="right">
               <Button icon={<Plus size={13} />} size="small" theme="borderless" type="tertiary" onClick={() => addTerminal()} />
             </Tooltip>
