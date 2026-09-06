@@ -4,6 +4,58 @@
 
 ---
 
+## v2.22.0 - 2026-09-07
+
+**第二轮代码去重**：在 v2.21.0 的基础上继续消除 server / web / mock 三端各写一份的纯逻辑、schema 与页面层的样板重复，
+并让既有公共构件被真正采用。全部接口响应、SQL、页面行为、错误文案与权限不变；`drizzle-kit generate` 确认数据库 DDL 无任何变化。
+精确克隆 691 处 / 8,361 行（1.37%）→ 585 处 / 6,864 行（1.13%）；406 个文件净删除约 1,100 行（另新增 58 个 golden 单测用例锁定既有输出）。
+
+### Added
+
+#### 共享层（`@zenith/shared`）
+
+- `core/compare`：`NUMERIC_COMPARE_OPS` + `compareNumber()`，报表预警、IoT 告警 / 联动、监控告警的阈值判定同源；
+  `REPORT_ALERT_OPS` 与 `IOT_COMPARE_OPS` 改为同一常量的别名
+- `core/math`：`percentOf()`（与历史 `Math.round(ratio * 1000) / 10` 逐字等价，替换 32 处）、
+  `uniquePositiveInts()` / `isPositiveInt()`（替换 20 处 Set 去重正整数 ID 写法）
+- `core/sensitive`：`maskSecret()`（头尾保留 + 中间替代，短值整体遮蔽）与 `SECRET_PLACEHOLDER`，
+  收口 11 处凭据打码变体与 8 处 `'******'` 占位常量
+- `identity/data-scope`：`DATA_SCOPE_PRIORITY` + `mostPermissiveDataScope()`，服务端、用户数据权限弹窗与 Mock 同源
+- `rules/decision-table`：决策表行匹配、未命中回退、hit-policy 装配与 collect 聚合，服务端引擎与 Mock 只保留各自的取值方式
+- 新增 golden 单测锁定既有输出（`core-helpers` / `data-scope` / `decision-table`，+58 用例）
+
+#### 服务端 helper
+
+- `db/schema/common.ts` `timestampColumns({ withTimezone? })`：263 张表的 `createdAt` / `updatedAt` 改为展开积木
+- `lib/default-flag.ts` `clearDefaultFlag` / `ensureSingleDefault`：短信 / 推送 / 文件存储 / 支付渠道 / 公众号 /
+  报表环境 / CMS 站点 / 开放平台套餐 / 工作流保存视图 9 个 service 的「单一默认项」写入收口
+- `services/workflow/instances/shared.ts` `lockInstanceExpecting`：10 处实例「行级锁 + 状态重校验 + 409」样板收口
+- `lib/export-center/presets.ts`：`RETENTION_7_DAYS` / `STATUS_ENUM_MAP` / `tenantScopedTableSource`，38 个导出定义去重
+- CMS 主题 `_shared.tsx` 新增 `externalLinkProps` / `searchResultHref` / `PublishedDate` / `TagLinks` / `SinglePageArticle`，
+  五套主题与区块渲染器复用（SSR 输出不变）
+
+#### 前端通用构件
+
+- `components/ModalFooter`：弹窗 / 抽屉「取消 + 确认」页脚（loading / disabled / danger / 左侧次要动作），
+  `useEditModal` 新增 `footerProps` 直接展开；20 处手写页脚迁移
+- `hooks/useImportUpload`：导入文件选择 → 上传 → 提交任务（正式 / 预检）的公共流程，`ImportButton` 与导入中心共用
+- 终端文件树 `fileIcon` / `sortEntriesDirFirst`，Docker 容器树复用 SFTP / 本机树的 `setTreeChildren`
+- 顶栏公告 / 站内信弹层抽出 `NotificationPopover` 公共壳
+- 10 组在多个页面逐字重复的 Tag 颜色映射收口到域内模块（wiki / analytics / iot / member / 通知严重级别 / 渠道消息类型 / 目录同步状态）
+
+### Changed
+
+- 25 个仍用 legacy `SearchToolbar` 双份（桌面 / 移动）JSX 的列表页迁移到 `ListSearchToolbar`，
+  26 个手写表格接线的页面改为 `listTableProps`；桌面工具栏顺序统一为 关键词 → 筛选 → 查询 / 重置 → 新增 → 低频操作
+- 服务端 15 处手写分页包络改为 `buildListResult`（count 与 rows 并行），50+ 处 `if (!row) throw new HTTPException(404…)` 改为
+  `requireRow` / `requireFirstRow`；报表环境的租户匹配改用 `exactTenantCondition`
+- MSW Mock：100 个 handler 文件的 find → notFound → Object.assign / findIndex → splice / `Math.max` 自增 ID 改为
+  `requireItem` / `updateItem` / `removeByIds` / `nextIdFrom`；`requireItem` / `updateItem` 新增可选 `init` 以保留 HTTP 状态语义
+- 用户 AI 配置 / 短信 / 推送凭据的打码改为 fail-closed：长度不足以同时保留头尾 4 位的短密钥整体输出占位，不再露出全文
+- 开发规范：`constraints.md` / `constraints-frontend.md` / `ui-patterns.md` / `crud-backend.md` 登记上述构件为必须复用项
+
+---
+
 ## v2.21.0 - 2026-09-06
 
 **全仓代码去重**：列表页与服务层的样板代码收口为通用构件，跨包重复的纯业务逻辑下沉 `shared`，各业务域抽出域内共用部件。
