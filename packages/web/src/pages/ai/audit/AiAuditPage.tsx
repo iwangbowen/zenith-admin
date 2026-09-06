@@ -9,14 +9,14 @@ import { enumValueOf } from '@zenith/shared/core';
 import { formatDateForApi } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
 import AppModal from '@/components/AppModal';
 import AiMessagesViewer from '../components/AiMessagesViewer';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { contractKey, useApiQuery } from '@/lib/contract-query';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
+import { AiMessageSnippet, AiUserCell } from '../ai-display';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const { Text } = Typography;
 
@@ -58,7 +58,6 @@ export default function AiAuditPage() {
     startDate: submitted.startDate || undefined,
     endDate: submitted.endDate || undefined,
   });
-  const data = listQuery.data ?? null;
   const contextQuery = useAuditContext(contextMsgId);
 
   const handleSearch = () => {
@@ -93,20 +92,13 @@ export default function AiAuditPage() {
       title: '用户',
       dataIndex: 'username',
       width: 120,
-      render: (_: unknown, record) => record.username ? (
-        <div>
-          <Text style={{ fontSize: 13 }}>{record.nickname || record.username}</Text>
-          <Text type="tertiary" size="small" style={{ display: 'block' }}>{record.username}</Text>
-        </div>
-      ) : '—',
+      render: (_: unknown, record) => <AiUserCell username={record.username} nickname={record.nickname} />,
     },
     {
       title: '消息内容',
       dataIndex: 'content',
       minWidth: 320,
-      render: (v: string) => (
-        <Text ellipsis={{ showTooltip: { opts: { style: { maxWidth: 600 } } } }} style={{ fontSize: 13 }}>{v}</Text>
-      ),
+      render: (v: string) => <AiMessageSnippet text={v} />,
     },
     {
       title: '对话',
@@ -148,47 +140,30 @@ export default function AiAuditPage() {
         else setDraftRange(null);
       }} />
   );
-  const renderSearchBtn = () => <SearchButton onClick={handleSearch} />;
-  const renderResetBtn = () => <ResetButton onClick={handleReset} />;
-
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeyword()}
-            {renderRole()}
-            {renderRange()}
-            {renderSearchBtn()}
-            {renderResetBtn()}
-          </>
-        )}
-        mobilePrimary={renderSearchBtn()}
-        mobileFilters={(
+      <ListSearchToolbar
+        filters={(
           <>
             {renderKeyword()}
             {renderRole()}
             {renderRange()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="审计筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
       <ConfigurableTable<AiFeedbackItem>
-        bordered
-        rowKey="id"
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={{
-          ...buildPagination(data?.total ?? 0),
-          pageSizeOpts: [10, 20, 50],
-          showSizeChanger: true,
-          showTotal: true,
-        }}
+        {...listTableProps(listQuery, {
+          pagination: (total) => ({
+            ...buildPagination(total),
+            pageSizeOpts: [10, 20, 50],
+            showSizeChanger: true,
+            showTotal: true,
+          }),
+        })}
       />
       <AppModal
         title={contextQuery.data?.conversationTitle ? `对话上下文 — ${contextQuery.data.conversationTitle}` : '对话上下文'}

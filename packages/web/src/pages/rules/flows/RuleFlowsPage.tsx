@@ -31,6 +31,7 @@ import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { JsonBlock } from '@/components/JsonBlock';
 import { abortSubmit } from '@/lib/abort-submit';
+import { RuleVersionHistorySheet } from '../components/RuleVersionHistorySheet';
 
 const { Text } = Typography;
 
@@ -232,43 +233,19 @@ export default function RuleFlowsPage() {
         )}
       </SideSheet>
 
-      <SideSheet
-        title={versionsRow ? `版本历史 · ${versionsRow.name}` : '版本历史'}
+      <RuleVersionHistorySheet
+        titleName={versionsRow?.name}
         visible={!!versionsRow}
-        onCancel={() => setVersionsRow(null)}
-        width={420}
-      >
-        <List
-          dataSource={versionsQuery.data ?? []}
-          emptyContent="暂无发布版本"
-          renderItem={(v) => (
-            <List.Item
-              main={(
-                <Space spacing={8} wrap>
-                  <Tag size="small" color="blue">v{v.version}</Tag>
-                  <Text type="tertiary" size="small">{v.publishedAt}</Text>
-                </Space>
-              )}
-              extra={canEdit ? (
-                <Button
-                  size="small"
-                  loading={rollbackMutation.isPending}
-                  onClick={() => { Modal.confirm({
-                    title: `回滚到 v${v.version}？`,
-                    content: '历史快照将覆盖当前编辑态并置为草稿；线上继续运行既有发布，重新发布后生效',
-                    onOk: async () => {
-                      if (!versionsRow) return;
-                      await rollbackMutation.mutateAsync({ params: { id: versionsRow.id, version: v.version } });
-                      Toast.success('回滚成功');
-                      setVersionsRow(null);
-                    },
-                  }); }}
-                >回滚</Button>
-              ) : undefined}
-            />
-          )}
-        />
-      </SideSheet>
+        versions={versionsQuery.data ?? []}
+        loading={rollbackMutation.isPending}
+        canRollback={canEdit}
+        versionOf={(v) => v.version}
+        publishedAtOf={(v) => v.publishedAt}
+        onClose={() => setVersionsRow(null)}
+        onRollback={(v) => versionsRow
+          ? rollbackMutation.mutateAsync({ params: { id: versionsRow.id, version: v.version } })
+          : Promise.resolve()}
+      />
     </div>
   );
 }

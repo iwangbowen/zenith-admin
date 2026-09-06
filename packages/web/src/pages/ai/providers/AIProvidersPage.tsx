@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Button, Modal, Tag, Toast, Switch, Typography } from '@douyinfe/semi-ui';
+import { Button, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
 import { useTreeExpansion, type TreeRowKey } from '@/hooks/useTreeExpansion';
 import type { AiProviderConfig } from '@zenith/shared/ai';
@@ -18,9 +17,9 @@ import {
   useSaveAiProvider,
   useSetDefaultAiProvider,
 } from '@/hooks/queries/ai-providers';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
 
 const { Text } = Typography;
 
@@ -40,23 +39,16 @@ export default function AIProvidersPage() {
   const toggleStatusMutation = useSaveAiProvider();
   const deleteMutation = useDeleteAiProvider();
   const setDefaultMutation = useSetDefaultAiProvider();
-  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
-
-  const handleToggleStatus = (record: AiProviderConfig, checked: boolean) => {
-    const doToggle = async () => {
-      await toggleStatusMutation.mutateAsync({ id: record.id, values: { isEnabled: checked } });
-      Toast.success(checked ? '已启用' : '已禁用');
-    };
-    if (checked) {
-      void doToggle();
-    } else {
-      Modal.confirm({
-        title: '确认禁用',
-        content: `禁用后「${record.name}」将无法提供 AI 服务，确认禁用？`,
-        onOk: () => void doToggle(),
-      });
-    }
-  };
+  const status = useStatusToggle<AiProviderConfig>({
+    isEnabled: (record) => record.isEnabled,
+    toggle: (record, enabled) => toggleStatusMutation.mutateAsync({ id: record.id, values: { isEnabled: enabled } }),
+    confirmDisable: (record) => ({
+      title: '确认禁用',
+      content: `禁用后「${record.name}」将无法提供 AI 服务，确认禁用？`,
+    }),
+    disabled: !hasPermission('ai:provider:edit'),
+    messages: { disabled: '已禁用' },
+  });
 
   function handleSearch() {
     void queryClient.invalidateQueries({ queryKey: aiProviderKeys.lists });
@@ -75,11 +67,6 @@ export default function AIProvidersPage() {
   const openEdit = (record: AiProviderConfig) => {
     setEditTarget(record);
     setModalVisible(true);
-  };
-
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
   };
 
   const handleSetDefault = async (id: number) => {
@@ -152,21 +139,7 @@ export default function AIProvidersPage() {
       render: (_: unknown, record: AiProviderConfig) =>
         (record.isDefault ? <Tag color="blue" size="small">默认</Tag> : null),
     },
-    {
-      title: '状态',
-      dataIndex: 'isEnabled',
-      width: 80,
-      fixed: 'right' as const,
-      render: (_: unknown, record: AiProviderConfig) => (
-        <Switch
-          checked={record.isEnabled}
-          loading={togglingStatusId === record.id}
-          disabled={!hasPermission('ai:provider:edit')}
-          onChange={(checked) => handleToggleStatus(record, checked)}
-          size="small"
-        />
-      ),
-    },
+    status.column({ dataIndex: 'isEnabled' }),
     createOperationColumn<AiProviderConfig>({
       width: 180,
       desktopInlineKeys: ['edit', 'delete'],
@@ -183,32 +156,17 @@ export default function AIProvidersPage() {
           hidden: !hasPermission('ai:provider:edit') || record.isDefault,
           onClick: () => handleSetDefault(record.id),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('ai:provider:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该服务商配置吗？',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该服务商配置吗？',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
 
   const renderKeywordSearch = () => (
     <KeywordInput placeholder="搜索名称/模型" value={search} onChange={(v) => setSearch(String(v ?? ''))} onSearch={handleSearch} />
-  );
-
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
   );
 
   const renderExpandButton = () => (
@@ -227,28 +185,12 @@ export default function AIProvidersPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderResetButton()}
-          </>
-        )}
-        actions={(
-          <>
-            {renderExpandButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordSearch()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileActions={renderExpandButton()}
+      <ListSearchToolbar
+        keyword={renderKeywordSearch()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={renderCreateButton()}
+        actions={renderExpandButton()}
         actionTitle="表格操作"
       />
       <ConfigurableTable

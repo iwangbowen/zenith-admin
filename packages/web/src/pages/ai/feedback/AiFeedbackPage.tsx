@@ -9,17 +9,17 @@ import { enumValueOf } from '@zenith/shared/core';
 import { formatDateForApi } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
 import AppModal from '@/components/AppModal';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { aiFeedbackKeys, downloadAiFeedbackCsv, useAiFeedbackContext, useAiFeedbackList, useHandleAiFeedback } from '@/hooks/queries/ai-feedback';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
 import AiMessagesViewer from '../components/AiMessagesViewer';
+import { AiMessageSnippet, AiUserCell } from '../ai-display';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const { Text } = Typography;
 
@@ -156,30 +156,19 @@ export default function AiFeedbackPage() {
       title: '用户',
       dataIndex: 'username',
       width: 120,
-      render: (_: unknown, record) => record.username ? (
-        <div>
-          <Text style={{ fontSize: 13 }}>{record.nickname || record.username}</Text>
-          <Text type="tertiary" size="small" style={{ display: 'block' }}>{record.username}</Text>
-        </div>
-      ) : '—',
+      render: (_: unknown, record) => <AiUserCell username={record.username} nickname={record.nickname} />,
     },
     {
       title: '用户提问',
       dataIndex: 'question',
       width: 220,
-      render: (v: string | null) => v ? (
-        <Text ellipsis={{ showTooltip: { opts: { style: { maxWidth: 480 } } } }} style={{ fontSize: 13 }}>{v}</Text>
-      ) : '—',
+      render: (v: string | null) => <AiMessageSnippet text={v} maxWidth={480} />,
     },
     {
       title: 'AI 回复内容',
       dataIndex: 'content',
       minWidth: 260,
-      render: (v: string) => (
-        <Text ellipsis={{ showTooltip: { opts: { style: { maxWidth: 600 } } } }} style={{ fontSize: 13 }}>
-          {v}
-        </Text>
-      ),
+      render: (v: string) => <AiMessageSnippet text={v} />,
     },
     {
       title: '对话',
@@ -273,60 +262,37 @@ export default function AiFeedbackPage() {
       }} />
   );
 
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
-
   const renderExportButton = () => (
     <Button type="primary" icon={<Download size={14} />} onClick={handleExport}>导出</Button>
   );
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        filters={(
           <>
             {renderFeedbackFilter()}
             {renderStatusFilter()}
             {renderModelFilter()}
             {renderDateRangeFilter()}
-            {renderSearchButton()}
-            {renderResetButton()}
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
         actions={renderExportButton()}
-        mobilePrimary={renderSearchButton()}
-        mobileFilters={(
-          <>
-            {renderFeedbackFilter()}
-            {renderStatusFilter()}
-            {renderModelFilter()}
-            {renderDateRangeFilter()}
-          </>
-        )}
         mobileActions={renderExportButton()}
         filterTitle="反馈筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
       <ConfigurableTable<AiFeedbackItem>
-        bordered
-        rowKey="id"
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={{
-          ...buildPagination(data?.total ?? 0),
-          pageSizeOpts: [10, 20, 50],
-          showSizeChanger: true,
-          showTotal: true,
-        }}
+        {...listTableProps(listQuery, {
+          pagination: (total) => ({
+            ...buildPagination(total),
+            pageSizeOpts: [10, 20, 50],
+            showSizeChanger: true,
+            showTotal: true,
+          }),
+        })}
       />
       <AppModal
         title="处理反馈"

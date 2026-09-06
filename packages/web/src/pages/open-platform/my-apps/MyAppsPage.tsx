@@ -8,7 +8,6 @@ import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OPEN_APP_ENVIRONMENT_LABE
 import type { OAuth2Client, OAuth2GrantType } from '@zenith/shared/open-platform';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
 import { useOAuth2ApiScopes } from '@/hooks/queries/oauth2-apps';
 import {
@@ -22,9 +21,9 @@ import {
   useSubmitMyApp,
 } from '@/hooks/queries/developer-apps';
 import { useQueryClient } from '@tanstack/react-query';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { MetricMeter, type MetricMeterTone } from '@/components/data-viz/MetricMeter';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -97,7 +96,6 @@ export default function MyAppsPage() {
   const deleteMutation = useDeleteMyApp();
   const submitMutation = useSubmitMyApp();
   const rotateMutation = useRotateMyAppSecret();
-  const data = listQuery.data;
   const modal = useEditModal<OAuth2Client, FormValues>({
     save: saveMutation,
     useDetail: useMyAppDetail,
@@ -215,36 +213,20 @@ export default function MyAppsPage() {
             });
           },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: app.reviewStatus === 'pending',
-          onClick: () => {
-            confirmDelete({
-              title: '确认删除应用？',
-              onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: app.id } });
-                Toast.success('应用已删除');
-              },
-            });
-          },
-        },
+          title: '确认删除应用？',
+          run: () => deleteMutation.mutateAsync({ params: { id: app.id } }),
+          successMessage: '应用已删除',
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索我的应用" value={draft.keyword} onChange={(keyword) => setDraft({ ...draft, keyword })} onSearch={search} width={210} />
-            <SearchButton onClick={search} />
-            <ResetButton onClick={reset} />
-            <CreateButton onClick={modal.openCreate}>创建应用</CreateButton>
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索我的应用" value={draft.keyword} onChange={(keyword) => setDraft({ ...draft, keyword })} onSearch={search} width={210} />}
         filters={(
           <>
             <FilterSelect
@@ -262,44 +244,17 @@ export default function MyAppsPage() {
             />
           </>
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索我的应用" value={draft.keyword} onChange={(keyword) => setDraft({ ...draft, keyword })} onSearch={search} width={190} />
-            <SearchButton onClick={search} />
-            <CreateButton onClick={modal.openCreate}>创建</CreateButton>
-          </>
-        )}
-        mobileFilters={(
-          <>
-            <FilterSelect
-              placeholder="全部环境"
-              items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
-              value={draft.environment}
-              onChange={(environment) => setDraft({ ...draft, environment: environment as OAuth2Client['environment'] })}
-              width="100%"
-            />
-            <FilterSelect
-              placeholder="全部审核状态"
-              items={OPEN_APP_REVIEW_STATUSES.map((value) => ({ value, label: OPEN_APP_REVIEW_STATUS_LABELS[value] }))}
-              value={draft.reviewStatus}
-              onChange={(reviewStatus) => setDraft({ ...draft, reviewStatus: reviewStatus as OAuth2Client['reviewStatus'] })}
-              width="100%"
-            />
-          </>
-        )}
-        mobileActions={<Button theme="borderless" onClick={reset}>重置筛选</Button>}
+        onSearch={search}
+        onReset={reset}
+        create={<CreateButton onClick={modal.openCreate}>创建应用</CreateButton>}
         actionTitle="应用操作"
       />
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<OAuth2Client>
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        empty="还没有应用，创建一个沙箱应用开始接入"
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, {
+          empty: '还没有应用，创建一个沙箱应用开始接入',
+          pagination: buildPagination,
+        })}
       />
 
       <SideSheet

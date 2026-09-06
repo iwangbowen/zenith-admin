@@ -2,17 +2,18 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
-  Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Popconfirm, Spin, Typography, List, Checkbox,
+  Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Spin, Typography, List, Checkbox,
 } from '@douyinfe/semi-ui';
 import { usePagination } from '@/hooks/usePagination';
 import { IllustrationIdle, IllustrationIdleDark } from '@douyinfe/semi-illustrations';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
-import { CheckCheck, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { InAppMessage } from '@zenith/shared/messaging';
 import { formatDateTime } from '@/utils/date';
-import { RefreshButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, RefreshButton } from '@/components/toolbar-controls';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { ListPagination } from '@/components/ListPagination';
+import { confirmAndDelete } from '@/components/list-page';
 import {
   inboxKeys,
   useBatchDeleteInboxMessages,
@@ -96,10 +97,13 @@ export default function InboxPage() {
     setPage(1);
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMutation.mutateAsync({ params: { id } });
-    setSelectedIds((prev) => prev.filter((x) => x !== id));
-    Toast.success('已删除');
+  const handleDelete = (id: number) => {
+    confirmAndDelete({
+      title: '确定要删除吗？',
+      run: () => deleteMutation.mutateAsync({ params: { id } }),
+      successMessage: '已删除',
+      onDeleted: () => setSelectedIds((prev) => prev.filter((x) => x !== id)),
+    });
   };
 
   const handleBatchRead = async () => {
@@ -108,10 +112,13 @@ export default function InboxPage() {
     Toast.success('已标记为已读');
   };
 
-  const handleBatchDelete = async () => {
-    await batchDeleteMutation.mutateAsync({ body: { ids: selectedIds } });
-    setSelectedIds([]);
-    Toast.success('已删除');
+  const handleBatchDelete = () => {
+    confirmAndDelete({
+      title: `确定要删除选中的 ${selectedIds.length} 条消息吗？`,
+      run: () => batchDeleteMutation.mutateAsync({ body: { ids: selectedIds } }),
+      successMessage: '已删除',
+      onDeleted: () => setSelectedIds([]),
+    });
   };
 
   const handleTabChange = (key: string) => {
@@ -139,16 +146,7 @@ export default function InboxPage() {
             标记已读 ({selectedIds.length})
           </Button>
         )}
-        {selectedIds.length > 0 && (
-          <Popconfirm
-            title={`确定要删除选中的 ${selectedIds.length} 条消息吗？`}
-            onConfirm={() => void handleBatchDelete()}
-          >
-            <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending}>
-              批量删除 ({selectedIds.length})
-            </Button>
-          </Popconfirm>
-        )}
+        {selectedIds.length > 0 && <BatchDeleteButton count={selectedIds.length} onClick={handleBatchDelete} loading={batchDeleteMutation.isPending} />}
         {tab !== 'read' && (
           <Button
             type="primary"
@@ -220,17 +218,18 @@ export default function InboxPage() {
                       </div>
                     )}
                   </div>
-                  <Popconfirm title="确定要删除吗？" onConfirm={() => void handleDelete(item.id)}>
-                    <Button
-                      theme="borderless"
-                      type="danger"
-                      size="small"
-                      style={{ flexShrink: 0 }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      删除
-                    </Button>
-                  </Popconfirm>
+                  <Button
+                    theme="borderless"
+                    type="danger"
+                    size="small"
+                    style={{ flexShrink: 0 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(item.id);
+                    }}
+                  >
+                    删除
+                  </Button>
                 </div>
               </List.Item>
             )}

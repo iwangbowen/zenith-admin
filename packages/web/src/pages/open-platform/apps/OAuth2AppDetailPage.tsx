@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, Descriptions, Empty, Skeleton, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -25,6 +25,7 @@ import {
 import { usePermission } from '@/hooks/usePermission';
 import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
+import { OpenPlatformPaginatedTab } from '../OpenPlatformPaginatedTab';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const { Text, Title } = Typography;
@@ -92,9 +93,7 @@ function AppStatsTab({ clientId }: Readonly<{ clientId: string }>) {
 }
 
 function GrantsTab({ appId }: Readonly<{ appId: number }>) {
-  const [page, setPage] = useState(1);
-  const query = useOAuth2AppGrants(appId, page, 10);
-  const data = query.data;
+  const useList = (page: number, pageSize: number) => useOAuth2AppGrants(appId, page, pageSize);
   const columns: ColumnProps<OAuth2UserGrant>[] = [
     { title: '用户', dataIndex: 'nickname', render: (value: string | null, row) => value || row.username || `用户 ${row.userId}` },
     { title: '用户名', dataIndex: 'username', width: 160, render: (value: string | null) => value ?? '—' },
@@ -103,30 +102,18 @@ function GrantsTab({ appId }: Readonly<{ appId: number }>) {
     dateTimeColumn('最近更新', 'updatedAt'),
   ];
   return (
-    <ConfigurableTable
-      bordered
+    <OpenPlatformPaginatedTab
+      useList={useList}
       columns={columns}
-      dataSource={data?.list ?? []}
-      loading={query.isFetching}
-      onRefresh={() => void query.refetch()}
-      refreshLoading={query.isFetching}
       rowKey="id"
       empty="暂无用户授权记录"
-      pagination={{
-        currentPage: page,
-        pageSize: 10,
-        total: data?.total ?? 0,
-        onPageChange: setPage,
-      }}
     />
   );
 }
 
 function TokensTab({ clientId, canManage }: Readonly<{ clientId: string; canManage: boolean }>) {
-  const [page, setPage] = useState(1);
-  const query = useOAuth2AppTokens(clientId, page, 10);
+  const useList = (page: number, pageSize: number) => useOAuth2AppTokens(clientId, page, pageSize);
   const revokeMutation = useRevokeOAuth2Token();
-  const data = query.data;
   const columns: ColumnProps<OAuth2Token>[] = [
     { title: '令牌', dataIndex: 'tokenPrefix', render: (value: string | null) => value ?? '—' },
     { title: '类型', dataIndex: 'tokenType', width: 100, render: (value: string) => <Tag size="small">{value}</Tag> },
@@ -161,29 +148,17 @@ function TokensTab({ clientId, canManage }: Readonly<{ clientId: string; canMana
     }),
   ];
   return (
-    <ConfigurableTable
-      bordered
+    <OpenPlatformPaginatedTab
+      useList={useList}
       columns={columns}
-      dataSource={data?.list ?? []}
-      loading={query.isFetching}
-      onRefresh={() => void query.refetch()}
-      refreshLoading={query.isFetching}
       rowKey="id"
       empty="暂无已颁发令牌"
-      pagination={{
-        currentPage: page,
-        pageSize: 10,
-        total: data?.total ?? 0,
-        onPageChange: setPage,
-      }}
     />
   );
 }
 
 function WebhooksTab({ clientId }: Readonly<{ clientId: string }>) {
-  const [page, setPage] = useState(1);
-  const query = useWebhookList({ page, pageSize: 10, clientId });
-  const data = query.data;
+  const useList = (page: number, pageSize: number) => useWebhookList({ page, pageSize, clientId });
   const columns: ColumnProps<AppWebhookSubscription>[] = [
     { title: '名称', dataIndex: 'name', width: 180 },
     { title: '回调地址', dataIndex: 'url' },
@@ -203,21 +178,11 @@ function WebhooksTab({ clientId }: Readonly<{ clientId: string }>) {
     },
   ];
   return (
-    <ConfigurableTable
-      bordered
+    <OpenPlatformPaginatedTab
+      useList={useList}
       columns={columns}
-      dataSource={data?.list ?? []}
-      loading={query.isFetching}
-      onRefresh={() => void query.refetch()}
-      refreshLoading={query.isFetching}
       rowKey="id"
       empty="该应用暂无 Webhook 订阅"
-      pagination={{
-        currentPage: page,
-        pageSize: 10,
-        total: data?.total ?? 0,
-        onPageChange: setPage,
-      }}
     />
   );
 }

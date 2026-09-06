@@ -1,20 +1,19 @@
-import { Tag, Form, Toast, Typography, Row, Col, Space } from '@douyinfe/semi-ui';
+import { Tag, Form, Typography, Row, Col, Space } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import type { CreateRatePlanInput, RatePlan } from '@zenith/shared/open-platform';
 import { copyableNoColumn, createdAtColumn } from '@/utils/table-columns';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { ratePlanKeys, useDeleteRatePlans, useRatePlanList, useSaveRatePlan } from '@/hooks/queries/open-platform';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 
 const { Text } = Typography;
 
@@ -40,7 +39,6 @@ export default function RatePlansPage() {
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data ?? null;
   const deleteMutation = useDeleteRatePlans();
 
   const modal = useEditModal<RatePlan, Partial<CreateRatePlanInput>>({
@@ -59,11 +57,6 @@ export default function RatePlansPage() {
       status: r.status,
     }),
   });
-
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
 
   const columns: ColumnProps<RatePlan>[] = [
     { title: 'ID', dataIndex: 'id', width: 60 },
@@ -95,61 +88,38 @@ export default function RatePlansPage() {
       width: 150,
       actions: (record) => [
         { key: 'edit', label: '编辑', hidden: !canManage, onClick: () => modal.openEdit(record) },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canManage,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除此套餐吗？',
-              content: '已被应用绑定的套餐无法删除',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除此套餐吗？',
+          content: '已被应用绑定的套餐无法删除',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索套餐编码 / 名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />}
+        filters={(
           <>
-            <KeywordInput placeholder="搜索套餐编码 / 名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />
             <StatusSelect
               items={STATUS_OPTIONS}
               value={draftParams.status}
               onChange={(v) => setDraftParams({ ...draftParams, status: v as string })}
             />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canManage && <CreateButton onClick={modal.openCreate} />}
           </>
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索套餐" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-            {canManage && <CreateButton onClick={modal.openCreate} />}
-          </>
-        )}
-        mobileActions={<ResetButton onClick={handleReset} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canManage && <CreateButton onClick={modal.openCreate} />}
         actionTitle="套餐操作"
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<RatePlan>
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无数据"
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, { empty: '暂无数据', pagination: buildPagination })}
       />
 
       <AppModal {...modal.modalProps} width={660}>

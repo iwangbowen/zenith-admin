@@ -5,18 +5,17 @@ import { RefreshCw } from 'lucide-react';
 import type { CreateMpTagInput, MpTag } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { mpTagKeys, useDeleteMpTags, useMpTagList, useSaveMpTag, useSyncMpTags } from '@/hooks/queries/mp-tags';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 
 export default function MpTagsPage() {
@@ -34,8 +33,6 @@ export default function MpTagsPage() {
     pageSize,
     keyword: submittedKeyword || undefined,
   }, !!currentId);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const syncMutation = useSyncMpTags();
   const saveMutation = useSaveMpTag();
   const deleteMutation = useDeleteMpTags();
@@ -75,17 +72,6 @@ export default function MpTagsPage() {
     },
   });
 
-  const handleDelete = (record: MpTag) => {
-    confirmDelete({
-      title: `确定要删除标签「${record.name}」吗？`,
-      content: '删除后将从所有粉丝的本地标签中移除该标签。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([record.id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const columns = [
     { title: '标签名称', dataIndex: 'name', minWidth: 200, render: renderEllipsis },
     { title: '微信标签ID', dataIndex: 'wechatTagId', width: 140, render: (v: number | null) => (v == null ? '— 未同步' : v) },
@@ -97,7 +83,12 @@ export default function MpTagsPage() {
       menuAriaLabel: '标签操作',
       actions: (record) => [
         { key: 'edit', label: '编辑', hidden: !can('mp:tag:update'), onClick: () => modal.openEdit(record) },
-        { key: 'delete', label: '删除', danger: true, hidden: !can('mp:tag:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !can('mp:tag:delete'),
+          title: `确定要删除标签「${record.name}」吗？`,
+          content: '删除后将从所有粉丝的本地标签中移除该标签。',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
@@ -108,8 +99,6 @@ export default function MpTagsPage() {
   const renderKeywordInput = () => (
     <KeywordInput placeholder="搜索标签名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={180} />
   );
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const renderCreateButton = () => can('mp:tag:create') ? (
     <CreateButton onClick={modal.openCreate} disabled={!currentId} />
   ) : null;
@@ -119,38 +108,23 @@ export default function MpTagsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            {renderAccountFilter()}
-            {renderKeywordInput()}
-            {renderSearchButton()}
-            {renderResetButton()}
-            {renderSyncButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            {renderKeywordInput()}
-            {renderSearchButton()}
-            {renderCreateButton()}
-          </>
-        )}
-        mobileFilters={renderAccountFilter()}
+      <ListSearchToolbar
+        keyword={renderKeywordInput()}
+        filters={renderAccountFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={renderSyncButton()}
+        create={renderCreateButton()}
         mobileActions={renderSyncButton()}
         filterTitle="标签筛选"
         actionTitle="标签操作"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {!accountsLoading && accounts.length === 0 && (
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total)} />
+      <ConfigurableTable<MpTag> columns={columns} {...listTableProps(listQuery, { pagination: buildPagination })} />
 
       <AppModal {...modal.modalProps} width={480}>
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">

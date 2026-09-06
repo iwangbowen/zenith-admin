@@ -1,15 +1,14 @@
 import { useState } from 'react';
-import { Button, Tag, Form, Toast, Typography, Row, Col } from '@douyinfe/semi-ui';
+import { Tag, Form, Typography, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Trash2 } from 'lucide-react';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { API_SCOPE_GROUPS, API_SCOPE_GROUP_LABELS } from '@zenith/shared/open-platform';
 import type { ApiScope, CreateApiScopeInput } from '@zenith/shared/open-platform';
 import { copyableNoColumn, createdAtColumn } from '@/utils/table-columns';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -20,9 +19,8 @@ import {
 } from '@/hooks/queries/open-platform';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 
 const { Text } = Typography;
 
@@ -51,7 +49,6 @@ export default function ApiScopesPage() {
     scopeGroup: submittedParams.scopeGroup,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
-  const data = listQuery.data ?? null;
   const deleteMutation = useDeleteApiScopes();
 
   const modal = useEditModal<ApiScope, Partial<CreateApiScopeInput>>({
@@ -68,20 +65,13 @@ export default function ApiScopesPage() {
     labelWidth: 110,
   });
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
   function handleBatchDelete() {
-    confirmDelete({
+    confirmAndDelete({
       title: `确定删除选中的 ${selectedRowKeys.length} 个 Scope？`,
       content: '删除后不可恢复',
-      onOk: async () => {
-        await deleteMutation.mutateAsync(selectedRowKeys);
-        Toast.success('批量删除成功');
-        setSelectedRowKeys([]);
-      },
+      run: () => deleteMutation.mutateAsync(selectedRowKeys),
+      successMessage: '批量删除成功',
+      onDeleted: () => setSelectedRowKeys([]),
     });
   }
 
@@ -119,29 +109,22 @@ export default function ApiScopesPage() {
       width: 150,
       actions: (record) => [
         { key: 'edit', label: '编辑', hidden: !canManage, onClick: () => modal.openEdit(record) },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !canManage,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除此 Scope 吗？',
-              content: '删除后不可恢复',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除此 Scope 吗？',
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索编码 / 名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />}
+        filters={(
           <>
-            <KeywordInput placeholder="搜索编码 / 名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
             <FilterSelect
               placeholder="全部分组"
               items={GROUP_OPTIONS}
@@ -153,37 +136,22 @@ export default function ApiScopesPage() {
               value={draftParams.status}
               onChange={(v) => setDraftParams({ ...draftParams, status: v as string })}
             />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canManage && <CreateButton onClick={modal.openCreate} />}
-            {canManage && selectedRowKeys.length > 0 && (
-              <Button type="danger" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>批量删除（{selectedRowKeys.length}）</Button>
-            )}
           </>
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索编码 / 名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
-            <SearchButton onClick={handleSearch} />
-            {canManage && <CreateButton onClick={modal.openCreate} />}
-          </>
-        )}
-        mobileActions={<ResetButton onClick={handleReset} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canManage && <CreateButton onClick={modal.openCreate} />}
+        actions={canManage && selectedRowKeys.length > 0 && <BatchDeleteButton label="批量删除" count={selectedRowKeys.length} onClick={handleBatchDelete} />}
         actionTitle="Scope 操作"
       />
 
-      <ConfigurableTable
-        bordered
+      <ConfigurableTable<ApiScope>
         columns={columns}
-        dataSource={data?.list ?? []}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
-        empty="暂无数据"
-        rowSelection={canManage ? { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) } : undefined}
-        pagination={buildPagination(data?.total ?? 0)}
+        {...listTableProps(listQuery, {
+          empty: '暂无数据',
+          rowSelection: canManage ? { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) } : undefined,
+          pagination: buildPagination,
+        })}
       />
 
       <AppModal
