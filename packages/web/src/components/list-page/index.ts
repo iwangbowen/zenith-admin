@@ -1,0 +1,12 @@
+/**
+ * 标准列表页构件：状态开关列、工具栏槽位、删除动作、表格接线。
+ * 页面仍显式声明列、筛选控件、权限与文案；这里只收口每个列表页都相同的机制。
+ */
+export { useStatusToggle } from './useStatusToggle';
+export type { StatusToggleColumnOptions, StatusToggleConfirm, StatusToggleController, UseStatusToggleOptions } from './useStatusToggle';
+export { ListSearchToolbar } from './ListSearchToolbar';
+export type { ListSearchToolbarProps } from './ListSearchToolbar';
+export { confirmAndDelete, deleteAction } from './deleteAction';
+export type { DeleteActionOptions, DeleteConfirmOptions } from './deleteAction';
+export { listTableProps } from './listTableProps';
+export type { ListQueryLike, ListTablePropsOptions } from './listTableProps';

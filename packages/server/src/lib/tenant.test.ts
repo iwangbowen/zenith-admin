@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HTTPException } from 'hono/http-exception';
-import { isPlatformAdmin, getEffectiveTenantId, tenantCondition, resolveManagedTenantId, isTenantActive, isTenantExpired } from './tenant';
+import { isPlatformAdmin, getEffectiveTenantId, tenantCondition, resolveManagedTenantId, isTenantActive, isTenantExpired, exactTenantCondition, optionalExactTenantCondition, inheritedTenantCondition } from './tenant';
 import { config } from '../config';
 import { currentUser } from './context';
 import type { JwtPayload } from '../middleware/auth';
@@ -12,6 +12,7 @@ vi.mock('../config', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((col, val) => ({ op: 'eq', col, val })),
   isNull: vi.fn((col) => ({ op: 'isNull', col })),
+  or: vi.fn((...conds) => ({ op: 'or', conds })),
   // schema.ts 导入 relations 定义各表关系；mock 返回空对象即可（tenant 逻辑不依赖关系）
   relations: vi.fn(() => ({})),
 }));
@@ -171,5 +172,26 @@ describe('tenant utility', () => {
       expect(resolveManagedTenantId(null)).toBeNull();
       expect(() => resolveManagedTenantId(2)).toThrow(HTTPException);
     });
+  });
+});
+
+describe('exact / inherited tenant conditions', () => {
+  const column = { name: 'tenant_id' };
+
+  it('exactTenantCondition：null 与 undefined → IS NULL，数字 → =', () => {
+    expect(exactTenantCondition(column as never, null)).toEqual({ op: 'isNull', col: column });
+    expect(exactTenantCondition(column as never, undefined as unknown as null)).toEqual({ op: 'isNull', col: column });
+    expect(exactTenantCondition(column as never, 7)).toEqual({ op: 'eq', col: column, val: 7 });
+  });
+
+  it('optionalExactTenantCondition：undefined 表示不过滤', () => {
+    expect(optionalExactTenantCondition(column as never, undefined)).toBeUndefined();
+    expect(optionalExactTenantCondition(column as never, null)).toEqual({ op: 'isNull', col: column });
+    expect(optionalExactTenantCondition(column as never, 3)).toEqual({ op: 'eq', col: column, val: 3 });
+  });
+
+  it('inheritedTenantCondition：null → IS NULL，数字 → IS NULL OR =', () => {
+    expect(inheritedTenantCondition(column as never, null)).toEqual({ op: 'isNull', col: column });
+    expect(inheritedTenantCondition(column as never, 5)).toEqual({ op: 'or', conds: [{ op: 'isNull', col: column }, { op: 'eq', col: column, val: 5 }] });
   });
 });

@@ -161,11 +161,12 @@ export const xxxContract = defineContract('/api/xxxs', {
 ## Step 5：Service 层（`services/{业务域}/xxx.service.ts`）
 
 ```ts
-import { HTTPException } from 'hono/http-exception';
 import { eq, asc } from 'drizzle-orm';
 import { db } from '../../db';
 import { xxxs, type XxxRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
+import { requireRow } from '../../lib/db-assert';
+import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 
 // ─── 数据映射（DB 行 → 公开字段），纯函数、无副作用 ──────────────────────
@@ -211,27 +212,25 @@ export async function listXxxs(q: ListXxxsQuery) {
   const { page = 1, pageSize = 10 } = q;
   const where = await buildXxxWhere(q);
 
-  // count 与 list 相互独立，必须并行
-  const [total, rows] = await Promise.all([
-    db.$count(xxxs, where),
-    withPagination(
-      db.select().from(xxxs).where(where).orderBy(asc(xxxs.id)).$dynamic(),
-      page,
-      pageSize,
-    ),
-  ]);
-  return { list: rows.map(mapXxx), total, page, pageSize };
+  // count 与 rows 并行 + 分页包络由 buildListResult 编排；条件 / 排序 / 投影仍在这里显式书写
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(xxxs, where),
+    rows: () => withPagination(db.select().from(xxxs).where(where).orderBy(asc(xxxs.id)).$dynamic(), page, pageSize),
+    map: mapXxx,
+  });
 }
 
 export async function getXxx(id: number) {
   return mapXxx(await ensureXxxExists(id));
 }
 
-// ─── 前置校验：直接抛 HTTPException，由全局 onError 转标准 JSON ───────────
+// ─── 前置校验：取不到就抛 HTTPException(404)，由全局 onError 转标准 JSON ──────
+// 查询（投影、行级隔离条件）仍写在这里；requireRow 只收口「不存在则抛」这一句
 export async function ensureXxxExists(id: number) {
   const [row] = await db.select().from(xxxs).where(await buildXxxWhere({ id })).limit(1);
-  if (!row) throw new HTTPException(404, { message: 'XXX 不存在' });
-  return row;
+  return requireRow(row, 'XXX 不存在');
 }
 ```
 

@@ -1,5 +1,5 @@
-import type { SQL } from 'drizzle-orm';
-import { eq, isNull } from 'drizzle-orm';
+import type { SQL, SQLWrapper } from 'drizzle-orm';
+import { eq, isNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { config } from '../config';
 import type { JwtPayload } from '../middleware/auth';
@@ -93,6 +93,25 @@ export function tenantCondition<T extends { tenantId: any }>(
 export function getCreateTenantId(user: JwtPayload): number | null {
   if (!config.multiTenantMode) return null;
   return getEffectiveTenantId(user);
+}
+
+// ─── 行到行的租户归属匹配 ────────────────────────────────────────────────────
+// `tenantCondition` 表达的是「请求用户能看到什么」（平台管理员可看全部）；下面三个表达的是
+// 「与一条已知归属（订单 / 应用 / 事件所属租户）做精确匹配」，两者语义不同、不可互换。
+
+/** 精确匹配已知租户归属：`null` → `IS NULL`，数字 → `=` */
+export function exactTenantCondition(column: SQLWrapper, tenantId: number | null): SQL {
+  return tenantId == null ? isNull(column) : eq(column, tenantId);
+}
+
+/** `exactTenantCondition` 的可选形态：`undefined` 表示不按租户过滤 */
+export function optionalExactTenantCondition(column: SQLWrapper, tenantId: number | null | undefined): SQL | undefined {
+  return tenantId === undefined ? undefined : exactTenantCondition(column, tenantId);
+}
+
+/** 平台级记录可被租户继承：`null` → `IS NULL`，数字 → `IS NULL OR = tenantId` */
+export function inheritedTenantCondition(column: SQLWrapper, tenantId: number | null): SQL {
+  return tenantId == null ? isNull(column) : or(isNull(column), eq(column, tenantId))!;
 }
 
 // ─── 零参便捷重载：依赖 `contextStorage()` 中间件 ─────────────────────────

@@ -29,6 +29,10 @@
 | 标准 CRUD 域 hooks | `lib/contract-query.ts` 的 `createResourceQueries(xxxContract)` | 手抄 `xxxKeys` 与列表 / 详情 / 保存 / 删除 / 下拉源 | 保存后列表不变；已删记录重新打开弹窗时闪出旧数据 |
 | 新增 / 编辑弹窗 | `hooks/useEditModal.ts` | `useRef<FormApi>` + `editingRecord` + `try { validate() } catch` + `Toast` + 关闭四件套 | 确定按钮永远转圈；异步详情进不了表单；下次「新增」带出上次记录 |
 | 列表页搜索状态 | `hooks/useListSearch.ts` | `draftParams` / `submittedParams` 双状态 + `handleSearch` / `handleReset` | 条件未变时点「查询」不回源，且列表仍有数据、不报错 |
+| 列表页工具栏排布 | `components/list-page` 的 `ListSearchToolbar`（`keyword` / `filters` / `create` / `actions` 槽位 + `onSearch` / `onReset`） | 手写 `SearchToolbar` 的 `primary` / `mobilePrimary` / `mobileFilters` 双份 JSX、`renderKeywordSearch` 之类的渲染闭包 | 桌面 / 移动排布各页不一致；移动端漏掉查询或新增 |
+| 状态开关列 | `components/list-page` 的 `useStatusToggle({ toggle, confirmDisable, disabled })` → `status.column()` | `togglingId = mutation.isPending ? mutation.variables?.id : null` + 手写 `Switch` + `Modal.confirm` + `Toast.success('已启用')` | 行内 loading 与载荷形状耦合；停用确认样式各页不一 |
+| 列表删除动作 | `components/list-page` 的 `deleteAction`（操作列）/ `confirmAndDelete`（批量按钮） | 操作列里手写 `{ key: 'delete', danger: true, onClick: () => confirmDelete({ onOk: async () => { await mutateAsync(); Toast.success('删除成功'); } }) }` | 漏 Toast / 漏 danger / 成功后忘清选中 |
+| 列表表格接线 | `components/list-page` 的 `listTableProps(listQuery, { pagination: buildPagination })` 展开到 `ConfigurableTable` | 手写 `dataSource` / `loading` / `onRefresh` / `refreshLoading` / `rowKey` / `size` / `bordered` 七件套 | 漏 `onRefresh` 没有刷新按钮；分页 total 取错 |
 | 树形表格展开态 | `hooks/useTreeExpansion.ts` | 递归收集节点 key + `isAllExpanded` 计数比较 + `onExpandedRowsChange` 行→key 映射 | 传未筛选数据时按钮显示「全部展开」却点不动（死按钮）；数据清空后空表格显示「全部折叠」 |
 | 中断表单提交 | `lib/abort-submit.ts` 的 `abortSubmit()`（先给用户提示再调用） | `return`、`throw new Error('多词消息')` | 按钮一直转圈；或多弹一个「操作失败：xxx」并向 `/api/frontend-errors` 灌入假告警 |
 | 破坏性操作确认 | `utils/confirm.ts` 的 `confirmDelete` / `confirmDanger`；async 流程用 `confirmDangerAsync` 取布尔结果 | `Modal.confirm({ okButtonProps: { type: 'danger' } })`、`new Promise<boolean>` 包 `Modal.confirm`、在 `confirmDelete` 调用里再传 `okButtonProps: { type: 'danger' }` | 「确定删除」与「确定提交」渲染成同一个蓝色主按钮 |
@@ -97,9 +101,10 @@
 
 ## 搜索栏与表格
 
-- **搜索栏布局**：统一用 `components/SearchToolbar.tsx`。筛选 / 操作较多时必须使用结构化模式
-  （`primary` / `filters` / `actions`，必要时 `mobilePrimary` / `mobileFilters` / `mobileActions` 覆盖移动端）；
-  移动端至少露出一个高频搜索 / 筛选项（优先关键词）、查询与新增，其余筛选进底部抽屉、低频操作进更多菜单
+- **搜索栏布局**：标准列表页统一用 `components/list-page` 的 `ListSearchToolbar`（`keyword` / `filters` / `create` / `actions`），
+  它已按规则排布桌面与移动端：移动端主区 关键词 + 查询 + 新增，其余筛选进底部抽屉、低频操作进更多菜单。
+  非标准页（无查询语义的工具面板、多套筛选区）才直接用 `components/SearchToolbar.tsx` 的结构化模式
+  （`primary` / `filters` / `actions` + `mobilePrimary` / `mobileFilters` / `mobileActions`）
 - **筛选控件**：关键字 / 枚举 / 状态 / 时间范围统一用 `components/search-filters.tsx` 的
   `KeywordInput` / `FilterSelect` / `StatusSelect` / `DateRangeFilter`，**禁止**手写 `prefix={<Search size={14} />}`、
   `showClear`、`style={{ width: N }}` 这类装饰性属性；业务属性仍显式传入。
@@ -115,14 +120,15 @@
   **例外**：仅复用同一图标的独立操作（「测试发送」「生成链接」）及视觉本就不同的写法保持原生 `Button`
 - **移动端更多菜单**：`mobileActions` 只放低频操作；普通按钮用 `theme="borderless"`
   （危险操作保留 `type="danger"`），导出优先 `ExportButton variant="flat"`
-- **表格样式**：统一 `<ConfigurableTable bordered ... />`；必须传 `onRefresh` 与 `refreshLoading`
-  （统一取 `listQuery.isFetching`），否则工具栏不显示刷新按钮
+- **表格样式**：统一 `<ConfigurableTable columns={columns} {...listTableProps(listQuery, { pagination: buildPagination })} />`
+  （`components/list-page`；默认 `bordered` / `rowKey="id"` / `size="small"`，并接好 `dataSource` / `loading` / `onRefresh` / `refreshLoading`）。
+  非分页包络的数据源或树形表格才手写这些属性，但仍必须传 `onRefresh` 与 `refreshLoading`（统一取 `listQuery.isFetching`）
 - **弹性主列**：每个表格**有且只有一个**弹性主列（通常是名称 / 标题 / 描述列）——不写 `width`，
   改写 `minWidth` 声明最小宽度；其余列一律写固定 `width`。**禁止**页面传 `scroll.x`
   （`ConfigurableTable` 按各列宽度之和自动推导，传入值会被忽略并在开发期告警）；
   虚拟化表格只传 `scroll.y`。所有列都写 `width` 时组件会挑一列兜底并告警，不得依赖兜底
 - **操作列**：一律经 `components/ResponsiveTableActions.tsx` 的 `createOperationColumn` 创建；
-  动作只用纯文字 `label`（不加图标、不包 `Popconfirm`，确认走 `Modal.confirm` / `confirmDelete`），
+  动作只用纯文字 `label`（不加图标、不包 `Popconfirm`；删除用 `deleteAction`，其它确认走 `Modal.confirm` / `confirmDanger`），
   危险操作加 `danger: true`；桌面端内联动作**不超过 3 个**，其余用 `desktopInlineKeys` 收进「更多」菜单
 - **操作列宽度**：`width` 必填，取值 = 最宽内联组合的内容宽 + 40，向上取整到 10；新增 / 修改动作后必须复核。
   **禁止**列宽小于内容宽——单元格无 `overflow: hidden`，不报错也不截断，而是吃掉 padding 并挤压相邻固定列
@@ -130,7 +136,8 @@
   状态特有 / 低频动作进「更多」，**禁止**按最宽的罕见状态配宽让常见行大片留白；
   按 Tab 分状态的列表可按 `activeTab` 分别给 `width` / `desktopInlineKeys`。
   度量常量、计算方式与常用组合宽度见 [ui-patterns.md → 操作列](./ui-patterns.md#操作列)
-- **状态列固定**：状态列必须紧靠操作列左侧，并同样 `fixed: 'right'`
+- **状态列**：启停开关列一律 `useStatusToggle(...).column()`（默认「状态」/ 80 / `fixed: 'right'`），只读状态用 `renderEnabledStatusTag` / `DictTag`；
+  状态列必须紧靠操作列左侧，并同样 `fixed: 'right'`
 - **列公共工具**：`createdAtColumn` 与 `renderEllipsis` 从 `utils/table-columns` 导入；
   **禁止**内联写 `<Typography.Text ellipsis={{ showTooltip: true }} …>`
 - **时间 / 日期列**：一律用 `utils/table-columns` 的 `dateTimeColumn(title, dataIndex, options?)`

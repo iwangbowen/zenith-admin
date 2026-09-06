@@ -54,6 +54,9 @@
   `tasks` / `biz` / `settings`），种子数据用 `@zenith/shared/seed`
 - **Zod Schema 位置**：创建 / 更新 schema 定义在 `shared/src/{业务域}/validation.ts`，前后端共用，
   **禁止**在 server / web 中重复定义
+- **纯业务逻辑放 shared**：任何同时被服务端与前端 / Mock 需要的纯函数或常量（过滤谓词、树构建与层级约束、统计口径、
+  科目 / 分桶等元数据、消息分支树等算法）放在 `shared/src/{业务域}/` 的独立文件并从域入口导出，两端只导入；
+  **禁止**在 server 与 web 各写一份「对齐」的实现
 - **枚举 SSOT 在 constants**：`XXX_TYPES` 常量数组 + 派生 union type + `XXX_LABELS` / `XXX_OPTIONS`
   一并写在 `shared/src/{业务域}/constants.ts`，`validation.ts` 通过 `z.enum(XXX_TYPES)` 引用。
   **禁止**把会被其他域 `z.enum()` 引用的常量数组放在 `validation.ts`——validation 互引形成 ESM 值环，
@@ -105,6 +108,16 @@
 - **运行时设置读取**：`getSettings('{module}', { tenantId? })`（`lib/settings`）返回类型化生效文档，进程内缓存 + LISTEN/NOTIFY 失效；
   **禁止**直接查 `system_settings`、**禁止**自建设置缓存或读取环境变量兜底；默认值只在模块 schema 出现，调用点**禁止**用 `??` 再抄一份默认值
 - **计数查询**：单表计数用 `db.$count(table, where)`，禁止 `db.select({ total: count() })`
+- **分页列表编排**：标准形态（count + rows + `{ list, total, page, pageSize }`）一律用 `lib/list-query.ts` 的
+  `buildListResult({ page, pageSize, count, rows, map })`，它保证 count 与 rows `Promise.all` 并行并套包络；
+  条件、排序、投影仍在 `count` / `rows` 闭包里显式书写。只有聚合 count、需要额外包络字段等特殊形态才手写 `Promise.all`，
+  且同样禁止串行 `await`
+- **存在性断言**：「取首行，不存在则抛 HTTPException」用 `lib/db-assert.ts` 的 `requireRow(row, message, status?)` /
+  `requireFirstRow(queryPromise, message)`；查询本身（投影、租户 / 数据范围条件）留在调用方，**禁止**为此再抽 `ensureById(table, id)` 之类隐藏条件的通用查询
+- **租户归属匹配**：与一条已知归属（订单 / 应用 / 事件所属租户）做行到行匹配用 `lib/tenant.ts` 的
+  `exactTenantCondition(col, tenantId)`（`null → IS NULL`）、`optionalExactTenantCondition`（`undefined` 不过滤）、
+  `inheritedTenantCondition`（平台级可被租户继承：`IS NULL OR =`）；**禁止**手写 `tenantId == null ? isNull(col) : eq(col, tenantId)` 三目。
+  它们与 `tenantCondition(table, user)`（请求用户可见性，平台管理员可看全部）语义不同，不得互换
 - **并行查询**：分页列表的 count 与 list **必须** `Promise.all` 并行，禁止串行 `await`
 - **只读快照统计**：同一（组）表的多条统计查询要求结果相互一致时（汇总卡片 + 明细榜单、对账）
   用 `readSnapshot()`（`db/index.ts`，repeatable read + read only）；事务内语句串行执行，
@@ -214,6 +227,9 @@
 - **数据源对齐**：初始数据从 `@zenith/shared/seed` 的 `SEED_XXXS` 派生，**禁止**在 mock 中重复写静态数组；
   运行时设置的 Demo 存储在 `mocks/data/settings.ts`（默认值来自模块 schema，解析 / diff / 投影复用 `@zenith/shared/settings`），
   依赖某设置的其它 handler 读 `getMockSettings(module)` 或其镜像对象，**禁止**再写一份设置字面量
+- **业务规则只导入不重写**：服务端已有的纯业务逻辑（过滤谓词、树构建、层级约束与文案、统计汇总、常量元数据、分支 / 路径算法）
+  必须位于 `@zenith/shared/{业务域}`，Mock handler 与前端页面从那里导入；**禁止**在 mock 里「照着服务端再写一遍」——
+  两份实现只靠约定同步，漂移无法被任何测试发现
 - **路径契约测试**：`packages/web/src/lib/api-conformance.test.ts` 对照服务端路由快照校验所有仍以字面量书写的
   请求 URL 与 handler 路径；服务端尚无对应端点的调用必须登记在 `api-conformance.allowlist.ts` 并写明原因
 
@@ -274,6 +290,7 @@
 
 - 列表接口返回 `{ list, total, page, pageSize }`：契约用 `paginated(xxxSchema)` 声明，查询参数 `paginationQuery.extend({...})`
 - SQL-builder 分页用 `withPagination(query.$dynamic(), page, pageSize)`；RQB 分页用 `offset: pageOffset(page, pageSize)`；
+  服务层的 count + rows + 包络用 `buildListResult`（见 [Service 层](#service-层step-5)）；
   MSW Mock 用契约上下文的 `paginate(list)` / `pageResult(list, page, pageSize)`
 - 禁止手写 `(page - 1) * pageSize`
 

@@ -83,23 +83,24 @@ export const usePurgeXxxs = () =>
 
 ## Step 8b：完整页面模板
 
+列表页四类「每页都一样」的机制一律走 `components/list-page`：工具栏槽位（`ListSearchToolbar`）、状态开关列（`useStatusToggle`）、
+删除动作（`deleteAction` / `confirmAndDelete`）、表格接线（`listTableProps`）。页面只显式声明筛选控件、列、权限与文案。
+
 ```tsx
-import { useState } from 'react';
-import { Form, Input, Select, Spin, Toast, Modal, Switch, Row, Col } from '@douyinfe/semi-ui';
+import { Form, Spin, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { confirmDelete } from '@/utils/confirm';
 // 有日期时间范围筛选时：import { formatDateTimeRangeForApi } from '@/utils/date';
 // beforeSave 需要中断提交时：import { abortSubmit } from '@/lib/abort-submit';
 import { useDeleteXxxs, useSaveXxx, useXxxDetail, useXxxList, xxxKeys } from '@/hooks/queries/xxxs';
@@ -117,6 +118,7 @@ const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
 export default function XxxPage() {
   const { hasPermission } = usePermission();
+  const canUpdate = hasPermission('system:xxx:update');
 
   // ─── 搜索状态：draft 绑输入框，submitted 进 query key ────────────────────
   // useListSearch 内部整合 usePagination，并保证「查询 / 重置」必定失效 listKey
@@ -136,8 +138,6 @@ export default function XxxPage() {
     // 标准 startTime / endTime 范围（Date → 字符串后再进 params）：
     // ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
 
   // ─── 新增 / 编辑弹窗 ────────────────────────────────────────────────────
   // 表单值类型取契约创建入参的部分形态；保存 mutation 的 values 类型与之一致
@@ -163,9 +163,17 @@ export default function XxxPage() {
   });
 
   // ─── 其余变更 hooks ─────────────────────────────────────────────────────
-  const toggleStatusMutation = useSaveXxx();  // 行级 Switch 专用实例，便于按行显示 pending
+  const toggleStatusMutation = useSaveXxx();  // 行级 Switch 专用实例，与弹窗保存互不影响 pending
   const deleteMutation = useDeleteXxxs();
-  const togglingId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+
+  // 状态开关列：行内 loading、停用确认、成功提示由 hook 收口；载荷形状由 toggle 决定
+  // （status 枚举字段如下；boolean 字段改为 values: { isEnabled: enabled }）
+  const status = useStatusToggle<Xxx>({
+    toggle: (record, enabled) => toggleStatusMutation.mutateAsync({ id: record.id, values: { status: enabled ? 'enabled' : 'disabled' } }),
+    // 停用是非破坏性确认，用普通样式；破坏性语义（如禁用账号）加 danger: true
+    confirmDisable: (record) => ({ title: '确认停用', content: `停用后「${record.name}」将不再可用，确认停用？` }),
+    disabled: !canUpdate,
+  });
 
   const { items: statusItems } = useDictItems('common_status');
 
@@ -174,138 +182,59 @@ export default function XxxPage() {
     status: enumValueOf(XXX_STATUSES, submittedParams.status),
   });
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
-  // status 字段为 'enabled'|'disabled' 时用此模式；boolean 字段改为 { isEnabled: checked }
-  function handleToggleStatus(record: Xxx, checked: boolean) {
-    const doToggle = () => {
-      toggleStatusMutation.mutate(
-        { id: record.id, values: { status: checked ? 'enabled' : 'disabled' } },
-        { onSuccess: () => Toast.success(checked ? '已启用' : '已停用') },
-      );
-    };
-    // 停用是非破坏性确认，用原生 Modal.confirm（不加 danger）
-    if (checked) doToggle();
-    else Modal.confirm({
-      title: '确认停用',
-      content: `停用后「${record.name}」将不再可用，确认停用？`,
-      onOk: doToggle,
-    });
-  }
-
   // ─── 表格列 ─────────────────────────────────────────────────────────────
   // 有且只有一个弹性主列（minWidth、不写 width），其余列固定 width；不传 scroll.x
   const columns: ColumnProps<Xxx>[] = [
     { title: '名称', dataIndex: 'name', minWidth: 200 },
     { title: '描述', dataIndex: 'description', width: 260, render: renderEllipsis },
     createdAtColumn,                              // 创建时间预置列（自动格式化）
-    {
-      // 状态列紧靠操作列左侧，同样 fixed: 'right'
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (_: unknown, record: Xxx) => (
-        <Switch
-          checked={record.status === 'enabled'}
-          loading={togglingId === record.id}
-          disabled={!hasPermission('system:xxx:update')}
-          onChange={(checked) => handleToggleStatus(record, checked)}
-          size="small"
-        />
-      ),
-    },
+    status.column(),                              // 状态列：默认「状态」/ 80 / fixed right，紧靠操作列
     createOperationColumn<Xxx>({
       width: 150,                                 // 编辑 / 删除：内容宽 108 + 40 → 150（ui-patterns.md → 操作列）
       desktopInlineKeys: ['edit', 'delete'],      // 只把高频动作内联（≤ 3 个），其余进更多菜单
       actions: (record) => [
-        ...(hasPermission('system:xxx:update') ? [{
-          key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
-        }] : []),
-        ...(hasPermission('system:xxx:delete') ? [{
-          key: 'delete', label: '删除', danger: true,
-          onClick: () => confirmDelete({
-            title: `确定要删除「${record.name}」吗？`,
-            content: '删除后不可恢复',
-            onOk: () => handleDelete(record.id),
-          }),
-        }] : []),
+        { key: 'edit', label: '编辑', hidden: !canUpdate, onClick: () => modal.openEdit(record) },
+        // 删除：confirmDelete + 执行 + 「删除成功」提示；标题必须指明删除对象
+        deleteAction({
+          hidden: !hasPermission('system:xxx:delete'),
+          title: `确定要删除「${record.name}」吗？`,
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
 
-  // ─── 工具栏片段（筛选控件与公共按钮一律走公共组件）───────────────────────
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索名称..."
-      value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
-    />
-  );
-
-  // const renderTimeRangeFilter = () => (
-  //   <DateRangeFilter value={draftParams.timeRange}
-  //     onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))} />
-  // );
-
-  const renderCreateButton = () => hasPermission('system:xxx:create')
-    ? <CreateButton onClick={modal.openCreate} /> : null;
-
-  const renderExportButtons = () => hasPermission('system:xxx:export')
-    ? <ExportButton entity="system.xxxs" query={buildExportQuery()} /> : null;
-
-  // mobileActions 里的按钮用无边框视觉；导出用 ExportButton variant="flat"
-  const renderMobileExportActions = () => hasPermission('system:xxx:export')
-    ? <ExportButton entity="system.xxxs" query={buildExportQuery()} label="导出" variant="flat" /> : null;
-
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={<>
-          {renderKeywordSearch()}
-          {renderStatusFilter()}
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
-        </>}
-        actions={<>
-          {renderExportButtons()}
-          {renderCreateButton()}
-        </>}
-        // 移动端至少露出一个高频筛选项 + 查询 + 新增，其余进筛选抽屉与更多菜单
-        mobilePrimary={<>
-          {renderKeywordSearch()}
-          <SearchButton onClick={handleSearch} />
-          {renderCreateButton()}
-        </>}
-        mobileFilters={renderStatusFilter()}
-        mobileActions={renderMobileExportActions()}
-        filterTitle="筛选条件"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
+      {/* 桌面：关键词 → 筛选 → 查询 / 重置 → 新增 → 低频操作；移动：主区 关键词 + 查询 + 新增，筛选进抽屉，低频操作进更多菜单 */}
+      <ListSearchToolbar
+        keyword={(
+          <KeywordInput placeholder="搜索名称..." value={draftParams.keyword}
+            onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+        )}
+        filters={(
+          <>
+            <StatusSelect items={statusItems} value={draftParams.status}
+              onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
+            {/* <DateRangeFilter value={draftParams.timeRange}
+              onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))} /> */}
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('system:xxx:create') ? <CreateButton onClick={modal.openCreate} /> : null}
+        actions={hasPermission('system:xxx:export') ? <ExportButton entity="system.xxxs" query={buildExportQuery()} /> : null}
+        // 移动端更多菜单里的按钮用无边框视觉；缺省与 actions 相同
+        mobileActions={hasPermission('system:xxx:export') ? <ExportButton entity="system.xxxs" query={buildExportQuery()} label="导出" variant="flat" /> : null}
       />
 
-      <ConfigurableTable
-        bordered
+      {/* 数据源 / loading / 刷新 / 分页由 listTableProps 接好；默认 rowKey id · size small · bordered */}
+      <ConfigurableTable<Xxx>
         columns={columns}
-        dataSource={list}
-        loading={listQuery.isFetching}
-        rowKey="id"
-        size="small"
         empty="暂无数据"
-        onRefresh={() => void listQuery.refetch()}    // 必传，否则工具栏无刷新按钮
-        refreshLoading={listQuery.isFetching}         // 必传
-        pagination={buildPagination(total)}           // 翻页由 key 驱动，无需回调
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
-
       {/* 新增 / 编辑共用一个弹窗 */}
       <AppModal {...modal.modalProps} width={660}>
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">
@@ -382,23 +311,25 @@ onSelect={(deptId) => applySearch({ ...draftParams, departmentId: deptId })}
 
 ## 危险操作确认
 
+列表页里的删除一律用 `components/list-page` 的 `deleteAction`（操作列）/ `confirmAndDelete`（批量删除等按钮），
+它们内部走 `confirmDelete` 并统一「执行 + 删除成功提示 + 收尾回调」。其它场景直接用 `utils/confirm`：
+
 ```ts
 import { confirmDanger, confirmDangerAsync, confirmDelete } from '@/utils/confirm';
 
-// 删除：优先写明对象的具体文案
+// 删除（非列表页场景）：优先写明对象的具体文案
 confirmDelete({ title: '确定要删除该标签吗？', content: '删除后不可恢复', onOk });
-// 省略 title 时用默认标题「确定要删除吗？」
-confirmDelete({ onOk: () => handleDelete(row.id) });
 
 // 其它破坏性操作
 confirmDanger({ title: `重置「${name}」的签名密钥？`, content: '旧密钥将立即失效', onOk });
 
-// async 流程里需要在确认后继续执行（如停用前二次确认）
+// async 流程里需要在确认后继续执行
 if (!(await confirmDangerAsync({ title: `确认停用「${name}」？`, okText: '确认停用' }))) return;
 ```
 
-三者都会注入红色实心确认按钮，其余选项原样透传给 `Modal.confirm`，调用点不要再写 `okButtonProps: { type: 'danger' }`；
-需要弱化样式时可覆盖 `okButtonProps: { theme: 'borderless' }`。
+三者都会注入红色实心确认按钮，其余选项原样透传给 `Modal.confirm`；
+需要弱化样式时可覆盖 `okButtonProps: { theme: 'borderless' }`。状态开关的停用确认不要手写：
+在 `useStatusToggle({ confirmDisable })` 里返回弹窗配置，破坏性语义加 `danger: true`。
 
 ## 弹窗表单布局
 
@@ -432,17 +363,13 @@ const { hasPermission } = usePermission();
 ```tsx
 const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
 
-const handleBatchDelete = () => {
-  confirmDelete({
-    title: `确认删除选中的 ${selectedRowKeys.length} 条记录？`,
-    content: '删除后无法恢复，请谨慎操作。',
-    onOk: async () => {
-      await deleteMutation.mutateAsync(selectedRowKeys);   // 复用 useDeleteXxxs
-      Toast.success('批量删除成功');
-      setSelectedRowKeys([]);
-    },
-  });
-};
+const handleBatchDelete = () => confirmAndDelete({
+  title: `确认删除选中的 ${selectedRowKeys.length} 条记录？`,
+  content: '删除后无法恢复，请谨慎操作。',
+  run: () => deleteMutation.mutateAsync(selectedRowKeys),   // 复用 useDeleteXxxs
+  successMessage: '批量删除成功',
+  onDeleted: () => setSelectedRowKeys([]),
+});
 
 // 工具栏：仅选中时显示，放在查询 / 重置按钮之后
 {selectedRowKeys.length > 0 && hasPermission('system:xxx:delete') && (
@@ -451,12 +378,12 @@ const handleBatchDelete = () => {
   </Button>
 )}
 
-<ConfigurableTable
-  rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) }}
-  bordered
-  onRefresh={() => void listQuery.refetch()}
-  refreshLoading={listQuery.isFetching}
-  ...
+<ConfigurableTable<Xxx>
+  columns={columns}
+  {...listTableProps(listQuery, {
+    pagination: buildPagination,
+    rowSelection: { selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) },
+  })}
 />
 ```
 
