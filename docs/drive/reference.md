@@ -47,13 +47,16 @@ flowchart LR
 | 目录浏览 | 列表 / 网格双视图、面包屑、排序、目录内搜索、右键菜单、多选批量、拖拽上传、缩略图 |
 | 上传 | ≤ 5MB 简单上传、大文件分片断点续传、SHA-256 秒传、同名冲突策略（保留两者 / 覆盖为新版本 / 跳过）、扩展名黑名单 + 可执行文件头识别、配额原子预留 |
 | 版本 | 覆盖上传或手动上传新版本；历史版本可下载、回滚（生成新版本）、删除；超出空间上限自动清理最早版本并释放容量 |
-| 外链分享 | 令牌 SHA-256 存储；可选密码、有效期、访问次数、仅预览 / 可下载；公开页密码门 → Redis 访问会话；访问 / 下载留痕；登录用户可转存到自己的网盘 |
+| 外链分享 | 令牌 SHA-256 存储；可选密码、有效期、访问次数、IP / CIDR 白名单、仅预览 / 可下载、预览水印；公开页密码门 → Redis 访问会话；访问 / 下载留痕；二维码与短链；到期前提醒创建者；登录用户可转存到自己的网盘 |
+| 文件收集 | 建立在文件夹上的收集链接：单文件上限、扩展名、是否要求姓名、累计上限；匿名提交以创建者身份落盘并自动重命名，提交记录可查，创建者收通知 |
+| 访问申请 | 无权限用户申请指定角色，节点管理者审批通过 / 拒绝并可设置到期时间；申请人可撤回；临时授权到期前提醒 |
+| 在线状态 | 详情抽屉心跳上报，显示正在查看同一节点的用户（Redis 汇聚） |
 | 回收站 | 删除进入回收站，保留期后由治理任务彻底清除；支持还原（原目录不存在回落到空间根）、彻底删除、清空 |
 | 个人视图 | 与我共享、我的收藏、最近访问、我的外链、回收站 |
 | 检索 | 文件名检索；开启「包含正文」后同时检索文本文件正文（tsvector；CJK 关键词自动改用子串匹配），返回命中片段 |
 | 协作 | 签出锁定（防止并发覆盖）、标签、评论、节点动态时间线 |
 | 批量与异步 | 打包下载：小于阈值同步返回 zip，超阈值转任务中心并通知；跨空间复制、容量重算、索引补建走任务中心 |
-| 通知 | 节点共享、空间加入、配额预警、打包完成通过通知中心触达 |
+| 通知 | 节点共享、空间加入、配额预警、打包完成、访问申请与审批结果、外链 / 临时授权到期、收集到新文件通过通知中心触达 |
 | 治理 | 统计概览（空间 / 文件 / 占用 / 趋势 / 类型分布）、空间治理（配额 / 状态 / 所有者 / 部门空间）、外链治理与访问记录、动态审计（按当前筛选导出 Excel，走导出中心）、全局设置 |
 | 数据保留 | `drive_activities`、`drive_share_access_logs` 按保留策略清理；`drive_nodes` 回收站超期项目按设置天数彻底清除 |
 
@@ -116,8 +119,10 @@ flowchart LR
 | `drive_nodes` | 节点树；`ancestor_ids` 与 `acl_chain_ids`（GIN）、`acl_open`、父节点、软删除、锁定字段；同级同名唯一 |
 | `drive_node_permissions` | 节点直接授权；主体 × 角色，可选过期时间 |
 | `drive_file_versions` | 文件历史版本；指向 `managed_files` |
-| `drive_share_links` | 外链；`token` 保存 SHA-256、加密副本、密码哈希、`kind`、`capabilities[]`、有效期、访问 / 下载次数上限、`session_version` |
-| `drive_share_access_logs` | 外链访问 / 下载 / 密码错误留痕，按 UTC 月分区 |
+| `drive_share_links` | 外链；`token` 保存 SHA-256、加密副本、密码哈希、`kind`、`capabilities[]`、有效期、访问 / 下载次数上限、`allowed_ips[]`、`watermark`、`collect_policy`、`session_version` |
+| `drive_collect_submissions` | 文件收集提交记录：文件、提交人姓名 / 备注、IP；文件彻底删除后记录保留 |
+| `drive_access_requests` | 访问申请：申请角色、状态、审批人、实际授予角色与到期时间；同一人同一节点仅一条待审批（部分唯一索引） |
+| `drive_share_access_logs` | 外链访问 / 下载 / 上传 / 密码错误留痕，按 UTC 月分区 |
 | `drive_activities` | 节点动态与审计，按 UTC 月分区 |
 | `drive_node_stars` / `drive_recent_access` | 收藏与最近访问 |
 | `drive_upload_bindings` | 分片上传会话与目标目录 / 节点的绑定 |
@@ -138,6 +143,9 @@ flowchart LR
 | `maxVersions` | 默认最多保留版本数 |
 | `quotaWarningPercent` | 配额预警阈值（%） |
 | `externalShareEnabled` / `externalShareMaxDays` / `externalShareRequirePassword` | 外链总开关、最长有效期、是否强制密码 |
+| `collectMaxFileSizeMb` | 文件收集单文件上限（MB）；收集链接可在此上限内单独收紧 |
+| `shareExpiryReminderHours` | 外链与临时授权到期前多少小时提醒，0 = 关闭 |
+| `previewWatermarkEnabled` | 站内预览水印（对登录用户按 `authenticated` 可见性投影到 `GET /api/settings/me`） |
 | `blockedExtensions` | 禁止上传的扩展名数组（不区分大小写，可带前导点） |
 | `thumbnailEnabled` / `textIndexEnabled` | 缩略图与正文索引开关 |
 
@@ -152,11 +160,12 @@ flowchart LR
 | `POST /api/drive/nodes/{folder,move,copy,precheck,upload,upload/init,upload/chunk,upload/complete,batch-download}` | 目录写操作与上传 |
 | `DELETE /api/drive/nodes/batch` · `/api/drive/nodes/recycle*` | 删除到回收站、还原、彻底删除、清空 |
 | `GET /api/drive/nodes/{starred,recent,shared-with-me,search}` | 个人视图与检索 |
-| `/api/drive/nodes/{id}/{content,thumbnail,rename,star,permissions,inherit,versions,activities,comments,tags,lock,share-links}` | 单节点资源 |
-| `/api/drive/share-links*` | 我的外链、修改、撤销、访问记录 |
-| `/api/drive/public/shares/{token}/*` | 匿名外链：元信息、密码校验、浏览、内容、转存 |
+| `/api/drive/nodes/{id}/{content,thumbnail,rename,star,permissions,inherit,versions,activities,comments,tags,lock,share-links,presence}` | 单节点资源（`presence` 为在线状态心跳） |
+| `/api/drive/share-links*` | 我的外链、修改、撤销、访问记录、收集记录、短链 |
+| `/api/drive/access-requests*` | 访问申请：待我审批 / 我提交的、目标信息、发起、审批、撤回 |
+| `/api/drive/public/shares/{token}/*` | 匿名外链：元信息、密码校验、浏览、内容、文件收集提交、转存 |
 | `/api/drive/tags*` | 空间标签 |
 | `/api/drive/admin/*` | 统计、空间治理、部门空间、容量重算、索引补建、外链治理、动态审计（全局设置走 `/api/settings/drive`） |
 
 完整参数与响应以 `packages\shared\src\drive\contracts\` 中的契约为准（`driveSpaceContract` / `driveNodeContract` / `driveShareLinkContract` /
-`driveTagContract` / `driveAdminContract` / `drivePublicShareContract`），服务端路由、前端 hooks、MSW mock 与运行中的 `/api/docs`（`企业网盘-*` 标签）均由其派生。
+`driveTagContract` / `driveAdminContract` / `drivePublicShareContract` / `driveCollaborationContract` / `driveAccessRequestContract`），服务端路由、前端 hooks、MSW mock 与运行中的 `/api/docs`（`企业网盘-*` 标签）均由其派生。

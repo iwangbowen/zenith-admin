@@ -3,6 +3,7 @@ import { defineContract, op, type Operation } from '../core/contract';
 import { stripDefaultsDeep } from '../core/validation';
 import { SETTINGS_SCOPES, type SettingsScope } from './constants';
 import { authSettingsSchema } from './modules/auth';
+import { driveSettingsSchema } from './modules/drive';
 import { identitySecuritySettingsSchema } from './modules/identity-security';
 import { rulesSettingsSchema } from './modules/rules';
 import { terminalSettingsSchema } from './modules/terminal';
@@ -45,6 +46,7 @@ export const mySettingsSchema = z.object({
   // 带 License 门控的模块：租户套餐未含该特性时不返回
   terminal: terminalSettingsSchema.pick({ recordingEnabled: true }).optional(),
   rules: rulesSettingsSchema.pick({ publishApproval: true }).optional(),
+  drive: driveSettingsSchema.pick({ previewWatermarkEnabled: true }).optional(),
 }).meta({ id: 'MySettings' });
 
 export type MySettings = z.output<typeof mySettingsSchema>;

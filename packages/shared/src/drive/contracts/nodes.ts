@@ -240,6 +240,16 @@ export const driveNodeCommentSchema = z.object({
 
 export type DriveNodeComment = z.infer<typeof driveNodeCommentSchema>;
 
+export const drivePresenceUserSchema = z.object({
+  userId: z.int(),
+  name: z.string(),
+  avatar: z.string().nullable(),
+  /** 最近一次心跳时间 */
+  lastSeenAt: z.string(),
+}).meta({ id: 'DrivePresenceUser' });
+
+export type DrivePresenceUser = z.infer<typeof drivePresenceUserSchema>;
+
 // ─── 入参 ────────────────────────────────────────────────────────────────────
 
 const optionalSpaceId = z.coerce.number().int().positive().optional();
@@ -383,4 +393,7 @@ export const driveNodeContract = defineContract('/api/drive/nodes', {
   unlock: op.delete('/{id}/lock', { params: idParam, response: driveNodeSchema, summary: '解除锁定' }),
   shareLinks: op.get('/{id}/share-links', { params: idParam, response: z.array(driveShareLinkSchema), summary: '节点外链（manager 见全部，其他人见自己创建的）' }),
   createShareLink: op.post('/{id}/share-links', { params: idParam, body: createDriveShareLinkSchema, response: driveShareLinkSchema, summary: '创建外链（需 editor + drive:link:create）' }),
+  presence: op.get('/{id}/presence', { params: idParam, response: z.array(drivePresenceUserSchema), summary: '正在查看该节点的用户（心跳 60 秒内）' }),
+  heartbeat: op.post('/{id}/presence', { params: idParam, response: z.array(drivePresenceUserSchema), summary: '上报我正在查看该节点，并返回当前在线用户' }),
+  leavePresence: op.delete('/{id}/presence', { params: idParam, summary: '离开该节点（立即从在线列表移除）' }),
 }, { tags: ['企业网盘-文件'] });

@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Button, Empty, Progress, Spin, Switch, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { Building2, Clock, HardDrive, Link2, Plus, Share2, Star, Trash2, Users } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
-import { DRIVE_VIEW_LABELS, type DriveSpace, type DriveSpaceType, type DriveView } from '@zenith/shared/drive';
+import { DRIVE_VIEW_LABELS, type DriveAccessRequest, type DriveSpace, type DriveSpaceType, type DriveView } from '@zenith/shared/drive';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { KeywordInput } from '@/components/search-filters';
 import { useUrlSelectionParams } from '@/hooks/useUrlSelectionState';
 import { usePermission } from '@/hooks/usePermission';
-import { useDriveSettings, useMyDriveSpaces } from '@/hooks/queries/drive';
+import { useDrivePendingAccessCount, useDriveSettings, useMyDriveSpaces } from '@/hooks/queries/drive';
 import { fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
+import { DriveAccessRequestsButton, DriveAccessRequestsModal } from './components/DriveAccessPanels';
 import { DriveBrowser } from './components/DriveBrowser';
 import { DriveNodeDrawer } from './components/DriveNodeDrawer';
 import { DriveSpaceFormSheet } from './components/DriveSpaceFormSheet';
@@ -42,11 +43,15 @@ function SpaceItem({ space, active, onClick }: { readonly space: DriveSpace; rea
 
 export default function DriveWorkbenchPage() {
   const { hasPermission } = usePermission();
-  const [selection, setSelection] = useUrlSelectionParams(['view', 'space', 'folder', 'node']);
+  const [selection, setSelection] = useUrlSelectionParams(['view', 'space', 'folder', 'node', 'requests']);
   const parsedDetailId = Number(selection.node);
   const detailId = Number.isSafeInteger(parsedDetailId) && parsedDetailId > 0 ? parsedDetailId : null;
   const setDetailId = useCallback((id: number | null) => {
     setSelection((prev) => ({ ...prev, node: id === null ? null : String(id) }));
+  }, [setSelection]);
+  const requestsBox = selection.requests === 'inbox' || selection.requests === 'outbox' ? selection.requests : null;
+  const setRequestsBox = useCallback((box: 'inbox' | 'outbox' | null) => {
+    setSelection((prev) => ({ ...prev, requests: box }));
   }, [setSelection]);
   const [globalKeyword, setGlobalKeyword] = useState('');
   const [searching, setSearching] = useState<{ keyword: string; fullText: boolean } | null>(null);
@@ -56,6 +61,7 @@ export default function DriveWorkbenchPage() {
 
   const spacesQuery = useMyDriveSpaces();
   const settingsQuery = useDriveSettings(hasPermission('drive:setting:view'));
+  const pendingQuery = useDrivePendingAccessCount(hasPermission('drive:node:grant'));
   const uploader = useDriveUploader();
 
   const spaces = useMemo(() => spacesQuery.data ?? [], [spacesQuery.data]);
@@ -74,25 +80,36 @@ export default function DriveWorkbenchPage() {
 
   const openSpace = useCallback((id: number, folder: number | null = null) => {
     setSearching(null);
-    setSelection({ view: null, space: String(id), folder: folder ? String(folder) : null, node: null });
+    setSelection((prev) => ({ ...prev, view: null, space: String(id), folder: folder ? String(folder) : null, node: null }));
     setShowDetailOnNarrow(true);
   }, [setSelection]);
   const openView = (v: Exclude<DriveView, 'space'>) => {
     setSearching(null);
-    setSelection({ view: v, space: null, folder: null, node: null });
+    setSelection((prev) => ({ ...prev, view: v, space: null, folder: null, node: null }));
     setShowDetailOnNarrow(true);
   };
   const navigateFolder = useCallback((folder: number | null) => {
     setSelection((prev) => ({ ...prev, folder: folder ? String(folder) : null }));
   }, [setSelection]);
 
+  const openRequestNode = useCallback((req: DriveAccessRequest) => {
+    setSearching(null);
+    setSelection({ view: null, space: String(req.spaceId), folder: req.nodeType === 'folder' ? String(req.nodeId) : null, node: req.nodeType === 'folder' ? null : String(req.nodeId), requests: null });
+    setShowDetailOnNarrow(true);
+  }, [setSelection]);
+
   const allowExternalShare = (settingsQuery.data?.effective.externalShareEnabled ?? true) && (activeSpace?.allowExternalShare ?? true);
 
   const master = (
     <>
-      <MasterDetailLayout.Header extra={hasPermission('drive:space:create') ? (
-        <Tooltip content="新建协作空间"><Button size="small" theme="borderless" icon={<Plus size={14} />} aria-label="新建协作空间" onClick={() => setCreatingSpace(true)} /></Tooltip>
-      ) : undefined}>
+      <MasterDetailLayout.Header extra={(
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          <DriveAccessRequestsButton pending={pendingQuery.data ?? 0} onClick={() => setRequestsBox('inbox')} />
+          {hasPermission('drive:space:create') && (
+            <Tooltip content="新建协作空间"><Button size="small" theme="borderless" icon={<Plus size={14} />} aria-label="新建协作空间" onClick={() => setCreatingSpace(true)} /></Tooltip>
+          )}
+        </span>
+      )}>
         <Typography.Text strong>企业网盘</Typography.Text>
       </MasterDetailLayout.Header>
       <MasterDetailLayout.Body padding={8}>
@@ -152,6 +169,7 @@ export default function DriveWorkbenchPage() {
       <DriveNodeDrawer nodeId={detailId} allowExternalShare={allowExternalShare} onClose={() => setDetailId(null)}
         onDownload={(node) => { void fetchManagedFileBlob(nodeDownloadUrl(node)).then((blob) => downloadBlob(blob, node.name)); }} />
       <DriveSpaceFormSheet target={creatingSpace ? 'create' : null} onClose={() => setCreatingSpace(false)} />
+      <DriveAccessRequestsModal key={requestsBox ?? 'closed'} visible={requestsBox !== null} initialBox={requestsBox ?? 'inbox'} onClose={() => setRequestsBox(null)} onOpenNode={openRequestNode} />
       <DriveUploadQueue items={uploader.items} activeCount={uploader.activeCount} conflict={uploader.conflict} onCancel={uploader.cancel} onClear={uploader.clearFinished} />
     </div>
   );

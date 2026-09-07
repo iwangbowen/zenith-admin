@@ -522,6 +522,137 @@
   color: var(--semi-color-text-2);
 }
 
+.drive-link-list__kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: var(--semi-border-radius-small);
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
+  font-weight: 500;
+}
+
+.drive-link-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+}
+
+.drive-link-qr svg {
+  border-radius: var(--semi-border-radius-medium);
+  background: #fff;
+}
+
+/* ─── 文件收集（公开页）───────────────────────────────────────────────────── */
+.drive-collect {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px dashed var(--semi-color-border);
+  border-radius: var(--semi-border-radius-medium);
+  background: var(--semi-color-fill-0);
+}
+
+.drive-collect__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drive-collect__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drive-collect__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: var(--semi-border-radius-medium);
+  background: var(--semi-color-bg-0);
+  border: 1px solid var(--semi-color-border);
+}
+
+.drive-collect__item--error {
+  border-color: var(--semi-color-danger-light-active);
+}
+
+.drive-collect__item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.drive-collect__item-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ─── 在线状态（谁在看）──────────────────────────────────────────────────── */
+.drive-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+/* ─── 访问申请 ───────────────────────────────────────────────────────────── */
+.drive-access-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.drive-access-gate__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 420px;
+  text-align: left;
+}
+
+.drive-access-request {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.drive-access-request:last-child {
+  border-bottom: 0;
+}
+
+.drive-access-request__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.drive-access-request__meta {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
 /* ─── 授权主体选择器 ─────────────────────────────────────────────────────── */
 .drive-subject-picker {
   display: flex;

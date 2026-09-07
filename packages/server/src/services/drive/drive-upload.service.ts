@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import {
   DRIVE_SIMPLE_UPLOAD_MAX_BYTES,
+  type DriveActivityAction,
   type DriveFileVersion,
   type DriveNode,
   type DriveUploadCompleteInput,
@@ -88,6 +89,8 @@ interface AttachInput {
   mimeType: string | null;
   contentHash: string | null;
   conflictPolicy: DriveUploadConflictPolicy;
+  /** 新建节点时的动态覆盖（文件收集：动作 collect_upload、匿名 actor、外链 id） */
+  activity?: { action: DriveActivityAction; actorId: number | null; shareId?: number; detail?: Record<string, unknown> };
 }
 
 /** 落地结果：节点行 + 事务提交后需回收的对象（版本修剪产生） */
@@ -153,7 +156,13 @@ async function attachFileAsNode(input: AttachInput): Promise<AttachResult> {
     await tx.insert(driveFileVersions).values({
       nodeId: created.id, version: 1, fileId: input.fileId, size: input.size, contentHash: input.contentHash, authorId: uid,
     });
-    await logDriveActivity({ spaceId: input.space.id, nodeId: created.id, nodeName: name, nodeType: 'file', action: 'upload', detail: { size: input.size } }, tx);
+    await logDriveActivity({
+      spaceId: input.space.id, nodeId: created.id, nodeName: name, nodeType: 'file',
+      action: input.activity?.action ?? 'upload',
+      actorId: input.activity ? input.activity.actorId : undefined,
+      shareId: input.activity?.shareId,
+      detail: { size: input.size, ...input.activity?.detail },
+    }, tx);
     return { row: created, newVersion: false, releasedFileIds: [] };
   });
 }
@@ -206,11 +215,56 @@ async function appendVersion(
 }
 
 /** 对象引用已在事务中更新；提交后记录最近访问并持久化渲染任务。 */
-async function finishNode(result: { row: DriveNodeRow; releasedFileIds: string[] }): Promise<DriveNode> {
-  await touchDriveRecent(result.row.id, 'upload');
+async function finishNode(result: { row: DriveNodeRow; releasedFileIds: string[] }, touchRecent = true): Promise<DriveNode> {
+  if (touchRecent) await touchDriveRecent(result.row.id, 'upload');
   await scheduleNodeRenditions(result.row.id);
   const [node] = await decorateNodes([result.row]);
   return node;
+}
+
+/** 内容去重后落库为托管文件（秒传命中直接复用对象） */
+async function storeUploadBuffer(buffer: Buffer<ArrayBuffer>, fileName: string, mimeType: string) {
+  const contentHash = createHash('sha256').update(buffer).digest('hex');
+  const dedup = await findFileByHash(contentHash, buffer.byteLength);
+  if (dedup) return { id: dedup.id, size: dedup.size, mimeType: dedup.mimeType ?? null, contentHash: dedup.contentHash ?? null };
+  const stored = await uploadManagedFile(new File([buffer], fileName, { type: mimeType }), { visibility: 'restricted', contentHash, skipTypeCheck: true });
+  return { id: stored.id, size: stored.size, mimeType: stored.mimeType ?? null, contentHash: stored.contentHash ?? null };
+}
+
+export interface BufferUploadTarget {
+  spaceId: number;
+  parentId: number | null;
+  conflictPolicy: DriveUploadConflictPolicy;
+  /** 单请求大小上限（缺省为简单上传阈值） */
+  maxBytes?: number;
+  activity?: AttachInput['activity'];
+  /** 是否记入当前用户的「最近访问」（代他人收集时不记） */
+  touchRecent?: boolean;
+}
+
+/**
+ * 以当前用户身份把一份内存中的文件落为节点：配额 / 内容策略 / 去重 / 冲突策略全部复用。
+ * 简单上传与文件收集（外链匿名提交，以链接创建者身份执行）共用。
+ */
+export async function uploadBufferAsNode(file: File, target: BufferUploadTarget): Promise<DriveNode> {
+  const maxBytes = target.maxBytes ?? DRIVE_SIMPLE_UPLOAD_MAX_BYTES;
+  if (file.size > maxBytes) {
+    throw new HTTPException(400, { message: target.maxBytes ? `文件大小超过上限（${Math.floor(maxBytes / 1024 / 1024)}MB）` : '文件超过简单上传阈值，请使用分片上传' });
+  }
+  const { space, ancestorIds } = await resolveWritableParent(target.spaceId, target.parentId);
+  const quota = await getSpaceQuotaState(space.id);
+  if (quota.remaining !== null && quota.remaining < file.size) {
+    throw new HTTPException(400, { message: '空间配额不足，请清理回收站或联系管理员扩容' });
+  }
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await assertDriveFileAllowed(file.name, buffer);
+  const stored = await storeUploadBuffer(buffer, file.name, file.type);
+  const attached = await attachFileAsNode({
+    space, parentId: target.parentId, ancestorIds, fileName: file.name,
+    fileId: stored.id, size: stored.size, mimeType: stored.mimeType, contentHash: stored.contentHash,
+    conflictPolicy: target.conflictPolicy, activity: target.activity,
+  });
+  return finishNode(attached, target.touchRecent ?? true);
 }
 
 // ─── 预检 / 秒传 ──────────────────────────────────────────────────────────────
@@ -251,28 +305,7 @@ export async function simpleDriveUpload(
   file: File,
   fields: { spaceId: number; parentId: number | null; conflictPolicy: DriveUploadConflictPolicy },
 ): Promise<DriveNode> {
-  if (file.size > DRIVE_SIMPLE_UPLOAD_MAX_BYTES) {
-    throw new HTTPException(400, { message: '文件超过简单上传阈值，请使用分片上传' });
-  }
-  const { space, ancestorIds } = await resolveWritableParent(fields.spaceId, fields.parentId);
-  const quota = await getSpaceQuotaState(space.id);
-  if (quota.remaining !== null && quota.remaining < file.size) {
-    throw new HTTPException(400, { message: '空间配额不足，请清理回收站或联系管理员扩容' });
-  }
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await assertDriveFileAllowed(file.name, buffer);
-  const contentHash = createHash('sha256').update(buffer).digest('hex');
-  const dedup = await findFileByHash(contentHash, file.size);
-  const stored = dedup
-    ? { id: dedup.id, size: dedup.size, mimeType: dedup.mimeType ?? null, contentHash: dedup.contentHash ?? null }
-    : await uploadManagedFile(new File([buffer], file.name, { type: file.type }), { visibility: 'restricted', contentHash, skipTypeCheck: true })
-      .then((f) => ({ id: f.id, size: f.size, mimeType: f.mimeType ?? null, contentHash: f.contentHash ?? null }));
-  const attached = await attachFileAsNode({
-    space, parentId: fields.parentId, ancestorIds, fileName: file.name,
-    fileId: stored.id, size: stored.size, mimeType: stored.mimeType, contentHash: stored.contentHash,
-    conflictPolicy: fields.conflictPolicy,
-  });
-  return finishNode(attached);
+  return uploadBufferAsNode(file, fields);
 }
 
 /** 上传为指定节点的新版本（≤ 5MB 单请求） */
@@ -286,12 +319,7 @@ export async function uploadDriveNodeVersion(nodeId: number, file: File, comment
   }
   const buffer = Buffer.from(await file.arrayBuffer());
   await assertDriveFileAllowed(node.name, buffer);
-  const contentHash = createHash('sha256').update(buffer).digest('hex');
-  const dedup = await findFileByHash(contentHash, file.size);
-  const stored = dedup
-    ? { id: dedup.id, size: dedup.size, mimeType: dedup.mimeType ?? null, contentHash: dedup.contentHash ?? null }
-    : await uploadManagedFile(new File([buffer], node.name, { type: file.type }), { visibility: 'restricted', contentHash, skipTypeCheck: true })
-      .then((f) => ({ id: f.id, size: f.size, mimeType: f.mimeType ?? null, contentHash: f.contentHash ?? null }));
+  const stored = await storeUploadBuffer(buffer, node.name, file.type);
   const settings = await getDriveSettings();
   const subjects = await loadDriveSubjects();
   const appended = await db.transaction((tx) => appendVersion(tx, node, {

@@ -13,7 +13,7 @@ export const SHORT_LINK_REDIRECT_TYPE_LABELS: Record<ShortLinkRedirectType, stri
 export const SHORT_LINK_REDIRECT_TYPE_OPTIONS = createLabelOptions(SHORT_LINK_REDIRECT_TYPES, SHORT_LINK_REDIRECT_TYPE_LABELS);
 
 // ─── 来源业务类型 ─────────────────────────────────────────────────────────────
-export const SHORT_LINK_BIZ_TYPES = ['custom', 'sms', 'broadcast', 'payment_link', 'cms_content', 'campaign', 'marketing'] as const;
+export const SHORT_LINK_BIZ_TYPES = ['custom', 'sms', 'broadcast', 'payment_link', 'cms_content', 'campaign', 'marketing', 'drive_share'] as const;
 
 export type ShortLinkBizType = (typeof SHORT_LINK_BIZ_TYPES)[number];
 
@@ -25,12 +25,13 @@ export const SHORT_LINK_BIZ_TYPE_LABELS: Record<ShortLinkBizType, string> = {
   cms_content: 'CMS 内容',
   campaign: '分群触达',
   marketing: '营销活动',
+  drive_share: '网盘外链',
 };
 
 export const SHORT_LINK_BIZ_TYPE_OPTIONS = createLabelOptions(SHORT_LINK_BIZ_TYPES, SHORT_LINK_BIZ_TYPE_LABELS);
 
 /** 业务对象幂等短链（ensure）允许的来源类型：排除手工 custom */
-export const SHORT_LINK_ENSURE_BIZ_TYPES = ['sms', 'broadcast', 'payment_link', 'cms_content', 'campaign', 'marketing'] as const;
+export const SHORT_LINK_ENSURE_BIZ_TYPES = ['sms', 'broadcast', 'payment_link', 'cms_content', 'campaign', 'marketing', 'drive_share'] as const;
 
 // ─── 短码规则 ─────────────────────────────────────────────────────────────────
 /** 自动生成短码使用的字符表：base62 剔除易混字符 0/O/1/l/I */

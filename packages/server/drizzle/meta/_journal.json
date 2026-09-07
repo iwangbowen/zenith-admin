@@ -71,6 +71,13 @@
       "when": 1788768064280,
       "tag": "0009_drive_move_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788772044985,
+      "tag": "0010_drive_phase3_sharing",
+      "breakpoints": true
     }
   ]
 }

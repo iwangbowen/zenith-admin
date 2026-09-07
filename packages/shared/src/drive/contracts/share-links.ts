@@ -2,7 +2,7 @@ import * as z from 'zod';
 import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { DRIVE_NODE_TYPES, DRIVE_SHARE_CAPABILITIES, DRIVE_SHARE_KINDS, DRIVE_SHARE_LINK_STATES } from '../constants';
-import { updateDriveShareLinkSchema } from '../validation';
+import { driveCollectPolicySchema, updateDriveShareLinkSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +15,7 @@ export const driveShareLinkSchema = z.object({
   kind: z.enum(DRIVE_SHARE_KINDS),
   token: z.string(),
   url: z.string().meta({ description: '前端公开页相对地址 /public/drive/{token}' }),
+  shortUrl: z.string().nullable().meta({ description: '已生成的短链完整地址；未生成为 null' }),
   hasPassword: z.boolean(),
   capabilities: z.array(z.enum(DRIVE_SHARE_CAPABILITIES)).meta({ description: '能力位：preview / download / upload' }),
   enabled: z.boolean(),
@@ -24,6 +25,9 @@ export const driveShareLinkSchema = z.object({
   maxDownloadCount: z.int().nullable(),
   downloadCount: z.int(),
   uploadCount: z.int(),
+  allowedIps: z.array(z.string()),
+  watermark: z.boolean(),
+  collectPolicy: driveCollectPolicySchema.nullable(),
   revokedAt: z.string().nullable(),
   remark: z.string().nullable(),
   state: z.enum(DRIVE_SHARE_LINK_STATES).meta({ description: '派生状态：有效 / 过期 / 次数用尽 / 停用 / 已撤销' }),
@@ -47,6 +51,24 @@ export const driveShareAccessLogSchema = z.object({
 
 export type DriveShareAccessLog = z.infer<typeof driveShareAccessLogSchema>;
 
+export const driveCollectSubmissionSchema = z.object({
+  id: z.int(),
+  shareId: z.int(),
+  nodeId: z.int().nullable().meta({ description: '收集到的文件节点；文件已彻底删除时为 null' }),
+  fileName: z.string(),
+  size: z.int(),
+  submitterName: z.string().nullable(),
+  submitterNote: z.string().nullable(),
+  clientIp: z.string().nullable(),
+  createdAt: z.string(),
+}).meta({ id: 'DriveCollectSubmission' });
+
+export type DriveCollectSubmission = z.infer<typeof driveCollectSubmissionSchema>;
+
+export const driveShareShortLinkSchema = z.object({
+  shortUrl: z.string(),
+}).meta({ id: 'DriveShareShortLink' });
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const driveShareLinkListQuery = paginationQuery.extend({
@@ -64,4 +86,6 @@ export const driveShareLinkContract = defineContract('/api/drive/share-links', {
   revoke: op.post('/{id}/revoke', { params: idParam, summary: '撤销外链（保留记录）' }),
   remove: op.delete('/{id}', { params: idParam, summary: '删除外链记录' }),
   accessLogs: op.get('/{id}/access-logs', { params: idParam, query: paginationQuery, response: paginated(driveShareAccessLogSchema), summary: '外链访问日志' }),
+  submissions: op.get('/{id}/submissions', { params: idParam, query: paginationQuery, response: paginated(driveCollectSubmissionSchema), summary: '文件收集的提交记录' }),
+  shortLink: op.post('/{id}/short-link', { params: idParam, response: driveShareShortLinkSchema, summary: '为外链生成（或复用）短链' }),
 }, { tags: ['企业网盘-外链'] });

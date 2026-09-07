@@ -118,7 +118,9 @@ describe('resolveSettings', () => {
     expect(Object.keys(pickSettingsFields('identitySecurity', effective, ['public']))).toEqual(['password']);
     expect(Object.keys(pickSettingsFields('identitySecurity', effective, ['admin']))).toEqual(['lockout', 'mfa', 'risk']);
     expect(settingsModuleHasVisibility('ui', ['authenticated'])).toBe(true);
-    expect(settingsModuleHasVisibility('drive', ['public', 'authenticated'])).toBe(false);
+    expect(settingsModuleHasVisibility('drive', ['public'])).toBe(false);
+    expect(settingsModuleHasVisibility('drive', ['authenticated'])).toBe(true);
+    expect(settingsModuleHasVisibility('files', ['public', 'authenticated'])).toBe(false);
   });
 });
 

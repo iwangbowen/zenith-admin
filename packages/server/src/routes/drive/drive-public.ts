@@ -1,10 +1,10 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
-import { drivePublicShareContract } from '@zenith/shared/drive';
+import { drivePublicShareContract, drivePublicUploadFieldsSchema } from '@zenith/shared/drive';
 import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
-import { okBody, validationHook } from '../../lib/openapi-schemas';
+import { ErrorResponse, errBody, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import { parseRangeHeader, rangeNotSatisfiable, supportsRange } from '../../lib/http-range';
 import {
   createDriveShareSession,
@@ -13,6 +13,7 @@ import {
   prepareDrivePublicContent,
   openDrivePublicContent,
   saveFromDriveShare,
+  uploadToDriveCollect,
 } from '../../services/drive/drive-share.service';
 import { binaryResponses, streamStoredContent } from './drive-nodes';
 
@@ -77,6 +78,25 @@ const contentRoute = defineContractRoute(drivePublicShareContract.content, {
   },
 });
 
+const uploadRoute = defineContractRoute(drivePublicShareContract.upload, {
+  middleware: [],
+  responses: { 403: { content: jsonContent(ErrorResponse), description: '链接不接受提交 / 数量已达上限' } },
+  handler: async (c) => {
+    const { token } = c.req.valid('param');
+    const session = readSession(c.req.header('session'), c.req.query('session'));
+    const body = await c.req.parseBody();
+    const file = body.file;
+    if (typeof (file as File)?.arrayBuffer !== 'function') return c.json(errBody('请选择要提交的文件', 400), 400);
+    const fields = drivePublicUploadFieldsSchema.safeParse({
+      submitterName: typeof body.submitterName === 'string' ? body.submitterName : undefined,
+      submitterNote: typeof body.submitterNote === 'string' ? body.submitterNote : undefined,
+    });
+    if (!fields.success) return c.json(errBody('提交人信息不合法', 400), 400);
+    const result = await uploadToDriveCollect(token, session, file as File, fields.data);
+    return c.json(okBody(result, '提交成功'), 200, { 'Cache-Control': 'private, no-store' });
+  },
+});
+
 const saveRoute = defineContractRoute(drivePublicShareContract.save, {
   middleware: [authMiddleware, guard({ permission: 'drive:node:upload', audit: { description: '外链转存到网盘', module: '企业网盘' } })],
   handler: async (c) => {
@@ -87,6 +107,6 @@ const saveRoute = defineContractRoute(drivePublicShareContract.save, {
   },
 });
 
-router.openapiRoutes([accessRoute, metaRoute, childrenRoute, contentRoute, saveRoute] as const);
+router.openapiRoutes([accessRoute, metaRoute, childrenRoute, contentRoute, uploadRoute, saveRoute] as const);
 
 export default router;

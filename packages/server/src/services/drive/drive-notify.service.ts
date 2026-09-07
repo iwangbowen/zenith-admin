@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { formatBytes } from '@zenith/shared/core';
 import { DRIVE_NODE_TYPE_LABELS, DRIVE_ROLE_LABELS, type DriveRole, type DriveSubjectType } from '@zenith/shared/drive';
 import { db } from '../../db';
-import { driveSpaceMembers, users, type DriveNodeRow, type DriveSpaceRow } from '../../db/schema';
+import { driveSpaceMembers, users, type DriveAccessRequestRow, type DriveNodeRow, type DriveShareLinkRow, type DriveSpaceRow } from '../../db/schema';
 import { currentUserOrNull } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
@@ -113,4 +113,91 @@ export async function notifyBatchDownloadReady(userId: number, tenantId: number 
   } catch (err) {
     logger.warn({ err, userId }, 'drive: 打包完成通知失败');
   }
+}
+
+/** 文件收集收到新文件：通知链接创建者 */
+export async function notifyCollectReceived(
+  share: Pick<DriveShareLinkRow, 'id' | 'createdBy' | 'tenantId'>,
+  root: Pick<DriveNodeRow, 'id' | 'name' | 'spaceId'>,
+  fileName: string,
+  submitterName: string,
+): Promise<void> {
+  if (!share.createdBy) return;
+  try {
+    await notify('drive.collect.received', {
+      recipients: [{ type: 'user', id: share.createdBy }],
+      vars: { shareId: share.id, nodeId: root.id, nodeName: root.name, fileName, submitterName },
+      tenantId: share.tenantId ?? null,
+      link: `/drive?space=${root.spaceId}&folder=${root.id}`,
+    });
+  } catch (err) {
+    logger.warn({ err, shareId: share.id }, 'drive: 收集通知发送失败');
+  }
+}
+
+export async function notifyAccessRequested(
+  request: Pick<DriveAccessRequestRow, 'id' | 'role' | 'reason' | 'tenantId'>,
+  node: Pick<DriveNodeRow, 'id' | 'name' | 'spaceId'>,
+  managerIds: number[],
+): Promise<void> {
+  if (managerIds.length === 0) return;
+  try {
+    const requesterName = await currentActorName();
+    await notify('drive.access.requested', {
+      recipients: managerIds.map((id) => ({ type: 'user' as const, id })),
+      vars: {
+        requestId: request.id, nodeId: node.id, nodeName: node.name, requesterName,
+        roleLabel: DRIVE_ROLE_LABELS[request.role], reason: request.reason ? `（理由：${request.reason}）` : '',
+      },
+      tenantId: request.tenantId ?? null,
+      link: `/drive?space=${node.spaceId}&node=${node.id}&requests=inbox`,
+    });
+  } catch (err) {
+    logger.warn({ err, requestId: request.id }, 'drive: 访问申请通知发送失败');
+  }
+}
+
+export async function notifyAccessDecided(
+  request: Pick<DriveAccessRequestRow, 'id' | 'requesterId' | 'status' | 'decisionNote' | 'tenantId'>,
+  node: Pick<DriveNodeRow, 'id' | 'name' | 'type' | 'spaceId'>,
+): Promise<void> {
+  try {
+    const deciderName = await currentActorName();
+    const approved = request.status === 'approved';
+    await notify('drive.access.decided', {
+      recipients: [{ type: 'user', id: request.requesterId }],
+      vars: {
+        requestId: request.id, nodeId: node.id, nodeName: node.name, deciderName,
+        resultText: approved ? '已通过' : '被拒绝', note: request.decisionNote ? `（${request.decisionNote}）` : '',
+      },
+      tenantId: request.tenantId ?? null,
+      link: approved ? (node.type === 'folder' ? `/drive?space=${node.spaceId}&folder=${node.id}` : `/drive?space=${node.spaceId}&node=${node.id}`) : '/drive?requests=outbox',
+    });
+  } catch (err) {
+    logger.warn({ err, requestId: request.id }, 'drive: 访问申请结果通知失败');
+  }
+}
+
+export async function notifyShareExpiring(share: Pick<DriveShareLinkRow, 'id' | 'createdBy' | 'tenantId' | 'expireAt'>, node: Pick<DriveNodeRow, 'id' | 'name' | 'spaceId'>): Promise<void> {
+  if (!share.createdBy || !share.expireAt) return;
+  await notify('drive.share.expiring', {
+    recipients: [{ type: 'user', id: share.createdBy }],
+    vars: { shareId: share.id, nodeId: node.id, nodeName: node.name, expireAt: formatDateTime(share.expireAt) },
+    tenantId: share.tenantId ?? null,
+    link: `/drive?space=${node.spaceId}&node=${node.id}`,
+    dedupeKey: `drive-share-expiring:${share.id}:${share.expireAt.getTime()}`,
+  });
+}
+
+export async function notifyGrantExpiring(
+  grant: { id: number; subjectId: number; role: DriveRole; expireAt: Date; tenantId: number | null },
+  node: Pick<DriveNodeRow, 'id' | 'name' | 'type' | 'spaceId'>,
+): Promise<void> {
+  await notify('drive.grant.expiring', {
+    recipients: [{ type: 'user', id: grant.subjectId }],
+    vars: { nodeId: node.id, nodeName: node.name, roleLabel: DRIVE_ROLE_LABELS[grant.role], expireAt: formatDateTime(grant.expireAt) },
+    tenantId: grant.tenantId,
+    link: node.type === 'folder' ? `/drive?space=${node.spaceId}&folder=${node.id}` : `/drive?space=${node.spaceId}&node=${node.id}`,
+    dedupeKey: `drive-grant-expiring:${grant.id}:${grant.expireAt.getTime()}`,
+  });
 }

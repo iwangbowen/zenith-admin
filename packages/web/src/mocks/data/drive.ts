@@ -1,7 +1,9 @@
 import { fillPath } from '@zenith/shared/core';
 import {
   driveNodeContract,
+  type DriveAccessRequest,
   type DriveActivity,
+  type DriveCollectSubmission,
   type DriveFileVersion,
   type DriveNode,
   type DriveNodeComment,
@@ -102,14 +104,33 @@ export const mockDriveVersions: DriveFileVersion[] = [
 
 export const mockDriveShareLinks: DriveShareLink[] = [
   {
-    id: 1, nodeId: 5, nodeName: '季度总结.pdf', nodeType: 'file', spaceId: 1, token: 'demo-share-token-0001', url: '/public/drive/demo-share-token-0001',
+    id: 1, nodeId: 5, nodeName: '季度总结.pdf', nodeType: 'file', spaceId: 1, token: 'demo-share-token-0001', url: '/public/drive/demo-share-token-0001', shortUrl: null,
     hasPassword: true, kind: 'share', capabilities: ['preview', 'download'], maxDownloadCount: null, uploadCount: 0, enabled: true, expireAt: '2027-12-31 23:59:59', maxAccessCount: null, accessCount: 12, downloadCount: 4,
+    allowedIps: [], watermark: true, collectPolicy: null,
     revokedAt: null, remark: '发给合作伙伴', state: 'active', createdBy: 1, createdByName: '管理员', createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
-    id: 2, nodeId: 10, nodeName: '设计稿', nodeType: 'folder', spaceId: 3, token: 'demo-share-token-0002', url: '/public/drive/demo-share-token-0002',
+    id: 2, nodeId: 10, nodeName: '设计稿', nodeType: 'folder', spaceId: 3, token: 'demo-share-token-0002', url: '/public/drive/demo-share-token-0002', shortUrl: null,
     hasPassword: false, kind: 'share', capabilities: ['preview'], maxDownloadCount: null, uploadCount: 0, enabled: true, expireAt: '2026-01-01 00:00:00', maxAccessCount: 50, accessCount: 50, downloadCount: 0,
+    allowedIps: [], watermark: false, collectPolicy: null,
     revokedAt: null, remark: null, state: 'expired', createdBy: 1, createdByName: '管理员', createdAt: '2025-12-01 09:00:00', updatedAt: '2025-12-01 09:00:00',
+  },
+  {
+    id: 3, nodeId: 10, nodeName: '设计稿', nodeType: 'folder', spaceId: 3, token: 'demo-collect-token-0003', url: '/public/drive/demo-collect-token-0003', shortUrl: null,
+    hasPassword: false, kind: 'collect', capabilities: ['upload'], maxDownloadCount: null, uploadCount: 1, enabled: true, expireAt: '2027-06-30 23:59:59', maxAccessCount: null, accessCount: 3, downloadCount: 0,
+    allowedIps: [], watermark: false, collectPolicy: { maxFileSizeMb: 50, allowedExtensions: ['png', 'jpg', 'pdf'], requireSubmitter: true, maxUploads: 20 },
+    revokedAt: null, remark: '收集供应商设计稿', state: 'active', createdBy: 1, createdByName: '管理员', createdAt: SEED_DATE, updatedAt: SEED_DATE,
+  },
+];
+
+export const mockDriveCollectSubmissions: DriveCollectSubmission[] = [
+  { id: 1, shareId: 3, nodeId: null, fileName: 'logo-v2.png', size: 204_800, submitterName: '供应商 A', submitterNote: '第二版 Logo', clientIp: '203.0.113.9', createdAt: '2026-01-22 10:30:00' },
+];
+
+export const mockDriveAccessRequests: DriveAccessRequest[] = [
+  {
+    id: 1, nodeId: 10, nodeName: '设计稿', nodeType: 'folder', spaceId: 3, spaceName: '产品协作', requesterId: 2, requesterName: '张三', role: 'downloader', reason: '需要下载最新设计稿评审',
+    status: 'pending', grantedRole: null, grantedExpireAt: null, decidedBy: null, decidedByName: null, decidedAt: null, decisionNote: null, createdAt: '2026-01-23 09:00:00', updatedAt: '2026-01-23 09:00:00',
   },
 ];
 

@@ -127,6 +127,28 @@ export function describeShareCapabilities(capabilities: readonly DriveShareCapab
   return parts.join(' · ') || '无权限';
 }
 
+// ─── 访问申请 ─────────────────────────────────────────────────────────────────
+export const DRIVE_ACCESS_REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
+
+export type DriveAccessRequestStatus = (typeof DRIVE_ACCESS_REQUEST_STATUSES)[number];
+
+export const DRIVE_ACCESS_REQUEST_STATUS_LABELS: Record<DriveAccessRequestStatus, string> = {
+  pending: '待审批',
+  approved: '已通过',
+  rejected: '已拒绝',
+  cancelled: '已取消',
+};
+
+export const DRIVE_ACCESS_REQUEST_STATUS_OPTIONS: Array<{ value: DriveAccessRequestStatus; label: string }> =
+  createLabelOptions(DRIVE_ACCESS_REQUEST_STATUSES, DRIVE_ACCESS_REQUEST_STATUS_LABELS);
+
+/** 可申请的角色：manager 只能由管理者直接授予 */
+export const DRIVE_REQUESTABLE_ROLES = ['viewer', 'downloader', 'editor'] as const;
+
+/** 节点在线状态：心跳有效期与前端上报间隔（秒） */
+export const DRIVE_PRESENCE_TTL_SECONDS = 60;
+export const DRIVE_PRESENCE_HEARTBEAT_SECONDS = 25;
+
 // ─── 渲染产物 ─────────────────────────────────────────────────────────────────
 export const DRIVE_RENDITION_KINDS = ['thumbnail', 'text', 'pdf', 'preview'] as const;
 

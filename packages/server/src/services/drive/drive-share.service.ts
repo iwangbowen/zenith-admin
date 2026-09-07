@@ -5,11 +5,16 @@ import { and, asc, desc, eq, inArray, isNull, lt, or, sql, type SQL } from 'driz
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import {
   DRIVE_SHARE_SESSION_TTL_SECONDS,
+  driveCollectPolicySchema,
   normalizeDriveShareCapabilities,
   type CreateDriveShareLinkInput,
+  type DriveCollectPolicy,
+  type DriveCollectSubmission,
   type DrivePublicNode,
   type DrivePublicShareMeta,
   type DrivePublicShareSession,
+  type DrivePublicUploadFields,
+  type DrivePublicUploadResult,
   type DriveShareLink,
   type DriveShareLinkState,
   type DriveRole,
@@ -19,15 +24,16 @@ import {
   type UpdateDriveShareLinkInput,
 } from '@zenith/shared/drive';
 import { db } from '../../db';
-import { driveNodes, driveShareAccessLogs, driveShareLinks, driveSpaces, type DriveNodeRow, type DriveShareLinkRow } from '../../db/schema';
+import { driveCollectSubmissions, driveNodes, driveShareAccessLogs, driveShareLinks, driveSpaces, shortLinks, type DriveNodeRow, type DriveShareLinkRow } from '../../db/schema';
 import { config } from '../../config';
-import { currentUser, currentUserId, currentUserOrNull, isSuperAdmin, type AppEnv } from '../../lib/context';
+import { currentUser, currentUserId, currentUserOrNull, isSuperAdmin, runWithCurrentUser, type AppEnv } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { decryptField, encryptField } from '../../lib/encryption';
 import { readStoredFile } from '../../lib/file-storage';
 import type { StoredFileRange } from '../../lib/file-storage';
+import { ipInAllowlist } from '../../lib/ip-allowlist';
 import logger from '../../lib/logger';
 import { hashPassword, verifyPassword } from '../../lib/password';
 import redis from '../../lib/redis';
@@ -36,15 +42,19 @@ import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { getRestrictedFileForRead } from '../files/files.service';
+import { buildShortUrl, ensureShortLink } from '../short-link/short-link.service';
 import { ensureNodeRole, loadDriveSubjects, loadDriveSubjectsForUser, resolveNodeRole, visibleNodeCondition, type DriveSubjectSet } from './drive-access.service';
-import { drivePublicShareUrl, resolveUserNames } from './drive-common';
+import { drivePublicShareUrl, extensionOf, loadDriveActorPayload, resolveUserNames } from './drive-common';
 import { logDriveActivity } from './drive-activity.service';
 import { copySubtree, ensureDriveNodeExists, loadAccessibleSubtree, resolveWritableParent } from './drive-nodes.service';
+import { notifyCollectReceived } from './drive-notify.service';
 import { ensureDriveLogPartitions } from './drive-partitions.service';
 import { ensureDriveSpaceExists } from './drive-spaces.service';
-import { getDriveSettings } from './drive-settings.service';
+import { getDriveSettings, type DriveSettings } from './drive-settings.service';
+import { uploadBufferAsNode } from './drive-upload.service';
 
 const SESSION_PREFIX = `${config.redis.keyPrefix}drive:share-session:`;
+const SHORT_LINK_BIZ = 'drive_share' as const;
 
 interface ShareSessionPayload {
   shareId: number;
@@ -63,21 +73,31 @@ function currentClientIp(): string {
   return ctx ? getClientIp(ctx).slice(0, 64) : '';
 }
 
+/** 收集上限：策略中的 maxUploads 用尽也视为次数用尽 */
 export function shareLinkState(row: DriveShareLinkRow): DriveShareLinkState {
   if (row.revokedAt) return 'revoked';
   if (!row.enabled) return 'disabled';
   if (row.expireAt && row.expireAt.getTime() <= Date.now()) return 'expired';
   if (row.maxAccessCount && row.accessCount >= row.maxAccessCount) return 'exhausted';
   if (row.maxDownloadCount && row.downloadCount >= row.maxDownloadCount) return 'exhausted';
+  if (row.kind === 'collect' && row.collectPolicy?.maxUploads && row.uploadCount >= row.collectPolicy.maxUploads) return 'exhausted';
   return 'active';
+}
+
+async function loadShortUrls(shareIds: number[]): Promise<Map<number, string>> {
+  if (shareIds.length === 0) return new Map();
+  const rows = await db.select({ bizRef: shortLinks.bizRef, code: shortLinks.code, status: shortLinks.status }).from(shortLinks)
+    .where(and(eq(shortLinks.bizType, SHORT_LINK_BIZ), inArray(shortLinks.bizRef, shareIds.map(String))));
+  return new Map(rows.filter((r) => r.bizRef && r.status === 'enabled').map((r) => [Number(r.bizRef), buildShortUrl(r.code)]));
 }
 
 async function mapShareLinks(rows: DriveShareLinkRow[]): Promise<DriveShareLink[]> {
   if (rows.length === 0) return [];
   const nodeIds = [...new Set(rows.map((r) => r.nodeId))];
-  const [nodes, names] = await Promise.all([
+  const [nodes, names, shortUrls] = await Promise.all([
     db.select({ id: driveNodes.id, name: driveNodes.name, type: driveNodes.type, spaceId: driveNodes.spaceId }).from(driveNodes).where(inArray(driveNodes.id, nodeIds)),
     resolveUserNames(rows.map((r) => r.createdBy)),
+    loadShortUrls(rows.map((r) => r.id)),
   ]);
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   return rows.map((r) => {
@@ -91,6 +111,7 @@ async function mapShareLinks(rows: DriveShareLinkRow[]): Promise<DriveShareLink[
       spaceId: node?.spaceId ?? 0,
       token,
       url: drivePublicShareUrl(token),
+      shortUrl: shortUrls.get(r.id) ?? null,
       hasPassword: !!r.passwordHash,
       kind: r.kind,
       capabilities: r.capabilities,
@@ -101,6 +122,9 @@ async function mapShareLinks(rows: DriveShareLinkRow[]): Promise<DriveShareLink[
       downloadCount: r.downloadCount,
       maxDownloadCount: r.maxDownloadCount ?? null,
       uploadCount: r.uploadCount,
+      allowedIps: r.allowedIps,
+      watermark: r.watermark,
+      collectPolicy: r.kind === 'collect' ? normalizeCollectPolicy(r.collectPolicy) : null,
       revokedAt: formatNullableDateTime(r.revokedAt),
       remark: r.remark ?? null,
       state: shareLinkState(r),
@@ -110,6 +134,11 @@ async function mapShareLinks(rows: DriveShareLinkRow[]): Promise<DriveShareLink[
       updatedAt: formatDateTime(r.updatedAt),
     };
   });
+}
+
+/** 历史行可能没有策略：按 schema 默认值补齐 */
+function normalizeCollectPolicy(policy: DriveCollectPolicy | null | undefined): DriveCollectPolicy {
+  return driveCollectPolicySchema.parse(policy ?? {});
 }
 
 // ─── 管理：创建 / 列表 / 修改 / 撤销 ─────────────────────────────────────────
@@ -130,8 +159,8 @@ function assertExpireWithinLimit(expireAt: Date | null, maxDays: number) {
 }
 
 export async function createDriveShareLink(nodeId: number, data: CreateDriveShareLinkInput): Promise<DriveShareLink> {
-  const capabilities = sharingCapabilities(data.kind, data.capabilities);
   const node = await ensureDriveNodeExists(nodeId);
+  const capabilities = sharingCapabilities(data.kind, data.capabilities, node);
   await ensureNodeRole(node, 'editor', '没有分享该文件的权限');
   const settings = await assertExternalShareAllowed(node);
   const expireAt = data.expireAt ? parseDateTimeInput(data.expireAt) : null;
@@ -151,9 +180,12 @@ export async function createDriveShareLink(nodeId: number, data: CreateDriveShar
       maxAccessCount: data.maxAccessCount ?? null,
       maxDownloadCount: data.maxDownloadCount ?? null,
       remark: data.remark ?? null,
+      allowedIps: data.allowedIps,
+      watermark: data.watermark,
+      collectPolicy: data.kind === 'collect' ? normalizeCollectPolicy(data.collectPolicy) : null,
       tenantId: getCreateTenantId(currentUser()),
     }).returning();
-    await logDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'share_create', shareId: created.id, detail: { capabilities } }, tx);
+    await logDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'share_create', shareId: created.id, detail: { kind: data.kind, capabilities } }, tx);
     return created;
   });
   const [link] = await mapShareLinks([row]);
@@ -273,13 +305,16 @@ export async function updateDriveShareLink(id: number, data: UpdateDriveShareLin
   const patch: PgUpdateSetSource<typeof driveShareLinks> = {};
   let bumpSession = false;
   if (data.capabilities !== undefined) {
-    patch.capabilities = sharingCapabilities(share.kind, data.capabilities);
+    patch.capabilities = sharingCapabilities(share.kind, data.capabilities, node);
     bumpSession = true;
   }
   if (data.remark !== undefined) patch.remark = data.remark;
   if (data.maxAccessCount !== undefined) patch.maxAccessCount = data.maxAccessCount;
   if (data.maxDownloadCount !== undefined) patch.maxDownloadCount = data.maxDownloadCount;
   if (data.enabled !== undefined) { patch.enabled = data.enabled; bumpSession = true; }
+  if (data.allowedIps !== undefined) { patch.allowedIps = data.allowedIps; bumpSession = true; }
+  if (data.watermark !== undefined) patch.watermark = data.watermark;
+  if (data.collectPolicy !== undefined && share.kind === 'collect') patch.collectPolicy = normalizeCollectPolicy(data.collectPolicy);
   if (data.expireAt !== undefined) {
     const expireAt = data.expireAt ? parseDateTimeInput(data.expireAt) : null;
     assertExpireWithinLimit(expireAt, settings.externalShareMaxDays);
@@ -310,6 +345,7 @@ export async function revokeDriveShareLink(id: number): Promise<void> {
     await tx.update(driveShareLinks)
       .set({ revokedAt: new Date(), enabled: false, sessionVersion: sql`${driveShareLinks.sessionVersion} + 1` })
       .where(eq(driveShareLinks.id, id));
+    await disableShareShortLink(tx, id);
     await logDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'share_revoke', shareId: id }, tx);
   });
 }
@@ -318,6 +354,7 @@ export async function deleteDriveShareLink(id: number): Promise<void> {
   const { share, node } = await ensureShareEditable(id);
   await db.transaction(async (tx) => {
     await tx.delete(driveShareLinks).where(eq(driveShareLinks.id, share.id));
+    await tx.delete(shortLinks).where(and(eq(shortLinks.bizType, SHORT_LINK_BIZ), eq(shortLinks.bizRef, String(share.id))));
     await logDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'share_revoke', shareId: id, detail: { deleted: true } }, tx);
   });
 }
@@ -331,7 +368,56 @@ export async function adminRevokeDriveShareLink(id: number): Promise<void> {
     await tx.update(driveShareLinks)
       .set({ revokedAt: new Date(), enabled: false, sessionVersion: sql`${driveShareLinks.sessionVersion} + 1` })
       .where(eq(driveShareLinks.id, id));
+    await disableShareShortLink(tx, id);
     if (node) await logDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'share_revoke', shareId: id, detail: { byAdmin: true } }, tx);
+  });
+}
+
+/** 撤销外链时同时停用其短链，避免短链继续跳到已失效的公开页 */
+async function disableShareShortLink(tx: Pick<typeof db, 'update'>, shareId: number): Promise<void> {
+  await tx.update(shortLinks).set({ status: 'disabled' })
+    .where(and(eq(shortLinks.bizType, SHORT_LINK_BIZ), eq(shortLinks.bizRef, String(shareId))));
+}
+
+/** 公开页的绝对地址：短链目标必须是完整 URL */
+function absolutePublicShareUrl(token: string): string {
+  return `${config.publicBaseUrl}${drivePublicShareUrl(token)}`;
+}
+
+/** 为外链幂等生成短链（创建者或节点 manager） */
+export async function ensureDriveShareShortLink(id: number): Promise<{ shortUrl: string }> {
+  const { share, node } = await ensureShareEditable(id);
+  if (shareLinkState(share) === 'revoked') throw new HTTPException(400, { message: '外链已撤销' });
+  const token = decryptField(share.tokenEncrypted);
+  if (!token) throw new HTTPException(500, { message: '外链令牌不可用' });
+  const link = await ensureShortLink({
+    targetUrl: absolutePublicShareUrl(token),
+    bizType: SHORT_LINK_BIZ,
+    bizRef: String(share.id),
+    title: `网盘外链 · ${node.name}`.slice(0, 128),
+    tenantId: share.tenantId ?? null,
+  });
+  if (link.status !== 'enabled') {
+    await db.update(shortLinks).set({ status: 'enabled' }).where(eq(shortLinks.id, link.id));
+  }
+  return { shortUrl: link.shortUrl };
+}
+
+/** 文件收集的提交记录（创建者或节点 manager） */
+export async function listCollectSubmissions(shareId: number, page = 1, pageSize = 20) {
+  await ensureShareEditable(shareId);
+  const where = eq(driveCollectSubmissions.shareId, shareId);
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(driveCollectSubmissions, where),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(driveCollectSubmissions).where(where).orderBy(desc(driveCollectSubmissions.id)).$dynamic(), page, pageSize);
+      return rows.map((r): DriveCollectSubmission => ({
+        id: r.id, shareId: r.shareId, nodeId: r.nodeId ?? null, fileName: r.fileName, size: r.size,
+        submitterName: r.submitterName ?? null, submitterNote: r.submitterNote ?? null, clientIp: r.clientIp ?? null, createdAt: formatDateTime(r.createdAt),
+      }));
+    },
   });
 }
 
@@ -358,11 +444,15 @@ async function findShareByToken(token: string): Promise<DriveShareLinkRow> {
 
 function assertShareUsable(share: DriveShareLinkRow, action: string, existingSession = false) {
   const state = shareLinkState(share);
-  if (state === 'active') return;
-  if (existingSession && state === 'exhausted') return;
-  logShareAccess(share, action, false);
-  const message = state === 'expired' ? '链接已过期' : state === 'exhausted' ? '链接访问次数已用尽' : '链接已停用';
-  throw new HTTPException(403, { message });
+  if (state !== 'active' && !(existingSession && state === 'exhausted')) {
+    logShareAccess(share, action, false);
+    const message = state === 'expired' ? '链接已过期' : state === 'exhausted' ? '链接访问次数已用尽' : '链接已停用';
+    throw new HTTPException(403, { message });
+  }
+  if (!ipInAllowlist(currentClientIp(), share.allowedIps)) {
+    logShareAccess(share, action, false);
+    throw new HTTPException(403, { message: '当前网络不在该链接允许访问的范围内' });
+  }
 }
 
 async function loadShareRoot(share: DriveShareLinkRow, subjects?: DriveSubjectSet): Promise<DriveNodeRow> {
@@ -444,7 +534,9 @@ export async function createDriveShareSession(token: string, password?: string):
 }
 
 async function buildPublicMeta(share: DriveShareLinkRow, token: string, node: DriveNodeRow | null): Promise<DrivePublicShareMeta> {
-  const names = await resolveUserNames([share.createdBy]);
+  const [names, settings] = await Promise.all([resolveUserNames([share.createdBy]), getDriveSettings()]);
+  const sharerName = share.createdBy ? names.get(share.createdBy) ?? null : null;
+  const policy = share.kind === 'collect' ? effectiveCollectPolicy(share, settings) : null;
   return {
     token,
     kind: share.kind,
@@ -452,8 +544,28 @@ async function buildPublicMeta(share: DriveShareLinkRow, token: string, node: Dr
     requirePassword: !!share.passwordHash,
     node: node ? toPublicNode(node, token) : null,
     expireAt: formatNullableDateTime(share.expireAt),
-    sharerName: share.createdBy ? names.get(share.createdBy) ?? null : null,
+    sharerName,
+    collectPolicy: policy,
+    uploadCount: share.uploadCount,
+    uploadsRemaining: policy?.maxUploads ? Math.max(0, policy.maxUploads - share.uploadCount) : null,
+    watermarkText: share.watermark && node ? [sharerName ?? '分享', formatDateTime(new Date()).slice(0, 16), maskIp(currentClientIp())].filter(Boolean).join(' · ') : null,
   };
+}
+
+/** 单文件上限取链接策略与系统上限的较小者 */
+function effectiveCollectPolicy(share: DriveShareLinkRow, settings: DriveSettings): DriveCollectPolicy & { maxFileSizeMb: number } {
+  const policy = normalizeCollectPolicy(share.collectPolicy);
+  const maxFileSizeMb = policy.maxFileSizeMb ? Math.min(policy.maxFileSizeMb, settings.collectMaxFileSizeMb) : settings.collectMaxFileSizeMb;
+  return { ...policy, maxFileSizeMb };
+}
+
+/** 水印只展示 IP 尾段，避免公开页泄露完整访问者地址 */
+function maskIp(ip: string): string {
+  if (!ip) return '';
+  const v4 = ip.split('.');
+  if (v4.length === 4) return `*.*.${v4[2]}.${v4[3]}`;
+  const parts = ip.split(':');
+  return parts.length > 2 ? `…:${parts.slice(-2).join(':')}` : ip;
 }
 
 /** 无会话时的元信息（只暴露是否需要密码、分享人、有效期） */
@@ -553,11 +665,68 @@ export async function saveFromDriveShare(token: string, sessionToken: string, da
   return copied;
 }
 
-function sharingCapabilities(kind: DriveShareKind, capabilities: DriveShareCapability[]): DriveShareCapability[] {
-  if (kind !== 'share' || capabilities.includes('upload')) {
-    throw new HTTPException(400, { message: '文件收集尚未启用，请创建预览或下载分享' });
+function sharingCapabilities(kind: DriveShareKind, capabilities: DriveShareCapability[], node: Pick<DriveNodeRow, 'type'>): DriveShareCapability[] {
+  if (kind === 'share') {
+    if (capabilities.includes('upload')) throw new HTTPException(400, { message: '分享链接不能包含上传能力，请创建文件收集链接' });
+    return normalizeDriveShareCapabilities(capabilities);
   }
-  return normalizeDriveShareCapabilities(capabilities);
+  if (node.type !== 'folder') throw new HTTPException(400, { message: '文件收集链接只能建立在文件夹上' });
+  if (capabilities.includes('download')) throw new HTTPException(400, { message: '文件收集链接不允许下载，请另建分享链接' });
+  return normalizeDriveShareCapabilities([...new Set<DriveShareCapability>([...capabilities, 'upload'])]);
+}
+
+/** 上限内原子占用一个收集名额；失败即拒绝上传（并发提交不会超额） */
+async function claimCollectUpload(share: DriveShareLinkRow, maxUploads: number | null): Promise<void> {
+  const [claimed] = await db.update(driveShareLinks).set({ uploadCount: sql`${driveShareLinks.uploadCount} + 1` })
+    .where(and(
+      eq(driveShareLinks.id, share.id), eq(driveShareLinks.sessionVersion, share.sessionVersion),
+      eq(driveShareLinks.enabled, true), isNull(driveShareLinks.revokedAt),
+      or(isNull(driveShareLinks.expireAt), sql`${driveShareLinks.expireAt} > now()`),
+      maxUploads ? sql`${driveShareLinks.uploadCount} < ${maxUploads}` : sql`true`,
+    )).returning({ id: driveShareLinks.id });
+  if (!claimed) throw new HTTPException(403, { message: '链接已失效或收集数量已达上限' });
+}
+
+/**
+ * 文件收集：匿名提交者向目标文件夹上传。以链接创建者身份落盘（配额 / 内容策略 / 去重复用），
+ * 冲突一律自动重命名，动态记为 collect_upload 且 actor 为空，提交人信息进 drive_collect_submissions。
+ */
+export async function uploadToDriveCollect(token: string, sessionToken: string, file: File, fields: DrivePublicUploadFields): Promise<DrivePublicUploadResult> {
+  const { share, node: root } = await resolveShareSession(token, sessionToken, 'upload');
+  if (share.kind !== 'collect' || !share.capabilities.includes('upload')) throw new HTTPException(403, { message: '该链接不接受文件提交' });
+  if (root.type !== 'folder') throw new HTTPException(400, { message: '收集目标不是文件夹' });
+  const settings = await getDriveSettings();
+  const policy = effectiveCollectPolicy(share, settings);
+  const submitterName = fields.submitterName?.trim() || null;
+  if (policy.requireSubmitter && !submitterName) throw new HTTPException(400, { message: '请填写提交人姓名' });
+  if (!file.name || file.size <= 0) throw new HTTPException(400, { message: '请选择要提交的文件' });
+  if (file.size > policy.maxFileSizeMb * 1024 * 1024) throw new HTTPException(400, { message: `文件大小超过上限（${policy.maxFileSizeMb}MB）` });
+  const extension = extensionOf(file.name);
+  if (policy.allowedExtensions.length > 0 && (!extension || !policy.allowedExtensions.includes(extension))) {
+    throw new HTTPException(400, { message: `只接受以下类型的文件：${policy.allowedExtensions.join('、')}` });
+  }
+  const actor = share.createdBy ? await loadDriveActorPayload(share.createdBy) : null;
+  if (!actor) throw new HTTPException(403, { message: '链接创建者已停用，无法接收文件' });
+  const clientIp = currentClientIp() || null;
+  await claimCollectUpload(share, policy.maxUploads);
+  let node;
+  try {
+    node = await runWithCurrentUser(actor, () => uploadBufferAsNode(file, {
+      spaceId: root.spaceId, parentId: root.id, conflictPolicy: 'rename',
+      maxBytes: policy.maxFileSizeMb * 1024 * 1024, touchRecent: false,
+      activity: { action: 'collect_upload', actorId: null, shareId: share.id, detail: { submitterName, viaShare: true } },
+    }));
+  } catch (err) {
+    await db.update(driveShareLinks).set({ uploadCount: sql`greatest(${driveShareLinks.uploadCount} - 1, 0)` }).where(eq(driveShareLinks.id, share.id));
+    logShareAccess(share, 'upload', false);
+    throw err;
+  }
+  const [submission] = await db.insert(driveCollectSubmissions).values({
+    shareId: share.id, nodeId: node.id, fileName: node.name, size: node.size, submitterName, submitterNote: fields.submitterNote?.trim() || null, clientIp,
+  }).returning();
+  logShareAccess(share, 'upload', true);
+  void notifyCollectReceived(share, root, node.name, submitterName ?? '匿名用户');
+  return { id: node.id, name: node.name, size: node.size, submittedAt: formatDateTime(submission.createdAt) };
 }
 
 /** A file is counted once per share session, including parallel media ranges and retries. */

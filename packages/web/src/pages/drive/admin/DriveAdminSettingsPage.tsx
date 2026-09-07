@@ -73,6 +73,12 @@ export default function DriveAdminSettingsPage() {
             <SettingRow title="外链最长有效期" description="创建外链时必须设置不超过该天数的过期时间；0 表示允许永久有效" overridden={overridden('externalShareMaxDays')} control={<InputNumber style={{ width: 140 }} min={0} max={3650} disabled={!canEdit} value={form.externalShareMaxDays} onChange={(v) => patch('externalShareMaxDays', num(v, 30))} suffix="天" />} />
             <SettingDivider />
             <SettingRow title="外链必须设置密码" description="开启后不允许创建无密码的外链" overridden={overridden('externalShareRequirePassword')} control={<Switch disabled={!canEdit} checked={form.externalShareRequirePassword} onChange={(v) => patch('externalShareRequirePassword', v)} />} />
+            <SettingDivider />
+            <SettingRow title="文件收集单文件上限" description="匿名提交为单请求上传；收集链接可在此上限内单独收紧" overridden={overridden('collectMaxFileSizeMb')} control={<InputNumber style={{ width: 140 }} min={1} max={10_240} disabled={!canEdit} value={form.collectMaxFileSizeMb} onChange={(v) => patch('collectMaxFileSizeMb', num(v, 100))} suffix="MB" />} />
+            <SettingDivider />
+            <SettingRow title="到期提前提醒" description="外链与临时授权到期前提醒创建者 / 被授权人；0 表示关闭" overridden={overridden('shareExpiryReminderHours')} control={<InputNumber style={{ width: 140 }} min={0} max={720} disabled={!canEdit} value={form.shareExpiryReminderHours} onChange={(v) => patch('shareExpiryReminderHours', num(v, 24))} suffix="小时" />} />
+            <SettingDivider />
+            <SettingRow title="站内预览水印" description="登录用户在线预览时叠加「姓名 · 账号 · 日期」水印（外链水印在各外链上单独开启）" overridden={overridden('previewWatermarkEnabled')} control={<Switch disabled={!canEdit} checked={form.previewWatermarkEnabled} onChange={(v) => patch('previewWatermarkEnabled', v)} />} />
           </SettingSection>
 
           <SettingSection title="内容处理">

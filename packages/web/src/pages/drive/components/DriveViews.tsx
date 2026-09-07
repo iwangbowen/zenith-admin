@@ -17,12 +17,13 @@ import { SearchButton, ResetButton } from '@/components/toolbar-controls';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { useFilePreview } from '@/hooks/useFilePreview';
+import { useAuth } from '@/hooks/useAuth';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
   driveKeys, useDeleteDriveShareLink, useDriveRecent, useDriveRecycle, useDriveSearch, useDriveSharedWithMe, useDriveStarred,
   useMyDriveShareLinks, useMyDriveSpaces, usePurgeDriveNodes, useRestoreDriveNodes, useRevokeDriveShareLink, useStarDriveNode,
-  useDriveTags,
+  useDriveTags, useDrivePreviewWatermark,
 } from '@/hooks/queries/drive';
 import { confirmDanger } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
@@ -61,6 +62,7 @@ type AnyNode = DriveNode & { spaceName?: string };
 /** 跨空间个人视图：与我共享 / 收藏 / 最近 / 回收站 / 我的外链 */
 export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps) {
   const { hasPermission } = usePermission();
+  const watermark = useDrivePreviewWatermark(useAuth().user);
   const spacesQuery = useMyDriveSpaces();
   const listKey = driveKeys.viewOf(view === 'links' ? 'links' : view);
   const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset } =
@@ -222,7 +224,7 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
           rowSelection={view === 'recycle' ? { selectedRowKeys: selectedIds, onChange: (keys) => setSelectedIds((keys ?? []).map(Number)) } : undefined}
           onRow={(record) => ({ onDoubleClick: () => { if (record) openNode(record); } })} />
       )}
-      <FilePreviewLayer preview={preview} />
+      <FilePreviewLayer preview={preview} watermark={watermark} />
     </div>
   );
 }
@@ -235,6 +237,7 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
   readonly onClear: () => void;
 }) {
   const { hasPermission } = usePermission();
+  const watermark = useDrivePreviewWatermark(useAuth().user);
   const filters = useListSearch<{
     spaceId: number | undefined; type: DriveNodeType | undefined; extension: string; tagId: number | undefined;
     createdBy: number | undefined; timeRange: [Date, Date] | null;
@@ -299,7 +302,7 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
         loading={query.isFetching} onRefresh={() => void query.refetch()} refreshLoading={query.isFetching}
         pagination={{ currentPage: page, pageSize: 20, total: query.data?.total ?? 0, onPageChange: setPage }}
         empty={<Empty description="没有找到匹配的文件" />} />
-      <FilePreviewLayer preview={preview} />
+      <FilePreviewLayer preview={preview} watermark={watermark} />
     </div>
   );
 }

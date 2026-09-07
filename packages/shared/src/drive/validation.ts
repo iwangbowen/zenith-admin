@@ -3,6 +3,7 @@ import { dateTimeStringSchema, partialForUpdate } from '../core/validation';
 import {
   DRIVE_ROLES,
   DRIVE_HANDOFF_MODES,
+  DRIVE_REQUESTABLE_ROLES,
   DRIVE_SHARE_CAPABILITIES,
   DRIVE_SHARE_KINDS,
   DRIVE_SUBJECT_TYPES,
@@ -191,8 +192,45 @@ export type DriveSimpleUploadFields = z.infer<typeof driveSimpleUploadFieldsSche
 const shareCapabilitiesSchema = z.array(z.enum(DRIVE_SHARE_CAPABILITIES)).min(1, '至少选择一项能力').max(3)
   .transform((caps) => [...new Set(caps)]);
 
+const extensionSchema = z.string().trim().min(1).max(32).regex(/^\.?[A-Za-z0-9]+$/, '扩展名只能包含字母与数字')
+  .transform((v) => v.replace(/^\./, '').toLowerCase());
+
+const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+const IPV6 = /^[0-9a-fA-F:]+(?:%[0-9a-zA-Z]+)?$/;
+
+/** 单个 IPv4 / IPv6 地址或 CIDR 段（1.2.3.0/24、2001:db8::/32） */
+export function isIpOrCidr(value: string): boolean {
+  const [ip, prefix, ...rest] = value.split('/');
+  if (rest.length > 0 || !ip) return false;
+  const v4 = IPV4.exec(ip);
+  if (v4) {
+    if (v4.slice(1).some((part) => Number(part) > 255)) return false;
+    return prefix === undefined || (/^\d{1,2}$/.test(prefix) && Number(prefix) <= 32);
+  }
+  if (ip.includes(':') && IPV6.test(ip) && ip.split('::').length <= 2) {
+    return prefix === undefined || (/^\d{1,3}$/.test(prefix) && Number(prefix) <= 128);
+  }
+  return false;
+}
+
+export const ipOrCidrSchema = z.string().trim().max(64).refine(isIpOrCidr, '请输入合法的 IP 地址或 CIDR 段');
+
+/** 文件收集策略（kind=collect 时有效） */
+export const driveCollectPolicySchema = z.object({
+  /** 单文件大小上限（MB）；null = 跟随系统设置 */
+  maxFileSizeMb: z.number().int().min(1).max(10_240).nullable().default(null),
+  /** 允许的扩展名（空 = 不限，但仍受系统黑名单约束） */
+  allowedExtensions: z.array(extensionSchema).max(50).default([]),
+  /** 是否要求提交人填写姓名 */
+  requireSubmitter: z.boolean().default(true),
+  /** 累计可收集的文件数；null = 不限 */
+  maxUploads: z.number().int().positive().nullable().default(null),
+});
+
+export type DriveCollectPolicy = z.infer<typeof driveCollectPolicySchema>;
+
 export const createDriveShareLinkSchema = z.object({
-  /** share = 分享；collect = 文件收集（目标须为文件夹，能力位自动含 upload） */
+  /** share = 分享；collect = 文件收集（目标须为文件夹，能力位须含 upload） */
   kind: z.enum(DRIVE_SHARE_KINDS).default('share'),
   /** 能力位：preview / download / upload；download 隐含 preview */
   capabilities: shareCapabilitiesSchema.default(['preview']),
@@ -202,6 +240,12 @@ export const createDriveShareLinkSchema = z.object({
   maxAccessCount: z.number().int().positive().nullable().default(null),
   maxDownloadCount: z.number().int().positive().nullable().default(null),
   remark: z.string().max(256).optional(),
+  /** 允许访问的 IP / CIDR 白名单；空 = 不限制 */
+  allowedIps: z.array(ipOrCidrSchema).max(50).default([]),
+  /** 预览页叠加访问者水印（分享人 · 时间 · 访问 IP） */
+  watermark: z.boolean().default(false),
+  /** 文件收集策略；kind=collect 时缺省取默认策略 */
+  collectPolicy: driveCollectPolicySchema.nullable().default(null),
 });
 
 export type CreateDriveShareLinkInput = z.infer<typeof createDriveShareLinkSchema>;
@@ -229,6 +273,35 @@ export const saveFromDriveShareSchema = z.object({
 });
 
 export type SaveFromDriveShareInput = z.infer<typeof saveFromDriveShareSchema>;
+
+/** 文件收集：匿名上传附带的提交人信息（multipart 字段） */
+export const drivePublicUploadFieldsSchema = z.object({
+  submitterName: z.string().trim().max(50).optional(),
+  submitterNote: z.string().trim().max(200).optional(),
+});
+
+export type DrivePublicUploadFields = z.infer<typeof drivePublicUploadFieldsSchema>;
+
+// ─── 访问申请 ─────────────────────────────────────────────────────────────────
+
+export const createDriveAccessRequestSchema = z.object({
+  nodeId: z.number().int().positive(),
+  role: z.enum(DRIVE_REQUESTABLE_ROLES).default('viewer'),
+  reason: z.string().trim().max(500).optional(),
+});
+
+export type CreateDriveAccessRequestInput = z.infer<typeof createDriveAccessRequestSchema>;
+
+export const decideDriveAccessRequestSchema = z.object({
+  approve: z.boolean(),
+  /** 通过时实际授予的角色；缺省按申请的角色 */
+  role: z.enum(DRIVE_REQUESTABLE_ROLES).optional(),
+  /** 通过时的授权到期时间；null / 缺省 = 长期 */
+  expireAt: dateTimeStringSchema.nullable().optional(),
+  note: z.string().trim().max(200).optional(),
+});
+
+export type DecideDriveAccessRequestInput = z.infer<typeof decideDriveAccessRequestSchema>;
 
 // ─── 版本 / 锁 / 标签 / 评论 ──────────────────────────────────────────────────
 

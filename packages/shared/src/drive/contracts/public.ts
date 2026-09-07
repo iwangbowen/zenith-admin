@@ -1,8 +1,8 @@
 import * as z from 'zod';
 import { queryBool } from '../../core/api-schemas';
-import { defineContract, op } from '../../core/contract';
+import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { DRIVE_NODE_TYPES, DRIVE_SHARE_CAPABILITIES, DRIVE_SHARE_KINDS } from '../constants';
-import { drivePublicAccessSchema, saveFromDriveShareSchema } from '../validation';
+import { driveCollectPolicySchema, drivePublicAccessSchema, saveFromDriveShareSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -28,9 +28,25 @@ export const drivePublicShareMetaSchema = z.object({
   node: drivePublicNodeSchema.nullable().meta({ description: '已通过密码校验（或无需密码）时返回根节点，否则为 null' }),
   expireAt: z.string().nullable(),
   sharerName: z.string().nullable(),
+  /** 文件收集策略（已按系统设置折算单文件上限）；非收集链接为 null */
+  collectPolicy: driveCollectPolicySchema.extend({ maxFileSizeMb: z.int() }).nullable(),
+  uploadCount: z.int(),
+  /** 剩余可收集文件数；null = 不限 */
+  uploadsRemaining: z.int().nullable(),
+  /** 预览水印文本；未开启为 null */
+  watermarkText: z.string().nullable(),
 }).meta({ id: 'DrivePublicShareMeta' });
 
 export type DrivePublicShareMeta = z.infer<typeof drivePublicShareMetaSchema>;
+
+export const drivePublicUploadResultSchema = z.object({
+  id: z.int(),
+  name: z.string(),
+  size: z.int(),
+  submittedAt: z.string(),
+}).meta({ id: 'DrivePublicUploadResult' });
+
+export type DrivePublicUploadResult = z.infer<typeof drivePublicUploadResultSchema>;
 
 export const drivePublicShareSessionSchema = z.object({
   session: z.string().meta({ description: '访问会话令牌，后续请求经 header 或查询串 session 携带' }),
@@ -64,6 +80,12 @@ export const drivePublicContentQuery = z.object({
   ...publicSessionQuery,
 });
 
+const drivePublicUploadBody = multipart(z.object({
+  file: fileField('要提交的文件（单请求，大小受收集策略约束）'),
+  submitterName: z.string().optional(),
+  submitterNote: z.string().optional(),
+}));
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 /** 外链匿名访问：受路径绑定限流 drive_public_share 与 Redis 访问会话约束；仅转存需要登录 */
@@ -72,5 +94,6 @@ export const drivePublicShareContract = defineContract('/api/drive/public', {
   meta: op.get('/shares/{token}', { params: driveShareTokenParam, response: drivePublicShareMetaSchema, public: true, summary: '外链元信息（无会话只返回是否需密码）' }),
   children: op.get('/shares/{token}/nodes', { params: driveShareTokenParam, query: drivePublicChildrenQuery, response: z.array(drivePublicNodeSchema), public: true, summary: '浏览外链子目录（需会话）' }),
   content: op.get('/shares/{token}/nodes/{nodeId}/content', { params: driveShareTokenNodeParams, query: drivePublicContentQuery, kind: 'file', public: true, summary: '外链文件内容（需会话；?download=true 需 download 能力）' }),
+  upload: op.post('/shares/{token}/upload', { params: driveShareTokenParam, body: drivePublicUploadBody, response: drivePublicUploadResultSchema, public: true, summary: '文件收集：向目标文件夹提交文件（需会话与 upload 能力）' }),
   save: op.post('/shares/{token}/save', { params: driveShareTokenParam, body: saveFromDriveShareSchema, summary: '转存到我的网盘（登录用户，需 download 能力）' }),
 }, { tags: ['企业网盘-公开外链'] });

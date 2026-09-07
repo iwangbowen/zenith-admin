@@ -80,7 +80,9 @@ export function ensureSafeTargetUrl(targetUrl: string): void {
     throw new HTTPException(400, { message: '目标地址不允许携带认证信息' });
   }
   const host = parsed.hostname;
-  if (PRIVATE_HOST_PATTERN.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+  // 本系统自身的公开页（网盘外链、收款页等）是合法目标：开发环境 publicBaseUrl 常为 localhost，不能被内网规则拦掉
+  const firstParty = targetUrl.startsWith(`${config.publicBaseUrl}/`) && new URL(config.publicBaseUrl).hostname === host;
+  if (!firstParty && (PRIVATE_HOST_PATTERN.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host))) {
     throw new HTTPException(400, { message: '目标地址不允许指向内网或本机' });
   }
   // 禁止指向自身短链路径，避免跳转环

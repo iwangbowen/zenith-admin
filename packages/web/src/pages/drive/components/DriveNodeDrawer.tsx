@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Descriptions, Empty, Select, SideSheet, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Select, SideSheet, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Download, Lock, LockOpen, Star, StarOff } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
 import { DRIVE_NODE_TYPE_LABELS, DRIVE_ROLE_LABELS, type DriveNode, type DriveNodeDetail } from '@zenith/shared/drive';
@@ -11,6 +11,7 @@ import { DrivePermissionPanel } from './DrivePermissionPanel';
 import { DriveVersionsPanel } from './DriveVersionsPanel';
 import { DriveShareLinksPanel } from './DriveShareLinksPanel';
 import { DriveActivityPanel, DriveCommentsPanel } from './DriveActivityPanels';
+import { DriveAccessGate, DrivePresenceBadge } from './DriveAccessPanels';
 import { roleAtLeast } from '../drive-utils';
 import { DriveProfilePanel, DriveSubscriptionButton } from './DriveCollaborationPanels';
 
@@ -79,9 +80,7 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
   return (
     <SideSheet visible={nodeId !== null} onCancel={onClose} title={title} width={760} closeOnEsc footer={null} className="drive-node-drawer" bodyStyle={{ padding: '0 16px 16px' }}>
       <Spin spinning={query.isPending}>
-        {query.isError && <Empty title="无法打开文件" description="文件可能已删除，或你没有访问权限">
-          <Button onClick={() => void query.refetch()}>重试</Button>
-        </Empty>}
+        {query.isError && nodeId !== null && <DriveAccessGate nodeId={nodeId} error={query.error} onRetry={() => void query.refetch()} />}
         {node && (
           <>
             <div className="drive-drawer__actions">
@@ -97,6 +96,7 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
                   {node.lockedBy ? '解除锁定' : '签出锁定'}
                 </Button>
               )}
+              <DrivePresenceBadge nodeId={node.id} />
             </div>
             <Tabs collapsible="auto" activeKey={tab} onChange={setTab} type="line" size="small" lazyRender keepDOM={false}>
               <TabPane tab="详情" itemKey="detail">

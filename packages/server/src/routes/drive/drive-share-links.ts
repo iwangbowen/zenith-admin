@@ -6,7 +6,9 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   deleteDriveShareLink,
+  ensureDriveShareShortLink,
   getShareLinkBeforeAudit,
+  listCollectSubmissions,
   listMyShareLinks,
   listShareAccessLogs,
   revokeDriveShareLink,
@@ -62,6 +64,20 @@ const accessLogsRoute = defineContractRoute(driveShareLinkContract.accessLogs, {
   },
 });
 
-router.openapiRoutes([listRoute, updateRoute, revokeRoute, deleteRoute, accessLogsRoute] as const);
+const submissionsRoute = defineContractRoute(driveShareLinkContract.submissions, {
+  middleware: read,
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { page, pageSize } = c.req.valid('query');
+    return c.json(okBody(await listCollectSubmissions(id, page, pageSize)), 200);
+  },
+});
+
+const shortLinkRoute = defineContractRoute(driveShareLinkContract.shortLink, {
+  middleware: [authMiddleware, guard({ permission: 'drive:link:create', audit: { description: '生成网盘外链短链', ...AUDIT } })],
+  handler: async (c) => c.json(okBody(await ensureDriveShareShortLink(c.req.valid('param').id), '短链已生成'), 200),
+});
+
+router.openapiRoutes([listRoute, updateRoute, revokeRoute, deleteRoute, accessLogsRoute, submissionsRoute, shortLinkRoute] as const);
 
 export default router;

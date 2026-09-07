@@ -674,6 +674,43 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     title: '打包下载已就绪',
     content: '你请求打包的 {{fileCount}} 个文件（{{sizeText}}）已准备完成，点击下载。',
   },
+  'drive.access.requested': {
+    group: 'drive', label: '收到文件访问申请', severity: 'important',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    rateLimit: { limit: 30, windowMinutes: 60 },
+    vars: eventVars<{ requestId: number; nodeId: number; nodeName: string; requesterName: string; roleLabel: string; reason: string }>(),
+    title: '{{requesterName}} 申请访问「{{nodeName}}」',
+    content: '{{requesterName}} 申请获得「{{nodeName}}」的{{roleLabel}}权限{{reason}}，请前往处理。',
+  },
+  'drive.access.decided': {
+    group: 'drive', label: '访问申请已处理', severity: 'normal',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ requestId: number; nodeId: number; nodeName: string; resultText: string; deciderName: string; note: string }>(),
+    title: '你对「{{nodeName}}」的访问申请{{resultText}}',
+    content: '{{deciderName}} 已{{resultText}}你的访问申请{{note}}。',
+  },
+  'drive.share.expiring': {
+    group: 'drive', label: '外链即将到期', severity: 'normal',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ shareId: number; nodeId: number; nodeName: string; expireAt: string }>(),
+    title: '外链「{{nodeName}}」即将到期',
+    content: '你创建的外链将于 {{expireAt}} 到期，如需继续分享请及时延长有效期。',
+  },
+  'drive.grant.expiring': {
+    group: 'drive', label: '临时授权即将到期', severity: 'normal',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ nodeId: number; nodeName: string; roleLabel: string; expireAt: string }>(),
+    title: '「{{nodeName}}」的临时授权即将到期',
+    content: '你对「{{nodeName}}」的{{roleLabel}}权限将于 {{expireAt}} 到期，如需继续访问请联系管理者或提交访问申请。',
+  },
+  'drive.collect.received': {
+    group: 'drive', label: '文件收集收到新文件', severity: 'normal',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    rateLimit: { limit: 20, windowMinutes: 60 },
+    vars: eventVars<{ shareId: number; nodeId: number; nodeName: string; fileName: string; submitterName: string }>(),
+    title: '「{{nodeName}}」收到新文件',
+    content: '{{submitterName}} 通过收集链接提交了「{{fileName}}」。',
+  },
 });
 
 export type NotificationEventKey = keyof typeof NOTIFICATION_EVENTS;

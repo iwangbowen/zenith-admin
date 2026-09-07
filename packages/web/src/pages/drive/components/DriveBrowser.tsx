@@ -13,9 +13,10 @@ import { FilePreviewLayer } from '@/components/FilePreviewLayer';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { useFilePreview } from '@/hooks/useFilePreview';
+import { useAuth } from '@/hooks/useAuth';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
-import { batchDownloadDriveNodes, driveKeys, useCopyDriveNodes, useCreateDriveFolder, useDeleteDriveNodes, useDriveDir, useDriveTags, useLockDriveNode, useMoveDriveNodes, useRenameDriveNode, useStarDriveNode } from '@/hooks/queries/drive';
+import { batchDownloadDriveNodes, driveKeys, useCopyDriveNodes, useCreateDriveFolder, useDeleteDriveNodes, useDriveDir, useDrivePreviewWatermark, useDriveTags, useLockDriveNode, useMoveDriveNodes, useRenameDriveNode, useStarDriveNode } from '@/hooks/queries/drive';
 import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
 import { canPreviewFile, fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
@@ -57,6 +58,7 @@ const SORT_OPTIONS: Array<{ value: SortBy; label: string }> = [
 /** 目录浏览器：面包屑 + 工具栏 + 列表 / 网格 + 拖拽上传 + 右键菜单 */
 export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUpload }: DriveBrowserProps) {
   const { hasPermission } = usePermission();
+  const watermark = useDrivePreviewWatermark(useAuth().user);
   const [viewMode, setViewMode] = useState<ViewMode>(() => (localStorage.getItem(VIEW_MODE_KEY) === 'grid' ? 'grid' : 'list'));
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [ctx, setCtx] = useState<{ node: DriveNode; point: CursorPoint } | null>(null);
@@ -351,7 +353,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
         )} />
       )}
 
-      <FilePreviewLayer preview={preview} />
+      <FilePreviewLayer preview={preview} watermark={watermark} />
 
       <AppModal visible={!!renaming || creating} title={renaming ? '重命名' : '新建文件夹'} width={460} closeOnEsc
         onCancel={() => { setRenaming(null); setCreating(false); }} onOk={() => submitName(renaming ? 'rename' : 'create')}

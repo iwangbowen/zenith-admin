@@ -23,6 +23,12 @@ export const driveSettingsSchema = z.object({
     .meta({ title: '外链最长有效期（天）', description: '外链必须设置且不超过该天数；0 表示允许永久外链' }),
   externalShareRequirePassword: z.boolean().default(false)
     .meta({ title: '外链强制密码' }),
+  collectMaxFileSizeMb: z.int().min(1).max(10_240).default(100)
+    .meta({ title: '文件收集单文件上限（MB）', description: '匿名提交为单请求上传；收集链接可在此上限内单独收紧' }),
+  shareExpiryReminderHours: z.int().min(0).max(720).default(24)
+    .meta({ title: '到期提前提醒（小时）', description: '外链与临时授权到期前提醒创建者 / 被授权人；0 表示关闭' }),
+  previewWatermarkEnabled: z.boolean().default(false)
+    .meta({ title: '站内预览水印', description: '登录用户在线预览时叠加「姓名 · 工号 · 时间」水印' }),
   blockedExtensions: z.array(z.string().trim().min(1).max(32).regex(/^\.?[A-Za-z0-9]+$/, '扩展名只能包含字母与数字')).max(200)
     .default(() => ['exe', 'bat', 'cmd', 'sh', 'msi', 'dll', 'scr', 'com', 'ps1', 'vbs'])
     .meta({ title: '禁止上传的扩展名', description: '不区分大小写，可带或不带前导点；可执行文件另按内容魔数拦截，不受改名影响' }),
@@ -42,6 +48,7 @@ export const driveSettingsModule = defineSettingsModule({
   feature: 'drive',
   readPermission: 'drive:setting:view',
   writePermission: 'drive:setting:edit',
+  visibility: { previewWatermarkEnabled: 'authenticated' },
   page: '/drive/admin/settings',
   sort: 120,
 });

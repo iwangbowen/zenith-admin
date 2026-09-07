@@ -16,6 +16,7 @@ import { deleteDriveNodeVersion, listDriveNodeVersions, restoreDriveNodeVersion,
 import { setDriveNodeStar } from '../../services/drive/drive-views.service';
 import { createDriveNodeComment, deleteDriveNodeComment, listDriveNodeComments, lockDriveNode, setDriveNodeTags, unlockDriveNode } from '../../services/drive/drive-extras.service';
 import { createDriveShareLink, listNodeShareLinks } from '../../services/drive/drive-share.service';
+import { heartbeatDriveNodePresence, leaveDriveNodePresence, listDriveNodePresence } from '../../services/drive/drive-presence.service';
 import { binaryResponses, streamStoredContent } from './drive-nodes';
 
 /**
@@ -256,6 +257,24 @@ const createShareLinkRoute = defineContractRoute(driveNodeContract.createShareLi
   },
 });
 
+const presenceRoute = defineContractRoute(driveNodeContract.presence, {
+  middleware: read,
+  handler: async (c) => c.json(okBody(await listDriveNodePresence(c.req.valid('param').id)), 200, { 'Cache-Control': 'private, no-store' }),
+});
+
+const heartbeatRoute = defineContractRoute(driveNodeContract.heartbeat, {
+  middleware: read,
+  handler: async (c) => c.json(okBody(await heartbeatDriveNodePresence(c.req.valid('param').id)), 200, { 'Cache-Control': 'private, no-store' }),
+});
+
+const leavePresenceRoute = defineContractRoute(driveNodeContract.leavePresence, {
+  middleware: read,
+  handler: async (c) => {
+    await leaveDriveNodePresence(c.req.valid('param').id);
+    return c.json(okBody(null), 200);
+  },
+});
+
 router.openapiRoutes([
   detailRoute, renameRoute, contentRoute, thumbnailRoute, accessUrlRoute,
   versionsRoute, uploadVersionRoute, versionContentRoute, versionRestoreRoute, versionDeleteRoute,
@@ -263,6 +282,7 @@ router.openapiRoutes([
   activitiesRoute, commentsRoute, createCommentRoute, deleteCommentRoute,
   starRoute, unstarRoute, tagsRoute, lockRoute, unlockRoute,
   nodeShareLinksRoute, createShareLinkRoute,
+  presenceRoute, heartbeatRoute, leavePresenceRoute,
 ] as const);
 
 export default router;

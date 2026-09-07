@@ -5,3 +5,4 @@ export * from './share-links';
 export * from './spaces';
 export * from './tags';
 export * from './collaboration';
+export * from './access-requests';

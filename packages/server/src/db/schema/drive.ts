@@ -1,5 +1,6 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, primaryKey, foreignKey, unique, index, uniqueIndex, text, jsonb, smallint, uuid as pgUuid, customType, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { DriveCollectPolicy } from '@zenith/shared/drive';
 import { statusEnum, timestampColumns } from './common';
 import { auditColumns, departments, tenants, users } from './core';
 import { managedFiles } from './files';
@@ -206,6 +207,12 @@ export const driveShareLinks = pgTable('drive_share_links', {
   downloadCount: integer().notNull().default(0),
   /** 文件收集：累计收到的文件数 */
   uploadCount: integer().notNull().default(0),
+  /** 允许访问的 IP / CIDR 白名单；空 = 不限制 */
+  allowedIps: text().array().notNull().default([]),
+  /** 预览页叠加访问者水印 */
+  watermark: boolean().notNull().default(false),
+  /** 文件收集策略（kind=collect）：单文件上限 / 扩展名 / 提交人 / 上限数 */
+  collectPolicy: jsonb().$type<DriveCollectPolicy>(),
   /** 访问会话版本；+1 即让所有已签发会话失效 */
   sessionVersion: integer().notNull().default(1),
   revokedAt: timestamp(),
@@ -219,6 +226,50 @@ export const driveShareLinks = pgTable('drive_share_links', {
 ]);
 
 export type DriveShareLinkRow = typeof driveShareLinks.$inferSelect;
+
+/** 文件收集的提交记录：谁通过哪条收集链接提交了什么（文件彻底删除后保留记录） */
+export const driveCollectSubmissions = pgTable('drive_collect_submissions', {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  shareId: integer().notNull().references(() => driveShareLinks.id, { onDelete: 'cascade' }),
+  nodeId: integer().references(() => driveNodes.id, { onDelete: 'set null' }),
+  fileName: varchar({ length: 255 }).notNull(),
+  size: bigint({ mode: 'number' }).notNull().default(0),
+  submitterName: varchar({ length: 50 }),
+  submitterNote: varchar({ length: 200 }),
+  clientIp: varchar({ length: 64 }),
+  createdAt: timestamp().defaultNow().notNull(),
+}, (t) => [index('drive_collect_submissions_share_idx').on(t.shareId, t.createdAt)]);
+
+export type DriveCollectSubmissionRow = typeof driveCollectSubmissions.$inferSelect;
+
+// ─── 访问申请 ─────────────────────────────────────────────────────────────────
+
+export const driveAccessRequestStatusEnum = pgEnum('drive_access_request_status', ['pending', 'approved', 'rejected', 'cancelled']);
+
+/** 无权限用户对节点发起的访问申请；通过后写入 drive_node_permissions 的用户直接授权 */
+export const driveAccessRequests = pgTable('drive_access_requests', {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  nodeId: integer().notNull().references(() => driveNodes.id, { onDelete: 'cascade' }),
+  spaceId: integer().notNull().references(() => driveSpaces.id, { onDelete: 'cascade' }),
+  requesterId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: driveRoleEnum().notNull(),
+  reason: varchar({ length: 500 }),
+  status: driveAccessRequestStatusEnum().notNull().default('pending'),
+  grantedRole: driveRoleEnum(),
+  grantedExpireAt: timestamp(),
+  decidedBy: integer().references(() => users.id, { onDelete: 'set null' }),
+  decidedAt: timestamp(),
+  decisionNote: varchar({ length: 200 }),
+  tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
+  ...timestampColumns(),
+}, (t) => [
+  // 同一人对同一节点同时只允许一条待审批申请
+  uniqueIndex('drive_access_requests_pending_unique').on(t.nodeId, t.requesterId).where(sql`${t.status} = 'pending'`),
+  index('drive_access_requests_requester_idx').on(t.requesterId, t.createdAt),
+  index('drive_access_requests_space_status_idx').on(t.spaceId, t.status),
+]);
+
+export type DriveAccessRequestRow = typeof driveAccessRequests.$inferSelect;
 
 /**
  * 外链访问留痕（含被拒绝的尝试）。

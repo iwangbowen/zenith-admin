@@ -1,8 +1,9 @@
-import { inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { DriveNode, DriveRole, DriveSpace, DriveSubjectType, DriveTag } from '@zenith/shared/drive';
 import { db } from '../../db';
-import { departments, roles, userGroups, users, type DriveNodeRow, type DriveSpaceRow, type DriveTagRow } from '../../db/schema';
+import { departments, roles, userGroups, userRoles, users, type DriveNodeRow, type DriveSpaceRow, type DriveTagRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
+import type { JwtPayload } from '../../middleware/auth';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 
 /** 节点内容鉴权地址（与 routes/drive/drive-nodes.ts 的 /{id}/content 一致） */
@@ -20,6 +21,20 @@ export function driveVersionContentUrl(nodeId: number, version: number): string 
 
 export function drivePublicShareUrl(token: string): string {
   return `/public/drive/${token}`;
+}
+
+/**
+ * 以某个启用中的用户身份构造请求主体，供 worker / 匿名入口代用户执行依赖 currentUser() 的服务
+ * （文件收集以链接创建者身份落盘）。用户不存在或已停用返回 null。
+ */
+export async function loadDriveActorPayload(userId: number, executor: DbExecutor = db): Promise<JwtPayload | null> {
+  const [row] = await executor.select({ id: users.id, username: users.username, tenantId: users.tenantId }).from(users)
+    .where(and(eq(users.id, userId), eq(users.status, 'enabled'))).limit(1);
+  if (!row) return null;
+  const roleRows = await executor.select({ code: roles.code }).from(userRoles)
+    .innerJoin(roles, eq(roles.id, userRoles.roleId))
+    .where(and(eq(userRoles.userId, userId), eq(roles.status, 'enabled')));
+  return { userId: row.id, username: row.username, roles: roleRows.map((r) => r.code), tenantId: row.tenantId ?? null };
 }
 
 // ─── 名称批量解析 ─────────────────────────────────────────────────────────────

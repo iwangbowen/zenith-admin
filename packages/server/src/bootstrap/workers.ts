@@ -53,6 +53,8 @@ export async function registerBackgroundWorkers(): Promise<void> {
     await registerManagedFileGcJob(); // 托管文件孤儿对象延迟回收
     const { registerDriveCollaborationJob } = await import('../services/drive/drive-collaboration.service');
     await registerDriveCollaborationJob();
+    const { registerDriveExpiryReminderJob } = await import('../services/drive/drive-reminders.service');
+    await registerDriveExpiryReminderJob(); // 网盘外链 / 临时授权到期提醒
     const { reloadCmsSearchDict } = await import('../services/cms/cms-search.service');
     await reloadCmsSearchDict(); // CMS 检索自定义词典（DB → jieba）
     // AI 评测已迁移至 Mastra Datasets/Experiments(自带异步执行),不再挂任务中心

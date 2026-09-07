@@ -4,6 +4,7 @@ import {
   DRIVE_SYNC_ZIP_MAX_FILES,
   normalizeDriveShareCapabilities,
   isOrphanedDriveSpace,
+  driveAccessRequestContract,
   driveCollaborationContract,
   driveAdminContract,
   driveNodeContract,
@@ -11,12 +12,14 @@ import {
   driveShareLinkContract,
   driveSpaceContract,
   driveTagContract,
+  type DriveAccessRequest,
   type DriveNode,
   type DriveNodeDetail,
   type DriveNodeListResult,
   type DriveNodePermissionsResult,
   type DriveNodeProfile,
   type DrivePublicNode,
+  type DrivePublicShareMeta,
   type DriveShareLink,
   type DriveShareLinkState,
   type DriveSpace,
@@ -40,7 +43,9 @@ import {
   getNextDriveTagId,
   getNextDriveVersionId,
   logMockDriveActivity,
+  mockDriveAccessRequests,
   mockDriveActivities,
+  mockDriveCollectSubmissions,
   mockDriveComments,
   mockDriveContentUrl,
   mockDriveMembers,
@@ -698,24 +703,31 @@ const nodeItemHandlers = [
   }),
   mock(driveNodeContract.shareLinks, ({ params, ok }) => ok(mockDriveShareLinks.filter((l) => l.nodeId === params.id).map(withState))),
   mock(driveNodeContract.createShareLink, ({ params, body, ok }) => {
-    if (body.kind !== 'share' || body.capabilities.includes('upload')) return badRequest('文件收集尚未启用', { status: 400 });
     const node = findNode(params.id);
     if (!node) return notFound('节点不存在', { status: 404 });
+    if (body.kind === 'share' && body.capabilities.includes('upload')) return badRequest('分享链接不能包含上传能力，请创建文件收集链接', { status: 400 });
+    if (body.kind === 'collect' && node.type !== 'folder') return badRequest('文件收集链接只能建立在文件夹上', { status: 400 });
     if (!mockDriveSettings.externalShareEnabled) return forbidden('管理员已关闭外链分享功能', { status: 403 });
     if (mockDriveSettings.externalShareRequirePassword && !body.password) return badRequest('管理员要求外链必须设置访问密码', { status: 400 });
     const now = mockDateTime();
     const id = getNextDriveShareId();
     const token = `demo-share-${id.toString().padStart(4, '0')}-${Math.random().toString(36).slice(2, 10)}`;
+    const capabilities = normalizeDriveShareCapabilities(body.kind === 'collect' ? [...new Set([...body.capabilities, 'upload' as const])] : body.capabilities);
     const link: DriveShareLink = {
-      id, nodeId: node.id, nodeName: node.name, nodeType: node.type, spaceId: node.spaceId, token, url: `/public/drive/${token}`,
-      hasPassword: !!body.password, kind: body.kind, capabilities: normalizeDriveShareCapabilities(body.capabilities), maxDownloadCount: body.maxDownloadCount, uploadCount: 0, enabled: true, expireAt: body.expireAt, maxAccessCount: body.maxAccessCount,
-      accessCount: 0, downloadCount: 0, revokedAt: null, remark: body.remark ?? null, state: 'active', createdBy: MOCK_USER.id, createdByName: MOCK_USER.name, createdAt: now, updatedAt: now,
+      id, nodeId: node.id, nodeName: node.name, nodeType: node.type, spaceId: node.spaceId, token, url: `/public/drive/${token}`, shortUrl: null,
+      hasPassword: !!body.password, kind: body.kind, capabilities, maxDownloadCount: body.maxDownloadCount, uploadCount: 0, enabled: true, expireAt: body.expireAt, maxAccessCount: body.maxAccessCount,
+      accessCount: 0, downloadCount: 0, allowedIps: body.allowedIps, watermark: body.watermark,
+      collectPolicy: body.kind === 'collect' ? (body.collectPolicy ?? { maxFileSizeMb: null, allowedExtensions: [], requireSubmitter: true, maxUploads: null }) : null,
+      revokedAt: null, remark: body.remark ?? null, state: 'active', createdBy: MOCK_USER.id, createdByName: MOCK_USER.name, createdAt: now, updatedAt: now,
     };
     if (body.password) mockDriveSharePasswords.set(id, body.password);
     mockDriveShareLinks.unshift(link);
     logMockDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'share_create', actorId: MOCK_USER.id, actorName: MOCK_USER.name, shareId: id, detail: null });
     return ok(withState(link), '外链已创建');
   }),
+  mock(driveNodeContract.presence, ({ params, ok }) => ok(findNode(params.id) ? [{ userId: MOCK_USER.id, name: MOCK_USER.name, avatar: null, lastSeenAt: mockDateTime() }] : [])),
+  mock(driveNodeContract.heartbeat, ({ params, ok }) => ok(findNode(params.id) ? [{ userId: MOCK_USER.id, name: MOCK_USER.name, avatar: null, lastSeenAt: mockDateTime() }] : [])),
+  mock(driveNodeContract.leavePresence, ({ ok }) => ok(null)),
   mock(driveNodeContract.detail, ({ params, ok }) => {
     const node = findNode(params.id);
     if (!node) return notFound('节点不存在', { status: 404 });
@@ -739,11 +751,12 @@ const shareLinkHandlers = [
   mock(driveShareLinkContract.update, ({ params, body, ok }) => {
     const link = requireItem(mockDriveShareLinks, params.id, '外链不存在', { status: 404 });
     if (link.revokedAt) return badRequest('外链已撤销，不能修改', { status: 400 });
-    if (body.capabilities?.includes('upload')) return badRequest('文件收集尚未启用', { status: 400 });
-    const { password, clearPassword, ...rest } = body;
+    if (link.kind === 'share' && body.capabilities?.includes('upload')) return badRequest('分享链接不能包含上传能力', { status: 400 });
+    const { password, clearPassword, collectPolicy, ...rest } = body;
     Object.assign(link, rest, { updatedAt: mockDateTime() });
-    if (body.capabilities) link.capabilities = normalizeDriveShareCapabilities(body.capabilities);
-    if (body.capabilities || password || clearPassword || body.enabled !== undefined) {
+    if (collectPolicy !== undefined && link.kind === 'collect') link.collectPolicy = collectPolicy;
+    if (body.capabilities) link.capabilities = normalizeDriveShareCapabilities(link.kind === 'collect' ? [...new Set([...body.capabilities, 'upload' as const])] : body.capabilities);
+    if (body.capabilities || password || clearPassword || body.enabled !== undefined || body.allowedIps) {
       for (const [session, shareId] of mockDriveShareSessions) {
         if (shareId === link.id) mockDriveShareSessions.delete(session);
       }
@@ -756,12 +769,77 @@ const shareLinkHandlers = [
     removeWhere(mockDriveShareLinks, (l) => l.id === params.id);
     return ok(null, '已删除');
   }),
+  mock(driveShareLinkContract.submissions, ({ params, ok, paginate }) => ok(paginate(mockDriveCollectSubmissions.filter((s) => s.shareId === params.id)))),
+  mock(driveShareLinkContract.shortLink, ({ params, ok }) => {
+    const link = requireItem(mockDriveShareLinks, params.id, '外链不存在', { status: 404 });
+    link.shortUrl ??= `https://demo.zenith.local/s/d${link.id.toString(36)}`;
+    return ok({ shortUrl: link.shortUrl }, '短链已生成');
+  }),
+];
+
+// ─── 访问申请 ─────────────────────────────────────────────────────────────────
+
+const accessRequestHandlers = [
+  mock(driveAccessRequestContract.list, ({ query, ok, paginate }) => {
+    let list = query.box === 'outbox' ? mockDriveAccessRequests.filter((r) => r.requesterId === MOCK_USER.id) : mockDriveAccessRequests.filter((r) => r.requesterId !== MOCK_USER.id);
+    if (query.status) list = list.filter((r) => r.status === query.status);
+    return ok(paginate(list));
+  }),
+  mock(driveAccessRequestContract.pendingCount, ({ ok }) => ok(mockDriveAccessRequests.filter((r) => r.status === 'pending' && r.requesterId !== MOCK_USER.id).length)),
+  mock(driveAccessRequestContract.target, ({ params, ok }) => {
+    const node = findNode(params.id);
+    if (!node) return notFound('文件或文件夹不存在', { status: 404 });
+    const pending = mockDriveAccessRequests.find((r) => r.nodeId === node.id && r.requesterId === MOCK_USER.id && r.status === 'pending');
+    return ok({ nodeId: node.id, nodeName: node.name, nodeType: node.type, spaceName: mockDriveSpaces.find((s) => s.id === node.spaceId)?.name ?? '', pendingRequestId: pending?.id ?? null });
+  }),
+  mock(driveAccessRequestContract.create, ({ body, ok }) => {
+    const node = findNode(body.nodeId);
+    if (!node) return notFound('文件或文件夹不存在', { status: 404 });
+    const now = mockDateTime();
+    const req: DriveAccessRequest = {
+      id: mockDriveAccessRequests.length + 1, nodeId: node.id, nodeName: node.name, nodeType: node.type, spaceId: node.spaceId,
+      spaceName: mockDriveSpaces.find((s) => s.id === node.spaceId)?.name ?? '', requesterId: MOCK_USER.id, requesterName: MOCK_USER.name,
+      role: body.role, reason: body.reason ?? null, status: 'pending', grantedRole: null, grantedExpireAt: null,
+      decidedBy: null, decidedByName: null, decidedAt: null, decisionNote: null, createdAt: now, updatedAt: now,
+    };
+    mockDriveAccessRequests.unshift(req);
+    return ok(req, '申请已提交');
+  }),
+  mock(driveAccessRequestContract.decide, ({ params, body, ok }) => {
+    const req = requireItem(mockDriveAccessRequests, params.id, '访问申请不存在', { status: 404 });
+    if (req.status !== 'pending') return badRequest('该申请已处理', { status: 400 });
+    const now = mockDateTime();
+    Object.assign(req, {
+      status: body.approve ? 'approved' : 'rejected', grantedRole: body.approve ? (body.role ?? req.role) : null, grantedExpireAt: body.approve ? body.expireAt ?? null : null,
+      decidedBy: MOCK_USER.id, decidedByName: MOCK_USER.name, decidedAt: now, decisionNote: body.note ?? null, updatedAt: now,
+    });
+    if (body.approve) {
+      mockDrivePermissions.push({ id: getNextDrivePermissionId(), nodeId: req.nodeId, subjectType: 'user', subjectId: req.requesterId, subjectName: req.requesterName ?? '', role: body.role ?? req.role, expireAt: body.expireAt ?? null, createdBy: MOCK_USER.id, createdByName: MOCK_USER.name, createdAt: now, inheritedFrom: null });
+    }
+    return ok(req, body.approve ? '已通过' : '已拒绝');
+  }),
+  mock(driveAccessRequestContract.cancel, ({ params, ok }) => {
+    const req = requireItem(mockDriveAccessRequests, params.id, '访问申请不存在', { status: 404 });
+    if (req.status !== 'pending') return badRequest('该申请已处理，无法撤回', { status: 400 });
+    Object.assign(req, { status: 'cancelled', updatedAt: mockDateTime() });
+    return ok(req, '已撤回');
+  }),
 ];
 
 // ─── 公开外链 ─────────────────────────────────────────────────────────────────
 
 function shareByToken(token: string): DriveShareLink | undefined {
   return mockDriveShareLinks.find((l) => l.token === token);
+}
+
+function publicMeta(share: DriveShareLink, node: DriveNode | null, requirePassword: boolean): DrivePublicShareMeta {
+  const policy = share.kind === 'collect' && share.collectPolicy ? { ...share.collectPolicy, maxFileSizeMb: share.collectPolicy.maxFileSizeMb ?? mockDriveSettings.collectMaxFileSizeMb } : null;
+  return {
+    token: share.token, kind: share.kind, capabilities: share.capabilities, requirePassword, node: node ? toPublicNode(node, share.token) : null,
+    expireAt: share.expireAt, sharerName: share.createdByName, collectPolicy: policy, uploadCount: share.uploadCount,
+    uploadsRemaining: policy?.maxUploads ? Math.max(0, policy.maxUploads - share.uploadCount) : null,
+    watermarkText: share.watermark && node ? `${share.createdByName ?? '分享'} · ${mockDateTime().slice(0, 16)} · *.*.0.1` : null,
+  };
 }
 
 /** 会话可经 header `session` 或查询串 `session` 携带 */
@@ -796,8 +874,38 @@ const publicHandlers = [
     logMockDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'share_access', actorId: null, actorName: null, shareId: share.id, detail: null });
     return ok({
       session, expiresAt: mockDateTime(new Date(Date.now() + 2 * 60 * 60_000)),
-      meta: { token: share.token, kind: share.kind, capabilities: share.capabilities, requirePassword: !!expected, node: toPublicNode(node, share.token), expireAt: share.expireAt, sharerName: share.createdByName },
+      meta: publicMeta(share, node, !!expected),
     });
+  }),
+  mock(drivePublicShareContract.upload, async ({ params, request, url, ok }) => {
+    const share = sessionShare(request, url.searchParams.get('session') ?? undefined, params.token);
+    if (!share) return unauthorized('访问会话已失效，请重新验证', { status: 401 });
+    if (share.kind !== 'collect' || !share.capabilities.includes('upload')) return forbidden('该链接不接受文件提交', { status: 403 });
+    const root = findNode(share.nodeId);
+    if (!root) return notFound('收集目标不存在', { status: 404 });
+    const form = await request.formData();
+    const file = form.get('file');
+    if (!(file instanceof File)) return badRequest('请选择要提交的文件', { status: 400 });
+    const policy = share.collectPolicy;
+    const submitterName = String(form.get('submitterName') ?? '').trim() || null;
+    if (policy?.requireSubmitter && !submitterName) return badRequest('请填写提交人姓名', { status: 400 });
+    if (policy?.maxUploads && share.uploadCount >= policy.maxUploads) return forbidden('收集数量已达上限', { status: 403 });
+    const ext = file.name.includes('.') ? file.name.split('.').pop()!.toLowerCase() : '';
+    if (policy?.allowedExtensions.length && !policy.allowedExtensions.includes(ext)) return badRequest(`只接受以下类型的文件：${policy.allowedExtensions.join('、')}`, { status: 400 });
+    const now = mockDateTime();
+    const id = getNextDriveNodeId();
+    const node: DriveNode = {
+      id, spaceId: root.spaceId, parentId: root.id, ancestorIds: [...root.ancestorIds, root.id], depth: root.depth + 1, type: 'file',
+      name: uniqueName(file.name, root.spaceId, root.id), extension: ext || null, mimeType: file.type || null, fileId: `mock-file-${id}`, size: file.size, contentHash: null,
+      currentVersion: 1, inheritPermissions: true, lockedBy: null, lockedByName: null, lockedAt: null, lockExpiresAt: null, thumbnailUrl: null, url: mockDriveContentUrl(id),
+      deletedAt: null, deletedBy: null, deletedByName: null, isStarred: false, myRole: 'manager', tags: [], createdBy: share.createdBy, createdByName: share.createdByName, updatedBy: share.createdBy, updatedByName: share.createdByName, createdAt: now, updatedAt: now,
+    };
+    mockDriveNodes.push(node);
+    share.uploadCount += 1;
+    mockDriveCollectSubmissions.unshift({ id: mockDriveCollectSubmissions.length + 1, shareId: share.id, nodeId: id, fileName: node.name, size: file.size, submitterName, submitterNote: String(form.get('submitterNote') ?? '').trim() || null, clientIp: '127.0.0.1', createdAt: now });
+    logMockDriveActivity({ spaceId: root.spaceId, nodeId: id, nodeName: node.name, nodeType: 'file', action: 'collect_upload', actorId: null, actorName: null, shareId: share.id, detail: { submitterName, viaShare: true } });
+    recalcMockDriveUsage();
+    return ok({ id, name: node.name, size: file.size, submittedAt: now }, '提交成功');
   }),
   mock(drivePublicShareContract.content, ({ params, query, request }) => {
     const share = sessionShare(request, query.session, params.token);
@@ -851,7 +959,7 @@ const publicHandlers = [
     const node = findNode(share.nodeId);
     const hasSessionParam = !!(request.headers.get('session') ?? querySession);
     if (hasSessionParam && !authed) return unauthorized('访问会话已失效，请重新验证', { status: 401 });
-    return ok({ token: share.token, kind: share.kind, capabilities: share.capabilities, requirePassword: mockDriveSharePasswords.has(share.id), node: authed && node ? toPublicNode(node, share.token) : null, expireAt: share.expireAt, sharerName: share.createdByName });
+    return ok(publicMeta(share, authed && node ? node : null, mockDriveSharePasswords.has(share.id)));
   }),
 ];
 
@@ -1050,6 +1158,7 @@ export const driveHandlers = [
   ...nodeStaticHandlers,
   ...nodeItemHandlers,
   ...shareLinkHandlers,
+  ...accessRequestHandlers,
   ...publicHandlers,
   ...tagHandlers,
   ...adminHandlers,

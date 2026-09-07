@@ -1,6 +1,9 @@
+import { useEffect } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { InputOf, OutputOf, QueryOf } from '@zenith/shared/core';
 import {
+  DRIVE_PRESENCE_HEARTBEAT_SECONDS,
+  driveAccessRequestContract,
   driveAdminContract,
   driveNodeContract,
   drivePublicShareContract,
@@ -8,11 +11,12 @@ import {
   driveSpaceContract,
   driveTagContract,
   type DriveNode,
+  type DrivePresenceUser,
 } from '@zenith/shared/drive';
 import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
-import { useSaveSettings, useSettings } from './settings';
+import { useMySettings, useSaveSettings, useSettings } from './settings';
 
 /**
  * 企业网盘域 hooks。
@@ -38,6 +42,7 @@ export type DriveShareLinkListParams = NonNullable<QueryOf<typeof driveShareLink
 export type DriveAdminSpaceParams = NonNullable<QueryOf<typeof driveAdminContract.spaces>>;
 export type DriveAdminShareLinkParams = NonNullable<QueryOf<typeof driveAdminContract.shareLinks>>;
 export type DriveAdminActivityParams = NonNullable<QueryOf<typeof driveAdminContract.activities>>;
+export type DriveAccessRequestParams = NonNullable<QueryOf<typeof driveAccessRequestContract.list>>;
 
 type NodeRef = Pick<DriveNode, 'id' | 'spaceId' | 'parentId'>;
 
@@ -109,6 +114,10 @@ export const driveKeys = {
   adminStats: contractKey(driveAdminContract.stats),
   publicShare: (token: string, session: string | null) => [...publicMetaPrefix, token, session] as const,
   publicChildren: (token: string, session: string | null, parentId: number | undefined) => [...publicChildrenPrefix, token, session, parentId ?? 0] as const,
+  accessRequestsPrefix: contractKey(driveAccessRequestContract.list),
+  accessRequestPending: contractKey(driveAccessRequestContract.pendingCount),
+  accessTarget: (id: number | undefined) => contractKey(driveAccessRequestContract.target, { params: { id: id ?? 0 } }),
+  presence: (id: number | undefined) => contractKey(driveNodeContract.presence, { params: { id: id ?? 0 } }),
 };
 
 // ─── 失效工具 ─────────────────────────────────────────────────────────────────
@@ -545,6 +554,102 @@ export function useDeleteDriveShareLink() {
   });
 }
 
+export function useDriveCollectSubmissions(shareId: number | undefined, params: DrivePageParams, enabled = true) {
+  return useApiQuery(driveShareLinkContract.submissions, { params: { id: shareId ?? 0 }, query: params }, {
+    placeholderData: keepPreviousData,
+    enabled: enabled && shareId !== undefined,
+  });
+}
+
+/** 生成短链后外链 DTO 的 shortUrl 变化：刷新节点外链面板与我的外链 */
+export function useEnsureDriveShareShortLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: number; nodeId: number }) => api(driveShareLinkContract.shortLink, { params: { id } }),
+    onSuccess: (_data, { nodeId }) => invalidateShareLinks(qc, nodeId),
+  });
+}
+
+// ─── 在线状态 ─────────────────────────────────────────────────────────────────
+
+/**
+ * 正在查看该节点的用户：挂载即心跳并按固定间隔续约，卸载时立即离开。
+ * 走 HTTP 心跳而非 WebSocket，多实例部署下由 Redis 汇聚。
+ */
+export function useDriveNodePresence(nodeId: number | undefined, enabled = true) {
+  const active = enabled && nodeId !== undefined;
+  const query = useQuery<DrivePresenceUser[]>({
+    queryKey: driveKeys.presence(nodeId),
+    queryFn: () => api(driveNodeContract.heartbeat, { params: { id: nodeId ?? 0 } }, { silent: true }),
+    enabled: active,
+    refetchInterval: DRIVE_PRESENCE_HEARTBEAT_SECONDS * 1000,
+    refetchIntervalInBackground: false,
+    staleTime: DRIVE_PRESENCE_HEARTBEAT_SECONDS * 1000,
+    retry: false,
+  });
+  useEffect(() => {
+    if (!active) return;
+    return () => {
+      void api(driveNodeContract.leavePresence, { params: { id: nodeId } }, { silent: true }).catch(() => undefined);
+    };
+  }, [active, nodeId]);
+  return query;
+}
+
+// ─── 访问申请 ─────────────────────────────────────────────────────────────────
+
+export function useDriveAccessRequests(params: DriveAccessRequestParams, enabled = true) {
+  return useApiQuery(driveAccessRequestContract.list, { query: params }, { placeholderData: keepPreviousData, enabled });
+}
+
+export function useDrivePendingAccessCount(enabled = true) {
+  return useApiQuery(driveAccessRequestContract.pendingCount, undefined, { enabled, staleTime: 60_000, refetchInterval: 120_000, requestOptions: { silent: true } });
+}
+
+/** 无权访问节点时读取申请所需的最小信息；404 / 403 由调用方处理 */
+export function useDriveAccessTarget(nodeId: number | undefined, enabled = true) {
+  return useApiQuery(driveAccessRequestContract.target, { params: { id: nodeId ?? 0 } }, { enabled: enabled && nodeId !== undefined, retry: false, requestOptions: { silent: true } });
+}
+
+function invalidateAccessRequests(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: driveKeys.accessRequestsPrefix });
+  void qc.invalidateQueries({ queryKey: driveKeys.accessRequestPending });
+}
+
+export function useCreateDriveAccessRequest() {
+  return useApiMutation(driveAccessRequestContract.create, {
+    invalidate: (qc, req) => {
+      invalidateAccessRequests(qc);
+      void qc.invalidateQueries({ queryKey: driveKeys.accessTarget(req.nodeId) });
+    },
+  });
+}
+
+export function useDecideDriveAccessRequest() {
+  return useApiMutation(driveAccessRequestContract.decide, {
+    invalidate: (qc, req) => {
+      invalidateAccessRequests(qc);
+      void qc.invalidateQueries({ queryKey: driveKeys.permissions(req.nodeId) });
+    },
+  });
+}
+
+export function useCancelDriveAccessRequest() {
+  return useApiMutation(driveAccessRequestContract.cancel, {
+    invalidate: (qc, req) => {
+      invalidateAccessRequests(qc);
+      void qc.invalidateQueries({ queryKey: driveKeys.accessTarget(req.nodeId) });
+    },
+  });
+}
+
+/** 站内预览水印文本：管理员开启后对所有登录用户生效（姓名 · 账号 · 日期） */
+export function useDrivePreviewWatermark(user: { nickname?: string | null; username?: string } | null | undefined): string[] | null {
+  const mySettings = useMySettings().data;
+  if (!mySettings?.drive?.previewWatermarkEnabled || !user) return null;
+  return [[user.nickname, user.username].filter(Boolean).join(' · '), new Date().toISOString().slice(0, 10)];
+}
+
 // ─── 公开外链（匿名） ─────────────────────────────────────────────────────────
 // 公开端点的 401 表示「密码错误 / 会话失效」，必须 skipAuth 以免触发管理员 token 刷新与退出登录。
 
@@ -579,6 +684,22 @@ export function useDrivePublicChildren(token: string | undefined, session: strin
 /** 公开内容地址（附带会话查询串，供 <a download> / 预览层直接访问） */
 export function drivePublicContentUrl(token: string, nodeId: number, session: string, download = false): string {
   return urlOf(drivePublicShareContract.content, { params: { token, nodeId }, query: { session, download: download ? true : undefined } });
+}
+
+/** 文件收集：匿名提交（multipart，带进度；会话经查询串传递以复用 XHR 通道） */
+export function uploadToDriveCollect(
+  token: string,
+  session: string,
+  file: File,
+  fields: { submitterName?: string; submitterNote?: string },
+  onProgress?: (percent: number) => void,
+) {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (fields.submitterName) fd.append('submitterName', fields.submitterName);
+  if (fields.submitterNote) fd.append('submitterNote', fields.submitterNote);
+  const url = `${urlOf(drivePublicShareContract.upload, { params: { token } })}?session=${encodeURIComponent(session)}`;
+  return request.postForm<OutputOf<typeof drivePublicShareContract.upload>>(url, fd, { ...PUBLIC_REQUEST, onProgress }).then(unwrap);
 }
 
 /** 转存到我的网盘：外链访问会话经 header 传递 */
