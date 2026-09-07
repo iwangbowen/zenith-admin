@@ -141,7 +141,6 @@ export default function DriveWorkbenchPage() {
         defaultSize={260}
         minSize={220}
         maxSize={380}
-        bordered
         style={{ flex: 1, minHeight: 0 }}
         showDetail={showDetailOnNarrow}
         onBack={() => setShowDetailOnNarrow(false)}
