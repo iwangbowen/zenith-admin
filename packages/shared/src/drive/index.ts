@@ -7,3 +7,4 @@
 export * from './constants';
 export * from './contracts';
 export * from './validation';
+export * from './paths';

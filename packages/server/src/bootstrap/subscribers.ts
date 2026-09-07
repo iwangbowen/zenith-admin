@@ -23,6 +23,7 @@ import { registerSharingSubscribers } from '../services/payment/payment-sharing.
 import { registerPaymentSubscribers } from '../services/payment/payment-subscribers';
 import { registerPaymentOpenWebhookBridge } from '../services/payment/payment-open-webhook-bridge.service';
 import { registerWorkflowAutomationSubscribers } from '../services/workflow/workflow-automations.service';
+import { registerDriveOwnershipSubscriber } from '../services/drive/drive-handoff.service';
 
 export function registerEventSubscribers(): void {
   initNotificationAdapters();
@@ -43,5 +44,6 @@ export function registerEventSubscribers(): void {
   registerFeeSubscribers();
   registerSharingSubscribers();
   registerAnalyticsServerEventSubscribers();
+  registerDriveOwnershipSubscriber();
   logger.info('Workflow event subscribers registered');
 }

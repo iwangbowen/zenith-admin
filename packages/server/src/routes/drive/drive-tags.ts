@@ -4,7 +4,7 @@ import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
-import { createDriveTag, deleteDriveTag, listDriveTags, updateDriveTag } from '../../services/drive/drive-extras.service';
+import { createDriveTag, deleteDriveTag, listDriveTags, mergeDriveTags, updateDriveTag } from '../../services/drive/drive-extras.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -36,6 +36,14 @@ const deleteRoute = defineContractRoute(driveTagContract.remove, {
   },
 });
 
-router.openapiRoutes([listRoute, createRoute, updateRoute, deleteRoute] as const);
+const mergeRoute = defineContractRoute(driveTagContract.merge, {
+  middleware: edit,
+  handler: async (c) => {
+    await mergeDriveTags(c.req.valid('param').id, c.req.valid('json').targetId);
+    return c.json(okBody(null, '标签已合并'), 200);
+  },
+});
+
+router.openapiRoutes([listRoute, createRoute, updateRoute, deleteRoute, mergeRoute] as const);
 
 export default router;

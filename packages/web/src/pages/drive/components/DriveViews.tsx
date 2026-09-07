@@ -1,16 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Empty, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
 import {
   DRIVE_ACTIVITY_ACTION_LABELS, DRIVE_ROLE_LABELS, describeShareCapabilities, DRIVE_SUBJECT_TYPE_LABELS,
-  type DriveNode, type DriveRecentItem, type DriveSearchItem, type DriveShareLink, type DriveSharedItem, type DriveView,
+  DRIVE_NODE_TYPE_OPTIONS, type DriveNodeType, type DriveNode, type DriveRecentItem, type DriveSearchItem, type DriveShareLink, type DriveSharedItem, type DriveView,
 } from '@zenith/shared/drive';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { FileNameCell } from '@/components/FileNameCell';
 import { FilePreviewLayer } from '@/components/FilePreviewLayer';
-import { KeywordInput, FilterSelect } from '@/components/search-filters';
+import { DateRangeFilter, KeywordInput, FilterSelect } from '@/components/search-filters';
+import UserSelect from '@/components/UserSelect';
+import { formatDateTimeRangeForApi } from '@/utils/date';
 import { SearchButton, ResetButton } from '@/components/toolbar-controls';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
@@ -20,6 +22,7 @@ import { usePermission } from '@/hooks/usePermission';
 import {
   driveKeys, useDeleteDriveShareLink, useDriveRecent, useDriveRecycle, useDriveSearch, useDriveSharedWithMe, useDriveStarred,
   useMyDriveShareLinks, useMyDriveSpaces, usePurgeDriveNodes, useRestoreDriveNodes, useRevokeDriveShareLink, useStarDriveNode,
+  useDriveTags,
 } from '@/hooks/queries/drive';
 import { confirmDanger } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
@@ -232,8 +235,19 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
   readonly onClear: () => void;
 }) {
   const { hasPermission } = usePermission();
-  const [page, setPage] = useState(1);
-  const query = useDriveSearch({ keyword, fullText, page, pageSize: 20 });
+  const filters = useListSearch<{
+    spaceId: number | undefined; type: DriveNodeType | undefined; extension: string; tagId: number | undefined;
+    createdBy: number | undefined; timeRange: [Date, Date] | null;
+  }>({ defaults: { spaceId: undefined, type: undefined, extension: '', tagId: undefined, createdBy: undefined, timeRange: null }, listKey: driveKeys.viewOf('search') });
+  const { page, setPage, draftParams, setDraftParams, submittedParams } = filters;
+  useEffect(() => setPage(1), [keyword, fullText, setPage]);
+  const spaces = useMyDriveSpaces();
+  const tags = useDriveTags(draftParams.spaceId);
+  const query = useDriveSearch({
+    keyword, fullText, page, pageSize: 20, spaceId: submittedParams.spaceId, type: submittedParams.type,
+    extension: submittedParams.extension || undefined, tagId: submittedParams.tagId, createdBy: submittedParams.createdBy,
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
+  });
   const list = query.data?.list ?? [];
   const preview = useFilePreview(() => list.filter((n) => n.type === 'file' && n.url).map(nodeToManagedFile));
   const openNode = (node: DriveSearchItem) => {
@@ -245,7 +259,7 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
     { title: '名称', dataIndex: 'name', minWidth: 240, ellipsis: { showTitle: false },
       render: (_: unknown, n: DriveSearchItem) => (
         <div>
-          <FileNameCell name={n.name} mimeType={n.type === 'folder' ? 'inode/directory' : n.mimeType} onClick={() => openNode(n)} />
+          <FileNameCell name={n.name} highlight={keyword} mimeType={n.type === 'folder' ? 'inode/directory' : n.mimeType} onClick={() => openNode(n)} />
           {n.snippet && <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ display: 'block', paddingLeft: 24 }}>{n.snippet}</Typography.Text>}
         </div>
       ) },
@@ -266,6 +280,21 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
         <Typography.Title heading={5} style={{ margin: 0 }}>搜索「{keyword}」{fullText ? '（含正文）' : ''}</Typography.Title>
         <Button size="small" theme="borderless" onClick={onClear}>返回</Button>
       </div>
+      <SearchToolbar filters={<>
+        <FilterSelect<number> value={draftParams.spaceId} placeholder="全部空间"
+          items={(spaces.data ?? []).map((space) => ({ value: space.id, label: space.name }))}
+          onChange={(spaceId) => setDraftParams((previous) => ({ ...previous, spaceId, tagId: undefined }))} />
+        <FilterSelect<DriveNodeType> value={draftParams.type} placeholder="全部类型" items={DRIVE_NODE_TYPE_OPTIONS}
+          onChange={(type) => setDraftParams((previous) => ({ ...previous, type }))} />
+        <KeywordInput value={draftParams.extension} width={120} placeholder="扩展名，如 pdf"
+          onChange={(extension) => setDraftParams((previous) => ({ ...previous, extension }))} onSearch={filters.handleSearch} />
+        <FilterSelect<number> value={draftParams.tagId} placeholder="全部标签" disabled={!draftParams.spaceId}
+          items={(tags.data ?? []).map((tag) => ({ value: tag.id, label: tag.name }))}
+          onChange={(tagId) => setDraftParams((previous) => ({ ...previous, tagId }))} />
+        <UserSelect value={draftParams.createdBy} placeholder="全部上传人" style={{ width: 160 }}
+          onChange={(value) => setDraftParams((previous) => ({ ...previous, createdBy: typeof value === 'number' ? value : undefined }))} />
+        <DateRangeFilter value={draftParams.timeRange} onChange={(timeRange) => setDraftParams((previous) => ({ ...previous, timeRange }))} />
+      </>} actions={<><SearchButton onClick={filters.handleSearch} /><ResetButton onClick={filters.handleReset} /></>} />
       <ConfigurableTable<DriveSearchItem> bordered size="small" rowKey="id" columns={columns} dataSource={list}
         loading={query.isFetching} onRefresh={() => void query.refetch()} refreshLoading={query.isFetching}
         pagination={{ currentPage: page, pageSize: 20, total: query.data?.total ?? 0, onPageChange: setPage }}

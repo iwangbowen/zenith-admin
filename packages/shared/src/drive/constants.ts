@@ -5,6 +5,14 @@ export const DRIVE_SPACE_TYPES = ['personal', 'department', 'team'] as const;
 
 export type DriveSpaceType = (typeof DRIVE_SPACE_TYPES)[number];
 
+export const DRIVE_HANDOFF_MODES = ['merge', 'team'] as const;
+export const DRIVE_HANDOFF_MODE_LABELS = { merge: '并入接收人的个人空间', team: '转为独立协作空间' } as const;
+export const DRIVE_HANDOFF_MODE_OPTIONS = createLabelOptions(DRIVE_HANDOFF_MODES, DRIVE_HANDOFF_MODE_LABELS);
+
+export function isOrphanedDriveSpace(space: { type: DriveSpaceType; ownerId: number | null; departmentId: number | null }): boolean {
+  return space.type === 'department' ? space.departmentId === null : space.ownerId === null;
+}
+
 export const DRIVE_SPACE_TYPE_LABELS: Record<DriveSpaceType, string> = {
   personal: '个人空间',
   department: '部门空间',
@@ -151,7 +159,7 @@ export const DRIVE_UPLOAD_CONFLICT_POLICY_OPTIONS: Array<{ value: DriveUploadCon
 export const DRIVE_ACTIVITY_ACTIONS = [
   'upload', 'new_version', 'create_folder', 'rename', 'move', 'copy', 'delete', 'restore', 'purge',
   'download', 'preview', 'share_create', 'share_update', 'share_revoke', 'share_access', 'save_from_share', 'collect_upload',
-  'permission_change', 'inherit_change', 'version_restore', 'version_delete', 'lock', 'unlock', 'comment', 'tag',
+  'permission_change', 'inherit_change', 'version_restore', 'version_delete', 'lock', 'unlock', 'comment', 'tag', 'metadata_change',
 ] as const;
 
 export type DriveActivityAction = (typeof DRIVE_ACTIVITY_ACTIONS)[number];
@@ -182,6 +190,7 @@ export const DRIVE_ACTIVITY_ACTION_LABELS: Record<DriveActivityAction, string> =
   unlock: '解除锁定',
   comment: '评论',
   tag: '标签变更',
+  metadata_change: '说明与属性变更',
 };
 
 export const DRIVE_ACTIVITY_ACTION_OPTIONS: Array<{ value: DriveActivityAction; label: string }> =

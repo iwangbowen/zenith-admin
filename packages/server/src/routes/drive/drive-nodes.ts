@@ -27,6 +27,7 @@ import {
 } from '../../services/drive/drive-upload.service';
 import { listRecentNodes, listSharedWithMe, listStarredNodes, searchDriveNodes } from '../../services/drive/drive-views.service';
 import { batchDownloadDriveNodes } from '../../services/drive/drive-tasks.service';
+import { ensureDriveUploadDirectories } from '../../services/drive/drive-directories.service';
 
 /**
  * 网盘节点静态路径路由（列表 / 个人视图 / 回收站 / 批量操作 / 上传）。
@@ -201,6 +202,11 @@ const precheckRoute = defineContractRoute(driveNodeContract.precheck, {
   handler: async (c) => c.json(okBody(await precheckDriveUpload(c.req.valid('json'))), 200),
 });
 
+const ensureDirectoriesRoute = defineContractRoute(driveNodeContract.ensureDirectories, {
+  middleware: upload,
+  handler: async (c) => c.json(okBody(await ensureDriveUploadDirectories(c.req.valid('json'))), 200),
+});
+
 const uploadRoute = defineContractRoute(driveNodeContract.upload, {
   middleware: [authMiddleware, guard({ permission: 'drive:node:upload', audit: { description: '上传网盘文件', recordBody: false, ...AUDIT } })],
   responses: { 409: { content: jsonContent(ErrorResponse), description: '同名文件已存在' } },
@@ -261,7 +267,7 @@ router.openapiRoutes([
   listRoute, searchRoute, sharedRoute, starredRoute, recentRoute,
   recycleListRoute, recycleRestoreRoute, recyclePurgeRoute, recycleEmptyRoute,
   createFolderRoute, moveRoute, copyRoute, batchDeleteRoute, batchDownloadRoute,
-  precheckRoute, uploadRoute, uploadInitRoute, uploadChunkRoute, uploadCompleteRoute, uploadStatusRoute, uploadAbortRoute,
+  ensureDirectoriesRoute, precheckRoute, uploadRoute, uploadInitRoute, uploadChunkRoute, uploadCompleteRoute, uploadStatusRoute, uploadAbortRoute,
 ] as const);
 
 export default router;

@@ -7,6 +7,7 @@ import { mockUsers, getNextUserId, type MockUser } from '@/mocks/data/users';
 import { mockRoles } from '@/mocks/data/roles';
 import { mockPositions } from '@/mocks/data/positions';
 import { mockDepartments } from '@/mocks/data/departments';
+import { mockDriveSpaces } from '@/mocks/data/drive';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
 
@@ -104,6 +105,9 @@ export const usersHandlers = [
     const ids = new Set(body.ids);
     if (ids.size === 0) return badRequest('请选择要删除的用户', { status: 400 });
     const removed = removeWhere(mockUsers, (u) => ids.has(u.id));
+    for (const space of mockDriveSpaces) {
+      if (space.ownerId !== null && ids.has(space.ownerId)) { space.ownerId = null; space.ownerName = null; }
+    }
     return ok(null, `已删除 ${removed} 个用户`);
   }),
 
@@ -169,6 +173,9 @@ export const usersHandlers = [
       return badRequest('不能删除管理员账号', { status: 400 });
     }
     mockUsers.splice(index, 1);
+    for (const space of mockDriveSpaces) {
+      if (space.ownerId === params.id) { space.ownerId = null; space.ownerName = null; }
+    }
     return ok(null, '删除成功');
   }),
 

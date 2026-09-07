@@ -214,6 +214,14 @@ export function useMoveDriveNodes() {
       for (const s of sources) {
         invalidateDir(qc, s.spaceId, s.parentId);
         void qc.invalidateQueries({ queryKey: driveKeys.node(s.id) });
+        invalidateUsage(qc, s.spaceId);
+      }
+      invalidateUsage(qc, body.targetSpaceId);
+      if (sources.some((source) => source.spaceId !== body.targetSpaceId)) {
+        // Cross-space moves change the ACL and location of every descendant, not just selected roots.
+        void qc.invalidateQueries({ queryKey: contractKey(driveNodeContract.detail) });
+        void qc.invalidateQueries({ queryKey: contractKey(driveNodeContract.permissions) });
+        void qc.invalidateQueries({ queryKey: driveKeys.shareLinks });
       }
       invalidateDir(qc, body.targetSpaceId, body.targetParentId ?? null);
       invalidateNodeViews(qc);
@@ -410,7 +418,12 @@ export function useDriveTags(spaceId: number | undefined, enabled = true) {
 /** 标签变化会影响已打标节点的展示（目录列表的标签列） */
 function invalidateTagSurface(qc: QueryClient, spaceId: number) {
   void qc.invalidateQueries({ queryKey: driveKeys.tags(spaceId) });
-  void qc.invalidateQueries({ queryKey: driveKeys.dirs });
+  void qc.invalidateQueries({ queryKey: [...driveKeys.dirs, spaceId] });
+  void qc.invalidateQueries({ queryKey: contractKey(driveNodeContract.detail), predicate: (query) => {
+    const data = query.state.data;
+    return !!data && typeof data === 'object' && 'spaceId' in data && data.spaceId === spaceId;
+  } });
+  invalidateNodeViews(qc);
 }
 
 export function useCreateDriveTag() {

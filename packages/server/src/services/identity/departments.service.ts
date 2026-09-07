@@ -12,6 +12,7 @@ import type { Department, createDepartmentSchema, updateDepartmentSchema } from 
 import type * as z from 'zod';
 import { getScopeMemberSummaries } from './user-scope.service';
 import { buildTree } from '@zenith/shared/core';
+import { emitIdentityRemoval } from '../../lib/identity-lifecycle';
 
 export type CreateDepartmentInput = z.infer<typeof createDepartmentSchema>;
 export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>;
@@ -169,6 +170,7 @@ export async function deleteDepartment(id: number): Promise<void> {
   if (child) throw new HTTPException(400, { message: '该部门存在子部门，无法删除' });
   if (boundUser) throw new HTTPException(400, { message: '该部门下仍有关联用户，无法删除' });
   await db.delete(departments).where(and(eq(departments.id, id), tc));
+  emitIdentityRemoval({ kind: 'department', ids: [id] });
 }
 
 export async function getDepartment(id: number) {

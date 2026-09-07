@@ -25,6 +25,7 @@ import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DriveSpaceFormSheet, type DriveSpaceFormTarget } from '../components/DriveSpaceFormSheet';
 import { DriveSubjectPicker, type SubjectGrant } from '../components/DriveSubjectPicker';
 import { roleAtLeast, usagePercent } from '../drive-utils';
+import { DriveSpaceActivitiesModal, DriveTagsModal } from '../components/DriveCollaborationPanels';
 import '../drive.css';
 
 interface SearchParams {
@@ -94,6 +95,8 @@ export default function DriveSpacesPage() {
   const remove = useDeleteDriveSpaces();
   const [membersOf, setMembersOf] = useState<DriveSpace | null>(null);
   const [transferOf, setTransferOf] = useState<DriveSpace | null>(null);
+  const [tagsOf, setTagsOf] = useState<DriveSpace | null>(null);
+  const [activitiesOf, setActivitiesOf] = useState<DriveSpace | null>(null);
   const [spaceEditor, setSpaceEditor] = useState<DriveSpaceFormTarget | null>(null);
 
   // 页面宽约 1190px：去掉低价值的创建时间列、收窄辅助列，让名称列保持可读；打开空间点名称即可
@@ -122,6 +125,8 @@ export default function DriveSpacesPage() {
       return [
         { key: 'members', label: s.type === 'personal' ? '成员' : (isManager ? '成员管理' : '查看成员'), hidden: s.type === 'personal', onClick: () => setMembersOf(s) },
         { key: 'open', label: '打开', onClick: () => navigate(`/drive?space=${s.id}`) },
+        { key: 'activities', label: '空间动态', onClick: () => setActivitiesOf(s) },
+        { key: 'tags', label: '标签管理', onClick: () => setTagsOf(s) },
         { key: 'edit', label: '编辑', hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:edit'), onClick: () => setSpaceEditor(s) },
         { key: 'transfer', label: '转让', hidden: s.type !== 'team' || !isManager, onClick: () => setTransferOf(s) },
         { key: 'delete', label: '删除', danger: true, dividerBefore: true, hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:delete'),
@@ -155,6 +160,8 @@ export default function DriveSpacesPage() {
       <DriveSpaceFormSheet target={spaceEditor} onClose={() => setSpaceEditor(null)} />
       <MembersModal space={membersOf} onClose={() => setMembersOf(null)} />
       <TransferModal space={transferOf} onClose={() => setTransferOf(null)} />
+      <DriveTagsModal space={tagsOf} onClose={() => setTagsOf(null)} />
+      <DriveSpaceActivitiesModal space={activitiesOf} onClose={() => setActivitiesOf(null)} />
       {!hasPermission('drive:space:create') && listQuery.data?.total === 0 && (
         <Typography.Text type="tertiary">你还没有加入任何协作空间。</Typography.Text>
       )}

@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, primaryKey, unique, index, uniqueIndex, text, jsonb, smallint, uuid as pgUuid, customType, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, primaryKey, foreignKey, unique, index, uniqueIndex, text, jsonb, smallint, uuid as pgUuid, customType, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { statusEnum, timestampColumns } from './common';
 import { auditColumns, departments, tenants, users } from './core';
@@ -34,7 +34,7 @@ export const driveUploadConflictPolicyEnum = pgEnum('drive_upload_conflict_polic
 export const driveActivityActionEnum = pgEnum('drive_activity_action', [
   'upload', 'new_version', 'create_folder', 'rename', 'move', 'copy', 'delete', 'restore', 'purge',
   'download', 'preview', 'share_create', 'share_update', 'share_revoke', 'share_access', 'save_from_share', 'collect_upload',
-  'permission_change', 'inherit_change', 'version_restore', 'version_delete', 'lock', 'unlock', 'comment', 'tag',
+  'permission_change', 'inherit_change', 'version_restore', 'version_delete', 'lock', 'unlock', 'comment', 'tag', 'metadata_change',
 ]);
 
 // ─── 空间 ─────────────────────────────────────────────────────────────────────
@@ -131,6 +131,8 @@ export const driveNodes = pgTable('drive_nodes', {
   index('drive_nodes_space_parent_idx').on(t.spaceId, t.parentId, t.deletedAt),
   index('drive_nodes_ancestors_gin_idx').using('gin', t.ancestorIds),
   index('drive_nodes_acl_chain_gin_idx').using('gin', t.aclChainIds),
+  unique('drive_nodes_id_space_unique').on(t.id, t.spaceId),
+  foreignKey({ name: 'drive_nodes_parent_space_fk', columns: [t.parentId, t.spaceId], foreignColumns: [t.id, t.spaceId] }).onDelete('cascade'),
   index('drive_nodes_file_idx').on(t.fileId),
   index('drive_nodes_deleted_root_idx').on(t.deletedRootId),
   index('drive_nodes_content_hash_idx').on(t.contentHash),
@@ -264,6 +266,7 @@ export const driveActivities = pgTable('drive_activities', {
   index('drive_activities_node_idx').on(t.nodeId, t.createdAt),
   index('drive_activities_space_idx').on(t.spaceId, t.createdAt),
   index('drive_activities_actor_idx').on(t.actorId, t.createdAt),
+  index('drive_activities_id_idx').on(t.id),
   index('drive_activities_created_brin_idx').using('brin', t.createdAt),
 ]);
 
@@ -335,12 +338,31 @@ export const driveNodeComments = pgTable('drive_node_comments', {
   nodeId: integer().notNull().references(() => driveNodes.id, { onDelete: 'cascade' }),
   parentId: integer().references((): AnyPgColumn => driveNodeComments.id, { onDelete: 'cascade' }),
   content: varchar({ length: 2000 }).notNull(),
+  mentionUserIds: integer().array().notNull().default([]),
   authorId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...timestampColumns(),
 }, (t) => [index('drive_node_comments_node_idx').on(t.nodeId)]);
 
 export type DriveNodeCommentRow = typeof driveNodeComments.$inferSelect;
+
+export const driveNodeProfiles = pgTable('drive_node_profiles', {
+  nodeId: integer().primaryKey().references(() => driveNodes.id, { onDelete: 'cascade' }),
+  description: varchar({ length: 2000 }),
+  metadata: jsonb().$type<Record<string, string | number | boolean | null>>().notNull().default({}),
+  ...auditColumns(),
+  ...timestampColumns(),
+});
+
+export const driveNodeSubscriptions = pgTable('drive_node_subscriptions', {
+  userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
+  nodeId: integer().notNull().references(() => driveNodes.id, { onDelete: 'cascade' }),
+  lastActivityId: integer().notNull().default(0),
+  createdAt: timestamp().defaultNow().notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.userId, t.nodeId] }),
+  index('drive_node_subscriptions_cursor_idx').on(t.lastActivityId),
+]);
 
 /** PostgreSQL tsvector 列（drizzle 无内置类型） */
 const tsvector = customType<{ data: string }>({

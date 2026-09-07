@@ -57,6 +57,20 @@
       "when": 1788758122759,
       "tag": "0007_drive_gc_tombstone",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788765662406,
+      "tag": "0008_drive_daily_collaboration",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788768064280,
+      "tag": "0009_drive_move_integrity",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { dateTimeStringSchema, partialForUpdate } from '../core/validation';
 import {
   DRIVE_ROLES,
+  DRIVE_HANDOFF_MODES,
   DRIVE_SHARE_CAPABILITIES,
   DRIVE_SHARE_KINDS,
   DRIVE_SUBJECT_TYPES,
@@ -69,6 +70,13 @@ export const transferDriveSpaceSchema = z.object({
 
 export type TransferDriveSpaceInput = z.infer<typeof transferDriveSpaceSchema>;
 
+export const handoffDriveSpaceSchema = z.object({
+  recipientId: z.int().positive(),
+  mode: z.enum(DRIVE_HANDOFF_MODES),
+  name: z.string().trim().min(1).max(100).optional(),
+});
+export type HandoffDriveSpaceInput = z.infer<typeof handoffDriveSpaceSchema>;
+
 // ─── 节点 ─────────────────────────────────────────────────────────────────────
 
 export const createDriveFolderSchema = z.object({
@@ -78,6 +86,17 @@ export const createDriveFolderSchema = z.object({
 });
 
 export type CreateDriveFolderInput = z.infer<typeof createDriveFolderSchema>;
+
+export const driveRelativePathSchema = z.string().max(8192)
+  .transform((path) => path.split('/'))
+  .pipe(z.array(driveNodeNameSchema).min(1).max(32))
+  .transform((segments) => segments.join('/'));
+
+export const ensureDriveDirectoriesSchema = createDriveFolderSchema.omit({ name: true }).extend({
+  paths: z.array(driveRelativePathSchema).min(1).max(1000),
+});
+
+export type EnsureDriveDirectoriesInput = z.infer<typeof ensureDriveDirectoriesSchema>;
 
 export const renameDriveNodeSchema = z.object({
   name: driveNodeNameSchema,
@@ -242,10 +261,28 @@ export type SetDriveNodeTagsInput = z.infer<typeof setDriveNodeTagsSchema>;
 
 export const createDriveNodeCommentSchema = z.object({
   content: z.string().trim().min(1, '评论内容不能为空').max(2000),
+  mentionUserIds: z.array(z.int().positive()).max(20).default([]),
   parentId: z.number().int().positive().nullable().default(null),
 });
 
 export type CreateDriveNodeCommentInput = z.infer<typeof createDriveNodeCommentSchema>;
+
+export const updateDriveNodeCommentSchema = partialForUpdate(createDriveNodeCommentSchema.omit({ parentId: true }));
+export type UpdateDriveNodeCommentInput = z.infer<typeof updateDriveNodeCommentSchema>;
+
+export const driveMetadataSchema = z.record(
+  z.string().trim().min(1).max(64).refine((key) => !['__proto__', 'constructor', 'prototype'].includes(key), '属性名称不可用'),
+  z.union([z.string().max(512), z.number().finite(), z.boolean(), z.null()]),
+).refine((value) => Object.keys(value).length <= 30, '自定义属性最多 30 项');
+
+const createDriveNodeProfileSchema = z.object({
+  description: z.string().max(2000).nullable(),
+  metadata: driveMetadataSchema,
+});
+export const updateDriveNodeProfileSchema = partialForUpdate(createDriveNodeProfileSchema);
+export type UpdateDriveNodeProfileInput = z.infer<typeof updateDriveNodeProfileSchema>;
+
+export const mergeDriveTagsSchema = z.object({ targetId: z.int().positive() });
 
 // ─── 管理 / 设置 ──────────────────────────────────────────────────────────────
 

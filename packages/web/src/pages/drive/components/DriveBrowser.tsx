@@ -10,13 +10,13 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { CursorContextDropdown, type CursorPoint } from '@/components/CursorContextDropdown';
 import { FileNameCell } from '@/components/FileNameCell';
 import { FilePreviewLayer } from '@/components/FilePreviewLayer';
-import { KeywordInput } from '@/components/search-filters';
+import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { useFilePreview } from '@/hooks/useFilePreview';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
-import { batchDownloadDriveNodes, driveKeys, useCopyDriveNodes, useCreateDriveFolder, useDeleteDriveNodes, useDriveDir, useLockDriveNode, useMoveDriveNodes, useRenameDriveNode, useStarDriveNode } from '@/hooks/queries/drive';
-import { confirmDelete } from '@/utils/confirm';
+import { batchDownloadDriveNodes, driveKeys, useCopyDriveNodes, useCreateDriveFolder, useDeleteDriveNodes, useDriveDir, useDriveTags, useLockDriveNode, useMoveDriveNodes, useRenameDriveNode, useStarDriveNode } from '@/hooks/queries/drive';
+import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
 import { canPreviewFile, fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
@@ -24,6 +24,7 @@ import { DriveFolderPicker, type FolderTarget } from './DriveFolderPicker';
 import { DriveNodeCard } from './DriveNodeCard';
 import type { UploaderTarget } from '../hooks/useDriveUploader';
 import { nodeDownloadUrl, nodeToManagedFile, roleAtLeast, usagePercent } from '../drive-utils';
+import { collectDroppedDirectory, type DirectoryUploadFile } from '@/utils/directory-upload';
 
 type ViewMode = 'list' | 'grid';
 type SortBy = 'name' | 'size' | 'updatedAt' | 'createdAt';
@@ -31,6 +32,7 @@ const VIEW_MODE_KEY = 'drive.viewMode';
 
 interface SearchParams {
   keyword: string;
+  tagId: number | undefined;
   sortBy: SortBy;
   order: 'asc' | 'desc';
 }
@@ -40,7 +42,7 @@ interface DriveBrowserProps {
   readonly folderId: number | null;
   readonly onNavigate: (folderId: number | null) => void;
   readonly onOpenDetail: (nodeId: number) => void;
-  readonly onUpload: (files: File[], target: UploaderTarget) => void;
+  readonly onUpload: (files: Array<File | DirectoryUploadFile>, target: UploaderTarget, directories?: string[]) => void;
   /** 由外部（外链创建等）触发的刷新计数 */
   readonly refreshToken?: number;
 }
@@ -63,15 +65,18 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
   const [creating, setCreating] = useState(false);
   const [picker, setPicker] = useState<{ mode: 'move' | 'copy'; nodes: DriveNode[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const directoryInputRef = useRef<HTMLInputElement>(null);
   const formApiRef = useRef<FormApi<{ name: string }> | null>(null);
 
   const listKey = driveKeys.dir(spaceId, folderId);
-  const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset, setPage } =
-    useListSearch<SearchParams>({ defaults: { keyword: '', sortBy: 'name', order: 'asc' }, listKey, pageSize: 50 });
+  const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset, setPage, applySearch } =
+    useListSearch<SearchParams>({ defaults: { keyword: '', tagId: undefined, sortBy: 'name', order: 'asc' }, listKey, pageSize: 50 });
+  const tags = useDriveTags(spaceId);
 
   const dirQuery = useDriveDir({
     spaceId, parentId: folderId, page, pageSize,
     keyword: submittedParams.keyword || undefined, sortBy: submittedParams.sortBy, order: submittedParams.order,
+    tagId: submittedParams.tagId,
   });
   const data: DriveNodeListResult | undefined = dirQuery.data;
   const list = useMemo(() => data?.list ?? [], [data?.list]);
@@ -80,6 +85,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
   const canEdit = hasPermission('drive:node:edit') && roleAtLeast(myRole, 'editor');
   const canDelete = hasPermission('drive:node:delete');
   const canDownload = hasPermission('drive:node:download');
+  useEffect(() => { directoryInputRef.current?.setAttribute('webkitdirectory', ''); }, [canUpload]);
 
   useEffect(() => { setSelectedIds([]); }, [spaceId, folderId, page]);
   useEffect(() => { setPage(1); }, [spaceId, folderId, setPage]);
@@ -130,6 +136,11 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
     if (!picker) return;
     const ids = picker.nodes.map((n) => n.id);
     if (picker.mode === 'move') {
+      if (picker.nodes.some((node) => node.spaceId !== target.spaceId) && !await confirmDangerAsync({
+        title: '跨空间移动',
+        content: '全部版本和评论会保留，容量转入目标空间；节点改为继承目标权限，原直接授权清除，原外链撤销。',
+        okText: '确认移动',
+      })) return;
       await move.mutateAsync({ body: { ids, targetSpaceId: target.spaceId, targetParentId: target.parentId }, sources: picker.nodes });
       Toast.success(`已移动到「${target.label}」`);
     } else {
@@ -196,8 +207,9 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
     e.preventDefault();
     setDragging(false);
     if (!canUpload) { Toast.warning('当前目录没有上传权限'); return; }
-    const files = Array.from(e.dataTransfer.files ?? []);
-    if (files.length) onUpload(files, { spaceId, parentId: folderId });
+    void collectDroppedDirectory(e.dataTransfer).then(({ files, directories }) =>
+      onUpload(files, { spaceId, parentId: folderId }, directories),
+    ).catch((error) => Toast.error(error instanceof Error ? error.message : '读取拖入目录失败'));
   };
 
   const usage = data ? usagePercent(data.space) : null;
@@ -234,7 +246,9 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
           {canUpload && (
             <>
               <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => { onUpload(Array.from(e.target.files ?? []), { spaceId, parentId: folderId }); e.target.value = ''; }} />
+              <input ref={directoryInputRef} type="file" multiple hidden onChange={(e) => { onUpload(Array.from(e.target.files ?? []), { spaceId, parentId: folderId }); e.target.value = ''; }} />
               <Button theme="solid" icon={<Upload size={14} />} onClick={() => fileInputRef.current?.click()}>上传</Button>
+              <Button icon={<Upload size={14} />} onClick={() => directoryInputRef.current?.click()}>上传文件夹</Button>
               <Button icon={<FolderPlus size={14} />} onClick={() => setCreating(true)}>新建文件夹</Button>
             </>
           )}
@@ -250,6 +264,8 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
           )}
         </div>
         <div className="drive-browser__toolbar-right">
+          <FilterSelect<number> value={draftParams.tagId} placeholder="全部标签" items={(tags.data ?? []).map((tag) => ({ value: tag.id, label: tag.name }))}
+            onChange={(value) => applySearch({ ...draftParams, tagId: value })} />
           <KeywordInput placeholder="搜索当前目录" width={200} value={draftParams.keyword}
             onChange={(v) => { setDraftParams((p) => ({ ...p, keyword: v })); if (v === '' && submittedParams.keyword) setTimeout(handleReset, 0); }}
             onSearch={handleSearch} />

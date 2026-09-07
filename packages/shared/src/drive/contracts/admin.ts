@@ -1,9 +1,9 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts';
 import { DRIVE_ACTIVITY_ACTIONS, DRIVE_SPACE_TYPES } from '../constants';
-import { adminUpdateDriveSpaceSchema, createDepartmentDriveSpaceSchema, driveAdminTaskScopeSchema } from '../validation';
+import { adminUpdateDriveSpaceSchema, createDepartmentDriveSpaceSchema, driveAdminTaskScopeSchema, handoffDriveSpaceSchema } from '../validation';
 import { driveActivitySchema } from './nodes';
 import { driveShareLinkListQuery, driveShareLinkSchema } from './share-links';
 import { driveSpaceListQuery, driveSpaceSchema } from './spaces';
@@ -33,6 +33,7 @@ export type DriveAdminStats = z.infer<typeof driveAdminStatsSchema>;
 export const driveAdminSpaceListQuery = driveSpaceListQuery.extend({
   departmentId: z.coerce.number().int().positive().optional(),
   ownerId: z.coerce.number().int().positive().optional(),
+  orphaned: queryBool('只显示待接管空间'),
 });
 
 export const driveAdminShareLinkListQuery = driveShareLinkListQuery.extend({
@@ -56,6 +57,7 @@ export const driveAdminContract = defineContract('/api/drive/admin', {
   createDepartmentSpace: op.post('/spaces/department', { body: createDepartmentDriveSpaceSchema, response: driveSpaceSchema, summary: '创建部门空间' }),
   recalcUsage: op.post('/spaces/recalc', { body: driveAdminTaskScopeSchema, response: asyncTaskSchema, summary: '重算容量（任务中心；不传 spaceId 为全部）' }),
   updateSpace: op.put('/spaces/{id}', { params: idParam, body: adminUpdateDriveSpaceSchema, response: driveSpaceSchema, summary: '治理空间（配额 / 状态 / 所有者 / 外链开关）' }),
+  handoff: op.post('/spaces/{id}/handoff', { params: idParam, body: handoffDriveSpaceSchema, response: driveSpaceSchema, summary: '个人或孤儿空间交接' }),
   removeSpace: op.delete('/spaces/{id}', { params: idParam, summary: '删除空空间' }),
   reindex: op.post('/reindex', { body: driveAdminTaskScopeSchema, response: asyncTaskSchema, summary: '补建缩略图 / 全文索引（任务中心）' }),
   shareLinks: op.get('/share-links', { query: driveAdminShareLinkListQuery, response: paginated(driveShareLinkSchema), summary: '全部外链（治理）' }),

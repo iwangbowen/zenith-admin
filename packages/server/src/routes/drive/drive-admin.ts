@@ -10,6 +10,7 @@ import { getDriveAdminStats } from '../../services/drive/drive-admin.service';
 import { adminRevokeDriveShareLink, getShareLinkBeforeAudit, listShareLinksForAdmin } from '../../services/drive/drive-share.service';
 import { adminUpdateDriveSpace, createDepartmentSpace, deleteDriveSpace, ensureDriveSpaceExists, listDriveSpacesForAdmin } from '../../services/drive/drive-spaces.service';
 import { submitRecalcUsageTask, submitReindexTask } from '../../services/drive/drive-tasks.service';
+import { handoffDriveSpace } from '../../services/drive/drive-handoff.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 const AUDIT = { module: '企业网盘' } as const;
@@ -85,11 +86,20 @@ const activitiesRoute = defineContractRoute(driveAdminContract.activities, {
   handler: async (c) => c.json(okBody(await listDriveActivitiesForAdmin(c.req.valid('query'))), 200),
 });
 
+const handoffRoute = defineContractRoute(driveAdminContract.handoff, {
+  middleware: [authMiddleware, guard({ permission: 'drive:admin:space:edit', audit: { module: '企业网盘', description: '空间交接' } })],
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await ensureDriveSpaceExists(id));
+    return c.json(okBody(await handoffDriveSpace(id, c.req.valid('json')), '空间已交接'), 200);
+  },
+});
+
 // 静态 /spaces/department、/spaces/recalc 先于动态 /spaces/{id}
 router.openapiRoutes([
   statsRoute,
   spacesRoute, createDepartmentSpaceRoute, recalcRoute, updateSpaceRoute, deleteSpaceRoute, reindexRoute,
-  shareLinksRoute, revokeShareLinkRoute, activitiesRoute,
+  shareLinksRoute, revokeShareLinkRoute, activitiesRoute, handoffRoute,
 ] as const);
 
 export default router;

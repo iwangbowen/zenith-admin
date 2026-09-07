@@ -68,7 +68,7 @@ import {
   iotMaintenanceWindows, iotSchedules, iotScheduleRuns, iotDeviceWhitelist,
 } from './iot';
 import {
-  driveActivities, driveFileVersions, driveNodeComments, driveNodePermissions, driveNodeRenditions, driveNodes, driveNodeStars, driveNodeTags,
+  driveActivities, driveFileVersions, driveNodeComments, driveNodePermissions, driveNodeProfiles, driveNodeRenditions, driveNodes, driveNodeStars, driveNodeSubscriptions, driveNodeTags,
   driveNodeTexts, driveRecentAccess, driveShareAccessLogs, driveShareLinks, driveSpaceMembers, driveSpaces, driveTags, driveUploadBindings,
 } from './drive';
 
@@ -1955,7 +1955,18 @@ export const driveNodesRelations = relations(driveNodes, ({ one, many }) => ({
   nodeTags: many(driveNodeTags),
   comments: many(driveNodeComments),
   renditions: many(driveNodeRenditions),
+  subscriptions: many(driveNodeSubscriptions),
+  profile: one(driveNodeProfiles, { fields: [driveNodes.id], references: [driveNodeProfiles.nodeId] }),
   text: one(driveNodeTexts, { fields: [driveNodes.id], references: [driveNodeTexts.nodeId] }),
+}));
+
+export const driveNodeProfilesRelations = relations(driveNodeProfiles, ({ one }) => ({
+  node: one(driveNodes, { fields: [driveNodeProfiles.nodeId], references: [driveNodes.id] }),
+}));
+
+export const driveNodeSubscriptionsRelations = relations(driveNodeSubscriptions, ({ one }) => ({
+  node: one(driveNodes, { fields: [driveNodeSubscriptions.nodeId], references: [driveNodes.id] }),
+  user: one(users, { fields: [driveNodeSubscriptions.userId], references: [users.id] }),
 }));
 
 export const driveNodeRenditionsRelations = relations(driveNodeRenditions, ({ one }) => ({

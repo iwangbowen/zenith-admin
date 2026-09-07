@@ -1,7 +1,10 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Toast } from '@douyinfe/semi-ui';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  DRIVE_CLIENT_HASH_MAX_BYTES,
+  collectDriveUploadDirectories,
+  driveRelativePathSchema,
+  driveUploadParentPath,
   DRIVE_SIMPLE_UPLOAD_MAX_BYTES,
   driveNodeContract,
   type DriveNode,
@@ -12,6 +15,8 @@ import { api, urlOf } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
 import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
 import { driveKeys, invalidateDir } from '@/hooks/queries/drive';
+import type { DirectoryUploadFile } from '@/utils/directory-upload';
+import { hashDriveFile } from './drive-hash';
 
 /** 网盘自有的分片上传接口（init / chunk / complete / status），由契约派生 */
 const DRIVE_UPLOAD_ENDPOINTS: ChunkedUploadEndpoints = {
@@ -26,6 +31,7 @@ export type UploadItemStatus = 'pending' | 'hashing' | 'uploading' | 'done' | 's
 export interface UploadItem {
   id: string;
   file: File;
+  relativePath: string;
   spaceId: number;
   parentId: number | null;
   status: UploadItemStatus;
@@ -49,21 +55,9 @@ export interface UploadConflict {
 
 const ACTIVE_STATUSES: readonly UploadItemStatus[] = ['pending', 'hashing', 'uploading'];
 
-/** 浏览器端 SHA-256（≤ DRIVE_CLIENT_HASH_MAX_BYTES 且运行在安全上下文时）；不可用返回 undefined */
-async function sha256Hex(file: File): Promise<string | undefined> {
-  if (file.size > DRIVE_CLIENT_HASH_MAX_BYTES || file.size === 0) return undefined;
-  if (!globalThis.crypto?.subtle) return undefined;
-  try {
-    const digest = await globalThis.crypto.subtle.digest('SHA-256', await file.arrayBuffer());
-    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * 网盘上传队列：预检（冲突 / 配额 / 秒传）→ 简单上传或分片续传 → 失效目录与用量。
- * 队列串行处理，避免同名文件并发落地时冲突策略互相干扰；冲突由 `conflict` 状态交给 UI 询问。
+ * 不同目录最多三个并行任务，同目录串行；冲突询问串行化，取消同时终止哈希 Worker。
  */
 export function useDriveUploader() {
   const qc = useQueryClient();
@@ -72,6 +66,10 @@ export function useDriveUploader() {
   const queueRef = useRef<UploadItem[]>([]);
   const runningRef = useRef(false);
   const controllersRef = useRef(new Map<string, AbortController>());
+  const cancelledRef = useRef(new Set<string>());
+  type ConflictRequest = UploadConflict & { signal: AbortSignal; finish: UploadConflict['resolve'] };
+  const conflictsRef = useRef<ConflictRequest[]>([]);
+  const currentConflictRef = useRef<ConflictRequest | null>(null);
   /** undefined = 每次询问；null = 本批全部跳过；其余 = 本批统一策略 */
   const batchPolicyRef = useRef<DriveUploadConflictPolicy | null | undefined>(undefined);
 
@@ -86,31 +84,68 @@ export function useDriveUploader() {
     void qc.invalidateQueries({ queryKey: driveKeys.viewOf('recent') });
   }, [qc]);
 
-  const askConflict = useCallback((fileName: string) => new Promise<{ policy: DriveUploadConflictPolicy; applyAll: boolean } | null>((resolve) => {
-    setConflict({
-      fileName,
-      resolve: (answer) => {
-        setConflict(null);
-        resolve(answer);
-      },
-    });
-  }), []);
+  const showConflict = useCallback(function showNext(): void {
+    if (currentConflictRef.current) return;
+    const next = conflictsRef.current.shift();
+    if (!next) return;
+    if (next.signal.aborted) { next.finish(null); showNext(); return; }
+    if (batchPolicyRef.current !== undefined) {
+      next.finish(batchPolicyRef.current === null ? null : { policy: batchPolicyRef.current, applyAll: true });
+      showNext();
+      return;
+    }
+    currentConflictRef.current = next;
+    setConflict({ fileName: next.fileName, resolve: next.resolve });
+  }, []);
+
+  const askConflict = useCallback((fileName: string, signal: AbortSignal) =>
+    new Promise<{ policy: DriveUploadConflictPolicy; applyAll: boolean } | null>((resolve) => {
+      const abort = () => item.resolve(null);
+      const item: ConflictRequest = {
+        fileName, signal,
+        finish: (answer) => { signal.removeEventListener('abort', abort); resolve(answer); },
+        resolve: (answer) => {
+          if (answer?.applyAll) batchPolicyRef.current = answer.policy;
+          conflictsRef.current = conflictsRef.current.filter((entry) => entry !== item);
+          if (currentConflictRef.current === item) { currentConflictRef.current = null; setConflict(null); }
+          item.finish(answer);
+          showConflict();
+        },
+      };
+      if (signal.aborted) { resolve(null); return; }
+      signal.addEventListener('abort', abort, { once: true });
+      conflictsRef.current.push(item);
+      showConflict();
+    }), [showConflict]);
+
+  useEffect(() => {
+    const controllers = controllersRef.current;
+    return () => {
+      queueRef.current = [];
+      controllers.forEach((controller) => controller.abort());
+    };
+  }, []);
 
   const processOne = useCallback(async (item: UploadItem) => {
     const controller = new AbortController();
     controllersRef.current.set(item.id, controller);
     try {
       patch(item.id, { status: 'hashing', percent: 0 });
-      const contentHash = await sha256Hex(item.file);
+      const contentHash = await hashDriveFile(item.file, controller.signal, (percent) => patch(item.id, { percent }));
       if (controller.signal.aborted) throw new Error('已取消');
       const precheckBody = { spaceId: item.spaceId, parentId: item.parentId, fileName: item.file.name, fileSize: item.file.size, contentHash };
-      // 先用 fail 策略探测冲突（不会落地），交给用户决定
+      // 冲突时先不落地；无冲突的可见内容可在预检阶段直接秒传。
       const precheck = await api(driveNodeContract.precheck, { body: { ...precheckBody, conflictPolicy: 'fail' } }, { signal: controller.signal, silent: true });
+      if (precheck.node) {
+        patch(item.id, { status: 'done', percent: 100, instant: true, node: precheck.node });
+        finish(item);
+        return;
+      }
       if (!precheck.quotaOk) throw new Error('空间配额不足');
       let policy: DriveUploadConflictPolicy = 'rename';
       if (precheck.conflict) {
         if (batchPolicyRef.current === undefined) {
-          const answer = await askConflict(item.file.name);
+          const answer = await askConflict(item.relativePath, controller.signal);
           if (answer?.applyAll) batchPolicyRef.current = answer.policy;
           if (!answer) {
             if (controller.signal.aborted) throw new Error('已取消');
@@ -143,6 +178,7 @@ export function useDriveUploader() {
         fd.append('conflictPolicy', policy);
         node = await request.postForm<DriveNode>(urlOf(driveNodeContract.upload), fd, {
           silent: true,
+          signal: controller.signal,
           onProgress: (p) => patch(item.id, { percent: Math.min(99, p) }),
         }).then(unwrap);
       } else {
@@ -168,10 +204,17 @@ export function useDriveUploader() {
     if (runningRef.current) return;
     runningRef.current = true;
     try {
-      for (;;) {
-        const next = queueRef.current.shift();
-        if (!next) break;
-        await processOne(next);
+      const active = new Map<string, Promise<void>>();
+      while (queueRef.current.length || active.size) {
+        while (active.size < 3) {
+          const index = queueRef.current.findIndex((item) => !active.has(`${item.spaceId}:${item.parentId}`));
+          if (index < 0) break;
+          const [next] = queueRef.current.splice(index, 1);
+          if (cancelledRef.current.has(next.id)) continue;
+          const key = `${next.spaceId}:${next.parentId}`;
+          active.set(key, processOne(next).finally(() => { active.delete(key); }));
+        }
+        if (active.size) await Promise.race(active.values());
       }
     } finally {
       runningRef.current = false;
@@ -179,22 +222,49 @@ export function useDriveUploader() {
     }
   }, [processOne]);
 
-  const enqueue = useCallback((files: File[], target: UploaderTarget) => {
-    if (files.length === 0) return;
-    const created: UploadItem[] = files.map((file) => ({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      file,
+  const enqueue = useCallback(async (files: Array<File | DirectoryUploadFile>, target: UploaderTarget, emptyDirectories: string[] = []) => {
+    if (files.length === 0 && emptyDirectories.length === 0) return;
+    const sources = files.map((source) => source instanceof File
+      ? { file: source, relativePath: source.webkitRelativePath || source.name } : source);
+    const created: UploadItem[] = sources.map((source) => ({
+      id: crypto.randomUUID(),
+      ...source,
       spaceId: target.spaceId,
       parentId: target.parentId,
       status: 'pending',
       percent: 0,
     }));
-    setItems((prev) => [...created, ...prev].slice(0, 200));
-    queueRef.current.push(...created);
-    void pump();
-  }, [pump]);
+    setItems((prev) => [...created, ...prev.filter((item) => ACTIVE_STATUSES.includes(item.status)).concat(prev.filter((item) => !ACTIVE_STATUSES.includes(item.status)).slice(0, 200))]);
+    try {
+      for (const item of created) item.relativePath = driveRelativePathSchema.parse(item.relativePath);
+      const paths = [...new Set([
+        ...collectDriveUploadDirectories(created.map((item) => item.relativePath)),
+        ...emptyDirectories.map((path) => driveRelativePathSchema.parse(path)),
+      ])];
+      const directoryIds = new Map<string, number | null>([['', target.parentId]]);
+      for (let offset = 0; offset < paths.length; offset += 200) {
+        const directories = await api(driveNodeContract.ensureDirectories, {
+          body: { ...target, paths: paths.slice(offset, offset + 200) },
+        });
+        directories.forEach((directory) => directoryIds.set(directory.path, directory.nodeId));
+      }
+      for (const item of created) {
+        const parent = directoryIds.get(driveUploadParentPath(item.relativePath));
+        if (parent === undefined) throw new Error(`无法定位上传目录：${item.relativePath}`);
+        item.parentId = parent;
+      }
+      invalidateDir(qc, target.spaceId, target.parentId);
+      queueRef.current.push(...created.filter((item) => !cancelledRef.current.has(item.id)));
+      void pump().catch((error) => Toast.error(error instanceof Error ? error.message : '上传队列失败'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '上传目录准备失败';
+      created.forEach((item) => patch(item.id, { status: 'error', error: message }));
+      Toast.error(message);
+    }
+  }, [patch, pump, qc]);
 
   const cancel = useCallback((id: string) => {
+    cancelledRef.current.add(id);
     controllersRef.current.get(id)?.abort();
     queueRef.current = queueRef.current.filter((it) => it.id !== id);
     setItems((prev) => prev.map((it) => (it.id === id && ACTIVE_STATUSES.includes(it.status) ? { ...it, status: 'cancelled' } : it)));

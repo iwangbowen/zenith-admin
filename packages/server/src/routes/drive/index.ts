@@ -1,5 +1,6 @@
 import {
   driveAdminContract,
+  driveCollaborationContract,
   driveNodeContract,
   drivePublicShareContract,
   driveShareLinkContract,
@@ -14,6 +15,7 @@ import driveShareLinksRoutes from './drive-share-links';
 import drivePublicRoutes from './drive-public';
 import driveTagsRoutes from './drive-tags';
 import driveAdminRoutes from './drive-admin';
+import driveCollaborationRoutes from './drive-collaboration';
 
 export default defineRouteDomain({
   name: 'drive',
@@ -24,6 +26,7 @@ export default defineRouteDomain({
     [driveNodeContract.basePath, driveNodeItemRoutes, { feature: 'drive' }],
     [driveShareLinkContract.basePath, driveShareLinksRoutes, { feature: 'drive' }],
     [driveTagContract.basePath, driveTagsRoutes, { feature: 'drive' }],
+    [driveCollaborationContract.basePath, driveCollaborationRoutes, { feature: 'drive' }],
     [driveAdminContract.basePath, driveAdminRoutes, { feature: 'drive' }],
     // 外链匿名访问：feature 门禁同样生效（关闭网盘功能即整体不可达）
     [drivePublicShareContract.basePath, drivePublicRoutes, { feature: 'drive' }],

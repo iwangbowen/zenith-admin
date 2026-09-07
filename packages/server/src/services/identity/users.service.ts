@@ -28,6 +28,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { registerRevealSource } from '../../lib/data-mask/reveal';
 import logger from '../../lib/logger';
 import { userHasPlatformSuperRole } from './role-grant';
+import { emitIdentityRemoval } from '../../lib/identity-lifecycle';
 
 // ─── 关联查询配置 ─────────────────────────────────────────────────────────────
 
@@ -366,6 +367,7 @@ export async function batchDeleteUsers(ids: number[]) {
     .where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds))
     .returning({ id: users.id });
   await revokeUserSessions(deleted.map((r) => r.id));
+  emitIdentityRemoval({ kind: 'user', ids: deleted.map((row) => row.id) });
   return deleted.length;
 }
 
@@ -502,6 +504,7 @@ export async function updateUser(id: number, data: UpdateUserInput) {
     await clearUserPermissionCache(id);
     if (hadPlatformSuper && !(await userHasPlatformSuperRole(id))) {
       await revokeUserSessions([id]);
+      emitIdentityRemoval({ kind: 'user', ids: [id] });
     }
   }
   if (data.status === 'disabled') await revokeUserSessions([id]);

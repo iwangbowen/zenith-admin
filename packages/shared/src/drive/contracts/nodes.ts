@@ -13,6 +13,7 @@ import {
 import {
   copyDriveNodesSchema,
   createDriveFolderSchema,
+  ensureDriveDirectoriesSchema,
   createDriveNodeCommentSchema,
   createDriveShareLinkSchema,
   driveNodeIdsSchema,
@@ -230,6 +231,7 @@ export const driveNodeCommentSchema = z.object({
   nodeId: z.int(),
   parentId: z.int().nullable(),
   content: z.string(),
+  mentionUserIds: z.array(z.int()).optional(),
   authorId: z.int().nullable(),
   authorName: z.string().nullable(),
   createdAt: z.string(),
@@ -246,6 +248,7 @@ export const driveNodeListQuery = paginationQuery.extend({
   spaceId: optionalSpaceId.meta({ description: '空间 ID；与 parentId 二选一（parentId 缺省 = 空间根级）' }),
   parentId: z.coerce.number().int().positive().optional().meta({ description: '目录节点 ID' }),
   keyword: z.string().optional(),
+  tagId: z.coerce.number().int().positive().optional(),
   type: z.enum(DRIVE_NODE_TYPES).optional(),
   sortBy: z.enum(['name', 'size', 'updatedAt', 'createdAt']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
@@ -266,6 +269,8 @@ export const driveNodeSearchQuery = paginationQuery.extend({
   spaceId: optionalSpaceId,
   type: z.enum(DRIVE_NODE_TYPES).optional(),
   extension: z.string().max(32).optional(),
+  tagId: z.coerce.number().int().positive().optional(),
+  createdBy: z.coerce.number().int().positive().optional(),
   fullText: queryBool('是否同时检索文本正文'),
   startTime: dateRangeBound('更新时间起'),
   endTime: dateRangeBound('更新时间止'),
@@ -322,6 +327,11 @@ const driveUploadVersionBody = multipart(z.object({
  * 共用一个契约；服务端按静态路径先于动态路径的顺序分两个路由器挂载。
  */
 export const driveNodeContract = defineContract('/api/drive/nodes', {
+  ensureDirectories: op.post('/folders/ensure', {
+    body: ensureDriveDirectoriesSchema,
+    response: z.array(z.object({ path: z.string(), nodeId: z.int() })),
+    summary: '创建或复用上传目录树',
+  }),
   list: op.get('/', { query: driveNodeListQuery, response: driveNodeListResultSchema, summary: '目录内容（parentId 缺省 = 空间根级）' }),
   search: op.get('/search', { query: driveNodeSearchQuery, response: paginated(driveSearchItemSchema), summary: '搜索（名称，可选正文全文）' }),
   sharedWithMe: op.get('/shared-with-me', { query: driveNodeViewQuery, response: paginated(driveSharedItemSchema), summary: '与我共享' }),

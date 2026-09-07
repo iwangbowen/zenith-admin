@@ -1,12 +1,13 @@
 import { lazy, Suspense, useState } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { Button, Form, Input, InputNumber, Progress, Select, Skeleton, Space, Spin, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
+import { Button, Checkbox, Form, Input, InputNumber, Progress, Select, Skeleton, Space, Spin, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Files, HardDrive, Link2, RefreshCcw, Search, Upload } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
 import {
   DRIVE_ROLE_LABELS, DRIVE_ROLE_OPTIONS, DRIVE_SPACE_TYPE_LABELS, DRIVE_SPACE_TYPE_OPTIONS,
+  DRIVE_HANDOFF_MODE_OPTIONS, handoffDriveSpaceSchema, isOrphanedDriveSpace, type HandoffDriveSpaceInput,
   type AdminUpdateDriveSpaceInput, type CreateDepartmentDriveSpaceInput, type DriveRole, type DriveSpace, type DriveSpaceType,
 } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
@@ -24,7 +25,9 @@ import { usePermission } from '@/hooks/usePermission';
 import {
   driveKeys, useAdminDeleteDriveSpace, useAdminUpdateDriveSpace, useCreateDepartmentDriveSpace, useDriveAdminSpaces, useDriveAdminStats, useDriveSpaceDetail, useSubmitDriveAdminTask,
 } from '@/hooks/queries/drive';
-import { confirmDanger } from '@/utils/confirm';
+import { confirmDanger, confirmDangerAsync } from '@/utils/confirm';
+import { abortSubmit } from '@/lib/abort-submit';
+import { useHandoffDriveSpace } from '@/hooks/queries/drive-collaboration';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usagePercent } from '../drive-utils';
 import '../drive.css';
@@ -37,6 +40,7 @@ interface SearchParams {
   keyword: string;
   type: DriveSpaceType | undefined;
   status: 'enabled' | 'disabled' | undefined;
+  orphaned: boolean;
 }
 
 interface AdminSpaceFormValues {
@@ -94,12 +98,24 @@ export default function DriveAdminSpacesPage() {
   const canEdit = hasPermission('drive:admin:space:edit');
   const statsQuery = useDriveAdminStats();
   const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset } =
-    useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined, status: undefined }, listKey: driveKeys.adminSpacesPrefix, extraKeys: [driveKeys.adminStats] });
-  const listQuery = useDriveAdminSpaces({ page, pageSize, keyword: submittedParams.keyword || undefined, type: submittedParams.type, status: submittedParams.status });
+    useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined, status: undefined, orphaned: false }, listKey: driveKeys.adminSpacesPrefix, extraKeys: [driveKeys.adminStats] });
+  const listQuery = useDriveAdminSpaces({ page, pageSize, keyword: submittedParams.keyword || undefined, type: submittedParams.type, status: submittedParams.status, orphaned: submittedParams.orphaned });
   const update = useAdminUpdateDriveSpace();
   const remove = useAdminDeleteDriveSpace();
   const submitTask = useSubmitDriveAdminTask();
   const [deptModal, setDeptModal] = useState(false);
+  const handoffMutation = useHandoffDriveSpace();
+  const handoff = useEditModal<DriveSpace, Partial<HandoffDriveSpaceInput>, HandoffDriveSpaceInput>({
+    entityName: '空间交接',
+    save: { isPending: handoffMutation.isPending, mutateAsync: ({ id, values }) => handoffMutation.mutateAsync({ params: { id: id! }, body: values }) },
+    toValues: () => ({ mode: 'merge' }),
+    beforeSave: async (values) => {
+      const parsed = handoffDriveSpaceSchema.safeParse(values);
+      if (!parsed.success) { Toast.warning('请选择接收人与交接方式'); return abortSubmit(); }
+      if (!await confirmDangerAsync({ title: '确认交接整个空间？', content: '源空间将移除，全部版本、评论和回收站项目移入目标；原直接授权和外链失效。', okText: '确认交接' })) return abortSubmit();
+      return parsed.data;
+    },
+  });
 
   const modal = useEditModal<DriveSpace, AdminSpaceFormValues, AdminUpdateDriveSpaceInput>({
     entityName: '空间',
@@ -128,7 +144,7 @@ export default function DriveAdminSpacesPage() {
     { title: '名称', dataIndex: 'name', minWidth: 200, ellipsis: { showTitle: false },
       render: (v: string, s: DriveSpace) => <Typography.Text link ellipsis={{ showTooltip: true }} onClick={() => navigate(`/drive?space=${s.id}`)}>{v}</Typography.Text> },
     { title: '类型', dataIndex: 'type', width: 100, render: (v: DriveSpaceType) => <Tag size="small" color={v === 'personal' ? 'grey' : v === 'department' ? 'green' : 'blue'}>{DRIVE_SPACE_TYPE_LABELS[v]}</Tag> },
-    { title: '所有者 / 部门', width: 130, render: (_: unknown, s: DriveSpace) => renderEllipsis(s.ownerName ?? s.departmentName) },
+    { title: '所有者 / 部门', width: 130, render: (_: unknown, s: DriveSpace) => isOrphanedDriveSpace(s) ? <Tag color="orange">待接管</Tag> : renderEllipsis(s.ownerName ?? s.departmentName) },
     { title: '默认角色', dataIndex: 'defaultMemberRole', width: 90, render: (v: DriveRole | null) => (v ? DRIVE_ROLE_LABELS[v] : '不开放') },
     { title: '成员 / 节点', width: 110, render: (_: unknown, s: DriveSpace) => <span className="drive-nowrap">{`${s.memberCount ?? 0} / ${s.nodeCount ?? 0}`}</span> },
     { title: '用量', width: 200, render: (_: unknown, s: DriveSpace) => {
@@ -149,6 +165,7 @@ export default function DriveAdminSpacesPage() {
     createOperationColumn<DriveSpace>({ width: 180, desktopInlineKeys: ['open', 'edit'], actions: (s) => [
       { key: 'open', label: '打开', onClick: () => navigate(`/drive?space=${s.id}`) },
       { key: 'edit', label: '编辑', hidden: !canEdit, onClick: () => modal.openEdit(s) },
+      { key: 'handoff', label: '交接空间', hidden: !canEdit || (s.type !== 'personal' && !isOrphanedDriveSpace(s)), onClick: () => handoff.openEdit(s) },
       { key: 'recalc', label: '重算容量', hidden: !canEdit, onClick: () => runTask('recalc', s.id) },
       { key: 'reindex', label: '补建索引', hidden: !canEdit, onClick: () => runTask('reindex', s.id) },
       { key: 'delete', label: '删除', danger: true, dividerBefore: true, hidden: !hasPermission('drive:admin:space:delete') || s.type === 'personal',
@@ -179,6 +196,7 @@ export default function DriveAdminSpacesPage() {
             <KeywordInput value={draftParams.keyword} placeholder="搜索空间 / 所有者" onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
             <FilterSelect<DriveSpaceType> value={draftParams.type} placeholder="全部类型" items={DRIVE_SPACE_TYPE_OPTIONS} onChange={(v) => setDraftParams((p) => ({ ...p, type: v }))} />
             <StatusSelect<'enabled' | 'disabled'> value={draftParams.status} items={STATUS_OPTIONS} onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
+            <Checkbox checked={draftParams.orphaned} onChange={(event) => setDraftParams((previous) => ({ ...previous, orphaned: !!event.target.checked }))}>仅待接管</Checkbox>
           </>
         )}
         actions={(
@@ -212,6 +230,13 @@ export default function DriveAdminSpacesPage() {
         </Spin>
       </AppModal>
       <DepartmentSpaceModal visible={deptModal} onClose={() => setDeptModal(false)} />
+      <AppModal {...handoff.modalProps} title="交接空间" width={560}>
+        <Form key={handoff.formKey} {...handoff.formProps}>
+          <FormUserSelect field="recipientId" label="接收人" rules={[{ required: true }]} />
+          <Form.Select field="mode" label="交接方式" optionList={DRIVE_HANDOFF_MODE_OPTIONS} style={{ width: '100%' }} />
+          <Form.Input field="name" label="新空间名称" maxLength={100} placeholder="可选，仅新建空间时使用" />
+        </Form>
+      </AppModal>
     </div>
   );
 }

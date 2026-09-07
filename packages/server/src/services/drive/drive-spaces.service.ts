@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type {
   AdminUpdateDriveSpaceInput,
   CreateDepartmentDriveSpaceInput,
@@ -44,10 +44,18 @@ export interface ListDriveSpacesQuery {
   status?: 'enabled' | 'disabled';
   departmentId?: number;
   ownerId?: number;
+  orphaned?: boolean;
 }
 
 interface SpaceWhereInput extends ListDriveSpacesQuery {
   id?: number;
+}
+
+export function orphanDriveSpaceCondition() {
+  return or(
+    and(eq(driveSpaces.type, 'department'), isNull(driveSpaces.departmentId)),
+    and(inArray(driveSpaces.type, ['personal', 'team']), isNull(driveSpaces.ownerId)),
+  );
 }
 
 function buildSpaceWhere(q: SpaceWhereInput, extra?: SQL): SQL | undefined {
@@ -58,6 +66,7 @@ function buildSpaceWhere(q: SpaceWhereInput, extra?: SQL): SQL | undefined {
     q.status ? eq(driveSpaces.status, q.status) : undefined,
     q.departmentId !== undefined ? eq(driveSpaces.departmentId, q.departmentId) : undefined,
     q.ownerId !== undefined ? eq(driveSpaces.ownerId, q.ownerId) : undefined,
+    q.orphaned ? orphanDriveSpaceCondition() : undefined,
     tenantCondition(driveSpaces, currentUser()),
     extra,
   );

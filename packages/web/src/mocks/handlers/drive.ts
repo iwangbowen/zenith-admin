@@ -3,6 +3,8 @@ import { fillPath } from '@zenith/shared/core';
 import {
   DRIVE_SYNC_ZIP_MAX_FILES,
   normalizeDriveShareCapabilities,
+  isOrphanedDriveSpace,
+  driveCollaborationContract,
   driveAdminContract,
   driveNodeContract,
   drivePublicShareContract,
@@ -13,6 +15,7 @@ import {
   type DriveNodeDetail,
   type DriveNodeListResult,
   type DriveNodePermissionsResult,
+  type DriveNodeProfile,
   type DrivePublicNode,
   type DriveShareLink,
   type DriveShareLinkState,
@@ -207,12 +210,22 @@ interface NodeFilter {
   keyword?: string;
   spaceId?: number;
   type?: DriveNode['type'];
+  tagId?: number;
+  createdBy?: number;
+  extension?: string;
+  startTime?: string;
+  endTime?: string;
 }
 
 function filterNodes<T extends DriveNode>(list: T[], q: NodeFilter): T[] {
   const keyword = q.keyword?.trim().toLowerCase();
   return filterByKeyword(list, keyword, [(n) => n.name], { caseInsensitive: true })
-    .filter((n) => (!q.spaceId || n.spaceId === q.spaceId) && (!q.type || n.type === q.type));
+    .filter((n) => (!q.spaceId || n.spaceId === q.spaceId) && (!q.type || n.type === q.type)
+      && (!q.tagId || (mockDriveNodeTags.get(n.id) ?? []).includes(q.tagId))
+      && (!q.createdBy || n.createdBy === q.createdBy)
+      && (!q.extension || n.extension === q.extension.toLowerCase().replace(/^\./, ''))
+      && (!q.startTime || n.updatedAt >= q.startTime)
+      && (!q.endTime || n.updatedAt <= (q.endTime.length === 10 ? `${q.endTime} 23:59:59` : q.endTime)));
 }
 
 function quotaFallbackGb(type: DriveSpace['type']): number {
@@ -296,7 +309,74 @@ const spaceHandlers = [
 
 // ─── 节点：静态路径 ───────────────────────────────────────────────────────────
 
+function createMockDriveFolder(spaceId: number, parentId: number | null, name: string): DriveNode {
+  const parent = parentId ? findNode(parentId) : null;
+  const now = mockDateTime();
+  const node: DriveNode = {
+    id: getNextDriveNodeId(), spaceId, parentId, ancestorIds: parent ? [...parent.ancestorIds, parent.id] : [], depth: parent ? parent.depth + 1 : 0,
+    type: 'folder', name, extension: null, mimeType: null, fileId: null, size: 0, contentHash: null, currentVersion: 1, inheritPermissions: true,
+    lockedBy: null, lockedByName: null, lockedAt: null, lockExpiresAt: null, thumbnailUrl: null, url: null, deletedAt: null, deletedBy: null, deletedByName: null,
+    createdBy: MOCK_USER.id, createdByName: MOCK_USER.name, updatedBy: MOCK_USER.id, updatedByName: MOCK_USER.name, createdAt: now, updatedAt: now,
+  };
+  mockDriveNodes.push(node);
+  logMockDriveActivity({ spaceId, nodeId: node.id, nodeName: name, nodeType: 'folder', action: 'create_folder', actorId: MOCK_USER.id, actorName: MOCK_USER.name, shareId: null, detail: null });
+  return node;
+}
+
+const mockDriveProfiles = new Map<number, DriveNodeProfile>();
+const mockDriveSubscriptions = new Set<number>();
+
+function remapMovedMockNodes(nodes: DriveNode[], targetSpaceId: number): void {
+  const ids = new Set(nodes.map((node) => node.id));
+  const mapping = new Map<number, number>();
+  for (const node of nodes) {
+    node.spaceId = targetSpaceId;
+    node.inheritPermissions = true;
+    const nextTags = (mockDriveNodeTags.get(node.id) ?? []).map((id) => {
+      const source = mockDriveTags.find((tag) => tag.id === id);
+      if (!source) return null;
+      if (!mapping.has(id)) {
+        let target = mockDriveTags.find((tag) => tag.spaceId === targetSpaceId && tag.name === source.name);
+        if (!target) {
+          target = { ...source, id: getNextDriveTagId(), spaceId: targetSpaceId };
+          mockDriveTags.push(target);
+        }
+        mapping.set(id, target.id);
+      }
+      return mapping.get(id)!;
+    }).filter((id): id is number => id !== null);
+    mockDriveNodeTags.set(node.id, [...new Set(nextTags)]);
+  }
+  removeWhere(mockDrivePermissions, (permission) => ids.has(permission.nodeId));
+  for (const link of mockDriveShareLinks) if (ids.has(link.nodeId)) revokeShareLink(link.id);
+}
+
 const nodeStaticHandlers = [
+  mock(driveNodeContract.ensureDirectories, ({ body, ok }) => {
+    const root = body.parentId ? findNode(body.parentId) : null;
+    if (!mockDriveSpaces.some((space) => space.id === body.spaceId)
+      || (body.parentId && (!root || root.type !== 'folder' || root.spaceId !== body.spaceId))) return notFound('上传目录不存在', { status: 404 });
+    for (const path of body.paths) {
+      const segments = path.split('/');
+      if (segments.length + (root ? root.depth + 1 : 0) > 32) return badRequest('目录超过最大层级', { status: 400 });
+      let parentId = body.parentId;
+      for (const name of segments) {
+        const existing = liveNodes().find((node) => node.spaceId === body.spaceId && node.parentId === parentId && node.name.toLowerCase() === name.toLowerCase());
+        if (!existing) break;
+        if (existing.type !== 'folder') return badRequest(`目录与文件冲突：${path}`, { status: 409 });
+        parentId = existing.id;
+      }
+    }
+    return ok(body.paths.map((path) => {
+      let parentId = body.parentId;
+      for (const name of path.split('/')) {
+        const node = liveNodes().find((item) => item.spaceId === body.spaceId && item.parentId === parentId && item.name.toLowerCase() === name.toLowerCase())
+          ?? createMockDriveFolder(body.spaceId, parentId, name);
+        parentId = node.id;
+      }
+      return { path, nodeId: parentId! };
+    }));
+  }),
   mock(driveNodeContract.recycle, ({ query, ok, paginate }) => {
     const roots = mockDriveNodes.filter((n) => n.deletedAt && (n as DriveNode & { deletedRootId?: number }).deletedRootId === n.id);
     const list = filterNodes(roots, query).sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? '')).map(withSpaceName);
@@ -315,6 +395,7 @@ const nodeStaticHandlers = [
   }),
   mock(driveNodeContract.purge, ({ body, ok }) => {
     const victims = new Set(body.ids.flatMap((id) => subtree(id).map((n) => n.id)));
+    victims.forEach((id) => { mockDriveProfiles.delete(id); mockDriveSubscriptions.delete(id); });
     removeWhere(mockDriveNodes, (n) => victims.has(n.id));
     removeWhere(mockDriveVersions, (v) => victims.has(v.nodeId));
     recalcMockDriveUsage();
@@ -348,8 +429,7 @@ const nodeStaticHandlers = [
   mock(driveNodeContract.search, ({ query, ok, paginate }) => {
     const kw = query.keyword.trim().toLowerCase();
     if (!kw) return badRequest('请输入搜索关键词', { status: 400 });
-    const list = liveNodes()
-      .filter((n) => (!query.spaceId || n.spaceId === query.spaceId) && (!query.type || n.type === query.type))
+    const list = filterNodes(liveNodes(), { ...query, keyword: undefined })
       .map((n) => {
         const text = query.fullText ? mockDriveTexts.get(n.id) : undefined;
         const hitName = n.name.toLowerCase().includes(kw);
@@ -407,17 +487,7 @@ const nodeStaticHandlers = [
     if (liveNodes().some((n) => n.spaceId === body.spaceId && n.parentId === body.parentId && n.name.toLowerCase() === body.name.toLowerCase())) {
       return badRequest('同一目录下已存在同名项目', { status: 400 });
     }
-    const now = mockDateTime();
-    const id = getNextDriveNodeId();
-    const node: DriveNode = {
-      id, spaceId: body.spaceId, parentId: body.parentId, ancestorIds: parent ? [...parent.ancestorIds, parent.id] : [], depth: parent ? parent.depth + 1 : 0,
-      type: 'folder', name: body.name, extension: null, mimeType: null, fileId: null, size: 0, contentHash: null, currentVersion: 0, inheritPermissions: true,
-      lockedBy: null, lockedByName: null, lockedAt: null, lockExpiresAt: null, thumbnailUrl: null, url: null, deletedAt: null, deletedBy: null, deletedByName: null,
-      createdBy: MOCK_USER.id, createdByName: MOCK_USER.name, updatedBy: MOCK_USER.id, updatedByName: MOCK_USER.name, createdAt: now, updatedAt: now,
-    };
-    mockDriveNodes.push(node);
-    logMockDriveActivity({ spaceId: node.spaceId, nodeId: id, nodeName: node.name, nodeType: 'folder', action: 'create_folder', actorId: MOCK_USER.id, actorName: MOCK_USER.name, shareId: null, detail: null });
-    return ok(decorate(node), '文件夹已创建');
+    return ok(decorate(createMockDriveFolder(body.spaceId, body.parentId, body.name)), '文件夹已创建');
   }),
   mock(driveNodeContract.move, ({ body, ok }) => {
     const target = body.targetParentId ? findNode(body.targetParentId) : null;
@@ -427,7 +497,9 @@ const nodeStaticHandlers = [
       if (target && (target.id === id || target.ancestorIds.includes(id))) return badRequest('不能移动到自身或其子目录', { status: 400 });
       const oldDepth = node.ancestorIds.length;
       const newAncestors = target ? [...target.ancestorIds, target.id] : [];
-      for (const n of subtree(id)) {
+      const descendants = subtree(id);
+      if (node.spaceId !== body.targetSpaceId) remapMovedMockNodes(descendants, body.targetSpaceId);
+      for (const n of descendants) {
         n.ancestorIds = [...newAncestors, ...n.ancestorIds.slice(oldDepth)];
         n.depth = n.ancestorIds.length; n.spaceId = body.targetSpaceId;
       }
@@ -451,6 +523,8 @@ const nodeStaticHandlers = [
         thumbnailUrl: node.thumbnailUrl ? mockDriveThumbnailUrl(id) : null, currentVersion: node.type === 'file' ? 1 : 0, lockedBy: null, lockedByName: null, lockedAt: null, lockExpiresAt: null, createdAt: now, updatedAt: now,
       };
       mockDriveNodes.push(copy);
+      const profile = mockDriveProfiles.get(node.id);
+      if (profile) mockDriveProfiles.set(copy.id, { ...profile, nodeId: copy.id, metadata: { ...profile.metadata } });
       copied += 1;
       const text = mockDriveTexts.get(node.id);
       if (text) mockDriveTexts.set(id, text);
@@ -590,7 +664,7 @@ const nodeItemHandlers = [
     const node = findNode(params.id);
     if (!node) return notFound('节点不存在', { status: 404 });
     const now = mockDateTime();
-    const comment = { id: getNextDriveCommentId(), nodeId: node.id, parentId: body.parentId, content: body.content, authorId: MOCK_USER.id, authorName: MOCK_USER.name, createdAt: now, updatedAt: now };
+    const comment = { id: getNextDriveCommentId(), nodeId: node.id, parentId: body.parentId, content: body.content, mentionUserIds: body.mentionUserIds, authorId: MOCK_USER.id, authorName: MOCK_USER.name, createdAt: now, updatedAt: now };
     mockDriveComments.push(comment);
     logMockDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'comment', actorId: MOCK_USER.id, actorName: MOCK_USER.name, shareId: null, detail: null });
     return ok(comment, '已评论');
@@ -784,6 +858,16 @@ const publicHandlers = [
 // ─── 标签 ─────────────────────────────────────────────────────────────────────
 
 const tagHandlers = [
+  mock(driveTagContract.merge, ({ params, body, ok }) => {
+    const source = requireItem(mockDriveTags, params.id, '标签不存在');
+    const target = requireItem(mockDriveTags, body.targetId, '目标标签不存在');
+    if (source.spaceId !== target.spaceId || source.id === target.id) return badRequest('请选择同空间的另一个标签', { status: 400 });
+    for (const [nodeId, ids] of mockDriveNodeTags) {
+      mockDriveNodeTags.set(nodeId, [...new Set(ids.map((id) => id === source.id ? target.id : id))]);
+    }
+    removeWhere(mockDriveTags, (tag) => tag.id === source.id);
+    return ok(null, '标签已合并');
+  }),
   mock(driveTagContract.list, ({ query, ok }) => ok(mockDriveTags.filter((t) => t.spaceId === query.spaceId))),
   mock(driveTagContract.create, ({ body, ok }) => {
     const existing = mockDriveTags.find((t) => t.spaceId === body.spaceId && t.name === body.name);
@@ -856,6 +940,7 @@ const adminHandlers = [
     if (keyword) list = filterByKeyword(list, keyword, [(s) => s.name, (s) => s.ownerName, (s) => s.departmentName]);
     if (query.type) list = list.filter((s) => s.type === query.type);
     if (query.status) list = list.filter((s) => s.status === query.status);
+    if (query.orphaned) list = list.filter(isOrphanedDriveSpace);
     return ok(paginate(list));
   }),
   mock(driveAdminContract.createDepartmentSpace, ({ body, ok }) => {
@@ -884,6 +969,25 @@ const adminHandlers = [
     if (ownerId) { space.ownerId = ownerId; space.ownerName = subjectName('user', ownerId); }
     return ok(space, '更新成功');
   }),
+  mock(driveAdminContract.handoff, ({ params, body, ok }) => {
+    const source = requireItem(mockDriveSpaces, params.id, '源空间不存在');
+    if (source.type !== 'personal' && !isOrphanedDriveSpace(source)) return badRequest('仅支持个人或待接管空间', { status: 400 });
+    if (source.ownerId === body.recipientId && body.mode === 'merge') return badRequest('不能交接给原所有者', { status: 400 });
+    let target = body.mode === 'merge' ? mockDriveSpaces.find((space) => space.type === 'personal' && space.ownerId === body.recipientId) : undefined;
+    if (!target) {
+      target = { ...source, id: getNextDriveSpaceId(), type: body.mode === 'merge' ? 'personal' : 'team',
+        name: body.name ?? `${source.name}（已交接）`, ownerId: body.recipientId, ownerName: subjectName('user', body.recipientId),
+        departmentId: null, departmentName: null, defaultMemberRole: null, usedBytes: 0, status: 'enabled' };
+      mockDriveSpaces.push(target);
+    }
+    const nodes = mockDriveNodes.filter((node) => node.spaceId === source.id);
+    remapMovedMockNodes(nodes, target.id);
+    for (const root of nodes.filter((node) => node.parentId === null)) root.name = uniqueName(root.name, target.id, null, root.id);
+    removeWhere(mockDriveSpaces, (space) => space.id === source.id);
+    removeWhere(mockDriveMembers, (member) => member.spaceId === source.id);
+    recalcMockDriveUsage();
+    return ok(target, '已交接');
+  }),
   mock(driveAdminContract.removeSpace, ({ params, ok }) => removeSpace(params.id) ?? ok(null, '删除成功')),
   mock(driveAdminContract.shareLinks, ({ query, ok, paginate }) => {
     let list = mockDriveShareLinks.map(withState);
@@ -902,6 +1006,45 @@ const adminHandlers = [
   }),
 ];
 
+const collaborationHandlers = [
+  mock(driveCollaborationContract.profile, ({ params, ok }) => {
+    requireItem(mockDriveNodes, params.id, '文件不存在');
+    return ok(mockDriveProfiles.get(params.id) ?? { nodeId: params.id, description: null, metadata: {} });
+  }),
+  mock(driveCollaborationContract.saveProfile, ({ params, body, ok }) => {
+    const node = requireItem(mockDriveNodes, params.id, '文件不存在');
+    const profile = { nodeId: params.id, description: null, metadata: {}, ...mockDriveProfiles.get(params.id), ...body };
+    mockDriveProfiles.set(params.id, profile);
+    logMockDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'metadata_change', actorId: MOCK_USER.id, actorName: MOCK_USER.name, shareId: null, detail: null });
+    return ok(profile);
+  }),
+  mock(driveCollaborationContract.subscription, ({ params, ok }) => {
+    requireItem(mockDriveNodes, params.id, '文件不存在');
+    return ok(mockDriveSubscriptions.has(params.id));
+  }),
+  mock(driveCollaborationContract.subscribe, ({ params, body, ok }) => {
+    requireItem(mockDriveNodes, params.id, '文件不存在');
+    if (body.subscribed) mockDriveSubscriptions.add(params.id);
+    else mockDriveSubscriptions.delete(params.id);
+    return ok(body.subscribed);
+  }),
+  mock(driveCollaborationContract.editComment, ({ params, body, ok }) => {
+    requireItem(mockDriveNodes, params.id, '文件不存在');
+    const comment = requireItem(mockDriveComments, params.commentId, '评论不存在');
+    if (comment.nodeId !== params.id) return notFound('评论不存在', { status: 404 });
+    return ok(updateItem(mockDriveComments, comment.id, body, { notFoundMessage: '评论不存在', now: mockDateTime }));
+  }),
+  mock(driveCollaborationContract.spaceActivities, ({ params, query, ok, paginate }) => {
+    requireItem(mockDriveSpaces, params.id, '空间不存在');
+    const list = filterByKeyword(mockDriveActivities.filter((activity) => activity.spaceId === params.id), query.keyword, [(activity) => activity.nodeName])
+      .filter((activity) => (!query.action || activity.action === query.action)
+        && (!query.startTime || activity.createdAt >= query.startTime)
+        && (!query.endTime || activity.createdAt <= (query.endTime.length === 10 ? `${query.endTime} 23:59:59` : query.endTime)))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id - a.id);
+    return ok(paginate(list));
+  }),
+];
+
 export const driveHandlers = [
   ...spaceHandlers,
   ...nodeStaticHandlers,
@@ -910,4 +1053,5 @@ export const driveHandlers = [
   ...publicHandlers,
   ...tagHandlers,
   ...adminHandlers,
+  ...collaborationHandlers,
 ];

@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import { Tooltip } from '@douyinfe/semi-ui';
 import { getFileTypeIcon } from '@/utils/file-utils';
 import './FileNameCell.css';
+import { escapeRegExp } from '@zenith/shared/core';
 
 interface FileNameCellProps {
   name: string;
@@ -20,14 +21,16 @@ interface FileNameCellProps {
   mimeType?: string | null;
   /** 提供时整行渲染为可点击按钮 */
   onClick?: () => void;
+  highlight?: string;
 }
 
-export function FileNameCell({ name, icon, mimeType, onClick }: Readonly<FileNameCellProps>) {
+export function FileNameCell({ name, icon, mimeType, onClick, highlight }: Readonly<FileNameCellProps>) {
+  const parts = highlight ? name.split(new RegExp(`(${escapeRegExp(highlight)})`, 'gi')) : [name];
   const content = (
     <>
       <span className="file-name-cell__icon">{icon ?? getFileTypeIcon(mimeType, 16, name)}</span>
       <Tooltip content={name}>
-        <span className="file-name-cell__text">{name}</span>
+        <span className="file-name-cell__text">{parts.map((part, index) => highlight && part.toLowerCase() === highlight.toLowerCase() ? <mark key={index}>{part}</mark> : part)}</span>
       </Tooltip>
     </>
   );

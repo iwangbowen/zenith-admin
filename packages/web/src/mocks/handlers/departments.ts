@@ -4,6 +4,7 @@ import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
 
 import { mockDepartments, getNextDeptId } from '@/mocks/data/departments';
 import { mockUsers } from '@/mocks/data/users';
+import { mockDriveSpaces } from '@/mocks/data/drive';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
 
@@ -88,6 +89,9 @@ export const departmentsHandlers = [
   mock(departmentContract.remove, ({ params, ok }) => {
     requireItem(mockDepartments, params.id, '部门不存在', { status: 404 });
     removeByIds(mockDepartments, [params.id]);
+    for (const space of mockDriveSpaces) {
+      if (space.departmentId === params.id) { space.departmentId = null; space.departmentName = null; }
+    }
     return ok(null, '删除成功');
   }),
 ];

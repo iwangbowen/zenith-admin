@@ -12,6 +12,7 @@ import { DriveVersionsPanel } from './DriveVersionsPanel';
 import { DriveShareLinksPanel } from './DriveShareLinksPanel';
 import { DriveActivityPanel, DriveCommentsPanel } from './DriveActivityPanels';
 import { roleAtLeast } from '../drive-utils';
+import { DriveProfilePanel, DriveSubscriptionButton } from './DriveCollaborationPanels';
 
 interface DriveNodeDrawerProps {
   readonly nodeId: number | null;
@@ -84,6 +85,7 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
         {node && (
           <>
             <div className="drive-drawer__actions">
+              <DriveSubscriptionButton nodeId={node.id} />
               <Button size="small" icon={node.isStarred ? <StarOff size={14} /> : <Star size={14} />} onClick={toggleStar} loading={star.isPending}>
                 {node.isStarred ? '取消收藏' : '收藏'}
               </Button>
@@ -113,6 +115,7 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
                 </Descriptions>
               </TabPane>
               <TabPane tab="权限" itemKey="permissions"><DrivePermissionPanel node={node} /></TabPane>
+              <TabPane tab="说明与属性" itemKey="profile"><DriveProfilePanel node={node} /></TabPane>
               {node.type === 'file' && <TabPane tab="版本" itemKey="versions"><DriveVersionsPanel node={node} /></TabPane>}
               <TabPane tab="外链" itemKey="links"><DriveShareLinksPanel node={node} allowExternalShare={allowExternalShare} /></TabPane>
               <TabPane tab="动态" itemKey="activities"><DriveActivityPanel node={node} /></TabPane>

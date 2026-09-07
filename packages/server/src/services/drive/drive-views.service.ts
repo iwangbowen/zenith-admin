@@ -2,7 +2,7 @@ import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type { DriveNodeType, DriveRecentItem, DriveSearchItem, DriveSharedItem, DriveSubjectType } from '@zenith/shared/drive';
 import { db } from '../../db';
-import { driveNodePermissions, driveNodes, driveNodeStars, driveNodeTexts, driveRecentAccess, driveSpaces, type DriveNodeRow } from '../../db/schema';
+import { driveNodePermissions, driveNodes, driveNodeStars, driveNodeTags, driveNodeTexts, driveRecentAccess, driveSpaces, type DriveNodeRow } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
@@ -158,6 +158,8 @@ export async function listSharedWithMe(q: PagedQuery) {
 
 export interface SearchDriveNodesQuery extends PagedQuery {
   spaceId?: number;
+  tagId?: number;
+  createdBy?: number;
   extension?: string;
   startTime?: string;
   endTime?: string;
@@ -199,6 +201,8 @@ export async function searchDriveNodes(q: SearchDriveNodesQuery) {
     q.spaceId !== undefined ? eq(driveNodes.spaceId, q.spaceId) : undefined,
     q.type ? eq(driveNodes.type, q.type) : undefined,
     q.extension ? eq(driveNodes.extension, q.extension.toLowerCase().replace(/^\./, '')) : undefined,
+    q.tagId ? inArray(driveNodes.id, db.select({ id: driveNodeTags.nodeId }).from(driveNodeTags).where(eq(driveNodeTags.tagId, q.tagId))) : undefined,
+    q.createdBy ? eq(driveNodes.createdBy, q.createdBy) : undefined,
     ...dateRangeConditions(driveNodes.updatedAt, q.startTime, q.endTime),
     tenantCondition(driveNodes, currentUser()),
     visibleNodeCondition(subjects),

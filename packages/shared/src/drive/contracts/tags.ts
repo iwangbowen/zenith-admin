@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { idParam } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { createDriveTagSchema, updateDriveTagSchema } from '../validation';
+import { createDriveTagSchema, mergeDriveTagsSchema, updateDriveTagSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -27,4 +27,5 @@ export const driveTagContract = defineContract('/api/drive/tags', {
   create: op.post('/', { body: createDriveTagSchema, response: driveTagSchema, summary: '新建标签' }),
   update: op.put('/{id}', { params: idParam, body: updateDriveTagSchema, response: driveTagSchema, summary: '更新标签' }),
   remove: op.delete('/{id}', { params: idParam, summary: '删除标签' }),
+  merge: op.post('/{id}/merge', { params: idParam, body: mergeDriveTagsSchema, summary: '合并标签及其文件关联' }),
 }, { tags: ['企业网盘-标签'] });

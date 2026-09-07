@@ -611,6 +611,28 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     content: '{{content}}',
   },
   // ─── 企业网盘 ─────────────────────────────────────────────────────────────
+  'drive.space.orphaned': {
+    group: 'drive', label: '网盘空间待接管', severity: 'important',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ spaceId: number; spaceName: string }>(),
+    title: '空间「{{spaceName}}」需要接管',
+    content: '空间归属的用户或部门已删除，请前往空间治理完成交接。',
+  },
+  'drive.node.changed': {
+    group: 'drive', label: '关注的文件发生变更', severity: 'normal',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ nodeId: number; nodeName: string; changes: number }>(),
+    title: '「{{nodeName}}」有新动态',
+    content: '你关注的文件或文件夹发生了 {{changes}} 次变更，点击查看。',
+  },
+  'drive.comment.created': {
+    group: 'drive', label: '文件收到评论或提及', severity: 'normal',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    rateLimit: { limit: 20, windowMinutes: 60 },
+    vars: eventVars<{ nodeId: number; nodeName: string; authorName: string; comment: string }>(),
+    title: '{{authorName}} 评论了「{{nodeName}}」',
+    content: '{{comment}}',
+  },
   'drive.node.shared': {
     group: 'drive',
     label: '文件 / 文件夹被授权给我',

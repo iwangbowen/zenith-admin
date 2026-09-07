@@ -19,6 +19,8 @@ import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import {
   driveFileVersions,
+  driveNodePermissions,
+  driveNodeProfiles,
   driveNodeRenditions,
   driveNodes,
   driveNodeStars,
@@ -130,6 +132,7 @@ export async function decorateNode(row: DriveNodeRow, role: DriveRole | null | u
 
 export interface ListDriveNodesQuery {
   spaceId?: number;
+  tagId?: number;
   parentId?: number;
   keyword?: string;
   type?: DriveNodeType;
@@ -174,6 +177,7 @@ export async function listDriveNodes(q: ListDriveNodesQuery): Promise<DriveNodeL
     isNull(driveNodes.deletedAt),
     q.type ? eq(driveNodes.type, q.type) : undefined,
     keywordCondition(q.keyword, [driveNodes.name], 'ilike'),
+    q.tagId ? inArray(driveNodes.id, db.select({ id: driveNodeTags.nodeId }).from(driveNodeTags).where(eq(driveNodeTags.tagId, q.tagId))) : undefined,
     // 精确可见性：断开继承且未授权的子文件夹不进 total 也不进页
     visibleNodeCondition(subjects),
   );
@@ -273,6 +277,7 @@ export async function createDriveFolder(data: CreateDriveFolderInput): Promise<D
   } catch (err) {
     return rethrowPgUniqueViolation(err, NAME_UNIQUE_MESSAGE, NAME_UNIQUE_BY_CONSTRAINT);
   }
+
 }
 
 export async function renameDriveNode(id: number, name: string): Promise<DriveNode> {
@@ -349,26 +354,39 @@ export async function loadAccessibleSubtree(rootId: number, minRole: DriveRole, 
 // ─── 移动 / 复制 ──────────────────────────────────────────────────────────────
 
 export async function moveDriveNodes(data: MoveDriveNodesInput): Promise<number> {
-  const rows = await loadNodesByIds(data.ids);
+  const selected = await loadNodesByIds(data.ids);
+  const selectedIds = new Set(selected.map((row) => row.id));
+  const rows = selected.filter((row) => !row.ancestorIds.some((id) => selectedIds.has(id)));
   await ensureNodeRoleOnAll(rows, 'editor', '没有移动权限');
   await assertSubtreeNotLockedByOthers(rows);
   const { space, parent, ancestorIds: newAnc } = await resolveWritableParent(data.targetSpaceId, data.targetParentId);
   for (const row of rows) {
-    if (row.spaceId !== space.id) throw new HTTPException(400, { message: '暂不支持跨空间移动，请使用复制' });
+    if (row.tenantId !== space.tenantId) throw new HTTPException(400, { message: '不能跨租户移动文件' });
     if (parent && (parent.id === row.id || parent.ancestorIds.includes(row.id))) {
       throw new HTTPException(400, { message: `不能把「${row.name}」移动到自身或其子目录` });
     }
   }
   const targetParentId = parent?.id ?? null;
-  const moving = rows.filter((r) => (r.parentId ?? null) !== targetParentId);
+  const moving = rows.filter((r) => r.spaceId !== space.id || (r.parentId ?? null) !== targetParentId);
   if (moving.length === 0) return 0;
+  const subjects = await loadDriveSubjects();
+  const settings = await getDriveSettings();
   try {
     await db.transaction(async (tx) => {
       for (const row of moving) {
-        await relocateSubtree(tx, row, parent, newAnc);
+        if (row.spaceId === space.id) {
+          await relocateSubtree(tx, row, parent, newAnc);
+        } else {
+          const subtree = await loadSubtree(tx, row.id, { includeDeleted: true });
+          const roles = await resolveNodeRoles(subtree, subjects, tx);
+          for (const child of subtree) {
+            if (!driveRoleAtLeast(roles.get(child.id)?.role, 'editor')) throw new HTTPException(403, { message: `没有移动子项「${child.name}」的权限` });
+          }
+          await transferDriveSubtree(tx, row, space, parent, settings);
+        }
         await logDriveActivity({
-          spaceId: row.spaceId, nodeId: row.id, nodeName: row.name, nodeType: row.type, action: 'move',
-          detail: { fromParentId: row.parentId ?? null, toParentId: targetParentId },
+          spaceId: space.id, nodeId: row.id, nodeName: row.name, nodeType: row.type, action: 'move',
+          detail: { fromSpaceId: row.spaceId, toSpaceId: space.id, fromParentId: row.parentId ?? null, toParentId: targetParentId },
         }, tx);
       }
     });
@@ -376,6 +394,48 @@ export async function moveDriveNodes(data: MoveDriveNodesInput): Promise<number>
     rethrowPgUniqueViolation(err, '目标目录中已存在同名文件或文件夹', NAME_UNIQUE_BY_CONSTRAINT);
   }
   return moving.length;
+}
+
+export async function transferDriveSubtree(executor: DbExecutor, root: DriveNodeRow, target: DriveSpaceRow, parent: DriveNodeRow | null, settings: DriveSettings): Promise<void> {
+  if (root.tenantId !== target.tenantId) throw new HTTPException(400, { message: '不能跨租户交接文件' });
+  const subtree = await loadSubtree(executor, root.id, { includeDeleted: true });
+  const ids = subtree.map((node) => node.id);
+  if (!ids.length) throw new HTTPException(404, { message: '待移动文件不存在' });
+  const ancestorIds = parent ? [...parent.ancestorIds, parent.id] : [];
+  if (subtree.some((node) => node.depth - root.depth + ancestorIds.length >= DRIVE_MAX_DEPTH)) {
+    throw new HTTPException(400, { message: '移动后目录超过最大层级' });
+  }
+  const versions = await executor.select({ size: driveFileVersions.size }).from(driveFileVersions).where(inArray(driveFileVersions.nodeId, ids));
+  const bytes = versions.reduce((sum, version) => sum + version.size, 0);
+  await reserveSpaceQuota(executor, target.id, bytes, settings);
+  await releaseSpaceQuota(executor, root.spaceId, bytes);
+  const tagLinks = await executor.select({ nodeId: driveNodeTags.nodeId, tag: driveTags }).from(driveNodeTags)
+    .innerJoin(driveTags, eq(driveTags.id, driveNodeTags.tagId)).where(inArray(driveNodeTags.nodeId, ids));
+  const tagMap = new Map<number, number>();
+  for (const { tag } of tagLinks) {
+    if (tagMap.has(tag.id)) continue;
+    let [destination] = await executor.select().from(driveTags).where(and(eq(driveTags.spaceId, target.id), eq(driveTags.name, tag.name))).limit(1);
+    if (!destination) {
+      [destination] = await executor.insert(driveTags).values({ spaceId: target.id, name: tag.name, color: tag.color, tenantId: target.tenantId }).onConflictDoNothing().returning();
+      if (!destination) [destination] = await executor.select().from(driveTags).where(and(eq(driveTags.spaceId, target.id), eq(driveTags.name, tag.name))).limit(1);
+    }
+    if (!destination) throw new HTTPException(409, { message: '目标标签发生变化，请重试' });
+    tagMap.set(tag.id, destination.id);
+  }
+  await executor.delete(driveNodeTags).where(inArray(driveNodeTags.nodeId, ids));
+  if (tagLinks.length) await executor.insert(driveNodeTags).values(tagLinks.map((link) => ({ nodeId: link.nodeId, tagId: tagMap.get(link.tag.id)! }))).onConflictDoNothing();
+  await executor.delete(driveNodePermissions).where(inArray(driveNodePermissions.nodeId, ids));
+  await executor.update(driveShareLinks).set({ enabled: false, revokedAt: new Date(), sessionVersion: sql`${driveShareLinks.sessionVersion} + 1` })
+    .where(inArray(driveShareLinks.nodeId, ids));
+  const acl = childAclOf(parent);
+  await executor.update(driveNodes).set({
+    spaceId: target.id, tenantId: target.tenantId,
+    parentId: sql`case when ${driveNodes.id} = ${root.id} then ${parent?.id ?? null}::integer else ${driveNodes.parentId} end`,
+    ancestorIds: sql`${intArray(ancestorIds)} || ${driveNodes.ancestorIds}[${root.depth + 1}:]`,
+    depth: sql`${driveNodes.depth} + ${ancestorIds.length - root.depth}`,
+    inheritPermissions: true, aclOpen: acl.aclOpen,
+    aclChainIds: sql`${intArray(acl.aclChainIds)} || ${driveNodes.ancestorIds}[${root.depth + 1}:]`,
+  }).where(inArray(driveNodes.id, ids));
 }
 
 function intArray(ids: number[]): SQL {
@@ -414,7 +474,7 @@ export async function relocateSubtree(executor: DbExecutor, node: DriveNodeRow, 
 }
 
 /** 目标目录下已占用的名称（小写） */
-async function existingNamesIn(executor: DbExecutor, spaceId: number, parentId: number | null): Promise<Set<string>> {
+export async function existingNamesIn(executor: DbExecutor, spaceId: number, parentId: number | null): Promise<Set<string>> {
   const rows = await executor.select({ name: driveNodes.name }).from(driveNodes).where(and(
     eq(driveNodes.spaceId, spaceId),
     parentId === null ? isNull(driveNodes.parentId) : eq(driveNodes.parentId, parentId),
@@ -487,6 +547,8 @@ export async function copySubtree(
   const tenantId = getCreateTenantId(currentUser());
   const idMap = new Map<number, number>();
   const createdRows = new Map<number, DriveNodeRow>();
+  const sourceProfiles = await executor.select().from(driveNodeProfiles).where(inArray(driveNodeProfiles.nodeId, subtree.map((node) => node.id)));
+  const profiles = new Map(sourceProfiles.map((profile) => [profile.nodeId, profile]));
   const retained: string[] = [];
   for (const node of subtree) {
     const isRoot = node.id === root.id;
@@ -512,6 +574,8 @@ export async function copySubtree(
     }).returning();
     idMap.set(node.id, created.id);
     createdRows.set(node.id, created);
+    const profile = profiles.get(node.id);
+    if (profile) await executor.insert(driveNodeProfiles).values({ nodeId: created.id, description: profile.description, metadata: profile.metadata });
     if (node.type === 'file' && node.fileId) {
       await executor.insert(driveFileVersions).values({
         nodeId: created.id, version: 1, fileId: node.fileId, size: node.size, contentHash: node.contentHash,
