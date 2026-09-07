@@ -41,7 +41,7 @@ export interface ManagedFileUploadOptions {
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
-import { and, desc, asc, eq, inArray, like, or, gte, sql } from 'drizzle-orm';
+import { and, desc, asc, eq, inArray, like, or, gte, ne, sql } from 'drizzle-orm';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { streamToExcel, formatDateTimeForExcel } from '../../lib/excel-export';
@@ -66,7 +66,7 @@ export async function getStoredFileForRead(id: string) {
 
 /** 归属模块（网盘等）读取受控文件：跳过可见性检查，调用方自行完成鉴权 */
 export async function getRestrictedFileForRead(id: string) {
-  const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
+  const [file] = await db.select().from(managedFiles).where(and(eq(managedFiles.id, id), ne(managedFiles.gcState, 'deleting'))).limit(1);
   return withStorageConfig(requireRow(file, '文件不存在'));
 }
 
@@ -243,6 +243,8 @@ export async function uploadManagedFile(file: File, options: ManagedFileUploadOp
       extension: uploaded.extension,
       objectAcl: resolveObjectAcl(defaultConfig),
       visibility: options.visibility ?? 'public',
+      gcState: options.visibility === 'restricted' ? 'orphan' : 'live',
+      orphanedAt: options.visibility === 'restricted' ? new Date() : null,
       contentHash: options.contentHash ?? null,
       tenantId: getCreateTenantId(user),
     })
@@ -251,11 +253,12 @@ export async function uploadManagedFile(file: File, options: ManagedFileUploadOp
 }
 
 export async function saveGeneratedManagedFile(input: {
-  buffer: Buffer | Uint8Array | ArrayBuffer;
+  buffer: Buffer | Uint8Array | ArrayBuffer | Blob;
   filename: string;
   mimeType: string;
   tenantId: number | null;
   createdBy: number;
+  visibility?: FileVisibility;
 }) {
   const bytes = input.buffer instanceof ArrayBuffer ? new Uint8Array(input.buffer) : input.buffer;
   const blob = new Blob([bytes as BlobPart], { type: input.mimeType });
@@ -281,6 +284,9 @@ export async function saveGeneratedManagedFile(input: {
         mimeType: uploaded.mimeType,
         extension: uploaded.extension,
         objectAcl: resolveObjectAcl(defaultConfig),
+        visibility: input.visibility ?? 'public',
+        gcState: input.visibility === 'restricted' ? 'orphan' : 'live',
+        orphanedAt: input.visibility === 'restricted' ? new Date() : null,
         tenantId: input.tenantId,
       })
       .returning(),

@@ -1,4 +1,6 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
+import { HTTPException } from 'hono/http-exception';
+import { hasPermission } from '../../lib/context';
 import { driveNodeContract } from '@zenith/shared/drive';
 import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
@@ -51,6 +53,9 @@ const contentRoute = defineContractRoute(driveNodeContract.content, {
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { download, version } = c.req.valid('query');
+    if (download && !await hasPermission('drive:node:download')) {
+      throw new HTTPException(403, { message: '没有文件下载权限' });
+    }
     const prepared = await prepareDriveNodeContent(id, !!download, version);
     const { file, node } = prepared;
     const range = supportsRange(file.provider) ? parseRangeHeader(c.req.header('range'), file.size) : null;

@@ -68,7 +68,7 @@ import {
   iotMaintenanceWindows, iotSchedules, iotScheduleRuns, iotDeviceWhitelist,
 } from './iot';
 import {
-  driveActivities, driveFileVersions, driveNodeComments, driveNodePermissions, driveNodes, driveNodeStars, driveNodeTags,
+  driveActivities, driveFileVersions, driveNodeComments, driveNodePermissions, driveNodeRenditions, driveNodes, driveNodeStars, driveNodeTags,
   driveNodeTexts, driveRecentAccess, driveShareAccessLogs, driveShareLinks, driveSpaceMembers, driveSpaces, driveTags, driveUploadBindings,
 } from './drive';
 
@@ -1945,7 +1945,6 @@ export const driveNodesRelations = relations(driveNodes, ({ one, many }) => ({
   parent: one(driveNodes, { fields: [driveNodes.parentId], references: [driveNodes.id], relationName: 'driveNodeParent' }),
   children: many(driveNodes, { relationName: 'driveNodeParent' }),
   file: one(managedFiles, { fields: [driveNodes.fileId], references: [managedFiles.id], relationName: 'driveNodeFile' }),
-  thumbnail: one(managedFiles, { fields: [driveNodes.thumbnailFileId], references: [managedFiles.id], relationName: 'driveNodeThumbnail' }),
   lockedByUser: one(users, { fields: [driveNodes.lockedBy], references: [users.id], relationName: 'driveNodeLockedBy' }),
   deletedByUser: one(users, { fields: [driveNodes.deletedBy], references: [users.id], relationName: 'driveNodeDeletedBy' }),
   createdByUser: one(users, { fields: [driveNodes.createdBy], references: [users.id], relationName: 'driveNodeCreatedBy' }),
@@ -1955,7 +1954,13 @@ export const driveNodesRelations = relations(driveNodes, ({ one, many }) => ({
   shareLinks: many(driveShareLinks),
   nodeTags: many(driveNodeTags),
   comments: many(driveNodeComments),
+  renditions: many(driveNodeRenditions),
   text: one(driveNodeTexts, { fields: [driveNodes.id], references: [driveNodeTexts.nodeId] }),
+}));
+
+export const driveNodeRenditionsRelations = relations(driveNodeRenditions, ({ one }) => ({
+  node: one(driveNodes, { fields: [driveNodeRenditions.nodeId], references: [driveNodes.id] }),
+  file: one(managedFiles, { fields: [driveNodeRenditions.fileId], references: [managedFiles.id] }),
 }));
 
 export const driveNodePermissionsRelations = relations(driveNodePermissions, ({ one }) => ({

@@ -3,7 +3,7 @@ import { listTableProps } from '@/components/list-page';
 import { Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
-import { DRIVE_SHARE_PERMISSION_LABELS, type DriveShareLink, type DriveShareLinkState } from '@zenith/shared/drive';
+import { describeShareCapabilities, type DriveShareLink, type DriveShareLinkState } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { FileNameCell } from '@/components/FileNameCell';
@@ -66,9 +66,9 @@ export default function DriveAdminShareLinksPage() {
     { title: '文件', dataIndex: 'nodeName', minWidth: 220, ellipsis: { showTitle: false },
       render: (_: unknown, l: DriveShareLink) => <FileNameCell name={l.nodeName} mimeType={l.nodeType === 'folder' ? 'inode/directory' : null} onClick={() => navigate(`/drive?space=${l.spaceId}`)} /> },
     { title: '分享人', dataIndex: 'createdByName', width: 110, render: renderEllipsis },
-    { title: '权限', dataIndex: 'permission', width: 110, render: (v: DriveShareLink['permission'], l: DriveShareLink) => (
+    { title: '权限', dataIndex: 'capabilities', width: 110, render: (v: DriveShareLink['capabilities'], l: DriveShareLink) => (
       <Space spacing={4} className="drive-nowrap">
-        <span>{DRIVE_SHARE_PERMISSION_LABELS[v]}</span>
+        <span>{describeShareCapabilities(v)}</span>
         {l.hasPassword && <Tag size="small" color="orange">密码</Tag>}
       </Space>
     ) },

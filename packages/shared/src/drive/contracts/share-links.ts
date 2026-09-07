@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { DRIVE_NODE_TYPES, DRIVE_SHARE_LINK_STATES, DRIVE_SHARE_PERMISSIONS } from '../constants';
+import { DRIVE_NODE_TYPES, DRIVE_SHARE_CAPABILITIES, DRIVE_SHARE_KINDS, DRIVE_SHARE_LINK_STATES } from '../constants';
 import { updateDriveShareLinkSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
@@ -12,15 +12,18 @@ export const driveShareLinkSchema = z.object({
   nodeName: z.string(),
   nodeType: z.enum(DRIVE_NODE_TYPES),
   spaceId: z.int(),
+  kind: z.enum(DRIVE_SHARE_KINDS),
   token: z.string(),
   url: z.string().meta({ description: '前端公开页相对地址 /public/drive/{token}' }),
   hasPassword: z.boolean(),
-  permission: z.enum(DRIVE_SHARE_PERMISSIONS),
+  capabilities: z.array(z.enum(DRIVE_SHARE_CAPABILITIES)).meta({ description: '能力位：preview / download / upload' }),
   enabled: z.boolean(),
   expireAt: z.string().nullable(),
   maxAccessCount: z.int().nullable(),
   accessCount: z.int(),
+  maxDownloadCount: z.int().nullable(),
   downloadCount: z.int(),
+  uploadCount: z.int(),
   revokedAt: z.string().nullable(),
   remark: z.string().nullable(),
   state: z.enum(DRIVE_SHARE_LINK_STATES).meta({ description: '派生状态：有效 / 过期 / 次数用尽 / 停用 / 已撤销' }),
@@ -49,6 +52,7 @@ export type DriveShareAccessLog = z.infer<typeof driveShareAccessLogSchema>;
 export const driveShareLinkListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   spaceId: z.coerce.number().int().positive().optional(),
+  kind: z.enum(DRIVE_SHARE_KINDS).optional(),
   state: z.enum(DRIVE_SHARE_LINK_STATES).optional(),
   startTime: dateRangeBound('创建时间起'),
   endTime: dateRangeBound('创建时间止'),

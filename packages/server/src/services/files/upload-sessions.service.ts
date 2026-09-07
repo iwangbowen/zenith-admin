@@ -208,6 +208,8 @@ export async function completeChunkUpload(uploadId: string, options: ManagedFile
       extension,
       objectAcl: session.objectAcl,
       visibility: options.visibility ?? 'public',
+      gcState: options.visibility === 'restricted' ? 'orphan' : 'live',
+      orphanedAt: options.visibility === 'restricted' ? new Date() : null,
       contentHash: options.contentHash ?? null,
       tenantId: getCreateTenantId(user),
     })

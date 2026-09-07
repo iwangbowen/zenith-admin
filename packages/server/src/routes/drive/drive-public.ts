@@ -10,7 +10,8 @@ import {
   createDriveShareSession,
   getDrivePublicShareMeta,
   listDrivePublicChildren,
-  readDrivePublicContent,
+  prepareDrivePublicContent,
+  openDrivePublicContent,
   saveFromDriveShare,
 } from '../../services/drive/drive-share.service';
 import { binaryResponses, streamStoredContent } from './drive-nodes';
@@ -63,24 +64,15 @@ const contentRoute = defineContractRoute(drivePublicShareContract.content, {
     const { token, nodeId } = c.req.valid('param');
     const { download, session: querySession } = c.req.valid('query');
     const session = readSession(c.req.header('session'), querySession);
-    // 先不带 Range 解析出对象元数据再决定分片（外链多为整文件预览 / 下载）
-    const first = await readDrivePublicContent(token, session, nodeId, !!download, null);
-    const range = supportsRange(first.file.provider) ? parseRangeHeader(c.req.header('range'), first.file.size) : null;
+    const prepared = await prepareDrivePublicContent(token, session, nodeId, !!download);
+    const range = supportsRange(prepared.file.provider) ? parseRangeHeader(c.req.header('range'), prepared.file.size) : null;
     if (range === 'invalid') {
-      await first.stored.stream.cancel().catch(() => undefined);
-      return rangeNotSatisfiable(first.file.size, { 'Cache-Control': 'private, no-store' });
+      return rangeNotSatisfiable(prepared.file.size, { 'Cache-Control': 'private, no-store' });
     }
-    if (range) {
-      await first.stored.stream.cancel().catch(() => undefined);
-      const ranged = await readDrivePublicContent(token, session, nodeId, !!download, range);
-      return streamStoredContent({
-        stream: ranged.stored.stream, contentType: ranged.stored.contentType, fileName: ranged.node.name, size: ranged.file.size,
-        provider: ranged.file.provider, range, download: !!download, etag: `"s${ranged.file.id}-${ranged.file.size}"`,
-      });
-    }
+    const first = await openDrivePublicContent(prepared, range);
     return streamStoredContent({
       stream: first.stored.stream, contentType: first.stored.contentType, fileName: first.node.name, size: first.file.size,
-      provider: first.file.provider, range: null, download: !!download, etag: `"s${first.file.id}-${first.file.size}"`,
+      provider: first.file.provider, range, download: !!download, etag: `"s${first.file.id}-${first.file.size}"`,
     });
   },
 });

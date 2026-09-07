@@ -103,12 +103,12 @@ export const mockDriveVersions: DriveFileVersion[] = [
 export const mockDriveShareLinks: DriveShareLink[] = [
   {
     id: 1, nodeId: 5, nodeName: '季度总结.pdf', nodeType: 'file', spaceId: 1, token: 'demo-share-token-0001', url: '/public/drive/demo-share-token-0001',
-    hasPassword: true, permission: 'download', enabled: true, expireAt: '2027-12-31 23:59:59', maxAccessCount: null, accessCount: 12, downloadCount: 4,
+    hasPassword: true, kind: 'share', capabilities: ['preview', 'download'], maxDownloadCount: null, uploadCount: 0, enabled: true, expireAt: '2027-12-31 23:59:59', maxAccessCount: null, accessCount: 12, downloadCount: 4,
     revokedAt: null, remark: '发给合作伙伴', state: 'active', createdBy: 1, createdByName: '管理员', createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
     id: 2, nodeId: 10, nodeName: '设计稿', nodeType: 'folder', spaceId: 3, token: 'demo-share-token-0002', url: '/public/drive/demo-share-token-0002',
-    hasPassword: false, permission: 'preview', enabled: true, expireAt: '2026-01-01 00:00:00', maxAccessCount: 50, accessCount: 50, downloadCount: 0,
+    hasPassword: false, kind: 'share', capabilities: ['preview'], maxDownloadCount: null, uploadCount: 0, enabled: true, expireAt: '2026-01-01 00:00:00', maxAccessCount: 50, accessCount: 50, downloadCount: 0,
     revokedAt: null, remark: null, state: 'expired', createdBy: 1, createdByName: '管理员', createdAt: '2025-12-01 09:00:00', updatedAt: '2025-12-01 09:00:00',
   },
 ];

@@ -848,6 +848,9 @@ export const RETENTION_POLICIES: readonly RetentionPolicyDefinition[] = [
     tableName: 'drive_activities',
     timeColumn: 'created_at',
     defaultDays: 180,
+    mode: 'custom',
+    run: async (days) => (await import('../../services/drive/drive-partitions.service')).cleanDriveLogPartitions('drive_activities', days),
+    previewPending: async (days) => (await import('../../services/drive/drive-partitions.service')).cleanDriveLogPartitions('drive_activities', days, true),
     description: '网盘上传 / 下载 / 预览 / 分享 / 授权等文件级动态（含外链匿名访问）；管理端审计与文件「动态」面板的数据源，超期记录可安全清理。',
   },
   {
@@ -857,6 +860,9 @@ export const RETENTION_POLICIES: readonly RetentionPolicyDefinition[] = [
     tableName: 'drive_share_access_logs',
     timeColumn: 'created_at',
     defaultDays: 180,
+    mode: 'custom',
+    run: async (days) => (await import('../../services/drive/drive-partitions.service')).cleanDriveLogPartitions('drive_share_access_logs', days),
+    previewPending: async (days) => (await import('../../services/drive/drive-partitions.service')).cleanDriveLogPartitions('drive_share_access_logs', days, true),
     description: '外链匿名访问留痕（含密码错误 / 过期等被拒绝的尝试）；外链的累计访问次数存于外链行本身，不受清理影响。',
   },
   {

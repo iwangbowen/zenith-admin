@@ -79,18 +79,54 @@ export const DRIVE_NODE_TYPE_LABELS: Record<DriveNodeType, string> = {
 export const DRIVE_NODE_TYPE_OPTIONS: Array<{ value: DriveNodeType; label: string }> =
   createLabelOptions(DRIVE_NODE_TYPES, DRIVE_NODE_TYPE_LABELS);
 
-// ─── 外链权限 ─────────────────────────────────────────────────────────────────
-export const DRIVE_SHARE_PERMISSIONS = ['preview', 'download'] as const;
+// ─── 外链能力位 / 种类 ────────────────────────────────────────────────────────
+export const DRIVE_SHARE_CAPABILITIES = ['preview', 'download', 'upload'] as const;
 
-export type DriveSharePermission = (typeof DRIVE_SHARE_PERMISSIONS)[number];
+export type DriveShareCapability = (typeof DRIVE_SHARE_CAPABILITIES)[number];
 
-export const DRIVE_SHARE_PERMISSION_LABELS: Record<DriveSharePermission, string> = {
-  preview: '仅预览',
-  download: '可下载',
+export function normalizeDriveShareCapabilities(capabilities: readonly DriveShareCapability[]): DriveShareCapability[] {
+  return [...new Set<DriveShareCapability>(capabilities.includes('download') ? ['preview', ...capabilities] : capabilities)];
+}
+
+export const DRIVE_SHARE_CAPABILITY_LABELS: Record<DriveShareCapability, string> = {
+  preview: '在线预览',
+  download: '下载 / 转存',
+  upload: '上传（文件收集）',
 };
 
-export const DRIVE_SHARE_PERMISSION_OPTIONS: Array<{ value: DriveSharePermission; label: string }> =
-  createLabelOptions(DRIVE_SHARE_PERMISSIONS, DRIVE_SHARE_PERMISSION_LABELS);
+export const DRIVE_SHARE_CAPABILITY_OPTIONS: Array<{ value: DriveShareCapability; label: string }> =
+  createLabelOptions(DRIVE_SHARE_CAPABILITIES, DRIVE_SHARE_CAPABILITY_LABELS);
+
+export const DRIVE_SHARE_KINDS = ['share', 'collect'] as const;
+
+export type DriveShareKind = (typeof DRIVE_SHARE_KINDS)[number];
+
+export const DRIVE_SHARE_KIND_LABELS: Record<DriveShareKind, string> = {
+  share: '分享',
+  collect: '文件收集',
+};
+
+export const DRIVE_SHARE_KIND_OPTIONS: Array<{ value: DriveShareKind; label: string }> =
+  createLabelOptions(DRIVE_SHARE_KINDS, DRIVE_SHARE_KIND_LABELS);
+
+/** 能力位集合的简短标签：「仅预览」「可下载」「可上传」组合 */
+export function describeShareCapabilities(capabilities: readonly DriveShareCapability[]): string {
+  const set = new Set(capabilities);
+  const parts: string[] = [];
+  if (set.has('download')) parts.push('可下载');
+  else if (set.has('preview')) parts.push('仅预览');
+  if (set.has('upload')) parts.push('可上传');
+  return parts.join(' · ') || '无权限';
+}
+
+// ─── 渲染产物 ─────────────────────────────────────────────────────────────────
+export const DRIVE_RENDITION_KINDS = ['thumbnail', 'text', 'pdf', 'preview'] as const;
+
+export type DriveRenditionKind = (typeof DRIVE_RENDITION_KINDS)[number];
+
+export const DRIVE_RENDITION_STATUSES = ['pending', 'ready', 'failed', 'skipped'] as const;
+
+export type DriveRenditionStatus = (typeof DRIVE_RENDITION_STATUSES)[number];
 
 // ─── 外链派生状态 ─────────────────────────────────────────────────────────────
 export const DRIVE_SHARE_LINK_STATES = ['active', 'expired', 'exhausted', 'disabled', 'revoked'] as const;
@@ -114,7 +150,7 @@ export const DRIVE_UPLOAD_CONFLICT_POLICY_OPTIONS: Array<{ value: DriveUploadCon
 // ─── 动态动作 ─────────────────────────────────────────────────────────────────
 export const DRIVE_ACTIVITY_ACTIONS = [
   'upload', 'new_version', 'create_folder', 'rename', 'move', 'copy', 'delete', 'restore', 'purge',
-  'download', 'preview', 'share_create', 'share_update', 'share_revoke', 'share_access', 'save_from_share',
+  'download', 'preview', 'share_create', 'share_update', 'share_revoke', 'share_access', 'save_from_share', 'collect_upload',
   'permission_change', 'inherit_change', 'version_restore', 'version_delete', 'lock', 'unlock', 'comment', 'tag',
 ] as const;
 
@@ -137,6 +173,7 @@ export const DRIVE_ACTIVITY_ACTION_LABELS: Record<DriveActivityAction, string> =
   share_revoke: '撤销外链',
   share_access: '外链访问',
   save_from_share: '外链转存',
+  collect_upload: '收集上传',
   permission_change: '变更授权',
   inherit_change: '变更继承',
   version_restore: '版本回滚',

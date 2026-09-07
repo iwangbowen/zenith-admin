@@ -24,8 +24,9 @@
 - **主键统一 identity**：自增主键一律 `integer().primaryKey().generatedAlwaysAsIdentity()`
   （大表用 `bigint({ mode: 'number' })` 同理），**禁止** `serial` / `bigserial`；
   需要显式插入 id 的场景（仅限 seed）必须链式加 `.overridingSystemValue()`。
-  唯一例外是分区时序明细表 `iot_telemetry`（无主键，分区 DDL 由迁移手写），
-  **禁止**给它加回 `id` 或改动分区键列，见 [docs/backend/database.md](../../../../docs/backend/database.md)「分区表」
+  例外是分区时序明细表：`iot_telemetry` 无主键也无 `id`，`drive_activities` 与
+  `drive_share_access_logs` 保留无主键的 identity 序号；分区 DDL 由迁移手写。
+  **禁止**擅自增加代理主键或改动分区键列，见 [docs/backend/database.md](../../../../docs/backend/database.md)「分区表」
 - **列名自动派生**：drizzle 已配置 `casing: 'snake_case'`，**禁止**写与派生结果一致的显式列名
   （`varchar('user_name')` 一律写成 `varchar()`）；仅当派生名与目标列名不一致时才显式指定。
   做列名反射（结构断言、漂移对比）必须用 `dbColumnName()`（`db/types.ts`），

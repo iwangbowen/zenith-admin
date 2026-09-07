@@ -2,7 +2,8 @@ import * as z from 'zod';
 import { dateTimeStringSchema, partialForUpdate } from '../core/validation';
 import {
   DRIVE_ROLES,
-  DRIVE_SHARE_PERMISSIONS,
+  DRIVE_SHARE_CAPABILITIES,
+  DRIVE_SHARE_KINDS,
   DRIVE_SUBJECT_TYPES,
   DRIVE_UPLOAD_CONFLICT_POLICIES,
 } from './constants';
@@ -168,18 +169,25 @@ export type DriveSimpleUploadFields = z.infer<typeof driveSimpleUploadFieldsSche
 
 // ─── 外链 ─────────────────────────────────────────────────────────────────────
 
+const shareCapabilitiesSchema = z.array(z.enum(DRIVE_SHARE_CAPABILITIES)).min(1, '至少选择一项能力').max(3)
+  .transform((caps) => [...new Set(caps)]);
+
 export const createDriveShareLinkSchema = z.object({
-  permission: z.enum(DRIVE_SHARE_PERMISSIONS).default('preview'),
+  /** share = 分享；collect = 文件收集（目标须为文件夹，能力位自动含 upload） */
+  kind: z.enum(DRIVE_SHARE_KINDS).default('share'),
+  /** 能力位：preview / download / upload；download 隐含 preview */
+  capabilities: shareCapabilitiesSchema.default(['preview']),
   /** 访问密码；空 / 省略 = 无密码 */
   password: z.string().min(4, '密码至少 4 位').max(32).optional(),
   expireAt: dateTimeStringSchema.nullable().default(null),
   maxAccessCount: z.number().int().positive().nullable().default(null),
+  maxDownloadCount: z.number().int().positive().nullable().default(null),
   remark: z.string().max(256).optional(),
 });
 
 export type CreateDriveShareLinkInput = z.infer<typeof createDriveShareLinkSchema>;
 
-export const updateDriveShareLinkSchema = partialForUpdate(createDriveShareLinkSchema).extend({
+export const updateDriveShareLinkSchema = partialForUpdate(createDriveShareLinkSchema.omit({ kind: true })).extend({
   enabled: z.boolean().optional(),
   /** true = 清除密码 */
   clearPassword: z.boolean().optional(),

@@ -1,4 +1,5 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, smallint, uuid as pgUuid, index } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants } from './core';
@@ -16,6 +17,7 @@ export const fileUrlStrategyEnum = pgEnum('file_url_strategy', ['proxy', 'public
  * restricted=仅归属模块（如企业网盘）经自身鉴权接口读取，通用内容接口一律 404。
  */
 export const fileVisibilityEnum = pgEnum('file_visibility', ['public', 'restricted']);
+export const fileGcStateEnum = pgEnum('file_gc_state', ['live', 'orphan', 'deleting']);
 
 // ─── 文件存储配置表 ──────────────────────────────────────────────────────────
 export const fileStorageConfigs = pgTable('file_storage_configs', {
@@ -106,12 +108,21 @@ export const managedFiles = pgTable('managed_files', {
   visibility: fileVisibilityEnum().notNull().default('public'),
   /** 内容 SHA-256（hex）；由归属模块按需写入，用于秒传 / 去重，null = 未计算 */
   contentHash: varchar({ length: 64 }),
+  /**
+   * 归属模块（网盘版本 / 渲染产物等）对该对象的引用计数，事务内随引用增删 ±1。
+   * 通用文件中心上传的 public 文件不计数（由文件管理显式删除）。
+   */
+  refCount: integer().notNull().default(0),
+  gcState: fileGcStateEnum().notNull().default('live'),
+  /** 引用计数归零的时间；非 null = 待 GC（超过宽限期由 files-gc 任务删除对象与记录，期间可被重新引用复活） */
+  orphanedAt: timestamp(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
   ...timestampColumns(),
 }, (t) => [
   index('managed_files_tenant_idx').on(t.tenantId),
   index('managed_files_content_hash_idx').on(t.tenantId, t.contentHash),
+  index('managed_files_orphaned_idx').on(t.orphanedAt).where(sql`${t.orphanedAt} is not null`),
 ]);
 
 export type ManagedFileRow = typeof managedFiles.$inferSelect;

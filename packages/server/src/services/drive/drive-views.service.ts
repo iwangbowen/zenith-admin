@@ -8,9 +8,8 @@ import { formatDateTime } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
-import { driveNodeAccessCondition, filterVisibleNodes, loadDriveSubjects, subjectPairsCondition } from './drive-access.service';
+import { attachNodeRoles, ensureNodeRole, loadDriveSubjects, subjectPairsCondition, visibleNodeCondition } from './drive-access.service';
 import { decorateNodes, ensureDriveNodeExists } from './drive-nodes.service';
-import { ensureNodeRole } from './drive-access.service';
 
 interface PagedQuery {
   page?: number;
@@ -43,12 +42,14 @@ export async function setDriveNodeStar(nodeId: number, starred: boolean): Promis
 export async function listStarredNodes(q: PagedQuery) {
   const { page = 1, pageSize = 20 } = q;
   const uid = currentUserId();
+  const subjects = await loadDriveSubjects();
   const where = buildWhere(
     inArray(driveNodes.id, db.select({ id: driveNodeStars.nodeId }).from(driveNodeStars).where(eq(driveNodeStars.userId, uid))),
     isNull(driveNodes.deletedAt),
     q.type ? eq(driveNodes.type, q.type) : undefined,
     keywordCondition(q.keyword, [driveNodes.name], 'ilike'),
     tenantCondition(driveNodes, currentUser()),
+    visibleNodeCondition(subjects),
   );
   return buildListResult({
     page,
@@ -56,7 +57,7 @@ export async function listStarredNodes(q: PagedQuery) {
     count: () => db.$count(driveNodes, where),
     rows: async () => {
       const rows = await withPagination(db.select().from(driveNodes).where(where).orderBy(desc(driveNodes.updatedAt), desc(driveNodes.id)).$dynamic(), page, pageSize);
-      const visible = await filterVisibleNodes(rows);
+      const visible = await attachNodeRoles(rows, subjects);
       const names = await spaceNameMap(visible);
       const list = await decorateNodes(visible, new Map(visible.map((r) => [r.id, r.myRole])));
       return list.map((n) => ({ ...n, spaceName: names.get(n.spaceId) ?? '' }));
@@ -69,12 +70,14 @@ export async function listStarredNodes(q: PagedQuery) {
 export async function listRecentNodes(q: PagedQuery) {
   const { page = 1, pageSize = 20 } = q;
   const uid = currentUserId();
+  const subjects = await loadDriveSubjects();
   const where = buildWhere(
     eq(driveRecentAccess.userId, uid),
     isNull(driveNodes.deletedAt),
     q.type ? eq(driveNodes.type, q.type) : undefined,
     keywordCondition(q.keyword, [driveNodes.name], 'ilike'),
     tenantCondition(driveNodes, currentUser()),
+    visibleNodeCondition(subjects),
   );
   const base = db.select({ node: driveNodes, lastAccessAt: driveRecentAccess.lastAccessAt, lastAction: driveRecentAccess.action })
     .from(driveRecentAccess)
@@ -90,13 +93,11 @@ export async function listRecentNodes(q: PagedQuery) {
     rows: async () => {
       const rows = await withPagination(base.orderBy(desc(driveRecentAccess.lastAccessAt)).$dynamic(), page, pageSize);
       const nodeRows = rows.map((r) => r.node);
-      const visible = await filterVisibleNodes(nodeRows);
-      const visibleIds = new Set(visible.map((v) => v.id));
+      const visible = await attachNodeRoles(nodeRows, subjects);
       const names = await spaceNameMap(visible);
       const decorated = await decorateNodes(visible, new Map(visible.map((r) => [r.id, r.myRole])));
       const decoratedMap = new Map(decorated.map((d) => [d.id, d]));
       return rows
-        .filter((r) => visibleIds.has(r.node.id))
         .map((r): DriveRecentItem => ({
           ...decoratedMap.get(r.node.id)!,
           spaceName: names.get(r.node.spaceId) ?? '',
@@ -122,6 +123,7 @@ export async function listSharedWithMe(q: PagedQuery) {
     q.type ? eq(driveNodes.type, q.type) : undefined,
     keywordCondition(q.keyword, [driveNodes.name], 'ilike'),
     tenantCondition(driveNodes, currentUser()),
+    visibleNodeCondition(subjects),
   );
   return buildListResult({
     page,
@@ -139,7 +141,7 @@ export async function listSharedWithMe(q: PagedQuery) {
         const cur = grantMap.get(g.nodeId);
         if (!cur || priority[g.subjectType] > priority[cur.via]) grantMap.set(g.nodeId, { via: g.subjectType, role: g.role });
       }
-      const visible = await filterVisibleNodes(rows);
+      const visible = await attachNodeRoles(rows, subjects);
       const names = await spaceNameMap(visible);
       const decorated = await decorateNodes(visible, new Map(visible.map((r) => [r.id, r.myRole])));
       return decorated.map((n): DriveSharedItem => ({
@@ -168,7 +170,7 @@ const CJK_PATTERN = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/;
 
 function textMatchCondition(keyword: string): SQL {
   return CJK_PATTERN.test(keyword)
-    ? sql`${driveNodeTexts.content} ILIKE ${`%${keyword.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`}`
+    ? keywordCondition(keyword, [driveNodeTexts.content], 'ilike')!
     : sql`${driveNodeTexts.searchVector} @@ plainto_tsquery('simple', ${keyword})`;
 }
 
@@ -199,7 +201,7 @@ export async function searchDriveNodes(q: SearchDriveNodesQuery) {
     q.extension ? eq(driveNodes.extension, q.extension.toLowerCase().replace(/^\./, '')) : undefined,
     ...dateRangeConditions(driveNodes.updatedAt, q.startTime, q.endTime),
     tenantCondition(driveNodes, currentUser()),
-    driveNodeAccessCondition(subjects),
+    visibleNodeCondition(subjects),
   );
   return buildListResult({
     page,
@@ -207,7 +209,7 @@ export async function searchDriveNodes(q: SearchDriveNodesQuery) {
     count: () => db.$count(driveNodes, where),
     rows: async () => {
       const rows = await withPagination(db.select().from(driveNodes).where(where).orderBy(desc(driveNodes.updatedAt), desc(driveNodes.id)).$dynamic(), page, pageSize);
-      const visible = await filterVisibleNodes(rows);
+      const visible = await attachNodeRoles(rows, subjects);
       const names = await spaceNameMap(visible);
       const isCjk = CJK_PATTERN.test(keyword);
       const snippets = q.fullText && visible.length

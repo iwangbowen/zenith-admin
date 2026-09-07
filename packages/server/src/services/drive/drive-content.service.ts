@@ -1,4 +1,7 @@
 import { HTTPException } from 'hono/http-exception';
+import { and, eq } from 'drizzle-orm';
+import { db } from '../../db';
+import { driveNodeRenditions } from '../../db/schema';
 import type { DriveRole } from '@zenith/shared/drive';
 import type { DriveNodeRow, FileStorageConfigRow, ManagedFileRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
@@ -57,8 +60,12 @@ export async function openDriveNodeContent(prepared: PreparedContent, range: Sto
 export async function readDriveNodeThumbnail(nodeId: number) {
   const node = await ensureDriveNodeExists(nodeId, { allowDeleted: true });
   await ensureNodeRole(node, 'viewer', '没有该文件的访问权限');
-  if (!node.thumbnailFileId) throw new HTTPException(404, { message: '缩略图不存在' });
-  const { file, storageConfig } = await getRestrictedFileForRead(node.thumbnailFileId);
+  const [rendition] = await db.select({ fileId: driveNodeRenditions.fileId }).from(driveNodeRenditions).where(and(
+    eq(driveNodeRenditions.nodeId, node.id), eq(driveNodeRenditions.version, node.currentVersion),
+    eq(driveNodeRenditions.kind, 'thumbnail'), eq(driveNodeRenditions.status, 'ready'),
+  ));
+  if (!rendition?.fileId) throw new HTTPException(404, { message: '缩略图不存在' });
+  const { file, storageConfig } = await getRestrictedFileForRead(rendition.fileId);
   return { node, file, stored: await readStoredFile(file, storageConfig) };
 }
 

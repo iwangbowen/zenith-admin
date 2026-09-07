@@ -44,7 +44,7 @@ export async function notifyNodeShared(
           grantorName,
         },
         tenantId: node.tenantId ?? null,
-        link: node.type === 'folder' ? `/drive?spaceId=${node.spaceId}&folderId=${node.id}` : `/drive?spaceId=${node.spaceId}&nodeId=${node.id}`,
+        link: node.type === 'folder' ? `/drive?space=${node.spaceId}&folder=${node.id}` : `/drive?space=${node.spaceId}&node=${node.id}`,
       });
     }
   } catch (err) {
@@ -66,7 +66,7 @@ export async function notifySpaceMembersAdded(
         recipients: [{ type: 'user', id: a.subjectId }],
         vars: { spaceId: space.id, spaceName: space.name, roleLabel: DRIVE_ROLE_LABELS[a.role], operatorName },
         tenantId: space.tenantId ?? null,
-        link: `/drive?spaceId=${space.id}`,
+        link: `/drive?space=${space.id}`,
       });
     }
   } catch (err) {
@@ -93,7 +93,7 @@ export async function maybeNotifyQuotaWarning(space: DriveSpaceRow): Promise<voi
       recipients: [...managerIds].map((id) => ({ type: 'user' as const, id })),
       vars: { spaceId: space.id, spaceName: space.name, usedText: formatBytes(space.usedBytes), quotaText: formatBytes(quota), percent },
       tenantId: space.tenantId ?? null,
-      link: `/drive?spaceId=${space.id}`,
+      link: `/drive?space=${space.id}`,
       dedupeKey: `drive-quota:${space.id}:${today}`,
     });
   } catch (err) {

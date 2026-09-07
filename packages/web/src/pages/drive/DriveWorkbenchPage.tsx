@@ -42,8 +42,12 @@ function SpaceItem({ space, active, onClick }: { readonly space: DriveSpace; rea
 
 export default function DriveWorkbenchPage() {
   const { hasPermission } = usePermission();
-  const [selection, setSelection] = useUrlSelectionParams(['view', 'space', 'folder']);
-  const [detailId, setDetailId] = useState<number | null>(null);
+  const [selection, setSelection] = useUrlSelectionParams(['view', 'space', 'folder', 'node']);
+  const parsedDetailId = Number(selection.node);
+  const detailId = Number.isSafeInteger(parsedDetailId) && parsedDetailId > 0 ? parsedDetailId : null;
+  const setDetailId = useCallback((id: number | null) => {
+    setSelection((prev) => ({ ...prev, node: id === null ? null : String(id) }));
+  }, [setSelection]);
   const [globalKeyword, setGlobalKeyword] = useState('');
   const [searching, setSearching] = useState<{ keyword: string; fullText: boolean } | null>(null);
   const [fullText, setFullText] = useState(false);
@@ -63,19 +67,19 @@ export default function DriveWorkbenchPage() {
   const activeSpace = useMemo(() => spaces.find((s) => s.id === spaceId) ?? null, [spaces, spaceId]);
   useEffect(() => {
     if (view !== 'space' || spacesQuery.isPending) return;
-    if (spaceId && activeSpace) return;
+    if (detailId || folderId || (spaceId && activeSpace)) return;
     const fallback = spaces.find((s) => s.type === 'personal') ?? spaces[0];
-    if (fallback && fallback.id !== spaceId) setSelection({ view: null, space: String(fallback.id), folder: null });
-  }, [view, spaceId, activeSpace, spaces, spacesQuery.isPending, setSelection]);
+    if (fallback && fallback.id !== spaceId) setSelection((prev) => ({ ...prev, view: null, space: String(fallback.id), folder: null }));
+  }, [view, spaceId, folderId, detailId, activeSpace, spaces, spacesQuery.isPending, setSelection]);
 
   const openSpace = useCallback((id: number, folder: number | null = null) => {
     setSearching(null);
-    setSelection({ view: null, space: String(id), folder: folder ? String(folder) : null });
+    setSelection({ view: null, space: String(id), folder: folder ? String(folder) : null, node: null });
     setShowDetailOnNarrow(true);
   }, [setSelection]);
   const openView = (v: Exclude<DriveView, 'space'>) => {
     setSearching(null);
-    setSelection({ view: v, space: null, folder: null });
+    setSelection({ view: v, space: null, folder: null, node: null });
     setShowDetailOnNarrow(true);
   };
   const navigateFolder = useCallback((folder: number | null) => {

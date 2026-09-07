@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { tryGetContext } from 'hono/context-storage';
 import type { DriveActivity, DriveActivityAction, DriveNodeType } from '@zenith/shared/drive';
 import { db } from '../../db';
@@ -8,10 +8,11 @@ import { currentUserOrNull, isSuperAdmin, type AppEnv } from '../../lib/context'
 import { formatDateTime } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import { getClientIp } from '../../lib/request-helpers';
-import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
+import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { resolveUserNames } from './drive-common';
+import { ensureDriveLogPartitions } from './drive-partitions.service';
 
 export interface LogDriveActivityInput {
   spaceId: number;
@@ -29,19 +30,39 @@ export interface LogDriveActivityInput {
 
 /** 追加一条文件动态（副作用与主事务同提交时传 executor） */
 export async function logDriveActivity(input: LogDriveActivityInput, executor: DbExecutor = db): Promise<void> {
+  if (input.action === 'preview' && executor === db) {
+    return db.transaction((tx) => logDriveActivity(input, tx));
+  }
   const user = currentUserOrNull();
   const ctx = tryGetContext<AppEnv>();
+  const createdAt = new Date();
+  const actorId = input.actorId === undefined ? (user?.userId ?? null) : input.actorId;
+  await ensureDriveLogPartitions(createdAt, executor);
+  if (input.action === 'preview') {
+    const since = new Date(Math.floor(createdAt.getTime() / 600_000) * 600_000);
+    const key = `drive-preview:${input.spaceId}:${input.nodeId}:${actorId}:${input.shareId ?? ''}:${since.getTime()}`;
+    await executor.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
+    const [existing] = await executor.select({ id: driveActivities.id }).from(driveActivities).where(and(
+      eq(driveActivities.spaceId, input.spaceId),
+      exactTenantCondition(driveActivities.nodeId, input.nodeId),
+      exactTenantCondition(driveActivities.actorId, actorId),
+      exactTenantCondition(driveActivities.shareId, input.shareId ?? null),
+      eq(driveActivities.action, 'preview'), gte(driveActivities.createdAt, since),
+    )).limit(1);
+    if (existing) return;
+  }
   await executor.insert(driveActivities).values({
     spaceId: input.spaceId,
     nodeId: input.nodeId,
     nodeName: input.nodeName.slice(0, 255),
     nodeType: input.nodeType,
     action: input.action,
-    actorId: input.actorId === undefined ? (user?.userId ?? null) : input.actorId,
+    actorId,
     shareId: input.shareId ?? null,
     detail: input.detail ?? null,
     clientIp: ctx ? getClientIp(ctx).slice(0, 64) : null,
     tenantId: input.tenantId !== undefined ? input.tenantId : (user ? getCreateTenantId(user) : null),
+    createdAt,
   });
 }
 
@@ -107,7 +128,7 @@ async function paginateActivities(where: SQL | undefined, page: number, pageSize
     pageSize,
     count: () => db.$count(driveActivities, where),
     rows: async () => {
-      const rows = await withPagination(db.select().from(driveActivities).where(where).orderBy(desc(driveActivities.id)).$dynamic(), page, pageSize);
+      const rows = await withPagination(db.select().from(driveActivities).where(where).orderBy(desc(driveActivities.createdAt), desc(driveActivities.id)).$dynamic(), page, pageSize);
       const [names, spaceRows] = await Promise.all([
         resolveUserNames(rows.map((r) => r.actorId)),
         rows.length ? db.select({ id: driveSpaces.id, name: driveSpaces.name }).from(driveSpaces).where(inArray(driveSpaces.id, [...new Set(rows.map((r) => r.spaceId))])) : Promise.resolve([]),

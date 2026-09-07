@@ -169,7 +169,16 @@ export default withMermaid(defineConfig({
             ],
           },
           { text: '文件与存储', link: '/storage/' },
-          { text: '企业网盘', link: '/drive/' },
+        ],
+      },
+      {
+        text: '企业网盘',
+        collapsed: true,
+        items: [
+          { text: '总览', link: '/drive/' },
+          { text: '空间与权限', link: '/drive/spaces-permissions' },
+          { text: '文件管理与治理', link: '/drive/files-governance' },
+          { text: '架构与接口', link: '/drive/reference' },
         ],
       },
       {

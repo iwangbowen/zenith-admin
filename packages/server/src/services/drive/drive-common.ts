@@ -105,6 +105,8 @@ export interface NodeMapExtras {
   isStarred?: boolean;
   myRole?: DriveRole | null;
   tags?: DriveTag[];
+  /** 已有可用缩略图产物（drive_node_renditions kind=thumbnail status=ready） */
+  hasThumbnail?: boolean;
 }
 
 export function mapDriveNode(row: DriveNodeRow, extras: NodeMapExtras = {}): DriveNode {
@@ -128,7 +130,7 @@ export function mapDriveNode(row: DriveNodeRow, extras: NodeMapExtras = {}): Dri
     lockedByName: row.lockedBy ? names?.get(row.lockedBy) ?? null : null,
     lockedAt: formatNullableDateTime(row.lockedAt),
     lockExpiresAt: formatNullableDateTime(row.lockExpiresAt),
-    thumbnailUrl: row.thumbnailFileId ? driveNodeThumbnailUrl(row.id) : null,
+    thumbnailUrl: extras.hasThumbnail ? driveNodeThumbnailUrl(row.id) : null,
     url: row.type === 'file' ? driveNodeContentUrl(row.id) : null,
     deletedAt: formatNullableDateTime(row.deletedAt),
     deletedBy: row.deletedBy ?? null,

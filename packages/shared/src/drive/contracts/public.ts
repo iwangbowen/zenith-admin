@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { queryBool } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { DRIVE_NODE_TYPES, DRIVE_SHARE_PERMISSIONS } from '../constants';
+import { DRIVE_NODE_TYPES, DRIVE_SHARE_CAPABILITIES, DRIVE_SHARE_KINDS } from '../constants';
 import { drivePublicAccessSchema, saveFromDriveShareSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
@@ -22,7 +22,8 @@ export type DrivePublicNode = z.infer<typeof drivePublicNodeSchema>;
 
 export const drivePublicShareMetaSchema = z.object({
   token: z.string(),
-  permission: z.enum(DRIVE_SHARE_PERMISSIONS),
+  kind: z.enum(DRIVE_SHARE_KINDS),
+  capabilities: z.array(z.enum(DRIVE_SHARE_CAPABILITIES)).meta({ description: '能力位：preview / download / upload' }),
   requirePassword: z.boolean(),
   node: drivePublicNodeSchema.nullable().meta({ description: '已通过密码校验（或无需密码）时返回根节点，否则为 null' }),
   expireAt: z.string().nullable(),
@@ -70,6 +71,6 @@ export const drivePublicShareContract = defineContract('/api/drive/public', {
   access: op.post('/shares/{token}/access', { params: driveShareTokenParam, body: drivePublicAccessSchema, response: drivePublicShareSessionSchema, public: true, summary: '校验密码并签发访问会话' }),
   meta: op.get('/shares/{token}', { params: driveShareTokenParam, response: drivePublicShareMetaSchema, public: true, summary: '外链元信息（无会话只返回是否需密码）' }),
   children: op.get('/shares/{token}/nodes', { params: driveShareTokenParam, query: drivePublicChildrenQuery, response: z.array(drivePublicNodeSchema), public: true, summary: '浏览外链子目录（需会话）' }),
-  content: op.get('/shares/{token}/nodes/{nodeId}/content', { params: driveShareTokenNodeParams, query: drivePublicContentQuery, kind: 'file', public: true, summary: '外链文件内容（需会话；?download=true 需 download 权限）' }),
-  save: op.post('/shares/{token}/save', { params: driveShareTokenParam, body: saveFromDriveShareSchema, summary: '转存到我的网盘（登录用户）' }),
+  content: op.get('/shares/{token}/nodes/{nodeId}/content', { params: driveShareTokenNodeParams, query: drivePublicContentQuery, kind: 'file', public: true, summary: '外链文件内容（需会话；?download=true 需 download 能力）' }),
+  save: op.post('/shares/{token}/save', { params: driveShareTokenParam, body: saveFromDriveShareSchema, summary: '转存到我的网盘（登录用户，需 download 能力）' }),
 }, { tags: ['企业网盘-公开外链'] });

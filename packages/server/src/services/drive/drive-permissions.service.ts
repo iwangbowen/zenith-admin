@@ -9,7 +9,7 @@ import { getCreateTenantId } from '../../lib/tenant';
 import { ensureNodeRole, resolveNodeRoles } from './drive-access.service';
 import { resolveSubjectNames, resolveUserNames, subjectKey } from './drive-common';
 import { logDriveActivity } from './drive-activity.service';
-import { ensureDriveNodeExists } from './drive-nodes.service';
+import { ensureDriveNodeExists, rewriteAclAfterInheritChange } from './drive-nodes.service';
 import { notifyNodeShared } from './drive-notify.service';
 
 async function mapPermissions(
@@ -37,14 +37,11 @@ async function mapPermissions(
 
 /** 生效的祖先链：从最近一个断开继承的祖先（含）到父节点 */
 async function effectiveAncestorChain(node: DriveNodeRow): Promise<Array<{ id: number; name: string }>> {
-  if (node.ancestorIds.length === 0 || !node.inheritPermissions) return [];
-  const rows = await db.select({ id: driveNodes.id, name: driveNodes.name, inheritPermissions: driveNodes.inheritPermissions })
-    .from(driveNodes).where(inArray(driveNodes.id, node.ancestorIds));
+  if (node.aclChainIds.length === 0) return [];
+  const rows = await db.select({ id: driveNodes.id, name: driveNodes.name })
+    .from(driveNodes).where(inArray(driveNodes.id, node.aclChainIds));
   const byId = new Map(rows.map((r) => [r.id, r]));
-  const ordered = node.ancestorIds.map((id) => byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
-  let start = 0;
-  ordered.forEach((r, idx) => { if (!r.inheritPermissions) start = idx; });
-  return ordered.slice(start).map((r) => ({ id: r.id, name: r.name }));
+  return node.aclChainIds.map((id) => byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
 }
 
 export async function getDriveNodePermissions(nodeId: number): Promise<DriveNodePermissionsResult> {
@@ -116,7 +113,7 @@ export async function setDriveNodeInherit(nodeId: number, data: SetDriveNodeInhe
   await ensureNodeRole(node, 'manager', '只有管理者可以修改继承设置');
   if (node.inheritPermissions !== data.inherit) {
     await db.transaction(async (tx) => {
-      await tx.update(driveNodes).set({ inheritPermissions: data.inherit }).where(eq(driveNodes.id, nodeId));
+      await rewriteAclAfterInheritChange(tx, node, data.inherit);
       await logDriveActivity({
         spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'inherit_change',
         detail: { inherit: data.inherit },

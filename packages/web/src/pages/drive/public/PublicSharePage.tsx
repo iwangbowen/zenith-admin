@@ -4,7 +4,7 @@ import { Breadcrumb, Button, Empty, Input, Spin, Table, Toast, Typography } from
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Download, FolderInput, HardDrive, Lock } from 'lucide-react';
 import { TOKEN_KEY, formatBytes } from '@zenith/shared/core';
-import { DRIVE_SHARE_PERMISSION_LABELS, type DrivePublicNode, type DrivePublicShareMeta } from '@zenith/shared/drive';
+import { describeShareCapabilities, type DrivePublicNode, type DrivePublicShareMeta } from '@zenith/shared/drive';
 import type { ManagedFile } from '@zenith/shared/platform';
 import { ApiError } from '@/lib/query';
 import { config } from '@/config';
@@ -94,7 +94,7 @@ export default function PublicSharePage() {
   const isFolder = root?.type === 'folder';
   const childrenQuery = useDrivePublicChildren(isFolder ? token : undefined, session, folderId ?? root?.id);
   const rows = useMemo(() => (isFolder ? (childrenQuery.data ?? []) : root ? [root] : []), [childrenQuery.data, isFolder, root]);
-  const canDownload = meta?.permission === 'download';
+  const canDownload = meta?.capabilities.includes('download') ?? false;
 
   const preview = useFilePreview(() => rows.filter((n) => n.type === 'file' && session).map((n) => publicNodeToManagedFile(n, drivePublicContentUrl(token, n.id, session!))));
   const openNode = (node: DrivePublicNode) => {
@@ -180,7 +180,7 @@ export default function PublicSharePage() {
               <Typography.Title heading={5} style={{ margin: 0 }} ellipsis={{ showTooltip: true }}>{root?.name ?? '文件分享'}</Typography.Title>
               {meta && (
                 <Typography.Text type="tertiary" size="small">
-                  {meta.sharerName ? `${meta.sharerName} 分享` : '匿名分享'} · {DRIVE_SHARE_PERMISSION_LABELS[meta.permission]}{meta.expireAt ? ` · ${formatDateTime(meta.expireAt)} 到期` : ' · 长期有效'}
+                  {meta.sharerName ? `${meta.sharerName} 分享` : '匿名分享'} · {describeShareCapabilities(meta.capabilities)}{meta.expireAt ? ` · ${formatDateTime(meta.expireAt)} 到期` : ' · 长期有效'}
                 </Typography.Text>
               )}
             </div>

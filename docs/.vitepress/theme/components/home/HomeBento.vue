@@ -22,6 +22,7 @@ import ArtSecurity from './arts/ArtSecurity.vue'
 import ArtTasks from './arts/ArtTasks.vue'
 import ArtTenant from './arts/ArtTenant.vue'
 import ArtPersonal from './arts/ArtPersonal.vue'
+import ArtDrive from './arts/ArtDrive.vue'
 </script>
 
 <template>
@@ -77,6 +78,10 @@ import ArtPersonal from './arts/ArtPersonal.vue'
       <BentoCell title="知识中心" tag="wiki" link="/wiki/"
         desc="空间权限、文档树与版本历史、评论协作与发布审批。">
         <ArtWiki />
+      </BentoCell>
+      <BentoCell title="企业网盘" tag="drive" link="/drive/"
+        desc="个人 / 部门 / 协作空间，文件权限、版本、外链分享与回收站统一管理。">
+        <ArtDrive />
       </BentoCell>
       <BentoCell title="规则中心" tag="rules" link="/rules/"
         desc="决策表、决策流、评分卡与名单库；decide() 统一求值与执行留痕。">

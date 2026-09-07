@@ -4,7 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
 import {
-  DRIVE_ACTIVITY_ACTION_LABELS, DRIVE_ROLE_LABELS, DRIVE_SHARE_PERMISSION_LABELS, DRIVE_SUBJECT_TYPE_LABELS,
+  DRIVE_ACTIVITY_ACTION_LABELS, DRIVE_ROLE_LABELS, describeShareCapabilities, DRIVE_SUBJECT_TYPE_LABELS,
   type DriveNode, type DriveRecentItem, type DriveSearchItem, type DriveShareLink, type DriveSharedItem, type DriveView,
 } from '@zenith/shared/drive';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -152,9 +152,9 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
     { title: '文件', dataIndex: 'nodeName', minWidth: 220, ellipsis: { showTitle: false },
       render: (_: unknown, l: DriveShareLink) => <FileNameCell name={l.nodeName} mimeType={l.nodeType === 'folder' ? 'inode/directory' : null} onClick={() => onOpenDetail(l.nodeId)} /> },
     { title: '状态', dataIndex: 'state', width: 90, render: (v: DriveShareLink['state']) => shareLinkStateTag(v) },
-    { title: '权限', dataIndex: 'permission', width: 110, render: (v: DriveShareLink['permission'], l: DriveShareLink) => (
+    { title: '权限', dataIndex: 'capabilities', width: 110, render: (v: DriveShareLink['capabilities'], l: DriveShareLink) => (
       <Space spacing={4} className="drive-nowrap">
-        <span>{DRIVE_SHARE_PERMISSION_LABELS[v]}</span>
+        <span>{describeShareCapabilities(v)}</span>
         {l.hasPassword && <Tag size="small" color="orange">密码</Tag>}
       </Space>
     ) },

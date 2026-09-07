@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Descriptions, Select, SideSheet, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Empty, Select, SideSheet, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Download, Lock, LockOpen, Star, StarOff } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
 import { DRIVE_NODE_TYPE_LABELS, DRIVE_ROLE_LABELS, type DriveNode, type DriveNodeDetail } from '@zenith/shared/drive';
@@ -78,6 +78,9 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
   return (
     <SideSheet visible={nodeId !== null} onCancel={onClose} title={title} width={760} closeOnEsc footer={null} className="drive-node-drawer" bodyStyle={{ padding: '0 16px 16px' }}>
       <Spin spinning={query.isPending}>
+        {query.isError && <Empty title="无法打开文件" description="文件可能已删除，或你没有访问权限">
+          <Button onClick={() => void query.refetch()}>重试</Button>
+        </Empty>}
         {node && (
           <>
             <div className="drive-drawer__actions">

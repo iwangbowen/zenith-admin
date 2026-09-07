@@ -2,6 +2,7 @@ import { HttpResponse } from 'msw';
 import { fillPath } from '@zenith/shared/core';
 import {
   DRIVE_SYNC_ZIP_MAX_FILES,
+  normalizeDriveShareCapabilities,
   driveAdminContract,
   driveNodeContract,
   drivePublicShareContract,
@@ -146,8 +147,9 @@ function uniqueName(name: string, spaceId: number, parentId: number | null, excl
 function shareState(link: DriveShareLink): DriveShareLinkState {
   if (link.revokedAt) return 'revoked';
   if (!link.enabled) return 'disabled';
-  if (link.expireAt && link.expireAt < mockDateTime()) return 'expired';
+  if (link.expireAt && link.expireAt <= mockDateTime()) return 'expired';
   if (link.maxAccessCount && link.accessCount >= link.maxAccessCount) return 'exhausted';
+  if (link.maxDownloadCount && link.downloadCount >= link.maxDownloadCount) return 'exhausted';
   return 'active';
 }
 
@@ -622,6 +624,7 @@ const nodeItemHandlers = [
   }),
   mock(driveNodeContract.shareLinks, ({ params, ok }) => ok(mockDriveShareLinks.filter((l) => l.nodeId === params.id).map(withState))),
   mock(driveNodeContract.createShareLink, ({ params, body, ok }) => {
+    if (body.kind !== 'share' || body.capabilities.includes('upload')) return badRequest('文件收集尚未启用', { status: 400 });
     const node = findNode(params.id);
     if (!node) return notFound('节点不存在', { status: 404 });
     if (!mockDriveSettings.externalShareEnabled) return forbidden('管理员已关闭外链分享功能', { status: 403 });
@@ -631,7 +634,7 @@ const nodeItemHandlers = [
     const token = `demo-share-${id.toString().padStart(4, '0')}-${Math.random().toString(36).slice(2, 10)}`;
     const link: DriveShareLink = {
       id, nodeId: node.id, nodeName: node.name, nodeType: node.type, spaceId: node.spaceId, token, url: `/public/drive/${token}`,
-      hasPassword: !!body.password, permission: body.permission, enabled: true, expireAt: body.expireAt, maxAccessCount: body.maxAccessCount,
+      hasPassword: !!body.password, kind: body.kind, capabilities: normalizeDriveShareCapabilities(body.capabilities), maxDownloadCount: body.maxDownloadCount, uploadCount: 0, enabled: true, expireAt: body.expireAt, maxAccessCount: body.maxAccessCount,
       accessCount: 0, downloadCount: 0, revokedAt: null, remark: body.remark ?? null, state: 'active', createdBy: MOCK_USER.id, createdByName: MOCK_USER.name, createdAt: now, updatedAt: now,
     };
     if (body.password) mockDriveSharePasswords.set(id, body.password);
@@ -653,6 +656,7 @@ const shareLinkHandlers = [
     let list = mockDriveShareLinks.map(withState);
     if (query.keyword) list = filterByKeyword(list, query.keyword, [(l) => l.nodeName, (l) => l.remark]);
     if (query.state) list = list.filter((l) => l.state === query.state);
+    if (query.kind) list = list.filter((l) => l.kind === query.kind);
     return ok(paginate(list));
   }),
   mock(driveShareLinkContract.accessLogs, ({ params, ok, paginate }) =>
@@ -661,8 +665,15 @@ const shareLinkHandlers = [
   mock(driveShareLinkContract.update, ({ params, body, ok }) => {
     const link = requireItem(mockDriveShareLinks, params.id, '外链不存在', { status: 404 });
     if (link.revokedAt) return badRequest('外链已撤销，不能修改', { status: 400 });
+    if (body.capabilities?.includes('upload')) return badRequest('文件收集尚未启用', { status: 400 });
     const { password, clearPassword, ...rest } = body;
     Object.assign(link, rest, { updatedAt: mockDateTime() });
+    if (body.capabilities) link.capabilities = normalizeDriveShareCapabilities(body.capabilities);
+    if (body.capabilities || password || clearPassword || body.enabled !== undefined) {
+      for (const [session, shareId] of mockDriveShareSessions) {
+        if (shareId === link.id) mockDriveShareSessions.delete(session);
+      }
+    }
     if (clearPassword) { mockDriveSharePasswords.delete(link.id); link.hasPassword = false; }
     if (password) { mockDriveSharePasswords.set(link.id, password); link.hasPassword = true; }
     return ok(withState(link), '已更新');
@@ -685,8 +696,11 @@ function sessionShare(request: Request, querySession: string | undefined, token:
   if (!session) return null;
   const shareId = mockDriveShareSessions.get(session);
   const share = shareByToken(token);
-  return share && share.id === shareId ? share : null;
+  if (!share || share.id !== shareId || share.revokedAt || !share.enabled || (share.expireAt && share.expireAt <= mockDateTime())) return null;
+  return share;
 }
+
+const mockDownloadReceipts = new Set<string>();
 
 const publicHandlers = [
   mock(drivePublicShareContract.access, ({ params, body, ok }) => {
@@ -708,17 +722,24 @@ const publicHandlers = [
     logMockDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'share_access', actorId: null, actorName: null, shareId: share.id, detail: null });
     return ok({
       session, expiresAt: mockDateTime(new Date(Date.now() + 2 * 60 * 60_000)),
-      meta: { token: share.token, permission: share.permission, requirePassword: !!expected, node: toPublicNode(node, share.token), expireAt: share.expireAt, sharerName: share.createdByName },
+      meta: { token: share.token, kind: share.kind, capabilities: share.capabilities, requirePassword: !!expected, node: toPublicNode(node, share.token), expireAt: share.expireAt, sharerName: share.createdByName },
     });
   }),
   mock(drivePublicShareContract.content, ({ params, query, request }) => {
     const share = sessionShare(request, query.session, params.token);
     if (!share) return unauthorized('访问会话已失效，请重新验证', { status: 401 });
     const download = !!query.download;
-    if (download && share.permission !== 'download') return forbidden('该外链仅允许在线预览', { status: 403 });
+    if (download && !share.capabilities.includes('download')) return forbidden('该外链仅允许在线预览', { status: 403 });
     const node = findNode(params.nodeId);
     if (!node || node.type !== 'file' || (node.id !== share.nodeId && !node.ancestorIds.includes(share.nodeId))) return notFound('文件不存在', { status: 404 });
-    if (download) share.downloadCount += 1;
+    if (download) {
+      const receipt = `${request.headers.get('session') ?? query.session}:${node.id}:${node.currentVersion}`;
+      if (!mockDownloadReceipts.has(receipt)) {
+        if (share.maxDownloadCount && share.downloadCount >= share.maxDownloadCount) return forbidden('下载次数已用尽', { status: 403 });
+        share.downloadCount += 1;
+        mockDownloadReceipts.add(receipt);
+      }
+    }
     return contentResponse(node, download);
   }),
   mock(drivePublicShareContract.children, ({ params, query, request, ok }) => {
@@ -732,7 +753,9 @@ const publicHandlers = [
   mock(drivePublicShareContract.save, ({ params, body, request, url, ok }) => {
     const share = sessionShare(request, url.searchParams.get('session') ?? undefined, params.token);
     if (!share) return unauthorized('访问会话已失效，请重新验证', { status: 401 });
-    if (share.permission !== 'download') return forbidden('该外链仅允许在线预览，不能转存', { status: 403 });
+    if (!share.capabilities.includes('download')) return forbidden('该外链仅允许在线预览，不能转存', { status: 403 });
+    if (share.maxDownloadCount && share.downloadCount >= share.maxDownloadCount) return forbidden('下载次数已用尽', { status: 403 });
+    share.downloadCount += 1;
     const target = body.targetParentId ? findNode(body.targetParentId) : null;
     const now = mockDateTime();
     for (const id of body.nodeIds ?? [share.nodeId]) {
@@ -748,13 +771,13 @@ const publicHandlers = [
     const share = shareByToken(params.token);
     if (!share) return notFound('链接不存在或已失效', { status: 404 });
     const state = shareState(share);
-    if (state !== 'active') return forbidden(SHARE_STATE_MESSAGES[state], { status: 403 });
     const querySession = url.searchParams.get('session') ?? undefined;
     const authed = sessionShare(request, querySession, params.token);
+    if (state !== 'active' && !(state === 'exhausted' && authed)) return forbidden(SHARE_STATE_MESSAGES[state], { status: 403 });
     const node = findNode(share.nodeId);
     const hasSessionParam = !!(request.headers.get('session') ?? querySession);
     if (hasSessionParam && !authed) return unauthorized('访问会话已失效，请重新验证', { status: 401 });
-    return ok({ token: share.token, permission: share.permission, requirePassword: mockDriveSharePasswords.has(share.id), node: authed && node ? toPublicNode(node, share.token) : null, expireAt: share.expireAt, sharerName: share.createdByName });
+    return ok({ token: share.token, kind: share.kind, capabilities: share.capabilities, requirePassword: mockDriveSharePasswords.has(share.id), node: authed && node ? toPublicNode(node, share.token) : null, expireAt: share.expireAt, sharerName: share.createdByName });
   }),
 ];
 

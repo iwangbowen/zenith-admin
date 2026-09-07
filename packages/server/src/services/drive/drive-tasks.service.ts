@@ -1,6 +1,11 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { PassThrough, Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { createWriteStream, openAsBlob } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { formatBytes } from '@zenith/shared/core';
 import {
   DRIVE_SYNC_ZIP_MAX_BYTES,
@@ -12,13 +17,12 @@ import { db } from '../../db';
 import { driveNodes, driveSpaces, fileStorageConfigs, managedFiles, type DriveNodeRow, type DriveSpaceRow } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { readStoredFile } from '../../lib/file-storage';
-import logger from '../../lib/logger';
 import { registerTaskHandler, submitAsyncTask, TaskCancelledError } from '../../lib/task-center';
 import { saveGeneratedManagedFile } from '../files/files.service';
-import { resolveNodeRoles } from './drive-access.service';
+import { ensureNodeRoleOnAll, loadDriveSubjects, resolveNodeRoles } from './drive-access.service';
 import { logDriveActivity } from './drive-activity.service';
-import { enrichNode, isTextIndexCandidate, isThumbnailCandidate } from './drive-enrichment.service';
-import { copySubtree, loadNodesByIds, loadSubtree, purgeExpiredRecycleNodes, resolveWritableParent } from './drive-nodes.service';
+import { scheduleNodeRenditions, isTextIndexCandidate, isThumbnailCandidate } from './drive-renditions.service';
+import { copySubtree, loadAccessibleSubtree, loadNodesByIds, purgeExpiredRecycleNodes, resolveWritableParent } from './drive-nodes.service';
 import { notifyBatchDownloadReady } from './drive-notify.service';
 import { recalcSpaceUsage } from './drive-spaces.service';
 import { getDriveSettings } from './drive-settings.service';
@@ -33,6 +37,7 @@ interface ZipEntry {
 
 /** 展开所选节点为 zip 条目：文件夹递归带路径，同名文件自动去重 */
 async function collectZipEntries(nodes: DriveNodeRow[]): Promise<{ entries: ZipEntry[]; totalBytes: number }> {
+  const subjects = await loadDriveSubjects();
   const entries: ZipEntry[] = [];
   let totalBytes = 0;
   const used = new Set<string>();
@@ -54,7 +59,7 @@ async function collectZipEntries(nodes: DriveNodeRow[]): Promise<{ entries: ZipE
       totalBytes += node.size;
       continue;
     }
-    const subtree = await loadSubtree(db, node.id);
+    const subtree = await loadAccessibleSubtree(node.id, 'downloader', subjects);
     const pathMap = new Map<number, string>([[node.id, unique(node.name)]]);
     for (const child of subtree) {
       if (child.id === node.id) continue;
@@ -96,8 +101,7 @@ async function buildZipStream(entries: ZipEntry[], onEntry?: (index: number) => 
     for (const [index, entry] of entries.entries()) {
       const file = fileMap.get(entry.fileId);
       const config = file ? configMap.get(file.storageConfigId) : undefined;
-      if (!file || !config) continue;
-      try {
+      if (!file || !config) throw new Error(`Archive source is missing: ${entry.entryName}`);
         const { stream } = await readStoredFile(file, config);
         archive.append(Readable.fromWeb(stream as Parameters<typeof Readable.fromWeb>[0]), { name: entry.entryName });
         await new Promise<void>((resolve, reject) => {
@@ -108,10 +112,6 @@ async function buildZipStream(entries: ZipEntry[], onEntry?: (index: number) => 
           archive.once('error', fail);
         });
         if (onEntry) await onEntry(index + 1);
-      } catch (err) {
-        if (err instanceof TaskCancelledError) throw err;
-        logger.warn({ err, fileId: entry.fileId }, 'drive: 打包时跳过读取失败的文件');
-      }
     }
     await archive.finalize();
   })().catch((err) => passThrough.destroy(err instanceof Error ? err : new Error(String(err))));
@@ -165,23 +165,28 @@ export function registerDriveTaskHandlers(): void {
         const { cancelRequested } = await ctx.progress({ processed: done, total: entries.length, note: `已打包 ${done}/${entries.length}` });
         if (cancelRequested) throw new TaskCancelledError('用户取消打包');
       });
-      const chunks: Buffer[] = [];
-      for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      const buffer = Buffer.concat(chunks);
       const user = currentUser();
-      const file = await saveGeneratedManagedFile({
-        buffer,
-        filename: `drive_${Date.now()}.zip`,
-        mimeType: 'application/zip',
-        tenantId: user.tenantId ?? null,
-        createdBy: user.userId,
-      });
+      const directory = await mkdtemp(join(tmpdir(), 'zenith-drive-'));
+      let file;
+      try {
+        const path = join(directory, 'archive.zip');
+        await pipeline(stream, createWriteStream(path));
+        file = await saveGeneratedManagedFile({
+          buffer: await openAsBlob(path, { type: 'application/zip' }),
+          filename: `drive_${Date.now()}.zip`,
+          mimeType: 'application/zip',
+          tenantId: user.tenantId ?? null,
+          createdBy: user.userId,
+        });
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
       const downloadUrl = `/api/files/${file.id}/content`;
       for (const row of rows) {
         await logDriveActivity({ spaceId: row.spaceId, nodeId: row.id, nodeName: row.name, nodeType: row.type, action: 'download', detail: { batch: true, taskId: ctx.taskId } });
       }
       await notifyBatchDownloadReady(user.userId, user.tenantId ?? null, entries.length, totalBytes, downloadUrl, `drive-zip:${ctx.taskId}`);
-      return { fileId: file.id, downloadUrl, fileCount: entries.length, bytes: buffer.length };
+      return { fileId: file.id, downloadUrl, fileCount: entries.length, bytes: file.size };
     },
   });
 
@@ -200,13 +205,15 @@ export function registerDriveTaskHandlers(): void {
       const targetParentId = ctx.payload.targetParentId == null ? null : Number(ctx.payload.targetParentId);
       const doneIds = new Set<number>((ctx.checkpoint?.doneIds as number[]) ?? []);
       const rows = await loadNodesByIds(ids);
+      await ensureNodeRoleOnAll(rows, 'downloader', '没有复制权限');
+      const subjects = await loadDriveSubjects();
       const { space, parent, ancestorIds } = await resolveWritableParent(targetSpaceId, targetParentId);
       const settings = await getDriveSettings();
       let copied = Number(ctx.checkpoint?.copied ?? 0);
       for (const [index, row] of rows.entries()) {
         if (!doneIds.has(row.id)) {
-          const subtree = await loadSubtree(db, row.id);
-          copied += await db.transaction((tx) => copySubtree(tx, subtree, space, parent?.id ?? null, ancestorIds, settings));
+          const subtree = await loadAccessibleSubtree(row.id, 'downloader', subjects);
+          copied += await db.transaction((tx) => copySubtree(tx, subtree, space, parent, ancestorIds, settings));
           doneIds.add(row.id);
         }
         const { cancelRequested } = await ctx.progress({
@@ -261,10 +268,10 @@ export function registerDriveTaskHandlers(): void {
         isNull(driveNodes.deletedAt),
         spaceId ? eq(driveNodes.spaceId, spaceId) : sql`true`,
       ));
-      const candidates = rows.filter((r) => (settings.thumbnailEnabled && !r.thumbnailFileId && isThumbnailCandidate(r)) || (settings.textIndexEnabled && isTextIndexCandidate(r)));
+      const candidates = rows.filter((r) => (settings.thumbnailEnabled && isThumbnailCandidate(r)) || (settings.textIndexEnabled && isTextIndexCandidate(r)));
       let processed = Number(ctx.checkpoint?.processed ?? 0);
       for (let i = processed; i < candidates.length; i++) {
-        await enrichNode(candidates[i].id);
+        await scheduleNodeRenditions(candidates[i].id);
         processed = i + 1;
         const { cancelRequested } = await ctx.progress({ processed, total: candidates.length, note: candidates[i].name, checkpoint: { processed } });
         if (cancelRequested) return { processed };

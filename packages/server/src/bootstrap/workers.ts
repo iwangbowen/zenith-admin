@@ -45,6 +45,12 @@ export async function registerBackgroundWorkers(): Promise<void> {
     registerIotBatchTaskHandlers(); // IoT 批量指令 / 批量期望属性
     const { registerDriveTaskHandlers } = await import('../services/drive/drive-tasks.service');
     registerDriveTaskHandlers(); // 企业网盘打包下载 / 批量复制 / 容量重算 / 索引补建 / 回收站清理
+    const { registerDriveRenditionWorker } = await import('../services/drive/drive-renditions.service');
+    await registerDriveRenditionWorker(); // 网盘缩略图 / 正文抽取等渲染产物队列
+    const { registerDrivePartitionJob } = await import('../services/drive/drive-partitions.service');
+    await registerDrivePartitionJob(); // 网盘动态 / 外链访问日志月分区滚动预建
+    const { registerManagedFileGcJob } = await import('../services/files/file-gc.service');
+    await registerManagedFileGcJob(); // 托管文件孤儿对象延迟回收
     const { reloadCmsSearchDict } = await import('../services/cms/cms-search.service');
     await reloadCmsSearchDict(); // CMS 检索自定义词典（DB → jieba）
     // AI 评测已迁移至 Mastra Datasets/Experiments(自带异步执行),不再挂任务中心

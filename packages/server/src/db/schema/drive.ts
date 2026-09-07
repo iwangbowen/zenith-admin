@@ -17,15 +17,23 @@ export const driveRoleEnum = pgEnum('drive_role', ['viewer', 'downloader', 'edit
 
 export const driveNodeTypeEnum = pgEnum('drive_node_type', ['folder', 'file']);
 
-/** 外链权限：preview 仅在线预览；download 允许下载 */
-export const driveSharePermissionEnum = pgEnum('drive_share_permission', ['preview', 'download']);
+/** 外链能力位：preview 在线预览；download 下载 / 转存；upload 向目标文件夹上传（文件收集） */
+export const driveShareCapabilityEnum = pgEnum('drive_share_capability', ['preview', 'download', 'upload']);
+
+/** 外链种类：share 分享出去；collect 文件收集（匿名向文件夹上传） */
+export const driveShareKindEnum = pgEnum('drive_share_kind', ['share', 'collect']);
+
+/** 渲染产物种类：thumbnail 缩略图；text 正文抽取；pdf 预览用 PDF；preview 预览页图 */
+export const driveRenditionKindEnum = pgEnum('drive_rendition_kind', ['thumbnail', 'text', 'pdf', 'preview']);
+
+export const driveRenditionStatusEnum = pgEnum('drive_rendition_status', ['pending', 'ready', 'failed', 'skipped']);
 
 /** 同名冲突策略：rename 自动加后缀；version 作为新版本覆盖；fail 直接报错 */
 export const driveUploadConflictPolicyEnum = pgEnum('drive_upload_conflict_policy', ['rename', 'version', 'fail']);
 
 export const driveActivityActionEnum = pgEnum('drive_activity_action', [
   'upload', 'new_version', 'create_folder', 'rename', 'move', 'copy', 'delete', 'restore', 'purge',
-  'download', 'preview', 'share_create', 'share_update', 'share_revoke', 'share_access', 'save_from_share',
+  'download', 'preview', 'share_create', 'share_update', 'share_revoke', 'share_access', 'save_from_share', 'collect_upload',
   'permission_change', 'inherit_change', 'version_restore', 'version_delete', 'lock', 'unlock', 'comment', 'tag',
 ]);
 
@@ -100,12 +108,17 @@ export const driveNodes = pgTable('drive_nodes', {
   currentVersion: integer().notNull().default(1),
   /** false = 断开继承：上级授权与空间普通角色不再透传（空间 manager 除外） */
   inheritPermissions: boolean().notNull().default(true),
+  /**
+   * ACL 生效链（物化）：从最近一个断开继承的祖先（含）到父节点的祖先 id；自身断开继承时为空数组。
+   * 有效角色 = max(自身授权, 链上授权[, aclOpen ? 空间角色 : ∅])，可见性谓词由此一条 SQL 精确成立。
+   */
+  aclChainIds: integer().array().notNull().default([]),
+  /** true = 从根到自身链上没有任何断点，空间角色透传到本节点 */
+  aclOpen: boolean().notNull().default(true),
   /** 签出锁 */
   lockedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   lockedAt: timestamp(),
   lockExpiresAt: timestamp(),
-  /** 图片缩略图（异步生成） */
-  thumbnailFileId: pgUuid().references(() => managedFiles.id, { onDelete: 'set null' }),
   /** 软删除；非 null 表示在回收站 */
   deletedAt: timestamp(),
   deletedBy: integer().references(() => users.id, { onDelete: 'set null' }),
@@ -117,6 +130,7 @@ export const driveNodes = pgTable('drive_nodes', {
 }, (t) => [
   index('drive_nodes_space_parent_idx').on(t.spaceId, t.parentId, t.deletedAt),
   index('drive_nodes_ancestors_gin_idx').using('gin', t.ancestorIds),
+  index('drive_nodes_acl_chain_gin_idx').using('gin', t.aclChainIds),
   index('drive_nodes_file_idx').on(t.fileId),
   index('drive_nodes_deleted_root_idx').on(t.deletedRootId),
   index('drive_nodes_content_hash_idx').on(t.contentHash),
@@ -173,16 +187,23 @@ export type DriveFileVersionRow = typeof driveFileVersions.$inferSelect;
 export const driveShareLinks = pgTable('drive_share_links', {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   nodeId: integer().notNull().references(() => driveNodes.id, { onDelete: 'cascade' }),
+  /** share = 分享；collect = 文件收集（目标必须是文件夹，能力位含 upload） */
+  kind: driveShareKindEnum().notNull().default('share'),
   /** 明文 token 的 SHA-256（hex）；明文只在 tokenEncrypted 中加密留存 */
   token: varchar({ length: 64 }).notNull().unique(),
   tokenEncrypted: varchar({ length: 256 }),
   passwordHash: varchar({ length: 100 }),
-  permission: driveSharePermissionEnum().notNull().default('preview'),
+  /** 能力位集合（preview / download / upload） */
+  capabilities: driveShareCapabilityEnum().array().notNull().default(['preview']),
   enabled: boolean().notNull().default(true),
   expireAt: timestamp(),
   maxAccessCount: integer(),
   accessCount: integer().notNull().default(0),
+  /** 下载次数上限；null = 不限 */
+  maxDownloadCount: integer(),
   downloadCount: integer().notNull().default(0),
+  /** 文件收集：累计收到的文件数 */
+  uploadCount: integer().notNull().default(0),
   /** 访问会话版本；+1 即让所有已签发会话失效 */
   sessionVersion: integer().notNull().default(1),
   revokedAt: timestamp(),
@@ -197,28 +218,36 @@ export const driveShareLinks = pgTable('drive_share_links', {
 
 export type DriveShareLinkRow = typeof driveShareLinks.$inferSelect;
 
-/** 外链访问留痕（含被拒绝的尝试） */
+/**
+ * 外链访问留痕（含被拒绝的尝试）。
+ * 按 created_at 月度 RANGE 分区（分区 DDL 在 0005_drive_partitions.sql，Drizzle 仍以普通表描述列 / 索引 / 外键）；
+ * 没有代理主键：分区键必须进主键，`id` 只作展示序号。保留策略按分区整表 DROP。
+ */
 export const driveShareAccessLogs = pgTable('drive_share_access_logs', {
-  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  id: integer().generatedAlwaysAsIdentity(),
   shareId: integer().notNull().references(() => driveShareLinks.id, { onDelete: 'cascade' }),
   /** 冗余节点 id，便于按文件检索 */
   nodeId: integer().notNull(),
-  /** access=校验/进入；list=浏览子目录；preview=预览；download=下载；save=转存 */
+  /** access=校验/进入；list=浏览子目录；preview=预览；download=下载；save=转存；upload=收集上传 */
   action: varchar({ length: 16 }).notNull(),
   clientIp: varchar({ length: 64 }),
   /** 是否通过校验（false=密码错误 / 已过期 / 超次数） */
   ok: boolean().notNull().default(true),
   createdAt: timestamp().defaultNow().notNull(),
 }, (t) => [
-  index('drive_share_access_logs_share_idx').on(t.shareId),
-  index('drive_share_access_logs_created_idx').on(t.createdAt),
+  index('drive_share_access_logs_share_idx').on(t.shareId, t.createdAt),
+  index('drive_share_access_logs_created_brin_idx').using('brin', t.createdAt),
 ]);
 
 // ─── 动态 / 个人状态 ──────────────────────────────────────────────────────────
 
-/** 文件动态（追加型；外链匿名访问 actorId 为 null） */
+/**
+ * 文件动态（追加型；外链匿名访问 actorId 为 null）。
+ * 按 created_at 月度 RANGE 分区（同 drive_share_access_logs 约定）；`id` 为无主键的序号列，
+ * 列表按 (created_at, id) 倒序。预览类高频事件在写入侧按 (actor, node, 10 分钟) 去重。
+ */
 export const driveActivities = pgTable('drive_activities', {
-  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  id: integer().generatedAlwaysAsIdentity(),
   spaceId: integer().notNull(),
   /** 节点彻底删除后置 null，nodeName 保留快照 */
   nodeId: integer().references(() => driveNodes.id, { onDelete: 'set null' }),
@@ -234,8 +263,8 @@ export const driveActivities = pgTable('drive_activities', {
 }, (t) => [
   index('drive_activities_node_idx').on(t.nodeId, t.createdAt),
   index('drive_activities_space_idx').on(t.spaceId, t.createdAt),
-  index('drive_activities_actor_idx').on(t.actorId),
-  index('drive_activities_created_idx').on(t.createdAt),
+  index('drive_activities_actor_idx').on(t.actorId, t.createdAt),
+  index('drive_activities_created_brin_idx').using('brin', t.createdAt),
 ]);
 
 export type DriveActivityRow = typeof driveActivities.$inferSelect;
@@ -327,4 +356,33 @@ export const driveNodeTexts = pgTable('drive_node_texts', {
   content: text().notNull().default(''),
   searchVector: tsvector(),
   updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
-}, (t) => [index('drive_node_texts_search_idx').using('gin', t.searchVector)]);
+}, (t) => [
+  index('drive_node_texts_search_idx').using('gin', t.searchVector),
+  // CJK 关键词走子串匹配：pg_trgm 让 ILIKE 命中索引而非全表扫
+  index('drive_node_texts_content_trgm_idx').using('gin', t.content.op('gin_trgm_ops')),
+]);
+
+/**
+ * 渲染产物（缩略图 / 正文抽取 / PDF / 预览页图）：每节点每种类一行，随当前版本覆盖。
+ * 生产者是系统队列 worker `drive-renditions`（去重键 node:version:kind），正文本体存 drive_node_texts。
+ */
+export const driveNodeRenditions = pgTable('drive_node_renditions', {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  nodeId: integer().notNull().references(() => driveNodes.id, { onDelete: 'cascade' }),
+  /** 产物对应的文件版本号 */
+  version: integer().notNull(),
+  kind: driveRenditionKindEnum().notNull(),
+  status: driveRenditionStatusEnum().notNull().default('pending'),
+  /** 二进制产物（缩略图 / PDF / 页图）对应的托管文件；text 类为 null */
+  fileId: pgUuid().references(() => managedFiles.id, { onDelete: 'set null' }),
+  /** 产物元信息（宽高 / 页数 / 字符数等） */
+  meta: jsonb().$type<Record<string, unknown>>(),
+  error: varchar({ length: 500 }),
+  ...timestampColumns(),
+}, (t) => [
+  unique('drive_node_renditions_node_kind_unique').on(t.nodeId, t.kind),
+  index('drive_node_renditions_file_idx').on(t.fileId),
+  index('drive_node_renditions_status_idx').on(t.status, t.kind),
+]);
+
+export type DriveNodeRenditionRow = typeof driveNodeRenditions.$inferSelect;

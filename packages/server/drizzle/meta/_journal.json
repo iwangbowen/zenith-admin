@@ -29,6 +29,34 @@
       "when": 1788660614944,
       "tag": "0003_data_mask_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788751680678,
+      "tag": "0004_drive_v2_acl_chain_renditions_refcount",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788751780609,
+      "tag": "0005_drive_v2_drop_legacy_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788751797346,
+      "tag": "0006_drive_partitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788758122759,
+      "tag": "0007_drive_gc_tombstone",
+      "breakpoints": true
     }
   ]
 }

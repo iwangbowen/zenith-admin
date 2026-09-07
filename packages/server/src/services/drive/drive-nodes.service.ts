@@ -19,27 +19,39 @@ import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import {
   driveFileVersions,
+  driveNodeRenditions,
   driveNodes,
   driveNodeStars,
   driveNodeTags,
   driveShareLinks,
   driveSpaces,
   driveTags,
-  managedFiles,
   type DriveNodeRow,
   type DriveSpaceRow,
 } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { deleteStoredFile } from '../../lib/file-storage';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
-import logger from '../../lib/logger';
-import { ensureNodeRole, ensureSpaceRole, filterVisibleNodes, loadDriveSubjects, resolveNodeRole, resolveNodeRoles, resolveSpaceRoles } from './drive-access.service';
+import { releaseManagedFiles, retainManagedFiles } from '../files/file-gc.service';
+import {
+  attachNodeRoles,
+  ensureNodeRole,
+  ensureNodeRoleOnAll,
+  ensureSpaceRole,
+  loadDriveSubjects,
+  managerSpaceIdsSubquery,
+  resolveNodeRole,
+  resolveNodeRoles,
+  visibleNodeCondition,
+  type DriveSubjectSet,
+} from './drive-access.service';
+import { childAclOf, ownAclOf } from './drive-acl';
 import { collectNodeUserIds, extensionOf, mapDriveNode, mapDriveTag, resolveUserNames, suffixedName } from './drive-common';
+import { assertRenameExtensionAllowed } from './drive-content-policy';
 import { logDriveActivity } from './drive-activity.service';
-import { ensureDriveSpaceExists, getSpaceQuotaState, releaseSpaceQuota, reserveSpaceQuota } from './drive-spaces.service';
+import { ensureDriveSpaceExists, releaseSpaceQuota, reserveSpaceQuota } from './drive-spaces.service';
 import { effectiveQuotaBytes, getDriveSettings, type DriveSettings } from './drive-settings.service';
 
 /** 目录最大深度（含根级子项 = 1） */
@@ -74,7 +86,7 @@ export async function loadBreadcrumbs(node: Pick<DriveNodeRow, 'ancestorIds'>): 
   return node.ancestorIds.filter((id) => map.has(id)).map((id) => ({ id, name: map.get(id)! }));
 }
 
-/** 节点行批量装饰为 DTO：用户名、收藏、标签 */
+/** 节点行批量装饰为 DTO：用户名、收藏、标签、缩略图可用性 */
 export async function decorateNodes(
   rows: DriveNodeRow[],
   roleMap?: Map<number, DriveRole | null>,
@@ -82,14 +94,17 @@ export async function decorateNodes(
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const uid = currentUserId();
-  const [names, stars, tagRows] = await Promise.all([
+  const [names, stars, tagRows, thumbs] = await Promise.all([
     resolveUserNames(collectNodeUserIds(rows)),
     db.select({ nodeId: driveNodeStars.nodeId }).from(driveNodeStars).where(and(eq(driveNodeStars.userId, uid), inArray(driveNodeStars.nodeId, ids))),
     db.select({ nodeId: driveNodeTags.nodeId, tag: driveTags }).from(driveNodeTags)
       .innerJoin(driveTags, eq(driveTags.id, driveNodeTags.tagId))
       .where(inArray(driveNodeTags.nodeId, ids)),
+    db.select({ nodeId: driveNodeRenditions.nodeId }).from(driveNodeRenditions)
+      .where(and(inArray(driveNodeRenditions.nodeId, ids), eq(driveNodeRenditions.kind, 'thumbnail'), eq(driveNodeRenditions.status, 'ready'))),
   ]);
   const starSet = new Set(stars.map((s) => s.nodeId));
+  const thumbSet = new Set(thumbs.map((t) => t.nodeId));
   const tagMap = new Map<number, DriveTag[]>();
   for (const r of tagRows) {
     const list = tagMap.get(r.nodeId) ?? [];
@@ -101,7 +116,14 @@ export async function decorateNodes(
     isStarred: starSet.has(row.id),
     myRole: roleMap?.get(row.id),
     tags: tagMap.get(row.id) ?? [],
+    hasThumbnail: thumbSet.has(row.id),
   }));
+}
+
+/** 单节点 DTO（附带角色） */
+export async function decorateNode(row: DriveNodeRow, role: DriveRole | null | undefined): Promise<DriveNode> {
+  const [node] = await decorateNodes([row], new Map([[row.id, role ?? null]]));
+  return node;
 }
 
 // ─── 目录列表 ─────────────────────────────────────────────────────────────────
@@ -145,12 +167,15 @@ async function resolveDirectory(spaceId: number | undefined, parentId: number | 
 export async function listDriveNodes(q: ListDriveNodesQuery): Promise<DriveNodeListResult> {
   const { page = 1, pageSize = 50 } = q;
   const { space, parent, role } = await resolveDirectory(q.spaceId, q.parentId);
+  const subjects = await loadDriveSubjects();
   const where = buildWhere(
     eq(driveNodes.spaceId, space.id),
     parent ? eq(driveNodes.parentId, parent.id) : isNull(driveNodes.parentId),
     isNull(driveNodes.deletedAt),
     q.type ? eq(driveNodes.type, q.type) : undefined,
     keywordCondition(q.keyword, [driveNodes.name], 'ilike'),
+    // 精确可见性：断开继承且未授权的子文件夹不进 total 也不进页
+    visibleNodeCondition(subjects),
   );
   const direction = q.order === 'desc' ? desc : asc;
   const [total, rows] = await Promise.all([
@@ -163,12 +188,11 @@ export async function listDriveNodes(q: ListDriveNodesQuery): Promise<DriveNodeL
       pageSize,
     ),
   ]);
-  // 页内精确校验：断开继承的子文件夹对无授权者隐藏
-  const visible = await filterVisibleNodes(rows);
-  const roleMap = new Map(visible.map((r) => [r.id, r.myRole]));
+  const withRoles = await attachNodeRoles(rows, subjects);
+  const roleMap = new Map(withRoles.map((r) => [r.id, r.myRole]));
   const settings = await getDriveSettings();
   const [list, breadcrumbs, parentNames] = await Promise.all([
-    decorateNodes(visible, roleMap),
+    decorateNodes(rows, roleMap),
     parent ? loadBreadcrumbs(parent) : Promise.resolve([]),
     parent ? resolveUserNames(collectNodeUserIds([parent])) : Promise.resolve(new Map<number, string>()),
   ]);
@@ -191,8 +215,8 @@ export async function getDriveNodeDetail(id: number): Promise<DriveNodeDetail> {
   const row = await ensureDriveNodeExists(id, { allowDeleted: true });
   const role = await ensureNodeRole(row, 'viewer', '没有该文件的访问权限');
   const [space] = await db.select().from(driveSpaces).where(eq(driveSpaces.id, row.spaceId)).limit(1);
-  const [[node], breadcrumbs, versionCount, shareLinkCount, childCount] = await Promise.all([
-    decorateNodes([row], new Map([[row.id, role]])),
+  const [node, breadcrumbs, versionCount, shareLinkCount, childCount] = await Promise.all([
+    decorateNode(row, role),
     loadBreadcrumbs(row),
     db.$count(driveFileVersions, eq(driveFileVersions.nodeId, id)),
     db.$count(driveShareLinks, and(eq(driveShareLinks.nodeId, id), isNull(driveShareLinks.revokedAt))),
@@ -229,7 +253,7 @@ export async function resolveWritableParent(spaceId: number, parentId: number | 
 }
 
 export async function createDriveFolder(data: CreateDriveFolderInput): Promise<DriveNode> {
-  const { space, ancestorIds, role } = await resolveWritableParent(data.spaceId, data.parentId);
+  const { space, parent, ancestorIds, role } = await resolveWritableParent(data.spaceId, data.parentId);
   try {
     const row = await db.transaction(async (tx) => {
       const [created] = await tx.insert(driveNodes).values({
@@ -237,6 +261,7 @@ export async function createDriveFolder(data: CreateDriveFolderInput): Promise<D
         parentId: data.parentId,
         ancestorIds,
         depth: ancestorIds.length,
+        ...childAclOf(parent),
         type: 'folder',
         name: data.name,
         tenantId: getCreateTenantId(currentUser()),
@@ -244,8 +269,7 @@ export async function createDriveFolder(data: CreateDriveFolderInput): Promise<D
       await logDriveActivity({ spaceId: space.id, nodeId: created.id, nodeName: created.name, nodeType: 'folder', action: 'create_folder' }, tx);
       return created;
     });
-    const [node] = await decorateNodes([row], new Map([[row.id, role]]));
-    return node;
+    return decorateNode(row, role);
   } catch (err) {
     return rethrowPgUniqueViolation(err, NAME_UNIQUE_MESSAGE, NAME_UNIQUE_BY_CONSTRAINT);
   }
@@ -255,10 +279,8 @@ export async function renameDriveNode(id: number, name: string): Promise<DriveNo
   const before = await ensureDriveNodeExists(id);
   const role = await ensureNodeRole(before, 'editor', '没有该文件的编辑权限');
   assertNotLockedByOthers(before);
-  if (before.name === name) {
-    const [node] = await decorateNodes([before], new Map([[before.id, role]]));
-    return node;
-  }
+  if (before.name === name) return decorateNode(before, role);
+  if (before.type === 'file') await assertRenameExtensionAllowed(name);
   try {
     const row = await db.transaction(async (tx) => {
       const [updated] = await tx.update(driveNodes)
@@ -267,8 +289,7 @@ export async function renameDriveNode(id: number, name: string): Promise<DriveNo
       await logDriveActivity({ spaceId: before.spaceId, nodeId: id, nodeName: name, nodeType: before.type, action: 'rename', detail: { from: before.name, to: name } }, tx);
       return updated;
     });
-    const [node] = await decorateNodes([row], new Map([[row.id, role]]));
-    return node;
+    return decorateNode(row, role);
   } catch (err) {
     return rethrowPgUniqueViolation(err, NAME_UNIQUE_MESSAGE, NAME_UNIQUE_BY_CONSTRAINT);
   }
@@ -281,19 +302,56 @@ export function assertNotLockedByOthers(node: Pick<DriveNodeRow, 'lockedBy' | 'l
   if (node.lockedBy !== currentUserId()) throw new HTTPException(423, { message: `「${node.name}」已被他人签出锁定` });
 }
 
-// ─── 移动 / 复制 ──────────────────────────────────────────────────────────────
-
-async function ensureEditorOnAll(rows: DriveNodeRow[], message: string) {
-  const roleMap = await resolveNodeRoles(rows);
-  for (const row of rows) {
-    if (!driveRoleAtLeast(roleMap.get(row.id)?.role, 'editor')) throw new HTTPException(403, { message: `${message}：${row.name}` });
-  }
+/** 子树内（含根）存在被他人有效锁定的文件时拒绝移动 / 删除整棵子树 */
+export async function assertSubtreeNotLockedByOthers(roots: DriveNodeRow[]) {
+  roots.forEach(assertNotLockedByOthers);
+  const folderIds = roots.filter((r) => r.type === 'folder').map((r) => r.id);
+  if (folderIds.length === 0) return;
+  const [locked] = await db.select({ name: driveNodes.name }).from(driveNodes).where(and(
+    sql`${driveNodes.ancestorIds} && ARRAY[${sql.join(folderIds.map((id) => sql`${id}`), sql`, `)}]::integer[]`,
+    isNull(driveNodes.deletedAt),
+    isNotNull(driveNodes.lockedBy),
+    sql`${driveNodes.lockedBy} <> ${currentUserId()}`,
+    sql`(${driveNodes.lockExpiresAt} is null or ${driveNodes.lockExpiresAt} > now())`,
+  )).limit(1);
+  if (locked) throw new HTTPException(423, { message: `子目录中的「${locked.name}」已被他人签出锁定` });
 }
+
+// ─── 子树加载（含 ACL 裁剪）───────────────────────────────────────────────────
+
+/** 加载子树（含根，未删除），按深度升序 */
+export async function loadSubtree(executor: DbExecutor, rootId: number, opts: { includeDeleted?: boolean; where?: SQL } = {}): Promise<DriveNodeRow[]> {
+  return executor.select().from(driveNodes).where(and(
+    sql`(${driveNodes.id} = ${rootId} OR ${driveNodes.ancestorIds} @> ARRAY[${rootId}]::integer[])`,
+    opts.includeDeleted ? undefined : isNull(driveNodes.deletedAt),
+    opts.where,
+  )).orderBy(asc(driveNodes.depth), asc(driveNodes.id));
+}
+
+/**
+ * 按主体视角加载可访问子树：SQL 精确过滤角色 ≥ minRole 的节点，
+ * 再剪掉父节点不可达的"悬空"后代（不允许穿过不可见文件夹拿到里面的文件）。
+ * 根节点自身不可达时返回空数组。
+ */
+export async function loadAccessibleSubtree(rootId: number, minRole: DriveRole, subjects: DriveSubjectSet, executor: DbExecutor = db): Promise<DriveNodeRow[]> {
+  const rows = await loadSubtree(executor, rootId, { where: visibleNodeCondition(subjects, minRole) });
+  const reachable = new Set<number>();
+  const result: DriveNodeRow[] = [];
+  for (const row of rows) {
+    if (row.id === rootId || (row.parentId !== null && reachable.has(row.parentId))) {
+      reachable.add(row.id);
+      result.push(row);
+    }
+  }
+  return result;
+}
+
+// ─── 移动 / 复制 ──────────────────────────────────────────────────────────────
 
 export async function moveDriveNodes(data: MoveDriveNodesInput): Promise<number> {
   const rows = await loadNodesByIds(data.ids);
-  await ensureEditorOnAll(rows, '没有移动权限');
-  rows.forEach(assertNotLockedByOthers);
+  await ensureNodeRoleOnAll(rows, 'editor', '没有移动权限');
+  await assertSubtreeNotLockedByOthers(rows);
   const { space, parent, ancestorIds: newAnc } = await resolveWritableParent(data.targetSpaceId, data.targetParentId);
   for (const row of rows) {
     if (row.spaceId !== space.id) throw new HTTPException(400, { message: '暂不支持跨空间移动，请使用复制' });
@@ -307,7 +365,7 @@ export async function moveDriveNodes(data: MoveDriveNodesInput): Promise<number>
   try {
     await db.transaction(async (tx) => {
       for (const row of moving) {
-        await relocateSubtree(tx, row, targetParentId, newAnc);
+        await relocateSubtree(tx, row, parent, newAnc);
         await logDriveActivity({
           spaceId: row.spaceId, nodeId: row.id, nodeName: row.name, nodeType: row.type, action: 'move',
           detail: { fromParentId: row.parentId ?? null, toParentId: targetParentId },
@@ -320,21 +378,39 @@ export async function moveDriveNodes(data: MoveDriveNodesInput): Promise<number>
   return moving.length;
 }
 
-/** 把节点及其子树挂到新父目录下：一条 SQL 重写子树 ancestorIds / depth */
-export async function relocateSubtree(executor: DbExecutor, node: DriveNodeRow, targetParentId: number | null, newAnc: number[]) {
+function intArray(ids: number[]): SQL {
+  return ids.length ? sql`ARRAY[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::integer[]` : sql`'{}'::integer[]`;
+}
+
+/**
+ * 把节点及其子树挂到新父目录下：重写子树 ancestorIds / depth，并同步 ACL 生效链。
+ * - 根：chain/open 按新父节点重算（自身断开继承时保持空链）；
+ * - 后代：只有"根仍在其生效链上"（即断点不在根以下）的后代需要把根之前的前缀替换为新前缀；
+ *   断点位于根以下的后代不受影响。
+ */
+export async function relocateSubtree(executor: DbExecutor, node: DriveNodeRow, targetParent: DriveNodeRow | null, newAnc: number[]) {
   const oldDepth = node.ancestorIds.length;
   const delta = newAnc.length - oldDepth;
   if (newAnc.length + 1 > DRIVE_MAX_DEPTH) throw new HTTPException(400, { message: `目录层级不能超过 ${DRIVE_MAX_DEPTH} 层` });
+  const rootAcl = ownAclOf(node.inheritPermissions, targetParent);
   await executor.update(driveNodes)
-    .set({ parentId: targetParentId, ancestorIds: newAnc, depth: newAnc.length })
+    .set({ parentId: targetParent?.id ?? null, ancestorIds: newAnc, depth: newAnc.length, aclChainIds: rootAcl.aclChainIds, aclOpen: rootAcl.aclOpen })
     .where(eq(driveNodes.id, node.id));
-  const newAncSql = sql`ARRAY[${sql.join(newAnc.map((id) => sql`${id}`), sql`, `)}]::integer[]`;
   await executor.execute(sql`
     UPDATE ${driveNodes}
-    SET ancestor_ids = ${newAnc.length ? newAncSql : sql`'{}'::integer[]`} || ancestor_ids[${oldDepth + 1}:],
+    SET ancestor_ids = ${intArray(newAnc)} || ancestor_ids[${oldDepth + 1}:],
         depth = depth + ${delta}
     WHERE ancestor_ids @> ARRAY[${node.id}]::integer[]
   `);
+  if (node.inheritPermissions) {
+    // 后代生效链含根 ⇒ 根之前的前缀来自旧祖先，替换为新前缀；open 取根的新 open
+    await executor.execute(sql`
+      UPDATE ${driveNodes}
+      SET acl_chain_ids = ${intArray(rootAcl.aclChainIds)} || acl_chain_ids[array_position(acl_chain_ids, ${node.id}):],
+          acl_open = ${rootAcl.aclOpen}
+      WHERE ancestor_ids @> ARRAY[${node.id}]::integer[] AND acl_chain_ids @> ARRAY[${node.id}]::integer[]
+    `);
+  }
 }
 
 /** 目标目录下已占用的名称（小写） */
@@ -356,27 +432,18 @@ export function pickFreeName(name: string, taken: Set<string>): string {
   throw new HTTPException(400, { message: '无法生成不重复的名称' });
 }
 
-/** 加载子树（含根，未删除），按深度升序 */
-export async function loadSubtree(executor: DbExecutor, rootId: number, opts: { includeDeleted?: boolean } = {}): Promise<DriveNodeRow[]> {
-  return executor.select().from(driveNodes).where(and(
-    sql`(${driveNodes.id} = ${rootId} OR ${driveNodes.ancestorIds} @> ARRAY[${rootId}]::integer[])`,
-    opts.includeDeleted ? undefined : isNull(driveNodes.deletedAt),
-  )).orderBy(asc(driveNodes.depth), asc(driveNodes.id));
-}
-
 export async function copyDriveNodes(data: CopyDriveNodesInput): Promise<DriveCopyResult> {
   const rows = await loadNodesByIds(data.ids);
-  const roleMap = await resolveNodeRoles(rows);
-  for (const row of rows) {
-    if (!driveRoleAtLeast(roleMap.get(row.id)?.role, 'downloader')) throw new HTTPException(403, { message: `没有复制权限：${row.name}` });
-  }
+  await ensureNodeRoleOnAll(rows, 'downloader', '没有复制权限');
   const { space, parent, ancestorIds: newAnc } = await resolveWritableParent(data.targetSpaceId, data.targetParentId);
   for (const row of rows) {
     if (parent && (parent.id === row.id || parent.ancestorIds.includes(row.id))) {
       throw new HTTPException(400, { message: `不能把「${row.name}」复制到自身或其子目录` });
     }
   }
-  const subtrees = await Promise.all(rows.map((r) => loadSubtree(db, r.id)));
+  // 子树按当前用户视角裁剪：断开继承且未授权的子目录不会随复制"越权带出"
+  const subjects = await loadDriveSubjects();
+  const subtrees = await Promise.all(rows.map((r) => loadAccessibleSubtree(r.id, 'downloader', subjects)));
   const totalNodes = subtrees.reduce((n, s) => n + s.length, 0);
   if (totalNodes > DRIVE_SYNC_COPY_MAX_NODES) {
     const { submitAsyncTask } = await import('../../lib/task-center');
@@ -391,7 +458,7 @@ export async function copyDriveNodes(data: CopyDriveNodesInput): Promise<DriveCo
   const copied = await db.transaction(async (tx) => {
     let count = 0;
     for (const subtree of subtrees) {
-      count += await copySubtree(tx, subtree, space, parent?.id ?? null, newAnc, settings);
+      count += await copySubtree(tx, subtree, space, parent, newAnc, settings);
     }
     return count;
   });
@@ -399,15 +466,15 @@ export async function copyDriveNodes(data: CopyDriveNodesInput): Promise<DriveCo
 }
 
 /**
- * 复制一棵子树到目标目录（元数据复制 + fileId 引用，不复制对象）。
- * 事务内执行；根节点同名自动加后缀。返回复制的节点数。
+ * 复制一棵（已裁剪的）子树到目标目录：元数据复制 + fileId 引用（对象引用计数 +1，不复制对象）。
+ * 事务内执行；根节点同名自动加后缀；复制件不携带授权、继承默认开启。返回复制的节点数。
  * settings 由调用方在开启事务之前读取传入（事务内不得触发设置冷加载）。
  */
 export async function copySubtree(
   executor: DbExecutor,
   subtree: DriveNodeRow[],
   targetSpace: DriveSpaceRow,
-  targetParentId: number | null,
+  targetParent: DriveNodeRow | null,
   targetAnc: number[],
   settings: DriveSettings,
 ): Promise<number> {
@@ -415,22 +482,24 @@ export async function copySubtree(
   const root = subtree[0];
   const totalBytes = subtree.filter((n) => n.type === 'file').reduce((s, n) => s + n.size, 0);
   await reserveSpaceQuota(executor, targetSpace.id, totalBytes, settings);
-  const taken = await existingNamesIn(executor, targetSpace.id, targetParentId);
+  const taken = await existingNamesIn(executor, targetSpace.id, targetParent?.id ?? null);
   const rootName = pickFreeName(root.name, taken);
   const tenantId = getCreateTenantId(currentUser());
   const idMap = new Map<number, number>();
-  const ancMap = new Map<number, number[]>();
+  const createdRows = new Map<number, DriveNodeRow>();
+  const retained: string[] = [];
   for (const node of subtree) {
     const isRoot = node.id === root.id;
-    const newParentId = isRoot ? targetParentId : idMap.get(node.parentId!);
-    if (!isRoot && newParentId === undefined) continue; // 父节点未复制（理论上不会发生）
-    const anc = isRoot ? targetAnc : [...ancMap.get(node.parentId!)!, newParentId!];
+    const newParent = isRoot ? targetParent : createdRows.get(node.parentId!) ?? null;
+    if (!isRoot && !newParent) continue; // 父节点未复制（已被 ACL 裁剪）
+    const anc = isRoot ? targetAnc : [...newParent!.ancestorIds, newParent!.id];
     if (anc.length + 1 > DRIVE_MAX_DEPTH) throw new HTTPException(400, { message: `目录层级不能超过 ${DRIVE_MAX_DEPTH} 层` });
     const [created] = await executor.insert(driveNodes).values({
       spaceId: targetSpace.id,
-      parentId: newParentId ?? null,
+      parentId: newParent?.id ?? null,
       ancestorIds: anc,
       depth: anc.length,
+      ...childAclOf(newParent),
       type: node.type,
       name: isRoot ? rootName : node.name,
       extension: node.extension,
@@ -439,18 +508,19 @@ export async function copySubtree(
       size: node.size,
       contentHash: node.contentHash,
       currentVersion: 1,
-      thumbnailFileId: node.thumbnailFileId,
       tenantId,
     }).returning();
     idMap.set(node.id, created.id);
-    ancMap.set(node.id, anc);
+    createdRows.set(node.id, created);
     if (node.type === 'file' && node.fileId) {
       await executor.insert(driveFileVersions).values({
         nodeId: created.id, version: 1, fileId: node.fileId, size: node.size, contentHash: node.contentHash,
         comment: '复制自其他位置', authorId: currentUserId(),
       });
+      retained.push(node.fileId);
     }
   }
+  await retainManagedFiles(executor, retained);
   await logDriveActivity({
     spaceId: targetSpace.id, nodeId: idMap.get(root.id) ?? null, nodeName: rootName, nodeType: root.type, action: 'copy',
     detail: { sourceNodeId: root.id, sourceSpaceId: root.spaceId, nodes: idMap.size },
@@ -462,8 +532,8 @@ export async function copySubtree(
 
 export async function deleteDriveNodes(ids: number[]): Promise<number> {
   const rows = await loadNodesByIds(ids);
-  await ensureEditorOnAll(rows, '没有删除权限');
-  rows.forEach(assertNotLockedByOthers);
+  await ensureNodeRoleOnAll(rows, 'editor', '没有删除权限');
+  await assertSubtreeNotLockedByOthers(rows);
   const uid = currentUserId();
   const now = new Date();
   await db.transaction(async (tx) => {
@@ -488,18 +558,11 @@ export interface ListRecycleQuery {
   type?: DriveNodeType;
 }
 
-/** 回收站可见范围：我删除的 ∪ 我是 manager 的空间；网盘管理员全部 */
+/** 回收站可见范围（SQL）：我删除的 ∪ 我是 manager 的空间；网盘管理员全部 */
 async function recycleVisibilityCondition(): Promise<SQL | undefined> {
   const subjects = await loadDriveSubjects();
   if (subjects.isAdmin) return undefined;
-  const spaces = await db.select().from(driveSpaces).where(buildWhere(tenantCondition(driveSpaces, currentUser())));
-  const roleMap = await resolveSpaceRoles(spaces);
-  const managedIds = spaces.filter((s) => roleMap.get(s.id) === 'manager').map((s) => s.id);
-  return buildWhere(
-    managedIds.length
-      ? sql`(${driveNodes.deletedBy} = ${subjects.userId} OR ${driveNodes.spaceId} IN (${sql.join(managedIds.map((id) => sql`${id}`), sql`, `)}))`
-      : eq(driveNodes.deletedBy, subjects.userId),
-  );
+  return sql`(${driveNodes.deletedBy} = ${subjects.userId} OR ${inArray(driveNodes.spaceId, managerSpaceIdsSubquery(subjects))})`;
 }
 
 export async function listRecycleNodes(q: ListRecycleQuery) {
@@ -552,15 +615,14 @@ export async function restoreDriveNodes(ids: number[]): Promise<number> {
   await db.transaction(async (tx) => {
     for (const root of roots) {
       // 原父目录仍可用则原位还原，否则回到空间根级
-      let parentId = root.parentId ?? null;
-      let newAnc = root.ancestorIds;
-      if (parentId !== null) {
-        const [parent] = await tx.select().from(driveNodes).where(eq(driveNodes.id, parentId)).limit(1);
-        if (!parent || parent.deletedAt || parent.type !== 'folder') {
-          parentId = null;
-          newAnc = [];
-        }
+      let parent: DriveNodeRow | null = null;
+      let relocate = root.parentId === null && root.ancestorIds.length > 0;
+      if (root.parentId !== null) {
+        const [row] = await tx.select().from(driveNodes).where(eq(driveNodes.id, root.parentId)).limit(1);
+        if (row && !row.deletedAt && row.type === 'folder') parent = row;
+        else relocate = true;
       }
+      const parentId = parent?.id ?? null;
       const taken = await existingNamesIn(tx, root.spaceId, parentId);
       const name = pickFreeName(root.name, taken);
       // 先恢复子树的删除标记，再统一挂载（relocateSubtree 按 ancestorIds 定位后代）
@@ -568,7 +630,7 @@ export async function restoreDriveNodes(ids: number[]): Promise<number> {
         .set({ deletedAt: null, deletedBy: null, deletedRootId: null })
         .where(eq(driveNodes.deletedRootId, root.id));
       if (name !== root.name) await tx.update(driveNodes).set({ name }).where(eq(driveNodes.id, root.id));
-      if (parentId !== (root.parentId ?? null)) await relocateSubtree(tx, root, parentId, newAnc);
+      if (relocate) await relocateSubtree(tx, root, null, []);
       await logDriveActivity({ spaceId: root.spaceId, nodeId: root.id, nodeName: name, nodeType: root.type, action: 'restore' }, tx);
     }
   });
@@ -581,51 +643,27 @@ export async function purgeDriveNodes(ids: number[]): Promise<number> {
   return purgeSubtrees(roots);
 }
 
-/** 彻底删除若干子树：删行、释放配额、回收无引用对象（供回收站与保留策略共用） */
+/** 彻底删除若干子树：删行、释放配额、对象引用计数 -1（真正回收由 files-gc 延迟执行） */
 export async function purgeSubtrees(roots: DriveNodeRow[]): Promise<number> {
   let purged = 0;
-  const orphanFileIds = new Set<string>();
   for (const root of roots) {
     await db.transaction(async (tx) => {
       const subtree = await loadSubtree(tx, root.id, { includeDeleted: true });
       const nodeIds = subtree.map((n) => n.id);
       if (nodeIds.length === 0) return;
-      const versions = await tx.select({ fileId: driveFileVersions.fileId, size: driveFileVersions.size })
-        .from(driveFileVersions).where(inArray(driveFileVersions.nodeId, nodeIds));
+      const [versions, renditions] = await Promise.all([
+        tx.select({ fileId: driveFileVersions.fileId, size: driveFileVersions.size }).from(driveFileVersions).where(inArray(driveFileVersions.nodeId, nodeIds)),
+        tx.select({ fileId: driveNodeRenditions.fileId }).from(driveNodeRenditions).where(and(inArray(driveNodeRenditions.nodeId, nodeIds), isNotNull(driveNodeRenditions.fileId))),
+      ]);
       const bytes = versions.reduce((s, v) => s + v.size, 0);
-      for (const v of versions) orphanFileIds.add(v.fileId);
-      for (const n of subtree) if (n.thumbnailFileId) orphanFileIds.add(n.thumbnailFileId);
       await tx.delete(driveNodes).where(inArray(driveNodes.id, nodeIds));
+      await releaseManagedFiles(tx, [...versions.map((v) => v.fileId), ...renditions.map((r) => r.fileId)]);
       await releaseSpaceQuota(tx, root.spaceId, bytes);
       await logDriveActivity({ spaceId: root.spaceId, nodeId: null, nodeName: root.name, nodeType: root.type, action: 'purge', detail: { nodes: nodeIds.length, bytes }, tenantId: root.tenantId ?? null }, tx);
       purged += nodeIds.length;
     });
   }
-  await releaseUnreferencedFiles([...orphanFileIds]);
   return purged;
-}
-
-/** 无任何节点 / 版本 / 缩略图引用的托管文件：删除对象与记录 */
-export async function releaseUnreferencedFiles(fileIds: string[]): Promise<number> {
-  if (fileIds.length === 0) return 0;
-  const [nodeRefs, versionRefs, thumbRefs] = await Promise.all([
-    db.select({ id: driveNodes.fileId }).from(driveNodes).where(inArray(driveNodes.fileId, fileIds)),
-    db.select({ id: driveFileVersions.fileId }).from(driveFileVersions).where(inArray(driveFileVersions.fileId, fileIds)),
-    db.select({ id: driveNodes.thumbnailFileId }).from(driveNodes).where(inArray(driveNodes.thumbnailFileId, fileIds)),
-  ]);
-  const referenced = new Set([...nodeRefs, ...versionRefs, ...thumbRefs].map((r) => r.id).filter(Boolean));
-  const orphans = fileIds.filter((id) => !referenced.has(id));
-  if (orphans.length === 0) return 0;
-  const files = await db.query.managedFiles.findMany({ where: inArray(managedFiles.id, orphans) });
-  const configIds = [...new Set(files.map((f) => f.storageConfigId))];
-  const configs = configIds.length ? await db.query.fileStorageConfigs.findMany({ where: (t, { inArray: inArr }) => inArr(t.id, configIds) }) : [];
-  const configMap = new Map(configs.map((c) => [c.id, c]));
-  await Promise.allSettled(files.map(async (file) => {
-    const cfg = configMap.get(file.storageConfigId);
-    if (cfg) await deleteStoredFile(file, cfg).catch((err) => logger.warn({ err, fileId: file.id }, 'drive: 删除对象失败，记录仍将移除'));
-  }));
-  await db.delete(managedFiles).where(inArray(managedFiles.id, orphans));
-  return orphans.length;
 }
 
 export async function emptyRecycle(spaceId?: number): Promise<number> {
@@ -664,4 +702,34 @@ export async function countExpiredRecycleNodes(days: number): Promise<number> {
   ));
 }
 
-export { getSpaceQuotaState };
+// ─── 继承切换的 ACL 链维护（由 drive-permissions.service 调用）────────────────
+
+/**
+ * 切换节点继承开关后重算其自身与后代的 ACL 生效链：
+ * - 关闭：自身链清空、open=false；后代中"链上含本节点"者把本节点之前的前缀截掉并 open=false；
+ * - 开启：自身链按父节点重算；后代中"链以本节点开头"（本节点曾是断点）者把新前缀接回并 open 取本节点的 open。
+ */
+export async function rewriteAclAfterInheritChange(executor: DbExecutor, node: DriveNodeRow, inherit: boolean) {
+  const parent = node.parentId
+    ? (await executor.select().from(driveNodes).where(eq(driveNodes.id, node.parentId)).limit(1))[0] ?? null
+    : null;
+  const own = ownAclOf(inherit, parent);
+  await executor.update(driveNodes)
+    .set({ inheritPermissions: inherit, aclChainIds: own.aclChainIds, aclOpen: own.aclOpen })
+    .where(eq(driveNodes.id, node.id));
+  if (!inherit) {
+    await executor.execute(sql`
+      UPDATE ${driveNodes}
+      SET acl_chain_ids = acl_chain_ids[array_position(acl_chain_ids, ${node.id}):],
+          acl_open = false
+      WHERE ancestor_ids @> ARRAY[${node.id}]::integer[] AND acl_chain_ids @> ARRAY[${node.id}]::integer[]
+    `);
+  } else {
+    await executor.execute(sql`
+      UPDATE ${driveNodes}
+      SET acl_chain_ids = ${intArray(own.aclChainIds)} || acl_chain_ids,
+          acl_open = ${own.aclOpen}
+      WHERE ancestor_ids @> ARRAY[${node.id}]::integer[] AND acl_chain_ids[1] = ${node.id}
+    `);
+  }
+}
