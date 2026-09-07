@@ -54,7 +54,7 @@ function AppStatsTab({ clientId }: Readonly<{ clientId: string }>) {
   }), [palette, trend]);
 
   return (
-    <div>
+    <div className="zx-flat-panels">
       <Descriptions
         row
         data={[
@@ -70,7 +70,7 @@ function AppStatsTab({ clientId }: Readonly<{ clientId: string }>) {
       <Card title="近 30 天调用趋势" loading={trendQuery.isFetching}>
         {trend.length ? <AreaChart {...trendSpec} options={chartOptions} height={280} /> : <EmptyChart height={280} />}
       </Card>
-      <Card title="端点分布" style={{ marginTop: 16 }} loading={endpointsQuery.isFetching}>
+      <Card title="端点分布" loading={endpointsQuery.isFetching}>
         {endpoints.length ? (
           <ConfigurableTable
             bordered

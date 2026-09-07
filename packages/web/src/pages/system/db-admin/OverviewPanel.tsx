@@ -1,5 +1,5 @@
 import { Button, Empty, Spin, Typography, Tag, Space } from '@douyinfe/semi-ui';
-import { BarChart, chartOptions, makeBarSpec, useChartPalette, datumNumber, datumText, StatCard, StatGrid } from '@/components/charts';
+import { BarChart, EmptyChart, chartOptions, makeBarSpec, useChartPalette, datumNumber, datumText, StatCard, StatGrid } from '@/components/charts';
 import { RefreshCw, Database, Table as TableIcon, Eye, KeyRound, Network, Activity, HardDrive, Server } from 'lucide-react';
 import { useDbAdminOverview } from '@/hooks/queries/db-admin';
 
@@ -117,20 +117,13 @@ export function OverviewPanel({ onSelectTable }: Readonly<{ onSelectTable?: (sch
             />
           </StatGrid>
 
-          <div
-            style={{
-              background: 'var(--surface-card)',
-              border: '1px solid var(--semi-color-border)',
-              borderRadius: 'var(--semi-border-radius-medium)',
-              padding: 16,
-            }}
-          >
+          <div className="zx-panel">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <Database size={15} style={{ color: 'var(--semi-color-primary)' }} />
               <Text strong>占用空间 Top {chartData.length} 表</Text>
             </div>
             {chartData.length === 0 ? (
-              <Empty title="无数据" />
+              <EmptyChart height={220} />
             ) : (
               <BarChart
                 {...tableSpec}
