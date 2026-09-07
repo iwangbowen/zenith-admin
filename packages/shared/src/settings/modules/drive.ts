@@ -29,6 +29,12 @@ export const driveSettingsSchema = z.object({
     .meta({ title: '到期提前提醒（小时）', description: '外链与临时授权到期前提醒创建者 / 被授权人；0 表示关闭' }),
   previewWatermarkEnabled: z.boolean().default(false)
     .meta({ title: '站内预览水印', description: '登录用户在线预览时叠加「姓名 · 工号 · 时间」水印' }),
+  alertWindowMinutes: z.int().min(5).max(1440).default(10)
+    .meta({ title: '异常行为统计窗口（分钟）', description: '批量下载与外链爆破按该滑动窗口计数（告警规则取平台值，租户覆盖不生效）' }),
+  alertBulkDownloadCount: z.int().min(0).max(100_000).default(200)
+    .meta({ title: '批量下载告警阈值（次）', description: '同一用户或 IP 在窗口内下载次数达到该值即告警网盘管理员；0 表示关闭（平台值）' }),
+  alertShareFailureCount: z.int().min(0).max(100_000).default(30)
+    .meta({ title: '外链爆破告警阈值（次）', description: '同一 IP 或同一外链在窗口内被拒绝（密码错误 / IP 拦截等）次数达到该值即告警；0 表示关闭（平台值）' }),
   blockedExtensions: z.array(z.string().trim().min(1).max(32).regex(/^\.?[A-Za-z0-9]+$/, '扩展名只能包含字母与数字')).max(200)
     .default(() => ['exe', 'bat', 'cmd', 'sh', 'msi', 'dll', 'scr', 'com', 'ps1', 'vbs'])
     .meta({ title: '禁止上传的扩展名', description: '不区分大小写，可带或不带前导点；可执行文件另按内容魔数拦截，不受改名影响' }),
@@ -43,8 +49,8 @@ export type DriveSettings = z.output<typeof driveSettingsSchema>;
 export const driveSettingsModule = defineSettingsModule({
   schema: driveSettingsSchema,
   title: '企业网盘',
-  description: '空间配额、版本保留、外链与内容策略',
-  scope: 'platform',
+  description: '空间配额、版本保留、外链与内容策略；租户可在平台值之上覆盖',
+  scope: 'tenant',
   feature: 'drive',
   readPermission: 'drive:setting:view',
   writePermission: 'drive:setting:edit',

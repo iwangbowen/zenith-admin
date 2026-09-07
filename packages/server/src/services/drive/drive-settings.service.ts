@@ -5,15 +5,18 @@ import { getSettings } from '../../lib/settings';
 export type { DriveSettings };
 
 /**
- * 网盘全局设置由运行时设置 `drive` 模块承载（平台级，License 特性 drive）；
+ * 网盘设置由运行时设置 `drive` 模块承载（租户可覆盖平台值，License 特性 drive）；
  * 管理界面读写走 `/api/settings/drive`。这里只保留域内读取别名与配额换算。
+ *
+ * 作用域：有请求上下文时按当前用户的有效租户解析；**无请求上下文的后台任务 / 匿名公开入口必须显式传
+ * `tenantId`**（空间 / 外链 / 节点行上的 tenantId），否则会静默退回平台值。
  *
  * ⚠ 本函数命中副本时零查询，但冷加载会向全局连接池借连接：
  * 持有 `db.transaction` 的代码路径不得调用它，必须在事务外读取后作为参数传入
  * （见 drive-upload / drive-spaces / drive-nodes 的 `settings` 形参）。
  */
-export async function getDriveSettings(): Promise<DriveSettings> {
-  return getSettings('drive');
+export async function getDriveSettings(options?: { tenantId?: number | null }): Promise<DriveSettings> {
+  return getSettings('drive', options);
 }
 
 const GB = 1024 * 1024 * 1024;

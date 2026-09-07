@@ -33,6 +33,11 @@
 
 CMS 站点域事件通过同一开放事件总线进入 Webhook 投递链路，事件形如 `cms.content.published`、`cms.content.updated`、`cms.content.offline`、`cms.content.recycled`、`cms.content.deleted`。
 
+企业网盘文件变更事件同样经该链路投递：`drive.node.created` / `drive.node.version_created` / `drive.node.updated` / `drive.node.deleted` /
+`drive.node.restored` / `drive.node.purged` / `drive.share.created` / `drive.share.revoked` / `drive.collect.received`。
+这些事件由文件动态派生并延迟约 2 秒投递（事务确认提交后才 emit），payload 只含节点 / 空间 / 外链元数据，不含文件内容与下载地址；
+预览、下载等高频动作不对外投递。网盘事件必须显式订阅、必须使用 `hmacSha256` 签名，且只投递给在「合规治理 → 开放应用授权」中被授予该空间的应用。
+
 ## 投递请求
 
 投递请求使用 JSON 请求体，并附带以下系统头：

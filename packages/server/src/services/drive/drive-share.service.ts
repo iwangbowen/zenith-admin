@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import { tryGetContext } from 'hono/context-storage';
-import { and, asc, desc, eq, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import {
   DRIVE_SHARE_SESSION_TTL_SECONDS,
@@ -213,12 +213,12 @@ function stateCondition(state?: DriveShareLinkState): SQL | undefined {
     case 'expired': return and(isNull(driveShareLinks.revokedAt), eq(driveShareLinks.enabled, true), lt(driveShareLinks.expireAt, now));
     case 'exhausted': return and(
       isNull(driveShareLinks.revokedAt), eq(driveShareLinks.enabled, true),
-      or(isNull(driveShareLinks.expireAt), sql`${driveShareLinks.expireAt} > ${now}`),
+      or(isNull(driveShareLinks.expireAt), gt(driveShareLinks.expireAt, now)),
       or(sql`${driveShareLinks.accessCount} >= ${driveShareLinks.maxAccessCount}`, sql`${driveShareLinks.downloadCount} >= ${driveShareLinks.maxDownloadCount}`),
     );
     case 'active': return and(
       isNull(driveShareLinks.revokedAt), eq(driveShareLinks.enabled, true),
-      or(isNull(driveShareLinks.expireAt), sql`${driveShareLinks.expireAt} > ${now}`),
+      or(isNull(driveShareLinks.expireAt), gt(driveShareLinks.expireAt, now)),
       or(isNull(driveShareLinks.maxAccessCount), sql`${driveShareLinks.accessCount} < ${driveShareLinks.maxAccessCount}`),
       or(isNull(driveShareLinks.maxDownloadCount), sql`${driveShareLinks.downloadCount} < ${driveShareLinks.maxDownloadCount}`),
     );
@@ -534,7 +534,8 @@ export async function createDriveShareSession(token: string, password?: string):
 }
 
 async function buildPublicMeta(share: DriveShareLinkRow, token: string, node: DriveNodeRow | null): Promise<DrivePublicShareMeta> {
-  const [names, settings] = await Promise.all([resolveUserNames([share.createdBy]), getDriveSettings()]);
+  // 匿名公开入口无请求上下文：按外链所属租户读取设置
+  const [names, settings] = await Promise.all([resolveUserNames([share.createdBy]), getDriveSettings({ tenantId: share.tenantId ?? null })]);
   const sharerName = share.createdBy ? names.get(share.createdBy) ?? null : null;
   const policy = share.kind === 'collect' ? effectiveCollectPolicy(share, settings) : null;
   return {
@@ -695,7 +696,7 @@ export async function uploadToDriveCollect(token: string, sessionToken: string, 
   const { share, node: root } = await resolveShareSession(token, sessionToken, 'upload');
   if (share.kind !== 'collect' || !share.capabilities.includes('upload')) throw new HTTPException(403, { message: '该链接不接受文件提交' });
   if (root.type !== 'folder') throw new HTTPException(400, { message: '收集目标不是文件夹' });
-  const settings = await getDriveSettings();
+  const settings = await getDriveSettings({ tenantId: share.tenantId ?? null });
   const policy = effectiveCollectPolicy(share, settings);
   const submitterName = fields.submitterName?.trim() || null;
   if (policy.requireSubmitter && !submitterName) throw new HTTPException(400, { message: '请填写提交人姓名' });
@@ -769,5 +770,63 @@ export async function listShareAccessLogs(shareId: number, page = 1, pageSize = 
     count: () => db.$count(driveShareAccessLogs, where),
     rows: () => withPagination(db.select().from(driveShareAccessLogs).where(where).orderBy(desc(driveShareAccessLogs.id)).$dynamic(), page, pageSize),
     map: (r) => ({ id: r.id, shareId: r.shareId, nodeId: r.nodeId, action: r.action, clientIp: r.clientIp ?? null, ok: r.ok, createdAt: formatDateTime(r.createdAt) }),
+  });
+}
+
+export interface ListShareAccessLogsQuery {
+  page?: number;
+  pageSize?: number;
+  shareId?: number;
+  spaceId?: number;
+  action?: string;
+  ok?: boolean;
+  startTime?: string;
+  endTime?: string;
+}
+
+/** 管理端：全部外链访问日志（租户 + 数据权限按外链所属空间收窄；附节点 / 空间名） */
+export async function listShareAccessLogsForAdmin(q: ListShareAccessLogsQuery) {
+  const { page = 1, pageSize = 20 } = q;
+  let scope: SQL | undefined;
+  if (!isSuperAdmin()) {
+    const cond = await getDataScopeCondition({ currentUserId: currentUserId(), deptColumn: driveSpaces.departmentId, ownerColumn: driveSpaces.ownerId });
+    if (cond) {
+      scope = inArray(driveShareAccessLogs.shareId, db.select({ id: driveShareLinks.id }).from(driveShareLinks)
+        .innerJoin(driveNodes, eq(driveNodes.id, driveShareLinks.nodeId))
+        .where(inArray(driveNodes.spaceId, db.select({ id: driveSpaces.id }).from(driveSpaces).where(cond))));
+    }
+  }
+  const where = buildWhere(
+    q.shareId !== undefined ? eq(driveShareAccessLogs.shareId, q.shareId) : undefined,
+    q.spaceId !== undefined
+      ? inArray(driveShareAccessLogs.shareId, db.select({ id: driveShareLinks.id }).from(driveShareLinks)
+        .innerJoin(driveNodes, eq(driveNodes.id, driveShareLinks.nodeId)).where(eq(driveNodes.spaceId, q.spaceId)))
+      : undefined,
+    q.action ? eq(driveShareAccessLogs.action, q.action) : undefined,
+    q.ok !== undefined ? eq(driveShareAccessLogs.ok, q.ok) : undefined,
+    ...dateRangeConditions(driveShareAccessLogs.createdAt, q.startTime, q.endTime),
+    inArray(driveShareAccessLogs.shareId, db.select({ id: driveShareLinks.id }).from(driveShareLinks).where(tenantCondition(driveShareLinks, currentUser()) ?? sql`true`)),
+    scope,
+  );
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(driveShareAccessLogs, where),
+    rows: async () => {
+      const rows = await withPagination(db.select().from(driveShareAccessLogs).where(where).orderBy(desc(driveShareAccessLogs.createdAt), desc(driveShareAccessLogs.id)).$dynamic(), page, pageSize);
+      const nodeIds = [...new Set(rows.map((r) => r.nodeId))];
+      const nodes = nodeIds.length
+        ? await db.select({ id: driveNodes.id, name: driveNodes.name, spaceId: driveNodes.spaceId, spaceName: driveSpaces.name })
+          .from(driveNodes).innerJoin(driveSpaces, eq(driveSpaces.id, driveNodes.spaceId)).where(inArray(driveNodes.id, nodeIds))
+        : [];
+      const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+      return rows.map((r) => {
+        const node = nodeMap.get(r.nodeId);
+        return {
+          id: r.id, shareId: r.shareId, nodeId: r.nodeId, action: r.action, clientIp: r.clientIp ?? null, ok: r.ok, createdAt: formatDateTime(r.createdAt),
+          nodeName: node?.name ?? null, spaceId: node?.spaceId ?? null, spaceName: node?.spaceName ?? null,
+        };
+      });
+    },
   });
 }

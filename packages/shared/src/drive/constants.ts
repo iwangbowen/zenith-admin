@@ -145,6 +145,47 @@ export const DRIVE_ACCESS_REQUEST_STATUS_OPTIONS: Array<{ value: DriveAccessRequ
 /** 可申请的角色：manager 只能由管理者直接授予 */
 export const DRIVE_REQUESTABLE_ROLES = ['viewer', 'downloader', 'editor'] as const;
 
+/** 配额扩容申请状态（与访问申请同一组值） */
+export const DRIVE_QUOTA_REQUEST_STATUSES = DRIVE_ACCESS_REQUEST_STATUSES;
+export type DriveQuotaRequestStatus = DriveAccessRequestStatus;
+
+/** 开放平台可订阅的网盘事件（由文件动态派生；at-least-once） */
+export const DRIVE_OPEN_EVENTS = [
+  'drive.node.created', 'drive.node.version_created', 'drive.node.updated', 'drive.node.deleted', 'drive.node.restored', 'drive.node.purged',
+  'drive.share.created', 'drive.share.revoked', 'drive.collect.received',
+] as const;
+
+export type DriveOpenEvent = (typeof DRIVE_OPEN_EVENTS)[number];
+
+export const DRIVE_OPEN_EVENT_LABELS: Record<DriveOpenEvent, string> = {
+  'drive.node.created': '网盘文件上传',
+  'drive.node.version_created': '网盘文件新版本',
+  'drive.node.updated': '网盘文件变更（重命名 / 移动 / 属性）',
+  'drive.node.deleted': '网盘文件删除到回收站',
+  'drive.node.restored': '网盘文件还原',
+  'drive.node.purged': '网盘文件彻底删除',
+  'drive.share.created': '网盘外链创建',
+  'drive.share.revoked': '网盘外链撤销',
+  'drive.collect.received': '网盘收集到新文件',
+};
+
+/** 动态动作 → 开放平台事件；未列出的动作（预览 / 下载等高频事件）不对外投递 */
+export const DRIVE_ACTIVITY_OPEN_EVENT: Partial<Record<DriveActivityAction, DriveOpenEvent>> = {
+  upload: 'drive.node.created',
+  new_version: 'drive.node.version_created',
+  version_restore: 'drive.node.version_created',
+  rename: 'drive.node.updated',
+  move: 'drive.node.updated',
+  metadata_change: 'drive.node.updated',
+  tag: 'drive.node.updated',
+  delete: 'drive.node.deleted',
+  restore: 'drive.node.restored',
+  purge: 'drive.node.purged',
+  share_create: 'drive.share.created',
+  share_revoke: 'drive.share.revoked',
+  collect_upload: 'drive.collect.received',
+};
+
 /** 节点在线状态：心跳有效期与前端上报间隔（秒） */
 export const DRIVE_PRESENCE_TTL_SECONDS = 60;
 export const DRIVE_PRESENCE_HEARTBEAT_SECONDS = 25;
@@ -182,6 +223,7 @@ export const DRIVE_ACTIVITY_ACTIONS = [
   'upload', 'new_version', 'create_folder', 'rename', 'move', 'copy', 'delete', 'restore', 'purge',
   'download', 'preview', 'share_create', 'share_update', 'share_revoke', 'share_access', 'save_from_share', 'collect_upload',
   'permission_change', 'inherit_change', 'version_restore', 'version_delete', 'lock', 'unlock', 'comment', 'tag', 'metadata_change',
+  'legal_hold', 'legal_release', 'archive', 'unarchive',
 ] as const;
 
 export type DriveActivityAction = (typeof DRIVE_ACTIVITY_ACTIONS)[number];
@@ -213,6 +255,10 @@ export const DRIVE_ACTIVITY_ACTION_LABELS: Record<DriveActivityAction, string> =
   comment: '评论',
   tag: '标签变更',
   metadata_change: '说明与属性变更',
+  legal_hold: '设置法律保留',
+  legal_release: '解除法律保留',
+  archive: '归档空间',
+  unarchive: '恢复归档',
 };
 
 export const DRIVE_ACTIVITY_ACTION_OPTIONS: Array<{ value: DriveActivityAction; label: string }> =

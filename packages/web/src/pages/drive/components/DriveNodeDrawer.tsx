@@ -1,9 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Button, Descriptions, Select, SideSheet, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { Download, Lock, LockOpen, Star, StarOff } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Button, Descriptions, Input, Select, SideSheet, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Download, Lock, LockOpen, MessageSquareShare, Scale, Star, StarOff } from 'lucide-react';
+import { chatContract } from '@zenith/shared/chat';
 import { formatBytes } from '@zenith/shared/core';
 import { DRIVE_NODE_TYPE_LABELS, DRIVE_ROLE_LABELS, type DriveNode, type DriveNodeDetail } from '@zenith/shared/drive';
-import { useCreateDriveTag, useDriveNode, useDriveTags, useLockDriveNode, useSetDriveNodeTags, useStarDriveNode } from '@/hooks/queries/drive';
+import { AppModal } from '@/components/AppModal';
+import { api } from '@/lib/contract-query';
+import { chatKeys } from '@/hooks/queries/chat';
+import { useCreateDriveLegalHold, useCreateDriveTag, useDriveNode, useDriveTags, useLockDriveNode, useSendDriveNodeToChat, useSetDriveNodeTags, useStarDriveNode } from '@/hooks/queries/drive';
+import { ForwardModal } from '@/pages/chat/components/ForwardModal';
 import { usePermission } from '@/hooks/usePermission';
 import { getFileTypeIcon } from '@/utils/file-utils';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
@@ -53,6 +59,58 @@ function TagsEditor({ node }: { readonly node: DriveNodeDetail }) {
   );
 }
 
+/** 网盘管理员：对当前节点（含子树）设置法律保留 */
+function LegalHoldButton({ node }: { readonly node: DriveNodeDetail }) {
+  const { hasPermission } = usePermission();
+  const create = useCreateDriveLegalHold();
+  const [visible, setVisible] = useState(false);
+  const [reason, setReason] = useState('');
+  if (!hasPermission('drive:admin:legal-hold:edit') || node.legalHold) return null;
+  return (
+    <>
+      <Button size="small" icon={<Scale size={14} />} onClick={() => setVisible(true)}>法律保留</Button>
+      <AppModal visible={visible} title={`对「${node.name}」设置法律保留`} width={480} closeOnEsc onCancel={() => setVisible(false)} okText="设置保留"
+        okButtonProps={{ loading: create.isPending, disabled: !reason.trim() }}
+        onOk={async () => {
+          await create.mutateAsync({ body: { nodeId: node.id, reason: reason.trim() } });
+          Toast.success('已设置法律保留');
+          setVisible(false);
+          setReason('');
+        }}>
+        <Typography.Paragraph type="tertiary" size="small">
+          保留期间{node.type === 'folder' ? '该文件夹及其全部子项' : '该文件'}不可删除、彻底删除、删除历史版本或跨空间移动，也不参与回收站到期清理与版本修剪；可在「合规治理」中解除。
+        </Typography.Paragraph>
+        <Input value={reason} onChange={setReason} placeholder="保留原因（必填，如案件 / 审计编号）" maxLength={500} showClear />
+      </AppModal>
+    </>
+  );
+}
+
+/** 把节点以卡片消息发到聊天：复用聊天的会话选择弹窗，收件人仍按网盘 ACL 访问 */
+function SendToChatButton({ node }: { readonly node: DriveNodeDetail }) {
+  const [visible, setVisible] = useState(false);
+  const send = useSendDriveNodeToChat();
+  const conversations = useQuery({
+    queryKey: chatKeys.conversations,
+    queryFn: () => api(chatContract.conversations, { silent: true }),
+    enabled: visible,
+    staleTime: 60_000,
+  });
+  return (
+    <>
+      <Button size="small" icon={<MessageSquareShare size={14} />} onClick={() => setVisible(true)}>发送到聊天</Button>
+      <ForwardModal visible={visible} mode="individual" conversations={conversations.data ?? []} currentConvId={null}
+        title={`发送到聊天 · ${node.name}`} hint="以卡片消息发送链接；对方需拥有该文件的访问权限，无权时可在卡片中发起访问申请" okText="发送"
+        onCancel={() => setVisible(false)}
+        onConfirm={(targetIds) => {
+          send.mutate({ params: { id: node.id }, body: { conversationIds: targetIds } }, {
+            onSuccess: (result) => { Toast.success(`已发送到 ${result.sent} 个会话`); setVisible(false); },
+          });
+        }} />
+    </>
+  );
+}
+
 export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownload }: DriveNodeDrawerProps) {
   const { hasPermission } = usePermission();
   const query = useDriveNode(nodeId ?? undefined);
@@ -91,13 +149,21 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
               {node.type === 'file' && hasPermission('drive:node:download') && roleAtLeast(node.myRole, 'downloader') && (
                 <Button size="small" icon={<Download size={14} />} onClick={() => onDownload(node)}>下载</Button>
               )}
-              {node.type === 'file' && hasPermission('drive:node:edit') && roleAtLeast(node.myRole, 'editor') && (
+              {node.type === 'file' && hasPermission('drive:node:edit') && roleAtLeast(node.myRole, 'editor') && !node.spaceArchived && (
                 <Button size="small" icon={node.lockedBy ? <LockOpen size={14} /> : <Lock size={14} />} onClick={toggleLock} loading={lock.isPending}>
                   {node.lockedBy ? '解除锁定' : '签出锁定'}
                 </Button>
               )}
+              <LegalHoldButton node={node} />
+              <SendToChatButton node={node} />
               <DrivePresenceBadge nodeId={node.id} />
             </div>
+            {(node.legalHold || node.spaceArchived) && (
+              <Space wrap style={{ marginBottom: 8 }}>
+                {node.legalHold && <Tag color="red" size="small" prefixIcon={<Scale size={12} />}>法律保留中：不可删除 / 删版本 / 跨空间移动</Tag>}
+                {node.spaceArchived && <Tag color="grey" size="small">所在空间已归档：只读</Tag>}
+              </Space>
+            )}
             <Tabs collapsible="auto" activeKey={tab} onChange={setTab} type="line" size="small" lazyRender keepDOM={false}>
               <TabPane tab="详情" itemKey="detail">
                 <Descriptions align="left" size="small" className="drive-drawer__desc">

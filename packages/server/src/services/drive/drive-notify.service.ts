@@ -77,7 +77,7 @@ export async function notifySpaceMembersAdded(
 /** 配额达到预警阈值时通知空间管理者（每空间每天一次） */
 export async function maybeNotifyQuotaWarning(space: DriveSpaceRow): Promise<void> {
   try {
-    const settings = await getDriveSettings();
+    const settings = await getDriveSettings({ tenantId: space.tenantId ?? null });
     const quota = effectiveQuotaBytes(settings, space);
     if (quota <= 0) return;
     const percent = Math.floor((space.usedBytes / quota) * 100);

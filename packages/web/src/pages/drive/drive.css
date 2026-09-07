@@ -824,3 +824,21 @@
     left: 8px;
   }
 }
+
+/* 扩容申请弹窗：最近申请记录 */
+.drive-quota-history {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+.drive-quota-history li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

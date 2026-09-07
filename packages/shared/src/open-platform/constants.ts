@@ -136,6 +136,8 @@ export const OPEN_WEBHOOK_EVENTS = [
   'app.test', 'app.call.failed', 'app.quota.warning', 'app.quota.exceeded', 'app.scope.denied',
   ...PAYMENT_WEBHOOK_EVENTS,
   'iot.device.online', 'iot.device.offline', 'iot.alarm.triggered', 'iot.alarm.resolved', 'iot.ota.task_completed',
+  'drive.node.created', 'drive.node.version_created', 'drive.node.updated', 'drive.node.deleted', 'drive.node.restored', 'drive.node.purged',
+  'drive.share.created', 'drive.share.revoked', 'drive.collect.received',
 ] as const;
 
 export type OpenWebhookEvent = (typeof OPEN_WEBHOOK_EVENTS)[number];
@@ -156,6 +158,15 @@ export const OPEN_WEBHOOK_EVENT_LABELS: Record<string, string> = {
   'iot.alarm.triggered': 'IoT 告警触发',
   'iot.alarm.resolved': 'IoT 告警恢复',
   'iot.ota.task_completed': 'IoT 升级任务完成',
+  'drive.node.created': '网盘文件上传',
+  'drive.node.version_created': '网盘文件新版本',
+  'drive.node.updated': '网盘文件变更',
+  'drive.node.deleted': '网盘文件删除到回收站',
+  'drive.node.restored': '网盘文件还原',
+  'drive.node.purged': '网盘文件彻底删除',
+  'drive.share.created': '网盘外链创建',
+  'drive.share.revoked': '网盘外链撤销',
+  'drive.collect.received': '网盘收集到新文件',
 };
 
 /** Webhook 投递签名请求头 */

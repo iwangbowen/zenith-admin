@@ -59,7 +59,7 @@ function dirResult(list: DriveNode[], parent: DriveNode | null): DriveNodeListRe
   };
 }
 
-const DETAIL: DriveNodeDetail = { ...FILE_IN_A, spaceName: '我的网盘', spaceType: 'personal', breadcrumbs: [{ id: 10, name: 'A' }], versionCount: 1, shareLinkCount: 0, childCount: 0 };
+const DETAIL: DriveNodeDetail = { ...FILE_IN_A, spaceName: '我的网盘', spaceType: 'personal', breadcrumbs: [{ id: 10, name: 'A' }], versionCount: 1, shareLinkCount: 0, childCount: 0, legalHold: false, spaceArchived: false };
 
 const DIR_A = { spaceId: 1, parentId: 10, page: 1, pageSize: 50 };
 const DIR_B = { spaceId: 1, parentId: 20, page: 1, pageSize: 50 };

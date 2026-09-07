@@ -27,6 +27,11 @@ export function roleAtLeast(role: DriveRole | null | undefined, min: DriveRole):
   return !!role && DRIVE_ROLE_RANK[role] >= DRIVE_ROLE_RANK[min];
 }
 
+/** 节点的站内链接：文件夹落到目录，文件落到详情抽屉（供聊天卡片 / Wiki 引用等互通场景） */
+export function driveNodeUrl(node: Pick<DriveNode, 'id' | 'spaceId' | 'type'>): string {
+  return node.type === 'folder' ? `/drive?space=${node.spaceId}&folder=${node.id}` : `/drive?space=${node.spaceId}&node=${node.id}`;
+}
+
 /** 把网盘文件节点适配成预览层需要的 ManagedFile 形状（url 为网盘鉴权地址） */
 export function nodeToManagedFile(node: DriveNode): ManagedFile {
   return {

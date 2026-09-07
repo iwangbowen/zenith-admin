@@ -21,6 +21,8 @@ const API_SCOPE_ROWS: Omit<ApiScope, 'usedByAppCount'>[] = [
   { id: 16, code: 'payment:intent:read', name: '读取支付意图', description: '读取本应用支付意图与有效支付能力', scopeGroup: 'payment', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 17, code: 'payment:refund:create', name: '创建退款', description: '为本应用支付意图发起退款', scopeGroup: 'payment', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 18, code: 'payment:refund:read', name: '读取退款', description: '读取本应用退款状态', scopeGroup: 'payment', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 19, code: 'drive:read',     name: '读取网盘文件',     description: '读取被授权空间的目录与文件元数据、下载文件内容（还需在空间治理中授权空间）', scopeGroup: 'data', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 20, code: 'drive:write',    name: '写入网盘文件',     description: '向被授权空间上传文件（授权角色需为可编辑）', scopeGroup: 'data', status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 /** 引用计数由服务端按应用配置实时统计；种子与 Demo 初始态均为未被引用 */

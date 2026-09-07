@@ -12,6 +12,7 @@ import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { resolveUserNames } from './drive-common';
+import { openEventForAction, scheduleDriveOpenEvent } from './drive-open-events.service';
 import { ensureDriveLogPartitions } from './drive-partitions.service';
 
 export interface LogDriveActivityInput {
@@ -51,7 +52,7 @@ export async function logDriveActivity(input: LogDriveActivityInput, executor: D
     )).limit(1);
     if (existing) return;
   }
-  await executor.insert(driveActivities).values({
+  const [inserted] = await executor.insert(driveActivities).values({
     spaceId: input.spaceId,
     nodeId: input.nodeId,
     nodeName: input.nodeName.slice(0, 255),
@@ -63,7 +64,9 @@ export async function logDriveActivity(input: LogDriveActivityInput, executor: D
     clientIp: ctx ? getClientIp(ctx).slice(0, 64) : null,
     tenantId: input.tenantId !== undefined ? input.tenantId : (user ? getCreateTenantId(user) : null),
     createdAt,
-  });
+  }).returning({ id: driveActivities.id });
+  // 开放平台事件：延迟投递，worker 回读动态行确认事务已提交
+  if (inserted && openEventForAction(input.action)) await scheduleDriveOpenEvent(inserted.id, input.action, createdAt);
 }
 
 /** 记录「最近访问」（同一节点覆盖） */
@@ -169,5 +172,5 @@ export async function listDriveActivitiesForAdmin(q: ListDriveActivitiesQuery) {
 
 /** 统计某动作自 since 起的次数（管理统计用） */
 export async function countActivitiesSince(action: DriveActivityAction, since: Date): Promise<number> {
-  return db.$count(driveActivities, and(eq(driveActivities.action, action), sql`${driveActivities.createdAt} >= ${since}`));
+  return db.$count(driveActivities, and(eq(driveActivities.action, action), gte(driveActivities.createdAt, since)));
 }

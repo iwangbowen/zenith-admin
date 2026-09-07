@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import {
   DRIVE_SYNC_COPY_MAX_NODES,
   driveRoleAtLeast,
@@ -19,6 +19,7 @@ import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import {
   driveFileVersions,
+  driveLegalHolds,
   driveNodePermissions,
   driveNodeProfiles,
   driveNodeRenditions,
@@ -53,6 +54,7 @@ import { childAclOf, ownAclOf } from './drive-acl';
 import { collectNodeUserIds, extensionOf, mapDriveNode, mapDriveTag, resolveUserNames, suffixedName } from './drive-common';
 import { assertRenameExtensionAllowed } from './drive-content-policy';
 import { logDriveActivity } from './drive-activity.service';
+import { assertNoLegalHold, heldRootIds, isNodeOnLegalHold } from './drive-governance.service';
 import { ensureDriveSpaceExists, releaseSpaceQuota, reserveSpaceQuota } from './drive-spaces.service';
 import { effectiveQuotaBytes, getDriveSettings, type DriveSettings } from './drive-settings.service';
 
@@ -219,12 +221,13 @@ export async function getDriveNodeDetail(id: number): Promise<DriveNodeDetail> {
   const row = await ensureDriveNodeExists(id, { allowDeleted: true });
   const role = await ensureNodeRole(row, 'viewer', '没有该文件的访问权限');
   const [space] = await db.select().from(driveSpaces).where(eq(driveSpaces.id, row.spaceId)).limit(1);
-  const [node, breadcrumbs, versionCount, shareLinkCount, childCount] = await Promise.all([
+  const [node, breadcrumbs, versionCount, shareLinkCount, childCount, legalHold] = await Promise.all([
     decorateNode(row, role),
     loadBreadcrumbs(row),
     db.$count(driveFileVersions, eq(driveFileVersions.nodeId, id)),
     db.$count(driveShareLinks, and(eq(driveShareLinks.nodeId, id), isNull(driveShareLinks.revokedAt))),
     row.type === 'folder' ? db.$count(driveNodes, and(eq(driveNodes.parentId, id), isNull(driveNodes.deletedAt))) : Promise.resolve(0),
+    isNodeOnLegalHold(row),
   ]);
   return {
     ...node,
@@ -234,6 +237,8 @@ export async function getDriveNodeDetail(id: number): Promise<DriveNodeDetail> {
     versionCount,
     shareLinkCount,
     childCount,
+    legalHold,
+    spaceArchived: !!space?.archivedAt,
   };
 }
 
@@ -369,6 +374,8 @@ export async function moveDriveNodes(data: MoveDriveNodesInput): Promise<number>
   const targetParentId = parent?.id ?? null;
   const moving = rows.filter((r) => r.spaceId !== space.id || (r.parentId ?? null) !== targetParentId);
   if (moving.length === 0) return 0;
+  // 法律保留：冻结的子树不允许离开所在空间（空间内移动不受影响）
+  await assertNoLegalHold(db, moving.filter((r) => r.spaceId !== space.id), '跨空间移动');
   const subjects = await loadDriveSubjects();
   const settings = await getDriveSettings();
   try {
@@ -436,6 +443,8 @@ export async function transferDriveSubtree(executor: DbExecutor, root: DriveNode
     inheritPermissions: true, aclOpen: acl.aclOpen,
     aclChainIds: sql`${intArray(acl.aclChainIds)} || ${driveNodes.ancestorIds}[${root.depth + 1}:]`,
   }).where(inArray(driveNodes.id, ids));
+  // 空间交接允许带着法律保留一起迁移（证据不丢失），保留记录跟随到目标空间
+  await executor.update(driveLegalHolds).set({ spaceId: target.id }).where(inArray(driveLegalHolds.nodeId, ids));
 }
 
 function intArray(ids: number[]): SQL {
@@ -598,6 +607,7 @@ export async function deleteDriveNodes(ids: number[]): Promise<number> {
   const rows = await loadNodesByIds(ids);
   await ensureNodeRoleOnAll(rows, 'editor', '没有删除权限');
   await assertSubtreeNotLockedByOthers(rows);
+  await assertNoLegalHold(db, rows, '删除');
   const uid = currentUserId();
   const now = new Date();
   await db.transaction(async (tx) => {
@@ -704,7 +714,15 @@ export async function restoreDriveNodes(ids: number[]): Promise<number> {
 export async function purgeDriveNodes(ids: number[]): Promise<number> {
   const roots = await loadRecycleRoots(ids);
   await ensureRecycleOperable(roots, 'manager');
+  await assertNoLegalHold(db, roots, '彻底删除');
   return purgeSubtrees(roots);
+}
+
+/** 剔除被法律保留覆盖的根（自动清理 / 清空回收站静默跳过，不报错） */
+async function withoutHeldRoots(roots: DriveNodeRow[]): Promise<DriveNodeRow[]> {
+  if (roots.length === 0) return roots;
+  const held = await heldRootIds(db, roots);
+  return held.size ? roots.filter((r) => !held.has(r.id)) : roots;
 }
 
 /** 彻底删除若干子树：删行、释放配额、对象引用计数 -1（真正回收由 files-gc 延迟执行） */
@@ -740,20 +758,20 @@ export async function emptyRecycle(spaceId?: number): Promise<number> {
   );
   const roots = await db.select().from(driveNodes).where(where);
   await ensureRecycleOperable(roots, 'manager');
-  return purgeSubtrees(roots);
+  return purgeSubtrees(await withoutHeldRoots(roots));
 }
 
-/** 保留策略：清理超过保留天数的回收站项目（无请求上下文，跳过权限） */
+/** 保留策略：清理超过保留天数的回收站项目（无请求上下文，跳过权限；法律保留项跳过） */
 export async function purgeExpiredRecycleNodes(days: number): Promise<number> {
   if (days <= 0) return 0;
   const cutoff = new Date(Date.now() - days * 86_400_000);
   const roots = await db.select().from(driveNodes).where(and(
     isNotNull(driveNodes.deletedAt),
     sql`${driveNodes.deletedRootId} = ${driveNodes.id}`,
-    sql`${driveNodes.deletedAt} < ${cutoff}`,
+    lt(driveNodes.deletedAt, cutoff),
   )).limit(500);
   if (roots.length === 0) return 0;
-  return purgeSubtrees(roots);
+  return purgeSubtrees(await withoutHeldRoots(roots));
 }
 
 export async function countExpiredRecycleNodes(days: number): Promise<number> {
@@ -762,7 +780,7 @@ export async function countExpiredRecycleNodes(days: number): Promise<number> {
   return db.$count(driveNodes, and(
     isNotNull(driveNodes.deletedAt),
     sql`${driveNodes.deletedRootId} = ${driveNodes.id}`,
-    sql`${driveNodes.deletedAt} < ${cutoff}`,
+    lt(driveNodes.deletedAt, cutoff),
   ));
 }
 

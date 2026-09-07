@@ -34,6 +34,8 @@ export interface SpaceLike {
   departmentId: number | null;
   defaultMemberRole: DriveRole | null;
   status: 'enabled' | 'disabled';
+  /** 归档时间；非空即只读（角色计算不受影响，写操作在 ensure* 处拒绝） */
+  archivedAt?: Date | null;
 }
 
 export interface SpaceMemberLike {

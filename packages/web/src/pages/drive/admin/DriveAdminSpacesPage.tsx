@@ -28,7 +28,7 @@ import {
 import { confirmDanger, confirmDangerAsync } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { useHandoffDriveSpace } from '@/hooks/queries/drive-collaboration';
-import { renderEllipsis } from '@/utils/table-columns';
+import { renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usagePercent } from '../drive-utils';
 import '../drive.css';
 
@@ -41,6 +41,7 @@ interface SearchParams {
   type: DriveSpaceType | undefined;
   status: 'enabled' | 'disabled' | undefined;
   orphaned: boolean;
+  archived: boolean;
 }
 
 interface AdminSpaceFormValues {
@@ -98,8 +99,11 @@ export default function DriveAdminSpacesPage() {
   const canEdit = hasPermission('drive:admin:space:edit');
   const statsQuery = useDriveAdminStats();
   const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset } =
-    useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined, status: undefined, orphaned: false }, listKey: driveKeys.adminSpacesPrefix, extraKeys: [driveKeys.adminStats] });
-  const listQuery = useDriveAdminSpaces({ page, pageSize, keyword: submittedParams.keyword || undefined, type: submittedParams.type, status: submittedParams.status, orphaned: submittedParams.orphaned });
+    useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined, status: undefined, orphaned: false, archived: false }, listKey: driveKeys.adminSpacesPrefix, extraKeys: [driveKeys.adminStats] });
+  const listQuery = useDriveAdminSpaces({
+    page, pageSize, keyword: submittedParams.keyword || undefined, type: submittedParams.type, status: submittedParams.status,
+    orphaned: submittedParams.orphaned, archived: submittedParams.archived || undefined,
+  });
   const update = useAdminUpdateDriveSpace();
   const remove = useAdminDeleteDriveSpace();
   const submitTask = useSubmitDriveAdminTask();
@@ -156,9 +160,21 @@ export default function DriveAdminSpacesPage() {
         </div>
       );
     } },
+    { title: '趋势（30 天）', width: 150, render: (_: unknown, s: DriveSpace) => {
+      if (s.dailyGrowthBytes === null || s.dailyGrowthBytes === undefined) return EMPTY_PLACEHOLDER;
+      const urgent = s.daysUntilFull !== null && s.daysUntilFull !== undefined && s.daysUntilFull <= 30;
+      return (
+        <div className="drive-nowrap" style={{ fontSize: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span>日增 {s.dailyGrowthBytes > 0 ? formatBytes(s.dailyGrowthBytes) : '0 B'}</span>
+          {s.daysUntilFull !== null && s.daysUntilFull !== undefined && (
+            <Typography.Text type={urgent ? 'danger' : 'tertiary'} size="small">预计 {s.daysUntilFull} 天用满</Typography.Text>
+          )}
+        </div>
+      );
+    } },
     { title: '状态', dataIndex: 'status', width: 130, fixed: 'right', render: (v: string, s: DriveSpace) => (
       <Space spacing={4} className="drive-nowrap">
-        {v === 'enabled' ? <Tag size="small" color="green">启用</Tag> : <Tag size="small" color="grey">停用</Tag>}
+        {s.archivedAt ? <Tag size="small" color="grey">已归档</Tag> : v === 'enabled' ? <Tag size="small" color="green">启用</Tag> : <Tag size="small" color="grey">停用</Tag>}
         {!s.allowExternalShare && <Tag size="small" color="orange">禁外链</Tag>}
       </Space>
     ) },
@@ -197,6 +213,7 @@ export default function DriveAdminSpacesPage() {
             <FilterSelect<DriveSpaceType> value={draftParams.type} placeholder="全部类型" items={DRIVE_SPACE_TYPE_OPTIONS} onChange={(v) => setDraftParams((p) => ({ ...p, type: v }))} />
             <StatusSelect<'enabled' | 'disabled'> value={draftParams.status} items={STATUS_OPTIONS} onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
             <Checkbox checked={draftParams.orphaned} onChange={(event) => setDraftParams((previous) => ({ ...previous, orphaned: !!event.target.checked }))}>仅待接管</Checkbox>
+            <Checkbox checked={draftParams.archived} onChange={(event) => setDraftParams((previous) => ({ ...previous, archived: !!event.target.checked }))}>仅已归档</Checkbox>
           </>
         )}
         actions={(

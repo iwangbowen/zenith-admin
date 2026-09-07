@@ -72,6 +72,21 @@
 
 写入端点还要求 `cms_open_app_grants` 中存在启用的站点授权；栏目白名单为空表示该站点全部栏目。直接发布需要同时满足 `cms:publish`、授权行 `canPublish=true` 与站点 `openApiPublishEnabled=true`。
 
+## 开放网盘端点
+
+所有路径挂载在 `/api/open/v1` 下。应用只能看到网盘管理员在「合规治理 → 开放应用授权」中授予的空间（`drive_open_app_grants`），
+未授权空间的节点一律表现为不存在；授权角色再决定空间内的能力：`viewer` 只读元数据、`downloader` 可下载内容、`editor` 可上传。
+
+| 方法 | 路径 | Scope | 说明 |
+| --- | --- | --- | --- |
+| `GET` | `/api/open/v1/drive/spaces` | `drive:read` | 当前应用被授权的空间（含角色、用量、配额、是否归档） |
+| `GET` | `/api/open/v1/drive/nodes` | `drive:read` | 浏览目录（`spaceId` 必填，`parentId` 缺省为根级）或按 `keyword` 在整个空间搜索 |
+| `GET` | `/api/open/v1/drive/nodes/{id}` | `drive:read` | 节点元数据（含 `legalHold`），不暴露内部对象 id |
+| `GET` | `/api/open/v1/drive/nodes/{id}/content` | `drive:read` | 下载当前版本内容（支持 Range）；需授权角色 ≥ `downloader` |
+| `POST` | `/api/open/v1/drive/nodes` | `drive:write` | multipart 上传（`file`、`spaceId`、可选 `parentId` / `conflictPolicy`）；需授权角色 `editor`，以授权人身份落盘并复用配额与内容策略 |
+
+下载与上传都会写入文件动态（`detail.viaOpenApp = clientId`），归档空间与法律保留的限制同样生效。
+
 ## OAuth2 标准端点
 
 | 方法 | 路径 | 说明 |

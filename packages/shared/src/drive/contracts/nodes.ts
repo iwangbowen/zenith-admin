@@ -24,6 +24,7 @@ import {
   moveDriveNodesSchema,
   renameDriveNodeSchema,
   saveDriveNodePermissionsSchema,
+  sendDriveNodeToChatSchema,
   setDriveNodeInheritSchema,
   setDriveNodeTagsSchema,
 } from '../validation';
@@ -95,6 +96,10 @@ export const driveNodeDetailSchema = driveNodeSchema.extend({
   versionCount: z.int(),
   shareLinkCount: z.int(),
   childCount: z.int().meta({ description: '文件夹：直接子项数；文件：0' }),
+  /** 自身或祖先处于法律保留：不可删除 / 彻底删除 / 删版本 / 跨空间移动 */
+  legalHold: z.boolean(),
+  /** 所在空间已归档：只读 */
+  spaceArchived: z.boolean(),
 }).meta({ id: 'DriveNodeDetail' });
 
 export type DriveNodeDetail = z.infer<typeof driveNodeDetailSchema>;
@@ -396,4 +401,5 @@ export const driveNodeContract = defineContract('/api/drive/nodes', {
   presence: op.get('/{id}/presence', { params: idParam, response: z.array(drivePresenceUserSchema), summary: '正在查看该节点的用户（心跳 60 秒内）' }),
   heartbeat: op.post('/{id}/presence', { params: idParam, response: z.array(drivePresenceUserSchema), summary: '上报我正在查看该节点，并返回当前在线用户' }),
   leavePresence: op.delete('/{id}/presence', { params: idParam, summary: '离开该节点（立即从在线列表移除）' }),
+  sendToChat: op.post('/{id}/send-to-chat', { params: idParam, body: sendDriveNodeToChatSchema, response: z.object({ sent: z.int() }), summary: '以卡片消息把文件 / 文件夹链接发送到聊天会话（需 viewer；收件人仍按网盘 ACL 访问）' }),
 }, { tags: ['企业网盘-文件'] });

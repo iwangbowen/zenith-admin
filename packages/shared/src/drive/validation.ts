@@ -303,6 +303,51 @@ export const decideDriveAccessRequestSchema = z.object({
 
 export type DecideDriveAccessRequestInput = z.infer<typeof decideDriveAccessRequestSchema>;
 
+// ─── 治理：法律保留 / 归档 / 配额申请 ────────────────────────────────────────
+
+export const createDriveLegalHoldSchema = z.object({
+  nodeId: z.number().int().positive(),
+  reason: z.string().trim().min(1, '请填写保留原因').max(500),
+});
+export type CreateDriveLegalHoldInput = z.infer<typeof createDriveLegalHoldSchema>;
+
+export const releaseDriveLegalHoldSchema = z.object({
+  note: z.string().trim().max(200).optional(),
+});
+export type ReleaseDriveLegalHoldInput = z.infer<typeof releaseDriveLegalHoldSchema>;
+
+export const createDriveQuotaRequestSchema = z.object({
+  /** 期望的空间配额（GB） */
+  requestedGb: z.number().int().min(1).max(1_000_000),
+  reason: z.string().trim().max(500).optional(),
+});
+export type CreateDriveQuotaRequestInput = z.infer<typeof createDriveQuotaRequestSchema>;
+
+export const decideDriveQuotaRequestSchema = z.object({
+  approve: z.boolean(),
+  /** 通过时实际批准的配额（GB）；缺省按申请值 */
+  quotaGb: z.number().int().min(1).max(1_000_000).optional(),
+  note: z.string().trim().max(200).optional(),
+});
+export type DecideDriveQuotaRequestInput = z.infer<typeof decideDriveQuotaRequestSchema>;
+
+export const createDriveOpenAppGrantSchema = z.object({
+  clientId: z.string().trim().min(1).max(64),
+  spaceId: z.number().int().positive(),
+  /** 应用在该空间的最高角色（manager 不开放给应用） */
+  role: z.enum(['viewer', 'downloader', 'editor']).default('downloader'),
+  remark: z.string().trim().max(200).optional(),
+});
+export type CreateDriveOpenAppGrantInput = z.infer<typeof createDriveOpenAppGrantSchema>;
+
+// ─── 互通：发送到聊天 ─────────────────────────────────────────────────────────
+
+export const sendDriveNodeToChatSchema = z.object({
+  conversationIds: z.array(z.number().int().positive()).min(1, '请选择会话').max(20),
+  note: z.string().trim().max(500).optional(),
+});
+export type SendDriveNodeToChatInput = z.infer<typeof sendDriveNodeToChatSchema>;
+
 // ─── 版本 / 锁 / 标签 / 评论 ──────────────────────────────────────────────────
 
 export const driveVersionCommentSchema = z.object({

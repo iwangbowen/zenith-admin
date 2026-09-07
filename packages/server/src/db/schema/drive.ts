@@ -36,6 +36,7 @@ export const driveActivityActionEnum = pgEnum('drive_activity_action', [
   'upload', 'new_version', 'create_folder', 'rename', 'move', 'copy', 'delete', 'restore', 'purge',
   'download', 'preview', 'share_create', 'share_update', 'share_revoke', 'share_access', 'save_from_share', 'collect_upload',
   'permission_change', 'inherit_change', 'version_restore', 'version_delete', 'lock', 'unlock', 'comment', 'tag', 'metadata_change',
+  'legal_hold', 'legal_release', 'archive', 'unarchive',
 ]);
 
 // ─── 空间 ─────────────────────────────────────────────────────────────────────
@@ -61,6 +62,8 @@ export const driveSpaces = pgTable('drive_spaces', {
   maxVersions: integer(),
   allowExternalShare: boolean().notNull().default(true),
   status: statusEnum().notNull().default('enabled'),
+  /** 归档时间；非空即只读（不可上传 / 修改 / 分享），空间 manager 可恢复 */
+  archivedAt: timestamp(),
   sort: integer().notNull().default(0),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
@@ -270,6 +273,80 @@ export const driveAccessRequests = pgTable('drive_access_requests', {
 ]);
 
 export type DriveAccessRequestRow = typeof driveAccessRequests.$inferSelect;
+
+// ─── 治理：法律保留 / 扩容申请 / 开放应用授权 ─────────────────────────────────
+
+/**
+ * 法律保留：对文件或文件夹（含子树）冻结——不可删除 / 彻底删除 / 删版本 / 跨空间移动，
+ * 也不参与回收站到期清理与版本修剪。解除后记录保留（active=false）供审计。
+ */
+export const driveLegalHolds = pgTable('drive_legal_holds', {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  nodeId: integer().notNull().references(() => driveNodes.id, { onDelete: 'cascade' }),
+  spaceId: integer().notNull().references(() => driveSpaces.id, { onDelete: 'cascade' }),
+  reason: varchar({ length: 500 }).notNull(),
+  active: boolean().notNull().default(true),
+  releasedBy: integer().references(() => users.id, { onDelete: 'set null' }),
+  releasedAt: timestamp(),
+  releaseNote: varchar({ length: 200 }),
+  tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  ...timestampColumns(),
+}, (t) => [
+  // 同一节点同时只允许一条生效中的保留
+  uniqueIndex('drive_legal_holds_active_node_uq').on(t.nodeId).where(sql`${t.active} = true`),
+  index('drive_legal_holds_space_idx').on(t.spaceId, t.active),
+]);
+
+export type DriveLegalHoldRow = typeof driveLegalHolds.$inferSelect;
+
+/** 空间扩容申请：空间 manager 发起，网盘管理员审批；通过即写入空间显式配额 */
+export const driveQuotaRequests = pgTable('drive_quota_requests', {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  spaceId: integer().notNull().references(() => driveSpaces.id, { onDelete: 'cascade' }),
+  requesterId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 申请时的生效配额（字节）；0 = 不限 */
+  currentQuotaBytes: bigint({ mode: 'number' }).notNull().default(0),
+  usedBytes: bigint({ mode: 'number' }).notNull().default(0),
+  requestedGb: integer().notNull(),
+  reason: varchar({ length: 500 }),
+  status: driveAccessRequestStatusEnum().notNull().default('pending'),
+  approvedGb: integer(),
+  decidedBy: integer().references(() => users.id, { onDelete: 'set null' }),
+  decidedAt: timestamp(),
+  decisionNote: varchar({ length: 200 }),
+  tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
+  ...timestampColumns(),
+}, (t) => [
+  // 同一空间同时只允许一条待审批申请
+  uniqueIndex('drive_quota_requests_pending_unique').on(t.spaceId).where(sql`${t.status} = 'pending'`),
+  index('drive_quota_requests_status_idx').on(t.status, t.createdAt),
+]);
+
+export type DriveQuotaRequestRow = typeof driveQuotaRequests.$inferSelect;
+
+/**
+ * 开放应用的空间授权：开放 API 与 Webhook 只暴露被显式授权空间内的文件元数据 / 内容，
+ * 未授权空间对第三方应用完全不可见（与 cms_open_app_grants 同一思路）。
+ */
+export const driveOpenAppGrants = pgTable('drive_open_app_grants', {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  /** 开放应用 AppKey（= oauth2_clients.client_id） */
+  clientId: varchar({ length: 64 }).notNull(),
+  spaceId: integer().notNull().references(() => driveSpaces.id, { onDelete: 'cascade' }),
+  /** 该应用在空间内的最高角色：viewer 只读元数据 / downloader 可取内容 / editor 可上传 */
+  role: driveRoleEnum().notNull().default('downloader'),
+  status: statusEnum().notNull().default('enabled'),
+  remark: varchar({ length: 200 }),
+  tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  ...timestampColumns(),
+}, (t) => [
+  uniqueIndex('drive_open_app_grants_client_space_uq').on(t.clientId, t.spaceId),
+  index('drive_open_app_grants_space_idx').on(t.spaceId),
+]);
+
+export type DriveOpenAppGrantRow = typeof driveOpenAppGrants.$inferSelect;
 
 /**
  * 外链访问留痕（含被拒绝的尝试）。

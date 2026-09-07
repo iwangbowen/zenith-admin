@@ -179,10 +179,19 @@ export async function resolveSpaceRole(space: SpaceLike): Promise<DriveRole | nu
   return (await resolveSpaceRoles([space])).get(space.id) ?? null;
 }
 
-export async function ensureSpaceRole(space: SpaceLike, minRole: DriveRole): Promise<DriveRole> {
+export async function ensureSpaceRole(space: SpaceLike, minRole: DriveRole, opts: { allowArchived?: boolean } = {}): Promise<DriveRole> {
   const role = await resolveSpaceRole(space);
   if (!driveRoleAtLeast(role, minRole)) throw new HTTPException(403, { message: '没有该空间的操作权限' });
+  if (!opts.allowArchived && space.archivedAt && WRITE_ROLES.has(minRole)) throw archivedError();
   return role!;
+}
+
+/** 需要写权限的角色：归档空间对这些操作只读 */
+const WRITE_ROLES: ReadonlySet<DriveRole> = new Set(['editor', 'manager']);
+
+/** 423 Locked：空间已归档，写操作被拒绝（可由空间管理者恢复归档） */
+export function archivedError(): HTTPException {
+  return new HTTPException(423, { message: '空间已归档，仅可查看与下载；如需修改请先恢复归档' });
 }
 
 // ─── 节点角色 ─────────────────────────────────────────────────────────────────
@@ -192,6 +201,8 @@ export type NodeLike = { id: number; spaceId: number; aclChainIds: number[]; acl
 export interface NodeRoleResolution {
   role: DriveRole | null;
   spaceRole: DriveRole | null;
+  /** 所在空间已归档：只读 */
+  spaceArchived: boolean;
   /** 命中的授权明细（自身 + 生效链），供权限面板展示 */
   grants: Array<{ nodeId: number; subjectType: DriveSubjectType; subjectId: number; role: DriveRole }>;
 }
@@ -210,7 +221,7 @@ export async function resolveNodeRoles(nodes: NodeLike[], subjectsOverride?: Dri
   const [spaces, grants] = await Promise.all([
     executor.select({
       id: driveSpaces.id, type: driveSpaces.type, ownerId: driveSpaces.ownerId, departmentId: driveSpaces.departmentId,
-      defaultMemberRole: driveSpaces.defaultMemberRole, status: driveSpaces.status,
+      defaultMemberRole: driveSpaces.defaultMemberRole, status: driveSpaces.status, archivedAt: driveSpaces.archivedAt,
     }).from(driveSpaces).where(inArray(driveSpaces.id, spaceIds)),
     subjects.isAdmin
       ? Promise.resolve([])
@@ -225,6 +236,7 @@ export async function resolveNodeRoles(nodes: NodeLike[], subjectsOverride?: Dri
   ]);
   const ctx = await loadSpaceContext(spaces, subjects, executor);
   const enabledSpaceIds = new Set(spaces.filter((space) => space.status === 'enabled').map((space) => space.id));
+  const archivedSpaceIds = new Set(spaces.filter((space) => space.archivedAt).map((space) => space.id));
   const spaceRoleMap = new Map(spaces.map((s) => [s.id, computeSpaceRole(s, subjects, ctx)]));
   const grantsByNode = new Map<number, typeof grants>();
   for (const g of grants) {
@@ -238,7 +250,7 @@ export async function resolveNodeRoles(nodes: NodeLike[], subjectsOverride?: Dri
     const hitGrants = spaceRole === 'manager' ? [] : effectiveGrantNodeIds(node).flatMap((id) => grantsByNode.get(id) ?? []);
     const role = !subjects.isAdmin && !enabledSpaceIds.has(node.spaceId)
       ? null : computeNodeRole(node, spaceRole, hitGrants.map((g) => g.role));
-    result.set(node.id, { role, spaceRole, grants: hitGrants });
+    result.set(node.id, { role, spaceRole, spaceArchived: archivedSpaceIds.has(node.spaceId), grants: hitGrants });
   }
   return result;
 }
@@ -254,8 +266,10 @@ export async function ensureNodeRole(
   subjects?: DriveSubjectSet,
   executor: DbExecutor = db,
 ): Promise<DriveRole> {
-  const role = (await resolveNodeRoles([node], subjects, executor)).get(node.id)?.role ?? null;
+  const resolution = (await resolveNodeRoles([node], subjects, executor)).get(node.id);
+  const role = resolution?.role ?? null;
   if (!driveRoleAtLeast(role, minRole)) throw new HTTPException(403, { message });
+  if (resolution?.spaceArchived && WRITE_ROLES.has(minRole)) throw archivedError();
   return role!;
 }
 
@@ -263,7 +277,9 @@ export async function ensureNodeRole(
 export async function ensureNodeRoleOnAll<T extends NodeLike & { name: string }>(rows: T[], minRole: DriveRole, message: string): Promise<Map<number, DriveRole | null>> {
   const roleMap = await resolveNodeRoles(rows);
   for (const row of rows) {
-    if (!driveRoleAtLeast(roleMap.get(row.id)?.role, minRole)) throw new HTTPException(403, { message: `${message}：${row.name}` });
+    const resolution = roleMap.get(row.id);
+    if (!driveRoleAtLeast(resolution?.role, minRole)) throw new HTTPException(403, { message: `${message}：${row.name}` });
+    if (resolution?.spaceArchived && WRITE_ROLES.has(minRole)) throw archivedError();
   }
   return new Map(rows.map((r) => [r.id, roleMap.get(r.id)?.role ?? null]));
 }

@@ -57,7 +57,10 @@ async function enqueue(job: RenditionJob): Promise<void> {
 
 /** The rendition row is also an outbox: startup/periodic reconciliation recovers an interrupted send. */
 export async function scheduleNodeRenditions(nodeId: number): Promise<void> {
-  const settings = await getDriveSettings();
+  // worker / 上传完成后调用，可能无请求上下文：按节点所属租户读取设置（事务外）
+  const [head] = await db.select({ tenantId: driveNodes.tenantId }).from(driveNodes).where(eq(driveNodes.id, nodeId)).limit(1);
+  if (!head) return;
+  const settings = await getDriveSettings({ tenantId: head.tenantId ?? null });
   const jobs = await db.transaction(async (tx) => {
     const [node] = await tx.select().from(driveNodes).where(and(eq(driveNodes.id, nodeId), isNull(driveNodes.deletedAt))).for('update');
     if (!node?.fileId) return [];

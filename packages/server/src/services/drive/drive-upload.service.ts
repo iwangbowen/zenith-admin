@@ -28,6 +28,7 @@ import { childAclOf } from './drive-acl';
 import { assertDriveFileAllowed } from './drive-content-policy';
 import { driveVersionContentUrl, extensionOf, resolveUserNames } from './drive-common';
 import { logDriveActivity, touchDriveRecent } from './drive-activity.service';
+import { assertNoLegalHold, isNodeOnLegalHold } from './drive-governance.service';
 import {
   assertNotLockedByOthers,
   decorateNodes,
@@ -202,9 +203,9 @@ async function appendVersion(
     contentHash: input.contentHash,
     currentVersion: nextVersion,
   }).where(eq(driveNodes.id, node.id)).returning();
-  // 修剪超出上限的最旧版本（对象回收在事务提交后由调用方处理）
+  // 修剪超出上限的最旧版本（对象回收在事务提交后由调用方处理）；法律保留的文件不修剪
   const versions = await tx.select().from(driveFileVersions).where(eq(driveFileVersions.nodeId, node.id)).orderBy(desc(driveFileVersions.version));
-  const overflow = versions.slice(maxVersions);
+  const overflow = versions.length > maxVersions && !(await isNodeOnLegalHold(node, tx)) ? versions.slice(maxVersions) : [];
   if (overflow.length) {
     await tx.delete(driveFileVersions).where(inArray(driveFileVersions.id, overflow.map((v) => v.id)));
     await releaseManagedFiles(tx, overflow.map((v) => v.fileId));
@@ -474,6 +475,7 @@ export async function restoreDriveNodeVersion(nodeId: number, version: number): 
 export async function deleteDriveNodeVersion(nodeId: number, version: number): Promise<void> {
   const node = await ensureDriveNodeExists(nodeId);
   await ensureNodeRole(node, 'manager', '只有管理者可以删除历史版本');
+  await assertNoLegalHold(db, [node], '删除历史版本');
   const target = await ensureVersionExists(nodeId, version);
   if (target.version === node.currentVersion) throw new HTTPException(400, { message: '不能删除当前版本' });
   await db.transaction(async (tx) => {

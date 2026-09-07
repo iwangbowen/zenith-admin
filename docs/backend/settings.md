@@ -41,7 +41,7 @@
 | `payment` 支付风控 | `/payment` | **tenant** | `payment` | `system:setting:view` / `system:setting:update` | 退款 / 转账四眼审批阈值 | 通用设置页 |
 | `workflow` 工作流引擎 | `/workflow` | platform | `workflow` | `system:setting:view` / `system:setting:update` | 引擎健康度诊断阈值 | 通用设置页 |
 | `ipAccess` IP 访问控制 | `/ip-access` | platform | — | `system:ip-access:view` / `system:ip-access:update` | 黑白名单开关与名单（IP / CIDR） | `/system/ip-access` |
-| `drive` 企业网盘 | `/drive` | platform | `drive` | `drive:setting:view` / `drive:setting:edit` | 空间配额、版本保留、外链策略、禁止扩展名、缩略图 / 全文索引 | `/drive/admin/settings` |
+| `drive` 企业网盘 | `/drive` | **tenant** | `drive` | `drive:setting:view` / `drive:setting:edit` | 空间配额、版本保留、外链策略、禁止扩展名、缩略图 / 全文索引、异常行为告警阈值（告警取平台值）；后台任务与匿名入口按数据行 `tenantId` 显式读取 | `/drive/admin/settings` |
 | `wiki` 知识中心 | `/wiki` | platform | `wiki` | `wiki:setting:view` / `wiki:setting:edit` | 发布审核、默认可见性、评论、AI 同步、回收站保留、审核提醒 | `/wiki/settings` |
 
 各字段的默认值与取值范围以模块 schema 为准（`/api/docs` 中的 `Settings{Module}Envelope` 组件即其 JSON Schema），本文不重复维护字段表。

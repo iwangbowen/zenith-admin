@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { Progress, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Checkbox, Input, InputNumber, Progress, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { formatBytes } from '@zenith/shared/core';
 import {
-  DRIVE_ROLE_LABELS, DRIVE_SPACE_TYPE_LABELS, DRIVE_SPACE_TYPE_OPTIONS,
+  DRIVE_ACCESS_REQUEST_STATUS_LABELS, DRIVE_ROLE_LABELS, DRIVE_SPACE_TYPE_LABELS, DRIVE_SPACE_TYPE_OPTIONS,
   type DriveRole, type DriveSpace, type DriveSpaceType,
 } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
@@ -18,9 +18,10 @@ import UserSelect from '@/components/UserSelect';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
-  driveKeys, useDeleteDriveSpaces, useDriveSpaceList, useDriveSpaceMembers, useSaveDriveSpaceMembers, useTransferDriveSpace,
+  driveKeys, useArchiveDriveSpace, useDeleteDriveSpaces, useDriveSpaceList, useDriveSpaceMembers, useRequestDriveQuota, useSaveDriveSpaceMembers,
+  useSpaceQuotaRequests, useTransferDriveSpace, useUnarchiveDriveSpace,
 } from '@/hooks/queries/drive';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DriveSpaceFormSheet, type DriveSpaceFormTarget } from '../components/DriveSpaceFormSheet';
 import { DriveSubjectPicker, type SubjectGrant } from '../components/DriveSubjectPicker';
@@ -31,6 +32,7 @@ import '../drive.css';
 interface SearchParams {
   keyword: string;
   type: DriveSpaceType | undefined;
+  archived: boolean;
 }
 
 function MembersModal({ space, onClose }: { readonly space: DriveSpace | null; readonly onClose: () => void }) {
@@ -86,18 +88,74 @@ function TransferModal({ space, onClose }: { readonly space: DriveSpace | null; 
   );
 }
 
+/** 空间管理者申请扩容：展示当前配额 / 用量与历史申请，提交后由网盘管理员审批 */
+function QuotaRequestModal({ space, onClose }: { readonly space: DriveSpace | null; readonly onClose: () => void }) {
+  const request = useRequestDriveQuota();
+  const history = useSpaceQuotaRequests(space?.id, !!space);
+  const currentGb = space?.quotaBytes ? Math.ceil(space.quotaBytes / 1024 ** 3) : 0;
+  const [requestedGb, setRequestedGb] = useState<number>(0);
+  const [reason, setReason] = useState('');
+  useEffect(() => { setRequestedGb(currentGb ? currentGb * 2 : 0); setReason(''); }, [currentGb, space?.id]);
+  const pending = (history.data ?? []).find((r) => r.status === 'pending');
+  const canSubmit = !!space?.quotaBytes && !pending && requestedGb > currentGb;
+  return (
+    <AppModal visible={!!space} title={`申请扩容 · ${space?.name ?? ''}`} width={520} closeOnEsc onCancel={onClose} okText="提交申请"
+      okButtonProps={{ loading: request.isPending, disabled: !canSubmit }}
+      onOk={async () => {
+        if (!space) return;
+        await request.mutateAsync({ params: { id: space.id }, body: { requestedGb, reason: reason.trim() || undefined } });
+        Toast.success('扩容申请已提交，网盘管理员审批后生效');
+        onClose();
+      }}>
+      {space && !space.quotaBytes && <Typography.Paragraph type="tertiary">该空间当前不限配额，无需扩容。</Typography.Paragraph>}
+      {space && !!space.quotaBytes && (
+        <>
+          <Typography.Paragraph>当前配额 {formatBytes(space.quotaBytes)}，已用 {formatBytes(space.usedBytes)}。</Typography.Paragraph>
+          {pending && <Typography.Paragraph type="warning">已有一条待审批申请（{pending.requestedGb} GB，{pending.createdAt}），处理完成前不能重复提交。</Typography.Paragraph>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <InputNumber prefix="期望配额" suffix="GB" min={currentGb + 1} max={1_000_000} value={requestedGb} onChange={(v) => setRequestedGb(typeof v === 'number' ? v : 0)} style={{ width: 240 }} disabled={!!pending} />
+            <Input value={reason} onChange={setReason} placeholder="申请理由（可选，随通知发送给管理员）" maxLength={500} disabled={!!pending} />
+          </div>
+          {(history.data ?? []).length > 0 && (
+            <ul className="drive-quota-history">
+              {(history.data ?? []).slice(0, 5).map((r) => (
+                <li key={r.id}>
+                  <Tag size="small" color={r.status === 'approved' ? 'green' : r.status === 'rejected' ? 'red' : r.status === 'pending' ? 'orange' : 'grey'}>{DRIVE_ACCESS_REQUEST_STATUS_LABELS[r.status]}</Tag>
+                  <span>申请 {r.requestedGb} GB{r.approvedGb ? ` · 批准 ${r.approvedGb} GB` : ''} · {r.createdAt}{r.decisionNote ? ` · ${r.decisionNote}` : ''}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </AppModal>
+  );
+}
+
 export default function DriveSpacesPage() {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
   const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset } =
-    useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined }, listKey: driveKeys.spaceLists });
-  const listQuery = useDriveSpaceList({ page, pageSize, keyword: submittedParams.keyword || undefined, type: submittedParams.type });
+    useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined, archived: false }, listKey: driveKeys.spaceLists });
+  const listQuery = useDriveSpaceList({ page, pageSize, keyword: submittedParams.keyword || undefined, type: submittedParams.type, archived: submittedParams.archived || undefined });
   const remove = useDeleteDriveSpaces();
+  const archive = useArchiveDriveSpace();
+  const unarchive = useUnarchiveDriveSpace();
   const [membersOf, setMembersOf] = useState<DriveSpace | null>(null);
   const [transferOf, setTransferOf] = useState<DriveSpace | null>(null);
+  const [quotaOf, setQuotaOf] = useState<DriveSpace | null>(null);
   const [tagsOf, setTagsOf] = useState<DriveSpace | null>(null);
   const [activitiesOf, setActivitiesOf] = useState<DriveSpace | null>(null);
   const [spaceEditor, setSpaceEditor] = useState<DriveSpaceFormTarget | null>(null);
+
+  const toggleArchive = (s: DriveSpace) => {
+    if (s.archivedAt) {
+      unarchive.mutate({ params: { id: s.id } }, { onSuccess: () => Toast.success('已恢复归档，空间可正常读写') });
+      return;
+    }
+    confirmDanger({ title: `归档空间「${s.name}」？`, content: '归档后空间只读：不能上传、修改、删除或分享，已有外链仍可访问；空间不再出现在侧栏，可随时恢复。', okText: '归档',
+      onOk: () => archive.mutateAsync({ params: { id: s.id } }).then(() => Toast.success('空间已归档（只读）')) });
+  };
 
   // 页面宽约 1190px：去掉低价值的创建时间列、收窄辅助列，让名称列保持可读；打开空间点名称即可
   const columns: ColumnProps<DriveSpace>[] = [
@@ -119,17 +177,22 @@ export default function DriveSpacesPage() {
         </div>
       );
     } },
-    { title: '状态', dataIndex: 'status', width: 80, fixed: 'right', render: (v: string) => (v === 'enabled' ? <Tag size="small" color="green">启用</Tag> : <Tag size="small" color="grey">停用</Tag>) },
+    { title: '状态', dataIndex: 'status', width: 110, fixed: 'right', render: (v: string, s: DriveSpace) => (
+      s.archivedAt ? <Tag size="small" color="grey">已归档 · 只读</Tag> : v === 'enabled' ? <Tag size="small" color="green">启用</Tag> : <Tag size="small" color="grey">停用</Tag>
+    ) },
     createOperationColumn<DriveSpace>({ width: 150, desktopInlineKeys: ['members'], actions: (s) => {
       const isManager = roleAtLeast(s.myRole, 'manager');
+      const canEditSpace = hasPermission('drive:space:edit');
       return [
         { key: 'members', label: s.type === 'personal' ? '成员' : (isManager ? '成员管理' : '查看成员'), hidden: s.type === 'personal', onClick: () => setMembersOf(s) },
         { key: 'open', label: '打开', onClick: () => navigate(`/drive?space=${s.id}`) },
         { key: 'activities', label: '空间动态', onClick: () => setActivitiesOf(s) },
         { key: 'tags', label: '标签管理', onClick: () => setTagsOf(s) },
-        { key: 'edit', label: '编辑', hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:edit'), onClick: () => setSpaceEditor(s) },
-        { key: 'transfer', label: '转让', hidden: s.type !== 'team' || !isManager, onClick: () => setTransferOf(s) },
-        { key: 'delete', label: '删除', danger: true, dividerBefore: true, hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:delete'),
+        { key: 'edit', label: '编辑', hidden: s.type !== 'team' || !isManager || !canEditSpace || !!s.archivedAt, onClick: () => setSpaceEditor(s) },
+        { key: 'transfer', label: '转让', hidden: s.type !== 'team' || !isManager || !!s.archivedAt, onClick: () => setTransferOf(s) },
+        { key: 'quota', label: '申请扩容', hidden: !isManager || !canEditSpace || !s.quotaBytes, onClick: () => setQuotaOf(s) },
+        { key: 'archive', label: s.archivedAt ? '恢复归档' : '归档（只读）', dividerBefore: true, hidden: s.type === 'personal' || !isManager || !canEditSpace, onClick: () => toggleArchive(s) },
+        { key: 'delete', label: '删除', danger: true, hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:delete'),
           onClick: () => { confirmDelete({ title: `删除协作空间「${s.name}」？`, content: '空间内文件将进入回收站，保留期后彻底清除。',
             onOk: () => remove.mutateAsync([s.id]).then(() => Toast.success('已删除')) }); } },
       ];
@@ -143,6 +206,7 @@ export default function DriveSpacesPage() {
           <>
             <KeywordInput value={draftParams.keyword} placeholder="搜索空间名称" onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
             <FilterSelect<DriveSpaceType> value={draftParams.type} placeholder="全部类型" items={DRIVE_SPACE_TYPE_OPTIONS} onChange={(v) => setDraftParams((p) => ({ ...p, type: v }))} />
+            <Checkbox checked={draftParams.archived} onChange={(e) => setDraftParams((p) => ({ ...p, archived: !!e.target.checked }))}>只看已归档</Checkbox>
           </>
         )}
         actions={(
@@ -160,6 +224,7 @@ export default function DriveSpacesPage() {
       <DriveSpaceFormSheet target={spaceEditor} onClose={() => setSpaceEditor(null)} />
       <MembersModal space={membersOf} onClose={() => setMembersOf(null)} />
       <TransferModal space={transferOf} onClose={() => setTransferOf(null)} />
+      <QuotaRequestModal space={quotaOf} onClose={() => setQuotaOf(null)} />
       <DriveTagsModal space={tagsOf} onClose={() => setTagsOf(null)} />
       <DriveSpaceActivitiesModal space={activitiesOf} onClose={() => setActivitiesOf(null)} />
       {!hasPermission('drive:space:create') && listQuery.data?.total === 0 && (

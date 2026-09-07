@@ -1,8 +1,9 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { DRIVE_ROLES, DRIVE_SPACE_TYPES, DRIVE_SUBJECT_TYPES } from '../constants';
+import { DRIVE_QUOTA_REQUEST_STATUSES, DRIVE_ROLES, DRIVE_SPACE_TYPES, DRIVE_SUBJECT_TYPES } from '../constants';
 import {
+  createDriveQuotaRequestSchema,
   createDriveSpaceSchema,
   saveDriveSpaceMembersSchema,
   transferDriveSpaceSchema,
@@ -28,11 +29,17 @@ export const driveSpaceSchema = z.object({
   maxVersions: z.int().nullable(),
   allowExternalShare: z.boolean(),
   status: entityStatusSchema,
+  /** 归档时间；非空即只读（不可上传 / 修改 / 分享），可由管理者恢复 */
+  archivedAt: z.string().nullable(),
   sort: z.int(),
   tenantId: z.int().nullable(),
   myRole: z.enum(DRIVE_ROLES).nullable().optional().meta({ description: '当前用户在该空间的有效角色（列表 / 详情附带）' }),
   memberCount: z.int().optional(),
   nodeCount: z.int().optional(),
+  /** 近 30 天平均每日新增字节（治理列表附带）；无数据为 null */
+  dailyGrowthBytes: z.int().nullable().optional(),
+  /** 按近 30 天增速预计多少天后用满配额；不限配额或零增长为 null */
+  daysUntilFull: z.int().nullable().optional(),
   ...auditFieldsSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -51,12 +58,36 @@ export const driveSpaceMemberSchema = z.object({
 
 export type DriveSpaceMember = z.infer<typeof driveSpaceMemberSchema>;
 
+export const driveQuotaRequestSchema = z.object({
+  id: z.int(),
+  spaceId: z.int(),
+  spaceName: z.string(),
+  spaceType: z.enum(DRIVE_SPACE_TYPES),
+  currentQuotaBytes: z.int().meta({ description: '申请时的生效配额；0 = 不限' }),
+  usedBytes: z.int(),
+  requestedGb: z.int(),
+  reason: z.string().nullable(),
+  status: z.enum(DRIVE_QUOTA_REQUEST_STATUSES),
+  requesterId: z.int(),
+  requesterName: z.string().nullable(),
+  approvedGb: z.int().nullable(),
+  decidedBy: z.int().nullable(),
+  decidedByName: z.string().nullable(),
+  decidedAt: z.string().nullable(),
+  decisionNote: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+}).meta({ id: 'DriveQuotaRequest' });
+
+export type DriveQuotaRequest = z.infer<typeof driveQuotaRequestSchema>;
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const driveSpaceListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   type: z.enum(DRIVE_SPACE_TYPES).optional(),
   status: entityStatusSchema.optional(),
+  archived: queryBool('true 只看已归档；缺省 / false 只看未归档'),
 });
 
 export const driveSpaceContract = defineContract('/api/drive/spaces', {
@@ -69,4 +100,8 @@ export const driveSpaceContract = defineContract('/api/drive/spaces', {
   members: op.get('/{id}/members', { params: idParam, response: z.array(driveSpaceMemberSchema), summary: '空间成员' }),
   saveMembers: op.put('/{id}/members', { params: idParam, body: saveDriveSpaceMembersSchema, summary: '全量保存空间成员（需空间 manager）' }),
   transfer: op.post('/{id}/transfer', { params: idParam, body: transferDriveSpaceSchema, response: driveSpaceSchema, summary: '转让协作空间' }),
+  archive: op.post('/{id}/archive', { params: idParam, response: driveSpaceSchema, summary: '归档空间：只读，不可上传 / 修改 / 分享（需空间 manager）' }),
+  unarchive: op.post('/{id}/unarchive', { params: idParam, response: driveSpaceSchema, summary: '恢复归档（需空间 manager）' }),
+  requestQuota: op.post('/{id}/quota-requests', { params: idParam, body: createDriveQuotaRequestSchema, response: driveQuotaRequestSchema, summary: '申请扩容（需空间 manager；由网盘管理员审批）' }),
+  quotaRequests: op.get('/{id}/quota-requests', { params: idParam, response: z.array(driveQuotaRequestSchema), summary: '该空间的扩容申请记录' }),
 }, { tags: ['企业网盘-空间'] });

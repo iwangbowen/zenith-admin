@@ -7,7 +7,9 @@ import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { mapAsyncTask } from '../../lib/task-center';
 import { listDriveActivitiesForAdmin } from '../../services/drive/drive-activity.service';
 import { getDriveAdminStats } from '../../services/drive/drive-admin.service';
-import { adminRevokeDriveShareLink, getShareLinkBeforeAudit, listShareLinksForAdmin } from '../../services/drive/drive-share.service';
+import { createLegalHold, decideQuotaRequest, listLegalHolds, listQuotaRequestsForAdmin, releaseLegalHold } from '../../services/drive/drive-governance.service';
+import { createOpenAppGrant, getOpenAppGrantBeforeAudit, listOpenAppGrants, removeOpenAppGrant } from '../../services/drive/drive-open.service';
+import { adminRevokeDriveShareLink, getShareLinkBeforeAudit, listShareAccessLogsForAdmin, listShareLinksForAdmin } from '../../services/drive/drive-share.service';
 import { adminUpdateDriveSpace, createDepartmentSpace, deleteDriveSpace, ensureDriveSpaceExists, listDriveSpacesForAdmin } from '../../services/drive/drive-spaces.service';
 import { submitRecalcUsageTask, submitReindexTask } from '../../services/drive/drive-tasks.service';
 import { handoffDriveSpace } from '../../services/drive/drive-handoff.service';
@@ -95,11 +97,69 @@ const handoffRoute = defineContractRoute(driveAdminContract.handoff, {
   },
 });
 
+// ─── 治理：外链访问日志 / 法律保留 / 扩容审批 / 开放应用授权 ────────────────────
+
+const shareAccessLogsRoute = defineContractRoute(driveAdminContract.shareAccessLogs, {
+  middleware: [authMiddleware, guard({ permission: 'drive:admin:link:list' })],
+  handler: async (c) => c.json(okBody(await listShareAccessLogsForAdmin(c.req.valid('query'))), 200),
+});
+
+const legalHoldsRoute = defineContractRoute(driveAdminContract.legalHolds, {
+  middleware: [authMiddleware, guard({ permission: 'drive:admin:space:list' })],
+  handler: async (c) => c.json(okBody(await listLegalHolds(c.req.valid('query'))), 200),
+});
+
+const createLegalHoldRoute = defineContractRoute(driveAdminContract.createLegalHold, {
+  middleware: [authMiddleware, guard({ permission: 'drive:admin:legal-hold:edit', audit: { description: '设置网盘法律保留', ...AUDIT } })],
+  handler: async (c) => c.json(okBody(await createLegalHold(c.req.valid('json')), '已设置法律保留'), 200),
+});
+
+const releaseLegalHoldRoute = defineContractRoute(driveAdminContract.releaseLegalHold, {
+  middleware: [authMiddleware, guard({ permission: 'drive:admin:legal-hold:edit', audit: { description: '解除网盘法律保留', ...AUDIT } })],
+  handler: async (c) => c.json(okBody(await releaseLegalHold(c.req.valid('param').id, c.req.valid('json')), '已解除法律保留'), 200),
+});
+
+const quotaRequestsRoute = defineContractRoute(driveAdminContract.quotaRequests, {
+  middleware: [authMiddleware, guard({ permission: 'drive:admin:space:list' })],
+  handler: async (c) => c.json(okBody(await listQuotaRequestsForAdmin(c.req.valid('query'))), 200),
+});
+
+const decideQuotaRequestRoute = defineContractRoute(driveAdminContract.decideQuotaRequest, {
+  middleware: [authMiddleware, guard({ permission: 'drive:admin:quota:approve', audit: { description: '审批网盘扩容申请', ...AUDIT } })],
+  handler: async (c) => {
+    const body = c.req.valid('json');
+    return c.json(okBody(await decideQuotaRequest(c.req.valid('param').id, body), body.approve ? '已通过并写入配额' : '已拒绝'), 200);
+  },
+});
+
+const openGrantsRoute = defineContractRoute(driveAdminContract.openGrants, {
+  middleware: [authMiddleware, guard({ permission: 'drive:admin:space:list' })],
+  handler: async (c) => c.json(okBody(await listOpenAppGrants(c.req.valid('query'))), 200),
+});
+
+const createOpenGrantRoute = defineContractRoute(driveAdminContract.createOpenGrant, {
+  middleware: [authMiddleware, guard({ permission: 'drive:admin:open-grant:edit', audit: { description: '授权开放应用访问网盘空间', ...AUDIT } })],
+  handler: async (c) => c.json(okBody(await createOpenAppGrant(c.req.valid('json')), '已授权'), 200),
+});
+
+const removeOpenGrantRoute = defineContractRoute(driveAdminContract.removeOpenGrant, {
+  middleware: [authMiddleware, guard({ permission: 'drive:admin:open-grant:edit', audit: { description: '撤销开放应用的网盘空间授权', ...AUDIT } })],
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getOpenAppGrantBeforeAudit(id));
+    await removeOpenAppGrant(id);
+    return c.json(okBody(null, '已撤销授权'), 200);
+  },
+});
+
 // 静态 /spaces/department、/spaces/recalc 先于动态 /spaces/{id}
 router.openapiRoutes([
   statsRoute,
   spacesRoute, createDepartmentSpaceRoute, recalcRoute, updateSpaceRoute, deleteSpaceRoute, reindexRoute,
-  shareLinksRoute, revokeShareLinkRoute, activitiesRoute, handoffRoute,
+  shareLinksRoute, revokeShareLinkRoute, shareAccessLogsRoute, activitiesRoute, handoffRoute,
+  legalHoldsRoute, createLegalHoldRoute, releaseLegalHoldRoute,
+  quotaRequestsRoute, decideQuotaRequestRoute,
+  openGrantsRoute, createOpenGrantRoute, removeOpenGrantRoute,
 ] as const);
 
 export default router;

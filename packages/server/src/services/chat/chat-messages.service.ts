@@ -8,7 +8,7 @@ import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
-import type { ForwardMessagesInput, ChatMessage, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, SendChatMessageInput } from '@zenith/shared/chat';
+import type { ForwardMessagesInput, ChatMessage, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatMessageType, ChatForwardedItem, SendChatMessageInput } from '@zenith/shared/chat';
 import { notHiddenFor, rowSender, mapChatMessage, fetchUserBrief, listConversationMemberIds, ensureConversationMember, ensureMessageAccessible } from './chat-shared';
 import { aggregateReactions } from './chat-reactions.service';
 import { keywordCondition } from '../../lib/where-helpers';
@@ -509,7 +509,10 @@ export async function getMessageContext(
 
 // ─── 发送消息 ─────────────────────────────────────────────────────────────────
 
-export async function sendMessage(conversationId: number, input: SendChatMessageInput): Promise<ChatMessage> {
+/** 服务端内部发送入参：允许 system / card 等用户不可主动发送的类型（如网盘文件卡片） */
+export type InternalSendChatMessageInput = Omit<SendChatMessageInput, 'type'> & { type?: ChatMessageType };
+
+export async function sendMessage(conversationId: number, input: InternalSendChatMessageInput): Promise<ChatMessage> {
   const me = currentUser();
 
   // 鉴权 & 发送者信息并行查询

@@ -46,7 +46,7 @@ export default function DriveAdminSettingsPage() {
         <div style={{ maxWidth: 680 }}>
           <div style={{ marginBottom: 8 }}>
             <Title heading={5} style={{ margin: 0 }}>网盘设置</Title>
-            <Text type="tertiary">容量配额、版本与回收策略、外链安全与内容处理</Text>
+            <Text type="tertiary">容量配额、版本与回收策略、外链安全与内容处理{envelope?.tenantId != null ? '；当前为租户级覆盖，未修改的项跟随平台值' : ''}</Text>
           </div>
 
           <SettingSection title="容量配额（GB，0 = 不限）">
@@ -103,6 +103,14 @@ export default function DriveAdminSettingsPage() {
             <SettingRow title="生成缩略图" description="图片上传后异步生成缩略图，用于网格视图预览" overridden={overridden('thumbnailEnabled')} control={<Switch disabled={!canEdit} checked={form.thumbnailEnabled} onChange={(v) => patch('thumbnailEnabled', v)} />} />
             <SettingDivider />
             <SettingRow title="全文索引" description="提取文档正文建立全文索引，支持按内容搜索；关闭后仅按文件名搜索" overridden={overridden('textIndexEnabled')} control={<Switch disabled={!canEdit} checked={form.textIndexEnabled} onChange={(v) => patch('textIndexEnabled', v)} />} />
+          </SettingSection>
+
+          <SettingSection title="异常行为告警（平台值，租户覆盖不生效）">
+            <SettingRow title="统计窗口" description="批量下载与外链爆破按该滑动窗口计数，每 5 分钟扫描一次" overridden={overridden('alertWindowMinutes')} control={<InputNumber style={{ width: 140 }} min={5} max={1440} disabled={!canEdit} value={form.alertWindowMinutes} onChange={(v) => patch('alertWindowMinutes', num(v, 10))} suffix="分钟" />} />
+            <SettingDivider />
+            <SettingRow title="批量下载告警阈值" description="同一用户或 IP 在窗口内下载次数达到该值即通知网盘管理员；0 表示关闭" overridden={overridden('alertBulkDownloadCount')} control={<InputNumber style={{ width: 140 }} min={0} max={100_000} disabled={!canEdit} value={form.alertBulkDownloadCount} onChange={(v) => patch('alertBulkDownloadCount', num(v, 200))} suffix="次" />} />
+            <SettingDivider />
+            <SettingRow title="外链爆破告警阈值" description="同一 IP 或同一外链在窗口内被拒绝（密码错误 / IP 拦截等）次数达到该值即告警；0 表示关闭" overridden={overridden('alertShareFailureCount')} control={<InputNumber style={{ width: 140 }} min={0} max={100_000} disabled={!canEdit} value={form.alertShareFailureCount} onChange={(v) => patch('alertShareFailureCount', num(v, 30))} suffix="次" />} />
           </SettingSection>
 
           {canEdit && (

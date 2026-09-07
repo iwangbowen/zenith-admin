@@ -55,6 +55,10 @@ export async function registerBackgroundWorkers(): Promise<void> {
     await registerDriveCollaborationJob();
     const { registerDriveExpiryReminderJob } = await import('../services/drive/drive-reminders.service');
     await registerDriveExpiryReminderJob(); // 网盘外链 / 临时授权到期提醒
+    const { registerDriveSecurityAlertJob } = await import('../services/drive/drive-security-alerts.service');
+    await registerDriveSecurityAlertJob(); // 网盘异常行为告警（批量下载 / 外链爆破）
+    const { registerDriveOpenEventWorker } = await import('../services/drive/drive-open-events.service');
+    await registerDriveOpenEventWorker(); // 网盘文件变更 → 开放平台 Webhook 事件
     const { reloadCmsSearchDict } = await import('../services/cms/cms-search.service');
     await reloadCmsSearchDict(); // CMS 检索自定义词典（DB → jieba）
     // AI 评测已迁移至 Mastra Datasets/Experiments(自带异步执行),不再挂任务中心

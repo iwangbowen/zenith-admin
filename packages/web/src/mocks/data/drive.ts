@@ -33,19 +33,19 @@ export const mockDriveSpaces: DriveSpace[] = [
   {
     id: 1, type: 'personal', name: '管理员 的网盘', description: null, icon: null, ownerId: 1, ownerName: '管理员',
     departmentId: null, departmentName: null, defaultMemberRole: null, quotaBytes: 10 * GB, customQuotaBytes: null, usedBytes: 0,
-    maxVersions: null, allowExternalShare: true, status: 'enabled', sort: 0, tenantId: null, myRole: 'manager', memberCount: 0, nodeCount: 0,
+    maxVersions: null, allowExternalShare: true, status: 'enabled', archivedAt: null, sort: 0, tenantId: null, myRole: 'manager', memberCount: 0, nodeCount: 0,
     createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
     id: 2, type: 'department', name: '总部 部门空间', description: '部门共享资料', icon: null, ownerId: null, ownerName: null,
     departmentId: 1, departmentName: '总部', defaultMemberRole: 'editor', quotaBytes: 100 * GB, customQuotaBytes: null, usedBytes: 0,
-    maxVersions: null, allowExternalShare: true, status: 'enabled', sort: 0, tenantId: null, myRole: 'manager', memberCount: 0, nodeCount: 0,
+    maxVersions: null, allowExternalShare: true, status: 'enabled', archivedAt: null, sort: 0, tenantId: null, myRole: 'manager', memberCount: 0, nodeCount: 0,
     createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
   {
     id: 3, type: 'team', name: '产品研发协作区', description: '产品、研发、测试共享的项目文档', icon: null, ownerId: 1, ownerName: '管理员',
     departmentId: null, departmentName: null, defaultMemberRole: 'downloader', quotaBytes: 50 * GB, customQuotaBytes: null, usedBytes: 0,
-    maxVersions: null, allowExternalShare: true, status: 'enabled', sort: 0, tenantId: null, myRole: 'manager', memberCount: 2, nodeCount: 0,
+    maxVersions: null, allowExternalShare: true, status: 'enabled', archivedAt: null, sort: 0, tenantId: null, myRole: 'manager', memberCount: 2, nodeCount: 0,
     createdAt: SEED_DATE, updatedAt: SEED_DATE,
   },
 ];

@@ -6,3 +6,4 @@ export * from './spaces';
 export * from './tags';
 export * from './collaboration';
 export * from './access-requests';
+export * from './open';

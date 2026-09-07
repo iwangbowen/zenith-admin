@@ -56,9 +56,12 @@ flowchart LR
 | 检索 | 文件名检索；开启「包含正文」后同时检索文本文件正文（tsvector；CJK 关键词自动改用子串匹配），返回命中片段 |
 | 协作 | 签出锁定（防止并发覆盖）、标签、评论、节点动态时间线 |
 | 批量与异步 | 打包下载：小于阈值同步返回 zip，超阈值转任务中心并通知；跨空间复制、容量重算、索引补建走任务中心 |
-| 通知 | 节点共享、空间加入、配额预警、打包完成、访问申请与审批结果、外链 / 临时授权到期、收集到新文件通过通知中心触达 |
-| 治理 | 统计概览（空间 / 文件 / 占用 / 趋势 / 类型分布）、空间治理（配额 / 状态 / 所有者 / 部门空间）、外链治理与访问记录、动态审计（按当前筛选导出 Excel，走导出中心）、全局设置 |
-| 数据保留 | `drive_activities`、`drive_share_access_logs` 按保留策略清理；`drive_nodes` 回收站超期项目按设置天数彻底清除 |
+| 通知 | 节点共享、空间加入、配额预警、打包完成、访问申请与审批结果、外链 / 临时授权到期、收集到新文件、扩容申请与结果、法律保留变更、异常行为告警通过通知中心触达 |
+| 治理 | 统计概览（空间 / 文件 / 占用 / 趋势 / 类型分布）、空间治理（配额 / 状态 / 所有者 / 部门空间 / 30 天增速与预计用满天数 / 归档筛选）、外链治理与访问记录、动态审计（按当前筛选导出 Excel，走导出中心）、全局设置 |
+| 合规治理 | 法律保留（冻结删除 / 彻底删除 / 删版本 / 跨空间移动，自动清理跳过）、空间归档（只读，可恢复，默认隐藏）、扩容申请审批（通过即写入显式配额）、全部外链访问日志（筛选 + 导出中心 `drive.share_access_logs`）、异常行为告警（批量下载 / 外链爆破，内置规则）、开放应用空间授权 |
+| 开放平台 | `/api/open/v1/drive/*` 只读 / 上传开放 API（scope `drive:read` / `drive:write`，按空间授权裁剪）；文件变更事件 `drive.node.*` / `drive.share.*` / `drive.collect.received` 经开放平台 Webhook 投递（HMAC 必选，仅被授权空间） |
+| 站内互通 | 文件 / 文件夹以卡片消息发送到聊天会话（只带链接，按网盘 ACL 访问）；Wiki 编辑器「插入网盘文件」写入站内链接；工作流表单可用 `url` 字段引用网盘链接 |
+| 数据保留 | `drive_activities`、`drive_share_access_logs` 按保留策略清理；`drive_nodes` 回收站超期项目按设置天数彻底清除（法律保留项跳过） |
 
 ## 权限模型详解
 
@@ -104,6 +107,7 @@ flowchart LR
 | 空间治理 | `/drive/admin/spaces` | `drive/admin/DriveAdminSpacesPage` |
 | 外链治理 | `/drive/admin/share-links` | `drive/admin/DriveAdminShareLinksPage` |
 | 动态审计 | `/drive/admin/activities` | `drive/admin/DriveAdminActivitiesPage` |
+| 合规治理 | `/drive/admin/governance?tab=holds|quota|logs|open` | `drive/admin/DriveAdminGovernancePage` |
 | 网盘设置 | `/drive/admin/settings` | `drive/admin/DriveAdminSettingsPage` |
 | 公开外链页 | `/public/drive/:token` | `drive/public/PublicSharePage`（无需登录） |
 
@@ -114,7 +118,7 @@ flowchart LR
 
 | 表 | 说明 |
 | --- | --- |
-| `drive_spaces` | 空间；类型、所有者 / 部门、默认成员角色、配额、已用容量、版本上限、外链开关 |
+| `drive_spaces` | 空间；类型、所有者 / 部门、默认成员角色、配额、已用容量、版本上限、外链开关、`archived_at`（归档只读） |
 | `drive_space_members` | 空间成员；`(space, subjectType, subjectId)` 唯一 |
 | `drive_nodes` | 节点树；`ancestor_ids` 与 `acl_chain_ids`（GIN）、`acl_open`、父节点、软删除、锁定字段；同级同名唯一 |
 | `drive_node_permissions` | 节点直接授权；主体 × 角色，可选过期时间 |
@@ -122,6 +126,9 @@ flowchart LR
 | `drive_share_links` | 外链；`token` 保存 SHA-256、加密副本、密码哈希、`kind`、`capabilities[]`、有效期、访问 / 下载次数上限、`allowed_ips[]`、`watermark`、`collect_policy`、`session_version` |
 | `drive_collect_submissions` | 文件收集提交记录：文件、提交人姓名 / 备注、IP；文件彻底删除后记录保留 |
 | `drive_access_requests` | 访问申请：申请角色、状态、审批人、实际授予角色与到期时间；同一人同一节点仅一条待审批（部分唯一索引） |
+| `drive_legal_holds` | 法律保留：节点、原因、是否生效、解除人 / 时间 / 说明；同一节点仅一条生效中的保留 |
+| `drive_quota_requests` | 扩容申请：申请时配额与用量、申请 / 批准 GB、状态、审批人；同一空间仅一条待审批 |
+| `drive_open_app_grants` | 开放应用 → 空间授权：`client_id`、空间、角色（viewer / downloader / editor）、状态 |
 | `drive_share_access_logs` | 外链访问 / 下载 / 上传 / 密码错误留痕，按 UTC 月分区 |
 | `drive_activities` | 节点动态与审计，按 UTC 月分区 |
 | `drive_node_stars` / `drive_recent_access` | 收藏与最近访问 |
@@ -133,7 +140,7 @@ flowchart LR
 
 ## 设置项（运行时设置模块 `drive`）
 
-全局设置是[运行时设置](../backend/settings.md)的 `drive` 模块（平台作用域，License 特性 `drive`，权限 `drive:setting:view` / `drive:setting:edit`），读写 `GET/PUT /api/settings/drive`，服务端 `getSettings('drive')`：
+全局设置是[运行时设置](../backend/settings.md)的 `drive` 模块（**租户作用域**：租户可在平台值之上覆盖；License 特性 `drive`，权限 `drive:setting:view` / `drive:setting:edit`），读写 `GET/PUT /api/settings/drive`。服务端经 `getDriveSettings()` 读取：有请求上下文时按当前用户的有效租户解析；后台任务、渲染 worker 与匿名外链入口没有请求上下文，必须以数据行上的 `tenantId` 显式传入（`getDriveSettings({ tenantId })`），否则退回平台值：
 
 | 字段 | 含义 |
 | --- | --- |
@@ -148,6 +155,7 @@ flowchart LR
 | `previewWatermarkEnabled` | 站内预览水印（对登录用户按 `authenticated` 可见性投影到 `GET /api/settings/me`） |
 | `blockedExtensions` | 禁止上传的扩展名数组（不区分大小写，可带前导点） |
 | `thumbnailEnabled` / `textIndexEnabled` | 缩略图与正文索引开关 |
+| `alertWindowMinutes` / `alertBulkDownloadCount` / `alertShareFailureCount` | 异常行为告警的统计窗口与阈值（0 = 关闭）；告警任务全局扫描，只取平台值 |
 
 上传、复制、版本裁剪等事务先在事务外读取设置再以参数传入事务函数（`appendVersion` / `copySubtree` / `reserveSpaceQuota`），事务回调内不调用 `getSettings`；`services/drive/drive-transactions.test.ts` 以静态扫描守住该约定。
 
@@ -165,7 +173,10 @@ flowchart LR
 | `/api/drive/access-requests*` | 访问申请：待我审批 / 我提交的、目标信息、发起、审批、撤回 |
 | `/api/drive/public/shares/{token}/*` | 匿名外链：元信息、密码校验、浏览、内容、文件收集提交、转存 |
 | `/api/drive/tags*` | 空间标签 |
-| `/api/drive/admin/*` | 统计、空间治理、部门空间、容量重算、索引补建、外链治理、动态审计（全局设置走 `/api/settings/drive`） |
+| `POST /api/drive/spaces/{id}/{archive,unarchive,quota-requests}` | 空间归档 / 恢复、扩容申请（空间 manager） |
+| `POST /api/drive/nodes/{id}/send-to-chat` | 以卡片消息发送到聊天会话 |
+| `/api/drive/admin/*` | 统计、空间治理、部门空间、容量重算、索引补建、外链治理、外链访问日志、动态审计、法律保留、扩容审批、开放应用授权（全局设置走 `/api/settings/drive`） |
+| `/api/open/v1/drive/{spaces,nodes,nodes/{id},nodes/{id}/content}` | 开放 API：被授权空间、目录 / 搜索、元数据、内容下载、上传（`POST /api/open/v1/drive/nodes`） |
 
 完整参数与响应以 `packages\shared\src\drive\contracts\` 中的契约为准（`driveSpaceContract` / `driveNodeContract` / `driveShareLinkContract` /
-`driveTagContract` / `driveAdminContract` / `drivePublicShareContract` / `driveCollaborationContract` / `driveAccessRequestContract`），服务端路由、前端 hooks、MSW mock 与运行中的 `/api/docs`（`企业网盘-*` 标签）均由其派生。
+`driveTagContract` / `driveAdminContract` / `drivePublicShareContract` / `driveCollaborationContract` / `driveAccessRequestContract` / `openDriveContract`），服务端路由、前端 hooks、MSW mock 与运行中的 `/api/docs`（`企业网盘-*` 标签）均由其派生。

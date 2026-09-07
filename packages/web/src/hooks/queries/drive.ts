@@ -112,6 +112,10 @@ export const driveKeys = {
   adminShareLinksPrefix: contractKey(driveAdminContract.shareLinks),
   adminActivitiesPrefix: contractKey(driveAdminContract.activities),
   adminStats: contractKey(driveAdminContract.stats),
+  adminShareAccessLogsPrefix: contractKey(driveAdminContract.shareAccessLogs),
+  adminLegalHoldsPrefix: contractKey(driveAdminContract.legalHolds),
+  adminQuotaRequestsPrefix: contractKey(driveAdminContract.quotaRequests),
+  adminOpenGrantsPrefix: contractKey(driveAdminContract.openGrants),
   publicShare: (token: string, session: string | null) => [...publicMetaPrefix, token, session] as const,
   publicChildren: (token: string, session: string | null, parentId: number | undefined) => [...publicChildrenPrefix, token, session, parentId ?? 0] as const,
   accessRequestsPrefix: contractKey(driveAccessRequestContract.list),
@@ -182,6 +186,45 @@ export function useTransferDriveSpace() {
       void qc.invalidateQueries({ queryKey: driveKeys.mySpaces });
     },
   });
+}
+
+// ─── 归档 / 扩容申请（阶段 4 治理）───────────────────────────────────────────
+
+/** 归档 / 恢复：侧栏（归档不进侧栏）、列表、详情与治理列表一并刷新 */
+function invalidateArchiveSurface(qc: QueryClient, spaceId: number) {
+  void qc.invalidateQueries({ queryKey: driveKeys.spaceDetail(spaceId) });
+  void qc.invalidateQueries({ queryKey: driveKeys.spaceLists });
+  void qc.invalidateQueries({ queryKey: driveKeys.mySpaces });
+  void qc.invalidateQueries({ queryKey: driveKeys.adminSpacesPrefix });
+  void qc.invalidateQueries({ queryKey: driveKeys.dirs });
+}
+
+export function useArchiveDriveSpace() {
+  return useApiMutation(driveSpaceContract.archive, { invalidate: (qc, saved) => invalidateArchiveSurface(qc, saved.id) });
+}
+
+export function useUnarchiveDriveSpace() {
+  return useApiMutation(driveSpaceContract.unarchive, { invalidate: (qc, saved) => invalidateArchiveSurface(qc, saved.id) });
+}
+
+export function useSpaceQuotaRequests(spaceId: number | undefined, enabled = true) {
+  return useApiQuery(driveSpaceContract.quotaRequests, { params: { id: spaceId ?? 0 } }, { enabled: enabled && spaceId !== undefined });
+}
+
+export function useRequestDriveQuota() {
+  return useApiMutation(driveSpaceContract.requestQuota, {
+    invalidate: (qc, saved) => {
+      void qc.invalidateQueries({ queryKey: contractKey(driveSpaceContract.quotaRequests, { params: { id: saved.spaceId } }) });
+      void qc.invalidateQueries({ queryKey: driveKeys.adminQuotaRequestsPrefix });
+    },
+  });
+}
+
+// ─── 站内互通 ─────────────────────────────────────────────────────────────────
+
+/** 以卡片消息把节点链接发到聊天会话；仅写入链接，不改变节点，无需失效缓存 */
+export function useSendDriveNodeToChat() {
+  return useApiMutation(driveNodeContract.sendToChat);
 }
 
 // ─── 目录与节点 ───────────────────────────────────────────────────────────────
@@ -782,6 +825,65 @@ export function useDriveAdminActivities(params: DriveAdminActivityParams, enable
 
 export function useDriveAdminStats(enabled = true) {
   return useApiQuery(driveAdminContract.stats, { enabled });
+}
+
+// ─── 合规治理：外链访问日志 / 法律保留 / 扩容审批 / 开放应用授权 ─────────────────
+
+export type DriveAdminShareLogParams = NonNullable<QueryOf<typeof driveAdminContract.shareAccessLogs>>;
+export type DriveLegalHoldParams = NonNullable<QueryOf<typeof driveAdminContract.legalHolds>>;
+export type DriveQuotaRequestParams = NonNullable<QueryOf<typeof driveAdminContract.quotaRequests>>;
+
+export function useDriveAdminShareAccessLogs(params: DriveAdminShareLogParams, enabled = true) {
+  return useApiQuery(driveAdminContract.shareAccessLogs, { query: params }, { placeholderData: keepPreviousData, enabled });
+}
+
+export function useDriveLegalHolds(params: DriveLegalHoldParams, enabled = true) {
+  return useApiQuery(driveAdminContract.legalHolds, { query: params }, { placeholderData: keepPreviousData, enabled });
+}
+
+/** 法律保留变化影响节点详情的 legalHold 标记与治理列表 */
+function invalidateLegalHolds(qc: QueryClient, nodeId: number) {
+  void qc.invalidateQueries({ queryKey: driveKeys.adminLegalHoldsPrefix });
+  void qc.invalidateQueries({ queryKey: driveKeys.node(nodeId) });
+}
+
+export function useCreateDriveLegalHold() {
+  return useApiMutation(driveAdminContract.createLegalHold, { invalidate: (qc, saved) => invalidateLegalHolds(qc, saved.nodeId) });
+}
+
+export function useReleaseDriveLegalHold() {
+  return useApiMutation(driveAdminContract.releaseLegalHold, { invalidate: (qc, saved) => invalidateLegalHolds(qc, saved.nodeId) });
+}
+
+export function useDriveAdminQuotaRequests(params: DriveQuotaRequestParams, enabled = true) {
+  return useApiQuery(driveAdminContract.quotaRequests, { query: params }, { placeholderData: keepPreviousData, enabled });
+}
+
+/** 审批通过会改写空间显式配额：治理列表、空间详情与共享空间列表一并刷新 */
+export function useDecideDriveQuotaRequest() {
+  return useApiMutation(driveAdminContract.decideQuotaRequest, {
+    invalidate: (qc, saved) => {
+      void qc.invalidateQueries({ queryKey: driveKeys.adminQuotaRequestsPrefix });
+      void qc.invalidateQueries({ queryKey: contractKey(driveSpaceContract.quotaRequests, { params: { id: saved.spaceId } }) });
+      invalidateAdminSpaceSurface(qc, saved.spaceId);
+    },
+  });
+}
+
+export function useDriveOpenAppGrants(params: NonNullable<QueryOf<typeof driveAdminContract.openGrants>>, enabled = true) {
+  return useApiQuery(driveAdminContract.openGrants, { query: params }, { enabled });
+}
+
+export function useCreateDriveOpenAppGrant() {
+  return useApiMutation(driveAdminContract.createOpenGrant, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: driveKeys.adminOpenGrantsPrefix }),
+  });
+}
+
+export function useRemoveDriveOpenAppGrant() {
+  return useApiMutation(driveAdminContract.removeOpenGrant, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: driveKeys.adminOpenGrantsPrefix }),
+  });
 }
 
 /** 网盘全局设置由运行时设置 drive 模块承载（/api/settings/drive）；返回读取信封（effective / inherited / version） */

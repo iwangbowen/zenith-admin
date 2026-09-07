@@ -9,7 +9,8 @@ import type { SettingsScope, SettingsVisibility } from './constants';
  *   保证 `schema.parse({})` 即完整默认文档——默认值只在这里出现一次，不进种子、不进调用点。
  *   字段的表单标签 / 说明写在 `.meta({ title, description })`，通用设置页据此渲染。
  * - `scope`：`platform` 全局一行；`tenant` 允许租户覆盖平台值。**被无请求上下文的后台任务读取的模块
- *   必须是 `platform`**（任务拿不到租户，tenant 作用域会静默退回平台值）。
+ *   必须是 `platform`**（任务拿不到租户，tenant 作用域会静默退回平台值）；例外是任务能从数据行拿到
+ *   tenantId 并显式传入读取的模块（如 drive）。
  * - `feature`：License 特性门控，随同名业务域的路由挂载（`{ feature }`）保持一致；
  *   `/me` 投影按租户套餐过滤带门控的模块。
  * - `readPermission` 为 `null` 表示任意登录用户可读整模块；`writePermission` 为写入权限码。

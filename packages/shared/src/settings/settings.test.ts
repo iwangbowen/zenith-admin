@@ -49,12 +49,14 @@ describe('settings registry', () => {
   });
 
   it('被后台任务读取的模块必须是平台级', () => {
-    // member-housekeeping / wiki governance / drive-tasks / terminal 清理任务都在无请求上下文下读取
-    for (const key of ['member', 'wiki', 'drive', 'terminal', 'ai', 'files', 'ui', 'auth', 'ipAccess', 'rules', 'workflow'] as const) {
+    // member-housekeeping / wiki governance / terminal 清理任务都在无请求上下文下读取；
+    // drive 为租户级：其后台任务与匿名入口均显式按行上的 tenantId 读取（见 drive-settings.service）
+    for (const key of ['member', 'wiki', 'terminal', 'ai', 'files', 'ui', 'auth', 'ipAccess', 'rules', 'workflow'] as const) {
       expect(SETTINGS_MODULES[key].scope, key).toBe('platform');
     }
     expect(SETTINGS_MODULES.identitySecurity.scope).toBe('tenant');
     expect(SETTINGS_MODULES.payment.scope).toBe('tenant');
+    expect(SETTINGS_MODULES.drive.scope).toBe('tenant');
   });
 
   it('路径片段与模块 key 可互查', () => {

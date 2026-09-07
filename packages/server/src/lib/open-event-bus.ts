@@ -21,8 +21,8 @@ export interface OpenPlatformEvent {
   clientId: string | null;
   /** 事件所属租户；支付等强隔离事件必须显式携带。 */
   tenantId?: number | null;
-  /** 站点域事件的归属范围，供订阅按站点过滤 */
-  scope?: { siteId: number };
+  /** 站点域 / 空间域事件的归属范围，供订阅按站点（CMS）或网盘空间授权过滤 */
+  scope?: { siteId?: number; spaceId?: number };
   occurredAt: string;
   data: Record<string, unknown>;
 }
@@ -31,7 +31,7 @@ export interface OpenEventInput {
   type: string;
   clientId?: string | null;
   tenantId?: number | null;
-  scope?: { siteId: number };
+  scope?: { siteId?: number; spaceId?: number };
   data?: Record<string, unknown>;
   eventId?: string;
 }

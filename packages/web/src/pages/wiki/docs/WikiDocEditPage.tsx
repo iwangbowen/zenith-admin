@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDebouncer } from '@tanstack/react-pacer';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Banner, Button, Checkbox, Input, Modal, Select, Space, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft, Eye, EyeOff, Save, Send } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, HardDrive, Save, Send } from 'lucide-react';
 import type { WikiDoc } from '@zenith/shared/wiki';
 import MarkdownPreviewPanel from '@/components/MarkdownPreviewPanel';
 import PageLoading from '@/components/PageLoading';
 import FileAttachment, { type AttachmentItem } from '@/components/FileAttachment';
+import { DriveNodePicker } from '@/pages/drive/components/DriveNodePicker';
 import { ApiError } from '@/lib/query';
 import './WikiDocEditPage.css';
 import { useAllWikiTags } from '@/hooks/queries/wiki-tags';
@@ -50,6 +51,7 @@ export default function WikiDocEditPage() {
   const [requireReadReceipt, setRequireReadReceipt] = useState(false);
   const [changeNote, setChangeNote] = useState('');
   const [showPreview, setShowPreview] = useState(true);
+  const [drivePickerVisible, setDrivePickerVisible] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<EditorDraft | null>(null);
   const seededDocId = useRef<number | null>(null);
@@ -270,6 +272,7 @@ export default function WikiDocEditPage() {
           >
             {showPreview ? '隐藏预览' : '显示预览'}
           </Button>
+          <Button icon={<HardDrive size={14} />} onClick={() => setDrivePickerVisible(true)}>插入网盘文件</Button>
           <Button
             icon={<Save size={14} />}
             loading={saving}
@@ -353,6 +356,16 @@ export default function WikiDocEditPage() {
         limit={10}
         maxSizeMB={50}
       />
+      <DriveNodePicker visible={drivePickerVisible} allowFolders title="插入网盘文件链接" okText="插入链接"
+        onCancel={() => setDrivePickerVisible(false)}
+        onOk={({ node, url }) => {
+          // 只插入站内链接，不复制对象：读者仍按网盘 ACL 判定可见性
+          const snippet = `[${node.type === 'folder' ? '📁' : '📎'} ${node.name}](${url})`;
+          setContent((current) => (current ? `${current.replace(/\s*$/, '')}\n\n${snippet}\n` : `${snippet}\n`));
+          markDirty();
+          setDrivePickerVisible(false);
+          Toast.success('已插入网盘链接');
+        }} />
     </div>
   );
 }

@@ -13,13 +13,16 @@ import {
   driveSpaceContract,
   driveTagContract,
   type DriveAccessRequest,
+  type DriveLegalHold,
   type DriveNode,
   type DriveNodeDetail,
   type DriveNodeListResult,
   type DriveNodePermissionsResult,
   type DriveNodeProfile,
+  type DriveOpenAppGrant,
   type DrivePublicNode,
   type DrivePublicShareMeta,
+  type DriveQuotaRequest,
   type DriveShareLink,
   type DriveShareLinkState,
   type DriveSpace,
@@ -120,7 +123,39 @@ function detailOf(node: DriveNode): DriveNodeDetail {
     versionCount: node.type === 'file' ? Math.max(1, mockDriveVersions.filter((v) => v.nodeId === node.id).length) : 0,
     shareLinkCount: mockDriveShareLinks.filter((l) => l.nodeId === node.id && l.state === 'active').length,
     childCount: node.type === 'folder' ? liveNodes().filter((n) => n.parentId === node.id).length : 0,
+    legalHold: isHeld(node),
+    spaceArchived: !!space?.archivedAt,
   };
+}
+
+// ─── 治理：法律保留 / 扩容申请 / 开放应用授权（Demo 内存态）─────────────────────
+
+const mockLegalHolds: DriveLegalHold[] = [];
+const mockQuotaRequests: DriveQuotaRequest[] = [];
+const mockOpenGrants: DriveOpenAppGrant[] = [];
+let nextHoldId = 1;
+let nextQuotaRequestId = 1;
+let nextGrantId = 1;
+
+/** 自身或祖先处于生效保留 */
+function isHeld(node: Pick<DriveNode, 'id' | 'ancestorIds'>): boolean {
+  return mockLegalHolds.some((h) => h.active && (h.nodeId === node.id || node.ancestorIds.includes(h.nodeId)));
+}
+
+/** 根集合（含子树）被保留覆盖时返回 423，供删除 / 彻底删除 / 跨空间移动复用 */
+function legalHoldBlock(roots: DriveNode[], action: string) {
+  for (const root of roots) {
+    if (isHeld(root)) return HttpResponse.json({ code: 423, message: `「${root.name}」处于法律保留，${action}被拒绝`, data: null }, { status: 423 });
+    const hit = mockLegalHolds.find((h) => h.active && subtree(root.id).some((n) => n.id === h.nodeId));
+    if (hit) return HttpResponse.json({ code: 423, message: `「${root.name}」涉及的「${hit.nodeName}」处于法律保留，${action}被拒绝`, data: null }, { status: 423 });
+  }
+  return null;
+}
+
+function archivedBlock(spaceId: number) {
+  const space = mockDriveSpaces.find((s) => s.id === spaceId);
+  if (!space?.archivedAt) return null;
+  return HttpResponse.json({ code: 423, message: '空间已归档，仅可查看与下载；如需修改请先恢复归档', data: null }, { status: 423 });
 }
 
 function subtree(rootId: number): DriveNode[] {
@@ -258,15 +293,48 @@ function revokeShareLink(id: number) {
 // ─── 空间 ─────────────────────────────────────────────────────────────────────
 
 const spaceHandlers = [
-  mock(driveSpaceContract.my, ({ ok }) => { recalcMockDriveUsage(); return ok(mockDriveSpaces.filter((s) => s.status === 'enabled')); }),
+  mock(driveSpaceContract.my, ({ ok }) => { recalcMockDriveUsage(); return ok(mockDriveSpaces.filter((s) => s.status === 'enabled' && !s.archivedAt)); }),
   mock(driveSpaceContract.list, ({ query, ok, paginate }) => {
     const keyword = query.keyword?.trim();
     recalcMockDriveUsage();
     let list = mockDriveSpaces.filter((s) => s.type !== 'personal' || s.ownerId === MOCK_USER.id);
+    list = list.filter((s) => (query.archived ? !!s.archivedAt : !s.archivedAt));
     if (keyword) list = filterByKeyword(list, keyword, [(s) => s.name, (s) => s.ownerName]);
     if (query.type) list = list.filter((s) => s.type === query.type);
     if (query.status) list = list.filter((s) => s.status === query.status);
     return ok(paginate(list));
+  }),
+  mock(driveSpaceContract.archive, ({ params, ok }) => {
+    const space = requireItem(mockDriveSpaces, params.id, '空间不存在', { status: 404 });
+    if (space.type === 'personal') return badRequest('个人空间不支持归档');
+    if (space.archivedAt) return badRequest('空间已处于归档状态');
+    space.archivedAt = mockDateTime();
+    space.updatedAt = space.archivedAt;
+    logMockDriveActivity({ spaceId: space.id, nodeId: null, nodeName: space.name, nodeType: 'folder', action: 'archive', actorId: MOCK_USER.id, actorName: MOCK_USER.name, shareId: null, detail: null });
+    return ok(space, '空间已归档（只读）');
+  }),
+  mock(driveSpaceContract.unarchive, ({ params, ok }) => {
+    const space = requireItem(mockDriveSpaces, params.id, '空间不存在', { status: 404 });
+    if (!space.archivedAt) return badRequest('空间未归档');
+    space.archivedAt = null;
+    space.updatedAt = mockDateTime();
+    logMockDriveActivity({ spaceId: space.id, nodeId: null, nodeName: space.name, nodeType: 'folder', action: 'unarchive', actorId: MOCK_USER.id, actorName: MOCK_USER.name, shareId: null, detail: null });
+    return ok(space, '已恢复归档');
+  }),
+  mock(driveSpaceContract.quotaRequests, ({ params, ok }) => ok(mockQuotaRequests.filter((r) => r.spaceId === params.id).sort((a, b) => b.id - a.id))),
+  mock(driveSpaceContract.requestQuota, ({ params, body, ok }) => {
+    const space = requireItem(mockDriveSpaces, params.id, '空间不存在', { status: 404 });
+    if (!space.quotaBytes) return badRequest('该空间当前不限配额，无需扩容');
+    if (body.requestedGb * 1024 ** 3 <= space.quotaBytes) return badRequest('申请配额需大于当前配额');
+    if (mockQuotaRequests.some((r) => r.spaceId === space.id && r.status === 'pending')) return HttpResponse.json({ code: 409, message: '该空间已有待审批的扩容申请', data: null }, { status: 409 });
+    const now = mockDateTime();
+    const request: DriveQuotaRequest = {
+      id: nextQuotaRequestId++, spaceId: space.id, spaceName: space.name, spaceType: space.type, currentQuotaBytes: space.quotaBytes, usedBytes: space.usedBytes,
+      requestedGb: body.requestedGb, reason: body.reason?.trim() || null, status: 'pending', requesterId: MOCK_USER.id, requesterName: MOCK_USER.name,
+      approvedGb: null, decidedBy: null, decidedByName: null, decidedAt: null, decisionNote: null, createdAt: now, updatedAt: now,
+    };
+    mockQuotaRequests.unshift(request);
+    return ok(request, '扩容申请已提交，等待网盘管理员审批');
   }),
   mock(driveSpaceContract.create, ({ body, ok }) => {
     const now = mockDateTime();
@@ -274,7 +342,7 @@ const spaceHandlers = [
       id: getNextDriveSpaceId(), type: 'team', name: body.name, description: body.description ?? null, icon: body.icon ?? null,
       ownerId: MOCK_USER.id, ownerName: MOCK_USER.name, departmentId: null, departmentName: null, defaultMemberRole: body.defaultMemberRole,
       quotaBytes: (body.quotaGb ?? mockDriveSettings.teamQuotaGb) * 1024 ** 3, customQuotaBytes: body.quotaGb === null ? null : body.quotaGb * 1024 ** 3,
-      usedBytes: 0, maxVersions: body.maxVersions, allowExternalShare: body.allowExternalShare, status: body.status, sort: body.sort,
+      usedBytes: 0, maxVersions: body.maxVersions, allowExternalShare: body.allowExternalShare, status: body.status, archivedAt: null, sort: body.sort,
       tenantId: null, myRole: 'manager', memberCount: body.members.length, nodeCount: 0, createdAt: now, updatedAt: now,
     };
     mockDriveSpaces.push(space);
@@ -399,6 +467,8 @@ const nodeStaticHandlers = [
     return ok(null, '已还原');
   }),
   mock(driveNodeContract.purge, ({ body, ok }) => {
+    const blocked = legalHoldBlock(body.ids.map((id) => findNode(id)).filter((n): n is DriveNode => !!n), '彻底删除');
+    if (blocked) return blocked;
     const victims = new Set(body.ids.flatMap((id) => subtree(id).map((n) => n.id)));
     victims.forEach((id) => { mockDriveProfiles.delete(id); mockDriveSubscriptions.delete(id); });
     removeWhere(mockDriveNodes, (n) => victims.has(n.id));
@@ -456,6 +526,8 @@ const nodeStaticHandlers = [
     const file = body.get('file');
     if (!(file instanceof File)) return badRequest('缺少文件', { status: 400 });
     const spaceId = Number(body.get('spaceId'));
+    const archivedUpload = archivedBlock(spaceId);
+    if (archivedUpload) return archivedUpload;
     const parentId = body.get('parentId') ? Number(body.get('parentId')) : null;
     const policy = String(body.get('conflictPolicy') ?? 'rename');
     const parent = parentId ? findNode(parentId) : null;
@@ -487,6 +559,8 @@ const nodeStaticHandlers = [
     return ok(decorate(node), '上传成功');
   }),
   mock(driveNodeContract.createFolder, ({ body, ok }) => {
+    const archivedFolder = archivedBlock(body.spaceId);
+    if (archivedFolder) return archivedFolder;
     const parent = body.parentId ? findNode(body.parentId) : null;
     if (body.parentId && !parent) return notFound('父目录不存在', { status: 404 });
     if (liveNodes().some((n) => n.spaceId === body.spaceId && n.parentId === body.parentId && n.name.toLowerCase() === body.name.toLowerCase())) {
@@ -495,6 +569,11 @@ const nodeStaticHandlers = [
     return ok(decorate(createMockDriveFolder(body.spaceId, body.parentId, body.name)), '文件夹已创建');
   }),
   mock(driveNodeContract.move, ({ body, ok }) => {
+    const archivedTarget = archivedBlock(body.targetSpaceId);
+    if (archivedTarget) return archivedTarget;
+    const crossSpace = body.ids.map((id) => findNode(id)).filter((n): n is DriveNode => !!n && n.spaceId !== body.targetSpaceId);
+    const heldMove = legalHoldBlock(crossSpace, '跨空间移动');
+    if (heldMove) return heldMove;
     const target = body.targetParentId ? findNode(body.targetParentId) : null;
     for (const id of body.ids) {
       const node = findNode(id);
@@ -540,6 +619,11 @@ const nodeStaticHandlers = [
     return ok({ mode: 'sync', taskId: null, copied }, '已复制');
   }),
   mock(driveNodeContract.removeBatch, ({ body, ok }) => {
+    const roots = body.ids.map((id) => findNode(id)).filter((n): n is DriveNode => !!n);
+    const archived = roots.map((n) => archivedBlock(n.spaceId)).find((r) => r !== null);
+    if (archived) return archived;
+    const held = legalHoldBlock(roots, '删除');
+    if (held) return held;
     softDelete(body.ids);
     return ok(null, '已移入回收站');
   }),
@@ -728,6 +812,10 @@ const nodeItemHandlers = [
   mock(driveNodeContract.presence, ({ params, ok }) => ok(findNode(params.id) ? [{ userId: MOCK_USER.id, name: MOCK_USER.name, avatar: null, lastSeenAt: mockDateTime() }] : [])),
   mock(driveNodeContract.heartbeat, ({ params, ok }) => ok(findNode(params.id) ? [{ userId: MOCK_USER.id, name: MOCK_USER.name, avatar: null, lastSeenAt: mockDateTime() }] : [])),
   mock(driveNodeContract.leavePresence, ({ ok }) => ok(null)),
+  mock(driveNodeContract.sendToChat, ({ params, body, ok }) => {
+    requireItem(mockDriveNodes, params.id, '文件或文件夹不存在', { status: 404 });
+    return ok({ sent: new Set(body.conversationIds).size }, '已发送到聊天');
+  }),
   mock(driveNodeContract.detail, ({ params, ok }) => {
     const node = findNode(params.id);
     if (!node) return notFound('节点不存在', { status: 404 });
@@ -1049,7 +1137,14 @@ const adminHandlers = [
     if (query.type) list = list.filter((s) => s.type === query.type);
     if (query.status) list = list.filter((s) => s.status === query.status);
     if (query.orphaned) list = list.filter(isOrphanedDriveSpace);
-    return ok(paginate(list));
+    if (query.archived !== undefined) list = list.filter((s) => (query.archived ? !!s.archivedAt : !s.archivedAt));
+    // Demo：按已用量估算近 30 天日增（用量的 2%），配额有限时给出预计用满天数
+    const decorated = list.map((s) => {
+      const dailyGrowthBytes = Math.round(s.usedBytes * 0.02);
+      const daysUntilFull = s.quotaBytes && dailyGrowthBytes > 0 ? Math.max(0, Math.ceil((s.quotaBytes - s.usedBytes) / dailyGrowthBytes)) : null;
+      return { ...s, dailyGrowthBytes, daysUntilFull };
+    });
+    return ok(paginate(decorated));
   }),
   mock(driveAdminContract.createDepartmentSpace, ({ body, ok }) => {
     if (mockDriveSpaces.some((s) => s.type === 'department' && s.departmentId === body.departmentId)) return badRequest('该部门已有部门空间', { status: 400 });
@@ -1059,7 +1154,7 @@ const adminHandlers = [
       id: getNextDriveSpaceId(), type: 'department', name: body.name || `${deptName} 部门空间`, description: null, icon: null, ownerId: null, ownerName: null,
       departmentId: body.departmentId, departmentName: deptName, defaultMemberRole: body.defaultMemberRole,
       quotaBytes: (body.quotaGb ?? mockDriveSettings.departmentQuotaGb) * 1024 ** 3, customQuotaBytes: body.quotaGb === null ? null : body.quotaGb * 1024 ** 3, usedBytes: 0,
-      maxVersions: null, allowExternalShare: true, status: 'enabled', sort: 0, tenantId: null, myRole: 'manager', memberCount: 0, nodeCount: 0, createdAt: now, updatedAt: now,
+      maxVersions: null, allowExternalShare: true, status: 'enabled', archivedAt: null, sort: 0, tenantId: null, myRole: 'manager', memberCount: 0, nodeCount: 0, createdAt: now, updatedAt: now,
     };
     mockDriveSpaces.push(space);
     return ok(space, '部门空间已创建');
@@ -1111,6 +1206,83 @@ const adminHandlers = [
     if (query.actorId) list = list.filter((a) => a.actorId === query.actorId);
     if (query.action) list = list.filter((a) => a.action === query.action);
     return ok(paginate(list));
+  }),
+  // ─── 合规治理 ────────────────────────────────────────────────────────────
+  mock(driveAdminContract.shareAccessLogs, ({ query, ok, paginate }) => {
+    let list = [...mockDriveShareAccessLogs].sort((a, b) => b.id - a.id).map((log) => {
+      const node = findNode(log.nodeId);
+      return { ...log, nodeName: node?.name ?? null, spaceId: node?.spaceId ?? null, spaceName: node ? spaceName(node.spaceId) : null };
+    });
+    if (query.shareId) list = list.filter((l) => l.shareId === query.shareId);
+    if (query.spaceId) list = list.filter((l) => l.spaceId === query.spaceId);
+    if (query.action) list = list.filter((l) => l.action === query.action);
+    if (query.ok !== undefined) list = list.filter((l) => l.ok === query.ok);
+    return ok(paginate(list));
+  }),
+  mock(driveAdminContract.legalHolds, ({ query, ok, paginate }) => {
+    let list = [...mockLegalHolds].sort((a, b) => Number(b.active) - Number(a.active) || b.id - a.id);
+    if (query.spaceId) list = list.filter((h) => h.spaceId === query.spaceId);
+    if (query.nodeId) list = list.filter((h) => h.nodeId === query.nodeId);
+    if (query.active !== undefined) list = list.filter((h) => h.active === query.active);
+    return ok(paginate(list));
+  }),
+  mock(driveAdminContract.createLegalHold, ({ body, ok }) => {
+    const node = requireItem(mockDriveNodes, body.nodeId, '文件或文件夹不存在', { status: 404 });
+    if (mockLegalHolds.some((h) => h.active && h.nodeId === node.id)) return HttpResponse.json({ code: 409, message: '该节点已处于法律保留', data: null }, { status: 409 });
+    const hold: DriveLegalHold = {
+      id: nextHoldId++, nodeId: node.id, nodeName: node.name, nodeType: node.type, spaceId: node.spaceId, spaceName: spaceName(node.spaceId) ?? '',
+      reason: body.reason, active: true, createdBy: MOCK_USER.id, createdByName: MOCK_USER.name, createdAt: mockDateTime(),
+      releasedBy: null, releasedByName: null, releasedAt: null, releaseNote: null,
+    };
+    mockLegalHolds.unshift(hold);
+    logMockDriveActivity({ spaceId: node.spaceId, nodeId: node.id, nodeName: node.name, nodeType: node.type, action: 'legal_hold', actorId: MOCK_USER.id, actorName: MOCK_USER.name, shareId: null, detail: { reason: body.reason } });
+    return ok(hold, '已设置法律保留');
+  }),
+  mock(driveAdminContract.releaseLegalHold, ({ params, body, ok }) => {
+    const hold = requireItem(mockLegalHolds, params.id, '法律保留记录不存在', { status: 404 });
+    if (!hold.active) return badRequest('该保留已解除', { status: 400 });
+    Object.assign(hold, { active: false, releasedBy: MOCK_USER.id, releasedByName: MOCK_USER.name, releasedAt: mockDateTime(), releaseNote: body.note?.trim() || null });
+    logMockDriveActivity({ spaceId: hold.spaceId, nodeId: hold.nodeId, nodeName: hold.nodeName, nodeType: hold.nodeType, action: 'legal_release', actorId: MOCK_USER.id, actorName: MOCK_USER.name, shareId: null, detail: null });
+    return ok(hold, '已解除法律保留');
+  }),
+  mock(driveAdminContract.quotaRequests, ({ query, ok, paginate }) => {
+    let list = [...mockQuotaRequests].sort((a, b) => Number(a.status !== 'pending') - Number(b.status !== 'pending') || b.id - a.id);
+    if (query.status) list = list.filter((r) => r.status === query.status);
+    if (query.spaceId) list = list.filter((r) => r.spaceId === query.spaceId);
+    return ok(paginate(list));
+  }),
+  mock(driveAdminContract.decideQuotaRequest, ({ params, body, ok }) => {
+    const request = requireItem(mockQuotaRequests, params.id, '扩容申请不存在', { status: 404 });
+    if (request.status !== 'pending') return badRequest('该申请已处理', { status: 400 });
+    const now = mockDateTime();
+    const approvedGb = body.approve ? (body.quotaGb ?? request.requestedGb) : null;
+    Object.assign(request, { status: body.approve ? 'approved' : 'rejected', approvedGb, decidedBy: MOCK_USER.id, decidedByName: MOCK_USER.name, decidedAt: now, decisionNote: body.note?.trim() || null, updatedAt: now });
+    if (approvedGb !== null) {
+      const space = mockDriveSpaces.find((s) => s.id === request.spaceId);
+      if (space) { space.customQuotaBytes = approvedGb * 1024 ** 3; space.quotaBytes = approvedGb * 1024 ** 3; }
+    }
+    return ok(request, body.approve ? '已通过并写入配额' : '已拒绝');
+  }),
+  mock(driveAdminContract.openGrants, ({ query, ok }) => ok(mockOpenGrants.filter((g) => (!query.spaceId || g.spaceId === query.spaceId) && (!query.clientId || g.clientId === query.clientId)))),
+  mock(driveAdminContract.createOpenGrant, ({ body, ok }) => {
+    const space = requireItem(mockDriveSpaces, body.spaceId, '空间不存在', { status: 404 });
+    if (space.type === 'personal') return badRequest('个人空间不能授权给开放应用', { status: 400 });
+    const existing = mockOpenGrants.find((g) => g.clientId === body.clientId && g.spaceId === body.spaceId);
+    if (existing) {
+      Object.assign(existing, { role: body.role, remark: body.remark?.trim() || null, status: 'enabled' });
+      return ok(existing, '已授权');
+    }
+    const grant: DriveOpenAppGrant = {
+      id: nextGrantId++, clientId: body.clientId, appName: `应用 ${body.clientId.slice(0, 8)}`, spaceId: space.id, spaceName: space.name,
+      role: body.role, status: 'enabled', remark: body.remark?.trim() || null, createdAt: mockDateTime(),
+    };
+    mockOpenGrants.unshift(grant);
+    return ok(grant, '已授权');
+  }),
+  mock(driveAdminContract.removeOpenGrant, ({ params, ok }) => {
+    requireItem(mockOpenGrants, params.id, '授权不存在', { status: 404 });
+    removeWhere(mockOpenGrants, (g) => g.id === params.id);
+    return ok(null, '已撤销授权');
   }),
 ];
 

@@ -16,6 +16,7 @@ import { openEventBus, type OpenPlatformEvent } from '../../lib/open-event-bus';
 import { mapWithConcurrency } from '../../lib/concurrency';
 import { OPEN_WEBHOOK_SIGNATURE_HEADER, OPEN_WEBHOOK_RETRY_STAGES_MINUTES, OPEN_WEBHOOK_EVENTS, OPEN_WEBHOOK_EVENT_LABELS, PAYMENT_WEBHOOK_EVENTS } from '@zenith/shared/open-platform';
 import type { CreateAppWebhookInput, UpdateAppWebhookInput } from '@zenith/shared/open-platform';
+import { DRIVE_OPEN_EVENTS } from '@zenith/shared/drive';
 import { config } from '../../config';
 import { assertSafeOutboundUrl } from '../../lib/outbound-url';
 import { notify } from '../messaging/notification-outbox.service';
@@ -26,7 +27,8 @@ const TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BODY_BYTES = 4096;
 const PENDING_RECOVERY_AFTER_MS = 2 * 60_000;
 const RETRY_CONCURRENCY = 10;
-const SENSITIVE_WEBHOOK_EVENTS = new Set<string>(PAYMENT_WEBHOOK_EVENTS);
+/** 必须 HMAC 签名的事件：支付 / 退款，以及携带内部文件元数据的网盘事件 */
+const SENSITIVE_WEBHOOK_EVENTS = new Set<string>([...PAYMENT_WEBHOOK_EVENTS, ...DRIVE_OPEN_EVENTS]);
 
 export type AppWebhookDomain = 'all' | 'payment';
 
@@ -55,7 +57,7 @@ function assertSubscriptionPolicy(input: {
 }): void {
   assertCustomHeaders(input.headers);
   if (input.events.some(isSensitiveWebhookEvent) && input.signMode !== 'hmacSha256') {
-    throw new HTTPException(400, { message: '支付与退款事件必须使用 HMAC-SHA256 签名' });
+    throw new HTTPException(400, { message: '支付、退款与网盘事件必须使用 HMAC-SHA256 签名' });
   }
   if (input.signMode === 'hmacSha256' && !input.hasSecret) {
     throw new HTTPException(400, { message: 'HMAC 签名密钥不可用，请先重置 Webhook 密钥' });
@@ -76,10 +78,12 @@ function subscriptionDomainScope(domain: AppWebhookDomain): SQL | undefined {
 
 function assertDomainEvents(events: readonly string[], domain: AppWebhookDomain): void {
   if (domain !== 'payment') return;
-  if (events.length === 0 || events.some((event) => !SENSITIVE_WEBHOOK_EVENTS.has(event))) {
+  if (events.length === 0 || events.some((event) => !PAYMENT_EVENT_SET.has(event))) {
     throw new HTTPException(400, { message: '支付中心 Webhook 必须显式选择支付或退款事件' });
   }
 }
+
+const PAYMENT_EVENT_SET = new Set<string>(PAYMENT_WEBHOOK_EVENTS);
 
 function externalSubscriptionScope(tenantId: number | null, domain: AppWebhookDomain = 'all'): SQL {
   const clientIds = db
@@ -793,9 +797,16 @@ async function findMatchingSubscriptions(event: OpenPlatformEvent): Promise<AppW
     const validRows = await filterClientTenantScopes(rows);
     // 无 clientId 的平台事件必须携带租户；缺失租户时只允许平台级订阅，
     // 绝不把设备/告警/支付数据广播给任意租户。
-    return validRows.filter((s) => (s.tenantId ?? null) === (event.tenantId ?? null)
+    const platformMatches = validRows.filter((s) => (s.tenantId ?? null) === (event.tenantId ?? null)
+      && matchesEventType(s, event.type)
       && (s.events ?? []).includes(event.type)
       && s.cmsSiteId == null);
+    // 网盘空间域事件：外部应用还必须被治理侧显式授权该空间，未授权空间的文件变更对应用不可见
+    const spaceId = event.scope?.spaceId;
+    if (spaceId == null || platformMatches.length === 0) return platformMatches;
+    const { clientIdsGrantedForSpace } = await import('../drive/drive-open.service');
+    const granted = await clientIdsGrantedForSpace(spaceId, platformMatches.map((s) => s.clientId).filter((id): id is string => id != null));
+    return platformMatches.filter((s) => s.clientId != null && granted.has(s.clientId));
   }
 
   const rows = await db.select().from(appWebhookSubscriptions)

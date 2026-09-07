@@ -13,7 +13,7 @@ import type { ChatUser } from '../types';
 const { Text } = Typography;
 
 export function ForwardModal({
-  visible, conversations, currentConvId, onConfirm, onCancel, mode,
+  visible, conversations, currentConvId, onConfirm, onCancel, mode, title, hint, okText,
 }: Readonly<{
   visible: boolean;
   conversations: ChatConversation[];
@@ -21,6 +21,10 @@ export function ForwardModal({
   onConfirm: (targetIds: number[]) => void;
   onCancel: () => void;
   mode: 'merge' | 'individual';
+  /** 复用为其他「选择会话」场景（如网盘发送到聊天）时覆盖标题 / 说明 / 按钮文案 */
+  title?: string;
+  hint?: string;
+  okText?: string;
 }>) {
   const [selected, setSelected] = useState<number[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<ChatUser[]>([]);
@@ -83,11 +87,11 @@ export function ForwardModal({
 
   return (
     <AppModal
-      title={mode === 'merge' ? '合并转发 — 选择目标' : '逐条转发 — 选择目标'}
+      title={title ?? (mode === 'merge' ? '合并转发 — 选择目标' : '逐条转发 — 选择目标')}
       visible={visible}
       onCancel={resetAndClose}
       onOk={() => { void handleConfirm(); }}
-      okText="确认转发"
+      okText={okText ?? '确认转发'}
       okButtonProps={{ disabled: selectedCount === 0, loading: submitting }}
       width={480}
     >
@@ -95,7 +99,7 @@ export function ForwardModal({
         <Input prefix={<Search size={13} />} placeholder="搜索会话或用户" value={keyword} onChange={setKeyword} size="small" />
       </div>
       <Text type="tertiary" style={{ fontSize: 12, display: 'block', marginBottom: 10 }}>
-        {mode === 'merge' ? '将所选消息合并为一条聊天记录转发' : '将所选消息逐条独立转发'}
+        {hint ?? (mode === 'merge' ? '将所选消息合并为一条聊天记录转发' : '将所选消息逐条独立转发')}
       </Text>
       <div style={{ maxHeight: 320, overflowY: 'auto' }}>
         <SemiList

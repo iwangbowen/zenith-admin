@@ -31,6 +31,8 @@ API Scope 存储在 `api_scopes`，字段包括 `code`、`name`、`description`�
 | `cms:write` | `data` | 创建 / 更新 CMS 内容并提交审核 |
 | `cms:publish` | `data` | 直接发布 CMS 内容 |
 | `rules:evaluate` | `data` | 调用规则中心统一求值 |
+| `drive:read` | `data` | 读取被授权网盘空间的目录与文件元数据、下载内容（还需空间授权） |
+| `drive:write` | `data` | 向被授权网盘空间上传文件（授权角色需为可编辑） |
 
 推荐分组：`general`、`user`、`order`、`payment`、`member`、`data`、`system`。
 

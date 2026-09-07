@@ -4,6 +4,7 @@ import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
+import { archiveDriveSpace, createQuotaRequest, listSpaceQuotaRequests, unarchiveDriveSpace } from '../../services/drive/drive-governance.service';
 import {
   createTeamSpace,
   deleteDriveSpace,
@@ -88,7 +89,38 @@ const transferRoute = defineContractRoute(driveSpaceContract.transfer, {
   },
 });
 
+const archiveRoute = defineContractRoute(driveSpaceContract.archive, {
+  middleware: [authMiddleware, guard({ permission: 'drive:space:edit', audit: { description: '归档网盘空间', ...AUDIT } })],
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await ensureDriveSpaceExists(id));
+    return c.json(okBody(await archiveDriveSpace(id), '空间已归档（只读）'), 200);
+  },
+});
+
+const unarchiveRoute = defineContractRoute(driveSpaceContract.unarchive, {
+  middleware: [authMiddleware, guard({ permission: 'drive:space:edit', audit: { description: '恢复归档网盘空间', ...AUDIT } })],
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await ensureDriveSpaceExists(id));
+    return c.json(okBody(await unarchiveDriveSpace(id), '已恢复归档'), 200);
+  },
+});
+
+const requestQuotaRoute = defineContractRoute(driveSpaceContract.requestQuota, {
+  middleware: [authMiddleware, guard({ permission: 'drive:space:edit', audit: { description: '申请网盘空间扩容', ...AUDIT } })],
+  handler: async (c) => c.json(okBody(await createQuotaRequest(c.req.valid('param').id, c.req.valid('json')), '扩容申请已提交，等待网盘管理员审批'), 200),
+});
+
+const quotaRequestsRoute = defineContractRoute(driveSpaceContract.quotaRequests, {
+  middleware: read,
+  handler: async (c) => c.json(okBody(await listSpaceQuotaRequests(c.req.valid('param').id)), 200),
+});
+
 // 静态 /my 先于动态 /{id}
-router.openapiRoutes([mySpacesRoute, listRoute, createRoute, getOneRoute, updateRoute, deleteRoute, membersRoute, saveMembersRoute, transferRoute] as const);
+router.openapiRoutes([
+  mySpacesRoute, listRoute, createRoute, getOneRoute, updateRoute, deleteRoute, membersRoute, saveMembersRoute, transferRoute,
+  archiveRoute, unarchiveRoute, requestQuotaRoute, quotaRequestsRoute,
+] as const);
 
 export default router;

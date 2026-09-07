@@ -17,6 +17,7 @@ import { setDriveNodeStar } from '../../services/drive/drive-views.service';
 import { createDriveNodeComment, deleteDriveNodeComment, listDriveNodeComments, lockDriveNode, setDriveNodeTags, unlockDriveNode } from '../../services/drive/drive-extras.service';
 import { createDriveShareLink, listNodeShareLinks } from '../../services/drive/drive-share.service';
 import { heartbeatDriveNodePresence, leaveDriveNodePresence, listDriveNodePresence } from '../../services/drive/drive-presence.service';
+import { sendDriveNodeToChat } from '../../services/drive/drive-interop.service';
 import { binaryResponses, streamStoredContent } from './drive-nodes';
 
 /**
@@ -275,6 +276,11 @@ const leavePresenceRoute = defineContractRoute(driveNodeContract.leavePresence, 
   },
 });
 
+const sendToChatRoute = defineContractRoute(driveNodeContract.sendToChat, {
+  middleware: read,
+  handler: async (c) => c.json(okBody(await sendDriveNodeToChat(c.req.valid('param').id, c.req.valid('json')), '已发送到聊天'), 200),
+});
+
 router.openapiRoutes([
   detailRoute, renameRoute, contentRoute, thumbnailRoute, accessUrlRoute,
   versionsRoute, uploadVersionRoute, versionContentRoute, versionRestoreRoute, versionDeleteRoute,
@@ -282,7 +288,7 @@ router.openapiRoutes([
   activitiesRoute, commentsRoute, createCommentRoute, deleteCommentRoute,
   starRoute, unstarRoute, tagsRoute, lockRoute, unlockRoute,
   nodeShareLinksRoute, createShareLinkRoute,
-  presenceRoute, heartbeatRoute, leavePresenceRoute,
+  presenceRoute, heartbeatRoute, leavePresenceRoute, sendToChatRoute,
 ] as const);
 
 export default router;

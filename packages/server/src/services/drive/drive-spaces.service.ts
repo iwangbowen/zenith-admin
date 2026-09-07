@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import { and, asc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type {
   AdminUpdateDriveSpaceInput,
   CreateDepartmentDriveSpaceInput,
@@ -45,6 +45,8 @@ export interface ListDriveSpacesQuery {
   departmentId?: number;
   ownerId?: number;
   orphaned?: boolean;
+  /** true 只看已归档；false / undefined 由调用方决定（共享空间页缺省只看未归档） */
+  archived?: boolean;
 }
 
 interface SpaceWhereInput extends ListDriveSpacesQuery {
@@ -58,6 +60,11 @@ export function orphanDriveSpaceCondition() {
   );
 }
 
+function archivedCondition(archived: boolean | undefined): SQL | undefined {
+  if (archived === undefined) return undefined;
+  return archived ? isNotNull(driveSpaces.archivedAt) : isNull(driveSpaces.archivedAt);
+}
+
 function buildSpaceWhere(q: SpaceWhereInput, extra?: SQL): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(driveSpaces.id, q.id) : undefined,
@@ -67,6 +74,7 @@ function buildSpaceWhere(q: SpaceWhereInput, extra?: SQL): SQL | undefined {
     q.departmentId !== undefined ? eq(driveSpaces.departmentId, q.departmentId) : undefined,
     q.ownerId !== undefined ? eq(driveSpaces.ownerId, q.ownerId) : undefined,
     q.orphaned ? orphanDriveSpaceCondition() : undefined,
+    archivedCondition(q.archived),
     tenantCondition(driveSpaces, currentUser()),
     extra,
   );
@@ -77,13 +85,49 @@ export async function ensureDriveSpaceExists(id: number): Promise<DriveSpaceRow>
   return requireRow(row, '空间不存在');
 }
 
+// ─── 容量趋势 ─────────────────────────────────────────────────────────────────
+
+export interface SpaceGrowth {
+  dailyGrowthBytes: number | null;
+  daysUntilFull: number | null;
+}
+
+const GROWTH_WINDOW_DAYS = 30;
+
+/** 近 30 天每空间新增版本字节 / 30 → 日增速；配额有限且增速 > 0 时给出预计用满天数 */
+export async function computeSpaceGrowth(rows: DriveSpaceRow[], settings: DriveSettings): Promise<Map<number, SpaceGrowth>> {
+  const result = new Map<number, SpaceGrowth>();
+  if (rows.length === 0) return result;
+  const since = new Date(Date.now() - GROWTH_WINDOW_DAYS * 86_400_000);
+  const agg = await db.select({ spaceId: driveNodes.spaceId, bytes: sql<string>`coalesce(sum(${driveFileVersions.size}), 0)` })
+    .from(driveFileVersions)
+    .innerJoin(driveNodes, eq(driveNodes.id, driveFileVersions.nodeId))
+    .where(and(inArray(driveNodes.spaceId, rows.map((r) => r.id)), gte(driveFileVersions.createdAt, since)))
+    .groupBy(driveNodes.spaceId);
+  const bytesBySpace = new Map(agg.map((r) => [r.spaceId, Number(r.bytes)]));
+  for (const row of rows) {
+    const daily = Math.round((bytesBySpace.get(row.id) ?? 0) / GROWTH_WINDOW_DAYS);
+    const quota = effectiveQuotaBytes(settings, row);
+    const daysUntilFull = quota > 0 && daily > 0 ? Math.max(0, Math.ceil((quota - row.usedBytes) / daily)) : null;
+    result.set(row.id, { dailyGrowthBytes: daily, daysUntilFull });
+  }
+  return result;
+}
+
 // ─── 行 → DTO（含名称与计数）─────────────────────────────────────────────────
 
-async function decorateSpaces(rows: DriveSpaceRow[], opts: { withRole?: boolean; withCounts?: boolean } = {}): Promise<DriveSpace[]> {
+export interface DecorateSpaceOptions {
+  withRole?: boolean;
+  withCounts?: boolean;
+  /** 附带近 30 天增速与预计用满天数（治理列表） */
+  withGrowth?: boolean;
+}
+
+export async function decorateSpaceRows(rows: DriveSpaceRow[], opts: DecorateSpaceOptions = {}): Promise<DriveSpace[]> {
   if (rows.length === 0) return [];
   const settings = await getDriveSettings();
   const ids = rows.map((r) => r.id);
-  const [ownerNames, deptRows, roleMap, memberCounts, nodeCounts] = await Promise.all([
+  const [ownerNames, deptRows, roleMap, memberCounts, nodeCounts, growth] = await Promise.all([
     resolveUserNames(rows.map((r) => r.ownerId)),
     db.select({ id: departments.id, name: departments.name }).from(departments)
       .where(inArray(departments.id, rows.map((r) => r.departmentId).filter((id): id is number => id != null).concat([-1]))),
@@ -96,6 +140,7 @@ async function decorateSpaces(rows: DriveSpaceRow[], opts: { withRole?: boolean;
       ? db.select({ spaceId: driveNodes.spaceId, count: sql<number>`count(*)::int` }).from(driveNodes)
         .where(and(inArray(driveNodes.spaceId, ids), isNull(driveNodes.deletedAt))).groupBy(driveNodes.spaceId)
       : Promise.resolve([]),
+    opts.withGrowth ? computeSpaceGrowth(rows, settings) : Promise.resolve(new Map<number, SpaceGrowth>()),
   ]);
   const deptNames = new Map(deptRows.map((d) => [d.id, d.name]));
   const memberMap = new Map(memberCounts.map((r) => [r.spaceId, r.count]));
@@ -107,8 +152,12 @@ async function decorateSpaces(rows: DriveSpaceRow[], opts: { withRole?: boolean;
     myRole: opts.withRole ? roleMap.get(row.id) ?? null : undefined,
     memberCount: opts.withCounts ? memberMap.get(row.id) ?? 0 : undefined,
     nodeCount: opts.withCounts ? nodeMap.get(row.id) ?? 0 : undefined,
+    dailyGrowthBytes: opts.withGrowth ? growth.get(row.id)?.dailyGrowthBytes ?? null : undefined,
+    daysUntilFull: opts.withGrowth ? growth.get(row.id)?.daysUntilFull ?? null : undefined,
   }));
 }
+
+const decorateSpaces = decorateSpaceRows;
 
 // ─── 个人 / 部门空间的懒创建 ───────────────────────────────────────────────────
 
@@ -165,8 +214,10 @@ async function ensureOwnDepartmentSpace(): Promise<void> {
 export async function listMySpaces(): Promise<DriveSpace[]> {
   await Promise.all([getOrCreatePersonalSpace(), ensureOwnDepartmentSpace()]);
   const subjects = await loadDriveSubjects();
+  // 已归档空间默认不进侧栏（共享空间页勾选「已归档」可找回并恢复）
   const where = buildWhere(
     eq(driveSpaces.status, 'enabled'),
+    isNull(driveSpaces.archivedAt),
     tenantCondition(driveSpaces, currentUser()),
     subjects.isAdmin ? undefined : inArray(driveSpaces.id, accessibleSpaceIdsSubquery(subjects)),
   );
@@ -178,12 +229,12 @@ export async function listMySpaces(): Promise<DriveSpace[]> {
   return decorated.filter((s) => s.myRole !== null);
 }
 
-/** 共享空间页：当前用户可访问的部门 / 协作空间分页 */
+/** 共享空间页：当前用户可访问的部门 / 协作空间分页（缺省只看未归档） */
 export async function listDriveSpaces(q: ListDriveSpacesQuery) {
   const { page = 1, pageSize = 10 } = q;
   const subjects = await loadDriveSubjects();
   const where = buildSpaceWhere(
-    { ...q, type: q.type },
+    { ...q, type: q.type, archived: q.archived ?? false },
     buildWhere(
       q.type ? undefined : inArray(driveSpaces.type, ['department', 'team']),
       subjects.isAdmin ? undefined : inArray(driveSpaces.id, accessibleSpaceIdsSubquery(subjects)),
@@ -200,7 +251,7 @@ export async function listDriveSpaces(q: ListDriveSpacesQuery) {
   });
 }
 
-/** 管理端：全部空间分页（租户 + 数据权限收窄） */
+/** 管理端：全部空间分页（租户 + 数据权限收窄；附近 30 天增速与预计用满天数） */
 export async function listDriveSpacesForAdmin(q: ListDriveSpacesQuery) {
   const { page = 1, pageSize = 10 } = q;
   const scope = isSuperAdmin() ? undefined : await getDataScopeCondition({
@@ -215,7 +266,7 @@ export async function listDriveSpacesForAdmin(q: ListDriveSpacesQuery) {
     count: () => db.$count(driveSpaces, where),
     rows: async () => {
       const rows = await withPagination(db.select().from(driveSpaces).where(where).orderBy(asc(driveSpaces.type), asc(driveSpaces.sort), asc(driveSpaces.id)).$dynamic(), page, pageSize);
-      return decorateSpaces(rows, { withCounts: true });
+      return decorateSpaces(rows, { withCounts: true, withGrowth: true });
     },
   });
 }
@@ -293,7 +344,7 @@ export async function updateDriveSpace(id: number, data: UpdateDriveSpaceInput):
 
 export async function deleteDriveSpace(id: number): Promise<void> {
   const row = await ensureDriveSpaceExists(id);
-  await ensureSpaceRole(row, 'manager');
+  await ensureSpaceRole(row, 'manager', { allowArchived: true });
   if (row.type === 'personal') throw new HTTPException(400, { message: '个人空间不能删除' });
   const nodeCount = await db.$count(driveNodes, eq(driveNodes.spaceId, id));
   if (nodeCount > 0) throw new HTTPException(400, { message: `空间下仍有 ${nodeCount} 个文件或文件夹（含回收站），请先清空后再删除` });

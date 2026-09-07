@@ -16,6 +16,7 @@ import { formatDateTime } from '../../lib/datetime';
 import { openGatewayAuth, openApiMetering, openRateLimit } from '../../middleware/open-gateway';
 import { decide } from '../../services/platform/rules-runtime.service';
 import openCmsRoutes, { OPEN_CMS_ENDPOINTS } from './open-cms';
+import openDriveRoutes, { OPEN_DRIVE_ENDPOINTS } from './open-drive';
 import openIotRoutes, { OPEN_IOT_ENDPOINTS } from './open-iot';
 import openPaymentRoutes, { OPEN_PAYMENT_ENDPOINTS } from './open-payment';
 
@@ -37,6 +38,9 @@ router.route('/', openIotRoutes);
 
 // 支付开放端点（身份、计量和限流继续复用同一网关）。契约路径已含 `/v1` 前缀，挂在网关根。
 router.route('/', openPaymentRoutes);
+
+// 企业网盘开放端点（只暴露治理侧授权给应用的空间；契约路径已含 /v1 前缀）
+router.route('/', openDriveRoutes);
 
 /** 各核心端点所需 scope；同时供端点目录展示，null = 无需 scope */
 const CORE_ENDPOINT_SCOPES = {
@@ -195,4 +199,5 @@ export const OPEN_GATEWAY_ENDPOINTS: Array<{
   ...OPEN_CMS_ENDPOINTS.map((item) => ({ ...item, scope: null })),
   ...OPEN_IOT_ENDPOINTS,
   ...OPEN_PAYMENT_ENDPOINTS,
+  ...OPEN_DRIVE_ENDPOINTS,
 ];

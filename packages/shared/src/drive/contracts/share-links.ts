@@ -47,6 +47,10 @@ export const driveShareAccessLogSchema = z.object({
   clientIp: z.string().nullable(),
   ok: z.boolean(),
   createdAt: z.string(),
+  /** 治理列表附带：节点 / 空间名快照（节点已彻底删除时为 null） */
+  nodeName: z.string().nullable().optional(),
+  spaceId: z.int().nullable().optional(),
+  spaceName: z.string().nullable().optional(),
 }).meta({ id: 'DriveShareAccessLog' });
 
 export type DriveShareAccessLog = z.infer<typeof driveShareAccessLogSchema>;

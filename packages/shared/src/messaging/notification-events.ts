@@ -711,6 +711,34 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     title: '「{{nodeName}}」收到新文件',
     content: '{{submitterName}} 通过收集链接提交了「{{fileName}}」。',
   },
+  'drive.quota.requested': {
+    group: 'drive', label: '收到空间扩容申请', severity: 'important',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ requestId: number; spaceId: number; spaceName: string; requesterName: string; requestedGb: number; reason: string }>(),
+    title: '{{requesterName}} 申请为「{{spaceName}}」扩容至 {{requestedGb}} GB',
+    content: '请前往空间治理审批扩容申请{{reason}}。',
+  },
+  'drive.quota.decided': {
+    group: 'drive', label: '扩容申请已处理', severity: 'normal',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ requestId: number; spaceId: number; spaceName: string; resultText: string; deciderName: string; note: string }>(),
+    title: '「{{spaceName}}」的扩容申请{{resultText}}',
+    content: '{{deciderName}} 已{{resultText}}你的扩容申请{{note}}。',
+  },
+  'drive.security.alert': {
+    group: 'drive', label: '网盘异常行为告警', severity: 'critical',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ kind: string; subject: string; count: number; windowMinutes: number; detail: string }>(),
+    title: '网盘异常：{{kind}}',
+    content: '{{subject}} 在 {{windowMinutes}} 分钟内触发 {{count}} 次{{detail}}，请前往动态审计核查。',
+  },
+  'drive.legal_hold.changed': {
+    group: 'drive', label: '文件法律保留变更', severity: 'important',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    vars: eventVars<{ nodeId: number; nodeName: string; actionText: string; operatorName: string; reason: string }>(),
+    title: '「{{nodeName}}」{{actionText}}',
+    content: '{{operatorName}} 对「{{nodeName}}」{{actionText}}{{reason}}。',
+  },
 });
 
 export type NotificationEventKey = keyof typeof NOTIFICATION_EVENTS;

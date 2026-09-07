@@ -83,6 +83,10 @@ export interface SpaceMapExtras {
   myRole?: DriveRole | null;
   memberCount?: number;
   nodeCount?: number;
+  /** 近 30 天平均每日新增字节；治理列表附带 */
+  dailyGrowthBytes?: number | null;
+  /** 按增速预计多少天后用满配额；不限配额 / 零增长为 null */
+  daysUntilFull?: number | null;
 }
 
 export function mapDriveSpace(row: DriveSpaceRow, extras: SpaceMapExtras): DriveSpace {
@@ -103,11 +107,14 @@ export function mapDriveSpace(row: DriveSpaceRow, extras: SpaceMapExtras): Drive
     maxVersions: row.maxVersions ?? null,
     allowExternalShare: row.allowExternalShare,
     status: row.status,
+    archivedAt: formatNullableDateTime(row.archivedAt),
     sort: row.sort,
     tenantId: row.tenantId ?? null,
     myRole: extras.myRole,
     memberCount: extras.memberCount,
     nodeCount: extras.nodeCount,
+    dailyGrowthBytes: extras.dailyGrowthBytes,
+    daysUntilFull: extras.daysUntilFull,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),

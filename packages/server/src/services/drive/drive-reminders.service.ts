@@ -10,11 +10,24 @@ import { getDriveSettings } from './drive-settings.service';
  * 到期提醒：外链与用户临时授权在到期前 N 小时（设置 shareExpiryReminderHours）提醒一次。
  * 幂等由 notify() 的 dedupeKey（对象 id + 到期时间）保证：延长有效期后会再次提醒新的到期时间。
  */
+/** 无请求上下文：按租户逐个读取设置（同一轮内缓存） */
+function tenantSettingsReader() {
+  const cache = new Map<number | null, Promise<Awaited<ReturnType<typeof getDriveSettings>>>>();
+  return (tenantId: number | null) => {
+    let pending = cache.get(tenantId);
+    if (!pending) {
+      pending = getDriveSettings({ tenantId });
+      cache.set(tenantId, pending);
+    }
+    return pending;
+  };
+}
+
 export async function dispatchDriveExpiryReminders(): Promise<{ shares: number; grants: number }> {
-  const settings = await getDriveSettings();
-  if (settings.shareExpiryReminderHours <= 0) return { shares: 0, grants: 0 };
+  const readSettings = tenantSettingsReader();
+  // 先按平台最大提醒窗口粗筛，再逐条按所属租户的提醒小时数精确判定
   const now = new Date();
-  const until = new Date(now.getTime() + settings.shareExpiryReminderHours * 3_600_000);
+  const until = new Date(now.getTime() + 720 * 3_600_000);
 
   const shares = await db.select().from(driveShareLinks).where(and(
     eq(driveShareLinks.enabled, true), isNull(driveShareLinks.revokedAt),
@@ -30,11 +43,16 @@ export async function dispatchDriveExpiryReminders(): Promise<{ shares: number; 
     ? await db.select().from(driveNodes).where(and(inArray(driveNodes.id, nodeIds), isNull(driveNodes.deletedAt)))
     : [];
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const withinWindow = async (tenantId: number | null, expireAt: Date | null) => {
+    if (!expireAt) return false;
+    const hours = (await readSettings(tenantId)).shareExpiryReminderHours;
+    return hours > 0 && expireAt.getTime() <= now.getTime() + hours * 3_600_000;
+  };
 
   let shareCount = 0;
   for (const share of shares) {
     const node = nodeMap.get(share.nodeId);
-    if (!node) continue;
+    if (!node || !await withinWindow(share.tenantId ?? null, share.expireAt)) continue;
     try {
       await notifyShareExpiring(share, node);
       shareCount += 1;
@@ -45,7 +63,7 @@ export async function dispatchDriveExpiryReminders(): Promise<{ shares: number; 
   let grantCount = 0;
   for (const grant of grants) {
     const node = nodeMap.get(grant.nodeId);
-    if (!node || !grant.expireAt) continue;
+    if (!node || !grant.expireAt || !await withinWindow(grant.tenantId ?? null, grant.expireAt)) continue;
     try {
       await notifyGrantExpiring({ id: grant.id, subjectId: grant.subjectId, role: grant.role, expireAt: grant.expireAt, tenantId: grant.tenantId ?? null }, node);
       grantCount += 1;

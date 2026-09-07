@@ -51,6 +51,7 @@ import { monitorAlertEventsExportDefinition } from './monitor-alert-events';
 import { shortLinksExportDefinition } from './short-links';
 import { iotDevicesExportDefinition } from './iot-devices';
 import { driveActivitiesExportDefinition } from './drive-activities';
+import { driveShareAccessLogsExportDefinition } from './drive-share-access-logs';
 
 let registered = false;
 
@@ -107,6 +108,7 @@ const definitions = [
   shortLinksExportDefinition,
   iotDevicesExportDefinition,
   driveActivitiesExportDefinition,
+  driveShareAccessLogsExportDefinition,
 ] as unknown as AnyExportDefinition[];
 
 export function registerExportDefinitions(): void {
