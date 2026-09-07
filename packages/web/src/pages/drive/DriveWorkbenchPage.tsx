@@ -8,11 +8,11 @@ import { KeywordInput } from '@/components/search-filters';
 import { useUrlSelectionParams } from '@/hooks/useUrlSelectionState';
 import { usePermission } from '@/hooks/usePermission';
 import { useDriveSettings, useMyDriveSpaces } from '@/hooks/queries/drive';
-import { useNavigate } from 'react-router-dom';
 import { fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
 import { DriveBrowser } from './components/DriveBrowser';
 import { DriveNodeDrawer } from './components/DriveNodeDrawer';
+import { DriveSpaceFormSheet } from './components/DriveSpaceFormSheet';
 import { DriveUploadQueue } from './components/DriveUploadQueue';
 import { DriveSearchView, DriveViews } from './components/DriveViews';
 import { useDriveUploader } from './hooks/useDriveUploader';
@@ -41,7 +41,6 @@ function SpaceItem({ space, active, onClick }: { readonly space: DriveSpace; rea
 }
 
 export default function DriveWorkbenchPage() {
-  const navigate = useNavigate();
   const { hasPermission } = usePermission();
   const [selection, setSelection] = useUrlSelectionParams(['view', 'space', 'folder']);
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -49,6 +48,7 @@ export default function DriveWorkbenchPage() {
   const [searching, setSearching] = useState<{ keyword: string; fullText: boolean } | null>(null);
   const [fullText, setFullText] = useState(false);
   const [showDetailOnNarrow, setShowDetailOnNarrow] = useState(false);
+  const [creatingSpace, setCreatingSpace] = useState(false);
 
   const spacesQuery = useMyDriveSpaces();
   const settingsQuery = useDriveSettings(hasPermission('drive:setting:view'));
@@ -84,12 +84,10 @@ export default function DriveWorkbenchPage() {
 
   const allowExternalShare = (settingsQuery.data?.effective.externalShareEnabled ?? true) && (activeSpace?.allowExternalShare ?? true);
 
-  const quickCreateTeamSpace = () => navigate('/drive/spaces?create=1');
-
   const master = (
     <>
       <MasterDetailLayout.Header extra={hasPermission('drive:space:create') ? (
-        <Tooltip content="新建协作空间"><Button size="small" theme="borderless" icon={<Plus size={14} />} aria-label="新建协作空间" onClick={quickCreateTeamSpace} /></Tooltip>
+        <Tooltip content="新建协作空间"><Button size="small" theme="borderless" icon={<Plus size={14} />} aria-label="新建协作空间" onClick={() => setCreatingSpace(true)} /></Tooltip>
       ) : undefined}>
         <Typography.Text strong>企业网盘</Typography.Text>
       </MasterDetailLayout.Header>
@@ -149,6 +147,7 @@ export default function DriveWorkbenchPage() {
       />
       <DriveNodeDrawer nodeId={detailId} allowExternalShare={allowExternalShare} onClose={() => setDetailId(null)}
         onDownload={(node) => { void fetchManagedFileBlob(nodeDownloadUrl(node)).then((blob) => downloadBlob(blob, node.name)); }} />
+      <DriveSpaceFormSheet target={creatingSpace ? 'create' : null} onClose={() => setCreatingSpace(false)} />
       <DriveUploadQueue items={uploader.items} activeCount={uploader.activeCount} conflict={uploader.conflict} onCancel={uploader.cancel} onClear={uploader.clearFinished} />
     </div>
   );

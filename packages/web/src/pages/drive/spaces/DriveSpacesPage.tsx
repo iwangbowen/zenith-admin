@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { Form, Progress, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Progress, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { formatBytes } from '@zenith/shared/core';
 import {
-  DRIVE_ROLE_LABELS, DRIVE_ROLE_OPTIONS, DRIVE_SPACE_TYPE_LABELS, DRIVE_SPACE_TYPE_OPTIONS,
-  type CreateDriveSpaceInput, type DriveRole, type DriveSpace, type DriveSpaceType, type UpdateDriveSpaceInput,
+  DRIVE_ROLE_LABELS, DRIVE_SPACE_TYPE_LABELS, DRIVE_SPACE_TYPE_OPTIONS,
+  type DriveRole, type DriveSpace, type DriveSpaceType,
 } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -15,14 +15,14 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import UserSelect from '@/components/UserSelect';
-import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
-  driveKeys, useDeleteDriveSpaces, useDriveSpaceDetail, useDriveSpaceList, useDriveSpaceMembers, useSaveDriveSpace, useSaveDriveSpaceMembers, useTransferDriveSpace,
+  driveKeys, useDeleteDriveSpaces, useDriveSpaceList, useDriveSpaceMembers, useSaveDriveSpaceMembers, useTransferDriveSpace,
 } from '@/hooks/queries/drive';
 import { confirmDelete } from '@/utils/confirm';
 import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { DriveSpaceFormSheet, type DriveSpaceFormTarget } from '../components/DriveSpaceFormSheet';
 import { DriveSubjectPicker, type SubjectGrant } from '../components/DriveSubjectPicker';
 import { roleAtLeast, usagePercent } from '../drive-utils';
 import '../drive.css';
@@ -31,18 +31,6 @@ interface SearchParams {
   keyword: string;
   type: DriveSpaceType | undefined;
 }
-
-interface SpaceFormValues {
-  name: string;
-  description?: string;
-  defaultMemberRole: DriveRole | null;
-  quotaGb: number | null;
-  maxVersions: number | null;
-  allowExternalShare: boolean;
-  status: 'enabled' | 'disabled';
-}
-
-const ROLE_OPTIONS_WITH_NONE = [{ value: '', label: '不开放（仅成员可访问）' }, ...DRIVE_ROLE_OPTIONS];
 
 function MembersModal({ space, onClose }: { readonly space: DriveSpace | null; readonly onClose: () => void }) {
   const query = useDriveSpaceMembers(space?.id, !!space);
@@ -100,50 +88,13 @@ function TransferModal({ space, onClose }: { readonly space: DriveSpace | null; 
 export default function DriveSpacesPage() {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
-  const [searchParams, setSearchParams] = useSearchParams();
   const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset } =
     useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined }, listKey: driveKeys.spaceLists });
   const listQuery = useDriveSpaceList({ page, pageSize, keyword: submittedParams.keyword || undefined, type: submittedParams.type });
-  const save = useSaveDriveSpace();
   const remove = useDeleteDriveSpaces();
   const [membersOf, setMembersOf] = useState<DriveSpace | null>(null);
   const [transferOf, setTransferOf] = useState<DriveSpace | null>(null);
-  const [newMembers, setNewMembers] = useState<SubjectGrant[]>([]);
-
-  const modal = useEditModal<DriveSpace, SpaceFormValues, CreateDriveSpaceInput | UpdateDriveSpaceInput>({
-    entityName: '协作空间',
-    save,
-    useDetail: useDriveSpaceDetail,
-    defaults: { defaultMemberRole: null, quotaGb: null, maxVersions: null, allowExternalShare: true, status: 'enabled' },
-    toValues: (s) => ({
-      name: s.name, description: s.description ?? undefined, defaultMemberRole: s.defaultMemberRole,
-      quotaGb: s.customQuotaBytes === null ? null : Math.round(s.customQuotaBytes / 1024 ** 3 * 100) / 100,
-      maxVersions: s.maxVersions, allowExternalShare: s.allowExternalShare, status: s.status as 'enabled' | 'disabled',
-    }),
-    beforeSave: (values, ctx) => {
-      const payload = {
-        ...values,
-        description: values.description || undefined,
-        defaultMemberRole: (values.defaultMemberRole as DriveRole | '' | null) || null,
-        quotaGb: values.quotaGb ?? null,
-        maxVersions: values.maxVersions ?? null,
-      };
-      return ctx.isEdit ? payload : { ...payload, sort: 0, members: newMembers.map(({ subjectType, subjectId, role }) => ({ subjectType, subjectId, role })) };
-    },
-    onSaved: () => setNewMembers([]),
-    labelWidth: 110,
-  });
-
-  // 工作台「+」深链：?create=1 打开新建弹窗（消费即焚）
-  useEffect(() => {
-    if (searchParams.get('create') === '1' && hasPermission('drive:space:create')) {
-      modal.openCreate();
-      const next = new URLSearchParams(searchParams);
-      next.delete('create');
-      setSearchParams(next, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  const [spaceEditor, setSpaceEditor] = useState<DriveSpaceFormTarget | null>(null);
 
   // 页面宽约 1190px：去掉低价值的创建时间列、收窄辅助列，让名称列保持可读；打开空间点名称即可
   const columns: ColumnProps<DriveSpace>[] = [
@@ -171,7 +122,7 @@ export default function DriveSpacesPage() {
       return [
         { key: 'members', label: s.type === 'personal' ? '成员' : (isManager ? '成员管理' : '查看成员'), hidden: s.type === 'personal', onClick: () => setMembersOf(s) },
         { key: 'open', label: '打开', onClick: () => navigate(`/drive?space=${s.id}`) },
-        { key: 'edit', label: '编辑', hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:edit'), onClick: () => modal.openEdit(s) },
+        { key: 'edit', label: '编辑', hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:edit'), onClick: () => setSpaceEditor(s) },
         { key: 'transfer', label: '转让', hidden: s.type !== 'team' || !isManager, onClick: () => setTransferOf(s) },
         { key: 'delete', label: '删除', danger: true, dividerBefore: true, hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:delete'),
           onClick: () => { confirmDelete({ title: `删除协作空间「${s.name}」？`, content: '空间内文件将进入回收站，保留期后彻底清除。',
@@ -193,7 +144,7 @@ export default function DriveSpacesPage() {
           <>
             <SearchButton onClick={handleSearch} />
             <ResetButton onClick={handleReset} />
-            {hasPermission('drive:space:create') && <CreateButton onClick={() => { setNewMembers([]); modal.openCreate(); }}>新建协作空间</CreateButton>}
+            {hasPermission('drive:space:create') && <CreateButton onClick={() => setSpaceEditor('create')}>新建协作空间</CreateButton>}
           </>
         )}
       />
@@ -201,27 +152,7 @@ export default function DriveSpacesPage() {
         {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
-      <AppModal {...modal.modalProps} width={640}>
-        <Spin spinning={modal.detailLoading}>
-          <Form key={modal.formKey} {...modal.formProps}>
-            <Form.Input field="name" label="空间名称" rules={[{ required: true, message: '请输入空间名称' }, { max: 100 }]} />
-            <Form.TextArea field="description" label="描述" maxCount={300} rows={2} />
-            <Form.Select field="defaultMemberRole" label="默认成员角色" optionList={ROLE_OPTIONS_WITH_NONE} style={{ width: '100%' }}
-              extraText="为空表示只有下方协作者可访问；设置后全体登录用户按该角色访问" />
-            <Form.InputNumber field="quotaGb" label="配额 (GB)" min={0} precision={2} placeholder="留空跟随系统默认" style={{ width: 200 }} />
-            <Form.InputNumber field="maxVersions" label="最多版本数" min={1} max={200} placeholder="留空跟随系统默认" style={{ width: 200 }} />
-            <Form.Switch field="allowExternalShare" label="允许外链分享" />
-            {modal.isEdit && <Form.RadioGroup field="status" label="状态" type="button"><Form.Radio value="enabled">启用</Form.Radio><Form.Radio value="disabled">停用</Form.Radio></Form.RadioGroup>}
-          </Form>
-          {!modal.isEdit && (
-            <div style={{ marginTop: 8 }}>
-              <Typography.Title heading={6} style={{ margin: '8px 0' }}>初始协作者</Typography.Title>
-              <DriveSubjectPicker value={newMembers} onChange={setNewMembers} emptyText="可稍后在「成员管理」中添加" />
-            </div>
-          )}
-        </Spin>
-      </AppModal>
-
+      <DriveSpaceFormSheet target={spaceEditor} onClose={() => setSpaceEditor(null)} />
       <MembersModal space={membersOf} onClose={() => setMembersOf(null)} />
       <TransferModal space={transferOf} onClose={() => setTransferOf(null)} />
       {!hasPermission('drive:space:create') && listQuery.data?.total === 0 && (
