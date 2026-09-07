@@ -158,7 +158,7 @@ export default function DriveAdminSpacesPage() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-container zx-flat-panels">
       {stats ? (
         <StatGrid>
           <StatCard title="空间总数" value={stats.spaceCount} icon={<Building2 />} sub={`个人 ${stats.spaceCountByType.personal} · 部门 ${stats.spaceCountByType.department} · 协作 ${stats.spaceCountByType.team}`} />

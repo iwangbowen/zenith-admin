@@ -629,24 +629,6 @@
   .drive-upload-queue__spin { animation: none; }
 }
 
-/* ─── 治理页图表 ─────────────────────────────────────────────────────────── */
-.drive-admin__charts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
-  margin: 16px 0 8px;
-}
-
-.drive-admin__chart {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px;
-  border: 1px solid var(--semi-color-border);
-  border-radius: var(--semi-border-radius-medium);
-  min-width: 0;
-}
-
 /* ─── 公开外链页 ─────────────────────────────────────────────────────────── */
 .drive-public {
   min-height: 100vh;

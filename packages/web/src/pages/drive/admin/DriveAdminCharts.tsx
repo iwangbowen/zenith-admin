@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import { Empty, Typography } from '@douyinfe/semi-ui';
+import { Card } from '@douyinfe/semi-ui';
 import { formatBytes } from '@zenith/shared/core';
 import type { DriveAdminStats } from '@zenith/shared/drive';
-import { LineChart, PieChart, chartOptions, makeLineSpec, makePieSpec, useChartPalette } from '@/components/charts';
+import { EmptyChart, LineChart, PieChart, chartOptions, makeLineSpec, makePieSpec, useChartPalette } from '@/components/charts';
 
 /** 治理页图表区：独立 chunk，避免 VChart 进入网盘主包 */
 export default function DriveAdminCharts({ stats }: { readonly stats: DriveAdminStats }) {
@@ -29,15 +29,13 @@ export default function DriveAdminCharts({ stats }: { readonly stats: DriveAdmin
   }), [stats.typeDistribution, stats.totalBytes, palette]);
 
   return (
-    <div className="drive-admin__charts">
-      <section className="drive-admin__chart">
-        <Typography.Text strong>14 天上传 / 下载趋势</Typography.Text>
-        {stats.dailyTrend.length === 0 ? <Empty description="暂无数据" style={{ padding: 32 }} /> : <LineChart {...trendSpec} options={chartOptions} height={220} />}
-      </section>
-      <section className="drive-admin__chart">
-        <Typography.Text strong>文件类型占用分布</Typography.Text>
-        {stats.typeDistribution.length === 0 ? <Empty description="暂无数据" style={{ padding: 32 }} /> : <PieChart {...typeSpec} options={chartOptions} height={220} />}
-      </section>
+    <div className="chart-grid">
+      <Card title="14 天上传 / 下载趋势">
+        {stats.dailyTrend.length === 0 ? <EmptyChart height={220} /> : <LineChart {...trendSpec} options={chartOptions} height={220} />}
+      </Card>
+      <Card title="文件类型占用分布">
+        {stats.typeDistribution.length === 0 ? <EmptyChart height={220} /> : <PieChart {...typeSpec} options={chartOptions} height={220} />}
+      </Card>
     </div>
   );
 }
