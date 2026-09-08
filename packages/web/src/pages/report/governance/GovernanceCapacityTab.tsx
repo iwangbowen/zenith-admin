@@ -156,7 +156,7 @@ export default function GovernanceCapacityTab() {
       <SearchToolbar>
         <InputNumber placeholder="数据集 ID" value={costDraft.datasetId} min={1} onChange={(v) => setCostDraft((p) => ({ ...p, datasetId: v ? Number(v) : undefined }))} />
         <InputNumber placeholder="数据源 ID" value={costDraft.datasourceId} min={1} onChange={(v) => setCostDraft((p) => ({ ...p, datasourceId: v ? Number(v) : undefined }))} />
-        <DateRangeFilter value={costDraft.timeRange ?? undefined} onChange={(v) => setCostDraft((p) => ({ ...p, timeRange: v ? v as [Date, Date] : null }))} width={340} />
+        <DateRangeFilter value={costDraft.timeRange ?? undefined} onChange={(v) => setCostDraft((p) => ({ ...p, timeRange: v ? v as [Date, Date] : null }))} />
         <SearchButton onClick={searchCosts} />
         <ResetButton onClick={resetCosts} />
         <ExportButton entity="report.query-costs" query={costParams} />

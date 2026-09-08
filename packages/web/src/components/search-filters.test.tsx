@@ -193,9 +193,9 @@ describe('DateRangeFilter', () => {
     const widthOf = (c: HTMLElement) =>
       (c.querySelector('[style*="width"]') as HTMLElement | null)?.style.width;
     const { container, rerender } = render(<DateRangeFilter value={null} onChange={vi.fn()} />);
-    expect(widthOf(container)).toBe('360px');
+    expect(widthOf(container)).toBe('400px');
     rerender(<DateRangeFilter type="dateRange" value={null} onChange={vi.fn()} />);
-    expect(widthOf(container)).toBe('260px');
+    expect(widthOf(container)).toBe('280px');
     rerender(<DateRangeFilter value={null} onChange={vi.fn()} width={300} />);
     expect(widthOf(container)).toBe('300px');
   });

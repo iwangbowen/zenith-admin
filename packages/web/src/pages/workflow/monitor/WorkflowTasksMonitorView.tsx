@@ -4,7 +4,7 @@
  * 审批状态 / 审批建议 / 耗时 / 流程编号 / 任务编号；行操作：详情（实例详情抽屉）/ 催办。
  */
 import { useQueryClient } from '@tanstack/react-query';
-import { DatePicker, Input, Modal, Toast, Typography } from '@douyinfe/semi-ui';
+import { Input, Modal, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
@@ -23,7 +23,7 @@ import { useWorkflowTaskMonitorList, workflowMonitorKeys, type WorkflowTaskMonit
 import { useApiMutation } from '@/lib/contract-query';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn } from '@/utils/table-columns';
-import { FilterSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const STUCK_OPTIONS = [
@@ -38,7 +38,7 @@ interface SearchParams {
   status?: string;
   nodeType?: string;
   stuckMinutes?: number;
-  createdRange?: Date[];
+  createdRange?: [Date, Date];
 }
 
 const defaultSearchParams: SearchParams = {
@@ -184,12 +184,10 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
               onChange={(v) => setDraftParams((prev) => ({ ...prev, stuckMinutes: v as number | undefined }))}
               width={150}
             />
-            <DatePicker
-              type="dateTimeRange"
+            <DateRangeFilter
               placeholder={['创建时间起', '创建时间止']}
               value={draftParams.createdRange}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, createdRange: Array.isArray(v) ? (v as Date[]) : undefined }))}
-              style={{ width: 360 }}
+              onChange={(range) => setDraftParams((prev) => ({ ...prev, createdRange: range ?? undefined }))}
             />
           </>
         )}

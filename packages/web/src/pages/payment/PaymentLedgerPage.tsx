@@ -620,7 +620,7 @@ export default function PaymentLedgerPage() {
                 {appFilter(journalSearch.draftParams.appId, (appId) => journalSearch.setDraftParams((prev) => ({ ...prev, appId })))}
                 {merchantFilter(journalSearch.draftParams.channelConfigId, (channelConfigId) => journalSearch.setDraftParams((prev) => ({ ...prev, channelConfigId })))}
                 {currencyFilter(journalSearch.draftParams.currency, (currency) => journalSearch.setDraftParams((prev) => ({ ...prev, currency })))}
-                <DateRangeFilter value={journalSearch.draftParams.timeRange} onChange={(timeRange) => journalSearch.setDraftParams((prev) => ({ ...prev, timeRange }))} width={330} />
+                <DateRangeFilter value={journalSearch.draftParams.timeRange} onChange={(timeRange) => journalSearch.setDraftParams((prev) => ({ ...prev, timeRange }))} />
               </>
             )}
             onSearch={journalSearch.handleSearch}
@@ -649,7 +649,7 @@ export default function PaymentLedgerPage() {
                   filter
                 />
                 <StatusSelect items={RESERVATION_STATUS_ITEMS} value={reservationSearch.draftParams.status} onChange={(status) => reservationSearch.setDraftParams((prev) => ({ ...prev, status }))} />
-                <DateRangeFilter value={reservationSearch.draftParams.timeRange} onChange={(timeRange) => reservationSearch.setDraftParams((prev) => ({ ...prev, timeRange }))} width={330} />
+                <DateRangeFilter value={reservationSearch.draftParams.timeRange} onChange={(timeRange) => reservationSearch.setDraftParams((prev) => ({ ...prev, timeRange }))} />
               </>
             )}
             onSearch={reservationSearch.handleSearch}

@@ -11,7 +11,7 @@ import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
 import { downloadBlob } from '@/utils/download';
 import { getFileTypeIcon, fetchManagedFileBlob, getFileFullUrl } from '@/utils/file-utils';
 import { buildManagedFileActions } from '@/utils/managed-file-actions';
-import { chunkedUpload, CHUNK_SIZE } from '@/utils/chunked-upload';
+import { chunkedUpload, CHUNK_SIZE, CHUNKED_UPLOAD_CANCELLED } from '@/utils/chunked-upload';
 import { FilePreviewLayer } from '@/components/FilePreviewLayer';
 import { useFilePreview } from '@/hooks/useFilePreview';
 import FileStatsPanel from './FileStatsPanel';
@@ -38,7 +38,10 @@ import { formatBytes } from '@zenith/shared/core';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 const { Text } = Typography;
 
-interface UploadItem { uid: string; name: string; size: number; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; errorMsg?: string }
+interface UploadItem { uid: string; name: string; size: number; progress: number; status: 'pending' | 'uploading' | 'success' | 'error' | 'cancelled'; errorMsg?: string }
+
+const UPLOAD_ACTIVE_STATUSES: ReadonlyArray<UploadItem['status']> = ['pending', 'uploading'];
+const isUploadFinished = (item: UploadItem) => !UPLOAD_ACTIVE_STATUSES.includes(item.status);
 
 const FILE_LIST_PAGE_SIZE = 20;
 const FILE_GRID_PAGE_SIZE = 60;
@@ -48,32 +51,36 @@ const FILE_GRID_PAGE_SIZE_OPTIONS = [60, 120, 240];
 function getProgressStroke(status: UploadItem['status']): string | undefined {
   if (status === 'success') return 'var(--semi-color-success)';
   if (status === 'error') return 'var(--semi-color-danger)';
+  if (status === 'cancelled') return 'var(--semi-color-disabled-text)';
   return undefined;
 }
 
 function uploadSingleFile(
   file: File,
   uid: string,
+  signal: AbortSignal,
   setItems: React.Dispatch<React.SetStateAction<UploadItem[]>>,
-  uploadFile: (formData: FormData, onProgress: (percent: number) => void) => Promise<unknown>,
+  uploadFile: (formData: FormData, onProgress: (percent: number) => void, signal: AbortSignal) => Promise<unknown>,
 ) {
   const updateItem = (updater: (item: UploadItem) => UploadItem) =>
     setItems(prev => prev.map(item => item.uid === uid ? updater(item) : item));
+  const onDone = () => updateItem(item => ({ ...item, progress: 100, status: 'success' }));
+  const onFail = (err: unknown) => updateItem(item => signal.aborted
+    ? { ...item, status: 'cancelled' }
+    : { ...item, status: 'error', errorMsg: err instanceof Error ? err.message : '上传失败' });
   updateItem(item => ({ ...item, status: 'uploading' }));
   // 大文件走分片上传 + 断点续传
   if (file.size > CHUNK_SIZE) {
     chunkedUpload(file, {
+      signal,
       onProgress: (percent) => updateItem(item => ({ ...item, progress: percent })),
-    })
-      .then(() => updateItem(item => ({ ...item, progress: 100, status: 'success' })))
-      .catch((err: unknown) => updateItem(item => ({ ...item, status: 'error', errorMsg: err instanceof Error ? err.message : '上传失败' })));
+    }).then(onDone).catch(onFail);
     return;
   }
   const formData = new FormData();
   formData.append('file', file);
-  void uploadFile(formData, (percent) => updateItem(item => ({ ...item, progress: percent })))
-    .then(() => updateItem(item => ({ ...item, progress: 100, status: 'success' })))
-    .catch((err: unknown) => updateItem(item => ({ ...item, status: 'error', errorMsg: err instanceof Error ? err.message : '上传失败' })));
+  void uploadFile(formData, (percent) => updateItem(item => ({ ...item, progress: percent })), signal)
+    .then(onDone).catch(onFail);
 }
 
 /** 加载图片并返回其分辨率，失败时返回 null；优先用 directUrl 直挂（免 blob fetch/CORS） */
@@ -117,6 +124,7 @@ export default function FilesPage() {
   const isInternalToggleRef = useRef(false);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [uploadProgressVisible, setUploadProgressVisible] = useState(false);
+  const uploadControllersRef = useRef(new Map<string, AbortController>());
   const {
     draftParams, setDraftParams, submittedParams,
     handleSearch, handleReset,
@@ -204,8 +212,7 @@ export default function FilesPage() {
   }, [detailQuery.data]);
 
   useEffect(() => {
-    if (uploadProgressVisible && uploadItems.length > 0 &&
-      uploadItems.every(item => item.status === 'success' || item.status === 'error')) {
+    if (uploadProgressVisible && uploadItems.length > 0 && uploadItems.every(isUploadFinished)) {
       const successCount = uploadItems.filter(item => item.status === 'success').length;
       const timer = setTimeout(() => {
         setUploadProgressVisible(false);
@@ -228,16 +235,25 @@ export default function FilesPage() {
     event.target.value = '';
     if (files.length === 0) return;
     const items: UploadItem[] = files.map((f, i) => ({ uid: `${f.name}-${Date.now()}-${i}`, name: f.name, size: f.size, progress: 0, status: 'pending' as const }));
+    uploadControllersRef.current.clear();
     setUploadItems(items);
     setUploadProgressVisible(true);
     for (const [i, file] of files.entries()) {
+      const controller = new AbortController();
+      uploadControllersRef.current.set(items[i].uid, controller);
       uploadSingleFile(
         file,
         items[i].uid,
+        controller.signal,
         setUploadItems,
-        (formData, onProgress) => uploadFileMutation.mutateAsync({ formData, onProgress }),
+        (formData, onProgress, signal) => uploadFileMutation.mutateAsync({ formData, onProgress, signal }),
       );
     }
+  };
+
+  /** 用户显式取消：带原因中止，分片上传据此通知服务端释放会话，不再续传 */
+  const handleCancelUpload = (uid: string) => {
+    uploadControllersRef.current.get(uid)?.abort(CHUNKED_UPLOAD_CANCELLED);
   };
 
   const handleDelete = async (file: ManagedFile) => {
@@ -361,7 +377,6 @@ export default function FilesPage() {
       type="dateTimeRange"
       value={draftParams.timeRange ?? undefined}
       onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-      style={{ width: 'min(360px, 100%)' }}
     />
   );
 
@@ -460,7 +475,7 @@ export default function FilesPage() {
         visible={uploadProgressVisible}
         onCancel={() => setUploadProgressVisible(false)}
         footer={
-          uploadItems.every(item => item.status === 'success' || item.status === 'error')
+          uploadItems.every(isUploadFinished)
             ? <Button type="primary" onClick={() => setUploadProgressVisible(false)}>关闭</Button>
             : null
         }
@@ -490,6 +505,21 @@ export default function FilesPage() {
                   {item.status === 'error' && (
                     <Tooltip content={item.errorMsg}>
                       <XCircle size={14} color="var(--semi-color-danger)" />
+                    </Tooltip>
+                  )}
+                  {item.status === 'cancelled' && (
+                    <Typography.Text type="tertiary" size="small">已取消</Typography.Text>
+                  )}
+                  {!isUploadFinished(item) && (
+                    <Tooltip content="取消上传">
+                      <Button
+                        theme="borderless"
+                        type="tertiary"
+                        size="small"
+                        icon={<X size={14} />}
+                        aria-label={`取消上传 ${item.name}`}
+                        onClick={() => handleCancelUpload(item.uid)}
+                      />
                     </Tooltip>
                   )}
                 </Space>

@@ -330,7 +330,7 @@ export default function AssetsPage() {
                 onChange={(value) => setCatalogDraft((p) => ({ ...p, lifecycle: value }))}
                 width={140}
               />
-              <DateRangeFilter value={catalogDraft.timeRange ?? undefined} onChange={(value) => setCatalogDraft((p) => ({ ...p, timeRange: value ? value as [Date, Date] : null }))} width={340} />
+              <DateRangeFilter value={catalogDraft.timeRange ?? undefined} onChange={(value) => setCatalogDraft((p) => ({ ...p, timeRange: value ? value as [Date, Date] : null }))} />
             </>}
             onSearch={searchCatalog}
             onReset={resetCatalog}

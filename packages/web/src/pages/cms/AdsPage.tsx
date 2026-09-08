@@ -272,7 +272,7 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
         value={draft.device}
         onChange={(value) => setDraft((current) => ({ ...current, device: value as AdEventSearch['device'] }))}
       />
-      <DateRangeFilter placeholder={['发生开始时间', '发生结束时间']} value={draft.timeRange} onChange={(value) => setDraft((current) => ({ ...current, timeRange: value as [Date, Date] | undefined }))} width={330} />
+      <DateRangeFilter placeholder={['发生开始时间', '发生结束时间']} value={draft.timeRange} onChange={(value) => setDraft((current) => ({ ...current, timeRange: value as [Date, Date] | undefined }))} />
     </>
   );
 
@@ -402,7 +402,7 @@ function StatsTab({ siteId, setSiteId }: Readonly<{
           onChange={(value) => setDraft((current) => ({ ...current, device: value as AdEventSearch['device'] }))}
           width={140}
         />
-        <DateRangeFilter placeholder={['统计开始时间', '统计结束时间']} value={draft.timeRange} onChange={(value) => setDraft((current) => ({ ...current, timeRange: value as [Date, Date] | undefined }))} width={330} />
+        <DateRangeFilter placeholder={['统计开始时间', '统计结束时间']} value={draft.timeRange} onChange={(value) => setDraft((current) => ({ ...current, timeRange: value as [Date, Date] | undefined }))} />
         <SearchButton onClick={() => setSubmitted(draft)} />
         <ResetButton onClick={() => { setDraft({}); setSubmitted({}); }} />
       </SearchToolbar>

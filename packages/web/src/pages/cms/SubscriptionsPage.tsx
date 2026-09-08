@@ -71,7 +71,7 @@ export default function SubscriptionsPage() {
         onChange={(value) => setDraft((current) => ({ ...current, subjectType: value as CmsSubscriptionSubjectType | undefined }))}
         width={150}
       />
-      <DateRangeFilter value={draft.timeRange} onChange={(value) => setDraft((current) => ({ ...current, timeRange: value as [Date, Date] | undefined }))} width={330} />
+      <DateRangeFilter value={draft.timeRange} onChange={(value) => setDraft((current) => ({ ...current, timeRange: value as [Date, Date] | undefined }))} />
     </>
   );
 

@@ -123,7 +123,7 @@ export default function AiUsagePage() {
         if (Array.isArray(value) && value.length >= 2 && value[0] instanceof Date && value[1] instanceof Date) {
           setDraftRange([value[0], value[1]]);
         }
-      }} width={300} />
+      }} />
   );
 
   return (

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ListSearchToolbar } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
-import { Tabs, TabPane, Select, Button, Toast, Form, Switch, Slider, Input, InputNumber, TagInput, Tag, Typography, SplitButtonGroup, Dropdown, DatePicker, SideSheet, Descriptions, Card, Banner } from '@douyinfe/semi-ui';
+import { Tabs, TabPane, Select, Button, Toast, Form, Switch, Slider, Input, InputNumber, TagInput, Tag, Typography, SplitButtonGroup, Dropdown, SideSheet, Descriptions, Card, Banner } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { Trash2, ChevronDown } from 'lucide-react';
@@ -37,7 +37,7 @@ import AnalyticsDebugTab from './AnalyticsDebugTab';
 import AnalyticsSegmentsTab from './AnalyticsSegmentsTab';
 import AnalyticsSitesTab from './AnalyticsSitesTab';
 import { CreateButton } from '@/components/toolbar-controls';
-import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -164,12 +164,6 @@ function buildQuery(params: Record<string, string | number | undefined>) {
     if (value !== undefined && value !== '') query.set(key, String(value));
   });
   return query.toString();
-}
-
-function parseDateRange(value: unknown): [Date, Date] | null {
-  if (!Array.isArray(value) || value.length < 2) return null;
-  const [start, end] = value;
-  return start instanceof Date && end instanceof Date ? [start, end] : null;
 }
 
 function parsePropertySchema(text: string | undefined): AnalyticsEventMeta['propertySchema'] {
@@ -358,8 +352,7 @@ export default function AnalyticsDataPage() {
     void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.eventsLists });
   };
 
-  const handleEventRangeChange = (value: unknown) => {
-    const range = parseDateRange(value);
+  const handleEventRangeChange = (range: [Date, Date] | null) => {
     const [startTime, endTime] = formatDateTimeRangeValuesForApi(range, '');
     setEventSearch((prev) => ({
       ...prev,
@@ -847,12 +840,9 @@ export default function AnalyticsDataPage() {
     />
   );
   const renderEventTimeRangeFilter = () => (
-    <DatePicker
-      type="dateTimeRange"
-      placeholder={['开始时间', '结束时间']}
+    <DateRangeFilter
       value={eventSearch.timeRange ?? undefined}
       onChange={handleEventRangeChange}
-      style={{ width: 330 }}
     />
   );
   const renderEventExportButtons = () => <ExportButton entity="analytics.events" query={buildExportQuery()} />;

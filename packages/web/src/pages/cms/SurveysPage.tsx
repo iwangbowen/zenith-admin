@@ -296,7 +296,7 @@ export default function SurveysPage() {
                   onChange={(value) => setDraft((current) => ({ ...current, kind: value as CmsInteractionKind | undefined }))}
                   width={140}
                 />
-                <DateRangeFilter placeholder={['提交开始时间', '提交结束时间']} value={responseTimeRange} onChange={(value) => setResponseTimeRange(value as [Date, Date] | undefined)} width={330} />
+                <DateRangeFilter placeholder={['提交开始时间', '提交结束时间']} value={responseTimeRange} onChange={(value) => setResponseTimeRange(value as [Date, Date] | undefined)} />
                 <SearchButton onClick={handleSearch} />
                 <ResetButton onClick={handleReset} />
               </>

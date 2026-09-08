@@ -256,7 +256,7 @@ export default function PublishingPage() {
             ...prev,
             ...formatDateTimeRangeForApi(range),
           }));
-        }} width={340} />
+        }} />
     </>
   );
 

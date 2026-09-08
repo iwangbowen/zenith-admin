@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import dayjs from 'dayjs';
-import { Banner, Col, DatePicker, Form, Row, SideSheet, TabPane, Tabs, Tag, Toast } from '@douyinfe/semi-ui';
+import { Banner, Col, Form, Row, SideSheet, TabPane, Tabs, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CMS_CONTENT_TYPES, CMS_CONTENT_TYPE_LABELS, CMS_DISTRIBUTION_CONFLICT_STRATEGIES, CMS_DISTRIBUTION_CONFLICT_STRATEGY_LABELS, CMS_DISTRIBUTION_MODES, CMS_DISTRIBUTION_MODE_LABELS, CMS_DISTRIBUTION_RUN_OUTCOME_LABELS, CMS_DISTRIBUTION_TASK_STATUSES, CMS_DISTRIBUTION_TASK_STATUS_LABELS } from '@zenith/shared/cms';
 import type { CmsChannel, CmsDistributionRule, CmsDistributionRun } from '@zenith/shared/cms';
@@ -30,7 +30,7 @@ import {
 } from '@/hooks/queries/cms-stage5';
 import { useQueryClient } from '@tanstack/react-query';
 import { CreateButton } from '@/components/toolbar-controls';
-import { FilterSelect, KeywordInput } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -46,11 +46,11 @@ interface RunSearch {
   ruleId?: number;
   siteId?: number;
   status?: string;
-  range: Date[];
+  range: [Date, Date] | null;
 }
 
 const EMPTY_RULE_SEARCH: RuleSearch = { keyword: '' };
-const EMPTY_RUN_SEARCH: RunSearch = { range: [] };
+const EMPTY_RUN_SEARCH: RunSearch = { range: null };
 
 function flattenChannels(nodes: CmsChannel[]): CmsChannel[] {
   return nodes.flatMap((node) => [node, ...flattenChannels(node.children ?? [])]);
@@ -440,11 +440,9 @@ export default function DistributionPage() {
                   onChange={(siteId) => setRunDraft((value) => ({ ...value, siteId: siteId as number | undefined }))}
                   width={150}
                 />
-                <DatePicker
-                  type="dateTimeRange"
+                <DateRangeFilter
                   value={runDraft.range}
-                  onChange={(range) => setRunDraft((value) => ({ ...value, range: (range as Date[] | null) ?? [] }))}
-                  style={{ width: 330 }}
+                  onChange={(range) => setRunDraft((value) => ({ ...value, range }))}
                 />
                 <FilterSelect
                   placeholder="全部任务状态"

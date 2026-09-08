@@ -160,7 +160,7 @@ export default function CheckinLogsPage() {
   );
 
   const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, dateRange: value ? (value as [Date, Date]) : null }))} width={300} />
+    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, dateRange: value ? (value as [Date, Date]) : null }))} />
   );
 
   const renderSearchButton = () => <SearchButton onClick={handleSearch} />;

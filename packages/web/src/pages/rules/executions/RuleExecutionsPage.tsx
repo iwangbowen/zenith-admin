@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { listTableProps } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
-import { DatePicker, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import { Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { RuleExecution, RuleExecutionSource, RuleRefKind } from '@zenith/shared/rules';
 import { RULE_EXECUTION_SOURCE_LABELS, RULE_REF_KIND_LABELS, RULE_EXECUTION_SOURCES, RULE_REF_KINDS } from '@zenith/shared/rules';
@@ -11,7 +11,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { ruleKeys, useRuleExecutions } from '@/hooks/queries/rules';
 import { formatDateTimeRangeValuesForApi } from '@/utils/date';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { FilterSelect, KeywordInput } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
 
@@ -31,8 +31,7 @@ interface Filters {
   caller?: string;
   source?: RuleExecutionSource;
   matched?: boolean;
-  dateStart?: string;
-  dateEnd?: string;
+  range?: [Date, Date];
 }
 
 /** 规则中心 · 执行记录（决策表/决策流/评分卡/名单统一 trace / 审计） */
@@ -42,7 +41,9 @@ export default function RuleExecutionsPage() {
   const [draft, setDraft] = useState<Filters>({});
   const [submitted, setSubmitted] = useState<Filters>({});
 
-  const listQuery = useRuleExecutions({ page, pageSize, ...submitted });
+  const { range, ...submittedFilters } = submitted;
+  const [dateStart, dateEnd] = formatDateTimeRangeValuesForApi(range);
+  const listQuery = useRuleExecutions({ page, pageSize, ...submittedFilters, dateStart, dateEnd });
 
   const handleSearch = () => {
     setPage(1);
@@ -117,19 +118,9 @@ export default function RuleExecutionsPage() {
               value={draft.matched === undefined ? undefined : String(draft.matched)}
               onChange={(v) => setDraft((p) => ({ ...p, matched: v === undefined ? undefined : v === 'true' }))}
             />
-            <DatePicker
-              type="dateTimeRange"
-              value={draft.dateStart && draft.dateEnd ? [draft.dateStart, draft.dateEnd] : undefined}
-              onChange={(dates) => {
-                const range = dates as Date[] | undefined;
-                const [dateStart, dateEnd] = formatDateTimeRangeValuesForApi(range);
-                setDraft((p) => ({
-                  ...p,
-                  dateStart,
-                  dateEnd,
-                }));
-              }}
-              style={{ width: 360 }}
+            <DateRangeFilter
+              value={draft.range}
+              onChange={(range) => setDraft((p) => ({ ...p, range: range ?? undefined }))}
             />
             <SearchButton onClick={handleSearch} />
             <ResetButton onClick={handleReset} />
