@@ -724,7 +724,7 @@ export default function RateLimitPage() {
         onCancel={editModal.modalProps.onCancel}
         closeOnEsc
         width={680}
-        footer={<ModalFooter onCancel={editModal.modalProps.onCancel} onOk={() => void editModal.modalProps.onOk()} okText="editModal.editing ? '保存（立即生效）' : '创建（立即生效）'" loading={editModal.modalProps.okButtonProps.loading} disabled={editModal.modalProps.okButtonProps.disabled} />}
+        footer={<ModalFooter onCancel={editModal.modalProps.onCancel} onOk={() => void editModal.modalProps.onOk()} okText={editModal.editing ? '保存（立即生效）' : '创建（立即生效）'} loading={editModal.modalProps.okButtonProps.loading} disabled={editModal.modalProps.okButtonProps.disabled} />}
       >
         <Form key={editModal.formKey} {...editModal.formProps}>
           {!editModal.editing && (

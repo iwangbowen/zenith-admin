@@ -11,7 +11,7 @@ import { db } from '../db';
 import { rateLimitRules } from '../db/schema';
 import { currentUser } from '../lib/context';
 
-export type RateLimitName = 'auth' | 'captcha' | 'sensitive' | 'analytics-ingest' | 'error-report' | 'replay-ingest' | 'report_public_share' | 'workflow_public_callback' | 'push_public_callback' | 'payment_public_link' | 'chat_send' | 'chatbi_ask' | 'report_chatbi_write' | 'report_fill_write' | 'ai_chat_send' | 'ai_share_view' | 'drive_public_share';
+export type RateLimitName = 'auth' | 'captcha' | 'sensitive' | 'analytics-ingest' | 'error-report' | 'replay-ingest' | 'report_public_share' | 'workflow_public_callback' | 'push_public_callback' | 'payment_public_link' | 'chat_send' | 'chatbi_ask' | 'report_chatbi_write' | 'report_fill_write' | 'ai_chat_send' | 'ai_share_view' | 'drive_public_share' | 'chunk_upload';
 export type { RateLimitKeyType, RateLimitMode, RateLimitAlgorithm };
 
 export interface RuleConfig {
@@ -51,6 +51,8 @@ const DEFAULTS: Record<RateLimitName, RuleConfig> = {
   ai_chat_send: { ...RULE_BASE, name: 'ai_chat_send', description: 'AI 对话发送限流（按用户）', windowMs: 60 * 1000, limit: 15, keyType: 'user', enabled: true, blockedMessage: 'AI 对话过于频繁，请稍后再试', pathPatterns: [] },
   ai_share_view: { ...RULE_BASE, name: 'ai_share_view', description: 'AI 对话分享页访问限流（无需登录，防滥用）', windowMs: 60 * 1000, limit: 60, keyType: 'ip', enabled: true, blockedMessage: '访问过于频繁，请稍后再试', pathPatterns: [] },
   drive_public_share: { ...RULE_BASE, name: 'drive_public_share', description: '网盘外链公开访问限流（无需登录，防密码爆破 / 防滥用）', windowMs: 60 * 1000, limit: 120, keyType: 'ip', enabled: true, blockedMessage: '访问过于频繁，请稍后再试', pathPatterns: ['/api/drive/public/*'] },
+  // 与 shared seed 的 SEED_RATE_LIMIT_RULES 同步：代码默认保证既有环境部署后即生效，DB 行供管理员调参覆盖
+  chunk_upload: { ...RULE_BASE, name: 'chunk_upload', description: '分片上传单片接口限流（按用户）：分片不小于 5MB，正常上传远达不到该速率，只拦异常刷片', windowMs: 60 * 1000, limit: 3000, keyType: 'user', enabled: true, blockedMessage: '分片上传过于频繁，请稍后再试', pathPatterns: ['/api/files/upload/chunk', '/api/drive/nodes/upload/chunk', '/api/app-releases/releases/*/artifacts/upload/chunk', '/api/iot/firmwares/upload/chunk'] },
 };
 
 const ruleCache = new Map<string, RuleConfig>(Object.entries(DEFAULTS));
@@ -358,7 +360,7 @@ export const captchaRateLimit: MiddlewareHandler = makeNamed('captcha');
 export const sensitiveRateLimit: MiddlewareHandler = makeNamed('sensitive');
 
 /** 内置规则名称集合（不可删除） */
-export const PREDEFINED_NAMES = new Set(['auth', 'captcha', 'sensitive', 'analytics-ingest', 'error-report', 'replay-ingest', 'report_public_share', 'workflow_public_callback', 'push_public_callback', 'payment_public_link', 'chat_send', 'chatbi_ask', 'report_chatbi_write', 'report_fill_write', 'ai_chat_send', 'ai_share_view', 'drive_public_share']);
+export const PREDEFINED_NAMES = new Set(['auth', 'captcha', 'sensitive', 'analytics-ingest', 'error-report', 'replay-ingest', 'report_public_share', 'workflow_public_callback', 'push_public_callback', 'payment_public_link', 'chat_send', 'chatbi_ask', 'report_chatbi_write', 'report_fill_write', 'ai_chat_send', 'ai_share_view', 'drive_public_share', 'chunk_upload']);
 
 /**
  * 代码中通过 authRateLimit / namedRateLimit(...) 静态挂载的规则名。
