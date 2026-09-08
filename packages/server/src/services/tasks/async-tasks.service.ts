@@ -201,7 +201,7 @@ export async function updateAsyncTaskTypePolicy(taskType: string, input: UpdateT
   await updateTaskTypePolicy(taskType, input);
   const maybeHandler = listTaskHandlers().find((item) => item.taskType === taskType);
   const handler = requireRow(maybeHandler, '任务类型未注册');
-  return buildTaskTypeMeta(handler, await getTaskTypePolicy(taskType));
+  return buildTaskTypeMeta(handler, await getTaskTypePolicy(db, taskType));
 }
 
 export interface ListTaskItemsQuery {

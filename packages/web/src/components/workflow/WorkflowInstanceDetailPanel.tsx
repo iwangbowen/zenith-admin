@@ -435,7 +435,7 @@ export default function WorkflowInstanceDetailPanel({
       </div>
       {instance.status === 'suspended' && (
         <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 'var(--semi-border-radius-medium)', background: 'var(--semi-color-warning-light-default)', fontSize: 12, color: 'var(--semi-color-warning-dark)' }}>
-          该流程已挂起{instance.suspendedAt ? `（${formatDateTime(instance.suspendedAt)}）` : ''}，待办暂不可处理，超时计时已冻结。
+          该流程已挂起{instance.suspendedAt ? `（${formatDateTime(instance.suspendedAt)}）` : ''}，待办暂不可处理，自动推进作业已暂停。
           {instance.suspendReason ? ` 原因：${instance.suspendReason}` : ''}
         </div>
       )}

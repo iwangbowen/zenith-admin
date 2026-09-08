@@ -9,10 +9,10 @@ import { listLoginRiskEvents } from '../../services/identity/identity-security.s
 // 身份安全策略的读写已迁至 /api/settings/identity-security（运行时设置模块），本路由只保留风险事件查询
 const identitySecurity = new OpenAPIHono({ defaultHook: validationHook });
 
-const manage = [authMiddleware, guard({ permission: 'system:identity-security:manage' })] as const;
+const readRiskEvents = [authMiddleware, guard({ permission: 'system:login-risk:list' })] as const;
 
 const riskEventsRoute = defineContractRoute(identitySecurityContract.riskEvents, {
-  middleware: manage,
+  middleware: readRiskEvents,
   handler: async (c) => c.json(okBody(await listLoginRiskEvents(c.req.valid('query'))), 200),
 });
 

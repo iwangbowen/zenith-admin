@@ -1,4 +1,5 @@
 import { percentOf } from '@zenith/shared/core';
+import { WORKFLOW_JOB_TYPES } from '@zenith/shared/workflow';
 import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, lte, max, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowDefinitions, systemSchedulerNodes } from '../../db/schema';
@@ -6,7 +7,8 @@ import type { WorkflowJobRow, WorkflowJobExecutionRow } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
-import { retryJob, skipJob, STUCK_RUNNING_GRACE_MS } from '../../lib/workflow-jobs';
+import { retryJob, skipJob } from '../../lib/workflow-jobs/engine';
+import { expiredWorkflowJobCondition } from '../../lib/workflow-jobs/engine';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 
@@ -35,9 +37,13 @@ function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; de
     priority: row.priority,
     attempts: row.attempts,
     maxAttempts: row.maxAttempts,
+    generation: row.generation,
+    executionTimeoutMs: row.executionTimeoutMs,
     runAt: formatDateTime(row.runAt),
     lockedAt: formatNullableDateTime(row.lockedAt),
     lockedBy: row.lockedBy ?? null,
+    leaseUntil: formatNullableDateTime(row.leaseUntil),
+    executionDeadline: formatNullableDateTime(row.executionDeadline),
     lastError: row.lastError ?? null,
     result: (row.result ?? null) as Record<string, unknown> | null,
     tenantId: row.tenantId ?? null,
@@ -52,6 +58,7 @@ function mapExecution(row: WorkflowJobExecutionRow) {
     jobId: row.jobId,
     jobType: row.jobType,
     attempt: row.attempt,
+    generation: row.generation,
     status: row.status,
     requestUrl: row.requestUrl ?? null,
     requestMethod: row.requestMethod ?? null,
@@ -139,6 +146,7 @@ export async function getWorkflowJobChain(traceId: string) {
       total: jobs.length,
       pending: countBy('pending'),
       running: countBy('running'),
+      paused: countBy('paused'),
       succeeded: countBy('succeeded'),
       failed: countBy('failed'),
       dead: countBy('dead'),
@@ -155,12 +163,12 @@ export async function retryWorkflowJob(id: number, payload?: Record<string, unkn
 
 export async function skipWorkflowJob(id: number) {
   const row = await skipJob(id);
-  return mapJob(requireRow(row, '仅待处理 / 失败 / 死信的作业可跳过', 400));
+  return mapJob(requireRow(row, '仅待处理 / 运行中 / 已暂停 / 失败 / 死信的作业可跳过', 400));
 }
 
 export interface WorkflowJobBatchResult {
   total: number;
-  /** 成功执行的数量 */
+  /** 成功提交操作的数量，不表示作业已执行完成 */
   success: number;
   /** 因状态不满足而跳过的数量 */
   skipped: number;
@@ -217,23 +225,19 @@ export async function batchSkipWorkflowJobs(ids: number[]): Promise<WorkflowJobB
   return { total: ids.length, success, skipped: ids.length - success };
 }
 
-const ALL_JOB_TYPES: WorkflowJobRow['jobType'][] = [
-  'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch',
-  'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery',
-];
-
 interface WorkflowJobSummaryItem {
   jobType: WorkflowJobRow['jobType'];
   total: number;
   pending: number;
   running: number;
+  paused: number;
   succeeded: number;
   failed: number;
   dead: number;
   canceled: number;
 }
 
-/** 按作业类型 + 状态聚合计数，零填充所有 8 种类型，供作业账本 Tab 徽标使用。 */
+/** 按作业类型 + 状态聚合计数，零填充全部注册类型，供作业账本 Tab 徽标使用。 */
 export async function getWorkflowJobsSummary(): Promise<WorkflowJobSummaryItem[]> {
   const rows = await db
     .select({ jobType: workflowJobs.jobType, status: workflowJobs.status, c: count() })
@@ -241,8 +245,8 @@ export async function getWorkflowJobsSummary(): Promise<WorkflowJobSummaryItem[]
     .groupBy(workflowJobs.jobType, workflowJobs.status);
 
   const map = new Map<WorkflowJobRow['jobType'], WorkflowJobSummaryItem>();
-  for (const t of ALL_JOB_TYPES) {
-    map.set(t, { jobType: t, total: 0, pending: 0, running: 0, succeeded: 0, failed: 0, dead: 0, canceled: 0 });
+  for (const t of WORKFLOW_JOB_TYPES) {
+    map.set(t, { jobType: t, total: 0, pending: 0, running: 0, paused: 0, succeeded: 0, failed: 0, dead: 0, canceled: 0 });
   }
   for (const r of rows) {
     const item = map.get(r.jobType);
@@ -251,7 +255,7 @@ export async function getWorkflowJobsSummary(): Promise<WorkflowJobSummaryItem[]
     item.total += n;
     item[r.status] += n;
   }
-  return ALL_JOB_TYPES.map((t) => map.get(t)!);
+  return WORKFLOW_JOB_TYPES.map((t) => map.get(t)!);
 }
 
 /** 死信重放过滤条件：多维（jobType/实例/traceId/错误原因/入库时长）精准圈定要重放的作业。 */
@@ -523,7 +527,6 @@ export interface WorkflowJobRuntimeStatus {
  */
 export async function getWorkflowJobRuntimeStatus(): Promise<WorkflowJobRuntimeStatus> {
   const now = Date.now();
-  const stuckCutoff = new Date(now - STUCK_RUNNING_GRACE_MS);
   const execCutoff = new Date(now - 60 * 60_000);
 
   const [
@@ -542,7 +545,7 @@ export async function getWorkflowJobRuntimeStatus(): Promise<WorkflowJobRuntimeS
       .where(gte(systemSchedulerNodes.lastHeartbeatAt, new Date(now - WORKER_VISIBLE_WINDOW_MS)))
       .orderBy(desc(systemSchedulerNodes.lastHeartbeatAt)),
     db.$count(workflowJobs, eq(workflowJobs.status, 'running')),
-    db.$count(workflowJobs, and(eq(workflowJobs.status, 'running'), lte(workflowJobs.lockedAt, stuckCutoff))),
+    db.$count(workflowJobs, expiredWorkflowJobCondition()),
     db.$count(workflowJobs, and(eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, new Date(now)))),
     db.$count(workflowJobs, eq(workflowJobs.status, 'dead')),
     db.select({ v: max(workflowJobs.lockedAt) }).from(workflowJobs),
@@ -578,18 +581,17 @@ export interface WorkflowJobAlertMetrics {
   workflowDeadLetter: number;
   /** 近 60 分钟执行失败率（%） */
   workflowFailureRate: number;
-  /** 卡死（running 超宽限期）作业数 */
+  /** 租约失效或超过执行截止时间的 running 作业数 */
   workflowStuckRunning: number;
 }
 
 /** 供监控告警评估器采集的作业平台派生指标（死信数 / 失败率 / 卡死数），实时轻量查询。 */
 export async function getWorkflowJobAlertMetrics(): Promise<WorkflowJobAlertMetrics> {
   const now = Date.now();
-  const stuckCutoff = new Date(now - STUCK_RUNNING_GRACE_MS);
   const execCutoff = new Date(now - 60 * 60_000);
   const [deadLetter, stuckRunning, recentTotal, recentFailed] = await Promise.all([
     db.$count(workflowJobs, eq(workflowJobs.status, 'dead')),
-    db.$count(workflowJobs, and(eq(workflowJobs.status, 'running'), lte(workflowJobs.lockedAt, stuckCutoff))),
+    db.$count(workflowJobs, expiredWorkflowJobCondition()),
     db.$count(workflowJobExecutions, gte(workflowJobExecutions.createdAt, execCutoff)),
     db.$count(workflowJobExecutions, and(gte(workflowJobExecutions.createdAt, execCutoff), eq(workflowJobExecutions.status, 'failed'))),
   ]);

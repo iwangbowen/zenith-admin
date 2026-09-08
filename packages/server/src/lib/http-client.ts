@@ -294,7 +294,15 @@ export async function httpRequest(
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const controller = new AbortController();
     const timer = timeout > 0 ? setTimeout(() => controller.abort(new Error('Request timeout')), timeout) : null;
+    timer?.unref?.();
     const onCallerAbort = (): void => controller.abort(callerSignal?.reason);
+    const release = (): void => {
+      if (timer) clearTimeout(timer);
+      callerSignal?.removeEventListener('abort', onCallerAbort);
+      controller.signal.removeEventListener('abort', release);
+    };
+    controller.signal.addEventListener('abort', release, { once: true });
+    let responseHandedOff = false;
     if (callerSignal) {
       if (callerSignal.aborted) controller.abort(callerSignal.reason);
       else callerSignal.addEventListener('abort', onCallerAbort, { once: true });
@@ -395,7 +403,9 @@ export async function httpRequest(
         writeHttpLogEntry(resEntry, outFormat, outSeparateFile);
       }
 
-      return wrapResponse(resp, finalUrl);
+      const result = wrapResponse(resp, finalUrl, release);
+      responseHandedOff = true;
+      return result;
     } catch (err) {
       const elapsed = Date.now() - startedAt;
       lastErr = err;
@@ -420,8 +430,7 @@ export async function httpRequest(
       if (aborted || attempt >= maxAttempts) break;
       await sleep(retryDelay * 2 ** (attempt - 1));
     } finally {
-      if (timer) clearTimeout(timer);
-      if (callerSignal) callerSignal.removeEventListener('abort', onCallerAbort);
+      if (!responseHandedOff) release();
     }
   }
 
@@ -432,16 +441,47 @@ export async function httpRequest(
   });
 }
 
-function wrapResponse(resp: Response, url: string): HttpResponse {
+function wrapResponse(resp: Response, url: string, release: () => void): HttpResponse {
+  let raw = resp;
+  if (resp.body) {
+    const reader = resp.body.getReader();
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const item = await reader.read();
+          if (item.done) {
+            release();
+            controller.close();
+          } else {
+            controller.enqueue(item.value);
+          }
+        } catch (err) {
+          release();
+          controller.error(err);
+        }
+      },
+      async cancel(reason) {
+        try { await reader.cancel(reason); } finally { release(); }
+      },
+    });
+    raw = new Response(body, { status: resp.status, statusText: resp.statusText, headers: resp.headers });
+    Object.defineProperties(raw, {
+      url: { value: resp.url },
+      redirected: { value: resp.redirected },
+      type: { value: resp.type },
+    });
+  } else {
+    release();
+  }
   return {
-    status: resp.status,
-    ok: resp.ok,
-    headers: resp.headers,
+    status: raw.status,
+    ok: raw.ok,
+    headers: raw.headers,
     url,
-    text: () => resp.text(),
-    json: <T,>() => resp.json() as Promise<T>,
-    arrayBuffer: () => resp.arrayBuffer(),
-    raw: resp,
+    text: () => raw.text(),
+    json: <T,>() => raw.json() as Promise<T>,
+    arrayBuffer: () => raw.arrayBuffer(),
+    raw,
   };
 }
 

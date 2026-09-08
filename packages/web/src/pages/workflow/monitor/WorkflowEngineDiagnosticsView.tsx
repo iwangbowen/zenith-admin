@@ -569,12 +569,12 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
       if (result.ok) {
         Toast.success({ content: result.message, duration: 4 });
       } else {
-        Toast.warning({ content: result.message || `${actionModal.label}未成功`, duration: 4 });
+        Toast.warning({ content: result.message || `${actionModal.label}补投未提交`, duration: 4 });
       }
       setActionModal(null);
       await diagnosticsQuery.refetch();
     } catch {
-      Toast.error(`${actionModal.label}执行失败`);
+      Toast.error(`${actionModal.label}补投提交失败`);
     } finally {
       setActionLoading(null);
     }
@@ -854,17 +854,16 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
 
       {actionModal && (
         <Modal
-          title={`${actionModal.label} · 条件执行`}
+          title={`${actionModal.label} · 恢复补投`}
           visible
           onCancel={() => setActionModal(null)}
-          okText="确认执行"
+          okText="提交补投"
           cancelText="取消"
           onOk={() => void confirmAction()}
           okButtonProps={{ loading: actionLoading === actionModal.key, type: 'warning' }}
           width={760}
         >
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
-            先按条件筛选并预览将被处理的作业（到期待处理 + 卡死回收），确认后再执行。
             {actionPreview && actionPreview.jobTypes.length > 0 && (
               <> 作业类型：{actionPreview.jobTypes.map((jt) => JOB_TYPE_LABEL[jt] ?? jt).join(' / ')}。</>
             )}
@@ -899,10 +898,10 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
             <Button size="small" theme="light" loading={actionPreviewLoading} onClick={() => void previewAction(actionModal.key, actionFilter)}>预览数据</Button>
             {actionPreview && (
               <Typography.Text type="tertiary" size="small">
-                将处理 <b>{Math.min(actionPreview.matched, actionPreview.limit)}</b> / 匹配 {actionPreview.matched} 条
-                （到期 {actionPreview.duePending} · 卡死 {actionPreview.stuckRunning}）
+                待恢复 <b>{Math.min(actionPreview.matched, actionPreview.limit)}</b> / 匹配 {actionPreview.matched} 条
+                （到期 {actionPreview.duePending} · 租约失效 {actionPreview.stuckRunning}）
                 {actionPreview.scheduledLater > 0 && ` · 未到期 ${actionPreview.scheduledLater}`}
-                {actionPreview.matched > actionPreview.limit && '（超上限部分需再次执行）'}
+                {actionPreview.matched > actionPreview.limit && '（超上限部分待后续补投）'}
               </Typography.Text>
             )}
           </div>

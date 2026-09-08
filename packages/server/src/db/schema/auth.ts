@@ -145,8 +145,8 @@ export const loginRiskEvents = pgTable('login_risk_events', {
   createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
   index('login_risk_events_user_idx').on(t.userId),
-  index('login_risk_events_tenant_idx').on(t.tenantId),
-  index('login_risk_events_created_idx').on(t.createdAt),
+  index('login_risk_events_tenant_created_id_idx').on(t.tenantId, t.createdAt.desc(), t.id.desc()),
+  index('login_risk_events_created_id_idx').on(t.createdAt.desc(), t.id.desc()),
 ]);
 
 export type LoginRiskEventRow = typeof loginRiskEvents.$inferSelect;

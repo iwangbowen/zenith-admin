@@ -27,11 +27,6 @@ async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<vo
   if (!task || task.nodeType !== 'subProcess') {
     throw new WorkflowJobSkip('子流程任务不存在或类型不符');
   }
-  // 幂等：已存在子实例则视为已起步
-  const [existingChild] = await db.select({ id: workflowInstances.id }).from(workflowInstances)
-    .where(eq(workflowInstances.parentTaskId, task.id)).limit(1);
-  if (existingChild) throw new WorkflowJobSkip('子实例已存在，跳过重复发起');
-
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst || inst.status !== 'running') throw new WorkflowJobSkip('父实例不在运行中');
 

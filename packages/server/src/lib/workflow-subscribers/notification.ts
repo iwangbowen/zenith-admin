@@ -94,6 +94,7 @@ export function registerNotificationWorkflowSubscriber(): void {
           recipients: [{ type: 'user', id: task.assigneeId }],
           vars,
           tenantId: event.tenantId,
+          dedupeKey: `workflow-event:${event.eventId}`,
           link: `/workflow/cc?instanceId=${event.instanceId}`,
         });
         return;
@@ -102,6 +103,7 @@ export function registerNotificationWorkflowSubscriber(): void {
         recipients: [{ type: 'user', id: task.assigneeId }],
         vars,
         tenantId: event.tenantId,
+        dedupeKey: `workflow-event:${event.eventId}`,
         link: pendingLink(event.instanceId, task.id),
         channelPolicy: toChannelPolicy(channels),
         channelOptions: toChannelOptions(
@@ -131,6 +133,7 @@ export function registerNotificationWorkflowSubscriber(): void {
           extra: event.comment ? `：${event.comment}` : '',
         },
         tenantId: event.tenantId,
+        dedupeKey: `workflow-event:${event.eventId}`,
         link: pendingLink(event.instanceId, task.id),
       });
     } catch (err) {
@@ -147,6 +150,7 @@ export function registerNotificationWorkflowSubscriber(): void {
         recipients: [{ type: 'user', id: task.assigneeId }],
         vars: { instanceId: event.instanceId, taskId: task.id, title: label, node: task.nodeName },
         tenantId: event.tenantId,
+        dedupeKey: `workflow-event:${event.eventId}`,
         link: pendingLink(event.instanceId, task.id),
       });
     } catch (err) {
@@ -162,7 +166,7 @@ export function registerNotificationWorkflowSubscriber(): void {
   } as const;
 
   const notifyInitiator = (status: keyof typeof INSTANCE_EVENTS) => async (
-    event: { instanceId: number; tenantId: number | null; instance: { initiatorId: number; title: string; serialNo?: string | null } },
+    event: { eventId: string; instanceId: number; tenantId: number | null; instance: { initiatorId: number; title: string; serialNo?: string | null } },
   ) => {
     const inst = event.instance;
     const label = inst.serialNo ? `${inst.title}（${inst.serialNo}）` : inst.title;
@@ -180,6 +184,7 @@ export function registerNotificationWorkflowSubscriber(): void {
         recipients: [{ type: 'user', id: inst.initiatorId }],
         vars: { instanceId: event.instanceId, title: label, status: meta.status },
         tenantId: event.tenantId,
+        dedupeKey: `workflow-event:${event.eventId}`,
         link: instanceLink(event.instanceId),
         channelPolicy: toChannelPolicy(channels),
         channelOptions: toChannelOptions(channels, `【${meta.status}】${label}`, text, { title: label, status: meta.status }),

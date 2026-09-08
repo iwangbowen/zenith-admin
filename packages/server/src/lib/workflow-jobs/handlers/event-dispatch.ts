@@ -5,6 +5,7 @@ import { registerJobHandler } from '../registry';
 import { WorkflowJobPermanentError } from '../errors';
 import type { WorkflowJobContext } from '../types';
 import { workflowEventBus } from '../../workflow-event-bus';
+import { workflowTransaction } from '../lease';
 
 /** webhook 投递最大尝试次数（对齐旧的 5 段退避） */
 const WEBHOOK_MAX_ATTEMPTS = 5;
@@ -14,7 +15,7 @@ const WEBHOOK_MAX_ATTEMPTS = 5;
  * 事件由各业务事务内持久入队，本作业由统一 worker 消费，崩溃后可恢复：
  *  ① 派发到进程内订阅者（ws / 通知 / 会话 / 自动化 / 业务桥接 / 节点监听，best-effort）；
  *  ② 为每个匹配的 Webhook 订阅入队独立 webhook_delivery 作业（各自重试/死信）。
- * idempotencyKey=event:{eventId} 保证同一事件的 event_dispatch 作业全局去重 → 恰好一次。
+ * idempotencyKey=event:{eventId} 仅去重作业入库；订阅者仍需按 eventId 幂等处理重复尝试。
  * payload: { event }
  */
 async function handle({ payload }: WorkflowJobContext): Promise<void> {
@@ -32,6 +33,7 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
     eventType: event.type,
     tenantId: event.tenantId ?? null,
   });
+  await workflowTransaction(async (tx) => {
   for (const sub of subs) {
     await enqueueJob({
       jobType: 'webhook_delivery',
@@ -42,8 +44,9 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
       maxAttempts: WEBHOOK_MAX_ATTEMPTS,
       idempotencyKey: `webhook:${event.eventId}:${sub.id}`,
       traceId: event.eventId,
-    });
+    }, tx);
   }
+  });
 }
 
 registerJobHandler('event_dispatch', handle);

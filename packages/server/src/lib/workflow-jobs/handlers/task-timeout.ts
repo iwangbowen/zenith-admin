@@ -3,7 +3,7 @@ import type { WorkflowTimeoutConfig } from '@zenith/shared/workflow';
 import { db } from '../../../db';
 import { workflowTasks, workflowInstances } from '../../../db/schema';
 import type { workflowTasks as workflowTasksTable } from '../../../db/schema';
-import { approveTaskCore, rejectTaskCore, systemTransferTaskToManager, mapTask } from '../../../services/workflow/workflow-instances.service';
+import { approveTaskCore, rejectTaskCore, systemTransferTaskToManagerInTransaction, mapTask } from '../../../services/workflow/workflow-instances.service';
 import { resolveAdminUserId, resolveUserManagerId, resolveUserDeptHeadId } from '../../../services/workflow/workflow-assignee-resolver.service';
 import { computeTimeoutAt } from '../../workflow-timeout';
 import { workflowEventBus } from '../../workflow-event-bus';
@@ -13,6 +13,8 @@ import { registerJobHandler } from '../registry';
 import { WorkflowJobSkip, WorkflowJobPermanentError } from '../errors';
 import type { WorkflowJobContext } from '../types';
 import { snapshotNodeConfig, requireNumber } from './shared';
+import { runWorkflowJobStep } from '../steps';
+import type { DbExecutor } from '../../../db/types';
 
 const ACTOR = { userId: 0, name: 'system:timeout' } as const;
 type TaskRow = typeof workflowTasksTable.$inferSelect;
@@ -33,7 +35,13 @@ async function resolveTransferFallbackTarget(task: TaskRow, cfg: WorkflowTimeout
 }
 
 /** 排下一次超时作业（reminder 续期 / 转交后重新计时） */
-async function scheduleNextTimeout(taskId: number, cfg: WorkflowTimeoutConfig, remindCount: number, keySuffix: string): Promise<void> {
+async function scheduleNextTimeout(
+  taskId: number,
+  cfg: WorkflowTimeoutConfig,
+  remindCount: number,
+  keySuffix: string,
+  executor?: DbExecutor,
+): Promise<void> {
   const runAt = computeTimeoutAt(cfg, new Date());
   if (!runAt) return;
   await enqueueJob({
@@ -43,7 +51,7 @@ async function scheduleNextTimeout(taskId: number, cfg: WorkflowTimeoutConfig, r
     runAt,
     maxAttempts: 3,
     idempotencyKey: `task_timeout:${taskId}:${keySuffix}`,
-  });
+  }, executor);
 }
 
 /**
@@ -83,16 +91,19 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
   if (nextCount < maxRemind) {
     logger.info('workflow task timeout remind', { taskId, instanceId: inst.id, nextCount, maxRemind });
     // 复用催办事件链路：处理人收到站内信 + WS 提醒（此前仅记日志，处理人无感知）
-    workflowEventBus.emit({
-      type: 'task.urged',
-      instanceId: inst.id,
-      definitionId: inst.definitionId,
-      tenantId: inst.tenantId,
-      actor: ACTOR,
-      task: mapTask(task),
-      comment: `第 ${nextCount}/${maxRemind} 次超时提醒，任务已超过处理时限，请尽快处理`,
-    } as Parameters<typeof workflowEventBus.emit>[0]);
-    await scheduleNextTimeout(taskId, cfg, nextCount, `r${nextCount}`);
+    await runWorkflowJobStep('timeout-reminder', async (tx) => {
+      const event = await workflowEventBus.emitInTx({
+        type: 'task.urged',
+        instanceId: inst.id,
+        definitionId: inst.definitionId,
+        tenantId: inst.tenantId,
+        actor: ACTOR,
+        task: mapTask(task),
+        comment: `第 ${nextCount}/${maxRemind} 次超时提醒，任务已超过处理时限，请尽快处理`,
+      } as Parameters<typeof workflowEventBus.emitInTx>[0], tx);
+      await scheduleNextTimeout(taskId, cfg, nextCount, `r${nextCount}`, tx);
+      return { eventId: event.eventId };
+    });
     return;
   }
 
@@ -109,9 +120,15 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
   if (escalate === 'transferToManager') {
     const target = await resolveTransferFallbackTarget(task, cfg);
     if (target) {
-      await systemTransferTaskToManager(task, inst, target.userId, null, `[系统超时] 提醒耗尽，自动转交给${target.reason}处理`);
+      await runWorkflowJobStep('timeout-transfer', async (tx) => {
+        const transferred = await systemTransferTaskToManagerInTransaction(
+          tx, task, inst, target.userId, null,
+          `[系统超时] 提醒耗尽，自动转交给${target.reason}处理`,
+        );
+        if (transferred) await scheduleNextTimeout(taskId, cfg, 0, `xfer:${target.userId}`, tx);
+        return { transferred, targetUserId: target.userId };
+      });
       logger.info('workflow task timeout escalate transfer', { taskId, instanceId: inst.id, targetUserId: target.userId, reason: target.reason });
-      await scheduleNextTimeout(taskId, cfg, 0, `xfer:${target.userId}`);
       return;
     }
     // 无人可转 → fallback

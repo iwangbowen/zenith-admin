@@ -17,6 +17,7 @@ import { formatDateTime } from './datetime';
 import { enqueueJob } from './workflow-jobs/engine';
 import { currentTraceId } from './context';
 import type { DbExecutor } from '../db/types';
+import { currentWorkflowJobContext, deferWorkflowJobEffect } from './workflow-jobs/execution-context';
 
 type EventHandler<E extends WorkflowEvent = WorkflowEvent> = (event: E) => void | Promise<void>;
 
@@ -83,7 +84,7 @@ class WorkflowEventBus {
   /**
    * 派发到进程内订阅者（ws / 通知 / 会话 / 自动化 / 业务桥接 / 节点监听）。
    * best-effort：单个 handler 抛错只记录、不影响其它 handler，也不抛出
-   * （由 event_dispatch 作业调用，保证崩溃后可恢复地、恰好一次地投递）。
+   * （由 event_dispatch 作业调用；可能重复投递，订阅者按 eventId 实现幂等）。
    */
   async dispatchInProcess(full: WorkflowEvent): Promise<void> {
     const handlers = [
@@ -111,7 +112,7 @@ class WorkflowEventBus {
     executor?: DbExecutor,
   ): WorkflowEvent {
     const full = this.normalize(event);
-    const enqueue = enqueueJob({
+    const input = {
       jobType: 'event_dispatch',
       instanceId: 'instanceId' in full ? full.instanceId ?? null : null,
       taskId: 'task' in full ? full.task.id : null,
@@ -120,7 +121,15 @@ class WorkflowEventBus {
       maxAttempts: 3,
       idempotencyKey: `event:${full.eventId}`,
       traceId: currentTraceId() ?? full.eventId,
-    }, executor);
+    } as const;
+    const context = currentWorkflowJobContext();
+    if (!executor && context) {
+      const deferred = import('./workflow-jobs/lease')
+        .then(({ workflowTransaction }) => workflowTransaction((tx) => enqueueJob(input, tx)));
+      deferWorkflowJobEffect(context, deferred);
+      return full;
+    }
+    const enqueue = enqueueJob(input, executor);
     // 事务内入队需等待，确保与状态变更原子提交；非事务则 best-effort
     if (executor) {
       // 调用方应 await emitInTx；此处返回 promise 供其等待

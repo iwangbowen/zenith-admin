@@ -1,101 +1,162 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DbExecutor } from '../../db/types';
+import type { DbTransaction } from '../../db/types';
+import { asyncTasks, asyncTaskTypeConfigs } from '../../db/schema';
 
 const mocks = vi.hoisted(() => ({
-  sendSystemJob: vi.fn(),
-  getTaskHandler: vi.fn(),
-  getTaskTypePolicy: vi.fn(),
+  send: vi.fn(), handler: vi.fn(), select: vi.fn(), transaction: vi.fn(), push: vi.fn(),
 }));
-
-vi.mock('../../db', () => ({ db: {} }));
+vi.mock('../../db', () => ({ db: { select: mocks.select, transaction: mocks.transaction } }));
 vi.mock('../context', () => ({
-  currentUser: () => ({ userId: 7, username: 'editor', roles: ['cms_editor'], tenantId: null }),
-  runWithCurrentUser: (_user: unknown, fn: () => unknown) => Promise.resolve(fn()),
-  currentTraceId: () => undefined,
-  runWithTraceId: (_traceId: string, fn: () => unknown) => Promise.resolve(fn()),
-  currentParentRef: () => undefined,
-  runWithParentRef: (_ref: string, fn: () => unknown) => Promise.resolve(fn()),
+  currentUser: () => ({ userId: 7, username: 'editor', roles: [], tenantId: null }),
+  currentTraceId: () => undefined, currentParentRef: () => undefined,
 }));
-vi.mock('../tenant', () => ({ getCreateTenantId: () => null }));
 vi.mock('../pg-boss-scheduler', () => ({
-  registerSystemQueueWorker: vi.fn(),
-  sendSystemJob: mocks.sendSystemJob,
-  sendSystemJobAfter: vi.fn(),
+  registerSystemQueueWorker: vi.fn(), sendSystemJob: mocks.send, sendSystemJobAfter: vi.fn(),
 }));
-vi.mock('./registry', () => ({ getTaskHandler: mocks.getTaskHandler }));
-vi.mock('./config', () => ({
-  ensureTaskTypeConfig: vi.fn(),
-  getTaskTypePolicy: mocks.getTaskTypePolicy,
+vi.mock('./registry', async (original) => ({
+  ...await original<typeof import('./registry')>(), getTaskHandler: mocks.handler,
 }));
-vi.mock('./map', () => ({ pushTaskProgress: vi.fn() }));
+vi.mock('./map', () => ({ pushTaskProgress: mocks.push }));
 
-import { enqueueAsyncTask, restartAsyncTask, submitAsyncTask } from './runner';
+import { getTaskTypePolicy } from './config';
+import { persistAsyncTask, restartAsyncTask, restartAsyncTaskInTransaction, submitAsyncTask } from './runner';
 
-function executorWith(row: Record<string, unknown>) {
-  const returning = vi.fn(async () => [row]);
-  const values = vi.fn(() => ({ returning }));
-  const insert = vi.fn(() => ({ values }));
-  return {
-    executor: { insert, $count: vi.fn() } as unknown as DbExecutor,
+const policy = { enabled: true, allowConcurrent: true, maxAttempts: 3, retryDelayMs: 7300, retentionDays: 30 };
+const row = { id: 42, taskType: 'cms-publish-build', status: 'pending', createdBy: 7, tenantId: null };
+
+function fixture(options: { policy?: typeof policy | null; policyError?: Error; existing?: object; insertError?: Error; unfinished?: number } = {}) {
+  const events: string[] = [];
+  const values = vi.fn();
+  const patch = vi.fn();
+  const insert = vi.fn(() => ({
+    values: (input: object) => {
+      values(input);
+      const returning = async () => {
+        events.push('insert');
+        if (options.insertError) throw options.insertError;
+        return [{ ...row, ...input }];
+      };
+      return { returning, onConflictDoNothing: () => ({ returning }) };
+    },
+  }));
+  const remove = vi.fn(() => ({ where: async () => { events.push('delete-items'); } }));
+  const tx = {
+    execute: async () => { events.push('lock'); },
+    select: () => ({
+      from: (table: unknown) => ({ where: () => ({ limit: async () => {
+        if (table === asyncTaskTypeConfigs) {
+          events.push('policy');
+          if (options.policyError) throw options.policyError;
+          return options.policy === null ? [] : [options.policy ?? policy];
+        }
+        expect(table).toBe(asyncTasks);
+        return options.existing ? [options.existing] : [];
+      } }) }),
+    }),
     insert,
-    values,
-    returning,
-  };
+    update: () => ({ set: (input: object) => {
+      patch(input);
+      return { where: () => ({ returning: async () => [{ ...row, ...input }] }) };
+    } }),
+    delete: remove,
+    $count: async () => options.unfinished ?? 0,
+  } as unknown as DbTransaction;
+  return { tx, events, values, patch, insert, remove };
 }
 
-describe('task-center transactional outbox submission', () => {
+describe('task-center transaction ownership and policy snapshots', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getTaskHandler.mockReturnValue({ taskType: 'cms-publish-build', title: 'CMS 发布', module: 'CMS', run: vi.fn() });
-    mocks.getTaskTypePolicy.mockResolvedValue({ enabled: true, allowConcurrent: true, maxAttempts: 3, retryDelayMs: 5000, retentionDays: 30 });
+    mocks.select.mockImplementation(() => { throw new Error('global pool access forbidden'); });
+    mocks.handler.mockReturnValue({ taskType: 'cms-publish-build', title: 'CMS publish', module: 'CMS', maxAttempts: 2, retryDelayMs: 6000, run: vi.fn() });
+    mocks.send.mockResolvedValue('message-id');
   });
 
-  it('persists pending task through the provided transaction executor without enqueueing before commit', async () => {
-    const row = { id: 42, taskType: 'cms-publish-build', title: 'CMS 发布', payload: {}, status: 'pending' };
-    const fake = executorWith(row);
-    const result = await submitAsyncTask({ taskType: 'cms-publish-build', payload: { siteId: 1 } }, { executor: fake.executor });
-    expect(result).toBe(row);
-    expect(fake.insert).toHaveBeenCalledTimes(1);
-    expect(mocks.sendSystemJob).not.toHaveBeenCalled();
-
-    await enqueueAsyncTask(42);
-    expect(mocks.sendSystemJob).toHaveBeenCalledWith('async-tasks', { taskId: 42 }, expect.objectContaining({
-      singletonKey: 'async-task-42',
-    }));
+  it('reads the real policy through tx without any external side effect', async () => {
+    const f = fixture();
+    await expect(persistAsyncTask(f.tx, { taskType: 'cms-publish-build' })).resolves.toMatchObject({ maxAttempts: 3, retryDelayMs: 7300 });
+    expect(f.events).toEqual(['lock', 'policy', 'insert']);
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 
-  it('does not enqueue or leak a task when the transactional insert fails', async () => {
-    const executor = {
-      insert: vi.fn(() => ({ values: vi.fn(() => ({ returning: vi.fn(async () => { throw new Error('tx rolled back'); }) })) })),
-      $count: vi.fn(),
-    } as unknown as DbExecutor;
-    await expect(submitAsyncTask({ taskType: 'cms-publish-build' }, { executor })).rejects.toThrow('tx rolled back');
-    expect(mocks.sendSystemJob).not.toHaveBeenCalled();
+  it('propagates policy read failures before any insert', async () => {
+    const f = fixture({ policyError: new Error('policy unavailable') });
+    await expect(persistAsyncTask(f.tx, { taskType: 'cms-publish-build' })).rejects.toThrow('policy unavailable');
+    expect(f.insert).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
   });
 
-  it('rejects attempts to enqueue from inside an external transaction', async () => {
-    const fake = executorWith({ id: 1 });
-    await expect(submitAsyncTask(
-      { taskType: 'cms-publish-build' },
-      { executor: fake.executor, enqueue: true },
-    )).rejects.toThrow('外部事务内不能直接入队');
-    expect(fake.insert).not.toHaveBeenCalled();
+  it('uses registration defaults only for an absent override of a registered type', async () => {
+    const f = fixture({ policy: null });
+    await expect(getTaskTypePolicy(f.tx, 'cms-publish-build')).resolves.toMatchObject({ maxAttempts: 2, retryDelayMs: 6000 });
+    mocks.handler.mockReturnValue(undefined);
+    await expect(getTaskTypePolicy(f.tx, 'unknown')).rejects.toThrow();
   });
 
-  it('restarts and clears task items through an external transaction without enqueueing before commit', async () => {
-    const row = { id: 42, taskType: 'cms-publish-build', status: 'pending' };
-    const selectLimit = vi.fn(async () => [{ taskType: 'cms-publish-build' }]);
-    const select = vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: selectLimit })) })) }));
-    const returning = vi.fn(async () => [row]);
-    const update = vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(() => ({ returning })) })) }));
-    const deleteWhere = vi.fn(async () => undefined);
-    const delete_ = vi.fn(() => ({ where: deleteWhere }));
-    const executor = { select, update, delete: delete_ } as unknown as DbExecutor;
+  it('rejects disabled and non-concurrent admissions before writing', async () => {
+    for (const options of [
+      { policy: { ...policy, enabled: false } },
+      { policy: { ...policy, allowConcurrent: false }, unfinished: 1 },
+    ]) {
+      const f = fixture(options);
+      await expect(persistAsyncTask(f.tx, { taskType: 'cms-publish-build' })).rejects.toThrow();
+      expect(f.insert).not.toHaveBeenCalled();
+    }
+  });
 
-    await expect(restartAsyncTask(42, { executor })).resolves.toBe(row);
-    expect(delete_).toHaveBeenCalledTimes(1);
-    expect(mocks.sendSystemJob).not.toHaveBeenCalled();
-    await enqueueAsyncTask(42);
-    expect(mocks.sendSystemJob).toHaveBeenCalledTimes(1);
+  it('replays the existing task without replacing its policy snapshot', async () => {
+    const existing = { ...row, maxAttempts: 1, retryDelayMs: 1200 };
+    const f = fixture({ existing, policy: { ...policy, enabled: false } });
+    await expect(persistAsyncTask(f.tx, { taskType: 'cms-publish-build', idempotencyKey: 'same-intent' })).resolves.toBe(existing);
+    expect(f.events).toEqual(['lock']);
+    expect(f.insert).not.toHaveBeenCalled();
+  });
+
+  it('publishes only after its transaction commits', async () => {
+    const f = fixture();
+    mocks.transaction.mockImplementation(async (fn: (tx: DbTransaction) => Promise<unknown>) => {
+      f.events.push('begin');
+      const result = await fn(f.tx);
+      expect(mocks.send).not.toHaveBeenCalled();
+      f.events.push('commit');
+      return result;
+    });
+    mocks.send.mockImplementation(async () => { f.events.push('enqueue'); });
+    await expect(submitAsyncTask({ taskType: 'cms-publish-build' })).resolves.toMatchObject({ id: 42 });
+    expect(f.events).toEqual(['begin', 'lock', 'policy', 'insert', 'commit', 'enqueue']);
+  });
+
+  it('never publishes after a rollback', async () => {
+    const f = fixture({ insertError: new Error('rollback') });
+    mocks.transaction.mockImplementation((fn: (tx: DbTransaction) => Promise<unknown>) => fn(f.tx));
+    await expect(submitAsyncTask({ taskType: 'cms-publish-build' })).rejects.toThrow('rollback');
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it('returns the committed pending task when transport fails', async () => {
+    const f = fixture();
+    mocks.transaction.mockImplementation((fn: (tx: DbTransaction) => Promise<unknown>) => fn(f.tx));
+    mocks.send.mockRejectedValue(new Error('queue unavailable'));
+    await expect(submitAsyncTask({ taskType: 'cms-publish-build' })).resolves.toMatchObject({ id: 42, status: 'pending' });
+  });
+
+  it('restarts within tx using a fresh policy snapshot and clears items before commit', async () => {
+    const f = fixture({ existing: row, policy: { ...policy, maxAttempts: 5, retryDelayMs: 9500 } });
+    await expect(restartAsyncTaskInTransaction(f.tx, 42)).resolves.toMatchObject({ attempts: 0, maxAttempts: 5, retryDelayMs: 9500 });
+    expect(f.remove).toHaveBeenCalledOnce();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.select).not.toHaveBeenCalled();
+  });
+
+  it('leaves the old task untouched if restart cannot read its policy', async () => {
+    const f = fixture({ existing: row, policyError: new Error('policy unavailable') });
+    mocks.transaction.mockImplementation((fn: (tx: DbTransaction) => Promise<unknown>) => fn(f.tx));
+    await expect(restartAsyncTask(42)).rejects.toThrow('policy unavailable');
+    expect(f.patch).not.toHaveBeenCalled();
+    expect(f.remove).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
   });
 });

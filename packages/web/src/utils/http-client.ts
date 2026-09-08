@@ -14,6 +14,7 @@ export interface HttpRequestOptions {
   /** 跳过 401 自动刷新/跳转：为 true 时 401 直接返回响应体，不触发 token 刷新或退出登录（用于密码校验、登录接口等场景） */
   skipAuth?: boolean;
   signal?: AbortSignal;
+  /** 业务请求头；Authorization 由当前客户端的账户令牌决定，FormData 的 Content-Type 由浏览器生成 */
   headers?: HeadersInit;
 }
 
@@ -72,12 +73,18 @@ export class HttpClient {
     this.handleMaintenance = config.handleMaintenance ?? false;
   }
 
-  protected getHeaders(body?: BodyInit | null): HeadersInit {
-    const headers: HeadersInit = {};
-    if (!(body instanceof FormData)) {
-      headers['Content-Type'] = 'application/json';
+  protected getHeaders(body?: BodyInit | null, overrides?: HeadersInit): Headers {
+    const headers = new Headers(overrides);
+    if (body instanceof FormData) {
+      // boundary 必须与浏览器编码的表单一致，不能沿用调用方手写的 Content-Type。
+      headers.delete('content-type');
+    } else if (!headers.has('content-type')) {
+      headers.set('content-type', 'application/json');
     }
-    return { ...headers, ...this.authHeaders() };
+    // 每次发送（含刷新重试）读取所属账户的最新令牌，业务头不能切换认证身份。
+    headers.delete('authorization');
+    for (const [name, value] of Object.entries(this.authHeaders())) headers.set(name, value);
+    return headers;
   }
 
   /** 当前登录态的鉴权头；每次调用重新读取 token，供第三方上传组件等无法经 request 层的场景使用 */
@@ -154,7 +161,7 @@ export class HttpClient {
     const { silent, ...fetchOptions } = options;
     const doFetch = () => fetch(`${this.baseUrl}${url}`, {
       ...fetchOptions,
-      headers: { ...this.getHeaders(fetchOptions.body), ...fetchOptions.headers },
+      headers: this.getHeaders(fetchOptions.body, fetchOptions.headers),
     });
 
     let res: Response;
@@ -193,7 +200,7 @@ export class HttpClient {
     const { silent, skipAuth, ...fetchOptions } = options;
     const doFetch = () => fetch(`${this.baseUrl}${url}`, {
       ...fetchOptions,
-      headers: { ...this.getHeaders(fetchOptions.body), ...fetchOptions.headers },
+      headers: this.getHeaders(fetchOptions.body, fetchOptions.headers),
     });
 
     let res: Response;

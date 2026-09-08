@@ -1,14 +1,17 @@
 // ─── 管理员强制操作与令牌运维恢复（拆分自 workflow-instances.service.ts）───
 import { eq, and, asc, lte, inArray, gt } from 'drizzle-orm';
 import { db } from '../../../db';
-import { workflowInstances, workflowJobs, workflowTasks, workflowTokens, workflowDefinitions, workflowDelegations, users } from '../../../db/schema';
+import { workflowInstances, workflowTasks, workflowTokens, workflowDefinitions, workflowDelegations, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
 import type { WorkflowFlowData, WorkflowHandoverPreview, WorkflowHandoverResult, WorkflowRecoveryBatchResult } from '@zenith/shared/workflow';
+import { WORKFLOW_SUSPENDABLE_JOB_TYPES } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { buildStarterContext } from '../workflow-assignee-resolver.service';
 import logger from '../../../lib/logger';
-import { scheduleJobPickup } from '../../../lib/workflow-jobs';
+import { pauseInstanceJobs, resumeInstanceJobs } from '../../../lib/workflow-jobs/engine';
+import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
+import { scheduleJobPickup } from '../../../lib/workflow-jobs/publication';
 import { emitMaterializedAdvanceEvents } from './lifecycle';
 import { mapInstance, mapTask } from './mapping';
 import { recordTaskTransfer, assertAssigneesNotActiveOnNode } from './transfers';
@@ -37,7 +40,7 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   const formData = (inst.formData ?? {}) as Record<string, unknown>;
   const starter = await buildStarterContext(inst.initiatorId);
   const note = `[管理员强制跳转至「${targetNode.data.label}」]${comment ? ' ' + comment : ''}`;
-  const instance = await db.transaction(async (tx) => {
+  const instance = await workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, id, 'running', '流程状态已变化，无法跳转');
     await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
       .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])));
@@ -63,13 +66,8 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   return mapInstance(instance);
 }
 
-/** 挂起时冻结计时的作业类型（SLA 超时 / 延迟唤醒暂停计时，恢复后按剩余时长续跑） */const SUSPEND_FREEZE_JOB_TYPES = ['task_timeout', 'delay_wake'] as const;
-/** 冻结哨兵时间：挂起期间计时作业 runAt 推至远期，杜绝被 Worker 领取 */
-const SUSPEND_FREEZE_RUN_AT = new Date('2200-01-01T00:00:00Z');
-/** payload 中记录剩余毫秒数的键（恢复时据此重排 runAt） */
-const SUSPEND_REMAINING_KEY = 'suspendRemainingMs';
 
-/** 挂起实例：冻结待办操作与计时作业，用于争议冻结/外部故障排查（仅 running 可挂起） */
+/** 挂起实例：冻结待办操作与自动推进作业，用于争议冻结/外部故障排查（仅 running 可挂起） */
 export async function suspendInstance(id: number, reason: string) {
   const user = currentUser();
   const tc = tenantCondition(workflowInstances, user);
@@ -82,20 +80,7 @@ export async function suspendInstance(id: number, reason: string) {
   const instance = await db.transaction(async (tx) => {
     await lockInstanceExpecting(tx, id, 'running', '流程状态已变化，无法挂起');
     const now = new Date();
-    // 冻结计时作业：payload 记录剩余时长，runAt 推远期（暂停计时而非恢复即超时）
-    const jobs = await tx.select({ id: workflowJobs.id, runAt: workflowJobs.runAt, payload: workflowJobs.payload })
-      .from(workflowJobs)
-      .where(and(
-        eq(workflowJobs.instanceId, id),
-        eq(workflowJobs.status, 'pending'),
-        inArray(workflowJobs.jobType, [...SUSPEND_FREEZE_JOB_TYPES]),
-      ));
-    for (const job of jobs) {
-      const remainingMs = Math.max(0, job.runAt.getTime() - now.getTime());
-      await tx.update(workflowJobs)
-        .set({ runAt: SUSPEND_FREEZE_RUN_AT, payload: { ...(job.payload as Record<string, unknown>), [SUSPEND_REMAINING_KEY]: remainingMs } })
-        .where(and(eq(workflowJobs.id, job.id), eq(workflowJobs.status, 'pending')));
-    }
+    await pauseInstanceJobs(tx, id, WORKFLOW_SUSPENDABLE_JOB_TYPES);
     const [updated] = await tx.update(workflowInstances)
       .set({ status: 'suspended', suspendedAt: now, suspendReason: reason })
       .where(eq(workflowInstances.id, id)).returning();
@@ -105,7 +90,7 @@ export async function suspendInstance(id: number, reason: string) {
   return mapInstance(instance);
 }
 
-/** 恢复挂起实例：计时作业按挂起前剩余时长重排后继续流转 */
+/** 恢复挂起实例：自动推进作业按挂起前剩余时长重排后继续流转 */
 export async function resumeInstance(id: number) {
   const user = currentUser();
   const tc = tenantCondition(workflowInstances, user);
@@ -117,33 +102,13 @@ export async function resumeInstance(id: number) {
 
   const { instance, restoredJobs } = await db.transaction(async (tx) => {
     await lockInstanceExpecting(tx, id, 'suspended', '流程状态已变化，无法恢复');
-    const now = new Date();
-    const jobs = await tx.select({ id: workflowJobs.id, payload: workflowJobs.payload })
-      .from(workflowJobs)
-      .where(and(
-        eq(workflowJobs.instanceId, id),
-        eq(workflowJobs.status, 'pending'),
-        inArray(workflowJobs.jobType, [...SUSPEND_FREEZE_JOB_TYPES]),
-      ));
-    const restored: Array<{ id: number; runAt: Date }> = [];
-    for (const job of jobs) {
-      const payload = (job.payload ?? {}) as Record<string, unknown>;
-      const remaining = Number(payload[SUSPEND_REMAINING_KEY]);
-      if (!Number.isFinite(remaining)) continue; // 非挂起冻结的作业不动
-      const rest = { ...payload };
-      delete rest[SUSPEND_REMAINING_KEY];
-      const runAt = new Date(now.getTime() + Math.max(0, remaining));
-      await tx.update(workflowJobs)
-        .set({ runAt, payload: rest })
-        .where(and(eq(workflowJobs.id, job.id), eq(workflowJobs.status, 'pending')));
-      restored.push({ id: job.id, runAt });
-    }
+    const restored = await resumeInstanceJobs(tx, id, WORKFLOW_SUSPENDABLE_JOB_TYPES);
     const [updated] = await tx.update(workflowInstances)
       .set({ status: 'running', suspendedAt: null, suspendReason: null })
       .where(eq(workflowInstances.id, id)).returning();
     return { instance: updated, restoredJobs: restored };
   });
-  // 挂起期间原 pg-boss 唤醒消息已被消费（claim 因 runAt 守卫拒领），恢复后按新 runAt 重排 pickup（drain 兜底）
+  // Resume commits the new generation before publishing its wakeups.
   for (const job of restoredJobs) {
     scheduleJobPickup(job.id, job.runAt);
   }
@@ -305,7 +270,7 @@ export async function skipStuckToken(tokenId: number, reason?: string) {
   const nodeName = nodeCfg?.label ?? tok.nodeKey;
   const note = `[运营·跳过卡死 Token #${tokenId}]${reason ? ' ' + reason : ''}`;
 
-  const result = await db.transaction(async (tx) => {
+  const result = await workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, inst.id, 'running', '实例状态已变化，请刷新后重试');
     await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
       .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, tok.nodeKey), inArray(workflowTasks.status, ['pending', 'waiting'])));

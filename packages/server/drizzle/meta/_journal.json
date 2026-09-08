@@ -85,6 +85,27 @@
       "when": 1788788122011,
       "tag": "0011_drive_phase4_governance",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788846826434,
+      "tag": "0012_reviewed_runtime_boundaries",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788848144247,
+      "tag": "0013_workflow_step_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788854773266,
+      "tag": "0014_workflow_delivery_dedupe",
+      "breakpoints": true
     }
   ]
 }

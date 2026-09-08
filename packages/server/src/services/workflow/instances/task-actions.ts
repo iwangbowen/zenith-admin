@@ -1,3 +1,4 @@
+import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 // ─── 审批动作核心：同意/拒绝（含回调与动作按钮校验）（拆分自 workflow-instances.service.ts）───
 import { eq, and, desc, or, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
@@ -10,7 +11,7 @@ import { currentUser } from '../../../lib/context';
 import { buildStarterContext, listSelectableApprovers } from '../workflow-assignee-resolver.service';
 import type { WorkflowSelectableNextApproverGroup } from '@zenith/shared/workflow';
 import logger from '../../../lib/logger';
-import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs';
+import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs/engine';
 import { enqueueSubprocessJoin } from './async-jobs';
 import { assertSelectedNextApprovers } from './initiator-select';
 import { mapInstance, mapTask } from './mapping';
@@ -261,7 +262,7 @@ export async function approveTaskCore(
   const flowData = snapshot?.flowData;
   if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
 
-  const updated = await db.transaction(async (tx) => {
+  const updated = await workflowTransaction(async (tx) => {
     const res = await (async () => {
     // 实例行级锁：序列化同一实例上的并发审批，避免会签末位并发各自读不到对方已审批而都不推进（节点卡死）
     const [lockedInst] = await tx.select({ status: workflowInstances.status, formData: workflowInstances.formData })
@@ -498,7 +499,7 @@ export async function rejectTaskCore(
   const flowData = inst.definitionSnapshot?.flowData;
   const { strategy, targetNodeKey, currentNodeCfg } = await resolveRejectRoute(task, inst);
 
-  const updated = await db.transaction(async (tx) => {
+  const updated = await workflowTransaction(async (tx) => {
     const res = await (async () => {
     // 实例行级锁：序列化同一实例上的并发审批/驳回，避免与并发审批互相覆盖推进
     await lockInstanceExpecting(tx, inst.id, 'running', '流程实例状态已变化，请刷新后重试');
@@ -688,7 +689,7 @@ async function processDelegatedReceipt(
   const tail = comment ? `：${comment}` : '';
   const receiptComment = `[委派回执] ${actor.name ?? '系统'} 建议${verb}${tail}`;
 
-  const result = await db.transaction(async (tx) => {
+  const result = await workflowTransaction(async (tx) => {
     const [closedTask] = await tx.update(workflowTasks).set({
       status: action,
       comment: receiptComment,

@@ -1,3 +1,5 @@
+import { runWorkflowJobStep } from '../steps';
+import { throwIfWorkflowExternalEffectUncertain } from '../external-effects';
 import { eq } from 'drizzle-orm';
 import type { WorkflowTriggerNodeConfig } from '@zenith/shared/workflow';
 import { isGatedTrigger } from '@zenith/shared/workflow';
@@ -93,7 +95,7 @@ async function executeDataMutation(cfg: WorkflowTriggerNodeConfig, instanceId: n
   const fieldKeys = cfg.fieldKeys ?? [];
   const requestBody = JSON.stringify({ fieldKeys, fieldValues: cfg.fieldValues ?? null });
   try {
-    const next = await db.transaction(async (tx) => {
+    const next = await runWorkflowJobStep('trigger-data', async (tx) => {
       const [locked] = await tx.select({ formData: workflowInstances.formData }).from(workflowInstances)
         .where(eq(workflowInstances.id, instanceId)).for('update').limit(1);
       const base = (locked?.formData ?? formData ?? {}) as Record<string, unknown>;
@@ -117,12 +119,12 @@ async function executeDataMutation(cfg: WorkflowTriggerNodeConfig, instanceId: n
   }
 }
 
-async function runTrigger(cfg: WorkflowTriggerNodeConfig, task: TaskRow, inst: InstRow, attempt: number): Promise<TriggerRunResult> {
+async function runTrigger(cfg: WorkflowTriggerNodeConfig, task: TaskRow, inst: InstRow, operationKey: string): Promise<TriggerRunResult> {
   const formData = (inst.formData ?? {}) as Record<string, unknown>;
   const triggerType = cfg.triggerType;
   if (triggerType === 'webhook' || triggerType === 'callback') {
     const extras: Record<string, string> = {
-      idempotencyKey: `workflow-trigger:${task.id}:${attempt}`,
+      idempotencyKey: operationKey,
       instanceId: String(inst.id),
       taskId: String(task.id),
       nodeKey: task.nodeKey,
@@ -149,7 +151,7 @@ function toDetail(r: TriggerRunResult): WorkflowJobResult {
  * 取代 trigger.ts 的 dispatch/claim/mark/recover；attempts/退避/死信交给引擎，执行明细入 job_executions。
  * payload: { taskId }
  */
-async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<WorkflowJobResult | void> {
+async function handle({ payload, attempt, job, operationKey }: WorkflowJobContext): Promise<WorkflowJobResult | void> {
   const taskId = (() => {
     try { return requireNumber(payload, 'taskId'); } catch { return NaN; }
   })();
@@ -171,7 +173,7 @@ async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<Wo
   }
 
   const triggerType = cfg.triggerType;
-  const result = await runTrigger(cfg, task, inst, attempt);
+  const result = await runTrigger(cfg, task, inst, operationKey);
   const detail = toDetail(result);
 
   if (result.status === 'success') {
@@ -186,6 +188,7 @@ async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<Wo
 
   // 失败：未到最大尝试 → 抛出可重试错误（引擎按退避重排）
   const errorMessage = result.errorMessage ?? '触发器执行失败';
+  await throwIfWorkflowExternalEffectUncertain(errorMessage, detail);
   if (attempt < job.maxAttempts) {
     throw new WorkflowJobError(errorMessage, { detail });
   }

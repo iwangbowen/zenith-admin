@@ -64,7 +64,7 @@ JWT payload 包含：`userId`、`username`、`roles`、`tenantId`、可选 `view
 - `risk.enabled`、`risk.newDeviceAction` 控制新设备风险动作；
 - `lockout.maxAttempts` / `lockout.durationMinutes` 与 `password.*` 控制登录锁定与密码策略，按用户所属租户解析，未覆盖时继承平台值；
 - MFA 因子表为 `user_mfa_factors`，可信设备表为 `user_trusted_devices`；
-- 登录风险事件写入 `login_risk_events`。
+- 登录风险事件写入 `login_risk_events`，查看要求独立的 `system:login-risk:list` 权限；列表与总数都按 `tenantCondition` 限定当前租户视角，不因策略继承而共享平台或其他租户的事件。
 
 ## IP 访问控制
 

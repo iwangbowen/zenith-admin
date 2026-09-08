@@ -47,7 +47,12 @@ export const WORKFLOW_JOB_TYPES = [
   'compensation_action',
 ] as const;
 
-export const WORKFLOW_JOB_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'dead', 'canceled'] as const;
+export const WORKFLOW_JOB_STATUSES = ['pending', 'running', 'paused', 'succeeded', 'failed', 'dead', 'canceled'] as const;
+export const WORKFLOW_ADVANCING_JOB_TYPES = ['delay_wake', 'task_timeout', 'external_dispatch', 'subprocess_spawn', 'subprocess_join'] as const;
+export const WORKFLOW_TIMER_JOB_TYPES = ['task_timeout', 'delay_wake'] as const;
+export const WORKFLOW_SUSPENDABLE_JOB_TYPES = [
+  'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch', 'subprocess_spawn', 'subprocess_join',
+] as const;
 
 export const WORKFLOW_JOB_EXECUTION_STATUSES = ['running', 'succeeded', 'failed'] as const;
 

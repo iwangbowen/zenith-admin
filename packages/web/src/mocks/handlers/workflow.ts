@@ -46,6 +46,9 @@ import {
   resolveSerialPeriodKey,
   sanitizeFormUpdatesByNodePerms,
   WORKFLOW_SERIAL_SAMPLE_VARS,
+  WORKFLOW_ADVANCING_JOB_TYPES,
+  WORKFLOW_JOB_TYPES,
+  WORKFLOW_SUSPENDABLE_JOB_TYPES,
   workflowDefinitionContract,
   workflowEngineContract,
   workflowInstanceContract,
@@ -936,14 +939,14 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
           name: 'workflow-jobs-drain',
           title: '工作流作业兜底扫描',
           module: '工作流',
-          description: '每分钟兜底领取到期的工作流作业并回收卡死的运行中作业。',
+          description: '每分钟补投到期作业，并回收租约失效或超过执行时限的运行中作业。',
           taskType: 'recurring',
           cronExpression: '* * * * *',
           registeredAt: mockDateTimeOffset(-2 * 60 * 60 * 1000),
           allowManualRun: true,
           lastRunAt: mockDateTimeOffset(-60 * 1000),
           lastRunStatus: 'success',
-          lastRunMessage: '工作流作业兜底：恢复卡死 0，处理到期 4',
+          lastRunMessage: '工作流作业补投：回收 0，已投递 4，死信 0',
           lastDurationMs: 38,
         },
         {
@@ -1116,7 +1119,13 @@ const ENGINE_ACTION_LABELS: Record<WorkflowEngineActionKey, string> = {
   'recover-webhooks': 'Webhook 投递兜底（作业账本）',
 };
 
-/** 引擎运维动作可处理作业筛选（与后端 drain 语义一致：到期 pending + 卡死 running）。 */
+function isExpiredJob(job: WorkflowJob, now = Date.now()): boolean {
+  return job.status === 'running' && (job.leaseUntil === null
+    || new Date(job.leaseUntil).getTime() <= now
+    || (job.executionDeadline !== null && new Date(job.executionDeadline).getTime() <= now));
+}
+
+/** 引擎运维动作可恢复作业筛选：到期 pending + 租约或执行时限过期的 running。 */
 function engineDrainableCandidates(action: WorkflowEngineActionKey, body: { instanceId?: number; olderThanMinutes?: number }) {
   const jobTypes = ENGINE_ACTION_JOB_TYPES[action];
   const now = Date.now();
@@ -1126,7 +1135,7 @@ function engineDrainableCandidates(action: WorkflowEngineActionKey, body: { inst
     && (body.olderThanMinutes == null || body.olderThanMinutes <= 0 || (now - new Date(j.createdAt).getTime()) >= body.olderThanMinutes * 60000));
   const due = base.filter((j) => j.status === 'pending' && new Date(j.runAt).getTime() <= now);
   const later = base.filter((j) => j.status === 'pending' && new Date(j.runAt).getTime() > now);
-  const stuck = base.filter((j) => j.status === 'running');
+  const stuck = base.filter((j) => isExpiredJob(j, now));
   return { jobTypes, due, later, stuck, targets: [...due, ...stuck] };
 }
 
@@ -1148,20 +1157,59 @@ function buildJobChain(traceId: string) {
     jobs,
     stats: {
       total: jobs.length,
-      pending: countBy('pending'), running: countBy('running'), succeeded: countBy('succeeded'),
+      pending: countBy('pending'), running: countBy('running'), paused: countBy('paused'), succeeded: countBy('succeeded'),
       failed: countBy('failed'), dead: countBy('dead'), canceled: countBy('canceled'),
       instanceIds: [...new Set(jobs.map((j) => j.instanceId).filter((v): v is number => v != null))],
     },
   };
 }
 
-/** 重试 / 重放：作业重新入队并清空锁与错误 */
-function requeueJob(job: WorkflowJob) {
-  job.status = 'pending';
-  job.attempts = 0;
+const pausedJobRemainingMs = new Map<number, number>();
+
+function clearJobLease(job: WorkflowJob) {
   job.lockedAt = null;
   job.lockedBy = null;
+  job.leaseUntil = null;
+  job.executionDeadline = null;
+}
+
+function hasUncertainMockExternalEffect(job: WorkflowJob): boolean {
+  return mockWorkflowJobExecutions.some((execution) => execution.jobId === job.id
+    && execution.status === 'running'
+    && !!execution.requestMethod
+    && !['GET', 'HEAD', 'OPTIONS'].includes(execution.requestMethod.toUpperCase())
+    && (execution.responseStatus == null || execution.responseStatus === 408
+      || execution.responseStatus === 429 || execution.responseStatus >= 500));
+}
+
+function closeMockJobExecutions(job: WorkflowJob, errorMessage: string) {
+  for (const execution of mockWorkflowJobExecutions) {
+    if (execution.jobId === job.id && execution.status === 'running') {
+      execution.status = 'failed';
+      execution.errorMessage = errorMessage;
+      execution.finishedAt = mockDateTime();
+    }
+  }
+}
+
+function cancelMockJob(job: WorkflowJob) {
+  pausedJobRemainingMs.delete(job.id);
+  job.status = 'canceled';
+  job.generation += 1;
+  clearJobLease(job);
+  closeMockJobExecutions(job, 'Job canceled by operator');
+  job.updatedAt = mockDateTime();
+}
+
+/** 人工重试 / 重放进入新一轮执行，保留原轮次的执行历史。 */
+function requeueJob(job: WorkflowJob) {
+  pausedJobRemainingMs.delete(job.id);
+  job.status = 'pending';
+  job.generation += 1;
+  job.attempts = 0;
+  clearJobLease(job);
   job.lastError = null;
+  job.result = null;
   job.runAt = mockDateTime();
   job.updatedAt = mockDateTime();
 }
@@ -1853,14 +1901,27 @@ export const workflowHandlers = [
   mock(workflowEngineContract.runAction, ({ params, body, ok }) => {
     const action = params.action;
     const limit = Math.min(Math.max(Math.floor(body.limit ?? 200) || 200, 1), 500);
-    const { due, stuck, targets } = engineDrainableCandidates(action, body);
-    const processed = targets.slice(0, limit);
-    processed.forEach((j) => { j.status = 'succeeded'; j.lockedAt = null; j.lockedBy = null; j.lastError = null; j.updatedAt = mockDateTime(); });
-    const detail: Record<string, number> = { recovered: stuck.length, processed: processed.length };
-    const summary = Object.entries(detail).map(([k, v]) => `${k} ${v}`).join(' · ');
-    const matched = due.length + stuck.length;
-    const more = matched > processed.length ? `，剩余 ${matched - processed.length} 条超单次上限未处理` : '';
-    return ok({ action, ok: true, message: `${ENGINE_ACTION_LABELS[action]}完成：${summary || '无待处理项'}${more}`, detail });
+    const { due, stuck } = engineDrainableCandidates(action, body);
+    const recovered = stuck.sort((a, b) => a.id - b.id).slice(0, limit);
+    let dead = 0;
+    let recoveredWakeups = 0;
+    for (const job of recovered) {
+      const uncertain = hasUncertainMockExternalEffect(job);
+      job.status = uncertain || job.attempts >= job.maxAttempts ? 'dead' : 'pending';
+      if (job.status === 'dead') dead += 1;
+      else recoveredWakeups += 1;
+      clearJobLease(job);
+      job.lastError = uncertain
+        ? '外部操作结果待确认：执行租约或执行时限已过期'
+        : 'Workflow job lease or execution deadline expired';
+      closeMockJobExecutions(job, job.lastError);
+      job.runAt = mockDateTime();
+      job.updatedAt = mockDateTime();
+    }
+    const dueWakeups = due.slice(0, Math.max(0, limit - recovered.length)).length;
+    const requeued = recoveredWakeups + dueWakeups;
+    const detail = { recovered: recovered.length, requeued, dead };
+    return ok({ action, ok: true, message: `${ENGINE_ACTION_LABELS[action]}已提交补投 ${requeued} 项，回收 ${recovered.length} 项，死信 ${dead} 项`, detail });
   }),
 
   // ── 统一作业账本（workflow_jobs）死信 / 补偿中心 ──
@@ -1876,8 +1937,7 @@ export const workflowHandlers = [
   }),
 
   mock(workflowEngineContract.jobsSummary, ({ ok }) => {
-    const types = ['delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch', 'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery'] as const;
-    const summary = types.map((jobType): WorkflowJobSummaryItem => {
+    const summary = WORKFLOW_JOB_TYPES.map((jobType): WorkflowJobSummaryItem => {
       const rows = mockWorkflowJobs.filter((j) => j.jobType === jobType);
       const countBy = (s: WorkflowJobStatus) => rows.filter((j) => j.status === s).length;
       return {
@@ -1885,6 +1945,7 @@ export const workflowHandlers = [
         total: rows.length,
         pending: countBy('pending'),
         running: countBy('running'),
+        paused: countBy('paused'),
         succeeded: countBy('succeeded'),
         failed: countBy('failed'),
         dead: countBy('dead'),
@@ -1921,8 +1982,8 @@ export const workflowHandlers = [
     let success = 0;
     for (const id of ids) {
       const job = mockWorkflowJobs.find((j) => j.id === id);
-      if (job && ['pending', 'failed', 'dead'].includes(job.status)) {
-        job.status = 'canceled'; job.lockedAt = null; job.updatedAt = mockDateTime();
+      if (job && ['pending', 'running', 'paused', 'failed', 'dead'].includes(job.status)) {
+        cancelMockJob(job);
         success += 1;
       }
     }
@@ -2012,14 +2073,14 @@ export const workflowHandlers = [
   mock(workflowEngineContract.jobRuntimeStatus, ({ ok }) => {
     const running = mockWorkflowJobs.filter((j) => j.status === 'running');
     const dead = mockWorkflowJobs.filter((j) => j.status === 'dead').length;
-    const backlog = mockWorkflowJobs.filter((j) => j.status === 'pending').length;
+    const backlog = mockWorkflowJobs.filter((j) => j.status === 'pending' && new Date(j.runAt).getTime() <= Date.now()).length;
     const lastClaimed = running.map((j) => j.lockedAt).filter((v): v is string => !!v).sort().pop() ?? null;
     return ok({
       activeWorkers: 1,
       totalWorkers: 1,
       workers: [{ nodeId: 'mock-node-1', hostname: 'mock-scheduler', runningJobCount: running.length, lastHeartbeatAt: mockDateTime(), fresh: true }],
       runningJobs: running.length,
-      stuckRunningJobs: 0,
+      stuckRunningJobs: running.filter((j) => isExpiredJob(j)).length,
       backlog,
       deadLetter: dead,
       lastClaimedAt: lastClaimed,
@@ -2041,7 +2102,7 @@ export const workflowHandlers = [
 
   mock(workflowEngineContract.retryJob, ({ params, body, ok }) => {
     const job = requireItem(mockWorkflowJobs, params.id, '作业不存在');
-    if (!['failed', 'dead', 'canceled'].includes(job.status)) return badRequest('仅失败 / 死信 / 已取消的作业可重试');
+    if (!['failed', 'dead', 'canceled'].includes(job.status)) return badRequest('仅失败 / 死信 / 已取消的作业可重试', { status: 400 });
     if (body.payload) job.payload = body.payload;
     requeueJob(job);
     return ok(job, '已重新入队');
@@ -2049,10 +2110,8 @@ export const workflowHandlers = [
 
   mock(workflowEngineContract.skipJob, ({ params, ok }) => {
     const job = requireItem(mockWorkflowJobs, params.id, '作业不存在');
-    if (!['pending', 'failed', 'dead'].includes(job.status)) return badRequest('仅待处理 / 失败 / 死信的作业可跳过');
-    job.status = 'canceled';
-    job.lockedAt = null;
-    job.updatedAt = mockDateTime();
+    if (!['pending', 'running', 'paused', 'failed', 'dead'].includes(job.status)) return badRequest('仅待处理 / 运行中 / 已暂停 / 失败 / 死信的作业可跳过', { status: 400 });
+    cancelMockJob(job);
     return ok(job, '已跳过');
   }),
 
@@ -2236,14 +2295,39 @@ export const workflowHandlers = [
         t.status = 'skipped';
         t.actionAt = mockDateTime();
       });
+    mockWorkflowJobs
+      .filter(job => job.instanceId === params.id
+        && WORKFLOW_ADVANCING_JOB_TYPES.some(type => type === job.jobType)
+        && ['pending', 'running', 'paused'].includes(job.status))
+      .forEach(cancelMockJob);
     return ok(mockWorkflowInstances[idx]);
   }),
 
-  // 挂起流程实例（冻结待办与计时）
+  // 挂起流程实例（冻结待办与自动推进作业）
   mock(workflowInstanceOpsContract.suspend, ({ params, body, ok }) => {
     const idx = mockWorkflowInstances.findIndex(i => i.id === params.id);
     if (idx === -1) return notFound('流程实例不存在');
     if (mockWorkflowInstances[idx].status !== 'running') return badRequest('仅审批中的流程可挂起');
+    for (const job of mockWorkflowJobs) {
+      if (job.instanceId !== params.id || !WORKFLOW_SUSPENDABLE_JOB_TYPES.some((type) => type === job.jobType)
+        || !['pending', 'running'].includes(job.status)) continue;
+      if (job.status === 'running' && hasUncertainMockExternalEffect(job)) {
+        job.status = 'dead';
+        job.generation += 1;
+        job.lastError = '外部操作结果待确认：实例暂停时外部操作仍在执行';
+        clearJobLease(job);
+        closeMockJobExecutions(job, job.lastError);
+        job.updatedAt = mockDateTime();
+        continue;
+      }
+      pausedJobRemainingMs.set(job.id, Math.max(0, new Date(job.runAt).getTime() - Date.now()));
+      if (job.status === 'running') job.attempts = Math.max(0, job.attempts - 1);
+      job.status = 'paused';
+      job.generation += 1;
+      clearJobLease(job);
+      closeMockJobExecutions(job, 'Instance paused');
+      job.updatedAt = mockDateTime();
+    }
     mockWorkflowInstances[idx] = {
       ...mockWorkflowInstances[idx],
       status: 'suspended',
@@ -2251,7 +2335,7 @@ export const workflowHandlers = [
       suspendReason: body.reason,
       updatedAt: mockDateTime(),
     };
-    return ok(mockWorkflowInstances[idx], '已挂起，计时已冻结');
+    return ok(mockWorkflowInstances[idx], '已挂起，自动推进已暂停');
   }),
 
   // 恢复挂起的流程实例
@@ -2259,6 +2343,16 @@ export const workflowHandlers = [
     const idx = mockWorkflowInstances.findIndex(i => i.id === params.id);
     if (idx === -1) return notFound('流程实例不存在');
     if (mockWorkflowInstances[idx].status !== 'suspended') return badRequest('仅已挂起的流程可恢复');
+    for (const job of mockWorkflowJobs) {
+      if (job.instanceId !== params.id || job.status !== 'paused'
+        || !WORKFLOW_SUSPENDABLE_JOB_TYPES.some((type) => type === job.jobType)) continue;
+      job.status = 'pending';
+      job.generation += 1;
+      clearJobLease(job);
+      job.runAt = mockDateTimeOffset(pausedJobRemainingMs.get(job.id) ?? 0);
+      pausedJobRemainingMs.delete(job.id);
+      job.updatedAt = mockDateTime();
+    }
     mockWorkflowInstances[idx] = {
       ...mockWorkflowInstances[idx],
       status: 'running',

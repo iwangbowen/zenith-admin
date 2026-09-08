@@ -237,22 +237,27 @@ export function useWorkflowEngineDiagnostics(params: WorkflowEngineDiagnosticsPa
   });
 }
 
-// ─── 实例状态变更（管理员）：无法从入参反推受影响的列表，故失效整个监控子树；作业、补偿、引擎诊断不受影响 ───
+// ─── 实例状态变更（管理员） ───
 
 const invalidateMonitor = (qc: QueryClient) => {
   void qc.invalidateQueries({ queryKey: workflowMonitorKeys.monitor });
 };
 
+const invalidateInstanceRuntime = (qc: QueryClient) => {
+  invalidateMonitor(qc);
+  void qc.invalidateQueries({ queryKey: workflowMonitorKeys.jobs });
+};
+
 export function useCancelWorkflowInstance() {
-  return useApiMutation(workflowInstanceContract.cancel, { invalidate: invalidateMonitor });
+  return useApiMutation(workflowInstanceContract.cancel, { invalidate: invalidateInstanceRuntime });
 }
 
 export function useSuspendWorkflowInstance() {
-  return useApiMutation(workflowInstanceOpsContract.suspend, { invalidate: invalidateMonitor });
+  return useApiMutation(workflowInstanceOpsContract.suspend, { invalidate: invalidateInstanceRuntime });
 }
 
 export function useResumeWorkflowInstance() {
-  return useApiMutation(workflowInstanceOpsContract.resume, { invalidate: invalidateMonitor });
+  return useApiMutation(workflowInstanceOpsContract.resume, { invalidate: invalidateInstanceRuntime });
 }
 
 export function useMigrateWorkflowInstance() {

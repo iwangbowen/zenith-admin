@@ -3,10 +3,11 @@ import { uniquePositiveInts } from '@zenith/shared/core';
 import { randomUUID } from 'node:crypto';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
+import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 import { workflowInstances, workflowTasks, workflowDefinitions, users, userRoles } from '../../../db/schema';
 import { tenantCondition, getCreateTenantId } from '../../../lib/tenant';
 import { validateFlowData } from '../../../lib/workflow-engine';
-import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs';
+import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs/engine';
 import type { WorkflowFlowData, WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
 import { collectWorkflowFormValidationErrors, WORKFLOW_ACTIVE_INSTANCE_STATUSES } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
@@ -131,7 +132,7 @@ export async function createInstance(data: { definitionId: number; title: string
   const serialCtx = await buildSerialNoContext(serialConfig, formData);
   let txResult: { instance: typeof workflowInstances.$inferSelect; createdTasks: typeof workflowTasks.$inferSelect[] };
   try {
-    txResult = await db.transaction(async (tx) => {
+    txResult = await workflowTransaction(async (tx) => {
       const serialNo = await generateSerialNo(tx, def.id, serialConfig, serialCtx);
       const [createdInstance] = await tx.insert(workflowInstances).values({
         definitionId: def.id,
@@ -280,7 +281,7 @@ export async function withdrawInstance(id: number) {
   if (snapshot?.flowData?.settings?.allowWithdraw === false) {
     throw new HTTPException(400, { message: '该流程不允许发起人撤回' });
   }
-  const { row: updated } = await db.transaction(async (tx) => {
+  const { row: updated } = await workflowTransaction(async (tx) => {
     // 实例行级锁 + 锁内重校验：避免与并发审批推进竞态（撤回时流程正被推进，导致状态互相覆盖或残留任务）
     await lockInstanceExpecting(tx, id, 'running', '流程实例状态已变化，请刷新后重试');
     const cancelled = await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: '[发起人撤回] 流程已撤回，本待办作废' })
@@ -313,7 +314,7 @@ export async function cancelInstance(id: number) {
   const [inst] = await db.select().from(workflowInstances).where(and(...conditions)).limit(1);
   requireRow(inst, '流程实例不存在');
   if (inst.status !== 'running' && inst.status !== 'suspended') throw new HTTPException(400, { message: '只能取消进行中或已挂起的流程' });
-  const { row: updated } = await db.transaction(async (tx) => {
+  const { row: updated } = await workflowTransaction(async (tx) => {
     const [locked] = await tx.select({ status: workflowInstances.status })
       .from(workflowInstances).where(and(...conditions)).for('update').limit(1);
     if (!locked || (locked.status !== 'running' && locked.status !== 'suspended')) {
@@ -401,7 +402,7 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
   assertRequiredFormFields(formSnapshot, formData, flowData);
   const serialConfig = flowData.settings?.serialNo;
   const serialCtx = await buildSerialNoContext(serialConfig, formData);
-  const instance = await db.transaction(async (tx) => {
+  const instance = await workflowTransaction(async (tx) => {
     // returned 重提保留首次提交生成的业务编号，避免同一申请出现两个流水号
     const serialNo = inst.serialNo ?? await generateSerialNo(tx, def.id, serialConfig, serialCtx);
     await tx.update(workflowInstances).set({

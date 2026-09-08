@@ -138,7 +138,7 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
     db.select({ status: workflowInstances.status, count: sql<number>`count(*)::int` }).from(workflowInstances).where(sql`${workflowInstances.parentInstanceId} is not null`).groupBy(workflowInstances.status),
   ]);
   const sumc = (rows: Array<{ status: string; count: number }>, ...st: string[]) => rows.filter((r) => st.includes(r.status)).reduce((s, r) => s + r.count, 0);
-  const jobsTotal = sumc(jobRows, 'pending', 'running', 'succeeded', 'failed', 'dead', 'canceled');
+  const jobsTotal = jobRows.reduce((sum, row) => sum + row.count, 0);
   const jobsFailed = sumc(jobRows, 'failed'), jobsDead = sumc(jobRows, 'dead');
   const whTotal = sumc(webhookRows, 'succeeded', 'failed', 'dead'), whOk = sumc(webhookRows, 'succeeded');
   const subTotal = subRows.reduce((s, r) => s + r.count, 0), subRej = sumc(subRows, 'rejected');

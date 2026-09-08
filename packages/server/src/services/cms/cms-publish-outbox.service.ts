@@ -4,12 +4,10 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { CmsPublishSubmitInput } from '@zenith/shared/cms';
 import type { AsyncTask } from '@zenith/shared/tasks';
 import { CMS_PUBLISH_TARGET_TYPE_LABELS } from '@zenith/shared/cms';
-import type { DbExecutor } from '../../db/types';
-import { db } from '../../db';
 import { asyncTasks, cmsSites } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { currentUserOrNull, runWithCurrentUser } from '../../lib/context';
-import { enqueueAsyncTask, mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
+import { enqueueAsyncTask, mapAsyncTask, persistAsyncTask } from '../../lib/task-center';
 import logger from '../../lib/logger';
 import type { CmsSiteRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
@@ -19,7 +17,7 @@ import { invalidateCmsSiteCaches } from './cms-cache.service';
 const SYSTEM_USER = { userId: 1, username: 'admin', roles: ['super_admin'], tenantId: null };
 const transactionPublicRevisions = new WeakMap<object, Map<number, number>>();
 
-async function publicRevisionForOutbox(executor: DbExecutor, siteId: number, bump: boolean, fallback: number): Promise<number> {
+async function publicRevisionForOutbox(executor: DbTransaction, siteId: number, bump: boolean, fallback: number): Promise<number> {
   if (!bump) {
     if (typeof executor.select === 'function') {
       const [site] = await executor.select({ revision: cmsSites.publicRevision }).from(cmsSites)
@@ -50,7 +48,7 @@ function cmsPublishIdempotencyKey(eventKey: string): string {
  * its own artifact without creating a replacement build.
  */
 async function insertCmsPublishOutboxInExecutor(
-  executor: DbExecutor,
+  executor: DbTransaction,
   input: CmsPublishSubmitInput,
   eventKey: string,
 ): Promise<AsyncTask> {
@@ -75,7 +73,7 @@ async function insertCmsPublishOutboxInExecutor(
     input.expectedPublicRevision ?? 0,
   );
   const fencedInput: CmsPublishSubmitInput = { ...input, expectedPublicRevision: publicRevision };
-  const row = await submitAsyncTask({
+  const row = await persistAsyncTask(executor, {
     taskType: 'cms-publish-build',
     title: `CMS ${CMS_PUBLISH_TARGET_TYPE_LABELS[input.targetType]}发布`,
     payload: {
@@ -85,24 +83,20 @@ async function insertCmsPublishOutboxInExecutor(
       dedupeFingerprint: `event:${eventKey}`,
     },
     idempotencyKey,
-  }, { executor });
+  });
   return mapAsyncTask(row);
 }
 
 export async function insertCmsPublishOutbox(
-  executor: DbExecutor,
+  executor: DbTransaction,
   input: CmsPublishSubmitInput,
   eventKey: string,
 ): Promise<AsyncTask> {
   const actor = currentUserOrNull() ?? SYSTEM_USER;
-  return runWithCurrentUser({ ...actor, tenantId: null, viewingTenantId: undefined }, async () => {
-    if (executor === db) {
-      // Direct callers (public-config refresh) get the same atomicity as
-      // domain mutations that already pass their transaction executor.
-      return db.transaction((tx) => insertCmsPublishOutboxInExecutor(tx, input, eventKey));
-    }
-    return insertCmsPublishOutboxInExecutor(executor, input, eventKey);
-  });
+  return runWithCurrentUser(
+    { ...actor, tenantId: null, viewingTenantId: undefined },
+    () => insertCmsPublishOutboxInExecutor(executor, input, eventKey),
+  );
 }
 
 export async function enqueueCmsPublishOutboxes(tasks: readonly AsyncTask[], source: string): Promise<void> {

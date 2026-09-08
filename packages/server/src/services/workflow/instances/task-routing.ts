@@ -1,6 +1,8 @@
+import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 // ─── 任务流转：转办/委派/加签/减签/退回（拆分自 workflow-instances.service.ts）───
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
+import type { DbExecutor } from '../../../db/types';
 import { workflowInstances, workflowTasks, users } from '../../../db/schema';
 import { getAncestorNodeKeys } from '../../../lib/workflow-engine';
 import { HTTPException } from 'hono/http-exception';
@@ -37,7 +39,7 @@ export async function transferTask(taskId: number, targetUserId: number, comment
   const transferSuffix = comment ? `：${comment}` : '';
   const transferComment = `[转办] 由 ${actor.name ?? '系统'} 转办${transferSuffix}`;
   // 事务 + 实例行级锁：任务改派、转办留痕与事件 outbox 原子提交，并与同实例的审批/加减签等并发操作串行化
-  const updated = await db.transaction(async (tx) => {
+  const updated = await workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, inst.id, 'running', '流程实例状态已变化，无法转办');
     // 目标人已在本节点同轮持有活动任务时给出友好 409（否则撞 wf_tasks_active_uniq 唯一索引）
     await assertAssigneesNotActiveOnNode(tx, {
@@ -76,10 +78,22 @@ export async function systemTransferTaskToManager(
   newTimeoutAt: Date | null,
   comment: string,
 ): Promise<void> {
-  const [target] = await db.select({ nickname: users.nickname })
-    .from(users).where(eq(users.id, managerId)).limit(1);
   // 事务：改派、留痕与事件 outbox 原子提交（超时升级由系统触发，实例状态由调用方保证）
-  const updated = await db.transaction(async (tx) => {
+  await workflowTransaction((tx) => systemTransferTaskToManagerInTransaction(
+    tx, task, inst, managerId, newTimeoutAt, comment,
+  ));
+}
+
+export async function systemTransferTaskToManagerInTransaction(
+  tx: DbExecutor,
+  task: typeof workflowTasks.$inferSelect,
+  inst: typeof workflowInstances.$inferSelect,
+  managerId: number,
+  _newTimeoutAt: Date | null,
+  comment: string,
+): Promise<boolean> {
+    const [target] = await tx.select({ nickname: users.nickname })
+      .from(users).where(eq(users.id, managerId)).limit(1);
     const [row] = await tx.update(workflowTasks)
       .set({
         assigneeId: managerId,
@@ -88,7 +102,7 @@ export async function systemTransferTaskToManager(
       })
       .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')))
       .returning();
-    if (!row) return null;
+    if (!row) return false;
     await recordTaskTransfer(tx, {
       taskId: task.id, instanceId: inst.id, fromUserId: task.assigneeId, toUserId: managerId,
       action: 'timeout', reason: comment, operatorId: null, tenantId: inst.tenantId,
@@ -99,9 +113,7 @@ export async function systemTransferTaskToManager(
       actor: { userId: 0, name: 'system:timeout' },
       comment,
     }, tx);
-    return row;
-  });
-  if (!updated) return;
+    return true;
 }
 
 /** 委派：与转办类似，但语义为"临时代办"，反馈后原 assignee 会接到回执确认任务 */
@@ -125,7 +137,7 @@ export async function delegateTask(taskId: number, targetUserId: number, comment
   // delegatedFromId 仅在首次委派时设置（保留最原始的委派人，以便回执时返还）
   const delegatedFromId = task.delegatedFromId ?? task.assigneeId ?? null;
   // 事务 + 实例行级锁：与转办一致，保证改派、留痕与事件 outbox 原子提交
-  const updated = await db.transaction(async (tx) => {
+  const updated = await workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, inst.id, 'running', '流程实例状态已变化，无法委派');
     // 委派人已在本节点同轮持有活动任务时给出友好 409（否则撞 wf_tasks_active_uniq 唯一索引）
     await assertAssigneesNotActiveOnNode(tx, {
@@ -182,7 +194,7 @@ export async function addSignTask(
   const addSignSuffix = comment ? `：${comment}` : '';
   const addSignComment = `[加签-${posLabel}${modeLabel}] 由 ${actor.name ?? '系统'} 发起${addSignSuffix}`;
 
-  const created = await db.transaction(async (tx) => {
+  const created = await workflowTransaction(async (tx) => {
     // 实例行级锁 + 锁内重校验：避免与并发审批（节点已完成/任务被跳过）竞态产生悬挂加签任务
     await lockInstanceExpecting(tx, inst.id, 'running', '流程状态已变化，无法加签');
     const [freshTask] = await tx.select({ status: workflowTasks.status })
@@ -265,7 +277,7 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
   const suffix = comment ? `：${comment}` : '';
   const reduceComment = `[减签] 由 ${actor.name ?? '系统'} 发起${suffix}`;
 
-  const result = await db.transaction(async (tx) => {
+  const result = await workflowTransaction(async (tx) => {
     // 实例行级锁：序列化与并发审批/驳回，确保减签后的节点完成判定与推进原子一致
     await lockInstanceExpecting(tx, inst.id, 'running', '流程状态已变化，无法减签');
     const updated = await tx.update(workflowTasks).set({

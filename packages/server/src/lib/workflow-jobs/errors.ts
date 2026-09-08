@@ -31,3 +31,17 @@ export class WorkflowJobPermanentError extends Error {
     this.name = 'WorkflowJobPermanentError';
   }
 }
+
+export class WorkflowJobLeaseLostError extends Error {
+  constructor(message = 'Workflow job execution no longer owns its lease') {
+    super(message);
+    this.name = 'WorkflowJobLeaseLostError';
+  }
+}
+
+export class WorkflowJobDeadlineError extends Error {
+  constructor() {
+    super('Workflow job execution deadline exceeded');
+    this.name = 'WorkflowJobDeadlineError';
+  }
+}

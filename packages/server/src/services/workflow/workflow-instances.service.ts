@@ -72,6 +72,7 @@ export type { ApproveResult } from './instances/task-actions';
 export {
   transferTask,
   systemTransferTaskToManager,
+  systemTransferTaskToManagerInTransaction,
   delegateTask,
   addSignTask,
   reduceSignTask,

@@ -10,6 +10,7 @@ import { registerJobHandler } from '../registry';
 import { WorkflowJobSkip, WorkflowJobError } from '../errors';
 import type { WorkflowJobContext, WorkflowJobResult } from '../types';
 import { signHmac, snapshotNodeConfig, requireNumber } from './shared';
+import { throwIfWorkflowExternalEffectUncertain } from '../external-effects';
 
 const TIMEOUT_MS_DEFAULT = 10_000;
 const CALLBACK_PATH_PREFIX = '/api/public/workflow/external-callback';
@@ -100,6 +101,7 @@ async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<Wo
     }
   }
 
+  await throwIfWorkflowExternalEffectUncertain(errorMessage, detailBase);
   if (attempt < job.maxAttempts) {
     throw new WorkflowJobError(errorMessage, { detail: detailBase });
   }

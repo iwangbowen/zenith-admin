@@ -498,7 +498,7 @@ export default function WorkflowMonitorPage() {
       content: (
         <div>
           <Typography.Paragraph>
-            挂起后流程「{record.title}」暂停流转：待办不可处理、SLA 超时与延迟计时冻结，恢复后按剩余时长继续。
+            挂起后流程「{record.title}」暂停流转：待办不可处理，延时、超时、触发器、外部审批与子流程作业暂停；恢复后按剩余时长继续。
           </Typography.Paragraph>
           <Input placeholder="请填写挂起原因（必填）" onChange={(v) => { reason = v; }} maxLength={500} />
         </div>
@@ -509,7 +509,7 @@ export default function WorkflowMonitorPage() {
       onOk: async () => {
         if (!reason.trim()) { Toast.warning('请填写挂起原因'); return Promise.reject(new Error('validation')); }
         await suspendMutation.mutateAsync({ params: { id: record.id }, body: { reason: reason.trim() } });
-        Toast.success('流程已挂起，计时已冻结');
+        Toast.success('流程已挂起，自动推进已暂停');
       },
     });
   };

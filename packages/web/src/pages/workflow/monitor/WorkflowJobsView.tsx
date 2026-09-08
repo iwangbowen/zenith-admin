@@ -8,6 +8,7 @@ import { WORKFLOW_JOB_STATUS_META as JOB_STATUS_META } from './constants';
 import { api } from '@/lib/contract-query';
 import { downloadBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/date';
+import { formatDurationMs } from '@/utils/format';
 import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -90,7 +91,7 @@ const EXEC_TIMELINE_TYPE: Record<WorkflowJobExecution['status'], 'ongoing' | 'su
 
 /** 执行记录时间线：按尝试次序升序，请求/响应/错误仅在有值时内联 */
 function renderExecutionTimeline(executions: WorkflowJobExecution[]) {
-  const sorted = [...executions].sort((a, b) => a.attempt - b.attempt);
+  const sorted = [...executions].sort((a, b) => a.generation - b.generation || a.attempt - b.attempt);
   return (
     <Timeline>
       {sorted.map((ex) => {
@@ -98,7 +99,7 @@ function renderExecutionTimeline(executions: WorkflowJobExecution[]) {
         return (
           <Timeline.Item key={ex.id} type={EXEC_TIMELINE_TYPE[ex.status] ?? 'default'} time={ex.finishedAt ?? ex.createdAt}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <Typography.Text strong size="small">第 {ex.attempt} 次</Typography.Text>
+              <Typography.Text strong size="small">第 {ex.generation} 轮 / 第 {ex.attempt} 次</Typography.Text>
               <Tag size="small" color={m?.color ?? 'grey'}>{m?.text ?? ex.status}</Tag>
               {ex.durationMs != null && <Typography.Text size="small" type="tertiary">{ex.durationMs}ms</Typography.Text>}
             </div>
@@ -119,7 +120,7 @@ function renderExecutionTimeline(executions: WorkflowJobExecution[]) {
 
 const JOB_STATUS_OPTIONS = (Object.keys(JOB_STATUS_META) as WorkflowJobStatus[]).map((value) => ({ value, label: JOB_STATUS_META[value].text }));
 
-const EMPTY_SUMMARY = (jobType: WorkflowJobType): WorkflowJobSummaryItem => ({ jobType, total: 0, pending: 0, running: 0, succeeded: 0, failed: 0, dead: 0, canceled: 0 });
+const EMPTY_SUMMARY = (jobType: WorkflowJobType): WorkflowJobSummaryItem => ({ jobType, total: 0, pending: 0, running: 0, paused: 0, succeeded: 0, failed: 0, dead: 0, canceled: 0 });
 
 /**
  * 失败聚类树形行：簇为父行、成员作业为子行（Semi Table 树形数据展示）。
@@ -410,7 +411,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
       desktopInlineKeys: ['detail', 'retry'],
       actions: (record) => {
         const retryable = record.status === 'failed' || record.status === 'dead' || record.status === 'canceled';
-        const skippable = record.status === 'pending' || record.status === 'failed' || record.status === 'dead';
+        const skippable = ['pending', 'running', 'paused', 'failed', 'dead'].includes(record.status);
         return [
           { key: 'detail', label: '详情', onClick: () => void openDetail(record.id) },
           {
@@ -434,6 +435,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
   ];
 
   const execColumns: ColumnProps<WorkflowJobExecution>[] = [
+    { title: '轮次', dataIndex: 'generation', width: 64 },
     { title: '#', dataIndex: 'attempt', width: 56 },
     { title: '状态', dataIndex: 'status', width: 90, render: (v: WorkflowJobExecution['status']) => { const m = EXEC_STATUS_META[v]; return <Tag color={m?.color ?? 'grey'} size="small">{m?.text ?? v}</Tag>; } },
     {
@@ -590,6 +592,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
         <Tag size="large" color="grey">总数 {summary.total}</Tag>
         <Tag size="large" color="grey">待处理 {summary.pending}</Tag>
         <Tag size="large" color="blue">运行中 {summary.running}</Tag>
+        <Tag size="large" color="grey">已暂停 {summary.paused}</Tag>
         <Tag size="large" color="orange" style={{ cursor: summary.failed > 0 ? 'pointer' : 'default' }} onClick={() => { if (summary.failed > 0) filterByStatus('failed'); }}>失败 {summary.failed}</Tag>
         <Tag size="large" color="red" style={{ cursor: summary.dead > 0 ? 'pointer' : 'default' }} onClick={() => { if (summary.dead > 0) filterByStatus('dead'); }}>死信 {summary.dead}</Tag>
         <Tag size="large" color="green">成功 {summary.succeeded}</Tag>
@@ -639,7 +642,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
             getCheckboxProps: (record: WorkflowJob) => ({
-              disabled: !(record.status === 'pending' || record.status === 'failed' || record.status === 'dead' || record.status === 'canceled'),
+              disabled: record.status === 'succeeded',
             }),
           } : undefined,
         })}
@@ -664,6 +667,8 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
                 { key: '实例', value: detail.instanceId ? `#${detail.instanceId}${detail.instanceTitle ? ` · ${detail.instanceTitle}` : ''}` : '系统事件' },
                 { key: '任务 / 节点', value: `${detail.taskId ? `#${detail.taskId}` : '—'}${detail.nodeKey ? ` / ${detail.nodeKey}` : ''}` },
                 { key: '尝试次数', value: `${detail.attempts}/${detail.maxAttempts}` },
+                { key: '执行轮次', value: detail.generation },
+                { key: '单次时限', value: formatDurationMs(detail.executionTimeoutMs) },
                 { key: '优先级', value: detail.priority },
                 { key: '计划执行', value: formatDateTime(detail.runAt) },
                 { key: '幂等键', value: detail.idempotencyKey ?? '—' },
@@ -671,6 +676,8 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
                   ? <Button theme="borderless" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => detail.traceId && void openChain(detail.traceId)}>{detail.traceId} · 查看链路</Button>
                   : '—' },
                 { key: '锁定', value: detail.lockedBy ? `${detail.lockedBy}（${detail.lockedAt ? formatDateTime(detail.lockedAt) : '—'}）` : '—' },
+                { key: '租约到期', value: detail.leaseUntil ? formatDateTime(detail.leaseUntil) : EMPTY_PLACEHOLDER },
+                { key: '执行截止', value: detail.executionDeadline ? formatDateTime(detail.executionDeadline) : EMPTY_PLACEHOLDER },
                 { key: '创建时间', value: formatDateTime(detail.createdAt) },
                 { key: '更新时间', value: formatDateTime(detail.updatedAt) },
               ]}
@@ -749,6 +756,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
               <Tag color="grey">共 {chain.stats.total}</Tag>
               {chain.stats.pending > 0 && <Tag color="amber">待处理 {chain.stats.pending}</Tag>}
               {chain.stats.running > 0 && <Tag color="blue">运行中 {chain.stats.running}</Tag>}
+              {chain.stats.paused > 0 && <Tag color="grey">已暂停 {chain.stats.paused}</Tag>}
               {chain.stats.succeeded > 0 && <Tag color="green">成功 {chain.stats.succeeded}</Tag>}
               {chain.stats.failed > 0 && <Tag color="orange">失败 {chain.stats.failed}</Tag>}
               {chain.stats.dead > 0 && <Tag color="red">死信 {chain.stats.dead}</Tag>}

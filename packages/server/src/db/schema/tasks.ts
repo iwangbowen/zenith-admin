@@ -84,6 +84,8 @@ export const asyncTasks = pgTable('async_tasks', {
   attempts: integer().notNull().default(0),
   /** 最大执行次数快照（提交时从类型策略解析；失败且 attempts < maxAttempts 时自动重试） */
   maxAttempts: integer().notNull().default(1),
+  /** 提交时的重试退避基数；恢复与自动重试沿用，重新开始才更新。 */
+  retryDelayMs: integer().notNull(),
   /** 下次允许执行时间（自动重试退避）；null = 立即可执行 */
   nextRunAt: timestamp(),
   /**

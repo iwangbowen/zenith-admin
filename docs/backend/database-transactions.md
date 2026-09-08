@@ -110,12 +110,12 @@ await db.transaction(async (tx) => {
 
 ### 模式六：事务性任务 outbox
 
-任务中心任务需要与业务写操作同事务落库时，在事务内传 `executor: tx`，事务提交后再入队。
+任务中心任务需要与业务写操作同事务落库时，使用 `persistAsyncTask(tx, input)`，事务提交后再入队。独立提交使用 `submitAsyncTask(input)`，由入口管理事务与投递。
 
 ```ts
 const task = await db.transaction(async (tx) => {
   await tx.insert(orders).values(orderData);
-  return submitAsyncTask({ taskType: 'order-sync', payload }, { executor: tx });
+  return persistAsyncTask(tx, { taskType: 'order-sync', payload });
 });
 
 await enqueueAsyncTask(task.id);

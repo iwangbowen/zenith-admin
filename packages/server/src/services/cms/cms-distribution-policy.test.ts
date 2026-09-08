@@ -103,7 +103,7 @@ describe('CMS governed distribution policy', () => {
     expect(source).toContain('assertSitesAccess(targetSiteIds)');
     expect(source).toContain('assertAllCmsSiteChannelsAccess(siteId)');
     expect(source).toContain('cmsSiteFencePayload(tx, site)');
-    expect(source).toContain('enqueue: false');
+    expect(source).toContain('executor: tx');
   });
 
   it('registers scheduled dispatch in the system scheduler and execution in task center', async () => {

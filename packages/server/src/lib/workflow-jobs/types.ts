@@ -5,8 +5,9 @@ export const WORKFLOW_JOB_QUEUE = 'workflow-jobs';
 /** 兜底扫描 + 崩溃恢复的周期任务名 */
 export const WORKFLOW_JOB_DRAIN_TASK = 'workflow-jobs-drain';
 
-/** running 作业被判定为"卡死"的宽限时间（领取后超过该时长仍未结束即回收重跑） */
-export const STUCK_RUNNING_GRACE_MS = 5 * 60_000;
+export const WORKFLOW_JOB_LEASE_MS = 60_000;
+export const WORKFLOW_JOB_HEARTBEAT_MS = 15_000;
+export const WORKFLOW_JOB_EXECUTION_TIMEOUT_MS = 10 * 60_000;
 
 /** HTTP 类作业（trigger/external/webhook）回填的执行明细，写入 workflow_job_executions */
 export interface WorkflowJobExecutionDetail {
@@ -30,6 +31,12 @@ export interface WorkflowJobContext {
   attempt: number;
   /** job.payload（已断言为对象） */
   payload: Record<string, unknown>;
+  generation: number;
+  leaseToken: string;
+  executionId: number;
+  executionDeadline: Date;
+  operationKey: string;
+  signal: AbortSignal;
 }
 
 /**

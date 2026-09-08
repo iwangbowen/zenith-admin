@@ -1,3 +1,4 @@
+import { workflowTransaction } from '../../lib/workflow-jobs/lease';
 import { and, eq, asc, desc } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { WorkflowCompensationActionStatus, WorkflowCompensationAction } from '@zenith/shared/workflow';
@@ -67,7 +68,7 @@ export async function addCompensationLog(tx: DbExecutor, v: {
 
 /** 反向/兜底动作执行结果回写（由 compensation_action job handler 调用，无登录上下文）。 */
 export async function markCompensationActionResult(compensationId: number, status: WorkflowCompensationActionStatus, note?: string): Promise<void> {
-  await db.transaction(async (tx) => {
+  await workflowTransaction(async (tx) => {
     const [row] = await tx.update(workflowCompensations)
       .set({ compensationActionStatus: status })
       .where(eq(workflowCompensations.id, compensationId)).returning();
@@ -102,7 +103,7 @@ export async function resolveCompensation(id: number, action: 'resolve' | 'termi
   const [row] = await db.select().from(workflowCompensations).where(and(...conds)).limit(1);
   requireRow(row, '补偿工单不存在');
   if (row.status !== 'pending') throw new HTTPException(400, { message: '工单已处理' });
-  return db.transaction(async (tx) => {
+  return workflowTransaction(async (tx) => {
     if (action === 'terminate') {
       await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() }).where(and(eq(workflowTasks.instanceId, row.instanceId), eq(workflowTasks.status, 'pending')));
       await tx.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(and(eq(workflowTokens.instanceId, row.instanceId), eq(workflowTokens.status, 'active')));

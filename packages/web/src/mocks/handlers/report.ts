@@ -244,6 +244,7 @@ export const reportHandlers = [
       cancelRequested: false,
       attempts: 0,
       maxAttempts: 1,
+      retryDelayMs: 5000,
       nextRunAt: null,
       createdBy: 1,
       createdByName: '管理员',

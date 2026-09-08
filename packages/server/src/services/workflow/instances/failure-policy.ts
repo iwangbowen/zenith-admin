@@ -1,3 +1,4 @@
+import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 // ─── 节点失败策略、Saga 回滚与补偿恢复（拆分自 workflow-instances.service.ts）───
 import { randomUUID } from 'node:crypto';
 import { eq, and, desc, inArray } from 'drizzle-orm';
@@ -109,7 +110,7 @@ async function applyNodeFailurePolicy(input: {
   const { policy, flowData } = input;
   const errorComment = `[节点异常] ${input.nodeName}：${input.errorMessage}`;
 
-  const updated = await db.transaction(async (tx) => {
+  const updated = await workflowTransaction(async (tx) => {
     const [lockedInst] = await tx.select().from(workflowInstances)
       .where(eq(workflowInstances.id, input.instance.id)).for('update').limit(1);
     if (!lockedInst || lockedInst.status !== 'running') return null;
@@ -270,7 +271,7 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
   const cu = currentUser();
   const actor: WorkflowEventActor = { userId: cu?.userId ?? 0, name: cu?.username ?? 'system:resume' };
 
-  const updated = await db.transaction(async (tx) => {
+  const updated = await workflowTransaction(async (tx) => {
     const [inst] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, ticket.instanceId)).for('update').limit(1);
     if (!inst || inst.status !== 'running') throw new HTTPException(400, { message: '实例不在运行中，无法恢复' });
     const flowData = inst.definitionSnapshot?.flowData;
@@ -352,7 +353,7 @@ export async function handleNodeExecutionError(input: {
 
   const action = catchCfg.catchAction ?? 'notify';
   const errorComment = `[节点异常] ${input.nodeName ?? input.nodeKey}：${input.errorMessage}`;
-  const updated = await db.transaction(async (tx) => {
+  const updated = await workflowTransaction(async (tx) => {
     const [lockedInst] = await tx.select().from(workflowInstances)
       .where(eq(workflowInstances.id, input.instance.id))
       .for('update')

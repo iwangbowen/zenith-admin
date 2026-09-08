@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { WorkflowDefinitionSnapshot } from '@zenith/shared/workflow';
 import { statusEnum, timestampColumns } from './common';
@@ -46,7 +46,7 @@ export const workflowJobTypeEnum = pgEnum('workflow_job_type', [
   'compensation_action',
 ]);
 
-export const workflowJobStatusEnum = pgEnum('workflow_job_status', ['pending', 'running', 'succeeded', 'failed', 'dead', 'canceled']);
+export const workflowJobStatusEnum = pgEnum('workflow_job_status', ['pending', 'running', 'paused', 'succeeded', 'failed', 'dead', 'canceled']);
 
 export const workflowJobExecutionStatusEnum = pgEnum('workflow_job_execution_status', ['running', 'succeeded', 'failed']);
 
@@ -691,12 +691,19 @@ export const workflowJobs = pgTable('workflow_jobs', {
   attempts: integer().notNull().default(0),
   /** 最大尝试次数（超过进死信） */
   maxAttempts: integer().notNull().default(1),
+  generation: integer().notNull().default(0),
+  operationKey: varchar({ length: 64 }).notNull().default(sql`gen_random_uuid()::text`),
+  executionTimeoutMs: integer().notNull().default(600_000),
   /** 何时应执行（delay=wakeAt、timeout=timeoutAt、retry=退避时间） */
   runAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   /** 领取锁定时间（FOR UPDATE SKIP LOCKED 领取后写入，用于识别卡死 running） */
   lockedAt: timestamp({ withTimezone: true }),
   /** 领取者标识（worker/进程） */
   lockedBy: varchar({ length: 64 }),
+  leaseToken: varchar({ length: 64 }),
+  leaseUntil: timestamp({ withTimezone: true }),
+  executionDeadline: timestamp({ withTimezone: true }),
+  pausedRemainingMs: bigint({ mode: 'number' }),
   /** 最近一次错误 */
   lastError: text(),
   /** 执行结果（成功时写入，供审计/串联） */
@@ -706,6 +713,7 @@ export const workflowJobs = pgTable('workflow_jobs', {
   ...timestampColumns(),
 }, (t) => [index('workflow_jobs_task_idx').on(t.taskId), index('workflow_jobs_tenant_idx').on(t.tenantId), 
   index('workflow_jobs_due_idx').on(t.status, t.runAt),
+  index('workflow_jobs_lease_idx').on(t.status, t.leaseUntil),
   index('workflow_jobs_type_status_idx').on(t.jobType, t.status),
   index('workflow_jobs_trace_idx').on(t.traceId),
   index('workflow_jobs_instance_idx').on(t.instanceId),
@@ -721,6 +729,8 @@ export const workflowJobExecutions = pgTable('workflow_job_executions', {
   jobId: integer().notNull().references(() => workflowJobs.id, { onDelete: 'cascade' }),
   jobType: workflowJobTypeEnum().notNull(),
   attempt: integer().notNull().default(0),
+  generation: integer().notNull().default(0),
+  leaseToken: varchar({ length: 64 }).notNull().default(sql`gen_random_uuid()::text`),
   status: workflowJobExecutionStatusEnum().notNull().default('running'),
   /** HTTP 类作业（trigger/external/webhook）的请求/响应明细 */
   requestUrl: varchar({ length: 512 }),
@@ -736,6 +746,7 @@ export const workflowJobExecutions = pgTable('workflow_job_executions', {
   createdAt: timestamp().defaultNow().notNull(),
 }, (t) => [index('workflow_job_executions_tenant_idx').on(t.tenantId), 
   index('workflow_job_executions_job_idx').on(t.jobId, t.attempt),
+  uniqueIndex('workflow_job_executions_lease_token_unique').on(t.leaseToken),
   index('workflow_job_executions_type_idx').on(t.jobType, t.status),
 ]);
 

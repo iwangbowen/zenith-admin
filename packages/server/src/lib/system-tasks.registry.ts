@@ -124,11 +124,11 @@ export async function registerSystemTasks(): Promise<void> {
     title: '工作流作业兜底扫描',
     module: '工作流',
     cronExpression: '* * * * *',
-    description: '每分钟兜底领取到期的工作流作业并回收卡死的运行中作业（统一作业账本的崩溃恢复）。',
+    description: '每分钟补投到期的工作流作业，并回收租约失效或超过执行时限的运行中作业。',
     allowManualRun: true,
     run: async () => {
       const r = await drainWorkflowJobs();
-      return `工作流作业兜底：恢复卡死 ${r.recovered}，处理到期 ${r.processed}`;
+      return `工作流作业补投：回收 ${r.recovered}，已投递 ${r.requeued}，死信 ${r.dead}`;
     },
   });
 

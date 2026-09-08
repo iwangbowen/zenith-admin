@@ -1,0 +1,2 @@
+ALTER TABLE "channel_messages" ADD COLUMN "dedupe_key" varchar(192);--> statement-breakpoint
+CREATE UNIQUE INDEX "channel_messages_dedupe_uq" ON "channel_messages" USING btree ("dedupe_key") WHERE "channel_messages"."dedupe_key" is not null;

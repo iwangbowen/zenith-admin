@@ -17,6 +17,7 @@ export * from './schema/logs';
 export * from './schema/analytics';
 export * from './schema/announcements';
 export * from './schema/workflow';
+export * from './schema/workflow-job-effects';
 export * from './schema/messaging';
 export * from './schema/db-admin';
 export * from './schema/tags';

@@ -1,3 +1,6 @@
+import { runWorkflowJobStep } from '../steps';
+import { markWorkflowExternalEffect, throwIfWorkflowExternalEffectUncertain } from '../external-effects';
+import { currentWorkflowJobContext } from '../execution-context';
 import { eq } from 'drizzle-orm';
 import type { WorkflowCompensationAction } from '@zenith/shared/workflow';
 import { db } from '../../../db';
@@ -77,7 +80,7 @@ export async function executeCompensationAction(action: WorkflowCompensationActi
     case 'updateData': {
       const fieldKeys = action.fieldKeys ?? [];
       try {
-        await db.transaction(async (tx) => {
+        await runWorkflowJobStep('compensation-data', async (tx) => {
           const [locked] = await tx.select({ formData: workflowInstances.formData }).from(workflowInstances)
             .where(eq(workflowInstances.id, ctx.instanceId)).for('update').limit(1);
           const base = (locked?.formData ?? {}) as Record<string, unknown>;
@@ -88,6 +91,7 @@ export async function executeCompensationAction(action: WorkflowCompensationActi
             merged[key] = tpl === undefined ? null : renderTemplate(tpl, base, extras);
           }
           await tx.update(workflowInstances).set({ formData: merged }).where(eq(workflowInstances.id, ctx.instanceId));
+          return merged;
         });
         return { ok: true, detail: { requestMethod: 'updateData', requestBody: JSON.stringify({ fieldKeys }) } };
       } catch (err) {
@@ -101,7 +105,11 @@ export async function executeCompensationAction(action: WorkflowCompensationActi
       const subject = '[流程补偿] 节点执行失败通知';
       const bodyHtml = action.bodyTemplate ? renderTemplate(action.bodyTemplate, ctx.formData, extras) : '流程节点执行失败，已触发补偿通知。';
       try {
-        for (const addr of to) await sendMail(addr, subject, bodyHtml);
+        for (const addr of to) {
+          currentWorkflowJobContext()?.signal.throwIfAborted();
+          await markWorkflowExternalEffect('EMAIL', 'email');
+          await sendMail(addr, subject, bodyHtml);
+        }
         return { ok: true, detail: { requestMethod: 'email', requestBody: to.join(',') } };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err), detail: { requestMethod: 'email', requestBody: to.join(',') } };
@@ -119,6 +127,8 @@ export async function executeCompensationAction(action: WorkflowCompensationActi
       const vars: Record<string, string> = {};
       for (const [k, t] of Object.entries(action.fieldValues ?? {})) vars[k] = renderTemplate(t, ctx.formData, extras);
       try {
+        await markWorkflowExternalEffect('SMS', 'sms');
+        currentWorkflowJobContext()?.signal.throwIfAborted();
         const results = await Promise.all(phones.map((phone) => sendSmsByProvider({ config: smsCfg, template: tpl, phone, variables: vars, renderedContent: renderTemplate(tpl.content, vars) })));
         const failed = results.find((r) => !r.success);
         return { ok: !failed, error: failed?.errorMsg ?? undefined, detail: { requestMethod: 'sms', requestBody: phones.join(',') } };
@@ -157,6 +167,7 @@ async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<Wo
   }
 
   const errorMessage = res.error ?? '反向动作执行失败';
+  await throwIfWorkflowExternalEffectUncertain(errorMessage, res.detail);
   if (attempt < job.maxAttempts) {
     throw new WorkflowJobError(errorMessage, { detail: res.detail });
   }

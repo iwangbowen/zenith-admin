@@ -1,3 +1,4 @@
+import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 // ─── 子流程派生、多实例扇出与父流程回填（拆分自 workflow-instances.service.ts）───
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
@@ -134,7 +135,7 @@ async function createChildInstanceAndMaterialize(
   const childFormSnapshot = buildInstanceFormSnapshot(def, childResolvedFormSnapshot);
   const childStarter = await buildStarterContext(childInitiatorId);
 
-  const { instance: childInst, createdTasks } = await db.transaction(async (tx) => {
+  const childInst = await workflowTransaction(async (tx) => {
     const [created] = await tx.insert(workflowInstances).values({
       definitionId: def.id,
       definitionSnapshot: toDefinitionSnapshot(def),
@@ -166,20 +167,24 @@ async function createChildInstanceAndMaterialize(
       status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
       currentNodeKey: materialized.rejected || materialized.finished ? null : materialized.currentNodeKeys[0] ?? null,
     }).where(eq(workflowInstances.id, created.id)).returning();
-    return { instance: updated, createdTasks: materialized.createdTasks };
-  });
-
-  const meta = { definitionId: childInst.definitionId, tenantId: childInst.tenantId, actor };
-  emitInstanceEvent('instance.created', mapInstance(childInst), actor);
-  for (const t of createdTasks) {
-    emitNodeEvent('node.entered', { instanceId: childInst.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
-    emitTaskEvent('task.created', mapTask(t), meta);
-    if (t.assigneeId && t.status === 'pending') {
-      emitTaskEvent('task.assigned', mapTask(t), meta);
+    const meta = { definitionId: updated.definitionId, tenantId: updated.tenantId, actor };
+    await emitInstanceEvent('instance.created', mapInstance(updated), actor, tx);
+    for (const task of materialized.createdTasks) {
+      await emitNodeEvent('node.entered', {
+        instanceId: updated.id, ...meta, nodeKey: task.nodeKey,
+        nodeName: task.nodeName, nodeType: task.nodeType,
+      }, tx);
+      await emitTaskEvent('task.created', mapTask(task), meta, tx);
+      if (task.assigneeId && task.status === 'pending') {
+        await emitTaskEvent('task.assigned', mapTask(task), meta, tx);
+      }
+      if (task.status === 'approved') await emitTaskEvent('task.approved', mapTask(task), meta, tx);
+      if (task.status === 'rejected') await emitTaskEvent('task.rejected', mapTask(task), meta, tx);
     }
-    if (t.status === 'approved') emitTaskEvent('task.approved', mapTask(t), meta);
-    if (t.status === 'rejected') emitTaskEvent('task.rejected', mapTask(t), meta);
-  }
+    if (updated.status === 'approved') await emitInstanceEvent('instance.approved', mapInstance(updated), actor, tx);
+    if (updated.status === 'rejected') await emitInstanceEvent('instance.rejected', mapInstance(updated), actor, tx);
+    return updated;
+  });
   return childInst;
 }
 
@@ -243,6 +248,15 @@ async function spawnSingleSubProcessChild(
   actor: WorkflowEventActor,
   opts?: { detached?: boolean },
 ): Promise<void> {
+  // 单实例以父任务为幂等边界；多实例在每个 itemKey 上分别去重。
+  const [existing] = await db.select().from(workflowInstances)
+    .where(eq(workflowInstances.parentTaskId, parentTask.id)).limit(1);
+  if (existing) {
+    if (!opts?.detached && (existing.status === 'approved' || existing.status === 'rejected')) {
+      await applySubProcessOutputAndResume(parentInst, parentTask, existing, existing.status, actor);
+    }
+    return;
+  }
   const def = await loadValidatedSubProcessDef(parentInst, parentTask, nodeCfg, actor, opts);
   if (!def) return;
   const parentFormData = (parentInst.formData ?? {}) as Record<string, unknown>;
@@ -270,10 +284,8 @@ async function spawnSingleSubProcessChild(
   }
   if (opts?.detached) return;
   if (childInst.status === 'approved') {
-    emitInstanceEvent('instance.approved', mapInstance(childInst), actor);
     await applySubProcessOutputAndResume(parentInst, parentTask, childInst, 'approved', actor);
   } else if (childInst.status === 'rejected') {
-    emitInstanceEvent('instance.rejected', mapInstance(childInst), actor);
     await applySubProcessOutputAndResume(parentInst, parentTask, childInst, 'rejected', actor);
   }
 }
@@ -318,10 +330,8 @@ async function spawnMultiInstanceChild(
     throw err;
   }
   if (childInst.status === 'approved') {
-    emitInstanceEvent('instance.approved', mapInstance(childInst), actor);
     await handleMultiChildSettled(childInst, 'approved', actor);
   } else if (childInst.status === 'rejected') {
-    emitInstanceEvent('instance.rejected', mapInstance(childInst), actor);
     await handleMultiChildSettled(childInst, 'rejected', actor);
   }
   return childInst;
@@ -360,7 +370,9 @@ async function spawnMultiSubProcess(
   }
 
   // 同步：先固化期望子实例总数，再发起
-  await db.update(workflowTasks).set({ subTotal: items.length, subDone: 0 }).where(eq(workflowTasks.id, parentTask.id));
+  await workflowTransaction(async (tx) => {
+    await tx.update(workflowTasks).set({ subTotal: items.length, subDone: 0 }).where(eq(workflowTasks.id, parentTask.id));
+  });
   const serial = nodeCfg.subProcessMultiExecution === 'serial';
   try {
     if (serial) {
@@ -370,6 +382,7 @@ async function spawnMultiSubProcess(
         await spawnMultiInstanceChild(parentInst, parentTask, nodeCfg, def, items, i, childInitiatorId, actor);
       }
     }
+    await reconcileMultiSubProcess(parentTask.id, parentInst.id, actor);
   } catch (err) {
     logger.error('[subProcess] multi spawn failed, rejecting parent', { parentInstanceId: parentInst.id, taskId: parentTask.id, err });
     const [pt] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, parentTask.id)).limit(1);
@@ -408,7 +421,7 @@ export async function reconcileMultiSubProcess(
     | { action: 'spawnNext'; index: number; parentTaskId: number; parentInstId: number }
     | null;
 
-  const decision: Decision = await db.transaction(async (tx) => {
+  const decision: Decision = await workflowTransaction(async (tx) => {
     // 锁定父任务，串行化同一父任务上的并发汇聚/对账
     const [pt] = await tx.select().from(workflowTasks)
       .where(eq(workflowTasks.id, parentTaskId)).for('update').limit(1);
@@ -571,13 +584,16 @@ export async function applySubProcessOutputAndResume(
     const outputMapping = nodeCfg?.subProcessOutputMapping;
     if (outputMapping && Object.keys(outputMapping).length > 0) {
       const childFormData = (childInst.formData ?? {}) as Record<string, unknown>;
-      const parentFormData = { ...(latestParent.formData ?? {}) as Record<string, unknown> };
-      for (const [parentKey, childKey] of Object.entries(outputMapping)) {
-        if (childKey in childFormData) {
-          parentFormData[parentKey] = childFormData[childKey];
+      const parentFormData = await workflowTransaction(async (tx) => {
+        const [locked] = await tx.select({ formData: workflowInstances.formData }).from(workflowInstances)
+          .where(eq(workflowInstances.id, latestParent.id)).for('update').limit(1);
+        const next = { ...(locked?.formData ?? {}) as Record<string, unknown> };
+        for (const [parentKey, childKey] of Object.entries(outputMapping)) {
+          if (childKey in childFormData) next[parentKey] = childFormData[childKey];
         }
-      }
-      await db.update(workflowInstances).set({ formData: parentFormData }).where(eq(workflowInstances.id, latestParent.id));
+        await tx.update(workflowInstances).set({ formData: next }).where(eq(workflowInstances.id, latestParent.id));
+        return next;
+      });
       latestParent.formData = parentFormData;
     }
     await approveTaskCore(latestTask, latestParent, `子流程 #${childInst.id} 已通过`, actor);

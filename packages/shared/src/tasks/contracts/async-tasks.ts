@@ -22,6 +22,7 @@ export const asyncTaskSchema = z.object({
   cancelRequested: z.boolean(),
   attempts: z.int(),
   maxAttempts: z.int().meta({ description: '最大执行次数（提交时从类型策略快照；失败自动重试直到用尽）' }),
+  retryDelayMs: z.int().meta({ description: '重试退避基数快照（毫秒；断点恢复与自动重试沿用，重新开始时刷新）' }),
   nextRunAt: z.string().nullable().meta({ description: '下次自动重试时间（退避中）；null = 无待定重试' }),
   createdBy: z.int().nullable(),
   createdByName: z.string().nullable(),

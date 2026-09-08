@@ -99,7 +99,7 @@ export const importJobsHandlers = [
       id, taskType: 'data-import', title: '会员导入（demo.xlsx）', module: '导入中心',
       status: 'success', payload: {}, totalCount: 3, processedCount: 3, failedCount: 1,
       progressNote: '成功 2 / 失败 1（共 3 行）', result: { total: 3, succeeded: 2, failed: 1 },
-      errorMessage: null, cancelRequested: false, attempts: 1, maxAttempts: 1, nextRunAt: null,
+      errorMessage: null, cancelRequested: false, attempts: 1, maxAttempts: 1, retryDelayMs: 5000, nextRunAt: null,
       createdBy: 1, createdByName: '管理员', tenantId: null, traceId: null,
       startedAt: now, completedAt: now, createdAt: now, updatedAt: now,
     }, '导入任务已提交，可在任务中心查看进度与行级明细');

@@ -11,6 +11,12 @@ import { decryptSecret, encryptSecret, SecretDecryptError } from '../../lib/secr
 import { getSettings } from '../../lib/settings';
 import { buildTotpUri, generateTotpSecret, verifyTotp } from '../../lib/totp';
 import type { IdentitySecuritySettings } from '@zenith/shared/settings';
+import type { QueryOf } from '@zenith/shared/core';
+import type { identitySecurityContract } from '@zenith/shared/identity';
+import { tenantCondition } from '../../lib/tenant';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { buildListResult } from '../../lib/list-query';
+import { pageOffset } from '../../lib/pagination';
 
 export type MfaMethod = 'totp' | 'passkey';
 
@@ -258,33 +264,34 @@ export async function removeMyTrustedDevice(id: number) {
   requireRow(row, '可信设备不存在');
 }
 
-export async function listLoginRiskEvents(query: { page?: number; pageSize?: number; keyword?: string }) {
+export async function listLoginRiskEvents(query: QueryOf<typeof identitySecurityContract.riskEvents>) {
   const page = query.page ?? 1;
   const pageSize = query.pageSize ?? 10;
-  const rows = await db.select().from(loginRiskEvents).orderBy(desc(loginRiskEvents.createdAt));
-  const keyword = query.keyword?.trim();
-  const filtered = keyword
-    ? rows.filter((row) => row.username.includes(keyword) || row.reason.includes(keyword) || (row.ip ?? '').includes(keyword))
-    : rows;
-  const start = (page - 1) * pageSize;
-  return {
-    list: filtered.slice(start, start + pageSize).map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      username: row.username,
-      tenantId: row.tenantId,
-      riskLevel: row.riskLevel,
-      reason: row.reason,
-      action: row.action,
-      ip: row.ip,
-      location: row.location,
-      userAgent: row.userAgent,
-      createdAt: formatDateTime(row.createdAt),
-    })),
-    total: filtered.length,
+  const where = buildWhere(
+    tenantCondition(loginRiskEvents, currentUser()),
+    keywordCondition(query.keyword, [loginRiskEvents.username, loginRiskEvents.reason, loginRiskEvents.ip]),
+  );
+  return buildListResult({
     page,
     pageSize,
-  };
+    count: () => db.$count(loginRiskEvents, where),
+    rows: () => db.select({
+      id: loginRiskEvents.id,
+      userId: loginRiskEvents.userId,
+      username: loginRiskEvents.username,
+      tenantId: loginRiskEvents.tenantId,
+      riskLevel: loginRiskEvents.riskLevel,
+      reason: loginRiskEvents.reason,
+      action: loginRiskEvents.action,
+      ip: loginRiskEvents.ip,
+      location: loginRiskEvents.location,
+      userAgent: loginRiskEvents.userAgent,
+      createdAt: loginRiskEvents.createdAt,
+    }).from(loginRiskEvents).where(where)
+      .orderBy(desc(loginRiskEvents.createdAt), desc(loginRiskEvents.id))
+      .limit(pageSize).offset(pageOffset(page, pageSize)),
+    map: (row) => ({ ...row, createdAt: formatDateTime(row.createdAt) }),
+  });
 }
 
 async function ensureOwnTotpFactor(userId: number, factorId: number) {

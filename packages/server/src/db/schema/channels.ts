@@ -1,4 +1,5 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, index } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 
@@ -54,8 +55,13 @@ export const channelMessages = pgTable('channel_messages', {
   scheduledAt: timestamp({ withTimezone: true }),
   retractedAt: timestamp({ withTimezone: true }),
   targetSpec: jsonb(),
+  /** Durable source-event key for retry-safe system card publication. */
+  dedupeKey: varchar({ length: 192 }),
   createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-}, (t) => [index('channel_messages_channel_idx').on(t.channelId)]);
+}, (t) => [
+  index('channel_messages_channel_idx').on(t.channelId),
+  uniqueIndex('channel_messages_dedupe_uq').on(t.dedupeKey).where(sql`${t.dedupeKey} is not null`),
+]);
 
 export type ChannelMessageRow = typeof channelMessages.$inferSelect;
 

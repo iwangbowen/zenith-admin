@@ -272,7 +272,6 @@ const taskTypes: AsyncTaskTypeMeta[] = [
 
 const SERIAL_STAGES = ['准备数据', '汇总统计', '生成报告', '归档结果'];
 /** Demo 模式重试退避固定 5 秒（真实后端为指数退避） */
-const RETRY_DELAY_MS = 5000;
 
 interface SimState {
   startedAtMs: number;
@@ -307,6 +306,7 @@ const tasks: AsyncTask[] = [
     cancelRequested: false,
     attempts: 1,
     maxAttempts: 3,
+    retryDelayMs: 5000,
     nextRunAt: null,
     createdBy: 1,
     createdByName: '管理员',
@@ -333,6 +333,7 @@ const tasks: AsyncTask[] = [
     cancelRequested: false,
     attempts: 3,
     maxAttempts: 3,
+    retryDelayMs: 5000,
     nextRunAt: null,
     createdBy: 1,
     createdByName: '管理员',
@@ -384,6 +385,7 @@ export function createImmediateMockTask(input: {
     cancelRequested: false,
     attempts: 1,
     maxAttempts: input.maxAttempts ?? 3,
+    retryDelayMs: 5000,
     nextRunAt: null,
     createdBy: 1,
     createdByName: '管理员',
@@ -425,6 +427,7 @@ export function createProgressingMockTask(input: {
     cancelRequested: false,
     attempts: 0,
     maxAttempts: meta.maxAttempts,
+    retryDelayMs: meta.retryDelayMs,
     nextRunAt: null,
     createdBy: 1,
     createdByName: '管理员',
@@ -471,11 +474,12 @@ function finalize(task: AsyncTask, status: AsyncTaskStatus) {
 }
 
 function scheduleRetry(task: AsyncTask, message: string) {
-  const ts = Date.now() + RETRY_DELAY_MS;
+  const delayMs = Math.min(task.retryDelayMs * 2 ** Math.max(task.attempts - 1, 0), 900_000);
+  const ts = Date.now() + delayMs;
   task.status = 'pending';
   task.errorMessage = message;
-  task.progressNote = `执行失败，${Math.round(RETRY_DELAY_MS / 1000)} 秒后自动重试（第 ${task.attempts + 1}/${task.maxAttempts} 次）`;
-  task.nextRunAt = mockDateTimeOffset(RETRY_DELAY_MS);
+  task.progressNote = `执行失败，${Math.round(delayMs / 1000)} 秒后自动重试（第 ${task.attempts + 1}/${task.maxAttempts} 次）`;
+  task.nextRunAt = mockDateTimeOffset(delayMs);
   task.updatedAt = mockDateTime();
   retryAt.set(task.id, ts);
   sims.delete(task.id);
@@ -870,6 +874,7 @@ export const asyncTasksHandlers = [
       cancelRequested: false,
       attempts: 0,
       maxAttempts: meta.maxAttempts,
+      retryDelayMs: meta.retryDelayMs,
       nextRunAt: null,
       createdBy: 1,
       createdByName: '管理员',

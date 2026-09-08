@@ -19,6 +19,7 @@ import { requireRow } from '../../lib/db-assert';
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
 import { assertSafeWorkflowUrl, workflowHttpPost } from '../../lib/workflow-outbound';
 import { signHmac } from '../../lib/workflow-jobs/handlers/shared';
+import { enqueueJob, retryJob, scheduleJobPickup } from '../../lib/workflow-jobs/engine';
 import { invokeConnector, getConnectorRowById } from './workflow-connectors.service';
 import type { WorkflowEventType } from '@zenith/shared/workflow';
 import { maskSecret } from '@zenith/shared/core';
@@ -391,81 +392,6 @@ export async function getDeliveriesBeforeAudit(ids: number[]) {
   return rows.map((r) => mapDelivery(r, r.subscriptionName));
 }
 
-/** 候选重试任务：状态 retrying 且 nextRetryAt 已到 */
-export async function findRetryableDeliveries(limit = 50) {
-  const rows = await db.select().from(workflowJobs)
-    .where(and(
-      eq(workflowJobs.jobType, 'webhook_delivery'),
-      eq(workflowJobs.status, 'failed'),
-      sql`${workflowJobs.attempts} < ${workflowJobs.maxAttempts}`,
-      sql`${workflowJobs.runAt} <= now()`,
-    ))
-    .limit(limit);
-  return rows;
-}
-
-export async function findDeliveryById(id: number) {
-  const [row] = await db.select({ execution: workflowJobExecutions, job: workflowJobs })
-    .from(workflowJobExecutions)
-    .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
-    .where(eq(workflowJobExecutions.id, id))
-    .limit(1);
-  return row ?? null;
-}
-
-/** 内部 API：插入待投递记录（由订阅者调用） */
-export async function insertDelivery(input: {
-  subscriptionId: number;
-  instanceId: number | null;
-  taskId: number | null;
-  eventId: string;
-  eventType: string;
-  payload: unknown;
-  tenantId: number | null;
-}) {
-  const [row] = await db.insert(workflowJobs).values({
-    jobType: 'webhook_delivery',
-    status: 'pending',
-    instanceId: input.instanceId,
-    taskId: input.taskId,
-    idempotencyKey: `webhook:${input.subscriptionId}:${input.eventId}`,
-    payload: {
-      subscriptionId: input.subscriptionId,
-      eventId: input.eventId,
-      eventType: input.eventType,
-      payload: input.payload,
-    },
-    tenantId: input.tenantId,
-  }).returning();
-  return row;
-}
-
-const RETRY_STAGE_MINUTES = [1, 5, 30, 180, 720];
-
-export function computeNextRetryAt(attempt: number): Date | null {
-  // attempt 是已经失败的次数（1-based）。超出最大重试次数返回 null
-  if (attempt >= RETRY_STAGE_MINUTES.length) return null;
-  const minutes = RETRY_STAGE_MINUTES[attempt];
-  return new Date(Date.now() + minutes * 60 * 1000);
-}
-
-export async function updateDeliveryAfterAttempt(id: number, patch: Record<string, unknown>) {
-  const status = patch.status === 'success'
-    ? 'succeeded'
-    : patch.status === 'failed'
-      ? 'dead'
-      : patch.status === 'retrying'
-        ? 'failed'
-        : undefined;
-  if (status) {
-    await db.update(workflowJobs).set({
-      status,
-      lastError: typeof patch.errorMessage === 'string' ? patch.errorMessage : undefined,
-      runAt: patch.nextRetryAt instanceof Date ? patch.nextRetryAt : undefined,
-    }).where(eq(workflowJobs.id, id));
-  }
-}
-
 /** 手动重置投递为 retrying 立即重试 */
 export async function retryDelivery(id: number) {
   const tc = tenantCondition(workflowJobs, currentUser());
@@ -477,7 +403,7 @@ export async function retryDelivery(id: number) {
     .where(and(...conds))
     .limit(1);
   requireRow(row, '投递记录不存在');
-  await db.update(workflowJobs).set({ status: 'pending', runAt: new Date(), lastError: null }).where(eq(workflowJobs.id, row.jobId));
+  if (!await retryJob(row.jobId)) throw new HTTPException(409, { message: '仅失败或已取消的投递可以重试' });
   return getDelivery(id);
 }
 
@@ -492,10 +418,9 @@ export async function retryDeliveries(ids: number[]) {
     .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
     .where(and(...conds));
   if (rows.length === 0) return 0;
-  await db.update(workflowJobs)
-    .set({ status: 'pending', runAt: new Date(), lastError: null })
-    .where(inArray(workflowJobs.id, rows.map((row) => row.jobId)));
-  return rows.length;
+  let retried = 0;
+  for (const jobId of new Set(rows.map((row) => row.jobId))) if (await retryJob(jobId)) retried++;
+  return retried;
 }
 
 /** 按筛选批量重放投递的最大条数（防止误操作一次重投海量历史投递） */
@@ -504,7 +429,7 @@ const DELIVERY_REPLAY_CAP = 500;
 export interface ReplayDeliveriesFilter {
   subscriptionId?: number;
   eventType?: string;
-  /** success=补发已成功；failed=重投失败/死信；pending=重排队中；all/不传=全部状态 */
+  /** success=补发已成功；failed=重投失败/死信；pending=补投待执行；all/不传=全部状态 */
   status?: 'success' | 'failed' | 'pending' | 'all';
   /** 起止时间（按作业创建时间，YYYY-MM-DD HH:mm:ss） */
   startAt?: string;
@@ -524,22 +449,42 @@ export async function replayDeliveriesByFilter(f: ReplayDeliveriesFilter): Promi
   if (f.eventType) conds.push(sql`${workflowJobs.payload}->>'eventType' = ${f.eventType}`);
   if (f.status === 'success') conds.push(eq(workflowJobs.status, 'succeeded'));
   else if (f.status === 'failed') conds.push(inArray(workflowJobs.status, ['failed', 'dead']));
-  else if (f.status === 'pending') conds.push(inArray(workflowJobs.status, ['pending', 'running']));
+  else if (f.status === 'pending') conds.push(eq(workflowJobs.status, 'pending'));
   const start = parseDateRangeStart(f.startAt);
   const end = parseDateRangeEnd(f.endAt);
   if (start) conds.push(gte(workflowJobs.createdAt, start));
   if (end) conds.push(lte(workflowJobs.createdAt, end));
 
-  const targets = await db.select({ id: workflowJobs.id })
-    .from(workflowJobs)
+  const targets = await db.select().from(workflowJobs)
     .where(and(...conds))
     .orderBy(desc(workflowJobs.id))
     .limit(DELIVERY_REPLAY_CAP);
   if (targets.length === 0) return { count: 0 };
-  await db.update(workflowJobs)
-    .set({ status: 'pending', runAt: new Date(), lastError: null })
-    .where(inArray(workflowJobs.id, targets.map((t) => t.id)));
-  return { count: targets.length };
+  let count = 0;
+  for (const job of targets) {
+    if (job.status === 'pending') {
+      scheduleJobPickup(job.id, job.runAt);
+      count++;
+    } else if (job.status === 'failed' || job.status === 'dead' || job.status === 'canceled') {
+      if (await retryJob(job.id)) count++;
+    } else if (job.status === 'succeeded') {
+      const replay = await enqueueJob({
+        jobType: job.jobType,
+        payload: (job.payload ?? {}) as Record<string, unknown>,
+        instanceId: job.instanceId,
+        taskId: job.taskId,
+        nodeKey: job.nodeKey,
+        idempotencyKey: `replay:${job.id}:${randomUUID()}`,
+        traceId: job.traceId,
+        priority: job.priority,
+        maxAttempts: job.maxAttempts,
+        executionTimeoutMs: job.executionTimeoutMs,
+        tenantId: job.tenantId,
+      });
+      if (replay) count++;
+    }
+  }
+  return { count };
 }
 
 // ─── 测试投递 ────────────────────────────────────────────────────────

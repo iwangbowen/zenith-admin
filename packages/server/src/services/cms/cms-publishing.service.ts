@@ -27,7 +27,7 @@ import {
   type CmsPublishArtifactRow,
 } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
-import type { DbExecutor } from '../../db/types';
+import type { DbTransaction } from '../../db/types';
 import {
   formatDateTime,
   formatNullableDateTime,
@@ -46,6 +46,7 @@ import {
   registerTaskHandler,
   requestCancelAsyncTask,
   resumeAsyncTask,
+  persistAsyncTask,
   submitAsyncTask,
   type TaskRunContext,
   TaskCancelledError,
@@ -484,8 +485,8 @@ export async function submitCmsPublishTask(
   options?: {
     skipPermissionCheck?: boolean;
     skipAccessCheck?: boolean;
-    executor?: DbExecutor;
-    enqueue?: boolean;
+    /** 已完成权限与输入校验的外部事务；仅持久化，调用方提交后负责入队。 */
+    executor?: DbTransaction;
     /** 生命周期事件唯一键（revision/event nonce）；同一事件永久幂等，不同事件绝不复用。 */
     eventKey?: string;
   },
@@ -493,7 +494,9 @@ export async function submitCmsPublishTask(
   if (!options?.skipPermissionCheck && !(await hasPermission('cms:publish:build'))) {
     throw new HTTPException(403, { message: '缺少 cms:publish:build 权限' });
   }
-  await validatePublishInput(input, options?.skipAccessCheck === true);
+  if (!options?.executor) {
+    await validatePublishInput(input, options?.skipAccessCheck === true);
+  }
   const user = currentUser();
   const executor = options?.executor ?? db;
   const [site] = await executor.select().from(cmsSites).where(eq(cmsSites.id, input.siteId)).limit(1);
@@ -508,14 +511,11 @@ export async function submitCmsPublishTask(
   const dedupeFingerprint = buildCmsPublishDedupeFingerprint(fencedInput, user.userId);
   return runWithCurrentUser({ ...user, tenantId: null, viewingTenantId: undefined }, async () => {
     if (fencedInput.targetType === 'site' || fencedInput.targetType === 'theme') {
-      const task = await insertCmsPublishOutbox(
-        executor,
-        fencedInput,
-        options?.eventKey ?? ('manual:' + fencedInput.siteId + ':' + randomUUID()),
-      );
-      if (!options?.executor) {
-        await enqueueCmsPublishOutboxes([task], 'CMS 整站发布任务提交');
-      }
+      const eventKey = options?.eventKey ?? ('manual:' + fencedInput.siteId + ':' + randomUUID());
+      const task = options?.executor
+        ? await insertCmsPublishOutbox(options.executor, fencedInput, eventKey)
+        : await db.transaction((tx) => insertCmsPublishOutbox(tx, fencedInput, eventKey));
+      if (!options?.executor) await enqueueCmsPublishOutboxes([task], 'CMS 整站发布任务提交');
       return task;
     }
     if (!options?.eventKey) {
@@ -527,7 +527,7 @@ export async function submitCmsPublishTask(
       )).orderBy(desc(asyncTasks.id)).limit(1);
       if (existing) return mapAsyncTask(existing);
     }
-    const row = await submitAsyncTask({
+    const taskInput = {
       taskType: 'cms-publish-build',
       title: publishTitle(fencedInput),
       payload: {
@@ -537,10 +537,10 @@ export async function submitCmsPublishTask(
         dedupeFingerprint,
       },
       idempotencyKey: options?.eventKey ? `cms-publish-event:${options.eventKey}` : null,
-    }, {
-      executor: options?.executor,
-      enqueue: options?.enqueue,
-    });
+    };
+    const row = options?.executor
+      ? await persistAsyncTask(options.executor, taskInput)
+      : await submitAsyncTask(taskInput);
     return mapAsyncTask(row);
   });
 }
@@ -580,7 +580,6 @@ export async function submitCmsSiteGroupPublish(input: SubmitCmsSiteGroupPublish
         skipPermissionCheck: true,
         skipAccessCheck: true,
         executor: tx,
-        enqueue: false,
       }));
     }
     return submitted;

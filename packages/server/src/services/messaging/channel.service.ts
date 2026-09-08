@@ -37,6 +37,7 @@ interface PublishInput {
   title?: string | null;
   extra?: ChatMessageExtra | null;
   publishedById?: number | null;
+  dedupeKey?: string | null;
 }
 
 export function mapChannelMessage(row: ChannelMessageRow, isRead: boolean, senderUserName: string | null = null): ChannelMessage {
@@ -122,20 +123,34 @@ export async function publishTargeted(
 ): Promise<ChannelMessage | null> {
   const unique = [...new Set(userIds)].filter((id) => id > 0);
   if (unique.length === 0) return null;
+  const dedupeKey = input.dedupeKey?.slice(0, 192) || null;
+  const result = await db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(channelMessages).values({
+      channelId,
+      audienceType: 'targeted',
+      type: input.type,
+      title: input.title ?? null,
+      content: input.content,
+      extra: input.extra ?? null,
+      publishedById: input.publishedById ?? null,
+      dedupeKey,
+    }).onConflictDoNothing({
+      target: channelMessages.dedupeKey,
+      where: sql`${channelMessages.dedupeKey} is not null`,
+    }).returning();
+    if (!inserted) {
+      if (!dedupeKey) throw new Error('频道定向消息写入失败');
+      const [existing] = await tx.select().from(channelMessages)
+        .where(eq(channelMessages.dedupeKey, dedupeKey)).limit(1);
+      if (!existing) throw new Error('频道定向消息幂等回查失败');
+      return { row: existing, inserted: false };
+    }
+    await tx.insert(channelMessageTargets).values(unique.map((userId) => ({ messageId: inserted.id, userId })));
+    return { row: inserted, inserted: true };
+  });
 
-  const [row] = await db.insert(channelMessages).values({
-    channelId,
-    audienceType: 'targeted',
-    type: input.type,
-    title: input.title ?? null,
-    content: input.content,
-    extra: input.extra ?? null,
-    publishedById: input.publishedById ?? null,
-  }).returning();
-
-  await db.insert(channelMessageTargets).values(unique.map((userId) => ({ messageId: row.id, userId })));
-
-  const msg = mapChannelMessage(row, false);
+  const msg = mapChannelMessage(result.row, false);
+  if (!result.inserted) return msg;
   scheduleSendToUsers(unique.map((userId) => ({ userId })), { type: 'channel:message', payload: msg });
   return msg;
 }

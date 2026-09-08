@@ -59,7 +59,7 @@ async function handleTaskEvent(event: WorkflowTaskEventPayload): Promise<void> {
   const listeners = node?.data.nodeListeners ?? [];
   for (const l of listeners) {
     if (l.events.includes(listenerEvent)) {
-      void fireListener(l, event, listenerEvent);
+      await fireListener(l, event, listenerEvent);
     }
   }
 }

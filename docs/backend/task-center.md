@@ -18,7 +18,7 @@
 业务页面提交
    │  业务接口调用 submitAsyncTask()
    ▼
-async_tasks（pending，快照 maxAttempts / tenant / createdBy）
+async_tasks（pending，快照 maxAttempts / retryDelayMs / tenant / createdBy）
    │
    │  pg-boss 队列 async-tasks
    ▼
@@ -51,7 +51,7 @@ data-retention（每天 03:00）:
 
 | 表 | 说明 |
 | --- | --- |
-| `async_tasks` | 任务实例、状态、进度、断点、结果、错误、幂等键、租户和创建者 |
+| `async_tasks` | 任务实例、状态、进度、断点、结果、错误、重试策略快照、幂等键、租户和创建者 |
 | `async_task_items` | 可选的行级处理明细，按 `task_id + item_key` 幂等覆盖 |
 | `async_task_type_configs` | 任务类型运行时策略，覆盖注册默认值 |
 
@@ -116,24 +116,26 @@ return c.json(okBody(mapAsyncTask(row), '任务已提交'), 200);
 - 任务类型必须已注册；
 - `enabled=false` 时拒绝新提交；
 - `allowConcurrent=false` 时，同一创建者未结束的同类型任务会阻止重复提交；
-- `idempotencyKey` 会按「租户 + 创建者 + 任务类型 + key」命中已有任务，避免跨租户或跨用户泄漏。
+- `idempotencyKey` 会按「租户 + 创建者 + 任务类型 + key」命中已有任务，避免跨租户或跨用户泄漏；
+- 策略读取失败会中止并回滚提交，只有策略表确实没有覆盖行时才使用注册默认值；
+- `maxAttempts` 与 `retryDelayMs` 写入任务快照，后续策略调整不会改变已提交任务的重试计划。
 
 ### 与业务事务一起提交
 
-任务需要与业务写操作原子提交时，在事务内传入 `executor`。事务内只写 `pending` 任务记录；事务提交后再入队。
+任务需要与业务写操作原子提交时，使用 `persistAsyncTask(tx, input)`。策略读取和任务写入共用该事务，事务提交后再入队。独立提交使用 `submitAsyncTask(input)` 自动管理事务。
 
 ```ts
-import { submitAsyncTask, enqueueAsyncTask } from '../../lib/task-center';
+import { persistAsyncTask, enqueueAsyncTask } from '../../lib/task-center';
 
 const task = await db.transaction(async (tx) => {
   await tx.insert(orders).values(orderData);
-  return submitAsyncTask({ taskType: 'order-sync', payload }, { executor: tx });
+  return persistAsyncTask(tx, { taskType: 'order-sync', payload });
 });
 
 await enqueueAsyncTask(task.id);
 ```
 
-外部事务内禁止 `enqueue: true`。提交成功但入队失败时，每分钟兜底扫描会重投长期停留 `pending` 的任务。
+`persistAsyncTask()` 只接受事务执行器且不会入队，调用方必须在事务成功返回后投递。提交成功但入队失败时，每分钟兜底扫描会重投长期停留 `pending` 的任务。
 
 ### ③ 前端展示进度
 
@@ -173,6 +175,8 @@ handler 抛错时，若 `attempts < maxAttempts` 且未请求取消，框架会�
 - 领取时校验 `nextRunAt`，兜底扫描不会提前重投退避中的任务；
 - 重试耗尽后状态为 `failed`。
 
+断点恢复沿用原任务的 `maxAttempts` 与 `retryDelayMs` 快照；重新开始会从当前类型策略刷新这两个字段。
+
 ## 生命周期与操作
 
 ```text
@@ -188,7 +192,7 @@ cancelled          pending / failed ─────────┘
 | --- | --- | --- |
 | 取消 | `pending` 直接终止；`running` 置 `cancelRequested`，由 handler 协作退出 | `pending` / `running` |
 | 断点恢复 | 保留进度与 checkpoint，重新入队继续执行 | `failed` / `cancelled` |
-| 重新开始 | 清空进度、断点、结果和明细，按类型策略重新快照 `maxAttempts` | `success` / `failed` / `cancelled` |
+| 重新开始 | 清空进度、断点、结果和明细，按类型策略重新快照 `maxAttempts` 与 `retryDelayMs` | `success` / `failed` / `cancelled` |
 | 删除 | 删除已结束任务记录 | `success` / `failed` / `cancelled` |
 | 清理 | 删除超过保留期的已结束任务；全局策略由数据保留中心驱动，类型可设置 `retentionDays` | — |
 

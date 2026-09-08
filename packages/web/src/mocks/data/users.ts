@@ -10,7 +10,7 @@ export const superAdminRole = SEED_ROLES.find((r) => r.code === 'super_admin') a
 export const normalUserRole = SEED_ROLES.find((r) => r.code === 'user') as Role;
 
 /** 契约实体不含口令；Demo 登录校验需要明文口令，仅在内存数据中携带 */
-export type MockUser = User & { password: string };
+export type MockUser = User & { password: string; tenantId?: number | null };
 
 export const mockUsers: MockUser[] = [
   {

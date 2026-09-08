@@ -1,30 +1,15 @@
 import { authContract, type MfaFactor, type TotpSetupResult, type UserSession } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
-import { badRequest, unauthorized, notFound, nextIdFrom } from '@/mocks/utils/handlers';
+import { badRequest, unauthorized, forbidden, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockUsers } from '@/mocks/data/users';
 import { mockMenus } from '@/mocks/data/menus';
-import { mockRoles } from '@/mocks/data/roles';
 import { mockLoginLogs, mockOperationLogs } from '@/mocks/data/logs';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
-
-const MOCK_TOKEN_PREFIX = 'mock-access-token';
-const MOCK_REFRESH_TOKEN_PREFIX = 'mock-refresh-token';
-
-/** 按用户名签发可区分的 mock token，让 Demo 模式支持账号切换器 */
-const mockAccessToken = (username: string) => `${MOCK_TOKEN_PREFIX}:${username}`;
-const mockRefreshToken = (username: string) => `${MOCK_REFRESH_TOKEN_PREFIX}:${username}`;
-
-/** 从 mock token 中解析用户名（兼容旧的无用户名 token，回退 admin） */
-function resolveMockUser(token: string | null | undefined, prefix: string) {
-  const username = token?.startsWith(`${prefix}:`) ? token.slice(prefix.length + 1) : null;
-  return (username && mockUsers.find((u) => u.username === username)) || mockUsers[0];
-}
+import { currentMockSession, isMockPlatformAdmin, mockAccessToken, mockRefreshToken, mockUserPermissions, resolveMockSession, MOCK_REFRESH_TOKEN_PREFIX } from '@/mocks/utils/auth';
 
 function currentMockUser(request: Request) {
-  const auth = request.headers.get('Authorization');
-  const token = auth?.startsWith('Bearer ') ? auth.slice('Bearer '.length) : null;
-  return resolveMockUser(token, MOCK_TOKEN_PREFIX);
+  return currentMockSession(request)?.user ?? mockUsers[0];
 }
 
 // 偏好设置 & 收藏菜单 mock 状态（模块级可变，模拟服务端持久化）
@@ -104,8 +89,8 @@ export const authHandlers = [
   mock(authContract.me, ({ request, ok }) => {
     const current = currentMockUser(request);
     const { password: _, ...userWithoutPassword } = current;
-    const role = mockRoles.find((r) => r.code === 'super_admin');
-    const permissions = role ? getAllPermissions() : [];
+    const granted = mockUserPermissions(current);
+    const permissions = granted.includes('*') ? getAllPermissions() : granted;
     // 取最近第 2 条成功登录记录模拟上次登录
     const myLogs = mockLoginLogs.filter((l) => l.userId === current.id && (l.eventType ?? 'login') === 'login' && l.status === 'success');
     const prevLogin = myLogs[1] ?? null;
@@ -120,8 +105,9 @@ export const authHandlers = [
 
   // token 刷新（按 refreshToken 归属的用户签发，支持账号切换器换发）
   mock(authContract.refresh, ({ body, ok }) => {
-    const user = resolveMockUser(body.refreshToken, MOCK_REFRESH_TOKEN_PREFIX);
-    return ok({ accessToken: mockAccessToken(user.username), refreshToken: mockRefreshToken(user.username) });
+    const session = resolveMockSession(body.refreshToken, MOCK_REFRESH_TOKEN_PREFIX);
+    if (!session) return unauthorized('登录已过期', { status: 401 });
+    return ok({ accessToken: mockAccessToken(session.user.username, session.viewingTenantId), refreshToken: mockRefreshToken(session.user.username, session.viewingTenantId) });
   }),
 
   // 按 refresh token 注销停靠账号（账号切换器）
@@ -150,10 +136,13 @@ export const authHandlers = [
   }),
 
   // 切换租户视角（平台超管）
-  mock(authContract.switchTenant, ({ body, ok }) => {
+  mock(authContract.switchTenant, ({ body, request, ok }) => {
+    const session = currentMockSession(request);
+    if (!session) return unauthorized('未登录', { status: 401 });
+    if (!isMockPlatformAdmin(session.user)) return forbidden('仅平台管理员可切换租户', { status: 403 });
     return ok({
-      accessToken: 'mock-access-token-switched',
-      refreshToken: 'mock-refresh-token-switched',
+      accessToken: mockAccessToken(session.user.username, body.tenantId),
+      refreshToken: mockRefreshToken(session.user.username, body.tenantId),
       viewingTenantId: body.tenantId,
     });
   }),

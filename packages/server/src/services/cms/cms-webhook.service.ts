@@ -20,13 +20,13 @@ import type { AsyncTask } from '@zenith/shared/tasks';
 import { db } from '../../db';
 import { appWebhookSubscriptions, cmsContents, cmsSites } from '../../db/schema';
 import type { CmsContentRow } from '../../db/schema';
-import type { DbExecutor } from '../../db/types';
+import type { DbTransaction } from '../../db/types';
 import { runWithCurrentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { encryptField } from '../../lib/encryption';
 import logger from '../../lib/logger';
 import { openEventBus } from '../../lib/open-event-bus';
-import { enqueueAsyncTask, mapAsyncTask, registerTaskHandler, submitAsyncTask } from '../../lib/task-center';
+import { enqueueAsyncTask, mapAsyncTask, persistAsyncTask, registerTaskHandler } from '../../lib/task-center';
 import { resolveEffectiveCmsSiteRow } from './cms-site-inheritance.service';
 
 export const CMS_WEBHOOK_EMIT_TASK = 'cms-webhook-emit';
@@ -47,19 +47,19 @@ interface CmsWebhookPayload {
  * 入队失败也不丢，任务中心的 pending 恢复扫描会补投。
  */
 export async function insertCmsWebhookOutbox(
-  executor: DbExecutor,
+  executor: DbTransaction,
   event: CmsOpenWebhookEvent,
   siteId: number,
   data: Record<string, unknown>,
   eventKey: string,
 ): Promise<AsyncTask | null> {
   try {
-    const row = await runWithCurrentUser(SYSTEM_ACTOR, () => submitAsyncTask({
+    const row = await runWithCurrentUser(SYSTEM_ACTOR, () => persistAsyncTask(executor, {
       taskType: CMS_WEBHOOK_EMIT_TASK,
       title: `CMS 事件外推：${event}`,
       payload: { event, siteId, data, systemTriggered: true } satisfies CmsWebhookPayload,
       idempotencyKey: `cms-webhook:${eventKey}`.slice(0, 128),
-    }, { executor }));
+    }));
     return mapAsyncTask(row);
   } catch (error) {
     // 事件外推不得阻断内容发布：登记失败只记日志
@@ -112,7 +112,7 @@ export async function buildCmsContentEventData(contentId: number): Promise<Recor
  * eventKey 带内容版本，同一版本重复触发天然幂等；投递侧还有 `eventId` 唯一屏障兜底。
  */
 export async function insertCmsContentWebhookOutbox(
-  executor: DbExecutor,
+  executor: DbTransaction,
   event: CmsOpenWebhookEvent,
   content: Pick<CmsContentRow, 'id' | 'siteId' | 'version'>,
 ): Promise<AsyncTask | null> {

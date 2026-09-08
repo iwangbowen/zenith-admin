@@ -1,25 +1,27 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, inArray, isNotNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { hostname } from 'node:os';
+import { and, asc, eq, gt, inArray, isNull, lte, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import type { WorkflowJobType } from '@zenith/shared/workflow';
 import { db } from '../../db';
-import { workflowJobs, workflowJobExecutions } from '../../db/schema';
-import type { WorkflowJobRow, NewWorkflowJob } from '../../db/schema';
-import type { DbExecutor } from '../../db/types';
-import { registerSystemQueueWorker, sendSystemJobAfter } from '../pg-boss-scheduler';
+import { workflowJobs, workflowJobExecutions, type WorkflowJobRow, type NewWorkflowJob } from '../../db/schema';
+import type { DbExecutor, DbTransaction } from '../../db/types';
+import { registerSystemQueueWorker } from '../pg-boss-scheduler';
 import { currentTraceId, currentParentRef, runWithTraceId, runWithParentRef } from '../context';
-import logger from '../logger';
 import { formatDateTime } from '../datetime';
-import {
-  WORKFLOW_JOB_QUEUE,
-  STUCK_RUNNING_GRACE_MS,
-  type WorkflowJobResult,
-} from './types';
-import { WorkflowJobSkip, WorkflowJobPermanentError, WorkflowJobError } from './errors';
-import { computeNextRunAt } from './backoff';
+import { WORKFLOW_JOB_QUEUE, WORKFLOW_JOB_LEASE_MS, WORKFLOW_JOB_HEARTBEAT_MS, WORKFLOW_JOB_EXECUTION_TIMEOUT_MS, type WorkflowJobContext, type WorkflowJobResult } from './types';
+import { WorkflowJobSkip, WorkflowJobPermanentError, WorkflowJobError, WorkflowJobLeaseLostError, WorkflowJobDeadlineError } from './errors';
+import { computeBackoffMs } from './backoff';
 import { getJobHandler } from './registry';
+import { isIndeterminateExternalStatus } from './external-effects';
+import { currentWorkflowJobContext, ownedJobCondition, runWithWorkflowJobContext } from './lease';
+import { flushWorkflowJobEffects } from './execution-context';
+import { publishWorkflowJobPickup, rememberWorkflowJobPickup, scheduleJobPickup } from './publication';
+export { scheduleJobPickup, flushWorkflowJobPickups } from './publication';
+export { WORKFLOW_ADVANCING_JOB_TYPES } from '@zenith/shared/workflow';
 
-/** 本进程 worker 标识，用于 locked_by 与卡死识别 */
-const WORKER_ID = `${process.pid}:${randomUUID().slice(0, 8)}`;
+const WORKER_ID = `${hostname()}:${process.pid}`.slice(0, 64);
+const clearedLease = { leaseToken: null, leaseUntil: null, executionDeadline: null, lockedAt: null, lockedBy: null };
+const dbNow = sql`clock_timestamp()`;
 
 export interface EnqueueJobInput {
   jobType: WorkflowJobType;
@@ -27,416 +29,335 @@ export interface EnqueueJobInput {
   instanceId?: number | null;
   taskId?: number | null;
   nodeKey?: string | null;
-  /** 幂等键：存在同 key 的作业时直接去重返回 null */
   idempotencyKey?: string | null;
   traceId?: string | null;
   priority?: number;
   maxAttempts?: number;
-  /** 何时执行（默认立即） */
+  executionTimeoutMs?: number;
   runAt?: Date;
   tenantId?: number | null;
 }
 
-/**
- * 入队一个作业（幂等）。在事务内调用时传入 executor。
- * 返回新建的作业行；若 idempotencyKey 命中已存在作业则返回 null。
- */
+/** Transactional callers persist only; reconciliation covers a missed post-commit wakeup. */
 export async function enqueueJob(input: EnqueueJobInput, executor: DbExecutor = db): Promise<WorkflowJobRow | null> {
-  const runAt = input.runAt ?? new Date();
   const values: NewWorkflowJob = {
-    jobType: input.jobType,
-    status: 'pending',
-    payload: input.payload ?? {},
-    instanceId: input.instanceId ?? null,
-    taskId: input.taskId ?? null,
-    nodeKey: input.nodeKey ?? null,
-    idempotencyKey: input.idempotencyKey ?? null,
-    traceId: input.traceId ?? currentTraceId() ?? null,
-    parentRef: currentParentRef() ?? null,
-    priority: input.priority ?? 100,
-    maxAttempts: input.maxAttempts ?? 1,
-    runAt,
-    tenantId: input.tenantId ?? null,
+    jobType: input.jobType, status: 'pending', payload: input.payload ?? {},
+    instanceId: input.instanceId ?? null, taskId: input.taskId ?? null, nodeKey: input.nodeKey ?? null,
+    idempotencyKey: input.idempotencyKey ?? null, traceId: input.traceId ?? currentTraceId() ?? null,
+    parentRef: currentParentRef() ?? null, priority: input.priority ?? 100,
+    maxAttempts: input.maxAttempts ?? 1, runAt: input.runAt ?? new Date(), tenantId: input.tenantId ?? null,
+    executionTimeoutMs: Math.max(1, Math.min(input.executionTimeoutMs ?? WORKFLOW_JOB_EXECUTION_TIMEOUT_MS, 3_600_000)),
   };
-
-  let row: WorkflowJobRow | undefined;
-  if (input.idempotencyKey) {
-    [row] = await executor.insert(workflowJobs).values(values)
-      .onConflictDoNothing({ target: workflowJobs.idempotencyKey }).returning();
-    if (!row) return null; // 去重命中
-  } else {
-    [row] = await executor.insert(workflowJobs).values(values).returning();
+  const insertion = executor.insert(workflowJobs).values(values);
+  const [row] = input.idempotencyKey
+    ? await insertion.onConflictDoNothing({ target: workflowJobs.idempotencyKey }).returning()
+    : await insertion.returning();
+  if (row) {
+    if (executor === db) scheduleJobPickup(row.id, row.runAt);
+    else rememberWorkflowJobPickup(executor, row.id, row.runAt);
   }
-  if (!row) return null;
-  scheduleJobPickup(row.id, runAt);
-  return row;
+  return row ?? null;
 }
 
-/**
- * 会推动实例继续流转的调度类作业。实例清场（退回发起人 / 撤回 / 取消 / 终态落定）时必须一并取消，
- * 否则延时唤醒、超时处理或外部回调苏醒后会对已终结 / 已退回的实例发起推进。
- * 事件派发（outbox）与 Webhook 投递属于通知类，不在此列——已发生事实仍需送达订阅方。
- * trigger_dispatch 同样不取消：fire-and-forget 触发器（任务已 approved、token 已越过节点）是
- * "已发生事实"的外呼副作用，若随终态清场取消，紧邻结束节点的触发器将永远不执行；
- * 仍在门控的 waiting 触发器（callback/block/数据变更）由 handler 自身的任务/实例状态守卫安全跳过。
- */
-export const WORKFLOW_ADVANCING_JOB_TYPES = [
-  'delay_wake', 'task_timeout', 'external_dispatch', 'subprocess_spawn', 'subprocess_join',
-] as const satisfies readonly WorkflowJobType[];
 
-/**
- * 取消符合条件的待处理 / 运行中作业（如审批已通过 → 取消该任务的 task_timeout 作业）。
- * 必须至少给一个过滤条件，禁止全量取消。
- */
+async function closeExecution(tx: DbExecutor, token: string | null, status: 'succeeded' | 'failed', detail: WorkflowJobResult & { errorMessage?: string | null } = {}) {
+  if (!token) return;
+  await tx.update(workflowJobExecutions).set({
+    status, finishedAt: dbNow,
+    durationMs: sql`greatest(0, floor(extract(epoch from (clock_timestamp() - ${workflowJobExecutions.startedAt})) * 1000))::integer`,
+    ...(detail.requestUrl !== undefined ? { requestUrl: detail.requestUrl } : {}),
+    ...(detail.requestMethod !== undefined ? { requestMethod: detail.requestMethod } : {}),
+    ...(detail.requestBody !== undefined ? { requestBody: detail.requestBody } : {}),
+    ...(detail.responseStatus !== undefined ? { responseStatus: detail.responseStatus } : {}),
+    ...(detail.responseBody !== undefined ? { responseBody: detail.responseBody } : {}),
+    errorMessage: detail.errorMessage?.slice(0, 2048) ?? null,
+  }).where(and(eq(workflowJobExecutions.leaseToken, token), eq(workflowJobExecutions.status, 'running')));
+}
+
+async function hasUncertainExternalEffect(tx: DbExecutor, token: string | null, responseStatus?: number | null): Promise<boolean> {
+  if (!token) return false;
+  const [execution] = await tx.select({ method: workflowJobExecutions.requestMethod }).from(workflowJobExecutions)
+    .where(eq(workflowJobExecutions.leaseToken, token)).limit(1);
+  return !!execution?.method
+    && !['GET', 'HEAD', 'OPTIONS'].includes(execution.method.toUpperCase())
+    && isIndeterminateExternalStatus(responseStatus);
+}
+
 export async function cancelJobs(
   filter: { taskId?: number; instanceId?: number; jobType?: WorkflowJobType; jobTypes?: readonly WorkflowJobType[] },
   executor: DbExecutor = db,
 ): Promise<number> {
-  const conds = [inArray(workflowJobs.status, ['pending', 'running'] as const)];
+  if (executor === db) return db.transaction((tx) => cancelJobs(filter, tx));
+  const conds: SQL[] = [inArray(workflowJobs.status, ['pending', 'running', 'paused'])];
   if (filter.taskId != null) conds.push(eq(workflowJobs.taskId, filter.taskId));
   if (filter.instanceId != null) conds.push(eq(workflowJobs.instanceId, filter.instanceId));
   if (filter.jobType != null) conds.push(eq(workflowJobs.jobType, filter.jobType));
-  if (filter.jobTypes != null && filter.jobTypes.length > 0) conds.push(inArray(workflowJobs.jobType, [...filter.jobTypes]));
-  if (conds.length === 1) return 0; // 仅状态条件 → 拒绝全量取消
-
-  const res = await executor.update(workflowJobs)
-    .set({ status: 'canceled', lockedAt: null, updatedAt: new Date() })
-    .where(and(...conds))
-    .returning({ id: workflowJobs.id });
-  return res.length;
+  if (filter.jobTypes?.length) conds.push(inArray(workflowJobs.jobType, [...filter.jobTypes]));
+  if (conds.length === 1) return 0;
+  // Completing an instance cancels other advancing jobs; its current owner finishes normally.
+  const current = currentWorkflowJobContext();
+  if (current && !current.signal.aborted) conds.push(ne(workflowJobs.id, current.job.id));
+  const jobs = await executor.select({ id: workflowJobs.id, leaseToken: workflowJobs.leaseToken }).from(workflowJobs)
+    .where(and(...conds)).orderBy(asc(workflowJobs.id)).for('update');
+  if (!jobs.length) return 0;
+  await executor.update(workflowJobs).set({ status: 'canceled', generation: sql`${workflowJobs.generation} + 1`, pausedRemainingMs: null, ...clearedLease })
+    .where(inArray(workflowJobs.id, jobs.map((job) => job.id)));
+  for (const job of jobs) await closeExecution(executor, job.leaseToken, 'failed', { errorMessage: 'Job canceled' });
+  return jobs.length;
 }
 
-/**
- * 重试一个失败 / 死信 / 已取消的作业（死信中心用）：
- * 重置为 pending、attempts 归零（重新拿满 maxAttempts 预算）、清锁与错误、重新计时并安排 pickup。
- * 可选 payload 覆盖即"改参重放"。仅 failed/dead/canceled 可重试，否则返回 null。
- */
+export async function pauseInstanceJobs(tx: DbExecutor, instanceId: number, jobTypes: readonly WorkflowJobType[]): Promise<void> {
+  const jobs = await tx.select({
+    id: workflowJobs.id,
+    status: workflowJobs.status,
+    generation: workflowJobs.generation,
+    leaseToken: workflowJobs.leaseToken,
+  }).from(workflowJobs)
+    .where(and(eq(workflowJobs.instanceId, instanceId), inArray(workflowJobs.jobType, [...jobTypes]),
+      inArray(workflowJobs.status, ['pending', 'running']))).orderBy(asc(workflowJobs.id)).for('update');
+  if (!jobs.length) return;
+  for (const job of jobs) {
+    const uncertain = job.status === 'running' && await hasUncertainExternalEffect(tx, job.leaseToken);
+    const message = uncertain
+      ? '外部操作结果待确认：实例挂起时外部写请求仍在执行或结果未知'
+      : 'Instance paused';
+    await tx.update(workflowJobs).set(uncertain ? {
+      status: 'dead', generation: sql`${workflowJobs.generation} + 1`,
+      pausedRemainingMs: null, lastError: message, ...clearedLease,
+    } : {
+      attempts: sql`greatest(${workflowJobs.attempts} - case when ${workflowJobs.status} = 'running' then 1 else 0 end, 0)`,
+      status: 'paused', generation: sql`${workflowJobs.generation} + 1`, ...clearedLease,
+      pausedRemainingMs: sql`greatest(0, floor(extract(epoch from (${workflowJobs.runAt} - clock_timestamp())) * 1000))::bigint`,
+    }).where(and(
+      eq(workflowJobs.id, job.id),
+      eq(workflowJobs.generation, job.generation),
+      eq(workflowJobs.status, job.status),
+    ));
+    await closeExecution(tx, job.leaseToken, 'failed', { errorMessage: message });
+  }
+}
+
+export async function resumeInstanceJobs(tx: DbExecutor, instanceId: number, jobTypes: readonly WorkflowJobType[]) {
+  return tx.update(workflowJobs).set({
+    status: 'pending', generation: sql`${workflowJobs.generation} + 1`, ...clearedLease,
+    runAt: sql`clock_timestamp() + coalesce(${workflowJobs.pausedRemainingMs}, 0) * interval '1 millisecond'`,
+    pausedRemainingMs: null,
+  }).where(and(eq(workflowJobs.instanceId, instanceId), inArray(workflowJobs.jobType, [...jobTypes]), eq(workflowJobs.status, 'paused')))
+    .returning({ id: workflowJobs.id, runAt: workflowJobs.runAt });
+}
+
 export async function retryJob(id: number, opts?: { payload?: Record<string, unknown>; runAt?: Date }): Promise<WorkflowJobRow | null> {
-  const runAt = opts?.runAt ?? new Date();
-  const patch: Partial<typeof workflowJobs.$inferInsert> = {
-    status: 'pending', attempts: 0, lockedAt: null, lockedBy: null, lastError: null, runAt, updatedAt: new Date(),
-  };
-  if (opts?.payload) patch.payload = opts.payload;
-  const [row] = await db.update(workflowJobs).set(patch)
-    .where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['failed', 'dead', 'canceled'] as const)))
-    .returning();
-  if (!row) return null;
-  scheduleJobPickup(row.id, runAt);
-  return row;
-}
-
-/** 跳过一个作业：标记 canceled（仅 pending/failed/dead 可跳过），返回更新后的行或 null。 */
-export async function skipJob(id: number): Promise<WorkflowJobRow | null> {
-  const [row] = await db.update(workflowJobs)
-    .set({ status: 'canceled', lockedAt: null, updatedAt: new Date() })
-    .where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['pending', 'failed', 'dead'] as const)))
-    .returning();
+  const [row] = await db.update(workflowJobs).set({
+    status: 'pending', generation: sql`${workflowJobs.generation} + 1`, attempts: 0,
+    lastError: null, result: null, pausedRemainingMs: null, ...clearedLease, runAt: opts?.runAt ?? new Date(),
+    ...(opts?.payload ? { payload: opts.payload, operationKey: randomUUID() } : {}),
+  }).where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['failed', 'dead', 'canceled']))).returning();
+  if (row) scheduleJobPickup(row.id, row.runAt);
   return row ?? null;
 }
 
-/** 快路径领取延迟：首跳等常规事务提交，二跳兜底慢事务（全部落空则由 pg-boss/drain 接管） */
-const IMMEDIATE_PICKUP_DELAYS_MS = [150, 800] as const;
+export async function skipJob(id: number): Promise<WorkflowJobRow | null> {
+  return db.transaction(async (tx) => {
+    const [job] = await tx.select().from(workflowJobs).where(eq(workflowJobs.id, id)).for('update');
+    if (!job || !['pending', 'running', 'paused', 'failed', 'dead'].includes(job.status)) return null;
+    const [row] = await tx.update(workflowJobs).set({ status: 'canceled', generation: sql`${workflowJobs.generation} + 1`, pausedRemainingMs: null, ...clearedLease })
+      .where(eq(workflowJobs.id, id)).returning();
+    await closeExecution(tx, job.leaseToken, 'failed', { errorMessage: 'Job canceled by operator' });
+    return row;
+  });
+}
 
-/** 通过 pg-boss 在 runAt 时唤醒统一 Worker 处理该作业（fire-and-forget，drain 为兜底） */
-export function scheduleJobPickup(jobId: number, runAt: Date): void {
-  // 进程内快路径：已到期的作业不等 pg-boss 轮询（默认约 2s/跳，事件派发→Webhook 投递等
-  // 链式作业会把延迟叠加成秒级），短暂延迟后直接领取执行。延迟是为了等业务事务提交——
-  // enqueue 常发生在事务内，未提交的 pending 行对快路径不可见；两次尝试覆盖慢事务。
-  // claim 乐观锁保证与 pg-boss 消费者/drain 互斥：谁先领到谁执行，落空方 claim 返回 null 静默退出。
-  // pg-boss 消息仍照常入队，作为跨进程与进程崩溃场景的兜底。
-  if (runAt.getTime() <= Date.now()) {
-    for (const delay of IMMEDIATE_PICKUP_DELAYS_MS) {
-      const timer = setTimeout(() => {
-        runJob(jobId).catch((err) => logger.warn('[workflow-jobs] immediate pickup failed, pg-boss will retry', { jobId, err }));
-      }, delay);
-      timer.unref?.();
+
+interface ClaimedJob { job: WorkflowJobRow; executionId: number }
+
+async function claimJob(jobId: number): Promise<ClaimedJob | null> {
+  return db.transaction(async (tx) => {
+    const token = randomUUID();
+    const [job] = await tx.update(workflowJobs).set({
+      status: 'running', lockedAt: dbNow, lockedBy: WORKER_ID, leaseToken: token,
+      leaseUntil: sql`clock_timestamp() + ${WORKFLOW_JOB_LEASE_MS} * interval '1 millisecond'`,
+      executionDeadline: sql`clock_timestamp() + ${workflowJobs.executionTimeoutMs} * interval '1 millisecond'`,
+      attempts: sql`${workflowJobs.attempts} + 1`,
+    }).where(and(eq(workflowJobs.id, jobId), eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, dbNow),
+      sql`${workflowJobs.attempts} < ${workflowJobs.maxAttempts}`)).returning();
+    if (!job) return null;
+    const [execution] = await tx.insert(workflowJobExecutions).values({
+      jobId: job.id, jobType: job.jobType, attempt: job.attempts, generation: job.generation,
+      leaseToken: token, status: 'running', startedAt: job.lockedAt, tenantId: job.tenantId,
+    }).returning({ id: workflowJobExecutions.id });
+    return { job, executionId: execution.id };
+  });
+}
+
+async function finishJob(context: WorkflowJobContext, error: unknown, result: WorkflowJobResult = {}): Promise<void> {
+  const succeeded = !error || error instanceof WorkflowJobSkip;
+  const permanent = error instanceof WorkflowJobPermanentError || (error instanceof WorkflowJobError && error.permanent);
+  const row = await db.transaction(async (tx) => {
+    const originalMessage = error instanceof Error ? error.message : error ? String(error) : null;
+    const sourceDetail = error instanceof WorkflowJobError ? error.detail ?? {} : result;
+    const uncertain = !succeeded && await hasUncertainExternalEffect(tx, context.leaseToken, sourceDetail.responseStatus);
+    const retry = !succeeded && !permanent && !uncertain && context.attempt < context.job.maxAttempts;
+    const message = uncertain ? `外部操作结果待确认：${originalMessage ?? '执行中断'}` : originalMessage;
+    const detail = { ...sourceDetail, errorMessage: message };
+    const [updated] = await tx.update(workflowJobs).set({
+      status: succeeded ? 'succeeded' : retry ? 'pending' : 'dead', ...clearedLease,
+      lastError: message?.slice(0, 2048) ?? null, result: succeeded ? result.result ?? null : null,
+      ...(retry ? { runAt: sql`clock_timestamp() + ${computeBackoffMs(context.attempt)} * interval '1 millisecond'` } : {}),
+    }).where(ownedJobCondition(context, !(error instanceof WorkflowJobDeadlineError))).returning();
+    if (!updated) return null;
+    await closeExecution(tx, context.leaseToken, succeeded ? 'succeeded' : 'failed', detail);
+    return updated;
+  });
+  if (row?.status === 'pending') scheduleJobPickup(row.id, row.runAt);
+}
+
+async function executeClaimedJob({ job, executionId }: ClaimedJob): Promise<void> {
+  const controller = new AbortController();
+  const context: WorkflowJobContext = {
+    job, executionId, attempt: job.attempts, payload: (job.payload ?? {}) as Record<string, unknown>,
+    generation: job.generation, leaseToken: job.leaseToken!, executionDeadline: job.executionDeadline!,
+    operationKey: job.operationKey, signal: controller.signal,
+  };
+  let heartbeatBusy = false;
+  const heartbeat = setInterval(() => {
+    if (heartbeatBusy || controller.signal.aborted) return;
+    heartbeatBusy = true;
+    void db.update(workflowJobs).set({
+      leaseUntil: sql`least(clock_timestamp() + ${WORKFLOW_JOB_LEASE_MS} * interval '1 millisecond', ${workflowJobs.executionDeadline})`,
+    }).where(ownedJobCondition(context)).returning({ id: workflowJobs.id }).then((rows) => {
+      if (!rows.length) controller.abort(Date.now() >= context.executionDeadline.getTime()
+        ? new WorkflowJobDeadlineError() : new WorkflowJobLeaseLostError());
+    }).catch(() => controller.abort(new WorkflowJobLeaseLostError('Workflow job heartbeat failed')))
+      .finally(() => { heartbeatBusy = false; });
+  }, WORKFLOW_JOB_HEARTBEAT_MS);
+  heartbeat.unref?.();
+  const deadline = setTimeout(
+    () => controller.abort(new WorkflowJobDeadlineError()),
+    Math.max(0, job.executionDeadline!.getTime() - Date.now()),
+  );
+  deadline.unref?.();
+  const aborted = new Promise<never>((_, reject) => {
+    controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true });
+  });
+  void aborted.catch(() => undefined);
+  try {
+    const handler = getJobHandler(job.jobType);
+    if (!handler) throw new WorkflowJobPermanentError(`Unregistered workflow handler: ${job.jobType}`);
+    const work = runWithWorkflowJobContext(context, () => runWithTraceId(job.traceId ?? randomUUID(),
+      () => runWithParentRef(`job:${job.id}`, () => handler(context))));
+    const result = (await Promise.race([work, aborted])) ?? {};
+    await flushWorkflowJobEffects(context);
+    await finishJob(context, null, result);
+  } catch (error) {
+    let failure = error;
+    try {
+      await flushWorkflowJobEffects(context);
+    } catch (effectError) {
+      failure = effectError;
     }
+    if (!(failure instanceof WorkflowJobLeaseLostError)) await finishJob(context, failure);
+  } finally {
+    clearInterval(heartbeat);
+    clearTimeout(deadline);
+    if (!controller.signal.aborted) controller.abort(new WorkflowJobLeaseLostError('Workflow job attempt finished'));
   }
-  void sendSystemJobAfter<{ jobId: number }>(WORKFLOW_JOB_QUEUE, { jobId }, runAt, {
-    retryLimit: 0, // 重试由作业自身的 attempts/退避控制，pg-boss 不再重复重试
-    expireInSeconds: 600,
-    retentionSeconds: 60 * 60 * 24,
-  }).catch((err) => logger.error('[workflow-jobs] schedule pickup failed', { jobId, err }));
 }
 
-/**
- * 乐观领取单个作业：pending → running（attempts 自增）。非 pending 或未到期返回 null。
- * runAt 守卫：实例挂起会把计时作业 runAt 推至远期冻结，此前入队的 pg-boss 消息到点
- * 触发时不得领取（否则 handler 以 Skip 收尾把作业标记 succeeded，冻结的 SLA/延时计时器被永久吞掉）。
- */
-async function claimJob(jobId: number): Promise<WorkflowJobRow | null> {
-  const [claimed] = await db.update(workflowJobs).set({
-    status: 'running',
-    lockedAt: new Date(),
-    lockedBy: WORKER_ID,
-    attempts: sql`${workflowJobs.attempts} + 1`,
-    updatedAt: new Date(),
-  }).where(and(
-    eq(workflowJobs.id, jobId),
-    eq(workflowJobs.status, 'pending'),
-    lte(workflowJobs.runAt, new Date()),
-  )).returning();
-  return claimed ?? null;
+/** This worker entry is the only production path that executes handlers. */
+export async function runJob(jobId: number): Promise<void> {
+  const claimed = await claimJob(jobId);
+  if (claimed) await executeClaimedJob(claimed);
 }
 
-/** 批量领取到期的 pending 作业：FOR UPDATE SKIP LOCKED，多 drain 并发安全。可选按 jobType 限定（恢复动作细分用）。 */
-/** 可 drain 作业的附加筛选（jobType/实例/入库时长），供 claim/recover/preview 复用。 */
-export interface DrainableFilter {
-  jobTypes?: WorkflowJobType[];
-  instanceId?: number;
-  olderThanMinutes?: number;
-}
+export interface DrainableFilter { jobTypes?: WorkflowJobType[]; instanceId?: number; olderThanMinutes?: number }
+export interface DrainWorkflowJobsOptions extends DrainableFilter { batch?: number; limit?: number }
 
-function drainableExtraConds(filter: DrainableFilter): SQL[] {
+function extraConditions(filter: DrainableFilter): SQL[] {
   const conds: SQL[] = [];
-  if (filter.jobTypes && filter.jobTypes.length > 0) conds.push(inArray(workflowJobs.jobType, filter.jobTypes));
+  if (filter.jobTypes?.length) conds.push(inArray(workflowJobs.jobType, filter.jobTypes));
   if (filter.instanceId != null) conds.push(eq(workflowJobs.instanceId, filter.instanceId));
   if (filter.olderThanMinutes != null && filter.olderThanMinutes > 0) {
-    conds.push(lte(workflowJobs.createdAt, new Date(Date.now() - filter.olderThanMinutes * 60_000)));
+    conds.push(lte(workflowJobs.createdAt, sql`clock_timestamp() - ${filter.olderThanMinutes} * interval '1 minute'`));
   }
   return conds;
 }
 
-async function claimDueJobs(limit: number, filter: DrainableFilter = {}): Promise<WorkflowJobRow[]> {
-  return db.transaction(async (tx) => {
-    const conds = [eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, new Date()), ...drainableExtraConds(filter)];
-    const due = await tx.select({ id: workflowJobs.id }).from(workflowJobs)
-      .where(and(...conds))
-      .orderBy(asc(workflowJobs.priority), asc(workflowJobs.runAt))
-      .limit(limit)
-      .for('update', { skipLocked: true });
-    if (due.length === 0) return [];
-    const ids = due.map((r) => r.id);
-    return tx.update(workflowJobs).set({
-      status: 'running',
-      lockedAt: new Date(),
-      lockedBy: WORKER_ID,
-      attempts: sql`${workflowJobs.attempts} + 1`,
-      updatedAt: new Date(),
-    }).where(inArray(workflowJobs.id, ids)).returning();
-  });
+export function expiredWorkflowJobCondition() {
+  return and(eq(workflowJobs.status, 'running'), or(isNull(workflowJobs.leaseUntil),
+    lte(workflowJobs.leaseUntil, dbNow), lte(workflowJobs.executionDeadline, dbNow)));
 }
 
-type ExecutionDetail = WorkflowJobResult & { errorMessage?: string | null };
-
-/** 写一条 workflow_job_executions 审计（best-effort，不影响主流程） */
-async function recordExecution(
-  job: WorkflowJobRow,
-  attempt: number,
-  status: 'succeeded' | 'failed',
-  startedAt: Date,
-  detail: ExecutionDetail,
-): Promise<void> {
-  try {
-    const finishedAt = new Date();
-    await db.insert(workflowJobExecutions).values({
-      jobId: job.id,
-      jobType: job.jobType,
-      attempt,
-      status,
-      requestUrl: detail.requestUrl ?? null,
-      requestMethod: detail.requestMethod ?? null,
-      requestBody: detail.requestBody ?? null,
-      responseStatus: detail.responseStatus ?? null,
-      responseBody: detail.responseBody ?? null,
-      errorMessage: detail.errorMessage ?? null,
-      durationMs: finishedAt.getTime() - startedAt.getTime(),
-      startedAt,
-      finishedAt,
-      tenantId: job.tenantId ?? null,
-    });
-  } catch (err) {
-    logger.error('[workflow-jobs] record execution failed', { jobId: job.id, err });
-  }
-}
-
-/** 失败收口：可重试则按退避重排，否则进死信 */
-async function failOrDeadLetter(job: WorkflowJobRow, attempt: number, errorMessage: string, permanent: boolean): Promise<void> {
-  const canRetry = !permanent && attempt < job.maxAttempts;
-  const trimmed = errorMessage.slice(0, 2048);
-  if (canRetry) {
-    const nextRunAt = computeNextRunAt(attempt);
-    await db.update(workflowJobs).set({
-      status: 'pending', lockedAt: null, lastError: trimmed, runAt: nextRunAt, updatedAt: new Date(),
-    }).where(eq(workflowJobs.id, job.id));
-    scheduleJobPickup(job.id, nextRunAt);
-  } else {
-    await db.update(workflowJobs).set({
-      status: 'dead', lockedAt: null, lastError: trimmed, updatedAt: new Date(),
-    }).where(eq(workflowJobs.id, job.id));
-    logger.warn('[workflow-jobs] job dead-lettered', { jobId: job.id, jobType: job.jobType, attempt, error: trimmed });
-  }
-}
-
-/** 执行一个已领取（running）的作业：分派 handler、记录审计、收口状态 */
-async function executeClaimedJob(job: WorkflowJobRow): Promise<void> {
-  const attempt = job.attempts; // 领取时已自增，即本次尝试序号
-  const startedAt = new Date();
-  const handler = getJobHandler(job.jobType);
-  if (!handler) {
-    const msg = `未注册的 jobType handler: ${job.jobType}`;
-    await failOrDeadLetter(job, attempt, msg, true);
-    await recordExecution(job, attempt, 'failed', startedAt, { errorMessage: msg });
-    return;
-  }
-
-  const payload = (job.payload ?? {}) as Record<string, unknown>;
-  try {
-    // 在作业自身 traceId + 父引用作用域内执行：handler 内部新入队的作业/事件继承 traceId
-    // 形成跨异步/跨实例链路，且记录本作业为因果父节点（时间线树形展示）
-    const result = (await runWithTraceId(
-      job.traceId ?? randomUUID(),
-      () => runWithParentRef(`job:${job.id}`, () => handler({ job, attempt, payload })),
-    )) ?? {};
-    await db.update(workflowJobs).set({
-      status: 'succeeded', lockedAt: null, lastError: null, result: result.result ?? null, updatedAt: new Date(),
-    }).where(eq(workflowJobs.id, job.id));
-    await recordExecution(job, attempt, 'succeeded', startedAt, result);
-  } catch (err) {
-    if (err instanceof WorkflowJobSkip) {
-      await db.update(workflowJobs).set({
-        status: 'succeeded', lockedAt: null, lastError: err.message, updatedAt: new Date(),
-      }).where(eq(workflowJobs.id, job.id));
-      await recordExecution(job, attempt, 'succeeded', startedAt, { errorMessage: err.message });
-      return;
-    }
-    let permanent = err instanceof WorkflowJobPermanentError;
-    let detail: ExecutionDetail = {};
-    if (err instanceof WorkflowJobError) {
-      permanent = err.permanent;
-      detail = { ...err.detail };
-    }
-    const msg = err instanceof Error ? err.message : String(err);
-    await failOrDeadLetter(job, attempt, msg, permanent);
-    await recordExecution(job, attempt, 'failed', startedAt, { ...detail, errorMessage: msg.slice(0, 2048) });
-  }
-}
-
-/** pg-boss Worker 入口：领取并执行单个作业 */
-export async function runJob(jobId: number): Promise<void> {
-  const job = await claimJob(jobId);
-  if (!job) return; // 已被领取 / 已结束 / 已取消
-  await executeClaimedJob(job);
-}
-
-/** 回收卡死的 running 作业（领取后超过宽限时间仍未结束，多因进程崩溃）→ 回 pending 重跑。可选按 jobType 限定。 */
-async function recoverStuckRunning(filter: DrainableFilter = {}): Promise<number> {
-  const cutoff = new Date(Date.now() - STUCK_RUNNING_GRACE_MS);
-  const conds = [eq(workflowJobs.status, 'running'), isNotNull(workflowJobs.lockedAt), lt(workflowJobs.lockedAt, cutoff), ...drainableExtraConds(filter)];
-  const reset = await db.update(workflowJobs).set({ status: 'pending', lockedAt: null, updatedAt: new Date() })
-    .where(and(...conds))
-    .returning({ id: workflowJobs.id });
-  if (reset.length > 0) logger.warn('[workflow-jobs] recovered stuck running jobs', { count: reset.length });
-  return reset.length;
-}
-
-export interface DrainWorkflowJobsOptions {
-  /** 单轮领取批量大小 */
-  batch?: number;
-  /** 仅处理指定作业类型（恢复动作细分用；缺省=全部类型） */
-  jobTypes?: WorkflowJobType[];
-  /** 仅处理指定实例的作业（运维动作筛选用） */
-  instanceId?: number;
-  /** 仅处理入库超过 N 分钟的作业（运维动作筛选用） */
-  olderThanMinutes?: number;
-  /** 单次处理上限（总数）；缺省=不限（周期任务用） */
-  limit?: number;
-}
-
-/**
- * 兜底扫描 + 崩溃恢复：由周期任务（每分钟）调用，也被引擎运维恢复动作按 jobType/实例细分调用。
- * 1) 回收卡死 running；2) 批量领取到期 pending 并执行（SKIP LOCKED 并发安全）。
- * 传入 limit 时，本次处理总数不超过该上限（供运维动作按预览规模精确执行）。
- */
-export async function drainWorkflowJobs(opts: DrainWorkflowJobsOptions = {}): Promise<{ recovered: number; processed: number }> {
-  const batch = opts.batch ?? 50;
-  const filter: DrainableFilter = { jobTypes: opts.jobTypes, instanceId: opts.instanceId, olderThanMinutes: opts.olderThanMinutes };
-  const totalLimit = opts.limit != null && opts.limit > 0 ? opts.limit : Infinity;
-  const recovered = await recoverStuckRunning(filter);
-  let processed = 0;
-  for (let round = 0; round < 20; round++) {
-    if (processed >= totalLimit) break;
-    const want = totalLimit === Infinity ? batch : Math.min(batch, totalLimit - processed);
-    const claimed = await claimDueJobs(want, filter);
-    if (claimed.length === 0) break;
-    for (const job of claimed) {
-      await executeClaimedJob(job);
-      processed += 1;
-    }
-    if (claimed.length < want) break;
-  }
-  return { recovered, processed };
-}
-
-/**
- * 运维动作执行前预览：统计筛选后将被处理的作业（到期 pending + 卡死 running）与未到期作业，
- * 并返回样本行，供前端展示、用户确认后再执行。
- */
-export async function previewDrainableJobs(
-  filter: DrainableFilter & { sampleLimit?: number },
-): Promise<{
-  duePending: number;
-  stuckRunning: number;
-  scheduledLater: number;
-  sample: Array<{
-    id: number;
-    jobType: WorkflowJobType;
-    status: WorkflowJobRow['status'];
-    instanceId: number | null;
-    traceId: string | null;
-    attempts: number;
-    runAt: string;
-    createdAt: string;
-    lastError: string | null;
-  }>;
+async function recoverExpiredJobs(tx: DbTransaction, filter: DrainableFilter, limit: number): Promise<{
+  recovered: number;
+  dead: number;
+  wakeups: Array<{ id: number; runAt: Date }>;
 }> {
-  const now = new Date();
-  const stuckCutoff = new Date(Date.now() - STUCK_RUNNING_GRACE_MS);
-  const extra = drainableExtraConds(filter);
-  const dueConds = and(eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, now), ...extra);
-  const laterConds = and(eq(workflowJobs.status, 'pending'), gt(workflowJobs.runAt, now), ...extra);
-  const stuckConds = and(eq(workflowJobs.status, 'running'), isNotNull(workflowJobs.lockedAt), lt(workflowJobs.lockedAt, stuckCutoff), ...extra);
-  const [duePending, scheduledLater, stuckRunning, rows] = await Promise.all([
-    db.$count(workflowJobs, dueConds),
-    db.$count(workflowJobs, laterConds),
-    db.$count(workflowJobs, stuckConds),
-    db.select({
-      id: workflowJobs.id,
-      jobType: workflowJobs.jobType,
-      status: workflowJobs.status,
-      instanceId: workflowJobs.instanceId,
-      traceId: workflowJobs.traceId,
-      attempts: workflowJobs.attempts,
-      runAt: workflowJobs.runAt,
-      createdAt: workflowJobs.createdAt,
-      lastError: workflowJobs.lastError,
-    }).from(workflowJobs).where(or(dueConds, stuckConds)).orderBy(asc(workflowJobs.runAt)).limit(filter.sampleLimit ?? 10),
-  ]);
-  const sample = rows.map((r) => ({
-    id: r.id,
-    jobType: r.jobType,
-    status: r.status,
-    instanceId: r.instanceId,
-    traceId: r.traceId,
-    attempts: r.attempts,
-    runAt: formatDateTime(r.runAt),
-    createdAt: formatDateTime(r.createdAt),
-    lastError: r.lastError ?? null,
-  }));
-  return { duePending, stuckRunning, scheduledLater, sample };
+  const expired = await tx.select().from(workflowJobs).where(and(expiredWorkflowJobCondition(), ...extraConditions(filter)))
+    .orderBy(asc(workflowJobs.id)).limit(limit).for('update', { skipLocked: true });
+  let dead = 0;
+  let recovered = 0;
+  const wakeups: Array<{ id: number; runAt: Date }> = [];
+  for (const job of expired) {
+    const uncertain = await hasUncertainExternalEffect(tx, job.leaseToken);
+    const exhausted = uncertain || job.attempts >= job.maxAttempts;
+    const message = uncertain ? '外部操作结果待确认：执行租约或执行时限已过期' : 'Workflow job lease or execution deadline expired';
+    const [updated] = await tx.update(workflowJobs).set({
+      status: exhausted ? 'dead' : 'pending', pausedRemainingMs: null,
+      ...clearedLease, runAt: dbNow, lastError: message,
+    }).where(and(eq(workflowJobs.id, job.id), eq(workflowJobs.generation, job.generation), expiredWorkflowJobCondition()))
+      .returning({ id: workflowJobs.id, status: workflowJobs.status, runAt: workflowJobs.runAt });
+    if (!updated) continue;
+    recovered++;
+    await closeExecution(tx, job.leaseToken, 'failed', { errorMessage: message });
+    if (updated.status === 'dead') dead++;
+    else wakeups.push({ id: updated.id, runAt: updated.runAt });
+  }
+  return { recovered, dead, wakeups };
 }
 
-/** 注册统一 Worker（出现在系统调度页，类型为「队列 Worker」） */
+/** Reconcile expired leases and publish wakeups without executing handlers. */
+export async function drainWorkflowJobs(opts: DrainWorkflowJobsOptions = {}): Promise<{ recovered: number; requeued: number; dead: number }> {
+  const limit = Math.max(1, Math.min(opts.limit ?? opts.batch ?? 200, 1000));
+  const recovery = await db.transaction((tx) => recoverExpiredJobs(tx, opts, limit));
+  const remaining = Math.max(0, limit - recovery.recovered);
+  const recoveredIds = recovery.wakeups.map((job) => job.id);
+  const pending = remaining === 0 ? [] : await db.select({ id: workflowJobs.id, runAt: workflowJobs.runAt }).from(workflowJobs)
+    .where(and(
+      eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, dbNow),
+      recoveredIds.length ? notInArray(workflowJobs.id, recoveredIds) : undefined,
+      ...extraConditions(opts),
+    )).orderBy(asc(workflowJobs.priority), asc(workflowJobs.runAt)).limit(remaining);
+  let requeued = 0;
+  for (const job of [...recovery.wakeups, ...pending]) {
+    if (await publishWorkflowJobPickup(job.id, job.runAt)) requeued++;
+  }
+  return { recovered: recovery.recovered, dead: recovery.dead, requeued };
+}
+
+export async function previewDrainableJobs(filter: DrainableFilter & { sampleLimit?: number }) {
+  const extra = extraConditions(filter);
+  const due = and(eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, dbNow), ...extra);
+  const later = and(eq(workflowJobs.status, 'pending'), gt(workflowJobs.runAt, dbNow), ...extra);
+  const expired = and(expiredWorkflowJobCondition(), ...extra);
+  const [duePending, stuckRunning, scheduledLater, rows] = await Promise.all([
+    db.$count(workflowJobs, due), db.$count(workflowJobs, expired), db.$count(workflowJobs, later),
+    db.select({ id: workflowJobs.id, jobType: workflowJobs.jobType, status: workflowJobs.status,
+      instanceId: workflowJobs.instanceId, traceId: workflowJobs.traceId, attempts: workflowJobs.attempts,
+      runAt: workflowJobs.runAt, createdAt: workflowJobs.createdAt, lastError: workflowJobs.lastError,
+    }).from(workflowJobs).where(or(due, expired)).orderBy(asc(workflowJobs.runAt)).limit(filter.sampleLimit ?? 10),
+  ]);
+  return { duePending, stuckRunning, scheduledLater, sample: rows.map((row) => ({
+    ...row, runAt: formatDateTime(row.runAt), createdAt: formatDateTime(row.createdAt),
+  })) };
+}
+
 export async function registerWorkflowJobWorker(): Promise<void> {
+  // Handler registration belongs to worker bootstrap, not service-module loading.
+  await import('./handlers');
   await registerSystemQueueWorker<{ jobId: number }>({
-    name: WORKFLOW_JOB_QUEUE,
-    title: '工作流作业 Worker',
-    module: '工作流',
-    description: '消费统一工作流作业队列：延时唤醒 / 审批超时 / 触发器派发 / 外部审批 / 子流程发起·汇聚 / 事件派发 / Webhook 投递。',
-    handler: async ({ jobId }) => {
-      await runJob(jobId);
-      return `作业 ${jobId} 处理完成`;
-    },
-    queueOptions: { retentionSeconds: 60 * 60 * 24 * 7 },
+    name: WORKFLOW_JOB_QUEUE, title: '工作流作业 Worker', module: '工作流',
+    description: '消费工作流唤醒消息，取得业务租约后执行作业。',
+    handler: async ({ jobId }) => { await runJob(jobId); return `作业 ${jobId} 唤醒已处理`; },
+    queueOptions: { retentionSeconds: 604800, retryLimit: 0 },
   });
 }

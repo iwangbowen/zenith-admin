@@ -4,10 +4,10 @@ import { requireRow } from '../db-assert';
 import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, asyncTaskTypeConfigs, users } from '../../db/schema';
 import type { AsyncTaskRow } from '../../db/schema';
-import type { DbExecutor } from '../../db/types';
+import type { DbTransaction } from '../../db/types';
 import { registerSystemQueueWorker, sendSystemJob, sendSystemJobAfter } from '../pg-boss-scheduler';
 import { currentUser, runWithCurrentUser, currentTraceId, runWithTraceId, currentParentRef, runWithParentRef } from '../context';
-import { getCreateTenantId } from '../tenant';
+import { exactTenantCondition, getCreateTenantId } from '../tenant';
 import type { JwtPayload } from '../../middleware/auth';
 import logger from '../logger';
 import {
@@ -38,49 +38,53 @@ export interface SubmitAsyncTaskInput {
   idempotencyKey?: string | null;
 }
 
-export interface SubmitAsyncTaskOptions {
-  /**
-   * 外部事务执行器。传入时仅在同一事务写入 pending outbox 记录，默认不立即入队；
-   * 调用方应在事务提交后调用 enqueueAsyncTask()。若提交后入队失败，pending 恢复扫描会补投。
-   */
-  executor?: DbExecutor;
-  /** 覆盖默认入队行为；外部事务中禁止设为 true。 */
-  enqueue?: boolean;
+/** 完整提交：业务记录提交后才投递，投递失败由 pending 扫描补投。 */
+export async function submitAsyncTask(input: SubmitAsyncTaskInput): Promise<AsyncTaskRow> {
+  const row = await db.transaction((tx) => persistAsyncTask(tx, input));
+  await enqueueCommittedTask(row);
+  return row;
 }
 
-/** 提交异步任务：可直接写入并入队，也可作为外部事务中的 pending outbox 原子持久化。 */
-export async function submitAsyncTask(
+/** 事务内入口：全部读取和写入共用 tx，调用方提交后再投递。 */
+export async function persistAsyncTask(
+  executor: DbTransaction,
   input: SubmitAsyncTaskInput,
-  options: SubmitAsyncTaskOptions = {},
 ): Promise<AsyncTaskRow> {
   const handler = getTaskHandler(input.taskType);
   if (!handler) throw new HTTPException(400, { message: `任务类型 "${input.taskType}" 未注册` });
-  if (options.executor && options.enqueue === true) {
-    throw new HTTPException(500, { message: '外部事务内不能直接入队异步任务' });
-  }
-  const executor = options.executor ?? db;
   const user = currentUser();
-  const policy = await getTaskTypePolicy(input.taskType);
+  const tenantId = getCreateTenantId(user);
+  const idempotencyKey = input.idempotencyKey?.slice(0, 128) || null;
+  await lockTaskAdmission(executor, input.taskType, user.userId, tenantId);
+  const scope = and(
+    eq(asyncTasks.taskType, input.taskType),
+    eq(asyncTasks.createdBy, user.userId),
+    exactTenantCondition(asyncTasks.tenantId, tenantId),
+  );
+  if (idempotencyKey) {
+    const [existing] = await executor.select().from(asyncTasks)
+      .where(and(scope, eq(asyncTasks.idempotencyKey, idempotencyKey))).limit(1);
+    if (existing) return existing;
+  }
+  const policy = await getTaskTypePolicy(executor, input.taskType);
   if (!policy.enabled) {
     throw new HTTPException(400, { message: `「${handler.title}」已暂停提交，请联系管理员` });
   }
   if (!policy.allowConcurrent) {
     const unfinished = await executor.$count(asyncTasks, and(
-      eq(asyncTasks.taskType, input.taskType),
-      eq(asyncTasks.createdBy, user.userId),
+      scope,
       inArray(asyncTasks.status, UNFINISHED_STATUSES),
     ));
     if (unfinished > 0) {
       throw new HTTPException(400, { message: `已有进行中的「${handler.title}」任务，请等待其结束后再提交` });
     }
   }
-  const idempotencyKey = input.idempotencyKey?.slice(0, 128) || null;
-  const tenantId = getCreateTenantId(user);
   const values = {
     taskType: input.taskType,
     title: input.title?.slice(0, 128) || handler.title,
     payload: input.payload ?? {},
     maxAttempts: policy.maxAttempts,
+    retryDelayMs: policy.retryDelayMs,
     idempotencyKey,
     tenantId,
     // 链路关联：任务与其提交请求同链，worker 执行时恢复该 trace 作用域
@@ -104,7 +108,7 @@ export async function submitAsyncTask(
           eq(asyncTasks.idempotencyKey, idempotencyKey),
           eq(asyncTasks.taskType, input.taskType),
           eq(asyncTasks.createdBy, user.userId),
-          tenantId === null ? isNull(asyncTasks.tenantId) : eq(asyncTasks.tenantId, tenantId),
+          exactTenantCondition(asyncTasks.tenantId, tenantId),
         ))
         .limit(1);
       if (existing) return existing;
@@ -113,9 +117,21 @@ export async function submitAsyncTask(
   } else {
     [row] = await executor.insert(asyncTasks).values(values).returning();
   }
-  const shouldEnqueue = options.enqueue ?? !options.executor;
-  if (shouldEnqueue) await enqueueAsyncTask(row.id);
   return row;
+}
+
+/** 同一提交作用域串行准入，保护 allowConcurrent 的 count + insert。 */
+async function lockTaskAdmission(executor: DbTransaction, taskType: string, userId: number | null, tenantId: number | null): Promise<void> {
+  const key = JSON.stringify(['async-task-admission', tenantId, userId, taskType]);
+  await executor.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
+}
+
+async function enqueueCommittedTask(row: AsyncTaskRow): Promise<void> {
+  if (row.status !== 'pending') return;
+  await enqueueAsyncTask(row.id).catch((err) => {
+    logger.error('[task-center] 已持久化任务投递失败，等待 pending 扫描补投', { taskId: row.id, err });
+  });
+  pushTaskProgress(row, { force: true });
 }
 
 export async function enqueueAsyncTask(taskId: number): Promise<void> {
@@ -284,8 +300,7 @@ export async function runAsyncTask(taskId: number): Promise<string> {
       .from(asyncTasks).where(eq(asyncTasks.id, taskId)).limit(1);
     const canRetry = claimed.attempts < claimed.maxAttempts && !(currentRow?.cancelRequested ?? false);
     if (canRetry) {
-      const policy = await getTaskTypePolicy(claimed.taskType);
-      const delayMs = retryDelayFor(claimed.attempts, policy.retryDelayMs);
+      const delayMs = retryDelayFor(claimed.attempts, claimed.retryDelayMs);
       const nextRunAt = new Date(Date.now() + delayMs);
       const [retryRow] = await db.update(asyncTasks)
         .set({
@@ -346,32 +361,33 @@ export async function resumeAsyncTask(taskId: number): Promise<AsyncTaskRow> {
     .where(and(eq(asyncTasks.id, taskId), inArray(asyncTasks.status, ['failed', 'cancelled'])))
     .returning();
   const row = requireRow(maybeRow, '仅失败或已取消的任务可以断点恢复', 400);
-  await enqueueAsyncTask(row.id);
-  pushTaskProgress(row, { force: true });
+  await enqueueCommittedTask(row);
   return row;
 }
 
 /** 重新开始：清空进度 / 断点 / 结果 / 明细，从头执行（任意已结束状态可用） */
-export async function restartAsyncTask(
-  taskId: number,
-  options: SubmitAsyncTaskOptions = {},
-): Promise<AsyncTaskRow> {
-  if (options.executor && options.enqueue === true) {
-    throw new HTTPException(500, { message: '外部事务内不能直接入队异步任务' });
-  }
-  if (!options.executor) {
-    const row = await db.transaction((tx) => restartAsyncTask(taskId, { executor: tx }));
-    if (options.enqueue !== false) {
-      await enqueueAsyncTask(row.id);
-      pushTaskProgress(row, { force: true });
-    }
-    return row;
-  }
-  const executor = options.executor ?? db;
-  const [maybeExisting] = await executor.select({ taskType: asyncTasks.taskType }).from(asyncTasks)
+export async function restartAsyncTask(taskId: number): Promise<AsyncTaskRow> {
+  const row = await db.transaction((tx) => restartAsyncTaskInTransaction(tx, taskId));
+  await enqueueCommittedTask(row);
+  return row;
+}
+
+export async function restartAsyncTaskInTransaction(executor: DbTransaction, taskId: number): Promise<AsyncTaskRow> {
+  const [maybeExisting] = await executor.select({ taskType: asyncTasks.taskType, createdBy: asyncTasks.createdBy, tenantId: asyncTasks.tenantId }).from(asyncTasks)
     .where(eq(asyncTasks.id, taskId)).limit(1);
   const existing = requireRow(maybeExisting, '任务不存在');
-  const policy = await getTaskTypePolicy(existing.taskType);
+  await lockTaskAdmission(executor, existing.taskType, existing.createdBy, existing.tenantId);
+  const policy = await getTaskTypePolicy(executor, existing.taskType);
+  if (!policy.enabled) throw new HTTPException(400, { message: '该任务类型已暂停提交' });
+  if (!policy.allowConcurrent) {
+    const unfinished = await executor.$count(asyncTasks, and(
+      eq(asyncTasks.taskType, existing.taskType),
+      existing.createdBy === null ? isNull(asyncTasks.createdBy) : eq(asyncTasks.createdBy, existing.createdBy),
+      exactTenantCondition(asyncTasks.tenantId, existing.tenantId),
+      inArray(asyncTasks.status, UNFINISHED_STATUSES),
+    ));
+    if (unfinished > 0) throw new HTTPException(400, { message: '已有进行中的同类型任务，请等待其结束后再提交' });
+  }
   const [maybeRow] = await executor.update(asyncTasks)
     .set({
       status: 'pending',
@@ -384,6 +400,7 @@ export async function restartAsyncTask(
       cancelRequested: false,
       attempts: 0,
       maxAttempts: policy.maxAttempts, // 重新开始时按当前策略重新快照
+      retryDelayMs: policy.retryDelayMs,
       startedAt: null,
       completedAt: null,
       heartbeatAt: null,

@@ -9,6 +9,7 @@ export const SEED_MENUS_SETTINGS: Menu[] = [
   { id: 2012, parentId: 2010, title: '修改设置', type: 'button', permission: 'system:setting:update', sort: 1, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2020, parentId: 2000, title: '身份安全', name: 'SystemIdentitySecurity', path: '/system/identity-security', component: 'system/identity-security/IdentitySecurityPage', icon: 'Fingerprint', type: 'menu', sort: 2, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2021, parentId: 2020, title: '管理策略', type: 'button', permission: 'system:identity-security:manage', sort: 1, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2022, parentId: 2020, title: '查询风险事件', type: 'button', permission: 'system:login-risk:list', sort: 0, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2030, parentId: 2000, title: '企业身份源', name: 'SystemIdentityProviders', path: '/system/identity-providers', component: 'system/identity-providers/IdentityProvidersPage', icon: 'Building2', type: 'menu', sort: 3, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2031, parentId: 2030, title: '管理身份源', type: 'button', permission: 'system:identity-provider:manage', sort: 1, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 

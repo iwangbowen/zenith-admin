@@ -206,9 +206,8 @@ export async function runWorkflowEngineAction(
       olderThanMinutes: filter?.olderThanMinutes,
       limit: clampActionLimit(filter?.limit),
     });
-    const detail: Record<string, number> = { recovered: r.recovered, processed: r.processed };
-    const summary = Object.entries(detail).map(([k, v]) => `${k} ${v}`).join(' · ');
-    return { action, ok: true, message: `${meta.label}完成：${summary || '无待处理项'}`, detail };
+    const detail = { recovered: r.recovered, requeued: r.requeued, dead: r.dead };
+    return { action, ok: true, message: `${meta.label}已提交补投 ${r.requeued} 项，回收 ${r.recovered} 项，重试耗尽 ${r.dead} 项`, detail };
   } catch (err) {
     logger.error('工作流引擎运维动作执行失败', { err, action });
     return { action, ok: false, message: `${meta.label}失败：${err instanceof Error ? err.message : String(err)}`, detail: {} };

@@ -18,6 +18,8 @@ import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { encryptField, decryptField } from '../../lib/encryption';
 import { assertSafeWorkflowUrl, buildConnectorUrl, workflowHttp } from '../../lib/workflow-outbound';
+import { markWorkflowExternalEffect } from '../../lib/workflow-jobs/external-effects';
+import { currentWorkflowJobContext } from '../../lib/workflow-jobs/execution-context';
 import { sendMail } from '../../lib/email';
 import { sendSmsByProvider, renderTemplate } from '../../lib/sms-sender';
 import { breakerAllow, breakerSuccess, breakerFailure, breakerState, breakerReset } from '../../lib/workflow-connector-breaker';
@@ -313,6 +315,8 @@ async function invokeEmail(connector: WorkflowConnectorRow, opts: ConnectorInvok
   const subject = (cfg.subject as string) || '工作流通知';
   const started = Date.now();
   try {
+    currentWorkflowJobContext()?.signal.throwIfAborted();
+    await markWorkflowExternalEffect('EMAIL', 'email');
     await sendMail(to, subject, extractMessage(opts) || subject);
     return { ok: true, status: 200, durationMs: Date.now() - started, responseSnippet: `已发送至 ${to}`, error: null };
   } catch (err) {
@@ -331,6 +335,8 @@ async function invokeSms(connector: WorkflowConnectorRow, opts: ConnectorInvokeO
   if (!tpl) return fail(`短信模板不存在：${String(cfg.templateCode ?? '')}`);
   const vars = (opts.body && typeof opts.body === 'object' ? opts.body : {}) as Record<string, string>;
   const started = Date.now();
+  currentWorkflowJobContext()?.signal.throwIfAborted();
+  await markWorkflowExternalEffect('SMS', 'sms');
   const res = await sendSmsByProvider({ config: smsCfg, template: tpl, phone, variables: vars, renderedContent: renderTemplate(tpl.content, vars) });
   return res.success
     ? { ok: true, status: 200, durationMs: Date.now() - started, responseSnippet: `已发送至 ${phone}`, error: null }

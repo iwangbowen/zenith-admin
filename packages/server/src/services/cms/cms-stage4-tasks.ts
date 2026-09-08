@@ -12,6 +12,7 @@ import { formatDate } from '../../lib/datetime';
 import {
   enqueueAsyncTask,
   mapAsyncTask,
+  persistAsyncTask,
   registerTaskHandler,
   submitAsyncTask,
 } from '../../lib/task-center';
@@ -263,7 +264,7 @@ export async function insertCmsSubscriptionNotificationOutbox(
     username: 'admin',
     roles: ['super_admin'],
     tenantId: null,
-  }, () => submitAsyncTask({
+  }, () => persistAsyncTask(tx, {
     taskType: 'cms-subscription-notify',
     title: `CMS 订阅通知：${content.title.slice(0, 80)}`,
     payload: {
@@ -277,7 +278,7 @@ export async function insertCmsSubscriptionNotificationOutbox(
       subscriberCutoffId,
     },
     idempotencyKey: `cms-subscription-notify:${content.id}:v${content.version}`,
-  }, { executor: tx }));
+  }));
   return mapAsyncTask(row);
 }
 

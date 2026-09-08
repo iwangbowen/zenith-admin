@@ -7,6 +7,7 @@ export const mockCmsPublishingTasks: CmsPublishingTask[] = SEED_CMS_PUBLISH_TASK
   module: 'CMS内容管理',
   errorMessage: null,
   cancelRequested: false,
+  retryDelayMs: 5000,
   nextRunAt: null,
   createdBy: 1,
   createdByName: '管理员',

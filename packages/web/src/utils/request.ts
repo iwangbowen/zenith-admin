@@ -24,7 +24,7 @@ class Request extends HttpClient {
     return new Promise<ApiResponseWithMeta<T>>((resolve) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${this.baseUrl}${url}`);
-      for (const [name, value] of Object.entries(this.authHeaders())) xhr.setRequestHeader(name, value);
+      this.getHeaders(body, restOpts.headers).forEach((value, name) => xhr.setRequestHeader(name, value));
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
       });

@@ -92,7 +92,7 @@ export async function refreshCmsWidgetTargets(
 
 async function submitRefreshTask(
   input: { widgetIds?: number[]; homeSiteIds?: number[] },
-  options?: { enqueue?: boolean; eventKey?: string; debounceBySite?: boolean },
+  options?: { eventKey?: string; debounceBySite?: boolean },
 ): Promise<AsyncTask | null> {
   const widgetIds = uniquePositiveInts(input.widgetIds);
   let homeSiteIds = uniquePositiveInts(input.homeSiteIds);
@@ -117,7 +117,7 @@ async function submitRefreshTask(
         widgetIds: [], homeSiteIds, siteIds, notBefore,
       },
       idempotencyKey,
-    }, { enqueue: options?.enqueue });
+    });
     return mapAsyncTask(row);
   }
   const row = await submitAsyncTask({
@@ -125,7 +125,7 @@ async function submitRefreshTask(
     title: 'CMS 页面部件引用刷新',
     payload: { widgetIds, homeSiteIds },
     idempotencyKey,
-  }, { enqueue: options?.enqueue });
+  });
   return mapAsyncTask(row);
 }
 

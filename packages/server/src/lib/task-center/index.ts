@@ -4,15 +4,16 @@ export { ensureTaskTypeConfig, getTaskTypePolicy, listTaskTypeConfigs, updateTas
 export { mapAsyncTask, pushTaskProgress } from './map';
 export {
   submitAsyncTask,
+  persistAsyncTask,
   enqueueAsyncTask,
   runAsyncTask,
   requestCancelAsyncTask,
   resumeAsyncTask,
   restartAsyncTask,
+  restartAsyncTaskInTransaction,
   drainAsyncTasks,
   cleanupAsyncTasks,
   countCleanableAsyncTasks,
   registerAsyncTaskWorker,
   type SubmitAsyncTaskInput,
-  type SubmitAsyncTaskOptions,
 } from './runner';

@@ -11,6 +11,7 @@
 import { config } from '../config';
 import { httpRequest, type HttpRequestOptions, type HttpResponse } from './http-client';
 import { assertSafeOutboundUrl } from './outbound-url';
+import { currentWorkflowJobContext } from './workflow-jobs/execution-context';
 
 type WorkflowHttpOptions = Omit<HttpRequestOptions, 'ssrfProtection' | 'ssrfAllowlist' | 'proxy'>;
 
@@ -23,8 +24,19 @@ export async function assertSafeWorkflowUrl(url: string): Promise<URL> {
   return assertSafeOutboundUrl(url, workflowOutboundAllowlist());
 }
 
-export function workflowHttp(url: string, opts: WorkflowHttpOptions = {}): Promise<HttpResponse> {
-  return httpRequest(url, { ...opts, ssrfProtection: true, ssrfAllowlist: workflowOutboundAllowlist() });
+export async function workflowHttp(url: string, opts: WorkflowHttpOptions = {}): Promise<HttpResponse> {
+  const context = currentWorkflowJobContext();
+  if (!context) return httpRequest(url, { ...opts, ssrfProtection: true, ssrfAllowlist: workflowOutboundAllowlist() });
+  context.signal.throwIfAborted();
+  const signal = opts.signal ? AbortSignal.any([opts.signal, context.signal]) : context.signal;
+  const headers = new Headers(opts.headers);
+  headers.set('X-Idempotency-Key', context.operationKey);
+  const { markWorkflowExternalEffect } = await import('./workflow-jobs/external-effects');
+  await markWorkflowExternalEffect(opts.method ?? 'GET', url);
+  return httpRequest(url, {
+    ...opts, headers, signal, retries: 0,
+    ssrfProtection: true, ssrfAllowlist: workflowOutboundAllowlist(),
+  });
 }
 
 export function workflowHttpGet(url: string, opts: Omit<WorkflowHttpOptions, 'method' | 'body'> = {}): Promise<HttpResponse> {

@@ -58,7 +58,7 @@
 | 角色管理 | `/system/roles` | `system/roles/RolesPage` | `system:role:list`、`system:role:create`、`system:role:update`、`system:role:delete`、`system:role:assign` |
 | 租户管理 | `/system/tenants` | `system/tenants/TenantsPage` | `system:tenant:list`、`system:tenant:create`、`system:tenant:update`、`system:tenant:delete` |
 | 租户套餐 | `/system/tenant-packages` | `system/tenant-packages/TenantPackagesPage` | `system:tenant-package:list`、`system:tenant-package:create`、`system:tenant-package:update`、`system:tenant-package:delete`、`system:tenant-package:assign` |
-| 身份安全 | `/system/identity-security` | `system/identity-security/IdentitySecurityPage` | `system:identity-security:manage` |
+| 身份安全 | `/system/identity-security` | `system/identity-security/IdentitySecurityPage` | 策略：`system:identity-security:manage`；风险查询：`system:login-risk:list` |
 | 企业身份源 | `/system/identity-providers` | `system/identity-providers/IdentityProvidersPage` | `system:identity-provider:manage` |
 | 通讯录同步源 | `/system/directory-sync/sources` | `system/directory-sync/DirectorySyncSourcesPage` | `system:dirsync-source:list`、`system:dirsync-source:create`、`system:dirsync-source:edit`、`system:dirsync-source:delete`、`system:dirsync-source:test`、`system:dirsync-source:preview`、`system:dirsync-source:run` |
 | 通讯录同步记录 | `/system/directory-sync/logs` | `system/directory-sync/DirectorySyncLogsPage` | `system:dirsync-log:list`、`system:dirsync-log:detail`、`system:dirsync-log:retry` |
@@ -130,6 +130,8 @@
 密码规则（`password`）是匿名可见字段：登录 / 注册 / 改密页通过 `GET /api/settings/public` 与 `/api/settings/me` 读取并做前端提示。
 
 MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现覆盖 TOTP 绑定、确认、停用与登录验证。新设备触发挑战时写入 `login_risk_events`，风险等级为 `low`、`medium`、`high`，动作是 `allow`、`challenge`、`block`。
+
+风险事件查询独立要求 `system:login-risk:list`，管理策略权限不隐含读取权限。租户用户只查看自身租户事件，普通平台用户只查看平台事件；平台超管全局视角可跨租户查看，切换租户视角后只查看该租户。事件归属在登录时按账号的真实租户写入，日志不继承平台记录。列表及总数使用同一 SQL 租户与关键字条件，按 `createdAt DESC, id DESC` 稳定排序并在数据库分页；索引覆盖租户和全局两种时间查询。
 
 ### 个人安全与审计接口
 
@@ -249,7 +251,7 @@ MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现
 | `/api/user-groups` | 用户组全量/分页/详情、创建、更新、批量删除、成员维护、角色绑定、动态规则预览与同步 |
 | `/api/tenants` | 租户分页/全量/详情、创建、更新、删除、统计 |
 | `/api/tenant-packages` | 套餐分页/全量/详情、创建、更新、分配功能、删除 |
-| `/api/identity-security` | 身份安全策略、登录风险事件 |
+| `/api/identity-security` | 登录风险事件（策略经 `/api/settings/identity-security` 读写） |
 | `/api/identity-providers` | 企业身份源 CRUD、LDAP/AD 测试、目录用户搜索、目录用户同步 |
 | `/api/directory-sync` | 同步源、同步运行、运行明细、冲突裁决、回调、SCIM 端点 |
 | `/api/sessions` | 在线会话列表、强制指定会话下线、强制指定用户全部会话下线；可见范围与用户管理对齐——平台超管平台视角看全部、租户视角只看该租户，租户管理员只看本租户，非平台超管看不到也不能踢掉平台超管会话（越界按 404 处理） |

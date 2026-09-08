@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import { asyncTaskTypeConfigs } from '../../db/schema';
 import { RETRY_BACKOFF_MAX_MS, type TaskHandlerRegistration, type TaskTypeRuntimePolicy } from './types';
 import { getTaskHandler, registrationDefaults } from './registry';
@@ -30,26 +31,20 @@ export async function ensureTaskTypeConfig(handler: TaskHandlerRegistration): Pr
   }).onConflictDoNothing({ target: asyncTaskTypeConfigs.taskType });
 }
 
-/** 解析生效策略：DB 覆盖值优先，查询失败回落注册默认值 */
-export async function getTaskTypePolicy(taskType: string): Promise<TaskTypeRuntimePolicy> {
+/** 仅缺少覆盖行时使用注册默认值；读取故障交由调用方事务回滚。 */
+export async function getTaskTypePolicy(executor: DbExecutor, taskType: string): Promise<TaskTypeRuntimePolicy> {
   const handler = getTaskHandler(taskType);
-  const fallback: TaskTypeRuntimePolicy = handler
-    ? defaultsOf(handler)
-    : { enabled: true, allowConcurrent: true, maxAttempts: 1, retryDelayMs: 5000, retentionDays: null };
-  try {
-    const [row] = await db.select().from(asyncTaskTypeConfigs)
-      .where(eq(asyncTaskTypeConfigs.taskType, taskType)).limit(1);
-    if (!row) return fallback;
-    return {
-      enabled: row.enabled,
-      allowConcurrent: row.allowConcurrent,
-      maxAttempts: clampAttempts(row.maxAttempts),
-      retryDelayMs: clampDelay(row.retryDelayMs),
-      retentionDays: row.retentionDays ?? null,
-    };
-  } catch {
-    return fallback;
-  }
+  if (!handler) throw new HTTPException(400, { message: `任务类型 "${taskType}" 未注册` });
+  const [row] = await executor.select().from(asyncTaskTypeConfigs)
+    .where(eq(asyncTaskTypeConfigs.taskType, taskType)).limit(1);
+  if (!row) return defaultsOf(handler);
+  return {
+    enabled: row.enabled,
+    allowConcurrent: row.allowConcurrent,
+    maxAttempts: clampAttempts(row.maxAttempts),
+    retryDelayMs: clampDelay(row.retryDelayMs),
+    retentionDays: row.retentionDays ?? null,
+  };
 }
 
 export async function listTaskTypeConfigs(): Promise<Map<string, TaskTypeRuntimePolicy>> {
@@ -83,5 +78,5 @@ export async function updateTaskTypePolicy(taskType: string, input: UpdateTaskTy
   await db.insert(asyncTaskTypeConfigs)
     .values({ taskType, ...values })
     .onConflictDoUpdate({ target: asyncTaskTypeConfigs.taskType, set: values });
-  return getTaskTypePolicy(taskType);
+  return getTaskTypePolicy(db, taskType);
 }

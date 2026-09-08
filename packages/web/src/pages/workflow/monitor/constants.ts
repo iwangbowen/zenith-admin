@@ -12,6 +12,7 @@ export const WORKFLOW_JOB_STATUS_META: Record<
 > & Record<string, { text: string; color: 'grey' | 'blue' | 'green' | 'orange' | 'red' }> = {
   pending: { text: '待处理', color: 'grey' },
   running: { text: '运行中', color: 'blue' },
+  paused: { text: '已暂停', color: 'grey' },
   succeeded: { text: '成功', color: 'green' },
   failed: { text: '失败', color: 'orange' },
   dead: { text: '死信', color: 'red' },

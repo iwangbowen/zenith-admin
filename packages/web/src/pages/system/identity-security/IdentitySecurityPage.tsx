@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { Button, Form, Tabs, Toast } from '@douyinfe/semi-ui';
+import { Button, Empty, Form, Tabs, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Save } from 'lucide-react';
@@ -10,7 +9,8 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { dateTimeColumn } from '@/utils/table-columns';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
+import { usePermission } from '@/hooks/usePermission';
 import { identitySecurityKeys, useLoginRiskEventList } from '@/hooks/queries/identity-security';
 import { useSaveSettings, useSettings } from '@/hooks/queries/settings';
 import { ApiError } from '@/lib/query';
@@ -24,17 +24,26 @@ const { TabPane } = Tabs;
 const defaultPolicy: IdentitySecuritySettings = identitySecuritySettingsSchema.parse({});
 
 export default function IdentitySecurityPage() {
-  const [activeTab, setActiveTab] = useUrlTabState(['policy', 'risk'] as const, 'policy');
-  const queryClient = useQueryClient();
+  const { hasPermission } = usePermission();
+  const canManagePolicy = hasPermission('system:identity-security:manage');
+  const canReadRiskEvents = hasPermission('system:login-risk:list');
+  const tabs: Array<'policy' | 'risk'> = [
+    ...(canManagePolicy ? ['policy' as const] : []),
+    ...(canReadRiskEvents ? ['risk' as const] : []),
+  ];
+  const [activeTab, setActiveTab] = useUrlTabState(tabs, canManagePolicy ? 'policy' : 'risk');
   const formApi = useRef<FormApi | null>(null);
   const [policy, setPolicy] = useState<IdentitySecuritySettings>(defaultPolicy);
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset } = useListSearch({
+    defaults: { keyword: '' }, listKey: identitySecurityKeys.riskLists,
+  });
   // 页面级全局配置表单（无弹窗、保存后不关闭），不走 useEditModal；策略由运行时设置 identitySecurity 模块承载
-  const policyQuery = useSettings('identitySecurity');
+  const policyQuery = useSettings('identitySecurity', canManagePolicy && activeTab === 'policy');
   const savePolicyMutation = useSaveSettings('identitySecurity');
-  const riskQuery = useLoginRiskEventList({ page, pageSize, keyword: submittedKeyword.trim() || undefined });
+  const riskQuery = useLoginRiskEventList(
+    { page, pageSize, keyword: submittedParams.keyword.trim() || undefined },
+    canReadRiskEvents && activeTab === 'risk',
+  );
 
   useEffect(() => {
     if (policyQuery.data) setPolicy(policyQuery.data.effective);
@@ -57,19 +66,6 @@ export default function IdentitySecurityPage() {
     }
   }
 
-  function handleRiskSearch() {
-    setPage(1);
-    setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: identitySecurityKeys.riskLists });
-  }
-
-  function handleRiskReset() {
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: identitySecurityKeys.riskLists });
-  }
-
   const riskColumns: ColumnProps<LoginRiskEvent>[] = [
     { title: '账号', dataIndex: 'username', width: 140 },
     {
@@ -85,10 +81,12 @@ export default function IdentitySecurityPage() {
     dateTimeColumn('时间', 'createdAt'),
   ];
 
+  if (tabs.length === 0) return <Empty description="无访问权限" />;
+
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" keepDOM={false} activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
-        <TabPane tab="策略配置" itemKey="policy">
+        {canManagePolicy && <TabPane tab="策略配置" itemKey="policy">
           <SearchToolbar>
             <Button type="primary" icon={<Save size={14} />} loading={savePolicyMutation.isPending} onClick={handleSavePolicy}>保存</Button>
             <RefreshButton onClick={() => void policyQuery.refetch()} loading={policyQuery.isFetching}>重载</RefreshButton>
@@ -139,19 +137,19 @@ export default function IdentitySecurityPage() {
               />
             </Form>
           </div>
-        </TabPane>
+        </TabPane>}
 
-        <TabPane tab="风险事件" itemKey="risk">
+        {canReadRiskEvents && <TabPane tab="风险事件" itemKey="risk">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="搜索账号、IP、原因" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleRiskSearch} />}
-            onSearch={handleRiskSearch}
-            onReset={handleRiskReset}
+            keyword={<KeywordInput placeholder="搜索账号、IP、原因" value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />}
+            onSearch={handleSearch}
+            onReset={handleReset}
           />
           <ConfigurableTable<LoginRiskEvent>
             columns={riskColumns}
             {...listTableProps(riskQuery, { pagination: buildPagination })}
           />
-        </TabPane>
+        </TabPane>}
       </Tabs>
     </div>
   );

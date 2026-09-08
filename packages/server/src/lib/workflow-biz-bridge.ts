@@ -101,16 +101,16 @@ export interface WorkflowResultHandlers {
 export function onWorkflowResult(bizType: string, handlers: WorkflowResultHandlers): void {
   const match = (instance: WorkflowInstance) => instance.bizType === bizType && !!instance.bizId;
   if (handlers.onCreated) {
-    workflowEventBus.on('instance.created', (e) => { if (match(e.instance)) void handlers.onCreated?.(e.instance); });
+    workflowEventBus.on('instance.created', (e) => match(e.instance) ? handlers.onCreated?.(e.instance) : undefined);
   }
   if (handlers.onApproved) {
-    workflowEventBus.on('instance.approved', (e) => { if (match(e.instance)) void handlers.onApproved?.(e.instance); });
+    workflowEventBus.on('instance.approved', (e) => match(e.instance) ? handlers.onApproved?.(e.instance) : undefined);
   }
   if (handlers.onRejected) {
-    workflowEventBus.on('instance.rejected', (e) => { if (match(e.instance)) void handlers.onRejected?.(e.instance); });
+    workflowEventBus.on('instance.rejected', (e) => match(e.instance) ? handlers.onRejected?.(e.instance) : undefined);
   }
   if (handlers.onWithdrawn) {
-    workflowEventBus.on('instance.withdrawn', (e) => { if (match(e.instance)) void handlers.onWithdrawn?.(e.instance); });
+    workflowEventBus.on('instance.withdrawn', (e) => match(e.instance) ? handlers.onWithdrawn?.(e.instance) : undefined);
   }
 }
 

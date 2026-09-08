@@ -49,7 +49,10 @@ export function registerChatWorkflowSubscriber(): void {
         status: 'pending',
         instanceId: event.instanceId,
       };
-      await publishTargeted(channelId, [task.assigneeId], { type: 'card', content: card.title, extra: { card } });
+      await publishTargeted(channelId, [task.assigneeId], {
+        type: 'card', content: card.title, extra: { card },
+        dedupeKey: `workflow-event:${event.eventId}:chat`,
+      });
     } catch (err) {
       logger.error('[chat-workflow] 审批卡片推送失败', { err, taskId: task.id });
     }
@@ -70,7 +73,7 @@ export function registerChatWorkflowSubscriber(): void {
 
   // 流程结束 → 通知发起人
   const notifyInitiator = (kind: 'approved' | 'rejected' | 'withdrawn' | 'returned') => async (
-    event: { instanceId: number; instance: { initiatorId: number; title: string; serialNo?: string | null } },
+    event: { eventId: string; instanceId: number; instance: { initiatorId: number; title: string; serialNo?: string | null } },
   ) => {
     const inst = event.instance;
     const [snapRow] = await db.select({ snapshot: workflowInstances.definitionSnapshot })
@@ -96,7 +99,10 @@ export function registerChatWorkflowSubscriber(): void {
         statusText: m.statusText,
         instanceId: event.instanceId,
       };
-      await publishTargeted(channelId, [inst.initiatorId], { type: 'card', content: card.title, extra: { card } });
+      await publishTargeted(channelId, [inst.initiatorId], {
+        type: 'card', content: card.title, extra: { card },
+        dedupeKey: `workflow-event:${event.eventId}:chat`,
+      });
     } catch (err) {
       logger.error('[chat-workflow] 结果卡片推送失败', { err, instanceId: event.instanceId });
     }

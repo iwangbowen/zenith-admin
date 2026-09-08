@@ -6,7 +6,7 @@ const offMin = (minutes: number) => mockDateTimeOffset(minutes * 60_000);
 
 
 /** 统一作业账本（workflow_jobs）演示数据，可被 retry/skip handler 原地变更 */
-const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionName' | 'tenantId'>> = [
+const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionName' | 'tenantId' | 'generation' | 'leaseUntil' | 'executionDeadline' | 'executionTimeoutMs'>> = [
   {
     id: 9001,
     jobType: 'webhook_delivery',
@@ -296,6 +296,10 @@ const DEMO_JOB_FLOWS: Record<number, { flow: string; title: string }> = {
 
 export const mockWorkflowJobs: WorkflowJob[] = baseWorkflowJobs.map((j) => ({
   ...j,
+  generation: 0,
+  executionTimeoutMs: 600_000,
+  leaseUntil: j.status === 'running' ? offMin(j.id === 9013 ? -10 : 1) : null,
+  executionDeadline: j.status === 'running' ? offMin(j.id === 9013 ? -4 : 9) : null,
   tenantId: 1,
   definitionName: j.instanceId != null ? (DEMO_JOB_FLOWS[j.instanceId]?.flow ?? '演示流程') : null,
   instanceTitle: j.instanceId != null ? (DEMO_JOB_FLOWS[j.instanceId]?.title ?? `演示实例 #${j.instanceId}`) : null,
@@ -307,6 +311,7 @@ export const mockWorkflowJobExecutions: WorkflowJobExecution[] = [
     jobId: 9001,
     jobType: 'webhook_delivery',
     attempt: 1,
+    generation: 0,
     status: 'failed',
     requestUrl: 'https://erp.example.com/hooks/wf',
     requestMethod: 'POST',
@@ -324,6 +329,7 @@ export const mockWorkflowJobExecutions: WorkflowJobExecution[] = [
     jobId: 9001,
     jobType: 'webhook_delivery',
     attempt: 5,
+    generation: 0,
     status: 'failed',
     requestUrl: 'https://erp.example.com/hooks/wf',
     requestMethod: 'POST',
@@ -341,6 +347,7 @@ export const mockWorkflowJobExecutions: WorkflowJobExecution[] = [
     jobId: 9002,
     jobType: 'external_dispatch',
     attempt: 1,
+    generation: 0,
     status: 'failed',
     requestUrl: 'https://risk.example.com/approve',
     requestMethod: 'POST',
@@ -358,6 +365,7 @@ export const mockWorkflowJobExecutions: WorkflowJobExecution[] = [
     jobId: 9003,
     jobType: 'trigger_dispatch',
     attempt: 1,
+    generation: 0,
     status: 'succeeded',
     requestUrl: 'https://finance.example.com/notify',
     requestMethod: 'POST',

@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { DbExecutor } from '../../db/types';
+import type { DbTransaction } from '../../db/types';
 
 const mocks = vi.hoisted(() => ({
-  submitAsyncTask: vi.fn(),
+  persistAsyncTask: vi.fn(),
   enqueueAsyncTask: vi.fn(),
 }));
 vi.mock('../../lib/task-center', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../lib/task-center')>(),
-  submitAsyncTask: mocks.submitAsyncTask,
+  persistAsyncTask: mocks.persistAsyncTask,
   enqueueAsyncTask: mocks.enqueueAsyncTask,
   mapAsyncTask: (row: unknown) => row,
 }));
@@ -26,9 +26,9 @@ import type { CmsContentRow } from '../../db/schema';
 
 describe('CMS standard publish pipeline behavior', () => {
   it('persists a content snapshot task through the caller transaction without pre-commit enqueue', async () => {
-    const executor = {} as DbExecutor;
+    const executor = {} as DbTransaction;
     const row = { id: 42, taskType: 'cms-publish-build', payload: {}, status: 'pending' };
-    mocks.submitAsyncTask.mockResolvedValueOnce(row);
+    mocks.persistAsyncTask.mockResolvedValueOnce(row);
     const task = await insertCmsPublishOutbox(executor, {
       siteId: 1,
       targetType: 'content',
@@ -51,7 +51,8 @@ describe('CMS standard publish pipeline behavior', () => {
       deletePaths: ['news/old.html'],
     }, 'content:9:version:4:update');
     expect(task).toBe(row);
-    expect(mocks.submitAsyncTask).toHaveBeenCalledWith(
+    expect(mocks.persistAsyncTask).toHaveBeenCalledWith(
+      executor,
       expect.objectContaining({
         taskType: 'cms-publish-build',
         idempotencyKey: expect.stringMatching(/^cms-publish-event:[0-9a-f]{48}$/),
@@ -65,14 +66,13 @@ describe('CMS standard publish pipeline behavior', () => {
           systemTriggered: true,
         }),
       }),
-      { executor },
     );
     expect(mocks.enqueueAsyncTask).not.toHaveBeenCalled();
   });
 
   it('propagates outbox insertion failure so the surrounding content transaction can roll back', async () => {
-    mocks.submitAsyncTask.mockRejectedValueOnce(new Error('outbox insert failed'));
-    await expect(insertCmsPublishOutbox({} as DbExecutor, {
+    mocks.persistAsyncTask.mockRejectedValueOnce(new Error('outbox insert failed'));
+    await expect(insertCmsPublishOutbox({} as DbTransaction, {
       siteId: 1,
       targetType: 'content',
       contentIds: [9],

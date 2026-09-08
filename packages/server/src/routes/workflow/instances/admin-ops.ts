@@ -68,7 +68,7 @@ export const suspendInstanceRoute = defineContractRoute(workflowInstanceOpsContr
     const { reason } = c.req.valid('json');
     const before = await getInstanceForAdminAudit(id);
     if (before) setAuditBeforeData(c, before);
-    return c.json(okBody(await suspendInstance(id, reason), '已挂起，计时已冻结'), 200);
+    return c.json(okBody(await suspendInstance(id, reason), '已挂起，自动推进已暂停'), 200);
   },
 });
 
