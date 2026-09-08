@@ -5,120 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1788615086074,
+      "when": 1788879578097,
       "tag": "0000_baseline",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1788615126927,
+      "when": 1788879610058,
       "tag": "0001_extensions",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1788650923071,
-      "tag": "0002_cms_content_excerpt_and_public_indexes",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1788660614944,
-      "tag": "0003_data_mask_policies",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1788751680678,
-      "tag": "0004_drive_v2_acl_chain_renditions_refcount",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1788751780609,
-      "tag": "0005_drive_v2_drop_legacy_columns",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1788751797346,
-      "tag": "0006_drive_partitions",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1788758122759,
-      "tag": "0007_drive_gc_tombstone",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1788765662406,
-      "tag": "0008_drive_daily_collaboration",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1788768064280,
-      "tag": "0009_drive_move_integrity",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1788772044985,
-      "tag": "0010_drive_phase3_sharing",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "7",
-      "when": 1788788122011,
-      "tag": "0011_drive_phase4_governance",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "7",
-      "when": 1788846826434,
-      "tag": "0012_reviewed_runtime_boundaries",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "7",
-      "when": 1788848144247,
-      "tag": "0013_workflow_step_receipts",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "7",
-      "when": 1788854773266,
-      "tag": "0014_workflow_delivery_dedupe",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "7",
-      "when": 1788874545934,
-      "tag": "0015_upload_session_completing",
-      "breakpoints": true
-    },
-    {
-      "idx": 16,
-      "version": "7",
-      "when": 1788877014900,
-      "tag": "0016_upload_session_bindings",
       "breakpoints": true
     }
   ]

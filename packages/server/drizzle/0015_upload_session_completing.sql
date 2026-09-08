@@ -1,1 +1,0 @@
-ALTER TYPE "public"."upload_session_status" ADD VALUE 'completing' BEFORE 'completed';

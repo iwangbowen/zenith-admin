@@ -1,6 +1,8 @@
 -- 手写 DDL：无法由 Drizzle schema 表达，`drizzle-kit generate` 不会重新生成它们，
 -- 重建迁移基线时必须随基线一并保留（本文件为唯一收口，见 docs/backend/database.md「迁移目录」）。
 -- 注：pg_trgm 扩展在 0000_baseline.sql 顶部创建（其索引已全部收进 schema DSL 随基线生成）。
+-- 分区表的列 / 外键 / 索引与 0000_baseline.sql 中对应表的定义逐字一致（基线先按普通表建，此处删除后重建为分区表），
+-- schema 改动这三张表后需同步更新此处。
 
 -- ─── pgvector：Mastra PgVector 向量存储依赖（条件启用）──────────────────────────
 -- 知识库向量由 Mastra PgVector 存放在 mastra schema（索引 kb_{kbId}），ai_kb_chunks 只存分块文本，
@@ -15,8 +17,8 @@ BEGIN
 END $$;--> statement-breakpoint
 
 -- ─── iot_telemetry：按 reported_at 的 RANGE 日分区表（Drizzle schema 无法表达分区）──────
--- 不迁移历史明细：最新值在设备影子（iot_device_state），长窗口图表与仪表盘读小时聚合表（iot_telemetry_hourly），
--- 明细本身只保留 30 天。Drizzle 快照仍以普通表描述列 / 索引 / 外键（父表定义自动继承到每个分区）。
+-- 最新值在设备影子（iot_device_state），长窗口图表与仪表盘读小时聚合表（iot_telemetry_hourly），明细只保留 30 天。
+-- Drizzle 快照仍以普通表描述列 / 索引 / 外键（父表定义自动继承到每个分区）。
 DROP TABLE IF EXISTS "iot_telemetry";--> statement-breakpoint
 CREATE TABLE "iot_telemetry" (
 	"device_id" integer NOT NULL,
@@ -42,6 +44,72 @@ BEGIN
   END LOOP;
 END $$;--> statement-breakpoint
 
+-- ─── 企业网盘日志：drive_activities / drive_share_access_logs 按 created_at 的 RANGE 月分区表 ──────
+-- 两表均为追加型高频日志，保留策略按分区整表 DROP。分区键必须进主键，因此不设代理主键，
+-- `id` 只是无约束的 identity 序号列，列表按 (created_at, id) 倒序。
+-- 分区命名 drive_activities_pYYYYMM / drive_share_access_logs_pYYYYMM（UTC 月边界），
+-- 由系统任务「网盘日志分区维护」滚动预建，写入命中缺失分区时按需补建（services/drive/drive-partitions.service.ts）。
+DROP TABLE IF EXISTS "drive_activities";--> statement-breakpoint
+CREATE TABLE "drive_activities" (
+	"id" integer GENERATED ALWAYS AS IDENTITY (sequence name "drive_activities_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"space_id" integer NOT NULL,
+	"node_id" integer,
+	"node_name" varchar(255) NOT NULL,
+	"node_type" "drive_node_type" NOT NULL,
+	"action" "drive_activity_action" NOT NULL,
+	"actor_id" integer,
+	"share_id" integer,
+	"detail" jsonb,
+	"client_ip" varchar(64),
+	"tenant_id" integer,
+	"created_at" timestamp DEFAULT now() NOT NULL
+) PARTITION BY RANGE ("created_at");--> statement-breakpoint
+ALTER TABLE "drive_activities" ADD CONSTRAINT "drive_activities_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_activities" ADD CONSTRAINT "drive_activities_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "drive_activities" ADD CONSTRAINT "drive_activities_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "drive_activities_node_idx" ON "drive_activities" USING btree ("node_id","created_at");--> statement-breakpoint
+CREATE INDEX "drive_activities_space_idx" ON "drive_activities" USING btree ("space_id","created_at");--> statement-breakpoint
+CREATE INDEX "drive_activities_actor_idx" ON "drive_activities" USING btree ("actor_id","created_at");--> statement-breakpoint
+CREATE INDEX "drive_activities_id_idx" ON "drive_activities" USING btree ("id");--> statement-breakpoint
+CREATE INDEX "drive_activities_created_brin_idx" ON "drive_activities" USING brin ("created_at");--> statement-breakpoint
+
+DROP TABLE IF EXISTS "drive_share_access_logs";--> statement-breakpoint
+CREATE TABLE "drive_share_access_logs" (
+	"id" integer GENERATED ALWAYS AS IDENTITY (sequence name "drive_share_access_logs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"share_id" integer NOT NULL,
+	"node_id" integer NOT NULL,
+	"action" varchar(16) NOT NULL,
+	"client_ip" varchar(64),
+	"ok" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+) PARTITION BY RANGE ("created_at");--> statement-breakpoint
+ALTER TABLE "drive_share_access_logs" ADD CONSTRAINT "drive_share_access_logs_share_id_drive_share_links_id_fk" FOREIGN KEY ("share_id") REFERENCES "public"."drive_share_links"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "drive_share_access_logs_share_idx" ON "drive_share_access_logs" USING btree ("share_id","created_at");--> statement-breakpoint
+CREATE INDEX "drive_share_access_logs_created_brin_idx" ON "drive_share_access_logs" USING brin ("created_at");--> statement-breakpoint
+
+-- 初始分区：UTC 月 [上月, 下下月]，之后由系统任务滚动预建
+DO $$
+DECLARE
+  m date;
+BEGIN
+  FOR m IN
+    SELECT generate_series(
+      date_trunc('month', (now() AT TIME ZONE 'UTC'))::date - interval '1 month',
+      date_trunc('month', (now() AT TIME ZONE 'UTC'))::date + interval '2 month',
+      interval '1 month'
+    )::date
+  LOOP
+    EXECUTE format(
+      'CREATE TABLE IF NOT EXISTS %I PARTITION OF "drive_activities" FOR VALUES FROM (%L) TO (%L)',
+      'drive_activities_p' || to_char(m, 'YYYYMM'), m::timestamp, (m + interval '1 month')::timestamp
+    );
+    EXECUTE format(
+      'CREATE TABLE IF NOT EXISTS %I PARTITION OF "drive_share_access_logs" FOR VALUES FROM (%L) TO (%L)',
+      'drive_share_access_logs_p' || to_char(m, 'YYYYMM'), m::timestamp, (m + interval '1 month')::timestamp
+    );
+  END LOOP;
+END $$;--> statement-breakpoint
+
 -- ─── 跨实例缓存失效广播：cache_invalidate 频道 ────────────────────────────────────
 -- 通用触发器函数：以表名为 topic，可选以 NEW/OLD 的某列为 key（触发器参数 TG_ARGV[0] 指定列名）。
 -- NOTIFY 在事务提交后才投递，进程内副本不会读到未提交的失效；同一事务内相同 payload 由 PG 去重。
@@ -62,6 +130,10 @@ END $$;--> statement-breakpoint
 CREATE TRIGGER system_settings_cache_invalidate
   AFTER INSERT OR UPDATE OR DELETE ON "system_settings"
   FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidate('module');--> statement-breakpoint
+-- 数据脱敏策略：策略变更后所有实例的进程内策略缓存立即失效（订阅 topic = 表名）
+CREATE TRIGGER data_mask_policies_cache_invalidate
+  AFTER INSERT OR UPDATE OR DELETE ON "data_mask_policies"
+  FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidate();--> statement-breakpoint
 
 -- ─── 只读执行角色：用户手写 SQL（数据库管理控制台 / 导出 / 报表数据集）的最小权限 ─────────
 -- 应用连接通常是库 owner 甚至 superuser；READ ONLY 事务挡不住 COPY TO PROGRAM、pg_read_file、

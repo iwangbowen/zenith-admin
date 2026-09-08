@@ -140,7 +140,7 @@ export const driveNodes = pgTable('drive_nodes', {
   index('drive_nodes_file_idx').on(t.fileId),
   index('drive_nodes_deleted_root_idx').on(t.deletedRootId),
   index('drive_nodes_content_hash_idx').on(t.contentHash),
-  // pg_trgm：节点名模糊检索（扩展在 0001_extensions.sql 已启用）
+  // pg_trgm：节点名模糊检索（扩展在 0000_baseline.sql 顶部启用）
   index('drive_nodes_name_trgm_idx').using('gin', t.name.op('gin_trgm_ops')),
   // 同层同名唯一（大小写不敏感、仅未删除节点；根级用 0 占位）
   uniqueIndex('drive_nodes_sibling_name_uq')
@@ -350,7 +350,7 @@ export type DriveOpenAppGrantRow = typeof driveOpenAppGrants.$inferSelect;
 
 /**
  * 外链访问留痕（含被拒绝的尝试）。
- * 按 created_at 月度 RANGE 分区（分区 DDL 在 0005_drive_partitions.sql，Drizzle 仍以普通表描述列 / 索引 / 外键）；
+ * 按 created_at 月度 RANGE 分区（分区 DDL 在 0001_extensions.sql，Drizzle 仍以普通表描述列 / 索引 / 外键）；
  * 没有代理主键：分区键必须进主键，`id` 只作展示序号。保留策略按分区整表 DROP。
  */
 export const driveShareAccessLogs = pgTable('drive_share_access_logs', {

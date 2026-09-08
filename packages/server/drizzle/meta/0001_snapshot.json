@@ -1,6 +1,6 @@
 {
-  "id": "decaac5f-27ed-4e4e-a76c-34da31ce67cd",
-  "prevId": "ad0fa1dc-d3fb-41e6-b7ed-80fe5ee5356d",
+  "id": "f217686b-eea3-4ed0-b0ab-a9d3f1ce12fd",
+  "prevId": "ab314d38-a695-4675-96b2-25e554f2efa4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2904,6 +2904,27 @@
           "primaryKey": false,
           "notNull": false
         },
+        "ref_count": {
+          "name": "ref_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "gc_state": {
+          "name": "gc_state",
+          "type": "file_gc_state",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'live'"
+        },
+        "orphaned_at": {
+          "name": "orphaned_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "tenant_id": {
           "name": "tenant_id",
           "type": "integer",
@@ -2972,6 +2993,22 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
+          "concurrently": false
+        },
+        "managed_files_orphaned_idx": {
+          "name": "managed_files_orphaned_idx",
+          "columns": [
+            {
+              "expression": "orphaned_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "where": "\"managed_files\".\"orphaned_at\" is not null",
           "concurrently": false
         }
       },
@@ -3111,6 +3148,163 @@
           "columns": [
             "upload_session_id",
             "index"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.upload_session_bindings": {
+      "name": "upload_session_bindings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "upload_session_bindings_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "upload_id": {
+          "name": "upload_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module": {
+          "name": "module",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "upload_session_bindings_module_idx": {
+          "name": "upload_session_bindings_module_idx",
+          "columns": [
+            {
+              "expression": "module",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "upload_session_bindings_upload_id_upload_sessions_upload_id_fk": {
+          "name": "upload_session_bindings_upload_id_upload_sessions_upload_id_fk",
+          "tableFrom": "upload_session_bindings",
+          "columnsFrom": [
+            "upload_id"
+          ],
+          "tableTo": "upload_sessions",
+          "columnsTo": [
+            "upload_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "upload_session_bindings_tenant_id_tenants_id_fk": {
+          "name": "upload_session_bindings_tenant_id_tenants_id_fk",
+          "tableFrom": "upload_session_bindings",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "upload_session_bindings_created_by_users_id_fk": {
+          "name": "upload_session_bindings_created_by_users_id_fk",
+          "tableFrom": "upload_session_bindings",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "upload_session_bindings_updated_by_users_id_fk": {
+          "name": "upload_session_bindings_updated_by_users_id_fk",
+          "tableFrom": "upload_session_bindings",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "upload_session_bindings_upload_id_unique": {
+          "name": "upload_session_bindings_upload_id_unique",
+          "columns": [
+            "upload_id"
           ],
           "nullsNotDistinct": false
         }
@@ -3370,8 +3564,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.data_mask_configs": {
-      "name": "data_mask_configs",
+    "public.data_mask_policies": {
+      "name": "data_mask_policies",
       "schema": "",
       "columns": {
         "id": {
@@ -3380,7 +3574,7 @@
           "primaryKey": true,
           "notNull": true,
           "identity": {
-            "name": "data_mask_configs_id_seq",
+            "name": "data_mask_policies_id_seq",
             "increment": "1",
             "minValue": "1",
             "maxValue": "2147483647",
@@ -3403,12 +3597,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "label": {
-          "name": "label",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
         "mask_type": {
           "name": "mask_type",
           "type": "mask_type",
@@ -3422,8 +3610,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "exempt_role_codes": {
-          "name": "exempt_role_codes",
+        "exempt_permissions": {
+          "name": "exempt_permissions",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true,
@@ -3471,9 +3659,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "data_mask_configs_created_by_users_id_fk": {
-          "name": "data_mask_configs_created_by_users_id_fk",
-          "tableFrom": "data_mask_configs",
+        "data_mask_policies_created_by_users_id_fk": {
+          "name": "data_mask_policies_created_by_users_id_fk",
+          "tableFrom": "data_mask_policies",
           "columnsFrom": [
             "created_by"
           ],
@@ -3484,9 +3672,9 @@
           "onUpdate": "no action",
           "onDelete": "set null"
         },
-        "data_mask_configs_updated_by_users_id_fk": {
-          "name": "data_mask_configs_updated_by_users_id_fk",
-          "tableFrom": "data_mask_configs",
+        "data_mask_policies_updated_by_users_id_fk": {
+          "name": "data_mask_policies_updated_by_users_id_fk",
+          "tableFrom": "data_mask_policies",
           "columnsFrom": [
             "updated_by"
           ],
@@ -3500,8 +3688,8 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "data_mask_entity_field_unique": {
-          "name": "data_mask_entity_field_unique",
+        "data_mask_policies_entity_field_unique": {
+          "name": "data_mask_policies_entity_field_unique",
           "columns": [
             "entity",
             "field"
@@ -3841,6 +4029,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 1
+        },
+        "retry_delay_ms": {
+          "name": "retry_delay_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
         },
         "next_run_at": {
           "name": "next_run_at",
@@ -6286,13 +6480,25 @@
           "method": "btree",
           "concurrently": false
         },
-        "login_risk_events_tenant_idx": {
-          "name": "login_risk_events_tenant_idx",
+        "login_risk_events_tenant_created_id_idx": {
+          "name": "login_risk_events_tenant_created_id_idx",
           "columns": [
             {
               "expression": "tenant_id",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
               "nulls": "last"
             }
           ],
@@ -6301,13 +6507,19 @@
           "method": "btree",
           "concurrently": false
         },
-        "login_risk_events_created_idx": {
-          "name": "login_risk_events_created_idx",
+        "login_risk_events_created_id_idx": {
+          "name": "login_risk_events_created_id_idx",
           "columns": [
             {
               "expression": "created_at",
               "isExpression": false,
-              "asc": true,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
               "nulls": "last"
             }
           ],
@@ -19012,6 +19224,20 @@
           "notNull": true,
           "default": 0
         },
+        "generation": {
+          "name": "generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()::text"
+        },
         "status": {
           "name": "status",
           "type": "workflow_job_execution_status",
@@ -19121,6 +19347,21 @@
             }
           ],
           "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "workflow_job_executions_lease_token_unique": {
+          "name": "workflow_job_executions_lease_token_unique",
+          "columns": [
+            {
+              "expression": "lease_token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "with": {},
           "method": "btree",
           "concurrently": false
@@ -19281,6 +19522,27 @@
           "notNull": true,
           "default": 1
         },
+        "generation": {
+          "name": "generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "operation_key": {
+          "name": "operation_key",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()::text"
+        },
+        "execution_timeout_ms": {
+          "name": "execution_timeout_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 600000
+        },
         "run_at": {
           "name": "run_at",
           "type": "timestamp with time zone",
@@ -19297,6 +19559,30 @@
         "locked_by": {
           "name": "locked_by",
           "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "execution_deadline": {
+          "name": "execution_deadline",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paused_remaining_ms": {
+          "name": "paused_remaining_ms",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
@@ -19387,6 +19673,27 @@
             },
             {
               "expression": "run_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "workflow_jobs_lease_idx": {
+          "name": "workflow_jobs_lease_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lease_until",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -21567,6 +21874,106 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workflow_job_effects": {
+      "name": "workflow_job_effects",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "workflow_job_effects_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operation_key": {
+          "name": "operation_key",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "effect_key": {
+          "name": "effect_key",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "workflow_job_effects_job_idx": {
+          "name": "workflow_job_effects_job_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "workflow_job_effects_job_id_workflow_jobs_id_fk": {
+          "name": "workflow_job_effects_job_id_workflow_jobs_id_fk",
+          "tableFrom": "workflow_job_effects",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "tableTo": "workflow_jobs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "workflow_job_effects_operation_effect_unique": {
+          "name": "workflow_job_effects_operation_effect_unique",
+          "columns": [
+            "operation_key",
+            "effect_key"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -29393,6 +29800,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "dedupe_key": {
+          "name": "dedupe_key",
+          "type": "varchar(192)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -29415,6 +29828,22 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
+          "concurrently": false
+        },
+        "channel_messages_dedupe_uq": {
+          "name": "channel_messages_dedupe_uq",
+          "columns": [
+            {
+              "expression": "dedupe_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"channel_messages\".\"dedupe_key\" is not null",
           "concurrently": false
         }
       },
@@ -64149,6 +64578,16 @@
           "primaryKey": false,
           "notNull": false
         },
+        "excerpt": {
+          "name": "excerpt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "type": "stored",
+            "as": "left(btrim(regexp_replace(replace(replace(replace(replace(replace(replace(replace(regexp_replace(coalesce(body, ''), '<[^>]+>', ' ', 'g'), '&nbsp;', ' '), '&lt;', '<'), '&gt;', '>'), '&quot;', '\"'), '&#39;', ''''), '&amp;', '&'), '[分页]', ' '), '\\s+', ' ', 'g')), 400)"
+          }
+        },
         "attachments": {
           "name": "attachments",
           "type": "jsonb",
@@ -64469,34 +64908,60 @@
           "method": "btree",
           "concurrently": false
         },
-        "cms_contents_status_idx": {
-          "name": "cms_contents_status_idx",
+        "cms_contents_public_site_recent_idx": {
+          "name": "cms_contents_public_site_recent_idx",
           "columns": [
             {
-              "expression": "status",
+              "expression": "site_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "cms_contents_published_at_idx": {
-          "name": "cms_contents_published_at_idx",
-          "columns": [
+            },
             {
               "expression": "published_at",
               "isExpression": false,
-              "asc": true,
-              "nulls": "last"
+              "asc": false,
+              "nulls": "first"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "first"
             }
           ],
           "isUnique": false,
           "with": {},
           "method": "btree",
+          "where": "\"cms_contents\".\"status\" = 'published' and \"cms_contents\".\"deleted_at\" is null and \"cms_contents\".\"archived_at\" is null",
+          "concurrently": false
+        },
+        "cms_contents_public_channel_recent_idx": {
+          "name": "cms_contents_public_channel_recent_idx",
+          "columns": [
+            {
+              "expression": "channel_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "published_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "first"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "first"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "where": "\"cms_contents\".\"status\" = 'published' and \"cms_contents\".\"deleted_at\" is null and \"cms_contents\".\"archived_at\" is null",
           "concurrently": false
         },
         "cms_contents_search_idx": {
@@ -78812,6 +79277,257 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.drive_access_requests": {
+      "name": "drive_access_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "drive_access_requests_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requester_id": {
+          "name": "requester_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "drive_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "drive_access_request_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "granted_role": {
+          "name": "granted_role",
+          "type": "drive_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "granted_expire_at": {
+          "name": "granted_expire_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decision_note": {
+          "name": "decision_note",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "drive_access_requests_pending_unique": {
+          "name": "drive_access_requests_pending_unique",
+          "columns": [
+            {
+              "expression": "node_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "requester_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"drive_access_requests\".\"status\" = 'pending'",
+          "concurrently": false
+        },
+        "drive_access_requests_requester_idx": {
+          "name": "drive_access_requests_requester_idx",
+          "columns": [
+            {
+              "expression": "requester_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "drive_access_requests_space_status_idx": {
+          "name": "drive_access_requests_space_status_idx",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "drive_access_requests_node_id_drive_nodes_id_fk": {
+          "name": "drive_access_requests_node_id_drive_nodes_id_fk",
+          "tableFrom": "drive_access_requests",
+          "columnsFrom": [
+            "node_id"
+          ],
+          "tableTo": "drive_nodes",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_access_requests_space_id_drive_spaces_id_fk": {
+          "name": "drive_access_requests_space_id_drive_spaces_id_fk",
+          "tableFrom": "drive_access_requests",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "tableTo": "drive_spaces",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_access_requests_requester_id_users_id_fk": {
+          "name": "drive_access_requests_requester_id_users_id_fk",
+          "tableFrom": "drive_access_requests",
+          "columnsFrom": [
+            "requester_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_access_requests_decided_by_users_id_fk": {
+          "name": "drive_access_requests_decided_by_users_id_fk",
+          "tableFrom": "drive_access_requests",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "drive_access_requests_tenant_id_tenants_id_fk": {
+          "name": "drive_access_requests_tenant_id_tenants_id_fk",
+          "tableFrom": "drive_access_requests",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.drive_activities": {
       "name": "drive_activities",
       "schema": "",
@@ -78819,7 +79535,7 @@
         "id": {
           "name": "id",
           "type": "integer",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true,
           "identity": {
             "name": "drive_activities_id_seq",
@@ -78954,16 +79670,7 @@
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "drive_activities_created_idx": {
-          "name": "drive_activities_created_idx",
-          "columns": [
+            },
             {
               "expression": "created_at",
               "isExpression": false,
@@ -78974,6 +79681,36 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
+          "concurrently": false
+        },
+        "drive_activities_id_idx": {
+          "name": "drive_activities_id_idx",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "drive_activities_created_brin_idx": {
+          "name": "drive_activities_created_brin_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "brin",
           "concurrently": false
         }
       },
@@ -79016,6 +79753,135 @@
           ],
           "onUpdate": "no action",
           "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.drive_collect_submissions": {
+      "name": "drive_collect_submissions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "drive_collect_submissions_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "share_id": {
+          "name": "share_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file_name": {
+          "name": "file_name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size": {
+          "name": "size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "submitter_name": {
+          "name": "submitter_name",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "submitter_note": {
+          "name": "submitter_note",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "client_ip": {
+          "name": "client_ip",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "drive_collect_submissions_share_idx": {
+          "name": "drive_collect_submissions_share_idx",
+          "columns": [
+            {
+              "expression": "share_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "drive_collect_submissions_share_id_drive_share_links_id_fk": {
+          "name": "drive_collect_submissions_share_id_drive_share_links_id_fk",
+          "tableFrom": "drive_collect_submissions",
+          "columnsFrom": [
+            "share_id"
+          ],
+          "tableTo": "drive_share_links",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_collect_submissions_node_id_drive_nodes_id_fk": {
+          "name": "drive_collect_submissions_node_id_drive_nodes_id_fk",
+          "tableFrom": "drive_collect_submissions",
+          "columnsFrom": [
+            "node_id"
+          ],
+          "tableTo": "drive_nodes",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -79169,6 +80035,228 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.drive_legal_holds": {
+      "name": "drive_legal_holds",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "drive_legal_holds_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "released_by": {
+          "name": "released_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "released_at": {
+          "name": "released_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "release_note": {
+          "name": "release_note",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "drive_legal_holds_active_node_uq": {
+          "name": "drive_legal_holds_active_node_uq",
+          "columns": [
+            {
+              "expression": "node_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"drive_legal_holds\".\"active\" = true",
+          "concurrently": false
+        },
+        "drive_legal_holds_space_idx": {
+          "name": "drive_legal_holds_space_idx",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "active",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "drive_legal_holds_node_id_drive_nodes_id_fk": {
+          "name": "drive_legal_holds_node_id_drive_nodes_id_fk",
+          "tableFrom": "drive_legal_holds",
+          "columnsFrom": [
+            "node_id"
+          ],
+          "tableTo": "drive_nodes",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_legal_holds_space_id_drive_spaces_id_fk": {
+          "name": "drive_legal_holds_space_id_drive_spaces_id_fk",
+          "tableFrom": "drive_legal_holds",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "tableTo": "drive_spaces",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_legal_holds_released_by_users_id_fk": {
+          "name": "drive_legal_holds_released_by_users_id_fk",
+          "tableFrom": "drive_legal_holds",
+          "columnsFrom": [
+            "released_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "drive_legal_holds_tenant_id_tenants_id_fk": {
+          "name": "drive_legal_holds_tenant_id_tenants_id_fk",
+          "tableFrom": "drive_legal_holds",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_legal_holds_created_by_users_id_fk": {
+          "name": "drive_legal_holds_created_by_users_id_fk",
+          "tableFrom": "drive_legal_holds",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "drive_legal_holds_updated_by_users_id_fk": {
+          "name": "drive_legal_holds_updated_by_users_id_fk",
+          "tableFrom": "drive_legal_holds",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.drive_node_comments": {
       "name": "drive_node_comments",
       "schema": "",
@@ -79207,6 +80295,13 @@
           "type": "varchar(2000)",
           "primaryKey": false,
           "notNull": true
+        },
+        "mention_user_ids": {
+          "name": "mention_user_ids",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
         },
         "author_id": {
           "name": "author_id",
@@ -79491,6 +80586,266 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.drive_node_profiles": {
+      "name": "drive_node_profiles",
+      "schema": "",
+      "columns": {
+        "node_id": {
+          "name": "node_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "varchar(2000)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "drive_node_profiles_node_id_drive_nodes_id_fk": {
+          "name": "drive_node_profiles_node_id_drive_nodes_id_fk",
+          "tableFrom": "drive_node_profiles",
+          "columnsFrom": [
+            "node_id"
+          ],
+          "tableTo": "drive_nodes",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_node_profiles_created_by_users_id_fk": {
+          "name": "drive_node_profiles_created_by_users_id_fk",
+          "tableFrom": "drive_node_profiles",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "drive_node_profiles_updated_by_users_id_fk": {
+          "name": "drive_node_profiles_updated_by_users_id_fk",
+          "tableFrom": "drive_node_profiles",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.drive_node_renditions": {
+      "name": "drive_node_renditions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "drive_node_renditions_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "drive_rendition_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "drive_rendition_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "file_id": {
+          "name": "file_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "meta": {
+          "name": "meta",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "drive_node_renditions_file_idx": {
+          "name": "drive_node_renditions_file_idx",
+          "columns": [
+            {
+              "expression": "file_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "drive_node_renditions_status_idx": {
+          "name": "drive_node_renditions_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "drive_node_renditions_node_id_drive_nodes_id_fk": {
+          "name": "drive_node_renditions_node_id_drive_nodes_id_fk",
+          "tableFrom": "drive_node_renditions",
+          "columnsFrom": [
+            "node_id"
+          ],
+          "tableTo": "drive_nodes",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_node_renditions_file_id_managed_files_id_fk": {
+          "name": "drive_node_renditions_file_id_managed_files_id_fk",
+          "tableFrom": "drive_node_renditions",
+          "columnsFrom": [
+            "file_id"
+          ],
+          "tableTo": "managed_files",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "drive_node_renditions_node_kind_unique": {
+          "name": "drive_node_renditions_node_kind_unique",
+          "columns": [
+            "node_id",
+            "kind"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.drive_node_stars": {
       "name": "drive_node_stars",
       "schema": "",
@@ -79563,6 +80918,96 @@
       "compositePrimaryKeys": {
         "drive_node_stars_user_id_node_id_pk": {
           "name": "drive_node_stars_user_id_node_id_pk",
+          "columns": [
+            "user_id",
+            "node_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.drive_node_subscriptions": {
+      "name": "drive_node_subscriptions",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_activity_id": {
+          "name": "last_activity_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "drive_node_subscriptions_cursor_idx": {
+          "name": "drive_node_subscriptions_cursor_idx",
+          "columns": [
+            {
+              "expression": "last_activity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "drive_node_subscriptions_user_id_users_id_fk": {
+          "name": "drive_node_subscriptions_user_id_users_id_fk",
+          "tableFrom": "drive_node_subscriptions",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_node_subscriptions_node_id_drive_nodes_id_fk": {
+          "name": "drive_node_subscriptions_node_id_drive_nodes_id_fk",
+          "tableFrom": "drive_node_subscriptions",
+          "columnsFrom": [
+            "node_id"
+          ],
+          "tableTo": "drive_nodes",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "drive_node_subscriptions_user_id_node_id_pk": {
+          "name": "drive_node_subscriptions_user_id_node_id_pk",
           "columns": [
             "user_id",
             "node_id"
@@ -79702,6 +81147,22 @@
           "with": {},
           "method": "gin",
           "concurrently": false
+        },
+        "drive_node_texts_content_trgm_idx": {
+          "name": "drive_node_texts_content_trgm_idx",
+          "columns": [
+            {
+              "expression": "content",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "gin",
+          "concurrently": false
         }
       },
       "foreignKeys": {
@@ -79830,6 +81291,20 @@
           "notNull": true,
           "default": true
         },
+        "acl_chain_ids": {
+          "name": "acl_chain_ids",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "acl_open": {
+          "name": "acl_open",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
         "locked_by": {
           "name": "locked_by",
           "type": "integer",
@@ -79845,12 +81320,6 @@
         "lock_expires_at": {
           "name": "lock_expires_at",
           "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "thumbnail_file_id": {
-          "name": "thumbnail_file_id",
-          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -79938,6 +81407,21 @@
           "columns": [
             {
               "expression": "ancestor_ids",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "gin",
+          "concurrently": false
+        },
+        "drive_nodes_acl_chain_gin_idx": {
+          "name": "drive_nodes_acl_chain_gin_idx",
+          "columns": [
+            {
+              "expression": "acl_chain_ids",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -80091,19 +81575,6 @@
           "onUpdate": "no action",
           "onDelete": "set null"
         },
-        "drive_nodes_thumbnail_file_id_managed_files_id_fk": {
-          "name": "drive_nodes_thumbnail_file_id_managed_files_id_fk",
-          "tableFrom": "drive_nodes",
-          "columnsFrom": [
-            "thumbnail_file_id"
-          ],
-          "tableTo": "managed_files",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
-        },
         "drive_nodes_deleted_by_users_id_fk": {
           "name": "drive_nodes_deleted_by_users_id_fk",
           "tableFrom": "drive_nodes",
@@ -80155,6 +81626,427 @@
           ],
           "onUpdate": "no action",
           "onDelete": "set null"
+        },
+        "drive_nodes_parent_space_fk": {
+          "name": "drive_nodes_parent_space_fk",
+          "tableFrom": "drive_nodes",
+          "columnsFrom": [
+            "parent_id",
+            "space_id"
+          ],
+          "tableTo": "drive_nodes",
+          "columnsTo": [
+            "id",
+            "space_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "drive_nodes_id_space_unique": {
+          "name": "drive_nodes_id_space_unique",
+          "columns": [
+            "id",
+            "space_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.drive_open_app_grants": {
+      "name": "drive_open_app_grants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "drive_open_app_grants_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "drive_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'downloader'"
+        },
+        "status": {
+          "name": "status",
+          "type": "status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'enabled'"
+        },
+        "remark": {
+          "name": "remark",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "drive_open_app_grants_client_space_uq": {
+          "name": "drive_open_app_grants_client_space_uq",
+          "columns": [
+            {
+              "expression": "client_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "drive_open_app_grants_space_idx": {
+          "name": "drive_open_app_grants_space_idx",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "drive_open_app_grants_space_id_drive_spaces_id_fk": {
+          "name": "drive_open_app_grants_space_id_drive_spaces_id_fk",
+          "tableFrom": "drive_open_app_grants",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "tableTo": "drive_spaces",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_open_app_grants_tenant_id_tenants_id_fk": {
+          "name": "drive_open_app_grants_tenant_id_tenants_id_fk",
+          "tableFrom": "drive_open_app_grants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_open_app_grants_created_by_users_id_fk": {
+          "name": "drive_open_app_grants_created_by_users_id_fk",
+          "tableFrom": "drive_open_app_grants",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "drive_open_app_grants_updated_by_users_id_fk": {
+          "name": "drive_open_app_grants_updated_by_users_id_fk",
+          "tableFrom": "drive_open_app_grants",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.drive_quota_requests": {
+      "name": "drive_quota_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "drive_quota_requests_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requester_id": {
+          "name": "requester_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "current_quota_bytes": {
+          "name": "current_quota_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "used_bytes": {
+          "name": "used_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "requested_gb": {
+          "name": "requested_gb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "drive_access_request_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "approved_gb": {
+          "name": "approved_gb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decision_note": {
+          "name": "decision_note",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "drive_quota_requests_pending_unique": {
+          "name": "drive_quota_requests_pending_unique",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"drive_quota_requests\".\"status\" = 'pending'",
+          "concurrently": false
+        },
+        "drive_quota_requests_status_idx": {
+          "name": "drive_quota_requests_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "drive_quota_requests_space_id_drive_spaces_id_fk": {
+          "name": "drive_quota_requests_space_id_drive_spaces_id_fk",
+          "tableFrom": "drive_quota_requests",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "tableTo": "drive_spaces",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_quota_requests_requester_id_users_id_fk": {
+          "name": "drive_quota_requests_requester_id_users_id_fk",
+          "tableFrom": "drive_quota_requests",
+          "columnsFrom": [
+            "requester_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "drive_quota_requests_decided_by_users_id_fk": {
+          "name": "drive_quota_requests_decided_by_users_id_fk",
+          "tableFrom": "drive_quota_requests",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "drive_quota_requests_tenant_id_tenants_id_fk": {
+          "name": "drive_quota_requests_tenant_id_tenants_id_fk",
+          "tableFrom": "drive_quota_requests",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -80266,7 +82158,7 @@
         "id": {
           "name": "id",
           "type": "integer",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true,
           "identity": {
             "name": "drive_share_access_logs_id_seq",
@@ -80328,16 +82220,7 @@
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "drive_share_access_logs_created_idx": {
-          "name": "drive_share_access_logs_created_idx",
-          "columns": [
+            },
             {
               "expression": "created_at",
               "isExpression": false,
@@ -80348,6 +82231,21 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
+          "concurrently": false
+        },
+        "drive_share_access_logs_created_brin_idx": {
+          "name": "drive_share_access_logs_created_brin_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "brin",
           "concurrently": false
         }
       },
@@ -80399,6 +82297,14 @@
           "primaryKey": false,
           "notNull": true
         },
+        "kind": {
+          "name": "kind",
+          "type": "drive_share_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'share'"
+        },
         "token": {
           "name": "token",
           "type": "varchar(64)",
@@ -80417,13 +82323,13 @@
           "primaryKey": false,
           "notNull": false
         },
-        "permission": {
-          "name": "permission",
-          "type": "drive_share_permission",
+        "capabilities": {
+          "name": "capabilities",
+          "type": "drive_share_capability[]",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'preview'"
+          "default": "'{\"preview\"}'"
         },
         "enabled": {
           "name": "enabled",
@@ -80451,12 +82357,45 @@
           "notNull": true,
           "default": 0
         },
+        "max_download_count": {
+          "name": "max_download_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "download_count": {
           "name": "download_count",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "upload_count": {
+          "name": "upload_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "allowed_ips": {
+          "name": "allowed_ips",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "watermark": {
+          "name": "watermark",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "collect_policy": {
+          "name": "collect_policy",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "session_version": {
           "name": "session_version",
@@ -80800,6 +82739,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'enabled'"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         },
         "sort": {
           "name": "sort",
@@ -81323,6 +83268,15 @@
         "wiki_doc"
       ]
     },
+    "public.file_gc_state": {
+      "name": "file_gc_state",
+      "schema": "public",
+      "values": [
+        "live",
+        "orphan",
+        "deleting"
+      ]
+    },
     "public.file_object_acl": {
       "name": "file_object_acl",
       "schema": "public",
@@ -81370,6 +83324,7 @@
       "schema": "public",
       "values": [
         "uploading",
+        "completing",
         "completed",
         "aborted"
       ]
@@ -81383,6 +83338,8 @@
         "id_card",
         "name",
         "bank_card",
+        "address",
+        "redact",
         "custom"
       ]
     },
@@ -81917,6 +83874,7 @@
       "values": [
         "pending",
         "running",
+        "paused",
         "succeeded",
         "failed",
         "dead",
@@ -84093,6 +86051,16 @@
         "strict"
       ]
     },
+    "public.drive_access_request_status": {
+      "name": "drive_access_request_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "approved",
+        "rejected",
+        "cancelled"
+      ]
+    },
     "public.drive_activity_action": {
       "name": "drive_activity_action",
       "schema": "public",
@@ -84113,6 +86081,7 @@
         "share_revoke",
         "share_access",
         "save_from_share",
+        "collect_upload",
         "permission_change",
         "inherit_change",
         "version_restore",
@@ -84120,7 +86089,12 @@
         "lock",
         "unlock",
         "comment",
-        "tag"
+        "tag",
+        "metadata_change",
+        "legal_hold",
+        "legal_release",
+        "archive",
+        "unarchive"
       ]
     },
     "public.drive_node_type": {
@@ -84129,6 +86103,26 @@
       "values": [
         "folder",
         "file"
+      ]
+    },
+    "public.drive_rendition_kind": {
+      "name": "drive_rendition_kind",
+      "schema": "public",
+      "values": [
+        "thumbnail",
+        "text",
+        "pdf",
+        "preview"
+      ]
+    },
+    "public.drive_rendition_status": {
+      "name": "drive_rendition_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "ready",
+        "failed",
+        "skipped"
       ]
     },
     "public.drive_role": {
@@ -84141,12 +86135,21 @@
         "manager"
       ]
     },
-    "public.drive_share_permission": {
-      "name": "drive_share_permission",
+    "public.drive_share_capability": {
+      "name": "drive_share_capability",
       "schema": "public",
       "values": [
         "preview",
-        "download"
+        "download",
+        "upload"
+      ]
+    },
+    "public.drive_share_kind": {
+      "name": "drive_share_kind",
+      "schema": "public",
+      "values": [
+        "share",
+        "collect"
       ]
     },
     "public.drive_space_type": {
