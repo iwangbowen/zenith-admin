@@ -46,33 +46,19 @@ export default function DashboardSkeleton() {
         ))}
       </div>
 
-      <div className="dashboard-top-grid">
-        <div className="dashboard-column dashboard-column--notice">
-          <section className="dashboard-section">
-            <Skeleton active loading placeholder={
-              <div>
-                <Skeleton.Title style={{ width: 100, height: 14, marginBottom: 16 }} />
-                {(['n1', 'n2', 'n3', 'n4'] as const).map((k) => (
-                  <div key={k} style={{ padding: '10px 0', borderBottom: '1px solid var(--color-border)' }}>
-                    <Skeleton.Title style={{ width: '55%', height: 14, marginBottom: 8 }} />
-                    <Skeleton.Paragraph rows={1} style={{ width: '85%' }} />
-                  </div>
-                ))}
+      <section className="dashboard-section dashboard-section--notice">
+        <Skeleton active loading placeholder={
+          <div>
+            <Skeleton.Title style={{ width: 100, height: 14, marginBottom: 16 }} />
+            {(['n1', 'n2', 'n3', 'n4'] as const).map((k) => (
+              <div key={k} style={{ padding: '10px 0', borderBottom: '1px solid var(--color-border)' }}>
+                <Skeleton.Title style={{ width: '55%', height: 14, marginBottom: 8 }} />
+                <Skeleton.Paragraph rows={1} style={{ width: '85%' }} />
               </div>
-            } />
-          </section>
-        </div>
-        <div className="dashboard-column">
-          <section className="dashboard-section">
-            <Skeleton active loading placeholder={
-              <div>
-                <Skeleton.Title style={{ width: 80, height: 14, marginBottom: 16 }} />
-                <Skeleton.Paragraph rows={4} style={{ width: '100%' }} />
-              </div>
-            } />
-          </section>
-        </div>
-      </div>
+            ))}
+          </div>
+        } />
+      </section>
     </div>
   );
 }

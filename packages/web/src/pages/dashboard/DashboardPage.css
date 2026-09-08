@@ -241,58 +241,17 @@
   justify-content: center;
 }
 
-/* 下方内容区：同样是「一条横线起头 + 栏间竖线」。
-   align-items 必须是 stretch（而非 start）：两栏内容高度差很大，
-   start 会让栏盒收缩到各自内容高度，右栏竖线只有半截，看起来像断线。
-   stretch 只是把栏盒拉到行高，栏内 flex-column 的内容仍从顶部排列，位置不变。 */
-.dashboard-top-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.8fr);
-  align-items: stretch;
-  margin-top: 40px;
-  border-top: 1px solid var(--color-border);
-}
-
-.dashboard-column {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 38px;
-  /* 上内边距放在栏上而非行上，竖线才能自横线处起头，不留悬空段 */
-  padding-top: 24px;
-  padding-left: 40px;
-  border-left: 1px solid var(--color-border);
-}
-
-.dashboard-column:first-child {
-  padding-right: 40px;
-  padding-left: 0;
-  border-left: 0;
-}
-
 .dashboard-section {
   min-width: 0;
   padding-top: 17px;
   border-top: 1px solid var(--color-border);
 }
 
-/* 每栏首个区块紧贴行首横线，不再自带横线，避免与之叠成双线 */
-.dashboard-column > .dashboard-section:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-
+/* 公告区：独占整行，与图表区一样以一条横线起头 */
 .dashboard-section--notice {
   min-height: 280px;
-}
-
-.dashboard-section--calendar .semi-calendar-month {
-  border: 0;
-  background: transparent;
-}
-
-.dashboard-section--calendar .semi-calendar-month-grid {
-  font-size: 12px;
+  margin-top: 40px;
+  padding-top: 24px;
 }
 
 .dashboard-empty {
@@ -403,54 +362,6 @@
   flex-shrink: 0;
 }
 
-.project-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 22px;
-}
-
-.project-link-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 0;
-  color: var(--color-text-secondary);
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-
-.project-link-item:hover {
-  color: var(--semi-color-primary);
-}
-
-.project-link-item:focus-visible {
-  outline: 2px solid var(--semi-color-focus-border);
-  outline-offset: 3px;
-  border-radius: var(--semi-border-radius-small);
-}
-
-.dashboard-architecture {
-  width: 100%;
-}
-
-.dashboard-architecture .semi-descriptions-key {
-  color: var(--semi-color-text-2);
-}
-
-.dashboard-architecture .semi-descriptions-value {
-  color: var(--semi-color-text-0);
-  text-align: right;
-}
-
-.architecture-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--color-border);
-}
-
 .notice-modal-content {
   color: var(--semi-color-text-0);
   line-height: 1.75;
@@ -497,23 +408,6 @@
 
   .dashboard-chart-section:nth-child(2n) {
     padding-right: 0;
-  }
-
-  .dashboard-top-grid {
-    grid-template-columns: 1fr;
-  }
-
-  /* 单栏后两栏上下相接：竖线换成横线 */
-  .dashboard-column,
-  .dashboard-column:first-child {
-    padding-right: 0;
-    padding-left: 0;
-    border-left: 0;
-  }
-
-  .dashboard-column + .dashboard-column {
-    margin-top: 38px;
-    border-top: 1px solid var(--color-border);
   }
 }
 
@@ -592,12 +486,8 @@
     font-size: 24px;
   }
 
-  .dashboard-top-grid {
+  .dashboard-section--notice {
     margin-top: 34px;
-  }
-
-  .dashboard-column {
-    gap: 32px;
   }
 
   .notice-item {

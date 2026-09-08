@@ -1,27 +1,21 @@
 import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Typography, Tag, Skeleton, Empty, List, Descriptions } from '@douyinfe/semi-ui';
+import { Button, Typography, Tag, Skeleton, Empty, List } from '@douyinfe/semi-ui';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import type { Announcement } from '@zenith/shared/messaging';
 import type { MonitorAlertOverview } from '@zenith/shared/platform';
-import { Bell, BookOpen, MonitorPlay, Siren, Users, Wifi, LogIn, Activity, MapPin, Clock } from 'lucide-react';
+import { Bell, Siren, Users, Wifi, LogIn, Activity, MapPin, Clock } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 // 图表区懒加载：'@/components/charts' 拖 ~1.9MB 的 @visactor 依赖树，
-// 首页主体（欢迎区/统计概览/公告/日历）先渲染，图表 chunk 就绪后补齐
+// 首页主体（欢迎区/统计概览/公告）先渲染，图表 chunk 就绪后补齐
 const DashboardChartsRow = lazy(() => import('./DashboardCharts'));
 
-const GithubIcon = ({ size = 18 }: { size?: number }) => (
-  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor">
-    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-  </svg>
-);
 import { formatDateTime, stripHtml } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import { UserAvatar } from '@/components/UserAvatar';
-import MonthCalendar from '@/components/MonthCalendar';
 import type { DashboardCharts, DashboardStats } from '@zenith/shared/analytics';
 import { useDashboardCharts, useDashboardStats } from '@/hooks/queries/dashboard';
 import {
@@ -105,15 +99,6 @@ export default function DashboardPage() {
   const statsLoading = statsQuery.isFetching;
   const chartsLoading = chartsQuery.isFetching;
   const noticeDetailLoading = detailQuery.isFetching;
-
-  const architectureItems = [
-    { key: '前端框架', value: 'React 19 + Vite' },
-    { key: '后端框架', value: 'Hono v4 / Node.js' },
-    { key: 'UI 组件库', value: 'Semi Design v2' },
-    { key: '数据库', value: 'PostgreSQL' },
-    { key: 'ORM', value: 'Drizzle ORM' },
-    { key: '认证方案', value: 'JWT Bearer Token' },
-  ];
 
   function markAsRead(id: number) {
     markReadMutation.mutate({ params: { id } });
@@ -339,68 +324,16 @@ export default function DashboardPage() {
         </Suspense>
       )}
 
-      <div className="dashboard-top-grid">
-        <div className="dashboard-column dashboard-column--notice">
-          <section className="dashboard-section dashboard-section--notice">
-            <header className="dashboard-section-header">
-              <div className="dashboard-section-heading">
-                <Bell size={15} />
-                <Text strong>通知公告</Text>
-              </div>
-              <Button theme="borderless" size="small" type="tertiary" onClick={() => navigate('/announcements')}>查看全部</Button>
-            </header>
-            {renderNotices()}
-          </section>
-
-          <section className="dashboard-section dashboard-section--calendar">
-            <header className="dashboard-section-header">
-              <Text strong>日历</Text>
-            </header>
-            <MonthCalendar />
-          </section>
-        </div>
-
-        <aside className="dashboard-column dashboard-column--details">
-          <section className="dashboard-section dashboard-section--links">
-            <header className="dashboard-section-header">
-              <Text strong>项目链接</Text>
-            </header>
-            <div className="project-links">
-              <a href="https://github.com/iwangbowen/zenith-admin" target="_blank" rel="noreferrer" className="project-link-item" title="GitHub 仓库">
-                <GithubIcon size={18} />
-                <span>GitHub</span>
-              </a>
-              <a href="https://iwangbowen.github.io/zenith-admin/" target="_blank" rel="noreferrer" className="project-link-item" title="文档站点">
-                <BookOpen size={18} />
-                <span>文档</span>
-              </a>
-              <a href="https://iwangbowen.github.io/zenith-admin/demo/" target="_blank" rel="noreferrer" className="project-link-item" title="在线演示">
-                <MonitorPlay size={18} />
-                <span>演示</span>
-              </a>
-            </div>
-          </section>
-
-          <section className="dashboard-section dashboard-section--architecture">
-            <header className="dashboard-section-header">
-              <Text strong>技术架构</Text>
-            </header>
-            <Descriptions
-              data={architectureItems}
-              align="plain"
-              className="dashboard-architecture"
-            />
-            <div className="architecture-tags">
-              <Tag color="blue" size="small">TypeScript</Tag>
-              <Tag color="cyan" size="small">Vite</Tag>
-              <Tag color="green" size="small">Drizzle</Tag>
-              <Tag color="violet" size="small">Monorepo</Tag>
-              <Tag color="indigo" size="small">Zod</Tag>
-              <Tag color="orange" size="small">JWT</Tag>
-            </div>
-          </section>
-        </aside>
-      </div>
+      <section className="dashboard-section dashboard-section--notice" aria-label="通知公告">
+        <header className="dashboard-section-header">
+          <div className="dashboard-section-heading">
+            <Bell size={15} />
+            <Text strong>通知公告</Text>
+          </div>
+          <Button theme="borderless" size="small" type="tertiary" onClick={() => navigate('/announcements')}>查看全部</Button>
+        </header>
+        {renderNotices()}
+      </section>
 
       {/* ===== 通知详情 Modal ===== */}
       <AnnouncementDetailModal
