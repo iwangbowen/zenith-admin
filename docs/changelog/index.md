@@ -4,6 +4,68 @@
 
 ---
 
+## v2.24.0 - 2026-09-08
+
+**分片上传全面加固与推广**：修补分片上传的完整性漏洞（声明大小 / 内容哈希 / 分片边界均由服务端强制校验），
+补齐取消、合并互斥与租约等健壮性能力，并把分片上传接入 App 发布制品、IoT 固件与网盘新版本，
+阈值与分片大小进入运行时设置；同时统一全域时间范围筛选、重做锁屏页，并加固工作流作业执行边界。
+
+> **数据库迁移基线重建**（`0000_baseline` + `0001_extensions`），不提供从 2.23 及更早版本的增量升级；
+> 既有数据库需重建后执行 `npm run db:migrate && npm run db:seed`。`0001_extensions` 现收口全部手写 DDL：
+> pgvector 条件启用、`iot_telemetry` 日分区、`drive_activities` / `drive_share_access_logs` 月分区、
+> `notify_cache_invalidate` 及 `system_settings` / `data_mask_policies` 触发器、`zenith_readonly` 只读角色。
+
+### Added
+
+#### 分片上传（文件服务）
+
+- 通用绑定表 `upload_session_bindings`（uploadId → module + payload，随会话级联删除）：归属模块在自己的契约上声明同形的
+  init / chunk / complete / status / abort 五个操作即可复用分片会话，服务端以 `computeHash` 在合并时计算 SHA-256
+- App 发布制品接入分片上传（`/api/app-releases/releases/{id}/artifacts/upload/*`）：init 阶段预检同名制品，
+  安装包不再受反向代理单请求体上限约束，服务端 sha256 语义不变
+- IoT 固件接入分片上传（`/api/iot/firmwares/upload/*`），init 阶段预检产品版本唯一
+- 网盘「上传新版本」面板：超阈值文件走分片 init 带 `nodeId`，不再提示用户绕路
+- 运行时设置 `files.chunkThresholdMb` / `files.chunkSizeMb`（登录用户可见）：前端按阈值自动选单请求或分片，
+  服务端以设置为分片基线；网盘简单上传 / 新版本上限改读同一设置
+- 会话状态新增 `completing`：`UPDATE … WHERE status='uploading' RETURNING` 抢占合并权，并发 complete 只有一个真正合并，
+  其余 409 后轮询等待；30 分钟租约允许接管崩溃的合并
+- 取消语义：`controller.abort(CHUNKED_UPLOAD_CANCELLED)` 表示用户显式取消，通知服务端释放云端 multipart / 临时分片；
+  页面卸载等无原因 abort 保留会话可续传；系统文件页增加逐文件取消
+- 限流规则 `chunk_upload`（按用户 3000 次 / 分钟，覆盖四个 chunk 端点），路径匹配支持单段 `*`
+- 暂存目录可配置（`UPLOAD_TEMP_DIR`），部署文档新增「多实例与本地存储」约束说明
+- 新增 `upload-sessions.service` 与 S3 multipart 驱动单测、shared 分片算术单测
+
+#### 界面
+
+- 锁屏页视觉重做：跟随主题（亮色浅底 + 主色光晕、暗色深海军蓝），时钟自适应字号，表单语义化（回车即提交），
+  「解锁」为主按钮、「重新登录」降为次级；`UserAvatar` 自渲染 label 使 `fontSize` 生效
+- 偏好设置默认加载动画改为「翻转方块」，四种指示器只动 transform / opacity 并提升为合成层，动画曲线连续无停顿
+
+### Changed
+
+- **分片上传完整性**：init 的 `chunkSize` 下限 5 MiB（S3 / BOS 非末片最小值）、上限 32 MB，片数超过 10,000 时服务端按 MiB
+  上调分片并以响应为准；每片实际字节数必须等于该序号期望值，complete 时核对总和等于声明 `fileSize`（声明大小是上传上限、
+  网盘配额与 `managed_files.size` 的依据）；网盘分片路径的 `contentHash` 改由服务端按实际内容重算比对，
+  不再直接落库客户端声明值；总量 / 哈希 / 类型不符视为不可恢复失败，会话置 `aborted`
+- 分片上传过期清理以「会话创建 / 最后一片到达」较晚者判定，持续上传中的大文件不再被误清；chunk 响应改回 `receivedCount`
+- 全域时间范围筛选统一改用 `DateRangeFilter`：默认宽度 400（秒级）/ 280（日期级），移除 16 个页面的收窄覆盖，
+  手写 `DatePicker` 区间与「开始 / 结束」拼装全部迁移；skill 与文档新增硬约束
+- 首页移除「项目链接」「技术架构」「日历」区块，「通知公告」收敛为整行
+- 工作流作业引擎：租约 / 代际（`lease_token` / `generation`）、执行超时与暂停剩余时长、步骤回执表 `workflow_job_effects`
+  保证外部副作用幂等；渠道消息 `dedupe_key` 去重；任务中心重试策略与事务内提交语义收口；`login_risk_events` 索引改为
+  `(tenant_id, created_at DESC, id DESC)` 形态
+- `DRIVE_SIMPLE_UPLOAD_MAX_BYTES` 常量移除，网盘简单上传阈值由运行时设置决定
+
+### Fixed
+
+- 分片上传：声明 1 字节、实际上传任意大小即可绕过大小上限与网盘配额；客户端声明的内容哈希未经校验即写入并参与秒传匹配；
+  `complete` 失败后会话仍为 `uploading` 导致客户端反复续传 → 合并 → 失败；前端取消从不通知服务端释放会话
+- 时间范围筛选：Semi 区间输入框均分宽度后秒级时间末位被截断
+- 接口限流编辑抽屉的确认按钮把三元表达式源码当作文案渲染
+- `chunk_upload` 等路径绑定规则同时进入代码内置默认，既有环境部署后即生效，不再依赖种子 DB 行
+
+---
+
 ## v2.23.0 - 2026-09-07
 
 **企业网盘完整版**：在 v2.22.0 的网盘基础能力之上，按「基础重构 → 日常体验 → 分享协作 → 治理与集成」四个阶段补齐企业网盘，
