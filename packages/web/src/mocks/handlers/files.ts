@@ -238,7 +238,7 @@ export const filesHandlers = [
     const session = mockUploadSessions.get(uploadId);
     if (!session) return notFound('上传会话不存在');
     session.received.add(index);
-    return ok({ index, received: [...session.received].sort((a, b) => a - b) });
+    return ok({ index, receivedCount: session.received.size });
   }),
 
   // 分片上传：完成合并

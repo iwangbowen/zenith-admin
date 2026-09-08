@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { dateTimeStringSchema, partialForUpdate } from '../core/validation';
-import { UPLOAD_CHUNK_MIN_BYTES } from '../platform/constants';
+import { UPLOAD_CHUNK_MAX_BYTES, UPLOAD_CHUNK_MIN_BYTES } from '../platform/constants';
 import {
   DRIVE_ROLES,
   DRIVE_HANDOFF_MODES,
@@ -164,7 +164,7 @@ export const driveUploadInitSchema = z.object({
   fileName: driveNodeNameSchema,
   fileSize: z.number().int().min(0),
   mimeType: z.string().max(128).optional(),
-  chunkSize: z.number().int().min(UPLOAD_CHUNK_MIN_BYTES).max(64 * 1024 * 1024),
+  chunkSize: z.number().int().min(UPLOAD_CHUNK_MIN_BYTES).max(UPLOAD_CHUNK_MAX_BYTES),
   contentHash: sha256Schema.optional(),
   conflictPolicy: z.enum(DRIVE_UPLOAD_CONFLICT_POLICIES).default('rename'),
 });

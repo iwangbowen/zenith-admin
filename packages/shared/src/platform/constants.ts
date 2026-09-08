@@ -66,8 +66,8 @@ export const FILE_TYPE_FILTER_OPTIONS: Array<{ value: FileTypeFilter; label: str
 export const FILE_ACCESS_PURPOSES = ['preview', 'download'] as const;
 export type FileAccessPurpose = (typeof FILE_ACCESS_PURPOSES)[number];
 
-/** 分片上传会话状态 */
-export const UPLOAD_SESSION_STATUSES = ['uploading', 'completed', 'aborted'] as const;
+/** 分片上传会话状态；completing = 已抢占合并权、正在合并，客户端应等待而非重新初始化 */
+export const UPLOAD_SESSION_STATUSES = ['uploading', 'completing', 'completed', 'aborted'] as const;
 
 /**
  * 分片上传单片最小字节数，也是客户端默认分片大小。
@@ -76,8 +76,12 @@ export const UPLOAD_SESSION_STATUSES = ['uploading', 'completed', 'aborted'] as 
  */
 export const UPLOAD_CHUNK_MIN_BYTES = 5 * 1024 * 1024;
 
-/** 分片上传单片最大字节数：受反向代理请求体上限（nginx client_max_body_size 100m）与服务端内存约束 */
-export const UPLOAD_CHUNK_MAX_BYTES = 100 * 1024 * 1024;
+/**
+ * 分片上传单片最大字节数。路由层 parseBody 会把整片读入内存，按 3 并发计每用户约 96 MB 在途；
+ * 也远低于反向代理请求体上限（nginx client_max_body_size 100m）。
+ * 与 UPLOAD_MAX_CHUNKS 相乘即分片上传可承载的最大文件（320 GiB），高于 files.uploadMaxSizeMb 的取值上限。
+ */
+export const UPLOAD_CHUNK_MAX_BYTES = 32 * 1024 * 1024;
 
 /** 单个分片上传会话允许的最大片数：S3 / OSS / COS / OBS / BOS 原生 multipart 上限均为 10,000 */
 export const UPLOAD_MAX_CHUNKS = 10_000;

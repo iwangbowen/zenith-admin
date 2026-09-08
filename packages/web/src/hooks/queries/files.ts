@@ -37,14 +37,15 @@ export function getFileAccessUrl(id: string, purpose?: FileAccessPurpose): Promi
 interface UploadVariables {
   formData: FormData;
   onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
 }
 
 /** 多文件上传（进入文件管理列表）；带上传进度，故走 XHR 表单通道而非 api() */
 export function useUploadFile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ formData, onProgress }: UploadVariables) =>
-      request.postForm<OutputOf<typeof fileContract.upload>>(urlOf(fileContract.upload), formData, { onProgress }).then(unwrap),
+    mutationFn: ({ formData, onProgress, signal }: UploadVariables) =>
+      request.postForm<OutputOf<typeof fileContract.upload>>(urlOf(fileContract.upload), formData, { onProgress, signal }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: fileKeys.all }),
   });
 }

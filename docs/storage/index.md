@@ -89,18 +89,25 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/files/upload/init` | 初始化上传会话，校验文件大小，选择默认存储，裁定分片大小，返回 `uploadId`、`chunkSize`、`totalChunks`、`received` |
-| POST | `/api/files/upload/chunk` | 上传单片；index 从 0 开始，逐片校验字节数，首片执行 Magic Bytes 校验 |
-| POST | `/api/files/upload/complete` | 校验分片完整、总字节数与（可选）内容哈希后完成上传并写入 `managed_files` |
+| POST | `/api/files/upload/chunk` | 上传单片；index 从 0 开始，逐片校验字节数，首片执行 Magic Bytes 校验；返回 `receivedCount`（完整序号列表经 status 获取） |
+| POST | `/api/files/upload/complete` | 校验分片完整、总字节数与（可选）内容哈希后完成上传并写入 `managed_files`；并发到达时只有一个能合并，其余 409 |
 | GET | `/api/files/upload/{uploadId}/status` | 查询已接收分片与会话状态 |
-| DELETE | `/api/files/upload/{uploadId}` | 中止上传并清理临时目录或云端 multipart |
+| DELETE | `/api/files/upload/{uploadId}` | 中止上传并清理临时目录或云端 multipart；合并中（`completing`）与已完成的会话不可中止 |
 
-`oss`、`s3`、`cos`、`obs`、`azure`、`bos` 使用原生 multipart；`local`、`kodo`、`sftp` 使用 `storage/tmp/uploads` 本地暂存后流式合并。`upload_chunks` 的唯一约束允许客户端安全重传同一分片。
+`oss`、`s3`、`cos`、`obs`、`azure`、`bos` 使用原生 multipart；`local`、`kodo`、`sftp` 使用本地暂存（`UPLOAD_TEMP_DIR`，默认
+`storage/tmp/uploads`）后流式合并——多实例部署时该目录必须是共享卷，见 [部署：多实例与本地存储](../guide/deployment.md#5-多实例与本地存储)。
+`upload_chunks` 的唯一约束允许客户端安全重传同一分片。
+
+会话状态：`uploading` → `completing`（某次 complete 已抢占合并权，正在合并）→ `completed`；任意阶段可进入 `aborted`。
+`completing` 通过 `UPDATE … WHERE status = 'uploading' RETURNING` 抢占，保证并发 complete 只有一个真正合并；可重试错误（网络、云端瞬时故障）
+把状态放回 `uploading`，终态错误置 `aborted`。合并进程崩溃时 `completing` 会卡住，因此带 30 分钟租约（`updated_at`），超时后新的 complete 可以接管。
+客户端（`packages\web\src\utils\chunked-upload.ts`）遇到 `completing` 会轮询状态等待，而不是重新初始化。
 
 分片大小与字节数由服务端裁定并强制校验（常量与算术在 `packages\shared\src\platform\{constants,upload}.ts`）：
 
 - 客户端请求的 `chunkSize` 不得低于 `UPLOAD_CHUNK_MIN_BYTES`（5 MiB，S3 / BOS 非末片下限）；文件按该分片超过
   `UPLOAD_MAX_CHUNKS`（10,000，各对象存储 multipart 片数上限）时服务端按 MiB 上调分片，客户端以 init 响应的 `chunkSize`
-  切片；上调后仍超过 `UPLOAD_CHUNK_MAX_BYTES`（100 MB）则拒绝。
+  切片；上调后仍超过 `UPLOAD_CHUNK_MAX_BYTES`（32 MB：路由层会把整片读入内存，按 3 并发计每用户约 96 MB 在途）则拒绝。
 - 每一片的实际字节数必须等于该序号的期望值（非末片为 `chunkSize`，末片为余量），complete 时再核对总和等于声明的
   `fileSize`——声明大小是上传上限、网盘配额与 `managed_files.size` 的依据，不允许与实际落地字节数不一致。
 - 归属模块可在 complete 时传入 `expectedHash`（客户端预先算好的 SHA-256）：本地暂存路径直接对分片文件计算，
@@ -109,7 +116,11 @@
 - 总字节数不符、哈希不符、类型不允许属于不可恢复失败：会话直接置为 `aborted`，客户端续传探测到非 `uploading`
   状态后重新初始化，而不是拿着「已完整」的分片反复 complete。
 
-过期分片由 `cleanupStaleUploadSessions(ttlHours)` 清理：删除过期会话及其分片，尝试中止云端 multipart，并清理无活跃会话的孤儿临时目录。该清理能力接入统一数据保留策略。
+客户端取消语义：用户显式取消（`controller.abort(CHUNKED_UPLOAD_CANCELLED)`）会调用中止接口释放云端 multipart / 临时分片并清除续传键；
+页面卸载、路由切换等无原因的 abort 只中断请求，会话保留，下次选择同一文件仍可续传。
+
+过期分片由 `cleanupStaleUploadSessions(ttlHours)` 清理：以「会话创建或最后一片到达」中较晚者判定过期（持续上传中的大文件不会被误清），
+删除过期会话及其分片，尝试中止云端 multipart，并清理无活跃会话的孤儿临时目录。该清理能力接入统一数据保留策略。
 
 ### 下载与预览
 

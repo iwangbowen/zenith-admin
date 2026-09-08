@@ -44,6 +44,14 @@ class Request extends HttpClient {
         if (!restOpts.silent) showRequestErrorToast(errResp.message);
         resolve(errResp);
       });
+      // 与 fetch 分支一致：signal 中止时终止请求，按失败响应返回（不弹提示，取消是调用方的主动行为）
+      const { signal } = restOpts;
+      if (signal) {
+        const onAbort = () => { xhr.abort(); resolve({ code: -1, message: '已取消', data: null as unknown as T }); };
+        if (signal.aborted) { onAbort(); return; }
+        signal.addEventListener('abort', onAbort, { once: true });
+        xhr.addEventListener('loadend', () => signal.removeEventListener('abort', onAbort));
+      }
       xhr.send(body);
     });
   }

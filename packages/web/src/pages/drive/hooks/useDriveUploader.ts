@@ -13,17 +13,18 @@ import {
 import { request } from '@/utils/request';
 import { api, urlOf } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
-import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
+import { chunkedUpload, CHUNKED_UPLOAD_CANCELLED, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
 import { driveKeys, invalidateDir } from '@/hooks/queries/drive';
 import type { DirectoryUploadFile } from '@/utils/directory-upload';
 import { hashDriveFile } from './drive-hash';
 
-/** 网盘自有的分片上传接口（init / chunk / complete / status），由契约派生 */
+/** 网盘自有的分片上传接口（init / chunk / complete / status / abort），由契约派生 */
 const DRIVE_UPLOAD_ENDPOINTS: ChunkedUploadEndpoints = {
   init: urlOf(driveNodeContract.uploadInit),
   chunk: urlOf(driveNodeContract.uploadChunk),
   complete: urlOf(driveNodeContract.uploadComplete),
   status: (uploadId) => urlOf(driveNodeContract.uploadStatus, { params: { uploadId } }),
+  abort: (uploadId) => urlOf(driveNodeContract.uploadAbort, { params: { uploadId } }),
 };
 
 export type UploadItemStatus = 'pending' | 'hashing' | 'uploading' | 'done' | 'skipped' | 'error' | 'cancelled';
@@ -265,7 +266,8 @@ export function useDriveUploader() {
 
   const cancel = useCallback((id: string) => {
     cancelledRef.current.add(id);
-    controllersRef.current.get(id)?.abort();
+    // 用户显式取消：带原因中止，chunkedUpload 据此释放服务端会话；卸载时的无原因 abort 则保留会话可续传
+    controllersRef.current.get(id)?.abort(CHUNKED_UPLOAD_CANCELLED);
     queueRef.current = queueRef.current.filter((it) => it.id !== id);
     setItems((prev) => prev.map((it) => (it.id === id && ACTIVE_STATUSES.includes(it.status) ? { ...it, status: 'cancelled' } : it)));
   }, []);

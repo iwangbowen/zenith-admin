@@ -130,7 +130,8 @@ export type ManagedFileRow = typeof managedFiles.$inferSelect;
 export type NewManagedFile = typeof managedFiles.$inferInsert;
 
 // ─── 分片上传会话表 ──────────────────────────────────────────────────────────
-export const uploadSessionStatusEnum = pgEnum('upload_session_status', ['uploading', 'completed', 'aborted']);
+/** completing = 已抢占合并权、正在合并（并发 complete 互斥）；合并可重试失败时回到 uploading */
+export const uploadSessionStatusEnum = pgEnum('upload_session_status', ['uploading', 'completing', 'completed', 'aborted']);
 
 export const uploadSessions = pgTable('upload_sessions', {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),

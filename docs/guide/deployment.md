@@ -59,6 +59,7 @@ ALLOWED_ORIGINS=https://admin.example.com
 | --- | --- |
 | `REQUEST_BODY_LIMIT` | 请求体大小上限，`0` 或未设置表示不启用限制 |
 | `REQUEST_TIMEOUT_MS` | 请求超时，自动排除 `/api/ws`、`/api/files`、`/api/db-backups` 与 `/export` 接口 |
+| `UPLOAD_TEMP_DIR` | 分片上传本地暂存根目录，默认 `storage/tmp/uploads`；多实例部署见下文「多实例与本地存储」 |
 | `TRUSTED_PROXY_CIDRS` | 仅信任指定代理的 `X-Forwarded-For` / `X-Real-IP` |
 | `REPORT_OUTBOUND_PRIVATE_ALLOWLIST` | 报表外部数据源访问私网的 allowlist |
 | `AI_OUTBOUND_PRIVATE_ALLOWLIST` | AI 服务商请求访问本地 / 私网模型的 allowlist，默认含 `127.0.0.1,localhost` |
@@ -113,6 +114,20 @@ pm2 startup
 ```
 
 后端默认监听 `http://localhost:3300`。
+
+### 5. 多实例与本地存储
+
+后端进程本身无状态，会话、限流等运行时状态在 Redis / PostgreSQL 中，可以横向扩多个实例。但有两类数据落在进程所在机器的磁盘上，
+多实例部署时必须放到各实例共享的卷（NFS / 云盘多点挂载等），否则请求被负载均衡到不同节点后彼此看不到对方写的文件：
+
+| 目录 | 内容 | 何时涉及 |
+| --- | --- | --- |
+| `storage/local`（或存储配置的 `localRootPath`） | `local` 存储的文件本体 | 默认文件服务是 `local` |
+| `storage/tmp/uploads`（`UPLOAD_TEMP_DIR`） | 分片上传的本地暂存分片 | 默认文件服务是 `local` / `kodo` / `sftp`——它们没有可控的云端 multipart，分片先落本地再合并上传 |
+| `storage/cms-static`（`CMS_STATIC_ROOT`） | CMS 静态化产物 | 启用了 CMS 静态化 |
+
+默认文件服务为 `oss` / `s3` / `cos` / `obs` / `azure` / `bos` 时，分片直传云端 multipart、进度记在数据库，不依赖本地磁盘，
+无需共享卷。Docker Compose 单实例部署已把 `storage/` 整体挂到 `api_storage` 卷，容器重建不会丢失进行中的分片。
 
 ## 前端部署
 

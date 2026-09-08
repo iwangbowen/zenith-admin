@@ -92,7 +92,7 @@ export type UploadSessionInit = z.infer<typeof uploadSessionInitSchema>;
 
 export const uploadChunkResultSchema = z.object({
   index: z.int(),
-  received: z.array(z.int()),
+  receivedCount: z.int().meta({ description: '当前已接收的分片数；完整序号列表经 status 接口获取，避免万片级会话每片回传整表' }),
 }).meta({ id: 'UploadChunkResult' });
 
 export type UploadChunkResult = z.infer<typeof uploadChunkResultSchema>;

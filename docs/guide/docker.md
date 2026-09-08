@@ -159,7 +159,7 @@ npm run dev
 | --- | --- |
 | `postgres_data` | PostgreSQL 数据 |
 | `redis_data` | Redis AOF 数据 |
-| `api_storage` | 本地上传文件 |
+| `api_storage` | `storage/` 整体：本地上传文件、分片上传暂存目录、CMS 静态化产物 |
 | `api_logs` | 后端日志 |
 
 ```bash

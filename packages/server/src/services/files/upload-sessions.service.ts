@@ -4,7 +4,7 @@ import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
-import { and, asc, eq, lt } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lt, notExists, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { countUploadChunks, expectedUploadChunkSize, resolveUploadChunkSize, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_MAX_CHUNKS, type InitChunkUploadInput } from '@zenith/shared/platform';
 import { db } from '../../db';
@@ -12,6 +12,7 @@ import { uploadSessions, uploadChunks, managedFiles, fileStorageConfigs, type Fi
 import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName, getMultipartDriver, mapObjectAclError, resolveObjectAcl, readStoredFile, deleteObjectByConfig } from '../../lib/file-storage';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
+import { config } from '../../config';
 import { assertUploadSizeAllowed, assertUploadTypeAllowed, mapManagedFile, type ManagedFileUploadOptions } from './files.service';
 
 /** 完成分片上传时归属模块可指定的属性 */
@@ -23,7 +24,11 @@ export interface ChunkUploadCompleteOptions extends Pick<ManagedFileUploadOption
   expectedHash?: string | null;
 }
 
-const UPLOAD_TEMP_ROOT = path.resolve(process.cwd(), 'storage/tmp/uploads');
+/**
+ * 本地暂存根目录（UPLOAD_TEMP_DIR，默认 storage/tmp/uploads）。只有 local / kodo / sftp 走此路径；
+ * 云原生 multipart 的分片直传云端，不落本地。多实例部署时该目录必须为共享卷，见 docs/guide/deployment.md。
+ */
+const UPLOAD_TEMP_ROOT = config.uploadTempDir;
 
 function sessionTempDir(uploadId: string) {
   return path.join(UPLOAD_TEMP_ROOT, uploadId);
@@ -48,6 +53,10 @@ async function getReceivedIndices(sessionId: number): Promise<number[]> {
     .where(eq(uploadChunks.uploadSessionId, sessionId))
     .orderBy(asc(uploadChunks.index));
   return rows.map((r) => r.index);
+}
+
+function countReceivedChunks(sessionId: number) {
+  return db.$count(uploadChunks, eq(uploadChunks.uploadSessionId, sessionId));
 }
 
 async function cleanupSession(uploadId: string) {
@@ -90,10 +99,20 @@ async function abortSession(session: UploadSessionRow, config: FileStorageConfig
   await cleanupSession(session.uploadId);
 }
 
+/** 标记「会话已被本次 complete 置为 aborted」的错误，complete 的兜底回滚据此跳过 */
+const SESSION_ABORTED = Symbol('upload-session-aborted');
+function markSessionAborted<T>(err: T): T {
+  if (typeof err === 'object' && err !== null) Object.defineProperty(err, SESSION_ABORTED, { value: true });
+  return err;
+}
+function isSessionAbortedError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && SESSION_ABORTED in err;
+}
+
 /** 会话遇到不可恢复的校验失败：先中止再抛 400，避免客户端拿着「已完整」的分片反复 complete */
 async function failSession(session: UploadSessionRow, config: FileStorageConfigRow, message: string, opts: { multipartCompleted?: boolean } = {}): Promise<never> {
   await abortSession(session, config, opts);
-  throw new HTTPException(400, { message });
+  throw markSessionAborted(new HTTPException(400, { message }));
 }
 
 /** 按序拼接各分片临时文件为单一可读流，逐片流式读取（内存占用受单片大小限制） */
@@ -174,7 +193,9 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
 
 export async function uploadChunk(uploadId: string, index: number, chunk: File, options: Pick<ManagedFileUploadOptions, 'skipTypeCheck'> = {}) {
   const session = await ensureSession(uploadId);
-  if (session.status !== 'uploading') throw new HTTPException(400, { message: '上传会话已结束' });
+  if (session.status !== 'uploading') {
+    throw new HTTPException(400, { message: session.status === 'completing' ? '上传正在合并中，不能再上传分片' : '上传会话已结束' });
+  }
   if (!Number.isInteger(index) || index < 0 || index >= session.totalChunks) {
     throw new HTTPException(400, { message: '分片序号越界' });
   }
@@ -195,10 +216,10 @@ export async function uploadChunk(uploadId: string, index: number, chunk: File, 
       .insert(uploadChunks)
       .values({ uploadSessionId: session.id, index, size: body.length, etag })
       .onConflictDoUpdate({ target: [uploadChunks.uploadSessionId, uploadChunks.index], set: { size: body.length, etag } });
-    return { index, received: await getReceivedIndices(session.id) };
+    return { index, receivedCount: await countReceivedChunks(session.id) };
   }
 
-  // 本地暂存：流式写入临时分片文件，不整片进内存
+  // 本地暂存：分片写入临时文件后再登记（路由层 parseBody 已把整个请求体读入内存，此处只是避免二次拷贝）
   const dest = chunkPath(uploadId, index);
   await fs.mkdir(path.dirname(dest), { recursive: true });
   await pipeline(Readable.fromWeb(chunk.stream() as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(dest));
@@ -210,8 +231,7 @@ export async function uploadChunk(uploadId: string, index: number, chunk: File, 
     .values({ uploadSessionId: session.id, index, size })
     .onConflictDoUpdate({ target: [uploadChunks.uploadSessionId, uploadChunks.index], set: { size } });
 
-  const received = await getReceivedIndices(session.id);
-  return { index, received };
+  return { index, receivedCount: await countReceivedChunks(session.id) };
 }
 
 export async function getUploadStatus(uploadId: string) {
@@ -220,11 +240,17 @@ export async function getUploadStatus(uploadId: string) {
   return { uploadId, status: session.status, chunkSize: session.chunkSize, totalChunks: session.totalChunks, received };
 }
 
+const COMPLETING_MESSAGE = '上传正在合并中，请稍后查询状态';
+/** completing 状态的租约：超过该时长仍未结束视为合并进程已崩溃，允许新的 complete 接管 */
+const COMPLETING_LEASE_MS = 30 * 60 * 1000;
+
 export async function completeChunkUpload(uploadId: string, options: ChunkUploadCompleteOptions = {}) {
   const user = currentUser();
   const session = await ensureSession(uploadId);
+  const leaseCutoff = new Date(Date.now() - COMPLETING_LEASE_MS);
   if (session.status === 'completed') throw new HTTPException(400, { message: '上传已完成' });
-  if (session.status !== 'uploading') throw new HTTPException(400, { message: '上传会话已中止，请重新上传' });
+  if (session.status === 'completing' && session.updatedAt >= leaseCutoff) throw new HTTPException(409, { message: COMPLETING_MESSAGE });
+  if (session.status === 'aborted') throw new HTTPException(400, { message: '上传会话已中止，请重新上传' });
 
   const chunkRows = await db
     .select({ index: uploadChunks.index, size: uploadChunks.size, etag: uploadChunks.etag })
@@ -235,6 +261,38 @@ export async function completeChunkUpload(uploadId: string, options: ChunkUpload
     throw new HTTPException(400, { message: `分片不完整：已接收 ${chunkRows.length}/${session.totalChunks}` });
   }
 
+  // 抢占合并权：并发到达的 complete 只有一个能把 uploading（或租约过期的 completing）改成 completing，其余拿 409 去轮询状态
+  const [claimed] = await db
+    .update(uploadSessions)
+    .set({ status: 'completing' })
+    .where(and(
+      eq(uploadSessions.id, session.id),
+      or(eq(uploadSessions.status, 'uploading'), and(eq(uploadSessions.status, 'completing'), lt(uploadSessions.updatedAt, leaseCutoff))),
+    ))
+    .returning({ id: uploadSessions.id });
+  if (!claimed) throw new HTTPException(409, { message: COMPLETING_MESSAGE });
+
+  try {
+    return await mergeAndRegister(session, chunkRows, options, user);
+  } catch (err) {
+    // 终态失败已由 failSession / abortSession 置 aborted；其余（网络、云端瞬时错误）放回 uploading 允许客户端重试
+    if (!isSessionAbortedError(err)) {
+      await db
+        .update(uploadSessions)
+        .set({ status: 'uploading' })
+        .where(and(eq(uploadSessions.id, session.id), eq(uploadSessions.status, 'completing')));
+    }
+    throw err;
+  }
+}
+
+async function mergeAndRegister(
+  session: UploadSessionRow,
+  chunkRows: Array<{ index: number; size: number; etag: string | null }>,
+  options: ChunkUploadCompleteOptions,
+  user: ReturnType<typeof currentUser>,
+) {
+  const { uploadId } = session;
   const config = await getSessionConfig(session.storageConfigId);
   // 逐片校验之外再核对总量：声明大小写入 managed_files.size 并用于配额与上限检查，不允许与实际字节数不一致
   const receivedBytes = chunkRows.reduce((sum, row) => sum + row.size, 0);
@@ -261,7 +319,7 @@ export async function completeChunkUpload(uploadId: string, options: ChunkUpload
       } catch (err) {
         // 类型不允许是确定性失败，继续保留会话只会让客户端反复 complete
         await abortSession(session, config);
-        throw err;
+        throw markSessionAborted(err);
       }
     }
     if (expectedHash && (await sha256OfChunkFiles(uploadId, session.totalChunks)) !== expectedHash) {
@@ -307,6 +365,9 @@ export async function completeChunkUpload(uploadId: string, options: ChunkUpload
 export async function abortChunkUpload(uploadId: string) {
   const session = await ensureSession(uploadId);
   if (session.status === 'completed') throw new HTTPException(400, { message: '上传已完成，无法中止' });
+  if (session.status === 'completing' && session.updatedAt >= new Date(Date.now() - COMPLETING_LEASE_MS)) {
+    throw new HTTPException(409, { message: '上传正在合并中，无法中止' });
+  }
   const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, session.storageConfigId)).limit(1);
   await abortSession(session, config);
 }
@@ -314,7 +375,8 @@ export async function abortChunkUpload(uploadId: string) {
 /**
  * 清理超时未完成的分片上传（数据保留策略 upload_sessions 的 custom 实现，
  * ttlHours = 策略保留天数 × 24）：
- * 1. 删除创建时间超过 TTL 的会话（任意状态），级联删除 upload_chunks 并移除临时目录；
+ * 1. 删除「最近一次活动」（会话创建或最后一片到达，取较晚者）超过 TTL 的会话（任意状态），
+ *    级联删除 upload_chunks 并移除临时目录——进行中的大文件只要还在持续上传就不会被误清；
  * 2. 扫描临时根目录，删除无活跃会话对应、且修改时间超过 TTL 的孤儿目录（mtime 校验避免误删进行中上传）。
  */
 export async function cleanupStaleUploadSessions(ttlHours = 24): Promise<{ staleSessions: number; orphanDirs: number; freedBytes: number }> {
@@ -322,8 +384,13 @@ export async function cleanupStaleUploadSessions(ttlHours = 24): Promise<{ stale
   let freedBytes = 0;
 
   // 1. 过期会话：中止云端 multipart（如有）→ 删临时目录 → 删 DB 行（级联删 upload_chunks）
+  const recentChunkExists = db
+    .select({ id: uploadChunks.id })
+    .from(uploadChunks)
+    .where(and(eq(uploadChunks.uploadSessionId, uploadSessions.id), gte(uploadChunks.createdAt, cutoff)));
   const stale = await db
     .select({
+      id: uploadSessions.id,
       uploadId: uploadSessions.uploadId,
       provider: uploadSessions.provider,
       multipartUploadId: uploadSessions.multipartUploadId,
@@ -331,7 +398,7 @@ export async function cleanupStaleUploadSessions(ttlHours = 24): Promise<{ stale
       storageConfigId: uploadSessions.storageConfigId,
     })
     .from(uploadSessions)
-    .where(lt(uploadSessions.createdAt, cutoff));
+    .where(and(lt(uploadSessions.createdAt, cutoff), notExists(recentChunkExists)));
   for (const s of stale) {
     if (getMultipartDriver(s.provider) && s.multipartUploadId) {
       const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, s.storageConfigId)).limit(1);
@@ -341,7 +408,7 @@ export async function cleanupStaleUploadSessions(ttlHours = 24): Promise<{ stale
     await cleanupSession(s.uploadId);
   }
   if (stale.length > 0) {
-    await db.delete(uploadSessions).where(lt(uploadSessions.createdAt, cutoff));
+    await db.delete(uploadSessions).where(inArray(uploadSessions.id, stale.map((s) => s.id)));
   }
 
   // 2. 孤儿临时目录：磁盘上存在但无对应会话、且修改时间已超过 TTL

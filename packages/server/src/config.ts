@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'node:path';
 import * as z from 'zod';
 import { collectRuntimeSecretErrors, isDevelopmentEnv, resolveRuntimeSecrets, RUNTIME_SECRETS_HINT } from './lib/secrets';
 
@@ -52,6 +53,11 @@ const envSchema = z.object({
   SERVER_TIMING_ENABLED: envBool(false),
   REQUEST_BODY_LIMIT: z.coerce.number().int().min(0).default(0),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().min(0).default(0),
+  /**
+   * 分片上传本地暂存根目录（local / kodo / sftp 存储走「本地暂存后合并」路径时使用），
+   * 留空为 `storage/tmp/uploads`。多实例部署时该目录必须是各实例共享的卷，否则同一会话的分片会落在不同节点
+   */
+  UPLOAD_TEMP_DIR: z.string().default(''),
   ALLOWED_ORIGINS: z.string().default(''),
   TRUSTED_PROXY_CIDRS: z.string().default(''),
   REPORT_OUTBOUND_PRIVATE_ALLOWLIST: z.string().default(''),
@@ -248,6 +254,8 @@ export const config = {
   serverTimingEnabled: env.SERVER_TIMING_ENABLED,
   requestBodyLimit: env.REQUEST_BODY_LIMIT,
   requestTimeoutMs: env.REQUEST_TIMEOUT_MS,
+  /** 分片上传本地暂存根目录（绝对路径） */
+  uploadTempDir: env.UPLOAD_TEMP_DIR.trim() ? path.resolve(env.UPLOAD_TEMP_DIR.trim()) : path.resolve(process.cwd(), 'storage/tmp/uploads'),
   allowedOrigins: env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean),
   trustedProxyCidrs: env.TRUSTED_PROXY_CIDRS.split(',').map(s => s.trim()).filter(Boolean),
   ai: {
