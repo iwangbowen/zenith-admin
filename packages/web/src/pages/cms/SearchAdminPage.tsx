@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Button, Form, Input, Tag, Toast, Typography, Tabs, TabPane, Modal, Select, DatePicker } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, Input, Tag, Toast, Typography, Tabs, TabPane, Modal, Select } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RefreshCw, SplitSquareHorizontal, Plus, Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -24,9 +24,9 @@ import { CMS_SEARCH_WORD_TYPES, CMS_SEARCH_WORD_TYPE_LABELS } from '@zenith/shar
 import { COMMON_STATUS_OPTIONS, enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CmsSearchResult, CmsSearchWord, CmsHotKeyword } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
-import { formatDateTimeForApi } from '@/utils/date';
+import { formatDateTimeRangeForApi } from '@/utils/date';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -274,15 +274,13 @@ function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | un
   const { hasPermission } = usePermission();
   const [groupId, setGroupId] = useState<number | undefined>(undefined);
   const [keyword, setKeyword] = useState('');
-  const [startTime, setStartTime] = useState<Date | undefined>(undefined);
-  const [endTime, setEndTime] = useState<Date | undefined>(undefined);
+  const [timeRange, setTimeRange] = useState<[Date, Date] | null>(null);
   const groupsQuery = useCmsHotwordGroups(siteId);
   const hotQuery = useCmsHotKeywords({
     siteId,
     groupId,
     keyword: keyword || undefined,
-    startTime: startTime ? formatDateTimeForApi(startTime) : undefined,
-    endTime: endTime ? formatDateTimeForApi(endTime) : undefined,
+    ...formatDateTimeRangeForApi(timeRange),
   });
   const clearMutation = useClearCmsHotKeywords();
   const saveGroupMutation = useSaveCmsHotwordGroup();
@@ -342,8 +340,7 @@ function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | un
           width={150}
         />
         <Input placeholder="关键词" value={keyword} onChange={setKeyword} showClear style={{ width: 150 }} />
-        <DatePicker type="dateTime" value={startTime} onChange={(value) => setStartTime(value as Date | undefined)} placeholder="开始时间" />
-        <DatePicker type="dateTime" value={endTime} onChange={(value) => setEndTime(value as Date | undefined)} placeholder="结束时间" />
+        <DateRangeFilter value={timeRange} onChange={setTimeRange} />
         {canManage && siteId ? (
           <Button icon={<Plus size={14} />} onClick={() => {
             let name = '';

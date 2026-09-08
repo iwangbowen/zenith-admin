@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Button, DatePicker, Dropdown, Form, Modal, Space, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Form, Modal, Space, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { Upload, FileText, Film, Music, File as FileIcon, FolderPlus, FolderPen, FolderX, Move, ShieldCheck, MoreHorizontal } from 'lucide-react';
@@ -24,9 +24,9 @@ import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { CMS_RESOURCE_OWNER_TYPE_LABELS, CMS_RESOURCE_TYPE_LABELS, CMS_RESOURCE_TYPES } from '@zenith/shared/cms';
 import type { CmsResource, CmsResourceFolder, CmsResourceReference, CmsResourceOwnerType, CmsResourceType } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
-import { formatDateTimeForApi } from '@/utils/date';
+import { formatDateTimeRangeForApi } from '@/utils/date';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { FilterSelect, KeywordInput } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -226,8 +226,7 @@ export default function ResourcesPage() {
   const [folderKey, setFolderKey] = useState('all');
   /** 窄屏单栏模式下当前展示素材列表（宽屏忽略）：默认进列表，「返回」回到文件夹树 */
   const [showListOnNarrow, setShowListOnNarrow] = useState(true);
-  const [governanceStart, setGovernanceStart] = useState<Date | undefined>(undefined);
-  const [governanceEnd, setGovernanceEnd] = useState<Date | undefined>(undefined);
+  const [governanceRange, setGovernanceRange] = useState<[Date, Date] | null>(null);
   const [type, setType] = useState<CmsResourceType | undefined>(undefined);
   const [keywordDraft, setKeywordDraft] = useState('');
   const [keyword, setKeyword] = useState<string | undefined>(undefined);
@@ -549,12 +548,10 @@ export default function ResourcesPage() {
                   });
                 }}>重建引用索引</Button>
               ) : null}
-              <DatePicker type="dateTime" value={governanceStart} onChange={(value) => setGovernanceStart(value as Date | undefined)} placeholder="治理开始时间" />
-              <DatePicker type="dateTime" value={governanceEnd} onChange={(value) => setGovernanceEnd(value as Date | undefined)} placeholder="治理结束时间" />
+              <DateRangeFilter placeholder={['治理开始时间', '治理结束时间']} value={governanceRange} onChange={setGovernanceRange} />
               {siteId ? <ExportButton entity="cms.resource-governance" permission="cms:resource:list" query={{
                 siteId,
-                startTime: governanceStart ? formatDateTimeForApi(governanceStart) : undefined,
-                endTime: governanceEnd ? formatDateTimeForApi(governanceEnd) : undefined,
+                ...formatDateTimeRangeForApi(governanceRange),
               }} label="导出治理报告" /> : null}
             </SearchToolbar>
             <ConfigurableTable

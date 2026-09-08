@@ -107,6 +107,10 @@
   `KeywordInput` / `FilterSelect` / `StatusSelect` / `DateRangeFilter`，**禁止**手写 `prefix={<Search size={14} />}`、
   `showClear`、`style={{ width: N }}` 这类装饰性属性；业务属性仍显式传入。
   **例外**：面板 / 弹窗内需跟随容器自适应的搜索框（如 `NavListPanel` 的 List header）不套用
+- **时间范围筛选**：一律 `DateRangeFilter`（秒级默认 `dateTimeRange`，日期级 `type="dateRange"`），弹窗 / 抽屉 / 统计卡里的区间查询同样适用；
+  **禁止**手写 `DatePicker type="date(Time)Range"`，**禁止**用两个 `type="dateTime"` 单选拼「开始 / 结束」；
+  **禁止**传小于默认的 `width`（默认 400 / 280 是不截断内容的下限，Semi 把两个输入框均分剩余宽度，改小就会截掉秒数或日期），
+  只允许 `width="100%"`、`style={{ flex: 1 }}` 这类自适应覆盖。表单里的 `Form.DatePicker` 区间字段不在此列
 - **枚举筛选下拉**：列表页搜索栏（含 Tab / 抽屉 / 展开行内的子列表）里的单选枚举筛选一律 `FilterSelect`，
   状态用 `StatusSelect`；占位必须是「全部 X」（描述空值含义），**禁止**「请选择 X」或裸「X」，**禁止**在选项里放
   `{ value: '', label: '全部' }` 之类哨兵项；空值即 `undefined`（`SearchParams` 字段声明为可选、`defaults` 写 `undefined`），

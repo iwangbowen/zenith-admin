@@ -298,13 +298,17 @@ onSelect={(deptId) => applySearch({ ...draftParams, departmentId: deptId })}
 | `KeywordInput` | 放大镜前缀、`showClear`、宽度 220 | `width` / `style` / 其余 props 原样穿透 |
 | `FilterSelect` | 单选枚举筛选：`showClear`、宽度 120、清空回调 `undefined` | `placeholder`（必填，写「全部 X」）/ `width` / `items` 或 `groups` / `filter` 等 Select props 穿透 |
 | `StatusSelect` | `FilterSelect` 的状态特化，占位固定「全部状态」 | `width` / `items` |
-| `DateRangeFilter` | `dateTimeRange`、占位「开始时间/结束时间」、宽度 360 | `type="dateRange"`（宽度自动 260）/ `placeholder` / `width` |
+| `DateRangeFilter` | `dateTimeRange`、占位「开始时间/结束时间」、宽度 400（`DATE_TIME_RANGE_FILTER_WIDTH`） | `type="dateRange"`（占位「开始日期/结束日期」，宽度 280 = `DATE_RANGE_FILTER_WIDTH`）/ `placeholder` / `width`（只用于 `"100%"`、`style={{ flex: 1 }}` 这类自适应场景，**不要改小**） |
 
 - 只收敛**装饰性属性**，业务属性（`value` / `onChange` / `items` / `placeholder`）仍显式传入
 - 适用范围、占位 / 哨兵 / 空值规则见 [constraints-frontend.md → 搜索栏与表格](./constraints-frontend.md#搜索栏与表格)；
   `items` 取 shared 导出的 `XXX_OPTIONS` 或 `useDictItems(...).items`，动态数据自行映射为 `{ value, label }`，需分组时传 `groups`
 - `DateRangeFilter` 把 Semi 宽松的 `onChange` 收窄为 `[Date, Date] | null`，
-  页面不必再写 `Array.isArray(v) && v.length >= 2` 之类的判断
+  页面不必再写 `Array.isArray(v) && v.length >= 2` 之类的判断；区间状态统一声明为 `[Date, Date] | null`（或 `?: [Date, Date]`），
+  提交时用 `formatDateTimeRangeForApi(range)` 得到 `{ startTime, endTime }`
+- 时间范围**只**用 `DateRangeFilter`：不手写 `DatePicker type="dateTimeRange"`，也不用两个 `type="dateTime"` 单选拼「开始 / 结束」。
+  默认宽度是按内容算出的下限（Semi 把两个输入框均分剩余宽度，360 时末位秒数就会被截掉），
+  确需自定义宽度的控件（如报表筛选条）以 `DATE_RANGE_FILTER_WIDTH` / `DATE_TIME_RANGE_FILTER_WIDTH` 作下限
 
 ## 危险操作确认
 

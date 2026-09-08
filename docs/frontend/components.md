@@ -121,7 +121,7 @@ const operationColumn = createOperationColumn<User>({
 | `KeywordInput` | `value`、`onChange(value)`、`onSearch`、`width` | 放大镜前缀、`showClear`、宽度 220、回车触发 `onSearch` |
 | `FilterSelect` | `placeholder`（「全部 X」）、`items` 或 `groups`、`value`、`onChange(value)`、`width` | 单选枚举筛选：`showClear`、宽度 120、清空回调 `undefined`；其余 Select props 穿透 |
 | `StatusSelect` | `items`、`value`、`onChange(value)`、`width` | `FilterSelect` 的状态特化，占位固定 `全部状态` |
-| `DateRangeFilter` | `value`、`onChange(range)`、`type`、`width` | 默认 `dateTimeRange`、宽度 360；`type="dateRange"` 时宽度 260 |
+| `DateRangeFilter` | `value`、`onChange(range)`、`type`、`width` | 默认 `dateTimeRange`、宽度 400（`DATE_TIME_RANGE_FILTER_WIDTH`）；`type="dateRange"` 时宽度 280（`DATE_RANGE_FILTER_WIDTH`）。默认宽度是不截断内容的下限，`width` 只用于 `100%` 之类自适应场景 |
 
 `KeywordSearchToolbar` 适用于只有关键字、查询、重置和少量操作的列表页，内部组合 `SearchToolbar`、`KeywordInput` 与标准按钮。
 
