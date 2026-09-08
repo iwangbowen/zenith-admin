@@ -9,4 +9,5 @@ export * from './contracts';
 export * from './data-mask';
 export * from './regions';
 export * from './types';
+export * from './upload';
 export * from './validation';

@@ -3,12 +3,12 @@
  * 大文件切片并发上传，失败分片自动重试；uploadId 持久化到 localStorage，
  * 支持刷新/重新选择同一文件后续传未完成的分片。
  */
-import { fileContract, type UploadChunkResult, type UploadSessionInit, type UploadSessionStatus } from '@zenith/shared/platform';
+import { fileContract, UPLOAD_CHUNK_MIN_BYTES, type UploadChunkResult, type UploadSessionInit, type UploadSessionStatus } from '@zenith/shared/platform';
 import { urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
 
-/** 默认分片大小：5MB。超过该大小的文件走分片上传。 */
-export const CHUNK_SIZE = 5 * 1024 * 1024;
+/** 默认分片大小（5MB，即各 provider 允许的最小分片）。超过该大小的文件走分片上传；服务端可能上调，以 init 响应为准。 */
+export const CHUNK_SIZE = UPLOAD_CHUNK_MIN_BYTES;
 const CHUNK_CONCURRENCY = 3;
 const MAX_RETRY = 3;
 const RESUME_KEY_PREFIX = 'zenith_chunk_upload:';

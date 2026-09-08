@@ -88,13 +88,26 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/files/upload/init` | 初始化上传会话，校验文件大小，选择默认存储，返回 `uploadId`、`chunkSize`、`totalChunks`、`received` |
-| POST | `/api/files/upload/chunk` | 上传单片；index 从 0 开始，首片执行 Magic Bytes 校验 |
-| POST | `/api/files/upload/complete` | 校验分片完整后完成上传并写入 `managed_files` |
+| POST | `/api/files/upload/init` | 初始化上传会话，校验文件大小，选择默认存储，裁定分片大小，返回 `uploadId`、`chunkSize`、`totalChunks`、`received` |
+| POST | `/api/files/upload/chunk` | 上传单片；index 从 0 开始，逐片校验字节数，首片执行 Magic Bytes 校验 |
+| POST | `/api/files/upload/complete` | 校验分片完整、总字节数与（可选）内容哈希后完成上传并写入 `managed_files` |
 | GET | `/api/files/upload/{uploadId}/status` | 查询已接收分片与会话状态 |
 | DELETE | `/api/files/upload/{uploadId}` | 中止上传并清理临时目录或云端 multipart |
 
 `oss`、`s3`、`cos`、`obs`、`azure`、`bos` 使用原生 multipart；`local`、`kodo`、`sftp` 使用 `storage/tmp/uploads` 本地暂存后流式合并。`upload_chunks` 的唯一约束允许客户端安全重传同一分片。
+
+分片大小与字节数由服务端裁定并强制校验（常量与算术在 `packages\shared\src\platform\{constants,upload}.ts`）：
+
+- 客户端请求的 `chunkSize` 不得低于 `UPLOAD_CHUNK_MIN_BYTES`（5 MiB，S3 / BOS 非末片下限）；文件按该分片超过
+  `UPLOAD_MAX_CHUNKS`（10,000，各对象存储 multipart 片数上限）时服务端按 MiB 上调分片，客户端以 init 响应的 `chunkSize`
+  切片；上调后仍超过 `UPLOAD_CHUNK_MAX_BYTES`（100 MB）则拒绝。
+- 每一片的实际字节数必须等于该序号的期望值（非末片为 `chunkSize`，末片为余量），complete 时再核对总和等于声明的
+  `fileSize`——声明大小是上传上限、网盘配额与 `managed_files.size` 的依据，不允许与实际落地字节数不一致。
+- 归属模块可在 complete 时传入 `expectedHash`（客户端预先算好的 SHA-256）：本地暂存路径直接对分片文件计算，
+  云原生 multipart 路径合并后读回一遍计算；一致才写入 `contentHash` 参与秒传 / 去重，不一致则删除对象并中止会话。
+  通用 `files` API 自身不接收哈希，因此不会记录未经校验的 `contentHash`。
+- 总字节数不符、哈希不符、类型不允许属于不可恢复失败：会话直接置为 `aborted`，客户端续传探测到非 `uploading`
+  状态后重新初始化，而不是拿着「已完整」的分片反复 complete。
 
 过期分片由 `cleanupStaleUploadSessions(ttlHours)` 清理：删除过期会话及其分片，尝试中止云端 multipart，并清理无活跃会话的孤儿临时目录。该清理能力接入统一数据保留策略。
 

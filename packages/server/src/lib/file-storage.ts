@@ -908,7 +908,10 @@ export interface StoredFileRange {
   end: number;
 }
 
-export async function readStoredFile(file: ManagedFileRow, config: FileStorageConfigRow, range?: StoredFileRange) {
+/** 读取对象所需的最小文件快照：managed_files 行满足，分片会话行（尚未落库为托管文件）也能构造 */
+export type StoredObjectSource = Pick<ManagedFileRow, 'objectKey' | 'bucketName' | 'provider' | 'mimeType' | 'originalName'>;
+
+export async function readStoredFile(file: StoredObjectSource, config: FileStorageConfigRow, range?: StoredFileRange) {
   const effectiveConfig = withFileBucket(file, config);
   const contentType = file.mimeType ?? 'application/octet-stream';
   const fileName = file.originalName;

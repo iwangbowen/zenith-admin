@@ -1,18 +1,27 @@
 import { requireRow } from '../../lib/db-assert';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { and, asc, eq, lt } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { InitChunkUploadInput } from '@zenith/shared/platform';
+import { countUploadChunks, expectedUploadChunkSize, resolveUploadChunkSize, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_MAX_CHUNKS, type InitChunkUploadInput } from '@zenith/shared/platform';
 import { db } from '../../db';
-import { uploadSessions, uploadChunks, managedFiles, fileStorageConfigs } from '../../db/schema';
-import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName, getMultipartDriver, mapObjectAclError, resolveObjectAcl } from '../../lib/file-storage';
+import { uploadSessions, uploadChunks, managedFiles, fileStorageConfigs, type FileStorageConfigRow, type UploadSessionRow } from '../../db/schema';
+import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName, getMultipartDriver, mapObjectAclError, resolveObjectAcl, readStoredFile, deleteObjectByConfig } from '../../lib/file-storage';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { assertUploadSizeAllowed, assertUploadTypeAllowed, mapManagedFile, type ManagedFileUploadOptions } from './files.service';
+
+/** 完成分片上传时归属模块可指定的属性 */
+export interface ChunkUploadCompleteOptions extends Pick<ManagedFileUploadOptions, 'visibility' | 'skipTypeCheck'> {
+  /**
+   * 客户端预先声明的内容 SHA-256（hex）。提供时服务端按实际落地内容重新计算并比对：
+   * 一致才写入 `managed_files.contentHash` 参与秒传 / 去重，不一致则中止会话；不提供则不记录哈希。
+   */
+  expectedHash?: string | null;
+}
 
 const UPLOAD_TEMP_ROOT = path.resolve(process.cwd(), 'storage/tmp/uploads');
 
@@ -65,9 +74,67 @@ async function getSessionConfig(storageConfigId: number) {
   return config;
 }
 
+async function abortCloudMultipart(
+  session: Pick<UploadSessionRow, 'provider' | 'multipartUploadId' | 'objectKey'>,
+  config: FileStorageConfigRow | null | undefined,
+) {
+  const driver = getMultipartDriver(session.provider);
+  if (!driver || !session.multipartUploadId || !config) return;
+  await driver.abort(config, session.objectKey, session.multipartUploadId).catch(() => { /* 忽略云端中止失败 */ });
+}
+
+/** 中止会话：中止云端 multipart（尚未合并时）、删除本地临时分片、状态置 aborted */
+async function abortSession(session: UploadSessionRow, config: FileStorageConfigRow | null | undefined, opts: { multipartCompleted?: boolean } = {}) {
+  if (!opts.multipartCompleted) await abortCloudMultipart(session, config);
+  await db.update(uploadSessions).set({ status: 'aborted' }).where(eq(uploadSessions.id, session.id));
+  await cleanupSession(session.uploadId);
+}
+
+/** 会话遇到不可恢复的校验失败：先中止再抛 400，避免客户端拿着「已完整」的分片反复 complete */
+async function failSession(session: UploadSessionRow, config: FileStorageConfigRow, message: string, opts: { multipartCompleted?: boolean } = {}): Promise<never> {
+  await abortSession(session, config, opts);
+  throw new HTTPException(400, { message });
+}
+
+/** 按序拼接各分片临时文件为单一可读流，逐片流式读取（内存占用受单片大小限制） */
+async function* mergedChunkStream(uploadId: string, totalChunks: number) {
+  for (let i = 0; i < totalChunks; i++) {
+    yield* createReadStream(chunkPath(uploadId, i));
+  }
+}
+
+async function sha256OfChunkFiles(uploadId: string, totalChunks: number) {
+  const hash = createHash('sha256');
+  for await (const part of mergedChunkStream(uploadId, totalChunks)) hash.update(part as Buffer);
+  return hash.digest('hex');
+}
+
+/** 分片已直传云端，服务端没有完整内容：合并后读回一遍计算哈希 */
+async function sha256OfStoredObject(session: UploadSessionRow, config: FileStorageConfigRow) {
+  const { stream } = await readStoredFile({
+    objectKey: session.objectKey,
+    bucketName: session.bucketName,
+    provider: session.provider,
+    mimeType: session.mimeType,
+    originalName: session.fileName,
+  }, config);
+  const hash = createHash('sha256');
+  for await (const part of Readable.fromWeb(stream as Parameters<typeof Readable.fromWeb>[0])) hash.update(part as Buffer);
+  return hash.digest('hex');
+}
+
+const HASH_MISMATCH_MESSAGE = '文件内容校验失败：实际内容的 SHA-256 与声明不一致，请重新上传';
+
 export async function initChunkUpload(input: InitChunkUploadInput) {
   const user = currentUser();
   await assertUploadSizeAllowed(input.fileSize);
+
+  // 分片大小由服务端最终裁定（客户端按 init 响应中的 chunkSize 切片）：保证不低于 provider 下限且总片数不超上限
+  const chunkSize = resolveUploadChunkSize(input.fileSize, input.chunkSize);
+  if (chunkSize === null) {
+    throw new HTTPException(400, { message: `文件过大：超过分片上传上限（${UPLOAD_MAX_CHUNKS} 片 × ${UPLOAD_CHUNK_MAX_BYTES / 1024 / 1024}MB）` });
+  }
+  const totalChunks = countUploadChunks(input.fileSize, chunkSize);
 
   const [maybeDefaultConfig] = await db
     .select()
@@ -77,7 +144,6 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
   const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
 
   const { objectKey } = buildUploadObjectKey(input.fileName, defaultConfig.basePath);
-  const totalChunks = Math.max(1, Math.ceil(input.fileSize / input.chunkSize));
   const uploadId = randomUUID();
 
   // 云原生 multipart：先在云端初始化拿到 multipartUploadId；否则走本地暂存
@@ -91,7 +157,7 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
     fileName: input.fileName,
     fileSize: input.fileSize,
     mimeType: input.mimeType ?? null,
-    chunkSize: input.chunkSize,
+    chunkSize,
     totalChunks,
     storageConfigId: defaultConfig.id,
     provider: defaultConfig.provider,
@@ -103,7 +169,7 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
   });
   if (!driver) await fs.mkdir(sessionTempDir(uploadId), { recursive: true });
 
-  return { uploadId, chunkSize: input.chunkSize, totalChunks, received: [] as number[] };
+  return { uploadId, chunkSize, totalChunks, received: [] as number[] };
 }
 
 export async function uploadChunk(uploadId: string, index: number, chunk: File, options: Pick<ManagedFileUploadOptions, 'skipTypeCheck'> = {}) {
@@ -111,6 +177,11 @@ export async function uploadChunk(uploadId: string, index: number, chunk: File, 
   if (session.status !== 'uploading') throw new HTTPException(400, { message: '上传会话已结束' });
   if (!Number.isInteger(index) || index < 0 || index >= session.totalChunks) {
     throw new HTTPException(400, { message: '分片序号越界' });
+  }
+  // 声明的 fileSize 是大小上限与配额检查的依据，每一片都必须与之吻合，否则实际落地字节数可任意超出声明
+  const expectedSize = expectedUploadChunkSize(session.fileSize, session.chunkSize, index);
+  if (chunk.size !== expectedSize) {
+    throw new HTTPException(400, { message: `分片 ${index} 大小不匹配：期望 ${expectedSize} 字节，实际 ${chunk.size} 字节` });
   }
 
   const driver = getMultipartDriver(session.provider);
@@ -149,40 +220,52 @@ export async function getUploadStatus(uploadId: string) {
   return { uploadId, status: session.status, chunkSize: session.chunkSize, totalChunks: session.totalChunks, received };
 }
 
-/** 按序拼接各分片临时文件为单一可读流，逐片流式读取（内存占用受单片大小限制） */
-async function* mergedChunkStream(uploadId: string, totalChunks: number) {
-  for (let i = 0; i < totalChunks; i++) {
-    yield* createReadStream(chunkPath(uploadId, i));
-  }
-}
-
-export async function completeChunkUpload(uploadId: string, options: ManagedFileUploadOptions = {}) {
+export async function completeChunkUpload(uploadId: string, options: ChunkUploadCompleteOptions = {}) {
   const user = currentUser();
   const session = await ensureSession(uploadId);
   if (session.status === 'completed') throw new HTTPException(400, { message: '上传已完成' });
+  if (session.status !== 'uploading') throw new HTTPException(400, { message: '上传会话已中止，请重新上传' });
 
-  const received = await getReceivedIndices(session.id);
-  if (received.length !== session.totalChunks) {
-    throw new HTTPException(400, { message: `分片不完整：已接收 ${received.length}/${session.totalChunks}` });
+  const chunkRows = await db
+    .select({ index: uploadChunks.index, size: uploadChunks.size, etag: uploadChunks.etag })
+    .from(uploadChunks)
+    .where(eq(uploadChunks.uploadSessionId, session.id))
+    .orderBy(asc(uploadChunks.index));
+  if (chunkRows.length !== session.totalChunks) {
+    throw new HTTPException(400, { message: `分片不完整：已接收 ${chunkRows.length}/${session.totalChunks}` });
   }
 
   const config = await getSessionConfig(session.storageConfigId);
+  // 逐片校验之外再核对总量：声明大小写入 managed_files.size 并用于配额与上限检查，不允许与实际字节数不一致
+  const receivedBytes = chunkRows.reduce((sum, row) => sum + row.size, 0);
+  if (receivedBytes !== session.fileSize) {
+    await failSession(session, config, `分片总大小（${receivedBytes} 字节）与声明的文件大小（${session.fileSize} 字节）不一致`);
+  }
+  const expectedHash = options.expectedHash?.toLowerCase() ?? null;
   const driver = getMultipartDriver(session.provider);
 
   if (driver && session.multipartUploadId) {
     // 云原生 multipart：用各分片 ETag 完成合并（类型校验已在首片上传时完成）
-    const chunkRows = await db
-      .select()
-      .from(uploadChunks)
-      .where(eq(uploadChunks.uploadSessionId, session.id))
-      .orderBy(asc(uploadChunks.index));
     const parts = chunkRows.map((r) => ({ partNumber: r.index + 1, etag: r.etag ?? '' }));
     await driver.complete(config, session.objectKey, session.multipartUploadId, parts, session.mimeType ?? undefined);
+    if (expectedHash && (await sha256OfStoredObject(session, config)) !== expectedHash) {
+      await deleteObjectByConfig(config, session.objectKey, session.bucketName).catch(() => { /* 对象清理失败不掩盖校验错误 */ });
+      await failSession(session, config, HASH_MISMATCH_MESSAGE, { multipartCompleted: true });
+    }
   } else {
-    // 本地暂存：首片真实类型校验 + 按序流式合并上传
+    // 本地暂存：首片真实类型校验 + 内容哈希校验 + 按序流式合并上传
     if (!options.skipTypeCheck) {
       const head = await fs.readFile(chunkPath(uploadId, 0));
-      await assertUploadTypeAllowed(head.subarray(0, 4100), session.mimeType ?? '');
+      try {
+        await assertUploadTypeAllowed(head.subarray(0, 4100), session.mimeType ?? '');
+      } catch (err) {
+        // 类型不允许是确定性失败，继续保留会话只会让客户端反复 complete
+        await abortSession(session, config);
+        throw err;
+      }
+    }
+    if (expectedHash && (await sha256OfChunkFiles(uploadId, session.totalChunks)) !== expectedHash) {
+      await failSession(session, config, HASH_MISMATCH_MESSAGE);
     }
     const mergedStream = Readable.from(mergedChunkStream(uploadId, session.totalChunks));
     await uploadObjectByConfig(config, {
@@ -210,7 +293,7 @@ export async function completeChunkUpload(uploadId: string, options: ManagedFile
       visibility: options.visibility ?? 'public',
       gcState: options.visibility === 'restricted' ? 'orphan' : 'live',
       orphanedAt: options.visibility === 'restricted' ? new Date() : null,
-      contentHash: options.contentHash ?? null,
+      contentHash: expectedHash,
       tenantId: getCreateTenantId(user),
     })
     .returning();
@@ -223,13 +306,9 @@ export async function completeChunkUpload(uploadId: string, options: ManagedFile
 
 export async function abortChunkUpload(uploadId: string) {
   const session = await ensureSession(uploadId);
-  const driver = getMultipartDriver(session.provider);
-  if (driver && session.multipartUploadId) {
-    const config = await getSessionConfig(session.storageConfigId);
-    await driver.abort(config, session.objectKey, session.multipartUploadId).catch(() => { /* 忽略云端中止失败 */ });
-  }
-  await db.update(uploadSessions).set({ status: 'aborted' }).where(eq(uploadSessions.id, session.id));
-  await cleanupSession(uploadId);
+  if (session.status === 'completed') throw new HTTPException(400, { message: '上传已完成，无法中止' });
+  const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, session.storageConfigId)).limit(1);
+  await abortSession(session, config);
 }
 
 /**
@@ -254,10 +333,9 @@ export async function cleanupStaleUploadSessions(ttlHours = 24): Promise<{ stale
     .from(uploadSessions)
     .where(lt(uploadSessions.createdAt, cutoff));
   for (const s of stale) {
-    const driver = getMultipartDriver(s.provider);
-    if (driver && s.multipartUploadId) {
+    if (getMultipartDriver(s.provider) && s.multipartUploadId) {
       const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, s.storageConfigId)).limit(1);
-      if (config) await driver.abort(config, s.objectKey, s.multipartUploadId).catch(() => { /* 忽略云端中止失败 */ });
+      await abortCloudMultipart(s, config);
     }
     freedBytes += await dirSize(sessionTempDir(s.uploadId));
     await cleanupSession(s.uploadId);

@@ -402,7 +402,12 @@ export async function completeDriveUpload(data: DriveUploadCompleteInput): Promi
     await resolveWritableParent(binding.spaceId, binding.parentId ?? null);
   }
   await assertDriveFileAllowed(targetNode?.name ?? binding.fileName);
-  const file = await completeChunkUpload(data.uploadId, { visibility: 'restricted', contentHash: binding.expectedHash, skipTypeCheck: true });
+  const file = await completeChunkUpload(data.uploadId, { visibility: 'restricted', expectedHash: binding.expectedHash, skipTypeCheck: true }).catch(async (err: unknown) => {
+    // 内容校验失败等不可恢复错误会把会话置为 aborted，绑定随之失去意义
+    const status = await getUploadStatus(data.uploadId).then((s) => s.status).catch(() => null);
+    if (status && status !== 'uploading') await db.delete(driveUploadBindings).where(eq(driveUploadBindings.uploadId, data.uploadId));
+    throw err;
+  });
   let result: { row: DriveNodeRow; releasedFileIds: string[] };
   if (binding.nodeId) {
     const node = await ensureDriveNodeExists(binding.nodeId);

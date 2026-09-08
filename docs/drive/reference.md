@@ -93,6 +93,9 @@ flowchart LR
   内容只能经 `GET /api/drive/nodes/{id}/content` 读取，由网盘 ACL 校验后流式代理（支持 Range / ETag）。
 - 上传绕过通用 MIME 白名单（`skipTypeCheck`），改由网盘自己的扩展名黑名单与可执行文件头识别把关。
 - 秒传候选还必须由当前用户有下载权限的未删除节点引用，不能仅凭哈希认领他人的文件。
+- 客户端声明的 `contentHash` 只是预检输入：简单上传由服务端对请求体计算 SHA-256，分片上传在 complete 时由服务端按
+  实际落地内容重算并比对（见[存储：分片上传](../storage/index.md#分片上传)），不一致即中止会话；因此 `managed_files.contentHash`
+  永远是服务端核验过的值，不能被用来给错误内容挂上别人的哈希。
 - 版本与渲染产物在事务内维护 `managed_files.ref_count`；归零后标记 `orphaned_at`，
   超过 24 小时由 `files-gc` 回收。`gc_state=deleting` 的对象不可再次引用，失败删除会在下一轮重试。
 - 缩略图与正文提取通过持久化 `drive-renditions` 队列执行，产物表记录版本、状态与错误；

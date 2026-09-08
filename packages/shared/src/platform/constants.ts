@@ -69,6 +69,19 @@ export type FileAccessPurpose = (typeof FILE_ACCESS_PURPOSES)[number];
 /** 分片上传会话状态 */
 export const UPLOAD_SESSION_STATUSES = ['uploading', 'completed', 'aborted'] as const;
 
+/**
+ * 分片上传单片最小字节数，也是客户端默认分片大小。
+ * S3 / BOS 原生 multipart 要求非末片 ≥ 5 MiB（其余 provider 更宽松），取各 provider 最严值，
+ * 避免所有分片传完后才在 complete 阶段被云端以 EntityTooSmall 拒绝。
+ */
+export const UPLOAD_CHUNK_MIN_BYTES = 5 * 1024 * 1024;
+
+/** 分片上传单片最大字节数：受反向代理请求体上限（nginx client_max_body_size 100m）与服务端内存约束 */
+export const UPLOAD_CHUNK_MAX_BYTES = 100 * 1024 * 1024;
+
+/** 单个分片上传会话允许的最大片数：S3 / OSS / COS / OBS / BOS 原生 multipart 上限均为 10,000 */
+export const UPLOAD_MAX_CHUNKS = 10_000;
+
 // ─── 接口限流 ─────────────────────────────────────────────────────────────────
 
 export const RATE_LIMIT_KEY_TYPES = ['ip', 'user', 'ip_path'] as const;

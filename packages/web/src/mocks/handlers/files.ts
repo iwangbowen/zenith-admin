@@ -1,6 +1,6 @@
 import type { FileStorageConfig, FolderEntry, ManagedFile, StorageBrowseResult, UploadSessionStatus } from '@zenith/shared/platform';
 import { fillPath } from '@zenith/shared/core';
-import { fileContract, fileStorageConfigContract } from '@zenith/shared/platform';
+import { countUploadChunks, fileContract, fileStorageConfigContract, resolveUploadChunkSize } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
@@ -218,15 +218,17 @@ export const filesHandlers = [
     return ok(registerUploadedFile(file), '上传成功');
   }),
 
-  // 分片上传：初始化
+  // 分片上传：初始化（分片大小与服务端同一套裁定逻辑）
   mock(fileContract.uploadInit, ({ body, ok }) => {
+    const chunkSize = resolveUploadChunkSize(body.fileSize, body.chunkSize);
+    if (chunkSize === null) return badRequest('文件过大：超过分片上传上限');
     const uploadId = `mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const totalChunks = Math.max(1, Math.ceil(body.fileSize / body.chunkSize));
+    const totalChunks = countUploadChunks(body.fileSize, chunkSize);
     mockUploadSessions.set(uploadId, {
       uploadId, fileName: body.fileName, fileSize: body.fileSize, mimeType: body.mimeType,
-      chunkSize: body.chunkSize, totalChunks, received: new Set(), status: 'uploading',
+      chunkSize, totalChunks, received: new Set(), status: 'uploading',
     });
-    return ok({ uploadId, chunkSize: body.chunkSize, totalChunks, received: [] });
+    return ok({ uploadId, chunkSize, totalChunks, received: [] });
   }),
 
   // 分片上传：上传单个分片
