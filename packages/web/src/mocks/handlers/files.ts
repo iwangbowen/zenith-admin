@@ -1,9 +1,10 @@
-import type { FileStorageConfig, FolderEntry, ManagedFile, StorageBrowseResult, UploadSessionStatus } from '@zenith/shared/platform';
+import type { FileStorageConfig, FolderEntry, ManagedFile, StorageBrowseResult } from '@zenith/shared/platform';
 import { fillPath } from '@zenith/shared/core';
-import { countUploadChunks, fileContract, fileStorageConfigContract, resolveUploadChunkSize } from '@zenith/shared/platform';
+import { fileContract, fileStorageConfigContract } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
+import { abortMockUploadSession, completeMockUploadSession, initMockUploadSession, mockUploadSessionStatus, receiveMockUploadChunk } from '@/mocks/utils/upload-sessions';
 import { mockFileStorageConfigs, STORAGE_SECRET_FIELDS, type MockFileStorageConfig } from '@/mocks/data/system';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -179,18 +180,6 @@ function stripStorageSecrets(config: MockFileStorageConfig): FileStorageConfig {
   return clone;
 }
 
-interface MockUploadSession {
-  uploadId: string;
-  fileName: string;
-  fileSize: number;
-  mimeType?: string;
-  chunkSize: number;
-  totalChunks: number;
-  received: Set<number>;
-  status: UploadSessionStatus['status'];
-}
-const mockUploadSessions = new Map<string, MockUploadSession>();
-
 export const filesHandlers = [
   // 文件列表（分页）
   mock(fileContract.list, ({ query, ok, paginate }) => {
@@ -220,32 +209,20 @@ export const filesHandlers = [
 
   // 分片上传：初始化（分片大小与服务端同一套裁定逻辑）
   mock(fileContract.uploadInit, ({ body, ok }) => {
-    const chunkSize = resolveUploadChunkSize(body.fileSize, body.chunkSize);
-    if (chunkSize === null) return badRequest('文件过大：超过分片上传上限');
-    const uploadId = `mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const totalChunks = countUploadChunks(body.fileSize, chunkSize);
-    mockUploadSessions.set(uploadId, {
-      uploadId, fileName: body.fileName, fileSize: body.fileSize, mimeType: body.mimeType,
-      chunkSize, totalChunks, received: new Set(), status: 'uploading',
-    });
-    return ok({ uploadId, chunkSize, totalChunks, received: [] });
+    const session = initMockUploadSession(body, {});
+    return session ? ok(session) : badRequest('文件过大：超过分片上传上限');
   }),
 
   // 分片上传：上传单个分片
   mock(fileContract.uploadChunk, ({ body, ok }) => {
-    const uploadId = String(body.get('uploadId') ?? '');
-    const index = Number(body.get('index'));
-    const session = mockUploadSessions.get(uploadId);
-    if (!session) return notFound('上传会话不存在');
-    session.received.add(index);
-    return ok({ index, receivedCount: session.received.size });
+    const result = receiveMockUploadChunk(String(body.get('uploadId') ?? ''), Number(body.get('index')));
+    return result ? ok(result) : notFound('上传会话不存在');
   }),
 
   // 分片上传：完成合并
   mock(fileContract.uploadComplete, ({ body, ok }) => {
-    const session = mockUploadSessions.get(body.uploadId);
+    const session = completeMockUploadSession(body.uploadId);
     if (!session) return notFound('上传会话不存在');
-    session.status = 'completed';
     const uploaded: ManagedFile = {
       id: mockUuidV7(), storageConfigId: 1, storageName: '本地磁盘', provider: 'local',
       originalName: session.fileName, objectKey: `uploads/${Date.now()}-${session.fileName}`,
@@ -256,23 +233,18 @@ export const filesHandlers = [
       uploaderName: 'Admin', createdAt: mockDateTime(), updatedAt: mockDateTime(),
     };
     mockManagedFiles.push(uploaded);
-    mockUploadSessions.delete(body.uploadId);
     return ok(uploaded, '上传成功');
   }),
 
   // 分片上传：查询进度（断点续传）
   mock(fileContract.uploadStatus, ({ params, ok }) => {
-    const session = mockUploadSessions.get(params.uploadId);
-    if (!session) return notFound('上传会话不存在');
-    return ok({
-      uploadId: session.uploadId, status: session.status, chunkSize: session.chunkSize,
-      totalChunks: session.totalChunks, received: [...session.received].sort((a, b) => a - b),
-    });
+    const status = mockUploadSessionStatus(params.uploadId);
+    return status ? ok(status) : notFound('上传会话不存在');
   }),
 
   // 分片上传：中止
   mock(fileContract.uploadAbort, ({ params, ok }) => {
-    mockUploadSessions.delete(params.uploadId);
+    abortMockUploadSession(params.uploadId);
     return ok(null, '已中止');
   }),
 

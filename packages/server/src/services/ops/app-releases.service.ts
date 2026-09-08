@@ -23,10 +23,13 @@ import type {
   CreateAppReleaseInput,
   CreateClientAppInput,
   CreateExternalArtifactInput,
+  InitAppArtifactUploadInput,
   ReportAppReleaseEventInput,
   UpdateAppReleaseInput,
   UpdateClientAppInput,
 } from '@zenith/shared/ops';
+import { APP_ARCHES, APP_FILE_ARTIFACT_KINDS, APP_PLATFORMS } from '@zenith/shared/ops';
+import * as z from 'zod';
 import { db } from '../../db';
 import {
   appArtifacts,
@@ -46,6 +49,8 @@ import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { deleteManagedFile, saveGeneratedManagedFile } from '../files/files.service';
+import { bindUploadSession, requireUploadBinding } from '../files/upload-bindings.service';
+import { abortChunkUpload, completeChunkUpload, getUploadStatus, initChunkUpload, uploadChunk } from '../files/upload-sessions.service';
 import { countActiveDevices, getDeviceVersionDistribution, upsertDeviceHeartbeat } from './client-devices.service';
 
 // ─── semver 比较（无依赖实现；仅服务本模块的版本新旧判断）────────────────────
@@ -416,6 +421,83 @@ export async function addFileArtifact(releaseId: number, meta: AddFileArtifactMe
       await deleteManagedFile(uploaded.id);
     } catch {
       logger.warn(`[app-releases] 回收上传文件失败 fileId=${uploaded.id}`);
+    }
+    rethrowPgUniqueViolation(err, '该版本下已存在同名制品文件');
+    throw err;
+  }
+}
+
+// ─── 制品分片上传（大安装包：分片 + 断点续传，服务端在 complete 时计算 sha256）────────
+
+const ARTIFACT_UPLOAD_MODULE = 'app-release-artifact';
+
+const artifactUploadPayloadSchema = z.object({
+  releaseId: z.int(),
+  platform: z.enum(APP_PLATFORMS),
+  arch: z.enum(APP_ARCHES),
+  kind: z.enum(APP_FILE_ARTIFACT_KINDS),
+  fileName: z.string().min(1),
+});
+
+/** 归属校验：会话必须由当前用户为该版本发起（绑定表按 createdBy 过滤，此处再核对版本一致） */
+async function requireArtifactUpload(releaseId: number, uploadId: string) {
+  const meta = await requireUploadBinding(uploadId, ARTIFACT_UPLOAD_MODULE, artifactUploadPayloadSchema);
+  if (meta.releaseId !== releaseId) throw new HTTPException(400, { message: '上传会话不属于该版本' });
+  return meta;
+}
+
+export async function initArtifactUpload(releaseId: number, input: InitAppArtifactUploadInput) {
+  await ensureAppReleaseExists(releaseId);
+  // 同名制品在 complete 时才会撞唯一约束，先查一次让用户在传完几百 MB 之前就得到提示
+  const duplicated = await db.$count(appArtifacts, and(eq(appArtifacts.releaseId, releaseId), eq(appArtifacts.fileName, input.fileName)));
+  if (duplicated > 0) throw new HTTPException(400, { message: '该版本下已存在同名制品文件' });
+  const session = await initChunkUpload({ fileName: input.fileName, fileSize: input.fileSize, mimeType: input.mimeType, chunkSize: input.chunkSize });
+  await bindUploadSession(session.uploadId, ARTIFACT_UPLOAD_MODULE, {
+    releaseId, platform: input.platform, arch: input.arch, kind: input.kind, fileName: input.fileName,
+  });
+  return session;
+}
+
+export async function uploadArtifactChunk(releaseId: number, uploadId: string, index: number, chunk: File) {
+  await requireArtifactUpload(releaseId, uploadId);
+  // 制品是任意二进制，与单请求上传一样跳过 MIME 白名单
+  return uploadChunk(uploadId, index, chunk, { skipTypeCheck: true });
+}
+
+export async function getArtifactUploadStatus(releaseId: number, uploadId: string) {
+  await requireArtifactUpload(releaseId, uploadId);
+  return getUploadStatus(uploadId);
+}
+
+export async function abortArtifactUpload(releaseId: number, uploadId: string) {
+  await requireArtifactUpload(releaseId, uploadId);
+  await abortChunkUpload(uploadId);
+}
+
+export async function completeArtifactUpload(releaseId: number, uploadId: string) {
+  const meta = await requireArtifactUpload(releaseId, uploadId);
+  await ensureAppReleaseExists(releaseId);
+  const file = await completeChunkUpload(uploadId, { skipTypeCheck: true, computeHash: true });
+  try {
+    const [row] = await db
+      .insert(appArtifacts)
+      .values({
+        releaseId,
+        platform: meta.platform,
+        arch: meta.arch,
+        kind: meta.kind,
+        fileId: file.id,
+        fileName: meta.fileName,
+        size: file.size,
+        sha256: file.contentHash ?? null,
+      })
+      .returning();
+    return mapAppArtifact(row);
+  } catch (err) {
+    try {
+      await deleteManagedFile(file.id);
+    } catch {
+      logger.warn(`[app-releases] 回收分片上传文件失败 fileId=${file.id}`);
     }
     rethrowPgUniqueViolation(err, '该版本下已存在同名制品文件');
     throw err;

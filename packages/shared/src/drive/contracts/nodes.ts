@@ -316,7 +316,7 @@ export const driveUploadIdParam = z.object({
   uploadId: z.string().min(8).meta({ description: '分片上传会话 ID', example: 'c2a8…' }),
 });
 
-/** 简单上传（≤ 5MB 单请求）的表单字段 */
+/** 简单上传（单请求，上限为运行时设置 files.chunkThresholdMb）的表单字段 */
 const driveUploadBody = multipart(z.object({
   file: fileField(),
   spaceId: z.string(),
@@ -368,7 +368,7 @@ export const driveNodeContract = defineContract('/api/drive/nodes', {
     description: '文件数 / 总大小低于阈值时直接返回 zip 流；超过阈值转任务中心并以 JSON 信封返回 DriveBatchDownloadResult',
   }),
   precheck: op.post('/precheck', { body: driveUploadPrecheckSchema, response: driveUploadPrecheckResultSchema, summary: '上传预检（冲突 / 配额 / 秒传）' }),
-  upload: op.post('/upload', { body: driveUploadBody, response: driveNodeSchema, summary: '简单上传（≤ 5MB 单请求）' }),
+  upload: op.post('/upload', { body: driveUploadBody, response: driveNodeSchema, summary: '简单上传（单请求；超过分片阈值 files.chunkThresholdMb 需改用分片）' }),
   uploadInit: op.post('/upload/init', { body: driveUploadInitSchema, response: uploadSessionInitSchema, summary: '初始化分片上传' }),
   uploadChunk: op.post('/upload/chunk', { body: driveUploadChunkBody, response: uploadChunkResultSchema, summary: '上传单个分片' }),
   uploadComplete: op.post('/upload/complete', { body: driveUploadCompleteSchema, response: driveNodeSchema, summary: '完成分片上传并落地为节点' }),
@@ -380,7 +380,7 @@ export const driveNodeContract = defineContract('/api/drive/nodes', {
   thumbnail: op.get('/{id}/thumbnail', { params: idParam, kind: 'file', summary: '缩略图' }),
   accessUrl: op.get('/{id}/access-url', { params: idParam, query: driveNodeAccessUrlQuery, response: fileAccessUrlSchema, summary: '解析访问直链（presigned / public；proxy 回落到鉴权地址）' }),
   versions: op.get('/{id}/versions', { params: idParam, response: z.array(driveFileVersionSchema), summary: '版本列表' }),
-  uploadVersion: op.post('/{id}/versions', { params: idParam, body: driveUploadVersionBody, response: driveNodeSchema, summary: '上传新版本（≤ 5MB 单请求；大文件用分片 init 传 nodeId）' }),
+  uploadVersion: op.post('/{id}/versions', { params: idParam, body: driveUploadVersionBody, response: driveNodeSchema, summary: '上传新版本（单请求；超过分片阈值用分片 init 传 nodeId）' }),
   versionContent: op.get('/{id}/versions/{version}/content', { params: driveNodeVersionParams, kind: 'file', summary: '历史版本内容' }),
   restoreVersion: op.post('/{id}/versions/{version}/restore', { params: driveNodeVersionParams, response: driveNodeSchema, summary: '回滚到历史版本（生成新版本）' }),
   removeVersion: op.delete('/{id}/versions/{version}', { params: driveNodeVersionParams, summary: '删除历史版本' }),

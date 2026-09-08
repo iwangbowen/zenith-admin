@@ -11,7 +11,7 @@ import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
 import { downloadBlob } from '@/utils/download';
 import { getFileTypeIcon, fetchManagedFileBlob, getFileFullUrl } from '@/utils/file-utils';
 import { buildManagedFileActions } from '@/utils/managed-file-actions';
-import { chunkedUpload, CHUNK_SIZE, CHUNKED_UPLOAD_CANCELLED } from '@/utils/chunked-upload';
+import { chunkedUpload, CHUNKED_UPLOAD_CANCELLED } from '@/utils/chunked-upload';
 import { FilePreviewLayer } from '@/components/FilePreviewLayer';
 import { useFilePreview } from '@/hooks/useFilePreview';
 import FileStatsPanel from './FileStatsPanel';
@@ -24,7 +24,7 @@ import { usePagination } from '@/hooks/usePagination';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useDefaultFileStorageConfig } from '@/hooks/queries/file-storage-configs';
-import { fileKeys, useDeleteFiles, useFileDetail, useFileList, useUploadFile } from '@/hooks/queries/files';
+import { fileKeys, useChunkUploadThreshold, useDeleteFiles, useFileDetail, useFileList, useUploadFile } from '@/hooks/queries/files';
 import { useListSearch } from '@/hooks/useListSearch';
 import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { confirmAndDelete, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -59,6 +59,7 @@ function uploadSingleFile(
   file: File,
   uid: string,
   signal: AbortSignal,
+  chunkThreshold: number,
   setItems: React.Dispatch<React.SetStateAction<UploadItem[]>>,
   uploadFile: (formData: FormData, onProgress: (percent: number) => void, signal: AbortSignal) => Promise<unknown>,
 ) {
@@ -69,8 +70,8 @@ function uploadSingleFile(
     ? { ...item, status: 'cancelled' }
     : { ...item, status: 'error', errorMsg: err instanceof Error ? err.message : '上传失败' });
   updateItem(item => ({ ...item, status: 'uploading' }));
-  // 大文件走分片上传 + 断点续传
-  if (file.size > CHUNK_SIZE) {
+  // 超过运行时设置的阈值走分片上传 + 断点续传
+  if (file.size > chunkThreshold) {
     chunkedUpload(file, {
       signal,
       onProgress: (percent) => updateItem(item => ({ ...item, progress: percent })),
@@ -151,6 +152,7 @@ export default function FilesPage() {
   const data = listQuery.data ?? null;
   const preview = useFilePreview(() => data?.list ?? []);
   const uploadFileMutation = useUploadFile();
+  const chunkThreshold = useChunkUploadThreshold();
   const deleteMutation = useDeleteFiles();
   const batchDeleteMutation = useDeleteFiles();
   const detailQuery = useFileDetail(detailFile?.id, !!detailFile);
@@ -245,6 +247,7 @@ export default function FilesPage() {
         file,
         items[i].uid,
         controller.signal,
+        chunkThreshold,
         setUploadItems,
         (formData, onProgress, signal) => uploadFileMutation.mutateAsync({ formData, onProgress, signal }),
       );

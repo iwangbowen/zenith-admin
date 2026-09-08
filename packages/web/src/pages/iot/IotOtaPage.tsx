@@ -88,12 +88,12 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
       Toast.warning('请先选择固件文件');
       abortSubmit();
     }
-    const formData = new FormData();
-    formData.append('file', uploadFileRef.current);
-    formData.append('productId', String(values.productId));
-    formData.append('version', String(values.version));
-    if (values.releaseNotes) formData.append('releaseNotes', String(values.releaseNotes));
-    await uploadMutation.mutateAsync({ formData });
+    await uploadMutation.mutateAsync({
+      file: uploadFileRef.current,
+      productId: Number(values.productId),
+      version: String(values.version),
+      releaseNotes: values.releaseNotes ? String(values.releaseNotes) : undefined,
+    });
     Toast.success('固件已上传');
     setUploadVisible(false);
     uploadFileRef.current = null;

@@ -74,6 +74,8 @@ beforeEach(() => {
     .on('POST', '/api/app-releases/releases', RELEASE)
     .on('POST', '/api/app-releases/releases/1/publish', { ...RELEASE, status: 'published' })
     .on('POST', '/api/app-releases/releases/1/artifacts', { id: 9, releaseId: 1 })
+    // 上传 hook 读取分片阈值设置（登录用户投影）
+    .on('GET', '/api/settings/me', { files: { chunkThresholdMb: 5, chunkSizeMb: 5 } })
     .on('PUT', '/api/app-releases/releases/1', RELEASE)
     .on('DELETE', '/api/app-releases/releases/1', null);
 });
@@ -142,7 +144,7 @@ describe('useUploadAppArtifact —— 制品是版本的子资源', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.upload.mutateAsync({ releaseId: 1, formData: new FormData() });
+    await hook.result.current.upload.mutateAsync({ releaseId: 1, file: new File(['x'], 'Setup.exe'), platform: 'windows', arch: 'x64', kind: 'installer' });
     await waitFor(() => expect(hook.result.current.releases.isFetching).toBe(false));
 
     expect(fetches.countOf(appReleaseKeys.lists)).toBe(1);

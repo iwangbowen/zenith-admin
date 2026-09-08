@@ -113,6 +113,13 @@
       "when": 1788874545934,
       "tag": "0015_upload_session_completing",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788877014900,
+      "tag": "0016_upload_session_bindings",
+      "breakpoints": true
     }
   ]
 }

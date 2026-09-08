@@ -35,6 +35,9 @@ vi.mock('../../db', () => {
 });
 vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 1, tenantId: null }) }));
 vi.mock('../../lib/tenant', () => ({ tenantCondition: () => undefined, getCreateTenantId: () => null }));
+vi.mock('../../lib/settings', () => ({
+  getSettings: vi.fn(async () => ({ uploadValidateType: true, uploadAllowedTypes: ['*'], uploadMaxSizeMb: 0, chunkThresholdMb: 5, chunkSizeMb: 5 })),
+}));
 vi.mock('./files.service', () => ({
   assertUploadSizeAllowed: vi.fn(async () => undefined),
   assertUploadTypeAllowed: vi.fn(async () => undefined),

@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import {
-  DRIVE_SIMPLE_UPLOAD_MAX_BYTES,
   type DriveActivityAction,
   type DriveFileVersion,
   type DriveNode,
@@ -20,7 +19,7 @@ import { currentUser, currentUserId } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
-import { uploadManagedFile, assertUploadSizeAllowed } from '../files/files.service';
+import { uploadManagedFile, assertUploadSizeAllowed, simpleUploadLimitBytes } from '../files/files.service';
 import { releaseManagedFiles, retainManagedFiles } from '../files/file-gc.service';
 import { abortChunkUpload, completeChunkUpload, getUploadStatus, initChunkUpload, uploadChunk } from '../files/upload-sessions.service';
 import { ensureNodeRole, loadDriveSubjects, visibleNodeCondition, type DriveSubjectSet } from './drive-access.service';
@@ -248,7 +247,7 @@ export interface BufferUploadTarget {
  * 简单上传与文件收集（外链匿名提交，以链接创建者身份执行）共用。
  */
 export async function uploadBufferAsNode(file: File, target: BufferUploadTarget): Promise<DriveNode> {
-  const maxBytes = target.maxBytes ?? DRIVE_SIMPLE_UPLOAD_MAX_BYTES;
+  const maxBytes = target.maxBytes ?? await simpleUploadLimitBytes();
   if (file.size > maxBytes) {
     throw new HTTPException(400, { message: target.maxBytes ? `文件大小超过上限（${Math.floor(maxBytes / 1024 / 1024)}MB）` : '文件超过简单上传阈值，请使用分片上传' });
   }
@@ -300,7 +299,7 @@ export async function precheckDriveUpload(data: DriveUploadPrecheckInput): Promi
   return result;
 }
 
-// ─── 简单上传（≤ 5MB 单请求）──────────────────────────────────────────────────
+// ─── 简单上传（单请求，上限为 files.chunkThresholdMb）────────────────────────────
 
 export async function simpleDriveUpload(
   file: File,
@@ -309,13 +308,13 @@ export async function simpleDriveUpload(
   return uploadBufferAsNode(file, fields);
 }
 
-/** 上传为指定节点的新版本（≤ 5MB 单请求） */
+/** 上传为指定节点的新版本（单请求，受 files.chunkThresholdMb 约束；更大的文件走分片 init 传 nodeId） */
 export async function uploadDriveNodeVersion(nodeId: number, file: File, comment?: string): Promise<DriveNode> {
   const node = await ensureDriveNodeExists(nodeId);
   if (node.type !== 'file') throw new HTTPException(400, { message: '只能对文件上传新版本' });
   await ensureNodeRole(node, 'editor', '没有该文件的编辑权限');
   assertNotLockedByOthers(node);
-  if (file.size > DRIVE_SIMPLE_UPLOAD_MAX_BYTES) {
+  if (file.size > await simpleUploadLimitBytes()) {
     throw new HTTPException(400, { message: '文件超过简单上传阈值，请使用分片上传' });
   }
   const buffer = Buffer.from(await file.arrayBuffer());

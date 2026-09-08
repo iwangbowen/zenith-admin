@@ -24,6 +24,7 @@ import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
+import { abortMockUploadSession, completeMockUploadSession, initMockUploadSession, mockUploadSessionStatus, receiveMockUploadChunk } from '@/mocks/utils/upload-sessions';
 import {
   getNextAppArtifactId,
   getNextAppReleaseId,
@@ -281,6 +282,51 @@ export const appReleasesHandlers = [
     };
     mockAppArtifacts.push(artifact);
     return ok(artifact, '上传成功');
+  }),
+
+  // 制品分片上传：会话 meta 记录平台 / 架构 / 类型，complete 时落制品行
+  mock(appReleaseContract.uploadInit, ({ params, body, ok }) => {
+    const releaseId = params.id;
+    if (!mockAppReleases.some((r) => r.id === releaseId)) return notFound('版本不存在', { status: 404 });
+    if (mockAppArtifacts.some((a) => a.releaseId === releaseId && a.fileName === body.fileName)) {
+      return badRequest('该版本下已存在同名制品文件', { status: 400 });
+    }
+    const session = initMockUploadSession(body, { releaseId, platform: body.platform, arch: body.arch, kind: body.kind });
+    return session ? ok(session) : badRequest('文件过大：超过分片上传上限', { status: 400 });
+  }),
+  mock(appReleaseContract.uploadChunk, ({ body, ok }) => {
+    const result = receiveMockUploadChunk(String(body.get('uploadId') ?? ''), Number(body.get('index')));
+    return result ? ok(result) : notFound('上传会话不存在', { status: 404 });
+  }),
+  mock(appReleaseContract.uploadComplete, ({ params, body, ok }) => {
+    const session = completeMockUploadSession<{ platform: AppArtifact['platform']; arch: AppArtifact['arch']; kind: AppArtifact['kind'] }>(body.uploadId);
+    if (!session) return notFound('上传会话不存在', { status: 404 });
+    const now = mockDateTime();
+    const artifact: AppArtifact = {
+      id: getNextAppArtifactId(),
+      releaseId: params.id,
+      platform: session.meta.platform,
+      arch: session.meta.arch,
+      kind: session.meta.kind,
+      fileId: null,
+      externalUrl: null,
+      fileName: session.fileName,
+      size: session.fileSize,
+      sha256: null,
+      downloadCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockAppArtifacts.push(artifact);
+    return ok(artifact, '上传成功');
+  }),
+  mock(appReleaseContract.uploadStatus, ({ params, ok }) => {
+    const status = mockUploadSessionStatus(params.uploadId);
+    return status ? ok(status) : notFound('上传会话不存在', { status: 404 });
+  }),
+  mock(appReleaseContract.uploadAbort, ({ params, ok }) => {
+    abortMockUploadSession(params.uploadId);
+    return ok(null, '已中止');
   }),
 
   mock(appReleaseContract.addExternalArtifact, ({ params, body, ok }) => {

@@ -13,10 +13,16 @@ import {
   appReleaseStatsContract,
   clientAppContract,
   clientDeviceContract,
+  type AppArch,
+  type AppArtifact,
+  type AppFileArtifactKind,
+  type AppPlatform,
 } from '@zenith/shared/ops';
 import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
+import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
+import { useChunkUploadThreshold } from './files';
 
 // ─── 应用 ────────────────────────────────────────────────────────────────────
 
@@ -83,19 +89,57 @@ function invalidateReleaseArtifacts(qc: QueryClient, releaseId: number) {
   void qc.invalidateQueries({ queryKey: appReleaseKeys.lists });
 }
 
-/** 制品文件上传带进度，走 XHR 表单通道而非 api() */
+/** 制品分片上传接口（init / chunk / complete / status / abort），按所属版本由契约派生 */
+function artifactUploadEndpoints(releaseId: number): ChunkedUploadEndpoints {
+  const id = releaseId;
+  return {
+    init: urlOf(appReleaseContract.uploadInit, { params: { id } }),
+    chunk: urlOf(appReleaseContract.uploadChunk, { params: { id } }),
+    complete: urlOf(appReleaseContract.uploadComplete, { params: { id } }),
+    status: (uploadId) => urlOf(appReleaseContract.uploadStatus, { params: { id, uploadId } }),
+    abort: (uploadId) => urlOf(appReleaseContract.uploadAbort, { params: { id, uploadId } }),
+  };
+}
+
+interface UploadAppArtifactVariables {
+  releaseId: number;
+  file: File;
+  platform: AppPlatform;
+  arch: AppArch;
+  kind: AppFileArtifactKind;
+  onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
+}
+
+/**
+ * 制品文件上传：不超过分片阈值走单请求 multipart（XHR 带进度），超过则分片 + 断点续传
+ * （安装包普遍几十到几百 MB，单请求受反向代理请求体上限约束）。两条路径都由服务端计算 sha256。
+ */
 export function useUploadAppArtifact() {
   const qc = useQueryClient();
+  const chunkThreshold = useChunkUploadThreshold();
   return useMutation({
-    mutationFn: ({ releaseId, formData, onProgress }: {
-      releaseId: number;
-      formData: FormData;
-      onProgress?: (percent: number) => void;
-    }) => request.postForm<OutputOf<typeof appReleaseContract.uploadArtifact>>(
-      urlOf(appReleaseContract.uploadArtifact, { params: { id: releaseId } }),
-      formData,
-      { onProgress },
-    ).then(unwrap),
+    mutationFn: ({ releaseId, file, platform, arch, kind, onProgress, signal }: UploadAppArtifactVariables): Promise<AppArtifact> => {
+      if (file.size > chunkThreshold) {
+        return chunkedUpload<AppArtifact>(file, {
+          endpoints: artifactUploadEndpoints(releaseId),
+          initExtra: { platform, arch, kind },
+          resumeScope: `app-release:${releaseId}`,
+          onProgress,
+          signal,
+        });
+      }
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('platform', platform);
+      formData.append('arch', arch);
+      formData.append('kind', kind);
+      return request.postForm<OutputOf<typeof appReleaseContract.uploadArtifact>>(
+        urlOf(appReleaseContract.uploadArtifact, { params: { id: releaseId } }),
+        formData,
+        { onProgress, signal },
+      ).then(unwrap);
+    },
     onSuccess: (_data, { releaseId }) => invalidateReleaseArtifacts(qc, releaseId),
   });
 }

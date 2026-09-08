@@ -5,7 +5,6 @@ import {
   collectDriveUploadDirectories,
   driveRelativePathSchema,
   driveUploadParentPath,
-  DRIVE_SIMPLE_UPLOAD_MAX_BYTES,
   driveNodeContract,
   type DriveNode,
   type DriveUploadConflictPolicy,
@@ -13,19 +12,11 @@ import {
 import { request } from '@/utils/request';
 import { api, urlOf } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
-import { chunkedUpload, CHUNKED_UPLOAD_CANCELLED, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
-import { driveKeys, invalidateDir } from '@/hooks/queries/drive';
+import { chunkedUpload, CHUNKED_UPLOAD_CANCELLED } from '@/utils/chunked-upload';
+import { DRIVE_UPLOAD_ENDPOINTS, driveKeys, invalidateDir } from '@/hooks/queries/drive';
+import { useChunkUploadThreshold } from '@/hooks/queries/files';
 import type { DirectoryUploadFile } from '@/utils/directory-upload';
 import { hashDriveFile } from './drive-hash';
-
-/** 网盘自有的分片上传接口（init / chunk / complete / status / abort），由契约派生 */
-const DRIVE_UPLOAD_ENDPOINTS: ChunkedUploadEndpoints = {
-  init: urlOf(driveNodeContract.uploadInit),
-  chunk: urlOf(driveNodeContract.uploadChunk),
-  complete: urlOf(driveNodeContract.uploadComplete),
-  status: (uploadId) => urlOf(driveNodeContract.uploadStatus, { params: { uploadId } }),
-  abort: (uploadId) => urlOf(driveNodeContract.uploadAbort, { params: { uploadId } }),
-};
 
 export type UploadItemStatus = 'pending' | 'hashing' | 'uploading' | 'done' | 'skipped' | 'error' | 'cancelled';
 
@@ -62,6 +53,10 @@ const ACTIVE_STATUSES: readonly UploadItemStatus[] = ['pending', 'hashing', 'upl
  */
 export function useDriveUploader() {
   const qc = useQueryClient();
+  const chunkThreshold = useChunkUploadThreshold();
+  // processOne 是 useCallback，阈值经 ref 读取，避免设置加载完成后重建回调
+  const chunkThresholdRef = useRef(chunkThreshold);
+  chunkThresholdRef.current = chunkThreshold;
   const [items, setItems] = useState<UploadItem[]>([]);
   const [conflict, setConflict] = useState<UploadConflict | null>(null);
   const queueRef = useRef<UploadItem[]>([]);
@@ -171,7 +166,7 @@ export function useDriveUploader() {
       }
       patch(item.id, { status: 'uploading', percent: 0 });
       let node: DriveNode;
-      if (item.file.size <= DRIVE_SIMPLE_UPLOAD_MAX_BYTES) {
+      if (item.file.size <= chunkThresholdRef.current) {
         const fd = new FormData();
         fd.append('file', item.file);
         fd.append('spaceId', String(item.spaceId));

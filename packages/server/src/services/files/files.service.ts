@@ -180,6 +180,15 @@ export async function assertUploadSizeAllowed(size: number, settings?: FilesSett
   }
 }
 
+/**
+ * 单请求上传的字节上限（files.chunkThresholdMb）：超过即应改走分片上传。
+ * 归属模块的简单上传（网盘简单上传 / 新版本）用它校验，前端用同一设置决定走哪条路径，两端不会漂移。
+ */
+export async function simpleUploadLimitBytes(settings?: FilesSettings) {
+  const { chunkThresholdMb } = settings ?? await getSettings('files');
+  return chunkThresholdMb * 1024 * 1024;
+}
+
 /** 基于 magic bytes 校验真实文件类型；headBytes 为文件前若干字节，fallbackMime 用于无法识别时回退 */
 export async function assertUploadTypeAllowed(headBytes: Buffer, fallbackMime: string, settings?: FilesSettings) {
   const { uploadValidateType, uploadAllowedTypes } = settings ?? await getSettings('files');

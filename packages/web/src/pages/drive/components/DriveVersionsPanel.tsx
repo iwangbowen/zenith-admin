@@ -1,10 +1,11 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Upload } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
-import { DRIVE_SIMPLE_UPLOAD_MAX_BYTES, type DriveFileVersion, type DriveNode } from '@zenith/shared/drive';
-import { useDeleteDriveNodeVersion, useDriveNodeVersions, useRestoreDriveNodeVersion, useUploadDriveNodeVersion } from '@/hooks/queries/drive';
+import type { DriveFileVersion, DriveNode } from '@zenith/shared/drive';
+import { useDeleteDriveNodeVersion, useDriveNodeVersions, useRestoreDriveNodeVersion, useUploadDriveNodeVersion, useUploadDriveNodeVersionChunked } from '@/hooks/queries/drive';
+import { useChunkUploadThreshold } from '@/hooks/queries/files';
 import { usePermission } from '@/hooks/usePermission';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
@@ -12,6 +13,7 @@ import { fetchProtectedFile } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { roleAtLeast } from '../drive-utils';
+import { hashDriveFile } from '../hooks/drive-hash';
 
 interface DriveVersionsPanelProps {
   readonly node: DriveNode;
@@ -21,20 +23,32 @@ export function DriveVersionsPanel({ node }: DriveVersionsPanelProps) {
   const { hasPermission } = usePermission();
   const query = useDriveNodeVersions(node.id);
   const upload = useUploadDriveNodeVersion();
+  const uploadChunked = useUploadDriveNodeVersionChunked();
   const restore = useRestoreDriveNodeVersion();
   const remove = useDeleteDriveNodeVersion();
+  const chunkThreshold = useChunkUploadThreshold();
+  const [chunkPercent, setChunkPercent] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const canEdit = hasPermission('drive:node:upload') && roleAtLeast(node.myRole, 'editor');
   const canDownload = hasPermission('drive:node:download') && roleAtLeast(node.myRole, 'downloader');
   const canDeleteVersion = hasPermission('drive:node:delete') && roleAtLeast(node.myRole, 'manager');
+  const uploading = upload.isPending || uploadChunked.isPending;
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
-    if (file.size > DRIVE_SIMPLE_UPLOAD_MAX_BYTES) {
-      Toast.warning('新版本单请求上限 5MB，更大的文件请在目录中上传同名文件并选择「覆盖为新版本」');
-      return;
+    if (file.size <= chunkThreshold) {
+      await upload.mutateAsync({ id: node.id, file });
+    } else {
+      // 超过阈值：先算内容哈希供服务端核验，再分片续传为该节点的新版本
+      const controller = new AbortController();
+      setChunkPercent(0);
+      try {
+        const contentHash = await hashDriveFile(file, controller.signal, () => undefined);
+        await uploadChunked.mutateAsync({ node, file, contentHash, signal: controller.signal, onProgress: setChunkPercent });
+      } finally {
+        setChunkPercent(null);
+      }
     }
-    await upload.mutateAsync({ id: node.id, file });
     Toast.success('已上传新版本');
   };
 
@@ -92,7 +106,9 @@ export function DriveVersionsPanel({ node }: DriveVersionsPanelProps) {
         {canEdit && (
           <>
             <input ref={inputRef} type="file" hidden onChange={(e) => { void handleFile(e.target.files?.[0]); e.target.value = ''; }} />
-            <Button size="small" icon={<Upload size={14} />} loading={upload.isPending} onClick={() => inputRef.current?.click()}>上传新版本</Button>
+            <Button size="small" icon={<Upload size={14} />} loading={uploading} onClick={() => inputRef.current?.click()}>
+              {chunkPercent === null ? '上传新版本' : `上传中 ${chunkPercent}%`}
+            </Button>
           </>
         )}
       </div>

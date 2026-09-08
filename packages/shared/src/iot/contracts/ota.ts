@@ -1,8 +1,10 @@
 import * as z from 'zod';
 import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
+import { uploadChunkBody, uploadChunkResultSchema, uploadSessionInitSchema, uploadSessionStatusSchema } from '../../platform/contracts';
+import { completeChunkUploadSchema } from '../../platform/validation';
 import { IOT_OTA_DEVICE_STATUSES, IOT_OTA_TASK_STATUSES } from '../constants';
-import { createIotOtaTaskSchema, updateIotFirmwareSchema, uploadIotFirmwareFieldsSchema } from '../validation';
+import { createIotOtaTaskSchema, initIotFirmwareUploadSchema, updateIotFirmwareSchema, uploadIotFirmwareFieldsSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -101,13 +103,22 @@ export const uploadIotFirmwareBody = multipart(uploadIotFirmwareFieldsSchema.ext
   file: fileField('固件文件'),
 }));
 
+const firmwareUploadIdParam = z.object({
+  uploadId: z.string().meta({ description: '分片上传会话 ID' }),
+});
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 const TAGS = ['IoT 固件'] as const;
 
 export const iotFirmwareContract = defineContract('/api/iot/firmwares', {
   list: op.get('/', { query: iotFirmwareListQuery, response: paginated(iotFirmwareSchema), summary: '固件包列表' }),
-  upload: op.post('/', { body: uploadIotFirmwareBody, response: iotFirmwareSchema, summary: '上传固件包（multipart，服务端计算 SHA256）' }),
+  upload: op.post('/', { body: uploadIotFirmwareBody, response: iotFirmwareSchema, summary: '上传固件包（单请求 multipart，服务端计算 SHA256；超过分片阈值用分片接口）' }),
+  uploadInit: op.post('/upload/init', { body: initIotFirmwareUploadSchema, response: uploadSessionInitSchema, summary: '初始化固件分片上传' }),
+  uploadChunk: op.post('/upload/chunk', { body: uploadChunkBody, response: uploadChunkResultSchema, summary: '上传固件分片' }),
+  uploadComplete: op.post('/upload/complete', { body: completeChunkUploadSchema, response: iotFirmwareSchema, summary: '完成固件分片上传并登记（服务端计算 SHA256）' }),
+  uploadStatus: op.get('/upload/{uploadId}/status', { params: firmwareUploadIdParam, response: uploadSessionStatusSchema, summary: '固件分片上传进度' }),
+  uploadAbort: op.delete('/upload/{uploadId}', { params: firmwareUploadIdParam, summary: '中止固件分片上传' }),
   update: op.put('/{id}', { params: idParam, body: updateIotFirmwareSchema, response: iotFirmwareSchema, summary: '更新固件（仅发布说明与状态；版本与文件不可变更）' }),
   remove: op.delete('/{id}', { params: idParam, summary: '删除固件（存在升级任务时拒绝，托管文件一并回收）' }),
 }, { tags: TAGS });

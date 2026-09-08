@@ -278,9 +278,6 @@ export const DRIVE_VIEW_LABELS: Record<DriveView, string> = {
   links: '我的外链',
 };
 
-/** 简单上传阈值：超过则走分片上传 */
-export const DRIVE_SIMPLE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
-
 /** 客户端计算 SHA-256 的文件大小上限（超过不做秒传检查） */
 export const DRIVE_CLIENT_HASH_MAX_BYTES = 512 * 1024 * 1024;
 

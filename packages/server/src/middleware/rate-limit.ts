@@ -382,13 +382,26 @@ export function namedRateLimit(name: string): MiddlewareHandler {
   return makeNamed(name as RateLimitName);
 }
 
+const PATH_PATTERN_CACHE = new Map<string, RegExp>();
+
+/**
+ * 路径模式 → 正则：结尾的 `/*` 匹配任意多级后缀（含恰好到该前缀本身），路径中间的 `*` 只匹配一个路径段
+ * （如 `/api/app-releases/releases/*\/artifacts/upload/chunk`），其余字符按字面匹配。
+ */
+function pathPatternRegex(pattern: string): RegExp {
+  let regex = PATH_PATTERN_CACHE.get(pattern);
+  if (!regex) {
+    const anySuffix = pattern.endsWith('/*');
+    const core = anySuffix ? pattern.slice(0, -2) : pattern;
+    const source = core.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]+');
+    regex = new RegExp(`^${source}${anySuffix ? '(?:/.*)?' : ''}$`);
+    PATH_PATTERN_CACHE.set(pattern, regex);
+  }
+  return regex;
+}
+
 function matchesPath(patterns: string[], path: string): boolean {
-  return patterns.some((pattern) => {
-    if (pattern.endsWith('/*')) {
-      return path.startsWith(pattern.slice(0, -2));
-    }
-    return path === pattern;
-  });
+  return patterns.some((pattern) => pathPatternRegex(pattern).test(path));
 }
 
 /**

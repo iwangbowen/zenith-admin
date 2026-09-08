@@ -1,9 +1,11 @@
 import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { OutputOf, QueryOf } from '@zenith/shared/core';
-import { iotFirmwareContract, iotOtaTaskContract, type IotOtaTask } from '@zenith/shared/iot';
+import { iotFirmwareContract, iotOtaTaskContract, type IotFirmware, type IotOtaTask } from '@zenith/shared/iot';
 import { request } from '@/utils/request';
 import { unwrap } from '@/lib/query';
 import { contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
+import { useChunkUploadThreshold } from './files';
 
 // ─── 固件包 ───────────────────────────────────────────────────────────────────
 export type IotFirmwareListParams = NonNullable<QueryOf<typeof iotFirmwareContract.list>>;
@@ -16,12 +18,49 @@ export const {
   useDelete: useDeleteIotFirmwares,
 } = createResourceQueries(iotFirmwareContract);
 
-/** 上传固件（multipart，含进度回调，故走 XHR 表单通道而非 api()） */
+/** 固件分片上传接口（init / chunk / complete / status / abort），由契约派生 */
+const FIRMWARE_UPLOAD_ENDPOINTS: ChunkedUploadEndpoints = {
+  init: urlOf(iotFirmwareContract.uploadInit),
+  chunk: urlOf(iotFirmwareContract.uploadChunk),
+  complete: urlOf(iotFirmwareContract.uploadComplete),
+  status: (uploadId) => urlOf(iotFirmwareContract.uploadStatus, { params: { uploadId } }),
+  abort: (uploadId) => urlOf(iotFirmwareContract.uploadAbort, { params: { uploadId } }),
+};
+
+interface UploadIotFirmwareVariables {
+  file: File;
+  productId: number;
+  version: string;
+  releaseNotes?: string;
+  onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
+}
+
+/**
+ * 上传固件：不超过分片阈值走单请求 multipart（XHR 带进度），超过则分片 + 断点续传；
+ * 两条路径都由服务端计算 sha256。
+ */
 export function useUploadIotFirmware() {
   const qc = useQueryClient();
+  const chunkThreshold = useChunkUploadThreshold();
   return useMutation({
-    mutationFn: ({ formData, onProgress }: { formData: FormData; onProgress?: (percent: number) => void }) =>
-      request.postForm<OutputOf<typeof iotFirmwareContract.upload>>(urlOf(iotFirmwareContract.upload), formData, { onProgress }).then(unwrap),
+    mutationFn: ({ file, productId, version, releaseNotes, onProgress, signal }: UploadIotFirmwareVariables): Promise<IotFirmware> => {
+      if (file.size > chunkThreshold) {
+        return chunkedUpload<IotFirmware>(file, {
+          endpoints: FIRMWARE_UPLOAD_ENDPOINTS,
+          initExtra: { productId, version, releaseNotes: releaseNotes || undefined },
+          resumeScope: `iot-firmware:${productId}:${version}`,
+          onProgress,
+          signal,
+        });
+      }
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('productId', String(productId));
+      formData.append('version', version);
+      if (releaseNotes) formData.append('releaseNotes', releaseNotes);
+      return request.postForm<OutputOf<typeof iotFirmwareContract.upload>>(urlOf(iotFirmwareContract.upload), formData, { onProgress, signal }).then(unwrap);
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: iotFirmwareKeys.lists });
     },

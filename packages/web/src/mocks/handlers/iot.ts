@@ -22,6 +22,7 @@ import {
 } from '../data/iot';
 import { mockDateTime } from '../utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
+import { abortMockUploadSession, completeMockUploadSession, initMockUploadSession, mockUploadSessionStatus, receiveMockUploadChunk } from '@/mocks/utils/upload-sessions';
 
 function randomHex(len: number): string {
   const chars = '0123456789abcdef';
@@ -168,6 +169,51 @@ export const iotHandlers = [
     };
     mockIotFirmwares.push(firmware);
     return ok(firmware, '上传成功');
+  }),
+  // 固件分片上传：会话 meta 记录产品 / 版本 / 说明，complete 时登记固件
+  mock(iotFirmwareContract.uploadInit, ({ body, ok }) => {
+    const product = mockIotProducts.find((p) => p.id === body.productId);
+    if (!product) return badRequest('所属产品不存在', { status: 400 });
+    if (mockIotFirmwares.some((f) => f.productId === body.productId && f.version === body.version)) {
+      return badRequest(`产品下已存在版本 ${body.version}`, { status: 400 });
+    }
+    const session = initMockUploadSession(body, { productId: body.productId, version: body.version, releaseNotes: body.releaseNotes ?? null });
+    return session ? ok(session) : badRequest('文件过大：超过分片上传上限', { status: 400 });
+  }),
+  mock(iotFirmwareContract.uploadChunk, ({ body, ok }) => {
+    const result = receiveMockUploadChunk(String(body.get('uploadId') ?? ''), Number(body.get('index')));
+    return result ? ok(result) : notFound('上传会话不存在', { status: 404 });
+  }),
+  mock(iotFirmwareContract.uploadComplete, ({ body, ok }) => {
+    const session = completeMockUploadSession<{ productId: number; version: string; releaseNotes: string | null }>(body.uploadId);
+    if (!session) return notFound('上传会话不存在', { status: 404 });
+    const product = mockIotProducts.find((p) => p.id === session.meta.productId);
+    const now = mockDateTime();
+    const firmware: IotFirmware = {
+      id: getNextIotFirmwareId(),
+      productId: session.meta.productId,
+      productName: product?.name ?? null,
+      version: session.meta.version,
+      fileId: `demo-firmware-file-${Date.now()}`,
+      fileName: session.fileName,
+      size: session.fileSize,
+      sha256: 'd'.repeat(64),
+      releaseNotes: session.meta.releaseNotes,
+      status: 'enabled',
+      taskCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockIotFirmwares.push(firmware);
+    return ok(firmware, '上传成功');
+  }),
+  mock(iotFirmwareContract.uploadStatus, ({ params, ok }) => {
+    const status = mockUploadSessionStatus(params.uploadId);
+    return status ? ok(status) : notFound('上传会话不存在', { status: 404 });
+  }),
+  mock(iotFirmwareContract.uploadAbort, ({ params, ok }) => {
+    abortMockUploadSession(params.uploadId);
+    return ok(null, '已中止');
   }),
   mock(iotFirmwareContract.update, ({ params, body, ok }) => {
     const firmware = updateItem(mockIotFirmwares, params.id, body, { notFoundMessage: '固件不存在', now: mockDateTime, init: { status: 404 } });

@@ -1,11 +1,21 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { OutputOf, QueryOf } from '@zenith/shared/core';
-import { fileContract, type FileAccessPurpose, type FileAccessUrl } from '@zenith/shared/platform';
+import { fileContract, UPLOAD_CHUNK_MIN_BYTES, type FileAccessPurpose, type FileAccessUrl } from '@zenith/shared/platform';
 import { api, contractKey, createResourceQueries, urlOf, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
+import { useMySettings } from './settings';
 
 export type FileListParams = QueryOf<typeof fileContract.list>;
+
+/**
+ * 分片上传阈值（字节）：来自运行时设置 files.chunkThresholdMb，超过即走分片 + 断点续传。
+ * 服务端对简单上传按同一设置校验，两端不会漂移；设置尚未加载时暂按最小分片大小判定（与设置默认值一致）。
+ */
+export function useChunkUploadThreshold(): number {
+  const files = useMySettings().data?.files;
+  return files ? files.chunkThresholdMb * 1024 * 1024 : UPLOAD_CHUNK_MIN_BYTES;
+}
 
 /** 托管文件只有列表 / 详情 / 删除走标准资源形态；上传为 multipart，见下方专用 hooks */
 export const {

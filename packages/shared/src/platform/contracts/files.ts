@@ -155,7 +155,8 @@ const uploadOneBody = multipart(z.object({
   file: fileField(),
 }));
 
-const uploadChunkBody = multipart(z.object({
+/** 分片上传单片的表单体（uploadId + index + chunk），供各归属模块的 chunk 操作复用 */
+export const uploadChunkBody = multipart(z.object({
   uploadId: z.string(),
   index: z.string().meta({ description: '分片序号（从 0 计）' }),
   chunk: fileField('分片内容'),

@@ -1,6 +1,8 @@
 import * as z from 'zod';
 import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
+import { uploadChunkBody, uploadChunkResultSchema, uploadSessionInitSchema, uploadSessionStatusSchema } from '../../platform/contracts';
+import { completeChunkUploadSchema, initChunkUploadSchema } from '../../platform/validation';
 import {
   APP_ARCHES,
   APP_ARTIFACT_KINDS,
@@ -193,6 +195,20 @@ export const uploadAppArtifactBody = multipart(z.object({
   kind: z.enum(APP_FILE_ARTIFACT_KINDS).optional(),
 }));
 
+/** 制品分片上传初始化：通用分片字段 + 平台 / 架构 / 类型（complete 时按此落 app_artifacts） */
+export const initAppArtifactUploadSchema = initChunkUploadSchema.extend({
+  platform: z.enum(APP_PLATFORMS),
+  arch: z.enum(APP_ARCHES).default('x64'),
+  kind: z.enum(APP_FILE_ARTIFACT_KINDS).default('installer'),
+});
+
+export type InitAppArtifactUploadInput = z.infer<typeof initAppArtifactUploadSchema>;
+
+/** `{id}`（版本）+ `{uploadId}`（分片会话）路径参数 */
+export const appArtifactUploadParams = idParam.extend({
+  uploadId: z.string().meta({ description: '分片上传会话 ID' }),
+});
+
 export const publicLatestReleaseQuery = z.object({
   app: z.string().min(1).max(64),
   channel: z.enum(APP_RELEASE_CHANNELS).default('stable'),
@@ -225,8 +241,13 @@ export const appReleaseContract = defineContract('/api/app-releases/releases', {
   publish: op.post('/{id}/publish', { params: idParam, response: appReleaseSchema, summary: '发布版本' }),
   revoke: op.post('/{id}/revoke', { params: idParam, response: appReleaseSchema, summary: '撤回版本' }),
   rollout: op.put('/{id}/rollout', { params: idParam, body: setAppReleaseRolloutSchema, response: appReleaseSchema, summary: '调整灰度比例' }),
-  uploadArtifact: op.post('/{id}/artifacts', { params: idParam, body: uploadAppArtifactBody, response: appArtifactSchema, summary: '上传制品文件' }),
+  uploadArtifact: op.post('/{id}/artifacts', { params: idParam, body: uploadAppArtifactBody, response: appArtifactSchema, summary: '上传制品文件（单请求；超过分片阈值用下方分片接口）' }),
   addExternalArtifact: op.post('/{id}/artifacts/external', { params: idParam, body: createExternalArtifactSchema, response: appArtifactSchema, summary: '添加外链制品（App Store / TestFlight 等）' }),
+  uploadInit: op.post('/{id}/artifacts/upload/init', { params: idParam, body: initAppArtifactUploadSchema, response: uploadSessionInitSchema, summary: '初始化制品分片上传' }),
+  uploadChunk: op.post('/{id}/artifacts/upload/chunk', { params: idParam, body: uploadChunkBody, response: uploadChunkResultSchema, summary: '上传制品分片' }),
+  uploadComplete: op.post('/{id}/artifacts/upload/complete', { params: idParam, body: completeChunkUploadSchema, response: appArtifactSchema, summary: '完成制品分片上传并登记制品（服务端计算 sha256）' }),
+  uploadStatus: op.get('/{id}/artifacts/upload/{uploadId}/status', { params: appArtifactUploadParams, response: uploadSessionStatusSchema, summary: '制品分片上传进度' }),
+  uploadAbort: op.delete('/{id}/artifacts/upload/{uploadId}', { params: appArtifactUploadParams, summary: '中止制品分片上传' }),
 }, { tags: ['应用版本管理'] });
 
 export const appArtifactContract = defineContract('/api/app-releases/artifacts', {

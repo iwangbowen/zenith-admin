@@ -1,5 +1,8 @@
 import * as z from 'zod';
+import { UPLOAD_CHUNK_MAX_BYTES, UPLOAD_CHUNK_MIN_BYTES } from '../../platform/constants';
 import { defineSettingsModule } from '../module-def';
+
+const MIB = 1024 * 1024;
 
 /** 通用文件上传的默认 MIME 白名单（`*` / `*\/*` 表示放行全部） */
 export const DEFAULT_UPLOAD_ALLOWED_TYPES = [
@@ -19,6 +22,10 @@ export const filesSettingsSchema = z.object({
     .meta({ title: '允许的 MIME 类型', description: '支持通配符（如 image/*）；填 * 或 */* 放行全部类型' }),
   uploadMaxSizeMb: z.int().min(0).max(102_400).default(0)
     .meta({ title: '单文件大小上限（MB）', description: '0 表示不限制；超过的上传（含分片）将被拒绝' }),
+  chunkThresholdMb: z.int().min(1).max(UPLOAD_CHUNK_MAX_BYTES / MIB).default(UPLOAD_CHUNK_MIN_BYTES / MIB)
+    .meta({ title: '分片上传阈值（MB）', description: '超过该大小的文件走分片上传 + 断点续传，不超过则单请求上传（含网盘简单上传 / 新版本）；受反向代理请求体上限约束' }),
+  chunkSizeMb: z.int().min(UPLOAD_CHUNK_MIN_BYTES / MIB).max(UPLOAD_CHUNK_MAX_BYTES / MIB).default(UPLOAD_CHUNK_MIN_BYTES / MIB)
+    .meta({ title: '分片大小（MB）', description: '服务端裁定的分片基线，不低于对象存储要求的最小分片；文件过大时自动上调以不超过片数上限' }),
 }).meta({ id: 'Settings.Files' });
 
 export type FilesSettings = z.output<typeof filesSettingsSchema>;
@@ -26,9 +33,10 @@ export type FilesSettings = z.output<typeof filesSettingsSchema>;
 export const filesSettingsModule = defineSettingsModule({
   schema: filesSettingsSchema,
   title: '文件上传',
-  description: '托管文件上传的类型校验与大小上限',
+  description: '托管文件上传的类型校验、大小上限与分片策略',
   scope: 'platform',
   readPermission: 'system:setting:view',
   writePermission: 'system:setting:update',
+  visibility: { chunkThresholdMb: 'authenticated', chunkSizeMb: 'authenticated' },
   sort: 40,
 });

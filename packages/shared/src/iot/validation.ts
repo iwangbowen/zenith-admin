@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { httpUrl, partialForUpdate } from '../core/validation';
+import { initChunkUploadSchema } from '../platform/validation';
 import {
   IOT_ACCESS_MODES, IOT_ALARM_LEVELS, IOT_ALARM_RULE_TYPES, IOT_AUTOMATION_ACTION_MAX,
   IOT_AUTOMATION_ACTION_TYPES, IOT_AUTOMATION_DEFAULT_COOLDOWN_SECONDS, IOT_AUTOMATION_TARGETS,
@@ -343,6 +344,15 @@ export const uploadIotFirmwareFieldsSchema = z.object({
   version: z.string().regex(IOT_FIRMWARE_VERSION_PATTERN, '版本号需为语义化格式，如 1.2.3'),
   releaseNotes: z.string().max(4000).optional(),
 });
+
+/** 固件分片上传初始化：通用分片字段 + 产品 / 版本 / 发布说明（complete 时按此登记固件） */
+export const initIotFirmwareUploadSchema = initChunkUploadSchema.extend({
+  productId: z.number().int().positive(),
+  version: z.string().regex(IOT_FIRMWARE_VERSION_PATTERN, '版本号需为语义化格式，如 1.2.3'),
+  releaseNotes: z.string().max(4000).optional(),
+});
+
+export type InitIotFirmwareUploadInput = z.infer<typeof initIotFirmwareUploadSchema>;
 
 export const createIotOtaTaskSchema = z.object({
   firmwareId: z.number().int().positive(),

@@ -72,6 +72,10 @@ app_release_events（检查 / 下载 / 安装回执流水）
 
 文件制品通过 `POST /api/app-releases/releases/{id}/artifacts` 上传，multipart 字段为 `file`、`platform`、`arch`、`kind`。`kind` 仅允许 `installer`、`hotupdate`、`metadata`。服务端读取文件内容计算 SHA256，使用生成文件通道保存到统一文件存储，并在 `app_artifacts.sha256` 落库。
 
+超过分片阈值（运行时设置 `files.chunkThresholdMb`，默认 5MB）的制品由前端自动改走分片上传：`POST /{id}/artifacts/upload/init`（带 `platform` / `arch` / `kind`）→ `POST /{id}/artifacts/upload/chunk` → `POST /{id}/artifacts/upload/complete`，
+另有 `GET /{id}/artifacts/upload/{uploadId}/status` 与 `DELETE /{id}/artifacts/upload/{uploadId}`。分片路径同样由服务端在合并后计算 SHA256，
+init 阶段即校验同名制品，支持断点续传与取消，不再受反向代理单请求体上限约束；机制细节见[存储：归属模块接入分片上传](../storage/index.md#归属模块接入分片上传)。
+
 外链制品通过 `POST /api/app-releases/releases/{id}/artifacts/external` 创建，适用于 App Store、TestFlight 等外部分发场景，`kind` 固定为 `external`，`size` 为 0，下载时返回外部链接或 302 跳转。
 
 公开制品下载地址格式：

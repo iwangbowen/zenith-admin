@@ -13,6 +13,7 @@ import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName, getMulti
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { config } from '../../config';
+import { getSettings } from '../../lib/settings';
 import { assertUploadSizeAllowed, assertUploadTypeAllowed, mapManagedFile, type ManagedFileUploadOptions } from './files.service';
 
 /** 完成分片上传时归属模块可指定的属性 */
@@ -22,6 +23,8 @@ export interface ChunkUploadCompleteOptions extends Pick<ManagedFileUploadOption
    * 一致才写入 `managed_files.contentHash` 参与秒传 / 去重，不一致则中止会话；不提供则不记录哈希。
    */
   expectedHash?: string | null;
+  /** 无客户端声明值时也由服务端计算 SHA-256 并写入 `contentHash`（制品 / 固件等需要服务端可信摘要的模块） */
+  computeHash?: boolean;
 }
 
 /**
@@ -146,10 +149,12 @@ const HASH_MISMATCH_MESSAGE = '文件内容校验失败：实际内容的 SHA-25
 
 export async function initChunkUpload(input: InitChunkUploadInput) {
   const user = currentUser();
-  await assertUploadSizeAllowed(input.fileSize);
+  const settings = await getSettings('files');
+  await assertUploadSizeAllowed(input.fileSize, settings);
 
-  // 分片大小由服务端最终裁定（客户端按 init 响应中的 chunkSize 切片）：保证不低于 provider 下限且总片数不超上限
-  const chunkSize = resolveUploadChunkSize(input.fileSize, input.chunkSize);
+  // 分片大小由服务端最终裁定（客户端按 init 响应中的 chunkSize 切片）：
+  // 以运行时设置为基线，且保证不低于 provider 下限、总片数不超上限
+  const chunkSize = resolveUploadChunkSize(input.fileSize, Math.max(input.chunkSize, settings.chunkSizeMb * 1024 * 1024));
   if (chunkSize === null) {
     throw new HTTPException(400, { message: `文件过大：超过分片上传上限（${UPLOAD_MAX_CHUNKS} 片 × ${UPLOAD_CHUNK_MAX_BYTES / 1024 / 1024}MB）` });
   }
@@ -300,15 +305,20 @@ async function mergeAndRegister(
     await failSession(session, config, `分片总大小（${receivedBytes} 字节）与声明的文件大小（${session.fileSize} 字节）不一致`);
   }
   const expectedHash = options.expectedHash?.toLowerCase() ?? null;
+  const needHash = expectedHash !== null || options.computeHash === true;
+  let contentHash: string | null = null;
   const driver = getMultipartDriver(session.provider);
 
   if (driver && session.multipartUploadId) {
     // 云原生 multipart：用各分片 ETag 完成合并（类型校验已在首片上传时完成）
     const parts = chunkRows.map((r) => ({ partNumber: r.index + 1, etag: r.etag ?? '' }));
     await driver.complete(config, session.objectKey, session.multipartUploadId, parts, session.mimeType ?? undefined);
-    if (expectedHash && (await sha256OfStoredObject(session, config)) !== expectedHash) {
-      await deleteObjectByConfig(config, session.objectKey, session.bucketName).catch(() => { /* 对象清理失败不掩盖校验错误 */ });
-      await failSession(session, config, HASH_MISMATCH_MESSAGE, { multipartCompleted: true });
+    if (needHash) {
+      contentHash = await sha256OfStoredObject(session, config);
+      if (expectedHash && contentHash !== expectedHash) {
+        await deleteObjectByConfig(config, session.objectKey, session.bucketName).catch(() => { /* 对象清理失败不掩盖校验错误 */ });
+        await failSession(session, config, HASH_MISMATCH_MESSAGE, { multipartCompleted: true });
+      }
     }
   } else {
     // 本地暂存：首片真实类型校验 + 内容哈希校验 + 按序流式合并上传
@@ -322,8 +332,9 @@ async function mergeAndRegister(
         throw markSessionAborted(err);
       }
     }
-    if (expectedHash && (await sha256OfChunkFiles(uploadId, session.totalChunks)) !== expectedHash) {
-      await failSession(session, config, HASH_MISMATCH_MESSAGE);
+    if (needHash) {
+      contentHash = await sha256OfChunkFiles(uploadId, session.totalChunks);
+      if (expectedHash && contentHash !== expectedHash) await failSession(session, config, HASH_MISMATCH_MESSAGE);
     }
     const mergedStream = Readable.from(mergedChunkStream(uploadId, session.totalChunks));
     await uploadObjectByConfig(config, {
@@ -351,7 +362,7 @@ async function mergeAndRegister(
       visibility: options.visibility ?? 'public',
       gcState: options.visibility === 'restricted' ? 'orphan' : 'live',
       orphanedAt: options.visibility === 'restricted' ? new Date() : null,
-      contentHash: expectedHash,
+      contentHash,
       tenantId: getCreateTenantId(user),
     })
     .returning();

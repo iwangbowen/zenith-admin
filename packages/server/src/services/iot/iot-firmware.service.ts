@@ -6,8 +6,9 @@
  */
 import { HTTPException } from 'hono/http-exception';
 import { createHash } from 'node:crypto';
-import { count, desc, eq, inArray, type SQL } from 'drizzle-orm';
-import type { UpdateIotFirmwareInput } from '@zenith/shared/iot';
+import { and, count, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import * as z from 'zod';
+import type { InitIotFirmwareUploadInput, UpdateIotFirmwareInput } from '@zenith/shared/iot';
 import { IOT_FIRMWARE_VERSION_PATTERN } from '@zenith/shared/iot';
 import { db } from '../../db';
 import { iotFirmwares, iotOtaTasks, iotProducts, type IotFirmwareRow } from '../../db/schema';
@@ -20,6 +21,8 @@ import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import logger from '../../lib/logger';
 import { deleteManagedFile, saveGeneratedManagedFile } from '../files/files.service';
+import { bindUploadSession, requireUploadBinding } from '../files/upload-bindings.service';
+import { abortChunkUpload, completeChunkUpload, getUploadStatus, initChunkUpload, uploadChunk } from '../files/upload-sessions.service';
 import { ensureIotProductExists } from './iot-devices.service';
 
 export function mapIotFirmware(row: IotFirmwareRow, extra?: { productName?: string | null; taskCount?: number }) {
@@ -137,6 +140,78 @@ export async function createIotFirmware(meta: CreateFirmwareMeta, file: File) {
       await deleteManagedFile(uploaded.id);
     } catch {
       logger.warn(`[iot-firmware] 回收上传文件失败 fileId=${uploaded.id}`);
+    }
+    rethrowPgUniqueViolation(err, `产品下已存在版本 ${meta.version}`);
+    throw err;
+  }
+}
+
+// ─── 固件分片上传（大固件包：分片 + 断点续传，服务端在 complete 时计算 sha256）──────────
+
+const FIRMWARE_UPLOAD_MODULE = 'iot-firmware';
+
+const firmwareUploadPayloadSchema = z.object({
+  productId: z.int(),
+  version: z.string().min(1),
+  releaseNotes: z.string().nullable(),
+  fileName: z.string().min(1),
+});
+
+export async function initIotFirmwareUpload(input: InitIotFirmwareUploadInput) {
+  await ensureIotProductExists(input.productId);
+  if (input.fileSize <= 0) throw new HTTPException(400, { message: '固件文件为空' });
+  // 版本唯一在 complete 时才会撞约束，先查一次让用户在传完之前就得到提示
+  const duplicated = await db.$count(iotFirmwares, and(eq(iotFirmwares.productId, input.productId), eq(iotFirmwares.version, input.version)));
+  if (duplicated > 0) throw new HTTPException(400, { message: `产品下已存在版本 ${input.version}` });
+  const session = await initChunkUpload({ fileName: input.fileName, fileSize: input.fileSize, mimeType: input.mimeType, chunkSize: input.chunkSize });
+  await bindUploadSession(session.uploadId, FIRMWARE_UPLOAD_MODULE, {
+    productId: input.productId, version: input.version, releaseNotes: input.releaseNotes ?? null, fileName: input.fileName,
+  });
+  return session;
+}
+
+export async function uploadIotFirmwareChunk(uploadId: string, index: number, chunk: File) {
+  await requireUploadBinding(uploadId, FIRMWARE_UPLOAD_MODULE, firmwareUploadPayloadSchema);
+  // 固件是任意二进制，与单请求上传一样跳过 MIME 白名单
+  return uploadChunk(uploadId, index, chunk, { skipTypeCheck: true });
+}
+
+export async function getIotFirmwareUploadStatus(uploadId: string) {
+  await requireUploadBinding(uploadId, FIRMWARE_UPLOAD_MODULE, firmwareUploadPayloadSchema);
+  return getUploadStatus(uploadId);
+}
+
+export async function abortIotFirmwareUpload(uploadId: string) {
+  await requireUploadBinding(uploadId, FIRMWARE_UPLOAD_MODULE, firmwareUploadPayloadSchema);
+  await abortChunkUpload(uploadId);
+}
+
+export async function completeIotFirmwareUpload(uploadId: string) {
+  const meta = await requireUploadBinding(uploadId, FIRMWARE_UPLOAD_MODULE, firmwareUploadPayloadSchema);
+  await ensureIotProductExists(meta.productId);
+  const file = await completeChunkUpload(uploadId, { skipTypeCheck: true, computeHash: true });
+  // computeHash 保证服务端已算出摘要；固件表 sha256 非空，缺失即为内部错误
+  if (!file.contentHash) {
+    await deleteManagedFile(file.id).catch(() => logger.warn(`[iot-firmware] 回收分片上传文件失败 fileId=${file.id}`));
+    throw new HTTPException(500, { message: '固件摘要计算失败，请重新上传' });
+  }
+  try {
+    const [row] = await db.insert(iotFirmwares).values({
+      productId: meta.productId,
+      version: meta.version,
+      fileId: file.id,
+      fileName: meta.fileName,
+      size: file.size,
+      sha256: file.contentHash,
+      releaseNotes: meta.releaseNotes,
+      tenantId: getCreateTenantId(currentUser()),
+    }).returning();
+    return mapIotFirmware(row);
+  } catch (err) {
+    try {
+      await deleteManagedFile(file.id);
+    } catch {
+      logger.warn(`[iot-firmware] 回收分片上传文件失败 fileId=${file.id}`);
     }
     rethrowPgUniqueViolation(err, `产品下已存在版本 ${meta.version}`);
     throw err;

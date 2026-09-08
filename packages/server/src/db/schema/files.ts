@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, smallint, uuid as pgUuid, index } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, smallint, uuid as pgUuid, index, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { statusEnum, timestampColumns } from './common';
@@ -177,6 +177,28 @@ export const uploadChunks = pgTable('upload_chunks', {
 export type UploadChunkRow = typeof uploadChunks.$inferSelect;
 
 export type NewUploadChunk = typeof uploadChunks.$inferInsert;
+
+/**
+ * 分片上传会话与归属模块业务上下文的通用绑定（App 发布制品、IoT 固件等）：
+ * init 时记录 module + payload，complete 时按 payload 落业务行。跟随会话级联删除，不会留下孤儿绑定。
+ * 企业网盘因需要 FK 级联到空间 / 节点，仍使用自己的 drive_upload_bindings。
+ */
+export const uploadSessionBindings = pgTable('upload_session_bindings', {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  uploadId: varchar({ length: 64 }).notNull().references(() => uploadSessions.uploadId, { onDelete: 'cascade' })
+    .unique('upload_session_bindings_upload_id_unique'),
+  /** 归属模块标识，如 app-release-artifact / iot-firmware；complete 时校验与调用方一致 */
+  module: varchar({ length: 64 }).notNull(),
+  /** 模块自定义上下文（目标 id、枚举等小对象），由模块的 Zod schema 在读取时校验 */
+  payload: jsonb().$type<Record<string, unknown>>().notNull(),
+  tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  ...timestampColumns(),
+}, (t) => [
+  index('upload_session_bindings_module_idx').on(t.module),
+]);
+
+export type UploadSessionBindingRow = typeof uploadSessionBindings.$inferSelect;
 
 // ─── 业务文件关联表（通用，多态关联）─────────────────────────────────────────
 export const businessTypeEnum = pgEnum('business_type', ['announcement', 'wiki_doc']);

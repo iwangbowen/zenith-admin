@@ -386,14 +386,12 @@ function ArtifactsSheet({ releaseId, onClose }: { releaseId: number | null; onCl
               customRequest={async ({ fileInstance, onProgress, onSuccess, onError }) => {
                 if (releaseId == null) return;
                 try {
-                  const formData = new FormData();
-                  formData.append('file', fileInstance);
-                  formData.append('platform', uploadPlatform);
-                  formData.append('arch', uploadArch);
-                  formData.append('kind', uploadKind);
                   await uploadMutation.mutateAsync({
                     releaseId,
-                    formData,
+                    file: fileInstance,
+                    platform: uploadPlatform,
+                    arch: uploadArch,
+                    kind: uploadKind,
                     onProgress: (percent) => onProgress?.({ total: 100, loaded: percent }),
                   });
                   Toast.success('上传成功');

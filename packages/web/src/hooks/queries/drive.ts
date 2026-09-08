@@ -16,7 +16,17 @@ import {
 import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
+import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
 import { useMySettings, useSaveSettings, useSettings } from './settings';
+
+/** 网盘自有的分片上传接口（init / chunk / complete / status / abort），由契约派生；目录上传队列与新版本面板共用 */
+export const DRIVE_UPLOAD_ENDPOINTS: ChunkedUploadEndpoints = {
+  init: urlOf(driveNodeContract.uploadInit),
+  chunk: urlOf(driveNodeContract.uploadChunk),
+  complete: urlOf(driveNodeContract.uploadComplete),
+  status: (uploadId) => urlOf(driveNodeContract.uploadStatus, { params: { uploadId } }),
+  abort: (uploadId) => urlOf(driveNodeContract.uploadAbort, { params: { uploadId } }),
+};
 
 /**
  * 企业网盘域 hooks。
@@ -413,6 +423,30 @@ export function useUploadDriveNodeVersion() {
       if (comment) fd.append('comment', comment);
       return request.postForm<OutputOf<typeof driveNodeContract.uploadVersion>>(urlOf(driveNodeContract.uploadVersion, { params: { id } }), fd, { onProgress }).then(unwrap);
     },
+    onSuccess: (node) => invalidateVersionSurface(qc, node),
+  });
+}
+
+interface UploadVersionChunkedVariables {
+  node: Pick<DriveNode, 'id' | 'spaceId'>;
+  file: File;
+  /** 客户端预先算好的 SHA-256；服务端 complete 时按实际内容核验 */
+  contentHash?: string;
+  signal?: AbortSignal;
+  onProgress?: (percent: number) => void;
+}
+
+/** 超过分片阈值的新版本：分片 init 带 nodeId，服务端落为该节点的新版本 */
+export function useUploadDriveNodeVersionChunked() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ node, file, contentHash, signal, onProgress }: UploadVersionChunkedVariables) => chunkedUpload<DriveNode>(file, {
+      endpoints: DRIVE_UPLOAD_ENDPOINTS,
+      initExtra: { spaceId: node.spaceId, nodeId: node.id, contentHash },
+      resumeScope: `drive-version:${node.id}`,
+      signal,
+      onProgress,
+    }),
     onSuccess: (node) => invalidateVersionSurface(qc, node),
   });
 }

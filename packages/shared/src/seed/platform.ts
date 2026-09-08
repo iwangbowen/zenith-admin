@@ -182,6 +182,23 @@ export const SEED_RATE_LIMIT_RULES = [
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
   },
+  {
+    name: 'chunk_upload',
+    description: '分片上传单片接口限流（按用户）：分片不小于 5MB，正常上传远达不到该速率，只拦异常刷片',
+    windowMs: 60 * 1000,
+    limit: 3000,
+    keyType: 'user' as const,
+    enabled: true,
+    blockedMessage: '分片上传过于频繁，请稍后再试',
+    pathPatterns: [
+      '/api/files/upload/chunk',
+      '/api/drive/nodes/upload/chunk',
+      '/api/app-releases/releases/*/artifacts/upload/chunk',
+      '/api/iot/firmwares/upload/chunk',
+    ],
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
 ];
 
 // ─── 定时任务 ─────────────────────────────────────────────────────────────────

@@ -21,8 +21,10 @@ import { guard, setAuditBeforeData } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { ErrorResponse, errBody, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import {
+  abortArtifactUpload,
   addExternalArtifact,
   addFileArtifact,
+  completeArtifactUpload,
   createAppRelease,
   createClientApp,
   deleteAppArtifact,
@@ -32,7 +34,9 @@ import {
   getAppRelease,
   getAppReleaseBeforeAudit,
   getAppReleaseStats,
+  getArtifactUploadStatus,
   getClientAppBeforeAudit,
+  initArtifactUpload,
   listAllClientApps,
   listAppReleases,
   listClientApps,
@@ -41,6 +45,7 @@ import {
   setAppReleaseRollout,
   updateAppRelease,
   updateClientApp,
+  uploadArtifactChunk,
 } from '../../services/ops/app-releases.service';
 import {
   adminUnbindDevicePush,
@@ -207,6 +212,52 @@ const externalArtifactRoute = defineContractRoute(appReleaseContract.addExternal
   },
 });
 
+// 制品分片上传：会话归属校验在 service（绑定表按发起人 + 版本过滤），路由只做协议边界
+const artifactUploadInitRoute = defineContractRoute(appReleaseContract.uploadInit, {
+  middleware: audited('system:app-release:create', '初始化制品分片上传'),
+  responses: { 404: { content: jsonContent(ErrorResponse), description: '版本不存在' } },
+  handler: async (c) => c.json(okBody(await initArtifactUpload(c.req.valid('param').id, c.req.valid('json'))), 200),
+});
+
+const artifactUploadChunkRoute = defineContractRoute(appReleaseContract.uploadChunk, {
+  middleware: [authMiddleware, guard({ permission: 'system:app-release:create' })],
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const body = await c.req.parseBody();
+    const uploadId = String(body.uploadId ?? '');
+    const index = Number(body.index);
+    const chunk = body.chunk;
+    if (!uploadId || !Number.isFinite(index) || !(chunk instanceof File)) {
+      return c.json(errBody('分片参数不完整', 400), 400);
+    }
+    return c.json(okBody(await uploadArtifactChunk(id, uploadId, index, chunk)), 200);
+  },
+});
+
+const artifactUploadCompleteRoute = defineContractRoute(appReleaseContract.uploadComplete, {
+  middleware: audited('system:app-release:create', '完成制品分片上传'),
+  responses: { 400: { content: jsonContent(ErrorResponse), description: '分片不完整或校验失败' } },
+  handler: async (c) => c.json(okBody(await completeArtifactUpload(c.req.valid('param').id, c.req.valid('json').uploadId), '上传成功'), 200),
+});
+
+const artifactUploadStatusRoute = defineContractRoute(appReleaseContract.uploadStatus, {
+  middleware: [authMiddleware],
+  responses: { 404: { content: jsonContent(ErrorResponse), description: '会话不存在' } },
+  handler: async (c) => {
+    const { id, uploadId } = c.req.valid('param');
+    return c.json(okBody(await getArtifactUploadStatus(id, uploadId)), 200);
+  },
+});
+
+const artifactUploadAbortRoute = defineContractRoute(appReleaseContract.uploadAbort, {
+  middleware: audited('system:app-release:create', '中止制品分片上传'),
+  handler: async (c) => {
+    const { id, uploadId } = c.req.valid('param');
+    await abortArtifactUpload(id, uploadId);
+    return c.json(okBody(null, '已中止'), 200);
+  },
+});
+
 appReleasesRouter.openapiRoutes([
   listReleasesRoute,
   getReleaseRoute,
@@ -218,6 +269,11 @@ appReleasesRouter.openapiRoutes([
   rolloutRoute,
   uploadArtifactRoute,
   externalArtifactRoute,
+  artifactUploadInitRoute,
+  artifactUploadChunkRoute,
+  artifactUploadCompleteRoute,
+  artifactUploadStatusRoute,
+  artifactUploadAbortRoute,
 ] as const);
 
 // ─── 制品 ────────────────────────────────────────────────────────────────────

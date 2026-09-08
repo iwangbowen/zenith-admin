@@ -333,6 +333,20 @@ describe('路径绑定', () => {
     expect(redisMock.eval).toHaveBeenCalledTimes(2);
   });
 
+  it('路径中间的 * 只匹配一个路径段', async () => {
+    await loadRules(ruleRow({ name: 't_seg', limit: 1, pathPatterns: ['/api/releases/*/artifacts/upload/chunk'] }));
+    const app = new Hono();
+    app.use('*', pathBoundRateLimit);
+    app.all('*', (c) => c.json({ ok: true }));
+
+    await app.request('/api/releases/42/artifacts/upload/chunk', { method: 'POST' });
+    expect(redisMock.eval).toHaveBeenCalledTimes(1);
+    await app.request('/api/releases/42/extra/artifacts/upload/chunk', { method: 'POST' }); // * 不跨段
+    expect(redisMock.eval).toHaveBeenCalledTimes(1);
+    await app.request('/api/releases/42/artifacts/upload/init', { method: 'POST' }); // 尾段不同
+    expect(redisMock.eval).toHaveBeenCalledTimes(1);
+  });
+
   it('多规则命中同一路径时取 priority 大者', async () => {
     await loadRules(
       ruleRow({ id: 1, name: 't_low', limit: 5, priority: 0, pathPatterns: ['/api/p/*'] }),

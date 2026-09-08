@@ -122,7 +122,8 @@ describe('resolveSettings', () => {
     expect(settingsModuleHasVisibility('ui', ['authenticated'])).toBe(true);
     expect(settingsModuleHasVisibility('drive', ['public'])).toBe(false);
     expect(settingsModuleHasVisibility('drive', ['authenticated'])).toBe(true);
-    expect(settingsModuleHasVisibility('files', ['public', 'authenticated'])).toBe(false);
+    expect(settingsModuleHasVisibility('files', ['authenticated'])).toBe(true);
+    expect(settingsModuleHasVisibility('ipAccess', ['public', 'authenticated'])).toBe(false);
   });
 });
 

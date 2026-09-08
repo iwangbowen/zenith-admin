@@ -23,6 +23,7 @@
 | `managed_files` | 统一文件记录；UUID 主键、storageConfigId、storageName、provider、originalName、objectKey、bucketName、size（bigint）、mimeType、extension、objectAcl、visibility、contentHash、tenantId、审计字段 |
 | `upload_sessions` | 分片上传会话；uploadId、文件名/大小/MIME、chunkSize、totalChunks、存储配置快照、multipartUploadId、状态、租户、审计字段 |
 | `upload_chunks` | 已上传分片；uploadSessionId、index、size、etag；`uploadSessionId + index` 唯一保证重传幂等 |
+| `upload_session_bindings` | 分片会话与归属模块业务上下文的通用绑定；uploadId（级联会话）、module、payload jsonb、租户、审计字段 |
 | `business_files` | 业务附件关联；`businessType + businessId + fileId` 唯一，当前枚举为 `announcement`、`wiki_doc` |
 
 `managed_files.bucketName` 与 `objectAcl` 是上传时快照，用于在存储配置后续切换 bucket 或 ACL 时继续读取旧文件并正确判断公开直链能力。
@@ -105,13 +106,16 @@
 
 分片大小与字节数由服务端裁定并强制校验（常量与算术在 `packages\shared\src\platform\{constants,upload}.ts`）：
 
-- 客户端请求的 `chunkSize` 不得低于 `UPLOAD_CHUNK_MIN_BYTES`（5 MiB，S3 / BOS 非末片下限）；文件按该分片超过
+- 走分片还是单请求由运行时设置 `files.chunkThresholdMb`（默认 5）决定，登录用户经 `/api/settings/me` 读到同一值；
+  服务端对网盘简单上传 / 新版本按同一设置校验，两端不会漂移。分片基线取 `files.chunkSizeMb`（默认 5）与客户端请求值中的较大者。
+- 分片不得低于 `UPLOAD_CHUNK_MIN_BYTES`（5 MiB，S3 / BOS 非末片下限）；文件按该分片超过
   `UPLOAD_MAX_CHUNKS`（10,000，各对象存储 multipart 片数上限）时服务端按 MiB 上调分片，客户端以 init 响应的 `chunkSize`
   切片；上调后仍超过 `UPLOAD_CHUNK_MAX_BYTES`（32 MB：路由层会把整片读入内存，按 3 并发计每用户约 96 MB 在途）则拒绝。
 - 每一片的实际字节数必须等于该序号的期望值（非末片为 `chunkSize`，末片为余量），complete 时再核对总和等于声明的
   `fileSize`——声明大小是上传上限、网盘配额与 `managed_files.size` 的依据，不允许与实际落地字节数不一致。
 - 归属模块可在 complete 时传入 `expectedHash`（客户端预先算好的 SHA-256）：本地暂存路径直接对分片文件计算，
   云原生 multipart 路径合并后读回一遍计算；一致才写入 `contentHash` 参与秒传 / 去重，不一致则删除对象并中止会话。
+  传 `computeHash: true` 则在没有客户端声明值时也由服务端计算并写入（制品 / 固件的 sha256 来源）。
   通用 `files` API 自身不接收哈希，因此不会记录未经校验的 `contentHash`。
 - 总字节数不符、哈希不符、类型不允许属于不可恢复失败：会话直接置为 `aborted`，客户端续传探测到非 `uploading`
   状态后重新初始化，而不是拿着「已完整」的分片反复 complete。
@@ -121,6 +125,25 @@
 
 过期分片由 `cleanupStaleUploadSessions(ttlHours)` 清理：以「会话创建或最后一片到达」中较晚者判定过期（持续上传中的大文件不会被误清），
 删除过期会话及其分片，尝试中止云端 multipart，并清理无活跃会话的孤儿临时目录。该清理能力接入统一数据保留策略。
+
+分片单片接口（`*/upload/chunk`）绑定限流规则 `chunk_upload`（种子：按用户 3000 次 / 分钟，分片 ≥ 5 MB 时正常上传远达不到，只拦异常刷片）；
+既有部署可在「接口限流」页按同名规则补录。
+
+### 归属模块接入分片上传
+
+归属模块不直接暴露通用 `files` 分片接口，而是在自己的契约上声明同形的五个操作（init 带业务字段、complete 返回业务实体），
+服务端复用 `upload-sessions.service` 的 init / chunk / status / abort / complete，并用 `upload_session_bindings`
+（`uploadId → module + payload jsonb`，随会话级联删除）记住业务上下文：init 时 `bindUploadSession()`，
+后续每个操作用 `requireUploadBinding(uploadId, module, payloadSchema)` 校验「同一模块 + 同一发起人」并取回上下文。
+前端用 `chunkedUpload(file, { endpoints, initExtra, resumeScope })` 传入由契约派生的五个地址即可，取消 / 续传 / 进度自动获得。
+
+| 模块 | 契约 | 说明 |
+| --- | --- | --- |
+| 企业网盘 | `driveNodeContract.upload*` | 自带 `drive_upload_bindings`（需级联到空间 / 节点），预检 / 秒传 / 冲突策略 |
+| App 发布制品 | `appReleaseContract.upload*`（`/{id}/artifacts/upload/…`） | payload：平台 / 架构 / 类型 / 文件名；complete 以 `computeHash` 取得 sha256 写入 `app_artifacts` |
+| IoT 固件 | `iotFirmwareContract.upload*`（`/upload/…`） | payload：产品 / 版本 / 发布说明 / 文件名；init 先查版本唯一，避免传完才撞约束 |
+
+CMS 图片、公众号素材、回放片段、主机 / 终端文件等入口性质不同（小文件或写往第三方 / 远端主机），保持单请求。
 
 ### 下载与预览
 
