@@ -49,10 +49,6 @@ export function LockScreen({ user, onVerify, onUnlocked, onReLogin }: Readonly<L
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleUnlock();
-  };
-
   const h = time.getHours().toString().padStart(2, '0');
   const m = time.getMinutes().toString().padStart(2, '0');
   const s = time.getSeconds().toString().padStart(2, '0');
@@ -66,53 +62,60 @@ export function LockScreen({ user, onVerify, onUnlocked, onReLogin }: Readonly<L
   const lunar = Lunar.fromDate(time);
   const lunarStr = `农历 ${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}`;
   const solarTerm = lunar.getJieQi();
+  const displayName = user.nickname || '用户';
 
   return (
     <div className={`lock-screen${leaving ? ' lock-screen--leaving' : ''}`}>
       <div className="lock-screen__content">
-        <div className="lock-screen__time">
-          {h}<span className="lock-screen__colon">:</span>{m}<span className="lock-screen__colon">:</span>{s}
+        <div className="lock-screen__clock">
+          <div className="lock-screen__time">
+            {h}<span className="lock-screen__colon">:</span>{m}<span className="lock-screen__colon">:</span>{s}
+          </div>
+          <div className="lock-screen__date">{dateStr}</div>
+          <div className="lock-screen__lunar">
+            {lunarStr}
+            {solarTerm && <span className="lock-screen__solar-term">{solarTerm}</span>}
+          </div>
         </div>
-        <div className="lock-screen__date">{dateStr}</div>
-        <div className="lock-screen__lunar">{lunarStr}{solarTerm && <span className="lock-screen__solar-term">{solarTerm}</span>}</div>
 
         <div className="lock-screen__user">
           <UserAvatar
-            name={user.nickname || '用户'}
+            name={displayName}
             avatar={user.avatar}
-            size={72}
-            style={{ fontSize: 28 }}
+            size={64}
+            className="lock-screen__avatar"
+            style={{ fontSize: 26 }}
           />
-          <div className="lock-screen__username">{user.nickname || '用户'}</div>
+          <div className="lock-screen__username">{displayName}</div>
         </div>
 
-        <div className={`lock-screen__form${shaking ? ' lock-screen__form--shake' : ''}`}>
-          <div className="lock-screen__input-wrap">
-            <Lock size={15} className="lock-screen__input-icon" />
-            <Input
-              ref={inputRef}
-              type="password"
-              placeholder="请输入锁屏密码"
-              value={password}
-              onChange={(v) => { setPassword(v); setError(false); }}
-              onKeyDown={handleKeyDown}
-              className="lock-screen__input"
-            />
+        <form
+          className={`lock-screen__form${shaking ? ' lock-screen__form--shake' : ''}`}
+          onSubmit={(e) => { e.preventDefault(); handleUnlock(); }}
+        >
+          <Input
+            ref={inputRef}
+            mode="password"
+            size="large"
+            prefix={<Lock size={15} />}
+            placeholder="请输入锁屏密码"
+            value={password}
+            validateStatus={error ? 'error' : 'default'}
+            onChange={(v) => { setPassword(v); setError(false); }}
+            className="lock-screen__input"
+            aria-label="锁屏密码"
+          />
+          {/* 固定占位高度：错误提示出现时不推动下方按钮 */}
+          <div className="lock-screen__error" role="alert">
+            {error ? '密码错误，请重试' : ''}
           </div>
-          {error && <div className="lock-screen__error">密码错误，请重试</div>}
-          <Button type="primary" block onClick={handleUnlock} style={{ marginTop: 10 }}>
+          <Button htmlType="submit" type="primary" theme="solid" size="large" block className="lock-screen__unlock">
             解锁
           </Button>
-          <Button
-            type="tertiary"
-            theme="borderless"
-            block
-            onClick={onReLogin}
-            style={{ marginTop: 4 }}
-          >
+          <Button type="tertiary" theme="borderless" block className="lock-screen__relogin" onClick={onReLogin}>
             重新登录
           </Button>
-        </div>
+        </form>
       </div>
     </div>
   );

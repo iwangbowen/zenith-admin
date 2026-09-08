@@ -34,9 +34,10 @@ interface UserAvatarProps {
  * - 无头像 → 显示首字母 + 哈希背景色
  */
 export function UserAvatar({ name, avatar, size = 36, className, style, semiSize = 'small' }: Readonly<UserAvatarProps>) {
+  const { fontSize, ...restStyle } = style ?? {};
   const sizeStyle: React.CSSProperties = size === null
-    ? { flexShrink: 0, ...style }
-    : { width: size, height: size, flexShrink: 0, ...style };
+    ? { flexShrink: 0, ...restStyle }
+    : { width: size, height: size, flexShrink: 0, ...restStyle };
 
   if (avatar) {
     return (
@@ -50,6 +51,7 @@ export function UserAvatar({ name, avatar, size = 36, className, style, semiSize
     );
   }
 
+  const letter = name.slice(0, 1).toUpperCase() || '?';
   return (
     <Avatar
       size={semiSize}
@@ -57,7 +59,11 @@ export function UserAvatar({ name, avatar, size = 36, className, style, semiSize
       className={className}
       style={{ backgroundColor: getAvatarColor(name), color: '#fff', ...sizeStyle }}
     >
-      {name.slice(0, 1).toUpperCase() || '?'}
+      {fontSize === undefined ? letter : (
+        // Semi 按 size 预设给 .semi-avatar-label 定死字号，根节点的 fontSize 传不下去；
+        // 自行渲染 label（复用其类名保留粗体与居中、补回 role / aria-label），用内联字号压过预设
+        <span role="img" aria-label={name} className="semi-avatar-label" style={{ fontSize }}>{letter}</span>
+      )}
     </Avatar>
   );
 }

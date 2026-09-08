@@ -1998,6 +1998,9 @@
 
 /* =========================================================
    锁屏遮罩
+   跟随亮 / 暗主题，与登录页共用同一套底色与「主色光晕」语言：
+   文字走 Semi 语义色 token 自动翻转；底色、玻璃输入框与头像描边按主题各给一套。
+   背景两层：底色渐变 → ::after 两团主色光晕缓慢漂移，不加纹理，保持干净。
    ========================================================= */
 .lock-screen {
   position: fixed;
@@ -2006,9 +2009,39 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0c1a2e 100%);
-  backdrop-filter: blur(10px);
-  animation: lockFadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  padding: 24px;
+  overflow: hidden;
+  color: var(--semi-color-text-0);
+  background: linear-gradient(160deg, #f8fbfe 0%, #f4f8fc 55%, #f1f5fa 100%);
+  animation: lockFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+body[theme-mode='dark'] .lock-screen {
+  background: linear-gradient(160deg, #101622 0%, #0e1420 60%, #0c111c 100%);
+}
+
+/* 光晕：只动 transform，整层一次栅格化后由合成器漂移；铺得比视口大一圈，漂移时不露边 */
+.lock-screen::after {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(ellipse 34% 30% at 28% 32%, color-mix(in srgb, var(--semi-color-primary) 16%, transparent), transparent 70%),
+    radial-gradient(ellipse 30% 28% at 74% 70%, color-mix(in srgb, var(--semi-color-primary) 10%, transparent), transparent 70%);
+  animation: lock-glow-drift 28s ease-in-out infinite alternate;
+  pointer-events: none;
+  will-change: transform;
+}
+
+body[theme-mode='dark'] .lock-screen::after {
+  background:
+    radial-gradient(ellipse 34% 30% at 28% 32%, color-mix(in srgb, var(--semi-color-primary) 22%, transparent), transparent 70%),
+    radial-gradient(ellipse 30% 28% at 74% 70%, color-mix(in srgb, var(--semi-color-primary) 12%, transparent), transparent 70%);
+}
+
+@keyframes lock-glow-drift {
+  from { transform: translate3d(-2%, -1.5%, 0) scale(1); }
+  to { transform: translate3d(2%, 1.5%, 0) scale(1.06); }
 }
 
 .lock-screen--leaving {
@@ -2016,14 +2049,8 @@
 }
 
 @keyframes lockFadeIn {
-  from {
-    opacity: 0;
-    backdrop-filter: blur(0);
-  }
-  to {
-    opacity: 1;
-    backdrop-filter: blur(10px);
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes lockFadeOut {
@@ -2033,23 +2060,25 @@
   }
   to {
     opacity: 0;
-    transform: scale(1.04);
+    transform: scale(1.03);
   }
 }
 
 .lock-screen__content {
+  position: relative;
+  z-index: 1;
   display: flex;
+  width: 100%;
+  max-width: 320px;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  width: 320px;
-  animation: lockContentIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  animation: lockContentIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
 }
 
 @keyframes lockContentIn {
   from {
     opacity: 0;
-    transform: translateY(24px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -2057,17 +2086,28 @@
   }
 }
 
+/* ---- 时钟组 ---- */
+.lock-screen__clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 时钟比表单宽，不受 320px 内容列约束：不换行，靠 align-items: center 两侧对称溢出 */
 .lock-screen__time {
-  font-size: 72px;
-  font-weight: 200;
-  letter-spacing: 4px;
-  color: #fff;
+  font-size: clamp(56px, 9vw, 80px);
+  font-weight: 300;
   line-height: 1;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
 .lock-screen__colon {
-  animation: lock-blink 1s step-end infinite;
+  display: inline-block;
+  margin: 0 0.04em;
+  animation: lock-blink 1s ease-in-out infinite;
 }
 
 @keyframes lock-blink {
@@ -2076,48 +2116,59 @@
 }
 
 .lock-screen__date {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.6);
-  letter-spacing: 0.5px;
+  font-size: 15px;
+  color: var(--semi-color-text-1);
+  letter-spacing: 0.02em;
 }
 
 .lock-screen__lunar {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.4);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--semi-color-text-2);
 }
 
 .lock-screen__solar-term {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: var(--semi-border-radius-small);
-  padding: 0 6px;
+  padding: 0 8px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 999px;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.92);
+  line-height: 18px;
+  color: var(--semi-color-text-1);
 }
 
+/* ---- 用户组 ---- */
 .lock-screen__user {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin-top: 8px;
+  gap: 12px;
+  margin-top: 40px;
+}
+
+/* 头像描边：亮色用白色描边把头像从浅底上托起，暗色只留一圈淡白 */
+.lock-screen__avatar {
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.9);
+}
+
+body[theme-mode='dark'] .lock-screen__avatar {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
 .lock-screen__username {
-  font-size: 15px;
-  color: rgba(255, 255, 255, 0.85);
+  font-size: 16px;
   font-weight: 500;
+  color: var(--semi-color-text-0);
 }
 
+/* ---- 表单组 ---- */
 .lock-screen__form {
-  width: 100%;
   display: flex;
+  width: 100%;
   flex-direction: column;
-  gap: 0;
-  margin-top: 8px;
+  gap: 6px;
+  margin-top: 28px;
 }
 
 .lock-screen__form--shake {
@@ -2134,41 +2185,76 @@
   90% { transform: translateX(3px); }
 }
 
-.lock-screen__input-wrap {
-  position: relative;
+/* 输入框：亮色是白色玻璃 + 细边，暗色是淡白玻璃；
+   选择器叠到三层特异度，压过 Semi 自身的 hover / focus / error 状态类，不必写 !important */
+.lock-screen .lock-screen__input.semi-input-wrapper {
+  border-color: var(--semi-color-border);
+  border-radius: var(--semi-border-radius-medium);
+  background: rgba(255, 255, 255, 0.8);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.lock-screen__input-icon {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: rgba(255, 255, 255, 0.7);
-  z-index: 1;
-  pointer-events: none;
+.lock-screen .lock-screen__input.semi-input-wrapper:hover {
+  border-color: var(--semi-color-text-3);
+  background: rgba(255, 255, 255, 0.95);
 }
 
-.lock-screen__input .semi-input {
-  padding-left: 34px !important;
-  background: rgba(0, 0, 0, 0.25) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  color: #fff !important;
+.lock-screen .lock-screen__input.semi-input-wrapper-focus {
+  border-color: var(--semi-color-primary);
+  background: #fff;
 }
 
-.lock-screen__input .semi-input::placeholder {
-  color: rgba(255, 255, 255, 0.35) !important;
+.lock-screen .lock-screen__input.semi-input-wrapper-error {
+  border-color: var(--semi-color-danger);
+  background: rgba(255, 255, 255, 0.95);
 }
 
-.lock-screen__input .semi-input:focus {
-  border-color: rgba(255, 255, 255, 0.4) !important;
-  background: rgba(255, 255, 255, 0.12) !important;
+body[theme-mode='dark'] .lock-screen .lock-screen__input.semi-input-wrapper {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
 }
 
+body[theme-mode='dark'] .lock-screen .lock-screen__input.semi-input-wrapper:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+body[theme-mode='dark'] .lock-screen .lock-screen__input.semi-input-wrapper-focus {
+  border-color: var(--semi-color-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body[theme-mode='dark'] .lock-screen .lock-screen__input.semi-input-wrapper-error {
+  border-color: var(--semi-color-danger);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lock-screen .lock-screen__input .semi-input-prefix,
+.lock-screen .lock-screen__input .semi-input-suffix {
+  color: var(--semi-color-text-2);
+}
+
+.lock-screen .lock-screen__input .semi-input-suffix:hover {
+  color: var(--semi-color-text-0);
+}
+
+/* 提示行固定高度：出错时不推动下方按钮 */
 .lock-screen__error {
+  min-height: 18px;
   font-size: 12px;
-  color: var(--semi-color-danger);
-  margin-top: 4px;
+  line-height: 18px;
   text-align: center;
+  color: var(--semi-color-danger);
+}
+
+/* 次要动作：降为普通字重与次级文字色，不与「解锁」抢视线 */
+.lock-screen .lock-screen__relogin {
+  color: var(--semi-color-text-2);
+  font-weight: 400;
+}
+
+.lock-screen .lock-screen__relogin:hover {
+  color: var(--semi-color-text-0);
 }
 
 /* ===== 内容全屏模式：隐藏侧边栏、顶部导航、标签栏，仅展示内容区 ===== */
