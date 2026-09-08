@@ -12,10 +12,10 @@ describe('PageLoading', () => {
     localStorage.clear();
   });
 
-  it('uses the current dots animation by default', () => {
+  it('uses the flip animation by default', () => {
     render(<PageLoading />);
 
-    expect(screen.getByRole('status')).toHaveAttribute('data-loading-style', 'dots');
+    expect(screen.getByRole('status')).toHaveAttribute('data-loading-style', 'flip');
   });
 
   it('uses the cached preference before the preferences provider mounts', () => {
@@ -44,11 +44,11 @@ describe('PageLoading', () => {
     expect(screen.getByRole('status')).toHaveAttribute('data-loading-style', 'bars');
   });
 
-  it('falls back to dots when the cached preference is invalid', () => {
+  it('falls back to flip when the cached preference is invalid', () => {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ loadingStyle: 'unknown' }));
 
     render(<PageLoading />);
 
-    expect(screen.getByRole('status')).toHaveAttribute('data-loading-style', 'dots');
+    expect(screen.getByRole('status')).toHaveAttribute('data-loading-style', 'flip');
   });
 });

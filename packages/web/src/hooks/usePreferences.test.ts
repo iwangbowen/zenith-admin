@@ -5,13 +5,13 @@ import {
 } from './usePreferences';
 
 describe('loading style preference', () => {
-  it('keeps the existing dots animation as the default', () => {
-    expect(defaultPreferences.loadingStyle).toBe('dots');
+  it('uses the flip animation as the default', () => {
+    expect(defaultPreferences.loadingStyle).toBe('flip');
   });
 
   it('accepts known loading styles when importing preferences', () => {
-    expect(sanitizeImportedPreferences({ loadingStyle: 'flip' })).toEqual({
-      loadingStyle: 'flip',
+    expect(sanitizeImportedPreferences({ loadingStyle: 'dots' })).toEqual({
+      loadingStyle: 'dots',
     });
   });
 
