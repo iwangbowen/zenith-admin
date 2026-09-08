@@ -131,24 +131,29 @@ export function StatusSelect<V extends string = string>(props: StatusSelectProps
   return <FilterSelect<V> {...props} placeholder="全部状态" />;
 }
 
+/**
+ * 区间选择器的默认宽度，也是不截断内容的最小宽度：Semi 把两个输入框均分剩余宽度
+ * （总宽减去分隔符、图标、边框约 48px，每侧再扣 26px 内边距），`YYYY-MM-DD HH:mm:ss`
+ * 在 14px Inter 下宽约 138px，360px 时每侧只剩 131px，末位秒数会被截掉；`YYYY-MM-DD` 约 78px，
+ * 260px 时只剩 3px 余量。400 / 280 分别留出约 13px，回退到更宽的中文字体也装得下。
+ * 报表筛选条等自定义宽度的场景也应以此为下限。
+ */
+export const DATE_TIME_RANGE_FILTER_WIDTH = 400;
+export const DATE_RANGE_FILTER_WIDTH = 280;
+
 interface DateRangeFilterProps extends Omit<DatePickerProps, 'onChange' | 'value' | 'type'> {
   /** 页面的区间状态用 `null` 或 `undefined` 表示未选择都可以 */
   readonly value: [Date, Date] | null | undefined;
   readonly onChange: (range: [Date, Date] | null) => void;
   /** `dateTimeRange` 精确到秒（默认），`dateRange` 只选日期 */
   readonly type?: 'dateTimeRange' | 'dateRange';
-  /** 选择器宽度，默认按 type 取 400 / 280；只应为 `100%` 之类的自适应场景覆盖，不要改小 */
+  /** 选择器宽度，默认按 type 取 DATE_TIME_RANGE_FILTER_WIDTH / DATE_RANGE_FILTER_WIDTH；只应为 `100%` 之类的自适应场景覆盖，不要改小 */
   readonly width?: number | string;
 }
 
 /**
  * 时间范围筛选：统一占位文案与宽度，并把 Semi 宽松的 onChange 值收窄成
  * `[Date, Date] | null`——页面此前各自手写 `Array.isArray(v) && v.length >= 2` 之类的判断。
- *
- * 默认宽度是按内容算出来的，别在页面里为了省空间改小：Semi 把两个输入框均分剩余宽度
- * （总宽减去分隔符、图标、边框约 48px，每侧再扣 26px 内边距），`YYYY-MM-DD HH:mm:ss`
- * 在 14px Inter 下宽约 138px，360px 时每侧只剩 131px，末位秒数会被截掉。
- * 400 / 280 分别给秒级、日期级留出约 13px 余量，回退到更宽的中文字体也装得下。
  */
 export function DateRangeFilter({
   value,
@@ -169,7 +174,7 @@ export function DateRangeFilter({
         const [from, to] = Array.isArray(v) ? v : [];
         onChange(from instanceof Date && to instanceof Date ? [from, to] : null);
       }}
-      style={{ width: width ?? (isDateTime ? 400 : 280), maxWidth: '100%', ...style }}
+      style={{ width: width ?? (isDateTime ? DATE_TIME_RANGE_FILTER_WIDTH : DATE_RANGE_FILTER_WIDTH), maxWidth: '100%', ...style }}
       {...rest}
     />
   );

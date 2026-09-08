@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Spin, Banner, Typography, Skeleton, Card, DatePicker, Button, Toast } from '@douyinfe/semi-ui';
+import { Spin, Banner, Typography, Skeleton, Card, Button, Toast } from '@douyinfe/semi-ui';
 import { Users, UserCheck, UserMinus, Tags, Image, FileText, MessageSquare, Reply, BarChart3 } from 'lucide-react';
 import type { MpStats } from '@zenith/shared/mp';
 import { formatDateForApi } from '@/utils/date';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { BarChart, chartOptions, makeBarSpec, useChartPalette, StatCard, StatGrid } from '@/components/charts';
+import { DateRangeFilter } from '@/components/search-filters';
 import { mpStatsKeys, useMpDatacube, useMpStats, type MpDatacubeParams } from '@/hooks/queries/mp-stats';
 
 const CARD_DEFS: { key: keyof MpStats; label: string; icon: React.ReactNode; color: string }[] = [
@@ -134,8 +135,8 @@ export default function MpStatisticsPage() {
       <Card style={{ marginTop: 16 }} bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <Typography.Title heading={6} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}><BarChart3 size={16} /> 微信数据立方（真实接口）</Typography.Title>
-          <DatePicker type="dateRange" density="compact" value={dcRange} style={{ width: 260 }}
-            onChange={(v) => { if (Array.isArray(v) && v.length === 2) setDcRange([v[0] as Date, v[1] as Date]); }} />
+          <DateRangeFilter type="dateRange" density="compact" value={dcRange}
+            onChange={(range) => { if (range) setDcRange(range); }} />
           <Button type="primary" size="small" loading={datacubeQuery.isFetching} disabled={!currentId} onClick={() => void loadDatacube()}>查询</Button>
           <Typography.Text type="tertiary" size="small">跨度 ≤ 7 天；数据 T+1，需账号已认证并有数据权限</Typography.Text>
         </div>

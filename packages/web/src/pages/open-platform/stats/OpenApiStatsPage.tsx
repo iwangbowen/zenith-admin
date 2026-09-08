@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { Banner, DatePicker, InputNumber, Select, Typography, Tag, Tooltip, Space, Card } from '@douyinfe/semi-ui';
+import { Banner, InputNumber, Select, Typography, Tag, Tooltip, Space, Card } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import dayjs from 'dayjs';
 import type { OpenApiCallLog } from '@zenith/shared/open-platform';
@@ -20,7 +20,7 @@ import {
   useOpenAppOptions,
 } from '@/hooks/queries/open-platform';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { FilterSelect, KeywordInput } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 
 const { Text, Title } = Typography;
@@ -169,16 +169,13 @@ export default function OpenApiStatsPage() {
       <SearchToolbar
         primary={(
           <>
-            <DatePicker
+            <DateRangeFilter
               type="dateRange"
               value={draftParams.range}
-              onChange={(v) => {
-                if (Array.isArray(v) && v.length === 2) {
-                  setDraftParams({ ...draftParams, range: [v[0] as Date, v[1] as Date] });
-                }
+              onChange={(range) => {
+                if (range) setDraftParams({ ...draftParams, range });
               }}
               density="compact"
-              style={{ width: 256 }}
             />
             <Select
               value={draftParams.granularity}
@@ -243,15 +240,13 @@ export default function OpenApiStatsPage() {
         )}
         mobileFilters={(
           <>
-            <DatePicker
+            <DateRangeFilter
               type="dateRange"
               value={draftParams.range}
-              onChange={(v) => {
-                if (Array.isArray(v) && v.length === 2) {
-                  setDraftParams({ ...draftParams, range: [v[0] as Date, v[1] as Date] });
-                }
+              onChange={(range) => {
+                if (range) setDraftParams({ ...draftParams, range });
               }}
-              style={{ width: '100%' }}
+              width="100%"
             />
             <FilterSelect
               placeholder="全部应用"

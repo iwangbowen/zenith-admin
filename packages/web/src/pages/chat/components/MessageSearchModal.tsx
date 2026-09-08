@@ -1,4 +1,4 @@
-import { Button, DatePicker, Empty, Input, Select, Tag, Typography, List as SemiList } from '@douyinfe/semi-ui';
+import { Button, Empty, Input, Select, Tag, Typography, List as SemiList } from '@douyinfe/semi-ui';
 import { MessageSquare, Search } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
@@ -6,7 +6,7 @@ import { formatConvTime } from '@/utils/date';
 import type { ChatMessage, ChatMessageSearchItem } from '@zenith/shared/chat';
 import { CHAT_MESSAGE_TYPE_OPTIONS } from '../types';
 import type { SearchDatePreset, Setter } from '../types';
-import { FilterSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 
 const { Text } = Typography;
 
@@ -109,15 +109,13 @@ export function MessageSearchModal({
               )}
             </div>
 
-            <DatePicker
-              type="dateTimeRange"
-              placeholder={['开始时间', '结束时间']}
-              value={searchTimeRange ?? undefined}
-              onChange={(val) => {
+            <DateRangeFilter
+              value={searchTimeRange}
+              onChange={(range) => {
                 setSearchDatePreset('');
-                setSearchTimeRange(val ? (val as [Date, Date]) : null);
+                setSearchTimeRange(range);
               }}
-              style={{ width: '100%' }}
+              width="100%"
             />
 
             <div style={{ display: 'flex', gap: 8 }}>

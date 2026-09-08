@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useId, useState } from 'react';
+import dayjs from 'dayjs';
 import { Button, DatePicker, Select, Input, InputNumber, SideSheet, Space } from '@douyinfe/semi-ui';
 import { Check, Filter, RotateCcw } from 'lucide-react';
 import { formatDateForApi } from '@/utils/date';
+import { DATE_RANGE_FILTER_WIDTH, DateRangeFilter } from '@/components/search-filters';
 import { useReportFilterDynamicOptions } from '@/hooks/queries/report-designer';
 import type { ReportFilter } from '@zenith/shared/report';
 
@@ -29,6 +31,13 @@ function countActiveReportFilters(filters: readonly ReportFilter[], values: Reco
       : value !== null && value !== undefined && value !== '';
     return count + (active ? 1 : 0);
   }, 0);
+}
+
+/** 区间筛选值以 `YYYY-MM-DD` 字符串存储（直接进查询参数），回填选择器前先还原成 Date */
+function toDateRange(value: unknown): [Date, Date] | null {
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  const [start, end] = value.map((item) => dayjs(item as Date | string | number));
+  return start.isValid() && end.isValid() ? [start.toDate(), end.toDate()] : null;
 }
 
 /** 全局筛选器运行时渲染（视图 / 设计器预览共用）*/
@@ -79,10 +88,10 @@ export function FilterBar({
               onChange={(d) => change(f.id, d ? formatDateForApi(d as Date) : null)} />;
             break;
           case 'daterange':
-            control = <DatePicker type="dateRange" placeholder={[`${f.label}起`, '止']} value={v as [Date, Date] | undefined} style={{ width: fullWidth ? '100%' : Math.max(w, 240) }}
+            control = <DateRangeFilter type="dateRange" placeholder={[`${f.label}起`, '止']} value={toDateRange(v)} width={fullWidth ? '100%' : Math.max(w, DATE_RANGE_FILTER_WIDTH)}
               disabled={disabled} getPopupContainer={popupContainer}
               aria-labelledby={fullWidth ? labelId : undefined}
-              onChange={(d) => change(f.id, d ? (d as Date[]).map((x) => formatDateForApi(x)) : null)} />;
+              onChange={(range) => change(f.id, range ? range.map((x) => formatDateForApi(x)) : null)} />;
             break;
           case 'select':
             control = <Select placeholder={f.label} value={v as string | undefined} style={{ width: controlWidth }} showClear filter

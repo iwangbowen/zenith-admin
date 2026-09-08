@@ -4,7 +4,7 @@
  * 提供事件订阅 CRUD + 启用/禁用 + 投递记录查看与重试。
  */
 import { useState } from 'react';
-import { Button, Col, DatePicker, Form, Input, Modal, Row, Space, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Modal, Row, Space, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
@@ -36,7 +36,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { useEditModal } from '@/hooks/useEditModal';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
-import { FilterSelect, StatusSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, StatusSelect } from '@/components/search-filters';
 
 const EVENT_OPTIONS: Array<{ value: WorkflowEventType; label: string }> = [
   { value: 'instance.created',   label: '实例创建' },
@@ -212,7 +212,7 @@ export default function WorkflowEventSubscriptionsPage() {
   const [replayVisible, setReplayVisible] = useState(false);
   const [replayStatus, setReplayStatus] = useState<'success' | 'failed' | 'pending' | undefined>('failed');
   const [replayEventType, setReplayEventType] = useState<WorkflowEventType | undefined>(undefined);
-  const [replayRange, setReplayRange] = useState<Date[] | undefined>(undefined);
+  const [replayRange, setReplayRange] = useState<[Date, Date] | undefined>(undefined);
 
   const openReplay = () => {
     setReplayStatus('failed'); setReplayEventType(undefined); setReplayRange(undefined); setReplayVisible(true);
@@ -626,11 +626,10 @@ export default function WorkflowEventSubscriptionsPage() {
           </div>
           <div>
             <Typography.Text size="small" strong style={{ display: 'block', marginBottom: 4 }}>时间范围（可选，按投递创建时间）</Typography.Text>
-            <DatePicker
-              type="dateTimeRange"
-              style={{ width: '100%' }}
+            <DateRangeFilter
+              width="100%"
               value={replayRange}
-              onChange={(v) => setReplayRange(Array.isArray(v) ? (v as Date[]) : undefined)}
+              onChange={(range) => setReplayRange(range ?? undefined)}
             />
           </div>
         </div>

@@ -2,7 +2,7 @@
  * 行为中心阶段 1：通用事件分析工作台 —— 自定义事件 + 维度 + 指标查询，展示图表 + 明细表格。
  */
 import { useMemo, useState } from 'react';
-import { Button, Card, DatePicker, Empty, Input, Select, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Empty, Input, Select, Toast, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { BarChart, chartOptions, makeBarSpec, useChartPalette } from '@/components/charts';
@@ -13,7 +13,7 @@ import { usePagination } from '@/hooks/usePagination';
 import type { AnalyticsEventQueryGroupByField, AnalyticsEventQueryInput, AnalyticsEventQueryMetric, AnalyticsEventQueryRow, AnalyticsSegmentPropertyFilter } from '@zenith/shared/analytics';
 import { ANALYTICS_DEVICE_TYPE_OPTIONS, ANALYTICS_ENVIRONMENT_OPTIONS, ANALYTICS_EVENT_QUERY_GROUP_BY_LABELS, ANALYTICS_EVENT_QUERY_GROUP_BY_OPTIONS, ANALYTICS_EVENT_QUERY_METRIC_OPTIONS, ANALYTICS_EVENT_SOURCE_OPTIONS, ANALYTICS_SEGMENT_COMPARE_OP_OPTIONS, analyticsMetricRequiresProperty } from '@zenith/shared/analytics';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { FilterSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 
 const DAY_OPTIONS = [7, 14, 30, 90].map((value) => ({ value, label: `近 ${value} 天` }));
 
@@ -290,11 +290,10 @@ export default function AnalyticsEventQueryTab() {
                 onChange={(v) => setDraft((prev) => ({ ...prev, days: Number(v), dateRange: undefined }))}
                 style={{ width: 130 }}
               />
-              <DatePicker
+              <DateRangeFilter
                 type="dateRange"
-                placeholder={['开始日期', '结束日期']}
                 value={draft.dateRange}
-                onChange={(v) => setDraft((prev) => ({ ...prev, dateRange: v as [Date, Date] }))}
+                onChange={(range) => setDraft((prev) => ({ ...prev, dateRange: range ?? undefined }))}
                 style={{ flex: 1 }}
               />
             </div>

@@ -1,8 +1,9 @@
 /** 行为概览：关键指标卡 + 访问趋势（支持自定义日期区间与环比对照） */
 import { useMemo, useState } from 'react';
-import { Card, DatePicker, Select, Skeleton, Switch, Typography } from '@douyinfe/semi-ui';
+import { Card, Select, Skeleton, Switch, Typography } from '@douyinfe/semi-ui';
 import { Activity, BarChart3, Clock, Eye, Flame, Target, TrendingUp, Users, Zap } from 'lucide-react';
 import { LineChart, chartOptions, makeLineSpec, useChartPalette, StatCard, StatGrid } from '@/components/charts';
+import { DateRangeFilter } from '@/components/search-filters';
 import { formatDateForApi } from '@/utils/date';
 import { useAnalyticsOverview, useAnalyticsTrends } from '@/hooks/queries/analytics';
 import { useBehaviorDays } from './behavior-days-context';
@@ -12,10 +13,12 @@ import { ChartPlaceholder, DeltaText, SectionHeader } from './analytics-shared';
 export default function AnalyticsOverviewTab() {
   const palette = useChartPalette();
   const [days, setDays] = useBehaviorDays();
-  const [customRange, setCustomRange] = useState<[string, string] | null>(null);
+  const [customRange, setCustomRange] = useState<[Date, Date] | null>(null);
   const [compare, setCompare] = useState(false);
   const range = useMemo(
-    () => (customRange ? { days, startDate: customRange[0], endDate: customRange[1] } : { days }),
+    () => (customRange
+      ? { days, startDate: formatDateForApi(customRange[0]), endDate: formatDateForApi(customRange[1]) }
+      : { days }),
     [customRange, days],
   );
   const overviewQuery = useAnalyticsOverview(range);
@@ -80,15 +83,12 @@ export default function AnalyticsOverviewTab() {
               <Typography.Text type="tertiary" size="small">环比对照</Typography.Text>
               <Switch size="small" checked={compare} onChange={setCompare} />
             </div>
-            <DatePicker
+            <DateRangeFilter
               type="dateRange"
               density="compact"
               placeholder="自定义日期区间"
-              style={{ width: 240 }}
-              onChange={(value) => {
-                const [s, e] = Array.isArray(value) ? value : [];
-                setCustomRange(s && e ? [formatDateForApi(s as Date), formatDateForApi(e as Date)] : null);
-              }}
+              value={customRange}
+              onChange={setCustomRange}
             />
             <Select value={days} optionList={DAYS_OPTIONS} disabled={!!customRange} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />
           </div>
