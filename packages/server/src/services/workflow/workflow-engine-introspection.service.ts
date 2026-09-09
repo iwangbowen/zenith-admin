@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, notInArray, or
 import { alias } from 'drizzle-orm/pg-core';
 import { CronExpressionParser } from 'cron-parser';
 import type { WorkflowEngineApdex, WorkflowEngineComponent, WorkflowEngineComponentStatus, WorkflowEngineDefinitionSnapshot, WorkflowEngineEventBucket, WorkflowEngineHistogramBucket, WorkflowEngineInstanceBucket, WorkflowEngineIntrospection, WorkflowEngineMetric, WorkflowEngineQueueKey, WorkflowEngineQueueSnapshot, WorkflowEngineRuntimeIssue, WorkflowEngineRuntimeTask, WorkflowEngineScoreFactor, WorkflowEngineTelemetry, WorkflowEngineThresholds, WorkflowEngineTriggerExecution, WorkflowEngineOutboxEvent, WorkflowFlowData, WorkflowInstancePriority } from '@zenith/shared/workflow';
+import { buildWorkflowEngineIssues as buildIssues, buildWorkflowEngineQueueSnapshot as queueSnapshot, worstWorkflowEngineStatus as worstStatus } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import { workflowDefinitions, workflowInstances, workflowJobExecutions, workflowJobs, workflowTasks, workflowTokens, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -13,6 +14,7 @@ import { tenantCondition } from '../../lib/tenant';
 import { getWorkflowEventBusIntrospection } from '../../lib/workflow-event-bus';
 import { validateFlowData } from '../../lib/workflow-engine';
 import { mapTriggerExecution as mapSharedTriggerExecution } from './workflow-trigger-executions.service';
+import { payloadString } from './payload-utils';
 import { buildWhere } from '../../lib/where-helpers';
 
 type ComponentKey = WorkflowEngineComponent['key'];
@@ -70,43 +72,8 @@ function isDateTimeDue(value: string | null | undefined, boundary: Date): boolea
   return parsed != null && parsed.getTime() <= boundary.getTime();
 }
 
-function worstStatus(statuses: WorkflowEngineComponentStatus[]): WorkflowEngineComponentStatus {
-  if (statuses.includes('critical')) return 'critical';
-  if (statuses.includes('warning')) return 'warning';
-  return 'healthy';
-}
-
 function metric(label: string, value: number | string, status?: WorkflowEngineComponentStatus, hint?: string | null, unit?: string | null): WorkflowEngineMetric {
   return { label, value, status: status ?? null, hint: hint ?? null, unit: unit ?? null };
-}
-
-function queueSnapshot(input: {
-  key: WorkflowEngineQueueKey;
-  name: string;
-  ready?: number;
-  running?: number;
-  delayed?: number;
-  failed?: number;
-  oldestAgeMinutes?: number | null;
-  details?: Record<string, number | string | null>;
-}): WorkflowEngineQueueSnapshot {
-  const ready = input.ready ?? 0;
-  const running = input.running ?? 0;
-  const delayed = input.delayed ?? 0;
-  const failed = input.failed ?? 0;
-  const stale = input.oldestAgeMinutes != null && input.oldestAgeMinutes >= 60;
-  const status: WorkflowEngineComponentStatus = failed > 0 ? 'critical' : stale ? 'warning' : 'healthy';
-  return {
-    key: input.key,
-    name: input.name,
-    status,
-    ready,
-    running,
-    delayed,
-    failed,
-    oldestAgeMinutes: input.oldestAgeMinutes ?? null,
-    details: input.details ?? null,
-  };
 }
 
 function countBy<T extends string>(values: T[]): Record<string, number> {
@@ -114,15 +81,6 @@ function countBy<T extends string>(values: T[]): Record<string, number> {
     acc[value] = (acc[value] ?? 0) + 1;
     return acc;
   }, {});
-}
-
-function payloadRecord(payload: unknown): Record<string, unknown> {
-  return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
-}
-
-function payloadString(payload: unknown, key: string): string | null {
-  const value = payloadRecord(payload)[key];
-  return typeof value === 'string' ? value : null;
 }
 
 function validateDefinitions(rows: Array<typeof workflowDefinitions.$inferSelect>): WorkflowEngineDefinitionSnapshot {
@@ -245,150 +203,6 @@ function mapOutboxEvent(row: typeof workflowJobs.$inferSelect & { instanceTitle?
     ageMinutes: ageMinutes(row.createdAt, now) ?? 0,
     createdAt: formatDateTime(row.createdAt),
   };
-}
-
-function buildIssues(input: {
-  definitions: WorkflowEngineDefinitionSnapshot;
-  runningWithoutActiveTasks: WorkflowEngineIntrospection['runtime']['runningWithoutActiveTasks'];
-  runtimeTasks: WorkflowEngineRuntimeTask[];
-  triggerExecutions: WorkflowEngineTriggerExecution[];
-  outboxEvents: WorkflowEngineOutboxEvent[];
-  eventBusListeners: number;
-  schedulerInitialized: boolean;
-}): WorkflowEngineRuntimeIssue[] {
-  const issues: WorkflowEngineRuntimeIssue[] = [];
-  for (const def of input.definitions.invalidDefinitions.filter((item) => item.status === 'published')) {
-    issues.push({
-      id: `definition:${def.definitionId}`,
-      severity: 'critical',
-      component: 'dagExecutor',
-      title: '已发布流程定义未通过当前引擎校验',
-      description: def.errors[0] ?? '流程图结构不合法。',
-      refType: 'definition',
-      refId: def.definitionId,
-      metadata: { errors: def.errors, version: def.version },
-    });
-  }
-  for (const inst of input.runningWithoutActiveTasks) {
-    issues.push({
-      id: `instance:${inst.instanceId}:no-active-task`,
-      severity: 'critical',
-      component: 'taskMaterializer',
-      title: '运行中实例没有活动任务',
-      description: `实例「${inst.title}」状态为 running，但没有 pending / waiting 任务，可能是推进结果未物化或状态回写中断。`,
-      refType: 'instance',
-      refId: inst.instanceId,
-      instanceId: inst.instanceId,
-      ageMinutes: inst.ageMinutes,
-      createdAt: inst.createdAt,
-    });
-  }
-  for (const task of input.runtimeTasks) {
-    if (task.queue === 'timeouts' && task.timeoutAt) {
-      issues.push({
-        id: `task:${task.taskId}:timeout-due`,
-        severity: 'warning',
-        component: 'timeoutProcessor',
-        title: '任务超时待处理',
-        description: `任务 #${task.taskId} 已到 timeoutAt，等待超时处理器扫描执行。`,
-        refType: 'task',
-        refId: task.taskId,
-        instanceId: task.instanceId,
-        ageMinutes: task.ageMinutes,
-        createdAt: task.createdAt,
-      });
-    }
-    if (task.queue === 'delayWakeups' && task.wakeAt) {
-      issues.push({
-        id: `task:${task.taskId}:delay-due`,
-        severity: 'warning',
-        component: 'delayScheduler',
-        title: '延时节点已到期仍在等待',
-        description: `delay 任务 #${task.taskId} 已到 wakeAt，可能等待 pg-boss 唤醒或兜底恢复扫描。`,
-        refType: 'task',
-        refId: task.taskId,
-        instanceId: task.instanceId,
-        ageMinutes: task.ageMinutes,
-        createdAt: task.createdAt,
-      });
-    }
-    if (task.queue === 'triggerDispatch' && task.triggerDispatchStatus === 'failed') {
-      issues.push({
-        id: `task:${task.taskId}:trigger-failed`,
-        severity: 'critical',
-        component: 'triggerDispatcher',
-        title: '触发器任务调度失败',
-        description: task.triggerLastError ?? `trigger 任务 #${task.taskId} 当前状态 failed。`,
-        refType: 'task',
-        refId: task.taskId,
-        instanceId: task.instanceId,
-        ageMinutes: task.ageMinutes,
-        createdAt: task.createdAt,
-      });
-    }
-    if (task.queue === 'externalApprovals' && task.externalDispatchStatus === 'failed') {
-      issues.push({
-        id: `task:${task.taskId}:external-failed`,
-        severity: 'critical',
-        component: 'externalApprover',
-        title: '外部审批分派失败',
-        description: `外部审批任务 #${task.taskId} 分派失败，需检查节点 externalApproval 配置或外部服务。`,
-        refType: 'task',
-        refId: task.taskId,
-        instanceId: task.instanceId,
-        ageMinutes: task.ageMinutes,
-        createdAt: task.createdAt,
-      });
-    }
-  }
-  for (const execution of input.triggerExecutions.filter((item) => item.status === 'failed')) {
-    issues.push({
-      id: `trigger-execution:${execution.id}`,
-      severity: 'critical',
-      component: 'triggerDispatcher',
-      title: '触发器执行记录失败',
-      description: execution.errorMessage ?? `触发器执行 #${execution.id} 失败。`,
-      refType: 'triggerExecution',
-      refId: execution.id,
-      instanceId: execution.instanceId ?? null,
-      createdAt: execution.createdAt,
-    });
-  }
-  for (const event of input.outboxEvents.filter((item) => item.status === 'failed')) {
-    issues.push({
-      id: `outbox:${event.id}`,
-      severity: 'critical',
-      component: 'outbox',
-      title: '事件派发重放失败',
-      description: event.errorMessage ?? `事件 ${event.eventType} 重放失败。`,
-      refType: 'outbox',
-      refId: event.id,
-      instanceId: event.instanceId ?? null,
-      ageMinutes: event.ageMinutes,
-      createdAt: event.createdAt,
-    });
-  }
-  if (!input.schedulerInitialized) {
-    issues.push({
-      id: 'scheduler:not-initialized',
-      severity: 'critical',
-      component: 'scheduler',
-      title: 'pg-boss 调度器未初始化',
-      description: '系统周期任务、延时唤醒和恢复扫描依赖 pg-boss；未初始化会导致内部队列停摆。',
-      refType: 'scheduler',
-    });
-  }
-  if (input.eventBusListeners === 0) {
-    issues.push({
-      id: 'event-bus:no-listener',
-      severity: 'critical',
-      component: 'eventBus',
-      title: '事件总线没有注册监听器',
-      description: '工作流事件无法同步给通知、触发器、外部审批、自动化等内置订阅者。',
-      refType: 'scheduler',
-    });
-  }
-  return issues.slice(0, 100);
 }
 
 function component(key: ComponentKey, status: WorkflowEngineComponentStatus, metrics: WorkflowEngineMetric[], internals?: Record<string, unknown>): WorkflowEngineComponent {

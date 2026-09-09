@@ -23,25 +23,12 @@ import {
 } from '../../db/schema';
 import type { CmsInteractionRow } from '../../db/schema';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
-import { maskEmail, maskName, maskPhone } from '../../lib/masking';
 import { withPagination } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 import { streamByDescendingId } from '../../lib/export-center/cursor-stream';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { repeatKeyFor } from './cms-interactions-shared';
-
-function maskedMember(row: {
-  nickname: string | null;
-  username: string | null;
-  phone: string | null;
-  email: string | null;
-}): string {
-  if (row.nickname) return maskName(row.nickname);
-  if (row.username) return maskName(row.username);
-  if (row.phone) return maskPhone(row.phone);
-  if (row.email) return maskEmail(row.email);
-  return '游客';
-}
+import { maskedMemberDisplay } from './cms-member-display';
 
 export interface ListCmsInteractionResponsesQuery {
   siteId: number;
@@ -196,7 +183,7 @@ export async function listCmsInteractionResponses(q: ListCmsInteractionResponses
     interactionTitle: row.interactionTitle,
     kind: row.kind,
     memberId: row.response.memberId,
-    memberDisplay: row.response.memberId ? maskedMember(row) : '游客',
+    memberDisplay: row.response.memberId ? maskedMemberDisplay(row, '游客') : '游客',
     visitorHash: row.response.visitorHash,
     ipHash: row.response.ipHash,
     answers: answers.get(row.response.id) ?? {},

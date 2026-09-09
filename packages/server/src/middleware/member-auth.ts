@@ -8,7 +8,7 @@ import { createMiddleware } from 'hono/factory';
 import { jwt, type JwtVariables } from 'hono/jwt';
 import { and, eq, isNull } from 'drizzle-orm';
 import { isMemberTokenBlacklisted, touchMemberSession, registerMemberSession } from '../lib/member-session-manager';
-import { getClientIp, parseUserAgent } from '../lib/request-helpers';
+import { checkSessionLiveness, clientFingerprint } from '../lib/session-liveness';
 import { db } from '../db';
 import { members, tenants } from '../db/schema';
 import { config } from '../config';
@@ -102,25 +102,13 @@ export const memberAuthMiddleware = createMiddleware<MemberAuthEnv>(async (c, ne
     // 黑名单检查与会话续期相互独立——并行执行（均 best-effort，Redis 故障不阻断请求）
     if (payload.jti) {
       const jti = payload.jti;
-      const [blacklisted, touched] = await Promise.all([
-        Promise.resolve(isMemberTokenBlacklisted(jti)).catch((redisErr) => {
-          logger.warn('[MemberAuth] Redis blacklist check failed, allowing request:', redisErr);
-          return false;
-        }),
-        Promise.resolve(touchMemberSession(jti)).catch((redisErr) => {
-          logger.warn('[MemberAuth] Redis session touch failed, allowing request:', redisErr);
-          return true; // 状态未知——跳过懒重注册
-        }),
-      ]);
+      const { blacklisted, touched } = await checkSessionLiveness(jti, { isBlacklisted: isMemberTokenBlacklisted, touch: touchMemberSession, logPrefix: '[MemberAuth]' });
       if (blacklisted) {
         return c.json(errBody('会话已被强制下线', 401), 401);
       }
       // 会话缺失（如 Redis 重启）——懒重注册保持在线列表准确（best-effort，失败不阻断请求）
       if (!touched) {
         try {
-          const ip = getClientIp(c);
-          const ua = c.req.header('user-agent') ?? '';
-          const { browser, os } = parseUserAgent(ua);
           if (subject.nickname) {
             registerMemberSession({
               tokenId: jti,
@@ -128,9 +116,7 @@ export const memberAuthMiddleware = createMiddleware<MemberAuthEnv>(async (c, ne
               identifier: subject.payload.identifier,
               nickname: subject.nickname,
               tenantId: subject.payload.tenantId ?? null,
-              ip,
-              browser,
-              os,
+              ...clientFingerprint(c),
               location: null,
               loginAt: new Date(),
             }).catch(() => { /* best-effort */ });

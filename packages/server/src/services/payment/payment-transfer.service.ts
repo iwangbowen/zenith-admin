@@ -6,7 +6,7 @@
  * 高额转账先进入四眼审批，审批前严禁调用渠道；未知结果只允许查单收敛，杜绝双付；
  * 转账成功写入不可变会计凭证，并捕获资金预占。
  */
-import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { createHash, randomInt, randomUUID } from 'node:crypto';
@@ -16,7 +16,6 @@ import { buildListResult } from '../../lib/list-query';
 import {
   paymentChannelConfigs,
   paymentFundReservations,
-  paymentJournalLines,
   paymentTransfers,
   type PaymentChannelConfigRow,
   type PaymentTransferRow,
@@ -28,7 +27,7 @@ import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/whe
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { buildAdapterContext } from './payment.service';
-import { ensureSystemLedgerAccount, postSystemJournal } from './payment-journal.service';
+import { computeAccountAvailable, ensureSystemLedgerAccount, postSystemJournal } from './payment-journal.service';
 import { getAdapter } from '../../lib/payment/registry';
 import logger from '../../lib/logger';
 import { isIndeterminateProviderError } from '../../lib/payment/provider-http';
@@ -134,19 +133,7 @@ async function reserveTransferFunds(input: {
   }, 'merchant_available');
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM payment_ledger_accounts WHERE id = ${account.id} FOR UPDATE`);
-    const [balance] = await tx
-      .select({ amount: sql<string>`coalesce(sum(${paymentJournalLines.creditAmount} - ${paymentJournalLines.debitAmount}), 0)::text` })
-      .from(paymentJournalLines)
-      .where(eq(paymentJournalLines.accountId, account.id));
-    const [reserved] = await tx
-      .select({ amount: sql<string>`coalesce(sum(${paymentFundReservations.amount}), 0)::text` })
-      .from(paymentFundReservations)
-      .where(and(
-        eq(paymentFundReservations.accountId, account.id),
-        eq(paymentFundReservations.status, 'active'),
-        or(isNull(paymentFundReservations.expiresAt), gt(paymentFundReservations.expiresAt, new Date())),
-      ));
-    const available = BigInt(balance?.amount ?? '0') - BigInt(reserved?.amount ?? '0');
+    const available = await computeAccountAvailable(tx, account.id);
     if (available < BigInt(input.amount)) {
       throw new HTTPException(400, { message: `可用余额不足（可用 ${available.toString()} 分）` });
     }

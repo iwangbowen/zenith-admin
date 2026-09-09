@@ -8,6 +8,7 @@ import { getDataScopeCondition } from '../../data-scope';
 import { currentUser } from '../../context';
 import { isCmsPlatformAdmin } from '../../../services/cms/cms-access';
 import { dateRangeConditions, keywordCondition } from '../../where-helpers';
+import { asBoolean } from '../query-normalize';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -41,12 +42,6 @@ const columns: ExportColumn[] = [
 function asPositive(value: unknown): number | undefined {
   const n = Number(value);
   return Number.isInteger(n) && n > 0 ? n : undefined;
-}
-
-function asBoolean(value: unknown): boolean | undefined {
-  if (value === true || value === 'true') return true;
-  if (value === false || value === 'false') return false;
-  return undefined;
 }
 
 async function buildWhere(query: Record<string, unknown>): Promise<SQL> {

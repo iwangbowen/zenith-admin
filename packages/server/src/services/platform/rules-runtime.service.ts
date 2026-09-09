@@ -20,6 +20,7 @@ import { db } from '../../db';
 import { ruleDecisionFlows, ruleScorecards } from '../../db/schema';
 import { currentUserOrNull } from '../../lib/context';
 import logger from '../../lib/logger';
+import { pickTenantScopedRow } from '../../lib/tenant';
 import { evaluateDecisionTable } from '../../lib/rules-engine';
 import { evaluateDecisionFlowSteps } from '../../lib/rules-flow';
 import { evaluateScorecard, type ScorecardLike } from '../../lib/rules-scorecard';
@@ -56,24 +57,13 @@ function tenantCacheTag(tenantId: number | null | undefined): string {
   return tenantId === undefined ? 'ctxless' : String(tenantId ?? 'global');
 }
 
-/** 按 key + 租户解析行：租户精确匹配优先，回退平台级；无上下文且单一候选时兼容使用 */
-function resolveTenantRow<T extends { tenantId: number | null }>(candidates: T[], tenantId: number | null | undefined): T | null {
-  if (tenantId != null) {
-    const exact = candidates.find((r) => r.tenantId === tenantId);
-    if (exact) return exact;
-  }
-  const global = candidates.find((r) => r.tenantId == null);
-  if (global) return global;
-  return tenantId === undefined && candidates.length === 1 ? candidates[0] : null;
-}
-
 type FlowRow = typeof ruleDecisionFlows.$inferSelect;
 type ScorecardRow = typeof ruleScorecards.$inferSelect;
 
 async function resolveRuntimeFlow(key: string, tenantId: number | null | undefined): Promise<FlowRow | null> {
   return cachedRuleRuntime('flow', `${tenantCacheTag(tenantId)}|${key}`, async () => {
     const candidates = await db.select().from(ruleDecisionFlows).where(eq(ruleDecisionFlows.key, key));
-    const row = resolveTenantRow(candidates, tenantId);
+    const row = pickTenantScopedRow(candidates, tenantId);
     return row && row.status === 'published' && row.publishedSteps ? row : null;
   });
 }
@@ -81,7 +71,7 @@ async function resolveRuntimeFlow(key: string, tenantId: number | null | undefin
 async function resolveRuntimeScorecard(key: string, tenantId: number | null | undefined): Promise<ScorecardRow | null> {
   return cachedRuleRuntime('scorecard', `${tenantCacheTag(tenantId)}|${key}`, async () => {
     const candidates = await db.select().from(ruleScorecards).where(eq(ruleScorecards.key, key));
-    const row = resolveTenantRow(candidates, tenantId);
+    const row = pickTenantScopedRow(candidates, tenantId);
     return row && row.status === 'published' && row.publishedSnapshot ? row : null;
   });
 }

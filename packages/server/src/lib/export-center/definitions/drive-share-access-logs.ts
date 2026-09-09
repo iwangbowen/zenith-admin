@@ -1,5 +1,6 @@
 import type { DriveShareAccessLog } from '@zenith/shared/drive';
 import { listShareAccessLogsForAdmin, type ListShareAccessLogsQuery } from '../../../services/drive/drive-share.service';
+import { asBoolean, asPositiveInt, asString } from '../query-normalize';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -30,29 +31,13 @@ const columns: ExportColumn<ShareAccessLogExportRow>[] = [
   { key: 'clientIp', header: 'IP', width: 18 },
 ];
 
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function asPositiveInt(value: unknown): number | undefined {
-  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
-  return Number.isInteger(n) && n > 0 ? n : undefined;
-}
-
-function asBool(value: unknown): boolean | undefined {
-  if (typeof value === 'boolean') return value;
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  return undefined;
-}
-
 /** 导出中心传入的 query 与治理页筛选同名：按管理端列表同一套过滤（含数据权限收窄） */
 function normalizeQuery(query: Record<string, unknown>): ListShareAccessLogsQuery {
   return {
     shareId: asPositiveInt(query.shareId),
     spaceId: asPositiveInt(query.spaceId),
     action: asString(query.action),
-    ok: asBool(query.ok),
+    ok: asBoolean(query.ok),
     startTime: asString(query.startTime),
     endTime: asString(query.endTime),
   };

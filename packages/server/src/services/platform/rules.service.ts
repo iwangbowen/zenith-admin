@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases, ruleExecutions, workflowDefinitions } from '../../db/schema';
 import { getSettings } from '../../lib/settings';
 import { currentUser, currentUserOrNull } from '../../lib/context';
-import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { tenantCondition, getCreateTenantId, pickTenantScopedRow } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation, isPgUniqueViolation } from '../../lib/db-errors';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
@@ -549,15 +549,7 @@ function runtimeTenantId(explicit?: number | null): number | null | undefined {
 /** 按 key + 租户解析决策表行：租户精确匹配优先，回退平台级（tenantId 为 null）表 */
 async function resolveTableRowByKey(key: string, tenantId: number | null | undefined): Promise<TableRow | null> {
   const candidates = await db.select().from(ruleDecisionTables).where(eq(ruleDecisionTables.key, key));
-  if (candidates.length === 0) return null;
-  if (tenantId != null) {
-    const exact = candidates.find((r) => r.tenantId === tenantId);
-    if (exact) return exact;
-  }
-  const global = candidates.find((r) => r.tenantId == null);
-  if (global) return global;
-  // 无租户上下文且无平台级表：仅剩单一候选时使用（兼容单租户历史数据）
-  return tenantId === undefined && candidates.length === 1 ? candidates[0] : null;
+  return pickTenantScopedRow(candidates, tenantId);
 }
 
 /**

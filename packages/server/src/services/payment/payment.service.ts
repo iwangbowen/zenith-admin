@@ -38,8 +38,8 @@ import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
 import type { CreatePaymentInput, CreatePaymentResult, CreateRefundInput, PaymentChannel, PaymentNotifyLog, PaymentOrder, PaymentOrderStatus, PaymentRefund } from '@zenith/shared/payment';
 import { getAdapter } from '../../lib/payment';
 import type { AdapterContext, DecryptedSecrets, NotifyResult } from '../../lib/payment';
-import type { PaymentEvent, PaymentEventType } from '../../lib/payment-event-bus';
 import { recordEvent, processEvent } from './payment-outbox.service';
+import { buildPaymentEventPayload } from './payment-events';
 import { assertMethodEnabled } from './payment-method.service';
 import { assertNoPendingRiskReview, evaluateRisk, recordRiskHit, suspendOrderForReview, type RiskCheckInput } from './payment-risk.service';
 import { lockCouponForPayment, releaseCouponForPayment, type CouponLockResult } from './payment-coupon.service';
@@ -172,27 +172,6 @@ async function buildOrderNoWhere(orderNo: string) {
   return buildWhere(buildWhere(eq(paymentOrders.orderNo, orderNo), tenantCondition(paymentOrders, user)), scope);
 }
 
-function buildEventPayload(type: PaymentEventType, order: PaymentOrderRow, extra?: { refundNo?: string; refundAmount?: number }): Omit<PaymentEvent, 'eventId' | 'occurredAt'> {
-  return {
-    type,
-    orderNo: order.orderNo,
-    outTradeNo: order.outTradeNo,
-    bizType: order.bizType,
-    bizId: order.bizId,
-    channel: order.channel,
-    channelConfigId: order.channelConfigId,
-    payMethod: order.payMethod,
-    appId: order.appId,
-    currency: order.currency,
-    amount: order.paidAmount ?? order.amount,
-    originalAmount: order.originalAmount ?? null,
-    userId: order.userId,
-    tenantId: order.tenantId,
-    refundNo: extra?.refundNo,
-    refundAmount: extra?.refundAmount,
-  };
-}
-
 function enqueuePaymentEvent(eventId: number | null): void {
   if (eventId == null) return;
   setImmediate(() => {
@@ -213,7 +192,7 @@ async function markOrderClosed(order: PaymentOrderRow): Promise<void> {
       .returning();
     if (updated.length === 0) return null;
     const finalOrder = updated[0];
-    return recordEvent(tx, { type: 'payment.closed', orderNo: finalOrder.orderNo, tenantId: finalOrder.tenantId, payload: buildEventPayload('payment.closed', finalOrder) });
+    return recordEvent(tx, { type: 'payment.closed', orderNo: finalOrder.orderNo, tenantId: finalOrder.tenantId, payload: buildPaymentEventPayload('payment.closed', finalOrder) });
   });
   enqueuePaymentEvent(eventId);
 }
@@ -263,7 +242,7 @@ async function markRefundFailed(order: PaymentOrderRow, refund: Pick<PaymentRefu
       type: 'refund.failed',
       orderNo: order.orderNo,
       tenantId: order.tenantId,
-      payload: buildEventPayload('refund.failed', order, { refundNo: refund.refundNo, refundAmount: refund.refundAmount }),
+      payload: buildPaymentEventPayload('refund.failed', order, { refundNo: refund.refundNo, refundAmount: refund.refundAmount }),
     });
   });
   enqueuePaymentEvent(eventId);
@@ -727,7 +706,7 @@ export async function markOrderPaid(
       .returning();
     if (updated.length === 0) return null; // 已被并发处理，幂等跳过
     const finalOrder = updated[0];
-    return recordEvent(tx, { type: 'payment.succeeded', orderNo: finalOrder.orderNo, tenantId: finalOrder.tenantId, payload: buildEventPayload('payment.succeeded', finalOrder) });
+    return recordEvent(tx, { type: 'payment.succeeded', orderNo: finalOrder.orderNo, tenantId: finalOrder.tenantId, payload: buildPaymentEventPayload('payment.succeeded', finalOrder) });
   });
   if (eventId == null) return false;
   enqueuePaymentEvent(eventId);
@@ -813,7 +792,7 @@ async function markOrderFailedAfterQuery(order: PaymentOrderRow): Promise<Paymen
       type: 'payment.failed',
       orderNo: failed.orderNo,
       tenantId: failed.tenantId,
-      payload: buildEventPayload('payment.failed', failed),
+      payload: buildPaymentEventPayload('payment.failed', failed),
     });
     return { row: failed, eventId };
   });
@@ -934,7 +913,7 @@ async function settleRefundSuccess(
     if (claimed.length === 0) return null; // 已被并发处理，幂等跳过
 
     await recomputeOrderRefundState(tx, order.id);
-    return recordEvent(tx, { type: 'refund.succeeded', orderNo: order.orderNo, tenantId: order.tenantId, payload: buildEventPayload('refund.succeeded', order, { refundNo: refund.refundNo, refundAmount: refund.refundAmount }) });
+    return recordEvent(tx, { type: 'refund.succeeded', orderNo: order.orderNo, tenantId: order.tenantId, payload: buildPaymentEventPayload('refund.succeeded', order, { refundNo: refund.refundNo, refundAmount: refund.refundAmount }) });
   });
   if (eventId == null) return false;
   enqueuePaymentEvent(eventId);
@@ -1173,7 +1152,7 @@ export async function rejectRefund(id: number, remark: string): Promise<void> {
       type: 'refund.failed',
       orderNo: order.orderNo,
       tenantId: order.tenantId,
-      payload: buildEventPayload('refund.failed', order, { refundNo: refundRow.refundNo, refundAmount: refundRow.refundAmount }),
+      payload: buildPaymentEventPayload('refund.failed', order, { refundNo: refundRow.refundNo, refundAmount: refundRow.refundAmount }),
     });
   });
   enqueuePaymentEvent(eventId);

@@ -18,6 +18,7 @@ import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
 import { assertSafeWorkflowUrl, workflowHttpPost } from '../../lib/workflow-outbound';
+import { payloadRecord, payloadString } from './payload-utils';
 import { signHmac } from '../../lib/workflow-jobs/handlers/shared';
 import { enqueueJob, retryJob, scheduleJobPickup } from '../../lib/workflow-jobs/engine';
 import { invokeConnector, getConnectorRowById } from './workflow-connectors.service';
@@ -259,15 +260,6 @@ type WebhookDeliveryRow = {
   job: typeof workflowJobs.$inferSelect;
   subscriptionName?: string | null;
 };
-
-function payloadRecord(payload: unknown): Record<string, unknown> {
-  return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
-}
-
-function payloadString(payload: unknown, key: string): string | null {
-  const value = payloadRecord(payload)[key];
-  return typeof value === 'string' ? value : null;
-}
 
 function payloadNumber(payload: unknown, key: string): number | null {
   const value = payloadRecord(payload)[key];

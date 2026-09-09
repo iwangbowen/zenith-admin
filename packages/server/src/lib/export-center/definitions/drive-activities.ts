@@ -1,5 +1,6 @@
 import { DRIVE_ACTIVITY_ACTION_LABELS, DRIVE_ACTIVITY_ACTIONS, type DriveActivity, type DriveActivityAction } from '@zenith/shared/drive';
 import { listDriveActivitiesForAdmin, type ListDriveActivitiesQuery } from '../../../services/drive/drive-activity.service';
+import { asPositiveInt, asString } from '../query-normalize';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -41,15 +42,6 @@ const columns: ExportColumn<DriveActivityExportRow>[] = [
   { key: 'detail', header: '详情', width: 32 },
   { key: 'clientIp', header: 'IP', width: 18 },
 ];
-
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function asPositiveInt(value: unknown): number | undefined {
-  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
-  return Number.isInteger(n) && n > 0 ? n : undefined;
-}
 
 /** 导出中心传入的 query 与页面筛选同名：按管理端列表同一套过滤（含数据权限收窄） */
 function normalizeQuery(query: Record<string, unknown>): ListDriveActivitiesQuery {

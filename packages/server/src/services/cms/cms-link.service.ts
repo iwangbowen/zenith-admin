@@ -195,6 +195,18 @@ export async function resolveCmsLink(
   return resolver(raw);
 }
 
+/** 站点内「公开可见」内容：已发布、未删除、未归档且未过期（实体链接只允许指向这类内容） */
+function publiclyVisibleContentWhere(siteId: number, contentId: number) {
+  return and(
+    eq(cmsContents.id, contentId),
+    eq(cmsContents.siteId, siteId),
+    eq(cmsContents.status, 'published'),
+    isNull(cmsContents.deletedAt),
+    isNull(cmsContents.archivedAt),
+    or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date())),
+  );
+}
+
 /**
  * 后台用：把链接值解析成人类可读的描述（编辑页回显 `entity:content/123` 时用）。
  * 目标失效时返回 `exists: false`，前端据此提示"目标已删除"。
@@ -223,14 +235,7 @@ export async function describeCmsLink(siteId: number, raw: string | null | undef
 
   if (ref.entityType === 'content') {
     const target = await db.query.cmsContents.findFirst({
-      where: and(
-        eq(cmsContents.id, ref.id),
-        eq(cmsContents.siteId, siteId),
-        eq(cmsContents.status, 'published'),
-        isNull(cmsContents.deletedAt),
-        isNull(cmsContents.archivedAt),
-        or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date())),
-      ),
+      where: publiclyVisibleContentWhere(siteId, ref.id),
       columns: { id: true, title: true, channelId: true },
     });
     const enabledChannels = target ? await getEffectivelyEnabledCmsChannelIds(siteId) : new Set<number>();
@@ -272,14 +277,7 @@ export async function ensureCmsLinkTargetExists(siteId: number, raw: string | nu
 
   if (ref.entityType === 'content') {
     const target = await db.query.cmsContents.findFirst({
-      where: and(
-        eq(cmsContents.id, ref.id),
-        eq(cmsContents.siteId, siteId),
-        eq(cmsContents.status, 'published'),
-        isNull(cmsContents.deletedAt),
-        isNull(cmsContents.archivedAt),
-        or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date())),
-      ),
+      where: publiclyVisibleContentWhere(siteId, ref.id),
       columns: { id: true, channelId: true },
     });
     if (!target || !(await getEffectivelyEnabledCmsChannelIds(siteId)).has(target.channelId)) throw new HTTPException(400, { message: '内部链接只能指向当前站点公开可见的内容' });

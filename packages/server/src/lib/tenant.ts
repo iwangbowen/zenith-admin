@@ -154,3 +154,19 @@ export function resolveManagedTenantId(
   }
   return own;
 }
+
+/**
+ * 从同 key 的「平台级 / 租户级」多候选行中选出对当前租户生效的一行
+ * （规则引擎决策表 / 决策流 / 评分卡等按 key 覆盖的配置）：
+ * 租户精确匹配优先，其次回退平台级（`tenantId` 为 null）；
+ * `tenantId` 为 `undefined`（无租户上下文：会员 / 定时任务）且仅剩单一候选时兼容使用（单租户历史数据）。
+ */
+export function pickTenantScopedRow<T extends { tenantId: number | null }>(candidates: readonly T[], tenantId: number | null | undefined): T | null {
+  if (tenantId != null) {
+    const exact = candidates.find((r) => r.tenantId === tenantId);
+    if (exact) return exact;
+  }
+  const global = candidates.find((r) => r.tenantId == null);
+  if (global) return global;
+  return tenantId === undefined && candidates.length === 1 ? candidates[0] : null;
+}

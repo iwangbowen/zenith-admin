@@ -13,9 +13,6 @@ import {
   reportDqRules,
   reportDqRuns,
   reportDqScores,
-  roles,
-  userRoles,
-  users,
 } from '../../db/schema';
 import { currentUserId, runWithCurrentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -27,6 +24,7 @@ import { pageOffset } from '../../lib/pagination';
 import { ensureDatasetExists, getDatasetData } from './report-dataset.service';
 import { reportScopedWhere, reportTenantScope } from './report-access';
 import { ensureReportResourceAccess, listAccessibleReportResourceIds } from './report-resource-acl.service';
+import { dueCronFireTime, loadScheduleActor } from './report-schedule-shared';
 import { buildWhere } from '../../lib/where-helpers';
 
 const DQ_QUERY_LIMIT = 10_000;
@@ -746,19 +744,6 @@ export async function updateReportDqAnomalyStatus(
   return mapReportDqAnomaly(updated!);
 }
 
-async function loadCreatorPayload(userId: number) {
-  const [user] = await db.select({
-    id: users.id,
-    username: users.username,
-    tenantId: users.tenantId,
-  }).from(users).where(eq(users.id, userId)).limit(1);
-  if (!user) return null;
-  const roleRows = await db.select({ code: roles.code }).from(userRoles)
-    .innerJoin(roles, eq(roles.id, userRoles.roleId))
-    .where(eq(userRoles.userId, userId));
-  return { userId: user.id, username: user.username, tenantId: user.tenantId, roles: roleRows.map((row) => row.code) };
-}
-
 export async function dispatchDueReportDqRules(now = new Date()): Promise<{ checked: number; submitted: number }> {
   const rows = await db.select().from(reportDqRules).where(and(
     eq(reportDqRules.enabled, true),
@@ -769,14 +754,9 @@ export async function dispatchDueReportDqRules(now = new Date()): Promise<{ chec
   let submitted = 0;
   for (const rule of rows) {
     if (!rule.cron || !rule.createdBy) continue;
-    let previous: Date;
-    try {
-      previous = CronExpressionParser.parse(rule.cron, { currentDate: now, tz: rule.timezone }).prev().toDate();
-    } catch {
-      continue;
-    }
-    if (rule.lastRunAt && rule.lastRunAt >= previous) continue;
-    const creator = await loadCreatorPayload(rule.createdBy);
+    const previous = dueCronFireTime({ cron: rule.cron, timezone: rule.timezone, lastRunAt: rule.lastRunAt }, now);
+    if (!previous) continue;
+    const creator = await loadScheduleActor(rule.createdBy);
     if (!creator) continue;
     await runWithCurrentUser(creator, async () => {
       await submitAsyncTask({

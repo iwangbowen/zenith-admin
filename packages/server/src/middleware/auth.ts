@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { createMiddleware } from 'hono/factory';
 import { jwt, type JwtVariables } from 'hono/jwt';
 import { isTokenBlacklisted, touchSession, registerSession } from '../lib/session-manager';
-import { getClientIp, parseUserAgent } from '../lib/request-helpers';
+import { checkSessionLiveness, clientFingerprint } from '../lib/session-liveness';
 import { db } from '../db';
 import { tenants, userApiTokens, users } from '../db/schema';
 import { and, eq, gt, isNull, lt, or } from 'drizzle-orm';
@@ -207,16 +207,7 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
     // (each best-effort: Redis errors log a warning and never block the request)
     if (payload.jti) {
       const jti = payload.jti;
-      const [blacklisted, touched] = await Promise.all([
-        Promise.resolve(isTokenBlacklisted(jti)).catch((redisErr) => {
-          logger.warn('[Auth] Redis blacklist check failed, allowing request:', redisErr);
-          return false;
-        }),
-        Promise.resolve(touchSession(jti)).catch((redisErr) => {
-          logger.warn('[Auth] Redis session touch failed, allowing request:', redisErr);
-          return true; // unknown state — skip lazy re-register
-        }),
-      ]);
+      const { blacklisted, touched } = await checkSessionLiveness(jti, { isBlacklisted: isTokenBlacklisted, touch: touchSession, logPrefix: '[Auth]' });
       if (blacklisted) {
         return c.json(errBody('会话已被强制下线', 401), 401);
       }
@@ -224,9 +215,6 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
       // (best-effort: any failure here must not block the request)
       if (!touched) {
         try {
-          const ip = getClientIp(c);
-          const ua = c.req.header('user-agent') ?? '';
-          const { browser, os } = parseUserAgent(ua);
           const [u] = await db.select({ nickname: users.nickname }).from(users).where(eq(users.id, subject.payload.userId)).limit(1);
           if (u) {
             registerSession({
@@ -235,9 +223,7 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
               username: subject.payload.username,
               nickname: u.nickname,
               tenantId: subject.payload.tenantId ?? null,
-              ip,
-              browser,
-              os,
+              ...clientFingerprint(c),
               location: null,
               loginAt: new Date(),
             }).catch(() => { /* best-effort, ignore errors */ });

@@ -1,12 +1,9 @@
 import { listEventsForExport, countEventsForExport, type EventListFilter } from '../../../services/analytics/analytics.service';
 import { parseDateRangeEnd, parseDateRangeStart } from '../../datetime';
+import { asString } from '../query-normalize';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
-
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
 
 function normalizeQuery(query: Record<string, unknown>): EventListFilter {
   return {

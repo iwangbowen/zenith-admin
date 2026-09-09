@@ -768,6 +768,26 @@ export async function listFundReservations(q: ListFundReservationsQuery) {
   });
 }
 
+/**
+ * 账户可用余额（分，bigint）：凭证行「贷方 − 借方」的累计余额，扣除仍在生效期内（active 且未过期）的资金预占。
+ * 人工预占与转账预占共用同一口径；调用方需先对账户行加锁再计算。
+ */
+export async function computeAccountAvailable(tx: DbExecutor, accountId: number, now = new Date()): Promise<bigint> {
+  const [balance] = await tx
+    .select({ amount: sql<string>`coalesce(sum(${paymentJournalLines.creditAmount} - ${paymentJournalLines.debitAmount}), 0)::text` })
+    .from(paymentJournalLines)
+    .where(eq(paymentJournalLines.accountId, accountId));
+  const [reserved] = await tx
+    .select({ amount: sql<string>`coalesce(sum(${paymentFundReservations.amount}), 0)::text` })
+    .from(paymentFundReservations)
+    .where(and(
+      eq(paymentFundReservations.accountId, accountId),
+      eq(paymentFundReservations.status, 'active'),
+      or(isNull(paymentFundReservations.expiresAt), gt(paymentFundReservations.expiresAt, now)),
+    ));
+  return BigInt(balance?.amount ?? '0') - BigInt(reserved?.amount ?? '0');
+}
+
 export async function createFundReservation(input: CreatePaymentFundReservationInput): Promise<PaymentFundReservation> {
   if (!input.sourceType.startsWith('manual.')) {
     throw new HTTPException(400, { message: '人工预占来源类型必须以 manual. 开头' });
@@ -819,19 +839,7 @@ export async function createFundReservation(input: CreatePaymentFundReservationI
     }
 
     const now = new Date();
-    const [balance] = await tx
-      .select({ amount: sql<string>`coalesce(sum(${paymentJournalLines.creditAmount} - ${paymentJournalLines.debitAmount}), 0)::text` })
-      .from(paymentJournalLines)
-      .where(eq(paymentJournalLines.accountId, account.id));
-    const [reserved] = await tx
-      .select({ amount: sql<string>`coalesce(sum(${paymentFundReservations.amount}), 0)::text` })
-      .from(paymentFundReservations)
-      .where(and(
-        eq(paymentFundReservations.accountId, account.id),
-        eq(paymentFundReservations.status, 'active'),
-        or(isNull(paymentFundReservations.expiresAt), gt(paymentFundReservations.expiresAt, now)),
-      ));
-    const available = BigInt(balance?.amount ?? '0') - BigInt(reserved?.amount ?? '0');
+    const available = await computeAccountAvailable(tx, account.id, now);
     if (available < amount) {
       throw new HTTPException(400, { message: `商户可用余额不足（可预占 ${available.toString()}）` });
     }

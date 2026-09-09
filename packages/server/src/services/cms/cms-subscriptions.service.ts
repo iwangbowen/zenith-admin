@@ -37,7 +37,7 @@ import { currentMemberId } from '../../lib/member-context';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
 import { resolveEffectiveCmsSite } from './cms-site-inheritance.service';
 import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
-import { maskEmail, maskName, maskPhone } from '../../lib/masking';
+import { maskedMemberDisplay } from './cms-member-display';
 import { withPagination, keywordCondition } from '../../lib/where-helpers';
 import { streamByDescendingId } from '../../lib/export-center/cursor-stream';
 import { changePointsInTransaction } from '../member/member-points.service';
@@ -292,19 +292,6 @@ export async function listMyCmsSubscriptions(q: {
   });
 }
 
-function maskedMemberDisplay(row: {
-  nickname: string | null;
-  username: string | null;
-  phone: string | null;
-  email: string | null;
-}): string {
-  if (row.nickname) return maskName(row.nickname);
-  if (row.username) return maskName(row.username);
-  if (row.phone) return maskPhone(row.phone);
-  if (row.email) return maskEmail(row.email);
-  return '会员';
-}
-
 export interface ListCmsSubscriptionsQuery {
   siteId: number;
   subjectType?: CmsSubscriptionSubjectType;
@@ -359,7 +346,7 @@ export async function listCmsSubscriptions(q: ListCmsSubscriptionsQuery) {
     rows: () => withPagination(base.$dynamic(), q.page, q.pageSize),
     map: (row) => mapCmsMemberSubscription(row.subscription, {
       siteName: row.siteName,
-      memberDisplay: maskedMemberDisplay(row),
+      memberDisplay: maskedMemberDisplay(row, '会员'),
     }),
   });
 }

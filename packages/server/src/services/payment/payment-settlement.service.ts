@@ -3,7 +3,7 @@
  * 按渠道 + 账期聚合成功订单生成结算批次（净额 = 收款 - 手续费 - 退款 - 分账），
  * 状态机：生成(pending) → 结算中(settling) → 已结算(settled)/失败(failed)，结算时记资金台账。
  */
-import { and, between, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, between, desc, eq, inArray, isNull, lte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { db } from '../../db';
@@ -45,6 +45,15 @@ const SETTLEMENT_ELIGIBLE_SOURCE_TYPES = [
   'payment.sharing_reversal',
   'recon.adjust',
 ] as const;
+
+/** 待结算分录的公共过滤：商户可用账户、可结算来源类型、尚未被任何结算批次认领 */
+function unsettledEligibleLineConditions(): SQL[] {
+  return [
+    isNull(paymentSettlementItems.id),
+    inArray(paymentJournals.sourceType, SETTLEMENT_ELIGIBLE_SOURCE_TYPES),
+    eq(paymentLedgerAccounts.code, 'merchant_available'),
+  ];
+}
 
 export function mapSettlementBatch(row: PaymentSettlementBatchRow): PaymentSettlementBatch {
   return {
@@ -191,9 +200,7 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
     .innerJoin(paymentLedgerAccounts, eq(paymentLedgerAccounts.id, paymentJournalLines.accountId))
     .leftJoin(paymentSettlementItems, eq(paymentSettlementItems.journalLineId, paymentJournalLines.id))
     .where(and(
-      isNull(paymentSettlementItems.id),
-      inArray(paymentJournals.sourceType, SETTLEMENT_ELIGIBLE_SOURCE_TYPES),
-      eq(paymentLedgerAccounts.code, 'merchant_available'),
+      ...unsettledEligibleLineConditions(),
       eq(paymentJournals.appId, input.applicationId),
       eq(paymentJournals.channelConfigId, input.channelConfigId),
       eq(paymentJournals.currency, currency),
@@ -216,9 +223,7 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
     .innerJoin(paymentLedgerAccounts, eq(paymentLedgerAccounts.id, paymentJournalLines.accountId))
     .leftJoin(paymentSettlementItems, eq(paymentSettlementItems.journalLineId, paymentJournalLines.id))
     .where(and(
-      isNull(paymentSettlementItems.id),
-      inArray(paymentJournals.sourceType, SETTLEMENT_ELIGIBLE_SOURCE_TYPES),
-      eq(paymentLedgerAccounts.code, 'merchant_available'),
+      ...unsettledEligibleLineConditions(),
       eq(paymentJournals.appId, input.applicationId),
       eq(paymentJournals.channelConfigId, input.channelConfigId),
       eq(paymentJournals.currency, currency),
@@ -302,9 +307,7 @@ export async function generateDailySettlements(): Promise<{ generated: number; s
     .innerJoin(paymentLedgerAccounts, eq(paymentLedgerAccounts.id, paymentJournalLines.accountId))
     .leftJoin(paymentSettlementItems, eq(paymentSettlementItems.journalLineId, paymentJournalLines.id))
     .where(and(
-      isNull(paymentSettlementItems.id),
-      inArray(paymentJournals.sourceType, SETTLEMENT_ELIGIBLE_SOURCE_TYPES),
-      eq(paymentLedgerAccounts.code, 'merchant_available'),
+      ...unsettledEligibleLineConditions(),
       lte(paymentJournals.postedAt, end),
     ))
     .groupBy(

@@ -1,12 +1,9 @@
 import { HTTPException } from 'hono/http-exception';
 import { exportChannelSubscribers } from '../../../services/messaging/channel.service';
+import { asString } from '../query-normalize';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
-
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
 
 function asRequiredPositiveNumber(value: unknown, label: string): number {
   const next = typeof value === 'number' ? value : Number(value);

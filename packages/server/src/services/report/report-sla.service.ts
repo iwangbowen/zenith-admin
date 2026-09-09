@@ -1,6 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
-import { CronExpressionParser } from 'cron-parser';
 import dayjs from 'dayjs';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import type { CreateReportSlaRuleInput, ReportSlaRule, ReportSlaType, ReportSlaViolation, UpdateReportSlaRuleInput, UpdateReportSlaViolationInput } from '@zenith/shared/report';
@@ -11,9 +10,6 @@ import {
   reportMaterializationSnapshots,
   reportSlaRules,
   reportSlaViolations,
-  roles,
-  userRoles,
-  users,
 } from '../../db/schema';
 import { currentUserId, runWithCurrentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -21,6 +17,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 import { ensureDatasetExists } from './report-dataset.service';
+import { dueCronFireTime, loadScheduleActor } from './report-schedule-shared';
 import {
   dispatchNotificationChannels,
   ensureDeliveryRun,
@@ -424,16 +421,6 @@ export async function updateReportSlaViolation(
   return mapReportSlaViolation(updated!);
 }
 
-async function loadCreatorPayload(userId: number) {
-  const [user] = await db.select({ id: users.id, username: users.username, tenantId: users.tenantId })
-    .from(users).where(eq(users.id, userId)).limit(1);
-  if (!user) return null;
-  const roleRows = await db.select({ code: roles.code }).from(userRoles)
-    .innerJoin(roles, eq(roles.id, userRoles.roleId))
-    .where(eq(userRoles.userId, userId));
-  return { userId: user.id, username: user.username, tenantId: user.tenantId, roles: roleRows.map((row) => row.code) };
-}
-
 export async function dispatchDueReportSlaRules(now = new Date()): Promise<{ checked: number; submitted: number }> {
   const rows = await db.select().from(reportSlaRules).where(and(
     eq(reportSlaRules.enabled, true),
@@ -444,14 +431,9 @@ export async function dispatchDueReportSlaRules(now = new Date()): Promise<{ che
   let submitted = 0;
   for (const rule of rows) {
     if (!rule.cron || !rule.createdBy) continue;
-    let previous: Date;
-    try {
-      previous = CronExpressionParser.parse(rule.cron, { currentDate: now, tz: rule.timezone }).prev().toDate();
-    } catch {
-      continue;
-    }
-    if (rule.lastEvaluatedAt && rule.lastEvaluatedAt >= previous) continue;
-    const creator = await loadCreatorPayload(rule.createdBy);
+    const previous = dueCronFireTime({ cron: rule.cron, timezone: rule.timezone, lastRunAt: rule.lastEvaluatedAt }, now);
+    if (!previous) continue;
+    const creator = await loadScheduleActor(rule.createdBy);
     if (!creator) continue;
     await runWithCurrentUser(creator, () => submitAsyncTask({
       taskType: 'report-sla-rule-evaluate',

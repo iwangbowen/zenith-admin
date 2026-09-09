@@ -192,19 +192,25 @@ export async function createShortLink(data: CreateShortLinkInput) {
     tenantId,
   };
 
-  // 自定义短码：保留字校验后直插，唯一冲突转 400
-  if (data.code) {
-    ensureCodeNotReserved(data.code);
+  return insertShortLinkRow(baseValues, data.code);
+}
+
+/**
+ * 落库短链行：自定义短码经保留字校验后直插（唯一冲突转 400）；
+ * 未指定短码则随机生成，唯一约束冲突时重试（第 4 次起加长一位）。
+ */
+async function insertShortLinkRow(baseValues: Omit<typeof shortLinks.$inferInsert, 'code'>, customCode?: string) {
+  if (customCode) {
+    ensureCodeNotReserved(customCode);
     try {
-      const [row] = await db.insert(shortLinks).values({ ...baseValues, code: data.code }).returning();
+      const [row] = await db.insert(shortLinks).values({ ...baseValues, code: customCode }).returning();
       return mapShortLink(row);
     } catch (err) {
-      rethrowPgUniqueViolation(err, `短码 "${data.code}" 已被占用，请更换`);
+      rethrowPgUniqueViolation(err, `短码 "${customCode}" 已被占用，请更换`);
       throw err;
     }
   }
 
-  // 自动生成：随机短码 + 唯一约束冲突重试
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateShortCode(SHORT_LINK_CODE_LENGTH + (attempt >= 3 ? 1 : 0));
     try {
@@ -287,29 +293,7 @@ export async function createOpenShortLink(options: CreateOpenShortLinkOptions, a
     remark: `开放应用「${appLabel}」创建`,
     tenantId: null,
   };
-
-  if (options.code) {
-    ensureCodeNotReserved(options.code);
-    try {
-      const [row] = await db.insert(shortLinks).values({ ...baseValues, code: options.code }).returning();
-      return mapShortLink(row);
-    } catch (err) {
-      rethrowPgUniqueViolation(err, `短码 "${options.code}" 已被占用，请更换`);
-      throw err;
-    }
-  }
-
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = generateShortCode(SHORT_LINK_CODE_LENGTH + (attempt >= 3 ? 1 : 0));
-    try {
-      const [row] = await db.insert(shortLinks).values({ ...baseValues, code }).returning();
-      return mapShortLink(row);
-    } catch (err) {
-      if (isPgUniqueViolation(err)) continue;
-      throw err;
-    }
-  }
-  throw new HTTPException(500, { message: '短码生成失败，请重试' });
+  return insertShortLinkRow(baseValues, options.code);
 }
 
 /** 开放平台按短码取短链（平台级查询，不做租户过滤；调用方负责 scope 校验） */

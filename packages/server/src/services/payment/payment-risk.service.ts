@@ -30,6 +30,7 @@ import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { recordEvent, processEvent } from './payment-outbox.service';
+import { buildPaymentEventPayload } from './payment-events';
 import { checkRuleListsBatch, type RuleListBatchHit } from '../platform/rules-lists.service';
 import { decide } from '../platform/rules-runtime.service';
 import { resolveRuntimeDecisionTable } from '../platform/rules.service';
@@ -598,20 +599,7 @@ export async function rejectRiskReview(id: number, remark?: string): Promise<Pay
           type: 'payment.closed',
           orderNo: order.orderNo,
           tenantId: order.tenantId,
-          payload: {
-            type: 'payment.closed',
-            orderNo: order.orderNo,
-            outTradeNo: order.outTradeNo,
-            bizType: order.bizType,
-            bizId: order.bizId,
-            channel: order.channel,
-            channelConfigId: order.channelConfigId,
-            appId: order.appId,
-            currency: order.currency,
-            amount: order.amount,
-            userId: order.userId,
-            tenantId: order.tenantId,
-          },
+          payload: buildPaymentEventPayload('payment.closed', order),
         });
       }
     }

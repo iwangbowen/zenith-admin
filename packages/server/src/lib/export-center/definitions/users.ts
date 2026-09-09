@@ -2,6 +2,7 @@ import { db } from '../../../db';
 import { users } from '../../../db/schema';
 import type { JwtPayload } from '../../../middleware/auth';
 import { buildUsersListWhere, findUsersWithRelations, mapUsers, type ListUsersQuery } from '../../../services/identity/users.service';
+import { asPositiveInt, asString } from '../query-normalize';
 import { defineExport } from '../registry';
 
 interface UserExportRow extends Record<string, unknown> {
@@ -19,23 +20,12 @@ interface UserExportRow extends Record<string, unknown> {
   updatedAt: string;
 }
 
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function asPositiveNumber(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
-  if (typeof value !== 'string' || !value.trim()) return undefined;
-  const next = Number(value);
-  return Number.isInteger(next) && next > 0 ? next : undefined;
-}
-
 function normalizeQuery(query: Record<string, unknown>): ListUsersQuery {
   const status = query.status === 'enabled' || query.status === 'disabled' ? query.status : undefined;
   return {
     keyword: asString(query.keyword),
     phone: asString(query.phone),
-    departmentId: asPositiveNumber(query.departmentId),
+    departmentId: asPositiveInt(query.departmentId),
     status,
     startTime: asString(query.startTime),
     endTime: asString(query.endTime),

@@ -1,6 +1,6 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { WorkflowDefinitionSnapshot } from '@zenith/shared/workflow';
+import type { WorkflowAutomationAction, WorkflowDefinitionSnapshot } from '@zenith/shared/workflow';
 import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 
@@ -159,39 +159,8 @@ export type NewWorkflowDefinitionVersion = typeof workflowDefinitionVersions.$in
 // 流程级自动化规则：当实例终结（通过/拒绝/撤回）或发起时执行的动作
 export const workflowAutomationTriggerEnum = pgEnum('workflow_automation_trigger', ['approved', 'rejected', 'withdrawn', 'created']);
 
-export interface WorkflowAutomationActionStartWorkflow {
-  type: 'startWorkflow';
-  definitionId: number;
-  titleTemplate?: string;
-  formMapping?: Record<string, string>;
-}
-export interface WorkflowAutomationActionSendMessage {
-  type: 'sendMessage';
-  title: string;
-  content: string;
-  messageType?: 'info' | 'success' | 'warning' | 'error';
-  recipients?: 'initiator' | { userIds: number[] };
-  buttons?: Array<{ text: string; url: string }>;
-}
-export interface WorkflowAutomationActionWebhook {
-  type: 'webhook';
-  url: string;
-  method?: 'GET' | 'POST' | 'PUT';
-  headers?: Record<string, string>;
-  /** 请求体模板，支持 {{form.x}} / {{instance.title}} 等占位 */
-  bodyTemplate?: string;
-}
-export interface WorkflowAutomationActionUpdateField {
-  type: 'updateField';
-  /** 回写到实例 formData 的字段：key=字段 key，value 支持 {{form.x}} 占位或字面量 */
-  fields: Record<string, string>;
-}
-
-export type WorkflowAutomationActionConfig =
-  | WorkflowAutomationActionStartWorkflow
-  | WorkflowAutomationActionSendMessage
-  | WorkflowAutomationActionWebhook
-  | WorkflowAutomationActionUpdateField;
+/** 动作配置形态以 shared 契约类型为唯一真相（webhook.bodyTemplate / updateField.fields 支持 {{form.x}} 等占位） */
+export type WorkflowAutomationActionConfig = WorkflowAutomationAction;
 
 export const workflowAutomations = pgTable('workflow_automations', {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),

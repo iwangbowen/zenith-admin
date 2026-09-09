@@ -1,5 +1,5 @@
 import { percentOf } from '@zenith/shared/core';
-import { WORKFLOW_JOB_TYPES } from '@zenith/shared/workflow';
+import { WORKFLOW_JOB_TYPES, summarizeWorkflowJobChain } from '@zenith/shared/workflow';
 import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, lte, max, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowDefinitions, systemSchedulerNodes } from '../../db/schema';
@@ -138,22 +138,7 @@ export async function getWorkflowJobChain(traceId: string) {
     ...mapJob(r.job, { instanceTitle: r.instanceTitle, definitionName: r.definitionName }),
     executions: (execByJob.get(r.job.id) ?? []).map(mapExecution),
   }));
-  const countBy = (s: WorkflowJobRow['status']) => jobs.filter((j) => j.status === s).length;
-  return {
-    traceId,
-    jobs,
-    stats: {
-      total: jobs.length,
-      pending: countBy('pending'),
-      running: countBy('running'),
-      paused: countBy('paused'),
-      succeeded: countBy('succeeded'),
-      failed: countBy('failed'),
-      dead: countBy('dead'),
-      canceled: countBy('canceled'),
-      instanceIds: [...new Set(jobs.map((j) => j.instanceId).filter((v): v is number => v != null))],
-    },
-  };
+  return { traceId, jobs, stats: summarizeWorkflowJobChain(jobs) };
 }
 
 export async function retryWorkflowJob(id: number, payload?: Record<string, unknown>) {

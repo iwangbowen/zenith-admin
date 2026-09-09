@@ -36,6 +36,7 @@ import { isPgUniqueViolation } from '../../lib/db-errors';
 import { getAdapter } from '../../lib/payment';
 import { paymentEventBus } from '../../lib/payment-event-bus';
 import { recordEvent, processEvent } from './payment-outbox.service';
+import { buildPaymentEventPayload } from './payment-events';
 import { buildAdapterContext, markOrderPaid, syncOrderStatus } from './payment.service';
 import { resolveApplicationChannelConfig } from './payment-apps.service';
 import { assertEffectivePaymentOperation } from './payment-capability-evaluator';
@@ -693,20 +694,7 @@ async function markDeductOrderFailed(order: PaymentOrderRow, reason: string): Pr
       type: 'payment.failed',
       orderNo: order.orderNo,
       tenantId: order.tenantId,
-      payload: {
-        type: 'payment.failed',
-        orderNo: order.orderNo,
-        outTradeNo: order.outTradeNo,
-        bizType: order.bizType,
-        bizId: order.bizId,
-        channel: order.channel,
-        channelConfigId: order.channelConfigId,
-        appId: order.appId,
-        currency: order.currency,
-        amount: order.amount,
-        userId: order.userId,
-        tenantId: order.tenantId,
-      },
+      payload: buildPaymentEventPayload('payment.failed', failed),
     });
   });
   if (eventId != null) setImmediate(() => { void processEvent(eventId).catch((err) => logger.error('[payment-contract] process failure event failed', { eventId, err })); });
