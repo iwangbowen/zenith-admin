@@ -72,6 +72,34 @@ async function enqueueTemplateRefsRebuild(
   return tasks;
 }
 
+/**
+ * 批量改动内容属性 / 标签后，为「当前对外可见」（已发布、未删除、未归档、未过期）的内容所在站点各入一条模板引用重建 outbox；
+ * 事件键携带受影响内容的 id:version 列表，同一批次只重建一次。
+ */
+async function enqueuePublicContentRefsRebuild(
+  tx: DbTransaction,
+  sites: Map<number, CmsSiteRow>,
+  updated: CmsContentRow[],
+  reason: string,
+  kind: 'content-flags' | 'content-tags',
+): Promise<AsyncTask[]> {
+  const now = new Date();
+  const publicSiteIds = new Set(updated
+    .filter((row) => row.status === 'published' && row.deletedAt == null && row.archivedAt == null
+      && (row.expireAt == null || row.expireAt > now))
+    .map((row) => row.siteId));
+  const tasks: AsyncTask[] = [];
+  for (const siteId of [...publicSiteIds].sort((a, b) => a - b)) {
+    tasks.push(await insertCmsSiteRefsRebuildOutbox(
+      tx,
+      sites.get(siteId)!,
+      reason,
+      `site:${siteId}:${kind}:${updated.filter((row) => row.siteId === siteId).map((row) => `${row.id}:${row.version}`).join(',')}`,
+    ));
+  }
+  return tasks;
+}
+
 export async function recycleCmsContents(ids: number[]) {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
@@ -449,20 +477,7 @@ export async function batchSetCmsContentFlags(ids: number[], flags: { isTop?: bo
       .where(and(inArray(cmsContents.id, initial.map((row) => row.id)), isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)))
       .returning();
     await logContentOps(tx, updated.map((row) => ({ id: row.id })), 'updated', '批量设置内容属性');
-    const now = new Date();
-    const publicSiteIds = new Set(updated
-      .filter((row) => row.status === 'published' && row.deletedAt == null && row.archivedAt == null
-        && (row.expireAt == null || row.expireAt > now))
-      .map((row) => row.siteId));
-    const tasks: AsyncTask[] = [];
-    for (const siteId of [...publicSiteIds].sort((a, b) => a - b)) {
-      tasks.push(await insertCmsSiteRefsRebuildOutbox(
-        tx,
-        sites.get(siteId)!,
-        '内容公开属性批量更新',
-        `site:${siteId}:content-flags:${updated.filter((row) => row.siteId === siteId).map((row) => `${row.id}:${row.version}`).join(',')}`,
-      ));
-    }
+    const tasks = await enqueuePublicContentRefsRebuild(tx, sites, updated, '内容公开属性批量更新', 'content-flags');
     return { count: updated.length, tasks };
   });
   await enqueueCmsPublishOutboxes(mutation.tasks, '内容属性批量更新');
@@ -558,20 +573,7 @@ export async function batchAddCmsContentTags(ids: number[], tagIds: number[]): P
       updatedAt: new Date(),
     }).where(inArray(cmsContents.id, lockedRows.map((row) => row.id))).returning();
     await logContentOps(tx, updated.map((row) => ({ id: row.id })), 'updated', '批量追加内容标签');
-    const now = new Date();
-    const publicSiteIds = new Set(updated
-      .filter((row) => row.status === 'published' && row.deletedAt == null && row.archivedAt == null
-        && (row.expireAt == null || row.expireAt > now))
-      .map((row) => row.siteId));
-    const tasks: AsyncTask[] = [];
-    for (const siteId of [...publicSiteIds].sort((a, b) => a - b)) {
-      tasks.push(await insertCmsSiteRefsRebuildOutbox(
-        tx,
-        sites.get(siteId)!,
-        '内容标签批量更新',
-        `site:${siteId}:content-tags:${updated.filter((row) => row.siteId === siteId).map((row) => `${row.id}:${row.version}`).join(',')}`,
-      ));
-    }
+    const tasks = await enqueuePublicContentRefsRebuild(tx, sites, updated, '内容标签批量更新', 'content-tags');
     return { count: lockedRows.length, tasks };
  });
   await enqueueCmsPublishOutboxes(mutation.tasks, '内容标签批量更新');

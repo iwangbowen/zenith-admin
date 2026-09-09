@@ -23,14 +23,18 @@ export interface ListInAppMessagesQuery {
   pageSize: number;
 }
 
+/** 收件箱 / 管理端列表共用的筛选条件：租户范围、标题关键字、类型、已读状态 */
+function inboxFilterConditions(q: Pick<ListInAppMessagesQuery, 'keyword' | 'type' | 'isRead'>): (SQL | undefined)[] {
+  return [
+    tenantScope(inAppMessages),
+    keywordCondition(q.keyword, [inAppMessages.title], 'ilike'),
+    q.type ? eq(inAppMessages.type, q.type) : undefined,
+    typeof q.isRead === 'boolean' ? eq(inAppMessages.isRead, q.isRead) : undefined,
+  ];
+}
+
 function buildInboxWhere(q: ListInAppMessagesQuery, recipientId: number) {
-  const conditions: (SQL | undefined)[] = [eq(inAppMessages.userId, recipientId)];
-  const tenant = tenantScope(inAppMessages);
-  if (tenant) conditions.push(tenant);
-  conditions.push(keywordCondition(q.keyword, [inAppMessages.title], 'ilike'));
-  if (q.type) conditions.push(eq(inAppMessages.type, q.type));
-  if (typeof q.isRead === 'boolean') conditions.push(eq(inAppMessages.isRead, q.isRead));
-  return buildWhere(...conditions);
+  return buildWhere(eq(inAppMessages.userId, recipientId), ...inboxFilterConditions(q));
 }
 
 /** 站内信联表基础查询（消息 + 模板名 + 发送人用户名） */
@@ -133,12 +137,7 @@ export async function getInAppMessageBeforeAudit(id: number) {
 
 /** 管理员视角：列出全租户的站内信（不限收件人） */
 export async function listAllInAppMessages(q: Omit<ListInAppMessagesQuery, 'recipientId'> & { recipientId?: number; senderId?: number }) {
-  const conditions: (SQL | undefined)[] = [];
-  const tenant = tenantScope(inAppMessages);
-  if (tenant) conditions.push(tenant);
-  conditions.push(keywordCondition(q.keyword, [inAppMessages.title], 'ilike'));
-  if (q.type) conditions.push(eq(inAppMessages.type, q.type));
-  if (typeof q.isRead === 'boolean') conditions.push(eq(inAppMessages.isRead, q.isRead));
+  const conditions: (SQL | undefined)[] = inboxFilterConditions(q);
   if (q.recipientId) conditions.push(eq(inAppMessages.userId, q.recipientId));
   if (q.senderId) conditions.push(eq(inAppMessages.senderId, q.senderId));
   const where = buildWhere(...conditions);
@@ -193,15 +192,17 @@ export async function adminMarkAsRead(id: number) {
 }
 
 /** 管理员视角：将当前租户所有未读站内信标记为已读。 */
-export async function adminMarkAllAsRead() {
-  const where = buildWhere(and(
-    eq(inAppMessages.isRead, false),
-    tenantScope(inAppMessages),
-  ));
-  const result = await db.update(inAppMessages)
+/** 把满足条件的未读站内信批量置为已读（自动附加租户范围），返回受影响的 id 与收件人 */
+async function markUnreadMessagesRead(...conditions: (SQL | undefined)[]) {
+  const where = buildWhere(eq(inAppMessages.isRead, false), tenantScope(inAppMessages), ...conditions);
+  return db.update(inAppMessages)
     .set({ isRead: true, readAt: new Date() })
-    .where(where ?? sql`true`)
+    .where(where)
     .returning({ id: inAppMessages.id, userId: inAppMessages.userId });
+}
+
+export async function adminMarkAllAsRead() {
+  const result = await markUnreadMessagesRead();
   const userIds = [...new Set(result.map((row) => row.userId))];
   if (userIds.length > 0) {
     scheduleSendToUsers(userIds.map((userId) => ({ userId })), { type: 'in-app-message:read-all', payload: {} });
@@ -228,15 +229,7 @@ export async function markAsRead(id: number) {
 
 export async function markAllAsRead() {
   const me = currentUser();
-  const where = buildWhere(and(
-    eq(inAppMessages.userId, me.userId),
-    eq(inAppMessages.isRead, false),
-    tenantScope(inAppMessages),
-  ));
-  const result = await db.update(inAppMessages)
-    .set({ isRead: true, readAt: new Date() })
-    .where(where ?? sql`true`)
-    .returning({ id: inAppMessages.id });
+  const result = await markUnreadMessagesRead(eq(inAppMessages.userId, me.userId));
   if (result.length > 0) {
     scheduleSendToUsers([{ userId: me.userId }], { type: 'in-app-message:read-all', payload: {} });
   }
@@ -247,16 +240,7 @@ export async function markAllAsRead() {
 export async function batchMarkAsRead(ids: number[]) {
   if (ids.length === 0) return { count: 0 };
   const me = currentUser();
-  const where = buildWhere(and(
-    inArray(inAppMessages.id, ids),
-    eq(inAppMessages.userId, me.userId),
-    eq(inAppMessages.isRead, false),
-    tenantScope(inAppMessages),
-  ));
-  const result = await db.update(inAppMessages)
-    .set({ isRead: true, readAt: new Date() })
-    .where(where ?? sql`true`)
-    .returning({ id: inAppMessages.id });
+  const result = await markUnreadMessagesRead(inArray(inAppMessages.id, ids), eq(inAppMessages.userId, me.userId));
   for (const row of result) {
     scheduleSendToUsers([{ userId: me.userId }], { type: 'in-app-message:read', payload: { id: row.id } });
   }
