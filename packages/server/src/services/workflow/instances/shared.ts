@@ -4,10 +4,10 @@ import { HTTPException } from 'hono/http-exception';
 import type { WorkflowTask as WorkflowTaskDto, WorkflowCustomFormConfig, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormType, WorkflowSerialNoConfig } from '@zenith/shared/workflow';
 import { currentUserOrNull, currentUserDetail } from '../../../lib/context';
 import type { DbExecutor } from '../../../db/types';
-import { workflowInstances, type WorkflowDefinitionRow } from '../../../db/schema';
+import { workflowInstances, workflowTasks, type WorkflowDefinitionRow } from '../../../db/schema';
 import { workflowEventBus } from '../../../lib/workflow-event-bus';
 import { type SerialNoGenContext } from '../workflow-serial.service';
-import { mapInstance } from './mapping';
+import { mapInstance, mapTask } from './mapping';
 
 /**
  * 事务内对实例加行级锁并在锁内重校验状态：把同一实例上的并发审批 / 推进 / 管理操作串行化，
@@ -133,4 +133,32 @@ export function emitNodeEvent(
   } as Parameters<typeof workflowEventBus.emit>[0];
   if (executor) return workflowEventBus.emitInTx(ev, executor);
   workflowEventBus.emit(ev);
+}
+
+type TaskRow = typeof workflowTasks.$inferSelect;
+
+/**
+ * 推进产生的新任务统一补发 node.entered → task.created → 按状态 task.assigned / approved / rejected。
+ * 传 executor 时在事务内入队 outbox（需 await）；不传则提交后同步发射。
+ */
+export function emitTasksEnteredEvents(
+  instanceId: number,
+  tasks: readonly TaskRow[],
+  meta: { definitionId: number; tenantId: number | null; actor?: { userId: number; name?: string | null } },
+  executor?: DbExecutor,
+): void | Promise<void> {
+  const emitsFor = (t: TaskRow) => [
+    () => emitNodeEvent('node.entered', { instanceId, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType }, executor),
+    () => emitTaskEvent('task.created', mapTask(t), meta, executor),
+    () => (t.assigneeId && t.status === 'pending' ? emitTaskEvent('task.assigned', mapTask(t), meta, executor) : undefined),
+    () => (t.status === 'approved' ? emitTaskEvent('task.approved', mapTask(t), meta, executor) : undefined),
+    () => (t.status === 'rejected' ? emitTaskEvent('task.rejected', mapTask(t), meta, executor) : undefined),
+  ];
+  if (!executor) {
+    for (const t of tasks) for (const emit of emitsFor(t)) emit();
+    return;
+  }
+  return (async () => {
+    for (const t of tasks) for (const emit of emitsFor(t)) await emit();
+  })();
 }

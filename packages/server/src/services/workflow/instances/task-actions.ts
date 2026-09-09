@@ -17,7 +17,7 @@ import { assertSelectedNextApprovers } from './initiator-select';
 import { mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, checkNodeCompletion, filterCurrentActivation, killInstanceTokens } from './materialize';
 import type { MaterializeTrigger } from './materialize';
-import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, lockInstanceExpecting } from './shared';
+import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents, lockInstanceExpecting } from './shared';
 import { hasUserHandledTask } from './transfers';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fill-task.service';
@@ -224,21 +224,6 @@ async function settleInstanceInTx(
   return { row, fillBridge };
 }
 
-/** 推进产生的新任务统一补发 node.entered / task.created / assigned / approved / rejected 事件（传 executor 在事务内入队 outbox） */
-async function emitTasksMaterializedEvents(
-  instanceId: number,
-  newTasks: TaskRow[],
-  meta: { definitionId: number; tenantId: number | null; actor?: WorkflowEventActor },
-  executor?: DbExecutor,
-): Promise<void> {
-  for (const t of newTasks) {
-    await emitNodeEvent('node.entered', { instanceId, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType }, executor);
-    await emitTaskEvent('task.created', mapTask(t), meta, executor);
-    if (t.assigneeId && t.status === 'pending') await emitTaskEvent('task.assigned', mapTask(t), meta, executor);
-    if (t.status === 'approved') await emitTaskEvent('task.approved', mapTask(t), meta, executor);
-    if (t.status === 'rejected') await emitTaskEvent('task.rejected', mapTask(t), meta, executor);
-  }
-}
 
 /** 子实例进入终态时唤醒父流程 join 作业 */
 function notifySubprocessParent(row: InstanceRow): void {
@@ -361,7 +346,7 @@ export async function approveTaskCore(
     if (res.advanced) {
       await emitNodeEvent('node.left', { instanceId: res.row.id, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType }, tx);
     }
-    await emitTasksMaterializedEvents(res.row.id, res.newTasks, meta, tx);
+    await emitTasksEnteredEvents(res.row.id, res.newTasks, meta, tx);
     if (res.finished) await emitInstanceEvent('instance.approved', mapInstance(res.row), actor, tx);
     if (res.rejected) await emitInstanceEvent('instance.rejected', mapInstance(res.row), actor, tx);
     return res;
@@ -646,7 +631,7 @@ export async function rejectTaskCore(
       } else if ((res as { returned?: boolean }).returned) {
         await emitInstanceEvent('instance.returned', mapInstance(res.row), actor, tx);
       } else {
-        await emitTasksMaterializedEvents(res.row.id, res.newTasks, meta, tx);
+        await emitTasksEnteredEvents(res.row.id, res.newTasks, meta, tx);
         if (res.finished) await emitInstanceEvent('instance.approved', mapInstance(res.row), actor, tx);
       }
     }

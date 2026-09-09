@@ -17,7 +17,7 @@ import type { WorkflowNodeFailurePolicy } from '@zenith/shared/workflow';
 import { resolveAdminAssigneeId } from './assignees';
 import { findExceptionCatchNode, mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, killInstanceTokens, loadLiveTokens } from './materialize';
-import { emitInstanceEvent, emitNodeEvent, emitTaskEvent } from './shared';
+import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents } from './shared';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { requireRow } from '../../../lib/db-assert';
 
@@ -71,6 +71,31 @@ async function markInstanceRejected(tx: DbExecutor, args: { instanceId: number; 
     comment: args.comment,
   });
   return row;
+}
+
+/**
+ * 把 materialize 结果落为实例状态：无可达节点（或显式驳回）→ 驳回收尾；流程走完 → 通过并回写填报桥接；
+ * 否则只更新当前节点。返回更新后的实例行与终态标记，供调用方补发事件。
+ */
+async function settleMaterialized(
+  tx: DbExecutor,
+  instanceId: number,
+  materialized: Awaited<ReturnType<typeof advanceAndMaterialize>>,
+  outcome: { comment: string; actorId: number | null },
+): Promise<{ row: typeof workflowInstances.$inferSelect; finished: boolean; rejected: boolean }> {
+  if (materialized.rejected || (!materialized.finished && materialized.currentNodeKeys.length === 0 && materialized.createdTasks.length === 0)) {
+    const row = await markInstanceRejected(tx, { instanceId, comment: outcome.comment, actorId: outcome.actorId });
+    return { row, finished: false, rejected: true };
+  }
+  if (materialized.finished) {
+    const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null })
+      .where(eq(workflowInstances.id, instanceId)).returning();
+    await bridgeReportFillWorkflowOutcome(tx, { workflowInstanceId: instanceId, outcome: 'approved', actorId: outcome.actorId, comment: outcome.comment });
+    return { row, finished: true, rejected: false };
+  }
+  const [row] = await tx.update(workflowInstances).set({ currentNodeKey: materialized.currentNodeKeys[0] ?? null })
+    .where(eq(workflowInstances.id, instanceId)).returning();
+  return { row, finished: false, rejected: false };
 }
 
 /** Token 一致性：消费失败节点 token，并在目标节点新建 frontier token（其余分支 token 保留） */
@@ -142,28 +167,10 @@ async function applyNodeFailurePolicy(input: {
     };
 
     // 将 materialize 结果落库为实例状态
-    const settleFromMaterialized = async (
-      materialized: Awaited<ReturnType<typeof advanceAndMaterialize>>,
-    ) => {
-      if (materialized.rejected || (!materialized.finished && materialized.currentNodeKeys.length === 0 && materialized.createdTasks.length === 0)) {
-        const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, actorId: input.actor.userId });
-        return { row, newTasks: materialized.createdTasks, finished: false, rejected: true };
-      }
-      if (materialized.finished) {
-        const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null })
-          .where(eq(workflowInstances.id, lockedInst.id)).returning();
-        await bridgeReportFillWorkflowOutcome(tx, {
-          workflowInstanceId: lockedInst.id,
-          outcome: 'approved',
-          actorId: input.actor.userId,
-          comment: errorComment,
-        });
-        return { row, newTasks: materialized.createdTasks, finished: true, rejected: false };
-      }
-      const [row] = await tx.update(workflowInstances).set({ currentNodeKey: materialized.currentNodeKeys[0] ?? null })
-        .where(eq(workflowInstances.id, lockedInst.id)).returning();
-      return { row, newTasks: materialized.createdTasks, finished: false, rejected: false };
-    };
+    const settleFromMaterialized = async (materialized: Awaited<ReturnType<typeof advanceAndMaterialize>>) => ({
+      ...await settleMaterialized(tx, lockedInst.id, materialized, { comment: errorComment, actorId: input.actor.userId }),
+      newTasks: materialized.createdTasks,
+    });
 
     // 终止
     if (policy.action === 'terminate') {
@@ -244,13 +251,7 @@ async function applyNodeFailurePolicy(input: {
     emitTaskEvent(task.status === 'rejected' ? 'task.rejected' : 'task.skipped', mapTask(task), { ...meta, comment: errorComment });
   }
   emitNodeEvent('node.left', { instanceId: updated.row.id, ...meta, nodeKey: input.nodeKey, nodeName: input.nodeName, nodeType: input.task?.nodeType ?? null });
-  for (const task of updated.newTasks) {
-    emitNodeEvent('node.entered', { instanceId: updated.row.id, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType });
-    emitTaskEvent('task.created', mapTask(task), meta);
-    if (task.assigneeId && task.status === 'pending') emitTaskEvent('task.assigned', mapTask(task), meta);
-    if (task.status === 'approved') emitTaskEvent('task.approved', mapTask(task), meta);
-    if (task.status === 'rejected') emitTaskEvent('task.rejected', mapTask(task), meta);
-  }
+  emitTasksEnteredEvents(updated.row.id, updated.newTasks, meta);
   if (updated.finished) emitInstanceEvent('instance.approved', mapInstance(updated.row), input.actor);
   if (updated.rejected) emitInstanceEvent('instance.rejected', mapInstance(updated.row), input.actor);
   return true;
@@ -448,28 +449,8 @@ export async function handleNodeExecutionError(input: {
       },
     );
 
-    if (materialized.rejected || (!materialized.finished && materialized.currentNodeKeys.length === 0 && materialized.createdTasks.length === 0)) {
-      const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, actorId: input.actor.userId });
-      return { row, affectedTasks, catchTask, newTasks: materialized.createdTasks, finished: false, rejected: true };
-    }
-    if (materialized.finished) {
-      const [row] = await tx.update(workflowInstances)
-        .set({ status: 'approved', currentNodeKey: null })
-        .where(eq(workflowInstances.id, lockedInst.id))
-        .returning();
-      await bridgeReportFillWorkflowOutcome(tx, {
-        workflowInstanceId: lockedInst.id,
-        outcome: 'approved',
-        actorId: input.actor.userId,
-        comment: errorComment,
-      });
-      return { row, affectedTasks, catchTask, newTasks: materialized.createdTasks, finished: true, rejected: false };
-    }
-    const [row] = await tx.update(workflowInstances)
-      .set({ currentNodeKey: materialized.currentNodeKeys[0] ?? null })
-      .where(eq(workflowInstances.id, lockedInst.id))
-      .returning();
-    return { row, affectedTasks, catchTask, newTasks: materialized.createdTasks, finished: false, rejected: false };
+    const settled = await settleMaterialized(tx, lockedInst.id, materialized, { comment: errorComment, actorId: input.actor.userId });
+    return { ...settled, affectedTasks, catchTask, newTasks: materialized.createdTasks };
   });
 
   if (!updated) return true;
@@ -484,19 +465,9 @@ export async function handleNodeExecutionError(input: {
     nodeName: input.nodeName ?? input.nodeKey,
     nodeType: input.task?.nodeType ?? null,
   });
-  emitNodeEvent('node.entered', { instanceId: updated.row.id, ...meta, nodeKey: updated.catchTask.nodeKey, nodeName: updated.catchTask.nodeName, nodeType: updated.catchTask.nodeType });
-  emitTaskEvent('task.created', mapTask(updated.catchTask), meta);
-  if (updated.catchTask.assigneeId && updated.catchTask.status === 'pending') emitTaskEvent('task.assigned', mapTask(updated.catchTask), meta);
-  if (updated.catchTask.status === 'approved') emitTaskEvent('task.approved', mapTask(updated.catchTask), meta);
-  if (updated.catchTask.status === 'rejected') emitTaskEvent('task.rejected', mapTask(updated.catchTask), meta);
-
-  for (const task of updated.newTasks.filter((task) => task.id !== updated.catchTask.id)) {
-    emitNodeEvent('node.entered', { instanceId: updated.row.id, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType });
-    emitTaskEvent('task.created', mapTask(task), meta);
-    if (task.assigneeId && task.status === 'pending') emitTaskEvent('task.assigned', mapTask(task), meta);
-    if (task.status === 'approved') emitTaskEvent('task.approved', mapTask(task), meta);
-    if (task.status === 'rejected') emitTaskEvent('task.rejected', mapTask(task), meta);
-  }
+  // 先发 catch 任务，再发其余新任务，保持事件顺序
+  emitTasksEnteredEvents(updated.row.id, [updated.catchTask], meta);
+  emitTasksEnteredEvents(updated.row.id, updated.newTasks.filter((task) => task.id !== updated.catchTask.id), meta);
   if (updated.finished) emitInstanceEvent('instance.approved', mapInstance(updated.row), input.actor);
   if (updated.rejected) emitInstanceEvent('instance.rejected', mapInstance(updated.row), input.actor);
   return true;

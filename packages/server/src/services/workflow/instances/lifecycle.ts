@@ -22,7 +22,7 @@ import { applyInitiatorSelectedApprovers, hasExecutableEntry, sanitizeFormByStar
 import type { SelectedApproverMap } from './initiator-select';
 import { assertLaunchMatchesFormType, buildInstanceFormSnapshot, mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
-import { buildSerialNoContext, emitInstanceEvent, emitNodeEvent, emitTaskEvent, toDefinitionSnapshot, lockInstanceExpecting } from './shared';
+import { buildSerialNoContext, emitInstanceEvent, emitTaskEvent, emitTasksEnteredEvents, toDefinitionSnapshot, lockInstanceExpecting } from './shared';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { requireRow } from '../../../lib/db-assert';
 
@@ -235,14 +235,7 @@ export async function emitMaterializedAdvanceEvents(
   actor: { userId: number; name: string },
   executor?: DbExecutor,
 ): Promise<void> {
-  for (const t of createdTasks) {
-    const meta = { definitionId: instance.definitionId, tenantId: instance.tenantId, actor };
-    await emitNodeEvent('node.entered', { instanceId: instance.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType }, executor);
-    await emitTaskEvent('task.created', mapTask(t), meta, executor);
-    if (t.assigneeId && t.status === 'pending') await emitTaskEvent('task.assigned', mapTask(t), meta, executor);
-    if (t.status === 'approved') await emitTaskEvent('task.approved', mapTask(t), meta, executor);
-    if (t.status === 'rejected') await emitTaskEvent('task.rejected', mapTask(t), meta, executor);
-  }
+  await emitTasksEnteredEvents(instance.id, createdTasks, { definitionId: instance.definitionId, tenantId: instance.tenantId, actor }, executor);
   if (instance.status === 'approved') await emitInstanceEvent('instance.approved', instanceDto, actor, executor);
   if (instance.status === 'rejected') await emitInstanceEvent('instance.rejected', instanceDto, actor, executor);
 }
