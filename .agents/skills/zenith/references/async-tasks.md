@@ -25,6 +25,7 @@
 | 运行时策略 | `async_task_type_configs`：管理员可在任务中心「任务类型」tab 覆盖注册默认值（暂停提交/并发/重试/保留期） |
 | 自动清理 | 调度中心周期任务每日清理已结束任务（全局 30 天，类型可覆盖） |
 | 全局托盘 | 顶栏 `TaskTray` 自动展示当前用户进行中任务，业务代码无需接入 |
+| 状态口径 | 终态 / 进行中集合与判定：`@zenith/shared/tasks` 的 `ASYNC_TASK_TERMINAL_STATUSES` / `ASYNC_TASK_ACTIVE_STATUSES` / `isAsyncTaskTerminal()`；列表筛选 `active` / `terminal` / 具体状态 → WHERE 用 `lib/task-center` 的 `asyncTaskStatusCondition()`；前端状态列 / 任务项列用 `components/async-task-columns.tsx` |
 
 ---
 

@@ -62,11 +62,14 @@
 - **枚举 SSOT 在 constants**：`XXX_TYPES` 常量数组 + 派生 union type + `XXX_LABELS` / `XXX_OPTIONS`
   一并写在 `shared/src/{业务域}/constants.ts`，`validation.ts` 通过 `z.enum(XXX_TYPES)` 引用。
   **禁止**把会被其他域 `z.enum()` 引用的常量数组放在 `validation.ts`——validation 互引形成 ESM 值环，
-  `z.enum()` 在初始化期取到 `undefined` 直接崩溃
+  `z.enum()` 在初始化期取到 `undefined` 直接崩溃。通用的启用 / 禁用状态字段一律用 `@zenith/shared/core` 的
+  `entityStatusSchema`（可继续链式 `.default('enabled')` / `.optional()`），**禁止**在各域手写 `z.enum(['enabled', 'disabled'])`
 - **API 契约是唯一真相**：实体形状与全部操作定义在 `shared/src/{业务域}/contracts/xxxs.ts`——
   `xxxSchema = z.object({...}).meta({ id: 'Xxx' })` + `type Xxx = z.infer<typeof xxxSchema>` +
   `xxxContract = defineContract('/api/xxxs', { list: op.get(...), ... })`（`@zenith/shared/core`）。
-  **禁止**手写 `interface Xxx`、**禁止**在 server 定义实体 DTO、**禁止**在 web / mock 书写 `/api/...` 路径字面量
+  **禁止**手写 `interface Xxx`、**禁止**在 server 定义实体 DTO、**禁止**在 web / mock 书写 `/api/...` 路径字面量。
+  service 的列表查询入参类型同样由契约派生（在契约文件导出 `type XxxListQueryInput = z.infer<typeof xxxListQuery>`），
+  **禁止**在 service 里手写与契约查询 schema 同形的 `interface XxxQuery`
 - **契约操作命名**：标准 CRUD 固定为 `list` / `detail` / `create` / `update` / `remove`，可选 `all`（下拉源）/
   `removeBatch`（`DELETE /batch`）——web 的 `createResourceQueries` 按此约定派生 hooks；其余操作按业务动词命名
 - **契约积木**：路径 `{id}` 用 `idParam`；列表查询 `paginationQuery.extend({...})`；分页响应 `paginated(xxxSchema)`；
@@ -115,7 +118,11 @@
 - **租户归属匹配**：与一条已知归属（订单 / 应用 / 事件所属租户）做行到行匹配用 `lib/tenant.ts` 的
   `exactTenantCondition(col, tenantId)`（`null → IS NULL`）、`optionalExactTenantCondition`（`undefined` 不过滤）、
   `inheritedTenantCondition`（平台级可被租户继承：`IS NULL OR =`）；**禁止**手写 `tenantId == null ? isNull(col) : eq(col, tenantId)` 三目。
-  它们与 `tenantCondition(table, user)`（请求用户可见性，平台管理员可看全部）语义不同，不得互换
+  它们与 `tenantCondition(table, user)`（请求用户可见性，平台管理员可看全部）语义不同，不得互换。
+  其它可空外键（`parentId` / `appId` / `definitionId` / `createdBy`…）与已知值的等值匹配用 `lib/where-helpers.ts` 的 `nullableEq(col, value)`，同样**禁止**手写三目
+- **任务终态判定**：异步任务「是否已结束」一律用 `@zenith/shared/tasks` 的 `isAsyncTaskTerminal(status)` /
+  `ASYNC_TASK_TERMINAL_STATUSES` / `ASYNC_TASK_ACTIVE_STATUSES`；列表筛选里的 `active` / `terminal` / 具体状态 → WHERE 条件用
+  `lib/task-center` 的 `asyncTaskStatusCondition(status)`。**禁止**在 service / 路由 / 导出定义 / 前端 / Mock 里内联 `['success', 'failed', 'cancelled']`
 - **单一默认项写入**：带 `is_default` 的配置类实体（短信 / 推送 / 存储 / 支付渠道 / 公众号 / 报表环境 / 保存视图…）
   一律经 `lib/default-flag.ts` 的 `clearDefaultFlag(executor, table, scopeWhere)` / `ensureSingleDefault(executor, table, id, { scope })`
   在事务内清除范围内其它默认标记，范围条件由调用方给出；**禁止**在 service 里手写 `update(table).set({ isDefault: false })`
@@ -147,6 +154,7 @@
 | 用户输入参与 LIKE / ILIKE（单列或跨列、包含或前缀匹配） | `keywordCondition(keyword, [colA, colB], mode?, match?)` | 手写 `like(col, '%…%')` / `or(like(a, '%…%'), …)` / 裸 `sql\`… ILIKE …\`` |
 | 时间范围过滤 | `dateRangeConditions(column, start, end)` | 手写 `parseXxx` + `gte`/`lte` |
 | 合并条件数组 / 附加租户与数据权限条件 | `buildWhere(...conditions)` | `conditions.length ? and(...) : undefined` |
+| 可空列与已知值的等值匹配（`parentId` / `appId` / `createdBy`…） | `nullableEq(col, value)`（`null → IS NULL`）；租户列用 `lib/tenant.ts` 的 `exactTenantCondition` | `x === null ? isNull(col) : eq(col, x)` 三目 |
 
 - 条件数组类型必须是 `(SQL | undefined)[]`；构造函数不适用时返回 `undefined`，`buildWhere` 自动过滤，
   **禁止**为迁就 `SQL[]` 加 `!` 非空断言
@@ -269,6 +277,8 @@
 | 字节数展示（B / KB / MB / GB / TB） | `formatBytes(bytes)` |
 | 平铺列表（`id` / `parentId`，或自定义键）→ 树 | `buildTree(list, { compare?, keepEmptyChildren?, id?, parentId? })`；父节点缺失的节点挂到根 |
 | 树 → 另一种节点形态（如 Semi `TreeNodeData`） | `mapTree(nodes, (node) => ({ ... }))`，children 自动递归 |
+| 按点分路径读取 JSON 嵌套值（外部 API 响应的 `itemsPath` 等配置化取数路径） | `getByPath(source, path)`；空路径返回原值，中途非对象返回 `undefined`，数组可用下标段 |
+| 非 null、非数组的普通对象判定 | `isPlainObject(value)` |
 
 - 前端毫秒耗时展示用 `@/utils/format` 的 `formatDurationMs(ms)`；空值统一渲染 `EMPTY_PLACEHOLDER`
 - 日志 / 文案里的局部脱敏用 `@zenith/shared/core` 的 `maskPhone()` / `maskEmail()`（server 经 `lib/masking.ts` 转发）；
