@@ -1,21 +1,13 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input, Button, Toast, Select, Card, Avatar, Modal, Spin } from '@douyinfe/semi-ui';
 import { Camera, X } from 'lucide-react';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
 import { MemberPage } from '../../components/MemberPage';
+import { FieldRow } from '../../components/FieldRow';
 import { useUpdateMemberProfile, useUploadMemberAvatar } from '../../hooks/queries';
 
 const PRESET_AVATARS = Array.from({ length: 12 }, (_, i) => `${import.meta.env.BASE_URL}avatars/avatar-${String(i + 1).padStart(2, '0')}.svg`);
-
-function FieldRow({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
-  return (
-    <div className="mc-field-row">
-      <div className="mc-field-label">{label}</div>
-      <div className="mc-field-value">{children}</div>
-    </div>
-  );
-}
 
 export default function EditProfilePage() {
   const navigate = useNavigate();

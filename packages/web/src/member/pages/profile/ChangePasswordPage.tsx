@@ -1,18 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input, Button, Toast, Card } from '@douyinfe/semi-ui';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
 import { MemberPage } from '../../components/MemberPage';
+import { FieldRow } from '../../components/FieldRow';
 import { useChangeMemberPassword } from '../../hooks/queries';
-
-function FieldRow({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
-  return (
-    <div className="mc-field-row">
-      <div className="mc-field-label">{label}</div>
-      <div className="mc-field-value">{children}</div>
-    </div>
-  );
-}
 
 export default function ChangePasswordPage() {
   const navigate = useNavigate();

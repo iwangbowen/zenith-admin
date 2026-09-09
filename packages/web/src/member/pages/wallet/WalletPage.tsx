@@ -6,6 +6,7 @@ import { WALLET_TX_TYPE_LABELS, memberSelfContract } from '@zenith/shared/member
 import type { MemberCoupon } from '@zenith/shared/member';
 import type { PaymentCashierMethod } from '@zenith/shared/payment';
 import { MemberPage } from '../../components/MemberPage';
+import { StatCard } from '../../components/StatCard';
 import { TransactionList } from '../../components/TransactionList';
 import { formatYuan } from '../../utils/format';
 import { memberKeys, useCreateRechargeOrder, useMemberCouponList, useMemberPaymentOptions, useMemberWallet } from '../../hooks/queries';
@@ -20,18 +21,6 @@ function couponDiscount(mc: MemberCoupon, amountCents: number): number {
   let discount = c.type === 'amount' ? c.faceValue : Math.floor((amountCents * (100 - c.faceValue)) / 100);
   if (c.type === 'percent' && c.maxDiscount != null) discount = Math.min(discount, c.maxDiscount);
   return Math.max(0, Math.min(discount, amountCents - 1));
-}
-
-/** 会员前台自有视觉令牌（--m-*）；与后台一致改为分栏细线，不再画卡片盒子 */
-function StatCard({ label, value }: Readonly<{ label: React.ReactNode; value: React.ReactNode }>) {
-  return (
-    <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--m-text)', letterSpacing: '-0.03em' }}>{value}</div>
-      <div style={{ fontSize: 13, color: 'var(--m-text-secondary)', marginTop: 9, display: 'flex', alignItems: 'center', gap: 6 }}>
-        {label}
-      </div>
-    </div>
-  );
 }
 
 export default function WalletPage() {
