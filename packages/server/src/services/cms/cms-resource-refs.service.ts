@@ -203,23 +203,36 @@ export async function syncCmsResourceRefs(
   siteId: number,
   row: object,
 ): Promise<void> {
-  const record = row as Record<string, unknown>;
-  const fieldNames = CMS_RESOURCE_OWNER_FIELDS[ownerType] as readonly string[];
-  const fields = Object.fromEntries(fieldNames.map((name) => [name, record[name]]));
-  const extracted = extractCmsResourceRefFields(fields);
+  await rebuildCmsResourceRefsForOwners(executor, ownerType, siteId, [{ ownerId, row }]);
+}
 
-  await executor.delete(cmsResourceRefs)
-    .where(and(
-      eq(cmsResourceRefs.siteId, siteId),
-      eq(cmsResourceRefs.ownerType, ownerType),
-      eq(cmsResourceRefs.ownerId, ownerId),
-    ));
-  if (extracted.length === 0) return;
+/**
+ * 整批重建一组同类型 owner 的引用行，语义与逐个 {@link syncCmsResourceRefs} 一致（先删后插、
+ * 未登记句柄忽略、外站句柄拒绝），但无论多少 owner 都只有 delete / 素材校验 select / insert 三条语句。
+ * 供引用索引重建任务按分片调用：此前一个站点的全部内容在一个事务里逐行 3 条语句地重建，
+ * 既长时间持有 cms_resource_refs 行锁，也要求把全部正文一次装进内存。
+ */
+export async function rebuildCmsResourceRefsForOwners(
+  executor: DbExecutor,
+  ownerType: CmsResourceOwnerType,
+  siteId: number,
+  owners: ReadonlyArray<{ ownerId: number; row: object }>,
+): Promise<void> {
+  if (owners.length === 0) return;
+  const fieldNames = CMS_RESOURCE_OWNER_FIELDS[ownerType] as readonly string[];
+  const extractedByOwner = owners.map(({ ownerId, row }) => {
+    const record = row as Record<string, unknown>;
+    const fields = Object.fromEntries(fieldNames.map((name) => [name, record[name]]));
+    return { ownerId, refs: extractCmsResourceRefFields(fields) };
+  });
+
+  await deleteCmsResourceRefsForOwner(executor, ownerType, owners.map((owner) => owner.ownerId), siteId);
 
   // A resource handle is site-local.  Do not allow a caller to register a
   // foreign-site resource under the current owner, even if the numeric id is
   // otherwise valid.  Unknown handles remain ignored for repair compatibility.
-  const candidateIds = [...new Set(extracted.map((item) => item.resourceId))];
+  const candidateIds = [...new Set(extractedByOwner.flatMap(({ refs }) => refs.map((item) => item.resourceId)))];
+  if (candidateIds.length === 0) return;
   const existing = await executor.select({ id: cmsResources.id, siteId: cmsResources.siteId })
     .from(cmsResources).where(inArray(cmsResources.id, candidateIds));
   const foreign = existing.filter((item) => item.siteId !== siteId);
@@ -227,9 +240,9 @@ export async function syncCmsResourceRefs(
     throw new HTTPException(400, { message: '素材句柄不属于当前站点' });
   }
   const valid = new Set(existing.filter((item) => item.siteId === siteId).map((item) => item.id));
-  const values = extracted
+  const values = extractedByOwner.flatMap(({ ownerId, refs }) => refs
     .filter((item) => valid.has(item.resourceId))
-    .map((item) => ({ siteId, resourceId: item.resourceId, ownerType, ownerId, field: item.field }));
+    .map((item) => ({ siteId, resourceId: item.resourceId, ownerType, ownerId, field: item.field })));
   if (values.length === 0) return;
   await executor.insert(cmsResourceRefs).values(values).onConflictDoNothing();
 }
