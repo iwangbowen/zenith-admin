@@ -1,6 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { Badge, Button, Dropdown, Tooltip } from '@douyinfe/semi-ui';
-import { ArrowLeftRight, Bell, Keyboard, Lock, LogOut, Megaphone, MessageSquareHeart, Settings, Smartphone, User as UserIcon } from 'lucide-react';
+import { ArrowLeftRight, Bell, ChevronDown, Keyboard, Lock, LogOut, Megaphone, MessageSquareHeart, Settings, Smartphone, User as UserIcon } from 'lucide-react';
 import type { NavigateFunction } from 'react-router-dom';
 import type { User } from '@zenith/shared/identity';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -45,6 +45,7 @@ export function UserDropdown({
 }>) {
   const { parkedAccounts } = useAuth();
   const [switcherVisible, setSwitcherVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
   return (
     <>
     <AccountSwitcherModal
@@ -55,6 +56,7 @@ export function UserDropdown({
     />
     <Dropdown
       position="bottomRight"
+      onVisibleChange={setMenuVisible}
       render={
         <Dropdown.Menu>
           {/* 当前账号块 + 账号切换入口（GitHub 风格） */}
@@ -119,9 +121,10 @@ export function UserDropdown({
         </Dropdown.Menu>
       }
     >
-      <div className="admin-header__user">
+      <div className={`admin-header__user${menuVisible ? ' admin-header__user--open' : ''}`}>
         <UserAvatar name={user.nickname || '用户'} avatar={user.avatar} semiSize="small" size={24} style={{ fontSize: 12 }} />
         <span className="admin-header__username">{user.nickname}</span>
+        <ChevronDown size={14} className="admin-header__user-caret" aria-hidden="true" />
       </div>
     </Dropdown>
     </>

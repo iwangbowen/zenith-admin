@@ -614,6 +614,17 @@
   color: var(--color-text);
 }
 
+/* 用户菜单触发器右侧的倒三角：弱化色，菜单展开时翻转 */
+.admin-header__user-caret {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  transition: transform 0.15s ease-out;
+}
+
+.admin-header__user--open .admin-header__user-caret {
+  transform: rotate(180deg);
+}
+
 /* ===== Mobile header / navigation drawer ===== */
 .admin-mobile-header {
   height: var(--header-height);
@@ -1907,9 +1918,10 @@
   display: none;
 }
 
-/* < 992px：隐藏用户名，只保留头像 */
+/* < 992px：隐藏用户名与倒三角，只保留头像 */
 @media (--lg-down) {
-  .admin-header__username {
+  .admin-header__username,
+  .admin-header__user-caret {
     display: none;
   }
 }
