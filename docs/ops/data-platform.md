@@ -1,6 +1,6 @@
 # 数据库、缓存与保留策略
 
-本页描述数据库管理台、数据库备份、Redis 缓存管理与数据保留策略。
+本页描述数据库管理台（含数据库备份）、Redis 缓存管理与数据保留策略。
 
 ---
 
@@ -10,11 +10,11 @@
 
 | 权限码 | 说明 |
 | --- | --- |
-| `system:db-admin:view` | 表结构 / 数据浏览、总览、ER 图、索引健康、对象、查询历史与收藏 |
+| `system:db-admin:view` | 表结构 / 数据浏览、总览、ER 图、索引健康、对象、查询历史与收藏、备份列表 |
 | `system:db-admin:query` | 执行只读 SQL、取消查询、EXPLAIN |
 | `system:db-admin:export` | 表数据与查询结果导出 |
 | `system:db-admin:write` | 行级插入 / 更新 / 删除、批量变更、导入、TRUNCATE |
-| `system:db-admin:maintain` | 活动连接取消 / 终止、表维护、物化视图刷新 |
+| `system:db-admin:maintain` | 活动连接取消 / 终止、表维护、物化视图刷新、创建 / 删除数据库备份 |
 | `system:db-admin:terminal` | SQL 控制台内嵌 psql 终端；psql 的 `\!` / `\copy` 等价于服务器 shell，因此同时要求 `system:terminal:execute`（读写模式额外要求 `system:db-admin:write`） |
 
 ### 安全边界
@@ -38,18 +38,11 @@
 - **健康与维护**：`GET /index-health` 索引健康；`GET /maintenance/tables` 表维护统计；`POST .../maintenance` 执行 VACUUM / ANALYZE / REINDEX；`POST .../refresh` 刷新物化视图。
 - **活动连接**：`GET /activity` 查看 `pg_stat_activity` 活动连接，`POST /activity/{pid}/cancel` 取消查询，`POST /activity/{pid}/terminate` 终止连接。
 - **Schema 漂移**：`GET /schema-drift` 将数据库实际结构与 Drizzle schema 对照。
-
-## 数据库备份
-
-「数据库备份」（`/system/db-backups`）接口前缀为 `/api/db-backups`，记录存储在 `db_backups` 表。
-
-| 权限码 | 说明 |
-| --- | --- |
-| `system:db-backup:list` | 备份列表 |
-| `system:db-backup:create` | 创建备份 |
-| `system:db-backup:delete` | 删除备份记录 |
-
-备份类型包括 `pg_dump` 与 `drizzle_export`。创建后接口立即返回 `pending`，备份任务异步执行：置 `running`、生成备份文件（服务端 `storage/backups/` 目录）、上传到默认文件存储并登记 `managed_files`（无默认存储时仅保留本地文件）、置 `success` / `failed` 并记录文件大小与耗时。列表支持按状态（`pending` / `running` / `success` / `failed`）与类型筛选。
+- **数据库备份**：「备份」Tab（`?tab=backups`）；`GET /backups` 备份记录分页列表（按状态 / 类型筛选），`POST /backups` 创建，
+  `DELETE /backups/{id}` 删除记录，记录存储在 `db_backups` 表。备份类型包括 `pg_dump` 与 `drizzle_export`。
+  创建后接口立即返回 `pending` 回执，备份任务异步执行：置 `running`、生成备份文件（服务端 `storage/backups/` 目录）、
+  上传到默认文件存储并登记 `managed_files`（无默认存储时仅保留本地文件）、置 `success` / `failed` 并记录文件大小与耗时；
+  列表在仍有 `pending` / `running` 记录时自动轮询。定时任务 handler `databaseBackup` 复用同一执行器与表。
 
 ## Redis 缓存管理
 

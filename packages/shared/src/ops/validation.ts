@@ -3,6 +3,7 @@ import { httpUrl, partialForUpdate } from '../core/validation';
 import {
   APP_ARCHES,
   DB_ADMIN_MAINTENANCE_ACTIONS,
+  DB_BACKUP_TYPES,
   FIREWALL_DIRECTIONS,
   FIREWALL_PROTOCOLS,
   FIREWALL_RULE_TYPES,
@@ -247,6 +248,13 @@ export const dbAdminBatchMutateSchema = z.object({
 export type DbAdminBatchMutateInput = z.infer<typeof dbAdminBatchMutateSchema>;
 
 export const dbAdminMaintenanceActionSchema = z.object({ action: z.enum(DB_ADMIN_MAINTENANCE_ACTIONS) });
+
+export const createDbBackupSchema = z.object({
+  type: z.enum(DB_BACKUP_TYPES),
+  name: z.string().min(1, '备份名称不能为空').max(128).optional(),
+});
+
+export type CreateDbBackupInput = z.infer<typeof createDbBackupSchema>;
 
 // ─── SQL 收藏夹 ─────────────────────────────────────────────────────────────────
 export const createDbQueryFavoriteSchema = z.object({

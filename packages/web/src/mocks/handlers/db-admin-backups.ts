@@ -1,6 +1,6 @@
-import { dbBackupContract, type DbBackup } from '@zenith/shared/ops';
+import { dbAdminContract, type DbBackup } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
-import { nextIdFrom } from '@/mocks/utils/handlers';
+import { nextIdFrom, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime, mockFileTimestamp } from '@/mocks/utils/date';
 
 const mockBackups: DbBackup[] = [
@@ -38,10 +38,27 @@ const mockBackups: DbBackup[] = [
     createdAt: '2025-06-02 08:30:00',
     updatedAt: '2025-06-02 08:30:03',
   },
+  {
+    id: 3,
+    name: 'cron-pg_dump-20250603_030000',
+    type: 'pg_dump',
+    fileId: null,
+    fileSize: null,
+    status: 'failed',
+    tables: null,
+    startedAt: '2025-06-03 03:00:00',
+    completedAt: '2025-06-03 03:00:01',
+    durationMs: 1200,
+    errorMessage: 'pg_dump: command not found',
+    createdBy: null,
+    createdByName: null,
+    createdAt: '2025-06-03 03:00:00',
+    updatedAt: '2025-06-03 03:00:01',
+  },
 ];
 
-export const dbBackupsHandlers = [
-  mock(dbBackupContract.list, ({ query, ok, paginate }) => {
+export const dbAdminBackupsHandlers = [
+  mock(dbAdminContract.backups, ({ query, ok, paginate }) => {
     let filtered = [...mockBackups];
     if (query.status) filtered = filtered.filter((b) => b.status === query.status);
     if (query.type) filtered = filtered.filter((b) => b.type === query.type);
@@ -49,7 +66,7 @@ export const dbBackupsHandlers = [
   }),
 
   // Demo 模式下备份即时完成：直接以 success 落列表，回执仍按契约返回 pending
-  mock(dbBackupContract.create, ({ body, ok }) => {
+  mock(dbAdminContract.createBackup, ({ body, ok }) => {
     const id = nextIdFrom(mockBackups);
     const now = mockDateTime();
     const backup: DbBackup = {
@@ -73,9 +90,10 @@ export const dbBackupsHandlers = [
     return ok({ id, name: backup.name, status: 'pending' }, '备份任务已创建（演示）');
   }),
 
-  mock(dbBackupContract.remove, ({ params, ok }) => {
+  mock(dbAdminContract.removeBackup, ({ params, ok }) => {
     const idx = mockBackups.findIndex((b) => b.id === params.id);
-    if (idx >= 0) mockBackups.splice(idx, 1);
+    if (idx === -1) return notFound('备份记录不存在');
+    mockBackups.splice(idx, 1);
     return ok(null, '已删除');
   }),
 ];

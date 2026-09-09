@@ -58,7 +58,7 @@ ALLOWED_ORIGINS=https://admin.example.com
 | 变量 | 用途 |
 | --- | --- |
 | `REQUEST_BODY_LIMIT` | 请求体大小上限，`0` 或未设置表示不启用限制；启用时至少要容纳一个分片（`files.chunkSizeMb`，最大 32 MB）加 multipart 开销，建议 ≥ 40 MB（41943040）；反向代理的 `client_max_body_size` 同理 |
-| `REQUEST_TIMEOUT_MS` | 请求超时，自动排除 `/api/ws`、`/api/files`、`/api/db-backups` 与 `/export` 接口 |
+| `REQUEST_TIMEOUT_MS` | 请求超时，自动排除 `/api/ws`、`/api/files`、`/api/db-admin` 与 `/export` 接口 |
 | `UPLOAD_TEMP_DIR` | 分片上传本地暂存根目录，默认 `storage/tmp/uploads`；多实例部署见下文「多实例与本地存储」 |
 | `TRUSTED_PROXY_CIDRS` | 仅信任指定代理的 `X-Forwarded-For` / `X-Real-IP` |
 | `REPORT_OUTBOUND_PRIVATE_ALLOWLIST` | 报表外部数据源访问私网的 allowlist |

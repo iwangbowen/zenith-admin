@@ -50,6 +50,12 @@ import {
   getSchemaDrift,
 } from '../../services/ops/db-admin-ops.service';
 import { getDbTerminalAvailability } from '../../services/ops/db-admin-terminal.service';
+import {
+  createDbBackup,
+  deleteDbBackup,
+  getDbBackupBeforeAudit,
+  listDbBackups,
+} from '../../services/ops/db-admin-backups.service';
 import { attachmentDisposition } from '../../lib/content-disposition';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -397,6 +403,30 @@ const terminalAvailabilityRoute = defineContractRoute(dbAdminContract.terminalAv
   handler: async (c) => c.json(okBody(await getDbTerminalAvailability()), 200),
 });
 
+// ─── 数据库备份 ───────────────────────────────────────────────────────────────
+
+const listBackupsRoute = defineContractRoute(dbAdminContract.backups, {
+  middleware: view,
+  handler: async (c) => c.json(okBody(await listDbBackups(c.req.valid('query'))), 200),
+});
+
+const createBackupRoute = defineContractRoute(dbAdminContract.createBackup, {
+  middleware: audited('system:db-admin:maintain', '创建数据库备份'),
+  handler: async (c) => c.json(okBody(await createDbBackup(c.req.valid('json')), '备份任务已创建'), 200),
+});
+
+const deleteBackupRoute = defineContractRoute(dbAdminContract.removeBackup, {
+  middleware: audited('system:db-admin:maintain', '删除数据库备份'),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getDbBackupBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    await deleteDbBackup(id);
+    setAuditAfterData(c, { id, deleted: true });
+    return c.json(okBody(null, '已删除'), 200);
+  },
+});
+
 router.openapiRoutes([
   listTablesRoute,
   overviewRoute,
@@ -434,6 +464,9 @@ router.openapiRoutes([
   objectsRoute,
   schemaDriftRoute,
   terminalAvailabilityRoute,
+  listBackupsRoute,
+  createBackupRoute,
+  deleteBackupRoute,
 ] as const);
 
 export default router;

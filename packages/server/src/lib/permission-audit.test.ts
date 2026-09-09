@@ -80,4 +80,13 @@ describe('权限清单对账（routes guard ↔ SEED_MENUS）', () => {
     expect(SEED_MENUS.some((menu) => [2550, 2551, 2552, 2553, 2554, 2560, 2561].includes(menu.id))).toBe(false);
     expect(SEED_MENUS.some((menu) => menu.permission?.startsWith('system:monitor:alert'))).toBe(false);
   });
+
+  it('数据库备份并入数据库管理页，不保留独立菜单与 system:db-backup:* 权限码', () => {
+    expect(SEED_MENUS).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 2370, path: '/system/db-admin', component: 'system/db-admin/DbAdminPage' }),
+    ]));
+    expect(SEED_MENUS.some((menu) => menu.id >= 2110 && menu.id <= 2113)).toBe(false);
+    expect(SEED_MENUS.some((menu) => menu.path === '/system/db-backups')).toBe(false);
+    expect(SEED_MENUS.some((menu) => menu.permission?.startsWith('system:db-backup:'))).toBe(false);
+  });
 });

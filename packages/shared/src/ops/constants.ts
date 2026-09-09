@@ -20,15 +20,33 @@ export type SslCertStatus = (typeof SSL_CERT_STATUSES)[number];
 export const SSL_CERT_DOWNLOAD_KINDS = ['cert', 'key'] as const;
 export type SslCertDownloadKind = (typeof SSL_CERT_DOWNLOAD_KINDS)[number];
 
-// ─── 数据库备份 ──────────────────────────────────────────────────────────────
+// ─── 数据库管理 ──────────────────────────────────────────────────────────────
 
+/** 数据库备份产物类型：pg_dump=完整 SQL（gzip） drizzle_export=逐表 JSON 逻辑导出 */
 export const DB_BACKUP_TYPES = ['pg_dump', 'drizzle_export'] as const;
 export type DbBackupType = (typeof DB_BACKUP_TYPES)[number];
 
+export const DB_BACKUP_TYPE_LABELS: Record<DbBackupType, string> = {
+  pg_dump: 'pg_dump',
+  drizzle_export: 'Drizzle 导出',
+};
+
+export const DB_BACKUP_TYPE_OPTIONS: Array<{ value: DbBackupType; label: string }> =
+  createLabelOptions(DB_BACKUP_TYPES, DB_BACKUP_TYPE_LABELS);
+
+/** 备份任务状态机：pending → running → success / failed */
 export const DB_BACKUP_STATUSES = ['pending', 'running', 'success', 'failed'] as const;
 export type DbBackupStatus = (typeof DB_BACKUP_STATUSES)[number];
 
-// ─── 数据库管理 ──────────────────────────────────────────────────────────────
+export const DB_BACKUP_STATUS_LABELS: Record<DbBackupStatus, string> = {
+  pending: '等待中',
+  running: '执行中',
+  success: '成功',
+  failed: '失败',
+};
+
+export const DB_BACKUP_STATUS_OPTIONS: Array<{ value: DbBackupStatus; label: string }> =
+  createLabelOptions(DB_BACKUP_STATUSES, DB_BACKUP_STATUS_LABELS);
 
 /** table=普通表 view=视图 matview=物化视图 */
 export const DB_ADMIN_TABLE_KINDS = ['table', 'view', 'matview'] as const;

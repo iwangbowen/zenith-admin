@@ -1,9 +1,16 @@
 import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
-import { dbAdminContract, type CreateDbQueryFavoriteInput, type DbAdminSqlExportMode } from '@zenith/shared/ops';
+import {
+  dbAdminContract,
+  type CreateDbQueryFavoriteInput,
+  type DbAdminSqlExportMode,
+  type DbBackupStatus,
+} from '@zenith/shared/ops';
 import { api, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type DbAdminHistoryParams = NonNullable<QueryOf<typeof dbAdminContract.history>>;
+
+export type DbBackupListParams = NonNullable<QueryOf<typeof dbAdminContract.backups>>;
 
 const tableParams = (schema: string, table: string) => ({ schema, name: table });
 
@@ -23,6 +30,8 @@ export const dbAdminKeys = {
   schemaDrift: contractKey(dbAdminContract.schemaDrift),
   favorites: contractKey(dbAdminContract.favorites),
   terminalAvailability: contractKey(dbAdminContract.terminalAvailability),
+  backupLists: contractKey(dbAdminContract.backups),
+  backupList: (params: DbBackupListParams) => contractKey(dbAdminContract.backups, { query: params }),
 };
 
 // ─── 只读查询 ─────────────────────────────────────────────────────────────────
@@ -211,6 +220,37 @@ export function useDbAdminRunMaintenance() {
   return useApiMutation(dbAdminContract.runMaintenance, {
     invalidate: (qc) => {
       void qc.invalidateQueries({ queryKey: dbAdminKeys.maintenance });
+    },
+  });
+}
+
+// ─── 数据库备份 ───────────────────────────────────────────────────────────────
+
+const DB_BACKUP_ACTIVE_STATUSES: ReadonlySet<DbBackupStatus> = new Set(['pending', 'running']);
+
+/** 备份任务在后台执行：面板可见且列表里仍有未完成记录时每 3 秒轮询，直到全部落到 success / failed */
+export function useDbBackups(params: DbBackupListParams, enabled = true) {
+  return useApiQuery(dbAdminContract.backups, { query: params }, {
+    enabled,
+    placeholderData: keepPreviousData,
+    refetchInterval: (query) =>
+      (enabled && query.state.data?.list.some((item) => DB_BACKUP_ACTIVE_STATUSES.has(item.status)) ? 3000 : false),
+  });
+}
+
+/** 创建只返回任务回执；新记录经列表失效回源，后续状态由轮询跟进 */
+export function useCreateDbBackup() {
+  return useApiMutation(dbAdminContract.createBackup, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.backupLists });
+    },
+  });
+}
+
+export function useDeleteDbBackup() {
+  return useApiMutation(dbAdminContract.removeBackup, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.backupLists });
     },
   });
 }

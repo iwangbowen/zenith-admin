@@ -271,10 +271,6 @@ export const SYSTEM_SCHEDULER_ALERT_FILTERS = ['all', 'alerted', 'unacked'] as c
 
 export type SystemSchedulerAlertFilter = (typeof SYSTEM_SCHEDULER_ALERT_FILTERS)[number];
 
-export const BACKUP_TYPES = ['pg_dump', 'drizzle_export'] as const;
-
-export const BACKUP_STATUSES = ['pending', 'running', 'success', 'failed'] as const;
-
 /** 内置「Zenith 助手」系统号 code（全局唯一、内置不可删、全员订阅） */
 export const SYSTEM_CHANNEL_CODE = 'system-assistant';
 

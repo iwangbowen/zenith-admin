@@ -23,6 +23,7 @@ import {
 } from '@douyinfe/semi-ui';
 import {
   Database,
+  DatabaseBackup,
   Table as TableIcon,
   Play,
   Download,
@@ -58,6 +59,7 @@ import { OverviewPanel, KindTag } from './OverviewPanel';
 import type { SqlConsoleHandle } from './SqlConsole';
 import { OpsPanel } from './OpsPanel';
 import { ObjectsPanel } from './ObjectsPanel';
+import { BackupsPanel } from './BackupsPanel';
 import { ImportModal } from './ImportModal';
 import {
   DataGrid,
@@ -129,7 +131,7 @@ const SYSTEM_TABLES = new Set([
 ]);
 const EMPTY_TABLES: TableItem[] = [];
 
-const VALID_TABS = new Set(['overview', 'browse', 'objects', 'console', 'ops', 'history', 'er']);
+const VALID_TABS = new Set(['overview', 'browse', 'objects', 'console', 'ops', 'backups', 'history', 'er']);
 
 export default function DbAdminPage() {
   const queryClient = useQueryClient();
@@ -1300,6 +1302,10 @@ export default function DbAdminPage() {
 
         <TabPane tab={<span><Server size={14} style={{ verticalAlign: -2, marginRight: 4 }} />运维</span>} itemKey="ops" style={{ height: '100%' }}>
           <OpsPanel canMaintain={canMaintain} active={activeTab === 'ops'} />
+        </TabPane>
+
+        <TabPane tab={<span><DatabaseBackup size={14} style={{ verticalAlign: -2, marginRight: 4 }} />备份</span>} itemKey="backups" style={{ height: '100%' }}>
+          <BackupsPanel canMaintain={canMaintain} active={activeTab === 'backups'} />
         </TabPane>
 
         <TabPane tab={<span><History size={14} style={{ verticalAlign: -2, marginRight: 4 }} />查询历史</span>} itemKey="history" style={{ height: '100%', overflow: 'auto' }}>

@@ -28,8 +28,8 @@ import { emailConfigHandlers } from './email-config';
 import { dashboardHandlers } from './dashboard';
 import { oauthHandlers } from './oauth';
 import { oauthConfigHandlers } from './oauth-config';
-import { dbBackupsHandlers } from './db-backups';
 import { dbAdminHandlers } from './db-admin';
+import { dbAdminBackupsHandlers } from './db-admin-backups';
 import { opsOverviewHandlers } from './ops-overview';
 import { opsHostHandlers } from './ops-hosts';
 import { hostFileHandlers } from './host-files';
@@ -174,8 +174,8 @@ export const handlers = [
   ...dashboardHandlers,
   ...oauthHandlers,
   ...oauthConfigHandlers,
-  ...dbBackupsHandlers,
   ...dbAdminHandlers,
+  ...dbAdminBackupsHandlers,
   ...opsOverviewHandlers,
   ...opsHostHandlers,
   ...hostFileHandlers,

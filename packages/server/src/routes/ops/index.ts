@@ -6,7 +6,6 @@ import {
   clientAppContract,
   clientDeviceContract,
   dbAdminContract,
-  dbBackupContract,
   dockerContract,
   firewallContract,
   hostFileContract,
@@ -41,7 +40,6 @@ import {
 import publicAppReleasesRoutes from './public-app-releases';
 import { adminPushDevicesRouter } from './push-devices';
 import dbAdminRoutes from './db-admin';
-import dbBackupsRoutes from './db-backups';
 import dockerRoutes from './docker';
 import firewallRoutes from './firewall';
 import hostFilesRoutes from './host-files';
@@ -69,7 +67,6 @@ export default defineRouteDomain({
   mounts: () => [
     [maintenanceContract.basePath, maintenanceRoutes],
     [sslCertificateContract.basePath, sslCertificatesRoutes, { feature: 'ops' }],
-    [dbBackupContract.basePath, dbBackupsRoutes, { feature: 'ops' }],
     [dbAdminContract.basePath, dbAdminRoutes, { feature: 'ops' }],
     ['/api/ws/terminal', createWsTerminalRoute(upgradeWebSocket), { feature: 'ops' }],
     ['/api/ws/terminal-monitor', createWsTerminalMonitorRoute(upgradeWebSocket), { feature: 'ops' }],

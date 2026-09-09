@@ -15,6 +15,13 @@
       "when": 1788879610058,
       "tag": "0001_extensions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788957414725,
+      "tag": "0002_db_backups_into_db_admin",
+      "breakpoints": true
     }
   ]
 }

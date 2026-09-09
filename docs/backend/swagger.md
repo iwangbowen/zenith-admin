@@ -92,7 +92,7 @@ OpenAPI tags 由各路由文件声明。代码中同时存在英文标签（如 
 | `AsyncTasks` / `TaskDemo` | 通用异步任务、任务类型策略、任务明细与演示任务 |
 | `ExportJobs` | 导出实体、导出任务、下载与下载日志 |
 | `Files` / `Business Files` | 文件上传、托管文件、业务附件 |
-| `DbAdmin` / `DbBackups` | 数据库管理、查询、备份 |
+| `DbAdmin` | 数据库管理、查询、运维与备份 |
 | `OperationLogs` / `LoginLogs` / `IpAccessLogs` | 审计、登录与 IP 访问日志 |
 | `Notifications` / `Announcements` / `Channels` / `Email*` / `Sms*` / `InApp*` | 通知公告、频道、邮件、短信与站内信 |
 | `Workflow*` | 流程定义、实例、任务、自动化、事件订阅、引擎运维 |

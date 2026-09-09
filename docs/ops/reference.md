@@ -25,7 +25,6 @@
 | 日志查看器 | `/api/log-viewer` |
 | 日志文件 | `/api/log-files` |
 | 数据库管理 | `/api/db-admin` |
-| 数据库备份 | `/api/db-backups` |
 | 防火墙 | `/api/firewall` |
 | Nginx 站点 | `/api/nginx-sites` |
 | SSL 证书 | `/api/ssl-certificates` |
@@ -58,7 +57,6 @@
 | SSL 证书 | `/system/ssl-certificates` | `system/ssl-certificates/SslCertificatesPage` | `system:ssl:view` |
 | 日志文件 | `/system/log-files` | `system/log-files/LogFilesPage` | `system:log:files` |
 | 数据库管理 | `/system/db-admin` | `system/db-admin/DbAdminPage` | `system:db-admin:view` |
-| 数据库备份 | `/system/db-backups` | `system/db-backups/DbBackupsPage` | `system:db-backup:list` |
 | 缓存管理 | `/system/cache` | `system/cache/CacheManagePage` | `system:cache:list` |
 | 数据保留 | `/system/retention` | `system/retention/RetentionPage` | `system:retention:view` |
 | 服务监控 | `/system/monitor` | `system/monitor/MonitorPage` | `system:monitor:view` |
@@ -68,7 +66,7 @@
 | 告警规则 | `/alerts/rules` | `alerts/rules/AlertRulesPage` | `alert:rule:list` |
 | 告警事件 | `/alerts/events` | `alerts/events/AlertEventsPage` | `alert:event:list` |
 
-按钮级权限包括 `system:process:kill`、`system:process:priority`、`system:docker:manage`、`system:service:manage`、`system:terminal:monitor`、`system:log:files:download`、`system:log:files:delete`、`system:firewall:manage`、`system:nginx:manage`、`system:nginx:reload`、`system:ssl:create`、`system:ssl:delete`、`system:db-admin:query`、`system:db-admin:export`、`system:db-admin:write`、`system:db-admin:maintain`、`system:db-admin:terminal`、`system:db-backup:create`、`system:db-backup:delete`、`system:cache:update`、`system:cache:delete`、`system:retention:edit`、`system:retention:run`、`system:app-release:create`、`system:app-release:update`、`system:app-release:delete`、`system:app-release:publish`、`alert:rule:create`、`alert:rule:update`、`alert:rule:delete`、`alert:rule:test`、`alert:event:handle`、`alert:event:export`。
+按钮级权限包括 `system:process:kill`、`system:process:priority`、`system:docker:manage`、`system:service:manage`、`system:terminal:monitor`、`system:log:files:download`、`system:log:files:delete`、`system:firewall:manage`、`system:nginx:manage`、`system:nginx:reload`、`system:ssl:create`、`system:ssl:delete`、`system:db-admin:query`、`system:db-admin:export`、`system:db-admin:write`、`system:db-admin:maintain`、`system:db-admin:terminal`、`system:cache:update`、`system:cache:delete`、`system:retention:edit`、`system:retention:run`、`system:app-release:create`、`system:app-release:update`、`system:app-release:delete`、`system:app-release:publish`、`alert:rule:create`、`alert:rule:update`、`alert:rule:delete`、`alert:rule:test`、`alert:event:handle`、`alert:event:export`。
 
 ## 核心数据表
 
@@ -79,7 +77,7 @@
 | `ssh_profiles` | 用户 SSH 配置档案 |
 | `db_admin_query_history` | 数据库管理台查询历史 |
 | `db_query_favorites` | SQL 收藏夹 |
-| `db_backups` | 数据库备份记录 |
+| `db_backups` | 数据库备份记录（数据库管理 → 备份 Tab 与定时任务 `databaseBackup` 写入） |
 | `ssl_certificates` | SSL 证书元数据 |
 | `maintenance_logs` | 维护模式记录 |
 | `retention_policies` | 数据保留策略运行期配置 |

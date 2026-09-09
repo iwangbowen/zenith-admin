@@ -87,7 +87,7 @@ export function createApp() {
     xFrameOptions: 'SAMEORIGIN',
   }));
   // 流式/二进制路由排除压缩：SSE 实时推送 + 文件下载不能被缓冲压缩
-  const COMPRESS_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/db-admin', '/api/log-files', '/api/log-viewer', '/api/monitor/stream', '/api/ai/conversations', '/api/ai/arena', '/api/ai/generations', '/api/public/app-releases'];
+  const COMPRESS_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-admin', '/api/log-files', '/api/log-viewer', '/api/monitor/stream', '/api/ai/conversations', '/api/ai/arena', '/api/ai/generations', '/api/public/app-releases'];
   app.use('*', except(
     (c) => COMPRESS_EXCLUDE_PREFIXES.some((p) => c.req.path.startsWith(p)),
     compress(),
@@ -183,8 +183,8 @@ export function createApp() {
   // config.requestTimeoutMs === 0 时不挂载
   if (config.requestTimeoutMs > 0) {
     const timeoutMs = config.requestTimeoutMs;
-    // 天生长耗时的路径前缀：WebSocket、文件上传/下载、数据库备份、客户端制品分发
-    const TIMEOUT_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/db-admin', '/api/log-files', '/api/log-viewer', '/api/monitor/stream', '/api/ai/conversations', '/api/ai/arena', '/api/ai/generations', '/api/public/app-releases', '/api/app-releases'];
+    // 天生长耗时的路径前缀：WebSocket、文件上传/下载、数据库管理（含备份）、客户端制品分发
+    const TIMEOUT_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-admin', '/api/log-files', '/api/log-viewer', '/api/monitor/stream', '/api/ai/conversations', '/api/ai/arena', '/api/ai/generations', '/api/public/app-releases', '/api/app-releases'];
 
     const timeoutMiddleware = timeout(
       timeoutMs,

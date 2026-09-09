@@ -295,14 +295,6 @@ export type CreateRegionInput = z.infer<typeof createRegionSchema>;
 
 export type UpdateRegionInput = z.infer<typeof updateRegionSchema>;
 
-// ─── 数据库备份 Schema ─────────────────────────────────────────────────────
-export const createBackupSchema = z.object({
-  type: z.enum(['pg_dump', 'drizzle_export']),
-  name: z.string().min(1, '备份名称不能为空').max(128).optional(),
-});
-
-export type CreateBackupInput = z.infer<typeof createBackupSchema>;
-
 // ─── 标签管理 Schema ─────────────────────────────────────────────────────────
 export const createTagSchema = z.object({
   name:        z.string().min(1, '标签名称不能为空').max(50),

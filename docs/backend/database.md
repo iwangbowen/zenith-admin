@@ -191,17 +191,21 @@ await runAsUser(adminId, async () => {
 
 ## 数据库备份
 
-系统内置数据库备份功能，路由在 `packages/server/src/routes/ops/db-backups.ts`，服务在 `services/ops/db-backups.service.ts` 与 `lib/db-backup.ts`。
+数据库备份是「数据库管理」页的「备份」Tab（`/system/db-admin?tab=backups`），接口挂在 `/api/db-admin/backups`
+（路由 `packages/server/src/routes/ops/db-admin.ts`，服务 `services/ops/db-admin-backups.service.ts`，
+执行器 `lib/db-backup.ts`），记录存放在 `db_backups` 表；定时任务 handler `databaseBackup` 复用同一执行器与表。
 
-### 菜单入口
+### 权限
 
-系统设置 → 数据库备份（路由 `/system/db-backups`，权限 `system:db-backup:list`）。
+查看备份列表复用 `system:db-admin:view`；创建 / 删除与活动连接、表维护等运维操作一样要求 `system:db-admin:maintain`。
 
 ### 操作说明
 
-- 立即备份：创建 `pg_dump` 完整 SQL 压缩备份或 Drizzle 逻辑 JSON 导出。
-- 删除备份：删除指定备份记录。
-- 文件归档：配置默认 `file_storage_configs` 后，备份文件保存到文件存储，并在 `db_backups.file_id` 记录 `managed_files.id`。
+- 立即备份：创建 `pg_dump` 完整 SQL 压缩备份或 Drizzle 逻辑 JSON 导出；接口立即返回 `pending` 回执，任务在后台执行，
+  列表在有未完成记录时自动轮询直到落为 `success` / `failed`。
+- 删除备份：仅删除备份记录；已归档到文件存储的备份文件不会一并删除。
+- 文件归档：配置默认 `file_storage_configs` 后，备份文件保存到文件存储，并在 `db_backups.file_id` 记录 `managed_files.id`，
+  列表中的「下载」经文件接口取回。
 
 ### 前置条件
 
