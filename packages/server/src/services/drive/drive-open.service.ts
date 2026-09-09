@@ -13,7 +13,7 @@ import { db } from '../../db';
 import { driveNodes, driveOpenAppGrants, driveSpaces, oauth2Clients, type DriveNodeRow, type DriveOpenAppGrantRow, type DriveSpaceRow } from '../../db/schema';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { readStoredFile, type StoredFileRange } from '../../lib/file-storage';
 import { buildListResult } from '../../lib/list-query';
 import { exactTenantCondition, getCreateTenantId, tenantCondition } from '../../lib/tenant';
@@ -125,14 +125,16 @@ async function loadGrantedSpaces(principal: OpenPrincipal): Promise<GrantedSpace
 }
 
 async function requireGrantedSpace(principal: OpenPrincipal, spaceId: number, minRole: DriveRole): Promise<GrantedSpace> {
-  const [row] = await db.select({ space: driveSpaces, grant: driveOpenAppGrants }).from(driveOpenAppGrants)
-    .innerJoin(driveSpaces, eq(driveSpaces.id, driveOpenAppGrants.spaceId))
-    .where(and(
-      eq(driveOpenAppGrants.clientId, principal.app.clientId), eq(driveOpenAppGrants.spaceId, spaceId),
-      eq(driveOpenAppGrants.status, 'enabled'), exactTenantCondition(driveOpenAppGrants.tenantId, principal.tenantId),
-      eq(driveSpaces.status, 'enabled'),
-    )).limit(1);
-  if (!row) throw new HTTPException(404, { message: '空间不存在或未授权给当前应用' });
+  const row = await requireFirstRow(
+    db.select({ space: driveSpaces, grant: driveOpenAppGrants }).from(driveOpenAppGrants)
+      .innerJoin(driveSpaces, eq(driveSpaces.id, driveOpenAppGrants.spaceId))
+      .where(and(
+        eq(driveOpenAppGrants.clientId, principal.app.clientId), eq(driveOpenAppGrants.spaceId, spaceId),
+        eq(driveOpenAppGrants.status, 'enabled'), exactTenantCondition(driveOpenAppGrants.tenantId, principal.tenantId),
+        eq(driveSpaces.status, 'enabled'),
+      )).limit(1),
+    '空间不存在或未授权给当前应用',
+  );
   if (!driveRoleAtLeast(row.grant.role, minRole)) throw new HTTPException(403, { message: '应用在该空间的授权角色不足' });
   return row;
 }
@@ -182,9 +184,11 @@ export async function listOpenDriveNodes(principal: OpenPrincipal, q: ListOpenDr
     ? undefined
     : q.parentId !== undefined ? eq(driveNodes.parentId, q.parentId) : isNull(driveNodes.parentId);
   if (q.parentId !== undefined) {
-    const [parent] = await db.select({ id: driveNodes.id }).from(driveNodes)
-      .where(and(eq(driveNodes.id, q.parentId), eq(driveNodes.spaceId, q.spaceId), eq(driveNodes.type, 'folder'), isNull(driveNodes.deletedAt))).limit(1);
-    if (!parent) throw new HTTPException(404, { message: '父文件夹不存在' });
+    await requireFirstRow(
+      db.select({ id: driveNodes.id }).from(driveNodes)
+        .where(and(eq(driveNodes.id, q.parentId), eq(driveNodes.spaceId, q.spaceId), eq(driveNodes.type, 'folder'), isNull(driveNodes.deletedAt))).limit(1),
+      '父文件夹不存在',
+    );
   }
   const where = buildWhere(
     eq(driveNodes.spaceId, q.spaceId),
@@ -209,8 +213,7 @@ export async function listOpenDriveNodes(principal: OpenPrincipal, q: ListOpenDr
 }
 
 async function requireOpenNode(principal: OpenPrincipal, id: number, minRole: DriveRole): Promise<{ node: DriveNodeRow; granted: GrantedSpace }> {
-  const [node] = await db.select().from(driveNodes).where(and(eq(driveNodes.id, id), isNull(driveNodes.deletedAt))).limit(1);
-  if (!node) throw new HTTPException(404, { message: '节点不存在' });
+  const node = await requireFirstRow(db.select().from(driveNodes).where(and(eq(driveNodes.id, id), isNull(driveNodes.deletedAt))).limit(1), '节点不存在');
   // 先按空间授权判定；未授权空间的节点对应用表现为不存在，避免探测
   let granted: GrantedSpace;
   try {

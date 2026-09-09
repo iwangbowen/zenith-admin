@@ -115,9 +115,30 @@ export const SEED_REPORT_DATASETS: ReportDataset[] = [
   },
 ];
 
+/**
+ * 已发布且无草稿改动的内置仪表盘：发布快照由当前定义派生（深拷贝，Demo 模式下编辑草稿不会连带改动快照）。
+ */
+function publishedDashboard(
+  id: number,
+  definition: Pick<ReportDashboard, 'name' | 'layout' | 'canvasLayout' | 'widgets' | 'filters' | 'config'> & { remark: string },
+): ReportDashboard {
+  return {
+    id,
+    ...definition,
+    status: 'enabled',
+    lifecycleStatus: 'published',
+    revision: 1,
+    publishedSnapshot: { ...structuredClone(definition), categoryId: null },
+    publishedAt: SEED_DATE,
+    publishedBy: 1,
+    publishedByName: '系统',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  };
+}
+
 export const SEED_REPORT_DASHBOARDS: ReportDashboard[] = [
-  {
-    id: 1,
+  publishedDashboard(1, {
     name: '示例仪表盘',
     layout: [
       { i: 'w1', x: 0, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
@@ -134,38 +155,9 @@ export const SEED_REPORT_DASHBOARDS: ReportDashboard[] = [
       { id: 'f_status', label: '菜单状态', type: 'select', defaultValue: '', optionSource: { kind: 'static', options: [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }] } },
     ],
     config: { theme: 'light' },
-    status: 'enabled',
-    lifecycleStatus: 'published',
-    revision: 1,
-    publishedSnapshot: {
-      name: '示例仪表盘',
-      layout: [
-        { i: 'w1', x: 0, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
-        { i: 'w2', x: 3, y: 0, w: 5, h: 6, minW: 2, minH: 2 },
-        { i: 'w3', x: 8, y: 0, w: 4, h: 6, minW: 2, minH: 2 },
-      ],
-      canvasLayout: [],
-      widgets: [
-        { i: 'w1', type: 'kpi', title: '菜单总数', datasetId: 1, options: { valueField: 'value', aggregate: 'sum', unit: '个' }, paramBindings: [{ filterId: 'f_status', param: 'mstatus' }] },
-        { i: 'w2', type: 'bar', title: '菜单类型分布', datasetId: 1, options: { categoryField: 'name', valueFields: ['value'] }, paramBindings: [{ filterId: 'f_status', param: 'mstatus' }] },
-        { i: 'w3', type: 'pie', title: '类型占比', datasetId: 1, options: { categoryField: 'name', valueFields: ['value'] }, paramBindings: [{ filterId: 'f_status', param: 'mstatus' }] },
-      ],
-      filters: [
-        { id: 'f_status', label: '菜单状态', type: 'select', defaultValue: '', optionSource: { kind: 'static', options: [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }] } },
-      ],
-      config: { theme: 'light' },
-      categoryId: null,
-      remark: '内置示例，可直接编辑或删除',
-    },
-    publishedAt: SEED_DATE,
-    publishedBy: 1,
-    publishedByName: '系统',
     remark: '内置示例，可直接编辑或删除',
-    createdAt: SEED_DATE,
-    updatedAt: SEED_DATE,
-  },
-  {
-    id: 2,
+  }),
+  publishedDashboard(2, {
     name: '运营数据大屏',
     layout: [
       { i: 's1', x: 0, y: 0, w: 4, h: 3 },
@@ -187,43 +179,9 @@ export const SEED_REPORT_DASHBOARDS: ReportDashboard[] = [
     ],
     filters: [],
     config: { theme: 'dark', layoutMode: 'canvas', screenConfig: { width: 1920, height: 1080, scaleMode: 'fit', background: '#0a1330' }, refreshInterval: 30 },
-    status: 'enabled',
-    lifecycleStatus: 'published',
-    revision: 1,
-    publishedSnapshot: {
-      name: '运营数据大屏',
-      layout: [
-        { i: 's1', x: 0, y: 0, w: 4, h: 3 },
-        { i: 's2', x: 0, y: 3, w: 4, h: 6 },
-        { i: 's3', x: 4, y: 3, w: 4, h: 6 },
-        { i: 's4', x: 8, y: 0, w: 4, h: 9 },
-      ],
-      canvasLayout: [
-        { i: 's1', x: 40, y: 40, w: 560, h: 180, z: 1 },
-        { i: 's2', x: 40, y: 250, w: 560, h: 360, z: 1 },
-        { i: 's3', x: 640, y: 250, w: 560, h: 360, z: 1 },
-        { i: 's4', x: 1240, y: 40, w: 640, h: 570, z: 1 },
-      ],
-      widgets: [
-        { i: 's1', type: 'flipper', title: '菜单总数', datasetId: 1, options: { valueField: 'value', aggregate: 'sum', unit: '个', flipDigits: 4 } },
-        { i: 's2', type: 'bar', title: '菜单类型分布', datasetId: 1, options: { categoryField: 'name', valueFields: ['value'] } },
-        { i: 's3', type: 'pie', title: '类型占比', datasetId: 1, options: { categoryField: 'name', valueFields: ['value'] } },
-        { i: 's4', type: 'scrollList', title: '部门用户榜', datasetId: 2, options: { categoryField: 'name', valueFields: ['value'], showRank: true, scrollSpeed: 1 } },
-      ],
-      filters: [],
-      config: { theme: 'dark', layoutMode: 'canvas', screenConfig: { width: 1920, height: 1080, scaleMode: 'fit', background: '#0a1330' }, refreshInterval: 30 },
-      categoryId: null,
-      remark: '内置大屏示例：自由画布 + 深色科技皮肤 + 翻牌器/滚动榜单',
-    },
-    publishedAt: SEED_DATE,
-    publishedBy: 1,
-    publishedByName: '系统',
     remark: '内置大屏示例：自由画布 + 深色科技皮肤 + 翻牌器/滚动榜单',
-    createdAt: SEED_DATE,
-    updatedAt: SEED_DATE,
-  },
-  {
-    id: 3,
+  }),
+  publishedDashboard(3, {
     name: '行为分析概览',
     layout: [
       { i: 'a1', x: 0, y: 0, w: 12, h: 6, minW: 4, minH: 3 },
@@ -238,36 +196,9 @@ export const SEED_REPORT_DASHBOARDS: ReportDashboard[] = [
     ],
     filters: [],
     config: { theme: 'light' },
-    status: 'enabled',
-    lifecycleStatus: 'published',
-    revision: 1,
-    publishedSnapshot: {
-      name: '行为分析概览',
-      layout: [
-        { i: 'a1', x: 0, y: 0, w: 12, h: 6, minW: 4, minH: 3 },
-        { i: 'a2', x: 0, y: 6, w: 6, h: 6, minW: 3, minH: 3 },
-        { i: 'a3', x: 6, y: 6, w: 6, h: 6, minW: 3, minH: 3 },
-      ],
-      canvasLayout: [],
-      widgets: [
-        { i: 'a1', type: 'line', title: '行为事件趋势', datasetId: 3, options: { categoryField: 'name', valueFields: ['value'] } },
-        { i: 'a2', type: 'bar', title: '事件来源分布', datasetId: 4, options: { categoryField: 'name', valueFields: ['value'] } },
-        { i: 'a3', type: 'line', title: '埋点质量趋势', datasetId: 5, options: { categoryField: 'name', valueFields: ['value'] } },
-      ],
-      filters: [],
-      config: { theme: 'light' },
-      categoryId: null,
-      remark: '行为中心阶段 1：内置看板，绑定事件趋势/来源分布/质量趋势 3 个数据集，直接获得分享/订阅能力',
-    },
-    publishedAt: SEED_DATE,
-    publishedBy: 1,
-    publishedByName: '系统',
     remark: '行为中心阶段 1：内置看板，绑定事件趋势/来源分布/质量趋势 3 个数据集，直接获得分享/订阅能力',
-    createdAt: SEED_DATE,
-    updatedAt: SEED_DATE,
-  },
+  }),
 ];
-
 export const SEED_REPORT_PRINT_TEMPLATES: ReportPrintTemplate[] = [
   {
     id: 1,
@@ -408,8 +339,24 @@ export const SEED_REPORT_ASSET_TEMPLATES: ReportAssetTemplate[] = [
   },
 ];
 
-export const SEED_REPORT_FILL_TEMPLATES: ReportFillTemplate[] = [
-  {
+/** 月度运营填报表单：已发布且无草稿改动，发布快照由同一份定义派生 */
+const monthlyOperationFillSchema: ReportFillTemplate['formSchema'] = {
+  fields: [
+    { key: 'period', label: '统计月份', type: 'date', dateFormat: 'YYYY-MM', required: true },
+    { key: 'department', label: '部门', type: 'text', required: true, maxLength: 64 },
+    { key: 'activeUsers', label: '活跃用户数', type: 'number', required: true, min: 0, precision: 0, unit: '人' },
+    { key: 'revenue', label: '营业收入', type: 'amount', required: true, min: 0, precision: 2, currency: 'CNY', unit: '元' },
+    { key: 'remark', label: '备注', type: 'textarea', required: false, maxLength: 500 },
+  ],
+  settings: {
+    description: '请按月填报运营数据。审核通过后数据会异步同步到报表数据集。',
+    submitButtonText: '提交审核',
+    labelPosition: 'left',
+    labelWidth: 96,
+  },
+};
+
+export const SEED_REPORT_FILL_TEMPLATES: ReportFillTemplate[] = [  {
     id: 1,
     tenantId: null,
     folderId: 7,
@@ -417,36 +364,10 @@ export const SEED_REPORT_FILL_TEMPLATES: ReportFillTemplate[] = [
     code: 'monthly_operation_fill',
     name: '月度运营数据填报',
     description: '示例填报模板：提交后进入人工审核，通过后同步到生成数据集。',
-    formSchema: {
-      fields: [
-        { key: 'period', label: '统计月份', type: 'date', dateFormat: 'YYYY-MM', required: true },
-        { key: 'department', label: '部门', type: 'text', required: true, maxLength: 64 },
-        { key: 'activeUsers', label: '活跃用户数', type: 'number', required: true, min: 0, precision: 0, unit: '人' },
-        { key: 'revenue', label: '营业收入', type: 'amount', required: true, min: 0, precision: 2, currency: 'CNY', unit: '元' },
-        { key: 'remark', label: '备注', type: 'textarea', required: false, maxLength: 500 },
-      ],
-      settings: {
-        description: '请按月填报运营数据。审核通过后数据会异步同步到报表数据集。',
-        submitButtonText: '提交审核',
-        labelPosition: 'left',
-        labelWidth: 96,
-      },
-    },
-    publishedSchema: {
-      fields: [
-        { key: 'period', label: '统计月份', type: 'date', dateFormat: 'YYYY-MM', required: true },
-        { key: 'department', label: '部门', type: 'text', required: true, maxLength: 64 },
-        { key: 'activeUsers', label: '活跃用户数', type: 'number', required: true, min: 0, precision: 0, unit: '人' },
-        { key: 'revenue', label: '营业收入', type: 'amount', required: true, min: 0, precision: 2, currency: 'CNY', unit: '元' },
-        { key: 'remark', label: '备注', type: 'textarea', required: false, maxLength: 500 },
-      ],
-      settings: {
-        description: '请按月填报运营数据。审核通过后数据会异步同步到报表数据集。',
-        submitButtonText: '提交审核',
-        labelPosition: 'left',
-        labelWidth: 96,
-      },
-    },
+    formSchema: monthlyOperationFillSchema,
+
+    publishedSchema: structuredClone(monthlyOperationFillSchema),
+
     publishedRevision: 1,
     workflowDefinitionId: null,
     needReview: true,

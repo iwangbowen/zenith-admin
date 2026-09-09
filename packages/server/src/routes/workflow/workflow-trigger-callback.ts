@@ -15,6 +15,7 @@ import { workflowTriggerCallbackContract, type WorkflowTriggerNodeConfig } from 
 import { db } from '../../db';
 import { workflowInstances, workflowTasks } from '../../db/schema';
 import { defineContractRoute } from '../../lib/contract-route';
+import { requireFirstRow } from '../../lib/db-assert';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { resumeTriggerTask } from '../../services/workflow/workflow-resume.service';
 import { assertWorkflowCallbackSignature, captureWorkflowCallbackRawBody, getWorkflowCallbackRawBody } from '../../lib/workflow-callback-security';
@@ -27,12 +28,10 @@ const callback = defineContractRoute(workflowTriggerCallbackContract.callback, {
     const { callbackId } = c.req.valid('param');
     const body = c.req.valid('json');
 
-    const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
-    if (!task) throw new HTTPException(404, { message: '回调任务不存在' });
+    const task = await requireFirstRow(db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1), '回调任务不存在');
     if (task.nodeType !== 'trigger') throw new HTTPException(400, { message: '该回调不属于触发器任务' });
 
-    const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-    if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+    const inst = await requireFirstRow(db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1), '流程实例不存在');
 
     const snapshot = inst.definitionSnapshot;
     const nodeCfg = snapshot?.flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;

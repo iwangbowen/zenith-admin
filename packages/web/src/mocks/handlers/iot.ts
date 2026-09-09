@@ -637,11 +637,7 @@ export const iotHandlers = [
   // ─── 告警记录 ────────────────────────────────────────────────────────────────
   mock(iotAlarmContract.list, ({ query, ok, paginate }) => {
     let list = [...mockIotAlarms];
-    if (query.keyword) {
-      const keyword = query.keyword;
-      list = list.filter((a) => a.ruleName.includes(keyword) || a.message.includes(keyword)
-        || (a.deviceName ?? '').includes(keyword) || (a.deviceSn ?? '').includes(keyword));
-    }
+    list = filterByKeyword(list, query.keyword, [(a) => a.ruleName, (a) => a.message, (a) => a.deviceName, (a) => a.deviceSn]);
     if (query.status) list = list.filter((a) => a.status === query.status);
     if (query.level) list = list.filter((a) => a.level === query.level);
     if (query.ruleType) list = list.filter((a) => a.ruleType === query.ruleType);

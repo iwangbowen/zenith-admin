@@ -3,6 +3,7 @@ import type { WorkflowTriggerExecution } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const mockWorkflowTriggerExecutions: WorkflowTriggerExecution[] = [
   {
@@ -72,7 +73,7 @@ export const workflowTriggerExecutionsHandlers = [
     const nodeKey = (query.nodeKey ?? '').trim();
     let list = [...mockWorkflowTriggerExecutions];
     if (query.instanceId) list = list.filter((item) => item.instanceId === query.instanceId);
-    if (nodeKey) list = list.filter((item) => item.nodeKey.includes(nodeKey));
+    list = filterByKeyword(list, nodeKey, [(item) => item.nodeKey]);
     if (query.status) list = list.filter((item) => item.status === query.status);
     list.sort((a, b) => b.id - a.id);
     return ok(paginate(list));

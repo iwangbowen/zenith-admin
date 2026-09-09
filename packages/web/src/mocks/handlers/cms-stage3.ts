@@ -110,7 +110,7 @@ export const cmsStage3Handlers = [
     if (siteId) rows = rows.filter((item) => item.siteIds.includes(siteId));
     if (targetType) rows = rows.filter((item) => item.targetType === targetType);
     if (taskType) rows = rows.filter((item) => item.taskType === taskType);
-    if (createdBy) rows = rows.filter((item) => (item.createdByName ?? '').toLowerCase().includes(createdBy));
+    rows = filterByKeyword(rows, createdBy, [(item) => item.createdByName], { caseInsensitive: true });
     if (status === 'active') rows = rows.filter((item) => ['pending', 'running'].includes(item.status));
     else if (status === 'terminal') rows = rows.filter((item) => isAsyncTaskTerminal(item.status));
     else if (status) rows = rows.filter((item) => item.status === status);

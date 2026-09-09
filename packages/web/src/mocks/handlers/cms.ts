@@ -60,6 +60,7 @@ import { mockCmsDistributionRules } from '../data/cms-stage5';
 import { createProgressingMockTask } from './async-tasks';
 import { submitMockCmsWidgetSourceRefresh } from './cms-widgets';
 import { mockDateTime, mockDate } from '../utils/date';
+import { filterByKeyword } from '@/mocks/utils/filter';
 
 type MockContent = CmsContent & { tagIds: number[]; deleted?: boolean };
 
@@ -318,7 +319,7 @@ export const cmsHandlers = [
   mock(cmsModelContract.list, ({ query, ok, paginate }) => {
     const { keyword } = query;
     let list = [...mockCmsModels];
-    if (keyword) list = list.filter((m) => m.name.includes(keyword) || m.code.includes(keyword));
+    list = filterByKeyword(list, keyword, [(m) => m.name, (m) => m.code]);
     return ok(paginate(list));
   }),
   mock(cmsModelContract.detail, ({ params, ok }) => {
@@ -445,7 +446,7 @@ export const cmsHandlers = [
     if (channelId) list = list.filter((c) => c.channelId === channelId);
     if (status) list = list.filter((c) => c.status === status);
     if (contentType) list = list.filter((c) => c.contentType === contentType);
-    if (keyword) list = list.filter((c) => c.title.includes(keyword) || (c.author ?? '').includes(keyword));
+    list = filterByKeyword(list, keyword, [(c) => c.title, (c) => c.author]);
     list = [...list].sort((a, b) => Number(b.isTop) - Number(a.isTop) || (b.topWeight ?? 0) - (a.topWeight ?? 0) || b.id - a.id);
     return ok(paginate(list.map((c) => ({ ...c, channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null }))));
   }),
@@ -703,7 +704,7 @@ export const cmsHandlers = [
   mock(cmsTagContract.list, ({ query, ok, paginate }) => {
     const { siteId, keyword } = query;
     let list = mockCmsTags.filter((t) => t.siteId === siteId);
-    if (keyword) list = list.filter((t) => t.name.includes(keyword) || t.slug.includes(keyword));
+    list = filterByKeyword(list, keyword, [(t) => t.name, (t) => t.slug]);
     return ok(paginate(list));
   }),
   mock(cmsTagContract.detail, ({ params, ok }) => {
@@ -739,7 +740,7 @@ export const cmsHandlers = [
   mock(cmsFriendLinkContract.groupList, ({ query, ok, paginate }) => {
     const { siteId, keyword } = query;
     let list = mockCmsFriendLinkGroups.filter((g) => g.siteId === siteId);
-    if (keyword) list = list.filter((g) => g.name.includes(keyword) || g.code.includes(keyword));
+    list = filterByKeyword(list, keyword, [(g) => g.name, (g) => g.code]);
     const withCount = list.map((g) => ({ ...g, linkCount: mockCmsFriendLinks.filter((l) => l.groupId === g.id).length }));
     return ok(paginate(withCount));
   }),
@@ -783,7 +784,7 @@ export const cmsHandlers = [
   mock(cmsFriendLinkContract.list, ({ query, ok, paginate }) => {
     const { siteId, keyword, groupId } = query;
     let list = mockCmsFriendLinks.filter((l) => l.siteId === siteId);
-    if (keyword) list = list.filter((l) => l.name.includes(keyword));
+    list = filterByKeyword(list, keyword, [(l) => l.name]);
     if (groupId !== undefined) {
       list = list.filter((l) => (groupId === 0 ? l.groupId == null : l.groupId === groupId));
     }
@@ -952,7 +953,7 @@ export const cmsP2Handlers = [
   mock(cmsSeoContract.redirectList, ({ query, ok, paginate }) => {
     const { siteId, keyword } = query;
     let list = mockCmsRedirects.filter((r) => r.siteId === siteId);
-    if (keyword) list = list.filter((r) => r.fromPath.includes(keyword));
+    list = filterByKeyword(list, keyword, [(r) => r.fromPath]);
     return ok(paginate(list));
   }),
   mock(cmsSeoContract.redirectCreate, ({ body, ok }) => {
@@ -985,7 +986,7 @@ export const cmsP2Handlers = [
   mock(cmsSeoContract.linkWordList, ({ query, ok, paginate }) => {
     const { siteId, keyword } = query;
     let list = mockCmsLinkWords.filter((w) => w.siteId === siteId);
-    if (keyword) list = list.filter((w) => w.keyword.includes(keyword));
+    list = filterByKeyword(list, keyword, [(w) => w.keyword]);
     return ok(paginate(list));
   }),
   mock(cmsSeoContract.linkWordCreate, ({ body, ok }) => {
@@ -1124,7 +1125,7 @@ export const cmsP2Handlers = [
     if (type) list = list.filter((r) => r.type === type);
     if (folderId === 0) list = list.filter((r) => r.folderId == null);
     else if (folderId) list = list.filter((r) => r.folderId === folderId);
-    if (keyword) list = list.filter((r) => r.name.includes(keyword));
+    list = filterByKeyword(list, keyword, [(r) => r.name]);
     const sorted = [...list].sort((a, b) => b.id - a.id)
       .map((r) => ({ ...r, refCount: collectMockResourceRefs(r).length }));
     return ok(paginate(sorted));
@@ -1309,7 +1310,7 @@ export const cmsP2Handlers = [
   mock(cmsFormContract.list, ({ query, ok, paginate }) => {
     const { siteId, keyword } = query;
     let list = mockCmsForms.filter((f) => f.siteId === siteId);
-    if (keyword) list = list.filter((f) => f.name.includes(keyword));
+    list = filterByKeyword(list, keyword, [(f) => f.name]);
     return ok(paginate(list.map((f) => redactMockForm({ ...f, submissionCount: mockCmsFormSubmissions.filter((s) => s.formId === f.id).length }))));
   }),
   mock(cmsFormContract.create, ({ body, ok }) => {
@@ -1364,7 +1365,7 @@ export const cmsP2Handlers = [
   mock(cmsSensitiveWordContract.list, ({ query, ok, paginate }) => {
     const { keyword } = query;
     let list = [...mockCmsSensitiveWords];
-    if (keyword) list = list.filter((w) => w.word.includes(keyword));
+    list = filterByKeyword(list, keyword, [(w) => w.word]);
     return ok(paginate(list));
   }),
   mock(cmsSensitiveWordContract.create, ({ body, ok }) => {
@@ -1394,7 +1395,7 @@ export const cmsP2Handlers = [
   mock(cmsErrorProneWordContract.list, ({ query, ok, paginate }) => {
     const { keyword, status } = query;
     let list = [...mockCmsErrorProneWords];
-    if (keyword) list = list.filter((w) => w.word.includes(keyword) || w.correction.includes(keyword));
+    list = filterByKeyword(list, keyword, [(w) => w.word, (w) => w.correction]);
     if (status) list = list.filter((w) => w.status === status);
     return ok(paginate(list));
   }),
@@ -1625,7 +1626,7 @@ export const cmsP3Handlers = [
   mock(cmsSearchContract.wordList, ({ query, ok, paginate }) => {
     const { siteId, keyword, type, groupName, status } = query;
     let list = mockCmsSearchWords.filter((word) => word.siteId === siteId);
-    if (keyword) list = list.filter((w) => w.word.includes(keyword));
+    list = filterByKeyword(list, keyword, [(w) => w.word]);
     if (type) list = list.filter((word) => word.type === type);
     if (groupName) list = list.filter((word) => word.groupName === groupName);
     if (status) list = list.filter((word) => word.status === status);
@@ -1695,7 +1696,7 @@ export const cmsP3Handlers = [
     const { siteId, groupId, keyword } = query;
     let list = mockCmsHotKeywords.filter((word) => word.siteId === siteId);
     if (groupId) list = list.filter((word) => word.groupId === groupId);
-    if (keyword) list = list.filter((word) => word.keyword.includes(keyword));
+    list = filterByKeyword(list, keyword, [(word) => word.keyword]);
     return ok(list);
   }),
   mock(cmsSearchContract.hotwordCreate, ({ body, ok }) => {
@@ -1892,7 +1893,7 @@ export const cmsP3Handlers = [
   mock(cmsCollectContract.list, ({ query, ok, paginate }) => {
     const { siteId, keyword } = query;
     let list = mockCmsCollectRules.filter((r) => r.siteId === siteId);
-    if (keyword) list = list.filter((r) => r.name.includes(keyword));
+    list = filterByKeyword(list, keyword, [(r) => r.name]);
     return ok(paginate(list));
   }),
   mock(cmsCollectContract.create, ({ body, ok }) => {
@@ -1944,7 +1945,7 @@ export const cmsP6Handlers = [
   mock(cmsPageContract.list, ({ query, ok, paginate }) => {
     const { siteId, keyword } = query;
     let list = mockCmsPages.filter((p) => p.siteId === siteId);
-    if (keyword) list = list.filter((p) => p.name.includes(keyword) || p.slug.includes(keyword));
+    list = filterByKeyword(list, keyword, [(p) => p.name, (p) => p.slug]);
     return ok(paginate(list));
   }),
   mock(cmsPageContract.create, ({ body, ok }) => {

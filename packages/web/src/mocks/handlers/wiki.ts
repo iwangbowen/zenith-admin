@@ -10,7 +10,7 @@ import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, filterByKeyword } from '@/mocks/utils/filter';
 import {
   getNextWikiCommentId, getNextWikiDocId, getNextWikiSpaceId, getNextWikiTagId,
   getNextWikiTemplateId, getNextWikiVersionId, mockWikiComments, mockWikiDocVersions,
@@ -149,10 +149,7 @@ const spaceHandlers = [
       memberCount: mockWikiSpaceMembers.filter((m) => m.spaceId === s.id).length,
       docCount: mockWikiDocs.filter((d) => d.spaceId === s.id && !d.deletedAt).length,
     }));
-    if (query.keyword) {
-      const keyword = query.keyword;
-      list = list.filter((s) => s.name.includes(keyword) || (s.description ?? '').includes(keyword));
-    }
+    list = filterByKeyword(list, query.keyword, [(s) => s.name, (s) => s.description]);
     if (query.visibility) list = list.filter((s) => s.visibility === query.visibility);
     if (query.status) list = list.filter((s) => s.status === query.status);
     return ok(paginate(list));
@@ -269,21 +266,21 @@ const docHandlers = [
   mock(wikiDocContract.favorites, ({ query, ok, paginate }) => {
     const { keyword } = query;
     let list = mockWikiDocs.filter((d) => mockWikiFavoriteDocIds.has(d.id) && !d.deletedAt);
-    if (keyword) list = list.filter((d) => d.title.includes(keyword));
+    list = filterByKeyword(list, keyword, [(d) => d.title]);
     return ok(paginate(list.map(toListDoc)));
   }),
 
   mock(wikiDocContract.recycle, ({ query, ok, paginate }) => {
     const { keyword } = query;
     let list = mockWikiDocs.filter((d) => d.deletedAt);
-    if (keyword) list = list.filter((d) => d.title.includes(keyword));
+    list = filterByKeyword(list, keyword, [(d) => d.title]);
     return ok(paginate(list.map(toListDoc)));
   }),
 
   mock(wikiDocContract.list, ({ query, ok, paginate }) => {
     const { keyword, status, spaceId, tagId, mine, submitted } = query;
     let list = mockWikiDocs.filter((d) => !d.deletedAt);
-    if (keyword) list = list.filter((d) => d.title.includes(keyword) || (d.summary ?? '').includes(keyword) || d.content.includes(keyword));
+    list = filterByKeyword(list, keyword, [(d) => d.title, (d) => d.summary, (d) => d.content]);
     if (status) list = list.filter((d) => d.status === status);
     if (spaceId !== undefined) list = list.filter((d) => d.spaceId === spaceId);
     if (tagId !== undefined) list = list.filter((d) => d.tagIds.includes(tagId));
@@ -512,10 +509,7 @@ const templateHandlers = [
 
   mock(wikiTemplateContract.list, ({ query, ok, paginate }) => {
     let list = [...mockWikiTemplates];
-    if (query.keyword) {
-      const keyword = query.keyword;
-      list = list.filter((t) => t.name.includes(keyword) || (t.description ?? '').includes(keyword));
-    }
+    list = filterByKeyword(list, query.keyword, [(t) => t.name, (t) => t.description]);
     if (query.status) list = list.filter((t) => t.status === query.status);
     return ok(paginate(list));
   }),
@@ -562,7 +556,7 @@ const tagHandlers = [
       ...t,
       docCount: mockWikiDocs.filter((d) => !d.deletedAt && d.tagIds.includes(t.id)).length,
     }));
-    if (keyword) list = list.filter((t) => t.name.includes(keyword));
+    list = filterByKeyword(list, keyword, [(t) => t.name]);
     return ok(paginate(list));
   }),
 
@@ -617,7 +611,7 @@ const commentHandlers = [
       ...c,
       docTitle: mockWikiDocs.find((d) => d.id === c.docId)?.title ?? '',
     }));
-    if (keyword) list = list.filter((c) => c.content.includes(keyword));
+    list = filterByKeyword(list, keyword, [(c) => c.content]);
     if (status) list = list.filter((c) => c.status === status);
     if (docId !== undefined) list = list.filter((c) => c.docId === docId);
     return ok(paginate(list.sort((a, b) => b.id - a.id)));

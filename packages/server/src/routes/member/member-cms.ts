@@ -3,11 +3,11 @@
  * 全部按 currentMemberId 过滤防越权；提交走 CMS 统一审核管道。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { HTTPException } from 'hono/http-exception';
 import { memberCmsContract } from '@zenith/shared/cms';
 import { memberAuthMiddleware } from '../../middleware/member-auth';
 import { idempotencyGuard } from '../../middleware/idempotency';
 import { defineContractRoute } from '../../lib/contract-route';
+import { requireRow } from '../../lib/db-assert';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listContributableChannels, listMyContributions, getMyContribution,
@@ -196,8 +196,7 @@ const deleteMyCommentRoute = defineContractRoute(memberCmsContract.removeComment
 const interactionSubmitRoute = defineContractRoute(memberCmsContract.submitInteraction, {
   middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 10 })],
   handler: async (c) => {
-    const interaction = await getPublicCmsInteractionById(c.req.valid('param').id, c.req.valid('query').siteId);
-    if (!interaction) throw new HTTPException(404, { message: '互动问卷不存在' });
+    const interaction = requireRow(await getPublicCmsInteractionById(c.req.valid('param').id, c.req.valid('query').siteId), '互动问卷不存在');
     const result = await submitCmsInteraction(interaction, c.req.valid('json'), {
       memberId: currentMemberId(),
       ip: getClientIp(c),

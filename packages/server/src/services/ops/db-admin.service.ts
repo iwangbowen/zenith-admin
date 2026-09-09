@@ -20,7 +20,7 @@ import type { DbExecutor } from '../../db/types';
 import { dbAdminQueryHistory, dbQueryFavorites } from '../../db/schema';
 import { currentUserId } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
-import { requireFirstRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { applyReadonlyTransactionGuards } from '../../lib/db-readonly-role';
@@ -777,8 +777,7 @@ export async function updateTableRow(
       WHERE ${sql.join(wheres, sql.raw(' AND '))}
       RETURNING *
     `);
-    const row = (updated as unknown as Array<Record<string, unknown>>)[0];
-    if (!row) throw new HTTPException(404, { message: '记录不存在或未更新' });
+    const row = requireRow((updated as unknown as Array<Record<string, unknown>>)[0], '记录不存在或未更新');
     return serializeRow(row);
   } catch (err) {
     if (err instanceof HTTPException) throw err;

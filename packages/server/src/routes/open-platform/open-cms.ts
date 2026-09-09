@@ -11,6 +11,7 @@ import { HTTPException } from 'hono/http-exception';
 import { CMS_OPEN_SYNC_PAGE_SIZE_MAX, openCmsContract } from '@zenith/shared/cms';
 import { contractOperations } from '@zenith/shared/core';
 import { defineContractRoute } from '../../lib/contract-route';
+import { requireRow } from '../../lib/db-assert';
 import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import { decodeCmsOpenCursor, OpenQueryError, parseCmsOpenIncludes, parseCmsOpenQuery, parsePositiveInteger } from '../../lib/open-query';
 import { idempotencyGuard } from '../../middleware/idempotency';
@@ -49,8 +50,7 @@ function clientIdOf(c: Context): string {
 }
 
 async function requireSite(siteCode: string): Promise<CmsSiteRow> {
-  const site = await resolveSiteByCode(siteCode);
-  if (!site) throw new HTTPException(404, { message: `站点标识「${siteCode}」不存在` });
+  const site = requireRow(await resolveSiteByCode(siteCode), `站点标识「${siteCode}」不存在`);
   if (site.status !== 'enabled') throw new HTTPException(404, { message: '站点已停用' });
   return site;
 }

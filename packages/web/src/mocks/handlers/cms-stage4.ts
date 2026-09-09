@@ -745,7 +745,7 @@ export const cmsStage4Handlers = [
     const { siteId, subjectType, subjectKeyword } = query;
     let list = mockCmsSubscriptions.filter((item) => item.siteId === siteId && item.active);
     if (subjectType) list = list.filter((item) => item.subjectType === subjectType);
-    if (subjectKeyword) list = list.filter((item) => item.subjectLabel.includes(subjectKeyword));
+    list = filterByKeyword(list, subjectKeyword, [(item) => item.subjectLabel]);
     return ok(paginate(list));
   }),
 

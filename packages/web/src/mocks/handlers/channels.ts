@@ -527,7 +527,7 @@ export const channelsHandlers = [
     if (query.assignee === 'mine') list = list.filter((c) => c.assigneeId === MOCK_CURRENT_USER_ID);
     else if (query.assignee === 'unassigned') list = list.filter((c) => c.assigneeId == null);
     if (query.tag) list = list.filter((c) => c.tags.includes(query.tag!));
-    if (fKeyword) list = list.filter((c) => c.userName.toLowerCase().includes(fKeyword) || c.lastMessage.toLowerCase().includes(fKeyword));
+    list = filterByKeyword(list, fKeyword, [(c) => c.userName, (c) => c.lastMessage], { caseInsensitive: true });
     return ok(list);
   }),
 

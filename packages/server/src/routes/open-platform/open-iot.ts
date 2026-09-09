@@ -7,9 +7,9 @@
  *   - iot:write 服务调用指令 / 期望属性下发
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { HTTPException } from 'hono/http-exception';
 import { openIotContract } from '@zenith/shared/iot';
 import { defineContractRoute } from '../../lib/contract-route';
+import { requireRow } from '../../lib/db-assert';
 import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import { requireOpenScope } from '../../middleware/open-gateway';
 import {
@@ -30,9 +30,7 @@ const OPEN_IOT_SCOPES = {
 const deviceNotFound = { 404: { content: jsonContent(ErrorResponse), description: '设备不存在' } } as const;
 
 async function requireDevice(sn: string): Promise<IotDeviceRow> {
-  const device = await findOpenIotDeviceBySn(sn);
-  if (!device) throw new HTTPException(404, { message: `设备「${sn}」不存在` });
-  return device;
+  return requireRow(await findOpenIotDeviceBySn(sn), `设备「${sn}」不存在`);
 }
 
 // ─── 设备查询（iot:read）─────────────────────────────────────────────────────

@@ -1,11 +1,11 @@
 import { OpenAPIHono, z } from '@hono/zod-openapi';
-import { HTTPException } from 'hono/http-exception';
 import { ANALYTICS_SITE_KEY_HEADER, analyticsContract } from '@zenith/shared/analytics';
 import { authMiddleware } from '../../middleware/auth';
 import { optionalAuthMiddleware } from '../../middleware/optional-auth';
 import { guard } from '../../middleware/guard';
 import { namedRateLimit } from '../../middleware/rate-limit';
 import { defineContractRoute } from '../../lib/contract-route';
+import { requireRow } from '../../lib/db-assert';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getClientIp } from '../../lib/request-helpers';
 import { parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
@@ -199,8 +199,7 @@ const eventListRoute = defineContractRoute(analyticsContract.events, {
 const eventDetailRoute = defineContractRoute(analyticsContract.eventDetail, {
   middleware: manage,
   handler: async (c) => {
-    const detail = await getEventDetail(c.req.valid('param').id);
-    if (!detail) throw new HTTPException(404, { message: '事件不存在' });
+    const detail = requireRow(await getEventDetail(c.req.valid('param').id), '事件不存在');
     return c.json(okBody(detail), 200);
   },
 });
