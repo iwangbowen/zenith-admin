@@ -5,7 +5,7 @@
 import type { ReactNode } from 'react';
 import { Space } from '@douyinfe/semi-ui';
 import dayjs from 'dayjs';
-import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFormFieldOptionItem, WorkflowFormFieldCompareRule, WorkflowFormCascaderNode } from '@zenith/shared/workflow';
+import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFormFieldOptionItem, WorkflowFormCascaderNode } from '@zenith/shared/workflow';
 
 export const PHONE_REGEX = /^1[3-9]\d{9}$/;
 export const EMAIL_REGEX = /^[\w.+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
@@ -115,26 +115,3 @@ export function optionLabelNode(opt: DisplayOption): ReactNode {
     </Space>
   );
 }
-
-// ─── 跨字段比较校验 ──────────────────────────────────────────────────
-export function evalCompare(op: WorkflowFormFieldCompareRule['operator'], a: unknown, b: unknown, isDate: boolean): boolean {
-  if (a === null || a === undefined || a === '' || b === null || b === undefined || b === '') return true;
-  if (Array.isArray(a) || Array.isArray(b)) return true;
-  let x: number; let y: number;
-  if (isDate) { x = dayjs(a as string).valueOf(); y = dayjs(b as string).valueOf(); }
-  else { x = Number(a); y = Number(b); }
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return true;
-  switch (op) {
-    case 'gt': return x > y;
-    case 'gte': return x >= y;
-    case 'lt': return x < y;
-    case 'lte': return x <= y;
-    case 'eq': return x === y;
-    case 'neq': return x !== y;
-    default: return true;
-  }
-}
-
-export const COMPARE_OP_TEXT: Record<WorkflowFormFieldCompareRule['operator'], string> = {
-  gt: '大于', gte: '不小于', lt: '小于', lte: '不大于', eq: '等于', neq: '不等于',
-};

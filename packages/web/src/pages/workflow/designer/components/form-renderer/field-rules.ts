@@ -3,9 +3,8 @@
  * 规则对象直接交给 Semi Form 字段的 `rules`，validator 闭包捕获调用时的表单值快照。
  */
 import type { WorkflowFormField } from '@zenith/shared/workflow';
-import { evalWorkflowFieldRuleGroup as evalRuleGroup, isWorkflowFieldVisible as isFieldVisible } from '@zenith/shared/workflow';
+import { evalWorkflowCompareRule, evalWorkflowFieldRuleGroup as evalRuleGroup, isWorkflowFieldVisible as isFieldVisible, WORKFLOW_COMPARE_OP_TEXT } from '@zenith/shared/workflow';
 import { evalFormula } from '../../form-formula';
-import { COMPARE_OP_TEXT, evalCompare } from './field-utils';
 
 export type FieldRule = Record<string, unknown>;
 
@@ -46,10 +45,10 @@ export function buildFieldRules(field: WorkflowFormField, values: Record<string,
   if (field.compareRules?.length) {
     const isDateField = field.type === 'date' || field.type === 'dateRange';
     for (const cr of field.compareRules) {
-      const message = cr.message || `需${COMPARE_OP_TEXT[cr.operator]}目标字段`;
+      const message = cr.message || `需${WORKFLOW_COMPARE_OP_TEXT[cr.operator]}目标字段`;
       const validator = (_r: unknown, value: unknown, _cb: unknown, source?: Record<string, unknown>) => {
         const other = source && typeof source === 'object' && cr.field in source ? source[cr.field] : values[cr.field];
-        return evalCompare(cr.operator, value, other, isDateField);
+        return evalWorkflowCompareRule(cr.operator, value, other, isDateField);
       };
       baseRules.push({ validator, message });
       numberRules.push({ validator, message });

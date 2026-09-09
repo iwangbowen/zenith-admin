@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import { evalFormula } from './formula';
 import type { WorkflowFieldPermission, WorkflowFieldVisibilityCondition, WorkflowFieldVisibilityRule, WorkflowFieldVisibilityRuleGroup, WorkflowFormField, WorkflowFormFieldCompareRule } from './types';
 
@@ -126,17 +127,24 @@ export interface WorkflowFormValidationError {
 
 const toNumber = (v: unknown): number => (typeof v === 'number' ? v : Number(v));
 
-/** 日期比较用时间戳（无效返回 NaN）；数字比较直接 Number */
+/**
+ * 日期比较用时间戳（无效返回 NaN）；数字比较直接 Number。
+ * 日期统一经 dayjs 按本地时区解析：`YYYY-MM-DD` 与 `YYYY-MM-DD HH:mm:ss` 混用时才不会差出一个时区偏移
+ * （`new Date('2026-08-01')` 按 UTC、`new Date('2026-08-01 08:00:00')` 按本地，两者不可直接比较）。
+ */
 const toComparable = (v: unknown, isDate: boolean): number => {
   if (isDate) {
-    const t = new Date(String(v)).getTime();
+    const t = dayjs(v as string | number | Date).valueOf();
     return Number.isFinite(t) ? t : NaN;
   }
   return toNumber(v);
 };
 
-/** 跨字段比较（与前端 evalCompare 同语义：空值/数组/不可比较时放行） */
-function evalCompareRule(op: WorkflowFormFieldCompareRule['operator'], a: unknown, b: unknown, isDate: boolean): boolean {
+/**
+ * 跨字段比较规则求值：前端实时校验与服务端提交校验共用同一实现。
+ * 空值 / 数组 / 不可比较的值一律放行（由必填与类型校验负责），只有两侧都能比较时才判定。
+ */
+export function evalWorkflowCompareRule(op: WorkflowFormFieldCompareRule['operator'], a: unknown, b: unknown, isDate: boolean): boolean {
   if (a === null || a === undefined || a === '' || b === null || b === undefined || b === '') return true;
   if (Array.isArray(a) || Array.isArray(b)) return true;
   const x = toComparable(a, isDate);
@@ -153,7 +161,8 @@ function evalCompareRule(op: WorkflowFormFieldCompareRule['operator'], a: unknow
   }
 }
 
-const COMPARE_OP_TEXT: Record<WorkflowFormFieldCompareRule['operator'], string> = {
+/** 比较算子文案（默认错误提示「需{文案}目标字段」），与 core 的 BASIC_COMPARISON_OPERATOR_LABELS 措辞一致 */
+export const WORKFLOW_COMPARE_OP_TEXT: Record<WorkflowFormFieldCompareRule['operator'], string> = {
   gt: '大于', gte: '大于等于', lt: '小于', lte: '小于等于', eq: '等于', neq: '不等于',
 };
 
@@ -219,8 +228,8 @@ function validateScalarField(
   if (f.compareRules?.length) {
     const isDate = f.type === 'date' || f.type === 'dateRange';
     for (const cr of f.compareRules) {
-      if (!evalCompareRule(cr.operator, value, values[cr.field], isDate)) {
-        push('compare', cr.message ? `${label}：${cr.message}` : `${label}需${COMPARE_OP_TEXT[cr.operator]}目标字段`);
+      if (!evalWorkflowCompareRule(cr.operator, value, values[cr.field], isDate)) {
+        push('compare', cr.message ? `${label}：${cr.message}` : `${label}需${WORKFLOW_COMPARE_OP_TEXT[cr.operator]}目标字段`);
       }
     }
   }
