@@ -16,7 +16,7 @@ import { assertSafeWorkflowUrl, workflowHttp } from '../../lib/workflow-outbound
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
 import type { WorkflowDataSourceRow } from '../../db/schema';
 import type { WorkflowDataSource, WorkflowDataSourceOption, CreateWorkflowDataSourceInput, UpdateWorkflowDataSourceInput } from '@zenith/shared/workflow';
-import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
+import { SECRET_PLACEHOLDER, getByPath } from '@zenith/shared/core';
 
 const OPTIONS_CACHE_TTL = 30_000;
 const optionsCache = new Map<string, { data: WorkflowDataSourceOption[]; expire: number }>();
@@ -159,14 +159,6 @@ export async function deleteDataSource(id: number): Promise<void> {
   rawItemsCache.clear();
 }
 
-function navigatePath(json: unknown, path?: string | null): unknown {
-  if (!path) return json;
-  return path.split('.').reduce<unknown>(
-    (acc, key) => (acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[key.trim()] : undefined),
-    json,
-  );
-}
-
 /** 代理拉取数据源原始记录列表（带 30s 缓存），选项与记录回填共用 */
 async function fetchDataSourceRawItems(id: number, keyword?: string): Promise<Array<Record<string, unknown>>> {
   const cacheKey = `raw:${id}:${keyword ?? ''}`;
@@ -199,7 +191,7 @@ async function fetchDataSourceRawItems(id: number, keyword?: string): Promise<Ar
     throw new HTTPException(502, { message: '数据源请求失败，请检查 URL 与网络' });
   }
 
-  const arr = navigatePath(json, src.itemsPath);
+  const arr = getByPath(json, src.itemsPath);
   if (!Array.isArray(arr)) throw new HTTPException(502, { message: '数据源返回结构不是数组，请检查「数组路径」配置' });
   const items = arr.map((item) => (item ?? {}) as Record<string, unknown>);
   rawItemsCache.set(cacheKey, { data: items, expire: Date.now() + OPTIONS_CACHE_TTL });

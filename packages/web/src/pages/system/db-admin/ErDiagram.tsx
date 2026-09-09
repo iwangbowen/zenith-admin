@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import {
   Background,
   Controls,
@@ -6,8 +6,6 @@ import {
   MarkerType,
   Handle,
   Position,
-  useNodesState,
-  useEdgesState,
   useReactFlow,
   ReactFlowProvider,
   type Node as RFNode,
@@ -19,6 +17,7 @@ import { AutoComplete, Button, Switch, Space, Tooltip, Toast } from '@douyinfe/s
 import { Download, Search } from 'lucide-react';
 import type { DbAdminErColumn, DbAdminErDiagramFk, DbAdminErSchema, DbAdminErTable } from '@zenith/shared/ops';
 import { ThemedReactFlow } from '@/components/ThemedReactFlow';
+import { useGraphSelectionHighlight } from '@/hooks/useGraphSelectionHighlight';
 
 export type ErColumn = DbAdminErColumn;
 export type ErTable = DbAdminErTable;
@@ -219,7 +218,6 @@ function layoutWithDagre(nodes: RFNode[], edges: RFEdge[]): RFNode[] {
 }
 
 function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hideIsolated, setHideIsolated] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -300,55 +298,18 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
 
   const laidOutNodes = useMemo(() => layoutWithDagre(baseNodes, baseEdges), [baseNodes, baseEdges]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>(laidOutNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>(baseEdges);
-
-  useEffect(() => {
-    setNodes(laidOutNodes);
-    setEdges(baseEdges);
-    setSelectedId(null);
-  }, [laidOutNodes, baseEdges, setNodes, setEdges]);
-
-  useEffect(() => {
-    if (!selectedId) {
-      setNodes((ns) => ns.map((n) => ({ ...n, data: { ...(n.data as TableNodeData), dimmed: false } })));
-      setEdges((es) => es.map((e) => ({ ...e, style: { ...e.style, opacity: 1, strokeWidth: 1.2 } })));
-      return;
-    }
-    const related = new Set<string>([selectedId]);
-    const relatedEdges = new Set<string>();
-    baseEdges.forEach((e) => {
-      if (e.source === selectedId || e.target === selectedId) {
-        related.add(e.source);
-        related.add(e.target);
-        relatedEdges.add(e.id);
-      }
+  const { setSelectedId, nodes, edges, onNodesChange, onEdgesChange, handleNodeClick, handlePaneClick } =
+    useGraphSelectionHighlight<TableNodeData>(laidOutNodes, baseEdges, {
+      edgeStyle: (state) => (
+        state === 'related' ? { opacity: 1, strokeWidth: 2 }
+          : state === 'unrelated' ? { opacity: 0.1, strokeWidth: 1 }
+            : { opacity: 1, strokeWidth: 1.2 }
+      ),
     });
-    setNodes((ns) => ns.map((n) => ({
-      ...n,
-      data: { ...(n.data as TableNodeData), dimmed: !related.has(n.id) },
-    })));
-    setEdges((es) => es.map((e) => ({
-      ...e,
-      style: {
-        ...e.style,
-        opacity: relatedEdges.has(e.id) ? 1 : 0.1,
-        strokeWidth: relatedEdges.has(e.id) ? 2 : 1,
-      },
-    })));
-  }, [selectedId, baseEdges, setNodes, setEdges]);
-
-  const handleNodeClick = useCallback((_: unknown, node: RFNode) => {
-    setSelectedId((prev) => (prev === node.id ? null : node.id));
-  }, []);
 
   const handleNodeDoubleClick = useCallback((_: unknown, node: RFNode) => {
     onNodeDoubleClick?.(node.id);
   }, [onNodeDoubleClick]);
-
-  const handlePaneClick = useCallback(() => {
-    setSelectedId(null);
-  }, []);
 
   const handleSearchSelect = useCallback((value: string | number | Record<string, unknown>) => {
     const v = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
@@ -364,7 +325,7 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
     setTimeout(() => {
       rf.fitView({ nodes: [{ id: tableId }], duration: 400, maxZoom: 1.2, padding: 0.35 });
     }, 50);
-  }, [nodes, rf]);
+  }, [nodes, rf, setSelectedId]);
 
   const handleExportPng = useCallback(async () => {
     if (nodes.length === 0) {

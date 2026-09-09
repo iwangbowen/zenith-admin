@@ -24,6 +24,21 @@ export async function lockCmsSiteForMutation(tx: DbTransaction, siteId: number):
   return requireRow(site, '站点不存在');
 }
 
+/**
+ * 批量写内容前锁定所涉及的全部站点：按站点 id **升序**逐个加锁（固定顺序避免并发批量操作互相死锁），
+ * 返回 siteId → 站点行，供后续 outbox 入队读取站点配置；已在 `into` 中的站点不重复加锁。
+ */
+export async function lockCmsSitesForRows(
+  tx: DbTransaction,
+  rows: ReadonlyArray<{ siteId: number }>,
+  into: Map<number, CmsSiteRow> = new Map(),
+): Promise<Map<number, CmsSiteRow>> {
+  for (const siteId of [...new Set(rows.map((row) => row.siteId))].sort((a, b) => a - b)) {
+    if (!into.has(siteId)) into.set(siteId, await lockCmsSiteForMutation(tx, siteId));
+  }
+  return into;
+}
+
 export async function bumpCmsPublicRevision(executor: DbExecutor, siteId: number): Promise<number> {
   const [site] = await executor.update(cmsSites).set({
     publicRevision: sql`${cmsSites.publicRevision} + 1`,

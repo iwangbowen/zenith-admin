@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Button, Spin, Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { AvatarCropperModal } from '@/components/AvatarCropperModal';
 import { PresetAvatarPickerModal } from '@/components/PresetAvatarPickerModal';
 import { userContract, type User } from '@zenith/shared/identity';
-import { fileContract } from '@zenith/shared/platform';
 import { useApiMutation } from '@/lib/contract-query';
+import { useAvatarCropUpload } from '@/hooks/useAvatarCropUpload';
 import { UserAvatar } from '@/components/UserAvatar';
 import { confirmDelete } from '@/utils/confirm';
 
@@ -17,42 +17,23 @@ interface UserAvatarModalProps {
 }
 
 export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvatarModalProps) {
-  const avatarInputRef = useRef<HTMLInputElement>(null);
-
-  const [cropFile, setCropFile] = useState<File | null>(null);
   const [presetVisible, setPresetVisible] = useState(false);
   // 失败提示由调用处按场景给出，请求层静默；code !== 0 由 api() 抛 ApiError
-  const uploadAvatarMutation = useApiMutation(fileContract.uploadOne, { requestOptions: { silent: true } });
   const updateAvatarMutation = useApiMutation(userContract.update, { requestOptions: { silent: true } });
   const updateAvatar = (avatar: string | null) => updateAvatarMutation.mutateAsync({ params: { id: user.id }, body: { avatar } });
-  const avatarLoading = uploadAvatarMutation.isPending || updateAvatarMutation.isPending;
-
-  function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setCropFile(file);
-    e.target.value = '';
-  }
-
-  async function handleCropConfirm(blob: Blob) {
-    const formData = new FormData();
-    formData.append('file', blob, 'avatar.jpg');
-    let uploadedUrl: string;
-    try {
-      uploadedUrl = (await uploadAvatarMutation.mutateAsync({ body: formData })).url;
-    } catch (err) {
-      Toast.error(err instanceof Error && err.message ? err.message : '上传失败');
-      return;
-    }
-    try {
-      onUpdated(await updateAvatar(uploadedUrl));
-      Toast.success('头像已更新');
-      setCropFile(null);
-      onClose();
-    } catch (err) {
-      Toast.error(err instanceof Error && err.message ? err.message : '头像更新失败');
-    }
-  }
+  const avatarUpload = useAvatarCropUpload({
+    onUploaded: async (url) => {
+      try {
+        onUpdated(await updateAvatar(url));
+        Toast.success('头像已更新');
+        onClose();
+      } catch (err) {
+        Toast.error(err instanceof Error && err.message ? err.message : '头像更新失败');
+        return false;
+      }
+    },
+  });
+  const avatarLoading = avatarUpload.uploading || updateAvatarMutation.isPending;
 
   async function handleApplyPreset(url: string) {
     setPresetVisible(false);
@@ -112,7 +93,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
               block
               theme="light"
               loading={avatarLoading}
-              onClick={() => avatarInputRef.current?.click()}
+              onClick={avatarUpload.openFilePicker}
             >
               更换头像
             </Button>
@@ -135,13 +116,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
               </Button>
             )}
           </div>
-          <input
-            ref={avatarInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleAvatarFileSelect}
-          />
+          <input {...avatarUpload.fileInputProps} />
         </div>
       </AppModal>
 
@@ -154,12 +129,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
       />
 
       {/* 裁剪 Modal */}
-      <AvatarCropperModal
-        file={cropFile}
-        confirmLoading={avatarLoading}
-        onCancel={() => setCropFile(null)}
-        onConfirm={(blob) => void handleCropConfirm(blob)}
-      />
+      <AvatarCropperModal {...avatarUpload.cropperProps} confirmLoading={avatarLoading} />
     </>
   );
 }

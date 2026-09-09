@@ -35,6 +35,9 @@ export const analyticsSiteListQuery = paginationQuery.extend({
   status: queryEnum(ANALYTICS_EVENT_OVERRIDE_STATUSES),
 });
 
+/** 列表查询参数（契约解析后的形态，服务层入参类型） */
+export type AnalyticsSiteListQueryInput = z.infer<typeof analyticsSiteListQuery>;
+
 export const analyticsSiteContract = defineContract('/api/analytics', {
   sites: op.get('/sites', { query: analyticsSiteListQuery, response: paginated(analyticsSiteSchema), summary: '站点列表' }),
   createSite: op.post('/sites', { body: createAnalyticsSiteSchema, response: analyticsSiteSchema, summary: '创建站点' }),

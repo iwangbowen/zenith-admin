@@ -10,6 +10,7 @@ import { renderLucideIcon } from '@/utils/icons';
 import IconPicker from '@/components/IconPicker';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
+import { useElementSize } from '@/hooks/useElementSize';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -34,8 +35,7 @@ export default function MenusPage() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [pendingKeyword, setPendingKeyword] = useState('');
   const [pendingStatus, setPendingStatus] = useState<string | undefined>();
-  const [tableHeight, setTableHeight] = useState(500);
-  const tableWrapperRef = useRef<HTMLDivElement>(null);
+  const { ref: tableWrapperRef, height: tableHeight } = useElementSize<HTMLDivElement>({ height: 500 });
 
   const { items: menuTypeItems } = useDictItems('menu_type');
   const { items: statusItems } = useDictItems('common_status');
@@ -76,20 +76,6 @@ export default function MenusPage() {
   });
   const toggleStatusMutation = useSaveMenu();
   const deleteMutation = useDeleteMenu();
-
-  useEffect(() => {
-    const el = tableWrapperRef.current;
-    if (!el) return;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setTableHeight(Math.floor(entry.contentRect.height));
-      }
-    });
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     const detail = menuModal.editing;

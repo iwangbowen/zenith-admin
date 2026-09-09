@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import { Input, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowInstance } from '@zenith/shared/workflow';
@@ -10,7 +9,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
 import { dateTimeColumn } from '../../../utils/table-columns';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
 import {
@@ -23,18 +22,20 @@ import {
 import { useWorkflowSelectableUsers } from '@/hooks/queries/workflow-shared';
 import { useCcWorkflowInstances, useForwardWorkflowCc, useMarkWorkflowCcRead, workflowInstanceKeys } from '@/hooks/queries/workflow-instances';
 
+interface SearchParams {
+  keyword: string;
+}
+
 export default function CcToMePage() {
-  const queryClient = useQueryClient();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset, applySearch } =
+    useListSearch<SearchParams>({ defaults: { keyword: '' }, listKey: workflowInstanceKeys.lists });
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   // 转发抄送
   const [forwardTarget, setForwardTarget] = useState<WorkflowInstance | null>(null);
   const [forwardUserIds, setForwardUserIds] = useState<number[]>([]);
   const [forwardNote, setForwardNote] = useState('');
-  const listQuery = useCcWorkflowInstances({ page, pageSize, keyword: submittedKeyword || undefined });
+  const listQuery = useCcWorkflowInstances({ page, pageSize, keyword: submittedParams.keyword || undefined });
   const markReadMutation = useMarkWorkflowCcRead();
   const forwardMutation = useForwardWorkflowCc();
   const usersQuery = useWorkflowSelectableUsers({ enabled: forwardTarget !== null });
@@ -42,19 +43,6 @@ export default function CcToMePage() {
     () => (usersQuery.data ?? []).map((u) => ({ label: u.nickname ?? u.username, value: u.id })),
     [usersQuery.data],
   );
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
-  };
-
-  const handleReset = () => {
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
-  };
 
   const openDetail = (record: WorkflowInstance) => {
     setSelectedId(record.id);
@@ -120,17 +108,11 @@ export default function CcToMePage() {
     <div className="page-container">
       <SavedViewsBar
         pageKey="workflow-cc"
-        currentFilters={{ keyword: submittedKeyword }}
-        onApply={(filters) => {
-          const keyword = typeof filters.keyword === 'string' ? filters.keyword : '';
-          setDraftKeyword(keyword);
-          setSubmittedKeyword(keyword);
-          setPage(1);
-          void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
-        }}
+        currentFilters={{ keyword: submittedParams.keyword }}
+        onApply={(filters) => applySearch({ keyword: typeof filters.keyword === 'string' ? filters.keyword : '' })}
       />
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标题 / 流程名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索标题 / 流程名称" value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />}
         onSearch={handleSearch}
         onReset={handleReset}
       />

@@ -7,7 +7,7 @@ import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { analyticsEventQualityDaily, userEvents } from '../../db/schema';
 import { buildListResult } from '../../lib/list-query';
-import type { AnalyticsQualityIssueType } from '@zenith/shared/analytics';
+import type { AnalyticsQualityIssueType, AnalyticsQualityQueryInput, AnalyticsDebugEventsQueryInput } from '@zenith/shared/analytics';
 import { formatDate, formatDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { config } from '../../config';
@@ -25,13 +25,7 @@ export function qualityTenantScope(): SQL | undefined {
   return eq(analyticsEventQualityDaily.tenantId, effective ?? 0);
 }
 
-export interface QualityQuery {
-  days?: number;
-  eventName?: string;
-  issueType?: AnalyticsQualityIssueType;
-  page?: number;
-  pageSize?: number;
-}
+export type QualityQuery = AnalyticsQualityQueryInput;
 
 export async function queryQuality(q: QualityQuery) {
   const days = clampDays(q.days, 7, 90);
@@ -75,7 +69,7 @@ export async function queryQuality(q: QualityQuery) {
   };
 }
 
-export interface DebugEventsQuery { page?: number; pageSize?: number; eventName?: string }
+export type DebugEventsQuery = AnalyticsDebugEventsQueryInput;
 
 export async function listDebugEvents(q: DebugEventsQuery) {
   const page = Math.max(Number(q.page) || 1, 1);

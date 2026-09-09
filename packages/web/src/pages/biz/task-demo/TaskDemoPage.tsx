@@ -9,15 +9,15 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { Banner, Button, Collapse, InputNumber, Modal, Select, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Info, Play, RefreshCw } from 'lucide-react';
-import { isAsyncTaskTerminal, type AsyncTask, type AsyncTaskItem, type AsyncTaskItemStatus, type AsyncTaskStatus } from '@zenith/shared/tasks';
+import { isAsyncTaskTerminal, type AsyncTask, type AsyncTaskItem } from '@zenith/shared/tasks';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { usePagination } from '@/hooks/usePagination';
-import { ASYNC_TASK_STATUS_TAG_MAP as statusTagMap, ASYNC_TASK_ITEM_STATUS_TAG_MAP as itemStatusTagMap } from '@/utils/async-task';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { asyncTaskItemColumns, asyncTaskStatusColumn } from '@/components/async-task-columns';
+import { dateTimeColumn } from '@/utils/table-columns';
 import { useBizTaskDemoAction, useBizTaskDemoItems, useBizTaskDemoTypes, useSubmitTaskDemo } from '@/hooks/queries/biz-pay-demo';
 import { JsonBlock } from '@/components/JsonBlock';
 import { listTableProps } from '@/components/list-page';
@@ -161,18 +161,7 @@ export default function TaskDemoPage() {
       render: (value: number, record: AsyncTask) => <Typography.Text size="small">{value} / {record.maxAttempts}</Typography.Text>,
     },
     dateTimeColumn('提交时间', 'createdAt'),
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      fixed: 'right',
-      render: (value: AsyncTaskStatus, record: AsyncTask) => {
-        if (value === 'running' && record.cancelRequested) return <Tag color="orange">取消中</Tag>;
-        if (value === 'pending' && record.nextRunAt) return <Tag color="orange">等待重试</Tag>;
-        const meta = statusTagMap[value];
-        return <Tag color={meta.color}>{meta.label}</Tag>;
-      },
-    },
+    asyncTaskStatusColumn<AsyncTask>(100),
     createOperationColumn<AsyncTask>({
       width: 240,
       desktopInlineKeys: ['cancel', 'resume', 'restart'],
@@ -216,21 +205,7 @@ export default function TaskDemoPage() {
     }),
   ];
 
-  const itemColumns: ColumnProps<AsyncTaskItem>[] = [
-    { title: '标识', dataIndex: 'itemKey', width: 110 },
-    { title: '名称', dataIndex: 'label', width: 130, render: (value: string | null) => value ?? '-' },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      render: (value: AsyncTaskItemStatus) => {
-        const meta = itemStatusTagMap[value];
-        return <Tag color={meta.color}>{meta.label}</Tag>;
-      },
-    },
-    { title: '信息', dataIndex: 'message', width: 220, render: renderEllipsis },
-    { title: '执行轮次', dataIndex: 'attempt', width: 90 },
-  ];
+  const itemColumns = asyncTaskItemColumns({ itemKey: 110, label: 130 });
 
   return (
     <div className="page-container">

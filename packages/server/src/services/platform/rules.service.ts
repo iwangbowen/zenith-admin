@@ -33,6 +33,17 @@ async function latestVersionOf(tableId: number): Promise<VersionRow | null> {
   return v ?? null;
 }
 
+/** 表行 / 版本快照的 jsonb 列 → 决策表定义（收窄类型并兜底空值）：DTO 映射、运行时快照与求值共用 */
+function toDecisionTableDefinition(src: Pick<TableRow, 'hitPolicy' | 'inputs' | 'outputs' | 'rules' | 'settings'>) {
+  return {
+    hitPolicy: src.hitPolicy,
+    inputs: (src.inputs ?? []) as RuleDecisionInput[],
+    outputs: (src.outputs ?? []) as RuleDecisionOutput[],
+    rules: (src.rules ?? []) as RuleDecisionRow[],
+    settings: (src.settings ?? {}) as RuleDecisionTableSettings,
+  };
+}
+
 export function mapDecisionTable(row: TableRow, latestVersion?: VersionRow | null) {
   return {
     id: row.id,
@@ -41,11 +52,7 @@ export function mapDecisionTable(row: TableRow, latestVersion?: VersionRow | nul
     description: row.description ?? null,
     categoryId: row.categoryId ?? null,
     status: row.status,
-    hitPolicy: row.hitPolicy,
-    inputs: (row.inputs ?? []) as RuleDecisionInput[],
-    outputs: (row.outputs ?? []) as RuleDecisionOutput[],
-    rules: (row.rules ?? []) as RuleDecisionRow[],
-    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
+    ...toDecisionTableDefinition(row),
     version: row.version,
     publishedAt: formatNullableDateTime(row.publishedAt),
     gray: row.grayPercent != null && row.grayVersion != null
@@ -69,11 +76,7 @@ export function mapDecisionTableVersion(row: VersionRow) {
     tableId: row.tableId,
     version: row.version,
     name: row.name,
-    hitPolicy: row.hitPolicy,
-    inputs: (row.inputs ?? []) as RuleDecisionInput[],
-    outputs: (row.outputs ?? []) as RuleDecisionOutput[],
-    rules: (row.rules ?? []) as RuleDecisionRow[],
-    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
+    ...toDecisionTableDefinition(row),
     publishedAt: formatDateTime(row.publishedAt),
     publishedBy: row.publishedBy ?? null,
   };
@@ -578,11 +581,7 @@ async function loadRuntimeSnapshot(key: string, opts?: { tenantId?: number | nul
         tableId: row.id,
         tenantId: row.tenantId ?? null,
         version: snapshot.version,
-        hitPolicy: snapshot.hitPolicy,
-        inputs: (snapshot.inputs ?? []) as RuleDecisionInput[],
-        outputs: (snapshot.outputs ?? []) as RuleDecisionOutput[],
-        rules: (snapshot.rules ?? []) as RuleDecisionRow[],
-        settings: (snapshot.settings ?? {}) as RuleDecisionTableSettings,
+        ...toDecisionTableDefinition(snapshot),
       };
     }
     if (opts?.version !== undefined) return null; // pin 的版本不存在
@@ -591,11 +590,7 @@ async function loadRuntimeSnapshot(key: string, opts?: { tenantId?: number | nul
       tableId: row.id,
       tenantId: row.tenantId ?? null,
       version: null,
-      hitPolicy: row.hitPolicy,
-      inputs: (row.inputs ?? []) as RuleDecisionInput[],
-      outputs: (row.outputs ?? []) as RuleDecisionOutput[],
-      rules: (row.rules ?? []) as RuleDecisionRow[],
-      settings: (row.settings ?? {}) as RuleDecisionTableSettings,
+      ...toDecisionTableDefinition(row),
     };
   };
 
@@ -626,22 +621,10 @@ export async function evaluateDecisionTableByKey(key: string, input: Record<stri
       .orderBy(desc(ruleDecisionTableVersions.version)).limit(1);
     if (snapshot) {
       version = snapshot.version;
-      def = {
-        hitPolicy: snapshot.hitPolicy,
-        inputs: (snapshot.inputs ?? []) as RuleDecisionInput[],
-        outputs: (snapshot.outputs ?? []) as RuleDecisionOutput[],
-        rules: (snapshot.rules ?? []) as RuleDecisionRow[],
-        settings: (snapshot.settings ?? {}) as RuleDecisionTableSettings,
-      };
+      def = toDecisionTableDefinition(snapshot);
     }
   }
-  def ??= {
-    hitPolicy: row.hitPolicy,
-    inputs: (row.inputs ?? []) as RuleDecisionInput[],
-    outputs: (row.outputs ?? []) as RuleDecisionOutput[],
-    rules: (row.rules ?? []) as RuleDecisionRow[],
-    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
-  };
+  def ??= toDecisionTableDefinition(row);
   const res = evaluateDecisionTable(def, input);
   recordRuleExecution({
     refKind: 'table', refId: row.id, ruleKey: key, version, caller: 'admin.evaluate',
@@ -654,13 +637,7 @@ export async function evaluateDecisionTableByKey(key: string, input: Record<stri
 /** 测试求值：按 id 跑当前编辑态配置，无需发布。留痕 source=test */
 export async function testEvaluateDecisionTable(id: number, input: Record<string, unknown>): Promise<RuleEvaluateResult> {
   const row = await ensureDecisionTable(id);
-  const res = evaluateDecisionTable({
-    hitPolicy: row.hitPolicy,
-    inputs: (row.inputs ?? []) as RuleDecisionInput[],
-    outputs: (row.outputs ?? []) as RuleDecisionOutput[],
-    rules: (row.rules ?? []) as RuleDecisionRow[],
-    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
-  }, input);
+  const res = evaluateDecisionTable(toDecisionTableDefinition(row), input);
   recordRuleExecution({
     refKind: 'table', refId: row.id, ruleKey: row.key, version: null, caller: 'admin.test',
     source: 'test', matched: res.matched, hitPolicy: res.hitPolicy,
@@ -672,13 +649,7 @@ export async function testEvaluateDecisionTable(id: number, input: Record<string
 /** 批量仿真：逐行以编辑态求值（评估「若现在发布」的批量表现），汇总命中率与规则行命中分布 */
 export async function simulateDecisionTable(id: number, rows: Array<Record<string, unknown>>): Promise<RuleSimulateResult> {
   const row = await ensureDecisionTable(id);
-  const def = {
-    hitPolicy: row.hitPolicy,
-    inputs: (row.inputs ?? []) as RuleDecisionInput[],
-    outputs: (row.outputs ?? []) as RuleDecisionOutput[],
-    rules: (row.rules ?? []) as RuleDecisionRow[],
-    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
-  };
+  const def = toDecisionTableDefinition(row);
   const results: RuleSimulateRowResult[] = [];
   const rowHitCount = new Map<string, number>();
   let matched = 0;
@@ -719,11 +690,7 @@ export async function resolveDecisionTableForTest(key: string): Promise<RuntimeS
     tableId: row.id,
     tenantId: row.tenantId ?? null,
     version: null,
-    hitPolicy: row.hitPolicy,
-    inputs: (row.inputs ?? []) as RuleDecisionInput[],
-    outputs: (row.outputs ?? []) as RuleDecisionOutput[],
-    rules: (row.rules ?? []) as RuleDecisionRow[],
-    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
+    ...toDecisionTableDefinition(row),
   };
 }
 
@@ -777,13 +744,7 @@ export async function getDecisionTableStats(id: number, days = 30): Promise<Rule
 export async function shadowRunDecisionTable(id: number, limit = 100): Promise<RuleShadowRunResult> {
   const row = await ensureDecisionTable(id);
   await flushRuleExecutionQueue();
-  const draft = {
-    hitPolicy: row.hitPolicy,
-    inputs: (row.inputs ?? []) as RuleDecisionInput[],
-    outputs: (row.outputs ?? []) as RuleDecisionOutput[],
-    rules: (row.rules ?? []) as RuleDecisionRow[],
-    settings: (row.settings ?? {}) as RuleDecisionTableSettings,
-  };
+  const draft = toDecisionTableDefinition(row);
   const cap = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 500) : 100;
   const execs = await db.select().from(ruleExecutions)
     .where(and(eq(ruleExecutions.refKind, 'table'), eq(ruleExecutions.refId, row.id)))

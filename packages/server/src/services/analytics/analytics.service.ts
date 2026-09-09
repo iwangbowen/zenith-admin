@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
 import { userEvents, analyticsSessions, analyticsDailyRollup } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import type { TrackEventInput, AnalyticsEventSource, AnalyticsEnvironment, AnalyticsIdentityType, AnalyticsDeviceType, UserBehaviorEventType } from '@zenith/shared/analytics';
+import type { TrackEventInput, AnalyticsEventSource, AnalyticsEnvironment, AnalyticsIdentityType, AnalyticsDeviceType, UserBehaviorEventType, AnalyticsSessionListQueryInput } from '@zenith/shared/analytics';
 import { ANALYTICS_RAGE_CLICK_EVENT, ANALYTICS_PATH_EXIT_PAGE } from '@zenith/shared/analytics';
 import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
@@ -1032,7 +1032,7 @@ export async function getUserStats(q: UserStatsQuery) {
 // 会话列表
 // ════════════════════════════════════════════════════════════════════════════
 
-export interface SessionListQuery { page?: number; pageSize?: number; username?: string; deviceType?: string }
+export type SessionListQuery = AnalyticsSessionListQueryInput;
 export async function listSessions(q: SessionListQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = clampLimit(q.pageSize, 20, 100);

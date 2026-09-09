@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Col, Descriptions, Empty, Form, JsonViewer, Modal, Popconfirm, Radio, RadioGroup, Row, SideSheet, Space, Table, Tabs, TabPane, Tag, Timeline, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronsDownUp, ChevronsUpDown, Download } from 'lucide-react';
@@ -15,7 +14,7 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import {
@@ -54,6 +53,12 @@ const JOB_TYPE_META: Record<WorkflowJobType, { text: string; color: TagColor }> 
 
 const JOB_TYPES = Object.keys(JOB_TYPE_META) as WorkflowJobType[];
 const JOB_TYPE_OPTIONS = JOB_TYPES.map((value) => ({ value, label: JOB_TYPE_META[value].text }));
+
+interface JobSearchParams {
+  status: WorkflowJobStatus | undefined;
+  keyword: string;
+}
+const JOB_SEARCH_DEFAULTS: JobSearchParams = { status: undefined, keyword: '' };
 
 type ClusterDimension = WorkflowJobClusterDimension;
 interface ReplayFilterState {
@@ -188,21 +193,8 @@ interface JobTypePanelProps {
 
 function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePanelProps) {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   const canOperate = hasPermission('workflow:engine:operate');
 
-  const [status, setStatus] = useState<WorkflowJobStatus | undefined>();
-  const [keyword, setKeyword] = useState('');
-  const [submittedStatus, setSubmittedStatus] = useState<WorkflowJobStatus | undefined>();
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const { page, pageSize, resetPage, buildPagination } = usePagination();
-  const listQuery = useWorkflowJobList({
-    page,
-    pageSize,
-    jobType,
-    status: submittedStatus,
-    keyword: submittedKeyword.trim() || undefined,
-  });
   const [detailId, setDetailId] = useState<number | undefined>();
   const [detailVisible, setDetailVisible] = useState(false);
   const detailQuery = useWorkflowJobDetail(detailId, detailVisible);
@@ -210,6 +202,21 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
   const detailLoading = detailQuery.isFetching;
   const [execView, setExecView] = useState<'timeline' | 'table'>('timeline');
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const clearSelection = useCallback(() => setSelectedRowKeys([]), []);
+  const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset, applySearch } =
+    useListSearch<JobSearchParams>({
+      defaults: JOB_SEARCH_DEFAULTS,
+      listKey: workflowMonitorKeys.jobLists,
+      onSearch: clearSelection,
+      onReset: clearSelection,
+    });
+  const listQuery = useWorkflowJobList({
+    page,
+    pageSize,
+    jobType,
+    status: submittedParams.status,
+    keyword: submittedParams.keyword.trim() || undefined,
+  });
   const [clustersOpen, setClustersOpen] = useState(false);
   const [clusterDim, setClusterDim] = useState<ClusterDimension>('reason');
   const clustersQuery = useWorkflowJobFailureClusters(clusterDim, clustersOpen);
@@ -283,32 +290,9 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
   const chain = chainQuery.data ?? null;
   const chainLoading = chainQuery.isFetching;
 
-  const handleSearch = useCallback(() => {
-    setSelectedRowKeys([]);
-    resetPage();
-    setSubmittedStatus(status);
-    setSubmittedKeyword(keyword);
-    void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.jobLists });
-  }, [keyword, queryClient, resetPage, status]);
-
-  const handleReset = useCallback(() => {
-    setStatus(undefined);
-    setKeyword('');
-    setSubmittedStatus(undefined);
-    setSubmittedKeyword('');
-    setSelectedRowKeys([]);
-    resetPage();
-    void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.jobLists });
-  }, [queryClient, resetPage]);
-
   const filterByStatus = useCallback((st: WorkflowJobStatus) => {
-    setStatus(st);
-    setSubmittedStatus(st);
-    setSubmittedKeyword(keyword);
-    setSelectedRowKeys([]);
-    resetPage();
-    void queryClient.invalidateQueries({ queryKey: workflowMonitorKeys.jobLists });
-  }, [keyword, queryClient, resetPage]);
+    applySearch({ ...draftParams, status: st });
+  }, [applySearch, draftParams]);
 
   const handleBatch = useCallback(async (action: 'retry' | 'skip') => {
     if (selectedRowKeys.length === 0) return;
@@ -600,12 +584,12 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
       </div>
 
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="幂等键 / TraceId / 节点" value={keyword} onChange={setKeyword} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="幂等键 / TraceId / 节点" value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />}
         filters={(
           <StatusSelect
             items={JOB_STATUS_OPTIONS}
-            value={status}
-            onChange={(v) => setStatus(v as WorkflowJobStatus | undefined)}
+            value={draftParams.status}
+            onChange={(v) => setDraftParams((p) => ({ ...p, status: v as WorkflowJobStatus | undefined }))}
           />
         )}
         onSearch={handleSearch}

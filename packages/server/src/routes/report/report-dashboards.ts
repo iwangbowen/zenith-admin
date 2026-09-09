@@ -109,6 +109,11 @@ const getOneRoute = defineContractRoute(reportDashboardContract.detail, {
   },
 });
 
+/** 乐观并发冲突（revision 不匹配）的 409 响应体：附当前版本与最新仪表盘供前端合并 */
+function dashboardConflictBody(err: DashboardRevisionConflictError) {
+  return { ...errBody(err.message, 409), data: { currentRevision: err.currentRevision, dashboard: err.currentDashboard } };
+}
+
 const createRoute_ = defineContractRoute(reportDashboardContract.create, {
   middleware: [authMiddleware, guard({ permission: 'report:dashboard:create', audit: { description: '创建报表仪表盘', module: '报表仪表盘' } })],
   handler: async (c) => c.json(okBody(await createDashboard(c.req.valid('json')), '创建成功'), 200),
@@ -124,12 +129,7 @@ const updateRoute_ = defineContractRoute(reportDashboardContract.update, {
     try {
       return c.json(okBody(await updateDashboardDraft(id, c.req.valid('json')), '更新成功'), 200);
     } catch (err) {
-      if (err instanceof DashboardRevisionConflictError) {
-        return c.json({
-          ...errBody(err.message, 409),
-          data: { currentRevision: err.currentRevision, dashboard: err.currentDashboard },
-        }, 409);
-      }
+      if (err instanceof DashboardRevisionConflictError) return c.json(dashboardConflictBody(err), 409);
       throw err;
     }
   },
@@ -145,12 +145,7 @@ const publishRoute = defineContractRoute(reportDashboardContract.publish, {
     try {
       return c.json(okBody(await publishDashboard(id, c.req.valid('json')), '发布成功'), 200);
     } catch (err) {
-      if (err instanceof DashboardRevisionConflictError) {
-        return c.json({
-          ...errBody(err.message, 409),
-          data: { currentRevision: err.currentRevision, dashboard: err.currentDashboard },
-        }, 409);
-      }
+      if (err instanceof DashboardRevisionConflictError) return c.json(dashboardConflictBody(err), 409);
       throw err;
     }
   },
@@ -166,12 +161,7 @@ const offlineRoute = defineContractRoute(reportDashboardContract.offline, {
     try {
       return c.json(okBody(await offlineDashboard(id, c.req.valid('json')), '下线成功'), 200);
     } catch (err) {
-      if (err instanceof DashboardRevisionConflictError) {
-        return c.json({
-          ...errBody(err.message, 409),
-          data: { currentRevision: err.currentRevision, dashboard: err.currentDashboard },
-        }, 409);
-      }
+      if (err instanceof DashboardRevisionConflictError) return c.json(dashboardConflictBody(err), 409);
       throw err;
     }
   },

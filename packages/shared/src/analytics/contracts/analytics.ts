@@ -106,6 +106,9 @@ export const analyticsSessionListQuery = paginationQuery.extend({
   deviceType: queryEnum(ANALYTICS_DEVICE_TYPES),
 });
 
+/** 列表查询参数（契约解析后的形态，服务层入参类型） */
+export type AnalyticsSessionListQueryInput = z.infer<typeof analyticsSessionListQuery>;
+
 export const analyticsAcquisitionQuery = z.object({
   days: daysQuery(365, 30),
   dimension: z.enum(ANALYTICS_ACQUISITION_DIMENSIONS).default('channel'),
@@ -155,6 +158,9 @@ export const analyticsEventMetaListQuery = paginationQuery.extend({
   category: z.string().optional(),
 });
 
+/** 列表查询参数（契约解析后的形态，服务层入参类型） */
+export type AnalyticsEventMetaListQueryInput = z.infer<typeof analyticsEventMetaListQuery>;
+
 export const analyticsEventMetaReferencesQuery = z.object({
   eventName: z.string().min(1).max(128),
 });
@@ -164,15 +170,24 @@ export const analyticsEventOverrideListQuery = paginationQuery.extend({
   status: z.enum(ANALYTICS_EVENT_OVERRIDE_STATUSES).optional(),
 });
 
+/** 列表查询参数（契约解析后的形态，服务层入参类型） */
+export type AnalyticsEventOverrideListQueryInput = z.infer<typeof analyticsEventOverrideListQuery>;
+
 export const analyticsQualityQuery = paginationQuery.extend({
   days: z.coerce.number().int().min(1).max(90).optional(),
   eventName: z.string().optional(),
   issueType: z.enum(ANALYTICS_QUALITY_ISSUE_TYPES).optional(),
 });
 
+/** 列表查询参数（契约解析后的形态，服务层入参类型） */
+export type AnalyticsQualityQueryInput = z.infer<typeof analyticsQualityQuery>;
+
 export const analyticsDebugEventsQuery = paginationQuery.extend({
   eventName: z.string().optional(),
 });
+
+/** 列表查询参数（契约解析后的形态，服务层入参类型） */
+export type AnalyticsDebugEventsQueryInput = z.infer<typeof analyticsDebugEventsQuery>;
 
 export const analyticsRollupQuery = z.object({ days: daysQuery(730, 30) });
 
@@ -180,6 +195,9 @@ export const analyticsSegmentListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   status: z.enum(ANALYTICS_EVENT_OVERRIDE_STATUSES).optional(),
 });
+
+/** 列表查询参数（契约解析后的形态，服务层入参类型） */
+export type AnalyticsSegmentListQueryInput = z.infer<typeof analyticsSegmentListQuery>;
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 

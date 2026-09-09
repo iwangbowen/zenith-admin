@@ -8,6 +8,7 @@ import type { PaginatedResponse } from '@zenith/shared/core';
 import { enumValueOf } from '@zenith/shared/core';
 import { ASYNC_TASK_ITEM_STATUSES, ASYNC_TASK_STATUSES, isAsyncTaskTerminal } from '@zenith/shared/tasks';
 import type { AsyncTask, AsyncTaskItem, AsyncTaskItemStatus, AsyncTaskStatus, AsyncTaskTypeMeta, AsyncTaskTypeStat } from '@zenith/shared/tasks';
+import { asyncTaskItemColumns, asyncTaskStatusColumn } from '@/components/async-task-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
@@ -18,7 +19,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ASYNC_TASK_STATUS_TAG_MAP as statusTagMap, ASYNC_TASK_ITEM_STATUS_TAG_MAP as itemStatusTagMap, asyncTaskRateColor as rateColor } from '@/utils/async-task';
+import { ASYNC_TASK_STATUS_TAG_MAP as statusTagMap, asyncTaskRateColor as rateColor } from '@/utils/async-task';
 import { formatDurationMs as formatDuration } from '@/utils/format';
 import { formatDateTime } from '@/utils/date';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -336,18 +337,7 @@ export default function TaskCenterPage() {
         <Button theme="borderless" type="danger" size="small" onClick={() => handleShowError(record)}>查看失败原因</Button>
       ) : '-'),
     },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 110,
-      fixed: 'right',
-      render: (value: AsyncTaskStatus, record: AsyncTask) => {
-        if (value === 'running' && record.cancelRequested) return <Tag color="orange">取消中</Tag>;
-        if (value === 'pending' && record.nextRunAt) return <Tag color="orange">等待重试</Tag>;
-        const meta = statusTagMap[value];
-        return <Tag color={meta.color}>{meta.label}</Tag>;
-      },
-    },
+    asyncTaskStatusColumn<AsyncTask>(110),
     createOperationColumn<AsyncTask>({
       // 取消 / 断点恢复 / 重新开始 / 删除 随任务状态出现，统一进更多；行内只保留详情
       width: 120,
@@ -396,21 +386,7 @@ export default function TaskCenterPage() {
     }),
   ];
 
-  const itemColumns: ColumnProps<AsyncTaskItem>[] = [
-    { title: '标识', dataIndex: 'itemKey', width: 120 },
-    { title: '名称', dataIndex: 'label', width: 150, render: (value: string | null) => value ?? '-' },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      render: (value: AsyncTaskItemStatus) => {
-        const meta = itemStatusTagMap[value];
-        return <Tag color={meta.color}>{meta.label}</Tag>;
-      },
-    },
-    { title: '信息', dataIndex: 'message', width: 220, render: renderEllipsis },
-    { title: '执行轮次', dataIndex: 'attempt', width: 90 },
-  ];
+  const itemColumns = asyncTaskItemColumns();
 
   const typeColumns: ColumnProps<TaskTypeRow>[] = [
     {

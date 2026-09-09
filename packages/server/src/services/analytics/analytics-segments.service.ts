@@ -15,7 +15,7 @@ import { db } from '../../db';
 import { analyticsUserSegments, analyticsSegmentMembers, analyticsUserProfiles, userEvents } from '../../db/schema';
 import type { AnalyticsUserSegmentRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import type { AnalyticsSegmentRule, AnalyticsSegmentEventCondition, AnalyticsSegmentAttributeCondition, CreateAnalyticsUserSegmentInput, UpdateAnalyticsUserSegmentInput } from '@zenith/shared/analytics';
+import type { AnalyticsSegmentRule, AnalyticsSegmentEventCondition, AnalyticsSegmentAttributeCondition, CreateAnalyticsUserSegmentInput, UpdateAnalyticsUserSegmentInput, AnalyticsSegmentListQueryInput } from '@zenith/shared/analytics';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
@@ -65,7 +65,7 @@ function validateRules(rules: AnalyticsSegmentRule): void {
 }
 
 // ─── 列表 / 详情 ──────────────────────────────────────────────────────────────
-export interface SegmentListQuery { page?: number; pageSize?: number; keyword?: string; status?: string }
+export type SegmentListQuery = AnalyticsSegmentListQueryInput;
 
 export async function listSegments(q: SegmentListQuery) {
   const page = Math.max(Number(q.page) || 1, 1);

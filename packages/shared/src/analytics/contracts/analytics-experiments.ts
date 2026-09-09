@@ -80,6 +80,9 @@ export const analyticsExperimentListQuery = paginationQuery.extend({
   status: queryEnum(ANALYTICS_EXPERIMENT_STATUSES),
 });
 
+/** 列表查询参数（契约解析后的形态，服务层入参类型） */
+export type AnalyticsExperimentListQueryInput = z.infer<typeof analyticsExperimentListQuery>;
+
 export const analyticsExperimentReportQuery = z.object({
   startDate: dateOnly.optional(),
   endDate: dateOnly.optional(),

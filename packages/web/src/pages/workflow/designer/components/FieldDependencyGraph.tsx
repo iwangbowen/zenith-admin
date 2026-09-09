@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import {
   Background,
   Controls,
@@ -6,8 +6,6 @@ import {
   MarkerType,
   Handle,
   Position,
-  useNodesState,
-  useEdgesState,
   useUpdateNodeInternals,
   ReactFlowProvider,
   type Node as RFNode,
@@ -18,6 +16,7 @@ import dagre from 'dagre';
 import { Switch, Space, Typography, Empty, Spin } from '@douyinfe/semi-ui';
 import type { WorkflowFormField } from '@zenith/shared/workflow';
 import { ThemedReactFlow } from '@/components/ThemedReactFlow';
+import { useGraphSelectionHighlight } from '@/hooks/useGraphSelectionHighlight';
 import { FORM_FIELD_TYPES } from '../form-types';
 import { buildFieldDependencyGraph, DEP_KIND_COLOR, type DepKind } from '../form-graph';
 
@@ -84,7 +83,6 @@ function layoutWithDagre(nodes: RFNode[], edges: RFEdge[]): RFNode[] {
 }
 
 function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormField[] }>) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hideIsolated, setHideIsolated] = useState(true);
   // 等弹窗进场动画结束再挂载 ReactFlow：避免在缩放动画中测量 handle 位置导致连线偏移
   const [ready, setReady] = useState(false);
@@ -143,15 +141,11 @@ function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormFi
 
   const laidOutNodes = useMemo(() => layoutWithDagre(baseNodes, baseEdges), [baseNodes, baseEdges]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>(laidOutNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>(baseEdges);
+  const { nodes, edges, onNodesChange, onEdgesChange, handleNodeClick, handlePaneClick } =
+    useGraphSelectionHighlight<FieldNodeData>(laidOutNodes, baseEdges, {
+      edgeStyle: (state) => ({ opacity: state === 'unrelated' ? 0.08 : 1 }),
+    });
   const updateNodeInternals = useUpdateNodeInternals();
-
-  useEffect(() => {
-    setNodes(laidOutNodes);
-    setEdges(baseEdges);
-    setSelectedId(null);
-  }, [laidOutNodes, baseEdges, setNodes, setEdges]);
 
   // 弹窗动画结束（ready）后强制重新测量 handle 位置，修复动画期间测量导致的 handleBounds 缓存偏移
   useEffect(() => {
@@ -160,30 +154,6 @@ function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormFi
     const raf = requestAnimationFrame(() => updateNodeInternals(ids));
     return () => cancelAnimationFrame(raf);
   }, [ready, laidOutNodes, updateNodeInternals]);
-
-  useEffect(() => {
-    if (!selectedId) {
-      setNodes((ns) => ns.map((n) => ({ ...n, data: { ...(n.data as FieldNodeData), dimmed: false } })));
-      setEdges((es) => es.map((e) => ({ ...e, style: { ...e.style, opacity: 1 } })));
-      return;
-    }
-    const related = new Set<string>([selectedId]);
-    const relatedEdges = new Set<string>();
-    baseEdges.forEach((e) => {
-      if (e.source === selectedId || e.target === selectedId) {
-        related.add(e.source);
-        related.add(e.target);
-        relatedEdges.add(e.id);
-      }
-    });
-    setNodes((ns) => ns.map((n) => ({ ...n, data: { ...(n.data as FieldNodeData), dimmed: !related.has(n.id) } })));
-    setEdges((es) => es.map((e) => ({ ...e, style: { ...e.style, opacity: relatedEdges.has(e.id) ? 1 : 0.08 } })));
-  }, [selectedId, baseEdges, setNodes, setEdges]);
-
-  const handleNodeClick = useCallback((_: unknown, node: RFNode) => {
-    setSelectedId((prev) => (prev === node.id ? null : node.id));
-  }, []);
-  const handlePaneClick = useCallback(() => setSelectedId(null), []);
 
   const kinds: DepKind[] = ['公式', '显隐', '必填', '只读', '级联', '天数', '赋值'];
 

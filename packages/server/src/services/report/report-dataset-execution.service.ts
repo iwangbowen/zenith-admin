@@ -60,6 +60,7 @@ import {
   toExecutionError,
 } from './report-dataset-shared';
 import { isSqlLikeType, isExternalDbType } from '@zenith/shared/report';
+import { getByPath } from '@zenith/shared/core';
 import type { DatasetExecutionContext, DatasetExecutionResult } from './report-dataset-shared';
 import type { ReportDataResult, ReportField, ReportFieldType, ReportDatasetContent, ReportDatasetParam, ReportDatasourceType, ReportDatasourceConfig, ReportComputedField, ReportExternalDbConfig, ReportApiDatasourceConfig, ReportApiDatasetContent, ReportSqlDatasetContent, ReportStaticDatasetContent, ReportDatasetMaterialize, ReportRowRule, ReportDatasetQueryOptions, ReportResultField, ReportDatasetPreviewInput, ReportSortOrder } from '@zenith/shared/report';
 
@@ -184,14 +185,6 @@ function quoteSortField(field: string): string {
     throw new HTTPException(400, { message: '排序字段不合法' });
   }
   return `"${field}"`;
-}
-
-function navigatePath(json: unknown, path?: string | null): unknown {
-  if (!path) return json;
-  return path.split('.').reduce<unknown>(
-    (acc, key) => (acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[key.trim()] : undefined),
-    json,
-  );
 }
 
 function buildSqlQueryParts(options: NormalizedQueryOptions): { limit: number; offset: number; orderBy: string } {
@@ -335,7 +328,7 @@ export async function runReportData(
     throw new HTTPException(502, { message: '数据源请求失败，请检查 URL 与网络' });
   }
 
-  const arr = navigatePath(json, apiContent.itemsPath);
+  const arr = getByPath(json, apiContent.itemsPath);
   if (!Array.isArray(arr)) {
     throw new HTTPException(502, { message: '数据源返回结构不是数组，请检查「数组路径」配置' });
   }

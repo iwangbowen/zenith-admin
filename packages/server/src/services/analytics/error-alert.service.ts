@@ -4,7 +4,7 @@ import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { errorAlertRules, errorAlertLogs, errorEvents, errorGroups } from '../../db/schema';
 import type { ErrorAlertRuleRow, ErrorAlertLogRow } from '../../db/schema';
-import type { CreateErrorAlertRuleInput, UpdateErrorAlertRuleInput, FrontendErrorType, ErrorLevel } from '@zenith/shared/analytics';
+import type { CreateErrorAlertRuleInput, UpdateErrorAlertRuleInput, FrontendErrorType, ErrorLevel, ErrorAlertLogListQueryInput } from '@zenith/shared/analytics';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -282,7 +282,7 @@ export function mapAlertLog(row: ErrorAlertLogRow) {
   };
 }
 
-export interface AlertLogListQuery { page?: number; pageSize?: number; ruleId?: number }
+export type AlertLogListQuery = ErrorAlertLogListQueryInput;
 export async function listAlertLogs(q: AlertLogListQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);

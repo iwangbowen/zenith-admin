@@ -4,7 +4,7 @@ import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { errorGroups, errorEvents, errorGroupIdentities, sourceMaps, users } from '../../db/schema';
 import type { ErrorGroupRow, ErrorEventRow } from '../../db/schema';
-import type { FrontendErrorType, ErrorLevel, ErrorBreadcrumb, UpdateErrorGroupInput, SourceMapUploadInput, AnalyticsEventSource, AnalyticsEnvironment } from '@zenith/shared/analytics';
+import type { FrontendErrorType, ErrorLevel, ErrorBreadcrumb, UpdateErrorGroupInput, SourceMapUploadInput, AnalyticsEventSource, AnalyticsEnvironment, ErrorGroupListQueryInput, ErrorEventListQueryInput, SourceMapListQueryInput } from '@zenith/shared/analytics';
 import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
 import { tenantScope, getCreateTenantId } from '../../lib/tenant';
@@ -234,16 +234,7 @@ export async function reportError(input: {
 }
 
 // ─── 分组列表 ─────────────────────────────────────────────────────────────────
-export interface GroupListQuery {
-  page?: number;
-  pageSize?: number;
-  status?: string;
-  errorType?: string;
-  level?: string;
-  keyword?: string;
-  assigneeId?: number;
-  environment?: string;
-}
+export type GroupListQuery = ErrorGroupListQueryInput;
 export async function listGroups(q: GroupListQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = clampLimit(q.pageSize, 20, 100);
@@ -455,7 +446,7 @@ export async function getErrorOverview(daysRaw: unknown) {
 }
 
 // ─── 事件列表 ─────────────────────────────────────────────────────────────────
-export interface ErrorEventListQuery { page?: number; pageSize?: number; groupId?: number }
+export type ErrorEventListQuery = ErrorEventListQueryInput;
 export async function listErrorEvents(q: ErrorEventListQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = clampLimit(q.pageSize, 20, 100);
@@ -494,7 +485,7 @@ export async function uploadSourceMap(input: SourceMapUploadInput) {
   return { id: row.id, release: row.release, fileName: row.fileName, size: row.size, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
 }
 
-export interface SourceMapListQuery { page?: number; pageSize?: number; release?: string }
+export type SourceMapListQuery = SourceMapListQueryInput;
 export async function listSourceMaps(q: SourceMapListQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = clampLimit(q.pageSize, 20, 100);

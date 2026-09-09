@@ -2,7 +2,8 @@ import { eq, and, inArray, isNull, isNotNull, lt, lte, or, sql } from 'drizzle-o
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsSites, cmsContents, cmsContentTags, cmsContentTombstones, cmsContentVersions, cmsTags, cmsCollectItems } from '../../db/schema';
-import type { CmsContentRow } from '../../db/schema';
+import type { CmsContentRow, CmsSiteRow } from '../../db/schema';
+import type { DbTransaction } from '../../db/types';
 import { contentSearchVector, extendSearchTexts } from './cms-search.service';
 import { assertChannelAccess, assertChannelsAccess } from './cms-channels.service';
 import { logContentOp, logContentOps } from './cms-content-op-logs.service';
@@ -14,7 +15,7 @@ import { assertCompleteCmsBatch } from './cms-access';
 import {
   assertCmsContentUnlocked, assertCmsContentsUnlocked, assertNoLockedCmsMappedCopies,
 } from './cms-content-lock.service';
-import { bumpCmsTemplateRefsRevision, lockCmsSiteForMutation } from './cms-site-publish-lock.service';
+import { bumpCmsTemplateRefsRevision, lockCmsSiteForMutation, lockCmsSitesForRows } from './cms-site-publish-lock.service';
 import { captureCmsContentPublishSnapshot } from './cms-content-publish-snapshot.service';
 import {
   adoptCmsResourcesIntoSite,
@@ -50,6 +51,27 @@ async function assertBatchSiteAccess(ids: number[]): Promise<void> {
   await assertChannelsAccess(rows.map((r) => r.channelId));
 }
 
+/**
+ * 内容批量变更后为「带详情模板」的内容所在站点各入一条模板引用重建 outbox：
+ * 先 bump 站点的 templateRefsRevision（并回写 `sites` 里的站点行，后续入队读到新版本号），
+ * 事件键 `site:{siteId}:refs:{revision}` 保证同一版本只重建一次。
+ */
+async function enqueueTemplateRefsRebuild(
+  tx: DbTransaction,
+  sites: Map<number, CmsSiteRow>,
+  rows: ReadonlyArray<Pick<CmsContentRow, 'siteId' | 'detailTemplate'>>,
+  reason: string,
+): Promise<AsyncTask[]> {
+  const tasks: AsyncTask[] = [];
+  for (const siteId of new Set(rows.filter((row) => row.detailTemplate).map((row) => row.siteId))) {
+    const revision = await bumpCmsTemplateRefsRevision(tx, siteId);
+    const site = { ...sites.get(siteId)!, templateRefsRevision: revision };
+    sites.set(siteId, site);
+    tasks.push(await insertCmsSiteRefsRebuildOutbox(tx, site, reason, `site:${siteId}:refs:${revision}`));
+  }
+  return tasks;
+}
+
 export async function recycleCmsContents(ids: number[]) {
   if (ids.length === 0) return 0;
   await assertBatchSiteAccess(ids);
@@ -58,10 +80,7 @@ export async function recycleCmsContents(ids: number[]) {
   const initial = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId }).from(cmsContents)
     .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt)));
   const mutation = await db.transaction(async (tx) => {
-    const sites = new Map<number, typeof cmsSites.$inferSelect>();
-    for (const siteId of [...new Set(initial.map((row) => row.siteId))].sort((a, b) => a - b)) {
-      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
-    }
+    const sites = await lockCmsSitesForRows(tx, initial);
     const locked = await tx.select().from(cmsContents)
       .where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)))
       .for('update');
@@ -74,18 +93,7 @@ export async function recycleCmsContents(ids: number[]) {
       .set({ deletedAt: new Date(), status: 'offline', version: sql`${cmsContents.version} + 1` })
       .where(and(inArray(cmsContents.id, locked.map((row) => row.id)), isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)))
       .returning();
-    const refsTasks: AsyncTask[] = [];
-    for (const siteId of new Set(rows.filter((row) => row.detailTemplate).map((row) => row.siteId))) {
-      const revision = await bumpCmsTemplateRefsRevision(tx, siteId);
-      const site = { ...sites.get(siteId)!, templateRefsRevision: revision };
-      sites.set(siteId, site);
-      refsTasks.push(await insertCmsSiteRefsRebuildOutbox(
-        tx,
-        site,
-        '回收内容模板引用移除',
-        `site:${siteId}:refs:${revision}`,
-      ));
-    }
+    const refsTasks = await enqueueTemplateRefsRebuild(tx, sites, rows, '回收内容模板引用移除');
     await logContentOps(tx, rows.map((row) => ({ id: row.id })), 'recycled');
     const tasks: AsyncTask[] = [];
     const webhookTasks: (AsyncTask | null)[] = [];
@@ -117,24 +125,12 @@ export async function restoreCmsContents(ids: number[]) {
   await assertBatchSiteAccess(ids);
   const initial = await db.select({ siteId: cmsContents.siteId }).from(cmsContents).where(inArray(cmsContents.id, ids));
   const mutation = await db.transaction(async (tx) => {
-    const sites = new Map<number, typeof cmsSites.$inferSelect>();
-    for (const siteId of [...new Set(initial.map((row) => row.siteId))].sort((a, b) => a - b)) {
-      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
-    }
+    const sites = await lockCmsSitesForRows(tx, initial);
     const rows = await tx.update(cmsContents)
       .set({ deletedAt: null, status: 'draft' })
       .where(and(inArray(cmsContents.id, ids), isNotNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)))
       .returning();
-    const tasks: AsyncTask[] = [];
-    for (const siteId of new Set(rows.filter((row) => row.detailTemplate).map((row) => row.siteId))) {
-      const revision = await bumpCmsTemplateRefsRevision(tx, siteId);
-      tasks.push(await insertCmsSiteRefsRebuildOutbox(
-        tx,
-        { ...sites.get(siteId)!, templateRefsRevision: revision },
-        '恢复内容模板引用',
-        `site:${siteId}:refs:${revision}`,
-      ));
-    }
+    const tasks = await enqueueTemplateRefsRebuild(tx, sites, rows, '恢复内容模板引用');
     await logContentOps(tx, rows.map((row) => ({ id: row.id })), 'restored');
     return { count: rows.length, tasks };
   });
@@ -153,10 +149,7 @@ export async function purgeCmsContents(ids: number[], options?: { skipAccessChec
   if (targets.length === 0) return 0;
   const targetIds = targets.map((t) => t.id);
   const mutation = await db.transaction(async (tx) => {
-    const sites = new Map<number, typeof cmsSites.$inferSelect>();
-    for (const siteId of [...new Set(targets.map((row) => row.siteId))].sort((a, b) => a - b)) {
-      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
-    }
+    const sites = await lockCmsSitesForRows(tx, targets);
     const lockedTargets = await tx.select().from(cmsContents).where(and(
       inArray(cmsContents.id, targetIds),
       isNotNull(cmsContents.deletedAt),
@@ -175,9 +168,7 @@ export async function purgeCmsContents(ids: number[], options?: { skipAccessChec
      .from(cmsContents).where(inArray(cmsContents.mappingSourceId, lockedIds));
     const lockedMapped = mappedRows.find((row) => row.lockedAt);
     if (lockedMapped) throw new HTTPException(423, { message: `映射内容 #${lockedMapped.id} 已被持久锁定${lockedMapped.lockReason ? `：${lockedMapped.lockReason}` : ''}` });
-    for (const siteId of [...new Set(mappedRows.map((row) => row.siteId))].sort((a, b) => a - b)) {
-      if (!sites.has(siteId)) sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
-    }
+    await lockCmsSitesForRows(tx, mappedRows, sites);
     const lockedMappingRows = mappedRows.filter((row) => !row.lockedAt);
     if (lockedMappingRows.length > 0) {
       await tx.update(cmsContents).set({
@@ -213,18 +204,7 @@ export async function purgeCmsContents(ids: number[], options?: { skipAccessChec
       .onConflictDoNothing();
     await tx.delete(cmsContents).where(inArray(cmsContents.id, lockedIds));
     await recalcTagContentCounts(tx, tagRows.map((t) => t.tagId));
-    const refsTasks: AsyncTask[] = [];
-    for (const siteId of new Set(lockedTargets.filter((row) => row.detailTemplate).map((row) => row.siteId))) {
-      const revision = await bumpCmsTemplateRefsRevision(tx, siteId);
-      const site = { ...sites.get(siteId)!, templateRefsRevision: revision };
-      sites.set(siteId, site);
-      refsTasks.push(await insertCmsSiteRefsRebuildOutbox(
-        tx,
-        site,
-        '彻底删除内容模板引用',
-        `site:${siteId}:refs:${revision}`,
-      ));
-    }
+    const refsTasks = await enqueueTemplateRefsRebuild(tx, sites, lockedTargets, '彻底删除内容模板引用');
     const tasks: AsyncTask[] = [];
     const webhookTasks: (AsyncTask | null)[] = [];
     for (const row of lockedTargets) {
@@ -255,10 +235,7 @@ async function setCmsContentsArchived(ids: number[], archived: boolean): Promise
   }
   const initial = await db.select().from(cmsContents).where(inArray(cmsContents.id, ids));
   const mutation = await db.transaction(async (tx) => {
-    const sites = new Map<number, typeof cmsSites.$inferSelect>();
-    for (const siteId of [...new Set(initial.map((row) => row.siteId))].sort((a, b) => a - b)) {
-      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
-    }
+    const sites = await lockCmsSitesForRows(tx, initial);
     const archivedCondition = archived ? isNull(cmsContents.archivedAt) : isNotNull(cmsContents.archivedAt);
     const locked = await tx.select().from(cmsContents).where(and(
       inArray(cmsContents.id, ids),
@@ -353,10 +330,7 @@ export async function cancelExpiredTopContents(now = new Date()): Promise<number
     ));
   if (!initial.length) return [];
   const mutation = await db.transaction(async (tx) => {
-    const sites = new Map<number, typeof cmsSites.$inferSelect>();
-    for (const siteId of [...new Set(initial.map((row) => row.siteId))].sort((a, b) => a - b)) {
-      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
-    }
+    const sites = await lockCmsSitesForRows(tx, initial);
     const locked = await tx.select().from(cmsContents).where(and(
       inArray(cmsContents.id, initial.map((row) => row.id)),
       eq(cmsContents.isTop, true),
@@ -455,10 +429,7 @@ export async function batchSetCmsContentFlags(ids: number[], flags: { isTop?: bo
     .from(cmsContents).where(and(inArray(cmsContents.id, ids), isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt)));
   assertCompleteCmsBatch(ids, initialRows.map((row) => row.id), '内容');
   const mutation = await db.transaction(async (tx) => {
-    const sites = new Map<number, typeof cmsSites.$inferSelect>();
-    for (const siteId of [...new Set(initialRows.map((row) => row.siteId))].sort((a, b) => a - b)) {
-      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
-    }
+    const sites = await lockCmsSitesForRows(tx, initialRows);
     const initial = await tx.select().from(cmsContents).where(and(
       inArray(cmsContents.id, ids),
       isNull(cmsContents.deletedAt),
@@ -553,10 +524,7 @@ export async function batchAddCmsContentTags(ids: number[], tagIds: number[]): P
   }).from(cmsContents).where(inArray(cmsContents.id, ids));
  assertCompleteCmsBatch(ids, rows.map((row) => row.id), '内容');
  const mutation = await db.transaction(async (tx) => {
-    const sites = new Map<number, typeof cmsSites.$inferSelect>();
-    for (const siteId of [...new Set(rows.map((row) => row.siteId))].sort((a, b) => a - b)) {
-      sites.set(siteId, await lockCmsSiteForMutation(tx, siteId));
-    }
+    const sites = await lockCmsSitesForRows(tx, rows);
    const lockedRows = await tx.select().from(cmsContents).where(and(
      inArray(cmsContents.id, ids),
      isNull(cmsContents.deletedAt),

@@ -17,3 +17,16 @@ export function stableStringify(value: unknown): string {
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+/**
+ * 按点分路径读取嵌套值（`data.items` / `result.list.0`），数组可用下标段访问；
+ * 路径为空时返回原值，中途遇到非对象返回 `undefined`。
+ * 用于外部 API 响应的 `itemsPath` 之类由配置指定的取数路径。
+ */
+export function getByPath(source: unknown, path: string | null | undefined): unknown {
+  if (!path) return source;
+  return path.split('.').reduce<unknown>(
+    (current, key) => (current && typeof current === 'object' ? (current as Record<string, unknown>)[key.trim()] : undefined),
+    source,
+  );
+}

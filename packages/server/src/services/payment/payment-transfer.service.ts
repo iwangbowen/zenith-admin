@@ -6,10 +6,12 @@
  * 高额转账先进入四眼审批，审批前严禁调用渠道；未知结果只允许查单收敛，杜绝双付；
  * 转账成功写入不可变会计凭证，并捕获资金预占。
  */
-import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import { buildListResult } from '../../lib/list-query';
 import {
   paymentChannelConfigs,
@@ -199,6 +201,24 @@ async function finalizeTransferReservation(
   requireRow(maybeUpdated, '转账资金预占状态已变化', 409);
 }
 
+/**
+ * 乐观并发更新转账单：以读取时的 `version` 做 CAS（命中则 version 自增），`guards` 追加各场景的状态前置条件；
+ * 未命中返回 `undefined`，由调用方决定回退读取或抛 409。
+ */
+async function casUpdateTransfer(
+  executor: DbExecutor,
+  expected: Pick<PaymentTransferRow, 'id' | 'version'>,
+  patch: PgUpdateSetSource<typeof paymentTransfers>,
+  ...guards: SQL[]
+): Promise<PaymentTransferRow | undefined> {
+  const [updated] = await executor
+    .update(paymentTransfers)
+    .set({ ...patch, version: sql`${paymentTransfers.version} + 1` })
+    .where(and(eq(paymentTransfers.id, expected.id), eq(paymentTransfers.version, expected.version), ...guards))
+    .returning();
+  return updated;
+}
+
 /** 调渠道执行转账并落状态；请求前先 claim 为 processing，未知结果只允许查单收敛。 */
 async function executeTransferAtChannel(row: PaymentTransferRow, config: PaymentChannelConfigRow): Promise<PaymentTransferRow> {
   if (row.status !== 'pending') {
@@ -212,22 +232,12 @@ async function executeTransferAtChannel(row: PaymentTransferRow, config: Payment
   }
   const adapter = getAdapter(row.channel);
   if (!adapter.transfer) throw new HTTPException(400, { message: `渠道 ${row.channel} 暂不支持转账` });
-  const [claimed] = await db
-    .update(paymentTransfers)
-    .set({
-      status: 'processing',
-      attempts: row.attempts + 1,
-      failReason: null,
-      finishedAt: null,
-      version: sql`${paymentTransfers.version} + 1`,
-    })
-    .where(and(
-      eq(paymentTransfers.id, row.id),
-      eq(paymentTransfers.version, row.version),
-      eq(paymentTransfers.status, row.status),
-      eq(paymentTransfers.attempts, row.attempts),
-    ))
-    .returning();
+  const claimed = await casUpdateTransfer(db, row, {
+    status: 'processing',
+    attempts: row.attempts + 1,
+    failReason: null,
+    finishedAt: null,
+  }, eq(paymentTransfers.status, row.status), eq(paymentTransfers.attempts, row.attempts));
   if (!claimed) {
     return (await db.select().from(paymentTransfers).where(eq(paymentTransfers.id, row.id)).limit(1))[0] ?? row;
   }
@@ -246,21 +256,11 @@ async function executeTransferAtChannel(row: PaymentTransferRow, config: Payment
     logger.error('[payment-transfer] channel transfer failed', { transferNo: row.transferNo, err: failReason });
     const resultUnknown = isIndeterminateProviderError(err);
     if (!resultUnknown) await finalizeTransferReservation(claimed, 'released', `渠道明确失败：${failReason}`);
-    const [updated] = await db
-      .update(paymentTransfers)
-      .set({
-        status: resultUnknown ? 'unknown' : 'failed',
-        failReason: resultUnknown ? `渠道结果待确认：${failReason}` : failReason,
-        finishedAt: resultUnknown ? null : new Date(),
-        version: sql`${paymentTransfers.version} + 1`,
-      })
-      .where(and(
-        eq(paymentTransfers.id, claimed.id),
-        eq(paymentTransfers.status, 'processing'),
-        eq(paymentTransfers.attempts, claimed.attempts),
-        eq(paymentTransfers.version, claimed.version),
-      ))
-      .returning();
+    const updated = await casUpdateTransfer(db, claimed, {
+      status: resultUnknown ? 'unknown' : 'failed',
+      failReason: resultUnknown ? `渠道结果待确认：${failReason}` : failReason,
+      finishedAt: resultUnknown ? null : new Date(),
+    }, eq(paymentTransfers.status, 'processing'), eq(paymentTransfers.attempts, claimed.attempts));
     return updated ?? claimed;
   }
 
@@ -269,38 +269,23 @@ async function executeTransferAtChannel(row: PaymentTransferRow, config: Payment
       await recordTransferJournal(claimed, config);
     } catch (accountingError) {
       logger.error('[payment-transfer] journal posting failed', { transferNo: row.transferNo, err: accountingError });
-      const [pending] = await db
-        .update(paymentTransfers)
-        .set({
-          channelTransferNo: res.channelTransferNo ?? claimed.channelTransferNo,
-          status: 'unknown',
-          failReason: '渠道已成功，等待账务凭证落地',
-          version: sql`${paymentTransfers.version} + 1`,
-        })
-        .where(and(eq(paymentTransfers.id, claimed.id), eq(paymentTransfers.status, 'processing'), eq(paymentTransfers.version, claimed.version)))
-        .returning();
+      const pending = await casUpdateTransfer(db, claimed, {
+        channelTransferNo: res.channelTransferNo ?? claimed.channelTransferNo,
+        status: 'unknown',
+        failReason: '渠道已成功，等待账务凭证落地',
+      }, eq(paymentTransfers.status, 'processing'));
       return pending ?? claimed;
     }
     await finalizeTransferReservation(claimed, 'captured', `转账成功 ${res.channelTransferNo ?? claimed.transferNo}`);
   } else if (res.status === 'failed') {
     await finalizeTransferReservation(claimed, 'released', '渠道明确返回转账失败');
   }
-  const [updated] = await db
-    .update(paymentTransfers)
-    .set({
-      status: res.status,
-      channelTransferNo: res.channelTransferNo ?? claimed.channelTransferNo,
-      failReason: null,
-      finishedAt: res.status === 'success' || res.status === 'failed' ? new Date() : null,
-      version: sql`${paymentTransfers.version} + 1`,
-    })
-    .where(and(
-      eq(paymentTransfers.id, claimed.id),
-      eq(paymentTransfers.status, 'processing'),
-      eq(paymentTransfers.attempts, claimed.attempts),
-      eq(paymentTransfers.version, claimed.version),
-    ))
-    .returning();
+  const updated = await casUpdateTransfer(db, claimed, {
+    status: res.status,
+    channelTransferNo: res.channelTransferNo ?? claimed.channelTransferNo,
+    failReason: null,
+    finishedAt: res.status === 'success' || res.status === 'failed' ? new Date() : null,
+  }, eq(paymentTransfers.status, 'processing'), eq(paymentTransfers.attempts, claimed.attempts));
   return updated ?? claimed;
 }
 
@@ -416,22 +401,12 @@ export async function approveTransfer(id: number, input: ApprovePaymentTransferI
   });
   await assertEffectivePaymentOperation({ configRow: config, operation: 'transfer.create', currency: row.currency });
 
-  const [maybeApproved] = await db
-    .update(paymentTransfers)
-    .set({
-      approvalStatus: 'approved',
-      approverId: user.userId,
-      approvedAt: new Date(),
-      approvalRemark: input.remark.trim(),
-      version: sql`${paymentTransfers.version} + 1`,
-    })
-    .where(and(
-      eq(paymentTransfers.id, row.id),
-      eq(paymentTransfers.version, row.version),
-      eq(paymentTransfers.status, 'pending'),
-      eq(paymentTransfers.approvalStatus, 'pending'),
-    ))
-    .returning();
+  const maybeApproved = await casUpdateTransfer(db, row, {
+    approvalStatus: 'approved',
+    approverId: user.userId,
+    approvedAt: new Date(),
+    approvalRemark: input.remark.trim(),
+  }, eq(paymentTransfers.status, 'pending'), eq(paymentTransfers.approvalStatus, 'pending'));
   const approved = requireRow(maybeApproved, '转账审批状态已变化，请刷新后重试', 409);
 
   return mapTransfer(await executeTransferAtChannel(approved, config));
@@ -465,25 +440,15 @@ export async function rejectTransfer(id: number, input: ApprovePaymentTransferIn
       throw new HTTPException(409, { message: `转账资金预占已处于 ${reservation.status}` });
     }
 
-    const [maybeUpdated] = await tx
-      .update(paymentTransfers)
-      .set({
-        approvalStatus: 'rejected',
-        approverId: user.userId,
-        approvedAt: new Date(),
-        approvalRemark: input.remark.trim(),
-        status: 'failed',
-        failReason: '转账审批被驳回',
-        finishedAt: new Date(),
-        version: sql`${paymentTransfers.version} + 1`,
-      })
-      .where(and(
-        eq(paymentTransfers.id, row.id),
-        eq(paymentTransfers.version, row.version),
-        eq(paymentTransfers.status, 'pending'),
-        eq(paymentTransfers.approvalStatus, 'pending'),
-      ))
-      .returning();
+    const maybeUpdated = await casUpdateTransfer(tx, row, {
+      approvalStatus: 'rejected',
+      approverId: user.userId,
+      approvedAt: new Date(),
+      approvalRemark: input.remark.trim(),
+      status: 'failed',
+      failReason: '转账审批被驳回',
+      finishedAt: new Date(),
+    }, eq(paymentTransfers.status, 'pending'), eq(paymentTransfers.approvalStatus, 'pending'));
     const updated = requireRow(maybeUpdated, '转账审批状态已变化，请刷新后重试', 409);
 
     const [maybeReleased] = await tx
@@ -538,42 +503,24 @@ export async function syncTransferStatus(id: number): Promise<PaymentTransfer> {
       await recordTransferJournal(row, config);
     } catch (accountingError) {
       logger.error('[payment-transfer] query confirmed success but journal posting failed', { transferNo: row.transferNo, err: accountingError });
-      const [pending] = await db
-        .update(paymentTransfers)
-        .set({
-          status: 'unknown',
-          channelTransferNo: res.channelTransferNo ?? row.channelTransferNo,
-          failReason: '渠道已成功，等待账务凭证落地',
-          finishedAt: null,
-          version: sql`${paymentTransfers.version} + 1`,
-        })
-        .where(and(
-          eq(paymentTransfers.id, row.id),
-          eq(paymentTransfers.version, row.version),
-          inArray(paymentTransfers.status, ['processing', 'unknown', 'failed']),
-        ))
-        .returning();
+      const pending = await casUpdateTransfer(db, row, {
+        status: 'unknown',
+        channelTransferNo: res.channelTransferNo ?? row.channelTransferNo,
+        failReason: '渠道已成功，等待账务凭证落地',
+        finishedAt: null,
+      }, inArray(paymentTransfers.status, ['processing', 'unknown', 'failed']));
       return mapTransfer(pending ?? row);
     }
     await finalizeTransferReservation(row, 'captured', `查单确认转账成功 ${res.channelTransferNo ?? row.transferNo}`);
   } else if (res.status === 'failed') {
     await finalizeTransferReservation(row, 'released', '查单确认转账失败');
   }
-  const [updated] = await db
-    .update(paymentTransfers)
-    .set({
-      status: res.status,
-      channelTransferNo: res.channelTransferNo ?? row.channelTransferNo,
-      failReason: res.failReason?.slice(0, 500) ?? row.failReason,
-      finishedAt: res.finishedAt ?? new Date(),
-      version: sql`${paymentTransfers.version} + 1`,
-    })
-    .where(and(
-      eq(paymentTransfers.id, row.id),
-      eq(paymentTransfers.version, row.version),
-      inArray(paymentTransfers.status, ['processing', 'unknown', 'failed']),
-    ))
-    .returning();
+  const updated = await casUpdateTransfer(db, row, {
+    status: res.status,
+    channelTransferNo: res.channelTransferNo ?? row.channelTransferNo,
+    failReason: res.failReason?.slice(0, 500) ?? row.failReason,
+    finishedAt: res.finishedAt ?? new Date(),
+  }, inArray(paymentTransfers.status, ['processing', 'unknown', 'failed']));
   if (!updated) return mapTransfer(row);
   return mapTransfer(updated);
 }
@@ -627,21 +574,12 @@ export async function syncProcessingTransfers(): Promise<{ scanned: number; fini
       } else if (res.status === 'failed') {
         await finalizeTransferReservation(row, 'released', '后台查单确认转账失败');
       }
-      const [updated] = await db
-        .update(paymentTransfers)
-        .set({
-          status: res.status,
-          channelTransferNo: res.channelTransferNo ?? row.channelTransferNo,
-          failReason: res.failReason?.slice(0, 500) ?? null,
-          finishedAt: res.finishedAt ?? new Date(),
-          version: sql`${paymentTransfers.version} + 1`,
-        })
-        .where(and(
-          eq(paymentTransfers.id, row.id),
-          eq(paymentTransfers.version, row.version),
-          inArray(paymentTransfers.status, ['processing', 'unknown']),
-        ))
-        .returning();
+      const updated = await casUpdateTransfer(db, row, {
+        status: res.status,
+        channelTransferNo: res.channelTransferNo ?? row.channelTransferNo,
+        failReason: res.failReason?.slice(0, 500) ?? null,
+        finishedAt: res.finishedAt ?? new Date(),
+      }, inArray(paymentTransfers.status, ['processing', 'unknown']));
       if (updated) {
         finished++;
       }

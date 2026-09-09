@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowInstance } from '@zenith/shared/workflow';
@@ -8,7 +7,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
 import { dateTimeColumn } from '../../../utils/table-columns';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
 import {
@@ -27,32 +26,21 @@ const MY_TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   rejected: { text: '我已驳回', color: 'red' },
 };
 
+interface SearchParams {
+  keyword: string;
+}
+
 export default function HandledPage() {
-  const queryClient = useQueryClient();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset, applySearch } =
+    useListSearch<SearchParams>({ defaults: { keyword: '' }, listKey: workflowInstanceKeys.lists });
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const listQuery = useHandledWorkflowInstances({
     page,
     pageSize,
-    keyword: submittedKeyword || undefined,
+    keyword: submittedParams.keyword || undefined,
   });
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
-  };
-
-  const handleReset = () => {
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
-  };
 
   const openDetail = (id: number) => {
     setSelectedId(id);
@@ -88,17 +76,11 @@ export default function HandledPage() {
     <div className="page-container">
       <SavedViewsBar
         pageKey="workflow-handled"
-        currentFilters={{ keyword: submittedKeyword }}
-        onApply={(filters) => {
-          const keyword = typeof filters.keyword === 'string' ? filters.keyword : '';
-          setDraftKeyword(keyword);
-          setSubmittedKeyword(keyword);
-          setPage(1);
-          void queryClient.invalidateQueries({ queryKey: workflowInstanceKeys.lists });
-        }}
+        currentFilters={{ keyword: submittedParams.keyword }}
+        onApply={(filters) => applySearch({ keyword: typeof filters.keyword === 'string' ? filters.keyword : '' })}
       />
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标题 / 流程名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索标题 / 流程名称" value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />}
         onSearch={handleSearch}
         onReset={handleReset}
       />

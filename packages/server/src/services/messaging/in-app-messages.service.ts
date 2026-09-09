@@ -2,7 +2,7 @@ import { eq, and, desc, inArray, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { inAppMessages, inAppTemplates, users } from '../../db/schema';
+import { inAppMessages, inAppTemplates, users, type InAppMessageRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
@@ -179,13 +179,17 @@ export async function adminDeleteInAppMessage(id: number) {
   scheduleSendToUsers([{ userId: row.userId }], { type: 'in-app-message:deleted', payload: { id } });
 }
 
+/** 单条标记已读：已读则不落库不推送；否则写 readAt 并向收件人推送 read 事件 */
+async function markMessageRead(row: Pick<InAppMessageRow, 'id' | 'userId' | 'isRead'>) {
+  if (row.isRead) return { count: 0 };
+  await db.update(inAppMessages).set({ isRead: true, readAt: new Date() }).where(eq(inAppMessages.id, row.id));
+  scheduleSendToUsers([{ userId: row.userId }], { type: 'in-app-message:read', payload: { id: row.id } });
+  return { count: 1 };
+}
+
 /** 管理员标记任意站内信为已读 */
 export async function adminMarkAsRead(id: number) {
-  const row = await ensureInAppMessageExists(id);
-  if (row.isRead) return { count: 0 };
-  await db.update(inAppMessages).set({ isRead: true, readAt: new Date() }).where(eq(inAppMessages.id, id));
-  scheduleSendToUsers([{ userId: row.userId }], { type: 'in-app-message:read', payload: { id } });
-  return { count: 1 };
+  return markMessageRead(await ensureInAppMessageExists(id));
 }
 
 /** 管理员视角：将当前租户所有未读站内信标记为已读。 */
@@ -219,11 +223,7 @@ export async function unreadCount(userId?: number) {
 
 export async function markAsRead(id: number) {
   const me = currentUser();
-  const row = await ensureInAppMessageExists(id, me.userId);
-  if (row.isRead) return { count: 0 };
-  await db.update(inAppMessages).set({ isRead: true, readAt: new Date() }).where(eq(inAppMessages.id, id));
-  scheduleSendToUsers([{ userId: row.userId }], { type: 'in-app-message:read', payload: { id } });
-  return { count: 1 };
+  return markMessageRead(await ensureInAppMessageExists(id, me.userId));
 }
 
 export async function markAllAsRead() {

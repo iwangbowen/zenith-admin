@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { analyticsEventMeta, analyticsSavedReports, analyticsUserSegments, analyticsExperiments, users } from '../../db/schema';
 import type { AnalyticsEventMetaRow } from '../../db/schema';
-import type { TrackEventInput, CreateAnalyticsEventMetaInput, UpdateAnalyticsEventMetaInput } from '@zenith/shared/analytics';
+import type { TrackEventInput, CreateAnalyticsEventMetaInput, UpdateAnalyticsEventMetaInput, AnalyticsEventMetaListQueryInput } from '@zenith/shared/analytics';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
@@ -66,7 +66,7 @@ async function resolveOwnerName(ownerId: number): Promise<string> {
   return owner.nickname;
 }
 
-export interface EventMetaListQuery { page?: number; pageSize?: number; keyword?: string; status?: string; category?: string }
+export type EventMetaListQuery = AnalyticsEventMetaListQueryInput;
 export async function listEventMeta(q: EventMetaListQuery) {
   const page = Math.max(Number(q.page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);

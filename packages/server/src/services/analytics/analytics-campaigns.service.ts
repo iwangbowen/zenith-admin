@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, ne, type SQL } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
-import type { CreateAnalyticsCampaignInput, UpdateAnalyticsCampaignInput } from '@zenith/shared/analytics';
+import type { CreateAnalyticsCampaignInput, UpdateAnalyticsCampaignInput, AnalyticsCampaignListQueryInput } from '@zenith/shared/analytics';
 import { db } from '../../db';
 import { analyticsSegmentCampaigns, analyticsUserSegments, emailTemplates, inAppTemplates, shortLinks, smsTemplates } from '../../db/schema';
 import type { AnalyticsSegmentCampaignRow } from '../../db/schema';
@@ -15,12 +15,7 @@ import { ensureSegmentExists } from './analytics-segments.service';
 
 export const ANALYTICS_CAMPAIGN_EXECUTE_TASK_TYPE = 'analytics-campaign-execute';
 
-export interface ListCampaignsQuery {
-  page?: number;
-  pageSize?: number;
-  segmentId?: number;
-  status?: 'draft' | 'running' | 'completed' | 'failed';
-}
+export type ListCampaignsQuery = AnalyticsCampaignListQueryInput;
 
 interface CampaignJoinedRow {
   campaign: AnalyticsSegmentCampaignRow;

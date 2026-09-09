@@ -40,6 +40,9 @@ export const analyticsCampaignListQuery = paginationQuery.extend({
   status: z.enum(ANALYTICS_CAMPAIGN_STATUSES).optional(),
 });
 
+/** 列表查询参数（契约解析后的形态，服务层入参类型） */
+export type AnalyticsCampaignListQueryInput = z.infer<typeof analyticsCampaignListQuery>;
+
 export const analyticsCampaignContract = defineContract('/api/analytics', {
   campaigns: op.get('/campaigns', { query: analyticsCampaignListQuery, response: paginated(analyticsSegmentCampaignSchema), summary: '分群触达活动列表' }),
   createCampaign: op.post('/campaigns', { body: createAnalyticsCampaignSchema, response: analyticsSegmentCampaignSchema, summary: '创建分群触达活动' }),

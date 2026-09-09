@@ -4,7 +4,7 @@ import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { AnalyticsExperimentAssignment, AnalyticsExperimentReport, AnalyticsExperimentReportVariant, AnalyticsExperimentVariant, CreateAnalyticsExperimentInput, UpdateAnalyticsExperimentInput } from '@zenith/shared/analytics';
+import type { AnalyticsExperimentAssignment, AnalyticsExperimentReport, AnalyticsExperimentReportVariant, AnalyticsExperimentVariant, CreateAnalyticsExperimentInput, UpdateAnalyticsExperimentInput, AnalyticsExperimentListQueryInput } from '@zenith/shared/analytics';
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT } from '@zenith/shared/analytics';
 import { db } from '../../db';
 import { analyticsExperiments, userEvents } from '../../db/schema';
@@ -29,7 +29,7 @@ type ExperimentForAssignment = Pick<AnalyticsExperimentRow, 'expKey' | 'trafficA
 interface ExperimentCacheEntry { fetchedAt: number; rows: ExperimentForAssignment[] }
 const assignmentCache = new Map<string, ExperimentCacheEntry>();
 
-export interface ListExperimentsQuery { page?: number; pageSize?: number; name?: string; status?: ExperimentStatus | '' }
+export type ListExperimentsQuery = AnalyticsExperimentListQueryInput;
 export interface ExperimentReportQuery { startDate?: string; endDate?: string }
 
 type ExperimentWithTenant = AnalyticsExperimentRow & { tenant?: { name: string | null } | null };

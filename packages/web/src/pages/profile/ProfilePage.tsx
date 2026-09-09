@@ -9,8 +9,7 @@ import { QRCodeSVG } from 'qrcode.react';
 
 import { OAUTH_PROVIDERS, OAUTH_PROVIDER_LABELS } from '@zenith/shared/identity';
 import type { User as UserType, OAuthProviderType, UserSession, UserApiTokenCreated, MfaFactor, TotpSetupResult } from '@zenith/shared/identity';
-import { fileContract } from '@zenith/shared/platform';
-import { useApiMutation } from '@/lib/contract-query';
+import { useAvatarCropUpload } from '@/hooks/useAvatarCropUpload';
 import { AppModal } from '@/components/AppModal';
 import { AvatarCropperModal } from '@/components/AvatarCropperModal';
 import { PresetAvatarPickerModal } from '@/components/PresetAvatarPickerModal';
@@ -125,8 +124,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const { items: genderItems } = useDictItems('user_gender');
 
   // ─── 头像裁剪 ────────────────────────────────────────────────────────────────
-  const avatarInputRef = useRef<HTMLInputElement>(null);
-  const [cropFile, setCropFile] = useState<File | null>(null);
   const [presetModalVisible, setPresetModalVisible] = useState(false);
   // ─── 账号安全 ────────────────────────────────────────────────────────────────
   const [changePwdVal, setChangePwdVal] = useState('');
@@ -208,7 +205,12 @@ export default function ProfilePage({ user }: ProfilePageProps) {
 
   const updateProfileMutation = useUpdateProfile();
   const updateAvatarMutation = useUpdateProfile();
-  const uploadAvatarMutation = useApiMutation(fileContract.uploadOne, { requestOptions: { silent: true } });
+  const avatarUpload = useAvatarCropUpload({
+    onUploaded: async (url) => {
+      await updateAvatarMutation.mutateAsync({ body: { avatar: url } });
+      Toast.success('头像已更新');
+    },
+  });
   const changePasswordMutation = useChangeProfilePassword();
   const oauthBindUrlMutation = useProfileOAuthBindUrl();
   const oauthUnbindMutation = useUnbindProfileOAuth();
@@ -232,7 +234,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const apiTokensLoading = apiTokensQuery.isFetching;
   const newTokenCreating = createTokenMutation.isPending;
   const totpSubmitting = beginTotpSetupMutation.isPending || verifyTotpSetupMutation.isPending;
-  const avatarLoading = uploadAvatarMutation.isPending || updateAvatarMutation.isPending;
+  const avatarLoading = avatarUpload.uploading || updateAvatarMutation.isPending;
 
   // ─── 事件处理 ────────────────────────────────────────────────────────────────
 
@@ -284,28 +286,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   async function handleDeleteMfaFactor(id: number) {
     await deleteMfaMutation.mutateAsync({ params: { id } });
     Toast.success('已删除');
-  }
-
-  function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setCropFile(file);
-    e.target.value = '';
-  }
-
-  async function handleCropConfirm(blob: Blob) {
-    const formData = new FormData();
-    formData.append('file', blob, 'avatar.jpg');
-    let uploadedUrl: string;
-    try {
-      uploadedUrl = (await uploadAvatarMutation.mutateAsync({ body: formData })).url;
-    } catch (err) {
-      Toast.error(err instanceof Error && err.message ? err.message : '上传失败');
-      return;
-    }
-    await updateAvatarMutation.mutateAsync({ body: { avatar: uploadedUrl } });
-    Toast.success('头像已更新');
-    setCropFile(null);
   }
 
   async function handleKickOthers() {
@@ -368,7 +348,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   }
 
   function openAvatarPicker() {
-    avatarInputRef.current?.click();
+    avatarUpload.openFilePicker();
   }
 
   async function handleApplyPreset(url: string) {
@@ -423,14 +403,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                         {user.avatar && (
                           <Button size="small" theme="borderless" type="danger" loading={avatarLoading} onClick={handleRemoveAvatar} style={{ width: '100%' }}>移除头像</Button>
                         )}
-                        <input
-                          ref={avatarInputRef}
-                          id="avatar-file-input"
-                          type="file"
-                          accept="image/*"
-                          style={{ display: 'none' }}
-                          onChange={handleAvatarFileSelect}
-                        />
+                        <input {...avatarUpload.fileInputProps} id="avatar-file-input" />
                       </div>
                       <div className="profile-basic-summary">
                         <div className="profile-basic-heading">
@@ -910,12 +883,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
       </AppModal>
 
       {/* ── 头像裁剪 Modal ────────────────────────────────────────────────────────────────── */}
-      <AvatarCropperModal
-        file={cropFile}
-        confirmLoading={avatarLoading}
-        onCancel={() => setCropFile(null)}
-        onConfirm={(blob) => void handleCropConfirm(blob)}
-      />
+      <AvatarCropperModal {...avatarUpload.cropperProps} confirmLoading={avatarLoading} />
 
       {/* ── 新建 Token Modal ──────────────────────────────────────────────────────────────── */}
       <AppModal

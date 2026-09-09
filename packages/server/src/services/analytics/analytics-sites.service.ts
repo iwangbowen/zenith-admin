@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
-import type { CreateAnalyticsSiteInput, UpdateAnalyticsSiteInput } from '@zenith/shared/analytics';
+import type { CreateAnalyticsSiteInput, UpdateAnalyticsSiteInput, AnalyticsSiteListQueryInput } from '@zenith/shared/analytics';
 import { db } from '../../db';
 import { analyticsSites, userEvents } from '../../db/schema';
 import type { AnalyticsSiteRow } from '../../db/schema';
@@ -17,7 +17,7 @@ const SITE_CACHE_TTL_MS = 60_000;
 // siteKey 是匿名入口的用户可控输入：负缓存条目也会入 Map，必须设上限防止随机 key 灌爆内存
 const SITE_CACHE_MAX_ENTRIES = 500;
 
-export interface AnalyticsSiteListQuery { page?: number; pageSize?: number; name?: string; appId?: string; status?: 'enabled' | 'disabled' | '' }
+export type AnalyticsSiteListQuery = AnalyticsSiteListQueryInput;
 export interface ResolvedAnalyticsSite {
   id: number;
   tenantId: number | null;

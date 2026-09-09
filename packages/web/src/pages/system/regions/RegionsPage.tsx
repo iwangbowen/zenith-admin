@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Form, Spin } from '@douyinfe/semi-ui';
 import type { CascaderData } from '@douyinfe/semi-ui/lib/es/cascader';
 import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
@@ -13,6 +13,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { regionKeys, useDeleteRegion, useFlatRegions, useRegionDetail, useRegionTree, useSaveRegion } from '@/hooks/queries/regions';
 import { useEditModal } from '@/hooks/useEditModal';
+import { useElementSize } from '@/hooks/useElementSize';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import { REGION_LEVELS, REGION_LEVEL_LABELS } from '@zenith/shared/platform';
@@ -41,8 +42,7 @@ export default function RegionsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: regionKeys.trees });
   const [editingLevel, setEditingLevel] = useState<string>('province');
-  const [tableHeight, setTableHeight] = useState(500);
-  const tableWrapperRef = useRef<HTMLDivElement>(null);
+  const { ref: tableWrapperRef, height: tableHeight } = useElementSize<HTMLDivElement>({ height: 500 });
 
   const { items: statusItems } = useDictItems('common_status');
   const treeQuery = useRegionTree({
@@ -82,20 +82,6 @@ export default function RegionsPage() {
     confirmDisable: (region) => ({ danger: true, title: `确认禁用「${region.name}」？`, okText: '确认禁用' }),
     disabled: !hasPermission('system:region:update'),
   });
-
-  useEffect(() => {
-    const el = tableWrapperRef.current;
-    if (!el) return;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setTableHeight(Math.floor(entry.contentRect.height));
-      }
-    });
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     if (regionModal.visible && regionModal.editing) setEditingLevel(regionModal.editing.level);

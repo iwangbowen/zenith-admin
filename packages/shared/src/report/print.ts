@@ -1,5 +1,6 @@
 import type { ReportPrintBorder, ReportPrintCell, ReportPrintContent, ReportPrintCrosstabConfig, ReportPrintCrosstabValueField, ReportPrintDatasetBinding, ReportPrintGrid, ReportPrintMerge, ReportPrintPageConfig, ReportPrintRenderPage, ReportPrintRenderResult, ReportPrintRowRange, ReportPrintSheet, ReportPrintSheetRenderResult } from './contracts';
 import type { ReportPrintDatasetRows, ReportPrintRenderOptions } from './types';
+import { isPlainObject } from '../core/json';
 
 type Row = Record<string, unknown>;
 
@@ -73,13 +74,9 @@ export function findPrintMerge(row: number, col: number, merges: ReportPrintMerg
   return merges.find((merge) => merge.row === row && merge.col === col);
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
 function getValue(source: unknown, path: string): unknown {
   if (!path) return source;
-  return path.split('.').reduce<unknown>((current, key) => (isObject(current) ? current[key] : undefined), source);
+  return path.split('.').reduce<unknown>((current, key) => (isPlainObject(current) ? current[key] : undefined), source);
 }
 
 function normalizeDatasetKey(key: string | null | undefined): string {
