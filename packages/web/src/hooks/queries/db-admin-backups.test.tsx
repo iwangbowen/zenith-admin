@@ -86,11 +86,13 @@ async function settle(hook: ReturnType<typeof mountPanel>['hook']) {
   });
 }
 
-/** 读取列表查询当前生效的轮询间隔（契约里以函数按数据决定） */
+/** 读取列表查询当前生效的轮询间隔（契约里以函数按数据决定）；refetchInterval 是观察者级选项，从挂载的观察者上读 */
 function resolvedRefetchInterval(qc: QueryClient) {
   const query = qc.getQueryCache().find({ queryKey: dbAdminKeys.backupList(LIST_PARAMS) });
   expect(query).toBeDefined();
-  const interval = query!.options.refetchInterval;
+  const [observer] = query!.observers;
+  expect(observer).toBeDefined();
+  const interval = observer!.options.refetchInterval;
   return typeof interval === 'function' ? interval(query!) : interval;
 }
 
