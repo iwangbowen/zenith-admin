@@ -14,8 +14,8 @@ import {
 } from '@zenith/shared/ai';
 import type { AiConversationShare, AiKbDocument, AiKnowledgeBase, AiUserSettings } from '@zenith/shared/ai';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, removeByIds } from '@/mocks/utils/crud';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { removeByIds, removeItem, requireItem } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 
 /* ─── 用户级 AI 设置（个人指令 / AI 记忆） ────────────────────── */
@@ -177,8 +177,7 @@ export const aiExtrasHandlers = [
     return ok(doc, '网页已入库');
   }),
   mock(aiKnowledgeBaseContract.chunks, ({ params, ok }) => {
-    const doc = (docStore[params.id] ?? []).find((d) => d.id === params.docId);
-    if (!doc) return notFound('文档不存在', { status: 404 });
+    const doc = requireItem((docStore[params.id] ?? []), params.docId, '文档不存在', { status: 404 });
     return ok(Array.from({ length: doc.chunkCount }, (_, i) => ({
       id: doc.id * 100 + i + 1,
       content: `【Demo 分块 ${i + 1}】${doc.name} 的第 ${i + 1} 段正文内容。`,
@@ -187,9 +186,7 @@ export const aiExtrasHandlers = [
   }),
   mock(aiKnowledgeBaseContract.removeDocument, ({ params, ok }) => {
     const docs = docStore[params.id] ?? [];
-    const idx = docs.findIndex((d) => d.id === params.docId);
-    if (idx === -1) return notFound('文档不存在', { status: 404 });
-    const [removed] = docs.splice(idx, 1);
+    const removed = removeItem(docs, params.docId, '文档不存在', { status: 404 });
     const kb = kbStore.find((k) => k.id === params.id);
     if (kb) {
       kb.documentCount = Math.max(0, kb.documentCount - 1);

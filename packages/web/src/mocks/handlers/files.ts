@@ -2,7 +2,7 @@ import type { FileStorageConfig, FolderEntry, ManagedFile, StorageBrowseResult }
 import { fillPath } from '@zenith/shared/core';
 import { fileContract, fileStorageConfigContract } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, removeItem, requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { abortMockUploadSession, completeMockUploadSession, initMockUploadSession, mockUploadSessionStatus, receiveMockUploadChunk } from '@/mocks/utils/upload-sessions';
 import { mockFileStorageConfigs, STORAGE_SECRET_FIELDS, type MockFileStorageConfig } from '@/mocks/data/system';
@@ -282,15 +282,13 @@ export const filesHandlers = [
 
   // 解析文件访问直链（必须放在 detail 之前）
   mock(fileContract.accessUrl, ({ params, ok }) => {
-    const file = mockManagedFiles.find((f) => f.id === params.id);
-    if (!file) return notFound('文件不存在');
+    const file = requireItem(mockManagedFiles, params.id, '文件不存在');
     return ok({ url: file.directUrl ?? file.url, strategy: file.directUrl ? 'public' : 'proxy', expiresAt: null });
   }),
 
   // 获取单个文件详情
   mock(fileContract.detail, ({ params, ok }) => {
-    const file = mockManagedFiles.find((f) => f.id === params.id);
-    if (!file) return notFound('文件不存在');
+    const file = requireItem(mockManagedFiles, params.id, '文件不存在');
     return ok(file);
   }),
 
@@ -309,9 +307,7 @@ export const filesHandlers = [
 
   // 删除文件
   mock(fileContract.remove, ({ params, ok }) => {
-    const index = mockManagedFiles.findIndex((f) => f.id === params.id);
-    if (index === -1) return notFound('文件不存在');
-    mockManagedFiles.splice(index, 1);
+    removeItem(mockManagedFiles, params.id, '文件不存在');
     return ok(null, '删除成功');
   }),
 

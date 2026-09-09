@@ -1,7 +1,7 @@
 import { userContract, type Department, type Position, type Role, type User } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockUsers, getNextUserId, type MockUser } from '@/mocks/data/users';
 import { mockRoles } from '@/mocks/data/roles';
@@ -167,12 +167,11 @@ export const usersHandlers = [
 
   // 删除用户
   mock(userContract.remove, ({ params, ok }) => {
-    const index = mockUsers.findIndex((u) => u.id === params.id);
-    if (index === -1) return notFound('用户不存在', { status: 404 });
-    if (mockUsers[index].username === 'admin') {
+    const item = requireItem(mockUsers, params.id, '用户不存在', { status: 404 });
+    if (item.username === 'admin') {
       return badRequest('不能删除管理员账号', { status: 400 });
     }
-    mockUsers.splice(index, 1);
+    removeByIds(mockUsers, [params.id]);
     for (const space of mockDriveSpaces) {
       if (space.ownerId === params.id) { space.ownerId = null; space.ownerName = null; }
     }

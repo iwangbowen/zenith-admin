@@ -4,8 +4,8 @@
 import { broadcastContract } from '@zenith/shared/messaging';
 import type { BroadcastCampaign } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { createProgressingMockTask } from './async-tasks';
 import { getNextBroadcastId, mockBroadcasts } from '../data/broadcasts';
@@ -62,12 +62,11 @@ export const broadcastHandlers = [
   }),
 
   mock(broadcastContract.remove, ({ params, ok }) => {
-    const idx = mockBroadcasts.findIndex((b) => b.id === params.id);
-    if (idx === -1) return notFound('群发活动不存在', { status: 404 });
-    if (mockBroadcasts[idx].status === 'sending') {
+    const item = requireItem(mockBroadcasts, params.id, '群发活动不存在', { status: 404 });
+    if (item.status === 'sending') {
       return badRequest('发送中的活动不可删除', { status: 400 });
     }
-    mockBroadcasts.splice(idx, 1);
+    removeByIds(mockBroadcasts, [params.id]);
     return ok(null, '删除成功');
   }),
 

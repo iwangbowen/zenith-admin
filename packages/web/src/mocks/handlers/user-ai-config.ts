@@ -4,6 +4,7 @@ import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
+import { removeItem } from '../utils/crud';
 
 const mockUserAiConfigs: UserAiConfig[] = [];
 
@@ -56,9 +57,7 @@ export const userAiConfigHandlers = [
   }),
 
   mock(userAiConfigContract.remove, ({ params, ok }) => {
-    const idx = mockUserAiConfigs.findIndex((c) => c.id === params.id);
-    if (idx < 0) return notFound('配置不存在', { status: 404 });
-    mockUserAiConfigs.splice(idx, 1);
+    removeItem(mockUserAiConfigs, params.id, '配置不存在', { status: 404 });
     return ok(null, '删除成功');
   }),
 ];

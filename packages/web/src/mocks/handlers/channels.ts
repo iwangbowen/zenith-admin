@@ -6,8 +6,8 @@ import type {
 import type { PublishChannelInput } from '@zenith/shared/mp';
 import type { ChatMessageExtra } from '@zenith/shared/chat';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, removeByIds } from '@/mocks/utils/crud';
-import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
+import { badRequest, nextIdFrom } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import {
   mockChannels, mockChannelMessages, mockChannelMenus, mockChannelAutoReplies, mockChannelQuickReplies,
@@ -329,10 +329,9 @@ export const channelsHandlers = [
   }),
 
   mock(channelMessageContract.removeDraft, ({ params, ok }) => {
-    const idx = mockChannelMessages.findIndex((m) => m.id === params.id);
-    if (idx === -1) return notFound('消息不存在', { status: 404 });
-    if (mockChannelMessages[idx].status === 'sent') return badRequest('已发送消息不可删除', { status: 400 });
-    mockChannelMessages.splice(idx, 1);
+    const item = requireItem(mockChannelMessages, params.id, '消息不存在', { status: 404 });
+    if (item.status === 'sent') return badRequest('已发送消息不可删除', { status: 400 });
+    removeByIds(mockChannelMessages, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -607,10 +606,9 @@ export const channelsHandlers = [
   }),
 
   mock(channelContract.remove, ({ params, ok }) => {
-    const idx = mockChannels.findIndex((c) => c.id === params.id);
-    if (idx === -1) return notFound('频道不存在', { status: 404 });
-    if (mockChannels[idx].builtin) return badRequest('内置系统号不可删除', { status: 400 });
-    mockChannels.splice(idx, 1);
+    const item = requireItem(mockChannels, params.id, '频道不存在', { status: 404 });
+    if (item.builtin) return badRequest('内置系统号不可删除', { status: 400 });
+    removeByIds(mockChannels, [params.id]);
     return ok(null, '删除成功');
   }),
 

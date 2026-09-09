@@ -1,6 +1,5 @@
 import { http } from 'msw';
 import { fail } from '@/mocks/utils/handlers';
-
 /**
  * 兜底 handler（必须注册在所有具体 handler 之后）。
  *

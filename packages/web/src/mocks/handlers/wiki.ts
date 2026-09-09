@@ -6,7 +6,7 @@ import type {
   WikiComment, WikiDoc, WikiDocTag, WikiDocTreeNode, WikiReviewRecord, WikiSpace, WikiTag, WikiTemplate,
 } from '@zenith/shared/wiki';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -209,12 +209,11 @@ const spaceHandlers = [
 
   mock(wikiSpaceContract.remove, ({ params, ok }) => {
     const id = params.id;
-    const idx = mockWikiSpaces.findIndex((s) => s.id === id);
-    if (idx === -1) return notFound('知识空间不存在', { status: 404 });
+    requireItem(mockWikiSpaces, id, '知识空间不存在', { status: 404 });
     if (mockWikiDocs.some((d) => d.spaceId === id)) {
       return badRequest('空间下仍有文档（含回收站），请先清空后再删除', { status: 400 });
     }
-    mockWikiSpaces.splice(idx, 1);
+    removeByIds(mockWikiSpaces, [id]);
     removeWhere(mockWikiSpaceMembers, (m) => m.spaceId === id);
     return ok(null, '删除成功');
   }),

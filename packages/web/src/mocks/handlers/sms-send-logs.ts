@@ -2,7 +2,6 @@ import { smsSendLogContract } from '@zenith/shared/messaging';
 import type { SmsSendLog } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
-
 import { mockSmsSendLogs, getNextSmsSendLogId } from '@/mocks/data/sms-send-logs';
 import { mockSmsTemplates } from '@/mocks/data/sms-templates';
 import { mockDateTime } from '@/mocks/utils/date';

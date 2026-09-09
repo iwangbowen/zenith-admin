@@ -1,8 +1,8 @@
 import { workflowFormContract } from '@zenith/shared/workflow';
 import type { WorkflowForm } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
-import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
+import { badRequest, conflict } from '@/mocks/utils/handlers';
 import { mockWorkflowForms, getNextWorkflowFormId } from '@/mocks/data/workflow-forms';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -116,10 +116,9 @@ export const workflowFormsHandlers = [
   }),
 
   mock(workflowFormContract.remove, ({ params, ok }) => {
-    const index = mockWorkflowForms.findIndex((form) => form.id === params.id);
-    if (index === -1) return notFound('表单不存在', { status: 404 });
+    requireItem(mockWorkflowForms, params.id, '表单不存在', { status: 404 });
     if (usageCount(params.id) > 0) return badRequest('该表单已被流程引用，无法删除', { status: 400 });
-    mockWorkflowForms.splice(index, 1);
+    removeByIds(mockWorkflowForms, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

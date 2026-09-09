@@ -201,13 +201,12 @@ const settlementHandlers = [
     return ok(s, '操作成功');
   }),
   mock(paymentSettlementContract.remove, ({ params, ok }) => {
-    const i = settlements.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('结算批次不存在');
-    if (settlements[i].status === 'settling') return badRequest('结算中批次不可删除');
+    const item = requireItem(settlements, params.id, '结算批次不存在');
+    if (item.status === 'settling') return badRequest('结算中批次不可删除');
     mockSettlementLines.forEach((line) => {
-      if (line.batchId === settlements[i].id) line.batchId = null;
+      if (line.batchId === item.id) line.batchId = null;
     });
-    settlements.splice(i, 1);
+    removeByIds(settlements, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

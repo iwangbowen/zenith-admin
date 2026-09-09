@@ -1,7 +1,6 @@
 import { inAppMessageContract } from '@zenith/shared/messaging';
 import type { InAppMessage } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
-
 import { mockInAppMessages, getNextInAppMessageId } from '@/mocks/data/in-app-messages';
 import { mockInAppTemplates } from '@/mocks/data/in-app-templates';
 import { mockUsers } from '@/mocks/data/users';

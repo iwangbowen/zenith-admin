@@ -1,7 +1,7 @@
 import { mpTagContract, type MpTag } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { removeItem, requireItem } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockMpTags, getNextMpTagId } from '@/mocks/data/mp-tags';
 import { mockMpFans } from '@/mocks/data/mp-fans';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -39,9 +39,7 @@ export const mpTagsHandlers = [
   }),
 
   mock(mpTagContract.remove, ({ params, ok }) => {
-    const idx = mockMpTags.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('标签不存在', { status: 404 });
-    const [removed] = mockMpTags.splice(idx, 1);
+    const removed = removeItem(mockMpTags, params.id, '标签不存在', { status: 404 });
     // 从粉丝本地标签中移除
     mockMpFans.forEach((f) => { f.tagIds = f.tagIds.filter((id) => id !== removed.id); });
     return ok(null, '删除成功');

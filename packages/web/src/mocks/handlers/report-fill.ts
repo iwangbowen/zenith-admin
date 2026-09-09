@@ -12,7 +12,7 @@ import {
   nextReportP2Id,
 } from '@/mocks/data/report-p2';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { createProgressingMockTask } from './async-tasks';
@@ -225,11 +225,10 @@ export const reportFillHandlers = [
   }),
 
   mock(reportFillContract.removeTemplate, ({ params, ok }) => {
-    const index = mockReportFillTemplates.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('填报模板不存在', { status: 404 });
-    if (mockReportFillTemplates[index].status === 'published') return conflict('请先下线模板再删除', { status: 409 });
+    const row = requireItem(mockReportFillTemplates, params.id, '填报模板不存在', { status: 404 });
+    if (row.status === 'published') return conflict('请先下线模板再删除', { status: 409 });
     if (mockReportFillRecords.some((item) => item.templateId === params.id)) return conflict('已有填报记录，不能删除模板', { status: 409 });
-    mockReportFillTemplates.splice(index, 1);
+    removeByIds(mockReportFillTemplates, [params.id]);
     return ok(null, '删除成功');
   }),
 

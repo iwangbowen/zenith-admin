@@ -1,7 +1,6 @@
 import { appWebhookContract, paymentWebhookContract, OPEN_WEBHOOK_EVENTS, OPEN_WEBHOOK_EVENT_LABELS, PAYMENT_WEBHOOK_EVENTS } from '@zenith/shared/open-platform';
 import type { AppWebhookContract, AppWebhookSubscription, AppWebhookDelivery } from '@zenith/shared/open-platform';
 import { mock } from '@/mocks/utils/contract';
-
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockWebhookSubscriptions, mockWebhookDeliveries } from '@/mocks/data/app-webhooks';
 import { mockDateTime } from '@/mocks/utils/date';

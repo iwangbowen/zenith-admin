@@ -4,7 +4,6 @@ import { mock } from '@/mocks/utils/contract';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
-
 const HOME = '/home/ops';
 
 /** 目录项 + 演示用文件正文（正文不随目录列表下发） */

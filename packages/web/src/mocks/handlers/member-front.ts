@@ -4,7 +4,7 @@ import type { CmsContribution, CmsMemberComment, CmsMemberContentItem } from '@z
 import { memberAuthContract, memberSelfContract } from '@zenith/shared/member';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
-import { badRequest, ok, notFound } from '@/mocks/utils/handlers';
+import { badRequest, ok } from '@/mocks/utils/handlers';
 import {
   memberView,
   mockMembers,
@@ -180,10 +180,9 @@ export const memberFrontHandlers = [
     return ok(row, '投稿已提交，等待审核');
   }),
   mock(memberCmsContract.updateContribution, ({ params, body, ok }) => {
-    const idx = mockContributions.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('投稿不存在', { status: 404 });
-    Object.assign(mockContributions[idx], body, { status: 'pending', rejectReason: null, updatedAt: mockDateTime() });
-    return ok(mockContributions[idx], '已重新提交，等待审核');
+    const item = requireItem(mockContributions, params.id, '投稿不存在', { status: 404 });
+    Object.assign(item, body, { status: 'pending', rejectReason: null, updatedAt: mockDateTime() });
+    return ok(item, '已重新提交，等待审核');
   }),
   mock(memberCmsContract.removeContribution, ({ params, ok }) => {
     const idx = mockContributions.findIndex((x) => x.id === params.id);

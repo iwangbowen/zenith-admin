@@ -10,7 +10,7 @@ import {
 } from '@zenith/shared/iot';
 import type { AsyncTask } from '@zenith/shared/tasks';
 import { mock } from '@/mocks/utils/contract';
-import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
+import { removeByIds, removeItem, requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import {
   buildMockTelemetry, buildMockTelemetryAgg, getNextIotAlarmRuleId, getNextIotAutomationId, getNextIotCommandId, getNextIotDeviceId,
@@ -220,10 +220,9 @@ export const iotHandlers = [
     return ok(firmware, '更新成功');
   }),
   mock(iotFirmwareContract.remove, ({ params, ok }) => {
-    const idx = mockIotFirmwares.findIndex((f) => f.id === params.id);
-    if (idx === -1) return notFound('固件不存在', { status: 404 });
+    requireItem(mockIotFirmwares, params.id, '固件不存在', { status: 404 });
     if (mockIotOtaTasks.some((t) => t.firmwareId === params.id)) return badRequest('该固件存在升级任务，不可删除', { status: 400 });
-    mockIotFirmwares.splice(idx, 1);
+    removeByIds(mockIotFirmwares, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -805,10 +804,9 @@ export const iotHandlers = [
     return ok({ total: body.sns.length, inserted, skipped: body.sns.length - inserted }, '导入完成');
   }),
   mock(iotWhitelistContract.remove, ({ params, ok }) => {
-    const idx = mockIotWhitelist.findIndex((e) => e.id === params.id);
-    if (idx === -1) return notFound('白名单条目不存在', { status: 404 });
-    if (mockIotWhitelist[idx].used) return badRequest('已注册核销的条目不可删除', { status: 400 });
-    mockIotWhitelist.splice(idx, 1);
+    const item = requireItem(mockIotWhitelist, params.id, '白名单条目不存在', { status: 404 });
+    if (item.used) return badRequest('已注册核销的条目不可删除', { status: 400 });
+    removeByIds(mockIotWhitelist, [params.id]);
     return ok(null, '已移除');
   }),
 
@@ -875,9 +873,7 @@ export const iotHandlers = [
     return ok(automation, '更新成功');
   }),
   mock(iotAutomationContract.remove, ({ params, ok }) => {
-    const idx = mockIotAutomations.findIndex((a) => a.id === params.id);
-    if (idx < 0) return notFound('联动规则不存在', { status: 404 });
-    mockIotAutomations.splice(idx, 1);
+    removeItem(mockIotAutomations, params.id, '联动规则不存在', { status: 404 });
     return ok(null, '删除成功');
   }),
 
@@ -942,9 +938,7 @@ export const iotHandlers = [
     return ok(rule, '更新成功');
   }),
   mock(iotForwardRuleContract.remove, ({ params, ok }) => {
-    const idx = mockIotForwardRules.findIndex((r) => r.id === params.id);
-    if (idx < 0) return notFound('流转规则不存在', { status: 404 });
-    mockIotForwardRules.splice(idx, 1);
+    removeItem(mockIotForwardRules, params.id, '流转规则不存在', { status: 404 });
     return ok(null, '删除成功');
   }),
 

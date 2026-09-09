@@ -2,9 +2,9 @@ import { bizPayDemoContract, type BizPayDemo } from '@zenith/shared/biz';
 import { PAYMENT_METHOD_CHANNEL, type CreatePaymentResult } from '@zenith/shared/payment';
 import { mockBizPayDemos, getNextPayDemoId } from '@/mocks/data/biz-pay-demo';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { badRequest } from '@/mocks/utils/handlers';
 import { filterByKeyword } from '@/mocks/utils/filter';
 
 export const bizPayDemoHandlers = [
@@ -45,10 +45,9 @@ export const bizPayDemoHandlers = [
 
   // 删除
   mock(bizPayDemoContract.remove, ({ params, ok }) => {
-    const idx = mockBizPayDemos.findIndex((d) => d.id === params.id);
-    if (idx === -1) return notFound('示例单不存在');
-    if (mockBizPayDemos[idx].status === 'paid') return badRequest('已支付的示例单不可删除');
-    mockBizPayDemos.splice(idx, 1);
+    const item = requireItem(mockBizPayDemos, params.id, '示例单不存在');
+    if (item.status === 'paid') return badRequest('已支付的示例单不可删除');
+    removeByIds(mockBizPayDemos, [params.id]);
     return ok(null, '已删除');
   }),
 

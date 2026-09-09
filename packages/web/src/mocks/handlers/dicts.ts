@@ -2,7 +2,6 @@ import { dictContract, type Dict, type DictItem } from '@zenith/shared/platform'
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
-
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDicts, mockDictItems, getNextDictId, getNextDictItemId } from '@/mocks/data/dicts';
 import { mockDateTime } from '@/mocks/utils/date';

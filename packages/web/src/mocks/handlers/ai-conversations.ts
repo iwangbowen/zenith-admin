@@ -3,7 +3,7 @@ import { toColonPath } from '@zenith/shared/core';
 import { aiConversationContract, sendAiChatMessageSchema } from '@zenith/shared/ai';
 import type { AiConversation, AiFeedbackItem, AiMessage } from '@zenith/shared/ai';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockAiConversations, mockAiMessages, getNextConvId, getNextMsgId } from '@/mocks/data/ai';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -119,8 +119,7 @@ export const aiConversationsHandlers = [
   }),
 
   mock(aiConversationContract.handleFeedback, ({ params, body, ok }) => {
-    const msg = Object.values(msgStore).flat().find((m) => m.id === params.msgId);
-    if (!msg) return notFound('消息不存在', { status: 404 });
+    const msg = requireItem(Object.values(msgStore).flat(), params.msgId, '消息不存在', { status: 404 });
     if (msg.feedback === null) return badRequest('该消息没有用户反馈', { status: 400 });
     msg.feedbackStatus = body.status;
     msg.feedbackRemark = body.remark?.trim() || null;

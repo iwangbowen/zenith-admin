@@ -12,7 +12,6 @@ import {
 } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
 import { forbidden, notFound } from '@/mocks/utils/handlers';
-
 function demoErr() {
   return forbidden('演示模式下不支持文件操作', { status: 403 });
 }

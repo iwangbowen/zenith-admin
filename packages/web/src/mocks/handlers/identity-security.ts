@@ -4,7 +4,6 @@ import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
 import { currentMockSession, isMockPlatformAdmin, mockUserPermissions } from '@/mocks/utils/auth';
 import { forbidden, unauthorized } from '@/mocks/utils/handlers';
-
 const riskEvents: LoginRiskEvent[] = [
   {
     id: 1,

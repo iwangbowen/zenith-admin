@@ -1,7 +1,6 @@
 import { mpConditionalMenuContract, type MpConditionalMenu } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
-
 import { mockMpConditionalMenus, getNextMpConditionalMenuId } from '@/mocks/data/mp-conditional-menus';
 import { mockDateTime } from '@/mocks/utils/date';
 

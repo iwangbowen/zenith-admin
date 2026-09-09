@@ -1,7 +1,6 @@
 import { mpQrcodeContract, type MpQrcode } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
-
 import { mockMpQrcodes, getNextMpQrcodeId } from '@/mocks/data/mp-qrcodes';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';

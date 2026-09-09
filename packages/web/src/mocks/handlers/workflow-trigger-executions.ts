@@ -2,7 +2,6 @@ import { workflowTriggerExecutionContract } from '@zenith/shared/workflow';
 import type { WorkflowTriggerExecution } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
-
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 
 export const mockWorkflowTriggerExecutions: WorkflowTriggerExecution[] = [

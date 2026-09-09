@@ -10,7 +10,7 @@ import type {
   AiEvalExperimentResult,
 } from '@zenith/shared/ai';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, removeItem, requireItem, updateItem } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 
@@ -238,8 +238,7 @@ export const aiP3Handlers = [
     return ok(itemStore.get(params.id) ?? []);
   }),
   mock(aiEvalContract.addItems, ({ params, body, ok }) => {
-    const dataset = datasetStore.find((d) => d.id === params.id);
-    if (!dataset) return notFound('评测集不存在', { status: 404 });
+    const dataset = requireItem(datasetStore, params.id, '评测集不存在', { status: 404 });
     const list = itemStore.get(dataset.id) ?? [];
     for (const it of body.items) {
       list.push({ id: `item-${nextItemId++}`, input: it.input, groundTruth: it.groundTruth ?? null });
@@ -251,12 +250,9 @@ export const aiP3Handlers = [
     return ok(list, '添加成功');
   }),
   mock(aiEvalContract.removeItem, ({ params, ok }) => {
-    const dataset = datasetStore.find((d) => d.id === params.id);
-    if (!dataset) return notFound('评测集不存在', { status: 404 });
+    const dataset = requireItem(datasetStore, params.id, '评测集不存在', { status: 404 });
     const list = itemStore.get(dataset.id) ?? [];
-    const idx = list.findIndex((item) => item.id === params.itemId);
-    if (idx === -1) return notFound('条目不存在', { status: 404 });
-    list.splice(idx, 1);
+    removeItem(list, params.itemId, '条目不存在', { status: 404 });
     dataset.itemCount = list.length;
     dataset.version += 1;
     dataset.updatedAt = mockDateTime();
@@ -266,8 +262,7 @@ export const aiP3Handlers = [
   // ── 评测:实验 ──
   mock(aiEvalContract.experimentDetail, ({ params, ok }) => {
     const experiments = experimentStore.get(params.id) ?? [];
-    const experiment = experiments.find((e) => e.id === params.experimentId);
-    if (!experiment) return notFound('实验不存在', { status: 404 });
+    const experiment = requireItem(experiments, params.experimentId, '实验不存在', { status: 404 });
     return ok({ experiment, results: resultStore.get(experiment.id) ?? [] });
   }),
   mock(aiEvalContract.experiments, ({ params, ok }) => {
@@ -275,8 +270,7 @@ export const aiP3Handlers = [
     return ok(experimentStore.get(params.id) ?? []);
   }),
   mock(aiEvalContract.runExperiment, ({ params, body, ok }) => {
-    const dataset = datasetStore.find((d) => d.id === params.id);
-    if (!dataset) return notFound('评测集不存在', { status: 404 });
+    const dataset = requireItem(datasetStore, params.id, '评测集不存在', { status: 404 });
     const items = itemStore.get(dataset.id) ?? [];
     const experimentId = `exp-${nextExperimentId++}`;
     const name = body.name?.trim() || `exp-${experimentId}`;
@@ -327,17 +321,14 @@ export const aiP3Handlers = [
     return ok(dataset, '创建成功');
   }),
   mock(aiEvalContract.update, ({ params, body, ok }) => {
-    const dataset = datasetStore.find((d) => d.id === params.id);
-    if (!dataset) return notFound('评测集不存在', { status: 404 });
+    const dataset = requireItem(datasetStore, params.id, '评测集不存在', { status: 404 });
     if (body.name !== undefined) dataset.name = body.name;
     if (body.description !== undefined) dataset.description = body.description;
     dataset.updatedAt = mockDateTime();
     return ok(dataset, '更新成功');
   }),
   mock(aiEvalContract.remove, ({ params, ok }) => {
-    const idx = datasetStore.findIndex((d) => d.id === params.id);
-    if (idx === -1) return notFound('评测集不存在', { status: 404 });
-    const [removed] = datasetStore.splice(idx, 1);
+    const removed = removeItem(datasetStore, params.id, '评测集不存在', { status: 404 });
     itemStore.delete(removed.id);
     experimentStore.delete(removed.id);
     return ok(null, '删除成功');

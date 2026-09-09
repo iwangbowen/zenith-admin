@@ -4,7 +4,7 @@ import type {
   ChatMessage, ChatQuickReply, ChatReadState, ChatReplySnapshot, ChatScheduledMessage,
 } from '@zenith/shared/chat';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { badRequest, forbidden, notFound } from '@/mocks/utils/handlers';
 import {
   mockChatConversations, mockChatUsers, getMockConvMessages,
@@ -393,8 +393,7 @@ export const chatHandlers = [
 
   // 设置/取消群管理员
   mock(chatContract.setMemberRole, ({ params, body, ok }) => {
-    const target = mockGroupMembers[params.id]?.find((m) => m.id === params.userId);
-    if (!target) return notFound('该用户不在群聊中', { status: 404 });
+    const target = requireItem(mockGroupMembers[params.id] ?? [], params.userId, '该用户不在群聊中', { status: 404 });
     if (target.role === 'owner') return badRequest('不能修改群主角色', { status: 400 });
     target.role = body.role;
     addSystemMessage(params.id, body.role === 'admin'
@@ -405,8 +404,7 @@ export const chatHandlers = [
 
   // 禁言/解除禁言群成员
   mock(chatContract.muteMember, ({ params, body, ok }) => {
-    const target = mockGroupMembers[params.id]?.find((m) => m.id === params.userId);
-    if (!target) return notFound('该用户不在群聊中', { status: 404 });
+    const target = requireItem(mockGroupMembers[params.id] ?? [], params.userId, '该用户不在群聊中', { status: 404 });
     if (target.role === 'owner') return badRequest('不能禁言群主', { status: 400 });
     if (body.mute) {
       target.mutedUntil = body.durationMinutes
@@ -639,10 +637,9 @@ export const chatHandlers = [
   // 移除群成员
   mock(chatContract.removeGroupMember, ({ params, ok }) => {
     if (!mockGroupMembers[params.id]) return notFound('群聊不存在', { status: 404 });
-    const idx = mockGroupMembers[params.id].findIndex((m) => m.id === params.userId);
-    if (idx === -1) return notFound('该用户不在群聊中', { status: 404 });
-    const target = mockGroupMembers[params.id][idx];
-    mockGroupMembers[params.id].splice(idx, 1);
+    const item = requireItem(mockGroupMembers[params.id], params.userId, '该用户不在群聊中', { status: 404 });
+    const target = item;
+    removeByIds(mockGroupMembers[params.id], [params.userId]);
     addSystemMessage(params.id, `${target.nickname} 被 ${CURRENT_USER_NICKNAME} 移出群聊`);
     return ok(null);
   }),

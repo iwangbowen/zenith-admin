@@ -1,11 +1,11 @@
 import { apiScopeContract } from '@zenith/shared/open-platform';
 import type { ApiScope } from '@zenith/shared/open-platform';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
+import { badRequest, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockApiScopes } from '@/mocks/data/api-scopes';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
-import { removeByIds, requireItem } from '@/mocks/utils/crud';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 
 const scopes: ApiScope[] = mockApiScopes.map((s) => ({ ...s }));
 let nextId = nextIdFrom(scopes);
@@ -52,10 +52,8 @@ export const apiScopesHandlers = [
   }),
 
   mock(apiScopeContract.update, ({ params, body, ok }) => {
-    const idx = scopes.findIndex((s) => s.id === params.id);
-    if (idx === -1) return notFound('API Scope 不存在', { status: 404 });
-    scopes[idx] = { ...scopes[idx], ...body, updatedAt: mockDateTime() };
-    return ok(scopes[idx], '更新成功');
+    const updated = updateItem(scopes, params.id, body, { notFoundMessage: 'API Scope 不存在', now: mockDateTime, init: { status: 404 } });
+    return ok(updated, '更新成功');
   }),
 
   mock(apiScopeContract.remove, ({ params, ok }) => {

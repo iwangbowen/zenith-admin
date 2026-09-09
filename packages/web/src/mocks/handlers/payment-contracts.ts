@@ -1,6 +1,6 @@
 import { memberRenewalContract } from '@zenith/shared/member';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { mockDeductPlans, mockPaymentContracts, mockVipRenewals, getNextContractId, getNextPlanId } from '@/mocks/data/payment-contracts';
 import { mockDateTime } from '@/mocks/utils/date';
 import { notFound, badRequest } from '@/mocks/utils/handlers';
@@ -94,11 +94,10 @@ const planHandlers = [
     return ok(p, '更新成功');
   }),
   mock(paymentDeductPlanContract.removeDeductPlan, ({ params, ok }) => {
-    const i = mockDeductPlans.findIndex((x) => x.id === params.id);
-    if (i === -1) return notFound('扣款计划不存在');
+    requireItem(mockDeductPlans, params.id, '扣款计划不存在');
     const refs = mockPaymentContracts.filter((c) => c.planId === params.id).length;
     if (refs > 0) return badRequest(`该计划已被 ${refs} 份签约协议引用，无法删除`);
-    mockDeductPlans.splice(i, 1);
+    removeByIds(mockDeductPlans, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

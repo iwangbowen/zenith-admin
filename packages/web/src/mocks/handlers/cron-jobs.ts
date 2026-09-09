@@ -2,7 +2,6 @@ import { cronJobContract } from '@zenith/shared/platform';
 import type { CronJob, CronJobLog, CronRunStatus } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
-
 import { mockCronJobs, getNextCronJobId } from '@/mocks/data/system';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';

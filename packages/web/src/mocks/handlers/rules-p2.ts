@@ -265,12 +265,11 @@ export const rulesP2Handlers = [
     return ok(r, '更新成功');
   }),
   mock(ruleListContract.remove, ({ params, ok }) => {
-    const i = mockRuleLists.findIndex((t) => t.id === params.id);
-    if (i === -1) return notFound('名单不存在', { status: 404 });
-    const { id: listId, key, name } = mockRuleLists[i];
+    const item = requireItem(mockRuleLists, params.id, '名单不存在', { status: 404 });
+    const { id: listId, key, name } = item;
     const refs = listUsages(key);
     if (refs.length > 0) return badRequest(`名单「${name}」被 ${refs.length} 处引用（${refs.map((r) => r.name).join('、')}），请先解除引用后再删除`, { status: 400 });
-    mockRuleLists.splice(i, 1);
+    removeByIds(mockRuleLists, [params.id]);
     for (let k = mockRuleListItems.length - 1; k >= 0; k -= 1) if (mockRuleListItems[k].listId === listId) mockRuleListItems.splice(k, 1);
     return ok(null, '删除成功');
   }),

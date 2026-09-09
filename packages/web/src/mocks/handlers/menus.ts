@@ -1,7 +1,7 @@
 import { menuContract, type Menu } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, updateItem } from '@/mocks/utils/crud';
-import { notFound, conflict } from '@/mocks/utils/handlers';
+import { conflict } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockMenus, buildMenuTree, getNextMenuId } from '@/mocks/data/menus';
 import { mockRoles } from '@/mocks/data/roles';
@@ -51,8 +51,7 @@ export const menusHandlers = [
   // 删除菜单（在用保护：被非超管角色引用的菜单返回 409；级联删除子菜单）
   mock(menuContract.remove, ({ params, ok }) => {
     const id = params.id;
-    const index = mockMenus.findIndex((m) => m.id === id);
-    if (index === -1) return notFound('菜单不存在', { status: 404 });
+    requireItem(mockMenus, id, '菜单不存在', { status: 404 });
     // 收集自身及全部子孙菜单
     const toDelete = new Set<number>();
     const queue = [id];

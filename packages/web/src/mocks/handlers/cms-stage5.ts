@@ -1,6 +1,6 @@
 import { badRequest, conflict, locked, notFound } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import {
   CMS_SECRET_MASK,
   CMS_SITE_INHERITABLE_FIELDS,
@@ -515,9 +515,8 @@ export const cmsStage5Handlers = [
   }),
 
   mock(cmsDistributionContract.remove, ({ params, ok }) => {
-    const index = mockCmsDistributionRules.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('分发规则不存在', { status: 404 });
-    const rule = mockCmsDistributionRules[index];
+    const row = requireItem(mockCmsDistributionRules, params.id, '分发规则不存在', { status: 404 });
+    const rule = row;
     const lockedContent = mockCmsContents.find((content) =>
       content.distributionRuleId === rule.id && content.mappingSourceId != null && content.lockedAt);
     if (lockedContent) return locked(`映射内容 #${lockedContent.id} 已锁定，不能删除规则并解除映射`, { status: 423 });
@@ -532,7 +531,7 @@ export const cmsStage5Handlers = [
       }
       content.distributionRuleId = null;
     });
-    mockCmsDistributionRules.splice(index, 1);
+    removeByIds(mockCmsDistributionRules, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

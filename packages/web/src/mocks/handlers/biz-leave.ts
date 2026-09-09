@@ -2,8 +2,8 @@ import { bizLeaveContract } from '@zenith/shared/biz';
 import type { BizLeave } from '@zenith/shared/biz';
 import type { WorkflowInstance, WorkflowTask } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
+import { badRequest } from '@/mocks/utils/handlers';
 import { mockBizLeaves, getNextLeaveId } from '@/mocks/data/biz-leave';
 import {
   getNextInstanceId,
@@ -157,10 +157,9 @@ export const bizLeaveHandlers = [
 
   // 删除（仅草稿）
   mock(bizLeaveContract.remove, ({ params, ok }) => {
-    const idx = mockBizLeaves.findIndex((l) => l.id === params.id);
-    if (idx === -1) return notFound('请假单不存在');
-    if (mockBizLeaves[idx].status !== 'draft') return badRequest('仅草稿状态可删除');
-    mockBizLeaves.splice(idx, 1);
+    const item = requireItem(mockBizLeaves, params.id, '请假单不存在');
+    if (item.status !== 'draft') return badRequest('仅草稿状态可删除');
+    removeByIds(mockBizLeaves, [params.id]);
     return ok(null, '已删除');
   }),
 ];

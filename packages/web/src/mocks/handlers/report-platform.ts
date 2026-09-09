@@ -20,7 +20,7 @@ import {
   nextReportP2Id,
 } from '@/mocks/data/report-p2';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
+import { removeByIds, removeItem, requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, forbidden, notFound } from '@/mocks/utils/handlers';
 import { DEMO_TENANT_ID, DEMO_USER_ID, DEMO_USER_NAME } from './report-mock-utils';
@@ -181,12 +181,11 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportFolderContract.remove, ({ params, ok }) => {
-    const index = mockReportFolders.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('资源目录不存在', { status: 404 });
-    if (mockReportFolders.some((item) => item.parentId === params.id) || resourceList(mockReportFolders[index].resourceType).some((item) => item.folderId === params.id)) {
+    const row = requireItem(mockReportFolders, params.id, '资源目录不存在', { status: 404 });
+    if (mockReportFolders.some((item) => item.parentId === params.id) || resourceList(row.resourceType).some((item) => item.folderId === params.id)) {
       return conflict('目录非空，不能删除', { status: 409 });
     }
-    mockReportFolders.splice(index, 1);
+    removeByIds(mockReportFolders, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -283,10 +282,9 @@ export const reportPlatformHandlers = [
   metricLifecycleHandler('deprecate'),
 
   mock(reportMetricContract.remove, ({ params, ok }) => {
-    const index = mockReportMetrics.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('指标不存在', { status: 404 });
-    if (mockReportMetrics[index].lifecycleStatus === 'published') return conflict('已发布指标不能删除', { status: 409 });
-    mockReportMetrics.splice(index, 1);
+    const item = requireItem(mockReportMetrics, params.id, '指标不存在', { status: 404 });
+    if (item.lifecycleStatus === 'published') return conflict('已发布指标不能删除', { status: 409 });
+    removeByIds(mockReportMetrics, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -325,9 +323,7 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportGovernanceContract.revokeAcl, ({ params, ok }) => {
-    const index = mockReportResourceAcls.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('授权记录不存在', { status: 404 });
-    mockReportResourceAcls.splice(index, 1);
+    removeItem(mockReportResourceAcls, params.id, '授权记录不存在', { status: 404 });
     return ok(null, '撤销成功');
   }),
 
@@ -470,10 +466,9 @@ export const reportPlatformHandlers = [
   }),
 
   mock(reportEnvironmentContract.remove, ({ params, ok }) => {
-    const index = mockReportEnvironments.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('环境不存在', { status: 404 });
-    if (mockReportEnvironments[index].isDefault) return conflict('默认环境不能删除', { status: 409 });
-    mockReportEnvironments.splice(index, 1);
+    const item = requireItem(mockReportEnvironments, params.id, '环境不存在', { status: 404 });
+    if (item.isDefault) return conflict('默认环境不能删除', { status: 409 });
+    removeByIds(mockReportEnvironments, [params.id]);
     return ok(null, '删除成功');
   }),
 

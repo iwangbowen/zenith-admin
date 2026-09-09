@@ -1,5 +1,5 @@
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, fail, forbidden, notFound } from '@/mocks/utils/handlers';
 import { resolveIdempotent } from '@/mocks/utils/idempotency';
 import {
@@ -513,10 +513,9 @@ export const workflowExtraHandlers = [
     return ok(mockTemplates[idx], '已更新');
   }),
   mock(workflowTemplateContract.remove, ({ params, ok }) => {
-    const idx = mockTemplates.findIndex((t) => t.id === params.id);
-    if (idx === -1) return notFound('模板不存在');
-    if (mockTemplates[idx].builtin) return badRequest('系统内置模板不可删除');
-    mockTemplates.splice(idx, 1);
+    const item = requireItem(mockTemplates, params.id, '模板不存在');
+    if (item.builtin) return badRequest('系统内置模板不可删除');
+    removeByIds(mockTemplates, [params.id]);
     return ok(null, '已删除');
   }),
 

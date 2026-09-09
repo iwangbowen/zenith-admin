@@ -1,7 +1,6 @@
 import { mpKfSessionContract, type MpKfSessionReportItem, type MpMessage } from '@zenith/shared/mp';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
-
 import {
   mockMpKfSessions, mockMpKfSessionEvents, mockMpKfMessages,
   buildMpKfStats, ensureMpKfConfig, getNextMpKfEventId, getNextMpKfMessageId,

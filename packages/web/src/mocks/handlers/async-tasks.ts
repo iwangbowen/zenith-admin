@@ -7,6 +7,7 @@ import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateOffset, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
+import { removeByIds, requireItem } from '../utils/crud';
 
 /**
  * 任务中心 Mock：用「按读取时间推进」策略模拟异步任务执行。
@@ -825,14 +826,13 @@ export const asyncTasksHandlers = [
   }),
 
   mock(asyncTaskContract.remove, ({ params, ok }) => {
-    const index = tasks.findIndex((item) => item.id === params.id);
-    if (index === -1) return notFound('任务不存在', { status: 404 });
-    if (!isAsyncTaskTerminal(tasks[index].status)) {
+    const item = requireItem(tasks, params.id, '任务不存在', { status: 404 });
+    if (!isAsyncTaskTerminal(item.status)) {
       return badRequest('进行中的任务不能删除，请先取消', { status: 400 });
     }
-    sims.delete(tasks[index].id);
-    itemsByTask.delete(tasks[index].id);
-    tasks.splice(index, 1);
+    sims.delete(item.id);
+    itemsByTask.delete(item.id);
+    removeByIds(tasks, [params.id]);
     return ok(null, '已删除');
   }),
 

@@ -2,6 +2,7 @@ import { rateLimitContract, type RateLimitBan, type RateLimitRecentBlock, type R
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset } from '../utils/date';
+import { removeByIds, requireItem } from '../utils/crud';
 
 const RULE_BASE = { mode: 'enforce' as const, algorithm: 'fixed_window' as const, allowlist: [] as string[], priority: 0, alertThreshold: null };
 
@@ -77,12 +78,11 @@ export const rateLimitHandlers = [
   }),
 
   mock(rateLimitContract.removeRule, ({ params, ok }) => {
-    const idx = rules.findIndex((r) => r.id === params.id);
-    if (idx === -1) return notFound('规则不存在', { status: 404 });
-    if (rules[idx].predefined) {
+    const item = requireItem(rules, params.id, '规则不存在', { status: 404 });
+    if (item.predefined) {
       return badRequest('内置规则不可删除', { status: 400 });
     }
-    rules.splice(idx, 1);
+    removeByIds(rules, [params.id]);
     return ok(null, '规则已删除');
   }),
 

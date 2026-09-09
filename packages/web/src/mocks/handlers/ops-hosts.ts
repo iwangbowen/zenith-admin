@@ -2,6 +2,7 @@ import { opsHostContract, type OpsHost } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
 import { notFound } from '@/mocks/utils/handlers';
+import { removeItem } from '../utils/crud';
 
 let nextId = 3;
 const hosts: OpsHost[] = [
@@ -142,9 +143,7 @@ export const opsHostHandlers = [
     return ok(hosts[index], '已更新');
   }),
   mock(opsHostContract.remove, ({ params, ok }) => {
-    const index = hosts.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('主机不存在', { status: 404 });
-    hosts.splice(index, 1);
+    removeItem(hosts, params.id, '主机不存在', { status: 404 });
     return ok(null, '已删除');
   }),
   mock(opsHostContract.test, ({ params, ok }) => {

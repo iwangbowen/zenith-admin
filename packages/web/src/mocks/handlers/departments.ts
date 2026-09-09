@@ -1,7 +1,6 @@
 import { departmentContract, type Department } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
-
 import { mockDepartments, getNextDeptId } from '@/mocks/data/departments';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDriveSpaces } from '@/mocks/data/drive';

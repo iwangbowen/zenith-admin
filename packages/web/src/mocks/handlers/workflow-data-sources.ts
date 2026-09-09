@@ -1,8 +1,7 @@
 import { workflowDataSourceContract } from '@zenith/shared/workflow';
 import type { WorkflowDataSource } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, removeByIds } from '@/mocks/utils/crud';
-import { notFound } from '@/mocks/utils/handlers';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { mockWorkflowDataSources, getNextDataSourceId, MOCK_DATA_SOURCE_OPTIONS } from '@/mocks/data/workflow-data-sources';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -59,10 +58,9 @@ export const workflowDataSourcesHandlers = [
   }),
 
   mock(workflowDataSourceContract.update, ({ params, body, ok }) => {
-    const idx = mockWorkflowDataSources.findIndex((x) => x.id === params.id);
-    if (idx === -1) return notFound('数据源不存在', { status: 404 });
-    Object.assign(mockWorkflowDataSources[idx], { ...body, updatedAt: mockDateTime() });
-    return ok(mockWorkflowDataSources[idx], '更新成功');
+    const item = requireItem(mockWorkflowDataSources, params.id, '数据源不存在', { status: 404 });
+    Object.assign(item, { ...body, updatedAt: mockDateTime() });
+    return ok(item, '更新成功');
   }),
 
   mock(workflowDataSourceContract.remove, ({ params, ok }) => {

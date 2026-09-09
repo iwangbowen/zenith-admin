@@ -1,6 +1,6 @@
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import {
   renderPrintContent,
   reportAiContract,
@@ -309,8 +309,7 @@ export const reportHandlers = [
   }),
   mock(reportDatasetContract.remove, ({ params, ok }) => {
     const id = params.id;
-    const i = mockReportDatasets.findIndex((x) => x.id === id);
-    if (i === -1) return notFound('数据集不存在');
+    requireItem(mockReportDatasets, id, '数据集不存在');
     // 与后端一致：存在下游引用时拒绝删除
     const refDash = mockReportDashboards.filter((d) =>
       (d.widgets ?? []).some((w) => w.datasetId === id)
@@ -322,7 +321,7 @@ export const reportHandlers = [
     if (refPrint.length) parts.push(`打印报表 ${refPrint.map((t) => `《${t.name}》`).join('、')}`);
     if (refAlert.length) parts.push(`预警规则 ${refAlert.map((a) => `《${a.name}》`).join('、')}`);
     if (parts.length) return badRequest(`该数据集正被引用，无法删除：${parts.join('；')}。请先在「血缘」中查看并解除引用`);
-    mockReportDatasets.splice(i, 1);
+    removeByIds(mockReportDatasets, [id]);
     return ok(null, '删除成功');
   }),
 

@@ -27,7 +27,7 @@ import {
   nextReportP2Id,
 } from '@/mocks/data/report-p2';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
+import { removeItem, requireItem } from '@/mocks/utils/crud';
 import { mockDate, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { createProgressingMockTask } from './async-tasks';
@@ -146,9 +146,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportDqContract.removeRule, ({ params, ok }) => {
-    const index = mockReportDqRules.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('质量规则不存在', { status: 404 });
-    mockReportDqRules.splice(index, 1);
+    removeItem(mockReportDqRules, params.id, '质量规则不存在', { status: 404 });
     return ok(null, '删除成功');
   }),
 
@@ -360,9 +358,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportQueryCapacityContract.removeQuota, ({ params, ok }) => {
-    const index = mockReportQueryQuotas.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('查询配额不存在', { status: 404 });
-    mockReportQueryQuotas.splice(index, 1);
+    removeItem(mockReportQueryQuotas, params.id, '查询配额不存在', { status: 404 });
     return ok(null, '删除成功');
   }),
 
@@ -467,9 +463,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportSlaContract.removeRule, ({ params, ok }) => {
-    const index = mockReportSlaRules.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('SLA 规则不存在', { status: 404 });
-    mockReportSlaRules.splice(index, 1);
+    removeItem(mockReportSlaRules, params.id, 'SLA 规则不存在', { status: 404 });
     return ok(null, '删除成功');
   }),
 
@@ -597,9 +591,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportAssetContract.removeDeprecation, ({ params, ok }) => {
-    const index = mockReportDeprecations.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('弃用公告不存在', { status: 404 });
-    mockReportDeprecations.splice(index, 1);
+    removeItem(mockReportDeprecations, params.id, '弃用公告不存在', { status: 404 });
     return ok(null, '删除成功');
   }),
 
@@ -699,9 +691,7 @@ export const reportQualityCapacityHandlers = [
   }),
 
   mock(reportAssetContract.removeTemplate, ({ params, ok }) => {
-    const index = mockReportAssetTemplates.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('资产模板不存在', { status: 404 });
-    mockReportAssetTemplates.splice(index, 1);
+    removeItem(mockReportAssetTemplates, params.id, '资产模板不存在', { status: 404 });
     return ok(null, '删除成功');
   }),
 ];

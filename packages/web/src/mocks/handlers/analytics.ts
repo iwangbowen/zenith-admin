@@ -444,10 +444,8 @@ export const analyticsHandlers = [
   }),
 
   mock(analyticsExperimentContract.updateExperiment, ({ params, body, ok }) => {
-    const index = mockExperiments.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('实验不存在', { status: 404 });
-    mockExperiments[index] = { ...mockExperiments[index], ...body, updatedAt: mockDateTime() };
-    return ok(mockExperiments[index], '更新成功');
+    const updated = updateItem(mockExperiments, params.id, body, { notFoundMessage: '实验不存在', now: mockDateTime, init: { status: 404 } });
+    return ok(updated, '更新成功');
   }),
 
   mock(analyticsExperimentContract.removeExperiment, ({ params, ok }) => {

@@ -6,6 +6,7 @@ import { badRequest, fail } from '@/mocks/utils/handlers';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
+import { removeByIds, requireItem } from '../utils/crud';
 
 type StoredSubscription = WorkflowEventSubscription & { secret: string | null };
 
@@ -257,9 +258,8 @@ export const workflowEventSubscriptionsHandlers = [
   }),
 
   mock(workflowEventSubscriptionContract.remove, ({ params, ok }) => {
-    const idx = mockSubscriptions.findIndex((item) => item.id === params.id);
-    if (idx === -1) return fail(404, '事件订阅不存在');
-    mockSubscriptions.splice(idx, 1);
+    requireItem(mockSubscriptions, params.id, '事件订阅不存在');
+    removeByIds(mockSubscriptions, [params.id]);
     return ok(null, '已删除');
   }),
 ];

@@ -1,7 +1,6 @@
 import { userContract, mostPermissiveDataScope, type DataScope } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
-
 import { mockUsers } from '@/mocks/data/users';
 import { mockRoles } from '@/mocks/data/roles';
 import { mockUserGroups } from '@/mocks/data/user-groups';

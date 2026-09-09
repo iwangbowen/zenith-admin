@@ -1,7 +1,7 @@
 import type { RuleDecisionTable, RuleDecisionOutput, RuleDecisionRow, RuleDecisionTableVersion, RuleEvaluateResult, RuleTestRunResult, RuleUsageItem, RuleVersionChange } from '@zenith/shared/rules';
 import { decisionTableContract, matchDecisionRows, resolveDecisionHits, ruleExecutionContract } from '@zenith/shared/rules';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
 import { mockDecisionTables, getNextTableId, mockDecisionVersions, getNextVersionId, mockTestCases, getNextCaseId, mockExecutions, getNextExecId } from '@/mocks/data/decision-tables';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -222,10 +222,8 @@ export const decisionTablesHandlers = [
   mock(decisionTableContract.runCases, ({ params, ok }) => ok(runCases(params.id))),
   mock(decisionTableContract.updateCase, ({ params, body, ok }) => {
     const arr = mockTestCases[params.id] ?? [];
-    const i = arr.findIndex((c) => c.id === params.caseId);
-    if (i === -1) return notFound('测试用例不存在', { status: 404 });
-    arr[i] = { ...arr[i], ...body, updatedAt: mockDateTime() };
-    return ok(arr[i]);
+    const updated = updateItem(arr, params.caseId, body, { notFoundMessage: '测试用例不存在', now: mockDateTime, init: { status: 404 } });
+    return ok(updated);
   }),
   mock(decisionTableContract.removeCase, ({ params, ok }) => {
     const arr = mockTestCases[params.id] ?? [];

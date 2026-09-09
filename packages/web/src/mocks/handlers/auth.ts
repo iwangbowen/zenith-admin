@@ -1,6 +1,6 @@
 import { authContract, type MfaFactor, type TotpSetupResult, type UserSession } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { badRequest, unauthorized, forbidden, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockUsers } from '@/mocks/data/users';
 import { mockMenus } from '@/mocks/data/menus';
@@ -251,10 +251,9 @@ export const authHandlers = [
   }),
 
   mock(authContract.deleteMfaFactor, ({ params, ok }) => {
-    const index = mockMfaFactors.findIndex((item) => item.id === params.id);
-    if (index === -1) return notFound('MFA 因子不存在', { status: 404 });
-    if (mockMfaFactors[index].status === 'enabled') return badRequest('已启用的 MFA 因子请先停用后再删除', { status: 400 });
-    mockMfaFactors.splice(index, 1);
+    const item = requireItem(mockMfaFactors, params.id, 'MFA 因子不存在', { status: 404 });
+    if (item.status === 'enabled') return badRequest('已启用的 MFA 因子请先停用后再删除', { status: 400 });
+    removeByIds(mockMfaFactors, [params.id]);
     return ok(null, '已删除');
   }),
 

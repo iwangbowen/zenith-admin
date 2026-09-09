@@ -2,7 +2,7 @@ import { aiPromptTemplateContract } from '@zenith/shared/ai';
 import type { AiPromptTemplate } from '@zenith/shared/ai';
 import { SEED_AI_PROMPT_TEMPLATES } from '@zenith/shared/seed';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound, nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -89,12 +89,11 @@ export const aiPromptTemplatesHandlers = [
   }),
 
   mock(aiPromptTemplateContract.remove, ({ params, ok }) => {
-    const idx = store.findIndex((template) => template.id === params.id);
-    if (idx === -1) return notFound('提示词模板不存在', { status: 404 });
-    if (store[idx].isBuiltin) {
+    const template = requireItem(store, params.id, '提示词模板不存在', { status: 404 });
+    if (template.isBuiltin) {
       return badRequest('内置提示词模板不允许删除', { status: 400 });
     }
-    store.splice(idx, 1);
+    removeByIds(store, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

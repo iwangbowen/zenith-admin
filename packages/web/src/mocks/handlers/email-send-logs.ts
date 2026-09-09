@@ -2,7 +2,6 @@ import { emailSendLogContract } from '@zenith/shared/messaging';
 import type { EmailSendLog } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
-
 import { mockEmailSendLogs, getNextEmailSendLogId } from '@/mocks/data/email-send-logs';
 import { mockEmailTemplates } from '@/mocks/data/email-templates';
 import { mockDateTime } from '@/mocks/utils/date';

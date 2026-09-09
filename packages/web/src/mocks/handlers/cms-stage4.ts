@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw';
 import type * as z from 'zod';
 import { badRequest, unauthorized, forbidden, notFound, conflict, nextIdFrom } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
+import { removeItem, requireItem } from '@/mocks/utils/crud';
 import {
   cmsAdContract,
   cmsContentContract,
@@ -354,8 +354,7 @@ export const cmsStage4Handlers = [
     const interaction = requireItem(mockCmsInteractions, params.id, '互动问卷不存在', { status: 404 });
     const { questionId } = query;
     const keyword = query.keyword?.trim() ?? '';
-    const question = (interaction.questions ?? []).find((item) => item.id === questionId);
-    if (!question) return notFound('题目不存在', { status: 404 });
+    const question = requireItem((interaction.questions ?? []), questionId, '题目不存在', { status: 404 });
     const isFreeText = ['text', 'date', 'number'].includes(question.type);
     if (!isFreeText && !question.allowOther) return badRequest('该题型没有文本答案', { status: 400 });
     const list = mockCmsInteractionResponses
@@ -535,9 +534,7 @@ export const cmsStage4Handlers = [
     }), '批量任务已提交');
   }),
   mock(cmsInteractionContract.remove, ({ params, ok }) => {
-    const index = mockCmsInteractions.findIndex((item) => item.id === params.id);
-    if (index < 0) return notFound('互动问卷不存在', { status: 404 });
-    const [removed] = mockCmsInteractions.splice(index, 1);
+    const removed = removeItem(mockCmsInteractions, params.id, '互动问卷不存在', { status: 404 });
     for (let responseIndex = mockCmsInteractionResponses.length - 1; responseIndex >= 0; responseIndex -= 1) {
       if (mockCmsInteractionResponses[responseIndex].interactionId === removed.id) mockCmsInteractionResponses.splice(responseIndex, 1);
     }

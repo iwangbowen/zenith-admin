@@ -2,7 +2,7 @@ import { HttpResponse } from 'msw';
 import type * as z from 'zod';
 import { badRequest, notFound, conflict, locked } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
-import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
+import { removeByIds, removeItem, requireItem, updateItem } from '@/mocks/utils/crud';
 import type {
   CmsChannel,
   CmsContent,
@@ -346,13 +346,12 @@ export const cmsHandlers = [
     return ok(model, '创建成功');
   }),
   mock(cmsModelContract.update, ({ params, body, ok }) => {
-    const idx = mockCmsModels.findIndex((m) => m.id === params.id);
-    if (idx === -1) return notFound('内容模型不存在', { status: 404 });
+    const item = requireItem(mockCmsModels, params.id, '内容模型不存在', { status: 404 });
     const now = mockDateTime();
     const { fields, ...rest } = body;
-    Object.assign(mockCmsModels[idx], rest, { updatedAt: now });
-    if (fields) mockCmsModels[idx].fields = buildMockModelFields(mockCmsModels[idx].id, fields, now);
-    return ok(mockCmsModels[idx], '更新成功');
+    Object.assign(item, rest, { updatedAt: now });
+    if (fields) item.fields = buildMockModelFields(item.id, fields, now);
+    return ok(item, '更新成功');
   }),
   mock(cmsModelContract.remove, ({ params, ok }) => {
     const model = requireItem(mockCmsModels, params.id, '内容模型不存在', { status: 404 });
@@ -414,15 +413,14 @@ export const cmsHandlers = [
     return ok(channel, '创建成功');
   }),
   mock(cmsChannelContract.update, ({ params, body, ok }) => {
-    const idx = mockCmsChannels.findIndex((c) => c.id === params.id);
-    if (idx === -1) return notFound('栏目不存在', { status: 404 });
+    const item = requireItem(mockCmsChannels, params.id, '栏目不存在', { status: 404 });
     const widget = body.status === 'disabled' ? publishedWidgetUsing('channel', params.id) : null;
     if (widget) return conflict(`已发布页面部件「${widget.name}」引用了该栏目`, { status: 409 });
-    Object.assign(mockCmsChannels[idx], body, { updatedAt: mockDateTime() });
-    const parent = mockCmsChannels.find((c) => c.id === mockCmsChannels[idx].parentId);
-    mockCmsChannels[idx].path = parent ? `${parent.path}/${mockCmsChannels[idx].slug}` : mockCmsChannels[idx].slug;
+    Object.assign(item, body, { updatedAt: mockDateTime() });
+    const parent = mockCmsChannels.find((c) => c.id === item.parentId);
+    item.path = parent ? `${parent.path}/${item.slug}` : item.slug;
     submitMockCmsWidgetSourceRefresh('channel', [params.id]);
-    return ok(mockCmsChannels[idx], '更新成功');
+    return ok(item, '更新成功');
   }),
   mock(cmsChannelContract.remove, ({ params, ok }) => {
     const { id } = params;
@@ -652,16 +650,15 @@ export const cmsHandlers = [
     return ok(content, '创建成功');
   }),
   mock(cmsContentContract.update, ({ params, body, ok }) => {
-    const idx = mockCmsContents.findIndex((c) => c.id === params.id);
-    if (idx === -1) return notFound('内容不存在', { status: 404 });
-    if (mockCmsContents[idx].lockedAt) return locked('内容已被持久锁定', { status: 423 });
+    const item = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
+    if (item.lockedAt) return locked('内容已被持久锁定', { status: 423 });
     const { expectedVersion: _expectedVersion, ...rest } = body;
-    Object.assign(mockCmsContents[idx], rest, {
-      version: (mockCmsContents[idx].version ?? 1) + 1,
+    Object.assign(item, rest, {
+      version: (item.version ?? 1) + 1,
       updatedAt: mockDateTime(),
     });
     submitMockCmsWidgetSourceRefresh('content', [params.id]);
-    return ok(mockCmsContents[idx], '更新成功');
+    return ok(item, '更新成功');
   }),
   mock(cmsContentContract.lock, ({ params, body, ok }) => {
     const content = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
@@ -766,10 +763,9 @@ export const cmsHandlers = [
     return ok(group, '创建成功');
   }),
   mock(cmsFriendLinkContract.groupUpdate, ({ params, body, ok }) => {
-    const idx = mockCmsFriendLinkGroups.findIndex((g) => g.id === params.id);
-    if (idx === -1) return notFound('友链分组不存在', { status: 404 });
-    Object.assign(mockCmsFriendLinkGroups[idx], body, { updatedAt: mockDateTime() });
-    const group = mockCmsFriendLinkGroups[idx];
+    const item = requireItem(mockCmsFriendLinkGroups, params.id, '友链分组不存在', { status: 404 });
+    Object.assign(item, body, { updatedAt: mockDateTime() });
+    const group = item;
     for (const link of mockCmsFriendLinks) if (link.groupId === group.id) link.groupName = group.name;
     return ok(group, '更新成功');
   }),
@@ -814,10 +810,9 @@ export const cmsHandlers = [
     return ok(link, '创建成功');
   }),
   mock(cmsFriendLinkContract.update, ({ params, body, ok }) => {
-    const idx = mockCmsFriendLinks.findIndex((l) => l.id === params.id);
-    if (idx === -1) return notFound('友情链接不存在', { status: 404 });
-    Object.assign(mockCmsFriendLinks[idx], body, { updatedAt: mockDateTime() });
-    const link = mockCmsFriendLinks[idx];
+    const item = requireItem(mockCmsFriendLinks, params.id, '友情链接不存在', { status: 404 });
+    Object.assign(item, body, { updatedAt: mockDateTime() });
+    const link = item;
     link.groupName = mockCmsFriendLinkGroups.find((g) => g.id === link.groupId)?.name ?? null;
     return ok(link, '更新成功');
   }),
@@ -1097,9 +1092,7 @@ export const cmsP2Handlers = [
     if (mockCmsResourceFolders.some((folder) => folder.parentId === id) || mockCmsResources.some((resource) => resource.folderId === id)) {
       return badRequest('文件夹非空，请先移动其中的子文件夹和素材', { status: 400 });
     }
-    const index = mockCmsResourceFolders.findIndex((folder) => folder.id === id);
-    if (index < 0) return notFound('素材文件夹不存在', { status: 404 });
-    mockCmsResourceFolders.splice(index, 1);
+    removeItem(mockCmsResourceFolders, id, '素材文件夹不存在', { status: 404 });
     return ok(null, '删除成功');
   }),
   mock(cmsResourceContract.governance, ({ body, ok }) => ok(createProgressingMockTask({
@@ -1353,14 +1346,13 @@ export const cmsP2Handlers = [
     return ok(redactMockForm(row), '创建成功');
   }),
   mock(cmsFormContract.update, ({ params, body, ok }) => {
-    const idx = mockCmsForms.findIndex((f) => f.id === params.id);
-    if (idx === -1) return notFound('表单不存在', { status: 404 });
+    const item = requireItem(mockCmsForms, params.id, '表单不存在', { status: 404 });
     const { turnstileSecret, ...patch } = body;
     const secretPatch = turnstileSecret === '' || turnstileSecret === CMS_SECRET_MASK || turnstileSecret === undefined
       ? {}
       : { turnstileSecret };
-    Object.assign(mockCmsForms[idx], patch, secretPatch, { updatedAt: mockDateTime() });
-    return ok(redactMockForm(mockCmsForms[idx]), '更新成功');
+    Object.assign(item, patch, secretPatch, { updatedAt: mockDateTime() });
+    return ok(redactMockForm(item), '更新成功');
   }),
   mock(cmsFormContract.remove, ({ params, ok }) => {
     requireItem(mockCmsForms, params.id, '表单不存在', { status: 404 });
@@ -1575,9 +1567,7 @@ export const cmsP2Handlers = [
     return ok(row, '已保存');
   }),
   mock(cmsSiteContract.removeOpenGrant, ({ params, ok }) => {
-    const idx = mockCmsOpenGrants.findIndex((g) => g.id === params.grantId);
-    if (idx < 0) return notFound('授权不存在', { status: 404 });
-    mockCmsOpenGrants.splice(idx, 1);
+    removeItem(mockCmsOpenGrants, params.grantId, '授权不存在', { status: 404 });
     return ok(null, '已删除');
   }),
 
@@ -1698,9 +1688,7 @@ export const cmsP3Handlers = [
   mock(cmsSearchContract.hotwordGroupRemove, ({ params, ok }) => {
     const { id } = params;
     if (mockCmsHotKeywords.some((word) => word.groupId === id)) return badRequest('分组内仍有热词', { status: 400 });
-    const index = mockCmsHotwordGroups.findIndex((group) => group.id === id);
-    if (index < 0) return notFound('热词分组不存在', { status: 404 });
-    mockCmsHotwordGroups.splice(index, 1);
+    removeItem(mockCmsHotwordGroups, id, '热词分组不存在', { status: 404 });
     return ok(null, '删除成功');
   }),
   mock(cmsSearchContract.hotKeywords, ({ query, ok }) => {
@@ -1728,9 +1716,9 @@ export const cmsP3Handlers = [
     return ok(null, '更新成功');
   }),
   mock(cmsSearchContract.hotwordRemove, ({ params, ok }) => {
-    const index = mockCmsHotKeywords.findIndex((word) => word.id === params.id);
-    if (index < 0) return notFound('热词不存在', { status: 404 });
-    mockCmsHotKeywords.splice(index, 1);
+    const idx = mockCmsHotKeywords.findIndex((word) => word.id === params.id);
+    if (idx === -1) return notFound('热词不存在', { status: 404 });
+    mockCmsHotKeywords.splice(idx, 1);
     return ok(null, '删除成功');
   }),
   mock(cmsSearchContract.clearHotKeywords, ({ ok }) => {
@@ -1983,13 +1971,12 @@ export const cmsP6Handlers = [
     return ok(row, '创建成功');
   }),
   mock(cmsPageContract.remove, ({ params, ok }) => {
-    const idx = mockCmsPages.findIndex((p) => p.id === params.id);
-    if (idx === -1) return notFound('页面不存在', { status: 404 });
+    requireItem(mockCmsPages, params.id, '页面不存在', { status: 404 });
     for (let refIndex = mockCmsWidgetRefs.length - 1; refIndex >= 0; refIndex -= 1) {
       const ref = mockCmsWidgetRefs[refIndex];
       if (ref.ownerType === 'page' && ref.ownerId === params.id) mockCmsWidgetRefs.splice(refIndex, 1);
     }
-    mockCmsPages.splice(idx, 1);
+    removeByIds(mockCmsPages, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

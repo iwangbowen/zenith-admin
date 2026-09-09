@@ -7,7 +7,6 @@ import { oauth2AuthContract, OAUTH2_SCOPE_DESCRIPTIONS } from '@zenith/shared/op
 import { readFormOrJsonBody } from '@/mocks/utils/body';
 import { mock } from '@/mocks/utils/contract';
 import { ok } from '@/mocks/utils/handlers';
-
 const BASE = oauth2AuthContract.basePath;
 
 // 简单的 mock token store

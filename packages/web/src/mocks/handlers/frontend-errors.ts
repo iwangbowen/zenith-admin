@@ -3,6 +3,7 @@ import { frontendErrorContract } from '@zenith/shared/analytics';
 import { mock } from '@/mocks/utils/contract';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '../utils/date';
+import { updateItem } from '../utils/crud';
 import { filterByKeyword } from '@/mocks/utils/filter';
 
 const rand = (min: number, max: number) => Math.floor(min + Math.random() * (max - min));
@@ -187,10 +188,8 @@ export const frontendErrorsHandlers = [
     return ok(item, '创建成功');
   }),
   mock(frontendErrorContract.updateAlert, ({ params, body, ok }) => {
-    const idx = mockAlerts.findIndex((a) => a.id === params.id);
-    if (idx === -1) return notFound('不存在', { status: 404 });
-    mockAlerts[idx] = { ...mockAlerts[idx], ...body, updatedAt: mockDateTime() };
-    return ok(mockAlerts[idx], '更新成功');
+    const updated = updateItem(mockAlerts, params.id, body, { notFoundMessage: '不存在', now: mockDateTime, init: { status: 404 } });
+    return ok(updated, '更新成功');
   }),
   mock(frontendErrorContract.removeAlert, ({ params, ok }) => {
     mockAlerts = mockAlerts.filter((a) => a.id !== params.id);

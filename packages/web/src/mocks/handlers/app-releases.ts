@@ -19,7 +19,7 @@ import {
   type ClientApp,
 } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -105,12 +105,11 @@ export const appReleasesHandlers = [
   }),
 
   mock(clientAppContract.remove, ({ params, ok }) => {
-    const idx = mockClientApps.findIndex((a) => a.id === params.id);
-    if (idx === -1) return notFound('应用不存在', { status: 404 });
+    requireItem(mockClientApps, params.id, '应用不存在', { status: 404 });
     if (mockAppReleases.some((r) => r.appId === params.id)) {
       return badRequest('该应用下仍有版本记录，请先删除全部版本', { status: 400 });
     }
-    mockClientApps.splice(idx, 1);
+    removeByIds(mockClientApps, [params.id]);
     return ok(null, '删除成功');
   }),
 
@@ -243,12 +242,11 @@ export const appReleasesHandlers = [
   }),
 
   mock(appReleaseContract.remove, ({ params, ok }) => {
-    const idx = mockAppReleases.findIndex((r) => r.id === params.id);
-    if (idx === -1) return notFound('版本不存在', { status: 404 });
-    if (mockAppReleases[idx].status === 'published') {
+    const item = requireItem(mockAppReleases, params.id, '版本不存在', { status: 404 });
+    if (item.status === 'published') {
       return badRequest('已发布版本不可删除，请先撤回', { status: 400 });
     }
-    mockAppReleases.splice(idx, 1);
+    removeByIds(mockAppReleases, [params.id]);
     removeWhere(mockAppArtifacts, (a) => a.releaseId === params.id);
     return ok(null, '删除成功');
   }),

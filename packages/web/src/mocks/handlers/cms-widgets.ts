@@ -1,7 +1,7 @@
 import { escapeHtml } from '@zenith/shared/core';
-import { badRequest, notFound, conflict } from '@/mocks/utils/handlers';
+import { badRequest, conflict } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem } from '@/mocks/utils/crud';
+import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { CMS_WIDGET_HIGH_FANOUT_THRESHOLD, CMS_WIDGET_RENDERER_KEYS, CMS_WIDGET_RENDERER_LABELS, cmsWidgetContract } from '@zenith/shared/cms';
 import type { CmsResolvedWidget, CmsResolvedWidgetItem, CmsWidget, CmsWidgetData, CmsWidgetSlot, CmsWidgetSourceReference } from '@zenith/shared/cms';
 import {
@@ -352,11 +352,10 @@ export const cmsWidgetsHandlers = [
   }),
 
   mock(cmsWidgetContract.remove, ({ params, ok }) => {
-    const index = mockCmsWidgets.findIndex((widget) => widget.id === params.id);
-    if (index < 0) return notFound('页面部件不存在', { status: 404 });
+    requireItem(mockCmsWidgets, params.id, '页面部件不存在', { status: 404 });
     const count = mockCmsWidgetRefs.filter((ref) => ref.widgetId === params.id).length;
     if (count > 0) return conflict(`该页面部件仍被 ${count} 个位置引用，请先解除引用`, { status: 409 });
-    mockCmsWidgets.splice(index, 1);
+    removeByIds(mockCmsWidgets, [params.id]);
     return ok(null, '删除成功');
   }),
 ];

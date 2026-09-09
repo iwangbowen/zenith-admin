@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MockHttpError } from './contract';
-import { removeByIds, requireItem, updateItem } from './crud';
+import { removeByIds, removeItem, requireItem, updateItem } from './crud';
 
 describe('mock crud helpers', () => {
   it('requires an item by id', async () => {
@@ -24,5 +24,19 @@ describe('mock crud helpers', () => {
     const list = [{ id: 1 }, { id: 2 }, { id: 3 }];
     expect(removeByIds(list, [1, 3])).toBe(2);
     expect(list).toEqual([{ id: 2 }]);
+  });
+
+  it('removes one item by id and returns it; missing id throws MockHttpError', () => {
+    const list = [{ id: 1 }, { id: 2 }];
+    expect(removeItem(list, 2, '不存在', { status: 404 })).toEqual({ id: 2 });
+    expect(list).toEqual([{ id: 1 }]);
+    try {
+      removeItem(list, 9, '不存在', { status: 404 });
+      throw new Error('should throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(MockHttpError);
+      expect((error as MockHttpError).response.status).toBe(404);
+    }
+    expect(list).toEqual([{ id: 1 }]);
   });
 });
