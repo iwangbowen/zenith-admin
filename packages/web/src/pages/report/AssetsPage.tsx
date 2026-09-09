@@ -30,7 +30,8 @@ import {
   useTopReportAssets,
 } from '@/hooks/queries/report-assets';
 import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
-import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
+import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
+import { useReportOwnerFolderOptions } from './report-lookups';
 import { formatDateTime, formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { normalizeTemplateApplyValues, parseJsonObject } from './report-platform-utils';

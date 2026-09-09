@@ -12,7 +12,8 @@ import AppModal from '@/components/AppModal';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
+import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
+import { useReportOwnerFolderOptions } from './report-lookups';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
 import {
   reportFillKeys,

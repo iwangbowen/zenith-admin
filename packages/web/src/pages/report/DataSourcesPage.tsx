@@ -24,7 +24,8 @@ import type { ReportDatasource, ReportDatasourceType, ReportApiDatasourceConfig,
 import { REPORT_DATASOURCE_TYPE_OPTIONS, REPORT_DATASOURCE_TYPES } from '@zenith/shared/report';
 import { useDictItems } from '@/hooks/useDictItems';
 import { renderReportDatasourceTypeTag } from './report-datasource-ui';
-import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
+import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
+import { useReportOwnerFolderOptions } from './report-lookups';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';

@@ -28,7 +28,8 @@ import {
   useToggleReportDashboardFavorite,
 } from '@/hooks/queries/report-dashboards';
 import { useDictItems } from '@/hooks/useDictItems';
-import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
+import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
+import { useReportOwnerFolderOptions } from './report-lookups';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';

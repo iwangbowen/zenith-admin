@@ -20,7 +20,8 @@ import {
   useSaveReportMetric,
 } from '@/hooks/queries/report-metrics';
 import { useEnabledReportDatasets, useReportDatasetDetail } from '@/hooks/queries/report-datasets';
-import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
+import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
+import { useReportOwnerFolderOptions } from './report-lookups';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { isRevisionConflict, metricLifecyclePayload, normalizeMetricFormValues } from './report-platform-utils';
 import { CreateButton } from '@/components/toolbar-controls';
