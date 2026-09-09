@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { DriveNode, DriveRole, DriveSpace, DriveSubjectType, DriveTag } from '@zenith/shared/drive';
 import { db } from '../../db';
-import { departments, roles, userGroups, userRoles, users, type DriveNodeRow, type DriveSpaceRow, type DriveTagRow } from '../../db/schema';
+import { departments, driveNodes, driveSpaces, roles, userGroups, userRoles, users, type DriveNodeRow, type DriveSpaceRow, type DriveTagRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import type { JwtPayload } from '../../middleware/auth';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -47,6 +47,35 @@ export async function resolveUserNames(ids: Iterable<number | null | undefined>,
   const rows = await executor.select({ id: users.id, nickname: users.nickname, username: users.username })
     .from(users).where(inArray(users.id, uniq));
   return new Map(rows.map((r) => [r.id, r.nickname || r.username]));
+}
+
+export interface DriveNodeSpaceLabels {
+  nodeName: string;
+  nodeType: DriveNodeRow['type'];
+  spaceName: string;
+}
+
+/**
+ * 批量解析行所引用的节点名 / 类型与所属空间名（访问申请、法律保留等列表映射共用）。
+ * 返回按行取标签的函数；节点或空间已不存在时名称为空串、类型回退 file。
+ */
+export async function resolveNodeSpaceLabels(
+  rows: ReadonlyArray<{ nodeId: number; spaceId: number }>,
+  executor: DbExecutor = db,
+): Promise<(row: { nodeId: number; spaceId: number }) => DriveNodeSpaceLabels> {
+  const nodeIds = [...new Set(rows.map((r) => r.nodeId))];
+  const spaceIds = [...new Set(rows.map((r) => r.spaceId))];
+  const [nodes, spaces] = await Promise.all([
+    nodeIds.length ? executor.select({ id: driveNodes.id, name: driveNodes.name, type: driveNodes.type }).from(driveNodes).where(inArray(driveNodes.id, nodeIds)) : [],
+    spaceIds.length ? executor.select({ id: driveSpaces.id, name: driveSpaces.name }).from(driveSpaces).where(inArray(driveSpaces.id, spaceIds)) : [],
+  ]);
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const spaceMap = new Map(spaces.map((s) => [s.id, s.name]));
+  return (row) => ({
+    nodeName: nodeMap.get(row.nodeId)?.name ?? '',
+    nodeType: nodeMap.get(row.nodeId)?.type ?? 'file',
+    spaceName: spaceMap.get(row.spaceId) ?? '',
+  });
 }
 
 export function subjectKey(subjectType: DriveSubjectType, subjectId: number): string {

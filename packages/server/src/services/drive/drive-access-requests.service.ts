@@ -23,7 +23,7 @@ import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { ensureNodeRole, loadDriveSubjects, resolveNodeRole, visibleNodeCondition } from './drive-access.service';
 import { effectiveGrantNodeIds } from './drive-acl';
 import { logDriveActivity } from './drive-activity.service';
-import { resolveUserNames } from './drive-common';
+import { resolveNodeSpaceLabels, resolveUserNames } from './drive-common';
 import { ensureDriveNodeExists } from './drive-nodes.service';
 import { notifyAccessDecided, notifyAccessRequested, notifyNodeShared } from './drive-notify.service';
 
@@ -34,22 +34,15 @@ import { notifyAccessDecided, notifyAccessRequested, notifyNodeShared } from './
 
 async function mapRequests(rows: DriveAccessRequestRow[]): Promise<DriveAccessRequest[]> {
   if (rows.length === 0) return [];
-  const nodeIds = [...new Set(rows.map((r) => r.nodeId))];
-  const spaceIds = [...new Set(rows.map((r) => r.spaceId))];
-  const [nodes, spaces, names] = await Promise.all([
-    db.select({ id: driveNodes.id, name: driveNodes.name, type: driveNodes.type }).from(driveNodes).where(inArray(driveNodes.id, nodeIds)),
-    db.select({ id: driveSpaces.id, name: driveSpaces.name }).from(driveSpaces).where(inArray(driveSpaces.id, spaceIds)),
+  const [labelsOf, names] = await Promise.all([
+    resolveNodeSpaceLabels(rows),
     resolveUserNames(rows.flatMap((r) => [r.requesterId, r.decidedBy])),
   ]);
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const spaceMap = new Map(spaces.map((s) => [s.id, s.name]));
   return rows.map((r) => ({
     id: r.id,
     nodeId: r.nodeId,
-    nodeName: nodeMap.get(r.nodeId)?.name ?? '',
-    nodeType: nodeMap.get(r.nodeId)?.type ?? 'file',
     spaceId: r.spaceId,
-    spaceName: spaceMap.get(r.spaceId) ?? '',
+    ...labelsOf(r),
     requesterId: r.requesterId,
     requesterName: names.get(r.requesterId) ?? null,
     role: r.role === 'manager' ? 'editor' : r.role,

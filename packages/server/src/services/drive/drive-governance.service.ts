@@ -31,7 +31,7 @@ import { DRIVE_ADMIN_PERMISSION, ensureSpaceRole, resolveSpaceRole } from './dri
 import { driveRoleAtLeast } from './drive-acl';
 import { resolveNodeManagerUserIds } from './drive-access-requests.service';
 import { logDriveActivity } from './drive-activity.service';
-import { resolveUserNames } from './drive-common';
+import { resolveNodeSpaceLabels, resolveUserNames } from './drive-common';
 import { ensureDriveNodeExists } from './drive-nodes.service';
 import { GB_BYTES, effectiveQuotaBytes, getDriveSettings } from './drive-settings.service';
 import { decorateSpaceRows, ensureDriveSpaceExists } from './drive-spaces.service';
@@ -126,20 +126,15 @@ export async function legalHoldNodeIds(nodes: Array<Pick<DriveNodeRow, 'id' | 'a
 
 async function mapLegalHolds(rows: DriveLegalHoldRow[]): Promise<DriveLegalHold[]> {
   if (rows.length === 0) return [];
-  const [nodes, spaces, names] = await Promise.all([
-    db.select({ id: driveNodes.id, name: driveNodes.name, type: driveNodes.type }).from(driveNodes).where(inArray(driveNodes.id, [...new Set(rows.map((r) => r.nodeId))])),
-    db.select({ id: driveSpaces.id, name: driveSpaces.name }).from(driveSpaces).where(inArray(driveSpaces.id, [...new Set(rows.map((r) => r.spaceId))])),
+  const [labelsOf, names] = await Promise.all([
+    resolveNodeSpaceLabels(rows),
     resolveUserNames(rows.flatMap((r) => [r.createdBy, r.releasedBy])),
   ]);
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const spaceMap = new Map(spaces.map((s) => [s.id, s.name]));
   return rows.map((r) => ({
     id: r.id,
     nodeId: r.nodeId,
-    nodeName: nodeMap.get(r.nodeId)?.name ?? '',
-    nodeType: nodeMap.get(r.nodeId)?.type ?? 'file',
     spaceId: r.spaceId,
-    spaceName: spaceMap.get(r.spaceId) ?? '',
+    ...labelsOf(r),
     reason: r.reason,
     active: r.active,
     createdBy: r.createdBy ?? null,
