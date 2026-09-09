@@ -24,8 +24,7 @@ import type { ReportDatasource, ReportDatasourceType, ReportApiDatasourceConfig,
 import { REPORT_DATASOURCE_TYPE_OPTIONS, REPORT_DATASOURCE_TYPES } from '@zenith/shared/report';
 import { useDictItems } from '@/hooks/useDictItems';
 import { renderReportDatasourceTypeTag } from './report-datasource-ui';
-import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
-import { useAllUsers } from '@/hooks/queries/users';
+import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -61,8 +60,7 @@ export default function DataSourcesPage() {
     ownerId: submittedParams.ownerId,
     folderId: submittedParams.folderId,
   });
-  const users = useAllUsers().data ?? [];
-  const folders = flattenReportFolders(useReportFolderTree({ resourceType: 'datasource' }).data ?? []);
+  const { userOptions, folderOptions } = useReportOwnerFolderOptions('datasource');
   const saveMutation = useSaveReportDatasource();
   const toggleMutation = useSaveReportDatasource();
   const batchStatusMutation = useBatchReportDatasourceStatus();
@@ -298,24 +296,10 @@ export default function DataSourcesPage() {
     />
   );
   const renderOwnerFilter = () => (
-    <FilterSelect
-      placeholder="全部负责人"
-      items={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))}
-      value={draftParams.ownerId}
-      onChange={(v) => setField('ownerId')(v as number | undefined)}
-      filter
-      width={140}
-    />
+    <ReportOwnerFilter items={userOptions} value={draftParams.ownerId} onChange={setField('ownerId')} />
   );
   const renderFolderFilter = () => (
-    <FilterSelect
-      placeholder="全部目录"
-      items={folders.map((f) => ({ value: f.id, label: f.name }))}
-      value={draftParams.folderId}
-      onChange={(v) => setField('folderId')(v as number | undefined)}
-      width={140}
-      filter
-    />
+    <ReportFolderFilter items={folderOptions} value={draftParams.folderId} onChange={setField('folderId')} />
   );
   const renderCreateBtn = () => hasPermission('report:datasource:create')
     ? <CreateButton onClick={datasourceModal.openCreate} /> : null;
@@ -380,11 +364,11 @@ export default function DataSourcesPage() {
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }}
-                    optionList={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))} />
+                    optionList={userOptions} />
                 </Col>
                 <Col span={12}>
                   <Form.Select field="folderId" label="资源目录" filter showClear style={{ width: '100%' }}
-                    optionList={folders.map((f) => ({ value: f.id, label: f.name }))} />
+                    optionList={folderOptions} />
                 </Col>
               </Row>
               {values.type === 'api' ? (

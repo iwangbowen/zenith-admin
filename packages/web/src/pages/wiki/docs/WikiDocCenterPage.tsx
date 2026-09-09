@@ -18,7 +18,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { confirmDelete } from '@/utils/confirm';
 import { renderEllipsis } from '@/utils/table-columns';
 import { extractMarkdownHeadings, type MarkdownHeading } from '@/utils/markdown-outline';
-import { useAllUsers } from '@/hooks/queries/users';
+import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import { useMyWikiSpaces } from '@/hooks/queries/wiki-spaces';
 import {
   useConfirmWikiDocRead, useDeleteWikiDocs, useFavoriteWikiDoc, useMoveWikiDoc, useMyFavoriteWikiDocs,
@@ -797,7 +797,7 @@ export default function WikiDocCenterPage() {
                         showClear
                         filter
                         onChange={(v) => setMentionIds((v as number[]) ?? [])}
-                        optionList={(usersQuery.data ?? []).map((u) => ({ value: u.id, label: u.nickname || u.username }))}
+                        optionList={toUserOptions(usersQuery.data ?? [])}
                       />
                       <Checkbox checked={isQuestion} onChange={(e) => setIsQuestion(!!e.target.checked)}>
                         标记为问题

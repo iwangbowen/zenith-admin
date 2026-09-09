@@ -48,6 +48,11 @@ export function useAllUsers(options?: { enabled?: boolean }) {
   return resource.useLookup(options?.enabled ?? true);
 }
 
+/** 用户下拉选项：标签取昵称，昵称为空时回退用户名；筛选控件与表单 Select 共用 */
+export function toUserOptions(users: readonly { id: number; username: string; nickname?: string | null }[]) {
+  return users.map((user) => ({ value: user.id, label: user.nickname || user.username }));
+}
+
 export function useAlertRecipientUsers(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: userKeys.alertRecipients,

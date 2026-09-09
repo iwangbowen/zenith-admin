@@ -12,7 +12,7 @@ import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTimeForApi } from '@/utils/date';
-import { useAllUsers } from '@/hooks/queries/users';
+import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import {
   useArchiveGovernanceDocs, useRemindGovernanceOwners, useSetGovernanceOwner,
@@ -162,7 +162,7 @@ function GovernancePane({ kind }: { kind: WikiGovernanceKind }) {
           filter
           value={ownerId}
           onChange={(v) => setOwnerId(v as number)}
-          optionList={(usersQuery.data ?? []).map((u) => ({ value: u.id, label: u.nickname || u.username }))}
+          optionList={toUserOptions(usersQuery.data ?? [])}
         />
       </AppModal>
 

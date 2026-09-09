@@ -41,6 +41,7 @@ import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/com
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
+import { toUserOptions } from '@/hooks/queries/users';
 import { copyableNoColumn, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
 
@@ -336,7 +337,7 @@ export default function AnalyticsDataPage() {
     labelWidth: 110,
   });
   const ownerUsersQuery = useFrontendAdminUsers(activeTab === 'meta' && metaModal.visible);
-  const ownerOptions = (ownerUsersQuery.data?.list ?? []).map((u) => ({ value: u.id, label: u.nickname || u.username }));
+  const ownerOptions = toUserOptions(ownerUsersQuery.data?.list ?? []);
   const metaReferencesQuery = useEventMetaReferences(metaModal.editing?.eventName, metaModal.visible);
 
   const handleEventSearch = () => {

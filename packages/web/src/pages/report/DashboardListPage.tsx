@@ -28,8 +28,7 @@ import {
   useToggleReportDashboardFavorite,
 } from '@/hooks/queries/report-dashboards';
 import { useDictItems } from '@/hooks/useDictItems';
-import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
-import { useAllUsers } from '@/hooks/queries/users';
+import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -68,8 +67,7 @@ export default function DashboardListPage() {
     ownerId: submittedParams.ownerId,
     folderId: submittedParams.folderId,
   });
-  const users = useAllUsers().data ?? [];
-  const folders = flattenReportFolders(useReportFolderTree({ resourceType: 'dashboard' }).data ?? []);
+  const { userOptions, folderOptions } = useReportOwnerFolderOptions('dashboard');
   const deprecationQuery = useReportDeprecationList(
     { page: 1, pageSize: 200, resourceType: 'dashboard', published: true },
     hasPermission('report:deprecation:list'),
@@ -252,24 +250,10 @@ export default function DashboardListPage() {
     />
   );
   const renderOwnerFilter = () => (
-    <FilterSelect
-      placeholder="全部负责人"
-      items={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))}
-      value={draftParams.ownerId}
-      onChange={(v) => setField('ownerId')(v as number | undefined)}
-      width={140}
-      filter
-    />
+    <ReportOwnerFilter items={userOptions} value={draftParams.ownerId} onChange={setField('ownerId')} />
   );
   const renderFolderFilter = () => (
-    <FilterSelect
-      placeholder="全部目录"
-      items={folders.map((f) => ({ value: f.id, label: f.name }))}
-      value={draftParams.folderId}
-      onChange={(v) => setField('folderId')(v as number | undefined)}
-      width={140}
-      filter
-    />
+    <ReportFolderFilter items={folderOptions} value={draftParams.folderId} onChange={setField('folderId')} />
   );
   const renderCreateBtn = () => hasPermission('report:dashboard:create')
     ? <CreateButton onClick={dashboardModal.openCreate} /> : null;
@@ -329,9 +313,9 @@ export default function DashboardListPage() {
         <Form key={dashboardModal.formKey} {...dashboardModal.formProps}>
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear />
           <Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }}
-            optionList={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))} />
+            optionList={userOptions} />
           <Form.Select field="folderId" label="资源目录" filter showClear style={{ width: '100%' }}
-            optionList={folders.map((f) => ({ value: f.id, label: f.name }))} />
+            optionList={folderOptions} />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
           <Form.Select field="categoryId" label="分类" style={{ width: '100%' }} showClear placeholder="未分类"

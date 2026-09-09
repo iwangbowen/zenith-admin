@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { Checkbox, Input, InputNumber, Progress, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Checkbox, Input, InputNumber, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { formatBytes } from '@zenith/shared/core';
 import {
-  DRIVE_ACCESS_REQUEST_STATUS_LABELS, DRIVE_ROLE_LABELS, DRIVE_SPACE_TYPE_LABELS, DRIVE_SPACE_TYPE_OPTIONS,
+  DRIVE_ACCESS_REQUEST_STATUS_LABELS, DRIVE_ROLE_LABELS, DRIVE_SPACE_TYPE_OPTIONS,
   type DriveRole, type DriveSpace, type DriveSpaceType,
 } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
@@ -22,10 +22,11 @@ import {
   useSpaceQuotaRequests, useTransferDriveSpace, useUnarchiveDriveSpace,
 } from '@/hooks/queries/drive';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
-import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { DriveSpaceFormSheet, type DriveSpaceFormTarget } from '../components/DriveSpaceFormSheet';
 import { DriveSubjectPicker, type SubjectGrant } from '../components/DriveSubjectPicker';
-import { roleAtLeast, usagePercent } from '../drive-utils';
+import { roleAtLeast } from '../drive-utils';
+import { driveSpaceDefaultRoleColumn, driveSpaceNameColumn, driveSpaceOwnerColumn, driveSpaceTypeColumn, driveSpaceUsageColumn } from '../drive-space-columns';
 import { DriveSpaceActivitiesModal, DriveTagsModal } from '../components/DriveCollaborationPanels';
 import '../drive.css';
 
@@ -159,24 +160,13 @@ export default function DriveSpacesPage() {
 
   // 页面宽约 1190px：去掉低价值的创建时间列、收窄辅助列，让名称列保持可读；打开空间点名称即可
   const columns: ColumnProps<DriveSpace>[] = [
-    { title: '名称', dataIndex: 'name', minWidth: 200, ellipsis: { showTitle: false },
-      render: (v: string, s: DriveSpace) => (
-        <Typography.Text link ellipsis={{ showTooltip: true }} onClick={() => navigate(`/drive?space=${s.id}`)}>{v}</Typography.Text>
-      ) },
-    { title: '类型', dataIndex: 'type', width: 100, render: (v: DriveSpaceType) => <Tag size="small" color={v === 'personal' ? 'grey' : v === 'department' ? 'green' : 'blue'}>{DRIVE_SPACE_TYPE_LABELS[v]}</Tag> },
-    { title: '所有者 / 部门', width: 130, render: (_: unknown, s: DriveSpace) => renderEllipsis(s.ownerName ?? s.departmentName) },
+    driveSpaceNameColumn(navigate),
+    driveSpaceTypeColumn,
+    driveSpaceOwnerColumn(),
     { title: '我的角色', dataIndex: 'myRole', width: 90, render: (v: DriveRole | null | undefined) => (v ? DRIVE_ROLE_LABELS[v] : EMPTY_PLACEHOLDER) },
-    { title: '默认角色', dataIndex: 'defaultMemberRole', width: 90, render: (v: DriveRole | null) => (v ? DRIVE_ROLE_LABELS[v] : '不开放') },
+    driveSpaceDefaultRoleColumn,
     { title: '成员', dataIndex: 'memberCount', width: 70, render: (v?: number) => v ?? EMPTY_PLACEHOLDER },
-    { title: '用量', width: 170, render: (_: unknown, s: DriveSpace) => {
-      const pct = usagePercent(s);
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span className="drive-nowrap" style={{ fontSize: 12 }}>{formatBytes(s.usedBytes)}{s.quotaBytes ? ` / ${formatBytes(s.quotaBytes)}` : ' · 不限'}</span>
-          {pct !== null && <Progress percent={pct} size="small" showInfo={false} stroke={pct >= 90 ? 'var(--semi-color-danger)' : undefined} aria-label={`用量 ${pct}%`} />}
-        </div>
-      );
-    } },
+    driveSpaceUsageColumn({ width: 170 }),
     { title: '状态', dataIndex: 'status', width: 110, fixed: 'right', render: (v: string, s: DriveSpace) => (
       s.archivedAt ? <Tag size="small" color="grey">已归档 · 只读</Tag> : v === 'enabled' ? <Tag size="small" color="green">启用</Tag> : <Tag size="small" color="grey">停用</Tag>
     ) },

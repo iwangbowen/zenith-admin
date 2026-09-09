@@ -8,7 +8,6 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
 import {
   reportMetricKeys,
   useDeleteReportMetrics,
@@ -21,7 +20,7 @@ import {
   useSaveReportMetric,
 } from '@/hooks/queries/report-metrics';
 import { useEnabledReportDatasets, useReportDatasetDetail } from '@/hooks/queries/report-datasets';
-import { useAllUsers } from '@/hooks/queries/users';
+import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { isRevisionConflict, metricLifecyclePayload, normalizeMetricFormValues } from './report-platform-utils';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -78,10 +77,7 @@ export default function MetricsPage() {
   const publishMutation = usePublishReportMetric();
   const deprecateMutation = useDeprecateReportMetric();
   const datasetsQuery = useEnabledReportDatasets(undefined, true);
-  const usersQuery = useAllUsers();
-  const foldersQuery = useReportFolderTree({ resourceType: 'metric' });
-  const folders = flattenReportFolders(foldersQuery.data ?? []);
-  const users = usersQuery.data ?? [];
+  const { userOptions, folderOptions } = useReportOwnerFolderOptions('metric');
   const datasets = datasetsQuery.data ?? [];
   // 表单内选中的数据集：用其字段渲染 来源/维度/时间字段 下拉，避免手输字段名拼错
   const [formDatasetId, setFormDatasetId] = useState<number | undefined>();
@@ -233,21 +229,18 @@ export default function MetricsPage() {
         filter
         remote
       />
-      <FilterSelect
-        placeholder="全部负责人"
-        items={users.map((item) => ({ value: item.id, label: item.nickname || item.username }))}
+      <ReportOwnerFilter
+        items={userOptions}
         value={draft.ownerId}
-        onChange={(value) => setDraft((p) => ({ ...p, ownerId: value as number | undefined }))}
+        onChange={(value) => setDraft((p) => ({ ...p, ownerId: value }))}
         width={150}
-        filter
       />
-      <FilterSelect
+      <ReportFolderFilter
         placeholder="全部指标目录"
-        items={folders.map((item) => ({ value: item.id, label: item.name }))}
+        items={folderOptions}
         value={draft.folderId}
-        onChange={(value) => setDraft((p) => ({ ...p, folderId: value as number | undefined }))}
+        onChange={(value) => setDraft((p) => ({ ...p, folderId: value }))}
         width={150}
-        filter
       />
     </>
   );
@@ -310,8 +303,8 @@ export default function MetricsPage() {
               <Col xs={24} md={12}><Form.Select field="timeField" label="时间字段" filter allowCreate showClear style={{ width: '100%' }} optionList={formFieldOptions} /></Col>
               <Col xs={24} md={12}><Form.Input field="unit" label="单位" /></Col>
               <Col xs={24} md={12}><Form.Input field="format" label="显示格式" placeholder="如 0,0.00" /></Col>
-              <Col xs={24} md={12}><Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }} optionList={users.map((item) => ({ value: item.id, label: item.nickname || item.username }))} /></Col>
-              <Col xs={24} md={12}><Form.Select field="folderId" label="指标目录" filter showClear style={{ width: '100%' }} optionList={folders.map((item) => ({ value: item.id, label: item.name }))} /></Col>
+              <Col xs={24} md={12}><Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }} optionList={userOptions} /></Col>
+              <Col xs={24} md={12}><Form.Select field="folderId" label="指标目录" filter showClear style={{ width: '100%' }} optionList={folderOptions} /></Col>
             </Row>
             <Form.TextArea field="formula" label="计算公式" placeholder="比率/复合指标必填；只允许后端安全公式语法" autosize rows={3} />
             <Form.TextArea field="caliber" label="统计口径" autosize rows={2} />

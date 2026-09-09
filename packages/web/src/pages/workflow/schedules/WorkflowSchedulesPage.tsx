@@ -10,7 +10,7 @@ import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
 import { usePublishedWorkflowDefinitions, useWorkflowDefinitionDetail } from '@/hooks/queries/workflow-definitions';
-import { useAllUsers } from '@/hooks/queries/users';
+import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import {
   useDeleteWorkflowSchedules,
   useRunWorkflowSchedule,
@@ -110,7 +110,7 @@ export default function WorkflowSchedulesPage() {
     [definitionsQuery.data],
   );
   const userOptions = useMemo(
-    () => (usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username })),
+    () => toUserOptions(usersQuery.data ?? []),
     [usersQuery.data],
   );
 

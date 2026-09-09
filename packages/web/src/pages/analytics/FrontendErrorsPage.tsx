@@ -80,6 +80,7 @@ import { SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { toUserOptions } from '@/hooks/queries/users';
 import { formatBytes } from '@zenith/shared/core';
 
 const { Text, Title, Paragraph } = Typography;
@@ -448,7 +449,7 @@ export default function FrontendErrorsPage() {
   const deleteAlertMutation = useDeleteFrontendAlert();
   const testAlertMutation = useTestFrontendAlert();
   const adminOptions = useMemo(
-    () => adminUsers.map((item) => ({ label: item.nickname || item.username, value: item.id })),
+    () => toUserOptions(adminUsers),
     [adminUsers],
   );
 

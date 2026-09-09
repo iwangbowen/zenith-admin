@@ -12,8 +12,7 @@ import AppModal from '@/components/AppModal';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { useAllUsers } from '@/hooks/queries/users';
-import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
+import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
 import {
   reportFillKeys,
@@ -30,7 +29,7 @@ import FormDesigner from '@/pages/workflow/designer/components/FormDesigner';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import { isRevisionConflict, validateFillTemplateInput } from './report-p2-utils';
 import { CreateButton } from '@/components/toolbar-controls';
-import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
@@ -74,8 +73,7 @@ export default function FillTemplatesPage() {
     ownerId: submitted.ownerId,
     folderId: submitted.folderId,
   });
-  const users = useAllUsers().data ?? [];
-  const folders = flattenReportFolders(useReportFolderTree({ resourceType: 'fill_template' }).data ?? []);
+  const { userOptions, folderOptions } = useReportOwnerFolderOptions('fill_template');
   const definitions = (usePublishedWorkflowDefinitions().data ?? []).filter((definition) => definition.formType === 'external');
   const createMutation = useCreateReportFillTemplate();
   const updateMutation = useUpdateReportFillTemplate();
@@ -314,21 +312,16 @@ export default function FillTemplatesPage() {
         value={draft.status}
         onChange={(value) => setDraft((current) => ({ ...current, status: value as ReportFillTemplate['status'] | undefined }))}
       />
-      <FilterSelect
-        placeholder="全部负责人"
-        items={users.map((user) => ({ value: user.id, label: user.nickname || user.username }))}
+      <ReportOwnerFilter
+        items={userOptions}
         value={draft.ownerId}
         onChange={(value) => setDraft((current) => ({ ...current, ownerId: value }))}
-        filter
-        width={140}
       />
-      <FilterSelect
-        placeholder="全部目录"
-        items={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
+      <ReportFolderFilter
+        items={folderOptions}
         value={draft.folderId}
         onChange={(value) => setDraft((current) => ({ ...current, folderId: value }))}
         width={150}
-        filter
       />
     </>
   );
@@ -411,7 +404,7 @@ export default function FillTemplatesPage() {
                     filter
                     showClear
                     style={{ width: '100%' }}
-                    optionList={users.map((user) => ({ value: user.id, label: user.nickname || user.username }))}
+                    optionList={userOptions}
                   />
                 </Col>
                 <Col xs={24} md={12}>
@@ -421,7 +414,7 @@ export default function FillTemplatesPage() {
                     filter
                     showClear
                     style={{ width: '100%' }}
-                    optionList={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
+                    optionList={folderOptions}
                   />
                 </Col>
                 <Col xs={24} md={12}>
@@ -493,7 +486,7 @@ export default function FillTemplatesPage() {
             showClear
             filter
             style={{ width: '100%' }}
-            optionList={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
+            optionList={folderOptions}
           />
         </Form>
       </AppModal>

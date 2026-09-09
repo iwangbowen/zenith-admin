@@ -26,11 +26,10 @@ import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CreateReportPrintTemplateInput, ReportPrintRenderResult, ReportPrintTemplate, UpdateReportPrintTemplateInput } from '@zenith/shared/report';
 import type { ExportJobFormat } from '@zenith/shared/tasks';
 import { useDictItems } from '@/hooks/useDictItems';
-import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
-import { useAllUsers } from '@/hooks/queries/users';
+import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
-import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 
 interface SearchParams { keyword: string; status?: string; ownerId?: number; folderId?: number }
@@ -63,8 +62,7 @@ export default function PrintTemplatesPage() {
     ownerId: submittedParams.ownerId,
     folderId: submittedParams.folderId,
   });
-  const users = useAllUsers().data ?? [];
-  const folders = flattenReportFolders(useReportFolderTree({ resourceType: 'print_template' }).data ?? []);
+  const { userOptions, folderOptions } = useReportOwnerFolderOptions('print_template');
   const datasetsQuery = useReportDesignerDatasets();
   const datasets = datasetsQuery.data ?? [];
   const saveMutation = useSaveReportPrintTemplate();
@@ -241,24 +239,10 @@ export default function PrintTemplatesPage() {
     />
   );
   const renderOwnerFilter = () => (
-    <FilterSelect
-      placeholder="全部负责人"
-      items={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))}
-      value={draftParams.ownerId}
-      onChange={(v) => setField('ownerId')(v as number | undefined)}
-      filter
-      width={140}
-    />
+    <ReportOwnerFilter items={userOptions} value={draftParams.ownerId} onChange={setField('ownerId')} />
   );
   const renderFolderFilter = () => (
-    <FilterSelect
-      placeholder="全部目录"
-      items={folders.map((f) => ({ value: f.id, label: f.name }))}
-      value={draftParams.folderId}
-      onChange={(v) => setField('folderId')(v as number | undefined)}
-      width={140}
-      filter
-    />
+    <ReportFolderFilter items={folderOptions} value={draftParams.folderId} onChange={setField('folderId')} />
   );
   const renderCreateBtn = () => hasPermission('report:print:create')
     ? <CreateButton onClick={printModal.openCreate} /> : null;
@@ -299,9 +283,9 @@ export default function PrintTemplatesPage() {
         <Form key={printModal.formKey} {...printModal.formProps}>
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear placeholder="如：销售出库单" />
           <Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }}
-            optionList={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))} />
+            optionList={userOptions} />
           <Form.Select field="folderId" label="资源目录" filter showClear style={{ width: '100%' }}
-            optionList={folders.map((f) => ({ value: f.id, label: f.name }))} />
+            optionList={folderOptions} />
           <Form.Select
             field="datasetId"
             label="数据集"

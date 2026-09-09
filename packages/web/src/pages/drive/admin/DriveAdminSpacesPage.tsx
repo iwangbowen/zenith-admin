@@ -1,14 +1,13 @@
 import { lazy, Suspense, useState } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { Button, Checkbox, Form, Input, InputNumber, Progress, Select, Skeleton, Space, Spin, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
+import { Button, Checkbox, Form, Input, InputNumber, Select, Skeleton, Space, Spin, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Files, HardDrive, Link2, RefreshCcw, Search, Upload } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
 import {
-  DRIVE_ROLE_LABELS, DRIVE_ROLE_OPTIONS, DRIVE_SPACE_TYPE_LABELS, DRIVE_SPACE_TYPE_OPTIONS,
-  DRIVE_HANDOFF_MODE_OPTIONS, handoffDriveSpaceSchema, isOrphanedDriveSpace, type HandoffDriveSpaceInput,
-  type AdminUpdateDriveSpaceInput, type CreateDepartmentDriveSpaceInput, type DriveRole, type DriveSpace, type DriveSpaceType,
+  DRIVE_ROLE_OPTIONS, DRIVE_SPACE_TYPE_OPTIONS, DRIVE_HANDOFF_MODE_OPTIONS, handoffDriveSpaceSchema, isOrphanedDriveSpace,
+  type HandoffDriveSpaceInput, type AdminUpdateDriveSpaceInput, type CreateDepartmentDriveSpaceInput, type DriveRole, type DriveSpace, type DriveSpaceType,
 } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -28,8 +27,8 @@ import {
 import { confirmDanger, confirmDangerAsync } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { useHandoffDriveSpace } from '@/hooks/queries/drive-collaboration';
-import { renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
-import { usagePercent } from '../drive-utils';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { driveSpaceDefaultRoleColumn, driveSpaceNameColumn, driveSpaceOwnerColumn, driveSpaceTypeColumn, driveSpaceUsageColumn } from '../drive-space-columns';
 import '../drive.css';
 
 const DriveAdminCharts = lazy(() => import('./DriveAdminCharts'));
@@ -145,21 +144,12 @@ export default function DriveAdminSpacesPage() {
   const stats = statsQuery.data;
   // 页面宽约 1190px：创建时间 / 外链开关移出列表（外链关闭以标签提示，编辑弹窗可改），保证名称列可读且无横向滚动
   const columns: ColumnProps<DriveSpace>[] = [
-    { title: '名称', dataIndex: 'name', minWidth: 200, ellipsis: { showTitle: false },
-      render: (v: string, s: DriveSpace) => <Typography.Text link ellipsis={{ showTooltip: true }} onClick={() => navigate(`/drive?space=${s.id}`)}>{v}</Typography.Text> },
-    { title: '类型', dataIndex: 'type', width: 100, render: (v: DriveSpaceType) => <Tag size="small" color={v === 'personal' ? 'grey' : v === 'department' ? 'green' : 'blue'}>{DRIVE_SPACE_TYPE_LABELS[v]}</Tag> },
-    { title: '所有者 / 部门', width: 130, render: (_: unknown, s: DriveSpace) => isOrphanedDriveSpace(s) ? <Tag color="orange">待接管</Tag> : renderEllipsis(s.ownerName ?? s.departmentName) },
-    { title: '默认角色', dataIndex: 'defaultMemberRole', width: 90, render: (v: DriveRole | null) => (v ? DRIVE_ROLE_LABELS[v] : '不开放') },
+    driveSpaceNameColumn(navigate),
+    driveSpaceTypeColumn,
+    driveSpaceOwnerColumn({ orphanTag: true }),
+    driveSpaceDefaultRoleColumn,
     { title: '成员 / 节点', width: 110, render: (_: unknown, s: DriveSpace) => <span className="drive-nowrap">{`${s.memberCount ?? 0} / ${s.nodeCount ?? 0}`}</span> },
-    { title: '用量', width: 200, render: (_: unknown, s: DriveSpace) => {
-      const pct = usagePercent(s);
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span className="drive-nowrap" style={{ fontSize: 12 }}>{formatBytes(s.usedBytes)}{s.quotaBytes ? ` / ${formatBytes(s.quotaBytes)}` : ' · 不限'}{s.customQuotaBytes !== null && <Typography.Text type="tertiary" size="small">（自定义）</Typography.Text>}</span>
-          {pct !== null && <Progress percent={pct} size="small" showInfo={false} stroke={pct >= 90 ? 'var(--semi-color-danger)' : undefined} aria-label={`用量 ${pct}%`} />}
-        </div>
-      );
-    } },
+    driveSpaceUsageColumn({ width: 200, customQuotaMark: true }),
     { title: '趋势（30 天）', width: 150, render: (_: unknown, s: DriveSpace) => {
       if (s.dailyGrowthBytes === null || s.dailyGrowthBytes === undefined) return EMPTY_PLACEHOLDER;
       const urgent = s.daysUntilFull !== null && s.daysUntilFull !== undefined && s.daysUntilFull <= 30;

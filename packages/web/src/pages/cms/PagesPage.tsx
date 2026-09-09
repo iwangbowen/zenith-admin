@@ -18,7 +18,7 @@ import {
   cmsPageKeys, useCmsPageDetail, useCmsPageBlockAcls, useSetCmsPageBlockAcls, useCmsTagList,
 } from '@/hooks/queries/cms';
 import { useAllRoles } from '@/hooks/queries/roles';
-import { useAllUsers } from '@/hooks/queries/users';
+import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import { CMS_PAGE_BLOCK_AUDIENCE_LABELS, CMS_PAGE_BLOCK_TYPES, cmsCustomPagePath, CMS_PAGE_BLOCK_AUDIENCE_OPTIONS } from '@zenith/shared/cms';
 import type { CmsChannel, CmsPage, CmsPageBlock, CmsPageBlockType } from '@zenith/shared/cms';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
@@ -634,10 +634,7 @@ export default function PagesPage() {
               loading={usersQuery.isFetching || aclQuery.isFetching}
               style={{ width: '100%' }}
               placeholder="选择平台用户"
-              optionList={(usersQuery.data ?? []).map((user) => ({
-                value: user.id,
-                label: user.nickname || user.username,
-              }))}
+              optionList={toUserOptions(usersQuery.data ?? [])}
               onChange={(value) => setAclUserIds(value as number[])}
             />
           </label>

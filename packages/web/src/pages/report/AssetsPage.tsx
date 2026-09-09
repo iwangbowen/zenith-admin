@@ -30,7 +30,7 @@ import {
   useTopReportAssets,
 } from '@/hooks/queries/report-assets';
 import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
-import { useAllUsers } from '@/hooks/queries/users';
+import { ReportFolderFilter, ReportOwnerFilter, useReportOwnerFolderOptions } from './report-filters';
 import { formatDateTime, formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { normalizeTemplateApplyValues, parseJsonObject } from './report-platform-utils';
@@ -67,11 +67,8 @@ export default function AssetsPage() {
   const [previewTemplate, setPreviewTemplate] = useState<ReportAssetTemplate | null>(null);
   const [usageDays, setUsageDays] = useState(30);
 
-  const usersQuery = useAllUsers();
-  const foldersQuery = useReportFolderTree();
+  const { userOptions, folders } = useReportOwnerFolderOptions();
   const templateFoldersQuery = useReportFolderTree({ resourceType: 'asset_template' });
-  const users = usersQuery.data ?? [];
-  const folders = flattenReportFolders(foldersQuery.data ?? []);
   const templateFolders = flattenReportFolders(templateFoldersQuery.data ?? []);
   const {
     startTime: updatedStart,
@@ -307,21 +304,17 @@ export default function AssetsPage() {
             keyword={<KeywordInput placeholder="搜索资产名称" value={catalogDraft.keyword} onChange={(value) => setCatalogDraft((p) => ({ ...p, keyword: value }))} onSearch={searchCatalog} />}
             filters={<>
               <Select multiple placeholder="资产类型" value={catalogDraft.types} optionList={resourceTypeOptions} style={{ width: 210 }} onChange={(value) => setCatalogDraft((p) => ({ ...p, types: value as ReportResourceType[] }))} />
-              <FilterSelect
-                placeholder="全部负责人"
-                items={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))}
+              <ReportOwnerFilter
+                items={userOptions}
                 value={catalogDraft.ownerId}
-                onChange={(value) => setCatalogDraft((p) => ({ ...p, ownerId: value as number | undefined }))}
+                onChange={(value) => setCatalogDraft((p) => ({ ...p, ownerId: value }))}
                 width={150}
-                filter
               />
-              <FilterSelect
-                placeholder="全部目录"
+              <ReportFolderFilter
                 items={folders.map((f) => ({ value: f.id, label: `[${f.resourceType}] ${f.name}` }))}
                 value={catalogDraft.folderId}
-                onChange={(value) => setCatalogDraft((p) => ({ ...p, folderId: value as number | undefined }))}
+                onChange={(value) => setCatalogDraft((p) => ({ ...p, folderId: value }))}
                 width={180}
-                filter
               />
               <FilterSelect
                 placeholder="全部生命周期"
@@ -390,7 +383,7 @@ export default function AssetsPage() {
             <Col xs={24} md={12}><Form.Input field="code" label="模板编码" disabled={templateModal.isEdit} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.Select field="type" label="模板类型" style={{ width: '100%' }} optionList={templateTypeOptions} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} /></Col>
-            <Col xs={24} md={12}><Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }} optionList={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))} /></Col>
+            <Col xs={24} md={12}><Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }} optionList={userOptions} /></Col>
             <Col xs={24} md={12}><Form.Select field="folderId" label="模板目录" filter showClear style={{ width: '100%' }} optionList={templateFolders.map((f) => ({ value: f.id, label: f.name }))} /></Col>
           </Row>
           <Form.TextArea field="description" label="说明" autosize rows={2} />
