@@ -403,10 +403,37 @@ export async function renameEntry(from: string, to: string): Promise<TerminalFil
   };
 }
 
+/** Windows 盘符探测结果的进程内缓存：U 盘 / 网络映射会插拔，按 TTL 过期重探而不是每次打开文件浏览器都扫一遍 */
+const DRIVES_CACHE_TTL_MS = 60_000;
+/** 单个盘符探测的等待上限：断连的网络映射盘或空光驱可能挂住数秒，超时即视为不存在 */
+const DRIVE_PROBE_TIMEOUT_MS = 2_000;
+let drivesCache: { at: number; promise: Promise<string[]> } | null = null;
+
+function probeDrive(letter: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), DRIVE_PROBE_TIMEOUT_MS);
+    timer.unref();
+    fs.access(`${letter}:\\`).then(() => resolve(`${letter}:`), () => resolve(null)).finally(() => clearTimeout(timer));
+  });
+}
+
+/**
+ * 并行异步探测 A:–Z:。此前逐字母 `existsSync`：一个断连的网络映射盘就把事件循环卡住数秒，
+ * 且每次请求都重来。`fs.access` 在 libuv 线程池执行，26 个字母一起发出，慢盘只拖慢自己并受超时封顶。
+ */
+function detectWindowsDrives(): Promise<string[]> {
+  const now = Date.now();
+  if (drivesCache && now - drivesCache.at < DRIVES_CACHE_TTL_MS) return drivesCache.promise;
+  const promise = Promise.all([...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(probeDrive))
+    .then((results) => results.filter((drive): drive is string => drive !== null));
+  drivesCache = { at: now, promise };
+  return promise;
+}
+
 /**
  * 获取文件系统根目录信息（供文件浏览器初始化使用）。
  * - Unix：根目录为 `/`，无盘符
- * - Windows：根目录为各盘符（C:\、D:\ 等），通过检测是否存在筛选
+ * - Windows：根目录为各盘符（C:\、D:\ 等），异步并行探测并按进程缓存
  */
 export async function getRootInfo(): Promise<{
   home: string;
@@ -415,16 +442,7 @@ export async function getRootInfo(): Promise<{
 }> {
   const isWindows = os.platform() === 'win32';
   const home = os.homedir();
-  const drives: string[] = [];
-
-  if (isWindows) {
-    for (const letter of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
-      if (existsSync(`${letter}:\\`)) {
-        drives.push(`${letter}:`);
-      }
-    }
-  }
-
+  const drives = isWindows ? await detectWindowsDrives() : [];
   return { home, isWindows, drives };
 }
 
