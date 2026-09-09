@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { Button, Form, Image, Select, Spin, Tag, Toast, Banner, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Image, Select, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import { MP_QRCODE_TYPES, type CreateMpQrcodeInput, type MpQrcode, type MpQrcodeType } from '@zenith/shared/mp';
@@ -10,6 +10,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn } from '../../utils/table-columns';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { mpQrcodeKeys, useCreateMpQrcode, useDeleteMpQrcodes, useMpQrcodeList } from '@/hooks/queries/mp-qrcodes';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -143,9 +144,7 @@ export default function MpQrcodesPage() {
         filterTitle="二维码筛选"
       />
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       <ConfigurableTable columns={columns}
         {...listTableProps(listQuery, { pagination: buildPagination })}

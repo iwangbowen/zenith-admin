@@ -12,6 +12,7 @@ import type { CmsSensitiveWord } from '@zenith/shared/cms';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 interface SearchParams { keyword: string }
 const defaultSearch: SearchParams = { keyword: '' };
@@ -82,10 +83,7 @@ export default function SensitiveWordsPage() {
         <Form key={modal.formKey} {...modal.formProps}>
           <Form.Input field="word" label="敏感词" rules={[{ required: true, message: '请输入敏感词' }]} />
           <Form.Input field="replaceWith" label="替换为" placeholder="留空 = 拦截模式（命中直接拒绝提交）" />
-          <Form.RadioGroup field="status" label="状态">
-            <Form.Radio value="enabled">启用</Form.Radio>
-            <Form.Radio value="disabled">停用</Form.Radio>
-          </Form.RadioGroup>
+          <FormStatusRadioGroup />
         </Form>
       </AppModal>
     </div>

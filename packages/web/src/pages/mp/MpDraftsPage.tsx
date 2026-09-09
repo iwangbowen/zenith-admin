@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Space, Spin, Tag, Toast, Banner, Typography, TextArea } from '@douyinfe/semi-ui';
+import { Button, Input, Space, Spin, Tag, Toast, Typography, TextArea } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import type { MpDraft, MpArticle } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
@@ -11,6 +11,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpDraftKeys,
@@ -138,9 +139,7 @@ export default function MpDraftsPage() {
         filterTitle="图文草稿筛选"
       />
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       <ConfigurableTable columns={columns}
         {...listTableProps(listQuery, { pagination: buildPagination })}

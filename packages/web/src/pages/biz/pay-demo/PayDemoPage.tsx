@@ -6,11 +6,10 @@
  * 履约（置 paid、发放权益）。「模拟支付成功」用于在未配置真实渠道时演示完整闭环。
  */
 import { useRef, useState, type CSSProperties } from 'react';
-import { Banner, Button, Collapse, Form, Modal, Space, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Banner, Collapse, Form, Modal, Space, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Info } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS } from '@zenith/shared/payment';
 import type { BizPayDemo, BizPayDemoStatus, CreateBizPayDemoInput } from '@zenith/shared/biz';
@@ -33,7 +32,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
-import { getPaymentQrInstruction } from '@/utils/payment';
+import { PaymentResultModal } from '@/pages/payment/PaymentResultModal';
 import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 import { usePaymentMethodList } from '@/hooks/queries/payment-methods';
 
@@ -334,28 +333,16 @@ export default function PayDemoPage() {
         </Form>
       </AppModal>
 
-      <Modal title="支付下单结果" visible={!!payResult} onCancel={() => { setPayResult(null); setPayResultMethod(null); }} footer={null} width={420} closeOnEsc>
-        {payResult && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ marginBottom: 8 }}>订单号：{payResult.orderNo}</div>
-            {payResult.codeUrl && (
-              <>
-                <QRCodeSVG value={payResult.codeUrl} size={200} style={{ margin: '12px auto', display: 'block' }} />
-                <Typography.Text type="tertiary">{getPaymentQrInstruction(payResultMethod)}</Typography.Text>
-              </>
-            )}
-            {payResult.payUrl && (
-              <div style={{ margin: '16px 0' }}>
-                <Button type="primary" onClick={() => window.open(payResult.payUrl, '_blank', 'noopener')}>打开支付页</Button>
-                <div style={{ marginTop: 8, wordBreak: 'break-all', fontSize: 12 }}><Typography.Text type="tertiary">{payResult.payUrl}</Typography.Text></div>
-              </div>
-            )}
-            <div style={{ marginTop: 12 }}>
-              <Typography.Text type="tertiary" size="small">扫码支付成功后，后端订阅器会自动履约（本演示可关闭弹窗后点「模拟支付成功」）。</Typography.Text>
-            </div>
+      <PaymentResultModal
+        result={payResult}
+        method={payResultMethod}
+        onClose={() => { setPayResult(null); setPayResultMethod(null); }}
+        extra={(
+          <div style={{ marginTop: 12 }}>
+            <Typography.Text type="tertiary" size="small">扫码支付成功后，后端订阅器会自动履约（本演示可关闭弹窗后点「模拟支付成功」）。</Typography.Text>
           </div>
         )}
-      </Modal>
+      />
     </div>
   );
 }

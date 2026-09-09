@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { Button, Col, Form, Input, Row, Select, Space, Spin, Tag, Toast, Switch, Banner, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Row, Select, Space, Spin, Tag, Toast, Switch, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2, Flame } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import { MP_AUTO_REPLY_TYPES, MP_REPLY_CONTENT_TYPE_LABELS, MP_REPLY_CONTENT_TYPE_OPTIONS } from '@zenith/shared/mp';
@@ -14,6 +14,7 @@ import { createdAtColumn } from '../../utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpAutoReplyKeys,
@@ -240,9 +241,7 @@ export default function MpAutoRepliesPage() {
         actionTitle="自动回复操作"
       />
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       <ConfigurableTable columns={columns}
         {...listTableProps(listQuery, { pagination: buildPagination })}

@@ -4,6 +4,7 @@
 import { Form, Select, Space, Tag } from '@douyinfe/semi-ui';
 import type { WorkflowDefinition } from '@zenith/shared/workflow';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
+import { departmentsToTreeData } from '@/hooks/queries/departments';
 import { useMemo } from 'react';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 
@@ -58,33 +59,10 @@ export default function BasicInfoPanel({
     targetOptions = users.map((u) => ({ value: u.id, label: `${u.nickname} (#${u.id})` }));
   }
 
-  const departmentTreeData = useMemo<TreeNodeData[]>(() => {
-    const nodeMap = new Map<number, TreeNodeData>();
-    const rootNodes: TreeNodeData[] = [];
-
-    departments.forEach((item) => {
-      nodeMap.set(item.id, {
-        key: String(item.id),
-        value: item.id,
-        label: item.name,
-        children: [],
-      });
-    });
-
-    departments.forEach((item) => {
-      const currentNode = nodeMap.get(item.id);
-      if (!currentNode) return;
-
-      if (item.parentId && nodeMap.has(item.parentId)) {
-        const parentNode = nodeMap.get(item.parentId)!;
-        parentNode.children = [...(parentNode.children ?? []), currentNode];
-      } else {
-        rootNodes.push(currentNode);
-      }
-    });
-
-    return rootNodes;
-  }, [departments]);
+  const departmentTreeData = useMemo<TreeNodeData[]>(
+    () => departmentsToTreeData(departments, { keepEmptyChildren: true }),
+    [departments],
+  );
   let scopePlaceholder = '请选择角色';
   if (initiatorScopeType === 'users') scopePlaceholder = '请选择人员';
   else if (initiatorScopeType === 'departments') scopePlaceholder = '请选择部门';

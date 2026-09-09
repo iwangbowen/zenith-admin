@@ -11,7 +11,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
-import { useFlatDepartments } from '@/hooks/queries/departments';
+import { departmentsToTreeData, useFlatDepartments } from '@/hooks/queries/departments';
 import { useAllPositions } from '@/hooks/queries/positions';
 import {
   useAssignUserGroupMembers,
@@ -122,34 +122,10 @@ export default function UserGroupsPage() {
     disabled: !hasPermission('system:user-groups:update'),
   });
 
-  const departmentTreeData = useMemo<TreeNodeData[]>(() => {
-    const nodeMap = new Map<number, TreeNodeData>();
-    const rootNodes: TreeNodeData[] = [];
-
-    departments.forEach((item) => {
-      nodeMap.set(item.id, {
-        key: String(item.id),
-        value: item.id,
-        label: item.name,
-        children: [],
-      });
-    });
-
-    departments.forEach((item) => {
-      const currentNode = nodeMap.get(item.id);
-      if (!currentNode) return;
-
-      const parentNode = item.parentId ? nodeMap.get(item.parentId) : undefined;
-      if (parentNode) {
-        parentNode.children = [...(parentNode.children ?? []), currentNode];
-        return;
-      }
-
-      rootNodes.push(currentNode);
-    });
-
-    return rootNodes;
-  }, [departments]);
+  const departmentTreeData = useMemo<TreeNodeData[]>(
+    () => departmentsToTreeData(departments, { keepEmptyChildren: true }),
+    [departments],
+  );
 
   useEffect(() => {
     if (memberSheetVisible) setMemberIds((membersQuery.data ?? []).map((m) => m.id));

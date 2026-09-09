@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Button, Input, Select, Spin, Tag, Toast, Banner, Empty } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Spin, Tag, Toast, Empty } from '@douyinfe/semi-ui';
 import { RefreshCw, Save, Send, Trash2, Plus } from 'lucide-react';
 import type { MpMenu, MpMenuButton } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { useDeleteMpMenu, useMpMenu, usePublishMpMenu, usePullMpMenu, useSaveMpMenu } from '@/hooks/queries/mp-menu';
 import { confirmDelete } from '@/utils/confirm';
@@ -228,9 +229,7 @@ export default function MpMenuPage() {
 
   return (
     <div className="page-container">
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       <SearchToolbar
         primary={(

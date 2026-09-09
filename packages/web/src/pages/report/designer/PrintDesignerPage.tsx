@@ -14,8 +14,7 @@ import '@univerjs/preset-sheets-core/lib/index.css';
 import '../report-grid.css';
 import { usePermission } from '@/hooks/usePermission';
 import { useThemeController } from '@/providers/theme-controller';
-import AppModal from '@/components/AppModal';
-import PrintReportView from '../PrintReportView';
+import PrintPreviewModal from '../PrintPreviewModal';
 import ReportParamDialog from '@/components/ReportParamDialog';
 import { buildReportParamInitialValues } from '@/components/report-param-utils';
 import { printContentToUniver, univerToPrintContent } from './print-univer';
@@ -1191,18 +1190,13 @@ export default function PrintDesignerPage() {
         onSubmit={(values) => void handlePreviewSubmit(values)}
       />
 
-      <AppModal
-        title="打印预览"
+      <PrintPreviewModal
         visible={previewVisible}
-        onCancel={() => setPreviewVisible(false)}
-        footer={null}
-        width="92vw"
-        style={{ maxWidth: 1180 }}
-      >
-        {renderMutation.isPending && <div style={{ padding: 32, textAlign: 'center' }}>正在生成预览...</div>}
-        {!renderMutation.isPending && previewResult && <PrintReportView result={previewResult} params={previewParams} />}
-        {!renderMutation.isPending && !previewResult && <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无预览内容</div>}
-      </AppModal>
+        loading={renderMutation.isPending}
+        result={previewResult}
+        params={previewParams}
+        onClose={() => setPreviewVisible(false)}
+      />
 
       <Modal
         visible={!canSave}

@@ -6,7 +6,7 @@ import { request } from '@/utils/request';
 import { logViewerDownloadUrl, useLogViewerRoots } from '@/hooks/queries/log-viewer';
 import { logSourceKey, type LogSource } from '@/hooks/queries/log-source';
 import { HostSelector } from '@/components/HostSelector';
-import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
+import { deriveInitialHostSelection, useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { LogWorkbench } from '@/components/log-workbench/LogWorkbench';
 
 /** 常用日志路径 */
@@ -36,15 +36,9 @@ export default function LogViewerPage() {
   const [submitted, setSubmitted] = useState<SubmittedLog | null>(null);
   // 深链:?path= 直接加载指定日志(Nginx 站点页等跳入),消费后清空参数
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialHostId = (() => {
-    const value = Number(searchParams.get('hostId'));
-    return Number.isInteger(value) && value > 0 ? value : null;
-  })();
   // 显式 ?path= 且无 hostId 的站内深链（如本机 Nginx 日志）必须落本机，
   // 不能被上一次持久化的远端主机选择污染。
-  const [hostId, setHostId] = useOpsHostSelection(
-    searchParams.has('hostId') ? initialHostId : searchParams.has('path') ? null : undefined,
-  );
+  const [hostId, setHostId] = useOpsHostSelection(deriveInitialHostSelection(searchParams, 'path'));
   useEffect(() => {
     const p = searchParams.get('path');
     if (!p) return;

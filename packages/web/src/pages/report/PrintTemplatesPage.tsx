@@ -21,7 +21,7 @@ import {
   useReportPrintTemplateList,
   useSaveReportPrintTemplate,
 } from '@/hooks/queries/report-print';
-import PrintReportView from './PrintReportView';
+import PrintPreviewModal from './PrintPreviewModal';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CreateReportPrintTemplateInput, ReportPrintRenderResult, ReportPrintTemplate, UpdateReportPrintTemplateInput } from '@zenith/shared/report';
 import type { ExportJobFormat } from '@zenith/shared/tasks';
@@ -312,18 +312,13 @@ export default function PrintTemplatesPage() {
         onSubmit={(values) => void handleParamSubmit(values)}
       />
 
-      <AppModal
-        title="打印预览"
+      <PrintPreviewModal
         visible={previewVisible}
-        onCancel={() => setPreviewVisible(false)}
-        footer={null}
-        width="92vw"
-        style={{ maxWidth: 1180 }}
-      >
-        {renderMutation.isPending && <div style={{ padding: 32, textAlign: 'center' }}>正在生成预览...</div>}
-        {!renderMutation.isPending && previewResult && <PrintReportView result={previewResult} params={previewParams} />}
-        {!renderMutation.isPending && !previewResult && <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无预览内容</div>}
-      </AppModal>
+        loading={renderMutation.isPending}
+        result={previewResult}
+        params={previewParams}
+        onClose={() => setPreviewVisible(false)}
+      />
     </div>
   );
 }

@@ -32,6 +32,7 @@ import { mapTree } from '@zenith/shared/core';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { deleteAction, listTableProps } from '@/components/list-page';
 import ModalFooter from '@/components/ModalFooter';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 /** 区块按栏目标识引用栏目：value 用 code，站点复制/重建后配置无需重配 */
 function channelsToSelectTree(nodes: CmsChannel[]): TreeNodeData[] {
@@ -352,10 +353,7 @@ export default function PagesPage() {
             disabled={!canEditPage}
             extraText="支持多级分段（如 zh/about）；不能与栏目路径或系统保留段冲突" />
           <Form.Switch field="isHome" label="接管首页" disabled={!canEditPage} extraText="启用后站点首页渲染此页面（每站点一个）" />
-          <Form.RadioGroup field="status" label="状态" disabled={!canEditPage}>
-            <Form.Radio value="enabled">启用</Form.Radio>
-            <Form.Radio value="disabled">停用</Form.Radio>
-          </Form.RadioGroup>
+          <FormStatusRadioGroup disabled={!canEditPage} />
           <Form.Input field="seoTitle" label="SEO 标题" disabled={!canEditPage} />
           <Form.Input field="seoKeywords" label="SEO 关键词" disabled={!canEditPage} />
           <Form.TextArea field="seoDescription" label="SEO 描述" rows={2} disabled={!canEditPage} />

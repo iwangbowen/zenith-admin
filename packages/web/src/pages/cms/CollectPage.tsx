@@ -24,6 +24,7 @@ import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { channelsToSelectTree } from './channel-tree';
 import { deleteAction, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 const ITEM_STATUS_META: Record<CmsCollectItem['status'], { label: string; color: 'green' | 'grey' | 'red' }> = {
   success: { label: '成功', color: 'green' },
@@ -251,10 +252,7 @@ export default function CollectPage() {
                 <Form.Switch field="localizeImages" noLabel label="图片本地化" extraText="下载远程图片转存文件中心" />
               </div>
             </Form.Slot>
-            <Form.RadioGroup field="status" label="状态">
-              <Form.Radio value="enabled">启用</Form.Radio>
-              <Form.Radio value="disabled">停用</Form.Radio>
-            </Form.RadioGroup>
+            <FormStatusRadioGroup />
             <Form.Input field="remark" label="备注" />
           </Form.Section>
         </Form>

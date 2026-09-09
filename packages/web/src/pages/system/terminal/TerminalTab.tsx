@@ -68,23 +68,7 @@ export default function TerminalTab({ sessionId, active, focused, shell, label, 
   );
 
   // 用 ref 持有最新配置，供仅在 mount 时执行的初始化闭包读取
-  const initCfgRef = useRef({
-    theme: currentTheme,
-    fontSize: terminal.fontSize,
-    fontFamily: terminal.fontFamily,
-    lineHeight: terminal.lineHeight,
-    scrollback: terminal.scrollback,
-    cursorStyle: terminal.cursorStyle,
-    cursorBlink: terminal.cursorBlink,
-    copyOnSelect: terminal.copyOnSelect,
-    rendererType: terminal.rendererType,
-    fastScrollSensitivity: terminal.fastScrollSensitivity,
-    letterSpacing: terminal.letterSpacing,
-    fontWeight: terminal.fontWeight,
-    rightClickSelectsWord: terminal.rightClickSelectsWord,
-    minimumContrastRatio: terminal.minimumContrastRatio,
-  });
-  initCfgRef.current = {
+  const initCfg = {
     theme: currentTheme,
     fontSize: terminal.fontSize,
     fontFamily: terminal.fontFamily,
@@ -100,6 +84,8 @@ export default function TerminalTab({ sessionId, active, focused, shell, label, 
     rightClickSelectsWord: terminal.rightClickSelectsWord,
     minimumContrastRatio: terminal.minimumContrastRatio,
   };
+  const initCfgRef = useRef(initCfg);
+  initCfgRef.current = initCfg;
 
   // 搜索操作
   const doSearch = useCallback((text: string, direction: 'next' | 'prev') => {

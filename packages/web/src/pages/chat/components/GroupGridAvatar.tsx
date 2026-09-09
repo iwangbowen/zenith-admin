@@ -1,4 +1,4 @@
-import { getAvatarColor } from '../utils';
+import { getAvatarColor } from '@/utils/avatar-color';
 
 export function GroupGridAvatar({
   name,

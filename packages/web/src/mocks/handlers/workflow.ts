@@ -23,7 +23,6 @@ import type {
   WorkflowJobDetail,
   WorkflowJobFailureCluster,
   WorkflowJobFailureClusterMember,
-  WorkflowJobStatus,
   WorkflowJobSummaryItem,
   WorkflowJobType,
   WorkflowPendingInstanceItem,
@@ -38,13 +37,18 @@ import type {
   WorkflowTaskUrge,
 } from '@zenith/shared/workflow';
 import {
+  buildWorkflowEngineIssues,
+  buildWorkflowEngineQueueSnapshot,
   buildWorkflowSummaryItems,
   collectReferencedFormFieldKeys,
+  countWorkflowJobStatuses,
   findNextApproverSelectNodes,
   renderWorkflowSerialNo,
   resolveNodeFieldPermissions,
   resolveSerialPeriodKey,
   sanitizeFormUpdatesByNodePerms,
+  summarizeWorkflowJobChain,
+  worstWorkflowEngineStatus,
   WORKFLOW_SERIAL_SAMPLE_VARS,
   WORKFLOW_ADVANCING_JOB_TYPES,
   WORKFLOW_JOB_TYPES,
@@ -57,6 +61,7 @@ import {
   workflowTaskContract,
 } from '@zenith/shared/workflow';
 import {
+  buildFirstApproveTask,
   mockWorkflowDefinitions,
   mockWorkflowInstances,
   mockWorkflowTasks,
@@ -298,6 +303,9 @@ function isMockDateTimeDue(value: string | null | undefined) {
   return parsed.isValid() && !parsed.isAfter(dayjs());
 }
 
+/** Demo 事件总线监听器数（与 eventBus 组件 internals 中的 listeners 合计一致） */
+const MOCK_EVENT_BUS_LISTENERS = 7;
+
 function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): WorkflowEngineIntrospection {
   const timeoutAt = mockDateTimeOffset(-30 * 60 * 1000);
   const delayWakeAt = mockDateTimeOffset(-12 * 60 * 1000);
@@ -519,95 +527,22 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
       instanceTitle: mockWorkflowInstances.find((inst) => inst.id === item.instanceId)?.title ?? null,
     }));
 
-  const issues: WorkflowEngineIntrospection['issues'] = [];
-  for (const item of invalidDefinitions.filter((definition) => definition.status === 'published')) {
-    issues.push({
-      id: `definition:${item.definitionId}`,
-      severity: 'critical',
-      component: 'dagExecutor',
-      title: '已发布流程定义未通过当前引擎校验',
-      description: item.errors[0] ?? '流程图结构不合法。',
-      refType: 'definition',
-      refId: item.definitionId,
-      metadata: { errors: item.errors, version: item.version },
-    });
-  }
-  for (const item of runningWithoutActiveTasks) {
-    issues.push({
-      id: `instance:${item.instanceId}:no-active-task`,
-      severity: 'critical',
-      component: 'taskMaterializer',
-      title: '运行中实例没有活动任务',
-      description: `实例「${item.title}」没有 pending / waiting 任务，可能需要恢复扫描介入。`,
-      refType: 'instance',
-      refId: item.instanceId,
-      ageMinutes: item.ageMinutes,
-      createdAt: item.createdAt,
-    });
-  }
-  for (const task of runtimeTasks.filter((item) => item.queue === 'timeouts')) {
-    issues.push({
-      id: `task:${task.taskId}:timeout-due`,
-      severity: 'warning',
-      component: 'timeoutProcessor',
-      title: '任务超时待处理',
-      description: `任务 #${task.taskId} 已到 timeoutAt，等待超时处理器扫描。`,
-      refType: 'task',
-      refId: task.taskId,
-      ageMinutes: task.ageMinutes,
-      createdAt: task.createdAt,
-    });
-  }
-  for (const execution of triggerExecutions.filter((item) => item.status === 'failed')) {
-    issues.push({
-      id: `trigger-execution:${execution.id}`,
-      severity: 'critical',
-      component: 'triggerDispatcher',
-      title: '触发器执行记录失败',
-      description: execution.errorMessage ?? `触发器执行 #${execution.id} 失败。`,
-      refType: 'triggerExecution',
-      refId: execution.id,
-      createdAt: execution.createdAt,
-    });
-  }
-  for (const event of outboxEvents.filter((item) => item.status === 'failed')) {
-    issues.push({
-      id: `outbox:${event.id}`,
-      severity: 'critical',
-      component: 'outbox',
-      title: '事件派发重放失败',
-      description: event.errorMessage ?? `事件 ${event.eventType} 重放失败。`,
-      refType: 'outbox',
-      refId: event.id,
-      ageMinutes: event.ageMinutes,
-      createdAt: event.createdAt,
-    });
-  }
+  const issues = buildWorkflowEngineIssues({
+    definitions,
+    runningWithoutActiveTasks,
+    runtimeTasks,
+    triggerExecutions,
+    outboxEvents,
+    eventBusListeners: MOCK_EVENT_BUS_LISTENERS,
+    schedulerInitialized: true,
+  });
 
-  const worstStatus = (statuses: Array<WorkflowEngineIntrospection['components'][number]['status']>) => {
-    if (statuses.includes('critical')) return 'critical';
-    if (statuses.includes('warning')) return 'warning';
-    return 'healthy';
-  };
+  const worstStatus = worstWorkflowEngineStatus;
   const queueSnapshot = (
     key: WorkflowEngineRuntimeTask['queue'] | 'eventOutbox',
     name: string,
     counts: { ready?: number; running?: number; delayed?: number; failed?: number; oldestAgeMinutes?: number | null; details?: Record<string, number | string | null> },
-  ): WorkflowEngineIntrospection['queues'][number] => {
-    const failed = counts.failed ?? 0;
-    const oldestAgeMinutes = counts.oldestAgeMinutes ?? null;
-    return {
-      key,
-      name,
-      status: failed > 0 ? 'critical' : oldestAgeMinutes != null && oldestAgeMinutes >= 60 ? 'warning' : 'healthy',
-      ready: counts.ready ?? 0,
-      running: counts.running ?? 0,
-      delayed: counts.delayed ?? 0,
-      failed,
-      oldestAgeMinutes,
-      details: counts.details ?? null,
-    };
-  };
+  ) => buildWorkflowEngineQueueSnapshot({ key, name, ...counts });
 
   const byQueue = (queue: WorkflowEngineRuntimeTask['queue']) => runtimeTasks.filter((item) => item.queue === queue);
   const queues = [
@@ -729,7 +664,7 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
       description: '进程内工作流事件派发器。',
       status: 'healthy',
       metrics: [
-        { label: '监听器总数', value: 7, status: 'healthy' },
+        { label: '监听器总数', value: MOCK_EVENT_BUS_LISTENERS, status: 'healthy' },
         { label: '事件类型', value: 5 },
       ],
       internals: {
@@ -1151,17 +1086,7 @@ function buildJobChain(traceId: string) {
     .filter((j) => j.traceId === traceId)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id)
     .map((j) => ({ ...j, executions: mockWorkflowJobExecutions.filter((e) => e.jobId === j.id).sort((a, b) => a.id - b.id) }));
-  const countBy = (s: WorkflowJobStatus) => jobs.filter((j) => j.status === s).length;
-  return {
-    traceId,
-    jobs,
-    stats: {
-      total: jobs.length,
-      pending: countBy('pending'), running: countBy('running'), paused: countBy('paused'), succeeded: countBy('succeeded'),
-      failed: countBy('failed'), dead: countBy('dead'), canceled: countBy('canceled'),
-      instanceIds: [...new Set(jobs.map((j) => j.instanceId).filter((v): v is number => v != null))],
-    },
-  };
+  return { traceId, jobs, stats: summarizeWorkflowJobChain(jobs) };
 }
 
 const pausedJobRemainingMs = new Map<number, number>();
@@ -1937,21 +1862,10 @@ export const workflowHandlers = [
   }),
 
   mock(workflowEngineContract.jobsSummary, ({ ok }) => {
-    const summary = WORKFLOW_JOB_TYPES.map((jobType): WorkflowJobSummaryItem => {
-      const rows = mockWorkflowJobs.filter((j) => j.jobType === jobType);
-      const countBy = (s: WorkflowJobStatus) => rows.filter((j) => j.status === s).length;
-      return {
-        jobType,
-        total: rows.length,
-        pending: countBy('pending'),
-        running: countBy('running'),
-        paused: countBy('paused'),
-        succeeded: countBy('succeeded'),
-        failed: countBy('failed'),
-        dead: countBy('dead'),
-        canceled: countBy('canceled'),
-      };
-    });
+    const summary = WORKFLOW_JOB_TYPES.map((jobType): WorkflowJobSummaryItem => ({
+      jobType,
+      ...countWorkflowJobStatuses(mockWorkflowJobs.filter((j) => j.jobType === jobType)),
+    }));
     return ok(summary);
   }),
 
@@ -2208,24 +2122,8 @@ export const workflowHandlers = [
     }
 
     // 创建初始审批任务（取第一个 approve 节点）；草稿不创建任务
-    const firstApproveNode = def.flowData?.nodes.find(n => n.data.type === 'approve');
-    const newTasks: WorkflowTask[] = [];
-    if (!isDraft && firstApproveNode) {
-      newTasks.push({
-        id: getNextTaskId(),
-        instanceId,
-        nodeKey: firstApproveNode.data.key,
-        nodeName: firstApproveNode.data.label,
-        nodeType: 'approve',
-        assigneeId: firstApproveNode.data.assigneeId ?? null,
-        assigneeName: firstApproveNode.data.assigneeName ?? null,
-        assigneeAvatar: null,
-        status: 'pending',
-        comment: null,
-        actionAt: null,
-        createdAt: now,
-      });
-    }
+    const firstTask = isDraft ? null : buildFirstApproveTask(def, instanceId, now);
+    const newTasks: WorkflowTask[] = firstTask ? [firstTask] : [];
 
     const newInstance: WorkflowInstance = {
       id: instanceId,
@@ -2237,7 +2135,7 @@ export const workflowHandlers = [
       formData,
       formSnapshot: resolveDefinitionFormSnapshot(def),
       status: isDraft ? 'draft' : 'running',
-      currentNodeKey: isDraft ? null : (firstApproveNode?.data.key ?? null),
+      currentNodeKey: isDraft ? null : (firstTask?.nodeKey ?? null),
       initiatorId: 1,
       initiatorName: '张三',
       initiatorAvatar: null,

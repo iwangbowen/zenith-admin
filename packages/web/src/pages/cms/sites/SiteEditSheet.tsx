@@ -28,6 +28,7 @@ import {
 import type { TemplateDefaultsState } from './site-form-mapping';
 import { siteIndentOptions } from './site-tree-utils';
 import { FormSliderInput } from '@/components/SliderInput';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 /** 失效模板引用的人类可读描述（健康检查 Banner 用） */
 function describeInvalidRef(ref: CmsInvalidTemplateRef): string {
@@ -520,10 +521,7 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
                 <Form.Switch field="isDefault" label="默认站点" extraText="未匹配到域名的请求兜底到默认站点" />
               </Col>
               <Col span={12}>
-                <Form.RadioGroup field="status" label="状态">
-                  <Form.Radio value="enabled">启用</Form.Radio>
-                  <Form.Radio value="disabled">停用</Form.Radio>
-                </Form.RadioGroup>
+                <FormStatusRadioGroup />
               </Col>
             </Row>
           </TabPane>

@@ -28,7 +28,7 @@ import { UserAvatarModal } from './UserAvatarModal';
 import ExportButton from '@/components/ExportButton';
 import ImportButton from '@/components/ImportButton';
 import { useAllRoles } from '@/hooks/queries/roles';
-import { useFlatDepartments } from '@/hooks/queries/departments';
+import { departmentsToTreeData, useFlatDepartments } from '@/hooks/queries/departments';
 import { useAllPositions } from '@/hooks/queries/positions';
 import { useMySettings } from '@/hooks/queries/settings';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -264,34 +264,7 @@ export default function UsersPage() {
   };
 
   const departmentTreeData = useMemo<TreeNodeData[]>(
-    () => {
-      const nodeMap = new Map<number, TreeNodeData>();
-      const rootNodes: TreeNodeData[] = [];
-
-      allDepartments.forEach((item) => {
-        nodeMap.set(item.id, {
-          key: String(item.id),
-          value: item.id,
-          label: item.name,
-          children: [],
-        });
-      });
-
-      allDepartments.forEach((item) => {
-        const currentNode = nodeMap.get(item.id);
-        if (!currentNode) return;
-
-        const parentNode = item.parentId ? nodeMap.get(item.parentId) : undefined;
-        if (parentNode) {
-          parentNode.children = [...(parentNode.children ?? []), currentNode];
-          return;
-        }
-
-        rootNodes.push(currentNode);
-      });
-
-      return rootNodes;
-    },
+    () => departmentsToTreeData(allDepartments, { keepEmptyChildren: true }),
     [allDepartments]
   );
 

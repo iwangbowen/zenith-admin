@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Spin, Banner, Typography, Skeleton, Card, Button, Toast } from '@douyinfe/semi-ui';
+import { Spin, Typography, Skeleton, Card, Button, Toast } from '@douyinfe/semi-ui';
 import { Users, UserCheck, UserMinus, Tags, Image, FileText, MessageSquare, Reply, BarChart3 } from 'lucide-react';
 import type { MpStats } from '@zenith/shared/mp';
 import { formatDateForApi } from '@/utils/date';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { BarChart, chartOptions, makeBarSpec, useChartPalette, StatCard, StatGrid } from '@/components/charts';
 import { DateRangeFilter } from '@/components/search-filters';
@@ -76,9 +77,7 @@ export default function MpStatisticsPage() {
         <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
       </div>
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       <Spin spinning={statsQuery.isFetching && !!stats}>
         {(statsQuery.isFetching && !stats) ? (

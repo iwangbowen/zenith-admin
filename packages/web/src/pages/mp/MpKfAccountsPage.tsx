@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
-import { Avatar, Button, Form, Space, Spin, Tag, Toast, Banner } from '@douyinfe/semi-ui';
+import { Avatar, Button, Form, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import type { CreateMpKfAccountInput, MpKfAccount } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
@@ -12,6 +12,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpKfAccountKeys,
@@ -140,9 +141,7 @@ export default function MpKfAccountsPage() {
         actionTitle="多客服操作"
       />
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       <ConfigurableTable columns={columns}
         {...listTableProps(listQuery, { pagination: buildPagination })}

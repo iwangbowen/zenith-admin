@@ -16,7 +16,7 @@ import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
 import { DataScopePanel } from '@/components/permissions/DataScopePanel';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { useDepartmentTree } from '@/hooks/queries/departments';
+import { departmentTreeToTreeData, useDepartmentTree } from '@/hooks/queries/departments';
 import { useMenuTree } from '@/hooks/queries/menus';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -115,15 +115,6 @@ export default function RolesPage() {
       setSelectedDeptScopeIds(dataScopeRoleDetailQuery.data.deptScopeIds ?? []);
     }
   }, [dataScopeModalVisible, dataScopeRoleDetailQuery.data]);
-
-  function deptsToTreeData(items: Department[]): object[] {
-    return items.map((d) => ({
-      label: d.name,
-      key: String(d.id),
-      value: d.id,
-      children: d.children ? deptsToTreeData(d.children) : undefined,
-    }));
-  }
 
   const openMenuModal = (role: Role) => {
     setMenuRole(role);
@@ -309,7 +300,7 @@ export default function RolesPage() {
             placeholder="默认全员（用于工作流「角色」审批人按部门过滤）"
             multiple
             filterTreeNode
-            treeData={deptsToTreeData(deptTree)}
+            treeData={departmentTreeToTreeData(deptTree)}
             style={{ width: '100%' }}
           />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}

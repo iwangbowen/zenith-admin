@@ -13,6 +13,7 @@
  */
 import { Select, Spin, TreeSelect } from '@douyinfe/semi-ui';
 import type { Department } from '@zenith/shared/identity';
+import { departmentTreeToTreeData } from '@/hooks/queries/departments';
 
 export const DATA_SCOPE_OPTIONS = [
   { value: 'all', label: '全部数据权限' },
@@ -32,15 +33,6 @@ type DataScopePanelProps = Readonly<{
   nullable?: boolean;
   readonly?: boolean;
 }>;
-
-function deptsToTreeData(items: Department[]): object[] {
-  return items.map((d) => ({
-    label: d.name,
-    key: String(d.id),
-    value: d.id,
-    children: d.children ? deptsToTreeData(d.children) : undefined,
-  }));
-}
 
 export function DataScopePanel({
   dataScope,
@@ -84,7 +76,7 @@ export function DataScopePanel({
           multiple
           filterTreeNode
           disabled={readonly}
-          treeData={deptsToTreeData(deptTree)}
+          treeData={departmentTreeToTreeData(deptTree)}
           value={deptScopeIds}
           onChange={(vals) => {
             if (readonly) return;

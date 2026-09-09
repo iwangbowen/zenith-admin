@@ -33,6 +33,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { confirmAndDelete, deleteAction, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 // ─── 检索测试 Tab ─────────────────────────────────────────────────────────────
 function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined; onSiteChange: (v: number) => void }>) {
   const { hasPermission } = usePermission();
@@ -258,10 +259,7 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
           <Form.Select field="type" label="类型" optionList={CMS_SEARCH_WORD_TYPES.map((value) => ({ value, label: CMS_SEARCH_WORD_TYPE_LABELS[value] }))} />
           <Form.Input field="groupName" label="分组" />
           <Form.InputNumber field="weight" label="词频权重" min={1} max={999999} style={{ width: 180 }} extraText="越大越优先成词，默认 1000" />
-          <Form.RadioGroup field="status" label="状态">
-            <Form.Radio value="enabled">启用</Form.Radio>
-            <Form.Radio value="disabled">停用</Form.Radio>
-          </Form.RadioGroup>
+          <FormStatusRadioGroup />
           <Form.Input field="remark" label="备注" />
         </Form>
       </AppModal>

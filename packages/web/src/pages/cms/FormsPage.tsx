@@ -22,6 +22,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { dateTimeColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 const FIELD_TYPE_OPTIONS = CMS_FORM_FIELD_TYPES.map((t) => ({ value: t, label: CMS_FORM_FIELD_TYPE_LABELS[t] }));
 
@@ -188,10 +189,7 @@ export default function FormsPage() {
                 <Form.Input field="successMessage" label="成功提示" placeholder="提交成功后展示的文案" />
               </Col>
               <Col span={12}>
-                <Form.RadioGroup field="status" label="状态">
-                  <Form.Radio value="enabled">启用</Form.Radio>
-                  <Form.Radio value="disabled">停用</Form.Radio>
-                </Form.RadioGroup>
+                <FormStatusRadioGroup />
               </Col>
             </Row>
             <Form.Input field="notifyEmail" label="通知邮箱" placeholder="收到新提交时通知，多个邮箱用逗号分隔（留空不通知）" />

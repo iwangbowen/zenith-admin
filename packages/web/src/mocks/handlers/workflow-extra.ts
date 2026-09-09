@@ -29,6 +29,7 @@ import {
   type WorkflowQuickPhrase,
   type WorkflowSavedView,
   type WorkflowSchedule,
+  type WorkflowTask,
   type WorkflowTaskConsult,
   type WorkflowTemplate,
   type WorkflowVersionDiffSide,
@@ -101,6 +102,20 @@ function syncInstanceApprovedIfComplete(instanceId: number, now: string) {
     inst.currentNodeKey = null;
     inst.updatedAt = now;
   }
+}
+
+/** 批量任务动作骨架：逐个对 pending 任务执行 act（各动作副作用自理），汇总成功 / 失败与提示 */
+function runBatchTaskAction(taskIds: number[], act: (task: WorkflowTask, now: string) => void): { data: WorkflowBatchActionResponse; message: string } {
+  const results = taskIds.map((taskId) => {
+    const task = mockWorkflowTasks.find((t) => t.id === taskId);
+    if (task && task.status === 'pending') {
+      act(task, mockDateTime());
+      return { taskId, success: true };
+    }
+    return { taskId, success: false, message: '任务不存在或已处理' };
+  });
+  const succeeded = results.filter((r) => r.success).length;
+  return { data: { succeeded, failed: results.length - succeeded, results }, message: `成功 ${succeeded} 条` };
 }
 
 // ── 抄送已读 / 保存视图 / 定时发起 内存态 ──
@@ -674,21 +689,10 @@ export const workflowExtraHandlers = [
     const { data, message } = await resolveIdempotent({
       request,
       cache: batchActionCache,
-      run: () => {
-        const results = taskIds.map((taskId) => {
-          const task = mockWorkflowTasks.find((t) => t.id === taskId);
-          if (task && task.status === 'pending') {
-            const now = mockDateTime();
-            task.status = 'approved'; task.comment = comment ?? null; task.actionAt = now;
-            syncInstanceApprovedIfComplete(task.instanceId, now);
-            return { taskId, success: true };
-          }
-          return { taskId, success: false, message: '任务不存在或已处理' };
-        });
-        const succeeded = results.filter((r) => r.success).length;
-        const data: WorkflowBatchActionResponse = { succeeded, failed: results.length - succeeded, results };
-        return { data, message: `成功 ${succeeded} 条` };
-      },
+      run: () => runBatchTaskAction(taskIds, (task, now) => {
+        task.status = 'approved'; task.comment = comment ?? null; task.actionAt = now;
+        syncInstanceApprovedIfComplete(task.instanceId, now);
+      }),
     });
     return ok(data, message);
   }),
@@ -697,34 +701,23 @@ export const workflowExtraHandlers = [
     const { data, message } = await resolveIdempotent({
       request,
       cache: batchActionCache,
-      run: () => {
-        const results = taskIds.map((taskId) => {
-          const task = mockWorkflowTasks.find((t) => t.id === taskId);
-          if (task && task.status === 'pending') {
-            const now = mockDateTime();
-            task.status = 'rejected'; task.comment = comment; task.actionAt = now;
-            const inst = mockWorkflowInstances.find((i) => i.id === task.instanceId);
-            if (inst) {
-              inst.status = 'rejected';
-              inst.currentNodeKey = null;
-              inst.updatedAt = now;
-              mockWorkflowTasks
-                .filter((item) => item.instanceId === inst.id && (item.status === 'pending' || item.status === 'waiting'))
-                .forEach((item) => {
-                  if (item.id !== task.id) {
-                    item.status = 'skipped';
-                    item.actionAt = now;
-                  }
-                });
-            }
-            return { taskId, success: true };
-          }
-          return { taskId, success: false, message: '任务不存在或已处理' };
-        });
-        const succeeded = results.filter((r) => r.success).length;
-        const data: WorkflowBatchActionResponse = { succeeded, failed: results.length - succeeded, results };
-        return { data, message: `成功 ${succeeded} 条` };
-      },
+      run: () => runBatchTaskAction(taskIds, (task, now) => {
+        task.status = 'rejected'; task.comment = comment; task.actionAt = now;
+        const inst = mockWorkflowInstances.find((i) => i.id === task.instanceId);
+        if (inst) {
+          inst.status = 'rejected';
+          inst.currentNodeKey = null;
+          inst.updatedAt = now;
+          mockWorkflowTasks
+            .filter((item) => item.instanceId === inst.id && (item.status === 'pending' || item.status === 'waiting'))
+            .forEach((item) => {
+              if (item.id !== task.id) {
+                item.status = 'skipped';
+                item.actionAt = now;
+              }
+            });
+        }
+      }),
     });
     return ok(data, message);
   }),

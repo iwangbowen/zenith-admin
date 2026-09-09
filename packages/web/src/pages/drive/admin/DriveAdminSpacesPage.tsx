@@ -29,6 +29,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { useHandoffDriveSpace } from '@/hooks/queries/drive-collaboration';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { driveSpaceDefaultRoleColumn, driveSpaceNameColumn, driveSpaceOwnerColumn, driveSpaceTypeColumn, driveSpaceUsageColumn } from '../drive-space-columns';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import '../drive.css';
 
 const DriveAdminCharts = lazy(() => import('./DriveAdminCharts'));
@@ -232,7 +233,7 @@ export default function DriveAdminSpacesPage() {
             {modal.editing?.type === 'team' && (
               <FormUserSelect field="ownerId" label="所有者" style={{ width: '100%' }} placeholder="选择所有者" />
             )}
-            <Form.RadioGroup field="status" label="状态" type="button"><Form.Radio value="enabled">启用</Form.Radio><Form.Radio value="disabled">停用</Form.Radio></Form.RadioGroup>
+            <FormStatusRadioGroup type="button" />
           </Form>
         </Spin>
       </AppModal>

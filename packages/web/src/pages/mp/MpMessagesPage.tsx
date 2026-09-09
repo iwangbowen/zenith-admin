@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Avatar, Button, Input, Toast, Banner, Spin, Empty, Select, Typography } from '@douyinfe/semi-ui';
+import { Avatar, Button, Input, Toast, Spin, Empty, Select, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, Send, Paperclip } from 'lucide-react';
 import { MP_MESSAGE_TYPE_LABELS } from '@zenith/shared/mp';
 import type { MpConversation, MpMessage, MpMessageType } from '@zenith/shared/mp';
@@ -10,6 +10,7 @@ import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import AppModal from '@/components/AppModal';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   useMpConversations,
@@ -204,9 +205,7 @@ export default function MpMessagesPage() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 0 12px' }}>
         <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-        {!accountsLoading && accounts.length === 0 && (
-          <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" />
-        )}
+        <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} style={{}} />
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <MasterDetailLayout

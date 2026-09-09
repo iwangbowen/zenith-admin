@@ -11,7 +11,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import AppModal from '@/components/AppModal';
-import AiMessagesViewer from '../components/AiMessagesViewer';
+import AiConversationContextModal from '../components/AiConversationContextModal';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { contractKey, useApiQuery } from '@/lib/contract-query';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
@@ -165,26 +165,12 @@ export default function AiAuditPage() {
           }),
         })}
       />
-      <AppModal
-        title={contextQuery.data?.conversationTitle ? `对话上下文 — ${contextQuery.data.conversationTitle}` : '对话上下文'}
+      <AiConversationContextModal
         visible={contextMsgId !== null}
-        onCancel={() => setContextMsgId(null)}
-        footer={null}
-        width={640}
-        closeOnEsc
-      >
-        {contextQuery.isFetching ? (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <Text type="tertiary">加载中…</Text>
-          </div>
-        ) : (
-          <AiMessagesViewer
-            messages={contextQuery.data?.messages ?? []}
-            targetMsgId={contextQuery.data?.targetMsgId}
-            userMeta={contextQuery.data?.user}
-          />
-        )}
-      </AppModal>
+        loading={contextQuery.isFetching}
+        context={contextQuery.data}
+        onClose={() => setContextMsgId(null)}
+      />
       <AppModal
         title="生成调用链 Trace"
         visible={traceMsg !== null}

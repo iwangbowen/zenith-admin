@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { Button, Form, Input, Modal, Select, Spin, Tag, Toast, Banner, Upload, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Input, Modal, Select, Spin, Tag, Toast, Upload, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, UploadCloud } from 'lucide-react';
 import { MP_MATERIAL_TYPES, MP_MATERIAL_TYPE_LABELS, MP_MATERIAL_TYPE_OPTIONS } from '@zenith/shared/mp';
 import type { CreateMpMaterialInput, MpMaterial, MpMaterialType } from '@zenith/shared/mp';
@@ -12,6 +12,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpMaterialKeys,
@@ -156,9 +157,7 @@ export default function MpMaterialsPage() {
         actionTitle="素材操作"
       />
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       <ConfigurableTable columns={columns}
         {...listTableProps(listQuery, { pagination: buildPagination })}

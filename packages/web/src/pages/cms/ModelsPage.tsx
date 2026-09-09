@@ -19,6 +19,7 @@ import { KeywordInput } from '@/components/search-filters';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 const FIELD_TYPE_OPTIONS = CMS_FIELD_TYPES.map((t) => ({ value: t, label: CMS_FIELD_TYPE_LABELS[t] }));
 const OPTION_SOURCE_OPTIONS = CMS_FIELD_OPTION_SOURCES.map((s) => ({ value: s, label: CMS_FIELD_OPTION_SOURCE_LABELS[s] }));
@@ -211,10 +212,7 @@ export default function ModelsPage() {
               <Form.Input field="description" label="描述" />
             </Col>
             <Col span={12}>
-              <Form.RadioGroup field="status" label="状态">
-                <Form.Radio value="enabled">启用</Form.Radio>
-                <Form.Radio value="disabled">停用</Form.Radio>
-              </Form.RadioGroup>
+              <FormStatusRadioGroup />
             </Col>
             <Col span={24}>
               <Form.RadioGroup

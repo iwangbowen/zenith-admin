@@ -27,6 +27,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 interface KeywordSearch { keyword: string }
 const defaultKeywordSearch: KeywordSearch = { keyword: '' };
 
@@ -95,10 +96,7 @@ function RedirectsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
             <Form.Radio value="301">301 永久</Form.Radio>
             <Form.Radio value="302">302 临时</Form.Radio>
           </Form.RadioGroup>
-          <Form.RadioGroup field="status" label="状态">
-            <Form.Radio value="enabled">启用</Form.Radio>
-            <Form.Radio value="disabled">停用</Form.Radio>
-          </Form.RadioGroup>
+          <FormStatusRadioGroup />
           <Form.Input field="remark" label="备注" />
         </Form>
       </AppModal>
@@ -169,10 +167,7 @@ function LinkWordsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
           <Form.Input field="keyword" label="关键词" rules={[{ required: true, message: '请输入关键词' }]} />
           <Form.Input field="url" label="链接地址" placeholder="/news/1.html 或 https://..." rules={[{ required: true, message: '请输入链接地址' }]} />
           <Form.InputNumber field="maxReplaces" label="每篇最多替换" min={1} max={10} style={{ width: 160 }} />
-          <Form.RadioGroup field="status" label="状态">
-            <Form.Radio value="enabled">启用</Form.Radio>
-            <Form.Radio value="disabled">停用</Form.Radio>
-          </Form.RadioGroup>
+          <FormStatusRadioGroup />
         </Form>
       </AppModal>
     </>

@@ -21,7 +21,7 @@ import { hostQueryOf } from '@/hooks/queries/ops-hosts';
 import { processStreamUrl, useKillProcess, useProcessDetail, useProcessList, useSetProcessPriority } from '@/hooks/queries/processes';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { HostSelector } from '@/components/HostSelector';
-import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
+import { deriveInitialHostSelection, useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { formatBytes } from '@zenith/shared/core';
 import { compactQuery } from '@/lib/query';
@@ -92,14 +92,8 @@ export default function ProcessesPage() {
   const navigate = useNavigate();
   // 深链:?pid= 直接定位到指定进程(端口页「查看进程」跳入),消费后清空参数
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialHostId = (() => {
-    const value = Number(searchParams.get('hostId'));
-    return Number.isInteger(value) && value > 0 ? value : null;
-  })();
   // 带 pid 的深链若未显式给 hostId，语义是本机进程；不能继承上次远端选择。
-  const [hostId, setHostId] = useOpsHostSelection(
-    searchParams.has('hostId') ? initialHostId : searchParams.has('pid') ? null : undefined,
-  );
+  const [hostId, setHostId] = useOpsHostSelection(deriveInitialHostSelection(searchParams, 'pid'));
   useEffect(() => {
     const pid = searchParams.get('pid');
     if (!pid) return;

@@ -7,6 +7,7 @@ import { config } from '@/config';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { useGenerateMpJsConfig, useGenerateMpOAuthUrl } from '@/hooks/queries/mp-oauth';
 
@@ -60,9 +61,7 @@ export default function MpOAuthPage() {
         filterTitle="网页授权筛选"
       />
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       <Card style={{ maxWidth: 760 }} bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Typography.Title heading={6} style={{ margin: 0 }}>网页授权（OAuth2）链接生成</Typography.Title>

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
-import { Button, Checkbox, Descriptions, List, Pagination, Progress, Space, Spin, Tabs, TabPane, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { FileDetailModal } from '@/components/FileDetailModal';
+import { Button, Checkbox, List, Pagination, Progress, Space, Tabs, TabPane, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { Plus, FolderDown, LayoutGrid, List as ListIcon, CheckCircle2, XCircle, X } from 'lucide-react';
 import type { ManagedFile } from '@zenith/shared/platform';
 import { FILE_STORAGE_PROVIDERS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_TYPE_FILTERS, FILE_TYPE_FILTER_OPTIONS, fileContract } from '@zenith/shared/platform';
 import { enumValueOf } from '@zenith/shared/core';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateTimeRangeForApi } from '@/utils/date';
 import { downloadBlob } from '@/utils/download';
 import { getFileTypeIcon, fetchManagedFileBlob, getFileFullUrl } from '@/utils/file-utils';
 import { buildManagedFileActions } from '@/utils/managed-file-actions';
@@ -542,38 +543,15 @@ export default function FilesPage() {
 
       <FilePreviewLayer preview={preview} />
 
-      <AppModal
-        title="文件详情"
+      <FileDetailModal
         visible={!!detailFile}
-        onCancel={() => { setDetailFile(null); setImageResolution(null); }}
-        footer={
-          <Space>
-            <Button onClick={() => displayedDetailFile && handleCopyUrl(displayedDetailFile)}>复制链接</Button>
-            <Button type="primary" onClick={() => setDetailFile(null)}>关闭</Button>
-          </Space>
-        }
-        width={560}
-      >
-        <Spin spinning={detailFileLoading} tip="加载中..." size="small">
-          {displayedDetailFile && (
-            <Descriptions
-              align="left"
-              size="medium"
-              data={[
-                { key: '文件名', value: displayedDetailFile.originalName },
-                { key: '存储服务', value: displayedDetailFile.storageName },
-                { key: 'MIME 类型', value: displayedDetailFile.mimeType || '—' },
-                { key: '文件大小', value: formatBytes(displayedDetailFile.size) },
-                ...(imageResolution ? [{ key: '分辨率', value: `${imageResolution.width} × ${imageResolution.height} px` }] : []),
-                { key: '上传人', value: displayedDetailFile.uploaderName || '—' },
-                { key: '对象键', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{displayedDetailFile.objectKey}</Text> },
-                { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{displayedDetailFile.directUrl ?? getFileFullUrl(displayedDetailFile.url)}</Text> },
-                { key: '上传时间', value: formatDateTime(displayedDetailFile.createdAt) },
-              ]}
-            />
-          )}
-        </Spin>
-      </AppModal>
+        file={displayedDetailFile}
+        loading={detailFileLoading}
+        resolveUrl={(file) => file.directUrl ?? getFileFullUrl(file.url)}
+        onCopyUrl={(file) => void handleCopyUrl(file)}
+        onClose={() => { setDetailFile(null); setImageResolution(null); }}
+        extraRows={imageResolution ? [{ key: '分辨率', value: `${imageResolution.width} × ${imageResolution.height} px` }] : []}
+      />
 
       {viewMode === 'list' ? (
         <ConfigurableTable<ManagedFile>

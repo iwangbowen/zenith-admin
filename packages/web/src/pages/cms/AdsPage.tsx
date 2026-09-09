@@ -29,6 +29,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 // ─── 广告位 Tab ───────────────────────────────────────────────────────────────
 function SlotsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   const { hasPermission } = usePermission();
@@ -179,10 +180,7 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
           <Form.DatePicker field="startAt" label="开始时间" type="dateTime" density="compact" style={{ width: '100%' }} placeholder="不限" />
           <Form.DatePicker field="endAt" label="结束时间" type="dateTime" density="compact" style={{ width: '100%' }} placeholder="不限" />
           <Form.InputNumber field="sort" label="排序" style={{ width: 160 }} />
-          <Form.RadioGroup field="status" label="状态">
-            <Form.Radio value="enabled">启用</Form.Radio>
-            <Form.Radio value="disabled">停用</Form.Radio>
-          </Form.RadioGroup>
+          <FormStatusRadioGroup />
         </Form>
       </AppModal>
     </>

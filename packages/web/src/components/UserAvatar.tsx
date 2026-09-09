@@ -1,17 +1,5 @@
 import { Avatar } from '@douyinfe/semi-ui';
-
-/** 根据名称字符串生成稳定的背景色（循环取 Semi 语义色） */
-function getAvatarColor(name: string): string {
-  const colors = [
-    'var(--semi-color-primary)',
-    'var(--semi-color-success)',
-    'var(--semi-color-warning)',
-    'var(--semi-color-danger)',
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (name.codePointAt(i) ?? 0) + ((hash << 5) - hash);
-  return colors[Math.abs(hash) % colors.length];
-}
+import { getAvatarColor } from '@/utils/avatar-color';
 
 interface UserAvatarProps {
   /** 用户昵称，用于生成首字母和背景色 */

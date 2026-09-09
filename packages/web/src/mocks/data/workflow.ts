@@ -676,6 +676,29 @@ export function getNextInstanceId() { return nextInstanceId++; }
 export function getNextTaskId() { return nextTaskId++; }
 export function getNextDefinitionId() { return nextDefinitionId++; }
 
+/**
+ * Demo 发起实例时的首个待办：取流程图第一个 approve 节点生成 pending 任务；
+ * 无审批节点返回 null。工作流发起与业务系统（请假）提交共用。
+ */
+export function buildFirstApproveTask(def: Pick<WorkflowDefinition, 'flowData'>, instanceId: number, now: string): WorkflowTask | null {
+  const firstApproveNode = def.flowData?.nodes.find((node) => node.data.type === 'approve');
+  if (!firstApproveNode) return null;
+  return {
+    id: getNextTaskId(),
+    instanceId,
+    nodeKey: firstApproveNode.data.key,
+    nodeName: firstApproveNode.data.label,
+    nodeType: 'approve',
+    assigneeId: firstApproveNode.data.assigneeId ?? null,
+    assigneeName: firstApproveNode.data.assigneeName ?? null,
+    assigneeAvatar: null,
+    status: 'pending',
+    comment: null,
+    actionAt: null,
+    createdAt: now,
+  };
+}
+
 // ─── 流程定义历史版本 ─────────────────────────────────────────────────────
 
 export const mockWorkflowDefinitionVersions: WorkflowDefinitionVersion[] = [

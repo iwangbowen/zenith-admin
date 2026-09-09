@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatYuan, getPaymentQrInstruction } from '@/utils/payment';
+import { formatYuan } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Col, Divider, Form, Input, InputNumber, Row, SideSheet, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { PaymentResultModal } from './PaymentResultModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 // 本页无图表：直接引组件文件，避免经桶文件带入 ~2MB 的 vchart
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
@@ -709,31 +709,7 @@ export default function PaymentOrdersPage() {
         </Form>
       </AppModal>
 
-      <AppModal title="支付下单结果" visible={!!payResult} onCancel={() => { setPayResult(null); setPayResultMethod(null); }} footer={null} width={420} closeOnEsc>
-        {payResult && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ marginBottom: 8 }}>订单号：{payResult.orderNo}</div>
-            {payResult.codeUrl && (
-              <>
-                <QRCodeSVG value={payResult.codeUrl} size={200} style={{ margin: '12px auto', display: 'block' }} />
-                <Typography.Text type="tertiary">{getPaymentQrInstruction(payResultMethod)}</Typography.Text>
-              </>
-            )}
-            {payResult.payUrl && (
-              <div style={{ margin: '16px 0' }}>
-                <Button type="primary" onClick={() => window.open(payResult.payUrl, '_blank', 'noopener')}>打开支付页</Button>
-                <div style={{ marginTop: 8, wordBreak: 'break-all', fontSize: 12 }}><Typography.Text type="tertiary">{payResult.payUrl}</Typography.Text></div>
-              </div>
-            )}
-            {payResult.appOrderStr && (
-              <div style={{ margin: '12px 0', wordBreak: 'break-all', fontSize: 12, textAlign: 'left' }}>
-                <Typography.Text type="tertiary">APP 调起参数（复制给客户端 SDK）：</Typography.Text>
-                <div style={{ marginTop: 4 }}>{payResult.appOrderStr}</div>
-              </div>
-            )}
-          </div>
-        )}
-      </AppModal>
+      <PaymentResultModal result={payResult} method={payResultMethod} onClose={() => { setPayResult(null); setPayResultMethod(null); }} />
     </div>
   );
 }

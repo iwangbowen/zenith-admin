@@ -181,6 +181,21 @@ export default function FormCanvas({
     onUpdateField(field.key, { columns: next });
   }, [onUpdateField]);
 
+  // ─── 叶子 chip 与嵌套容器共用的可选中 / 可拖拽 / 可投放行为 ─────────
+  const draggableNodeProps = (field: WorkflowFormField, id: string, target: (beforeKey: string) => DropTarget) => ({
+    role: 'button' as const,
+    tabIndex: 0,
+    'data-field-key': field.key,
+    draggable: true,
+    onClick: (e: React.MouseEvent) => clickSelect(e, field.key),
+    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter') { e.stopPropagation(); onSelect(field.key); } },
+    onContextMenu: (e: React.MouseEvent) => contextMenu(e, field.key),
+    onDragStart: (e: React.DragEvent) => startDrag(e, field.key, field.label),
+    onDragEnd: endDrag,
+    onDragOver: (e: React.DragEvent) => overZone(e, id),
+    onDrop: (e: React.DragEvent) => dispatchDrop(e, target(field.key)),
+  });
+
   // ─── 叶子字段 chip（用于分栏列 / 分组内） ───────────────────────────
   const renderChip = (field: WorkflowFormField, target: (beforeKey: string) => DropTarget) => {
     const info = getFieldInfo(field.type);
@@ -189,22 +204,12 @@ export default function FormCanvas({
     return (
       <div
         key={field.key}
-        role="button"
-        tabIndex={0}
-        data-field-key={field.key}
         className={[
           'fd-form-canvas__chip',
           isSelectedKey(field.key) && 'fd-form-canvas__chip--selected',
           hint === id && 'fd-form-canvas__chip--drop',
         ].filter(Boolean).join(' ')}
-        draggable
-        onClick={(e) => clickSelect(e, field.key)}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onSelect(field.key); } }}
-        onContextMenu={(e) => contextMenu(e, field.key)}
-        onDragStart={(e) => startDrag(e, field.key, field.label)}
-        onDragEnd={endDrag}
-        onDragOver={(e) => overZone(e, id)}
-        onDrop={(e) => dispatchDrop(e, target(field.key))}
+        {...draggableNodeProps(field, id, target)}
       >
         {Icon && <Icon size={12} className="fd-form-canvas__chip-icon" />}
         <span className="fd-form-canvas__chip-label">
@@ -233,22 +238,12 @@ export default function FormCanvas({
     return (
       <div
         key={field.key}
-        role="button"
-        tabIndex={0}
-        data-field-key={field.key}
         className={[
           'fd-form-canvas__nested',
           isSelectedKey(field.key) && 'fd-form-canvas__nested--selected',
           hint === id && 'fd-form-canvas__chip--drop',
         ].filter(Boolean).join(' ')}
-        draggable
-        onClick={(e) => clickSelect(e, field.key)}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onSelect(field.key); } }}
-        onContextMenu={(e) => contextMenu(e, field.key)}
-        onDragStart={(e) => startDrag(e, field.key, field.label)}
-        onDragEnd={endDrag}
-        onDragOver={(e) => overZone(e, id)}
-        onDrop={(e) => dispatchDrop(e, target(field.key))}
+        {...draggableNodeProps(field, id, target)}
       >
         <div className="fd-form-canvas__nested-head">
           {Icon && <Icon size={12} />}

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { departmentContract } from '@zenith/shared/identity';
+import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
+import { buildTree, mapTree, type BodyOf, type QueryOf } from '@zenith/shared/core';
+import { departmentContract, type Department } from '@zenith/shared/identity';
 import { api, useSaveMutation, useApiMutation } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
@@ -8,6 +9,39 @@ export type DepartmentTreeParams = NonNullable<QueryOf<typeof departmentContract
 
 /** 保存载荷：创建入参的部分形态，同一表单同时服务新增与编辑 */
 export type DepartmentFormValues = Partial<BodyOf<typeof departmentContract.create>>;
+
+/** 平铺部门节点的最小形态（`Department` 及各处按需裁剪的部门列表都满足） */
+type FlatDepartmentLike = { id: number; name: string; parentId: number | null };
+
+type DepartmentNode = FlatDepartmentLike & { children?: DepartmentNode[] };
+
+const toDepartmentTreeNode = (d: { id: number; name: string }): Omit<TreeNodeData, 'children'> => ({
+  key: String(d.id),
+  value: d.id,
+  label: d.name,
+});
+
+/** 嵌套部门树（`useDepartmentTree`）→ Semi Tree / TreeSelect 节点；无子节点时 `children` 为 undefined */
+export function departmentTreeToTreeData(nodes: readonly Department[]): TreeNodeData[] {
+  return mapTree<Department, TreeNodeData>(nodes, toDepartmentTreeNode);
+}
+
+/**
+ * 平铺部门列表（`useFlatDepartments`）→ Semi Tree / TreeSelect 节点：按 parentId 挂接，
+ * 父节点缺失（被过滤 / 越权）的节点提升为根。
+ * - `excludeIds`：排除的部门（编辑部门时排除自身及子孙，避免选自己做上级）
+ * - `keepEmptyChildren`：叶子保留 `children: []`（缺省不带 children）
+ */
+export function departmentsToTreeData(
+  departments: readonly FlatDepartmentLike[],
+  options: { excludeIds?: ReadonlySet<number>; keepEmptyChildren?: boolean } = {},
+): TreeNodeData[] {
+  const { excludeIds, keepEmptyChildren } = options;
+  const source: DepartmentNode[] = departments
+    .filter((d) => !excludeIds?.has(d.id))
+    .map((d) => ({ id: d.id, parentId: d.parentId, name: d.name }));
+  return mapTree<DepartmentNode, TreeNodeData>(buildTree(source, { keepEmptyChildren }), toDepartmentTreeNode);
+}
 
 export const departmentKeys = {
   all: ['departments'] as const,

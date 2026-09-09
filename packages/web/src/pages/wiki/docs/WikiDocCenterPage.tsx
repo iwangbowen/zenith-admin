@@ -204,6 +204,22 @@ export default function WikiDocCenterPage() {
     setShowDetailOnNarrow(true);
   }
 
+  /** 收藏 / 最近列表项：标题 + 所属空间，点击进入文档 */
+  function renderDocListItem(item: { id: number; title: string; spaceName?: string | null }) {
+    return (
+      <List.Item
+        style={{ cursor: 'pointer', padding: '8px 8px' }}
+        onClick={() => selectDoc(item.id)}
+        main={(
+          <div style={{ minWidth: 0 }}>
+            <Text ellipsis={{ showTooltip: true }} style={{ width: '100%' }}>{item.title}</Text>
+            <div><Text type="tertiary" size="small">{item.spaceName}</Text></div>
+          </div>
+        )}
+      />
+    );
+  }
+
   function selectSearchResult(id: number) {
     if (searchKeyword) searchClickMutation.mutate({ body: { keyword: searchKeyword, docId: id } });
     selectDoc(id);
@@ -968,18 +984,7 @@ export default function WikiDocCenterPage() {
                     loading={favoritesQuery.isFetching}
                     dataSource={favoritesQuery.data?.list ?? []}
                     emptyContent={<Empty description="还没有收藏的文档" />}
-                    renderItem={(item) => (
-                      <List.Item
-                        style={{ cursor: 'pointer', padding: '8px 8px' }}
-                        onClick={() => selectDoc(item.id)}
-                        main={(
-                          <div style={{ minWidth: 0 }}>
-                            <Text ellipsis={{ showTooltip: true }} style={{ width: '100%' }}>{item.title}</Text>
-                            <div><Text type="tertiary" size="small">{item.spaceName}</Text></div>
-                          </div>
-                        )}
-                      />
-                    )}
+                    renderItem={renderDocListItem}
                   />
                 </Tabs.TabPane>
                 <Tabs.TabPane tab="最近" itemKey="recent">
@@ -987,18 +992,7 @@ export default function WikiDocCenterPage() {
                     loading={recentQuery.isFetching}
                     dataSource={recentQuery.data ?? []}
                     emptyContent={<Empty description="还没有浏览记录" />}
-                    renderItem={(item) => (
-                      <List.Item
-                        style={{ cursor: 'pointer', padding: '8px 8px' }}
-                        onClick={() => selectDoc(item.id)}
-                        main={(
-                          <div style={{ minWidth: 0 }}>
-                            <Text ellipsis={{ showTooltip: true }} style={{ width: '100%' }}>{item.title}</Text>
-                            <div><Text type="tertiary" size="small">{item.spaceName}</Text></div>
-                          </div>
-                        )}
-                      />
-                    )}
+                    renderItem={renderDocListItem}
                   />
                 </Tabs.TabPane>
                 <Tabs.TabPane tab="我的" itemKey="mine">

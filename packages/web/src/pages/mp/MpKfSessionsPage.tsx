@@ -27,6 +27,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { AppModal } from '@/components/AppModal';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpKfSessionKeys,
@@ -231,9 +232,7 @@ export default function MpKfSessionsPage() {
         actionTitle="会话操作"
       />
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       {stats && (
         <>

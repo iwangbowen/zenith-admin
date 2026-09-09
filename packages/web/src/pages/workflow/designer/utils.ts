@@ -87,6 +87,19 @@ export function deepClone<T>(obj: T): T {
   return structuredClone(obj);
 }
 
+/** 在流程树中按 id 查找节点（深度优先：先主链 children，再各分支 children） */
+export function findFlowNode(root: FlowNode | undefined, nodeId: string): FlowNode | undefined {
+  if (!root) return undefined;
+  if (root.id === nodeId) return root;
+  const inChildren = findFlowNode(root.children, nodeId);
+  if (inChildren) return inChildren;
+  for (const branch of root.branches ?? []) {
+    const inBranch = findFlowNode(branch.children, nodeId);
+    if (inBranch) return inBranch;
+  }
+  return undefined;
+}
+
 /** 收集流程树中所有节点（用于"节点审批人"等下拉选择） */
 export function collectAllNodes(root: FlowNode | undefined): Array<{ id: string; key?: string; name: string; type: FlowNodeType }> {
   const result: Array<{ id: string; key?: string; name: string; type: FlowNodeType }> = [];

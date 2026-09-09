@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
-import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
 import { DEPARTMENT_CATEGORIES, userContract, type Department } from '@zenith/shared/identity';
 import { enumValueOf } from '@zenith/shared/core';
@@ -20,6 +19,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
   departmentKeys,
+  departmentsToTreeData,
   useDeleteDepartment,
   useDepartmentDetail,
   type DepartmentFormValues,
@@ -62,50 +62,6 @@ function collectDescendantIds(items: Department[], departmentId: number): Set<nu
   }
 
   return descendants;
-}
-
-function buildDepartmentTreeData(items: Department[], excludedIds: Set<number>): TreeNodeData[] {
-  const nodeMap = new Map<number, TreeNodeData>();
-  const roots: TreeNodeData[] = [];
-
-  items.forEach((item) => {
-    if (excludedIds.has(item.id)) {
-      return;
-    }
-
-    nodeMap.set(item.id, {
-      label: item.name,
-      value: item.id,
-      key: String(item.id),
-    });
-  });
-
-  items.forEach((item) => {
-    if (excludedIds.has(item.id)) {
-      return;
-    }
-
-    const node = nodeMap.get(item.id);
-    if (!node) {
-      return;
-    }
-
-    if (item.parentId === 0) {
-      roots.push(node);
-      return;
-    }
-
-    const parentNode = nodeMap.get(item.parentId);
-    if (!parentNode) {
-      roots.push(node);
-      return;
-    }
-
-    parentNode.children = parentNode.children ?? [];
-    parentNode.children.push(node);
-  });
-
-  return roots;
 }
 
 export default function DepartmentsPage() {
@@ -168,7 +124,7 @@ export default function DepartmentsPage() {
         label: '顶级部门',
         value: 0,
         key: '0',
-        children: buildDepartmentTreeData(allDepartments, excludedIds),
+        children: departmentsToTreeData(allDepartments, { excludeIds: excludedIds }),
       },
     ];
   }, [allDepartments, modal.editing]);

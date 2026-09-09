@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { Avatar, Button, Form, Modal, Space, Spin, Tag, Toast, Banner } from '@douyinfe/semi-ui';
+import { Avatar, Button, Form, Modal, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw, Ban } from 'lucide-react';
 import { MP_FAN_SUBSCRIBES, type MpFan, type MpFanSubscribe, type UpdateMpFanInput } from '@zenith/shared/mp';
 import { enumValueOf } from '@zenith/shared/core';
@@ -10,6 +10,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   mpFanKeys,
@@ -249,9 +250,7 @@ export default function MpFansPage() {
         actionTitle="粉丝操作"
       />
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       <ConfigurableTable columns={columns}
         {...listTableProps(listQuery, { pagination: buildPagination })}

@@ -12,6 +12,7 @@ import type { CmsErrorProneWord } from '@zenith/shared/cms';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 interface SearchParams { keyword: string }
 const defaultSearch: SearchParams = { keyword: '' };
@@ -82,10 +83,7 @@ export default function ErrorProneWordsPage() {
           <Form.Input field="word" label="易错词" rules={[{ required: true, message: '请输入易错词' }]} />
           <Form.Input field="correction" label="正确写法" rules={[{ required: true, message: '请输入正确写法' }]} />
           <Form.Input field="remark" label="备注" placeholder="可选" />
-          <Form.RadioGroup field="status" label="状态">
-            <Form.Radio value="enabled">启用</Form.Radio>
-            <Form.Radio value="disabled">停用</Form.Radio>
-          </Form.RadioGroup>
+          <FormStatusRadioGroup />
         </Form>
       </AppModal>
     </div>

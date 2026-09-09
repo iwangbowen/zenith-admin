@@ -22,6 +22,7 @@ import type { CmsChannel } from '@zenith/shared/cms';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
 import { CmsWidgetSourceRefsSheet, type CmsWidgetSourceTarget } from './CmsWidgetSourceRefsSheet';
 import { abortSubmit } from '@/lib/abort-submit';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 // 富文本引擎（wangeditor）压缩后约 266 KB，仅「单页」类型栏目用得到。
 // 静态导入会让进入栏目管理就把它一并拉下来，故与公告页保持一致改为懒加载。
@@ -501,10 +502,7 @@ export default function ChannelsPage() {
           <Form.Switch field="visible" label="导航显示" />
         </Col>
         <Col span={24} lg={12}>
-          <Form.RadioGroup field="status" label="状态">
-            <Form.Radio value="enabled">启用</Form.Radio>
-            <Form.Radio value="disabled">停用</Form.Radio>
-          </Form.RadioGroup>
+          <FormStatusRadioGroup />
         </Col>
       </Row>
       {channelType === 'page' ? (

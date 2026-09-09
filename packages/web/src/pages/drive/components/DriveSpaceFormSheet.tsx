@@ -7,6 +7,7 @@ import { ModalFooter } from '@/components/ModalFooter';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useDriveSpaceDetail, useSaveDriveSpace } from '@/hooks/queries/drive';
 import { DriveSubjectPicker, type SubjectGrant } from './DriveSubjectPicker';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 interface SpaceFormValues {
   name: string;
@@ -81,7 +82,7 @@ export function DriveSpaceFormSheet({ target, onClose }: DriveSpaceFormSheetProp
           <Form.InputNumber field="quotaGb" label="配额 (GB)" min={0} precision={2} placeholder="留空跟随系统默认" style={{ width: 200 }} />
           <Form.InputNumber field="maxVersions" label="最多版本数" min={1} max={200} placeholder="留空跟随系统默认" style={{ width: 200 }} />
           <Form.Switch field="allowExternalShare" label="允许外链分享" />
-          {modal.isEdit && <Form.RadioGroup field="status" label="状态" type="button"><Form.Radio value="enabled">启用</Form.Radio><Form.Radio value="disabled">停用</Form.Radio></Form.RadioGroup>}
+          {modal.isEdit && <FormStatusRadioGroup type="button" />}
         </Form>
         {!modal.isEdit && (
           <div style={{ marginTop: 8 }}>

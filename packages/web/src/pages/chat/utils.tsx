@@ -1,21 +1,10 @@
+import type { ReactNode } from 'react';
 import type { ChatMessage, ChatAssetMeta, ChatMessageExtra } from '@zenith/shared/chat';
 import { escapeRegExp } from '@zenith/shared/core';
 
 export const MESSAGE_TIME_GROUP_GAP_MS = 5 * 60 * 1000;
 
 export const URL_REGEX = /(https?:\/\/[^\s]+)/ig;
-
-export function getAvatarColor(name: string): string {
-  const colors = [
-    'var(--semi-color-primary)',
-    'var(--semi-color-success)',
-    'var(--semi-color-warning)',
-    'var(--semi-color-danger)',
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (name.codePointAt(i) ?? 0) + ((hash << 5) - hash);
-  return colors[Math.abs(hash) % colors.length];
-}
 
 function getMessageTimestamp(value: string): number {
   return new Date(value.replace(' ', 'T')).getTime();
@@ -88,9 +77,9 @@ export async function getImageDimensions(file: File): Promise<{ width: number; h
   }
 }
 
-export function renderTextWithLinks(content: string, isSelf: boolean) {
-  const parts = content.split(URL_REGEX);
-  return parts.map((part, idx) => {
+/** 把文本按 URL 切分：链接段渲染为 <a>，其余段交给 renderText（纯文本 / 提及高亮） */
+function renderTextWithLinkParts(content: string, isSelf: boolean, renderText: (part: string, idx: number) => ReactNode): ReactNode[] {
+  return content.split(URL_REGEX).map((part, idx) => {
     if (/^https?:\/\//i.test(part)) {
       return (
         <a
@@ -104,8 +93,12 @@ export function renderTextWithLinks(content: string, isSelf: boolean) {
         </a>
       );
     }
-    return <span key={`${part}-${idx}`}>{part}</span>;
+    return renderText(part, idx);
   });
+}
+
+export function renderTextWithLinks(content: string, isSelf: boolean) {
+  return renderTextWithLinkParts(content, isSelf, (part, idx) => <span key={`${part}-${idx}`}>{part}</span>);
 }
 
 export function renderTextWithMentions(content: string, isSelf: boolean, mentions?: Array<{ nickname: string }> | null) {
@@ -113,41 +106,23 @@ export function renderTextWithMentions(content: string, isSelf: boolean, mention
   if (labels.length === 0) return renderTextWithLinks(content, isSelf);
 
   const mentionRegex = new RegExp(`(${labels.map(escapeRegExp).join('|')})`, 'g');
-  const parts = content.split(URL_REGEX);
-
-  return parts.map((part, idx) => {
-    if (/^https?:\/\//i.test(part)) {
+  return renderTextWithLinkParts(content, isSelf, (part, idx) => part.split(mentionRegex).map((segment, segmentIdx) => {
+    if (labels.includes(segment)) {
       return (
-        <a
-          key={`${part}-${idx}`}
-          href={part}
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: isSelf ? 'rgba(255,255,255,0.92)' : 'var(--semi-color-link)', textDecoration: 'underline' }}
+        <span
+          key={`${segment}-${idx}-${segmentIdx}`}
+          style={{
+            color: isSelf ? '#fff' : 'var(--semi-color-primary)',
+            fontWeight: 600,
+            background: isSelf ? 'rgba(255,255,255,0.14)' : 'var(--semi-color-primary-light-default)',
+            borderRadius: 'var(--semi-border-radius-small)',
+            padding: '0 2px',
+          }}
         >
-          {part}
-        </a>
+          {segment}
+        </span>
       );
     }
-
-    return part.split(mentionRegex).map((segment, segmentIdx) => {
-      if (labels.includes(segment)) {
-        return (
-          <span
-            key={`${segment}-${idx}-${segmentIdx}`}
-            style={{
-              color: isSelf ? '#fff' : 'var(--semi-color-primary)',
-              fontWeight: 600,
-              background: isSelf ? 'rgba(255,255,255,0.14)' : 'var(--semi-color-primary-light-default)',
-              borderRadius: 'var(--semi-border-radius-small)',
-              padding: '0 2px',
-            }}
-          >
-            {segment}
-          </span>
-        );
-      }
-      return <span key={`${segment}-${idx}-${segmentIdx}`}>{segment}</span>;
-    });
-  });
+    return <span key={`${segment}-${idx}-${segmentIdx}`}>{segment}</span>;
+  }));
 }

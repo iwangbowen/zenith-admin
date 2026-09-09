@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Button, Form, Tag, Typography, Toast } from '@douyinfe/semi-ui';
+import { Button, Form, Tag, Toast } from '@douyinfe/semi-ui';
 import { Download, ThumbsUp, ThumbsDown } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -17,11 +17,9 @@ import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { aiFeedbackKeys, downloadAiFeedbackCsv, useAiFeedbackContext, useAiFeedbackList, useHandleAiFeedback } from '@/hooks/queries/ai-feedback';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
-import AiMessagesViewer from '../components/AiMessagesViewer';
+import AiConversationContextModal from '../components/AiConversationContextModal';
 import { AiMessageSnippet, AiUserCell } from '../ai-display';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-
-const { Text } = Typography;
 
 const FEEDBACK_OPTIONS = [
   { value: '1', label: '👍 点赞' },
@@ -326,28 +324,14 @@ export default function AiFeedbackPage() {
           />
         </Form>
       </AppModal>
-      <AppModal
-        title={`对话上下文${contextQuery.data?.conversationTitle ? ` — ${contextQuery.data.conversationTitle}` : ''}`}
+      <AiConversationContextModal
         visible={contextMsgId !== null}
-        onCancel={() => setContextMsgId(null)}
-        footer={null}
-        width={640}
-        closeOnEsc
-      >
-        {contextQuery.isFetching ? (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <Text type="tertiary">加载中…</Text>
-          </div>
-        ) : (
-          <AiMessagesViewer
-            messages={contextQuery.data?.messages ?? []}
-            targetMsgId={contextQuery.data?.targetMsgId}
-            targetLabel="被反馈"
-            targetColor="red"
-            userMeta={contextQuery.data?.user}
-          />
-        )}
-      </AppModal>
+        loading={contextQuery.isFetching}
+        context={contextQuery.data}
+        onClose={() => setContextMsgId(null)}
+        targetLabel="被反馈"
+        targetColor="red"
+      />
     </div>
   );
 }

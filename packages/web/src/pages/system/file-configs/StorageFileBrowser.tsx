@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AppModal } from '@/components/AppModal';
 import {
   Button,
   Breadcrumb,
-  Descriptions,
   Pagination,
   SideSheet,
   Space,
@@ -23,6 +21,7 @@ import { copyTextWithToast } from '@/utils/clipboard';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { FilePreviewLayer } from '@/components/FilePreviewLayer';
+import { FileDetailModal } from '@/components/FileDetailModal';
 import { useFilePreview } from '@/hooks/useFilePreview';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -382,37 +381,14 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
       <FilePreviewLayer preview={preview} />
 
       {/* File detail modal */}
-      <AppModal
-        title="文件详情"
+      <FileDetailModal
         visible={!!detailFile}
-        onCancel={() => setDetailFile(null)}
-        footer={
-          <Space>
-            <Button onClick={() => displayedDetailFile && handleCopyUrl(displayedDetailFile)}>复制链接</Button>
-            <Button type="primary" onClick={() => setDetailFile(null)}>关闭</Button>
-          </Space>
-        }
-        width={560}
-      >
-        <Spin spinning={detailFileLoading} tip="加载中..." size="small">
-          {displayedDetailFile && (
-            <Descriptions
-              align="left"
-              size="medium"
-              data={[
-                { key: '文件名', value: displayedDetailFile.originalName },
-                { key: '存储服务', value: displayedDetailFile.storageName },
-                { key: 'MIME 类型', value: displayedDetailFile.mimeType || '—' },
-                { key: '文件大小', value: formatBytes(displayedDetailFile.size) },
-                { key: '上传人', value: displayedDetailFile.uploaderName || '—' },
-                { key: '对象键', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{displayedDetailFile.objectKey}</Text> },
-                { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{getFileFullUrl(displayedDetailFile.url)}</Text> },
-                { key: '上传时间', value: formatDateTime(displayedDetailFile.createdAt) },
-              ]}
-            />
-          )}
-        </Spin>
-      </AppModal>
+        file={displayedDetailFile}
+        loading={detailFileLoading}
+        resolveUrl={(file) => getFileFullUrl(file.url)}
+        onCopyUrl={(file) => void handleCopyUrl(file)}
+        onClose={() => setDetailFile(null)}
+      />
     </>
   );
 }

@@ -34,6 +34,7 @@ import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 interface RuleSearch {
   keyword: string;
   sourceSiteId?: number;
@@ -515,10 +516,7 @@ export default function DistributionPage() {
                 <Form.Input field="name" label="规则名称" rules={[{ required: true, message: '请输入规则名称' }]} />
               </Col>
               <Col span={12}>
-                <Form.RadioGroup field="status" label="状态">
-                  <Form.Radio value="enabled">启用</Form.Radio>
-                  <Form.Radio value="disabled">停用</Form.Radio>
-                </Form.RadioGroup>
+                <FormStatusRadioGroup />
               </Col>
             </Row>
             <Row gutter={16}>

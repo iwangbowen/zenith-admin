@@ -6,8 +6,8 @@ import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { badRequest } from '@/mocks/utils/handlers';
 import { mockBizLeaves, getNextLeaveId } from '@/mocks/data/biz-leave';
 import {
+  buildFirstApproveTask,
   getNextInstanceId,
-  getNextTaskId,
   mockWorkflowDefinitions,
   mockWorkflowInstances,
   mockWorkflowTasks,
@@ -39,21 +39,8 @@ export const bizLeaveHandlers = [
     if (!def) return badRequest('未找到已发布的「请假审批」业务系统主导流程定义');
     const now = mockDateTime();
     const instanceId = getNextInstanceId();
-    const firstApproveNode = def.flowData?.nodes.find((node) => node.data.type === 'approve');
-    const tasks: WorkflowTask[] = firstApproveNode ? [{
-      id: getNextTaskId(),
-      instanceId,
-      nodeKey: firstApproveNode.data.key,
-      nodeName: firstApproveNode.data.label,
-      nodeType: 'approve',
-      assigneeId: firstApproveNode.data.assigneeId ?? null,
-      assigneeName: firstApproveNode.data.assigneeName ?? null,
-      assigneeAvatar: null,
-      status: 'pending',
-      comment: null,
-      actionAt: null,
-      createdAt: now,
-    }] : [];
+    const firstTask = buildFirstApproveTask(def, instanceId, now);
+    const tasks: WorkflowTask[] = firstTask ? [firstTask] : [];
     const instance: WorkflowInstance = {
       id: instanceId,
       definitionId: def.id,
@@ -78,7 +65,7 @@ export const bizLeaveHandlers = [
         tenantId: def.tenantId,
       },
       status: 'running',
-      currentNodeKey: firstApproveNode?.data.key ?? null,
+      currentNodeKey: firstTask?.nodeKey ?? null,
       initiatorId: leave.applicantId ?? 1,
       initiatorName: leave.applicantName ?? '管理员',
       initiatorAvatar: null,

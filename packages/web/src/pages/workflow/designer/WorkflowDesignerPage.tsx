@@ -35,6 +35,7 @@ import {
   deepClone,
   collectAllNodes,
   findAncestorApproverNodes,
+  findFlowNode,
   duplicateNode,
 } from './utils';
 import { useHistoryState } from './hooks/useHistoryState';
@@ -315,24 +316,7 @@ export default function WorkflowDesignerPage({
   const handleSaveNode = useCallback((nodeId: string, updates: { name?: string; key?: string; props?: Record<string, unknown> }) => {
     setProcess(prev => {
       // 检测路由分支节点的 routeFieldKey 变更，若变更则清空子分支的 caseValue
-      const findNode = (n: FlowNode | undefined): FlowNode | undefined => {
-        if (!n) return undefined;
-        if (n.id === nodeId) return n;
-        if (n.children) {
-          const f = findNode(n.children);
-          if (f) return f;
-        }
-        if (n.branches) {
-          for (const b of n.branches) {
-            if (b.children) {
-              const f = findNode(b.children);
-              if (f) return f;
-            }
-          }
-        }
-        return undefined;
-      };
-      const existing = findNode(prev.initiator);
+      const existing = findFlowNode(prev.initiator, nodeId);
       let next = updateNode(prev, nodeId, updates);
       if (existing?.type === 'routeBranch' && updates.props && 'routeFieldKey' in updates.props) {
         const oldKey = ((existing.props?.routeFieldKey as string | undefined) ?? '').trim();
@@ -387,24 +371,7 @@ export default function WorkflowDesignerPage({
 
   const handleEditBranch = useCallback((branch: FlowBranch, branchNodeId: string) => {
     // 根据父节点类型分流到对应编辑器
-    const findNode = (n: FlowNode | undefined): FlowNode | undefined => {
-      if (!n) return undefined;
-      if (n.id === branchNodeId) return n;
-      if (n.children) {
-        const f = findNode(n.children);
-        if (f) return f;
-      }
-      if (n.branches) {
-        for (const b of n.branches) {
-          if (b.children) {
-            const f = findNode(b.children);
-            if (f) return f;
-          }
-        }
-      }
-      return undefined;
-    };
-    const parent = findNode(process.initiator);
+    const parent = findFlowNode(process.initiator, branchNodeId);
     setEditingBranch(deepClone(branch));
     setEditingBranchParent(parent ? deepClone(parent) : null);
     if (parent?.type === 'routeBranch') {

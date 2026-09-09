@@ -12,6 +12,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import {
   useDeleteMpConditionalMenu,
@@ -214,9 +215,7 @@ export default function MpConditionalMenusPage() {
         onFilterApply={() => void listQuery.refetch()}
       />
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
       <Banner type="info" fullMode={false} description="个性化菜单按匹配规则（标签/性别/地区/客户端/语言）向不同人群下发不同菜单；未命中任何个性化菜单的用户将看到默认自定义菜单。" style={{ marginBottom: 12 }} />
 
       <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching}

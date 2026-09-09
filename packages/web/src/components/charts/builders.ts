@@ -95,6 +95,22 @@ interface CartesianTooltipOptions {
   readonly titleFmt?: (x: string) => string;
 }
 
+/** 饼图 / 漏斗 / 词云等「类目 → 单值」图共用的 tooltip spec：标题取类目字段，内容一行数值 */
+function categoryTooltipSpec(o: {
+  readonly palette: ChartPalette;
+  readonly categoryField: string;
+  readonly valueField: string;
+  readonly valueFmt: (value: number) => string;
+  readonly tooltipKey?: string;
+}) {
+  return {
+    ...makeCommonTooltip(o.palette),
+    mark: {
+      title: { value: (datum?: ChartDatum) => datumText(datum, o.categoryField) },
+      content: [{ key: o.tooltipKey ?? '数值', value: (datum?: ChartDatum) => o.valueFmt(datumNumber(datum, o.valueField)) }],
+    },
+  };
+}
 /** 折线/面积/柱状图共用的 tooltip spec（多系列 dimension + 单系列 mark） */
 function cartesianTooltipSpec({ palette, multi, xField, singleName, singleField, valueFmt, titleFmt }: CartesianTooltipOptions) {
   return {
@@ -373,13 +389,8 @@ export function makePieSpec(o: PieOptions): Partial<IPieChartSpec> {
         return `${name} ${Math.round((value / total) * 100)}%`;
       },
     },
-    tooltip: {
-      ...makeCommonTooltip(palette),
-      mark: {
-        title: { value: (datum?: ChartDatum) => datumText(datum, categoryField) },
-        content: [{ key: o.tooltipKey ?? '数值', value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, valueField)) }],
-      },
-    },
+    tooltip: categoryTooltipSpec({ palette, categoryField, valueField, valueFmt, tooltipKey: o.tooltipKey }),
+
   };
 
   if (donut && o.indicator) {
@@ -1034,13 +1045,8 @@ export function makeFunnelSpec(o: FunnelOptions): Partial<IFunnelChartSpec> {
     legends: o.legend
       ? { visible: true, orient: 'bottom', position: 'middle', item: { label: { style: { fill: palette.text1, fontSize: 12 } } } }
       : { visible: false },
-    tooltip: {
-      ...makeCommonTooltip(palette),
-      mark: {
-        title: { value: (datum?: ChartDatum) => datumText(datum, categoryField) },
-        content: [{ key: o.tooltipKey ?? '数值', value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, valueField)) }],
-      },
-    },
+    tooltip: categoryTooltipSpec({ palette, categoryField, valueField, valueFmt, tooltipKey: o.tooltipKey }),
+
   };
 }
 
@@ -1112,13 +1118,8 @@ export function makeRadarSpec(o: RadarOptions): Partial<IRadarChartSpec> {
     legends: showLegend
       ? { visible: true, orient: 'bottom', position: 'middle', item: { label: { style: { fill: palette.text1, fontSize: 12 } } } }
       : { visible: false },
-    tooltip: {
-      ...makeCommonTooltip(palette),
-      mark: {
-        title: { value: (datum?: ChartDatum) => datumText(datum, categoryField) },
-        content: [{ key: o.tooltipKey ?? '数值', value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, valueField)) }],
-      },
-    },
+    tooltip: categoryTooltipSpec({ palette, categoryField, valueField, valueFmt, tooltipKey: o.tooltipKey }),
+
   };
 }
 

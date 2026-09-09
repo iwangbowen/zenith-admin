@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Form, Spin, Toast, Banner } from '@douyinfe/semi-ui';
+import { Button, Form, Spin, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import type { CreateMpTagInput, MpTag } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
@@ -12,6 +12,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
+import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { mpTagKeys, useDeleteMpTags, useMpTagList, useSaveMpTag, useSyncMpTags } from '@/hooks/queries/mp-tags';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -120,9 +121,7 @@ export default function MpTagsPage() {
         actionTitle="标签操作"
       />
 
-      {!accountsLoading && accounts.length === 0 && (
-        <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
-      )}
+      <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
 
       <ConfigurableTable<MpTag> columns={columns} {...listTableProps(listQuery, { pagination: buildPagination })} />
 

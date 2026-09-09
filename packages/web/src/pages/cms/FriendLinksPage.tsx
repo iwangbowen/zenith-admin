@@ -21,6 +21,7 @@ import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-co
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 interface SearchParams { keyword: string; groupId?: number }
 const defaultSearch: SearchParams = { keyword: '', groupId: undefined };
@@ -136,10 +137,7 @@ export default function FriendLinksPage() {
             optionList={groupOptions.map((g) => ({ value: g.id, label: g.name }))} />
           <Form.Input field="logo" label="Logo URL" />
           <Form.InputNumber field="sort" label="排序" style={{ width: 160 }} />
-          <Form.RadioGroup field="status" label="状态">
-            <Form.Radio value="enabled">启用</Form.Radio>
-            <Form.Radio value="disabled">停用</Form.Radio>
-          </Form.RadioGroup>
+          <FormStatusRadioGroup />
           <Form.Input field="remark" label="备注" />
         </Form>
       </AppModal>
@@ -209,10 +207,7 @@ function FriendLinkGroupSheet({ siteId, visible, onClose }: Readonly<{
             extraText="主题按组取数的稳定引用，创建后不可修改"
             rules={[{ required: true, message: '请输入分组标识' }, { pattern: /^[a-z0-9-]+$/, message: '仅支持小写字母、数字、中划线' }]} />
           <Form.InputNumber field="sort" label="排序" style={{ width: 160 }} />
-          <Form.RadioGroup field="status" label="状态">
-            <Form.Radio value="enabled">启用</Form.Radio>
-            <Form.Radio value="disabled">停用</Form.Radio>
-          </Form.RadioGroup>
+          <FormStatusRadioGroup />
           <Form.Input field="remark" label="备注" />
         </Form>
       </AppModal>
