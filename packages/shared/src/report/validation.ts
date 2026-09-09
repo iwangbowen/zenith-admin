@@ -1,8 +1,6 @@
 import * as z from 'zod';
-import { ANALYTICS_CONTEXT_MAX_BYTES, ANALYTICS_ENVIRONMENTS, ANALYTICS_EVENT_SOURCES } from '../analytics/constants';
-import { errorBreadcrumbSchema } from '../analytics/validation';
 import { CMS_WIDGET_RENDERER_KEYS } from '../cms/constants';
-import { boundedJsonRecord, dateTimeStringSchema, httpUrl, partialForUpdate } from '../core/validation';
+import { dateTimeStringSchema, httpUrl, partialForUpdate } from '../core/validation';
 import { isHttpUrlTemplate, isSafeLinkUrlTemplate } from '../core/url';
 import { workflowFormSchemaSchema } from '../workflow/validation';
 import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_DASHBOARD_VERSION_SOURCES, REPORT_FIELD_TYPES, REPORT_FILTER_TYPES, REPORT_NOTIFY_CHANNELS, REPORT_SCHEDULE_MISFIRE_POLICIES } from './constants';
@@ -11,30 +9,6 @@ import { entityStatusSchema } from '../core/api-schemas';
 
 const timezoneSchema = z.string().min(1).max(64)
   .refine((timezone) => timezone === 'UTC' || Intl.supportedValuesOf('timeZone').includes(timezone), '时区标识无效');
-
-export const errorReportSchema = z.object({
-  errorType: z.enum(['js_error', 'promise_rejection', 'resource_error', 'console_error', 'http_error', 'white_screen', 'crash']),
-  level: z.enum(['fatal', 'error', 'warning', 'info']).optional(),
-  message: z.string().min(1).max(2000),
-  stack: z.string().max(16_000).optional(),
-  sourceUrl: z.string().max(512).optional(),
-  lineNo: z.number().int().optional(),
-  colNo: z.number().int().optional(),
-  pageUrl: z.string().max(512).optional(),
-  release: z.string().max(64).optional(),
-  sessionId: z.string().min(1).max(36).optional(),
-  breadcrumbs: z.array(errorBreadcrumbSchema).max(50).optional(),
-  context: boundedJsonRecord('错误上下文', 50, ANALYTICS_CONTEXT_MAX_BYTES).optional(),
-  httpStatus: z.number().int().optional(),
-  httpMethod: z.string().max(16).optional(),
-  httpUrl: z.string().max(512).optional(),
-  // 行为中心阶段 1：多端平台字段（均可选，未携带时由服务端按接入方式默认推断）
-  source: z.enum(ANALYTICS_EVENT_SOURCES).optional(),
-  appId: z.string().min(1).max(64).optional(),
-  environment: z.enum(ANALYTICS_ENVIRONMENTS).optional(),
-});
-
-export type ErrorReportInput = z.infer<typeof errorReportSchema>;
 
 // ════════════════════════════════════════════════════════════════════════════
 // 报表中心（Report Center）

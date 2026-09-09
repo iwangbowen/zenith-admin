@@ -1,5 +1,6 @@
-import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
+import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowJobStatus, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
 import type { WorkflowInstanceSummaryItem } from './contracts/instances';
+import { WORKFLOW_JOB_STATUSES } from './constants';
 import { escapeRegExp } from '../core/text';
 
 type WorkflowFlowNode = WorkflowFlowData['nodes'][number];
@@ -515,4 +516,21 @@ export function renameWorkflowFormFieldKeys(
   }
 
   return out;
+}
+
+/** 作业状态计数（含 total），按 `WORKFLOW_JOB_STATUSES` 零填充；链路统计、按类型汇总与 Demo Mock 共用 */
+export type WorkflowJobStatusCounts = { total: number } & Record<WorkflowJobStatus, number>;
+
+export function countWorkflowJobStatuses(jobs: ReadonlyArray<{ status: WorkflowJobStatus }>): WorkflowJobStatusCounts {
+  const counts = Object.fromEntries(WORKFLOW_JOB_STATUSES.map((s) => [s, 0])) as Record<WorkflowJobStatus, number>;
+  for (const job of jobs) counts[job.status] += 1;
+  return { total: jobs.length, ...counts };
+}
+
+/** 作业链路统计：状态计数 + 链路涉及的实例 ID（去重、保持首次出现顺序） */
+export function summarizeWorkflowJobChain(jobs: ReadonlyArray<{ status: WorkflowJobStatus; instanceId: number | null }>): WorkflowJobStatusCounts & { instanceIds: number[] } {
+  return {
+    ...countWorkflowJobStatuses(jobs),
+    instanceIds: [...new Set(jobs.map((j) => j.instanceId).filter((v): v is number => v != null))],
+  };
 }
