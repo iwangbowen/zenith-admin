@@ -40,6 +40,11 @@
 | 头像选文件 → 裁剪 → 上传 → 落库 | `hooks/useAvatarCropUpload.ts`（`fileInputProps` 展开到隐藏 `<input>`，`cropperProps` 展开到 `AvatarCropperModal`，落库动作放 `onUploaded`） | 手写 `handleAvatarFileSelect` / `FormData.append('file', blob, 'avatar.jpg')` / 上传失败 Toast | 上传错误提示与失败后是否关闭裁剪弹窗各处不一致 |
 | React Flow 关系图点选高亮 | `hooks/useGraphSelectionHighlight.ts`（返回 `nodes` / `edges` / `onNodesChange` / `handleNodeClick` / `handlePaneClick`） | 手写 `useNodesState` + 同步 effect + `related` / `relatedEdges` 集合 + `dimmed` 回写 | 输入变化时选中态未清空；淡化规则各图漂移 |
 | 异步任务表格列 | `components/async-task-columns.tsx` 的 `asyncTaskStatusColumn()`（含「取消中 / 等待重试」派生态）与 `asyncTaskItemColumns()` | 页面内联状态 `render` 与任务项五列 | 派生态文案 / 颜色两页不一致 |
+| 人员选择器 | `components/UserSelect.tsx`：系统全量用户用默认导出 `UserSelect`；其它权限范围的数据源（工作流可选人员等）各自取数后交给 `UserSelectBase({ users, loading, ...props })` 渲染 | 复制一份 `Select` + `optionList` 映射再换 hook | 「昵称（部门）」标签、加载中禁用、`maxTagCount` 等交互各处漂移 |
+| 仪表盘查看态（登录 / 嵌入 / 公开链接） | `pages/report/widgets/dashboard-runtime.tsx`（`defaultFilterValues` / `useDashboardWidgetQueries` / `exportDashboardPng` / `downloadDataUrl` / `dashboardMobileActions` / `widgetClickPayload` / `drilldownPayload` / `openDrilldownUrl` / `widgetStateFromDataMap`）+ `DashboardCanvasView.tsx`；数据源、筛选状态机与鉴权留在各入口 | 在新入口里再抄 `toPng` 导出、下钻载荷、`ScreenCanvas` 空态 / 等比容器 | 桥接事件载荷字段两端不一致；导出背景 / 像素比不同 |
+| 会员前台统计数值 / 表单行 | `member/components/StatCard.tsx`（`--m-*` 令牌，与后台 `components/charts/StatCard` 是不同体系）、`member/components/FieldRow.tsx` | 页面内再定义同名局部组件 | 会员端视觉令牌与字号漂移 |
+| 支付域表单 / 筛选控件 | `pages/payment/payment-form-fields.tsx` 的 `PaymentAppField`（选中后由调用方重置依赖字段）/ `PaymentMerchantConfigField` / `PaymentCurrencyField` / `PaymentAppFilterSelect`；应用 + 绑定商户配置联动取数用 `payment-app-options.ts` 的 `useAppMerchantConfigLookup(selectedAppId)` | 逐页手写 `Form.Select field="applicationId"` / `channelConfigId` / `currency` 与 `[{ value: 'CNY', … }]` | 必填文案、可搜索、宽度各页不一 |
+| 消息模板编辑表单 / 发送日志页 | `pages/system/message-template-form.tsx` 的 `TemplateNameCodeRow` / `TemplateVariablesRemarkRows`；发送日志筛选对 `send-log-ui.tsx` 的 `SendLogStatusSourceFilters`，共用列 `send-log-columns.tsx` 的 `sendLogSourceColumn` / `sendLogOperatorColumn` / `sendLogErrorColumn` / `sendLogStatusColumn` | 邮件 / 短信 / 站内信页各抄一份名称编码行、变量备注行、状态来源筛选与列 | 三页字段校验文案与列宽漂移 |
 | 中断表单提交 | `lib/abort-submit.ts` 的 `abortSubmit()`（先给用户提示再调用） | `return`、`throw new Error('多词消息')` | 按钮一直转圈；或多弹一个「操作失败：xxx」并向 `/api/frontend-errors` 灌入假告警 |
 | 破坏性操作确认 | `utils/confirm.ts` 的 `confirmDelete` / `confirmDanger`；async 流程用 `confirmDangerAsync` 取布尔结果 | `Modal.confirm({ okButtonProps: { type: 'danger' } })`、`new Promise<boolean>` 包 `Modal.confirm`、在 `confirmDelete` 调用里再传 `okButtonProps: { type: 'danger' }` | 「确定删除」与「确定提交」渲染成同一个蓝色主按钮 |
 | 防抖 / 节流 | `@tanstack/react-pacer`：值防抖 `useDebouncedValue`，回调防抖 `useDebouncedCallback`（需手动 `cancel` / `flush` 时用 `useDebouncer`），节流 `useThrottledCallback`；`useEffect` 内等非 hook 上下文用 `Debouncer` / `Throttler` 类 | `setTimeout` + `clearTimeout` 手写防抖、`Date.now()` 差值手写节流、timer ref + 卸载清理样板 | 各处 wait / 边沿语义不一致；漏写卸载清理导致组件卸载后仍 setState / 发请求 |
@@ -144,7 +149,8 @@
 - **状态列**：启停开关列一律 `useStatusToggle(...).column()`（默认「状态」/ 80 / `fixed: 'right'`），只读状态用 `renderEnabledStatusTag` / `DictTag`；
   状态列必须紧靠操作列左侧，并同样 `fixed: 'right'`
 - **列公共工具**：`createdAtColumn` 与 `renderEllipsis` 从 `utils/table-columns` 导入；
-  **禁止**内联写 `<Typography.Text ellipsis={{ showTooltip: true }} …>`
+  **禁止**内联写 `<Typography.Text ellipsis={{ showTooltip: true }} …>`（裸写法一律 `renderEllipsis(v)`，
+  空值统一 `EMPTY_PLACEHOLDER`；只有需要 `link` / `strong` / `type` / `onClick` 等附加属性时才保留内联 `Typography.Text`）
 - **时间 / 日期列**：一律用 `utils/table-columns` 的 `dateTimeColumn(title, dataIndex, options?)`
   （日期时间，宽 180）或 `dateColumn(...)`（纯日期，宽 120）创建，`createdAt` / `updatedAt`
   直接用预置的 `createdAtColumn` / `updatedAtColumn`。工厂已内建格式化与空值兜底，

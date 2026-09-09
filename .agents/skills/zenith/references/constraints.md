@@ -123,6 +123,11 @@
 - **任务终态判定**：异步任务「是否已结束」一律用 `@zenith/shared/tasks` 的 `isAsyncTaskTerminal(status)` /
   `ASYNC_TASK_TERMINAL_STATUSES` / `ASYNC_TASK_ACTIVE_STATUSES`；列表筛选里的 `active` / `terminal` / 具体状态 → WHERE 条件用
   `lib/task-center` 的 `asyncTaskStatusCondition(status)`。**禁止**在 service / 路由 / 导出定义 / 前端 / Mock 里内联 `['success', 'failed', 'cancelled']`
+- **业务附件读取**：任何挂在业务记录上的附件（公告 / 工单 / 审批…）一律经 `services/files/business-files.service.ts` 的
+  `listBusinessFiles(businessType, businessId)`（按 `sortOrder, id` 排序，带代理下载地址与公开直链），需要更窄形状时 `map` 投影到契约字段；
+  **禁止**在业务 service 里再写 `businessFiles leftJoin managedFiles` + `getStorageConfigMap` + `buildPublicFileUrl` 的映射
+- **网盘节点 / 空间名批量解析**：列表行引用 `nodeId` / `spaceId` 需要展示名与类型时用 `services/drive/drive-common.ts` 的
+  `resolveNodeSpaceLabels(rows)`（返回按行取 `nodeName` / `nodeType` / `spaceName` 的函数），用户名用同文件的 `resolveUserNames`
 - **单一默认项写入**：带 `is_default` 的配置类实体（短信 / 推送 / 存储 / 支付渠道 / 公众号 / 报表环境 / 保存视图…）
   一律经 `lib/default-flag.ts` 的 `clearDefaultFlag(executor, table, scopeWhere)` / `ensureSingleDefault(executor, table, id, { scope })`
   在事务内清除范围内其它默认标记，范围条件由调用方给出；**禁止**在 service 里手写 `update(table).set({ isDefault: false })`
@@ -221,10 +226,11 @@
 - **静态路径先于动态路径**：`mock(op)` 把 `{id}` 转成 `:id`，MSW 按数组顺序首个命中即返回——`all`（`/all`）、
   `removeBatch`（`/batch`）等静态路径的 handler 必须排在 `detail` / `remove`（`/{id}`）**之前**
 - **自增 ID**：用 `nextIdFrom(list)`；**禁止**手写 `Math.max(...list.map((x) => x.id)) + 1`（空列表得 `-Infinity`）
-- **机械 CRUD 用工具**：关键词多字段过滤用 `filterByKeyword`（`mocks/utils/filter.ts`），按 id 取 / 改 / 批删用
-  `requireItem` / `updateItem` / `removeByIds`（`mocks/utils/crud.ts`，找不到抛 `MockHttpError`，`mock()` 映射为 404 响应），
-  表单或 JSON 请求体用 `readFormOrJsonBody`，`Idempotency-Key` 回放用 `resolveIdempotent`；
-  **禁止**在 handler 里手写 `find → notFound → Object.assign` / `findIndex → splice` / 多字段 `includes` 链
+- **机械 CRUD 用工具**：关键词多字段过滤用 `filterByKeyword`（`mocks/utils/filter.ts`），按 id 取 / 改 / 删 / 批删用
+  `requireItem` / `updateItem` / `removeItem` / `removeByIds`（`mocks/utils/crud.ts`，找不到抛 `MockHttpError`，`mock()` 映射为 404 响应；
+  主键可为 number 或 string），表单或 JSON 请求体用 `readFormOrJsonBody`，`Idempotency-Key` 回放用 `resolveIdempotent`；
+  **禁止**在 handler 里手写 `find → notFound → Object.assign` / `findIndex → notFound → splice` / 多字段 `includes` 链。
+  仍以裸 `http.*` 注册的少数 handler（OAuth2 授权、CMS 公共广告、会员头像）没有 `MockHttpError` 映射，只能手写 `notFound`
 - **HTTP 状态码**：失败响应显式带 `{ status: N }`，与真实后端一致
 - **`data` 字段的有无是可观察差异**：`ok(x)` 省略 `data` 时响应体不含该字段，需要 `data: null` 就显式传 `null`
 - **数据源对齐**：初始数据从 `@zenith/shared/seed` 的 `SEED_XXXS` 派生，**禁止**在 mock 中重复写静态数组；
@@ -280,9 +286,24 @@
 | 按点分路径读取 JSON 嵌套值（外部 API 响应的 `itemsPath` 等配置化取数路径） | `getByPath(source, path)`；空路径返回原值，中途非对象返回 `undefined`，数组可用下标段 |
 | 非 null、非数组的普通对象判定 | `isPlainObject(value)` |
 
-- 前端毫秒耗时展示用 `@/utils/format` 的 `formatDurationMs(ms)`；空值统一渲染 `EMPTY_PLACEHOLDER`
+- 前端毫秒耗时展示用 `@/utils/format` 的 `formatDurationMs(ms)`；秒级时长的「N天N小时N分」用 `formatSecondsHuman(seconds)`
+  （<1 分钟显示秒，`formatSecondsBetween(start, end)` 取两个时间的差），`mm:ss` 计时用 `formatClock(seconds)`；
+  空值统一渲染 `EMPTY_PLACEHOLDER`
 - 日志 / 文案里的局部脱敏用 `@zenith/shared/core` 的 `maskPhone()` / `maskEmail()`（server 经 `lib/masking.ts` 转发）；
   等待用 `node:timers/promises` 的 `setTimeout`
+- 工作流表单的跨字段比较（`gt` / `gte` / `lt` / `lte` / `eq` / `neq`，数值或日期）前后端共用 `@zenith/shared/workflow` 的
+  `evalWorkflowCompareRule(op, a, b, isDate)`（日期经 dayjs 按本地时区解析），算子文案用 `WORKFLOW_COMPARE_OP_TEXT`；
+  **禁止**在 web 表单渲染器或 server 校验里再写一份比较 switch
+
+### Server 通用库（`packages/server/src/lib`）
+
+| 场景 | 用 | 禁止 |
+| --- | --- | --- |
+| 文件下载 / 预览响应头 | `content-disposition.ts`：`attachmentDisposition(filename)`（RFC 5987 `filename*=UTF-8''` + ASCII 回退）、`inlineOrAttachmentDisposition(filename, mimeType)`（仅 `SAFE_INLINE_MIME_TYPES` 允许 inline） | 手拼 `attachment; filename="…"`、各处自维护可内联 MIME 白名单 |
+| 无状态 HMAC 签名令牌（事件令牌、渲染凭证、退订链接…） | `signed-token.ts`：`createSignedTokenCodec<T>({ version })`（`<v>.<data>.<sig>`）或 `({ purpose })`（`<data>.<sig>`），`decode` 返回 `null` 后由调用方做载荷校验与错误语义；非 JSON 载荷的签名用 `hmacSha256(input, 'hex' \| 'base64url')` + `constantTimeEqual(a, b)` | 手写 `createHmac` + `timingSafeEqual` + base64url 拆包；新令牌自创线格式 |
+
+已有令牌的线格式（前缀 / 版本 / 摘要编码）已被黄金测试锁定（`unsubscribe.test.ts`、`cms-ad-render-proof.test.ts`、
+`cms-preview.service.test.ts`），改动实现不得改变一个字节。
 
 ### 数据脱敏（PII）
 
@@ -304,6 +325,8 @@
   服务层的 count + rows + 包络用 `buildListResult`（见 [Service 层](#service-层step-5)）；
   MSW Mock 用契约上下文的 `paginate(list)` / `pageResult(list, page, pageSize)`
 - 禁止手写 `(page - 1) * pageSize`
+- `page` / `pageSize` 的取值范围只在契约 `paginationQuery`（`pageSize` 1..200）声明并由路由校验；service **禁止**再做
+  `Math.min(pageSize, 100)` / `Math.max(page, 1)` 之类二次夹紧，查询参数类型直接用契约导出的 `XxxQueryInput`
 
 ### 重型依赖懒加载（Server）
 

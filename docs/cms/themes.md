@@ -79,13 +79,9 @@ themes/
 ```tsx
 const HomeTemplate = defineHomeTemplate({
   // load 声明式取数：返回值类型自动推导，注入 Component 的 data
-  load: async ({ cms, site, baseUrl }) => {
-    const codes = String(site.themeConfig.homeChannels ?? '').split(',').filter(Boolean);
-    const blocks = await Promise.all(
-      codes.map((code) => cms.contents.list({ channelCode: code, limit: 8 })),
-    );
-    return { blocks: blocks.filter((b) => b.channel !== null) };
-  },
+  // 「首页栏目区块」（themeConfig.homeChannels）逐栏并发取数用 _shared 的 loadHomeBlocks，
+  // 其它自定义取数直接调 cms.contents.list
+  load: async ({ cms, site }) => ({ blocks: await loadHomeBlocks(cms, site, { limit: 8 }) }),
   Component: ({ data, ...ctx }) => (
     <Layout ctx={ctx}>
       {data.blocks.map((block) => (
@@ -162,7 +158,11 @@ settingsSchema: [
 | `ArticleNav` / `RelatedArticles` / `AttachmentList` | 详情页上下篇导航（`.article-nav`）、相关阅读（`.related-articles`，可传 `title` / `heading`）、附件下载链接（`.attachments`）；空数据时不渲染 |
 | `ModelFieldTable` | 模型字段双栏键值表，按 `detailGroup` 分组（公文信息表头样式钩子 `.model-fields*`，公共样式在 `_shared/base.css`） |
 | `MediaBlock` | 内容形态区块：图集九宫格 / 音视频播放器（article/link 返回 null，公共样式在 `_shared/base.css`）。**详情模板须在正文前调用**，否则 album/media 形态丢失主图 |
+| `SearchResultList` / `SearchResultLink` | 搜索结果列表（空态文案统一；默认条目为「标题链接 + 发布日期」，需要摘要 / 栏目名的主题传 `renderItem`，条目根元素自带 `key`）与高亮标题链接（外链新窗口、不拼 baseUrl） |
+| `loadHomeBlocks` / `CmsThemeHomeBlock` | 首页栏目区块取数：解析 `themeConfig.homeChannels`（中英文逗号分隔，默认最多 6 个，可传 `maxChannels`）并发读取各栏目、过滤站内不存在的栏目 |
 | `THEME_TOGGLE_SCRIPT` / `buildAnalyticsBeacon` | 暗色切换脚本 / 访问统计 beacon |
+
+五套内置主题的搜索页与 default 详情页 HTML 由 `cms-theme-markup-snapshot.test.ts` 快照锁定，改动共享件后快照必须逐字节一致或有意更新。
 
 ## 消费模型字段
 
