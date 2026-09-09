@@ -3,34 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { chatContract } from '@zenith/shared/chat';
 import type { WsMessage } from '@zenith/shared/platform';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { useOptionalPreferences } from '@/hooks/usePreferences';
 import { api } from '@/lib/contract-query';
+import { playNotificationSound } from '@/utils/notification-sound';
 import { getChatNotifyPrefs } from '@/pages/chat/notifyPrefs';
 import { getMessageSummary } from '@/pages/chat/utils';
-
-let sharedAudioCtx: AudioContext | null = null;
-
-/** 用 WebAudio 播放一声短促提示音，无需音频资源文件 */
-function playBeep() {
-  try {
-    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return;
-    sharedAudioCtx = sharedAudioCtx ?? new Ctor();
-    const ctx = sharedAudioCtx;
-    void ctx.resume?.();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(660, ctx.currentTime + 0.12);
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.32);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.34);
-  } catch { /* ignore */ }
-}
 
 function isAbsoluteUrl(url: string | null | undefined): url is string {
   return !!url && /^https?:\/\//i.test(url);
@@ -38,11 +15,12 @@ function isAbsoluteUrl(url: string | null | undefined): url is string {
 
 /**
  * 全局聊天通知器：标签页失焦时收到新消息，弹出桌面通知 + 提示音。
- * 尊重会话免打扰与用户偏好（localStorage）。挂载于 AdminLayout 一次即可。
+ * 尊重会话免打扰与用户偏好（localStorage）；提示音音色跟随「通知设置」里的偏好。挂载于 AdminLayout 一次即可。
  */
 export function useChatNotifier(currentUserId: number | null) {
   const navigate = useNavigate();
   const location = useLocation();
+  const soundStyle = useOptionalPreferences()?.preferences.notificationSoundStyle;
   const mutedRef = useRef<Set<number>>(new Set());
   const locationRef = useRef(location.pathname);
   locationRef.current = location.pathname;
@@ -75,7 +53,7 @@ export function useChatNotifier(currentUserId: number | null) {
     if (mutedRef.current.has(msg.conversationId)) return;
 
     const prefs = getChatNotifyPrefs();
-    if (prefs.sound) playBeep();
+    if (prefs.sound) playNotificationSound(soundStyle);
 
     if (prefs.desktop && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       try {
@@ -91,7 +69,7 @@ export function useChatNotifier(currentUserId: number | null) {
         };
       } catch { /* ignore */ }
     }
-  }, [currentUserId, navigate]);
+  }, [currentUserId, navigate, soundStyle]);
 
   useWebSocket(handler);
 }

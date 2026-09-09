@@ -3,7 +3,9 @@ import { Notification } from '@douyinfe/semi-ui';
 import type { InAppMessage } from '@zenith/shared/messaging';
 import type { WsMessage } from '@zenith/shared/platform';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { useOptionalPreferences } from '@/hooks/usePreferences';
 import { reloadTrackerConfig } from '@/utils/tracker';
+import { playNotificationSound } from '@/utils/notification-sound';
 import { updateMessageReadIfUnread, markAllMessagesRead, removeMessageById } from './utils';
 
 // ─── WebSocket ──────────────────────────────────────────────────────────────
@@ -28,6 +30,11 @@ export function useLayoutWs({
   userTenantId: number | null | undefined;
   viewingTenantId: number | null;
 }) {
+  // 提示音偏好：useWebSocket 以 ref 持有 handler，偏好变化只更新闭包，不会重连
+  const prefs = useOptionalPreferences();
+  const soundEnabled = prefs?.preferences.notificationSound ?? false;
+  const soundStyle = prefs?.preferences.notificationSoundStyle;
+
   const handleWsMessage = useCallback((msg: WsMessage) => {
     if (msg.type === 'in-app-message:new') {
       const messageKey = `${msg.payload.title}:${msg.payload.createdAt}`;
@@ -48,6 +55,7 @@ export function useLayoutWs({
       // 重新拉一次以获取带有实际 id 的记录
       fetchInAppMessages();
 
+      if (soundEnabled) playNotificationSound(soundStyle);
       Notification.info({
         title: '新消息',
         content: msg.payload.title,
@@ -75,6 +83,7 @@ export function useLayoutWs({
     ) {
       globalThis.dispatchEvent(new CustomEvent('announcement:refresh', { detail: msg }));
       if (msg.type === 'announcement:new') {
+        if (soundEnabled) playNotificationSound(soundStyle);
         Notification.info({
           title: '新公告',
           content: msg.payload.title,
@@ -101,7 +110,7 @@ export function useLayoutWs({
       const effectiveTenantId = viewingTenantId !== null ? viewingTenantId : userTenantId;
       if (msg.payload.tenantId === effectiveTenantId) reloadTrackerConfig();
     }
-  }, [onLogout, fetchInAppMessages, clearLockPassword, userTenantId, viewingTenantId, setInAppMessages, setUnreadCount, setChatUnreadCount, recentInAppMessageRef]);
+  }, [onLogout, fetchInAppMessages, clearLockPassword, userTenantId, viewingTenantId, setInAppMessages, setUnreadCount, setChatUnreadCount, recentInAppMessageRef, soundEnabled, soundStyle]);
 
   const { disconnect: disconnectWs } = useWebSocket(handleWsMessage);
 

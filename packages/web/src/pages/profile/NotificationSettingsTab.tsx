@@ -6,8 +6,9 @@
  * 只会让用户不确定改动有没有生效。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Banner, Button, Collapse, Form, Spin, Switch, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
-import { Lock } from 'lucide-react';
+import { Banner, Button, Collapse, Form, Select, Spin, Switch, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Lock, Volume2 } from 'lucide-react';
+import { enumValueOf } from '@zenith/shared/core';
 import {
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_DIGEST_MODE_OPTIONS,
@@ -23,6 +24,8 @@ import {
   useSaveNotificationPreferences,
   useSaveNotificationSettings,
 } from '@/hooks/queries/notification-preferences';
+import { usePreferences } from '@/hooks/usePreferences';
+import { NOTIFICATION_SOUND_STYLES, NOTIFICATION_SOUND_STYLE_OPTIONS, playNotificationSound } from '@/utils/notification-sound';
 import { NOTIFICATION_SEVERITY_TAG_COLOR } from '../system/notify-policies/notify-tag-colors';
 
 const { Text } = Typography;
@@ -100,6 +103,8 @@ export default function NotificationSettingsTab() {
   const matrixQuery = useNotificationMatrix();
   const saveSettings = useSaveNotificationSettings();
   const [digestMode, setDigestMode] = useState<string>('realtime');
+  // 提示音是客户端播放偏好：存用户偏好（跟随账号，无需服务端字段），即改即存
+  const { preferences, setPreferences } = usePreferences();
 
   useEffect(() => {
     if (settingsQuery.data) setDigestMode(settingsQuery.data.digestMode);
@@ -173,6 +178,38 @@ export default function NotificationSettingsTab() {
           <Button htmlType="submit" type="primary" loading={saveSettings.isPending}>保存设置</Button>
         </div>
       </Form>
+
+      <div className="section-title" style={{ marginTop: 32 }}>提醒音效</div>
+      <Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
+        站内信与公告实时到达时播放提示音，跟随账号生效，即改即存；浏览器要求页面有过交互后才能出声，可先点「试听」。
+      </Text>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <Switch
+          checked={preferences.notificationSound}
+          onChange={(checked) => setPreferences({ notificationSound: checked })}
+          aria-label="播放提示音"
+        />
+        <Text>播放提示音</Text>
+        <Select
+          value={preferences.notificationSoundStyle}
+          optionList={NOTIFICATION_SOUND_STYLE_OPTIONS}
+          disabled={!preferences.notificationSound}
+          onChange={(value) => {
+            const style = enumValueOf(NOTIFICATION_SOUND_STYLES, value);
+            if (!style) return;
+            setPreferences({ notificationSoundStyle: style });
+            playNotificationSound(style);
+          }}
+          style={{ width: 140 }}
+        />
+        <Button
+          theme="light"
+          icon={<Volume2 size={14} />}
+          onClick={() => playNotificationSound(preferences.notificationSoundStyle)}
+        >
+          试听
+        </Button>
+      </div>
 
       <div className="section-title" style={{ marginTop: 32 }}>订阅偏好</div>
       <Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>

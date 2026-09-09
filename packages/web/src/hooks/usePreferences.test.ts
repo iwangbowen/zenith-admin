@@ -43,3 +43,18 @@ describe('dark surface tone preference', () => {
     expect(sanitizeImportedPreferences({ darkContentTone: 'bg-2' })).toBeNull();
   });
 });
+
+describe('notification sound preference', () => {
+  it('plays the chime by default', () => {
+    expect(defaultPreferences.notificationSound).toBe(true);
+    expect(defaultPreferences.notificationSoundStyle).toBe('chime');
+  });
+
+  it('accepts known sound styles and rejects unknown ones when importing preferences', () => {
+    expect(sanitizeImportedPreferences({ notificationSound: false, notificationSoundStyle: 'pop' })).toEqual({
+      notificationSound: false,
+      notificationSoundStyle: 'pop',
+    });
+    expect(sanitizeImportedPreferences({ notificationSoundStyle: 'siren' })).toBeNull();
+  });
+});

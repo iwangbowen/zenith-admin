@@ -1,6 +1,7 @@
 import { useContext, createContext } from 'react';
 import type { ThemeMode } from '@/hooks/useTheme';
 import { DEFAULT_THEME_COLOR } from '@/lib/theme-color';
+import { DEFAULT_NOTIFICATION_SOUND_STYLE, NOTIFICATION_SOUND_STYLES, type NotificationSoundStyle } from '@/utils/notification-sound';
 
 export type NavLayout = 'vertical' | 'horizontal' | 'mixed' | 'double';
 export type TabAnimation = 'none' | 'fade' | 'slide' | 'scale';
@@ -183,6 +184,10 @@ export interface UserPreferences {
   confirmLogout: boolean;
   /** 标签栏右侧显示标签切换器（chevron 下拉列表） */
   showTabSwitcher: boolean;
+  /** 站内信 / 公告实时到达时播放提示音（聊天新消息提示音沿用聊天页自己的开关，音色共用） */
+  notificationSound: boolean;
+  /** 提示音音色 */
+  notificationSoundStyle: NotificationSoundStyle;
   /** Web 终端个性化配置（主题/字体/默认 shell/文件夹收藏） */
   terminal: TerminalPreferences;
 }
@@ -245,6 +250,8 @@ export const defaultPreferences: UserPreferences = {
   reduceMotion: false,
   confirmLogout: true,
   showTabSwitcher: true,
+  notificationSound: true,
+  notificationSoundStyle: DEFAULT_NOTIFICATION_SOUND_STYLE,
   terminal: {
     defaultShell: '',
     themeDark: 'catppuccin-mocha',
@@ -295,6 +302,7 @@ const PREF_ENUM_VALUES: Partial<Record<keyof UserPreferences, readonly string[]>
   darkSidebarTone: DARK_SURFACE_TONES,
   darkHeaderTone: DARK_SURFACE_TONES,
   darkContentTone: DARK_SURFACE_TONES,
+  notificationSoundStyle: NOTIFICATION_SOUND_STYLES,
 };
 
 /**

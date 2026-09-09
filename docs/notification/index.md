@@ -118,6 +118,8 @@
 
 摘要只作用于邮件渠道，且不作用于必达或穿透免打扰的事件。摘要行带 `digestKey`，由 `aggregateNotificationDigests()` 聚合后通过 `notify('messaging.digest')` 发送一封邮件。
 
+提示音不属于投递策略，是客户端播放偏好：「通知设置」Tab 的「提醒音效」开关与音色（清脆双音 / 单音提示 / 轻柔气泡）存在用户偏好（`UserPreferences.notificationSound` / `notificationSoundStyle`，随账号同步，无服务端字段），站内信与公告经 WebSocket 实时到达时由 `layouts/admin/useLayoutWs.ts` 调用 `utils/notification-sound.ts` 用 WebAudio 合成播放，聊天新消息提示音复用同一音色。全局静音与免打扰时段本就不推送站内信，音效随之静默。
+
 ### 派发归因
 
 `notification_dispatches` 记录所有“收件人 × 渠道”的结果，包括成功、抑制、延后、去重和失败。决策与原因如下：
