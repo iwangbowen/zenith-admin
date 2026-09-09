@@ -4,6 +4,71 @@
 
 ---
 
+## v2.25.0 - 2026-09-09
+
+**全域重复实现清理**：以 jscpd 精确匹配 + 逐项人工核验为依据，把散落在 server / web / shared / mock 中的重复实现
+收口到共享 helper 与领域组件（分 16 次提交，每批次 lint / 类型检查 / 三套测试全绿），
+同时统一日志查看器读取内核、新增通知提醒音效与全站细滚动条。
+
+### Added
+
+#### 通知与界面
+
+- 个人中心 → 通知设置新增「提醒音效」：站内信 / 公告实时到达时按偏好播放（WebAudio 合成三种音色，零音频资源；
+  默认关闭，切换音色只保存、「试听」才出声），偏好随账号同步
+- 顶栏用户菜单触发器增加倒三角，展开时翻转；窄屏随用户名一起隐藏
+
+#### 共享 helper / 组件（开发者向，规则已登记到 zenith skill）
+
+- shared：`entityStatusSchema`（替换 106 处 `z.enum(['enabled','disabled'])`）、`getByPath` / `isPlainObject`、
+  `ASYNC_TASK_TERMINAL_STATUSES` / `isAsyncTaskTerminal`、`PaginationQuery` 与各契约导出的 `XxxQueryInput` 查询类型、
+  `evalWorkflowCompareRule` / `WORKFLOW_COMPARE_OP_TEXT`
+- server：`lib/where-helpers` `nullableEq`、`lib/task-center` `asyncTaskStatusCondition`、`lib/content-disposition`
+  （`attachmentDisposition` / `inlineOrAttachmentDisposition`）、`lib/signed-token`（`createSignedTokenCodec` /
+  `hmacSha256` / `constantTimeEqual`）、`services/files` `listBusinessFiles` 复用、`services/drive` `resolveNodeSpaceLabels`、
+  CMS 主题 `_shared` 新增 `loadHomeBlocks` / `SearchResultList` / `SearchResultLink`
+- web：`hooks/useElementSize`、`hooks/useAvatarCropUpload`、`hooks/useGraphSelectionHighlight`、`components/async-task-columns`、
+  `components/UserSelect` 的 `UserSelectBase`、`utils/format` 的 `formatSecondsHuman` / `formatSecondsBetween` / `formatClock`、
+  `pages/report/widgets/dashboard-runtime` + `DashboardCanvasView`、会员前台 `StatCard` / `FieldRow`、
+  支付 `payment-form-fields` + `useAppMerchantConfigLookup`、消息模板 `message-template-form`、发送日志 `send-log-columns`；
+  Mock `crud.removeItem`
+- 新增测试：where-helpers、tasks 常量、json `getByPath`、form-runtime 比较规则、content-disposition、signed-token、
+  退订令牌 / 广告渲染凭证 / 草稿预览签名的线格式黄金测试、五套 CMS 主题搜索页与 default 详情页 HTML 快照、
+  `useElementSize`、`format` 时长函数
+
+### Changed
+
+- **日志查看器与日志文件统一读取内核**：`services/ops/log-reader`（环形缓冲 / gz / 关键词上下文 / 文件轮询追踪）
+  两处共用，日志查看器本机不再 spawn `tail`，远端 `.gz` 走 `gzip -dc`、关键词走 `grep` 管道；`log-viewer.content` 改返回
+  `lines[]` 并支持 keyword / context，stream 改为 SSE tail 与 log-files 同协议；前端两页改用同一 `LogWorkbench`（ANSI 着色），
+  深链 `?level=` / `?path=&hostId=` 保留
+- 全站滚动条统一为 token 驱动的细滚动条（6px 命中区、视觉 4px，明暗主题自动切换），删除侧边菜单 / 导航弹层 / 终端标签列各自覆写
+- **下载响应头**统一为 RFC 6266/5987（ASCII 回退 + `filename*=UTF-8''`）：此前 5 个端点的中文文件名会退化为固定名，
+  现按真实文件名下载；可内联预览的 MIME 白名单单点维护
+- 分页上限只由契约 `paginationQuery`（`pageSize` 1..200）守住：行为分析 / 监控告警 / 前端错误等 22 处服务层
+  `Math.min(pageSize, 100)` 之类二次夹紧删除
+- 时长展示口径统一：系统监控 / 工作流监控 / 维护 / 通话 / 终端录像等页的秒级时长统一为「3天2小时5分」
+  （不足 1 分钟显示秒），会话回放改用毫秒口径 `formatDurationMs`
+- 工作流表单跨字段比较：前端实时校验与服务端提交校验共用同一实现，默认提示文案统一为「大于等于 / 小于等于」
+  （与规则引擎比较算子标签一致）
+- 19 处手写「取消 + 确认」弹窗 / 抽屉页脚统一为 `ModalFooter`（取消 `tertiary`、确认 `solid`）；素材移动 / 编辑弹窗改为
+  按钮触发提交（不再依赖回车隐式提交）
+- 11 处裸 `ellipsis` 文本改用 `renderEllipsis`，空值占位统一为「—」
+- 公告附件复用业务文件通用查询，排序补 `id` 次序（同 `sortOrder` 时顺序稳定）
+- CMS 主题：五套主题搜索结果列表、三套主题首页栏目区块取数、default 详情 / 简洁详情正文段收口到共享件，
+  渲染 HTML 由快照锁定逐字节一致
+- HMAC 签名令牌（广告事件 / 渲染凭证 / 邮件退订 / 草稿预览）统一编解码实现，线格式逐字节不变（黄金测试锁定）
+- Demo Mock：64 个 handler 文件的按 id 取 / 改 / 删样板改用 `crud` 助手，自增 ID 统一 `nextIdFrom`
+
+### Fixed
+
+- 工作流表单日期类跨字段比较：服务端此前按 `new Date()` 解析，`YYYY-MM-DD` 与带时间的值混用时差出一个时区偏移，
+  与前端结论不一致；现统一经 dayjs 按本地时区解析
+- Demo Mock 空列表新增记录时 ID 为 `-Infinity`（`Math.max(...[])`）
+- xterm 滑块 hover 引用不存在的 `--semi-color-fill-3` 导致 hover 时透明
+
+---
+
 ## v2.24.0 - 2026-09-08
 
 **分片上传全面加固与推广**：修补分片上传的完整性漏洞（声明大小 / 内容哈希 / 分片边界均由服务端强制校验），
