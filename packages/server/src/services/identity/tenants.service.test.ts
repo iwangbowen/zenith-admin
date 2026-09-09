@@ -3,7 +3,7 @@
  *
  * 重点锁定 `listTenants` 的查询数：此前每行都发一条
  * `db.$count(users, eq(users.tenantId, r.id))`，而 pageSize 由调用方控制（上限 200），
- * 单个列表请求即可并发打出 200 条 COUNT，把默认 max=10 的连接池占满、拖垮同实例其他请求。
+ * 单个列表请求即可并发打出 200 条 COUNT，把默认 max=20 的连接池占满、拖垮同实例其他请求。
  * 现改为一条 GROUP BY 聚合，这里把「查询数与 pageSize 解耦」钉死。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';

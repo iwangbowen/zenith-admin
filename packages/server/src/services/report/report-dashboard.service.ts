@@ -12,6 +12,8 @@ import {
   reportDashboardCategories,
   reportDashboards,
   reportDashboardFavorites,
+  reportDatasets,
+  reportMetrics,
 } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
@@ -38,6 +40,7 @@ import {
 } from './report-access';
 import {
   ensureReportResourceAccess,
+  filterReportResourceRowsByAccess,
   listAccessibleReportResourceIds,
 } from './report-resource-acl.service';
 import {
@@ -464,6 +467,28 @@ export async function deleteDashboard(id: number): Promise<void> {
   await db.delete(reportDashboards).where(eq(reportDashboards.id, id));
 }
 
+/**
+ * 批量校验仪表盘引用的一类报表资源：存在性（租户范围内）与查看权限各一次查询，
+ * 与逐个 `ensureXxxExists()` 语义一致（缺失 404、无权 403），但查询数不随引用数增长——
+ * 此前 N 个引用就是 N 组并发的「行查询 + ACL 三路」，一次保存足以把共享连接池占满。
+ */
+async function loadReferencedReportResources<T extends { id: number; tenantId: number | null }>(
+  resourceType: Parameters<typeof filterReportResourceRowsByAccess>[0],
+  ids: ReadonlySet<number>,
+  missingMessage: string,
+  fetchRows: (ids: number[]) => Promise<T[]>,
+): Promise<T[]> {
+  if (ids.size === 0) return [];
+  const idList = [...ids];
+  const rows = await fetchRows(idList);
+  if (rows.length !== idList.length) throw new HTTPException(404, { message: missingMessage });
+  if (currentUserOrNull()) {
+    const accessible = await filterReportResourceRowsByAccess(resourceType, rows, 'viewer');
+    if (accessible.length !== rows.length) throw new HTTPException(403, { message: '无权访问该报表资源' });
+  }
+  return rows;
+}
+
 export async function ensureDashboardReferences(
   widgets: ReportWidget[],
   filters: ReportFilter[],
@@ -494,9 +519,15 @@ export async function ensureDashboardReferences(
     }
   }
   const [datasets, metrics, targetDashboards] = await Promise.all([
-    Promise.all([...datasetIds].map((datasetId) => ensureDatasetExists(datasetId))),
-    Promise.all([...metricIds].map((metricId) => ensureReportMetricExists(metricId))),
-    Promise.all([...targetDashboardIds].map((targetId) => ensureDashboardExists(targetId))),
+    loadReferencedReportResources('dataset', datasetIds, '数据集不存在', (ids) =>
+      db.select({ id: reportDatasets.id, tenantId: reportDatasets.tenantId }).from(reportDatasets)
+        .where(reportScopedWhere(reportDatasets, inArray(reportDatasets.id, ids)))),
+    loadReferencedReportResources('metric', metricIds, '指标不存在', (ids) =>
+      db.select({ id: reportMetrics.id, tenantId: reportMetrics.tenantId }).from(reportMetrics)
+        .where(reportScopedWhere(reportMetrics, inArray(reportMetrics.id, ids)))),
+    loadReferencedReportResources('dashboard', targetDashboardIds, '仪表盘不存在', (ids) =>
+      db.select({ id: reportDashboards.id, tenantId: reportDashboards.tenantId }).from(reportDashboards)
+        .where(reportScopedWhere(reportDashboards, inArray(reportDashboards.id, ids)))),
   ]);
   if (tenantId !== undefined) {
     const crossTenant = [...datasets, ...metrics, ...targetDashboards]

@@ -34,7 +34,12 @@ const envSchema = z.object({
   PUBLIC_BASE_URL: z.string().default('http://localhost:3300'),
   DATABASE_URL: z.string().min(1).default('postgresql://postgres:postgres@localhost:5432/zenith_admin'),
   CORS_ORIGIN: z.string().default('*'),
-  DATABASE_MAX_CONNECTIONS: z.coerce.number().int().positive().default(10),
+  /**
+   * 业务连接池上限（postgres-js `max`）。HTTP、WebSocket、任务 worker、事件订阅、指标采样与 CMS SSR 同进程共用这一个池，
+   * 列表接口 count + rows 并行即占 2 连接，仪表盘 / 统计类接口扇出更多；pg-boss（≈10）与 Mastra（10 + 5）另有独立池，
+   * 单实例对 PG 的连接总量 ≈ 本值 + 25，多实例部署须与 PG `max_connections` 核对（见 docs/guide/deployment.md）
+   */
+  DATABASE_MAX_CONNECTIONS: z.coerce.number().int().positive().default(20),
   DATABASE_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(20),
   DATABASE_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(10),
   DATABASE_SSL: envBool(false),

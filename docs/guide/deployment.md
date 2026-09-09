@@ -57,6 +57,7 @@ ALLOWED_ORIGINS=https://admin.example.com
 
 | 变量 | 用途 |
 | --- | --- |
+| `DATABASE_MAX_CONNECTIONS` | 业务连接池上限，默认 `20`。HTTP、WebSocket、任务 worker、事件订阅、指标采样与 CMS SSR 同进程共用这一个池；pg-boss（约 10）与 Mastra（10 + 5）另有独立连接池，因此**单实例对 PG 的连接总量 ≈ 该值 + 25**。多实例部署时须保证「实例数 × (该值 + 25)」低于 PostgreSQL 的 `max_connections`（默认 100），超出时前置 pgBouncer（会话池模式，事务池无法透传 LISTEN/NOTIFY）或调低该值；调低到 10 以下会让列表接口的 count + rows 并行与后台任务互相排队 |
 | `REQUEST_BODY_LIMIT` | 请求体大小上限，`0` 或未设置表示不启用全局限制（此时只有各上传端点按 `file.size` 自行拦截），生产环境务必设置（`.env.example` 示例为 64 MB，67108864）；至少要容纳一个分片（`files.chunkSizeMb`，最大 32 MB）加 multipart 开销，建议 ≥ 40 MB（41943040）；反向代理的 `client_max_body_size` 同理 |
 | `REQUEST_TIMEOUT_MS` | 请求超时，自动排除 `/api/ws`、`/api/files`、`/api/db-admin` 与 `/export` 接口 |
 | `UPLOAD_TEMP_DIR` | 分片上传本地暂存根目录，默认 `storage/tmp/uploads`；多实例部署见下文「多实例与本地存储」 |

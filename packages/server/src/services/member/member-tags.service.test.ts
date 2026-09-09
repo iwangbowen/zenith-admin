@@ -2,7 +2,7 @@
  * 会员标签服务单测。
  *
  * 重点锁定列表接口的查询数：`listMemberTags` 曾按行 `Promise.all(rows.map(db.$count(...)))`
- * 逐个统计绑定数，标签数越多并发查询越多（连接池默认 max=10，易被单请求占满）。
+ * 逐个统计绑定数，标签数越多并发查询越多（连接池默认 max=20，易被单请求占满）。
  * 现改为一条 GROUP BY 聚合，这里用「select 调用次数 + $count 未被调用」把回归钉住。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';

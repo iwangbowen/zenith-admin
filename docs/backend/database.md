@@ -10,7 +10,10 @@
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/zenith_admin
 ```
 
-运行时连接池参数由 `config.database` 控制，`db/index.ts` 使用 `postgres` + `drizzle-orm/postgres-js` 创建单例连接。
+运行时连接池参数由 `config.database` 控制（`DATABASE_MAX_CONNECTIONS` 默认 20、`DATABASE_IDLE_TIMEOUT_SECONDS` 默认 20、
+`DATABASE_CONNECT_TIMEOUT_SECONDS` 默认 10），`db/index.ts` 使用 `postgres` + `drizzle-orm/postgres-js` 创建单例连接池。
+这一个池由 HTTP、WebSocket、任务 worker、事件订阅、指标采样与 CMS SSR 同进程共用；pg-boss 与 Mastra 各自另开独立连接池，
+容量核算与多实例部署的取值见 [部署指南](../guide/deployment.md)。
 
 ## 迁移流程
 

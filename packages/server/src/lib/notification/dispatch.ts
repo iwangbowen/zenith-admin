@@ -29,7 +29,7 @@ import type { ResolvedRecipient } from './types';
 /**
  * 进程内同时在飞的渠道投递上限（跨 outbox 行、跨触发入口）。
  * 一行事件展开成「收件人 × 渠道」后不再无界并发：一次 300 人的群发不会同时打开 300 个 SMTP / HTTP 连接，
- * 定时补投与请求内立即派发叠加时总量也被钉在这里。数值按共享的数据库连接池（默认 10）与 SMTP 连接池（5）取。
+ * 定时补投与请求内立即派发叠加时总量也被钉在这里。数值按共享的数据库连接池（默认 20）与 SMTP 连接池（5）取。
  */
 export const NOTIFICATION_DELIVERY_CONCURRENCY = 32;
 const deliveryLimiter = createConcurrencyLimiter(NOTIFICATION_DELIVERY_CONCURRENCY);
