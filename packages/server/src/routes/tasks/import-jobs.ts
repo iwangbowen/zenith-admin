@@ -11,6 +11,7 @@ import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { mapAsyncTask } from '../../lib/task-center/map';
 import { registerImportDefinitions } from '../../lib/import-center/definitions';
 import { getImportTemplate, listImportEntities, submitImportJob } from '../../services/tasks/import-jobs.service';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 registerImportDefinitions();
 
@@ -29,7 +30,7 @@ const templateRoute = defineContractRoute(importJobContract.template, {
     return new Response(buffer, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        'Content-Disposition': attachmentDisposition(filename),
         'X-Content-Type-Options': 'nosniff',
       },
     }) as never;

@@ -18,6 +18,7 @@ import {
 } from '../../services/cms/cms-open-grants.service';
 import { formatFileTimestamp } from '../../lib/datetime';
 import { assertAllCmsSiteChannelsAccess } from '../../services/cms/cms-channels.service';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -186,7 +187,7 @@ const exportSiteRoute = defineContractRoute(cmsSiteContract.export, {
       status: 200,
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        'Content-Disposition': attachmentDisposition(filename),
         'Cache-Control': 'no-store',
       },
     });

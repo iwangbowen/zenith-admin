@@ -50,6 +50,7 @@ import {
   getSchemaDrift,
 } from '../../services/ops/db-admin-ops.service';
 import { getDbTerminalAvailability } from '../../services/ops/db-admin-terminal.service';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -61,7 +62,7 @@ const audited = (permission: string, description: string, recordBody = true) =>
 function downloadHeaders(contentType: string, filename: string): Record<string, string> {
   return {
     'Content-Type': contentType,
-    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Content-Disposition': attachmentDisposition(filename),
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
   };

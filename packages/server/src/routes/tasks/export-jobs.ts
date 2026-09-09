@@ -17,6 +17,7 @@ import {
 } from '../../services/tasks/export-jobs.service';
 import { registerExportDefinitions } from '../../lib/export-center/definitions';
 import { getClientIp } from '../../lib/request-helpers';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 registerExportDefinitions();
 
@@ -54,7 +55,7 @@ const downloadRoute = defineContractRoute(exportJobContract.download, {
       headers: {
         'Content-Type': file.contentType,
         'Content-Length': String(file.size),
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
+        'Content-Disposition': attachmentDisposition(file.filename),
         'X-Content-Type-Options': 'nosniff',
       },
     }) as never;

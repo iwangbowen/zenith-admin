@@ -12,6 +12,7 @@ import {
 import { TAIL_REPLAY_LINES } from '../../services/ops/log-reader';
 import { assertRemoteHostAccess } from '../../lib/host-access';
 import { streamLogTail } from '../../lib/http-stream';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -45,7 +46,7 @@ const downloadRoute = defineContractRoute(logViewerContract.download, {
       throw new HTTPException(400, { message: (e as Error).message });
     }
     c.header('Content-Type', 'application/octet-stream');
-    c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(file.filename)}"`);
+    c.header('Content-Disposition', attachmentDisposition(file.filename));
     c.header('Content-Length', String(file.size));
     return stream(c, async (s) => {
       s.onAbort(() => { file.stream.destroy(); });

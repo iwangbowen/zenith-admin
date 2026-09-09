@@ -49,6 +49,7 @@ import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { runAsUser } from '../../lib/audit-context';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 /** 全量存储配置 id→row 映射（配置表行数极少），供列表映射直链使用 */
 export async function getStorageConfigMap(): Promise<Map<number, FileStorageConfigRow>> {
@@ -84,7 +85,7 @@ async function withStorageConfig(file: typeof managedFiles.$inferSelect) {
 export async function getFileAccessUrl(id: string, purpose?: 'preview' | 'download') {
   const { file, storageConfig } = await getStoredFileForRead(id);
   const contentDisposition = purpose === 'download'
-    ? `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`
+    ? attachmentDisposition(file.originalName)
     : undefined;
   const result = await resolveFileAccessUrl(file, storageConfig, { contentDisposition });
   return {

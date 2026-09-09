@@ -20,6 +20,7 @@ import {
   hostFileWriteText,
 } from '../../services/ops/host-files.service';
 import { assertContentLengthWithinLimit } from '../../services/ops/terminal-files.service';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 const FILE_PERM = 'system:file:use';
@@ -117,7 +118,7 @@ const downloadRoute = defineContractRoute(hostFileContract.download, {
       headers: {
         'Content-Type': 'application/octet-stream',
         'Content-Length': String(file.size),
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+        'Content-Disposition': attachmentDisposition(file.fileName),
         'X-Content-Type-Options': 'nosniff',
       },
     });

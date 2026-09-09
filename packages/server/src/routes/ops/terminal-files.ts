@@ -27,6 +27,7 @@ import {
   computeDirSize,
   searchFiles,
 } from '../../services/ops/terminal-files.service';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 /**
  * Web 终端文件浏览/传输路由
@@ -61,7 +62,7 @@ const downloadRoute = defineContractRoute(terminalFileContract.download, {
     return new Response(Readable.toWeb(stream) as ReadableStream, {
       headers: {
         'Content-Type': 'application/octet-stream',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        'Content-Disposition': attachmentDisposition(fileName),
         'X-Content-Type-Options': 'nosniff',
       },
     });

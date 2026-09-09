@@ -23,6 +23,7 @@ import {
   reportAppReleaseEvent,
   resolvePublicArtifact,
 } from '../../services/ops/app-releases.service';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -105,7 +106,7 @@ const downloadRoute = defineContractRoute(publicAppReleaseContract.download, {
       status: range ? 206 : 200,
       headers: {
         'Content-Type': storedFile.contentType,
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(artifact.fileName)}`,
+        'Content-Disposition': attachmentDisposition(artifact.fileName),
         ...rangeContentHeaders(range, file.size),
         ...baseHeaders,
       },

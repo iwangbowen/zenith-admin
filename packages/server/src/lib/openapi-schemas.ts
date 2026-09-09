@@ -9,6 +9,7 @@
  */
 import { z, type Hook } from '@hono/zod-openapi';
 import type { Context } from 'hono';
+import { attachmentDisposition } from './content-disposition';
 
 /**
  * 统一验证失败 Hook：将 Zod 校验错误转为 { code: 400, message, data: null }
@@ -195,7 +196,7 @@ export function okCsv(description = 'CSV 文件') {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function csvStreamBody(c: Context<any>, stream: ReadableStream, filename: string): never {
   c.header('Content-Type', 'text/csv; charset=utf-8');
-  c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+  c.header('Content-Disposition', attachmentDisposition(filename));
   return new Response(stream) as never;
 }
 
@@ -218,7 +219,7 @@ export function fileBody(content: string, filename: string, contentType: string)
   return new Response(content, {
     headers: {
       'Content-Type': contentType,
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+      'Content-Disposition': attachmentDisposition(filename),
     },
   }) as never;
 }

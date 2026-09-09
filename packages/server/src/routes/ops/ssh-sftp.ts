@@ -20,6 +20,7 @@ import {
   sftpUpload,
 } from '../../services/ops/ssh-sftp.service';
 import { assertContentLengthWithinLimit } from '../../services/ops/terminal-files.service';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 /**
  * SSH 远程文件（SFTP）路由
@@ -115,7 +116,7 @@ const downloadRoute = defineContractRoute(sshSftpContract.download, {
     return new Response(Readable.toWeb(stream) as ReadableStream, {
       headers: {
         'Content-Type': 'application/octet-stream',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        'Content-Disposition': attachmentDisposition(fileName),
         'X-Content-Type-Options': 'nosniff',
       },
     });

@@ -28,6 +28,7 @@ import {
 import { listRecentNodes, listSharedWithMe, listStarredNodes, searchDriveNodes } from '../../services/drive/drive-views.service';
 import { batchDownloadDriveNodes } from '../../services/drive/drive-tasks.service';
 import { ensureDriveUploadDirectories } from '../../services/drive/drive-directories.service';
+import { attachmentDisposition, inlineOrAttachmentDisposition } from '../../lib/content-disposition';
 
 /**
  * 网盘节点静态路径路由（列表 / 个人视图 / 回收站 / 批量操作 / 上传）。
@@ -38,20 +39,6 @@ const AUDIT = { module: '企业网盘' } as const;
 
 const read = [authMiddleware, guard({ permission: 'drive:node:list' })] as const;
 const upload = [authMiddleware, guard({ permission: 'drive:node:upload' })] as const;
-
-/** 可内联渲染的 MIME 白名单（与文件中心 `fileContract.content` 一致：可能含脚本的类型强制附件下载） */
-const SAFE_INLINE_MIME_TYPES = new Set([
-  'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/ico', 'image/x-icon', 'image/avif',
-  'video/mp4', 'video/webm', 'video/ogg',
-  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm',
-  'application/pdf',
-]);
-
-export function driveContentDisposition(mimeType: string, fileName: string, forceAttachment: boolean): string {
-  const normalized = mimeType.split(';')[0].trim().toLowerCase();
-  const disposition = !forceAttachment && SAFE_INLINE_MIME_TYPES.has(normalized) ? 'inline' : 'attachment';
-  return `${disposition}; filename*=UTF-8''${encodeURIComponent(fileName)}`;
-}
 
 /** 受控内容流式响应（登录接口与外链接口共用） */
 export function streamStoredContent(input: {
@@ -68,7 +55,7 @@ export function streamStoredContent(input: {
     status: input.range ? 206 : 200,
     headers: {
       'Content-Type': input.contentType,
-      'Content-Disposition': driveContentDisposition(input.contentType, input.fileName, input.download),
+      'Content-Disposition': inlineOrAttachmentDisposition(input.contentType, input.fileName, input.download),
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'private, no-store',
       ETag: input.etag,
@@ -188,7 +175,7 @@ const batchDownloadRoute = defineContractRoute(driveNodeContract.batchDownload, 
     return new Response(result.stream, {
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}`,
+        'Content-Disposition': attachmentDisposition(result.filename),
         'Cache-Control': 'private, no-store',
       },
     });

@@ -12,6 +12,7 @@ import { ensureNodeRole } from './drive-access.service';
 import { logDriveActivity, touchDriveRecent } from './drive-activity.service';
 import { ensureDriveNodeExists } from './drive-nodes.service';
 import { ensureVersionExists } from './drive-upload.service';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 export interface PreparedContent {
   node: DriveNodeRow;
@@ -75,7 +76,7 @@ export async function getDriveNodeAccessUrl(nodeId: number, purpose: 'preview' |
   await ensureNodeRole(node, purpose === 'download' ? 'downloader' : 'viewer');
   const { file, storageConfig } = await resolveNodeFile(node);
   const contentDisposition = purpose === 'download'
-    ? `attachment; filename*=UTF-8''${encodeURIComponent(node.name)}`
+    ? attachmentDisposition(node.name)
     : undefined;
   const result = await resolveFileAccessUrl(file, storageConfig, { contentDisposition });
   if (result.strategy === 'proxy') {

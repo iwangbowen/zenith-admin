@@ -11,6 +11,7 @@ import {
   listLogFiles, readLogFileLines, deleteLogFile, resolveLogFile, getLogFileBeforeAudit,
 } from '../../services/ops/log-files.service';
 import { TAIL_REPLAY_LINES, readTailLinesStream, watchTail } from '../../services/ops/log-reader';
+import { attachmentDisposition } from '../../lib/content-disposition';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -61,7 +62,7 @@ const downloadRoute = defineContractRoute(logFileContract.download, {
     return new Response(webStream, {
       headers: {
         'Content-Type': 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(name)}"`,
+        'Content-Disposition': attachmentDisposition(name),
         'Content-Length': String(stat.size),
       },
     });
