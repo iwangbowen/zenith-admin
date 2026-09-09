@@ -5,10 +5,9 @@
  * 由后台「生成预览链接」接口签发（默认 2 小时有效），前台渲染时校验签名与有效期，
  * 无需登录即可查看，杜绝把草稿正文粘贴到聊天工具的原始流程。
  */
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { CMS_PREVIEW_PREFIX } from '@zenith/shared/cms';
-import { config } from '../../config';
 import { formatDateTime } from '../../lib/datetime';
+import { constantTimeEqual, hmacSha256 } from '../../lib/signed-token';
 import { ensureCmsContentExists } from './cms-contents.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { assertChannelAccess } from './cms-channels.service';
@@ -16,7 +15,7 @@ import { assertChannelAccess } from './cms-channels.service';
 const PREVIEW_TTL_SECONDS = 2 * 60 * 60;
 
 function sign(contentId: number, exp: number): string {
-  return createHmac('sha256', config.jwtSecret).update(`cms-preview:${contentId}:${exp}`).digest('hex');
+  return hmacSha256(`cms-preview:${contentId}:${exp}`, 'hex');
 }
 
 export interface CmsPreviewLink {
@@ -42,7 +41,5 @@ export async function createContentPreviewLink(contentId: number): Promise<CmsPr
 /** 校验预览签名（常量时间比较，防时序攻击） */
 export function verifyContentPreviewToken(contentId: number, exp: number, sig: string): boolean {
   if (!Number.isInteger(exp) || exp * 1000 < Date.now() || !sig) return false;
-  const expected = Buffer.from(sign(contentId, exp));
-  const provided = Buffer.from(sig);
-  return expected.length === provided.length && timingSafeEqual(expected, provided);
+  return constantTimeEqual(sig, sign(contentId, exp));
 }

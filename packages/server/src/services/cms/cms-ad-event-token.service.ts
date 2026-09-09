@@ -1,9 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
-import {
-  createHmac,
-  randomUUID,
-  timingSafeEqual,
-} from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { CmsAdEventType } from '@zenith/shared/cms';
@@ -11,6 +7,7 @@ import { config } from '../../config';
 import { db } from '../../db';
 import { cmsAds, cmsAdSlots, cmsSites } from '../../db/schema';
 import redis from '../../lib/redis';
+import { createSignedTokenCodec } from '../../lib/signed-token';
 import { normalizeCmsAdClickUrl } from './cms-ad-events.service';
 import { hashCmsIp, hashCmsVisitor } from './cms-visitor';
 import { verifyCmsAdRenderProof } from './cms-ad-render-proof';
@@ -38,29 +35,16 @@ export interface CmsIssuedAdEventTokens {
   clickToken: string | null;
 }
 
-function signature(encodedPayload: string): string {
-  return createHmac('sha256', config.jwtSecret)
-    .update(`${TOKEN_VERSION}.${encodedPayload}`)
-    .digest('base64url');
-}
+const codec = createSignedTokenCodec<CmsAdEventTokenPayload>({ version: TOKEN_VERSION });
 
 export function signCmsAdEventToken(payload: CmsAdEventTokenPayload): string {
-  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  return `${TOKEN_VERSION}.${encoded}.${signature(encoded)}`;
+  return codec.encode(payload);
 }
 
 function parseSignedToken(token: string): CmsAdEventTokenPayload {
-  const [version, encoded, actualSignature, ...extra] = token.split('.');
-  if (version !== TOKEN_VERSION || !encoded || !actualSignature || extra.length > 0) {
-    throw new HTTPException(403, { message: '广告事件令牌无效' });
-  }
-  const expected = Buffer.from(signature(encoded));
-  const actual = Buffer.from(actualSignature);
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-    throw new HTTPException(403, { message: '广告事件令牌无效' });
-  }
+  const payload = codec.decode(token);
+  if (!payload) throw new HTTPException(403, { message: '广告事件令牌无效' });
   try {
-    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as CmsAdEventTokenPayload;
     if (
       payload.version !== 1
       || !payload.nonce

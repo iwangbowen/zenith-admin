@@ -1,6 +1,5 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
-import { config } from '../../config';
+import { createSignedTokenCodec } from '../../lib/signed-token';
 
 const PROOF_VERSION = 'rp1';
 
@@ -12,11 +11,7 @@ export interface CmsAdRenderProofPayload {
   path: string;
 }
 
-function signature(encoded: string): string {
-  return createHmac('sha256', config.jwtSecret)
-    .update(`${PROOF_VERSION}.${encoded}`)
-    .digest('base64url');
-}
+const codec = createSignedTokenCodec<CmsAdRenderProofPayload>({ version: PROOF_VERSION });
 
 export function resolveCmsRenderedPagePath(input: {
   baseUrl: string;
@@ -36,22 +31,13 @@ export function resolveCmsRenderedPagePath(input: {
 }
 
 export function signCmsAdRenderProof(payload: CmsAdRenderProofPayload): string {
-  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  return `${PROOF_VERSION}.${encoded}.${signature(encoded)}`;
+  return codec.encode(payload);
 }
 
 export function verifyCmsAdRenderProof(token: string): CmsAdRenderProofPayload {
-  const [version, encoded, actualSignature, ...extra] = token.split('.');
-  if (version !== PROOF_VERSION || !encoded || !actualSignature || extra.length > 0) {
-    throw new HTTPException(403, { message: '广告渲染凭证无效' });
-  }
-  const expected = Buffer.from(signature(encoded));
-  const actual = Buffer.from(actualSignature);
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-    throw new HTTPException(403, { message: '广告渲染凭证无效' });
-  }
+  const payload = codec.decode(token);
+  if (!payload) throw new HTTPException(403, { message: '广告渲染凭证无效' });
   try {
-    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as CmsAdRenderProofPayload;
     if (
       payload.version !== 1
       || !Number.isInteger(payload.siteId)
