@@ -2,7 +2,7 @@
  * 接入 Semi Form 的自定义控件：关联审批单 / 远程数据源 / 手写签名 / 人员 / 富文本 / 附件上传，
  * 以及现成组件（地区 / 部门 / 字典 / 颜色 / 评分）的 withField 包装。
  */
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Button, Rating, Select, Space, Spin, Typography, withField } from '@douyinfe/semi-ui';
 import { Eraser } from 'lucide-react';
@@ -14,6 +14,7 @@ import RegionSelect from '@/components/RegionSelect';
 import DepartmentSelect from '@/components/DepartmentSelect';
 import DictSelect from '@/components/DictSelect';
 import ColorPickerInput from '@/components/ColorPickerInput';
+import { UserSelectBase, type UserSelectProps } from '@/components/UserSelect';
 import type { RichTextEditorProps } from '@/components/RichTextEditor';
 import { useWorkflowDesignerRelationOptions, useWorkflowDesignerRemoteDataSourceOptions } from '@/hooks/queries/workflow-designer';
 import { useWorkflowSelectableUsers } from '@/hooks/queries/workflow-shared';
@@ -225,47 +226,9 @@ function RichTextEditorField(props: Readonly<RichTextEditorProps>) {
  * 不用系统管理接口 /api/users/all（要求 system:user:list，普通发起人 403 拿不到任何选项），
  * 统一走面向普通发起人/审批人开放的 /api/workflows/selectable-users（与转办/委派/抄送等选人一致）。
  */
-interface WorkflowUserSelectProps {
-  value?: number | number[];
-  onChange?: (value: number | number[] | undefined) => void;
-  multiple?: boolean;
-  placeholder?: string;
-  disabled?: boolean;
-  showClear?: boolean;
-  style?: CSSProperties;
-}
-
-function WorkflowUserSelect({
-  value,
-  onChange,
-  multiple = false,
-  placeholder = '请选择人员',
-  disabled = false,
-  showClear = true,
-  style,
-}: Readonly<WorkflowUserSelectProps>) {
+function WorkflowUserSelect(props: Readonly<UserSelectProps>) {
   const { data: users, isPending: loading } = useWorkflowSelectableUsers();
-  const optionList = useMemo(
-    () => (users ?? []).map((u) => ({
-      value: u.id,
-      label: u.departmentName ? `${u.nickname}（${u.departmentName}）` : u.nickname,
-    })),
-    [users],
-  );
-  return (
-    <Select
-      value={value as never}
-      onChange={(v) => onChange?.(v as number | number[] | undefined)}
-      multiple={multiple}
-      filter
-      placeholder={loading ? '加载中...' : placeholder}
-      disabled={disabled || loading}
-      showClear={showClear}
-      maxTagCount={3}
-      style={{ width: '100%', ...style }}
-      optionList={optionList}
-    />
-  );
+  return <UserSelectBase {...props} users={users} loading={loading} />;
 }
 
 // ─── 附件 / 图片上传（接入 Form，存 {name,url,size} 数组） ──────────────

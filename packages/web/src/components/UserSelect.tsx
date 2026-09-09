@@ -13,11 +13,25 @@ export interface UserSelectProps {
   style?: CSSProperties;
 }
 
+/** 选人数据源的最小形状：系统全量用户与工作流可选人员都满足 */
+export interface UserSelectOptionSource {
+  id: number;
+  nickname: string;
+  departmentName?: string | null;
+}
+
+export interface UserSelectBaseProps extends UserSelectProps {
+  users: readonly UserSelectOptionSource[] | undefined;
+  loading: boolean;
+}
+
 /**
- * 用户选择器 — 与系统用户体系集成，复用 useAllUsers 域 hook。
- * 支持单选 / 多选，可直接用于 Semi Form（withField 包裹）。
+ * 用户选择器渲染体（不含数据源）：单选 / 多选、可搜索、加载中禁用。
+ * 不同权限范围的选人数据源（系统全量 / 工作流可选人员）各自取数后交给它渲染。
  */
-export default function UserSelect({
+export function UserSelectBase({
+  users,
+  loading,
   value,
   onChange,
   multiple = false,
@@ -25,9 +39,7 @@ export default function UserSelect({
   disabled = false,
   showClear = true,
   style,
-}: Readonly<UserSelectProps>) {
-  const { data: users, isPending: loading } = useAllUsers();
-
+}: Readonly<UserSelectBaseProps>) {
   const optionList = useMemo(
     () => (users ?? []).map((u) => ({
       value: u.id,
@@ -50,4 +62,13 @@ export default function UserSelect({
       optionList={optionList}
     />
   );
+}
+
+/**
+ * 用户选择器 — 与系统用户体系集成，复用 useAllUsers 域 hook（需要 system:user:list）。
+ * 支持单选 / 多选，可直接用于 Semi Form（withField 包裹）。
+ */
+export default function UserSelect(props: Readonly<UserSelectProps>) {
+  const { data: users, isPending: loading } = useAllUsers();
+  return <UserSelectBase {...props} users={users} loading={loading} />;
 }
