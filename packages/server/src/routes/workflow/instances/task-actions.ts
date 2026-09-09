@@ -21,7 +21,7 @@ export const approveRoute = defineContractRoute(workflowTaskContract.approve, {
 
 export const selectableNextApproversRoute = defineContractRoute(workflowTaskContract.selectableNextApprovers, {
   middleware: [authMiddleware, guard({ permission: 'workflow:task:handle' })] as const,
-  handler: async (c) => c.json(okBody(await listTaskSelectableNextApprovers(c.req.valid('param').taskId)), 200),
+  handler: async (c) => c.json(okBody(await listTaskSelectableNextApprovers(c.req.valid('param').taskId, c.req.valid('query'))), 200),
 });
 
 export const rejectRoute = defineContractRoute(workflowTaskContract.reject, {

@@ -26,14 +26,25 @@ import { workflowInstanceSchema, workflowTaskConsultSchema, workflowTaskSchema, 
 /**
  * 审批时「下一节点审批人自选」的候选分组：每个紧邻的下一 approverSelect 节点一组，
  * 候选人已按节点配置的范围（成员 / 角色 / 部门 / 用户组）在服务端解析收窄。
+ * 每组最多返回 `limit` 人；`truncated` 为 true 时应带 `nodeKey` + `keyword` 远程搜索，而不是把整个组织拉到前端。
  */
 export const workflowSelectableNextApproverGroupSchema = z.object({
   nodeKey: z.string(),
   label: z.string(),
   selectableApprovers: z.array(z.object({ id: z.int(), name: z.string() })),
+  truncated: z.boolean().meta({ description: '候选超过 limit 被截断，需按关键词搜索' }),
 }).meta({ id: 'WorkflowSelectableNextApproverGroup' });
 
 export type WorkflowSelectableNextApproverGroup = z.infer<typeof workflowSelectableNextApproverGroupSchema>;
+
+export const workflowSelectableNextApproversQuery = z.object({
+  /** 只返回该节点的分组：按组远程搜索时传入，避免一个组的关键词过滤掉其它组 */
+  nodeKey: z.string().max(100).optional().meta({ description: '只取该下游节点的候选' }),
+  keyword: z.string().trim().max(50).optional().meta({ description: '按姓名 / 用户名模糊匹配' }),
+  limit: z.coerce.number().int().min(1).max(200).default(50).meta({ description: '每组候选上限' }),
+});
+
+export type WorkflowSelectableNextApproversQueryInput = z.infer<typeof workflowSelectableNextApproversQuery>;
 
 export const workflowBatchActionResultSchema = z.object({
   taskId: z.int(),
@@ -153,7 +164,7 @@ export const workflowTaskContract = defineContract('/api/workflows', {
   batchApprove: op.post('/tasks/batch-approve', { body: batchApproveWorkflowTaskSchema, response: workflowBatchActionResponseSchema, summary: '批量审批通过' }),
   batchReject: op.post('/tasks/batch-reject', { body: batchRejectWorkflowTaskSchema, response: workflowBatchActionResponseSchema, summary: '批量审批驳回' }),
   approve: op.post('/tasks/{taskId}/approve', { params: workflowTaskIdParam, body: approveWorkflowTaskSchema, response: workflowInstanceSchema, summary: '审批通过' }),
-  selectableNextApprovers: op.get('/tasks/{taskId}/selectable-next-approvers', { params: workflowTaskIdParam, response: z.array(workflowSelectableNextApproverGroupSchema), summary: '下一节点自选审批人候选' }),
+  selectableNextApprovers: op.get('/tasks/{taskId}/selectable-next-approvers', { params: workflowTaskIdParam, query: workflowSelectableNextApproversQuery, response: z.array(workflowSelectableNextApproverGroupSchema), summary: '下一节点自选审批人候选（每组限量，可按节点关键词搜索）' }),
   reject: op.post('/tasks/{taskId}/reject', { params: workflowTaskIdParam, body: rejectWorkflowTaskSchema, response: workflowInstanceSchema, summary: '审批驳回' }),
   transfer: op.post('/tasks/{taskId}/transfer', { params: workflowTaskIdParam, body: transferWorkflowTaskSchema, response: workflowTaskSchema, summary: '转办' }),
   reassign: op.post('/tasks/{taskId}/reassign', { params: workflowTaskIdParam, body: reassignWorkflowTaskSchema, response: workflowTaskSchema, summary: '管理员改派处理人' }),

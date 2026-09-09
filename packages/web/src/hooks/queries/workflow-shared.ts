@@ -3,6 +3,12 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { workflowDefinitionContract, workflowInstanceContract, workflowTaskContract, type WorkflowDefinition, type WorkflowInstance, type WorkflowSelectableUser } from '@zenith/shared/workflow';
 import { api } from '@/lib/contract-query';
 
+/** 按组远程搜索「下一节点自选审批人」：只针对一个下游节点，避免关键词过滤掉其它组 */
+export interface WorkflowNextApproverSearch {
+  nodeKey: string;
+  keyword: string;
+}
+
 export const workflowSharedKeys = {
   all: ['workflow'] as const,
   approvalPreviews: ['workflow', 'approval-preview'] as const,
@@ -10,8 +16,8 @@ export const workflowSharedKeys = {
     ['workflow', 'approval-preview', definitionId ?? null, reloadKey ?? 0] as const,
   instanceDetails: ['workflow', 'instance-detail'] as const,
   instanceDetail: (instanceId: number | null | undefined) => ['workflow', 'instance-detail', instanceId ?? null] as const,
-  selectableNextApprovers: (taskId: number | null | undefined) =>
-    ['workflow', 'selectable-next-approvers', taskId ?? null] as const,
+  selectableNextApprovers: (taskId: number | null | undefined, search?: WorkflowNextApproverSearch) =>
+    ['workflow', 'selectable-next-approvers', taskId ?? null, search ?? null] as const,
   selectableUsers: ['workflow', 'selectable-users'] as const,
 };
 
@@ -53,10 +59,21 @@ export function useWorkflowInstanceWithDefinition(instanceId: number | null | un
   });
 }
 
-export function useWorkflowSelectableNextApprovers(taskId: number | null | undefined, enabled = true) {
+/**
+ * 下游「自选下一审批人」候选分组。不传 `search` 取全部分组（每组限量，`truncated` 标记截断）；
+ * 传 `search` 只取该节点按关键词过滤后的候选，供 truncated 的组做远程搜索。
+ */
+export function useWorkflowSelectableNextApprovers(
+  taskId: number | null | undefined,
+  enabled = true,
+  search?: WorkflowNextApproverSearch,
+) {
   return useQuery({
-    queryKey: workflowSharedKeys.selectableNextApprovers(taskId),
-    queryFn: () => api(workflowTaskContract.selectableNextApprovers, { params: { taskId: taskId as number } }),
+    queryKey: workflowSharedKeys.selectableNextApprovers(taskId, search),
+    queryFn: () => api(workflowTaskContract.selectableNextApprovers, {
+      params: { taskId: taskId as number },
+      query: search ? { nodeKey: search.nodeKey, keyword: search.keyword } : {},
+    }),
     enabled: enabled && taskId != null,
     placeholderData: keepPreviousData,
   });

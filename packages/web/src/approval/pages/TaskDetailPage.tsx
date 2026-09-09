@@ -117,6 +117,12 @@ export default function TaskDetailPage() {
   // 下游「自选下一审批人」节点（有则同意时必选）；转办候选用户
   const nextApproversQuery = useSelectableNextApprovers(taskId, actionable);
   const nextGroups = useMemo(() => nextApproversQuery.data ?? [], [nextApproversQuery.data]);
+  // 候选被服务端限量截断的组：抽屉里的搜索词按组远程检索，不把整个组织拉到手机上
+  const [nextSearch, setNextSearch] = useState<{ nodeKey: string; keyword: string } | null>(null);
+  const nextSearchQuery = useSelectableNextApprovers(taskId, actionable && !!nextSearch, nextSearch ?? undefined);
+  const searchedCandidates = (nodeKey: string) => (nextSearch?.nodeKey === nodeKey
+    ? nextSearchQuery.data?.find((g) => g.nodeKey === nodeKey)?.selectableApprovers ?? []
+    : null);
   const usersQuery = useApprovalUsers(action === 'transfer');
   const transferCandidates = useMemo(
     () => (usersQuery.data ?? [])
@@ -477,6 +483,7 @@ export default function TaskDetailPage() {
           {action === 'approve' && nextGroups.map((g) => {
             const ids = selectedNext[g.nodeKey] ?? [];
             const missing = highlightNextMissing && ids.length === 0;
+            const searched = searchedCandidates(g.nodeKey);
             return (
               <div key={g.nodeKey} style={{ marginBottom: 12 }}>
                 <Typography.Text type="secondary" size="small" style={{ display: 'block', marginBottom: 6 }}>
@@ -484,7 +491,12 @@ export default function TaskDetailPage() {
                 </Typography.Text>
                 <ApproverPickerField
                   title={g.label}
-                  candidates={g.selectableApprovers}
+                  candidates={searched ?? g.selectableApprovers}
+                  truncated={g.truncated}
+                  loading={searched !== null && nextSearchQuery.isFetching}
+                  onSearch={g.truncated
+                    ? (keyword) => setNextSearch(keyword ? { nodeKey: g.nodeKey, keyword } : null)
+                    : undefined}
                   value={ids}
                   onChange={(next) => {
                     setSelectedNext((prev) => ({ ...prev, [g.nodeKey]: next }));

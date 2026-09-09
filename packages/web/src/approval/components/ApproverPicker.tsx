@@ -1,11 +1,16 @@
 /**
  * 移动端人员选择组件：触发字段 + 底部抽屉（搜索、头像列表、勾选、确认）。
  * 供发起自选审批人、审批时自选下一节点审批人、转办选人三处复用。
+ *
+ * 传入 `onSearch` 即进入远程搜索模式：候选由服务端按关键词返回（`candidates` 已过滤，本地不再二次过滤），
+ * 抽屉里的搜索词防抖后回传给父级；`truncated` 用于提示「候选人较多，仅显示部分」。
  */
-import { useMemo, useState } from 'react';
-import { Button, Empty, Input, SideSheet, Spin, Tag } from '@douyinfe/semi-ui';
+import { useEffect, useMemo, useState } from 'react';
+import { Button, Empty, Input, SideSheet, Spin, Tag, Typography } from '@douyinfe/semi-ui';
+import { useDebouncedValue } from '@tanstack/react-pacer';
 import { Check, ChevronRight, Search } from 'lucide-react';
 import { UserAvatar } from '@/components/UserAvatar';
+import { useEventCallback } from '@/hooks/useEventCallback';
 
 export interface ApproverCandidate {
   id: number;
@@ -25,6 +30,10 @@ interface ApproverPickerFieldProps {
   error?: boolean;
   loading?: boolean;
   disabled?: boolean;
+  /** 远程搜索：抽屉搜索词（防抖 300ms）回传，父级据此重新取 `candidates` */
+  onSearch?: (keyword: string) => void;
+  /** 候选超过服务端限量被截断，提示用户输入姓名搜索 */
+  truncated?: boolean;
 }
 
 export default function ApproverPickerField({
@@ -37,19 +46,32 @@ export default function ApproverPickerField({
   error = false,
   loading = false,
   disabled = false,
+  onSearch,
+  truncated = false,
 }: Readonly<ApproverPickerFieldProps>) {
   const [visible, setVisible] = useState(false);
   const [keyword, setKeyword] = useState('');
   // 抽屉内草稿选择，点「确认」才回写（单选模式点击即回写并关闭）
   const [draft, setDraft] = useState<number[]>([]);
+  // 远程搜索后候选会换成另一批人：已选中者的姓名在勾选时记下来，芯片与标签不退化成「用户#id」
+  const [pickedNames, setPickedNames] = useState<ReadonlyMap<number, string>>(new Map());
 
-  const nameById = useMemo(() => new Map(candidates.map((c) => [c.id, c.name])), [candidates]);
+  const remote = onSearch !== undefined;
+  const emitSearch = useEventCallback((next: string) => onSearch?.(next));
+  const [debouncedKeyword] = useDebouncedValue(keyword.trim(), { wait: 300 });
+  useEffect(() => {
+    if (remote) emitSearch(debouncedKeyword);
+  }, [remote, debouncedKeyword, emitSearch]);
+
+  const candidateNames = useMemo(() => new Map(candidates.map((c) => [c.id, c.name])), [candidates]);
+  const nameOf = (id: number) => candidateNames.get(id) ?? pickedNames.get(id) ?? `用户#${id}`;
 
   const filtered = useMemo(() => {
+    if (remote) return candidates;
     const kw = keyword.trim().toLowerCase();
     if (!kw) return candidates;
     return candidates.filter((c) => c.name.toLowerCase().includes(kw));
-  }, [candidates, keyword]);
+  }, [candidates, keyword, remote]);
 
   const open = () => {
     if (disabled) return;
@@ -58,7 +80,13 @@ export default function ApproverPickerField({
     setVisible(true);
   };
 
+  const remember = (id: number) => {
+    const name = candidateNames.get(id);
+    if (name && pickedNames.get(id) !== name) setPickedNames((prev) => new Map(prev).set(id, name));
+  };
+
   const toggle = (id: number) => {
+    remember(id);
     if (!multiple) {
       onChange([id]);
       setVisible(false);
@@ -88,8 +116,8 @@ export default function ApproverPickerField({
             <span className="ap-picker-field__chips">
               {value.map((id) => (
                 <span key={id} className="ap-picker-field__chip">
-                  <UserAvatar name={nameById.get(id) ?? '?'} semiSize="extra-extra-small" size={20} />
-                  {nameById.get(id) ?? `用户#${id}`}
+                  <UserAvatar name={nameOf(id)} semiSize="extra-extra-small" size={20} />
+                  {nameOf(id)}
                 </span>
               ))}
             </span>
@@ -109,17 +137,22 @@ export default function ApproverPickerField({
         <div className="ap-sheet__body">
           <Input
             prefix={<Search size={14} />}
-            placeholder="搜索姓名"
+            placeholder={remote ? '输入姓名 / 用户名搜索' : '搜索姓名'}
             value={keyword}
             onChange={setKeyword}
             showClear
             className="ap-picker__search"
           />
+          {truncated && !keyword.trim() && (
+            <Typography.Text type="tertiary" size="small" style={{ display: 'block', margin: '4px 0 8px' }}>
+              候选人较多，仅显示前 {candidates.length} 位，请输入姓名搜索
+            </Typography.Text>
+          )}
           {multiple && draft.length > 0 && (
             <div className="ap-picker__selected">
               {draft.map((id) => (
                 <Tag key={id} closable onClose={() => setDraft((prev) => prev.filter((x) => x !== id))}>
-                  {nameById.get(id) ?? `用户#${id}`}
+                  {nameOf(id)}
                 </Tag>
               ))}
             </div>

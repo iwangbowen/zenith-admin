@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useDebouncedValue } from '@tanstack/react-pacer';
 import { AppModal } from '@/components/AppModal';
 import {
   Banner,
@@ -31,6 +32,7 @@ import {
   useWorkflowSelectableNextApprovers,
   useWorkflowUserOptions,
   workflowSharedKeys,
+  type WorkflowNextApproverSearch,
 } from '@/hooks/queries/workflow-shared';
 import { useWorkflowTaskAction, type WorkflowTaskActionVariables } from '@/hooks/queries/workflow-tasks';
 
@@ -131,6 +133,16 @@ export default function WorkflowApprovalDetailSheet({
   const [approveSignature, setApproveSignature] = useState('');
   const { userOptions, ensureLoaded: ensureUserOptions } = useWorkflowUserOptions();
   const [selectedNextApprovers, setSelectedNextApprovers] = useState<Record<string, number[]>>({});
+  // 远程搜索会把候选换成另一批人：已选中者的姓名单独记住，标签不退化成「用户#id」
+  const [selectedNextApproverNames, setSelectedNextApproverNames] = useState<Record<number, string>>({});
+  // 候选被服务端限量截断（truncated）的组按组远程搜索；防抖后再发请求
+  const [nextApproverSearch, setNextApproverSearch] = useState<WorkflowNextApproverSearch | null>(null);
+  const [debouncedNextApproverSearch] = useDebouncedValue(nextApproverSearch, { wait: 300 });
+  const resetNextApprovers = useCallback(() => {
+    setSelectedNextApprovers({});
+    setSelectedNextApproverNames({});
+    setNextApproverSearch(null);
+  }, []);
   const [addSignPosition, setAddSignPosition] = useState<AddSignPosition>('after');
   const [signMode, setSignMode] = useState<AddSignMode>('and');
   const { renderPhraseBar, phraseManageModal } = useQuickPhrases();
@@ -192,10 +204,10 @@ export default function WorkflowApprovalDetailSheet({
       setReturnVisible(false);
       resetActionAttachments();
       setApproveSignature('');
-      setSelectedNextApprovers({});
+      resetNextApprovers();
       initialActionKeyRef.current = null;
     }
-  }, [resetActionAttachments, visible]);
+  }, [resetActionAttachments, resetNextApprovers, visible]);
 
   const currentTask: WorkflowTask | null = useMemo(() => {
     if (!detail || taskId == null) return null;
@@ -286,6 +298,12 @@ export default function WorkflowApprovalDetailSheet({
   const nextApproversQuery = useWorkflowSelectableNextApprovers(taskId, nextApproversEnabled);
   const selectedNextGroups = nextApproversEnabled ? (nextApproversQuery.data ?? []) : [];
   const hasApproverSelectDownstream = selectedNextGroups.length > 0;
+  // 仅 truncated 的组会发起：只取该节点按关键词过滤后的候选
+  const nextApproverSearchQuery = useWorkflowSelectableNextApprovers(
+    taskId,
+    nextApproversEnabled && !!debouncedNextApproverSearch,
+    debouncedNextApproverSearch ?? undefined,
+  );
 
   // 一键快速同意的门槛：通过按钮无必填附件、节点无意见必填 / 签名要求、且下一节点无需自选审批人。
   const currentNodeConfig = useMemo(
@@ -359,12 +377,12 @@ export default function WorkflowApprovalDetailSheet({
     if (initialAction === 'approve') {
       setAttachmentsFor('approve', []);
       setApproveSignature('');
-      setSelectedNextApprovers({});
+      resetNextApprovers();
       setApproveVisible(true);
     } else if (initialAction === 'reject') {
       void openReject();
     }
-  }, [initialAction, instanceId, openReject, setAttachmentsFor, taskId, visible]);
+  }, [initialAction, instanceId, openReject, resetNextApprovers, setAttachmentsFor, taskId, visible]);
 
   const rejectHint = useMemo(
     () => resolveRejectTargetHint(rejectInstance, resolveWorkflowDetailDefinition(rejectInstance, rejectDef)?.flowData ?? null),
@@ -413,7 +431,7 @@ export default function WorkflowApprovalDetailSheet({
       setApproveVisible(false);
       setAttachmentsFor('approve', []);
       setApproveSignature('');
-      setSelectedNextApprovers({});
+      resetNextApprovers();
       closeAfterAction();
     } catch {
       // validation / request failed
@@ -552,7 +570,7 @@ export default function WorkflowApprovalDetailSheet({
   const openApproveModal = () => {
     setAttachmentsFor('approve', []);
     setApproveSignature('');
-    setSelectedNextApprovers({});
+    resetNextApprovers();
     setApproveVisible(true);
   };
 
@@ -657,7 +675,7 @@ export default function WorkflowApprovalDetailSheet({
       <AppModal
         title={approveLabel}
         visible={approveVisible}
-        onCancel={() => { setApproveVisible(false); setAttachmentsFor('approve', []); setApproveSignature(''); setSelectedNextApprovers({}); if (!detailSheetVisible) onClose(); }}
+        onCancel={() => { setApproveVisible(false); setAttachmentsFor('approve', []); setApproveSignature(''); resetNextApprovers(); if (!detailSheetVisible) onClose(); }}
         onOk={() => void handleApprove()}
         okButtonProps={{ loading: submitting, type: 'primary' }}
         okText="确认"
@@ -689,24 +707,55 @@ export default function WorkflowApprovalDetailSheet({
             <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 6 }}>
               后续存在“前一审批人选择”节点，请为每个节点选择审批人（可多选）
             </Typography.Text>
-            {selectedNextGroups.map((group) => (
-              <div key={group.nodeKey} style={{ marginBottom: 10 }}>
-                <Typography.Text size="small" style={{ display: 'block', marginBottom: 4 }}>
-                  {group.label}<span style={{ color: 'var(--semi-color-danger)' }}> *</span>
-                </Typography.Text>
-                <Select
-                  multiple
-                  filter
-                  loading={nextApproversQuery.isFetching}
-                  style={{ width: '100%' }}
-                  placeholder="请选择审批人"
-                  emptyContent="暂无可选审批人"
-                  optionList={group.selectableApprovers.map((u) => ({ value: u.id, label: u.name }))}
-                  value={selectedNextApprovers[group.nodeKey] ?? []}
-                  onChange={(v) => setSelectedNextApprovers((prev) => ({ ...prev, [group.nodeKey]: (v as number[]) ?? [] }))}
-                />
-              </div>
-            ))}
+            {selectedNextGroups.map((group) => {
+              const selected = selectedNextApprovers[group.nodeKey] ?? [];
+              const searching = group.truncated
+                && debouncedNextApproverSearch?.nodeKey === group.nodeKey
+                && debouncedNextApproverSearch.keyword !== '';
+              const candidates = searching
+                ? nextApproverSearchQuery.data?.find((g) => g.nodeKey === group.nodeKey)?.selectableApprovers ?? []
+                : group.selectableApprovers;
+              const optionList = [
+                ...candidates.map((u) => ({ value: u.id, label: u.name })),
+                // 远程搜索换了一批候选后，已选中者仍要能显示姓名
+                ...selected
+                  .filter((id) => !candidates.some((u) => u.id === id))
+                  .map((id) => ({ value: id, label: selectedNextApproverNames[id] ?? `用户#${id}` })),
+              ];
+              return (
+                <div key={group.nodeKey} style={{ marginBottom: 10 }}>
+                  <Typography.Text size="small" style={{ display: 'block', marginBottom: 4 }}>
+                    {group.label}<span style={{ color: 'var(--semi-color-danger)' }}> *</span>
+                  </Typography.Text>
+                  <Select
+                    multiple
+                    filter
+                    remote={group.truncated}
+                    onSearch={group.truncated
+                      ? (keyword: string) => setNextApproverSearch(keyword ? { nodeKey: group.nodeKey, keyword } : null)
+                      : undefined}
+                    loading={nextApproversQuery.isFetching || (searching && nextApproverSearchQuery.isFetching)}
+                    style={{ width: '100%' }}
+                    placeholder={group.truncated ? '候选人较多，请输入姓名搜索' : '请选择审批人'}
+                    emptyContent={searching ? '没有匹配的人员' : '暂无可选审批人'}
+                    optionList={optionList}
+                    value={selected}
+                    onChange={(v) => {
+                      const ids = (v as number[]) ?? [];
+                      setSelectedNextApproverNames((prev) => {
+                        const next = { ...prev };
+                        for (const id of ids) {
+                          const hit = optionList.find((option) => option.value === id);
+                          if (hit) next[id] = hit.label;
+                        }
+                        return next;
+                      });
+                      setSelectedNextApprovers((prev) => ({ ...prev, [group.nodeKey]: ids }));
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </AppModal>

@@ -5,7 +5,7 @@
  * 用于在创建审批任务时展开为多个 workflow_tasks 行。
  */
 import { uniquePositiveInts } from '@zenith/shared/core';
-import { and, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, type SQL } from 'drizzle-orm';
 import type { WorkflowAssigneeType, WorkflowNodeConfig, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import {
@@ -19,6 +19,7 @@ import {
 import type { DbExecutor } from '../../db/types';
 import logger from '../../lib/logger';
 import { resolveGroupMemberUserIds } from '../../lib/user-group-access';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { evaluateExpression, ExpressionError } from '../../lib/workflow-expression';
 import { decide } from '../platform/rules-runtime.service';
 
@@ -245,22 +246,56 @@ export async function resolveSelectScopeUserIds(
   }
 }
 
+/** 候选审批人的公共条件：启用用户 ∩ 节点 selectScope；scope 已解析但为空时返回 null（不必查库） */
+async function selectableApproverWhere(
+  node: WorkflowNodeConfig,
+  exec: DbExecutor,
+  keyword?: string,
+): Promise<SQL | undefined | null> {
+  const scopeUserIds = await resolveSelectScopeUserIds(node, exec);
+  if (scopeUserIds && scopeUserIds.length === 0) return null;
+  return buildWhere(
+    eq(users.status, 'enabled'),
+    scopeUserIds ? inArray(users.id, scopeUserIds) : undefined,
+    keywordCondition(keyword, [users.nickname, users.username], 'ilike'),
+  );
+}
+
+const selectableUserColumns = { id: users.id, nickname: users.nickname, username: users.username };
+const toSelectableUser = (row: { id: number; nickname: string | null; username: string }): WorkflowSelectableUser =>
+  ({ id: row.id, name: row.nickname ?? row.username });
+
 export async function listSelectableApprovers(
   node: WorkflowNodeConfig,
   executor?: DbExecutor,
 ): Promise<WorkflowSelectableUser[]> {
   const exec = executor ?? db;
-  const scopeUserIds = await resolveSelectScopeUserIds(node, exec);
-  const where = scopeUserIds
-    ? (scopeUserIds.length > 0 ? and(inArray(users.id, scopeUserIds), eq(users.status, 'enabled')) : undefined)
-    : eq(users.status, 'enabled');
-  if (scopeUserIds && scopeUserIds.length === 0) return [];
-  const rows = await exec
-    .select({ id: users.id, nickname: users.nickname, username: users.username })
-    .from(users)
-    .where(where)
-    .orderBy(users.id);
-  return rows.map((row) => ({ id: row.id, name: row.nickname ?? row.username }));
+  const where = await selectableApproverWhere(node, exec);
+  if (where === null) return [];
+  const rows = await exec.select(selectableUserColumns).from(users).where(where).orderBy(users.id);
+  return rows.map(toSelectableUser);
+}
+
+export interface SelectableApproverSearch {
+  keyword?: string;
+  /** 每次最多返回的候选数；超出即 `truncated`，前端据此切换为关键词搜索 */
+  limit: number;
+}
+
+/**
+ * 限量 / 按关键词检索候选审批人。未配置 selectScope 的节点候选是全部启用用户，
+ * 大组织下不能整表下发到审批面板，这里以 limit + 1 探测是否截断。
+ */
+export async function searchSelectableApprovers(
+  node: WorkflowNodeConfig,
+  search: SelectableApproverSearch,
+  executor?: DbExecutor,
+): Promise<{ items: WorkflowSelectableUser[]; truncated: boolean }> {
+  const exec = executor ?? db;
+  const where = await selectableApproverWhere(node, exec, search.keyword);
+  if (where === null) return { items: [], truncated: false };
+  const rows = await exec.select(selectableUserColumns).from(users).where(where).orderBy(users.id).limit(search.limit + 1);
+  return { items: rows.slice(0, search.limit).map(toSelectableUser), truncated: rows.length > search.limit };
 }
 
 export async function filterSelectedApproverIds(

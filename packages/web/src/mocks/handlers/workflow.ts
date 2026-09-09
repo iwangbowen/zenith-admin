@@ -2444,8 +2444,8 @@ export const workflowHandlers = [
 
   // ─── 审批任务 ─────────────────────────────────────────────────────────────
 
-  // 下一节点自选审批人候选
-  mock(workflowTaskContract.selectableNextApprovers, ({ params, ok }) => {
+  // 下一节点自选审批人候选（每组限量；nodeKey + keyword 按组远程搜索）
+  mock(workflowTaskContract.selectableNextApprovers, ({ params, query, ok }) => {
     const task = mockWorkflowTasks.find(t => t.id === params.taskId);
     if (!task) return notFound('任务不存在');
     // 与服务端一致：已处理任务无需再选下一审批人，返回空组而非报错
@@ -2455,19 +2455,26 @@ export const workflowHandlers = [
     const def = mockWorkflowDefinitions.find(d => d.id === inst.definitionId);
     const flowData = def?.flowData ?? null;
     if (!flowData) return ok([]);
-    const groups = findNextApproverSelectNodes(flowData, task.nodeKey).map((node) => {
-      const scopeType = node.data.selectScopeType ?? 'user';
-      const scopeIds = node.data.selectScopeIds ?? [];
-      const enabled = mockUsers.filter((u) => u.status === 'enabled');
-      const inScope = scopeType === 'user' && scopeIds.length > 0
-        ? enabled.filter((u) => scopeIds.includes(u.id))
-        : enabled;
-      return {
-        nodeKey: node.data.key,
-        label: node.data.label || node.data.key,
-        selectableApprovers: inScope.map((u) => ({ id: u.id, name: u.nickname ?? u.username })),
-      };
-    });
+    const keyword = query.keyword?.trim().toLowerCase() ?? '';
+    const groups = findNextApproverSelectNodes(flowData, task.nodeKey)
+      .filter((node) => !query.nodeKey || node.data.key === query.nodeKey)
+      .map((node) => {
+        const scopeType = node.data.selectScopeType ?? 'user';
+        const scopeIds = node.data.selectScopeIds ?? [];
+        const enabled = mockUsers.filter((u) => u.status === 'enabled');
+        const inScope = scopeType === 'user' && scopeIds.length > 0
+          ? enabled.filter((u) => scopeIds.includes(u.id))
+          : enabled;
+        const matched = keyword
+          ? inScope.filter((u) => (u.nickname ?? '').toLowerCase().includes(keyword) || u.username.toLowerCase().includes(keyword))
+          : inScope;
+        return {
+          nodeKey: node.data.key,
+          label: node.data.label || node.data.key,
+          selectableApprovers: matched.slice(0, query.limit).map((u) => ({ id: u.id, name: u.nickname ?? u.username })),
+          truncated: matched.length > query.limit,
+        };
+      });
     return ok(groups);
   }),
 

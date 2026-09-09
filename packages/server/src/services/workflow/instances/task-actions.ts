@@ -8,8 +8,8 @@ import type { WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonC
 import { findNextApproverSelectNodes, resolveNodeFieldPermissions, sanitizeFormUpdatesByNodePerms } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
-import { buildStarterContext, listSelectableApprovers } from '../workflow-assignee-resolver.service';
-import type { WorkflowSelectableNextApproverGroup } from '@zenith/shared/workflow';
+import { buildStarterContext, searchSelectableApprovers } from '../workflow-assignee-resolver.service';
+import type { WorkflowSelectableNextApproverGroup, WorkflowSelectableNextApproversQueryInput } from '@zenith/shared/workflow';
 import logger from '../../../lib/logger';
 import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs/engine';
 import { enqueueSubprocessJoin } from './async-jobs';
@@ -90,9 +90,13 @@ export interface ApproveResult {
 
 /**
  * 列出「我作为当前审批人」时，紧邻的下一审批节点中需要我为其选人的 approverSelect 节点及候选人。
- * 候选人已按各节点 selectScope（成员/角色/部门/用户组）在服务端解析收窄；无下游 approverSelect 时返回空数组。
+ * 候选人已按各节点 selectScope（成员/角色/部门/用户组）在服务端解析收窄；每组最多 `limit` 人，
+ * 超出即标记 `truncated`，前端按组带 `nodeKey` + `keyword` 再来搜索；无下游 approverSelect 时返回空数组。
  */
-export async function listTaskSelectableNextApprovers(taskId: number): Promise<WorkflowSelectableNextApproverGroup[]> {
+export async function listTaskSelectableNextApprovers(
+  taskId: number,
+  query: WorkflowSelectableNextApproversQueryInput = { limit: 50 },
+): Promise<WorkflowSelectableNextApproverGroup[]> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks)
     .where(eq(workflowTasks.id, taskId))
@@ -113,12 +117,17 @@ export async function listTaskSelectableNextApprovers(taskId: number): Promise<W
   requireRow(inst, '流程实例不存在');
   const flowData = inst.definitionSnapshot?.flowData;
   if (!flowData) return [];
-  const nodes = findNextApproverSelectNodes(flowData, task.nodeKey);
-  return Promise.all(nodes.map(async (node) => ({
-    nodeKey: node.data.key,
-    label: node.data.label || node.data.key,
-    selectableApprovers: await listSelectableApprovers(node.data),
-  })));
+  const nodes = findNextApproverSelectNodes(flowData, task.nodeKey)
+    .filter((node) => !query.nodeKey || node.data.key === query.nodeKey);
+  return Promise.all(nodes.map(async (node) => {
+    const { items, truncated } = await searchSelectableApprovers(node.data, { keyword: query.keyword, limit: query.limit });
+    return {
+      nodeKey: node.data.key,
+      label: node.data.label || node.data.key,
+      selectableApprovers: items,
+      truncated,
+    };
+  }));
 }
 
 export async function approveTask(taskId: number, comment?: string, attachments?: Array<{ name: string; url: string; size?: number }>, selectedNextApprovers?: Record<string, number[]>, signature?: string, formUpdates?: Record<string, unknown>): Promise<ApproveResult> {
