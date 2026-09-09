@@ -4,6 +4,7 @@ import AppModal from '@/components/AppModal';
 import { Plus, Trash2 } from 'lucide-react';
 import type { ChatVoteData, ChatVoteOption } from '@zenith/shared/chat';
 import { formatDateTimeForApi } from '@/utils/date';
+import ModalFooter from '@/components/ModalFooter';
 
 const { Text } = Typography;
 
@@ -93,7 +94,7 @@ export function VotePollModal({
       title="发起投票"
       visible={visible}
       onCancel={handleClose}
-      footer={null}
+      footer={<ModalFooter onCancel={handleClose} onOk={handleConfirm} okText="发送投票" loading={submitting} />}
       width={480}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -171,14 +172,6 @@ export function VotePollModal({
               style={{ width: 200 }}
             />
           </div>
-        </div>
-
-        {/* 操作按钮 */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8, borderTop: '1px solid var(--semi-color-border)' }}>
-          <Button onClick={handleClose}>取消</Button>
-          <Button type="primary" loading={submitting} onClick={() => { void handleConfirm(); }}>
-            发送投票
-          </Button>
         </div>
       </div>
     </AppModal>

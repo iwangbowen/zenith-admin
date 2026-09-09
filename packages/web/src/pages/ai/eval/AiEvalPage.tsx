@@ -35,6 +35,7 @@ import { AI_EVAL_SCORERS } from '@zenith/shared/ai';
 import { CreateButton } from '@/components/toolbar-controls';
 import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
+import ModalFooter from '@/components/ModalFooter';
 
 const { Text, Paragraph } = Typography;
 
@@ -308,9 +309,8 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
           {({ formApi }) => (
             <>
               <EvalItemsArrayField />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                <Button onClick={() => setAddVisible(false)}>取消</Button>
-                <Button theme="solid" loading={addItemsMutation.isPending} onClick={() => formApi.submitForm()}>添加</Button>
+              <div style={{ marginTop: 16 }}>
+                <ModalFooter onCancel={() => setAddVisible(false)} onOk={() => formApi.submitForm()} okText="添加" loading={addItemsMutation.isPending} />
               </div>
             </>
           )}
@@ -368,9 +368,8 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
                 rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个打分器' }]}
                 extraText="「语义一致性」「期望答案重合度」需要条目已填期望要点"
               />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                <Button onClick={() => setRunVisible(false)}>取消</Button>
-                <Button theme="solid" loading={runMutation.isPending} onClick={() => formApi.submitForm()}>开始实验</Button>
+              <div style={{ marginTop: 16 }}>
+                <ModalFooter onCancel={() => setRunVisible(false)} onOk={() => formApi.submitForm()} okText="开始实验" loading={runMutation.isPending} />
               </div>
             </>
           )}
@@ -527,9 +526,8 @@ export default function AiEvalPage() {
                   <EvalItemsArrayField />
                 </Form.Slot>
               )}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                <Button onClick={closeEditor}>取消</Button>
-                <Button theme="solid" loading={saveMutation.isPending} onClick={() => formApi.submitForm()}>{isEdit ? '保存' : '创建'}</Button>
+              <div style={{ marginTop: 16 }}>
+                <ModalFooter onCancel={closeEditor} onOk={() => formApi.submitForm()} okText={isEdit ? '保存' : '创建'} loading={saveMutation.isPending} />
               </div>
             </>
           )}

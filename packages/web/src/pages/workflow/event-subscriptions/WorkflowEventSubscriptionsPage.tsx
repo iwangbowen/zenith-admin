@@ -37,6 +37,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { DateRangeFilter, FilterSelect, StatusSelect } from '@/components/search-filters';
+import ModalFooter from '@/components/ModalFooter';
 
 const EVENT_OPTIONS: Array<{ value: WorkflowEventType; label: string }> = [
   { value: 'instance.created',   label: '实例创建' },
@@ -403,20 +404,7 @@ export default function WorkflowEventSubscriptionsPage() {
         width={680}
         closeOnEsc
         bodyStyle={{ paddingBottom: 16 }}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={eventSubscriptionModal.modalProps.onCancel}>取消</Button>
-            <Button
-              theme="solid"
-              type="primary"
-              loading={eventSubscriptionModal.modalProps.okButtonProps.loading}
-              disabled={eventSubscriptionModal.modalProps.okButtonProps.disabled}
-              onClick={() => void eventSubscriptionModal.modalProps.onOk()}
-            >
-              {eventSubscriptionModal.isEdit ? '保存' : '创建'}
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...eventSubscriptionModal.footerProps} okText={eventSubscriptionModal.isEdit ? '保存' : '创建'} />}
       >
         <Spin spinning={eventSubscriptionModal.detailLoading} wrapperClassName="modal-spin-wrapper">
         <Form key={eventSubscriptionModal.formKey} {...eventSubscriptionModal.formProps}>

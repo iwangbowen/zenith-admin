@@ -3,6 +3,7 @@ import { Button, Modal, Spin, Toast, Input, TextArea, Typography } from '@douyin
 import { LayoutTemplate, ArrowLeft } from 'lucide-react';
 import type { WorkflowTemplate } from '@zenith/shared/workflow';
 import { useCloneWorkflowTemplate, useWorkflowTemplates } from '@/hooks/queries/workflow-templates';
+import ModalFooter from '@/components/ModalFooter';
 
 interface Props {
   visible: boolean;
@@ -53,7 +54,7 @@ export function TemplateGalleryModal({ visible, onCancel, categoryId = null, onC
       title={picked ? '配置新流程' : '从模板新建流程'}
       visible={visible}
       onCancel={onCancel}
-      footer={null}
+      footer={picked ? <ModalFooter onCancel={() => setPicked(null)} onOk={handleCreate} okText="创建流程" loading={creating} /> : null}
       width={760}
       bodyStyle={{ paddingBottom: 24 }}
       closeOnEsc
@@ -70,13 +71,9 @@ export function TemplateGalleryModal({ visible, onCancel, categoryId = null, onC
             <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>流程名称</Typography.Text>
             <Input value={name} onChange={setName} maxLength={64} showClear placeholder="请输入新流程名称" />
           </div>
-          <div style={{ marginBottom: 16 }}>
+          <div>
             <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>流程描述</Typography.Text>
             <TextArea value={description} onChange={setDescription} maxCount={512} autosize rows={3} placeholder="可选，简要描述该流程用途" />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setPicked(null)}>取消</Button>
-            <Button type="primary" theme="solid" loading={creating} onClick={() => void handleCreate()}>创建流程</Button>
           </div>
         </div>
       ) : (

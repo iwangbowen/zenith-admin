@@ -36,6 +36,7 @@ import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
+import ModalFooter from '@/components/ModalFooter';
 
 const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
 const editorLoadingFallback = (
@@ -652,17 +653,7 @@ export default function AnnouncementsPage() {
               <Button onClick={modal.close}>关闭</Button>
             </div>
           ) : (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <Button onClick={modal.close}>取消</Button>
-              <Button
-                type="primary"
-                loading={modal.modalProps.okButtonProps.loading}
-                disabled={modal.modalProps.okButtonProps.disabled}
-                onClick={() => void modal.modalProps.onOk()}
-              >
-                {editingNotice ? '保存' : '创建'}
-              </Button>
-            </div>
+            <ModalFooter {...modal.footerProps} okText={editingNotice ? '保存' : '创建'} />
           )
         }
       >

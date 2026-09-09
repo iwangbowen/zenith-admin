@@ -10,6 +10,7 @@ import { Button, Empty, Input, Select, SideSheet, Space, Toast, Typography } fro
 import { Plus, Trash2 } from 'lucide-react';
 import type { ChannelMenu, ChannelMenuType } from '@zenith/shared/messaging';
 import { useChannelMenus, useSaveChannelMenus } from '@/hooks/queries/channels';
+import ModalFooter from '@/components/ModalFooter';
 
 interface Props {
   channelId: number;
@@ -127,12 +128,7 @@ export function ChannelMenuDrawer({ channelId, channelName, visible, readOnly = 
       onCancel={onClose}
       width={620}
       placement="right"
-      footer={!readOnly && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Button onClick={onClose}>取消</Button>
-          <Button type="primary" theme="solid" loading={saveMenusMutation.isPending} onClick={() => void handleSave()}>保存</Button>
-        </div>
-      )}
+      footer={!readOnly && <ModalFooter onCancel={onClose} onOk={handleSave} okText="保存" loading={saveMenusMutation.isPending} />}
     >
       <Text type="tertiary" size="small">最多 3 个一级菜单，每个一级菜单下最多 5 个二级菜单。</Text>
       <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>

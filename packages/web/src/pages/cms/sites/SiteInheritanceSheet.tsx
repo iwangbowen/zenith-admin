@@ -3,11 +3,12 @@
  * 展示有效值来源（继承自哪个父级 / 本站）与继承链。
  */
 import { useEffect, useState } from 'react';
-import { Banner, Button, SideSheet, Space, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, SideSheet, Space, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { useCmsSiteEffectiveConfig, useCmsSiteInheritanceChain, useUpdateCmsSiteInheritance } from '@/hooks/queries/cms';
 import { CMS_SITE_INHERITABLE_FIELD_LABELS, CMS_SITE_INHERITABLE_FIELDS } from '@zenith/shared/cms';
 import type { CmsSite, CmsSiteInheritanceFlags } from '@zenith/shared/cms';
 import { displayEffectiveValue } from './site-tree-utils';
+import ModalFooter from '@/components/ModalFooter';
 
 const { Text } = Typography;
 
@@ -60,17 +61,13 @@ export default function SiteInheritanceSheet({ site, onClose }: Readonly<SiteInh
       width={760}
       closeOnEsc
       footer={(
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Button type="tertiary" onClick={onClose}>取消</Button>
-          <Button
-            type="primary"
-            loading={updateInheritanceMutation.isPending}
-            disabled={site?.parentId == null}
-            onClick={() => void handleSave()}
-          >
-            保存继承策略
-          </Button>
-        </div>
+        <ModalFooter
+          onCancel={onClose}
+          onOk={handleSave}
+          okText="保存继承策略"
+          loading={updateInheritanceMutation.isPending}
+          disabled={site?.parentId == null}
+        />
       )}
     >
       <Banner

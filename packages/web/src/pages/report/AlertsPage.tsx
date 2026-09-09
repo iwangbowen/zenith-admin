@@ -32,6 +32,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
+import ModalFooter from '@/components/ModalFooter';
 
 interface SearchParams {
   keyword: string;
@@ -383,6 +384,7 @@ export default function AlertsPage() {
         placement="right"
         width={760}
         bodyStyle={{ padding: 16, overflow: 'auto' }}
+        footer={<ModalFooter {...alertModal.footerProps} okText={alertModal.isEdit ? '保存' : '创建'} />}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Form key={alertModal.formKey} {...alertModal.formProps}
@@ -510,12 +512,6 @@ export default function AlertsPage() {
               </Col>
             </Row>
           </Form>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8, borderTop: '1px solid var(--semi-color-border)' }}>
-            <Button onClick={alertModal.close}>取消</Button>
-            <Button type="primary" loading={alertModal.modalProps.okButtonProps.loading} disabled={alertModal.modalProps.okButtonProps.disabled} onClick={() => void alertModal.modalProps.onOk()}>
-              {alertModal.isEdit ? '保存' : '创建'}
-            </Button>
-          </div>
         </div>
       </SideSheet>
 

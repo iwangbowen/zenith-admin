@@ -27,6 +27,7 @@ import { isRevisionConflict, metricLifecyclePayload, normalizeMetricFormValues }
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import ModalFooter from '@/components/ModalFooter';
 
 interface MetricSearch {
   keyword: string;
@@ -276,6 +277,7 @@ export default function MetricsPage() {
         placement="right"
         width={760}
         bodyStyle={{ padding: 16, overflow: 'auto' }}
+        footer={<ModalFooter {...metricModal.footerProps} okText={metricModal.isEdit ? '保存' : '创建'} />}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {conflict && (
@@ -315,12 +317,6 @@ export default function MetricsPage() {
             <Form.TextArea field="caliber" label="统计口径" autosize rows={2} />
             <Form.TextArea field="description" label="说明" autosize rows={2} />
           </Form>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8, borderTop: '1px solid var(--semi-color-border)' }}>
-            <Button onClick={metricModal.close}>取消</Button>
-            <Button type="primary" loading={metricModal.modalProps.okButtonProps.loading} disabled={metricModal.modalProps.okButtonProps.disabled} onClick={() => void metricModal.modalProps.onOk()}>
-              {metricModal.isEdit ? '保存' : '创建'}
-            </Button>
-          </div>
         </div>
       </SideSheet>
 

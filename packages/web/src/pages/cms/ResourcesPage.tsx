@@ -32,6 +32,7 @@ import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { formatBytes, mapTree } from '@zenith/shared/core';
 import { confirmAndDelete, deleteAction, listTableProps } from '@/components/list-page';
+import ModalFooter from '@/components/ModalFooter';
 
 const TYPE_COLORS: Record<CmsResourceType, 'blue' | 'purple' | 'cyan' | 'orange' | 'grey'> = {
   image: 'blue', video: 'purple', audio: 'cyan', document: 'orange', other: 'grey',
@@ -590,16 +591,19 @@ export default function ResourcesPage() {
             setMoveModalVisible(false);
           }}
         >
-          <Form.TreeSelect
-            field="folderId"
-            label="目标目录"
-            treeData={[{ key: '0', value: 0, label: '根目录', children: foldersToTree(foldersQuery.data ?? []) }]}
-            defaultExpandAll
-          />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            <Button onClick={() => setMoveModalVisible(false)}>取消</Button>
-            <Button type="primary" htmlType="submit" loading={moveMutation.isPending}>移动</Button>
-          </div>
+          {({ formApi }) => (
+            <>
+              <Form.TreeSelect
+                field="folderId"
+                label="目标目录"
+                treeData={[{ key: '0', value: 0, label: '根目录', children: foldersToTree(foldersQuery.data ?? []) }]}
+                defaultExpandAll
+              />
+              <div style={{ marginTop: 16 }}>
+                <ModalFooter onCancel={() => setMoveModalVisible(false)} onOk={() => formApi.submitForm()} okText="移动" loading={moveMutation.isPending} />
+              </div>
+            </>
+          )}
         </Form>
       </Modal>
 
@@ -624,12 +628,15 @@ export default function ResourcesPage() {
               setRenameTarget(null);
             }}
           >
-            <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入素材名称' }]} maxLength={255} />
-            <Form.Input field="remark" label="备注" maxLength={200} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8, paddingBottom: 12 }}>
-              <Button onClick={() => setRenameTarget(null)}>取消</Button>
-              <Button type="primary" htmlType="submit" loading={updateMutation.isPending}>保存</Button>
-            </div>
+            {({ formApi }) => (
+              <>
+                <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入素材名称' }]} maxLength={255} />
+                <Form.Input field="remark" label="备注" maxLength={200} />
+                <div style={{ marginTop: 8, paddingBottom: 12 }}>
+                  <ModalFooter onCancel={() => setRenameTarget(null)} onOk={() => formApi.submitForm()} okText="保存" loading={updateMutation.isPending} />
+                </div>
+              </>
+            )}
           </Form>
         ) : null}
       </AppModal>

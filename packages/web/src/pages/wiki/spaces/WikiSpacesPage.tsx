@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Col, Form, Row, Select, SideSheet, Spin, Toast, Typography } from '@douyinfe/semi-ui';
+import { Col, Form, Row, Select, SideSheet, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { CreateWikiSpaceInput, WikiSpace, WikiSpaceMemberRole } from '@zenith/shared/wiki';
 import { WIKI_SPACE_MEMBER_ROLE_LABELS, WIKI_SPACE_MEMBER_ROLE_OPTIONS, WIKI_SPACE_VISIBILITIES, WIKI_SPACE_VISIBILITY_LABELS, WIKI_SPACE_VISIBILITY_OPTIONS } from '@zenith/shared/wiki';
@@ -22,6 +22,7 @@ import {
   useDeleteWikiSpaces, useSaveWikiSpace, useSaveWikiSpaceMembers, useWikiSpaceDetail,
   useWikiSpaceList, useWikiSpaceMembers, wikiSpaceKeys,
 } from '@/hooks/queries/wiki-spaces';
+import ModalFooter from '@/components/ModalFooter';
 
 const { Text } = Typography;
 
@@ -247,12 +248,7 @@ export default function WikiSpacesPage() {
         onCancel={() => setMemberSpace(null)}
         closeOnEsc
         width={720}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setMemberSpace(null)}>取消</Button>
-            <Button theme="solid" loading={saveMembersMutation.isPending} onClick={handleSaveMembers}>保存</Button>
-          </div>
-        )}
+        footer={<ModalFooter onCancel={() => setMemberSpace(null)} onOk={handleSaveMembers} okText="保存" loading={saveMembersMutation.isPending} />}
       >
         <Spin spinning={membersQuery.isFetching || usersQuery.isPending}>
           <UserTransferSelect

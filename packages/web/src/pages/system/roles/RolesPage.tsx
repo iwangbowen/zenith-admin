@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Form, Toast, Spin, SideSheet } from '@douyinfe/semi-ui';
+import { Form, Toast, Spin, SideSheet } from '@douyinfe/semi-ui';
 import { DATA_SCOPES, type CreateRoleInput, type Role, type Department } from '@zenith/shared/identity';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
@@ -35,6 +35,7 @@ import {
 import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import ModalFooter from '@/components/ModalFooter';
 
 export default function RolesPage() {
   const { hasPermission } = usePermission();
@@ -363,12 +364,15 @@ export default function RolesPage() {
         visible={userModalVisible}
         onCancel={() => setUserModalVisible(false)}
         width={720}
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setUserModalVisible(false)}>取消</Button>
-            <Button type="primary" disabled={!roleUsersQuery.isSuccess || !allUsersQuery.isSuccess} loading={assignUsersMutation.isPending} onClick={handleAssignUsers}>保存</Button>
-          </div>
-        }
+        footer={(
+          <ModalFooter
+            onCancel={() => setUserModalVisible(false)}
+            onOk={handleAssignUsers}
+            okText="保存"
+            loading={assignUsersMutation.isPending}
+            disabled={!roleUsersQuery.isSuccess || !allUsersQuery.isSuccess}
+          />
+        )}
       >
         {allUsersQuery.isFetching || roleUsersQuery.isFetching ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>

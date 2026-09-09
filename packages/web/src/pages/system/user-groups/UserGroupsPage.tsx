@@ -35,6 +35,7 @@ import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { MemberAssignmentSheet, memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
+import ModalFooter from '@/components/ModalFooter';
 
 interface SearchParams {
   keyword: string;
@@ -319,20 +320,7 @@ export default function UserGroupsPage() {
         onCancel={groupModal.modalProps.onCancel}
         width={520}
         closeOnEsc
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={groupModal.modalProps.onCancel}>取消</Button>
-            <Button
-              theme="solid"
-              type="primary"
-              loading={groupModal.modalProps.okButtonProps.loading}
-              disabled={groupModal.modalProps.okButtonProps.disabled}
-              onClick={() => void groupModal.modalProps.onOk()}
-            >
-              确定
-            </Button>
-          </div>
-        }
+        footer={<ModalFooter {...groupModal.footerProps} />}
       >
         <Spin spinning={groupModal.detailLoading}>
         <Form key={groupModal.formKey} {...groupModal.formProps}>

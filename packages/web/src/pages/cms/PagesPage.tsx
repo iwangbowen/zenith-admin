@@ -31,6 +31,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { mapTree } from '@zenith/shared/core';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { deleteAction, listTableProps } from '@/components/list-page';
+import ModalFooter from '@/components/ModalFooter';
 
 /** 区块按栏目标识引用栏目：value 用 code，站点复制/重建后配置无需重配 */
 function channelsToSelectTree(nodes: CmsChannel[]): TreeNodeData[] {
@@ -324,12 +325,7 @@ export default function PagesPage() {
         visible={builderVisible}
         onCancel={() => setBuilderVisible(false)}
         width={isMobile ? '100%' : 680}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <Button onClick={() => setBuilderVisible(false)}>取消</Button>
-            <Button theme="solid" loading={saveMutation.isPending} onClick={() => void handleSavePage()}>保存</Button>
-          </div>
-        )}
+        footer={<ModalFooter onCancel={() => setBuilderVisible(false)} onOk={handleSavePage} okText="保存" loading={saveMutation.isPending} />}
       >
         <Form
           key={formRemountKey(editablePage?.id, detailQuery.data)}
@@ -604,30 +600,26 @@ export default function PagesPage() {
         onCancel={() => setAclBlock(null)}
         width={480}
         footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setAclBlock(null)}>取消</Button>
-            <Button
-              type="primary"
-              loading={setAclMutation.isPending}
-              onClick={async () => {
-                if (!editingPage || !aclBlock) return;
-                await setAclMutation.mutateAsync({
-                  params: { id: editingPage.id },
-                  body: {
-                    blockIds: [aclBlock.id],
-                    grants: [
-                      ...aclUserIds.map((subjectId) => ({ subjectType: 'user' as const, subjectId })),
-                      ...aclRoleIds.map((subjectId) => ({ subjectType: 'role' as const, subjectId })),
-                    ],
-                  },
-                });
-                Toast.success(aclUserIds.length + aclRoleIds.length > 0 ? '区块权限已更新' : '已恢复继承页面编辑权限');
-                setAclBlock(null);
-              }}
-            >
-              保存
-            </Button>
-          </div>
+          <ModalFooter
+            onCancel={() => setAclBlock(null)}
+            okText="保存"
+            loading={setAclMutation.isPending}
+            onOk={async () => {
+              if (!editingPage || !aclBlock) return;
+              await setAclMutation.mutateAsync({
+                params: { id: editingPage.id },
+                body: {
+                  blockIds: [aclBlock.id],
+                  grants: [
+                    ...aclUserIds.map((subjectId) => ({ subjectType: 'user' as const, subjectId })),
+                    ...aclRoleIds.map((subjectId) => ({ subjectType: 'role' as const, subjectId })),
+                  ],
+                },
+              });
+              Toast.success(aclUserIds.length + aclRoleIds.length > 0 ? '区块权限已更新' : '已恢复继承页面编辑权限');
+              setAclBlock(null);
+            }}
+          />
         )}
       >
         <Typography.Paragraph type="tertiary">

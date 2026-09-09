@@ -33,6 +33,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
+import ModalFooter from '@/components/ModalFooter';
 
 const TRIGGER_OPTIONS: Array<{ value: WorkflowAutomationTrigger; label: string; color: TagColor }> = [
   { value: 'created',   label: '流程发起时', color: 'blue' },
@@ -515,20 +516,7 @@ export default function WorkflowAutomationsPage() {
         width={780}
         closeOnEsc
         bodyStyle={{ paddingBottom: 16 }}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={automationModal.modalProps.onCancel}>取消</Button>
-            <Button
-              theme="solid"
-              type="primary"
-              loading={automationModal.modalProps.okButtonProps.loading}
-              disabled={automationModal.modalProps.okButtonProps.disabled}
-              onClick={() => void automationModal.modalProps.onOk()}
-            >
-              {automationModal.isEdit ? '保存' : '创建'}
-            </Button>
-          </div>
-        )}
+        footer={<ModalFooter {...automationModal.footerProps} okText={automationModal.isEdit ? '保存' : '创建'} />}
       >
         <Spin spinning={automationModal.detailLoading} wrapperClassName="modal-spin-wrapper">
         <Form key={automationModal.formKey} {...automationModal.formProps}>

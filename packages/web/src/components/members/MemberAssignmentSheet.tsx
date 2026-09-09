@@ -1,11 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 import type { ReactNode } from 'react';
-import { Button, Empty, SideSheet, Spin, Toast } from '@douyinfe/semi-ui';
+import { Empty, SideSheet, Spin, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps, Data } from '@douyinfe/semi-ui/lib/es/table';
 import { Users } from 'lucide-react';
 import { UserPreviewCell, type UserPreviewItem, type UserPreviewScope } from '@/components/UserPreviewCell';
 import { UserTransferSelect, type UserTransferUser } from '@/components/UserTransferSelect';
 import type { Department } from '@zenith/shared/identity';
+import ModalFooter from '@/components/ModalFooter';
 
 export interface MemberAssignmentSheetProps<TUser extends UserTransferUser> {
   readonly title: ReactNode;
@@ -57,12 +58,7 @@ export function MemberAssignmentSheet<TUser extends UserTransferUser>({
       visible={visible}
       onCancel={onCancel}
       width={width}
-      footer={(
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Button onClick={onCancel}>取消</Button>
-          <Button type="primary" disabled={!canSave} loading={saveLoading} onClick={() => { void handleSave(); }}>保存</Button>
-        </div>
-      )}
+      footer={<ModalFooter onCancel={onCancel} onOk={handleSave} okText="保存" loading={saveLoading} disabled={!canSave} />}
     >
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>

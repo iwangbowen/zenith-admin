@@ -24,6 +24,7 @@ import WorkflowFormRenderer from '../designer/components/WorkflowFormRenderer';
 import { useSaveWorkflowForm, useWorkflowFormDetail, workflowFormKeys } from '@/hooks/queries/workflow-forms';
 import { confirmDanger } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
+import ModalFooter from '@/components/ModalFooter';
 
 const FieldDependencyGraph = lazy(() => import('../designer/components/FieldDependencyGraph'));
 
@@ -739,13 +740,13 @@ export default function WorkflowFormInlineEditor({
         visible={jsonVisible}
         onCancel={() => setJsonVisible(false)}
         footer={(
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Button theme="borderless" type="tertiary" size="small" onClick={() => setJsonDraft(schemaJson())}>重置为当前表单</Button>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button onClick={() => setJsonVisible(false)}>关闭</Button>
-              <Button type="primary" onClick={importJson}>导入</Button>
-            </div>
-          </div>
+          <ModalFooter
+            onCancel={() => setJsonVisible(false)}
+            cancelText="关闭"
+            onOk={importJson}
+            okText="导入"
+            extra={<Button theme="borderless" type="tertiary" size="small" onClick={() => setJsonDraft(schemaJson())}>重置为当前表单</Button>}
+          />
         )}
         width={640}
         bodyStyle={{ maxHeight: '70vh', overflow: 'auto' }}
@@ -852,12 +853,7 @@ export default function WorkflowFormInlineEditor({
         title="批量设置字段属性"
         visible={batchVisible}
         onCancel={() => setBatchVisible(false)}
-        footer={(
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setBatchVisible(false)}>取消</Button>
-            <Button type="primary" onClick={applyBatch}>应用到所有字段</Button>
-          </div>
-        )}
+        footer={<ModalFooter onCancel={() => setBatchVisible(false)} onOk={applyBatch} okText="应用到所有字段" />}
         width={420}
       >
         <Typography.Paragraph type="tertiary" size="small" style={{ marginBottom: 12 }}>
