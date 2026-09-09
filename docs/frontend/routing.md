@@ -185,6 +185,10 @@ const { hasPermission, hasAnyPermission } = usePermission();
   把偏好映射为 enter / exit class（`AdminLayout.css` 的 `::view-transition-*(.route-vt-*)`），包裹 `KeepAliveOutlet` 与非缓存
   `Outlet` 的页面容器；react-router 导航、`<Activity>` 显隐与 `startTransition` 包裹的页签刷新都会触发，缓存页签切换同样有过渡。
   生效值统一取 `useRouteAnimation()`（减弱动态效果时为 `none`）；浏览器不支持 View Transitions 时自动跳过动画
+- 「左滑」带方向感：页签栏发起的导航（点击页签、关闭页签落到邻位、关闭其他 / 左侧 / 右侧 / 全部）统一经
+  `AdminLayout` 的 `navigateToTab` → `layouts/route-transition-types.ts#navigateWithDirection`，目标页签位于当前页签左侧时
+  `addTransitionType('route-back')`，`RouteViewTransition` 按类型选择反向 class（`.route-vt-slide-right-*`）；
+  侧边菜单等其他入口不带类型，走默认前进方向
 
 ---
 
@@ -194,7 +198,7 @@ const { hasPermission, hasAnyPermission } = usePermission();
 - 存在 token 时 `prefetchAdminShell()` 与 `/api/auth/me` 并行预热壳层 chunk、图标表、用户菜单树与个人设置，认证完成后无需再等待网络
 - 固定页面与动态页面均使用 `React.lazy` + `Suspense`；仪表盘使用 `DashboardSkeleton`，其余页面使用 `PageLoading inline`。
   后台布局内统一经 `layouts/RouteSuspense.tsx` 挂载：fallback 与页面内容各自包在 `RouteViewTransition` 中，
-  chunk 就绪时「占位 → 页面」的揭示走与路由切换相同的过渡而非硬切
+  chunk 就绪时「占位 → 页面」的揭示走交叉淡化而非硬切（揭示是原地替换，不跟随 slide 方向；动画关闭时同样关闭）
 - 后台布局内置 `NProgress` 顶部路由切换进度条，可由偏好 `showProgressBar` 关闭
 - `PageErrorBoundary` / `RouteErrorBoundary` 识别动态模块加载失败，提示页面资源加载失败并通过整页刷新恢复
 - chunk 分层、体积预算与度量脚本见 [打包与首屏性能](./bundle-performance.md)

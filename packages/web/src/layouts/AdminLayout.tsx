@@ -17,6 +17,7 @@ import { useEventCallback } from '@/hooks/useEventCallback';
 import { TabsMetaContext } from '@/hooks/useTabMeta';
 import KeepAliveOutlet from './KeepAliveOutlet';
 import RouteViewTransition from './RouteViewTransition';
+import { navigateWithDirection } from './route-transition-types';
 import { useWorkflowRealtime } from '@/hooks/useWorkflowNotifications';
 import { useMarkMyInAppMessageRead } from '@/hooks/queries/in-app-messages';
 import { config } from '@/config';
@@ -417,6 +418,13 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabs.length]);
 
+  // 页签栏发起的导航：目标页签在当前页签左侧 → 后退方向，「左滑」路由动画反向播放（其余动画不受影响）
+  const navigateToTab = useEventCallback((key: string) => {
+    const from = tabs.findIndex((t) => t.key === activeKey);
+    const to = tabs.findIndex((t) => t.key === key);
+    navigateWithDirection(navigate, key, from >= 0 && to >= 0 && to < from);
+  });
+
   const doRemoveTab = (key: string) => {
     const currentActive = activeKey;
     removeTab(key);
@@ -425,16 +433,16 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
       const remaining = tabs.filter((t) => t.key !== key);
       if (remaining.length > 0) {
         const nextTab = remaining[Math.min(idx, remaining.length - 1)];
-        navigate(nextTab.key);
+        navigateToTab(nextTab.key);
       } else {
-        navigate('/');
+        navigateToTab('/');
       }
     }
   };
 
   const handleTabChange = useEventCallback((key: string) => {
     setActiveKey(key);
-    navigate(key);
+    navigateToTab(key);
   });
 
   const handleTabClose = useEventCallback((key: string) => {
@@ -451,7 +459,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
 
   const handleTabRefresh = useEventCallback((key: string) => {
     if (location.pathname !== key) {
-      navigate(key);
+      navigateToTab(key);
     }
     // 包进 Transition：刷新导致的页面重建才会触发 <ViewTransition> 过渡（与导航一致）
     startTransition(() => {
@@ -501,20 +509,20 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
   });
 
   const handleCloseOthers = useEventCallback((key: string) => {
-    navigate(closeOthers(key));
+    navigateToTab(closeOthers(key));
   });
 
   const handleCloseLeft = useEventCallback((key: string) => {
-    navigate(closeLeft(key));
+    navigateToTab(closeLeft(key));
   });
 
   const handleCloseRight = useEventCallback((key: string) => {
-    navigate(closeRight(key));
+    navigateToTab(closeRight(key));
   });
 
   const handleCloseAll = useEventCallback(() => {
     closeAll();
-    navigate('/');
+    navigateToTab('/');
   });
 
   const handleDragLeave = useEventCallback(() => {
@@ -938,7 +946,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
                 tabs={tabs}
                 activeKey={activeKey}
                 resolveIcon={resolveIcon}
-                onNavigate={(key) => { setActiveKey(key); navigate(key); }}
+                onNavigate={handleTabChange}
                 onClose={(key) => handleTabClose(key)}
               />
               )}

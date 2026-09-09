@@ -1,20 +1,24 @@
 import { ViewTransition } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, ViewTransitionClass } from 'react';
 import type { RouteAnimation } from '@/hooks/usePreferences';
+import { ROUTE_BACK_TRANSITION_TYPE } from './route-transition-types';
 
 type AnimatedRouteAnimation = Exclude<RouteAnimation, 'none'>;
 
-/** 偏好值 → View Transition class；对应动画定义在 AdminLayout.css 的 `::view-transition-*(.route-vt-*)` */
-const ENTER_CLASS: Record<AnimatedRouteAnimation, string> = {
+/**
+ * 偏好值 → View Transition class；对应动画定义在 AdminLayout.css 的 `::view-transition-*(.route-vt-*)`。
+ * 「左滑」按 Transition 类型区分方向：页签栏上切到左侧页签（ROUTE_BACK_TRANSITION_TYPE）时反向滑动。
+ */
+const ENTER_CLASS: Record<AnimatedRouteAnimation, ViewTransitionClass> = {
   fade: 'route-vt-fade-in',
   'slide-up': 'route-vt-slide-up-in',
-  'slide-left': 'route-vt-slide-left-in',
+  'slide-left': { [ROUTE_BACK_TRANSITION_TYPE]: 'route-vt-slide-right-in', default: 'route-vt-slide-left-in' },
 };
 
-const EXIT_CLASS: Record<AnimatedRouteAnimation, string> = {
+const EXIT_CLASS: Record<AnimatedRouteAnimation, ViewTransitionClass> = {
   fade: 'route-vt-fade-out',
   'slide-up': 'route-vt-slide-up-out',
-  'slide-left': 'route-vt-slide-left-out',
+  'slide-left': { [ROUTE_BACK_TRANSITION_TYPE]: 'route-vt-slide-right-out', default: 'route-vt-slide-left-out' },
 };
 
 type Props = Readonly<{

@@ -2318,6 +2318,17 @@ body[theme-mode='dark'] .lock-screen .lock-screen__input.semi-input-wrapper-erro
   to   { opacity: 0; transform: translateX(-16px); }
 }
 
+/* 「左滑」的后退方向（Transition 类型 route-back：切到左侧页签）：新页从左进、旧页向右退 */
+@keyframes route-slide-right-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes route-slide-right-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(16px); }
+}
+
 /* fill-mode 必须为 both：动画结束到过渡拆除之间还有若干帧，否则旧快照会回弹到 opacity 1 造成闪烁 */
 ::view-transition-new(.route-vt-fade-in) {
   animation: route-fade-in 0.2s ease both;
@@ -2341,4 +2352,12 @@ body[theme-mode='dark'] .lock-screen .lock-screen__input.semi-input-wrapper-erro
 
 ::view-transition-old(.route-vt-slide-left-out) {
   animation: route-slide-left-out 0.22s ease both;
+}
+
+::view-transition-new(.route-vt-slide-right-in) {
+  animation: route-slide-right-in 0.22s ease both;
+}
+
+::view-transition-old(.route-vt-slide-right-out) {
+  animation: route-slide-right-out 0.22s ease both;
 }
