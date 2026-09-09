@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@zenith/shared": "^2.0.0",
-    "rrweb": "^2.1.1",
+    "rrweb": "^2.1.4",
     "web-vitals": "^6.2.1"
   }
 }

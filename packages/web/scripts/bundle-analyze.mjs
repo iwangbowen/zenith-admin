@@ -32,7 +32,7 @@ if (!existsSync(dist) || entries.length === 0) {
   process.exit(2);
 }
 
-await init;
+await init();
 
 // ─── 载入全部 chunk 与 import 边 ──────────────────────────────────────────────
 
@@ -49,8 +49,10 @@ for (const assetsDir of assetDirs) {
     const st = new Set();
     const dy = new Set();
     for (const imp of imports) {
-      if (!imp.n || !imp.n.endsWith('.js')) continue;
-      (imp.d === -1 ? st : dy).add(`${assetsDir}/${basename(imp.n)}`);
+      // import.meta 无 specifier；模板字面量动态导入被报告为 glob（./x/*.js），不对应真实 chunk
+      if (!imp.specifier || !imp.specifier.endsWith('.js') || imp.glob) continue;
+      // `export * from` 记录为 reexport-star，与 static 同属首帧必达的静态边
+      (imp.type === 'dynamic' ? dy : st).add(`${assetsDir}/${basename(imp.specifier)}`);
     }
     chunks.set(`${assetsDir}/${file}`, { size: Buffer.byteLength(code), code, static: st, dynamic: dy, assetsDir, file });
   }
