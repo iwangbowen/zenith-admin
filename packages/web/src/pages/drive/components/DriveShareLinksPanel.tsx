@@ -25,7 +25,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { formatDateTimeForApi } from '@/utils/date';
-import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { roleAtLeast, shareLinkAbsoluteUrl, shareLinkStateTag } from '../drive-utils';
 
 interface ShareLinkFormValues {
@@ -58,10 +58,10 @@ function CollectSubmissionsModal({ link, onClose }: { readonly link: DriveShareL
   const [page, setPage] = useState(1);
   const query = useDriveCollectSubmissions(link?.id, { page, pageSize: 10 }, !!link);
   const columns: ColumnProps<DriveCollectSubmission>[] = [
-    { title: '文件', dataIndex: 'fileName', ellipsis: { showTitle: false }, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }}>{v}</Typography.Text> },
+    { title: '文件', dataIndex: 'fileName', ellipsis: { showTitle: false }, render: renderEllipsis },
     { title: '大小', dataIndex: 'size', width: 90, render: (v: number) => <span className="drive-nowrap">{formatBytes(v)}</span> },
     { title: '提交人', dataIndex: 'submitterName', width: 120, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
-    { title: '备注', dataIndex: 'submitterNote', ellipsis: { showTitle: false }, render: (v: string | null) => v ? <Typography.Text ellipsis={{ showTooltip: true }}>{v}</Typography.Text> : EMPTY_PLACEHOLDER },
+    { title: '备注', dataIndex: 'submitterNote', ellipsis: { showTitle: false }, render: renderEllipsis },
     { title: 'IP', dataIndex: 'clientIp', width: 130, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     dateTimeColumn<DriveCollectSubmission>('提交时间', 'createdAt'),
   ];

@@ -16,6 +16,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePreferences } from '@/hooks/usePreferences';
 import { useAuth } from '@/hooks/useAuth';
 import { confirmDelete } from '@/utils/confirm';
+import { renderEllipsis } from '@/utils/table-columns';
 import { extractMarkdownHeadings, type MarkdownHeading } from '@/utils/markdown-outline';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useMyWikiSpaces } from '@/hooks/queries/wiki-spaces';
@@ -1012,7 +1013,7 @@ export default function WikiDocCenterPage() {
                         main={(
                           <div style={{ minWidth: 0 }}>
                             <Space spacing={4}>
-                              <Text ellipsis={{ showTooltip: true }}>{item.title}</Text>
+                              {renderEllipsis(item.title)}
                               <Tag size="small" color={WIKI_DOC_STATUS_TAG_COLOR[item.status]}>{WIKI_DOC_STATUS_LABELS[item.status]}</Tag>
                             </Space>
                             <div><Text type="tertiary" size="small">{item.spaceName} · {item.updatedAt}</Text></div>

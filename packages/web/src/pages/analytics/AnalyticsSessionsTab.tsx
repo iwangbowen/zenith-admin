@@ -7,7 +7,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { analyticsKeys, useAnalyticsSessions, useSessionTimeline } from '@/hooks/queries/analytics';
 import type { SessionListItem } from '@zenith/shared/analytics';
 import { ANALYTICS_DEVICE_TYPE_OPTIONS, USER_BEHAVIOR_EVENT_TYPE_LABELS } from '@zenith/shared/analytics';
@@ -115,8 +115,8 @@ export default function AnalyticsSessionsTab() {
 
   const columns: ColumnProps<SessionListItem>[] = [
     { title: '用户', dataIndex: 'username', width: 150, render: (_value, record) => record.username || (record.userId == null ? '匿名访客' : `用户 #${record.userId}`) },
-    { title: '入口页', dataIndex: 'entryPage', minWidth: 200, render: (_value, record) => <Typography.Text ellipsis={{ showTooltip: true }}>{record.entryPage || '–'}</Typography.Text> },
-    { title: '出口页', dataIndex: 'exitPage', width: 200, render: (_value, record) => <Typography.Text ellipsis={{ showTooltip: true }}>{record.exitPage || '–'}</Typography.Text> },
+    { title: '入口页', dataIndex: 'entryPage', minWidth: 200, render: (_value, record) => renderEllipsis(record.entryPage) },
+    { title: '出口页', dataIndex: 'exitPage', width: 200, render: (_value, record) => renderEllipsis(record.exitPage) },
     { title: '页数', dataIndex: 'pageCount', width: 90, align: 'right' },
     { title: '事件', dataIndex: 'eventCount', width: 90, align: 'right' },
     { title: '时长', dataIndex: 'durationMs', width: 120, align: 'right', render: (_value, record) => msToReadable(record.durationMs) },

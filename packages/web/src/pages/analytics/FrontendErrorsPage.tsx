@@ -79,7 +79,7 @@ import {
 import { SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatBytes } from '@zenith/shared/core';
 
 const { Text, Title, Paragraph } = Typography;
@@ -1162,7 +1162,7 @@ export default function FrontendErrorsPage() {
                           if (event.key === 'Enter') void openGroupDetail(issue.id);
                         }}
                       >
-                        <Text ellipsis={{ showTooltip: true }}>{issue.message}</Text>
+                        {renderEllipsis(issue.message)}
                         <Tag color={issue.count >= 10 ? 'red' : 'grey'}>{issue.count} 次</Tag>
                         <StatusTag status={issue.status} />
                       </div>

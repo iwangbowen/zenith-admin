@@ -11,7 +11,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
-import { createdAtColumn } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
   tagKeys,
   useDeleteTags,
@@ -205,7 +205,7 @@ export default function TagsPage() {
     {
       title: '描述',
       dataIndex: 'description',
-      render: (v: string | null) => v ? <Text ellipsis={{ showTooltip: true }}>{v}</Text> : <Text type="quaternary">—</Text>,
+      render: renderEllipsis,
     },
     {
       title: '排序',

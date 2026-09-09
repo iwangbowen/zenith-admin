@@ -166,7 +166,7 @@ function QuotaRequestsTab() {
   };
 
   const columns: ColumnProps<DriveQuotaRequest>[] = [
-    { title: '空间', dataIndex: 'spaceName', minWidth: 180, render: (v: string, r: DriveQuotaRequest) => <Space spacing={4}><Typography.Text ellipsis={{ showTooltip: true }}>{v}</Typography.Text><Tag size="small">{DRIVE_SPACE_TYPE_LABELS[r.spaceType]}</Tag></Space> },
+    { title: '空间', dataIndex: 'spaceName', minWidth: 180, render: (v: string, r: DriveQuotaRequest) => <Space spacing={4}>{renderEllipsis(v)}<Tag size="small">{DRIVE_SPACE_TYPE_LABELS[r.spaceType]}</Tag></Space> },
     { title: '申请人', dataIndex: 'requesterName', width: 110, render: renderEllipsis },
     { title: '当前配额 / 已用', width: 180, render: (_: unknown, r: DriveQuotaRequest) => <span className="drive-nowrap">{r.currentQuotaBytes ? formatBytes(r.currentQuotaBytes) : '不限'} / {formatBytes(r.usedBytes)}</span> },
     { title: '申请配额', dataIndex: 'requestedGb', width: 100, render: (v: number) => `${v} GB` },

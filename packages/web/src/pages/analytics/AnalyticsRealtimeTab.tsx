@@ -5,6 +5,7 @@ import { Button, Card, Tag, Typography } from '@douyinfe/semi-ui';
 import { Eye, RefreshCcw, Users, Zap } from 'lucide-react';
 import { AreaChart, chartOptions, makeAreaSpec, useChartPalette, StatCard, StatGrid } from '@/components/charts';
 import { formatDateTime } from '@/utils/date';
+import { renderEllipsis } from '@/utils/table-columns';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { analyticsKeys, useAnalyticsRealtime } from '@/hooks/queries/analytics';
 import { numberText, sectionStyle } from './analytics-format';
@@ -65,7 +66,7 @@ export default function AnalyticsRealtimeTab() {
             {data.recentEvents.map((event, index) => (
               <div key={`${event.createdAt}-${index}`} style={{ display: 'grid', gridTemplateColumns: '160px minmax(0, 1fr) 140px 170px', gap: 12, alignItems: 'center' }}>
                 <Tag color="green">{event.eventType}</Tag>
-                <Typography.Text ellipsis={{ showTooltip: true }}>{event.eventName || event.pagePath}</Typography.Text>
+                {renderEllipsis(event.eventName || event.pagePath)}
                 <Typography.Text type="tertiary">{event.username || '匿名访客'}</Typography.Text>
                 <Typography.Text type="tertiary">{formatDateTime(event.createdAt)}</Typography.Text>
               </div>

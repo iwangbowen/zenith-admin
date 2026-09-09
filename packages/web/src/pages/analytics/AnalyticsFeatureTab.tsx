@@ -7,6 +7,7 @@ import { TreemapChart, chartOptions, makeTreemapSpec, useChartPalette, type Tree
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import { useAnalyticsFeatureStats } from '@/hooks/queries/analytics';
+import { renderEllipsis } from '@/utils/table-columns';
 import type { FeatureStats } from '@zenith/shared/analytics';
 import { useBehaviorDays } from './behavior-days-context';
 import { CHART_TOP_N, DAYS_OPTIONS, elementDisplayName, numberText, sectionStyle } from './analytics-format';
@@ -105,7 +106,7 @@ export default function AnalyticsFeatureTab() {
       ),
     },
     { title: 'UI区域', dataIndex: 'componentArea', width: 140, render: (_value, record) => (record.componentArea ? <Tag color="blue">{record.componentArea}</Tag> : <Tag color="grey">未标记</Tag>) },
-    { title: '所在页面', dataIndex: 'pagePath', width: 260, render: (value) => <Typography.Text ellipsis={{ showTooltip: true }}>{String(value)}</Typography.Text> },
+    { title: '所在页面', dataIndex: 'pagePath', width: 260, render: (value) => renderEllipsis(String(value)) },
     {
       title: '使用次数',
       align: 'right',

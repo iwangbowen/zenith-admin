@@ -18,7 +18,7 @@ import type { CronJob, CronJobStatsPerJob, CronJobRecentLog, CronRunStatus } fro
 import { CRON_RUN_STATUS_LABELS } from '@zenith/shared/platform';
 import dayjs from 'dayjs';
 import { useCronJobStats } from '@/hooks/queries/cron-jobs';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDurationMs } from '@/utils/format';
 
 const SUCCESS_COLOR = '#10b981';
@@ -245,7 +245,7 @@ export default function CronJobDashboard({ jobs }: Readonly<Props>) {
       title: '任务名称', dataIndex: 'jobName', ellipsis: { showTitle: true },
       render: (v: string, record: CronJobStatsPerJob) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
-          <Typography.Text ellipsis={{ showTooltip: true }}>{v}</Typography.Text>
+          {renderEllipsis(v)}
           {record.consecutiveFails >= 2 && <Tag color="red" size="small">连败 {record.consecutiveFails}</Tag>}
         </span>
       ),
