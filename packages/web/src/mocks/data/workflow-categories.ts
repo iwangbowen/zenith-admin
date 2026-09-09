@@ -1,6 +1,7 @@
 import { SEED_WORKFLOW_CATEGORIES } from '@zenith/shared/seed';
 import type { WorkflowCategory } from '@zenith/shared/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 
 export const mockWorkflowCategories: WorkflowCategory[] = SEED_WORKFLOW_CATEGORIES.map((c) => ({
   ...c,
@@ -8,7 +9,7 @@ export const mockWorkflowCategories: WorkflowCategory[] = SEED_WORKFLOW_CATEGORI
   updatedAt: mockDateTime(c.updatedAt),
 }));
 
-let nextCategoryId = Math.max(...mockWorkflowCategories.map((c) => c.id)) + 1;
+let nextCategoryId = nextIdFrom(mockWorkflowCategories);
 export function getNextCategoryId(): number {
   return nextCategoryId++;
 }

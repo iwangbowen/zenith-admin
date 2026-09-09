@@ -34,7 +34,7 @@ import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { getSettings } from '../../lib/settings';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
-import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition, nullableEq, withPagination } from '../../lib/where-helpers';
 import { listBusinessFiles, saveBusinessFiles } from '../files/business-files.service';
 import { wikiDeletedDocVisibilityCondition, wikiDocStatusVisibilityCondition, wikiSpaceAccessCondition } from './access';
 import { notifyWikiDocPublished, notifyWikiDocReviewed } from './notifications.service';
@@ -425,7 +425,7 @@ export async function moveWikiDoc(id: number, data: MoveWikiDocInput) {
     }).from(wikiDocs)
       .where(buildWhere(
         eq(wikiDocs.spaceId, row.spaceId),
-        data.parentId === null ? isNull(wikiDocs.parentId) : eq(wikiDocs.parentId, data.parentId),
+        nullableEq(wikiDocs.parentId, data.parentId),
         isNull(wikiDocs.deletedAt),
         eq(wikiDocs.isArchived, false),
         ne(wikiDocs.id, id),

@@ -36,7 +36,7 @@ import { currentUser, currentUserId } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildListResult } from '../../lib/list-query';
-import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition, nullableEq, withPagination } from '../../lib/where-helpers';
 import { releaseManagedFiles, retainManagedFiles } from '../files/file-gc.service';
 import {
   attachNodeRoles,
@@ -486,7 +486,7 @@ export async function relocateSubtree(executor: DbExecutor, node: DriveNodeRow, 
 export async function existingNamesIn(executor: DbExecutor, spaceId: number, parentId: number | null): Promise<Set<string>> {
   const rows = await executor.select({ name: driveNodes.name }).from(driveNodes).where(and(
     eq(driveNodes.spaceId, spaceId),
-    parentId === null ? isNull(driveNodes.parentId) : eq(driveNodes.parentId, parentId),
+    nullableEq(driveNodes.parentId, parentId),
     isNull(driveNodes.deletedAt),
   ));
   return new Set(rows.map((r) => r.name.toLowerCase()));

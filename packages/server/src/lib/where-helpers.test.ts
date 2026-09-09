@@ -7,6 +7,7 @@
  *  2. dateRangeConditions：末端含当天（纯日期取 23:59:59.999，不是 00:00:00）
  *  3. buildWhere：过滤 undefined、全空返回 undefined、单条件透传、多条件 and 合并
  *  4. withPagination：LIMIT/OFFSET 换算
+ *  5. nullableEq：null → IS NULL，其它值 → 等值（0 / 空串不视为 null）
  */
 import { describe, it, expect, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
@@ -17,9 +18,32 @@ import {
   buildWhere,
   dateRangeConditions,
   keywordCondition,
+  nullableEq,
   withPagination,
 } from './where-helpers';
 import { users } from '../db/schema';
+
+describe('nullableEq', () => {
+  const dialect = new PgDialect();
+  const toQuery = (condition: SQL) => dialect.sqlToQuery(condition);
+
+  it('null → IS NULL（不带参数）', () => {
+    const { sql: text, params } = toQuery(nullableEq(users.departmentId, null));
+    expect(text).toMatch(/is null/i);
+    expect(params).toEqual([]);
+  });
+
+  it('数字 → 等值匹配', () => {
+    const { sql: text, params } = toQuery(nullableEq(users.departmentId, 7));
+    expect(text).toMatch(/departmentId" = \$1$/);
+    expect(params).toEqual([7]);
+  });
+
+  it('0 与空字符串是合法值，不会被当成 null', () => {
+    expect(toQuery(nullableEq(users.departmentId, 0)).params).toEqual([0]);
+    expect(toQuery(nullableEq(users.username, '')).params).toEqual(['']);
+  });
+});
 
 describe('keywordCondition', () => {
   const cols = [users.username, users.nickname] as unknown as PgColumn[];

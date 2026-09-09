@@ -10,6 +10,7 @@ import {
   RULE_SCORECARD_BAND_OPS,
   RULE_SCORECARD_VARIABLE_TYPES,
 } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 // ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
 const ruleFieldTypeSchema = z.enum(RULE_FIELD_TYPES);
@@ -154,7 +155,7 @@ export const createRuleListSchema = z.object({
 });
 
 export const updateRuleListSchema = partialForUpdate(createRuleListSchema).omit({ key: true }).extend({
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
 });
 
 export const createRuleListItemSchema = z.object({

@@ -3,6 +3,7 @@ import { eq, isNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { config } from '../config';
 import type { JwtPayload } from '../middleware/auth';
+import { nullableEq } from './where-helpers';
 
 const SUPER_ADMIN_CODE = 'super_admin';
 
@@ -101,7 +102,7 @@ export function getCreateTenantId(user: JwtPayload): number | null {
 
 /** 精确匹配已知租户归属：`null` → `IS NULL`，数字 → `=` */
 export function exactTenantCondition(column: SQLWrapper, tenantId: number | null): SQL {
-  return tenantId == null ? isNull(column) : eq(column, tenantId);
+  return nullableEq(column, tenantId ?? null);
 }
 
 /** `exactTenantCondition` 的可选形态：`undefined` 表示不按租户过滤 */

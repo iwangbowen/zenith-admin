@@ -4,7 +4,7 @@ import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
-import type { AsyncTaskItemStatus, AsyncTaskStats, AsyncTaskStatus } from '@zenith/shared/tasks';
+import { ASYNC_TASK_TERMINAL_STATUSES, isAsyncTaskTerminal, type AsyncTaskItemStatus, type AsyncTaskStats, type AsyncTaskStatus } from '@zenith/shared/tasks';
 import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, users } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
@@ -152,14 +152,12 @@ export async function restartTask(id: number) {
   return mapAsyncTask(await restartAsyncTask(id));
 }
 
-const TERMINAL_STATUSES: AsyncTaskStatus[] = ['success', 'failed', 'cancelled'];
-
 export async function deleteAsyncTask(id: number) {
   const row = requireRow(await db.query.asyncTasks.findFirst({ where: eq(asyncTasks.id, id) }), '任务不存在');
-  if (!TERMINAL_STATUSES.includes(row.status)) {
+  if (!isAsyncTaskTerminal(row.status)) {
     throw new HTTPException(400, { message: '进行中的任务不能删除，请先取消' });
   }
-  await db.delete(asyncTasks).where(and(eq(asyncTasks.id, id), inArray(asyncTasks.status, ['success', 'failed', 'cancelled'])));
+  await db.delete(asyncTasks).where(and(eq(asyncTasks.id, id), inArray(asyncTasks.status, ASYNC_TASK_TERMINAL_STATUSES)));
   return mapAsyncTask(row);
 }
 
@@ -180,7 +178,7 @@ export async function batchCancelTasks(ids: number[]) {
 /** 批量删除（仅已结束的任务），返回删除数 */
 export async function batchDeleteTasks(ids: number[]) {
   const rows = await db.delete(asyncTasks)
-    .where(and(inArray(asyncTasks.id, ids), inArray(asyncTasks.status, ['success', 'failed', 'cancelled'])))
+    .where(and(inArray(asyncTasks.id, ids), inArray(asyncTasks.status, ASYNC_TASK_TERMINAL_STATUSES)))
     .returning({ id: asyncTasks.id });
   return { affected: rows.length };
 }

@@ -1,5 +1,6 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import { pageOffset } from '../../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../../db';
@@ -141,7 +142,7 @@ export async function listComments(
       },
       orderBy: desc(reportDashboardComments.id),
       limit: pageSize,
-      offset: (page - 1) * pageSize,
+      offset: pageOffset(page, pageSize),
     }),
   });
   const rootIds = roots.map((row) => row.id);

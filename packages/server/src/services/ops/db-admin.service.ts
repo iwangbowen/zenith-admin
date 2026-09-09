@@ -22,6 +22,7 @@ import { currentUserId } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import { pageOffset } from '../../lib/pagination';
 import { applyReadonlyTransactionGuards } from '../../lib/db-readonly-role';
 import logger from '../../lib/logger';
 import { assertNoDangerousSqlFunctions } from '../../lib/report-sql-safety';
@@ -579,7 +580,7 @@ export async function getTableRows(params: RowsParams): Promise<{
   }
 
   const fullName = `${quoteIdent(schema)}.${quoteIdent(name)}`;
-  const offset = (page - 1) * pageSize;
+  const offset = pageOffset(page, pageSize);
   const dir = orderDir === 'desc' ? 'DESC' : 'ASC';
 
   // 未指定排序时回退到主键 ASC，避免 UPDATE 后行的物理顺序漂移
@@ -1512,7 +1513,7 @@ export async function listQueryHistory(page: number, pageSize: number): Promise<
   pageSize: number;
 }> {
   const userId = currentUserId();
-  const offset = (page - 1) * pageSize;
+  const offset = pageOffset(page, pageSize);
   return buildListResult({
     page,
     pageSize,

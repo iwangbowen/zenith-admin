@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { PermissionContext } from '@/hooks/usePermission';
+import { createTestQueryClient, createWrapper } from '@/test-utils/query-harness';
 
 const state = vi.hoisted(() => ({ policy: vi.fn(), risk: vi.fn() }));
 vi.mock('@/hooks/usePreferences', () => ({
@@ -36,11 +36,12 @@ vi.mock('@/components/search-filters', () => ({ KeywordInput: () => null }));
 import IdentitySecurityPage from './IdentitySecurityPage';
 
 function show(permissions: string[], path = '/system/identity-security') {
-  render(<QueryClientProvider client={new QueryClient()}>
+  render(
     <MemoryRouter initialEntries={[path]}>
       <PermissionContext.Provider value={permissions}><IdentitySecurityPage /></PermissionContext.Provider>
-    </MemoryRouter>
-  </QueryClientProvider>);
+    </MemoryRouter>,
+    { wrapper: createWrapper(createTestQueryClient()) },
+  );
 }
 
 beforeEach(() => { vi.clearAllMocks(); });

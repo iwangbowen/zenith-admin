@@ -17,6 +17,7 @@ import {
   SSH_AUTH_TYPES,
   TERMINAL_RECORDING_EVENT_TYPES,
 } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 // ─── 维护模式 ────────────────────────────────────────────────────────────────
 export const updateMaintenanceSchema = z.object({
@@ -289,7 +290,7 @@ export const createClientAppSchema = z.object({
     .regex(/^[a-z0-9][a-z0-9-]*$/, 'appKey 仅允许小写字母、数字与连字符'),
   name: z.string().min(1, '名称不能为空').max(100),
   description: z.string().max(500).optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 /** appKey 是客户端侧标识，创建后不可修改（改了会导致在网客户端失联） */

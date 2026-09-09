@@ -1,6 +1,6 @@
 import type { QueryOf } from '@zenith/shared/core';
 import { percentOf } from '@zenith/shared/core';
-import { asyncTaskContract, taskDemoContract } from '@zenith/shared/tasks';
+import { asyncTaskContract, taskDemoContract, isAsyncTaskTerminal } from '@zenith/shared/tasks';
 import type { AsyncTask, AsyncTaskItem, AsyncTaskStats, AsyncTaskStatus, AsyncTaskTypeMeta } from '@zenith/shared/tasks';
 import dayjs from 'dayjs';
 import { mock } from '@/mocks/utils/contract';
@@ -747,7 +747,7 @@ export const asyncTasksHandlers = [
   mock(asyncTaskContract.batchDelete, ({ body, ok }) => {
     let affected = 0;
     for (const id of body.ids) {
-      const index = tasks.findIndex((item) => item.id === id && ['success', 'failed', 'cancelled'].includes(item.status));
+      const index = tasks.findIndex((item) => item.id === id && isAsyncTaskTerminal(item.status));
       if (index >= 0) {
         itemsByTask.delete(tasks[index].id);
         tasks.splice(index, 1);
@@ -806,7 +806,7 @@ export const asyncTasksHandlers = [
   mock(asyncTaskContract.restart, ({ params, ok }) => {
     const task = findTask(params.id);
     if (!task) return notFound('任务不存在', { status: 404 });
-    if (!['success', 'failed', 'cancelled'].includes(task.status)) {
+    if (!isAsyncTaskTerminal(task.status)) {
       return badRequest('仅已结束的任务可以重新开始', { status: 400 });
     }
     task.processedCount = 0;
@@ -827,7 +827,7 @@ export const asyncTasksHandlers = [
   mock(asyncTaskContract.remove, ({ params, ok }) => {
     const index = tasks.findIndex((item) => item.id === params.id);
     if (index === -1) return notFound('任务不存在', { status: 404 });
-    if (!['success', 'failed', 'cancelled'].includes(tasks[index].status)) {
+    if (!isAsyncTaskTerminal(tasks[index].status)) {
       return badRequest('进行中的任务不能删除，请先取消', { status: 400 });
     }
     sims.delete(tasks[index].id);

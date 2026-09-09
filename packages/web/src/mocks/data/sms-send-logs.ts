@@ -1,4 +1,5 @@
 import type { SmsSendLog } from '@zenith/shared/messaging';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 
 export const mockSmsSendLogs: SmsSendLog[] = [
   {
@@ -66,7 +67,7 @@ export const mockSmsSendLogs: SmsSendLog[] = [
   },
 ];
 
-let nextId = Math.max(...mockSmsSendLogs.map((l) => l.id)) + 1;
+let nextId = nextIdFrom(mockSmsSendLogs);
 export function getNextSmsSendLogId() {
   return nextId++;
 }

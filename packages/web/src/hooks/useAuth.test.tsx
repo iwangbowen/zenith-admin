@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import {
   ACCOUNT_SWITCH_BROADCAST_KEY,
@@ -9,6 +9,7 @@ import {
   TABS_STORAGE_KEY,
   TOKEN_KEY,
 } from '@zenith/shared/core';
+import { createTestQueryClient } from '@/test-utils/query-harness';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { ADMIN_AUTH_INVALIDATED_EVENT, request } from '@/utils/request';
 import {
@@ -54,14 +55,7 @@ function makeMeResponse(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-}
+const createClient = createTestQueryClient;
 
 function createWrapper(client: QueryClient) {
   return function Wrapper({ children }: Readonly<{ children: ReactNode }>) {

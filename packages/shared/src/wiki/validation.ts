@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { partialForUpdate } from '../core/validation';
 import { WIKI_COMMENT_STATUSES, WIKI_SPACE_MEMBER_ROLES, WIKI_SPACE_VISIBILITIES } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 // ─── 知识空间 ─────────────────────────────────────────────────────────────────
 
@@ -9,7 +10,7 @@ export const createWikiSpaceSchema = z.object({
   description: z.string().max(300).optional(),
   icon: z.string().max(50).optional(),
   visibility: z.enum(WIKI_SPACE_VISIBILITIES).default('public'),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   sort: z.number().int().default(0),
   aiSyncEnabled: z.boolean().default(false),
 });
@@ -112,7 +113,7 @@ export const createWikiTemplateSchema = z.object({
   name: z.string().min(1, '模板名称不能为空').max(100),
   description: z.string().max(300).optional(),
   content: z.string().default(''),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   sort: z.number().int().default(0),
 });
 

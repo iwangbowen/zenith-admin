@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound } from '../core/api-schemas';
+import { dateRangeBound, entityStatusSchema } from '../core/api-schemas';
 import { httpUrl, lazyRecursive, linkUrl, partialForUpdate } from '../core/validation';
 import { isHttpUrl } from '../core/url';
 import { WORKFLOW_EVENT_SIGN_MODES, WORKFLOW_EVENT_TYPES, WORKFLOW_JOB_TYPES } from './constants';
@@ -361,7 +361,7 @@ export const createWorkflowFormSchema = z.object({
   description: z.string().max(500).nullable().optional(),
   categoryId: z.number().int().positive().nullable().optional(),
   schema: workflowFormSchemaSchema.nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateWorkflowFormSchema = partialForUpdate(createWorkflowFormSchema).extend({
@@ -385,7 +385,7 @@ export const createWorkflowDataSourceSchema = z.object({
   valueField: z.string().min(1, '取值字段不能为空').max(64),
   labelField: z.string().min(1, '显示字段不能为空').max(64),
   keywordParam: z.string().max(64).optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).optional(),
 });
 
@@ -422,7 +422,7 @@ export const createWorkflowConnectorSchema = z.object({
   rateLimitEnabled: z.boolean().default(false),
   rateLimitWindowSec: z.number().int().min(1).max(3600).default(1),
   rateLimitMax: z.number().int().min(0).max(100000).default(0),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateWorkflowConnectorSchema = partialForUpdate(createWorkflowConnectorSchema).extend({
@@ -522,7 +522,7 @@ export const createWorkflowAutomationSchema = z.object({
   name: z.string().min(1, '规则名称不能为空').max(128),
   trigger: z.enum(['approved', 'rejected', 'withdrawn', 'created']),
   actions: z.array(workflowAutomationActionSchema).min(1, '至少配置 1 个动作').max(10),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   sort: z.number().int().nonnegative().default(0),
 });
 
@@ -544,7 +544,7 @@ export const createWorkflowScheduleSchema = z.object({
   initiatorId: z.number().int().positive('请选择发起人'),
   titleTemplate: z.string().max(256).nullable().optional(),
   formData: z.record(z.string(), z.unknown()).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateWorkflowScheduleSchema = partialForUpdate(createWorkflowScheduleSchema);

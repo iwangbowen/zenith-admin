@@ -1,12 +1,13 @@
 import * as z from 'zod';
 import { partialForUpdate } from '../core/validation';
 import { PAYMENT_FUND_RESERVATION_STATUSES, PAYMENT_LEDGER_ACCOUNT_CODES, PAYMENT_LINK_PAY_METHODS, PAYMENT_METHOD_CHANNEL } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 // ─── 支付中心 ────────────────────────────────────────────────────────
 export const createPaymentChannelConfigSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(64),
   channel: z.enum(['wechat', 'alipay', 'unionpay']),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   isDefault: z.boolean().default(false),
   sandbox: z.boolean().default(false),
   notifyUrl: z.string().max(512).refine((v) => v === '' || /^https?:\/\/.+/.test(v), { message: '回调地址须为 http(s) 绝对地址' }).optional(),
@@ -155,7 +156,7 @@ export const createPaymentFeeRuleSchema = z.object({
   fixedFee: z.number().int().min(0).default(0), // 分
   minFee: z.number().int().min(0).optional(),
   maxFee: z.number().int().min(0).optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   priority: z.number().int().min(0).max(9999).default(0),
   remark: z.string().max(256).optional(),
 }).superRefine((value, ctx) => {
@@ -173,7 +174,7 @@ export const createPaymentSharingReceiverSchema = z.object({
   account: z.string().min(1).max(128),
   ratioBps: z.number().int().min(0).max(10000).optional(), // 万分比
   autoShare: z.boolean().default(false),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).optional(),
 });
 
@@ -222,7 +223,7 @@ export const approvePaymentTransferSchema = z.object({
 export const createPaymentAppSchema = z.object({
   name: z.string().min(1).max(64),
   openClientId: z.number().int().positive(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   wechatConfigId: z.number().int().positive().nullable().optional(),
   alipayConfigId: z.number().int().positive().nullable().optional(),
   unionpayConfigId: z.number().int().positive().nullable().optional(),
@@ -275,7 +276,7 @@ export const createPaymentRiskRuleSchema = z.object({
   blockListKeys: z.array(z.string().min(1).max(64)).default([]),
   allowListKeys: z.array(z.string().min(1).max(64)).default([]),
   action: z.enum(['block', 'review']).default('block'),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).optional(),
 });
 
@@ -328,7 +329,7 @@ export const createPaymentDeductPlanSchema = z.object({
   customDays: z.number().int().min(1).max(3650).nullable().optional(),
   amount: z.number().int().positive('每期扣款金额必须大于 0'), // 分
   maxRetries: z.number().int().min(0).max(10).default(3),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).optional(),
 }).refine((v) => v.period !== 'custom' || (v.customDays != null && v.customDays >= 1), {
   message: '自定义周期必须填写天数',
@@ -341,7 +342,7 @@ export const updatePaymentDeductPlanSchema = z.object({
   customDays: z.number().int().min(1).max(3650).nullable().optional(),
   amount: z.number().int().positive().optional(),
   maxRetries: z.number().int().min(0).max(10).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
   remark: z.string().max(256).optional(),
 });
 

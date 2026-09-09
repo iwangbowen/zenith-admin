@@ -9,6 +9,7 @@ import {
   DIRECTORY_SYNC_CONFLICT_POLICIES, DIRECTORY_SYNC_RESOLUTIONS,
   OAUTH_PROVIDERS,
 } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 export const loginDeviceInfoSchema = z.object({
   screenWidth: z.number().int().min(0).max(32767).optional(),
@@ -56,7 +57,7 @@ export const createUserSchema = z.object({
   departmentId: z.number().int().positive().nullable().optional(),
   positionIds: z.array(z.number().int().positive()).default([]),
   roleIds: z.array(z.number().int()).default([]),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 
@@ -120,7 +121,7 @@ export const createMenuSchema = z.object({
   embed: z.boolean().default(false),
   keepAlive: z.boolean().default(false),
   sort: z.coerce.number().int().default(0),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   visible: z.boolean().default(true),
 });
 
@@ -133,7 +134,7 @@ export const createRoleSchema = z.object({
   name: z.string().min(1, '角色名称不能为空').max(64),
   code: z.string().min(1, '角色编码不能为空').max(64).regex(/^[a-z_]+$/, '角色编码只能包含小写字母和下划线'),
   description: z.string().max(256).optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   dataScope: z.enum(['all', 'custom', 'dept_only', 'dept', 'self']).default('all'),
   deptScopeIds: z.array(z.number().int().positive()).optional().nullable(),
 });
@@ -165,7 +166,7 @@ export const createDepartmentSchema = z.object({
     z.email('邮箱格式不正确').optional()
   ),
   sort: z.number().int().default(0),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 
@@ -177,7 +178,7 @@ export const createPositionSchema = z.object({
   name: z.string().min(1, '岗位名称不能为空').max(64),
   code: z.string().min(1, '岗位编码不能为空').max(64).regex(/^\w+$/, '岗位编码只能包含字母、数字和下划线'),
   sort: z.coerce.number().int().default(0),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).optional(),
 });
 
@@ -201,7 +202,7 @@ const userGroupBaseSchema = z.object({
   code: z.string().min(1, '用户组编码不能为空').max(64).regex(/^\w+$/, '用户组编码只能包含字母、数字和下划线'),
   description: z.string().max(256).optional(),
   ownerId: z.number().int().positive().nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   memberMode: z.enum(['static', 'dynamic']).default('static'),
   memberRule: userGroupMemberRuleSchema.nullable().optional(),
 });
@@ -326,7 +327,7 @@ export const createTenantIdentityProviderSchema = z.object({
   name: z.string().min(1, '身份源名称不能为空').max(100),
   code: z.string().min(1, '身份源编码不能为空').max(64).regex(/^[a-z][a-z0-9_-]*$/, '编码只能包含小写字母、数字、中划线和下划线，且以字母开头'),
   type: z.enum(['oidc', 'saml', 'ldap', 'ad']),
-  status: z.enum(['enabled', 'disabled']).default('disabled'),
+  status: entityStatusSchema.default('disabled'),
   issuer: z.string().max(512).nullable().optional(),
   authorizationEndpoint: z.string().max(512).nullable().optional(),
   tokenEndpoint: z.string().max(512).nullable().optional(),
@@ -404,7 +405,7 @@ export const createTenantSchema = z.object({
   logo: z.string().max(500).optional(),
   contactName: z.string().max(50).optional(),
   contactPhone: z.string().max(20).optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   expireAt: dateTimeStringSchema.optional().nullable(),
   maxUsers: z.number().int().positive().optional().nullable(),
   packageId: z.number().int().positive().optional().nullable(),
@@ -437,7 +438,7 @@ export type SwitchTenantInput = z.infer<typeof switchTenantSchema>;
 // ─── 租户套餐 ────────────────────────────────────────────────────────────────
 export const createTenantPackageSchema = z.object({
   name: z.string().min(1, '套餐名称不能为空').max(100),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(500).optional(),
   quotas: tenantPackageQuotasSchema.optional().nullable(),
 });
@@ -484,7 +485,7 @@ export const directorySyncScopeSchema = z.object({
 export const createDirectorySyncSourceSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(100),
   type: z.enum(DIRECTORY_SYNC_SOURCE_TYPES),
-  status: z.enum(['enabled', 'disabled']).default('disabled'),
+  status: entityStatusSchema.default('disabled'),
   tenantId: z.number().int().positive().nullable().optional(),
   identityProviderId: z.number().int().positive().nullable().optional(),
   oauthProvider: z.string().max(32).nullable().optional(),
@@ -520,7 +521,7 @@ export const createDirectorySyncSourceSchema = z.object({
 
 export const updateDirectorySyncSourceSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(100).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
   tenantId: z.number().int().positive().nullable().optional(),
   identityProviderId: z.number().int().positive().nullable().optional(),
   oauthProvider: z.string().max(32).nullable().optional(),
@@ -602,7 +603,7 @@ export const batchResetUsersPasswordSchema = z.object({
 
 export const batchUpdateUserStatusSchema = z.object({
   ids: z.array(z.number().int()),
-  status: z.enum(['enabled', 'disabled']),
+  status: entityStatusSchema,
 });
 
 export const assignUserRolesSchema = z.object({

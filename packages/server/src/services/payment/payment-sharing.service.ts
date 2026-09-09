@@ -24,6 +24,7 @@ import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
+import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { buildAdapterContext, createOrderConfigResolver, loadOrderConfig } from './payment.service';
 import { postSystemJournal } from './payment-journal.service';
@@ -199,7 +200,7 @@ export async function listSharingOrders(q: ListSharingOrdersQuery) {
       where,
       orderBy: desc(paymentSharingOrders.id),
       limit: pageSize,
-      offset: (page - 1) * pageSize,
+      offset: pageOffset(page, pageSize),
       with: { receiver: { columns: { name: true } } },
     }),
     map: (r) => mapSharingOrder({ ...r, receiverName: r.receiver?.name ?? null }),

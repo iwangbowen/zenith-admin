@@ -1,4 +1,5 @@
 import type { SmsConfig } from '@zenith/shared/messaging';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 
 export const mockSmsConfigs: SmsConfig[] = [
   {
@@ -45,7 +46,7 @@ export const mockSmsConfigs: SmsConfig[] = [
   },
 ];
 
-let nextId = Math.max(...mockSmsConfigs.map((c) => c.id)) + 1;
+let nextId = nextIdFrom(mockSmsConfigs);
 export function getNextSmsConfigId() {
   return nextId++;
 }

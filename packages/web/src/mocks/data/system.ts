@@ -2,10 +2,11 @@ import type { CronJob, FileStorageConfig } from '@zenith/shared/platform';
 import type { OnlineSession } from '@zenith/shared/identity';
 import { SEED_CRON_JOBS } from '@zenith/shared/seed';
 import { mockDateTimeOffset } from '@/mocks/utils/date';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 
 export const mockCronJobs: CronJob[] = SEED_CRON_JOBS.map((c) => ({ ...c }));
 
-let nextCronJobId = Math.max(...SEED_CRON_JOBS.map((c) => c.id)) + 1;
+let nextCronJobId = nextIdFrom(SEED_CRON_JOBS);
 export function getNextCronJobId() {
   return nextCronJobId++;
 }

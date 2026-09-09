@@ -1,4 +1,4 @@
-import type { AsyncTask } from '@zenith/shared/tasks';
+import { isAsyncTaskTerminal, type AsyncTask } from '@zenith/shared/tasks';
 import type { AsyncTaskRow } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../datetime';
 import { sendToUser } from '../ws-manager';
@@ -38,7 +38,6 @@ export function mapAsyncTask(row: AsyncTaskRowWithCreator): AsyncTask {
   };
 }
 
-const TERMINAL_STATUSES = new Set<AsyncTaskRow['status']>(['success', 'failed', 'cancelled']);
 /** 进度 WS 推送最小间隔（毫秒），避免逐条任务刷屏；状态变更总是立即推送 */
 const PUSH_THROTTLE_MS = 300;
 const lastPushAt = new Map<number, number>();
@@ -47,9 +46,10 @@ const lastPushAt = new Map<number, number>();
 export function pushTaskProgress(row: AsyncTaskRowWithCreator, opts?: { force?: boolean }): void {
   if (!row.createdBy) return;
   const now = Date.now();
-  const force = opts?.force === true || TERMINAL_STATUSES.has(row.status);
+  const terminal = isAsyncTaskTerminal(row.status);
+  const force = opts?.force === true || terminal;
   if (!force && now - (lastPushAt.get(row.id) ?? 0) < PUSH_THROTTLE_MS) return;
-  if (TERMINAL_STATUSES.has(row.status)) lastPushAt.delete(row.id);
+  if (terminal) lastPushAt.delete(row.id);
   else lastPushAt.set(row.id, now);
   sendToUser(row.createdBy, { type: 'task:progress', payload: mapAsyncTask(row) });
 }

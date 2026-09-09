@@ -9,7 +9,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { Banner, Button, Collapse, InputNumber, Modal, Select, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Info, Play, RefreshCw } from 'lucide-react';
-import type { AsyncTask, AsyncTaskItem, AsyncTaskItemStatus, AsyncTaskStatus } from '@zenith/shared/tasks';
+import { isAsyncTaskTerminal, type AsyncTask, type AsyncTaskItem, type AsyncTaskItemStatus, type AsyncTaskStatus } from '@zenith/shared/tasks';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
@@ -196,7 +196,7 @@ export default function TaskDemoPage() {
         {
           key: 'restart',
           label: '重新开始',
-          hidden: !['success', 'failed', 'cancelled'].includes(record.status),
+          hidden: !isAsyncTaskTerminal(record.status),
           loading: actionLoadingId === record.id,
           onClick: () => void runAction(record, 'restart', '已重新开始（进度清零）'),
         },

@@ -18,7 +18,7 @@ import { pageOffset } from '../../lib/pagination';
 import { assertAllCmsSiteChannelsAccess, getAccessibleChannelIds } from './cms-channels.service';
 import { loadCmsExtensionWords, normalizeCmsSearchDictionaryWord } from './cms-search-dictionary';
 import { listSummaryOf } from './cms-content-columns';
-import { escapeHtml } from '@zenith/shared/core';
+import { escapeHtml, escapeRegExp } from '@zenith/shared/core';
 
 // ─── 分词器（进程级单例，加载默认词典 + DB 自定义词典）─────────────────────────
 const jiebaBySite = new Map<number, Jieba>();
@@ -249,7 +249,7 @@ export function highlightTokens(text: string, tokens: string[]): string {
   let out = escapeHtml(text);
   for (const t of tokens) {
     if (!t) continue;
-    const escaped = escapeHtml(t).replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+    const escaped = escapeRegExp(escapeHtml(t));
     out = out.replace(new RegExp(escaped, 'gi'), (m) => `<mark>${m}</mark>`);
   }
   return out;

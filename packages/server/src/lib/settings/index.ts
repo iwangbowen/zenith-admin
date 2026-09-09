@@ -1,4 +1,4 @@
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import {
   SETTINGS_MODULES,
@@ -28,7 +28,7 @@ import { isFeatureEnabled } from '../licensing';
 import logger from '../logger';
 import { currentMemberOrNull } from '../member-context';
 import { getUserPermissions, isSuperAdmin } from '../permissions';
-import { getEffectiveTenantId, getTenantScopeId, isPlatformAdmin } from '../tenant';
+import { exactTenantCondition, getEffectiveTenantId, getTenantScopeId, inheritedTenantCondition, isPlatformAdmin } from '../tenant';
 import { getTenantPackageFeatureSet } from '../tenant-package';
 import { TtlCache } from '../ttl-cache';
 import type { JwtPayload } from '../../middleware/auth';
@@ -101,9 +101,7 @@ onInvalidationReset(resetSettingsCache);
 type SettingsRow = typeof systemSettings.$inferSelect;
 
 async function loadRows(module: SettingsModuleKey, tenantId: number | null): Promise<{ platform: SettingsRow | null; tenant: SettingsRow | null }> {
-  const scope = tenantId === null
-    ? isNull(systemSettings.tenantId)
-    : or(isNull(systemSettings.tenantId), eq(systemSettings.tenantId, tenantId));
+  const scope = inheritedTenantCondition(systemSettings.tenantId, tenantId);
   const rows = await db.select().from(systemSettings).where(and(eq(systemSettings.module, module), scope));
   return {
     platform: rows.find((row) => row.tenantId === null) ?? null,
@@ -244,7 +242,7 @@ export async function saveSettings<M extends SettingsModuleKey>(module: M, user:
   await db.transaction(async (tx) => {
     const [existing] = await tx.select({ id: systemSettings.id, version: systemSettings.version })
       .from(systemSettings)
-      .where(and(eq(systemSettings.module, module), tenantId === null ? isNull(systemSettings.tenantId) : eq(systemSettings.tenantId, tenantId)))
+      .where(and(eq(systemSettings.module, module), exactTenantCondition(systemSettings.tenantId, tenantId)))
       .for('update');
     const currentVersion = existing?.version ?? 0;
     if (currentVersion !== input.version) {

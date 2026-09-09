@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { createWorkflowDataSourceSchema, updateWorkflowDataSourceSchema } from '../validation';
 
@@ -16,7 +16,7 @@ export const workflowDataSourceSchema = z.object({
   valueField: z.string(),
   labelField: z.string(),
   keywordParam: z.string().nullable().optional(),
-  status: z.enum(['enabled', 'disabled']),
+  status: entityStatusSchema,
   remark: z.string().nullable().optional(),
   ...auditFieldsSchema,
   createdAt: z.string(),
@@ -37,7 +37,7 @@ export type WorkflowDataSourceOption = z.infer<typeof workflowDataSourceOptionSc
 
 export const workflowDataSourceListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
 });
 
 export const workflowDataSourceOptionsQuery = z.object({

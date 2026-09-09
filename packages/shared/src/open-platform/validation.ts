@@ -11,6 +11,7 @@ import {
   OPEN_APP_ENVIRONMENTS,
   OPEN_WEBHOOK_EVENTS,
 } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 const ipOrCidrSchema = z.string().min(2).max(64).regex(
   /^((\d{1,3}\.){3}\d{1,3}|[0-9a-fA-F:]+)(\/\d{1,3})?$/,
@@ -60,7 +61,7 @@ function validateOAuth2Client(value: z.infer<typeof oauth2ClientCreateSchema>, c
 export const createOAuth2ClientSchema = oauth2ClientCreateSchema.superRefine(validateOAuth2Client);
 
 export const updateOAuth2ClientSchema = partialForUpdate(oauth2ClientBaseSchema).extend({
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
 });
 
 const developerOAuth2ClientCreateSchema = oauth2ClientCreateSchema.omit({ ratePlanId: true });
@@ -143,7 +144,7 @@ export const createApiScopeSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(100),
   description: z.string().max(500).optional(),
   scopeGroup: z.string().min(1).max(64).default('general'),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateApiScopeSchema = partialForUpdate(createApiScopeSchema).omit({ code: true });
@@ -165,7 +166,7 @@ export const createRatePlanSchema = z.object({
   dailyQuota: z.number().int().min(0).default(0),
   monthlyQuota: z.number().int().min(0).default(0),
   isDefault: z.boolean().default(false),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateRatePlanSchema = partialForUpdate(createRatePlanSchema).omit({ code: true });
@@ -227,7 +228,7 @@ export const createAppWebhookSchema = z.object({
   events: z.array(z.enum(OPEN_WEBHOOK_EVENTS)).default([]),
   signMode: z.enum(['hmacSha256', 'none']).default('hmacSha256'),
   headers: webhookHeadersSchema.optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 }).superRefine(requireSensitiveWebhookSignature);
 
 const updateAppWebhookFieldsSchema = z.object({
@@ -236,7 +237,7 @@ const updateAppWebhookFieldsSchema = z.object({
   events: z.array(z.enum(OPEN_WEBHOOK_EVENTS)).optional(),
   signMode: z.enum(['hmacSha256', 'none']).optional(),
   headers: webhookHeadersSchema.optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
 }).superRefine(requireSensitiveWebhookSignature);
 
 export const updateAppWebhookSchema = updateAppWebhookFieldsSchema;

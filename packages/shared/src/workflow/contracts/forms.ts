@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { createWorkflowFormSchema, updateWorkflowFormSchema } from '../validation';
 import { workflowFormSchemaShape } from './flow-data';
@@ -15,7 +15,7 @@ export const workflowFormSchema = z.object({
   categoryId: z.int().nullable(),
   categoryName: z.string().nullable().optional(),
   schema: workflowFormSchemaShape.nullable(),
-  status: z.enum(['enabled', 'disabled']),
+  status: entityStatusSchema,
   revision: z.int().meta({ description: '乐观锁版本号（每次更新 +1，更新时回传 expectedRevision 做并发冲突检测）' }),
   usageCount: z.int().optional().meta({ description: '被多少个流程定义引用（列表场景返回）' }),
   tenantId: z.int().nullable(),
@@ -31,7 +31,7 @@ export type WorkflowForm = z.infer<typeof workflowFormSchema>;
 
 export const workflowFormListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称 / 编码模糊匹配' }),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
   categoryId: z.coerce.number().int().optional(),
 });
 

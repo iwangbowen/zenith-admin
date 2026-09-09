@@ -19,12 +19,19 @@ export async function getDriveSettings(options?: { tenantId?: number | null }): 
   return getSettings('drive', options);
 }
 
-const GB = 1024 * 1024 * 1024;
+/** 1 GB 的字节数：配额相关的 GB ↔ 字节换算统一经此常量 / `gbToBytes()`，不要在各 service 里重复定义 */
+export const GB_BYTES = 1024 * 1024 * 1024;
+
+/** GB → 字节（四舍五入到整字节）；`null` / `undefined` 透传为 `null`（表示「未设置 / 跟随默认」） */
+export function gbToBytes(gb: number | null | undefined): number | null {
+  if (gb === null || gb === undefined) return null;
+  return Math.round(gb * GB_BYTES);
+}
 
 /** 空间类型对应的默认配额（字节）；0 = 不限 */
 export function defaultQuotaBytes(settings: DriveSettings, type: DriveSpaceType): number {
   const gb = type === 'personal' ? settings.personalQuotaGb : type === 'department' ? settings.departmentQuotaGb : settings.teamQuotaGb;
-  return Math.round(gb * GB);
+  return Math.round(gb * GB_BYTES);
 }
 
 /** 生效配额：空间显式配额优先，否则按类型取系统默认 */

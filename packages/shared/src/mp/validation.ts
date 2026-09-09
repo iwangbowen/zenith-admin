@@ -14,6 +14,7 @@ import {
   MP_REPLY_CONTENT_TYPES,
 } from './constants';
 import type { MpMenuButton } from './types';
+import { entityStatusSchema } from '../core/api-schemas';
 
 /** 管理端群发（文本 / 图片 / 图文 + 受众 + 立即/定时/草稿） */
 export const publishChannelSchema = z
@@ -139,7 +140,7 @@ export const createMpAccountSchema = z.object({
   isDefault: z.boolean().default(false),
   autoCreateMember: z.boolean().default(false),
   contentCheckEnabled: z.boolean().default(false),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(500).optional(),
 });
 
@@ -214,7 +215,7 @@ const mpAutoReplyBase = z.object({
   mediaId: z.string().max(128).optional(),
   newsArticles: z.array(mpReplyArticleSchema).max(8).optional(),
   transferToKf: z.boolean().default(false),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   sort: z.number().int().default(0),
 });
 

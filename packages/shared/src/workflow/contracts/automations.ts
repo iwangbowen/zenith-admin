@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WORKFLOW_AUTOMATION_TRIGGERS } from '../constants';
 import { createWorkflowAutomationSchema, updateWorkflowAutomationSchema, workflowAutomationActionSchema } from '../validation';
@@ -14,7 +14,7 @@ export const workflowAutomationSchema = z.object({
   name: z.string(),
   trigger: z.enum(WORKFLOW_AUTOMATION_TRIGGERS),
   actions: z.array(workflowAutomationActionSchema),
-  status: z.enum(['enabled', 'disabled']),
+  status: entityStatusSchema,
   sort: z.int(),
   tenantId: z.int().nullable(),
   ...auditFieldsSchema,
@@ -48,7 +48,7 @@ export type WorkflowAutomationRun = z.infer<typeof workflowAutomationRunSchema>;
 export const workflowAutomationListQuery = paginationQuery.extend({
   definitionId: z.coerce.number().int().optional(),
   trigger: z.enum(WORKFLOW_AUTOMATION_TRIGGERS).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
 });
 
 export const workflowAutomationRunListQuery = paginationQuery.extend({

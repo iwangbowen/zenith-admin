@@ -3,7 +3,7 @@ import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { cmsPublishingContract } from '@zenith/shared/cms';
 import type { CmsPublishTargetType } from '@zenith/shared/cms';
-import type { AsyncTask } from '@zenith/shared/tasks';
+import { isAsyncTaskTerminal, type AsyncTask } from '@zenith/shared/tasks';
 import {
   mockCmsPublishArtifacts,
   mockCmsPublishingTasks,
@@ -57,7 +57,7 @@ export const cmsStage3Handlers = [
       const task = mockCmsPublishingTasks.find((item) => item.id === id);
       if (!task) continue;
       if (body.action === 'cancel' && ['pending', 'running'].includes(task.status)) task.status = 'cancelled';
-      else if (body.action !== 'cancel' && ['success', 'failed', 'cancelled'].includes(task.status)) {
+      else if (body.action !== 'cancel' && isAsyncTaskTerminal(task.status)) {
         task.status = 'pending';
         if (body.action === 'restart' || body.action === 'rebuild') {
           mockCmsPublishArtifacts.splice(0, mockCmsPublishArtifacts.length, ...mockCmsPublishArtifacts.filter((item) => item.taskId !== id));
@@ -95,7 +95,7 @@ export const cmsStage3Handlers = [
     const { action } = params;
     if (action === 'cancel' && ['pending', 'running'].includes(task.status)) task.status = 'cancelled';
     else if (action === 'resume' && ['failed', 'cancelled'].includes(task.status)) task.status = 'pending';
-    else if ((action === 'restart' || action === 'rebuild') && ['success', 'failed', 'cancelled'].includes(task.status)) {
+    else if ((action === 'restart' || action === 'rebuild') && isAsyncTaskTerminal(task.status)) {
       task.status = 'pending';
       mockCmsPublishArtifacts.splice(0, mockCmsPublishArtifacts.length, ...mockCmsPublishArtifacts.filter((item) => item.taskId !== task.id));
     } else return badRequest('当前任务状态不支持该操作', { status: 400 });
@@ -112,7 +112,7 @@ export const cmsStage3Handlers = [
     if (taskType) rows = rows.filter((item) => item.taskType === taskType);
     if (createdBy) rows = rows.filter((item) => (item.createdByName ?? '').toLowerCase().includes(createdBy));
     if (status === 'active') rows = rows.filter((item) => ['pending', 'running'].includes(item.status));
-    else if (status === 'terminal') rows = rows.filter((item) => ['success', 'failed', 'cancelled'].includes(item.status));
+    else if (status === 'terminal') rows = rows.filter((item) => isAsyncTaskTerminal(item.status));
     else if (status) rows = rows.filter((item) => item.status === status);
     if (keyword) rows = filterByKeyword(rows, keyword, [(item) => item.title, (item) => item.taskType]);
     if (startTime) rows = rows.filter((item) => item.createdAt >= startTime);

@@ -1,9 +1,10 @@
 import { SEED_TAGS } from '@zenith/shared/seed';
 import type { Tag } from '@zenith/shared/platform';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 
 export const mockTags: Tag[] = [...SEED_TAGS];
 
-let nextTagId = Math.max(...mockTags.map((t) => t.id)) + 1;
+let nextTagId = nextIdFrom(mockTags);
 export function getNextTagId() {
   return nextTagId++;
 }

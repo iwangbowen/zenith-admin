@@ -1,13 +1,14 @@
 import * as z from 'zod';
 import { partialForUpdate, webhookUrlSchema } from '../core/validation';
 import { CRON_JOB_STATUSES, FILE_OBJECT_ACL_SUPPORT, MASK_TYPES, MONITOR_ALERT_HANDLE_STATUSES, MONITOR_ALERT_LEVELS, MONITOR_ALERT_OPERATORS, MONITOR_HISTORY_RANGES, MONITOR_METRICS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS, RATE_LIMIT_ALGORITHMS, RATE_LIMIT_KEY_TYPES, RATE_LIMIT_MODES, REGION_LEVELS, SYSTEM_SCHEDULER_ALERT_CHANNELS, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_CHUNK_MIN_BYTES, USER_FEEDBACK_CATEGORIES, USER_FEEDBACK_STATUSES } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 // ─── 字典 Schema ──────────────────────────────────────────────────────────────
 export const createDictSchema = z.object({
   name: z.string().min(1, '字典名称不能为空').max(64),
   code: z.string().min(1, '字典编码不能为空').max(64).regex(/^[a-z_]+$/, '字典编码只能包含小写字母和下划线'),
   description: z.string().max(256).optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateDictSchema = partialForUpdate(createDictSchema);
@@ -17,7 +18,7 @@ export const createDictItemSchema = z.object({
   value: z.string().min(1, '键值不能为空').max(64),
   color: z.string().max(32).nullish(),
   sort: z.number().int().default(0),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).nullish(),
   parentId: z.number().int().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -29,7 +30,7 @@ export const updateDictItemSchema = partialForUpdate(createDictItemSchema);
 const baseFileStorageConfigSchema = z.object({
   name: z.string().min(1, '配置名称不能为空').max(64),
   provider: z.enum(['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp']),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   isDefault: z.boolean().default(false),
   basePath: z.string().max(256).optional(),
   // 对象读写权限（仅 oss/s3/cos/obs/bos 生效）；default = 继承 Bucket
@@ -224,7 +225,7 @@ export const createCronJobSchema = z.object({
   cronExpression: z.string().min(1, 'Cron 表达式不能为空').max(128),
   handler: z.string().min(1, '处理器不能为空').max(128),
   params: z.string().max(4096).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('disabled'),
+  status: entityStatusSchema.default('disabled'),
   description: z.string().max(256).default(''),
   retryCount: z.number().int().min(0, '重试次数不能为负').max(10).default(0),
   /** 重试间隔，单位：秒 */
@@ -285,7 +286,7 @@ export const createRegionSchema = z.object({
   level:      z.enum(REGION_LEVELS),
   parentCode: z.string().max(12).nullable().optional(),
   sort:       z.coerce.number().int().default(0),
-  status:     z.enum(['enabled', 'disabled']).default('enabled'),
+  status:     entityStatusSchema.default('enabled'),
 });
 
 export const updateRegionSchema = partialForUpdate(createRegionSchema);
@@ -308,7 +309,7 @@ export const createTagSchema = z.object({
   color:       z.string().max(20).optional(),
   groupName:   z.string().max(50).optional(),
   description: z.string().max(500).optional(),
-  status:      z.enum(['enabled', 'disabled']).default('enabled'),
+  status:      entityStatusSchema.default('enabled'),
   sortOrder:   z.number().int().default(0),
 });
 

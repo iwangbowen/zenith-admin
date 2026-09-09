@@ -15,6 +15,7 @@ import dayjs from 'dayjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { CMS_PUBLISH_TASK_TYPES, CMS_PUBLISH_TARGET_TYPE_LABELS, CMS_PUBLISH_TARGET_TYPES } from '@zenith/shared/cms';
 import type { CmsPublishArtifactStatus, CmsPublishSubmitInput, CmsPublishTargetType, SubmitCmsSiteGroupPublishInput } from '@zenith/shared/cms';
+import { isAsyncTaskTerminal } from '@zenith/shared/tasks';
 import { db } from '../../db';
 import {
   asyncTaskItems,
@@ -42,6 +43,7 @@ import {
   runWithCurrentUser,
 } from '../../lib/context';
 import {
+  asyncTaskStatusCondition,
   mapAsyncTask,
   registerTaskHandler,
   requestCancelAsyncTask,
@@ -174,9 +176,7 @@ export async function buildCmsPublishingConditions(query: Omit<ListCmsPublishing
     conditions.push(sql`${asyncTasks.payload}->>'siteId' = ${String(query.siteId)}`);
   }
   if (query.targetType) conditions.push(sql`${asyncTasks.payload}->>'targetType' = ${query.targetType}`);
-  if (query.status === 'active') conditions.push(inArray(asyncTasks.status, ['pending', 'running']));
-  else if (query.status === 'terminal') conditions.push(inArray(asyncTasks.status, ['success', 'failed', 'cancelled']));
-  else if (query.status) conditions.push(eq(asyncTasks.status, query.status));
+  conditions.push(asyncTaskStatusCondition(query.status));
   if (query.taskType) conditions.push(eq(asyncTasks.taskType, query.taskType));
   conditions.push(keywordCondition(query.keyword, [asyncTasks.title, asyncTasks.taskType], 'ilike'));
   const start = parseDateRangeStart(query.startTime);
@@ -826,7 +826,7 @@ export async function cmsPublishingAction(id: number, action: 'cancel' | 'resume
     }
     return mapAsyncTask(await resumeAsyncTask(id));
   }
-  if (!['success', 'failed', 'cancelled'].includes(task.status)) {
+  if (!isAsyncTaskTerminal(task.status)) {
     throw new HTTPException(400, { message: '仅已结束的任务可以重新开始或重建' });
   }
   if (action === 'rebuild' && task.status !== 'success') {

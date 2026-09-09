@@ -1,8 +1,10 @@
-import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
+import { ASYNC_TASK_ITEM_STATUSES, type AsyncTaskItemStatus } from '@zenith/shared/tasks';
 import { db } from '../../../db';
 import { asyncTaskItems, asyncTasks } from '../../../db/schema';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../datetime';
 import { keywordCondition } from '../../where-helpers';
+import { asyncTaskStatusCondition } from '../../task-center/status-filter';
 import { buildCmsPublishingConditions } from '../../../services/cms/cms-publishing.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
@@ -36,16 +38,10 @@ async function conditions(query: Record<string, unknown>): Promise<(SQL | undefi
   const taskConditions = await buildCmsPublishingConditions({
     siteId: Number.isInteger(siteId) && siteId > 0 ? siteId : undefined,
   });
-  const result: (SQL | undefined)[] = [...taskConditions, eq(asyncTaskItems.taskId, asyncTasks.id)];
-  const taskStatus = typeof query.taskStatus === 'string' ? query.taskStatus : undefined;
-  if (taskStatus === 'active') result.push(inArray(asyncTasks.status, ['pending', 'running']));
-  else if (taskStatus === 'terminal') result.push(inArray(asyncTasks.status, ['success', 'failed', 'cancelled']));
-  else if (taskStatus && ['pending', 'running', 'success', 'failed', 'cancelled'].includes(taskStatus)) {
-    result.push(eq(asyncTasks.status, taskStatus as 'pending' | 'running' | 'success' | 'failed' | 'cancelled'));
-  }
+  const result: (SQL | undefined)[] = [...taskConditions, eq(asyncTaskItems.taskId, asyncTasks.id), asyncTaskStatusCondition(query.taskStatus)];
   if (Number.isInteger(taskId) && taskId > 0) result.push(eq(asyncTaskItems.taskId, taskId));
-  if (typeof query.status === 'string' && ['pending', 'success', 'failed', 'skipped'].includes(query.status)) {
-    result.push(eq(asyncTaskItems.status, query.status as 'pending' | 'success' | 'failed' | 'skipped'));
+  if (typeof query.status === 'string' && (ASYNC_TASK_ITEM_STATUSES as readonly string[]).includes(query.status)) {
+    result.push(eq(asyncTaskItems.status, query.status as AsyncTaskItemStatus));
   }
   const start = parseDateRangeStart(typeof query.startTime === 'string' ? query.startTime : undefined);
   const end = parseDateRangeEnd(typeof query.endTime === 'string' ? query.endTime : undefined);

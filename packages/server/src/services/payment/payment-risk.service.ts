@@ -7,7 +7,7 @@
  * 每次命中均落留痕（payment_risk_hits）；审核放行后用户重新下单复用挂起订单继续支付，
  * 拒绝则本地关闭挂起订单（渠道侧从未下单）。
  */
-import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { db } from '../../db';
@@ -25,7 +25,7 @@ import {
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition, inheritedTenantCondition } from '../../lib/tenant';
-import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition, nullableEq, withPagination } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
@@ -459,7 +459,7 @@ export async function assertNoPendingRiskReview(input: {
       eq(paymentRiskReviews.bizType, input.bizType),
       eq(paymentRiskReviews.bizId, input.bizId),
       exactTenantCondition(paymentRiskReviews.tenantId, input.tenantId),
-      input.appId == null ? isNull(paymentRiskReviews.appId) : eq(paymentRiskReviews.appId, input.appId),
+      nullableEq(paymentRiskReviews.appId, input.appId),
       eq(paymentRiskReviews.currency, input.currency),
       eq(paymentRiskReviews.status, 'pending'),
     ))

@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { CMS_PUBLISH_ARTIFACT_STATUS_LABELS, CMS_PUBLISH_TARGET_TYPE_LABELS } from '@zenith/shared/cms';
 import { db } from '../../../db';
 import { asyncTasks, cmsPublishArtifacts } from '../../../db/schema';
 import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../datetime';
 import { keywordCondition } from '../../where-helpers';
+import { asyncTaskStatusCondition } from '../../task-center/status-filter';
 import { buildCmsPublishingConditions } from '../../../services/cms/cms-publishing.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
@@ -49,13 +50,7 @@ async function conditions(query: Record<string, unknown>): Promise<(SQL | undefi
   const taskConditions = await buildCmsPublishingConditions({
     siteId: Number.isInteger(siteId) && siteId > 0 ? siteId : undefined,
   });
-  const result: (SQL | undefined)[] = [...taskConditions, eq(cmsPublishArtifacts.taskId, asyncTasks.id)];
-  const taskStatus = typeof query.taskStatus === 'string' ? query.taskStatus : undefined;
-  if (taskStatus === 'active') result.push(inArray(asyncTasks.status, ['pending', 'running']));
-  else if (taskStatus === 'terminal') result.push(inArray(asyncTasks.status, ['success', 'failed', 'cancelled']));
-  else if (taskStatus && ['pending', 'running', 'success', 'failed', 'cancelled'].includes(taskStatus)) {
-    result.push(eq(asyncTasks.status, taskStatus as 'pending' | 'running' | 'success' | 'failed' | 'cancelled'));
-  }
+  const result: (SQL | undefined)[] = [...taskConditions, eq(cmsPublishArtifacts.taskId, asyncTasks.id), asyncTaskStatusCondition(query.taskStatus)];
   if (Number.isInteger(taskId) && taskId > 0) result.push(eq(cmsPublishArtifacts.taskId, taskId));
   if (targetType) result.push(eq(cmsPublishArtifacts.targetType, targetType));
   if (status) result.push(eq(cmsPublishArtifacts.status, status));

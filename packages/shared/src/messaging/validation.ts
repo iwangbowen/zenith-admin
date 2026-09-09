@@ -17,6 +17,7 @@ import {
   PUSH_PROVIDERS,
   SMS_PROVIDERS,
 } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 // ─── 公告 Schema ─────────────────────────────────────────────────────────────
 export const announcementRecipientInputSchema = z.object({
@@ -63,7 +64,7 @@ export const saveEmailConfigSchema = z.object({
   fromName: z.string().max(64).default('Zenith Admin'),
   fromEmail: z.string().max(128).optional(),
   encryption: z.enum(EMAIL_ENCRYPTIONS).default('ssl'),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export type SaveEmailConfigInput = z.infer<typeof saveEmailConfigSchema>;
@@ -84,7 +85,7 @@ export const createEmailTemplateSchema = z.object({
   subject: z.string().min(1, '邮件主题不能为空').max(200),
   content: z.string().min(1, '邮件内容不能为空'),
   variables: z.string().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(500).optional(),
 });
 
@@ -114,7 +115,7 @@ export const createSmsConfigSchema = z.object({
   region: z.string().max(64).optional(),
   signName: z.string().min(1, '签名不能为空').max(64),
   isDefault: z.boolean().default(false),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(500).optional(),
 });
 
@@ -135,7 +136,7 @@ export const createSmsTemplateSchema = z.object({
   content: z.string().min(1, '模板内容不能为空'),
   variables: z.string().optional(),
   provider: z.enum(SMS_PROVIDERS, { error: '请选择适用服务商' }),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(500).optional(),
 });
 
@@ -162,7 +163,7 @@ export const createInAppTemplateSchema = z.object({
   content: z.string().min(1, '内容不能为空'),
   type: z.enum(IN_APP_MESSAGE_TYPES).default('info'),
   variables: z.string().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(500).optional(),
 });
 
@@ -198,7 +199,7 @@ export const updateChannelSchema = z.object({
   name: z.string().min(1).max(64).optional(),
   avatar: z.string().max(256).nullable().optional(),
   description: z.string().max(255).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
 });
 
 export type UpdateChannelInput = z.infer<typeof updateChannelSchema>;
@@ -246,7 +247,7 @@ export const createChannelAutoReplySchema = z
     replyType: z.enum(['text', 'image', 'news']).default('text'),
     replyContent: z.string().max(10000).default(''),
     replyExtra: channelRichReplyExtraSchema.nullable().optional(),
-    status: z.enum(['enabled', 'disabled']).default('enabled'),
+    status: entityStatusSchema.default('enabled'),
     sort: z.number().int().min(0).default(0),
   })
   .refine((v) => v.matchType !== 'keyword' || (v.keyword != null && v.keyword.trim().length > 0), {
@@ -276,7 +277,7 @@ export const updateChannelAutoReplySchema = z
     replyType: z.enum(['text', 'image', 'news']).optional(),
     replyContent: z.string().max(10000).optional(),
     replyExtra: channelRichReplyExtraSchema.nullable().optional(),
-    status: z.enum(['enabled', 'disabled']).optional(),
+    status: entityStatusSchema.optional(),
     sort: z.number().int().min(0).optional(),
   });
 
@@ -407,7 +408,7 @@ export const createPushConfigSchema = z.object({
   appKey: z.string().min(1, 'AppKey 不能为空').max(128),
   masterSecret: z.string().min(1, 'MasterSecret 不能为空').max(256),
   apnsProduction: z.boolean().default(false),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(500).optional(),
 });
 

@@ -10,6 +10,7 @@ import {
   DRIVE_SUBJECT_TYPES,
   DRIVE_UPLOAD_CONFLICT_POLICIES,
 } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 /** 节点 / 文件夹名称：不含路径分隔符与控制字符，两端不留空白 */
 export const driveNodeNameSchema = z.string()
@@ -38,7 +39,7 @@ export const createDriveSpaceSchema = z.object({
   quotaGb: z.number().min(0).max(1_000_000).nullable().default(null),
   maxVersions: z.number().int().min(1).max(200).nullable().default(null),
   allowExternalShare: z.boolean().default(true),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   sort: z.number().int().default(0),
   /** 创建协作空间时同时写入的成员 */
   members: z.array(subjectSchema).default([]),
@@ -412,7 +413,7 @@ export const adminUpdateDriveSpaceSchema = z.object({
   maxVersions: z.number().int().min(1).max(200).nullable().optional(),
   allowExternalShare: z.boolean().optional(),
   defaultMemberRole: z.enum(DRIVE_ROLES).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
   ownerId: z.number().int().positive().optional(),
 });
 

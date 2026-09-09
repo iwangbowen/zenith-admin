@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { uploadChunkBody, uploadChunkResultSchema, uploadSessionInitSchema, uploadSessionStatusSchema } from '../../platform/contracts';
 import { completeChunkUploadSchema, initChunkUploadSchema } from '../../platform/validation';
@@ -30,7 +30,7 @@ export const clientAppSchema = z.object({
   appKey: z.string().meta({ description: '客户端侧标识，创建后不可修改', example: 'zenith-desktop' }),
   name: z.string(),
   description: z.string().nullable(),
-  status: z.enum(['enabled', 'disabled']),
+  status: entityStatusSchema,
   releaseCount: z.int().optional().meta({ description: '列表冗余：版本总数' }),
   latestVersion: z.string().nullable().optional().meta({ description: '列表冗余：最新已发布版本号' }),
   ...auditFieldsSchema,
@@ -164,7 +164,7 @@ export type AppPublicReleaseInfo = z.infer<typeof appPublicReleaseInfoSchema>;
 
 export const clientAppListQuery = paginationQuery.extend({
   keyword: z.string().max(256).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
 });
 
 export const appReleaseListQuery = paginationQuery.extend({

@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, Dropdown, Modal, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronDown, Upload } from 'lucide-react';
-import type { AsyncTaskItem } from '@zenith/shared/tasks';
+import { isAsyncTaskTerminal, type AsyncTaskItem } from '@zenith/shared/tasks';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { useAsyncTaskItems } from '@/hooks/queries/async-tasks';
 import { downloadImportTemplate, useImportTaskPolling } from '@/hooks/queries/import-jobs';
@@ -42,7 +42,7 @@ export function ImportProgressModal({ taskId, title, onClose, onFinished }: Read
 
   const taskQuery = useImportTaskPolling(taskId);
   const task = taskQuery.data ?? null;
-  const isTerminal = task ? ['success', 'failed', 'cancelled'].includes(task.status) : false;
+  const isTerminal = task ? isAsyncTaskTerminal(task.status) : false;
   const itemsQuery = useAsyncTaskItems({ taskId: taskId ?? 0, page: itemPage, pageSize: 8 }, taskId !== null);
 
   // 行级明细跟随任务进度刷新（items 查询本身无轮询）

@@ -7,6 +7,7 @@ import {
   SHORT_LINK_ENSURE_BIZ_TYPES,
   SHORT_LINK_REDIRECT_TYPES,
 } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 export const createShortLinkSchema = z.object({
   targetUrl: httpUrl('目标地址必须是合法的 http(s) URL').max(2048),
@@ -19,7 +20,7 @@ export const createShortLinkSchema = z.object({
     .optional(),
   title: z.string().max(128).nullable().optional(),
   redirectType: z.enum(SHORT_LINK_REDIRECT_TYPES).default('302'),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   /** YYYY-MM-DD HH:mm:ss；null = 永久有效 */
   expiresAt: z.string().max(19).nullable().optional(),
   maxVisits: z.number().int().positive().max(1_000_000_000).nullable().optional(),
@@ -42,7 +43,7 @@ export const updateShortLinkSchema = partialForUpdate(createShortLinkSchema.omit
 
 export const batchUpdateShortLinkStatusSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1, '请选择要操作的记录'),
-  status: z.enum(['enabled', 'disabled']),
+  status: entityStatusSchema,
 });
 
 /** 业务对象幂等取短链：同 bizType+bizRef 复用，目标地址变化时同步更新 */

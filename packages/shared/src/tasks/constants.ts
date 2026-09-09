@@ -36,6 +36,18 @@ export const ASYNC_TASK_STATUSES = ['pending', 'running', 'success', 'failed', '
 
 export type AsyncTaskStatus = (typeof ASYNC_TASK_STATUSES)[number];
 
+/** 已进入终态（不再变化、可清理 / 重跑）的任务状态；server / web / mock 判定「任务是否结束」的唯一口径 */
+export const ASYNC_TASK_TERMINAL_STATUSES = ['success', 'failed', 'cancelled'] as const satisfies readonly AsyncTaskStatus[];
+
+export type AsyncTaskTerminalStatus = (typeof ASYNC_TASK_TERMINAL_STATUSES)[number];
+
+/** 尚未结束（可取消 / 占用并发额度）的任务状态 */
+export const ASYNC_TASK_ACTIVE_STATUSES = ['pending', 'running'] as const satisfies readonly AsyncTaskStatus[];
+
+export function isAsyncTaskTerminal(status: string | null | undefined): status is AsyncTaskTerminalStatus {
+  return (ASYNC_TASK_TERMINAL_STATUSES as readonly string[]).includes(status ?? '');
+}
+
 export const ASYNC_TASK_ITEM_STATUSES = ['pending', 'success', 'failed', 'skipped'] as const;
 
 export type AsyncTaskItemStatus = (typeof ASYNC_TASK_ITEM_STATUSES)[number];

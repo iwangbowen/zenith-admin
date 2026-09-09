@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import { XCircle } from 'lucide-react';
 import { CMS_PUBLISH_ARTIFACT_STATUS_LABELS, CMS_PUBLISH_TARGET_TYPE_LABELS, CMS_PUBLISH_TARGET_TYPES } from '@zenith/shared/cms';
 import type { CmsPublishingTask, CmsPublishArtifact, CmsPublishArtifactStatus, CmsPublishTargetType } from '@zenith/shared/cms';
+import { isAsyncTaskTerminal } from '@zenith/shared/tasks';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import AppModal from '@/components/AppModal';
@@ -32,6 +33,7 @@ import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+
 type TabKey = 'queue' | 'history' | 'artifacts' | 'failed';
 
 interface Filters {
@@ -197,7 +199,7 @@ export default function PublishingPage() {
         { key: 'detail', label: '详情', onClick: () => openTaskDetail(record.id) },
         { key: 'cancel', label: '取消', danger: true, onClick: () => runAction(record, 'cancel'), hidden: !['pending', 'running'].includes(record.status), disabled: !canManage, disabledReason: '缺少发布管理权限' },
         { key: 'resume', label: '断点恢复', onClick: () => runAction(record, 'resume'), hidden: !['failed', 'cancelled'].includes(record.status), disabled: !canManage, disabledReason: '缺少发布管理权限' },
-        { key: 'restart', label: '重新开始', onClick: () => runAction(record, 'restart'), hidden: !['success', 'failed', 'cancelled'].includes(record.status), disabled: !canManage, disabledReason: '缺少发布管理权限' },
+        { key: 'restart', label: '重新开始', onClick: () => runAction(record, 'restart'), hidden: !isAsyncTaskTerminal(record.status), disabled: !canManage, disabledReason: '缺少发布管理权限' },
         { key: 'rebuild', label: '重建', onClick: () => runAction(record, 'rebuild'), hidden: record.status !== 'success', disabled: !canManage, disabledReason: '缺少发布管理权限' },
       ],
     }),

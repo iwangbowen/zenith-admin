@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { createWorkflowScheduleSchema, updateWorkflowScheduleSchema } from '../validation';
 
@@ -17,7 +17,7 @@ export const workflowScheduleSchema = z.object({
   initiatorName: z.string().nullable().optional(),
   titleTemplate: z.string().nullable(),
   formData: z.record(z.string(), z.unknown()).nullable(),
-  status: z.enum(['enabled', 'disabled']),
+  status: entityStatusSchema,
   lastRunAt: z.string().nullable(),
   lastRunStatus: z.string().nullable(),
   lastRunMessage: z.string().nullable(),

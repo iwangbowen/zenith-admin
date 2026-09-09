@@ -7,6 +7,7 @@ import { isHttpUrlTemplate, isSafeLinkUrlTemplate } from '../core/url';
 import { workflowFormSchemaSchema } from '../workflow/validation';
 import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_DASHBOARD_VERSION_SOURCES, REPORT_FIELD_TYPES, REPORT_FILTER_TYPES, REPORT_NOTIFY_CHANNELS, REPORT_SCHEDULE_MISFIRE_POLICIES } from './constants';
 import { REPORT_ACL_ROLES, REPORT_ACL_SUBJECT_TYPES, REPORT_APPROVAL_STATUSES, REPORT_ASSET_TEMPLATE_TYPES, REPORT_CHATBI_MESSAGE_ROLES, REPORT_CHATBI_SESSION_STATUSES, REPORT_DATASOURCE_TYPES, REPORT_DQ_ANOMALY_STATUSES, REPORT_DQ_RULE_TYPES, REPORT_DQ_RUN_STATUSES, REPORT_DQ_SEVERITIES, REPORT_ENVIRONMENT_KINDS, REPORT_FILL_RECORD_STATUSES, REPORT_FILL_TEMPLATE_STATUSES, REPORT_MATERIALIZATION_STRATEGIES, REPORT_METRIC_LIFECYCLE_STATUSES, REPORT_METRIC_TYPES, REPORT_PROMOTION_STATUSES, REPORT_QUOTA_SCOPES, REPORT_RESOURCE_TYPES, REPORT_SLA_TYPES, REPORT_SLA_VIOLATION_STATUSES, REPORT_SNAPSHOT_STATUSES, REPORT_TRANSFER_STATUSES, REPORT_WIDGET_TYPES } from './types';
+import { entityStatusSchema } from '../core/api-schemas';
 
 const timezoneSchema = z.string().min(1).max(64)
   .refine((timezone) => timezone === 'UTC' || Intl.supportedValuesOf('timeZone').includes(timezone), '时区标识无效');
@@ -126,7 +127,7 @@ export const createReportDatasourceSchema = z.object({
   folderId: z.number().int().positive().nullable().optional(),
   type: reportDatasourceTypeSchema,
   config: z.record(z.string(), z.unknown()).default({}),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).optional(),
 });
 
@@ -147,7 +148,7 @@ export type ReportDatasourceTestInput = z.input<typeof reportDatasourceTestSchem
 
 export const reportLookupQuerySchema = z.object({
   keyword: z.string().max(64).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
@@ -155,7 +156,7 @@ export type ReportLookupQueryInput = z.input<typeof reportLookupQuerySchema>;
 
 export const reportBatchStatusSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1).max(50),
-  status: z.enum(['enabled', 'disabled']),
+  status: entityStatusSchema,
 });
 
 export type ReportBatchStatusSchemaInput = z.input<typeof reportBatchStatusSchema>;
@@ -229,7 +230,7 @@ const reportDatasetSchemaBase = z.object({
   cacheTtl: z.number().int().min(0).max(86_400).default(0),
   materialize: reportDatasetMaterializeSchema.optional(),
   rowRules: z.array(reportRowRuleSchema).max(32).default([]),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).optional(),
 });
 
@@ -381,7 +382,7 @@ export const createReportDashboardSchema = z.object({
   filters: z.array(reportFilterSchema).default([]),
   config: reportDashboardConfigSchema.default({}),
   categoryId: z.number().int().positive().nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).optional(),
 });
 
@@ -784,7 +785,7 @@ export const createReportPrintTemplateSchema = z.object({
   content: reportPrintContentSchema.default({}),
   params: z.array(reportDatasetParamSchema).default([]),
   pageConfig: reportPrintPageConfigSchema.default({}),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).optional(),
 });
 
@@ -966,7 +967,7 @@ export const createReportFolderSchema = z.object({
   resourceType: reportResourceTypeSchema,
   ownerId: z.number().int().positive().nullable().optional(),
   sort: z.number().int().min(-1_000_000).max(1_000_000).default(0),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateReportFolderSchema = partialForUpdate(createReportFolderSchema).omit({ resourceType: true });
@@ -1099,7 +1100,7 @@ export const createReportEnvironmentSchema = z.object({
   baseUrl: httpUrl('环境地址必须是合法的 http(s) URL').max(1024).nullable().optional(),
   config: z.record(z.string(), z.unknown()).default({}),
   isDefault: z.boolean().default(false),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateReportEnvironmentSchema = partialForUpdate(createReportEnvironmentSchema).omit({ code: true });
@@ -1325,7 +1326,7 @@ export const createReportAssetTemplateSchema = z.object({
   description: z.string().max(1000).nullable().optional(),
   content: z.record(z.string(), z.unknown()),
   previewFileId: z.uuid().nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateReportAssetTemplateSchema = partialForUpdate(createReportAssetTemplateSchema).omit({ code: true });

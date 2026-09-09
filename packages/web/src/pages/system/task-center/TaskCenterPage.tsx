@@ -6,7 +6,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Eraser, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type { PaginatedResponse } from '@zenith/shared/core';
 import { enumValueOf } from '@zenith/shared/core';
-import { ASYNC_TASK_ITEM_STATUSES, ASYNC_TASK_STATUSES } from '@zenith/shared/tasks';
+import { ASYNC_TASK_ITEM_STATUSES, ASYNC_TASK_STATUSES, isAsyncTaskTerminal } from '@zenith/shared/tasks';
 import type { AsyncTask, AsyncTaskItem, AsyncTaskItemStatus, AsyncTaskStatus, AsyncTaskTypeMeta, AsyncTaskTypeStat } from '@zenith/shared/tasks';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -377,13 +377,13 @@ export default function TaskCenterPage() {
         {
           key: 'restart',
           label: '重新开始',
-          hidden: !canManage || !['success', 'failed', 'cancelled'].includes(record.status),
+          hidden: !canManage || !isAsyncTaskTerminal(record.status),
           loading: actionLoadingId === record.id,
           onClick: () => void runAction(record, 'restart', '已重新开始'),
         },
         {
           ...deleteAction({
-            hidden: !canManage || !['success', 'failed', 'cancelled'].includes(record.status),
+            hidden: !canManage || !isAsyncTaskTerminal(record.status),
             title: '删除任务记录',
             content: `将删除任务 #${record.id}「${record.title}」的记录（含任务项明细），不可恢复。`,
             run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),

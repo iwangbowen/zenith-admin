@@ -10,7 +10,7 @@ import {
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { inheritedTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
-import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition, nullableEq } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
@@ -103,7 +103,7 @@ export async function listSubscriptions(q: ListSubscriptionsQuery) {
   if (tc) conds.push(tc);
   conds.push(keywordCondition(q.keyword, [workflowEventSubscriptions.name, workflowEventSubscriptions.url], 'ilike'));
   if (q.definitionId !== undefined) {
-    conds.push(q.definitionId === null ? isNull(workflowEventSubscriptions.definitionId) : eq(workflowEventSubscriptions.definitionId, q.definitionId));
+    conds.push(nullableEq(workflowEventSubscriptions.definitionId, q.definitionId));
   }
   if (q.enabled !== undefined) conds.push(eq(workflowEventSubscriptions.enabled, q.enabled));
   const where = buildWhere(...conds);

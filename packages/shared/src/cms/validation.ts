@@ -3,6 +3,7 @@ import { dateTimeStringSchema, httpUrl, partialForUpdate } from '../core/validat
 import { DATE_TIME_PATTERN } from '../core/constants';
 import { CMS_CHANNEL_DETAIL_PATH_RULES, CMS_CHANNEL_STATIC_MODES, CMS_PUBLISH_ACTIONS, CMS_DISTRIBUTION_CONFLICT_STRATEGIES, CMS_DISTRIBUTION_MODES, CMS_FIELD_OPTION_SOURCES, CMS_INTERACTION_CHOICE_QUESTION_TYPES, CMS_INTERACTION_CONDITION_OPS, CMS_INTERACTION_OTHER_VALUE, CMS_INTERACTION_QUESTION_TYPES, CMS_INTERACTION_RATING_MAX_LIMIT, CMS_PUBLISH_TARGET_TYPES, CMS_SEARCH_DICTIONARY_WORD_PATTERN, CMS_SITE_INHERITABLE_FIELDS, CMS_WIDGET_REF_OWNER_TYPES, CMS_WIDGET_RENDERER_KEYS, CMS_WIDGET_SOURCE_TYPES, CMS_WIDGET_TYPES } from './constants';
 import { CMS_LINK_FORMAT_MESSAGE, isDirectCmsHref, isValidCmsAssetUrl, isValidCmsLink } from './link';
+import { entityStatusSchema } from '../core/api-schemas';
 
 // ─── CMS 内容管理 Schema ──────────────────────────────────────────────────────
 export const cmsSlugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -77,7 +78,7 @@ export const createCmsSiteSchema = z.object({
   extend: z.record(z.string(), z.unknown()).default({}),
   robots: z.string().max(4000).nullable().optional(),
   settings: z.record(z.string(), z.unknown()).default({}),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   sort: z.number().int().default(0),
   remark: z.string().max(500).nullable().optional(),
 });
@@ -136,7 +137,7 @@ const cmsDistributionRuleBaseSchema = z.object({
     publishedTo: null,
   }),
   scheduleCron: z.string().trim().min(5).max(100).nullable().default(null),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(500).nullable().default(null),
 });
 
@@ -210,7 +211,7 @@ export const createCmsModelSchema = z.object({
   name: z.string().min(1, '模型名称不能为空').max(100),
   code: z.string().min(1, '模型标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
   description: z.string().max(500).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   sort: z.number().int().default(0),
   fields: z.array(cmsModelFieldSchema).default([]),
 });
@@ -243,7 +244,7 @@ export const createCmsChannelSchema = z.object({
   twitterCreator: z.string().max(100).regex(/^@?[A-Za-z0-9_]{1,50}$/, 'Twitter/X 作者账号格式无效').nullable().optional(),
   image: cmsAssetUrlSchema.nullable().optional(),
   visible: z.boolean().default(true),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   sort: z.number().int().default(0),
   settings: z.record(z.string(), z.unknown()).default({}),
 });
@@ -355,7 +356,7 @@ export const createCmsFriendLinkGroupSchema = z.object({
   siteId: z.number().int().positive(),
   name: z.string().min(1, '分组名称不能为空').max(100),
   code: z.string().min(1, '分组标识不能为空').max(50).regex(cmsSlugRegex, '标识仅支持小写字母、数字、中划线'),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   sort: z.number().int().default(0),
   remark: z.string().max(500).nullable().optional(),
 });
@@ -368,7 +369,7 @@ export const createCmsFriendLinkSchema = z.object({
   name: z.string().min(1, '链接名称不能为空').max(100),
   url: cmsDirectHrefSchema.min(1, '链接地址不能为空'),
   logo: cmsAssetUrlSchema.nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   sort: z.number().int().default(0),
   remark: z.string().max(500).nullable().optional(),
 });
@@ -450,7 +451,7 @@ export const createCmsRedirectSchema = z.object({
   fromPath: z.string().min(1, '来源路径不能为空').max(500).regex(/^\//, '来源路径须以 / 开头'),
   toUrl: cmsLinkUrlSchema.min(1, '目标地址不能为空'),
   redirectType: z.union([z.literal(301), z.literal(302)]).default(301),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(200).nullable().optional(),
 });
 
@@ -461,7 +462,7 @@ export const createCmsLinkWordSchema = z.object({
   keyword: z.string().min(1, '关键词不能为空').max(50),
   url: cmsDirectHrefSchema.min(1, '链接地址不能为空'),
   maxReplaces: z.number().int().min(1).max(10).default(1),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateCmsLinkWordSchema = partialForUpdate(createCmsLinkWordSchema).omit({ siteId: true });
@@ -483,7 +484,7 @@ export const createCmsAdSchema = z.object({
   startAt: z.string().nullable().optional(),
   endAt: z.string().nullable().optional(),
   sort: z.number().int().default(0),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateCmsAdSchema = partialForUpdate(createCmsAdSchema);
@@ -542,7 +543,7 @@ const cmsFormBaseSchema = z.object({
   captchaProvider: z.enum(['inherit', 'none', 'math', 'turnstile']).default('inherit'),
   turnstileSiteKey: z.string().max(200).nullable().optional(),
   turnstileSecret: z.string().max(500).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const createCmsFormSchema = cmsFormBaseSchema.superRefine((form, ctx) => {
@@ -556,7 +557,7 @@ export const updateCmsFormSchema = partialForUpdate(cmsFormBaseSchema).omit({ si
 export const createCmsSensitiveWordSchema = z.object({
   word: z.string().min(1, '敏感词不能为空').max(50),
   replaceWith: z.string().max(50).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateCmsSensitiveWordSchema = partialForUpdate(createCmsSensitiveWordSchema);
@@ -564,7 +565,7 @@ export const updateCmsSensitiveWordSchema = partialForUpdate(createCmsSensitiveW
 export const createCmsErrorProneWordSchema = z.object({
   word: z.string().min(1, '易错词不能为空').max(50),
   correction: z.string().min(1, '正确写法不能为空').max(50),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(200).nullable().optional(),
 });
 
@@ -814,7 +815,7 @@ export const createCmsPageSchema = z.object({
   seoTitle: z.string().max(255).nullish(),
   seoKeywords: z.string().max(500).nullish(),
   seoDescription: z.string().max(500).nullish(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(200).nullish(),
 });
 
@@ -827,7 +828,7 @@ export const updateCmsPageSchema = z.object({
   seoTitle: z.string().max(255).nullish(),
   seoKeywords: z.string().max(500).nullish(),
   seoDescription: z.string().max(500).nullish(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
   remark: z.string().max(200).nullish(),
 });
 
@@ -1026,7 +1027,7 @@ export const createCmsSearchWordSchema = z.object({
   type: z.enum(['extension', 'stop']).default('extension'),
   groupName: z.string().trim().min(1).max(100).default('默认分组'),
   weight: z.number().int().min(1).max(999999).default(1000),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(200).nullable().optional(),
 });
 
@@ -1034,7 +1035,7 @@ export const updateCmsSearchWordSchema = partialForUpdate(createCmsSearchWordSch
 
 export const batchUpdateCmsSearchWordsSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1).max(1000),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
   groupName: z.string().trim().min(1).max(100).optional(),
 }).refine((value) => value.status !== undefined || value.groupName !== undefined, {
   message: '至少指定一个批量更新字段',
@@ -1044,7 +1045,7 @@ export const createCmsHotwordGroupSchema = z.object({
   siteId: z.number().int().positive(),
   name: z.string().trim().min(1).max(100),
   sort: z.number().int().default(0),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateCmsHotwordGroupSchema = partialForUpdate(createCmsHotwordGroupSchema).omit({ siteId: true });
@@ -1054,7 +1055,7 @@ export const createCmsHotwordSchema = z.object({
   groupId: z.number().int().positive().nullable().optional(),
   keyword: z.string().trim().min(1).max(100),
   sort: z.number().int().default(0),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateCmsHotwordSchema = partialForUpdate(createCmsHotwordSchema).omit({ siteId: true });
@@ -1090,7 +1091,7 @@ export const createCmsCollectRuleSchema = z.object({
   autoPublish: z.boolean().default(false),
   localizeImages: z.boolean().default(false),
   maxItems: z.number().int().min(1).max(200).default(50),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(200).nullish(),
 }).refine((value) => value.pageEnd >= value.pageStart, {
   message: '结束页不能小于起始页',
@@ -1112,7 +1113,7 @@ export const updateCmsCollectRuleSchema = z.object({
   autoPublish: z.boolean().optional(),
   localizeImages: z.boolean().optional(),
   maxItems: z.number().int().min(1).max(200).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
   remark: z.string().max(200).nullish(),
 });
 
@@ -1145,7 +1146,7 @@ export const saveCmsOpenAppGrantSchema = z.object({
   clientId: z.string().min(1).max(64).meta({ description: '开放应用 AppKey' }),
   channelIds: z.array(z.number().int().positive()).default([]).meta({ description: '空数组 = 该站点全部栏目' }),
   canPublish: z.boolean().default(false).meta({ description: '允许直接发布；还需应用持有 cms:publish 且站点开启「允许开放 API 直接发布」' }),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(200).nullable().optional(),
 });
 

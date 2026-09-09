@@ -1,5 +1,6 @@
 import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
 import type { WorkflowInstanceSummaryItem } from './contracts/instances';
+import { escapeRegExp } from '../core/text';
 
 type WorkflowFlowNode = WorkflowFlowData['nodes'][number];
 
@@ -340,13 +341,11 @@ export function buildWorkflowSummaryItems(
 // 本纯函数对 flowData 做**定点**重写（不做全文替换，避免误伤 URL/名称等无关字符串），
 // 供服务端在表单更新事务内级联修复所有引用定义；前后端/MSW 共享同一语义。
 
-const escapeReg = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /** 替换模板串中的 {{form.oldKey}} 占位（触发器 bodyTemplate / fieldValues / 子流程映射值） */
 function renameFormTemplateRefs(template: string, renames: Record<string, string>): string {
   let out = template;
   for (const [oldKey, newKey] of Object.entries(renames)) {
-    out = out.replace(new RegExp(`\\{\\{\\s*form\\.${escapeReg(oldKey)}\\s*\\}\\}`, 'g'), `{{form.${newKey}}}`);
+    out = out.replace(new RegExp(`\\{\\{\\s*form\\.${escapeRegExp(oldKey)}\\s*\\}\\}`, 'g'), `{{form.${newKey}}}`);
   }
   return out;
 }
@@ -355,7 +354,7 @@ function renameFormTemplateRefs(template: string, renames: Record<string, string
 function renameSerialTemplateRefs(template: string, renames: Record<string, string>): string {
   let out = template;
   for (const [oldKey, newKey] of Object.entries(renames)) {
-    out = out.replace(new RegExp(`\\{(FORM)\\.${escapeReg(oldKey)}\\}`, 'gi'), (_m, prefix: string) => `{${prefix}.${newKey}}`);
+    out = out.replace(new RegExp(`\\{(FORM)\\.${escapeRegExp(oldKey)}\\}`, 'gi'), (_m, prefix: string) => `{${prefix}.${newKey}}`);
   }
   return out;
 }

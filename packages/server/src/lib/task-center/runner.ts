@@ -1,5 +1,9 @@
 import { and, eq, gt, inArray, isNull, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import {
+  ASYNC_TASK_ACTIVE_STATUSES as UNFINISHED_STATUSES,
+  ASYNC_TASK_TERMINAL_STATUSES as TERMINAL_STATUSES,
+} from '@zenith/shared/tasks';
 import { requireRow } from '../db-assert';
 import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, asyncTaskTypeConfigs, users } from '../../db/schema';
@@ -8,6 +12,7 @@ import type { DbTransaction } from '../../db/types';
 import { registerSystemQueueWorker, sendSystemJob, sendSystemJobAfter } from '../pg-boss-scheduler';
 import { currentUser, runWithCurrentUser, currentTraceId, runWithTraceId, currentParentRef, runWithParentRef } from '../context';
 import { exactTenantCondition, getCreateTenantId } from '../tenant';
+import { nullableEq } from '../where-helpers';
 import type { JwtPayload } from '../../middleware/auth';
 import logger from '../logger';
 import {
@@ -25,9 +30,6 @@ import {
 import { getTaskHandler } from './registry';
 import { ensureTaskTypeConfig, getTaskTypePolicy } from './config';
 import { pushTaskProgress } from './map';
-
-const UNFINISHED_STATUSES = ['pending', 'running'] as const;
-const TERMINAL_STATUSES = ['success', 'failed', 'cancelled'] as const;
 
 export interface SubmitAsyncTaskInput {
   taskType: string;
@@ -382,7 +384,7 @@ export async function restartAsyncTaskInTransaction(executor: DbTransaction, tas
   if (!policy.allowConcurrent) {
     const unfinished = await executor.$count(asyncTasks, and(
       eq(asyncTasks.taskType, existing.taskType),
-      existing.createdBy === null ? isNull(asyncTasks.createdBy) : eq(asyncTasks.createdBy, existing.createdBy),
+      nullableEq(asyncTasks.createdBy, existing.createdBy),
       exactTenantCondition(asyncTasks.tenantId, existing.tenantId),
       inArray(asyncTasks.status, UNFINISHED_STATUSES),
     ));

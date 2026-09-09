@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts';
 import { DRIVE_ACTIVITY_ACTIONS, DRIVE_NODE_TYPES, DRIVE_QUOTA_REQUEST_STATUSES, DRIVE_ROLES, DRIVE_SPACE_TYPES } from '../constants';
@@ -20,7 +20,7 @@ export const driveOpenAppGrantSchema = z.object({
   spaceId: z.int(),
   spaceName: z.string(),
   role: z.enum(DRIVE_ROLES),
-  status: z.enum(['enabled', 'disabled']),
+  status: entityStatusSchema,
   remark: z.string().nullable(),
   createdAt: z.string(),
 }).meta({ id: 'DriveOpenAppGrant' });

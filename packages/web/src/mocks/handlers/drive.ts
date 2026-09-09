@@ -31,7 +31,7 @@ import {
 } from '@zenith/shared/drive';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, updateItem } from '@/mocks/utils/crud';
-import { badRequest, forbidden, notFound, unauthorized } from '@/mocks/utils/handlers';
+import { badRequest, conflict, forbidden, locked, notFound, unauthorized } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { removeWhere } from '@/mocks/utils/array';
 import { createImmediateMockTask } from './async-tasks';
@@ -145,9 +145,9 @@ function isHeld(node: Pick<DriveNode, 'id' | 'ancestorIds'>): boolean {
 /** 根集合（含子树）被保留覆盖时返回 423，供删除 / 彻底删除 / 跨空间移动复用 */
 function legalHoldBlock(roots: DriveNode[], action: string) {
   for (const root of roots) {
-    if (isHeld(root)) return HttpResponse.json({ code: 423, message: `「${root.name}」处于法律保留，${action}被拒绝`, data: null }, { status: 423 });
+    if (isHeld(root)) return locked(`「${root.name}」处于法律保留，${action}被拒绝`, { status: 423 });
     const hit = mockLegalHolds.find((h) => h.active && subtree(root.id).some((n) => n.id === h.nodeId));
-    if (hit) return HttpResponse.json({ code: 423, message: `「${root.name}」涉及的「${hit.nodeName}」处于法律保留，${action}被拒绝`, data: null }, { status: 423 });
+    if (hit) return locked(`「${root.name}」涉及的「${hit.nodeName}」处于法律保留，${action}被拒绝`, { status: 423 });
   }
   return null;
 }
@@ -155,7 +155,7 @@ function legalHoldBlock(roots: DriveNode[], action: string) {
 function archivedBlock(spaceId: number) {
   const space = mockDriveSpaces.find((s) => s.id === spaceId);
   if (!space?.archivedAt) return null;
-  return HttpResponse.json({ code: 423, message: '空间已归档，仅可查看与下载；如需修改请先恢复归档', data: null }, { status: 423 });
+  return locked('空间已归档，仅可查看与下载；如需修改请先恢复归档', { status: 423 });
 }
 
 function subtree(rootId: number): DriveNode[] {
@@ -326,7 +326,7 @@ const spaceHandlers = [
     const space = requireItem(mockDriveSpaces, params.id, '空间不存在', { status: 404 });
     if (!space.quotaBytes) return badRequest('该空间当前不限配额，无需扩容');
     if (body.requestedGb * 1024 ** 3 <= space.quotaBytes) return badRequest('申请配额需大于当前配额');
-    if (mockQuotaRequests.some((r) => r.spaceId === space.id && r.status === 'pending')) return HttpResponse.json({ code: 409, message: '该空间已有待审批的扩容申请', data: null }, { status: 409 });
+    if (mockQuotaRequests.some((r) => r.spaceId === space.id && r.status === 'pending')) return conflict('该空间已有待审批的扩容申请', { status: 409 });
     const now = mockDateTime();
     const request: DriveQuotaRequest = {
       id: nextQuotaRequestId++, spaceId: space.id, spaceName: space.name, spaceType: space.type, currentQuotaBytes: space.quotaBytes, usedBytes: space.usedBytes,
@@ -1228,7 +1228,7 @@ const adminHandlers = [
   }),
   mock(driveAdminContract.createLegalHold, ({ body, ok }) => {
     const node = requireItem(mockDriveNodes, body.nodeId, '文件或文件夹不存在', { status: 404 });
-    if (mockLegalHolds.some((h) => h.active && h.nodeId === node.id)) return HttpResponse.json({ code: 409, message: '该节点已处于法律保留', data: null }, { status: 409 });
+    if (mockLegalHolds.some((h) => h.active && h.nodeId === node.id)) return conflict('该节点已处于法律保留', { status: 409 });
     const hold: DriveLegalHold = {
       id: nextHoldId++, nodeId: node.id, nodeName: node.name, nodeType: node.type, spaceId: node.spaceId, spaceName: spaceName(node.spaceId) ?? '',
       reason: body.reason, active: true, createdBy: MOCK_USER.id, createdByName: MOCK_USER.name, createdAt: mockDateTime(),

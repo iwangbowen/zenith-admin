@@ -10,6 +10,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
 import type { CreateCmsLinkWordInput, UpdateCmsLinkWordInput } from '@zenith/shared/cms';
 import { isValidCmsLink } from '@zenith/shared/cms';
+import { escapeRegExp } from '@zenith/shared/core';
 import type { CmsLinkResolver } from './cms-link.service';
 import { refreshCmsPublicConfiguration } from './cms-public-config-refresh.service';
 
@@ -56,7 +57,7 @@ export function applyLinkWords(html: string, words: Pick<CmsLinkWordRow, 'keywor
   let skipDepth = 0; // 处于 <a>/<script>/<style> 内部的层级
   const escapedKeywords = [...safeWords]
     .sort((a, b) => b.keyword.length - a.keyword.length)
-    .map((word) => word.keyword.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`));
+    .map((word) => escapeRegExp(word.keyword));
   const keywordPattern = escapedKeywords.length > 0 ? new RegExp(escapedKeywords.join('|'), 'giu') : null;
   const out = parts.map((part) => {
     if (part.startsWith('<')) {

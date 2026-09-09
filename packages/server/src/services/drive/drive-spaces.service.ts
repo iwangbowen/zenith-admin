@@ -25,14 +25,7 @@ import { buildWhere, keywordCondition, withPagination } from '../../lib/where-he
 import { accessibleSpaceIdsSubquery, ensureSpaceRole, loadDriveSubjects, resolveSpaceRoles } from './drive-access.service';
 import { mapDriveSpace, resolveSubjectNames, resolveUserNames, subjectKey } from './drive-common';
 import { maybeNotifyQuotaWarning, notifySpaceMembersAdded } from './drive-notify.service';
-import { defaultQuotaBytes, effectiveQuotaBytes, getDriveSettings, type DriveSettings } from './drive-settings.service';
-
-const GB = 1024 * 1024 * 1024;
-
-function gbToBytes(gb: number | null | undefined): number | null {
-  if (gb === null || gb === undefined) return null;
-  return Math.round(gb * GB);
-}
+import { defaultQuotaBytes, effectiveQuotaBytes, gbToBytes, getDriveSettings, type DriveSettings } from './drive-settings.service';
 
 // ─── 查询边界 ─────────────────────────────────────────────────────────────────
 

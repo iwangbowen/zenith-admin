@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { formatBytes } from '@zenith/shared/core';
 import type {
   CreateDriveLegalHoldInput,
@@ -24,7 +24,7 @@ import { requireRow } from '../../lib/db-assert';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { buildListResult } from '../../lib/list-query';
 import logger from '../../lib/logger';
-import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
+import { getCreateTenantId, inheritedTenantCondition, tenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { notify } from '../messaging/notification-outbox.service';
 import { DRIVE_ADMIN_PERMISSION, ensureSpaceRole, resolveSpaceRole } from './drive-access.service';
@@ -33,7 +33,7 @@ import { resolveNodeManagerUserIds } from './drive-access-requests.service';
 import { logDriveActivity } from './drive-activity.service';
 import { resolveUserNames } from './drive-common';
 import { ensureDriveNodeExists } from './drive-nodes.service';
-import { effectiveQuotaBytes, getDriveSettings } from './drive-settings.service';
+import { GB_BYTES, effectiveQuotaBytes, getDriveSettings } from './drive-settings.service';
 import { decorateSpaceRows, ensureDriveSpaceExists } from './drive-spaces.service';
 
 /**
@@ -41,13 +41,11 @@ import { decorateSpaceRows, ensureDriveSpaceExists } from './drive-spaces.servic
  * 全部为内置能力，不依赖外部服务；通知统一经 notify() 进通知中心。
  */
 
-const GB = 1024 * 1024 * 1024;
-
 // ─── 管理员收件人 ─────────────────────────────────────────────────────────────
 
 /** 网盘管理员用户：持有 drive:admin:space:edit 的启用用户 ∪ 平台超管；按租户收窄（平台用户对所有租户可见） */
 export async function resolveDriveAdminUserIds(tenantId: number | null): Promise<number[]> {
-  const tenantScope = tenantId === null ? isNull(users.tenantId) : or(isNull(users.tenantId), eq(users.tenantId, tenantId));
+  const tenantScope = inheritedTenantCondition(users.tenantId, tenantId);
   const [byPermission, superAdmins] = await Promise.all([
     db.selectDistinct({ id: users.id }).from(users)
       .innerJoin(userRoles, eq(userRoles.userId, users.id))
@@ -295,7 +293,7 @@ export async function createQuotaRequest(spaceId: number, data: CreateDriveQuota
   const settings = await getDriveSettings();
   const currentQuota = effectiveQuotaBytes(settings, space);
   if (currentQuota === 0) throw new HTTPException(400, { message: '该空间当前不限配额，无需扩容' });
-  if (data.requestedGb * GB <= currentQuota) throw new HTTPException(400, { message: `申请配额需大于当前配额 ${formatBytes(currentQuota)}` });
+  if (data.requestedGb * GB_BYTES <= currentQuota) throw new HTTPException(400, { message: `申请配额需大于当前配额 ${formatBytes(currentQuota)}` });
   const user = currentUser();
   let row: DriveQuotaRequestRow;
   try {
@@ -392,7 +390,7 @@ export async function decideQuotaRequest(id: number, data: DecideDriveQuotaReque
     }).where(and(eq(driveQuotaRequests.id, id), eq(driveQuotaRequests.status, 'pending'))).returning();
     if (!row) throw new HTTPException(409, { message: '该申请已被其他管理员处理' });
     if (approvedGb !== null) {
-      await tx.update(driveSpaces).set({ quotaBytes: approvedGb * GB }).where(eq(driveSpaces.id, space.id));
+      await tx.update(driveSpaces).set({ quotaBytes: approvedGb * GB_BYTES }).where(eq(driveSpaces.id, space.id));
     }
     return row;
   });

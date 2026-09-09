@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { EnsureDriveDirectoriesInput } from '@zenith/shared/drive';
 import { db } from '../../db';
 import { driveNodes, type DriveNodeRow } from '../../db/schema';
+import { nullableEq } from '../../lib/where-helpers';
 import { ensureNodeRole, loadDriveSubjects } from './drive-access.service';
 import { logDriveActivity } from './drive-activity.service';
 import { childAclOf } from './drive-acl';
@@ -30,7 +31,7 @@ export async function ensureDriveUploadDirectories(data: EnsureDriveDirectoriesI
       if (ancestors.length >= DRIVE_MAX_DEPTH) throw new HTTPException(400, { message: '上传目录超过最大层级' });
       const where = and(
         eq(driveNodes.spaceId, space.id),
-        parentId === null ? isNull(driveNodes.parentId) : eq(driveNodes.parentId, parentId),
+        nullableEq(driveNodes.parentId, parentId),
         sql`lower(${driveNodes.name}) = lower(${name})`, isNull(driveNodes.deletedAt),
       );
       let [node] = await tx.select().from(driveNodes).where(where).limit(1);

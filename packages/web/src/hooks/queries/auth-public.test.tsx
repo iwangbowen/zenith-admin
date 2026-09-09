@@ -5,8 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { createTestQueryClient, createWrapper } from '@/test-utils/query-harness';
 
 const get = vi.fn();
 
@@ -14,10 +13,7 @@ vi.mock('@/utils/request', () => ({ request: { get: (...a: unknown[]) => get(...
 
 import { useOAuthProviders } from './auth-public';
 
-function wrapper() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-}
+const wrapper = () => createWrapper(createTestQueryClient());
 
 beforeEach(() => vi.clearAllMocks());
 

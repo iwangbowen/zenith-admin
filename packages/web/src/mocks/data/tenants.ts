@@ -1,7 +1,8 @@
 import { SEED_TENANTS } from '@zenith/shared/seed';
 import type { Tenant } from '@zenith/shared/identity';
+import { nextIdFrom } from '@/mocks/utils/handlers';
 
-let nextTenantId = Math.max(...SEED_TENANTS.map((t) => t.id)) + 1;
+let nextTenantId = nextIdFrom(SEED_TENANTS);
 export function getNextTenantId() { return nextTenantId++; }
 
 export const mockTenants: Tenant[] = SEED_TENANTS.map((t, i) => ({

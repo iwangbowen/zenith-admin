@@ -11,6 +11,7 @@ import {
   IOT_SCHEDULE_ACTIONS, IOT_SCHEDULE_TYPES,
   IOT_TELEMETRY_BATCH_MAX, IOT_VALIDATION_MODES, IOT_WHITELIST_BATCH_MAX,
 } from './constants';
+import { entityStatusSchema } from '../core/api-schemas';
 
 /** 物模型标识符：字母开头，字母/数字/下划线 */
 const identifierSchema = z.string().min(1, '标识符不能为空').max(64)
@@ -21,7 +22,7 @@ export const createIotProductSchema = z.object({
   name: z.string().min(1, '产品名称不能为空').max(128),
   description: z.string().max(2000).nullable().optional(),
   validationMode: z.enum(IOT_VALIDATION_MODES).default('loose'),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export const updateIotProductSchema = partialForUpdate(createIotProductSchema);
@@ -124,7 +125,7 @@ const iotDeviceBaseSchema = z.object({
   longitude: z.number().min(-180).max(180).nullable().optional(),
   address: z.string().max(256).nullable().optional(),
   firmwareVersion: z.string().max(32).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
   remark: z.string().max(256).nullable().optional(),
   groupIds: z.array(z.number().int().positive()).max(50).optional(),
 });
@@ -202,7 +203,7 @@ export const createIotAlarmRuleSchema = z.object({
   notifyUserIds: z.array(z.number().int().positive()).max(50).default([]),
   escalateAfterMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   escalateUserIds: z.array(z.number().int().positive()).max(50).default([]),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 }).superRefine((val, ctx) => {
   if (val.ruleType === 'threshold') {
     if (!val.propertyIdentifier) ctx.addIssue({ code: 'custom', path: ['propertyIdentifier'], message: '阈值规则必须指定监控属性' });
@@ -233,7 +234,7 @@ export const updateIotAlarmRuleSchema = z.object({
   notifyUserIds: z.array(z.number().int().positive()).max(50).optional(),
   escalateAfterMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   escalateUserIds: z.array(z.number().int().positive()).max(50).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
 });
 
 // ─── 设备分组 ─────────────────────────────────────────────────────────────────
@@ -329,13 +330,13 @@ export const createIotFirmwareSchema = z.object({
   size: z.number().int().min(0),
   sha256: z.string().length(64, 'SHA256 需为 64 位十六进制').regex(/^[0-9a-f]+$/i, 'SHA256 需为十六进制'),
   releaseNotes: z.string().max(4000).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 /** 版本与文件一经创建不可变更（设备按版本判定升级结果） */
 export const updateIotFirmwareSchema = z.object({
   releaseNotes: z.string().max(4000).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
 });
 
 /** 固件上传（multipart）的文本字段；文件字段由契约层以 fileField 追加 */
@@ -431,7 +432,7 @@ export const createIotAutomationSchema = z.object({
   decisionRuleKey: z.string().max(64).nullable().optional(),
   cooldownSeconds: z.number().int().min(0).max(86400).default(IOT_AUTOMATION_DEFAULT_COOLDOWN_SECONDS),
   actions: z.array(automationActionSchema).min(1, '至少配置一个动作').max(IOT_AUTOMATION_ACTION_MAX),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 }).superRefine((val, ctx) => {
   if (val.triggerType === 'property') {
     if (!val.propertyIdentifier) ctx.addIssue({ code: 'custom', path: ['propertyIdentifier'], message: '属性触发必须指定属性' });
@@ -454,7 +455,7 @@ export const updateIotAutomationSchema = z.object({
   decisionRuleKey: z.string().max(64).nullable().optional(),
   cooldownSeconds: z.number().int().min(0).max(86400).optional(),
   actions: z.array(automationActionSchema).min(1).max(IOT_AUTOMATION_ACTION_MAX).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
 });
 
 export type CreateIotAutomationInput = z.infer<typeof createIotAutomationSchema>;
@@ -505,7 +506,7 @@ export const createIotForwardRuleSchema = z.object({
   /** 置空 = 不签名；创建/更新时明文提交，列表不回显 */
   secret: z.string().min(8, '签名密钥至少 8 位').max(128).nullable().optional(),
   headers: z.record(z.string().min(1).max(64), z.string().max(256)).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 export type CreateIotForwardRuleInput = z.infer<typeof createIotForwardRuleSchema>;
@@ -559,7 +560,7 @@ const iotScheduleBaseSchema = z.object({
   service: z.string().max(64).nullable().optional(),
   params: z.record(z.string(), z.unknown()).nullable().optional(),
   desired: z.record(z.string().min(1).max(64), z.union([z.number(), z.string().max(256), z.boolean()])).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  status: entityStatusSchema.default('enabled'),
 });
 
 function refineIotSchedule(v: {

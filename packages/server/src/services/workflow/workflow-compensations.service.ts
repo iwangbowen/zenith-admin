@@ -10,7 +10,7 @@ import { tenantCondition } from '../../lib/tenant';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { enqueueJob } from '../../lib/workflow-jobs/engine';
 import { bridgeReportFillWorkflowOutcome } from '../report/report-fill-workflow-bridge.service';
-import { buildWhere } from '../../lib/where-helpers';
+import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 
@@ -90,7 +90,7 @@ export async function listCompensations(q: { status?: string; instanceId?: numbe
     page,
     pageSize,
     count: () => db.$count(workflowCompensations, where),
-    rows: () => db.select().from(workflowCompensations).where(where).orderBy(desc(workflowCompensations.id)).limit(pageSize).offset((page - 1) * pageSize),
+    rows: () => withPagination(db.select().from(workflowCompensations).where(where).orderBy(desc(workflowCompensations.id)).$dynamic(), page, pageSize),
     map,
   });
 }

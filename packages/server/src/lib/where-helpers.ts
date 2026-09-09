@@ -1,7 +1,8 @@
-import { and, gte, ilike, like, lte, or } from 'drizzle-orm';
-import type { SQL } from 'drizzle-orm';
+import { and, eq, gte, ilike, isNull, like, lte, or } from 'drizzle-orm';
+import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { PgColumn, PgSelect } from 'drizzle-orm/pg-core';
 import { parseDateRangeEnd, parseDateRangeStart } from './datetime';
+import { pageOffset } from './pagination';
 
 /**
  * 用户输入参与 LIKE / ILIKE 的唯一入口：单列或跨列模糊匹配。
@@ -55,6 +56,19 @@ export function dateRangeConditions(
 }
 
 /**
+ * 可空列与已知值的行到行等值匹配：`null` → `IS NULL`，其它 → `=`。
+ *
+ * 用于 parentId / appId / definitionId / createdBy 这类「与一条已知记录的归属做精确匹配」的可空外键；
+ * 租户归属请用 `lib/tenant.ts` 的 `exactTenantCondition`（同一实现，语义命名不同）。
+ *
+ * @example
+ * eq(driveNodes.spaceId, spaceId), nullableEq(driveNodes.parentId, parentId)
+ */
+export function nullableEq(column: SQLWrapper, value: number | string | null): SQL {
+  return value === null ? isNull(column) : eq(column, value);
+}
+
+/**
  * 合并任意多个可选条件为 WHERE：过滤 `undefined`，全空返回 `undefined`（即不加 WHERE），
  * 单条件原样返回，多条件 `and(...)`。既用于条件数组，也用于追加租户 / 数据权限条件。
  *
@@ -84,5 +98,5 @@ export function buildWhere(...conditions: (SQL | undefined)[]): SQL | undefined 
  * ]);
  */
 export function withPagination<T extends PgSelect>(qb: T, page: number, pageSize: number) {
-  return qb.limit(pageSize).offset((page - 1) * pageSize);
+  return qb.limit(pageSize).offset(pageOffset(page, pageSize));
 }

@@ -5,7 +5,7 @@
  * 内部负责：解析渠道配置、解密密钥组装 AdapterContext、订单状态机、事务落库、
  * 回调验签后处理、发支付事件。所有渠道差异封装在适配器内，业务层无感知。
  */
-import { and, desc, eq, gte, inArray, isNull, lte, ne, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, ne, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { createHash, randomInt } from 'node:crypto';
 import { db } from '../../db';
@@ -28,7 +28,7 @@ import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { getDataScopeCondition } from '../../lib/data-scope';
-import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition, nullableEq, withPagination } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { decryptField } from '../../lib/encryption';
 import { isPgUniqueViolation } from '../../lib/db-errors';
@@ -381,7 +381,7 @@ interface PaymentOrderScope {
 function orderScopeConditions(scope: PaymentOrderScope) {
   return [
     exactTenantCondition(paymentOrders.tenantId, scope.tenantId),
-    scope.appId == null ? isNull(paymentOrders.appId) : eq(paymentOrders.appId, scope.appId),
+    nullableEq(paymentOrders.appId, scope.appId),
     eq(paymentOrders.currency, scope.currency),
   ];
 }

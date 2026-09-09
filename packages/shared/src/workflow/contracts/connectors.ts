@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WORKFLOW_CONNECTOR_BREAKER_STATES, WORKFLOW_CONNECTOR_INVOCATION_SOURCES, WORKFLOW_CONNECTOR_TYPES } from '../constants';
 import { createWorkflowConnectorSchema, testWorkflowConnectorSchema, updateWorkflowConnectorSchema } from '../validation';
@@ -22,7 +22,7 @@ export const workflowConnectorSchema = z.object({
   rateLimitEnabled: z.boolean().meta({ description: '限流开关（与熔断并列）' }),
   rateLimitWindowSec: z.int().meta({ description: '限流：滑动时间窗（秒）' }),
   rateLimitMax: z.int().meta({ description: '限流：窗口内最大调用次数（<=0 不限制）' }),
-  status: z.enum(['enabled', 'disabled']),
+  status: entityStatusSchema,
   hasCredentials: z.boolean().meta({ description: '是否已配置凭据（脱敏，不回传明文）' }),
   breakerState: z.enum(WORKFLOW_CONNECTOR_BREAKER_STATES).meta({ description: '熔断实时状态（来自 Redis）' }),
   tenantId: z.int().nullable(),
@@ -75,7 +75,7 @@ export type WorkflowConnectorInvocation = z.infer<typeof workflowConnectorInvoca
 
 export const workflowConnectorListQuery = paginationQuery.extend({
   type: z.enum(WORKFLOW_CONNECTOR_TYPES).optional(),
-  status: z.enum(['enabled', 'disabled']).optional(),
+  status: entityStatusSchema.optional(),
   keyword: z.string().optional(),
 });
 
