@@ -19,6 +19,8 @@ import { lazyPageComponent } from '@/utils/page-registry';
 import { useCurrentUserMenuTree, useMenuTree } from '@/hooks/queries/menus';
 import type { Menu, User } from '@zenith/shared/identity';
 import PageLoading from '@/components/PageLoading';
+// 布局内页面的 Suspense 边界：占位 → 内容的揭示与路由切换共用 ViewTransition（体积极小，不会拖入 AdminLayout）
+import RouteSuspense from '@/layouts/RouteSuspense';
 
 // AdminLayout 懒加载：后台布局静态依赖图很重（通知/文件预览/偏好面板/dnd-kit/DatePicker 等），
 // 登录页与公开页（支付链接、公开报表、OAuth 授权）不应预载它
@@ -80,7 +82,7 @@ function HomeEntry() {
   if (postLogin && safeTarget) {
     return <Navigate to={homePath} replace />;
   }
-  return <Suspense fallback={<DashboardSkeleton />}><DashboardPage /></Suspense>;
+  return <RouteSuspense fallback={<DashboardSkeleton />}><DashboardPage /></RouteSuspense>;
 }
 
 /** 未登录时保存来源路径并跳转登录 */
@@ -247,26 +249,26 @@ function AdminRouteLoader({ user, logout }: Readonly<AdminRouteLoaderProps>) {
         <Route path="/" element={<Suspense fallback={<PageLoading />}><AdminLayout user={user} onLogout={logout} menus={menus} /></Suspense>}>
         {/* 固定路由 */}
         <Route index element={<HomeEntry />} />
-        <Route path="profile" element={<Suspense fallback={routeFallback}><ProfilePage user={user} /></Suspense>} />
-        <Route path="announcements" element={<Suspense fallback={routeFallback}><AnnouncementsPage /></Suspense>} />
-        <Route path="inbox" element={<Suspense fallback={routeFallback}><InboxPage /></Suspense>} />
-        <Route path="workflow/designer/:id" element={<Suspense fallback={routeFallback}><WorkflowDesignerPage /></Suspense>} />
-        <Route path="workflow/launch/:definitionId" element={<Suspense fallback={routeFallback}><WorkflowLaunchPage /></Suspense>} />
-        <Route path="workflow/instance/:id" element={<Suspense fallback={routeFallback}><WorkflowInstancePage /></Suspense>} />
-        <Route path="report/dashboards/:id/design" element={<Suspense fallback={routeFallback}><DashboardDesignerPage /></Suspense>} />
-        <Route path="report/print/:id/design" element={<Suspense fallback={routeFallback}><PrintDesignerPage /></Suspense>} />
-        <Route path="report/dashboards/:id/view" element={<Suspense fallback={routeFallback}><DashboardViewPage /></Suspense>} />
+        <Route path="profile" element={<RouteSuspense><ProfilePage user={user} /></RouteSuspense>} />
+        <Route path="announcements" element={<RouteSuspense><AnnouncementsPage /></RouteSuspense>} />
+        <Route path="inbox" element={<RouteSuspense><InboxPage /></RouteSuspense>} />
+        <Route path="workflow/designer/:id" element={<RouteSuspense><WorkflowDesignerPage /></RouteSuspense>} />
+        <Route path="workflow/launch/:definitionId" element={<RouteSuspense><WorkflowLaunchPage /></RouteSuspense>} />
+        <Route path="workflow/instance/:id" element={<RouteSuspense><WorkflowInstancePage /></RouteSuspense>} />
+        <Route path="report/dashboards/:id/design" element={<RouteSuspense><DashboardDesignerPage /></RouteSuspense>} />
+        <Route path="report/print/:id/design" element={<RouteSuspense><PrintDesignerPage /></RouteSuspense>} />
+        <Route path="report/dashboards/:id/view" element={<RouteSuspense><DashboardViewPage /></RouteSuspense>} />
         <Route
           path="report/fill/:code"
           element={permissions.includes('*') || permissions.includes('report:fill:record:create') || permissions.includes('report:fill:record:update')
-            ? <Suspense fallback={routeFallback}><FillEntryPage /></Suspense>
-            : <Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>}
+            ? <RouteSuspense><FillEntryPage /></RouteSuspense>
+            : <RouteSuspense><ForbiddenPage /></RouteSuspense>}
         />
-        <Route path="system/firewall" element={permissions.includes('*') || permissions.includes('system:firewall:view') ? <Suspense fallback={routeFallback}><FirewallPage /></Suspense> : <Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
-        <Route path="system/nginx-sites" element={permissions.includes('*') || permissions.includes('system:nginx:view') ? <Suspense fallback={routeFallback}><NginxSitesPage /></Suspense> : <Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
-        <Route path="system/oauth2-apps/:id" element={permissions.includes('*') || permissions.includes('system:oauth2-apps:view') ? <Suspense fallback={routeFallback}><OAuth2AppDetailPage /></Suspense> : <Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
+        <Route path="system/firewall" element={permissions.includes('*') || permissions.includes('system:firewall:view') ? <RouteSuspense><FirewallPage /></RouteSuspense> : <RouteSuspense><ForbiddenPage /></RouteSuspense>} />
+        <Route path="system/nginx-sites" element={permissions.includes('*') || permissions.includes('system:nginx:view') ? <RouteSuspense><NginxSitesPage /></RouteSuspense> : <RouteSuspense><ForbiddenPage /></RouteSuspense>} />
+        <Route path="system/oauth2-apps/:id" element={permissions.includes('*') || permissions.includes('system:oauth2-apps:view') ? <RouteSuspense><OAuth2AppDetailPage /></RouteSuspense> : <RouteSuspense><ForbiddenPage /></RouteSuspense>} />
         <Route path="users" element={<Navigate to="/system/users" replace />} />
-        <Route path="forbidden" element={<Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
+        <Route path="forbidden" element={<RouteSuspense><ForbiddenPage /></RouteSuspense>} />
 
         {/* 动态路由 */}
         {dynamicRoutes.map(m => {
@@ -285,9 +287,9 @@ function AdminRouteLoader({ user, logout }: Readonly<AdminRouteLoaderProps>) {
               key={m.id}
               path={routePath}
               element={
-                <Suspense fallback={routeFallback}>
+                <RouteSuspense>
                   <Component />
-                </Suspense>
+                </RouteSuspense>
               }
             />
           );
@@ -298,11 +300,11 @@ function AdminRouteLoader({ user, logout }: Readonly<AdminRouteLoaderProps>) {
           <Route
             key={`embed-${m.id}`}
             path={`embed/${m.id}`}
-            element={<Suspense fallback={routeFallback}><EmbedPage src={m.path!} title={m.title} /></Suspense>}
+            element={<RouteSuspense><EmbedPage src={m.path!} title={m.title} /></RouteSuspense>}
           />
         ))}
 
-        <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden userMenuPaths={userMenuPaths} /></Suspense>} />
+        <Route path="*" element={<RouteSuspense><NotFoundOrForbidden userMenuPaths={userMenuPaths} /></RouteSuspense>} />
       </Route>
       <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden userMenuPaths={userMenuPaths} /></Suspense>} />
     </Routes>

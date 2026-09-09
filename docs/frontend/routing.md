@@ -181,6 +181,10 @@ const { hasPermission, hasAnyPermission } = usePermission();
 - `openTabBehavior` 控制新标签追加到末尾或插入到当前标签后
 - 开启「保持标签页」时，标签状态持久化到 `zenith_tabs`
 - 页面缓存由偏好 `enablePageCache` 与菜单 `keepAlive` 白名单共同决定，`KeepAliveOutlet` 只缓存菜单声明允许缓存的路径
+- 路由切换动画（偏好 `routeAnimation`：无 / 淡入 / 上滑 / 左滑）基于 React 19.3 `<ViewTransition>`：`layouts/RouteViewTransition.tsx`
+  把偏好映射为 enter / exit class（`AdminLayout.css` 的 `::view-transition-*(.route-vt-*)`），包裹 `KeepAliveOutlet` 与非缓存
+  `Outlet` 的页面容器；react-router 导航、`<Activity>` 显隐与 `startTransition` 包裹的页签刷新都会触发，缓存页签切换同样有过渡。
+  生效值统一取 `useRouteAnimation()`（减弱动态效果时为 `none`）；浏览器不支持 View Transitions 时自动跳过动画
 
 ---
 
@@ -188,7 +192,9 @@ const { hasPermission, hasAnyPermission } = usePermission();
 
 - 登录页静态打包进入口关键路径（匿名用户首屏只有 5 个请求）；`AdminLayout`、仪表盘与其他页面懒加载
 - 存在 token 时 `prefetchAdminShell()` 与 `/api/auth/me` 并行预热壳层 chunk、图标表、用户菜单树与个人设置，认证完成后无需再等待网络
-- 固定页面与动态页面均使用 `React.lazy` + `Suspense`；仪表盘使用 `DashboardSkeleton`，其余页面使用 `PageLoading inline`
+- 固定页面与动态页面均使用 `React.lazy` + `Suspense`；仪表盘使用 `DashboardSkeleton`，其余页面使用 `PageLoading inline`。
+  后台布局内统一经 `layouts/RouteSuspense.tsx` 挂载：fallback 与页面内容各自包在 `RouteViewTransition` 中，
+  chunk 就绪时「占位 → 页面」的揭示走与路由切换相同的过渡而非硬切
 - 后台布局内置 `NProgress` 顶部路由切换进度条，可由偏好 `showProgressBar` 关闭
 - `PageErrorBoundary` / `RouteErrorBoundary` 识别动态模块加载失败，提示页面资源加载失败并通过整页刷新恢复
 - chunk 分层、体积预算与度量脚本见 [打包与首屏性能](./bundle-performance.md)

@@ -344,3 +344,13 @@ export function usePreferences() {
   }
   return ctx;
 }
+
+/**
+ * 路由切换动画的生效值（供 AdminLayout / KeepAliveOutlet / RouteSuspense 共用）：
+ * 减弱动态效果时强制关闭；Provider 之外或旧版本持久化偏好缺省时视为关闭。
+ */
+export function useRouteAnimation(): RouteAnimation {
+  const prefs = useOptionalPreferences()?.preferences;
+  if (!prefs || prefs.reduceMotion) return 'none';
+  return prefs.routeAnimation ?? 'none';
+}

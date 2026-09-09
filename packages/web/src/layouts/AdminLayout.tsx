@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { BackTop, Divider, SideSheet, Spin, Toast } from '@douyinfe/semi-ui';
@@ -8,7 +8,7 @@ import { copyText } from '@/utils/clipboard';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu } from '@zenith/shared/identity';
 import type { ThemeMode } from '@/hooks/useTheme';
-import { usePreferences, type NavLayout } from '@/hooks/usePreferences';
+import { usePreferences, useRouteAnimation, type NavLayout } from '@/hooks/usePreferences';
 import { getThemeColorVars } from '@/lib/theme-color';
 import { applyBorderRadius } from '@/lib/border-radius';
 import { useThemeController } from '@/providers/theme-controller';
@@ -16,6 +16,7 @@ import { useTabsStore, type TabItem } from '@/hooks/useTabsStore';
 import { useEventCallback } from '@/hooks/useEventCallback';
 import { TabsMetaContext } from '@/hooks/useTabMeta';
 import KeepAliveOutlet from './KeepAliveOutlet';
+import RouteViewTransition from './RouteViewTransition';
 import { useWorkflowRealtime } from '@/hooks/useWorkflowNotifications';
 import { useMarkMyInAppMessageRead } from '@/hooks/queries/in-app-messages';
 import { config } from '@/config';
@@ -152,6 +153,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
   }, [preferences.borderRadius]);
 
   const reduceMotion = preferences.reduceMotion ?? false;
+  const routeAnimation = useRouteAnimation();
 
   // ─── 布局开关：水印 / 快捷聊天 / 意见反馈入口，来自运行时设置的登录用户投影（一次请求）──────
   const mySettings = useMySettings().data;
@@ -451,10 +453,13 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
     if (location.pathname !== key) {
       navigate(key);
     }
-    setTabRefreshVersion((prev) => ({
-      ...prev,
-      [key]: (prev[key] ?? 0) + 1,
-    }));
+    // 包进 Transition：刷新导致的页面重建才会触发 <ViewTransition> 过渡（与导航一致）
+    startTransition(() => {
+      setTabRefreshVersion((prev) => ({
+        ...prev,
+        [key]: (prev[key] ?? 0) + 1,
+      }));
+    });
   });
 
   // ─── 页签操作 ──────────────────────────────────────────────────────────────
@@ -947,20 +952,14 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
                     keepAlivePaths={keepAlivePaths}
                     openPaths={openTabPaths}
                     refreshVersion={tabRefreshVersion}
-                    animationClass={!reduceMotion && preferences.routeAnimation && preferences.routeAnimation !== 'none'
-                      ? `route-anim--${preferences.routeAnimation}`
-                      : undefined}
+                    animation={routeAnimation}
                   />
                 ) : (
-                  <div
-                    key={outletRefreshKey}
-                    style={{ height: '100%' }}
-                    className={!reduceMotion && preferences.routeAnimation && preferences.routeAnimation !== 'none'
-                      ? `route-anim--${preferences.routeAnimation}`
-                      : undefined}
-                  >
-                    <Outlet key={outletRefreshKey} />
-                  </div>
+                  <RouteViewTransition key={outletRefreshKey} animation={routeAnimation}>
+                    <div style={{ height: '100%' }}>
+                      <Outlet />
+                    </div>
+                  </RouteViewTransition>
                 )}
               </TabsMetaContext.Provider>
             </RouteErrorBoundary>

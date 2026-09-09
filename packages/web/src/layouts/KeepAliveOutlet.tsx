@@ -1,6 +1,8 @@
-import { Activity, useEffect, useRef } from 'react';
+import { Activity, useLayoutEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
 import { useLocation, useOutlet } from 'react-router-dom';
+import type { RouteAnimation } from '@/hooks/usePreferences';
+import RouteViewTransition from './RouteViewTransition';
 
 const MAX_CACHE = 10;
 
@@ -21,8 +23,8 @@ type Props = Readonly<{
   refreshVersion: Record<string, number>;
   /** 共享滚动容器选择器 */
   scrollContainerSelector?: string;
-  /** 非缓存页的路由动画 class（缓存页不参与动画，避免 remount 丢缓存） */
-  animationClass?: string;
+  /** 路由切换动画偏好（缓存页显隐与非缓存页进出统一由 RouteViewTransition 过渡） */
+  animation?: RouteAnimation;
 }>;
 
 /**
@@ -34,13 +36,14 @@ type Props = Readonly<{
  * - 缓存生命周期与页签一致：关闭页签即释放；LRU 上限 10 页
  * - 页签「刷新」通过 key 变化强制重建
  * - 共享滚动容器（.admin-content）的滚动位置按页保存/恢复
+ * - 页面切换动画由 `<ViewTransition>` 承担：缓存页的显隐与非缓存页的挂载/卸载都会过渡
  */
 export default function KeepAliveOutlet({
   keepAlivePaths,
   openPaths,
   refreshVersion,
   scrollContainerSelector = '.admin-content',
-  animationClass,
+  animation,
 }: Props) {
   const outlet = useOutlet();
   const { pathname } = useLocation();
@@ -76,7 +79,9 @@ export default function KeepAliveOutlet({
   }
 
   // ── 共享滚动容器：离开时保存、切回时恢复 ─────────────────────────────────
-  useEffect(() => {
+  // 用 useLayoutEffect：ViewTransition 在布局副作用之后立即捕获新页面快照，
+  // 若放在 useEffect 里恢复滚动，快照与最终状态不一致，动画结束时会跳一下
+  useLayoutEffect(() => {
     const container = document.querySelector<HTMLElement>(scrollContainerSelector);
     const prev = prevPathRef.current;
     if (container && prev && prev !== pathname) {
@@ -93,13 +98,15 @@ export default function KeepAliveOutlet({
     <>
       {[...cache.entries()].map(([path, entry]) => (
         <Activity key={`${path}:${entry.version}`} mode={path === pathname ? 'visible' : 'hidden'}>
-          <div style={{ height: '100%' }}>{entry.element}</div>
+          <RouteViewTransition animation={animation}>
+            <div style={{ height: '100%' }}>{entry.element}</div>
+          </RouteViewTransition>
         </Activity>
       ))}
       {!isCacheable && (
-        <div key={`${pathname}:${currentVersion}`} style={{ height: '100%' }} className={animationClass}>
-          {outlet}
-        </div>
+        <RouteViewTransition key={`${pathname}:${currentVersion}`} animation={animation}>
+          <div style={{ height: '100%' }}>{outlet}</div>
+        </RouteViewTransition>
       )}
     </>
   );

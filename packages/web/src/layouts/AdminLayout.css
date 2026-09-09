@@ -2284,10 +2284,18 @@ body[theme-mode='dark'] .lock-screen .lock-screen__input.semi-input-wrapper-erro
   width: 100%;
 }
 
-/* ===== 路由切换动画 ===== */
+/* ===== 路由切换动画（React <ViewTransition>） ===== */
+/* 类名由 layouts/RouteViewTransition.tsx 在过渡激活时挂到页面容器上，
+   进入态作用于 ::view-transition-new、退出态作用于 ::view-transition-old；
+   根级交叉淡化已在 global.css 中禁用，因此只有页面区域参与动画 */
 @keyframes route-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+@keyframes route-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 
 @keyframes route-slide-up-in {
@@ -2295,19 +2303,42 @@ body[theme-mode='dark'] .lock-screen .lock-screen__input.semi-input-wrapper-erro
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes route-slide-up-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-12px); }
+}
+
 @keyframes route-slide-left-in {
   from { opacity: 0; transform: translateX(16px); }
   to   { opacity: 1; transform: translateX(0); }
 }
 
-.route-anim--fade {
-  animation: route-fade-in 0.2s ease;
+@keyframes route-slide-left-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-16px); }
 }
 
-.route-anim--slide-up {
-  animation: route-slide-up-in 0.22s ease;
+/* fill-mode 必须为 both：动画结束到过渡拆除之间还有若干帧，否则旧快照会回弹到 opacity 1 造成闪烁 */
+::view-transition-new(.route-vt-fade-in) {
+  animation: route-fade-in 0.2s ease both;
 }
 
-.route-anim--slide-left {
-  animation: route-slide-left-in 0.22s ease;
+::view-transition-old(.route-vt-fade-out) {
+  animation: route-fade-out 0.2s ease both;
+}
+
+::view-transition-new(.route-vt-slide-up-in) {
+  animation: route-slide-up-in 0.22s ease both;
+}
+
+::view-transition-old(.route-vt-slide-up-out) {
+  animation: route-slide-up-out 0.22s ease both;
+}
+
+::view-transition-new(.route-vt-slide-left-in) {
+  animation: route-slide-left-in 0.22s ease both;
+}
+
+::view-transition-old(.route-vt-slide-left-out) {
+  animation: route-slide-left-out 0.22s ease both;
 }

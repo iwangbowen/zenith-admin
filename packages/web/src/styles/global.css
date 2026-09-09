@@ -1041,8 +1041,14 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   align-items: center;
 }
 
-/* ===== 深浅色切换 View Transition ===== */
-/* 禁用浏览器默认的交叉淡入淡出，由 theme-transition.ts 的圆形扩散 clip-path 动画接管 */
+/* ===== View Transitions（主题切换 + 路由切换共用） ===== */
+/* 过渡期间伪元素树覆盖整个视口并默认吞掉指针事件；放行后页签栏、菜单在动画中仍可点击（快速连点不丢事件） */
+::view-transition {
+  pointer-events: none;
+}
+
+/* 禁用浏览器默认的根级交叉淡入淡出：主题切换由 theme-transition.ts 的圆形扩散 clip-path 动画接管，
+   路由切换只让 RouteViewTransition 标记的页面区域参与动画（见 AdminLayout.css） */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
