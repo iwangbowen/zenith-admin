@@ -1,17 +1,16 @@
-import { count, desc, eq, and, lte, inArray, isNull, isNotNull, sql, or, getTableColumns, asc, type SQL } from 'drizzle-orm';
+import { count, desc, eq, and, lte, inArray, isNull, isNotNull, sql, or, getTableColumns, type SQL } from 'drizzle-orm';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
-import { announcements, announcementRecipients, announcementReads, users, userRoles, roles, departments, businessFiles, managedFiles } from '../../db/schema';
+import { announcements, announcementRecipients, announcementReads, users, userRoles, roles, departments } from '../../db/schema';
 import { broadcast, sendToUser } from '../../lib/ws-manager';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
-import { buildManagedFileProxyUrl, buildPublicFileUrl } from '../../lib/file-storage';
-import { getStorageConfigMap } from '../files/files.service';
-import { saveBusinessFiles } from '../files/business-files.service';
+import type { AnnouncementAttachment } from '@zenith/shared/messaging';
+import { listBusinessFiles, saveBusinessFiles } from '../files/business-files.service';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { sanitizeCmsHtml } from '../cms/cms-html-sanitizer';
 
@@ -66,21 +65,6 @@ export async function saveRecipients(
 
 // ─── 附件管理 ─────────────────────────────────────────────────────────────────
 
-export interface AnnouncementAttachment {
-  id: number;
-  fileId: string;
-  file: {
-    id: string;
-    originalName: string;
-    size: number;
-    mimeType: string | null;
-    extension: string | null;
-    url: string;
-  };
-  sortOrder: number;
-  createdAt: string;
-}
-
 async function saveAnnouncementAttachments(
   executor: DbExecutor,
   announcementId: number,
@@ -89,41 +73,10 @@ async function saveAnnouncementAttachments(
   await saveBusinessFiles(executor, 'announcement', announcementId, fileIds);
 }
 
-export async function getAnnouncementAttachments(announcementId: number): Promise<AnnouncementAttachment[]> {
-  const user = currentUser();
-  const rows = await db
-    .select()
-    .from(businessFiles)
-    .leftJoin(managedFiles, eq(businessFiles.fileId, managedFiles.id))
-    .where(
-      and(
-        eq(businessFiles.businessType, 'announcement'),
-        eq(businessFiles.businessId, announcementId),
-        tenantCondition(businessFiles, user),
-      ),
-    )
-    .orderBy(asc(businessFiles.sortOrder));
-
-  const validRows = rows.filter((r): r is typeof r & { managed_files: NonNullable<typeof r.managed_files> } => r.managed_files !== null);
-  const configMap = validRows.length > 0 ? await getStorageConfigMap() : new Map();
-  return validRows.map((r) => {
-      const file = r.managed_files;
-      return {
-        id: r.business_files.id,
-        fileId: r.business_files.fileId,
-        file: {
-          id: file.id,
-          originalName: file.originalName,
-          size: file.size,
-          mimeType: file.mimeType ?? null,
-          extension: file.extension ?? null,
-          url: buildManagedFileProxyUrl(file.id),
-          directUrl: buildPublicFileUrl(file, configMap.get(file.storageConfigId)),
-        },
-        sortOrder: r.business_files.sortOrder ?? 0,
-        createdAt: formatDateTime(r.business_files.createdAt),
-      };
-    });
+/** 公告附件：复用业务文件通用查询（按 sortOrder, id 排序），只投影契约字段 */
+async function listAnnouncementAttachments(announcementId: number): Promise<AnnouncementAttachment[]> {
+  const rows = await listBusinessFiles('announcement', announcementId);
+  return rows.map(({ id, fileId, file, sortOrder, createdAt }) => ({ id, fileId, file, sortOrder, createdAt }));
 }
 
 // ─── WebSocket 广播 ───────────────────────────────────────────────────────────
@@ -358,20 +311,9 @@ export async function getAnnouncementDetail(id: number) {
   );
 
   // 并行查询收件人和附件
-  const [recipientRows, attachmentRows] = await Promise.all([
+  const [recipientRows, attachments] = await Promise.all([
     db.select().from(announcementRecipients).where(eq(announcementRecipients.announcementId, id)),
-    db
-      .select()
-      .from(businessFiles)
-      .leftJoin(managedFiles, eq(businessFiles.fileId, managedFiles.id))
-      .where(
-        and(
-          eq(businessFiles.businessType, 'announcement'),
-          eq(businessFiles.businessId, id),
-          tenantCondition(businessFiles, user),
-        ),
-      )
-      .orderBy(asc(businessFiles.sortOrder)),
+    listAnnouncementAttachments(id),
   ]);
 
   // 处理收件人
@@ -393,28 +335,6 @@ export async function getAnnouncementDetail(id: number) {
     recipientId: r.recipientId,
     recipientLabel: labelMap.get(`${r.recipientType}:${r.recipientId}`) ?? '',
   }));
-
-  // 处理附件
-  const validRows = attachmentRows.filter((r): r is typeof r & { managed_files: NonNullable<typeof r.managed_files> } => r.managed_files !== null);
-  const attachmentConfigMap = validRows.length > 0 ? await getStorageConfigMap() : new Map();
-  const attachments = validRows.map((r) => {
-    const file = r.managed_files;
-    return {
-      id: r.business_files.id,
-      fileId: r.business_files.fileId,
-      file: {
-        id: file.id,
-        originalName: file.originalName,
-        size: file.size,
-        mimeType: file.mimeType ?? null,
-        extension: file.extension ?? null,
-        url: buildManagedFileProxyUrl(file.id),
-        directUrl: buildPublicFileUrl(file, attachmentConfigMap.get(file.storageConfigId)),
-      },
-      sortOrder: r.business_files.sortOrder ?? 0,
-      createdAt: formatDateTime(r.business_files.createdAt),
-    };
-  });
 
   return { ...mapAnnouncement(row), recipients, attachments };
 }
