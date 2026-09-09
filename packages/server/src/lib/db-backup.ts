@@ -1,7 +1,5 @@
-import { exec } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { dbBackups, managedFiles, fileStorageConfigs } from '../db/schema';
@@ -9,8 +7,7 @@ import { config } from '../config';
 import { uploadFileByConfig, extractBucketName, resolveObjectAcl } from './file-storage';
 import logger from './logger';
 import { formatFileTimestamp } from './datetime';
-
-const execAsync = promisify(exec);
+import { buildPgDumpLaunch, parseDatabaseUrl, runPgDumpToGzip } from './pg-client';
 
 const BACKUP_DIR = path.resolve(process.cwd(), 'storage/backups');
 
@@ -102,9 +99,9 @@ export async function createPgDumpBackup(backupId: number): Promise<void> {
     const filename = `pgdump-${timestamp}.sql.gz`;
     const filePath = path.join(BACKUP_DIR, filename);
 
-    // 使用 pg_dump 导出并 gzip 压缩
-    const dbUrl = config.databaseUrl;
-    await execAsync(`pg_dump "${dbUrl}" | gzip > "${filePath}"`);
+    // 不经 shell：按 pg_dump 退出码判定成败，凭据经环境变量注入，gzip 由 Node 完成
+    const launch = buildPgDumpLaunch(config.pgDumpPath ?? 'pg_dump', parseDatabaseUrl(config.databaseUrl));
+    await runPgDumpToGzip(launch, filePath);
     return { filename, filePath, mimeType: 'application/gzip' };
   });
 }

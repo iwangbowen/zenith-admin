@@ -40,7 +40,8 @@
 - **Schema 漂移**：`GET /schema-drift` 将数据库实际结构与 Drizzle schema 对照。
 - **数据库备份**：「备份」Tab（`?tab=backups`）；`GET /backups` 备份记录分页列表（按状态 / 类型筛选），`POST /backups` 创建，
   `DELETE /backups/{id}` 删除记录，记录存储在 `db_backups` 表。备份类型包括 `pg_dump` 与 `drizzle_export`。
-  创建后接口立即返回 `pending` 回执，备份任务异步执行：置 `running`、生成备份文件（服务端 `storage/backups/` 目录）、
+  创建后接口立即返回 `pending` 回执，备份任务异步执行：置 `running`、生成备份文件（服务端 `storage/backups/` 目录；
+  `pg_dump` 不经 shell 直接 spawn，按退出码判定成败，可用 `PG_DUMP_PATH` 指定可执行文件）、
   上传到默认文件存储并登记 `managed_files`（无默认存储时仅保留本地文件）、置 `success` / `failed` 并记录文件大小与耗时；
   列表在仍有 `pending` / `running` 记录时自动轮询。定时任务 handler `databaseBackup` 复用同一执行器与表。
 

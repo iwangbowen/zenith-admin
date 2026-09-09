@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildPsqlLaunch,
-  parseDatabaseUrl,
   parseDbTerminalShellType,
 } from './db-admin-terminal.service';
 
@@ -16,33 +15,6 @@ describe('parseDbTerminalShellType', () => {
     expect(parseDbTerminalShellType('bash')).toBeNull();
     expect(parseDbTerminalShellType('db-psql:ro:extra')).toBeNull();
     expect(parseDbTerminalShellType('docker-exec:abc:sh')).toBeNull();
-  });
-});
-
-describe('parseDatabaseUrl', () => {
-  it('解析标准连接串', () => {
-    expect(parseDatabaseUrl('postgresql://app:secret@db.internal:5433/zenith')).toEqual({
-      host: 'db.internal',
-      port: '5433',
-      user: 'app',
-      password: 'secret',
-      database: 'zenith',
-      sslMode: null,
-    });
-  });
-
-  it('缺省端口回退 5432 并解码转义字符', () => {
-    const parsed = parseDatabaseUrl('postgres://app:p%40ss%20w0rd@localhost/zenith_admin');
-    expect(parsed.port).toBe('5432');
-    expect(parsed.password).toBe('p@ss w0rd');
-  });
-
-  it('透传 sslmode 查询参数', () => {
-    expect(parseDatabaseUrl('postgres://u:p@h/db?sslmode=verify-full').sslMode).toBe('verify-full');
-  });
-
-  it('缺少数据库名时抛错', () => {
-    expect(() => parseDatabaseUrl('postgres://u:p@h:5432/')).toThrow('DATABASE_URL 缺少数据库名');
   });
 });
 

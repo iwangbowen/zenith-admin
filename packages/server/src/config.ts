@@ -45,6 +45,8 @@ const envSchema = z.object({
   SETTINGS_CACHE_TTL_MS: z.coerce.number().int().min(1_000).default(30_000),
   /** psql 可执行文件路径；留空时按 PATH 查找，用于数据库管理页的 psql 终端 */
   PSQL_PATH: z.string().default(''),
+  /** pg_dump 可执行文件路径；留空时按 PATH 查找，用于数据库备份 */
+  PG_DUMP_PATH: z.string().default(''),
   MULTI_TENANT_MODE: envBool(false),
   /** License 执行模式：off = 不检查（默认，开发/演示零感知）；warn = 全功能可用但记录并提示；required = 强制校验 */
   LICENSE_MODE: z.enum(['off', 'warn', 'required']).default('off'),
@@ -248,6 +250,8 @@ export const config = {
   },
   /** 数据库管理页 psql 终端：可执行文件路径覆盖（留空按 PATH 查找） */
   psqlPath: env.PSQL_PATH || undefined,
+  /** 数据库备份 pg_dump：可执行文件路径覆盖（留空按 PATH 查找） */
+  pgDumpPath: env.PG_DUMP_PATH || undefined,
   multiTenantMode: env.MULTI_TENANT_MODE,
   licenseMode: env.LICENSE_MODE,
   licenseIssuerPublicKey: env.LICENSE_ISSUER_PUBLIC_KEY,

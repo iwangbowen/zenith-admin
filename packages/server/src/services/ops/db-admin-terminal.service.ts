@@ -16,6 +16,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { config } from '../../config';
 import { DB_READONLY_ROLE, isDbReadonlyRoleAvailable } from '../../lib/db-readonly-role';
+import { parseDatabaseUrl, pgClientEnv, pgConnectionArgs, type DbConnectionParams } from '../../lib/pg-client';
 
 const execFileAsync = promisify(execFile);
 
@@ -26,30 +27,6 @@ export function parseDbTerminalShellType(type: string | undefined): DbTerminalMo
   if (type === 'db-psql') return 'ro';
   if (type === 'db-psql:rw') return 'rw';
   return null;
-}
-
-export interface DbConnectionParams {
-  host: string;
-  port: string;
-  user: string;
-  password: string;
-  database: string;
-  sslMode: string | null;
-}
-
-/** 解析 postgres 连接串；密码等字段做 URL 解码。导出仅为单测。 */
-export function parseDatabaseUrl(databaseUrl: string): DbConnectionParams {
-  const url = new URL(databaseUrl);
-  const database = url.pathname.replace(/^\//, '');
-  if (!database) throw new Error('DATABASE_URL 缺少数据库名');
-  return {
-    host: url.hostname || 'localhost',
-    port: url.port || '5432',
-    user: decodeURIComponent(url.username || 'postgres'),
-    password: decodeURIComponent(url.password || ''),
-    database: decodeURIComponent(database),
-    sslMode: url.searchParams.get('sslmode'),
-  };
 }
 
 export interface PsqlLaunch {
@@ -67,13 +44,7 @@ export function buildPsqlLaunch(
   params: DbConnectionParams,
   options: { readonlyRole?: boolean } = {},
 ): PsqlLaunch {
-  const env: Record<string, string> = {
-    PGPASSWORD: params.password,
-    PGCLIENTENCODING: 'UTF8',
-    PGAPPNAME: 'zenith_db_terminal',
-  };
-  const sslMode = params.sslMode ?? (config.database.ssl ? 'require' : null);
-  if (sslMode) env.PGSSLMODE = sslMode;
+  const env = pgClientEnv(params, 'zenith_db_terminal');
   if (mode === 'ro') {
     const opts = ['-c default_transaction_read_only=on'];
     if (options.readonlyRole) opts.push(`-c role=${DB_READONLY_ROLE}`);
@@ -81,7 +52,7 @@ export function buildPsqlLaunch(
   }
   return {
     file: binaryPath,
-    args: ['-h', params.host, '-p', params.port, '-U', params.user, '-d', params.database],
+    args: pgConnectionArgs(params),
     env,
     label: `psql:${params.database} · ${mode === 'ro' ? '只读' : '读写'}`,
   };

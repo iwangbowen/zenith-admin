@@ -209,4 +209,10 @@ await runAsUser(adminId, async () => {
 
 ### 前置条件
 
-使用 `pg_dump` 类型时，服务器环境必须安装 PostgreSQL 客户端工具，并保证版本与数据库服务端兼容。
+使用 `pg_dump` 类型时，服务器环境必须安装 PostgreSQL 客户端工具，并保证版本与数据库服务端兼容
+（pg_dump 主版本低于服务端会以「server version mismatch」拒绝导出）。可执行文件默认按 `PATH` 查找，
+可用 `PG_DUMP_PATH` 环境变量指定路径（psql 终端同理用 `PSQL_PATH`）。
+
+`pg_dump` 由服务端直接 `spawn`（不经 shell 管道），连接参数从 `DATABASE_URL` 解析后经 `PGPASSWORD` 等
+环境变量注入，gzip 压缩由 Node 完成：以 pg_dump 的退出码与 stderr 判定成败，客户端缺失、连接 / 认证失败、
+版本不匹配都会把记录置为 `failed` 并把原因写入 `errorMessage`，不会留下空 gzip 文件。
