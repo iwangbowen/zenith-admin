@@ -45,8 +45,8 @@ describe('dark surface tone preference', () => {
 });
 
 describe('notification sound preference', () => {
-  it('plays the chime by default', () => {
-    expect(defaultPreferences.notificationSound).toBe(true);
+  it('is off by default and uses the chime style once enabled', () => {
+    expect(defaultPreferences.notificationSound).toBe(false);
     expect(defaultPreferences.notificationSoundStyle).toBe('chime');
   });
 

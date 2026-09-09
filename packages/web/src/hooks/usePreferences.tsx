@@ -184,7 +184,7 @@ export interface UserPreferences {
   confirmLogout: boolean;
   /** 标签栏右侧显示标签切换器（chevron 下拉列表） */
   showTabSwitcher: boolean;
-  /** 站内信 / 公告实时到达时播放提示音（聊天新消息提示音沿用聊天页自己的开关，音色共用） */
+  /** 站内信 / 公告实时到达时播放提示音，默认关闭（聊天新消息提示音沿用聊天页自己的开关，音色共用） */
   notificationSound: boolean;
   /** 提示音音色 */
   notificationSoundStyle: NotificationSoundStyle;
@@ -250,7 +250,7 @@ export const defaultPreferences: UserPreferences = {
   reduceMotion: false,
   confirmLogout: true,
   showTabSwitcher: true,
-  notificationSound: true,
+  notificationSound: false,
   notificationSoundStyle: DEFAULT_NOTIFICATION_SOUND_STYLE,
   terminal: {
     defaultShell: '',

@@ -193,12 +193,9 @@ export default function NotificationSettingsTab() {
         <Select
           value={preferences.notificationSoundStyle}
           optionList={NOTIFICATION_SOUND_STYLE_OPTIONS}
-          disabled={!preferences.notificationSound}
           onChange={(value) => {
             const style = enumValueOf(NOTIFICATION_SOUND_STYLES, value);
-            if (!style) return;
-            setPreferences({ notificationSoundStyle: style });
-            playNotificationSound(style);
+            if (style) setPreferences({ notificationSoundStyle: style });
           }}
           style={{ width: 140 }}
         />
