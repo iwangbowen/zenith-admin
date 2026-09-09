@@ -71,7 +71,7 @@
 		"jszip": "^3.10.2",
 		"lucide-react": "^1.43.0",
 		"lunar-typescript": "^1.8.6",
-		"maplibre-gl": "^6.8.0",
+		"maplibre-gl": "^6.9.0",
 		"monaco-editor": "^0.56.0",
 		"pinyin-pro": "^3.29.3",
 		"qrcode.react": "^4.2.0",
