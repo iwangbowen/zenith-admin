@@ -21,6 +21,7 @@ import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
+import { compactQuery } from '@/lib/query';
 
 const LEVEL_LABELS: Record<string, string> = REGION_LEVEL_LABELS;
 
@@ -211,10 +212,10 @@ export default function RegionsPage() {
       {isAllExpanded ? '全部折叠' : '全部展开'}
     </Button>
   );
-  const buildExportQuery = () => ({
-    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
-    ...(submittedParams.status ? { status: submittedParams.status } : {}),
-    ...(submittedParams.level ? { level: submittedParams.level } : {}),
+  const buildExportQuery = () => compactQuery({
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
+    level: submittedParams.level,
   });
   const renderExportButtons = () => hasPermission('system:region:export') ? (
     <ExportButton entity="system.regions" query={buildExportQuery()} />

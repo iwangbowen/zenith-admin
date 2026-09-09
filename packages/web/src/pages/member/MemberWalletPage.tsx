@@ -23,6 +23,7 @@ import {
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
 import { memberCellColumn, signedYuanChange, useMemberKeywordDeepLink } from './member-admin-display';
+import { compactQuery } from '@/lib/query';
 
 const typeOptions = (Object.keys(WALLET_TX_TYPE_LABELS) as (keyof typeof WALLET_TX_TYPE_LABELS)[]).map((v) => ({ value: v, label: WALLET_TX_TYPE_LABELS[v] }));
 const TYPE_COLORS: Record<string, string> = { recharge: 'green', consume: 'orange', refund: 'cyan', adjust: 'blue' };
@@ -89,9 +90,9 @@ export default function MemberWalletPage() {
     />
   );
 
-  const buildExportQuery = () => ({
-    ...(submittedParams.memberKeyword ? { memberKeyword: submittedParams.memberKeyword } : {}),
-    ...(submittedParams.type ? { type: submittedParams.type } : {}),
+  const buildExportQuery = () => compactQuery({
+    memberKeyword: submittedParams.memberKeyword,
+    type: submittedParams.type,
   });
   const renderExportButton = (variant?: 'flat') => hasPermission('member:wallet:list') ? (
     <ExportButton entity="member.wallet-transactions" query={buildExportQuery()} variant={variant} />

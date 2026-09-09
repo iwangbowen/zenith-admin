@@ -37,6 +37,7 @@ import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search
 import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import ModalFooter from '@/components/ModalFooter';
+import { compactQuery } from '@/lib/query';
 
 const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
 const editorLoadingFallback = (
@@ -233,13 +234,11 @@ export default function AnnouncementsPage() {
     setUserOptions((prev) => mergeUserOptions(prev, userSearchQuery.data ?? [], new Set(currentSelectedIds)));
   }, [selectedUserIds, userSearchQuery.data]);
 
-  const buildExportQuery = () => ({
-    ...(submittedParams.title ? { title: submittedParams.title } : {}),
-    ...(submittedParams.type ? { type: submittedParams.type } : {}),
-    ...(submittedParams.publishStatus ? { publishStatus: submittedParams.publishStatus } : {}),
-    ...(submittedParams.timeRange
-      ? formatDateTimeRangeForApi(submittedParams.timeRange)
-      : {}),
+  const buildExportQuery = () => compactQuery({
+    title: submittedParams.title,
+    type: submittedParams.type,
+    publishStatus: submittedParams.publishStatus,
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
 
   const openStatsDrawer = (notice: Announcement) => {

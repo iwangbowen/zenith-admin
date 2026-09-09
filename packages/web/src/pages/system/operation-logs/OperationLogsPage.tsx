@@ -5,6 +5,7 @@ import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
 import { ClearLogsButtons, ClearLogsMobileButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
 import { useClearLogs } from '@/hooks/useClearLogs';
 import { formatDateTimeRangeForApi } from '@/utils/date';
+import { compactQuery } from '@/lib/query';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
 import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/hooks/queries/operation-logs';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -65,19 +66,19 @@ export default function OperationLogsPage() {
 
   const buildExportQuery = () => {
     const p = draftParams;
-    return {
-      ...(p.username ? { username: p.username } : {}),
-      ...(p.module ? { module: p.module } : {}),
-      ...(p.description ? { description: p.description } : {}),
-      ...(p.ip ? { ip: p.ip } : {}),
-      ...(p.method ? { method: p.method } : {}),
-      ...(p.path ? { path: p.path } : {}),
-      ...(p.status ? { status: p.status } : {}),
-      ...(p.content ? { content: p.content } : {}),
-      ...(p.timeRange ? formatDateTimeRangeForApi(p.timeRange) : {}),
-      ...(p.minDurationMs === null ? {} : { minDurationMs: String(p.minDurationMs) }),
-      ...(p.maxDurationMs === null ? {} : { maxDurationMs: String(p.maxDurationMs) }),
-    };
+    return compactQuery({
+      username: p.username,
+      module: p.module,
+      description: p.description,
+      ip: p.ip,
+      method: p.method,
+      path: p.path,
+      status: p.status,
+      content: p.content,
+      ...formatDateTimeRangeForApi(p.timeRange),
+      minDurationMs: p.minDurationMs?.toString(),
+      maxDurationMs: p.maxDurationMs?.toString(),
+    });
   };
 
   const renderUsernameSearch = () => (

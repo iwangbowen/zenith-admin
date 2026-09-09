@@ -28,6 +28,7 @@ import { DateRangeFilter, StatusSelect } from '@/components/search-filters';
 
 const STATUS_FILTER_OPTIONS = [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }];
 import './FileStorageConfigsPage.css';
+import { compactQuery } from '@/lib/query';
 
 const { Text } = Typography;
 
@@ -491,11 +492,9 @@ export default function FileStorageConfigsPage() {
     }),
   ];
 
-  const buildExportQuery = () => ({
-    ...(submittedParams.status ? { status: submittedParams.status } : {}),
-    ...(submittedParams.timeRange
-      ? formatDateTimeRangeForApi(submittedParams.timeRange)
-      : {}),
+  const buildExportQuery = () => compactQuery({
+    status: submittedParams.status,
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
 
   return (

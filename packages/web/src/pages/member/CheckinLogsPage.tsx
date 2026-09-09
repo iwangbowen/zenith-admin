@@ -12,6 +12,7 @@ import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import { MemberSelect } from '@/components/MemberSelect';
 import { formatDateForApi } from '@/utils/date';
+import { compactQuery } from '@/lib/query';
 import { memberAdminKeys, useCheckinCalendar, useCheckinDayMembersInfinite, useCheckinLogList, useMakeupCheckin } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
@@ -167,11 +168,11 @@ export default function CheckinLogsPage() {
   const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const buildExportQuery = () => {
     const [ds, de] = submittedParams.dateRange ?? [];
-    return {
-      ...(submittedParams.memberKeyword ? { memberKeyword: submittedParams.memberKeyword } : {}),
-      ...(ds ? { dateStart: formatDateForApi(ds) } : {}),
-      ...(de ? { dateEnd: formatDateForApi(de) } : {}),
-    };
+    return compactQuery({
+      memberKeyword: submittedParams.memberKeyword,
+      dateStart: ds && formatDateForApi(ds),
+      dateEnd: de && formatDateForApi(de),
+    });
   };
   const renderExportButton = (variant?: 'flat') => hasPermission('member:checkin:log:list') ? (
     <ExportButton entity="member.checkins" query={buildExportQuery()} variant={variant} />

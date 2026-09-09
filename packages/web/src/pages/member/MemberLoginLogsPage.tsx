@@ -7,6 +7,7 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
 import { formatDateForApi } from '@/utils/date';
+import { compactQuery } from '@/lib/query';
 import { memberAdminKeys, useMemberLoginLogList } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -72,12 +73,12 @@ export default function MemberLoginLogsPage() {
 
   const buildExportQuery = () => {
     const [ds, de] = submittedParams.dateRange ?? [];
-    return {
-      ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
-      ...(submittedParams.status ? { status: submittedParams.status } : {}),
-      ...(ds ? { dateStart: formatDateForApi(ds) } : {}),
-      ...(de ? { dateEnd: formatDateForApi(de) } : {}),
-    };
+    return compactQuery({
+      keyword: submittedParams.keyword,
+      status: submittedParams.status,
+      dateStart: ds && formatDateForApi(ds),
+      dateEnd: de && formatDateForApi(de),
+    });
   };
   const renderExportButton = (variant?: 'flat') => hasPermission('member:loginlog:list') ? (
     <ExportButton entity="member.login-logs" query={buildExportQuery()} variant={variant} />

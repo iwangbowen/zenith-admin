@@ -39,6 +39,7 @@ import { confirmDanger } from '@/utils/confirm';
 import { CLEAR_LOGS_LABELS } from '@/hooks/useClearLogs';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { compactQuery } from '@/lib/query';
 interface SearchParams {
   keyword: string;
   status?: string;
@@ -173,9 +174,9 @@ export default function CronJobsPage() {
     if (modal.visible && modal.editing) setCronExprValue(modal.editing.cronExpression ?? '');
   }, [modal.visible, modal.editing]);
 
-  const buildExportQuery = () => ({
-    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
-    ...(submittedParams.status ? { status: submittedParams.status } : {}),
+  const buildExportQuery = () => compactQuery({
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
   });
 
   const handleRunOnce = (id: number, name: string) => {

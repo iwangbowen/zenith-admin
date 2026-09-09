@@ -11,6 +11,7 @@ import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } fro
 import AppModal from '@/components/AppModal';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateForApi } from '@/utils/date';
+import { compactQuery } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { useMySettings } from '@/hooks/queries/settings';
 import { useDeleteFeedbacks, useHandleFeedback, useUserFeedbackList, userFeedbackKeys } from '@/hooks/queries/user-feedbacks';
@@ -102,13 +103,13 @@ export default function FeedbacksPage() {
   const deleteMutation = useDeleteFeedbacks();
 
   function buildExportQuery(): Record<string, unknown> {
-    return {
-      ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
-      ...(submittedParams.category ? { category: submittedParams.category } : {}),
-      ...(submittedParams.status ? { status: submittedParams.status } : {}),
-      ...(rangeStart ? { startTime: formatDateForApi(rangeStart) } : {}),
-      ...(rangeEnd ? { endTime: formatDateForApi(rangeEnd) } : {}),
-    };
+    return compactQuery({
+      keyword: submittedParams.keyword,
+      category: submittedParams.category,
+      status: submittedParams.status,
+      startTime: rangeStart && formatDateForApi(rangeStart),
+      endTime: rangeEnd && formatDateForApi(rangeEnd),
+    });
   }
 
   function confirmBatchDelete() {

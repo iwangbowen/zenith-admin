@@ -29,6 +29,7 @@ import {
 } from '@/hooks/queries/iot-devices';
 import { useDeleteIotGroups, useSaveIotGroup } from '@/hooks/queries/iot-groups';
 import IotDeviceDetailDrawer from './IotDeviceDetailDrawer';
+import { compactQuery } from '@/lib/query';
 
 const { Text } = Typography;
 
@@ -340,11 +341,11 @@ export default function IotDevicesPage() {
 
   const canBatch = hasPermission('iot:device:batch');
 
-  const buildExportQuery = () => ({
-    keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    productId: submittedParams.productId ?? undefined,
-    groupId: submittedParams.groupId ?? undefined,
+  const buildExportQuery = () => compactQuery({
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
+    productId: submittedParams.productId,
+    groupId: submittedParams.groupId,
   });
 
   return (

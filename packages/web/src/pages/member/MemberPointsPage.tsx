@@ -17,6 +17,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { memberCellColumn, signedNumberChange, useMemberKeywordDeepLink } from './member-admin-display';
+import { compactQuery } from '@/lib/query';
 
 const typeOptions = (Object.keys(POINT_TX_TYPE_LABELS) as (keyof typeof POINT_TX_TYPE_LABELS)[]).map((v) => ({ value: v, label: POINT_TX_TYPE_LABELS[v] }));
 const TYPE_COLORS: Record<string, string> = { earn: 'green', redeem: 'orange', expire: 'grey', adjust: 'blue', refund: 'cyan' };
@@ -79,9 +80,9 @@ export default function MemberPointsPage() {
     />
   );
 
-  const buildExportQuery = () => ({
-    ...(submittedParams.memberKeyword ? { memberKeyword: submittedParams.memberKeyword } : {}),
-    ...(submittedParams.type ? { type: submittedParams.type } : {}),
+  const buildExportQuery = () => compactQuery({
+    memberKeyword: submittedParams.memberKeyword,
+    type: submittedParams.type,
   });
   const renderExportButton = (variant?: 'flat') => hasPermission('member:point:list') ? (
     <ExportButton entity="member.point-transactions" query={buildExportQuery()} variant={variant} />

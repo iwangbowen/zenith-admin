@@ -16,6 +16,7 @@ const STATUS_OPTIONS = [{ value: 'success', label: '成功' }, { value: 'fail', 
 const EVENT_TYPE_OPTIONS = [{ value: 'login', label: '登录' }, { value: 'logout', label: '退出登录' }];
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { compactQuery } from '@/lib/query';
 export default function LoginLogsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   interface SearchParams {
@@ -74,13 +75,11 @@ export default function LoginLogsPage() {
     <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
   );
 
-  const buildExportQuery = () => ({
-    ...(draftParams.username ? { username: draftParams.username } : {}),
-    ...(draftParams.eventType ? { eventType: draftParams.eventType } : {}),
-    ...(draftParams.status ? { status: draftParams.status } : {}),
-    ...(draftParams.timeRange
-      ? formatDateTimeRangeForApi(draftParams.timeRange)
-      : {}),
+  const buildExportQuery = () => compactQuery({
+    username: draftParams.username,
+    eventType: draftParams.eventType,
+    status: draftParams.status,
+    ...formatDateTimeRangeForApi(draftParams.timeRange),
   });
 
   const renderExportButtons = () => <ExportButton entity="system.login-logs" query={buildExportQuery()} />;

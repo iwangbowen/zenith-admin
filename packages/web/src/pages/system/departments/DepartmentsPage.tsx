@@ -31,6 +31,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
 import { memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
+import { compactQuery } from '@/lib/query';
 
 interface SearchParams {
   keyword: string;
@@ -245,9 +246,9 @@ export default function DepartmentsPage() {
       {isAllExpanded ? '全部折叠' : '全部展开'}
     </Button>
   );
-  const buildExportQuery = () => ({
-    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
-    ...(submittedParams.status ? { status: submittedParams.status } : {}),
+  const buildExportQuery = () => compactQuery({
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
   });
   const renderExportButtons = () => <ExportButton entity="system.departments" query={buildExportQuery()} />;
   const renderMobileExportActions = () => <ExportButton entity="system.departments" query={buildExportQuery()} variant="flat" />;

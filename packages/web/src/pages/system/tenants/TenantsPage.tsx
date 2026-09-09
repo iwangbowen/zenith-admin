@@ -29,6 +29,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { copyTextWithToast } from '@/utils/clipboard';
+import { compactQuery } from '@/lib/query';
 
 interface SearchParams {
   keyword: string;
@@ -211,9 +212,9 @@ export default function TenantsPage() {
     />
   );
 
-  const buildExportQuery = () => ({
-    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
-    ...(submittedParams.status ? { status: submittedParams.status } : {}),
+  const buildExportQuery = () => compactQuery({
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
   });
   const renderExportButtons = () => <ExportButton entity="system.tenants" query={buildExportQuery()} />;
   const renderMobileExportActions = () => <ExportButton entity="system.tenants" query={buildExportQuery()} variant="flat" />;

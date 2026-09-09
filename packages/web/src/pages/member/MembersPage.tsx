@@ -42,6 +42,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useSensitiveFormFields } from '@/hooks/useSensitiveFormFields';
 import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactQuery } from '@/lib/query';
 import { MEMBER_STATUS_COLORS } from './member-tag-colors';
 
 const statusOptions = (['active', 'inactive', 'banned'] as const).map((v) => ({ value: v, label: MEMBER_STATUS_LABELS[v] }));
@@ -105,12 +106,12 @@ export default function MembersPage() {
 
   const buildExportQuery = () => {
     const ap = submittedParams;
-    return {
-      ...(ap.keyword ? { keyword: ap.keyword } : {}),
-      ...(ap.status ? { status: ap.status } : {}),
-      ...(ap.levelId ? { levelId: String(ap.levelId) } : {}),
-      ...(ap.tagId ? { tagId: String(ap.tagId) } : {}),
-    };
+    return compactQuery({
+      keyword: ap.keyword,
+      status: ap.status,
+      levelId: ap.levelId?.toString(),
+      tagId: ap.tagId?.toString(),
+    });
   };
 
   // 敏感字段（手机号 / 邮箱）对非豁免用户是掩码：编辑时锁定，提交前剔除未修改的锁定字段

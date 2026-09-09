@@ -30,6 +30,7 @@ import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { MemberAssignmentSheet, memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
+import { compactQuery } from '@/lib/query';
 
 interface SearchParams {
   keyword: string;
@@ -182,12 +183,10 @@ export default function PositionsPage() {
     <CreateButton onClick={positionModal.openCreate} />
   ) : null;
 
-  const buildExportQuery = () => ({
-    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
-    ...(submittedParams.status ? { status: submittedParams.status } : {}),
-    ...(submittedParams.timeRange
-      ? formatDateTimeRangeForApi(submittedParams.timeRange)
-      : {}),
+  const buildExportQuery = () => compactQuery({
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
 
   const renderExportButtons = () => <ExportButton entity="system.positions" query={buildExportQuery()} />;

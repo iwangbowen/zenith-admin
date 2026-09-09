@@ -10,6 +10,7 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
 import { formatDateForApi } from '@/utils/date';
+import { compactQuery } from '@/lib/query';
 import { memberAdminKeys, useMemberRechargeList } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -91,13 +92,13 @@ export default function MemberRechargesPage() {
 
   const buildExportQuery = () => {
     const [ds, de] = submittedParams.dateRange ?? [];
-    return {
-      ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
-      ...(submittedParams.status ? { status: submittedParams.status } : {}),
-      ...(submittedParams.channel ? { channel: submittedParams.channel } : {}),
-      ...(ds ? { dateStart: formatDateForApi(ds) } : {}),
-      ...(de ? { dateEnd: formatDateForApi(de) } : {}),
-    };
+    return compactQuery({
+      keyword: submittedParams.keyword,
+      status: submittedParams.status,
+      channel: submittedParams.channel,
+      dateStart: ds && formatDateForApi(ds),
+      dateEnd: de && formatDateForApi(de),
+    });
   };
   const renderExportButton = (variant?: 'flat') => hasPermission('member:recharge:list') ? (
     <ExportButton entity="member.recharges" query={buildExportQuery()} variant={variant} />

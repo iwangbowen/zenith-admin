@@ -36,6 +36,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import ModalFooter from '@/components/ModalFooter';
+import { compactQuery } from '@/lib/query';
 
 export default function RolesPage() {
   const { hasPermission } = usePermission();
@@ -259,12 +260,10 @@ export default function RolesPage() {
     <DateRangeFilter placeholder={["开始时间", "结束时间"]} value={draftParams.timeRange ?? undefined} onChange={(value) => setField('timeRange')(value ? (value as [Date, Date]) : null)} />
   );
 
-  const buildExportQuery = () => ({
-    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
-    ...(submittedParams.status ? { status: submittedParams.status } : {}),
-    ...(submittedParams.timeRange
-      ? formatDateTimeRangeForApi(submittedParams.timeRange)
-      : {}),
+  const buildExportQuery = () => compactQuery({
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
 
   const renderExportButtons = () => <ExportButton entity="system.roles" query={buildExportQuery()} />;

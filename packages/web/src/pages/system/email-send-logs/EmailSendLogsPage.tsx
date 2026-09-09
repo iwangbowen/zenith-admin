@@ -23,6 +23,7 @@ import { parseTemplateVariables } from '../send-log-constants';
 import { KeywordInput } from '@/components/search-filters';
 import { SendLogStatusSourceFilters } from '../send-log-ui';
 import { sendLogErrorColumn, sendLogOperatorColumn, sendLogSourceColumn, sendLogStatusColumn } from '../send-log-columns';
+import { compactQuery } from '@/lib/query';
 
 /** 测试发送表单值：变量以 JSON 文本输入 */
 interface TestEmailFormValues {
@@ -69,11 +70,11 @@ export default function EmailSendLogsPage() {
   const templates = templatesQuery.data?.list ?? [];
   const deleteMutation = useDeleteEmailSendLog();
 
-  const buildExportQuery = () => ({
-    ...(draftParams.keyword ? { keyword: draftParams.keyword } : {}),
-    ...(draftParams.toEmail ? { toEmail: draftParams.toEmail } : {}),
-    ...(draftParams.filterStatus ? { status: draftParams.filterStatus } : {}),
-    ...(draftParams.filterSource ? { source: draftParams.filterSource } : {}),
+  const buildExportQuery = () => compactQuery({
+    keyword: draftParams.keyword,
+    toEmail: draftParams.toEmail,
+    status: draftParams.filterStatus,
+    source: draftParams.filterSource,
   });
 
 

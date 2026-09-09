@@ -65,6 +65,7 @@ import { workflowInstanceStatusColumn } from '@/components/workflow/WorkflowInst
 import { confirmDanger } from '@/utils/confirm';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { compactQuery } from '@/lib/query';
 /** 只读流程设计器（懒加载）：用于在诊断 SideSheet 内查看发起时的流程定义快照 */
 const WorkflowDesignerPage = lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
 
@@ -1102,14 +1103,14 @@ export default function WorkflowMonitorPage() {
 
   const buildExportQuery = () => {
     const { keyword, status, categoryId, definitionId, initiator, priority } = draftParams;
-    return {
-      ...(keyword ? { keyword } : {}),
-      ...(status ? { status } : {}),
-      ...(categoryId != null ? { categoryId: String(categoryId) } : {}),
-      ...(definitionId != null ? { definitionId: String(definitionId) } : {}),
-      ...(initiator ? { initiatorKeyword: initiator } : {}),
-      ...(priority ? { priority } : {}),
-    };
+    return compactQuery({
+      keyword,
+      status,
+      categoryId: categoryId?.toString(),
+      definitionId: definitionId?.toString(),
+      initiatorKeyword: initiator,
+      priority,
+    });
   };
 
   const renderExportButton = () => (

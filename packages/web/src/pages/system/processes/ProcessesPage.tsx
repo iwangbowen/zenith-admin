@@ -24,6 +24,7 @@ import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { formatBytes } from '@zenith/shared/core';
+import { compactQuery } from '@/lib/query';
 
 // 自定义进程表格 CSS
 const processesTableStyle = '';
@@ -165,9 +166,9 @@ export default function ProcessesPage() {
       return matchKw && matchStatus;
     });
   }, [processes, keyword, filterStatus]);
-  const buildExportQuery = () => ({
-    ...(keyword.trim() ? { keyword: keyword.trim() } : {}),
-    ...(filterStatus ? { status: filterStatus } : {}),
+  const buildExportQuery = () => compactQuery({
+    keyword: keyword.trim(),
+    status: filterStatus,
   });
 
   // ─── SSE 连接 ──────────────────────────────────────────────────────────

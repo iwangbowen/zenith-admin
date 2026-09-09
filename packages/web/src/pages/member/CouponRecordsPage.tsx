@@ -18,6 +18,7 @@ import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { memberCellColumn } from './member-admin-display';
+import { compactQuery } from '@/lib/query';
 
 const statusOptions = (Object.keys(MEMBER_COUPON_STATUS_LABELS) as MemberCouponStatus[]).map((v) => ({ value: v, label: MEMBER_COUPON_STATUS_LABELS[v] }));
 const STATUS_COLORS: Record<string, string> = { unused: 'blue', used: 'green', expired: 'grey', frozen: 'orange' };
@@ -133,10 +134,10 @@ export default function CouponRecordsPage() {
   const renderRedeemButton = () => hasPermission('member:coupon:update') ? (
     <Button type="primary" icon={<ScanLine size={14} />} onClick={openRedeem}>核销券码</Button>
   ) : null;
-  const buildExportQuery = () => ({
-    ...(submittedParams.memberKeyword ? { memberKeyword: submittedParams.memberKeyword } : {}),
-    ...(submittedParams.couponId ? { couponId: String(submittedParams.couponId) } : {}),
-    ...(submittedParams.status ? { status: submittedParams.status } : {}),
+  const buildExportQuery = () => compactQuery({
+    memberKeyword: submittedParams.memberKeyword,
+    couponId: submittedParams.couponId?.toString(),
+    status: submittedParams.status,
   });
   const renderExportButton = (variant?: 'flat') => hasPermission('member:coupon:list') ? (
     <ExportButton entity="member.coupon-records" query={buildExportQuery()} variant={variant} />
