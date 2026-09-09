@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { chatContract } from '@zenith/shared/chat';
 import type { WsMessage } from '@zenith/shared/platform';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useOptionalPreferences } from '@/hooks/usePreferences';
-import { api } from '@/lib/contract-query';
+import { useConversations } from '@/hooks/queries/chat';
 import { playNotificationSound } from '@/utils/notification-sound';
 import { getChatNotifyPrefs } from '@/pages/chat/notifyPrefs';
 import { getMessageSummary } from '@/pages/chat/utils';
@@ -16,6 +15,9 @@ function isAbsoluteUrl(url: string | null | undefined): url is string {
 /**
  * 全局聊天通知器：标签页失焦时收到新消息，弹出桌面通知 + 提示音。
  * 尊重会话免打扰与用户偏好（localStorage）；提示音音色跟随「通知设置」里的偏好。挂载于 AdminLayout 一次即可。
+ *
+ * 免打扰集合来自壳层共享的会话列表缓存（与未读徽标、快捷聊天入口合并为一次请求），
+ * 免打扰切换由聊天页写回同一缓存，因此这里不需要任何定时或 focus 触发的重拉。
  */
 export function useChatNotifier(currentUserId: number | null) {
   const navigate = useNavigate();
@@ -25,24 +27,10 @@ export function useChatNotifier(currentUserId: number | null) {
   const locationRef = useRef(location.pathname);
   locationRef.current = location.pathname;
 
-  const refreshMuted = useCallback(async () => {
-    const list = await api(chatContract.conversations, { silent: true }).catch(() => null);
-    if (list) {
-      mutedRef.current = new Set(list.filter((c) => c.isMuted).map((c) => c.id));
-    }
-  }, []);
-
+  const { data: conversations } = useConversations(currentUserId != null);
   useEffect(() => {
-    if (currentUserId == null) return;
-    void refreshMuted();
-    const onFocus = () => { void refreshMuted(); };
-    globalThis.addEventListener('focus', onFocus);
-    const timer = globalThis.setInterval(() => { void refreshMuted(); }, 60_000);
-    return () => {
-      globalThis.removeEventListener('focus', onFocus);
-      globalThis.clearInterval(timer);
-    };
-  }, [currentUserId, refreshMuted]);
+    if (conversations) mutedRef.current = new Set(conversations.filter((c) => c.isMuted).map((c) => c.id));
+  }, [conversations]);
 
   const handler = useCallback((wsMsg: WsMessage) => {
     if (wsMsg.type !== 'chat:message') return;

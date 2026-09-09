@@ -1,6 +1,8 @@
 import { Dropdown, Toast } from '@douyinfe/semi-ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { Archive, ArchiveRestore, BellOff, Bookmark, Pin, Search, Star, UserMinus } from 'lucide-react';
 import { chatContract } from '@zenith/shared/chat';
+import { chatKeys } from '@/hooks/queries/chat';
 import { api } from '@/lib/contract-query';
 import { confirmDelete } from '@/utils/confirm';
 import { CursorContextDropdown } from '@/components/CursorContextDropdown';
@@ -31,6 +33,7 @@ export function LeftPaneContextMenu({
   /** 退订频道（内部自带确认弹窗） */
   handleUnsubscribeChannel: (ch: Channel) => void;
 }>) {
+  const queryClient = useQueryClient();
   let targetId: number;
   if (leftPaneContextMenu.type === 'conversation') targetId = leftPaneContextMenu.conv.id;
   else if (leftPaneContextMenu.type === 'channel') targetId = leftPaneContextMenu.channel.id;
@@ -91,6 +94,8 @@ export function LeftPaneContextMenu({
                         const isMuted = conv.isMuted ?? false;
                         void api(chatContract.muteConversation, { params: { id: conv.id }, body: { mute: !isMuted } }).then(() => {
                           setConversations(toggleConvMuted(conv.id, isMuted));
+                          // 壳层通知器从共享会话缓存读免打扰集合：同步写回，不必等它重拉
+                          queryClient.setQueryData<ChatConversation[]>(chatKeys.conversations, (prev) => prev && toggleConvMuted(conv.id, isMuted)(prev));
                           Toast.success(isMuted ? '已取消免打扰' : '已开启免打扰');
                         }).catch(() => undefined);
                         setLeftPaneContextMenu(null);

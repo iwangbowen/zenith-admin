@@ -1,4 +1,4 @@
-import { eq, and, inArray, ne, max } from 'drizzle-orm';
+import { eq, and, inArray, ne, max, count, gt, or, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   chatConversations, chatConversationMembers, chatMessages, users,
@@ -10,7 +10,7 @@ import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { HTTPException } from 'hono/http-exception';
-import type { ChatConversation, ChatMessageExtra, ChatReadState } from '@zenith/shared/chat';
+import type { ChatConversation, ChatReadState } from '@zenith/shared/chat';
 import { notHiddenFor, rowSender, mapChatMessage, ensureConversationMember, getUserNickname } from './chat-shared';
 import { appendSystemMessage } from './chat-messages.service';
 
@@ -23,7 +23,6 @@ export async function listConversations(): Promise<ChatConversation[]> {
   const memberRows = await db
     .select({
       conversationId: chatConversationMembers.conversationId,
-      lastReadAt: chatConversationMembers.lastReadAt,
       isPinned: chatConversationMembers.isPinned,
       isStarred: chatConversationMembers.isStarred,
       isMuted: chatConversationMembers.isMuted,
@@ -37,7 +36,6 @@ export async function listConversations(): Promise<ChatConversation[]> {
   if (memberRows.length === 0) return [];
 
   const convIds = memberRows.map((r) => r.conversationId);
-  const lastReadMap = new Map(memberRows.map((r) => [r.conversationId, r.lastReadAt]));
   const pinnedMap = new Map(memberRows.map((r) => [r.conversationId, r.isPinned]));
   const starredMap = new Map(memberRows.map((r) => [r.conversationId, r.isStarred]));
   const mutedMap = new Map(memberRows.map((r) => [r.conversationId, r.isMuted]));
@@ -45,7 +43,7 @@ export async function listConversations(): Promise<ChatConversation[]> {
   const myRoleMap = new Map(memberRows.map((r) => [r.conversationId, r.role]));
   const myMutedUntilMap = new Map(memberRows.map((r) => [r.conversationId, r.mutedUntil]));
 
-  // 批量拉取会话基本信息 & 最后消息 & 消息时间（三者都只依赖 convIds，并行执行）
+  // 批量拉取会话基本信息 & 最后消息 & 未读聚合（三者互不依赖，并行执行）
   const latestMsgIdSub = db
     .select({
       conversationId: chatMessages.conversationId,
@@ -59,7 +57,25 @@ export async function listConversations(): Promise<ChatConversation[]> {
     .groupBy(chatMessages.conversationId)
     .as('latest_msg_id');
 
-  const [convRows, latestMsgRows, msgTimeRows] = await Promise.all([
+  // 未读 = 非本人发送且晚于我在该会话 last_read_at 的消息。写成 LATERAL 子查询让规划器按会话逐个参数化：
+  // conversation_id = ? AND created_at > coalesce(last_read_at, -infinity) 直接命中 (conversation_id, created_at) 索引，
+  // 只扫未读段；若写成普通 JOIN，规划器对「与外表列比较」只能按默认 1/3 选择率估算而退回全表扫描。
+  // 「是否有 @我」用 jsonb 包含在 SQL 内聚合，不再把全部消息拉到内存逐条判断
+  const mentionProbe = JSON.stringify([{ userId: me.userId }]);
+  const unreadAgg = db
+    .select({
+      unreadCount: count().as('unread_count'),
+      hasMentionUnread: sql<boolean>`coalesce(bool_or(${chatMessages.extra} -> 'mentions' @> ${mentionProbe}::jsonb), false)`.as('has_mention_unread'),
+    })
+    .from(chatMessages)
+    .where(and(
+      eq(chatMessages.conversationId, chatConversationMembers.conversationId),
+      gt(chatMessages.createdAt, sql`coalesce(${chatConversationMembers.lastReadAt}, '-infinity'::timestamptz)`),
+      or(isNull(chatMessages.senderId), ne(chatMessages.senderId, me.userId)),
+    ))
+    .as('unread_agg');
+
+  const [convRows, latestMsgRows, unreadRows] = await Promise.all([
     db
       .select()
       .from(chatConversations)
@@ -74,13 +90,13 @@ export async function listConversations(): Promise<ChatConversation[]> {
       .leftJoin(users, eq(chatMessages.senderId, users.id)),
     db
       .select({
-        conversationId: chatMessages.conversationId,
-        senderId: chatMessages.senderId,
-        createdAt: chatMessages.createdAt,
-        extra: chatMessages.extra,
+        conversationId: chatConversationMembers.conversationId,
+        unreadCount: unreadAgg.unreadCount,
+        hasMentionUnread: unreadAgg.hasMentionUnread,
       })
-      .from(chatMessages)
-      .where(inArray(chatMessages.conversationId, convIds)),
+      .from(chatConversationMembers)
+      .crossJoinLateral(unreadAgg)
+      .where(eq(chatConversationMembers.userId, me.userId)),
   ]);
 
   const latestMsgMap = new Map(
@@ -146,19 +162,8 @@ export async function listConversations(): Promise<ChatConversation[]> {
     }]),
   );
 
-  const unreadMap = new Map<number, number>();
-  const mentionUnreadMap = new Map<number, boolean>();
-  for (const row of msgTimeRows) {
-    if (row.senderId === me.userId) continue;
-    const lastReadAt = lastReadMap.get(row.conversationId) ?? null;
-    if (!lastReadAt || row.createdAt > lastReadAt) {
-      unreadMap.set(row.conversationId, (unreadMap.get(row.conversationId) ?? 0) + 1);
-      const extra = row.extra as ChatMessageExtra | null;
-      if ((extra?.mentions ?? []).some((item) => item.userId === me.userId)) {
-        mentionUnreadMap.set(row.conversationId, true);
-      }
-    }
-  }
+  const unreadMap = new Map(unreadRows.map((r) => [r.conversationId, r.unreadCount]));
+  const mentionUnreadMap = new Map(unreadRows.map((r) => [r.conversationId, r.hasMentionUnread]));
 
   const results: ChatConversation[] = convRows.map((conv) => ({
     id: conv.id,

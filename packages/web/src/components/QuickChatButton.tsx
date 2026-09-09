@@ -1,13 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { FloatButton, Spin } from '@douyinfe/semi-ui';
 import { MessageCircle, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { chatContract } from '@zenith/shared/chat';
 import type { WsMessage } from '@zenith/shared/platform';
 import { useAuth } from '@/hooks/useAuth';
+import { useConversations } from '@/hooks/queries/chat';
 import { useWebSocket, useWsConnected } from '@/hooks/useWebSocket';
-import { api } from '@/lib/contract-query';
 import './QuickChatButton.css';
 
 const QuickChatPanel = lazy(() => import('@/pages/chat/ChatPage'));
@@ -28,11 +26,8 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
   const floatBtnRef = useRef<HTMLDivElement>(null);
   const wsHasConnectedRef = useRef(false);
   const wsDisconnectedSinceReadyRef = useRef(false);
-  const { data: unreadConversations, refetch: refetchUnreadCount } = useQuery({
-    queryKey: ['chat', 'quick-unread-conversations'],
-    queryFn: () => api(chatContract.conversations, { silent: true }),
-    enabled: !location.pathname.startsWith('/chat'),
-  });
+  // 与顶栏未读徽标、聊天通知器共用壳层会话列表缓存；在 /chat 页内由 ChatPage 自己维护，不再观察
+  const { data: unreadConversations, refetch: refetchUnreadCount } = useConversations(!location.pathname.startsWith('/chat'));
 
   const closePanel = useCallback(() => {
     openRef.current = false;

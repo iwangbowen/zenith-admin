@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import type { ChatGroupMember } from '@zenith/shared/chat';
+import type { ChatConversation, ChatGroupMember } from '@zenith/shared/chat';
 import {
   ApiRecorder,
   createRequestMock,
@@ -34,12 +34,15 @@ import {
   useChatCustomEmojis,
   useChatGroupMembers,
   useChatQuickReplies,
+  useChatUnreadCount,
   useChatUsers,
+  useConversations,
   useDeleteChatAnnouncementHistory,
   useSetChatMemberRole,
   useTransferChatGroupOwner,
   useUpdateChatGroupInfo,
 } from './chat';
+import { useChatBotGroupConversations } from './chat-bots';
 
 const OWNER_ALICE: ChatGroupMember[] = [
   { id: 1, nickname: '爱丽丝', role: 'owner' } as ChatGroupMember,
@@ -51,9 +54,16 @@ const OWNER_BOB: ChatGroupMember[] = [
   { id: 2, nickname: '鲍勃', role: 'owner' } as ChatGroupMember,
 ];
 
+const CONVERSATIONS: ChatConversation[] = [
+  { id: 1, type: 'group', name: '研发群', unreadCount: 3, isMuted: false } as ChatConversation,
+  { id: 2, type: 'direct', name: null, unreadCount: 2, isMuted: true } as ChatConversation,
+  { id: 3, type: 'group', name: '公告群', unreadCount: 0, isMuted: false } as ChatConversation,
+];
+
 beforeEach(() => {
   api.reset();
   api
+    .on('GET', '/api/chat/conversations', CONVERSATIONS)
     .on('GET', '/api/chat/conversations/10/members', OWNER_ALICE)
     .on('GET', '/api/chat/quick-replies', [{ id: 1, content: '收到' }])
     .on('GET', '/api/chat/custom-emojis', [{ id: 1, url: 'a.png' }])
@@ -224,5 +234,57 @@ describe('群公告历史迁入 Query（S11）', () => {
     expect(fetches.countOf(chatKeys.groupMembers(10))).toBe(0);
 
     fetches.stop();
+  });
+});
+
+describe('会话列表：壳层消费方共用一份缓存', () => {
+  it('serves the unread badge, the notifier list and the bot group picker from one request', async () => {
+    const qc = createTestQueryClient();
+    // 模拟 AdminLayout 同时挂载的三类消费方：顶栏未读徽标 / 通知器（useConversations）/ 机器人表单群聊下拉
+    const { result } = renderHook(
+      () => ({
+        unread: useChatUnreadCount(),
+        list: useConversations(),
+        groups: useChatBotGroupConversations(),
+      }),
+      { wrapper: createWrapper(qc) },
+    );
+    await waitFor(() => {
+      expect(result.current.unread.isSuccess).toBe(true);
+      expect(result.current.list.isSuccess).toBe(true);
+      expect(result.current.groups.isSuccess).toBe(true);
+    });
+
+    // 此前三处各自请求（其中通知器还每 60s 轮询一次）；现在共用 chatKeys.conversations，只发一次
+    expect(api.countOf('GET', '/api/chat/conversations')).toBe(1);
+    expect(result.current.unread.data).toBe(5);
+    expect(result.current.list.data).toEqual(CONVERSATIONS);
+    expect(result.current.groups.data?.map((c) => c.id)).toEqual([1, 3]);
+    expect(getCacheEntry<ChatConversation[]>(qc, chatKeys.conversations)).toEqual(CONVERSATIONS);
+  });
+
+  it('keeps the WebSocket-maintained badge writable and lets the mute toggle patch the shared list without refetching', async () => {
+    const qc = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({ unread: useChatUnreadCount(), list: useConversations() }),
+      { wrapper: createWrapper(qc) },
+    );
+    // 与真实组件一样读取 data（v5 只对渲染期访问过的属性变化重渲染）
+    await waitFor(() => {
+      expect(result.current.list.data).toEqual(CONVERSATIONS);
+      expect(result.current.unread.data).toBe(5);
+    });
+    api.resetCalls();
+
+    // useLayoutWs 收到 chat:message 时 +1；进入 /chat 时置 0——两者都直接写 unreadCount 缓存
+    qc.setQueryData<number>(chatKeys.unreadCount, (prev) => (prev ?? 0) + 1);
+    await waitFor(() => expect(result.current.unread.data).toBe(6));
+
+    // 聊天页切换免打扰后写回共享列表：通知器立即看到新集合，且不产生任何请求
+    qc.setQueryData<ChatConversation[]>(chatKeys.conversations, (prev) =>
+      prev?.map((c) => (c.id === 1 ? { ...c, isMuted: true } : c)));
+    await waitFor(() => expect(result.current.list.data?.find((c) => c.id === 1)?.isMuted).toBe(true));
+    expect(api.countOf('GET', '/api/chat/conversations')).toBe(0);
+    expect(isFresh(qc, chatKeys.conversations)).toBe(true);
   });
 });

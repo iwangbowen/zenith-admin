@@ -1,13 +1,10 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Button, Descriptions, Input, Select, SideSheet, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Download, Lock, LockOpen, MessageSquareShare, Scale, Star, StarOff } from 'lucide-react';
-import { chatContract } from '@zenith/shared/chat';
 import { formatBytes } from '@zenith/shared/core';
 import { DRIVE_NODE_TYPE_LABELS, DRIVE_ROLE_LABELS, type DriveNode, type DriveNodeDetail } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
-import { api } from '@/lib/contract-query';
-import { chatKeys } from '@/hooks/queries/chat';
+import { useConversations } from '@/hooks/queries/chat';
 import { useCreateDriveLegalHold, useCreateDriveTag, useDriveNode, useDriveTags, useLockDriveNode, useSendDriveNodeToChat, useSetDriveNodeTags, useStarDriveNode } from '@/hooks/queries/drive';
 import { ForwardModal } from '@/pages/chat/components/ForwardModal';
 import { usePermission } from '@/hooks/usePermission';
@@ -90,12 +87,8 @@ function LegalHoldButton({ node }: { readonly node: DriveNodeDetail }) {
 function SendToChatButton({ node }: { readonly node: DriveNodeDetail }) {
   const [visible, setVisible] = useState(false);
   const send = useSendDriveNodeToChat();
-  const conversations = useQuery({
-    queryKey: chatKeys.conversations,
-    queryFn: () => api(chatContract.conversations, { silent: true }),
-    enabled: visible,
-    staleTime: 60_000,
-  });
+  // 复用壳层共享的会话列表缓存，只在弹窗打开时观察
+  const conversations = useConversations(visible);
   return (
     <>
       <Button size="small" icon={<MessageSquareShare size={14} />} onClick={() => setVisible(true)}>发送到聊天</Button>

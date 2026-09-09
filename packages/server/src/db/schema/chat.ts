@@ -64,6 +64,8 @@ export const chatMessages = pgTable('chat_messages', {
 }, (t) => [
   // 会话消息游标分页（WHERE conversation_id = ? AND id < ? ORDER BY id DESC）及最新消息聚合
   index('chat_messages_conversation_id_idx').on(t.conversationId, t.id),
+  // 未读统计（listConversations）：按会话只扫 created_at > last_read_at 的消息，(conversation_id, id) 不覆盖时间比较
+  index('chat_messages_conversation_created_idx').on(t.conversationId, t.createdAt),
   // sender FK 无自动索引：加速按发送者过滤搜索及用户删除时的 ON DELETE SET NULL
   index('chat_messages_sender_idx').on(t.senderId),
 ]);

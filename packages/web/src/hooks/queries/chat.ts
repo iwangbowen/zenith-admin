@@ -28,8 +28,8 @@ export const chatKeys = {
   lists: [CHAT_KEY, 'list'] as const,
   list: (scope: string, params: object) => [CHAT_KEY, 'list', scope, params] as const,
   /**
-   * 会话列表。当前由 ChatPage 以本地 state + WebSocket 增量维护，尚未迁入 Query，
-   * 但会话级 mutation 仍以此为约定失效目标，便于后续迁移时自动接上。
+   * 会话列表。ChatPage 以本地 state + WebSocket 增量维护自己的副本；壳层与弹窗类消费方经
+   * `conversationsQueryOptions()` 共用本 key 的缓存，会话级 mutation 以此为失效目标。
    */
   conversations: contractKey(chatContract.conversations),
   /** 顶栏聊天未读数聚合（初值由查询拉取，之后由 WebSocket 推送写入缓存） */
@@ -317,13 +317,35 @@ export function useChannelMenus(channelId: number | undefined, enabled = true) {
 }
 
 /**
- * 顶栏聊天未读数。仅拉取初值，后续增量由 WebSocket 推送经 setQueryData 写入
+ * 顶栏聊天未读数。初值由共享的会话列表缓存求和（`fetchQuery` 与其它壳层消费方合并为一次请求），
+ * 后续增量由 WebSocket 推送经 setQueryData 写入本 key
  * （会话列表本身仍由 ChatPage 以本地 state + WS 维护，属文档白名单的流式场景）。
  */
 export function useChatUnreadCount() {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: chatKeys.unreadCount,
-    queryFn: () => api(chatContract.conversations, silent)
+    queryFn: () => qc.fetchQuery(conversationsQueryOptions())
       .then((list) => (list ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0)),
   });
+}
+
+// ─── 会话列表（壳层共享缓存） ─────────────────────────────────────────────────
+
+/**
+ * 会话列表查询选项。壳层长期挂载的消费方（顶栏未读徽标、聊天通知器的免打扰集合、快捷聊天入口）
+ * 与弹窗类一次性消费方（发送到聊天、机器人群选择）共用 `chatKeys.conversations` 这一份缓存：
+ * 冷启动只发一次请求，之后由 WebSocket 推送与会话级 mutation 维护新鲜度，任何消费方都不得再自行轮询。
+ * ChatPage 本体仍以本地 state + WS 增量维护会话列表，不消费本查询。
+ */
+export function conversationsQueryOptions() {
+  return {
+    queryKey: chatKeys.conversations,
+    queryFn: () => api(chatContract.conversations, silent),
+    staleTime: LOOKUP_STALE_TIME,
+  };
+}
+
+export function useConversations(enabled = true) {
+  return useQuery({ ...conversationsQueryOptions(), enabled });
 }

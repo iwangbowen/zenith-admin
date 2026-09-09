@@ -22,6 +22,13 @@
       "when": 1788957414725,
       "tag": "0002_db_backups_into_db_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788959655855,
+      "tag": "0003_chat_unread_index",
+      "breakpoints": true
     }
   ]
 }
