@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { QueryKey } from '@tanstack/react-query';
 import { usePagination, type UsePaginationReturn } from '@/hooks/usePagination';
@@ -26,6 +26,13 @@ export interface UseListSearchReturn<T> extends UsePaginationReturn {
   /** 绑定到输入框；变化不触发请求 */
   readonly draftParams: T;
   readonly setDraftParams: React.Dispatch<React.SetStateAction<T>>;
+  /**
+   * 单个草稿字段的 setter，是筛选控件 `onChange` 的标准写法：
+   * `onChange={setField('keyword')}`；控件值需要转换时 `onChange={(e) => setField('archived')(!!e.target.checked)}`。
+   * 同一 key 跨渲染返回同一引用，可直接交给 memo 化的子组件。
+   * 一次改多个字段仍用 `setDraftParams((p) => ({ ...p, a, b }))`。
+   */
+  readonly setField: <K extends keyof T>(key: K) => (value: T[K]) => void;
   /** 进入 query key；变化自动触发请求 */
   readonly submittedParams: T;
   /** 提交草稿条件、回到第 1 页，并强制失效列表 */
@@ -55,11 +62,12 @@ export interface UseListSearchReturn<T> extends UsePaginationReturn {
  * @example
  * const {
  *   page, pageSize, buildPagination,
- *   draftParams, setDraftParams, submittedParams,
+ *   draftParams, setField, submittedParams,
  *   handleSearch, handleReset,
  * } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tagKeys.lists });
  *
  * const listQuery = useTagList({ page, pageSize, keyword: submittedParams.keyword || undefined });
+ * <KeywordInput value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
  */
 export function useListSearch<T>({
   defaults,
@@ -75,6 +83,17 @@ export function useListSearch<T>({
 
   const [draftParams, setDraftParams] = useState<T>(defaults);
   const [submittedParams, setSubmittedParams] = useState<T>(defaults);
+
+  // setDraftParams 本身稳定，按 key 缓存后 setField('x') 每次渲染都返回同一函数
+  const fieldSetters = useRef(new Map<keyof T, (value: unknown) => void>());
+  const setField = useCallback(<K extends keyof T>(key: K) => {
+    let setter = fieldSetters.current.get(key);
+    if (!setter) {
+      setter = (value: unknown) => setDraftParams((prev) => ({ ...prev, [key]: value }) as T);
+      fieldSetters.current.set(key, setter);
+    }
+    return setter as (value: T[K]) => void;
+  }, []);
 
   const invalidate = useCallback(() => {
     for (const queryKey of [listKey, ...(extraKeys ?? [])]) {
@@ -113,6 +132,7 @@ export function useListSearch<T>({
     ...pagination,
     draftParams,
     setDraftParams,
+    setField,
     submittedParams,
     handleSearch,
     applySearch,

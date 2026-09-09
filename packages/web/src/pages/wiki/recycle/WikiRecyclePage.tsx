@@ -21,7 +21,7 @@ export default function WikiRecyclePage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiDocRecycleKeys.all });
 
@@ -64,7 +64,7 @@ export default function WikiRecyclePage() {
     <KeywordInput
       placeholder="搜索标题..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );

@@ -47,7 +47,7 @@ export default function PaymentAppsPage() {
   const [environmentWatch, setEnvironmentWatch] = useState<PaymentApp['environment'] | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentAppKeys.lists });
   const listQuery = usePaymentAppList({
@@ -140,13 +140,13 @@ export default function PaymentAppsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="名称..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={200} />
+    <KeywordInput placeholder="名称..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
   );
   const renderStatusFilter = () => (
     <StatusSelect
       items={STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
   const renderCreateButton = () => canManage ? <CreateButton onClick={openCreate} /> : null;

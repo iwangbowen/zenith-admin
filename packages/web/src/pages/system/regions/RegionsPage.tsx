@@ -38,7 +38,7 @@ export default function RegionsPage() {
   const { hasPermission } = usePermission();
 
   const {
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: regionKeys.trees });
   const [editingLevel, setEditingLevel] = useState<string>('province');
@@ -182,7 +182,7 @@ export default function RegionsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称或代码..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索名称或代码..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderLevelFilter = () => (
@@ -190,7 +190,7 @@ export default function RegionsPage() {
       placeholder="全部级别"
       items={LEVEL_OPTIONS}
       value={draftParams.level}
-      onChange={(v) => setDraftParams((p) => ({ ...p, level: v }))}
+      onChange={setField('level')}
     />
   );
 
@@ -198,7 +198,7 @@ export default function RegionsPage() {
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

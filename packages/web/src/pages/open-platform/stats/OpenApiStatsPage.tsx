@@ -44,7 +44,7 @@ export default function OpenApiStatsPage() {
   });
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch: handleApply, handleReset,
   } = useListSearch<SearchParams>({ defaults: createDefaultParams, listKey: openApiStatsKeys.all });
   const appOptions = useOpenAppOptions().data ?? [];
@@ -173,13 +173,13 @@ export default function OpenApiStatsPage() {
               type="dateRange"
               value={draftParams.range}
               onChange={(range) => {
-                if (range) setDraftParams({ ...draftParams, range });
+                if (range) setField('range')(range);
               }}
               density="compact"
             />
             <Select
               value={draftParams.granularity}
-              onChange={(v) => setDraftParams({ ...draftParams, granularity: v as 'hour' | 'day' })}
+              onChange={(v) => setField('granularity')(v as 'hour' | 'day')}
               optionList={[{ value: 'day', label: '按天' }, { value: 'hour', label: '按小时' }]}
               style={{ width: 110 }}
             />
@@ -189,12 +189,12 @@ export default function OpenApiStatsPage() {
         )}
         filters={(
           <>
-            <KeywordInput placeholder="路径 / 应用名称" value={draftParams.keyword} onChange={(keyword) => setDraftParams({ ...draftParams, keyword })} onSearch={handleApply} width={190} />
+            <KeywordInput placeholder="路径 / 应用名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleApply} width={190} />
             <FilterSelect
               placeholder="全部应用"
               items={appOptions.map((app) => ({ value: app.clientId, label: app.name }))}
               value={draftParams.clientId}
-              onChange={(clientId) => setDraftParams({ ...draftParams, clientId: clientId as string })}
+              onChange={(clientId) => setField('clientId')(clientId as string)}
               width={170}
               filter
             />
@@ -202,29 +202,26 @@ export default function OpenApiStatsPage() {
               placeholder="全部环境"
               items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
               value={draftParams.environment}
-              onChange={(environment) => setDraftParams({ ...draftParams, environment: environment as OpenApiCallLog['environment'] })}
+              onChange={(environment) => setField('environment')(environment as OpenApiCallLog['environment'])}
             />
             <FilterSelect
               placeholder="全部请求方法"
               items={['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((value) => ({ value, label: value }))}
               value={draftParams.method}
-              onChange={(method) => setDraftParams({ ...draftParams, method: method as string })}
+              onChange={(method) => setField('method')(method as string)}
               width={140}
             />
             <FilterSelect
               placeholder="全部调用结果"
               items={[{ value: 'true', label: '成功' }, { value: 'false', label: '失败' }]}
               value={draftParams.success === undefined ? undefined : String(draftParams.success)}
-              onChange={(success) => setDraftParams({
-                ...draftParams,
-                success: success === undefined ? undefined : success === 'true',
-              })}
+              onChange={(success) => setField('success')(success === undefined ? undefined : success === 'true')}
               width={140}
             />
             <InputNumber
               placeholder="状态码"
               value={draftParams.statusCode}
-              onChange={(statusCode) => setDraftParams({ ...draftParams, statusCode: typeof statusCode === 'number' ? statusCode : undefined })}
+              onChange={(statusCode) => setField('statusCode')(typeof statusCode === 'number' ? statusCode : undefined)}
               min={100}
               max={599}
               style={{ width: 110 }}
@@ -234,7 +231,7 @@ export default function OpenApiStatsPage() {
         actions={<ExportButton entity="open-platform.call-logs" query={logParams} executionMode="auto" />}
         mobilePrimary={(
           <>
-            <KeywordInput placeholder="搜索调用日志" value={draftParams.keyword} onChange={(keyword) => setDraftParams({ ...draftParams, keyword })} onSearch={handleApply} width={190} />
+            <KeywordInput placeholder="搜索调用日志" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleApply} width={190} />
             <SearchButton onClick={handleApply} />
           </>
         )}
@@ -244,7 +241,7 @@ export default function OpenApiStatsPage() {
               type="dateRange"
               value={draftParams.range}
               onChange={(range) => {
-                if (range) setDraftParams({ ...draftParams, range });
+                if (range) setField('range')(range);
               }}
               width="100%"
             />
@@ -252,7 +249,7 @@ export default function OpenApiStatsPage() {
               placeholder="全部应用"
               items={appOptions.map((app) => ({ value: app.clientId, label: app.name }))}
               value={draftParams.clientId}
-              onChange={(clientId) => setDraftParams({ ...draftParams, clientId: clientId as string })}
+              onChange={(clientId) => setField('clientId')(clientId as string)}
               width="100%"
               filter
             />
@@ -260,7 +257,7 @@ export default function OpenApiStatsPage() {
               placeholder="全部环境"
               items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
               value={draftParams.environment}
-              onChange={(environment) => setDraftParams({ ...draftParams, environment: environment as OpenApiCallLog['environment'] })}
+              onChange={(environment) => setField('environment')(environment as OpenApiCallLog['environment'])}
               width="100%"
             />
           </>

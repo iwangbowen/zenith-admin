@@ -30,7 +30,7 @@ export default function WikiCommentsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiCommentKeys.lists });
 
@@ -89,7 +89,7 @@ export default function WikiCommentsPage() {
     <KeywordInput
       placeholder="搜索评论内容..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -99,14 +99,14 @@ export default function WikiCommentsPage() {
       items={WIKI_COMMENT_STATUS_OPTIONS}
      
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
   const renderTimeRangeFilter = () => (
     <DateRangeFilter
       value={draftParams.timeRange}
-      onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))}
+      onChange={setField('timeRange')}
     />
   );
 

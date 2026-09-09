@@ -105,6 +105,41 @@ describe('draft / submitted 双状态', () => {
   });
 });
 
+describe('setField 单字段绑定', () => {
+  it('只改指定字段，其余草稿字段保持不变', () => {
+    const { result } = setup();
+    act(() => { result.current.setField('status')('enabled'); });
+    act(() => { result.current.setField('keyword')('abc'); });
+    expect(result.current.draftParams).toEqual({ keyword: 'abc', status: 'enabled' });
+    expect(result.current.submittedParams).toEqual(defaults);
+  });
+
+  it('同一 tick 内连续写不同字段互不覆盖（函数式更新）', () => {
+    const { result } = setup();
+    act(() => {
+      result.current.setField('keyword')('abc');
+      result.current.setField('status')('enabled');
+    });
+    expect(result.current.draftParams).toEqual({ keyword: 'abc', status: 'enabled' });
+  });
+
+  it('同一 key 跨渲染返回同一引用，可安全交给 memo 化子组件', () => {
+    const { result } = setup();
+    const first = result.current.setField('keyword');
+    act(() => { first('abc'); });
+    expect(result.current.setField('keyword')).toBe(first);
+    expect(result.current.setField('status')).not.toBe(first);
+  });
+
+  it('handleReset 后 setField 仍作用于最新草稿', () => {
+    const { result } = setup();
+    act(() => { result.current.setField('keyword')('abc'); });
+    act(() => { result.current.handleReset(); });
+    act(() => { result.current.setField('status')('disabled'); });
+    expect(result.current.draftParams).toEqual({ keyword: '', status: 'disabled' });
+  });
+});
+
 describe('页码联动', () => {
   it('handleSearch 回到第 1 页（避免停在越界页看到空列表）', () => {
     const { result } = setup();

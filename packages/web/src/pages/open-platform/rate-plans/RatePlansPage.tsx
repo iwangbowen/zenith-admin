@@ -29,7 +29,7 @@ export default function RatePlansPage() {
   const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: ratePlanKeys.lists });
 
@@ -101,13 +101,13 @@ export default function RatePlansPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索套餐编码 / 名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索套餐编码 / 名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
         filters={(
           <>
             <StatusSelect
               items={STATUS_OPTIONS}
               value={draftParams.status}
-              onChange={(v) => setDraftParams({ ...draftParams, status: v as string })}
+              onChange={(v) => setField('status')(v as string)}
             />
           </>
         )}

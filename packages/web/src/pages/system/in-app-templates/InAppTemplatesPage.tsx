@@ -30,7 +30,7 @@ export default function InAppTemplatesPage() {
   const defaultSearchParams: SearchParams = { keyword: '', filterType: undefined, filterStatus: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: inAppTemplateKeys.lists });
 
@@ -103,19 +103,19 @@ export default function InAppTemplatesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索模板名称/编码/标题" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={240} />}
+        keyword={<KeywordInput placeholder="搜索模板名称/编码/标题" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部类型"
               items={TYPE_OPTIONS}
               value={draftParams.filterType}
-              onChange={(v) => setDraftParams({ ...draftParams, filterType: v as InAppMessageType | undefined })}
+              onChange={(v) => setField('filterType')(v as InAppMessageType | undefined)}
             />
             <StatusSelect
               items={statusItems}
               value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
+              onChange={(v) => setField('filterStatus')(v as string | undefined)}
             />
           </>
         )}

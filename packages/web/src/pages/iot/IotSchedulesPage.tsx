@@ -56,7 +56,7 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<ScheduleSearchParams>({ defaults: defaultSearch, listKey: iotScheduleKeys.lists });
 
@@ -166,7 +166,7 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
     <KeywordInput
       placeholder="搜索计划名称..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -175,7 +175,7 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

@@ -29,7 +29,7 @@ export default function MemberLoginLogsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.loginLogLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ keyword: memberKeyword, dateRange: null }) });
@@ -55,19 +55,19 @@ export default function MemberLoginLogsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员昵称/手机号/用户名" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="会员昵称/手机号/用户名" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusOptions}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value as 'success' | 'fail' | undefined }))}
+      onChange={(value) => setField('status')(value as 'success' | 'fail' | undefined)}
     />
   );
 
   const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, dateRange: value ? (value as [Date, Date]) : null }))} />
+    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setField('dateRange')(value ? (value as [Date, Date]) : null)} />
   );
 
   const buildExportQuery = () => {

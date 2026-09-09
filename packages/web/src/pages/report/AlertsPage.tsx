@@ -88,7 +88,7 @@ export default function AlertsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setDraftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportAlertKeys.lists });
 
@@ -315,7 +315,7 @@ export default function AlertsPage() {
   ];
 
   const renderKeyword = () => (
-    <KeywordInput placeholder="搜索名称/备注" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={200} />
+    <KeywordInput placeholder="搜索名称/备注" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
   );
   const renderDatasetFilter = () => (
     <FilterSelect
@@ -341,7 +341,7 @@ export default function AlertsPage() {
     <StatusSelect
       items={statusItems}
       value={draftParams.enabled}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, enabled: value }))}
+      onChange={setField('enabled')}
     />
   );
   const renderCreateBtn = () => hasPermission('report:alert:create')

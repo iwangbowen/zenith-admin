@@ -70,7 +70,7 @@ export default function PaymentLinksPage() {
   const qrContainerRef = useRef<HTMLDivElement | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentLinkKeys.lists });
 
@@ -278,14 +278,14 @@ export default function PaymentLinksPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="标题..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={200} />
+    <KeywordInput placeholder="标题..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={PAYMENT_LINK_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v as PaymentLinkStatus | '' }))}
+      onChange={(v) => setField('status')(v as PaymentLinkStatus | '')}
     />
   );
 

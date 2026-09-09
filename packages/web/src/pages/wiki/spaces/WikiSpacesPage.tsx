@@ -40,7 +40,7 @@ export default function WikiSpacesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiSpaceKeys.lists });
 
@@ -161,7 +161,7 @@ export default function WikiSpacesPage() {
     <KeywordInput
       placeholder="搜索空间名称..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -171,7 +171,7 @@ export default function WikiSpacesPage() {
       placeholder="全部可见性"
       items={WIKI_SPACE_VISIBILITY_OPTIONS}
       value={draftParams.visibility}
-      onChange={(v) => setDraftParams((p) => ({ ...p, visibility: v }))}
+      onChange={setField('visibility')}
       width={140}
     />
   );
@@ -180,7 +180,7 @@ export default function WikiSpacesPage() {
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

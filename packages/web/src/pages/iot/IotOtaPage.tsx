@@ -58,7 +58,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<FirmwareSearchParams>({ defaults: defaultFirmwareSearch, listKey: iotFirmwareKeys.lists });
 
@@ -159,7 +159,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
     <KeywordInput
       placeholder="搜索版本 / 文件名..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -169,7 +169,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
       placeholder="全部产品"
       items={products.map((p) => ({ value: String(p.id), label: p.name }))}
       value={draftParams.productId === null ? '' : String(draftParams.productId)}
-      onChange={(v) => setDraftParams((p) => ({ ...p, productId: v ? Number(v) : null }))}
+      onChange={(v) => setField('productId')(v ? Number(v) : null)}
     />
   );
 
@@ -177,7 +177,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
@@ -276,7 +276,7 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<TaskSearchParams>({ defaults: defaultTaskSearch, listKey: iotOtaTaskKeys.lists });
 
@@ -373,7 +373,7 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
     <KeywordInput
       placeholder="搜索任务 / 版本..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -383,7 +383,7 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
      
       items={IOT_OTA_TASK_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

@@ -63,7 +63,7 @@ export default function DirectorySyncSourcesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: directorySyncSourceKeys.lists });
 
@@ -251,7 +251,7 @@ export default function DirectorySyncSourcesPage() {
     <KeywordInput
       placeholder="搜索名称..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -261,7 +261,7 @@ export default function DirectorySyncSourcesPage() {
       placeholder="全部类型"
       items={DIRECTORY_SYNC_SOURCE_TYPES.map((t) => ({ value: t, label: DIRECTORY_SYNC_SOURCE_TYPE_LABELS[t] }))}
       value={draftParams.type}
-      onChange={(v) => setDraftParams((p) => ({ ...p, type: v }))}
+      onChange={setField('type')}
     />
   );
 
@@ -269,7 +269,7 @@ export default function DirectorySyncSourcesPage() {
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

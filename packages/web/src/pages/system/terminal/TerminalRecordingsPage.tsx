@@ -111,7 +111,7 @@ export default function TerminalRecordingsPage() {
   const queryClient = useQueryClient();
   const {
     page, pageSize, resetPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: terminalKeys.recordingLists });
   const [playRec, setPlayRec] = useState<TerminalRecordingDetail | null>(null);
@@ -257,20 +257,20 @@ export default function TerminalRecordingsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标题" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索标题" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部操作人"
               items={userOptions}
               value={draftParams.operatorUserId ?? undefined}
-              onChange={(v) => setDraftParams({ ...draftParams, operatorUserId: v ?? null })}
+              onChange={(v) => setField('operatorUserId')(v ?? null)}
               width={180}
               loading={userOptionsLoading}
               filter
               onFocus={() => { void ensureLoaded(); }}
             />
-            <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams({ ...draftParams, timeRange: v ? (v as [Date, Date]) : null })} />
+            <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
           </>
         )}
         onSearch={handleSearch}

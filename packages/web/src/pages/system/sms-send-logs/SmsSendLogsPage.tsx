@@ -38,7 +38,7 @@ export default function SmsSendLogsPage() {
   const defaultSearchParams: SearchParams = { keyword: '', phone: '', filterStatus: undefined, filterSource: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: smsSendLogKeys.lists });
 
@@ -102,16 +102,16 @@ export default function SmsSendLogsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={180} />}
+        keyword={<KeywordInput placeholder="内容关键词" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={180} />}
         filters={(
           <>
-            <Input placeholder="手机号" value={draftParams.phone} onChange={(v) => setDraftParams({ ...draftParams, phone: v })}
+            <Input placeholder="手机号" value={draftParams.phone} onChange={setField('phone')}
               onEnterPress={handleSearch} showClear style={{ width: 160 }} />
             <SendLogStatusSourceFilters
               status={draftParams.filterStatus}
               source={draftParams.filterSource}
-              onStatusChange={(v) => setDraftParams({ ...draftParams, filterStatus: v })}
-              onSourceChange={(v) => setDraftParams({ ...draftParams, filterSource: v })}
+              onStatusChange={setField('filterStatus')}
+              onSourceChange={setField('filterSource')}
             />
           </>
         )}

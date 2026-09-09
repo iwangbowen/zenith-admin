@@ -50,7 +50,7 @@ export default function PendingApprovalsPage() {
   const queryClient = useQueryClient();
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowTaskKeys.pendingLists });
   const [sheet, setSheet] = useState<SheetState | null>(null);
@@ -232,7 +232,7 @@ export default function PendingApprovalsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="请输入审批标题" value={draftParams.keyword} onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))} onSearch={handleSearch} width={200} />
+    <KeywordInput placeholder="请输入审批标题" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
   );
 
   const renderDefinitionFilter = () => (
@@ -240,7 +240,7 @@ export default function PendingApprovalsPage() {
       placeholder="全部流程类型"
       items={definitions.map((d) => ({ value: d.id, label: d.name }))}
       value={draftParams.definitionId ?? undefined}
-      onChange={(v) => setDraftParams((prev) => ({ ...prev, definitionId: v ?? null }))}
+      onChange={(v) => setField('definitionId')(v ?? null)}
       width={180}
     />
   );

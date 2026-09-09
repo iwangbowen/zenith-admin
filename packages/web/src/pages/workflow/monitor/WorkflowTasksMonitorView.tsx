@@ -54,7 +54,7 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowMonitorKeys.taskMonitorLists });
 
@@ -154,7 +154,7 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
             prefix={<Search size={14} />}
             placeholder="流程名称 / 申请标题"
             value={draftParams.keyword}
-            onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))}
+            onChange={setField('keyword')}
             showClear
             style={{ width: 200 }}
             onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
@@ -165,7 +165,7 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
             <Input
               placeholder="审批人"
               value={draftParams.assigneeKeyword}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, assigneeKeyword: v }))}
+              onChange={setField('assigneeKeyword')}
               showClear
               style={{ width: 130 }}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
@@ -174,20 +174,20 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
               placeholder="全部节点类型"
               items={WORKFLOW_TASK_NODE_TYPE_OPTIONS}
               value={draftParams.nodeType}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, nodeType: v }))}
+              onChange={setField('nodeType')}
               width={140}
             />
             <FilterSelect
               placeholder="全部停留时长"
               items={STUCK_OPTIONS}
               value={draftParams.stuckMinutes}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, stuckMinutes: v as number | undefined }))}
+              onChange={(v) => setField('stuckMinutes')(v as number | undefined)}
               width={150}
             />
             <DateRangeFilter
               placeholder={['创建时间起', '创建时间止']}
               value={draftParams.createdRange}
-              onChange={(range) => setDraftParams((prev) => ({ ...prev, createdRange: range ?? undefined }))}
+              onChange={(range) => setField('createdRange')(range ?? undefined)}
             />
           </>
         )}

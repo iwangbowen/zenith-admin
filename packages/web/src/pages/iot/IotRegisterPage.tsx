@@ -37,7 +37,7 @@ export default function IotRegisterPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<WhitelistSearchParams>({ defaults: defaultSearch, listKey: iotWhitelistKeys.lists });
 
@@ -130,7 +130,7 @@ export default function IotRegisterPage() {
     <KeywordInput
       placeholder="搜索 SN / 备注..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -140,7 +140,7 @@ export default function IotRegisterPage() {
       placeholder="全部产品"
       items={productOptions}
       value={draftParams.productId ?? undefined}
-      onChange={(v) => setDraftParams((p) => ({ ...p, productId: v ?? null }))}
+      onChange={(v) => setField('productId')(v ?? null)}
       width={180}
     />
   );
@@ -149,7 +149,7 @@ export default function IotRegisterPage() {
     <StatusSelect
       items={[{ value: 'false', label: '待注册' }, { value: 'true', label: '已注册' }]}
       value={draftParams.used}
-      onChange={(v) => setDraftParams((p) => ({ ...p, used: v as WhitelistSearchParams['used'] | '' }))}
+      onChange={(v) => setField('used')(v as WhitelistSearchParams['used'] | '')}
     />
   );
 

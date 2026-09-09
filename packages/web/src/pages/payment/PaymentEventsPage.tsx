@@ -44,7 +44,7 @@ export default function PaymentEventsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentEventKeys.lists });
   const listQuery = usePaymentEventList({
@@ -114,19 +114,19 @@ export default function PaymentEventsPage() {
   ) : null);
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="订单号..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={200} />
+    <KeywordInput placeholder="订单号..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={EVENT_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
   const renderTypeFilter = () => (
-    <KeywordInput placeholder="事件类型..." value={draftParams.type} onChange={(v) => setDraftParams((p) => ({ ...p, type: v }))} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="事件类型..." value={draftParams.type} onChange={setField('type')} onSearch={handleSearch} width={180} />
   );
 
   // 与订单统计等页面统一的无边框统计形态（StatGrid/StatCard）

@@ -29,7 +29,7 @@ export default function LoginLogsPage() {
 
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: loginLogKeys.all });
   const listQuery = useLoginLogList({
@@ -50,14 +50,14 @@ export default function LoginLogsPage() {
   });
 
   const renderUsernameSearch = () => (
-    <KeywordInput placeholder="用户名 / 昵称" value={draftParams.username} onChange={(v) => setDraftParams({ ...draftParams, username: v })} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="用户名 / 昵称" value={draftParams.username} onChange={setField('username')} onSearch={handleSearch} width={180} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams({ ...draftParams, status: v })}
+      onChange={setField('status')}
     />
   );
 
@@ -66,12 +66,12 @@ export default function LoginLogsPage() {
       placeholder="全部事件"
       items={EVENT_TYPE_OPTIONS}
       value={draftParams.eventType}
-      onChange={(v) => setDraftParams({ ...draftParams, eventType: v })}
+      onChange={setField('eventType')}
     />
   );
 
   const renderTimeRangeFilter = () => (
-    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams({ ...draftParams, timeRange: v ? (v as [Date, Date]) : null })} />
+    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
   );
 
   const buildExportQuery = () => ({

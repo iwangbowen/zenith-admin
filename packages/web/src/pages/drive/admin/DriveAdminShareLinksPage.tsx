@@ -53,7 +53,7 @@ function AccessLogsModal({ link, onClose }: { readonly link: DriveShareLink | nu
 export default function DriveAdminShareLinksPage() {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
-  const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset } =
+  const { page, pageSize, buildPagination, draftParams, setField, submittedParams, handleSearch, handleReset } =
     useListSearch<SearchParams>({ defaults: { keyword: '', state: undefined, timeRange: null }, listKey: driveKeys.adminShareLinksPrefix });
   const query = useDriveAdminShareLinks({
     page, pageSize, keyword: submittedParams.keyword || undefined, state: submittedParams.state, ...formatDateTimeRangeForApi(submittedParams.timeRange),
@@ -90,9 +90,9 @@ export default function DriveAdminShareLinksPage() {
       <SearchToolbar
         filters={(
           <>
-            <KeywordInput value={draftParams.keyword} placeholder="搜索文件名 / 分享人 / 备注" width={240} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
-            <FilterSelect<DriveShareLinkState> value={draftParams.state} placeholder="全部状态" items={STATE_OPTIONS} onChange={(v) => setDraftParams((p) => ({ ...p, state: v }))} />
-            <DateRangeFilter value={draftParams.timeRange} onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))} />
+            <KeywordInput value={draftParams.keyword} placeholder="搜索文件名 / 分享人 / 备注" width={240} onChange={setField('keyword')} onSearch={handleSearch} />
+            <FilterSelect<DriveShareLinkState> value={draftParams.state} placeholder="全部状态" items={STATE_OPTIONS} onChange={setField('state')} />
+            <DateRangeFilter value={draftParams.timeRange} onChange={setField('timeRange')} />
           </>
         )}
         actions={(<><SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} /></>)}

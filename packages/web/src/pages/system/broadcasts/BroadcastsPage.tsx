@@ -83,7 +83,7 @@ export default function BroadcastsPage() {
   const qc = useQueryClient();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: broadcastKeys.lists });
 
@@ -221,7 +221,7 @@ export default function BroadcastsPage() {
     <KeywordInput
       placeholder="搜索标题 / 内容..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -230,7 +230,7 @@ export default function BroadcastsPage() {
     <StatusSelect
       items={BROADCAST_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

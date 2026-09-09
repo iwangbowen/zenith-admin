@@ -103,7 +103,7 @@ export default function AlertEventsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     // URL 携带的筛选作为初始条件，保证跳转过来时表单控件与列表结果一致
@@ -227,7 +227,7 @@ export default function AlertEventsPage() {
     <KeywordInput
       placeholder="搜索规则名称或描述..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -235,7 +235,7 @@ export default function AlertEventsPage() {
   const renderMetricFilter = () => (
     <MonitorMetricFilterSelect
       value={draftParams.metric}
-      onChange={(v) => setDraftParams((p) => ({ ...p, metric: v }))}
+      onChange={setField('metric')}
     />
   );
 
@@ -244,7 +244,7 @@ export default function AlertEventsPage() {
       placeholder="全部级别"
       items={MONITOR_ALERT_LEVEL_OPTIONS}
       value={draftParams.level}
-      onChange={(v) => setDraftParams((p) => ({ ...p, level: v }))}
+      onChange={setField('level')}
     />
   );
 
@@ -252,7 +252,7 @@ export default function AlertEventsPage() {
     <StatusSelect
       items={MONITOR_ALERT_EVENT_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
@@ -261,7 +261,7 @@ export default function AlertEventsPage() {
       placeholder="全部处理状态"
       items={MONITOR_ALERT_HANDLE_STATUS_OPTIONS}
       value={draftParams.handleStatus}
-      onChange={(v) => setDraftParams((p) => ({ ...p, handleStatus: v }))}
+      onChange={setField('handleStatus')}
       width={140}
     />
   );
@@ -271,7 +271,7 @@ export default function AlertEventsPage() {
       placeholder="全部通知状态"
       items={MONITOR_ALERT_NOTIFY_STATUS_OPTIONS}
       value={draftParams.notifyStatus}
-      onChange={(v) => setDraftParams((p) => ({ ...p, notifyStatus: v }))}
+      onChange={setField('notifyStatus')}
       width={140}
     />
   );
@@ -279,7 +279,7 @@ export default function AlertEventsPage() {
   const renderTimeRangeFilter = () => (
     <DateRangeFilter
       value={draftParams.timeRange}
-      onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))}
+      onChange={setField('timeRange')}
     />
   );
 

@@ -36,7 +36,7 @@ export default function MpQrcodesPage() {
   const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpQrcodeKeys.lists });
 
@@ -117,11 +117,11 @@ export default function MpQrcodesPage() {
       placeholder="全部类型"
       items={TYPE_OPTIONS}
       value={draftParams.filterType}
-      onChange={(v) => setDraftParams({ ...draftParams, filterType: enumValueOf(MP_QRCODE_TYPES, v) })}
+      onChange={(v) => setField('filterType')(enumValueOf(MP_QRCODE_TYPES, v))}
     />
   );
   const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索名称 / 场景值" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
+    <KeywordInput placeholder="搜索名称 / 场景值" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
   );
   const renderCreateButton = () => can('mp:qrcode:create') ? (
     <Button type="primary" icon={<Plus size={14} />} disabled={!currentId} onClick={openCreate}>生成二维码</Button>

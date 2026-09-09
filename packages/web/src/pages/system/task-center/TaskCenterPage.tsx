@@ -105,7 +105,7 @@ export default function TaskCenterPage() {
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: asyncTaskKeys.lists });
   const [detailTask, setDetailTask] = useState<AsyncTask | null>(null);
@@ -498,20 +498,20 @@ export default function TaskCenterPage() {
               placeholder="全部任务类型"
               items={typeOptions}
               value={draftParams.taskType}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, taskType: value }))}
+              onChange={setField('taskType')}
               width={210}
             />
             <StatusSelect
               items={statusOptions}
               value={draftParams.status}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+              onChange={setField('status')}
             />
-            <KeywordInput placeholder="搜索任务标题/类型" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={190} />
-            <KeywordInput placeholder="任务内容包含…" value={draftParams.content} onChange={(value) => setDraftParams((prev) => ({ ...prev, content: value }))} onSearch={handleSearch} width={170} />
+            <KeywordInput placeholder="搜索任务标题/类型" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={190} />
+            <KeywordInput placeholder="任务内容包含…" value={draftParams.content} onChange={setField('content')} onSearch={handleSearch} width={170} />
             <Input
               placeholder="提交人（用户名/昵称）"
               value={draftParams.createdBy}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, createdBy: value }))}
+              onChange={setField('createdBy')}
               onEnterPress={handleSearch}
               style={{ width: 170 }}
               showClear

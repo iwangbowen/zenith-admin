@@ -488,7 +488,7 @@ function ReleaseManageTab({ active }: { active: boolean }) {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: appReleaseKeys.lists });
 
@@ -617,7 +617,7 @@ function ReleaseManageTab({ active }: { active: boolean }) {
       placeholder="全部应用"
       items={appOptions}
       value={draftParams.appId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, appId: v as number | undefined }))}
+      onChange={(v) => setField('appId')(v as number | undefined)}
       width={160}
     />
   );
@@ -627,7 +627,7 @@ function ReleaseManageTab({ active }: { active: boolean }) {
       placeholder="全部渠道"
       items={APP_RELEASE_CHANNEL_OPTIONS}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
 
@@ -635,7 +635,7 @@ function ReleaseManageTab({ active }: { active: boolean }) {
     <StatusSelect
       items={APP_RELEASE_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
@@ -643,7 +643,7 @@ function ReleaseManageTab({ active }: { active: boolean }) {
     <KeywordInput
       placeholder="搜索版本号 / 更新日志..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -890,7 +890,7 @@ function DevicesTab({ active }: { active: boolean }) {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<DeviceSearchParams>({ defaults: defaultDeviceSearchParams, listKey: clientDeviceKeys.lists });
 
@@ -972,7 +972,7 @@ function DevicesTab({ active }: { active: boolean }) {
       placeholder="全部应用"
       items={appOptions}
       value={draftParams.appId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, appId: v as number | undefined }))}
+      onChange={(v) => setField('appId')(v as number | undefined)}
       width={160}
     />
   );
@@ -982,7 +982,7 @@ function DevicesTab({ active }: { active: boolean }) {
       placeholder="全部平台"
       items={APP_PLATFORM_OPTIONS}
       value={draftParams.platform}
-      onChange={(v) => setDraftParams((p) => ({ ...p, platform: v }))}
+      onChange={setField('platform')}
     />
   );
 
@@ -991,7 +991,7 @@ function DevicesTab({ active }: { active: boolean }) {
       placeholder="全部绑定人类型"
       items={SUBJECT_TYPE_OPTIONS}
       value={draftParams.subjectType}
-      onChange={(v) => setDraftParams((p) => ({ ...p, subjectType: v }))}
+      onChange={setField('subjectType')}
       width={140}
     />
   );
@@ -1002,7 +1002,7 @@ function DevicesTab({ active }: { active: boolean }) {
       width={130}
       items={PUSH_BOUND_OPTIONS}
       value={draftParams.pushBound}
-      onChange={(v) => setDraftParams((p) => ({ ...p, pushBound: v }))}
+      onChange={setField('pushBound')}
     />
   );
 
@@ -1010,7 +1010,7 @@ function DevicesTab({ active }: { active: boolean }) {
     <KeywordInput
       placeholder="搜索设备标识 / 型号 / 版本..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );

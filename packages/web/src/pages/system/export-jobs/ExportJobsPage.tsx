@@ -83,7 +83,7 @@ export default function ExportJobsPage() {
   const queryClient = useQueryClient();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: exportJobKeys.lists });
   const [logsVisible, setLogsVisible] = useState(false);
@@ -317,26 +317,26 @@ export default function ExportJobsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索文件名/模块" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={240} />}
+        keyword={<KeywordInput placeholder="搜索文件名/模块" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部模块"
               items={entityOptions}
               value={draftParams.entity}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, entity: value }))}
+              onChange={setField('entity')}
               width={160}
             />
             <StatusSelect
               items={statusOptions}
               value={draftParams.status}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+              onChange={setField('status')}
             />
             <FilterSelect
               placeholder="全部格式"
               items={formatOptions}
               value={draftParams.format}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, format: value }))}
+              onChange={setField('format')}
             />
           </>
         )}

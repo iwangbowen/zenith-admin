@@ -28,7 +28,7 @@ export default function CouponRecordsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.couponRecords });
   // 会员详情/优惠券列表入口的深链筛选（?memberKeyword= / ?couponId=，消费后即从 URL 移除）
@@ -109,7 +109,7 @@ export default function CouponRecordsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员ID/昵称" value={draftParams.memberKeyword} onChange={(v) => setDraftParams((p) => ({ ...p, memberKeyword: v }))} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="会员ID/昵称" value={draftParams.memberKeyword} onChange={setField('memberKeyword')} onSearch={handleSearch} width={180} />
   );
 
   const renderCouponIdFilter = () => (
@@ -118,7 +118,7 @@ export default function CouponRecordsPage() {
       value={draftParams.couponId}
       min={1}
       style={{ width: 120 }}
-      onChange={(v) => setDraftParams((p) => ({ ...p, couponId: v as number | undefined }))}
+      onChange={(v) => setField('couponId')(v as number | undefined)}
     />
   );
 
@@ -126,7 +126,7 @@ export default function CouponRecordsPage() {
     <StatusSelect
       items={statusOptions}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

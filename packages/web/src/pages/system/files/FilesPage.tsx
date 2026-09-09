@@ -127,7 +127,7 @@ export default function FilesPage() {
   const [uploadProgressVisible, setUploadProgressVisible] = useState(false);
   const uploadControllersRef = useRef(new Map<string, AbortController>());
   const {
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: fileKeys.lists });
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination(
@@ -349,7 +349,7 @@ export default function FilesPage() {
     <KeywordInput
       placeholder="搜索文件名 / 对象键 / 文件服务"
       value={draftParams.keyword}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
       style={{ width: 'min(280px, 100%)' }}
     />
@@ -360,7 +360,7 @@ export default function FilesPage() {
       placeholder="全部存储类型"
       items={FILE_STORAGE_PROVIDER_OPTIONS}
       value={draftParams.provider}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, provider: value }))}
+      onChange={setField('provider')}
       width={140}
     />
   );
@@ -370,7 +370,7 @@ export default function FilesPage() {
       placeholder="全部文件类型"
       items={FILE_TYPE_FILTER_OPTIONS}
       value={draftParams.fileType}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, fileType: value }))}
+      onChange={setField('fileType')}
       width={140}
     />
   );
@@ -379,7 +379,7 @@ export default function FilesPage() {
     <DateRangeFilter
       type="dateTimeRange"
       value={draftParams.timeRange ?? undefined}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+      onChange={(value) => setField('timeRange')(value ? (value as [Date, Date]) : null)}
     />
   );
 

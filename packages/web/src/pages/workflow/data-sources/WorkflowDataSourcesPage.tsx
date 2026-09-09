@@ -45,7 +45,7 @@ export default function WorkflowDataSourcesPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowDataSourceKeys.lists });
   const listQuery = useWorkflowDataSourceList({
@@ -146,14 +146,14 @@ export default function WorkflowDataSourcesPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称 / 地址..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索名称 / 地址..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

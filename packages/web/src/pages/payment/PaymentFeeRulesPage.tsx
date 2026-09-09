@@ -50,7 +50,7 @@ export default function PaymentFeeRulesPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentFeeKeys.lists });
 
@@ -133,7 +133,7 @@ export default function PaymentFeeRulesPage() {
       placeholder="全部渠道"
       items={channelOptions}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
 
@@ -141,7 +141,7 @@ export default function PaymentFeeRulesPage() {
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

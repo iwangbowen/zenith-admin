@@ -69,7 +69,7 @@ export default function WorkflowDefinitionsPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -400,14 +400,14 @@ export default function WorkflowDefinitionsPage() {
   );
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索流程名称" value={draftParams.keyword} onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))} width={200} />
+    <KeywordInput placeholder="搜索流程名称" value={draftParams.keyword} onChange={setField('keyword')} width={200} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={STATUS_FILTER_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((prev) => ({ ...prev, status: v }))}
+      onChange={setField('status')}
     />
   );
 

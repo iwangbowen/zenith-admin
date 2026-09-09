@@ -23,7 +23,7 @@ function formatRaw(raw: string | null | undefined): string {
 
 export default function PaymentLogsPage() {  const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentLogKeys.lists });
 
@@ -70,7 +70,7 @@ export default function PaymentLogsPage() {  const {
   ) : null);
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="订单号..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={200} />
+    <KeywordInput placeholder="订单号..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
   );
 
   const renderChannelFilter = () => (
@@ -78,7 +78,7 @@ export default function PaymentLogsPage() {  const {
       placeholder="全部渠道"
       items={PAYMENT_CHANNEL_OPTIONS}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
 
@@ -87,7 +87,7 @@ export default function PaymentLogsPage() {  const {
       placeholder="全部场景"
       items={[{ value: 'payment', label: '支付回调' }, { value: 'refund', label: '退款回调' }]}
       value={draftParams.scene}
-      onChange={(v) => setDraftParams((p) => ({ ...p, scene: v }))}
+      onChange={setField('scene')}
     />
   );
 
@@ -96,13 +96,13 @@ export default function PaymentLogsPage() {  const {
       placeholder="全部验签结果"
       items={[{ value: 'true', label: '验签通过' }, { value: 'false', label: '验签失败' }]}
       value={draftParams.signatureValid}
-      onChange={(v) => setDraftParams((p) => ({ ...p, signatureValid: v }))}
+      onChange={setField('signatureValid')}
       width={140}
     />
   );
 
   const renderTimeRangeFilter = () => (
-    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))} />
+    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
   );
 
 

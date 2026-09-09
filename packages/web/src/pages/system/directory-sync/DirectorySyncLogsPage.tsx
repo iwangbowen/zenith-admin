@@ -62,7 +62,7 @@ export default function DirectorySyncLogsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: directorySyncRunKeys.lists });
 
@@ -174,7 +174,7 @@ export default function DirectorySyncLogsPage() {
       width={160}
       items={sourceItems}
       value={draftParams.sourceId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, sourceId: v }))}
+      onChange={setField('sourceId')}
     />
   );
 
@@ -182,14 +182,14 @@ export default function DirectorySyncLogsPage() {
     <StatusSelect
       items={DIRECTORY_SYNC_RUN_STATUSES.map((s) => ({ value: s, label: DIRECTORY_SYNC_RUN_STATUS_LABELS[s] }))}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
   const renderTimeRangeFilter = () => (
     <DateRangeFilter
       value={draftParams.timeRange}
-      onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))}
+      onChange={setField('timeRange')}
     />
   );
 

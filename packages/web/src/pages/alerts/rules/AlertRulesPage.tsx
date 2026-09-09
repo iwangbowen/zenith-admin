@@ -77,7 +77,7 @@ export default function AlertRulesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -259,7 +259,7 @@ export default function AlertRulesPage() {
     <KeywordInput
       placeholder="搜索规则名称..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -267,7 +267,7 @@ export default function AlertRulesPage() {
   const renderMetricFilter = () => (
     <MonitorMetricFilterSelect
       value={draftParams.metric}
-      onChange={(v) => setDraftParams((p) => ({ ...p, metric: v }))}
+      onChange={setField('metric')}
     />
   );
 
@@ -276,7 +276,7 @@ export default function AlertRulesPage() {
       placeholder="全部级别"
       items={MONITOR_ALERT_LEVEL_OPTIONS}
       value={draftParams.level}
-      onChange={(v) => setDraftParams((p) => ({ ...p, level: v }))}
+      onChange={setField('level')}
     />
   );
 
@@ -285,7 +285,7 @@ export default function AlertRulesPage() {
       placeholder="全部告警状态"
       items={STATE_OPTIONS}
       value={draftParams.state}
-      onChange={(v) => setDraftParams((p) => ({ ...p, state: v }))}
+      onChange={setField('state')}
       width={140}
     />
   );
@@ -295,7 +295,7 @@ export default function AlertRulesPage() {
       placeholder="全部启用状态"
       items={ENABLED_OPTIONS}
       value={draftParams.enabled}
-      onChange={(v) => setDraftParams((p) => ({ ...p, enabled: v }))}
+      onChange={setField('enabled')}
       width={140}
     />
   );

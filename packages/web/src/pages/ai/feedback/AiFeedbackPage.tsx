@@ -79,7 +79,7 @@ export default function AiFeedbackPage() {
   const formApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: aiFeedbackKeys.lists });
   const [modalVisible, setModalVisible] = useState(false);
@@ -226,7 +226,7 @@ export default function AiFeedbackPage() {
       placeholder="全部反馈类型"
       items={FEEDBACK_OPTIONS}
       value={draftParams.feedback}
-      onChange={(v) => setDraftParams((prev) => ({ ...prev, feedback: String(v) }))}
+      onChange={(v) => setField('feedback')(String(v))}
       width={140}
     />
   );
@@ -236,7 +236,7 @@ export default function AiFeedbackPage() {
       placeholder="全部处理状态"
       items={STATUS_FILTER_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((prev) => ({ ...prev, status: String(v) }))}
+      onChange={(v) => setField('status')(String(v))}
       width={140}
     />
   );
@@ -246,7 +246,7 @@ export default function AiFeedbackPage() {
       placeholder="全部模型"
       items={modelOptions}
       value={draftParams.model}
-      onChange={(v) => setDraftParams((prev) => ({ ...prev, model: v }))}
+      onChange={setField('model')}
       width={160}
       filter
     />
@@ -255,10 +255,7 @@ export default function AiFeedbackPage() {
   const renderDateRangeFilter = () => (
     <DateRangeFilter type="dateRange" value={draftParams.timeRange ?? undefined} onChange={(value) => {
         const [from, to] = Array.isArray(value) ? value : [];
-        setDraftParams((p) => ({
-          ...p,
-          timeRange: from instanceof Date && to instanceof Date ? [from, to] : null,
-        }));
+        setField('timeRange')(from instanceof Date && to instanceof Date ? [from, to] : null);
       }} />
   );
 

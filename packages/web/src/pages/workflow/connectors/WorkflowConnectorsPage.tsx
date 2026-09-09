@@ -88,7 +88,7 @@ export default function WorkflowConnectorsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowConnectorKeys.lists });
   const listQuery = useWorkflowConnectorList({
@@ -232,18 +232,18 @@ export default function WorkflowConnectorsPage() {
   ];
 
   const renderKeyword = () => (
-    <KeywordInput placeholder="搜索名称 / 编码..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索名称 / 编码..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
   const renderTypeFilter = () => (
     <FilterSelect
       placeholder="全部类型"
       items={TYPE_OPTIONS}
       value={draftParams.type}
-      onChange={(v) => setDraftParams((p) => ({ ...p, type: v }))}
+      onChange={setField('type')}
     />
   );
   const renderStatusFilter = () => (
-    <StatusSelect items={STATUS_OPTIONS} value={draftParams.status} onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
+    <StatusSelect items={STATUS_OPTIONS} value={draftParams.status} onChange={setField('status')} />
   );
   const renderCreate = () => hasPermission('workflow:connector:create') ? <CreateButton onClick={openCreate} /> : null;
 

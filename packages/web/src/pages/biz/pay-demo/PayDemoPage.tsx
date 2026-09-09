@@ -118,7 +118,7 @@ export default function PayDemoPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<PayDemoSearchParams>({ defaults: DEFAULT_PAY_DEMO_SEARCH_PARAMS, listKey: bizPayDemoKeys.lists });
 
@@ -256,14 +256,14 @@ export default function PayDemoPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索示例事项" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索示例事项" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={(Object.keys(STATUS_MAP) as BizPayDemoStatus[]).map((value) => ({ value, label: STATUS_MAP[value].text }))}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value as PayDemoSearchParams['status'] | undefined }))}
+      onChange={(value) => setField('status')(value as PayDemoSearchParams['status'] | undefined)}
     />
   );
 

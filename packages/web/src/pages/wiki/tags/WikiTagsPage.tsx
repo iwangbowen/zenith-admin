@@ -26,7 +26,7 @@ export default function WikiTagsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiTagKeys.lists });
 
@@ -77,7 +77,7 @@ export default function WikiTagsPage() {
     <KeywordInput
       placeholder="搜索标签名称..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );

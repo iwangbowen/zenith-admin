@@ -58,7 +58,7 @@ export default function PaymentReportsPage() {
   const canView = hasPermission('payment:report:view');
   const palette = useChartPalette();
   const {
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     applySearch, handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentReportKeys.lists });
   const summaryQuery = usePaymentReportSummary({
@@ -195,13 +195,13 @@ export default function PaymentReportsPage() {
   );
 
   const renderTimeRangeFilter = () => (
-    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))} />
+    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
   );
 
   const renderCompareToggle = () => (
     <Checkbox
       checked={draftParams.compare}
-      onChange={(e) => setDraftParams((p) => ({ ...p, compare: Boolean(e.target.checked) }))}
+      onChange={(e) => setField('compare')(Boolean(e.target.checked))}
       disabled={!draftParams.timeRange}
     >
       环比对照

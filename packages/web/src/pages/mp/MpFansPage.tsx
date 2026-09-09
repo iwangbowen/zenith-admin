@@ -46,7 +46,7 @@ export default function MpFansPage() {
   const defaultSearch: SearchParams = { keyword: '', subscribe: undefined, tagId: undefined, blacklisted: undefined };
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpFanKeys.lists });
 
@@ -189,14 +189,14 @@ export default function MpFansPage() {
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
   );
   const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索昵称/openid/备注" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />
+    <KeywordInput placeholder="搜索昵称/openid/备注" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
   );
   const renderSubscribeFilter = () => (
     <FilterSelect
       placeholder="全部关注状态"
       items={SUBSCRIBE_OPTIONS}
       value={draftParams.subscribe}
-      onChange={(v) => setDraftParams({ ...draftParams, subscribe: enumValueOf(MP_FAN_SUBSCRIBES, v) })}
+      onChange={(v) => setField('subscribe')(enumValueOf(MP_FAN_SUBSCRIBES, v))}
       width={140}
     />
   );
@@ -205,7 +205,7 @@ export default function MpFansPage() {
       placeholder="全部标签"
       items={tags.map((t) => ({ label: t.name, value: t.id }))}
       value={draftParams.tagId}
-      onChange={(v) => setDraftParams({ ...draftParams, tagId: v as number | undefined })}
+      onChange={(v) => setField('tagId')(v as number | undefined)}
       width={150}
       filter
     />
@@ -215,7 +215,7 @@ export default function MpFansPage() {
       placeholder="全部黑名单"
       items={[{ label: '黑名单', value: 'true' }, { label: '正常', value: 'false' }]}
       value={draftParams.blacklisted === undefined ? undefined : String(draftParams.blacklisted)}
-      onChange={(v) => setDraftParams({ ...draftParams, blacklisted: v === undefined ? undefined : v === 'true' })}
+      onChange={(v) => setField('blacklisted')(v === undefined ? undefined : v === 'true')}
       width={140}
     />
   );

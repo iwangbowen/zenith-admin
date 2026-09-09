@@ -89,7 +89,7 @@ export default function WorkflowEventSubscriptionsPage() {
   const defaultSearchParams: SearchParams = { keyword: '', definitionId: undefined, enabled: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowEventSubscriptionKeys.lists });
   const listQuery = useWorkflowEventSubscriptionList({
@@ -342,7 +342,7 @@ export default function WorkflowEventSubscriptionsPage() {
       prefix={<Search size={14} />}
       placeholder="名称 / URL"
       value={draftParams.keyword}
-      onChange={v => setDraftParams(prev => ({ ...prev, keyword: v }))}
+      onChange={setField('keyword')}
       showClear
       style={{ width: 220 }}
       onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
@@ -354,7 +354,7 @@ export default function WorkflowEventSubscriptionsPage() {
       placeholder="全部所属流程"
       items={defs.map((d) => ({ value: d.id, label: d.name }))}
       value={draftParams.definitionId}
-      onChange={(v) => setDraftParams(prev => ({ ...prev, definitionId: v as number | undefined }))}
+      onChange={(v) => setField('definitionId')(v as number | undefined)}
       width={200}
     />
   );
@@ -366,7 +366,7 @@ export default function WorkflowEventSubscriptionsPage() {
         { value: 'false', label: '禁用' },
       ]}
       value={draftParams.enabled}
-      onChange={(v) => setDraftParams(prev => ({ ...prev, enabled: v as 'true' | 'false' | undefined }))}
+      onChange={(v) => setField('enabled')(v as 'true' | 'false' | undefined)}
     />
   );
 

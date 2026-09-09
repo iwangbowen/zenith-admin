@@ -364,7 +364,7 @@ export default function WorkflowMonitorPage() {
   const defaultSearchParams: SearchParams = { keyword: '', initiator: '', status: undefined, categoryId: undefined, definitionId: undefined, priority: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowMonitorKeys.monitorLists });
   const listQuery = useWorkflowMonitorList({
@@ -1044,7 +1044,7 @@ export default function WorkflowMonitorPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索申请标题 / 流程名称" value={draftParams.keyword} onChange={v => setDraftParams(prev => ({ ...prev, keyword: v }))} onSearch={handleSearch} width={240} />
+    <KeywordInput placeholder="搜索申请标题 / 流程名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
   );
 
   const renderCategoryFilter = () => (
@@ -1052,7 +1052,7 @@ export default function WorkflowMonitorPage() {
       placeholder="全部所有分类"
       items={categories.map((c: WorkflowCategory) => ({ label: c.name, value: c.id }))}
       value={draftParams.categoryId}
-      onChange={v => setDraftParams(prev => ({ ...prev, categoryId: v as number | undefined }))}
+      onChange={v => setField('categoryId')(v as number | undefined)}
       width={140}
     />
   );
@@ -1062,7 +1062,7 @@ export default function WorkflowMonitorPage() {
       placeholder="全部所有流程"
       items={definitions.map((d) => ({ label: d.name, value: d.id }))}
       value={draftParams.definitionId}
-      onChange={v => setDraftParams(prev => ({ ...prev, definitionId: v as number | undefined }))}
+      onChange={v => setField('definitionId')(v as number | undefined)}
       width={160}
       filter
     />
@@ -1073,7 +1073,7 @@ export default function WorkflowMonitorPage() {
       placeholder="申请人"
       showClear
       value={draftParams.initiator}
-      onChange={v => setDraftParams(prev => ({ ...prev, initiator: v }))}
+      onChange={setField('initiator')}
       onEnterPress={handleSearch}
       style={{ width: 120 }}
     />
@@ -1084,7 +1084,7 @@ export default function WorkflowMonitorPage() {
       placeholder="全部所有状态"
       items={['running', 'suspended', 'returned', 'approved', 'rejected', 'withdrawn', 'cancelled'].map((s) => ({ value: s, label: INSTANCE_STATUS_MAP[s].text }))}
       value={draftParams.status}
-      onChange={v => setDraftParams(prev => ({ ...prev, status: v }))}
+      onChange={setField('status')}
       width={140}
     />
   );
@@ -1094,7 +1094,7 @@ export default function WorkflowMonitorPage() {
       placeholder="全部所有优先级"
       items={WORKFLOW_PRIORITY_OPTIONS}
       value={draftParams.priority}
-      onChange={v => setDraftParams(prev => ({ ...prev, priority: v }))}
+      onChange={setField('priority')}
       width={140}
     />
   );

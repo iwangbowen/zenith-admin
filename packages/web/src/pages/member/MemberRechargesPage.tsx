@@ -36,7 +36,7 @@ export default function MemberRechargesPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.rechargeLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ keyword: memberKeyword, dateRange: null }) });
@@ -65,7 +65,7 @@ export default function MemberRechargesPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员昵称/手机号/订单号" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="会员昵称/手机号/订单号" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderChannelFilter = () => (
@@ -73,7 +73,7 @@ export default function MemberRechargesPage() {
       placeholder="全部渠道"
       items={channelOptions}
       value={draftParams.channel}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, channel: value as PaymentChannel | undefined }))}
+      onChange={(value) => setField('channel')(value as PaymentChannel | undefined)}
     />
   );
 
@@ -81,12 +81,12 @@ export default function MemberRechargesPage() {
     <StatusSelect
       items={statusOptions}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value as MemberRechargeStatus | undefined }))}
+      onChange={(value) => setField('status')(value as MemberRechargeStatus | undefined)}
     />
   );
 
   const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, dateRange: value ? (value as [Date, Date]) : null }))} />
+    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setField('dateRange')(value ? (value as [Date, Date]) : null)} />
   );
 
   const buildExportQuery = () => {

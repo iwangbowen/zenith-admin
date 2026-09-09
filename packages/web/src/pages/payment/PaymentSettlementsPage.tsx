@@ -46,7 +46,7 @@ export default function PaymentSettlementsPage() {
   const [detailBatch, setDetailBatch] = useState<PaymentSettlementBatch | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentSettlementKeys.lists });
 
@@ -218,7 +218,7 @@ export default function PaymentSettlementsPage() {
       placeholder="全部渠道"
       items={channelOptions}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
 
@@ -226,7 +226,7 @@ export default function PaymentSettlementsPage() {
     <StatusSelect
       items={PAYMENT_SETTLEMENT_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

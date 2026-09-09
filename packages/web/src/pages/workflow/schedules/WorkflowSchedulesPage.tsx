@@ -82,7 +82,7 @@ export default function WorkflowSchedulesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowScheduleKeys.lists });
   const listQuery = useWorkflowScheduleList({
@@ -251,7 +251,7 @@ export default function WorkflowSchedulesPage() {
       items={definitionOptions}
       value={draftParams.definitionId}
       onChange={(value) =>
-        setDraftParams((prev) => ({ ...prev, definitionId: value as number | undefined }))}
+        setField('definitionId')(value as number | undefined)}
       width={220}
       filter
     />
@@ -262,7 +262,7 @@ export default function WorkflowSchedulesPage() {
       items={STATUS_OPTIONS}
       value={draftParams.status}
       onChange={(value) =>
-        setDraftParams((prev) => ({ ...prev, status: value as ScheduleStatus | undefined }))}
+        setField('status')(value as ScheduleStatus | undefined)}
     />
   );
 

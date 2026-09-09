@@ -47,7 +47,7 @@ export default function PositionsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: positionKeys.lists });
   const listQuery = usePositionList({
@@ -163,19 +163,19 @@ export default function PositionsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索岗位名称/编码" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={240} />
+    <KeywordInput placeholder="搜索岗位名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+      onChange={setField('status')}
     />
   );
 
   const renderTimeRangeFilter = () => (
-    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))} />
+    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(value) => setField('timeRange')(value ? (value as [Date, Date]) : null)} />
   );
 
   const renderCreateButton = () => hasPermission('system:position:create') ? (

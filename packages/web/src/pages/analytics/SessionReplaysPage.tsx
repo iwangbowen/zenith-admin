@@ -85,7 +85,7 @@ export default function SessionReplaysPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: replayKeys.lists });
 
@@ -219,45 +219,45 @@ export default function SessionReplaysPage() {
         <StatusSelect
           items={statusOptions}
           value={draftParams.status}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+          onChange={setField('status')}
         />
         <FilterSelect
           placeholder="全部触发方式"
           items={triggerOptions}
           value={draftParams.triggerType}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, triggerType: value }))}
+          onChange={setField('triggerType')}
           width={140}
         />
         <FilterSelect
           placeholder="全部来源"
           items={sourceOptions}
           value={draftParams.source}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, source: value }))}
+          onChange={setField('source')}
         />
         <KeywordInput
           placeholder="用户名/页面/回放 ID"
           value={draftParams.keyword}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
+          onChange={setField('keyword')}
           onSearch={handleSearch}
           width={200}
         />
         <KeywordInput
           placeholder="访问过的页面路径"
           value={draftParams.pagePath}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, pagePath: value }))}
+          onChange={setField('pagePath')}
           onSearch={handleSearch}
           width={170}
         />
         <KeywordInput
           placeholder="点击过的内容"
           value={draftParams.clickLabel}
-          onChange={(value) => setDraftParams((prev) => ({ ...prev, clickLabel: value }))}
+          onChange={setField('clickLabel')}
           onSearch={handleSearch}
           width={150}
         />
         <Checkbox
           checked={draftParams.hasError}
-          onChange={(e) => setDraftParams((prev) => ({ ...prev, hasError: Boolean(e.target.checked) }))}
+          onChange={(e) => setField('hasError')(Boolean(e.target.checked))}
         >
           仅看有错误
         </Checkbox>

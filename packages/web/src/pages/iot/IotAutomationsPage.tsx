@@ -127,7 +127,7 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<AutomationSearchParams>({ defaults: defaultSearch, listKey: iotAutomationKeys.lists });
 
@@ -256,7 +256,7 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
     <KeywordInput
       placeholder="搜索联动名称..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -266,7 +266,7 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
       placeholder="全部触发器"
       items={IOT_AUTOMATION_TRIGGER_OPTIONS}
       value={draftParams.triggerType}
-      onChange={(v) => setDraftParams((p) => ({ ...p, triggerType: v }))}
+      onChange={setField('triggerType')}
       width={140}
     />
   );
@@ -275,7 +275,7 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

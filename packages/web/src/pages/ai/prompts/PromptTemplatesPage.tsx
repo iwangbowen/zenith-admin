@@ -67,7 +67,7 @@ export default function PromptTemplatesPage() {
   const queryClient = useQueryClient();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: aiPromptKeys.lists });
   const [versionTemplate, setVersionTemplate] = useState<AiPromptTemplate | null>(null);
@@ -156,7 +156,7 @@ export default function PromptTemplatesPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称/描述" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: String(value ?? '') }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索名称/描述" value={draftParams.keyword} onChange={(value) => setField('keyword')(String(value ?? ''))} onSearch={handleSearch} />
   );
 
   const renderScopeFilter = () => (
@@ -164,7 +164,7 @@ export default function PromptTemplatesPage() {
       placeholder="全部作用域"
       items={scopeFormOptions}
       value={draftParams.scope}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, scope: value as AiPromptScope | undefined }))}
+      onChange={(value) => setField('scope')(value as AiPromptScope | undefined)}
       width={140}
     />
   );

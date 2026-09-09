@@ -28,7 +28,7 @@ const DANGER_ACTIONS: DriveActivityAction[] = ['delete', 'purge', 'share_revoke'
 
 export default function DriveAdminActivitiesPage() {
   const navigate = useNavigate();
-  const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset } =
+  const { page, pageSize, buildPagination, draftParams, setField, submittedParams, handleSearch, handleReset } =
     useListSearch<SearchParams>({ defaults: { keyword: '', spaceId: undefined, actorId: undefined, action: undefined, timeRange: null }, listKey: driveKeys.adminActivitiesPrefix });
   const listParams = {
     keyword: submittedParams.keyword || undefined, spaceId: submittedParams.spaceId, actorId: submittedParams.actorId,
@@ -60,32 +60,32 @@ export default function DriveAdminActivitiesPage() {
       <SearchToolbar
         primary={(
           <>
-            <KeywordInput value={draftParams.keyword} placeholder="搜索文件名" onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+            <KeywordInput value={draftParams.keyword} placeholder="搜索文件名" onChange={setField('keyword')} onSearch={handleSearch} />
             <FilterSelect<number> value={draftParams.spaceId} placeholder="全部空间" width={160}
-              items={(spacesQuery.data?.list ?? []).map((s) => ({ value: s.id, label: s.name }))} onChange={(v) => setDraftParams((p) => ({ ...p, spaceId: v }))} />
+              items={(spacesQuery.data?.list ?? []).map((s) => ({ value: s.id, label: s.name }))} onChange={setField('spaceId')} />
           </>
         )}
         filters={(
           <>
-            <UserSelect value={draftParams.actorId} onChange={(v) => setDraftParams((p) => ({ ...p, actorId: typeof v === 'number' ? v : undefined }))} placeholder="全部操作人" style={{ width: 160 }} />
-            <FilterSelect<DriveActivityAction> value={draftParams.action} placeholder="全部动作" width={140} items={DRIVE_ACTIVITY_ACTION_OPTIONS} onChange={(v) => setDraftParams((p) => ({ ...p, action: v }))} />
-            <DateRangeFilter value={draftParams.timeRange} onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))} />
+            <UserSelect value={draftParams.actorId} onChange={(v) => setField('actorId')(typeof v === 'number' ? v : undefined)} placeholder="全部操作人" style={{ width: 160 }} />
+            <FilterSelect<DriveActivityAction> value={draftParams.action} placeholder="全部动作" width={140} items={DRIVE_ACTIVITY_ACTION_OPTIONS} onChange={setField('action')} />
+            <DateRangeFilter value={draftParams.timeRange} onChange={setField('timeRange')} />
           </>
         )}
         actions={(<><SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} />{exportButton()}</>)}
         mobilePrimary={(
           <>
-            <KeywordInput value={draftParams.keyword} placeholder="搜索文件名" onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={200} />
+            <KeywordInput value={draftParams.keyword} placeholder="搜索文件名" onChange={setField('keyword')} onSearch={handleSearch} width={200} />
             <SearchButton onClick={handleSearch} />
           </>
         )}
         mobileFilters={(
           <>
             <FilterSelect<number> value={draftParams.spaceId} placeholder="全部空间" width={160}
-              items={(spacesQuery.data?.list ?? []).map((s) => ({ value: s.id, label: s.name }))} onChange={(v) => setDraftParams((p) => ({ ...p, spaceId: v }))} />
-            <UserSelect value={draftParams.actorId} onChange={(v) => setDraftParams((p) => ({ ...p, actorId: typeof v === 'number' ? v : undefined }))} placeholder="全部操作人" style={{ width: 160 }} />
-            <FilterSelect<DriveActivityAction> value={draftParams.action} placeholder="全部动作" width={140} items={DRIVE_ACTIVITY_ACTION_OPTIONS} onChange={(v) => setDraftParams((p) => ({ ...p, action: v }))} />
-            <DateRangeFilter value={draftParams.timeRange} onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))} />
+              items={(spacesQuery.data?.list ?? []).map((s) => ({ value: s.id, label: s.name }))} onChange={setField('spaceId')} />
+            <UserSelect value={draftParams.actorId} onChange={(v) => setField('actorId')(typeof v === 'number' ? v : undefined)} placeholder="全部操作人" style={{ width: 160 }} />
+            <FilterSelect<DriveActivityAction> value={draftParams.action} placeholder="全部动作" width={140} items={DRIVE_ACTIVITY_ACTION_OPTIONS} onChange={setField('action')} />
+            <DateRangeFilter value={draftParams.timeRange} onChange={setField('timeRange')} />
           </>
         )}
         mobileActions={exportButton('flat')}

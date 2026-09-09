@@ -46,7 +46,7 @@ export default function WorkflowFormsPage() {
   const { items: statusItems } = useDictItems('common_status');
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowFormKeys.lists });
   const { categories } = useWorkflowCategories();
@@ -158,14 +158,14 @@ export default function WorkflowFormsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索表单名称/标识" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索表单名称/标识" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: toStatus(value) }))}
+      onChange={(value) => setField('status')(toStatus(value))}
     />
   );
 
@@ -174,7 +174,7 @@ export default function WorkflowFormsPage() {
       placeholder="全部分类"
       items={categoryOptions}
       value={draftParams.categoryId}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, categoryId: value }))}
+      onChange={setField('categoryId')}
       width={160}
     />
   );

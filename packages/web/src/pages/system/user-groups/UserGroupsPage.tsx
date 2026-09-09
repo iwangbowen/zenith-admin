@@ -54,7 +54,7 @@ export default function UserGroupsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: userGroupKeys.lists });
   const listQuery = useUserGroupList({
@@ -274,14 +274,14 @@ export default function UserGroupsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称/编码" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={240} />
+    <KeywordInput placeholder="搜索名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+      onChange={setField('status')}
     />
   );
 

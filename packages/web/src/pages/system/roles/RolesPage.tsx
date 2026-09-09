@@ -49,7 +49,7 @@ export default function RolesPage() {
   const { items: statusItems } = useDictItems('common_status');
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: roleKeys.lists });
   const [menuModalVisible, setMenuModalVisible] = useState(false);
@@ -244,19 +244,19 @@ export default function RolesPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索角色名称/编码" value={draftParams.keyword} onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索角色名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+      onChange={setField('status')}
     />
   );
 
   const renderTimeRangeFilter = () => (
-    <DateRangeFilter placeholder={["开始时间", "结束时间"]} value={draftParams.timeRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))} />
+    <DateRangeFilter placeholder={["开始时间", "结束时间"]} value={draftParams.timeRange ?? undefined} onChange={(value) => setField('timeRange')(value ? (value as [Date, Date]) : null)} />
   );
 
   const buildExportQuery = () => ({

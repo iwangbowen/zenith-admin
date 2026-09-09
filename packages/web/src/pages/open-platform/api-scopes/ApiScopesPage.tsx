@@ -36,7 +36,7 @@ export default function ApiScopesPage() {
   const defaultSearchParams: SearchParams = { keyword: '', scopeGroup: undefined, status: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: apiScopeKeys.lists });
 
@@ -122,19 +122,19 @@ export default function ApiScopesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索编码 / 名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="搜索编码 / 名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部分组"
               items={GROUP_OPTIONS}
               value={draftParams.scopeGroup}
-              onChange={(v) => setDraftParams({ ...draftParams, scopeGroup: v as string })}
+              onChange={(v) => setField('scopeGroup')(v as string)}
             />
             <StatusSelect
               items={STATUS_OPTIONS}
               value={draftParams.status}
-              onChange={(v) => setDraftParams({ ...draftParams, status: v as string })}
+              onChange={(v) => setField('status')(v as string)}
             />
           </>
         )}

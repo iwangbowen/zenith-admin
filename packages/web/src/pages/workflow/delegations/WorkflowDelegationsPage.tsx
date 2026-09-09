@@ -57,7 +57,7 @@ export default function WorkflowDelegationsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowDelegationKeys.lists });
   const listQuery = useWorkflowDelegationList({ page, pageSize, scope: submittedParams.scope });
@@ -171,7 +171,7 @@ export default function WorkflowDelegationsPage() {
   const renderScopeFilter = () => (
     <Select
       value={draftParams.scope}
-      onChange={(v) => setDraftParams((prev) => ({ ...prev, scope: v as Scope }))}
+      onChange={(v) => setField('scope')(v as Scope)}
       optionList={[
         { value: 'mine', label: '我的' },
         { value: 'all', label: '全部' },

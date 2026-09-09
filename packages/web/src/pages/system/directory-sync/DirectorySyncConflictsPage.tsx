@@ -59,7 +59,7 @@ export default function DirectorySyncConflictsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -187,7 +187,7 @@ export default function DirectorySyncConflictsPage() {
     <KeywordInput
       placeholder="搜索姓名 / 外部 ID..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -198,7 +198,7 @@ export default function DirectorySyncConflictsPage() {
       width={160}
       items={sourceItems}
       value={draftParams.sourceId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, sourceId: v }))}
+      onChange={setField('sourceId')}
     />
   );
 
@@ -207,7 +207,7 @@ export default function DirectorySyncConflictsPage() {
      
       items={DIRECTORY_SYNC_CONFLICT_STATUSES.map((s) => ({ value: s, label: DIRECTORY_SYNC_CONFLICT_STATUS_LABELS[s] }))}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

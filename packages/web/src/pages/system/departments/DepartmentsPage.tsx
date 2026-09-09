@@ -110,7 +110,7 @@ function buildDepartmentTreeData(items: Department[], excludedIds: Set<number>):
 export default function DepartmentsPage() {
   const { hasPermission } = usePermission();
   const {
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: departmentKeys.tree });
   const { items: statusItems } = useDictItems('common_status');
@@ -224,14 +224,14 @@ export default function DepartmentsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索部门名称/编码" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={240} />
+    <KeywordInput placeholder="搜索部门名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+      onChange={setField('status')}
     />
   );
 

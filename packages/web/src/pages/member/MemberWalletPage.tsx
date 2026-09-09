@@ -35,7 +35,7 @@ export default function MemberWalletPage() {
   const formApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.walletLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ memberKeyword }) });
@@ -77,7 +77,7 @@ export default function MemberWalletPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员ID/昵称" value={draftParams.memberKeyword} onChange={(v) => setDraftParams((p) => ({ ...p, memberKeyword: v }))} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="会员ID/昵称" value={draftParams.memberKeyword} onChange={setField('memberKeyword')} onSearch={handleSearch} width={180} />
   );
 
   const renderTypeFilter = () => (
@@ -85,7 +85,7 @@ export default function MemberWalletPage() {
       placeholder="全部类型"
       items={typeOptions}
       value={draftParams.type}
-      onChange={(v) => setDraftParams((p) => ({ ...p, type: v as string | undefined }))}
+      onChange={(v) => setField('type')(v as string | undefined)}
     />
   );
 

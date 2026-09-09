@@ -73,7 +73,7 @@ export default function ShortLinksPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -221,7 +221,7 @@ export default function ShortLinksPage() {
     <KeywordInput
       placeholder="搜索短码 / 标题 / 目标地址..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -230,7 +230,7 @@ export default function ShortLinksPage() {
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
@@ -239,14 +239,14 @@ export default function ShortLinksPage() {
       items={SHORT_LINK_BIZ_TYPE_OPTIONS}
       placeholder="全部来源"
       value={draftParams.bizType}
-      onChange={(v) => setDraftParams((p) => ({ ...p, bizType: v }))}
+      onChange={setField('bizType')}
     />
   );
 
   const renderTimeRangeFilter = () => (
     <DateRangeFilter
       value={draftParams.timeRange}
-      onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))}
+      onChange={setField('timeRange')}
     />
   );
 

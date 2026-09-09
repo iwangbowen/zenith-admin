@@ -75,7 +75,7 @@ export default function PaymentRiskRulesPage() {
   // ── 规则 ──
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentRiskKeys.lists });
   const [scopeWatch, setScopeWatch] = useState<PaymentRiskScope>('global');
@@ -283,12 +283,12 @@ export default function PaymentRiskRulesPage() {
       placeholder="全部作用域"
       items={scopeOptions}
       value={draftParams.scope}
-      onChange={(v) => setDraftParams((p) => ({ ...p, scope: v }))}
+      onChange={setField('scope')}
       width={140}
     />
   );
   const renderStatusFilter = () => (
-    <StatusSelect items={statusItems} value={draftParams.status} onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
+    <StatusSelect items={statusItems} value={draftParams.status} onChange={setField('status')} />
   );
   const renderCreateButton = () => hasPermission('payment:risk:create') ? (
     <CreateButton onClick={openCreate} />

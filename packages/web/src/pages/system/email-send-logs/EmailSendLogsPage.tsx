@@ -40,7 +40,7 @@ export default function EmailSendLogsPage() {
   const defaultSearchParams: SearchParams = { keyword: '', toEmail: '', filterStatus: undefined, filterSource: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: emailSendLogKeys.lists });
 
@@ -102,16 +102,16 @@ export default function EmailSendLogsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="主题/内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="主题/内容关键词" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />}
         filters={(
           <>
-            <Input placeholder="收件人邮箱" value={draftParams.toEmail} onChange={(v) => setDraftParams({ ...draftParams, toEmail: v })}
+            <Input placeholder="收件人邮箱" value={draftParams.toEmail} onChange={setField('toEmail')}
               onEnterPress={handleSearch} showClear style={{ width: 200 }} />
             <SendLogStatusSourceFilters
               status={draftParams.filterStatus}
               source={draftParams.filterSource}
-              onStatusChange={(v) => setDraftParams({ ...draftParams, filterStatus: v })}
-              onSourceChange={(v) => setDraftParams({ ...draftParams, filterSource: v })}
+              onStatusChange={setField('filterStatus')}
+              onSourceChange={setField('filterSource')}
             />
           </>
         )}

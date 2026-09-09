@@ -68,7 +68,7 @@ export default function PaymentReconPage() {
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentReconKeys.lists });
 
@@ -283,7 +283,7 @@ export default function PaymentReconPage() {
       placeholder="全部渠道"
       items={PAYMENT_CHANNEL_OPTIONS}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
 
@@ -291,7 +291,7 @@ export default function PaymentReconPage() {
     <StatusSelect
       items={PAYMENT_RECON_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

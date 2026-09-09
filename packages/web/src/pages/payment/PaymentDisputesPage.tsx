@@ -40,7 +40,7 @@ export default function PaymentDisputesPage() {
   const canHandle = hasPermission('payment:dispute:handle');
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch({ defaults: defaultSearchParams, listKey: paymentDisputeKeys.lists });
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -164,17 +164,17 @@ export default function PaymentDisputesPage() {
   };
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="投诉单号/订单号/投诉人..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="投诉单号/订单号/投诉人..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
   const renderStatusFilter = () => (
-    <StatusSelect items={PAYMENT_DISPUTE_STATUS_OPTIONS} value={draftParams.status} onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
+    <StatusSelect items={PAYMENT_DISPUTE_STATUS_OPTIONS} value={draftParams.status} onChange={setField('status')} />
   );
   const renderTypeFilter = () => (
     <FilterSelect
       placeholder="全部类型"
       items={PAYMENT_DISPUTE_TYPE_OPTIONS}
       value={draftParams.type}
-      onChange={(v) => setDraftParams((p) => ({ ...p, type: v }))}
+      onChange={setField('type')}
     />
   );
   const renderChannelFilter = () => (
@@ -182,7 +182,7 @@ export default function PaymentDisputesPage() {
       placeholder="全部渠道"
       items={channelOptions}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
   const renderRouteFilter = () => (
@@ -190,7 +190,7 @@ export default function PaymentDisputesPage() {
       placeholder="全部分流"
       items={PAYMENT_DISPUTE_ROUTE_OPTIONS}
       value={draftParams.route}
-      onChange={(v) => setDraftParams((p) => ({ ...p, route: v }))}
+      onChange={setField('route')}
     />
   );
   const renderSimulateButton = () => canHandle ? (

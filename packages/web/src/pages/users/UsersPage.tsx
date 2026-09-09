@@ -91,7 +91,7 @@ export default function UsersPage() {
   const { updateUser } = useAuth();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: userKeys.lists });
   const [batchPasswordModalVisible, setBatchPasswordModalVisible] = useState(false);
@@ -584,23 +584,23 @@ export default function UsersPage() {
   );
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索用户名/昵称/邮箱" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={260} />
+    <KeywordInput placeholder="搜索用户名/昵称/邮箱" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={260} />
   );
 
   const renderPhoneSearch = () => (
-    <KeywordInput placeholder="搜索手机号码" value={draftParams.phone} onChange={(value) => setDraftParams((prev) => ({ ...prev, phone: value }))} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="搜索手机号码" value={draftParams.phone} onChange={setField('phone')} onSearch={handleSearch} width={180} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+      onChange={setField('status')}
     />
   );
 
   const renderTimeRangeFilter = () => (
-    <DateRangeFilter placeholder={["开始时间", "结束时间"]} value={draftParams.timeRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))} />
+    <DateRangeFilter placeholder={["开始时间", "结束时间"]} value={draftParams.timeRange ?? undefined} onChange={(value) => setField('timeRange')(value ? (value as [Date, Date]) : null)} />
   );
 
   const renderBatchActions = () => (

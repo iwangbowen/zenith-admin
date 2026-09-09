@@ -36,7 +36,7 @@ export default function OperationLogsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: operationLogKeys.all });
   const listQuery = useOperationLogList({
@@ -81,15 +81,15 @@ export default function OperationLogsPage() {
   };
 
   const renderUsernameSearch = () => (
-    <KeywordInput placeholder="操作人用户名 / 昵称" value={draftParams.username} onChange={(v) => setDraftParams({ ...draftParams, username: v })} onSearch={handleSearch} width={160} />
+    <KeywordInput placeholder="操作人用户名 / 昵称" value={draftParams.username} onChange={setField('username')} onSearch={handleSearch} width={160} />
   );
 
   const renderModuleSearch = () => (
-    <KeywordInput placeholder="请输入功能模块" value={draftParams.module} onChange={(v) => setDraftParams({ ...draftParams, module: v })} onSearch={handleSearch} width={160} />
+    <KeywordInput placeholder="请输入功能模块" value={draftParams.module} onChange={setField('module')} onSearch={handleSearch} width={160} />
   );
 
   const renderDescriptionSearch = () => (
-    <KeywordInput placeholder="请输入操作描述" value={draftParams.description} onChange={(v) => setDraftParams({ ...draftParams, description: v })} onSearch={handleSearch} width={160} />
+    <KeywordInput placeholder="请输入操作描述" value={draftParams.description} onChange={setField('description')} onSearch={handleSearch} width={160} />
   );
 
   const renderMethodFilter = () => (
@@ -97,33 +97,33 @@ export default function OperationLogsPage() {
       placeholder="全部请求方法"
       items={METHOD_OPTIONS}
       value={draftParams.method}
-      onChange={(v) => setDraftParams({ ...draftParams, method: v })}
+      onChange={setField('method')}
       width={140}
     />
   );
 
   const renderPathSearch = () => (
-    <KeywordInput placeholder="请输入请求路径" value={draftParams.path} onChange={(v) => setDraftParams({ ...draftParams, path: v })} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="请输入请求路径" value={draftParams.path} onChange={setField('path')} onSearch={handleSearch} width={180} />
   );
 
   const renderIpSearch = () => (
-    <KeywordInput placeholder="请输入 IP 地址" value={draftParams.ip} onChange={(v) => setDraftParams({ ...draftParams, ip: v })} onSearch={handleSearch} width={160} />
+    <KeywordInput placeholder="请输入 IP 地址" value={draftParams.ip} onChange={setField('ip')} onSearch={handleSearch} width={160} />
   );
 
   const renderContentSearch = () => (
-    <KeywordInput placeholder="请求/变更内容包含…" value={draftParams.content} onChange={(v) => setDraftParams({ ...draftParams, content: v })} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="请求/变更内容包含…" value={draftParams.content} onChange={setField('content')} onSearch={handleSearch} width={180} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams({ ...draftParams, status: v })}
+      onChange={setField('status')}
     />
   );
 
   const renderTimeRangeFilter = () => (
-    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams({ ...draftParams, timeRange: v ? (v as [Date, Date]) : null })} />
+    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
   );
 
   const renderDurationFilters = () => (
@@ -131,7 +131,7 @@ export default function OperationLogsPage() {
       <InputNumber
         placeholder="耗时 ≥ (ms)"
         value={draftParams.minDurationMs ?? undefined}
-        onChange={(v) => setDraftParams({ ...draftParams, minDurationMs: v !== '' && v != null ? Number(v) : null })}
+        onChange={(v) => setField('minDurationMs')(v !== '' && v != null ? Number(v) : null)}
         min={0}
         style={{ width: 130 }}
         hideButtons
@@ -139,7 +139,7 @@ export default function OperationLogsPage() {
       <InputNumber
         placeholder="耗时 ≤ (ms)"
         value={draftParams.maxDurationMs ?? undefined}
-        onChange={(v) => setDraftParams({ ...draftParams, maxDurationMs: v !== '' && v != null ? Number(v) : null })}
+        onChange={(v) => setField('maxDurationMs')(v !== '' && v != null ? Number(v) : null)}
         min={0}
         style={{ width: 130 }}
         hideButtons

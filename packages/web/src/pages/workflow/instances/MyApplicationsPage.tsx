@@ -366,7 +366,7 @@ export default function MyApplicationsPage() {
   const launchFormRef = useRef<WorkflowLaunchFormHandle>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<{ status?: string; priority?: string }>({ defaults: { status: undefined, priority: undefined }, listKey: workflowInstanceKeys.lists });
   const [detailVisible, setDetailVisible] = useState(false);
@@ -714,7 +714,7 @@ export default function MyApplicationsPage() {
     <StatusSelect
       items={Object.entries(INSTANCE_STATUS_MAP).map(([value, s]) => ({ value, label: s.text }))}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((prev) => ({ ...prev, status: v }))}
+      onChange={setField('status')}
     />
   );
 
@@ -723,7 +723,7 @@ export default function MyApplicationsPage() {
       placeholder="全部优先级"
       items={WORKFLOW_PRIORITY_OPTIONS}
       value={draftParams.priority}
-      onChange={v => setDraftParams((prev) => ({ ...prev, priority: v }))}
+      onChange={setField('priority')}
       width={140}
     />
   );

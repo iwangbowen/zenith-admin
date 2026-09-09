@@ -29,7 +29,7 @@ export default function EmailTemplatesPage() {
   const defaultSearchParams: SearchParams = { keyword: '', filterStatus: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: emailTemplateKeys.lists });
 
@@ -96,12 +96,12 @@ export default function EmailTemplatesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索模板名称/编码/主题" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索模板名称/编码/主题" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
         filters={(
           <StatusSelect
             items={statusItems}
             value={draftParams.filterStatus}
-            onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
+            onChange={(v) => setField('filterStatus')(v as string | undefined)}
           />
         )}
         onSearch={handleSearch}

@@ -120,7 +120,7 @@ export default function TagsPage() {
   const defaultSearchParams: SearchParams = { keyword: '', filterStatus: undefined, filterGroup: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tagKeys.lists });
 
@@ -238,20 +238,20 @@ export default function TagsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标签名称或描述" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="搜索标签名称或描述" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部所属分组"
               items={groupOptions}
               value={draftParams.filterGroup}
-              onChange={(v) => setDraftParams({ ...draftParams, filterGroup: v as string | undefined })}
+              onChange={(v) => setField('filterGroup')(v as string | undefined)}
               width={160}
             />
             <StatusSelect
               items={statusItems}
               value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
+              onChange={(v) => setField('filterStatus')(v as string | undefined)}
             />
           </>
         )}

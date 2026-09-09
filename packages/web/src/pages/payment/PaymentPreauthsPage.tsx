@@ -46,7 +46,7 @@ export default function PaymentPreauthsPage() {
   const latestCreateResult = useRef<PaymentPreauth | null>(null);
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch({ defaults: defaultSearchParams, listKey: paymentPreauthKeys.lists });
   const [captureTarget, setCaptureTarget] = useState<PaymentPreauth | null>(null);
@@ -180,7 +180,7 @@ export default function PaymentPreauthsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="预授权单号/付款人/事由..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="预授权单号/付款人/事由..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
   const renderAppFilter = () => (
     <PaymentAppFilterSelect
@@ -194,14 +194,14 @@ export default function PaymentPreauthsPage() {
     />
   );
   const renderStatusFilter = () => (
-    <StatusSelect items={PAYMENT_PREAUTH_STATUS_OPTIONS} value={draftParams.status} onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
+    <StatusSelect items={PAYMENT_PREAUTH_STATUS_OPTIONS} value={draftParams.status} onChange={setField('status')} />
   );
   const renderChannelFilter = () => (
     <FilterSelect
       placeholder="全部渠道"
       items={channelOptions}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
   const renderCreateButton = () => canManage ? (

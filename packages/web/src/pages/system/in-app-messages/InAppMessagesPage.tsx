@@ -47,7 +47,7 @@ export default function InAppMessagesPage() {
   const defaultSearchParams: SearchParams = { keyword: '', filterType: undefined, filterRead: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: inAppMessageKeys.lists });
 
@@ -139,20 +139,20 @@ export default function InAppMessagesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="标题/内容关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="标题/内容关键词" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部类型"
               items={TYPE_OPTIONS}
               value={draftParams.filterType}
-              onChange={(v) => setDraftParams({ ...draftParams, filterType: v as InAppMessageType | undefined })}
+              onChange={(v) => setField('filterType')(v as InAppMessageType | undefined)}
             />
             <FilterSelect
               placeholder="全部阅读状态"
               items={READ_OPTIONS}
               value={draftParams.filterRead}
-              onChange={(v) => setDraftParams({ ...draftParams, filterRead: v as string | undefined })}
+              onChange={(v) => setField('filterRead')(v as string | undefined)}
               width={140}
             />
           </>

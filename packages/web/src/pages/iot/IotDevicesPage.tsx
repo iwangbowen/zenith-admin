@@ -68,7 +68,7 @@ export default function IotDevicesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: iotDeviceKeys.lists });
 
@@ -295,7 +295,7 @@ export default function IotDevicesPage() {
     <KeywordInput
       placeholder="搜索 SN / 设备名..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -305,7 +305,7 @@ export default function IotDevicesPage() {
       placeholder="全部产品"
       items={products.map((p) => ({ value: String(p.id), label: p.name }))}
       value={draftParams.productId === null ? '' : String(draftParams.productId)}
-      onChange={(v) => setDraftParams((p) => ({ ...p, productId: v ? Number(v) : null }))}
+      onChange={(v) => setField('productId')(v ? Number(v) : null)}
     />
   );
 
@@ -314,7 +314,7 @@ export default function IotDevicesPage() {
       placeholder="全部分组"
       items={groups.map((g) => ({ value: String(g.id), label: g.name }))}
       value={draftParams.groupId === null ? '' : String(draftParams.groupId)}
-      onChange={(v) => setDraftParams((p) => ({ ...p, groupId: v ? Number(v) : null }))}
+      onChange={(v) => setField('groupId')(v ? Number(v) : null)}
     />
   );
 
@@ -323,7 +323,7 @@ export default function IotDevicesPage() {
       placeholder="全部形态"
       items={IOT_NODE_TYPE_OPTIONS}
       value={draftParams.nodeType}
-      onChange={(v) => setDraftParams((p) => ({ ...p, nodeType: v }))}
+      onChange={setField('nodeType')}
     />
   );
 
@@ -331,7 +331,7 @@ export default function IotDevicesPage() {
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

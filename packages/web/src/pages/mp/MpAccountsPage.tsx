@@ -59,7 +59,7 @@ export default function MpAccountsPage() {
   const defaultSearchParams: SearchParams = { keyword: '', filterType: undefined, filterStatus: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: mpAccountKeys.lists });
 
@@ -190,21 +190,21 @@ export default function MpAccountsPage() {
   ];
 
   const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索名称/微信号/AppID" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索名称/微信号/AppID" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
   const renderTypeFilter = () => (
     <FilterSelect
       placeholder="全部类型"
       items={TYPE_OPTIONS}
       value={draftParams.filterType}
-      onChange={(v) => setDraftParams({ ...draftParams, filterType: v as MpAccountType | undefined })}
+      onChange={(v) => setField('filterType')(v as MpAccountType | undefined)}
     />
   );
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
       value={draftParams.filterStatus}
-      onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
+      onChange={(v) => setField('filterStatus')(v as string | undefined)}
     />
   );
   const renderCreateButton = () => can('mp:account:create') ? (

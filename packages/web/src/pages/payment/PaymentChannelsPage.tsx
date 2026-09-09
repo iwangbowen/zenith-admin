@@ -38,7 +38,7 @@ export default function PaymentChannelsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentChannelKeys.lists });
 
@@ -166,7 +166,7 @@ export default function PaymentChannelsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={200} />
+    <KeywordInput placeholder="搜索名称..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
   );
 
   const renderChannelFilter = () => (
@@ -174,7 +174,7 @@ export default function PaymentChannelsPage() {
       placeholder="全部渠道"
       items={PAYMENT_CHANNEL_OPTIONS}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
 
@@ -182,7 +182,7 @@ export default function PaymentChannelsPage() {
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

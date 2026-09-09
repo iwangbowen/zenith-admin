@@ -44,7 +44,7 @@ export default function PrintTemplatesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportPrintKeys.lists });
 
@@ -231,13 +231,13 @@ export default function PrintTemplatesPage() {
   ];
 
   const renderKeyword = () => (
-    <KeywordInput placeholder="搜索名称/备注..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索名称/备注..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
   const renderOwnerFilter = () => (
@@ -245,7 +245,7 @@ export default function PrintTemplatesPage() {
       placeholder="全部负责人"
       items={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))}
       value={draftParams.ownerId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, ownerId: v as number | undefined }))}
+      onChange={(v) => setField('ownerId')(v as number | undefined)}
       filter
       width={140}
     />
@@ -255,7 +255,7 @@ export default function PrintTemplatesPage() {
       placeholder="全部目录"
       items={folders.map((f) => ({ value: f.id, label: f.name }))}
       value={draftParams.folderId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, folderId: v as number | undefined }))}
+      onChange={(v) => setField('folderId')(v as number | undefined)}
       width={140}
       filter
     />

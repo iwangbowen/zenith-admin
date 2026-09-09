@@ -71,7 +71,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
   const formApiRef = useRef<FormApi<{ name: string }> | null>(null);
 
   const listKey = driveKeys.dir(spaceId, folderId);
-  const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset, setPage, applySearch } =
+  const { page, pageSize, buildPagination, draftParams, setDraftParams, setField, submittedParams, handleSearch, handleReset, setPage, applySearch } =
     useListSearch<SearchParams>({ defaults: { keyword: '', tagId: undefined, sortBy: 'name', order: 'asc' }, listKey, pageSize: 50 });
   const tags = useDriveTags(spaceId);
 
@@ -269,7 +269,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
           <FilterSelect<number> value={draftParams.tagId} placeholder="全部标签" items={(tags.data ?? []).map((tag) => ({ value: tag.id, label: tag.name }))}
             onChange={(value) => applySearch({ ...draftParams, tagId: value })} />
           <KeywordInput placeholder="搜索当前目录" width={200} value={draftParams.keyword}
-            onChange={(v) => { setDraftParams((p) => ({ ...p, keyword: v })); if (v === '' && submittedParams.keyword) setTimeout(handleReset, 0); }}
+            onChange={(v) => { setField('keyword')(v); if (v === '' && submittedParams.keyword) setTimeout(handleReset, 0); }}
             onSearch={handleSearch} />
           <Dropdown
             trigger="click"
@@ -278,7 +278,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
               <Dropdown.Menu>
                 {SORT_OPTIONS.map((o) => (
                   <Dropdown.Item key={o.value} active={submittedParams.sortBy === o.value}
-                    onClick={() => { setDraftParams((p) => ({ ...p, sortBy: o.value })); setTimeout(handleSearch, 0); }}>{o.label}</Dropdown.Item>
+                    onClick={() => { setField('sortBy')(o.value); setTimeout(handleSearch, 0); }}>{o.label}</Dropdown.Item>
                 ))}
                 <Dropdown.Divider />
                 <Dropdown.Item onClick={() => { setDraftParams((p) => ({ ...p, order: p.order === 'asc' ? 'desc' : 'asc' })); setTimeout(handleSearch, 0); }}>

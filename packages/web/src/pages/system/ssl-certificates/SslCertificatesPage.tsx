@@ -69,7 +69,7 @@ export default function SslCertificatesPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: sslCertificateKeys.lists });
   const [detailVisible, setDetailVisible] = useState(false);
@@ -183,14 +183,14 @@ export default function SslCertificatesPage() {
       <SearchToolbar
         primary={(
           <>
-            <KeywordInput placeholder="搜索名称或域名" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={240} />
+            <KeywordInput placeholder="搜索名称或域名" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
             <FilterSelect
               placeholder="全部证书类型"
               items={[{ value: 'self_signed', label: '自签名' },
                 { value: 'uploaded', label: '上传' },
                 { value: 'letsencrypt', label: 'Let\'s Encrypt' },]}
               value={draftParams.type}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, type: value }))}
+              onChange={setField('type')}
               width={160}
             />
             <SearchButton onClick={handleSearch} />
@@ -201,7 +201,7 @@ export default function SslCertificatesPage() {
         )}
         mobilePrimary={(
           <>
-            <KeywordInput placeholder="搜索名称或域名" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={240} />
+            <KeywordInput placeholder="搜索名称或域名" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
             <SearchButton onClick={handleSearch} />
             {canCreate && <Button type="primary" icon={<Lock size={14} />} onClick={generateModal.openCreate}>生成</Button>}
             {canCreate && <Button type="primary" icon={<Upload size={14} />} onClick={uploadModal.openCreate}>上传</Button>}
@@ -214,7 +214,7 @@ export default function SslCertificatesPage() {
               { value: 'uploaded', label: '上传' },
               { value: 'letsencrypt', label: 'Let\'s Encrypt' },]}
             value={draftParams.type}
-            onChange={(value) => setDraftParams((prev) => ({ ...prev, type: value }))}
+            onChange={setField('type')}
             width={160}
           />
         )}

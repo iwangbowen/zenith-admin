@@ -31,7 +31,7 @@ export default function SmsTemplatesPage() {
   const defaultSearchParams: SearchParams = { keyword: '', filterProvider: undefined, filterStatus: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: smsTemplateKeys.lists });
 
@@ -105,20 +105,20 @@ export default function SmsTemplatesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索模板名称/编码" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索模板名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部服务商"
               items={SMS_PROVIDER_OPTIONS}
               value={draftParams.filterProvider}
-              onChange={(v) => setDraftParams({ ...draftParams, filterProvider: v as SmsProvider | undefined })}
+              onChange={(v) => setField('filterProvider')(v as SmsProvider | undefined)}
               width={140}
             />
             <StatusSelect
               items={statusItems}
               value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as string | undefined })}
+              onChange={(v) => setField('filterStatus')(v as string | undefined)}
             />
           </>
         )}

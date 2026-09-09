@@ -60,7 +60,7 @@ export default function ImportCenterPage() {
   const qc = useQueryClient();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: asyncTaskKeys.lists });
 
@@ -154,7 +154,7 @@ export default function ImportCenterPage() {
           <KeywordInput
             placeholder="搜索任务名/文件名"
             value={draftParams.keyword}
-            onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
+            onChange={setField('keyword')}
             onSearch={handleSearch}
             width={220}
           />
@@ -165,13 +165,13 @@ export default function ImportCenterPage() {
               placeholder="全部导入实体"
               groups={entityOptions.map(([module, items]) => ({ label: module, items: items.map((e) => ({ value: e.entity, label: e.title })) }))}
               value={draftParams.entity}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, entity: value }))}
+              onChange={setField('entity')}
               width={160}
             />
             <StatusSelect
               items={statusOptions}
               value={draftParams.status}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+              onChange={setField('status')}
             />
           </>
         )}

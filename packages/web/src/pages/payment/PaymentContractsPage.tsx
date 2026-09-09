@@ -69,7 +69,7 @@ export default function PaymentContractsPage() {
   // ── 签约协议 ──
   const {
     page: cPage, pageSize: cPageSize, setPage: setCPage, buildPagination: buildCPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch({ defaults: defaultSearchParams, listKey: paymentContractKeys.lists });
 
@@ -308,7 +308,7 @@ export default function PaymentContractsPage() {
   };
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="协议号/签约账号/业务ID..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="协议号/签约账号/业务ID..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
   const renderAppFilter = () => (
     <PaymentAppFilterSelect
@@ -322,14 +322,14 @@ export default function PaymentContractsPage() {
     />
   );
   const renderStatusFilter = () => (
-    <StatusSelect items={contractStatusOptions} value={draftParams.status} onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
+    <StatusSelect items={contractStatusOptions} value={draftParams.status} onChange={setField('status')} />
   );
   const renderChannelFilter = () => (
     <FilterSelect
       placeholder="全部渠道"
       items={channelOptions}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
   const renderCreateContract = () => canManage ? (

@@ -56,7 +56,7 @@ export default function LeavePage() {
   const { items: leaveTypeItems, getLabel: getLeaveTypeLabel } = useDictItems('leave_type');
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<LeaveSearchParams>({ defaults: DEFAULT_LEAVE_SEARCH_PARAMS, listKey: bizLeaveKeys.lists });
 
@@ -220,14 +220,14 @@ export default function LeavePage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索事由" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索事由" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={Object.entries(STATUS_MAP).map(([value, s]) => ({ value, label: s.text }))}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value as LeaveSearchParams['status'] | undefined }))}
+      onChange={(value) => setField('status')(value as LeaveSearchParams['status'] | undefined)}
     />
   );
 

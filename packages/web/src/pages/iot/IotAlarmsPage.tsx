@@ -57,7 +57,7 @@ function AlarmRecordsTab() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<AlarmSearchParams>({ defaults: defaultAlarmSearch, listKey: iotAlarmKeys.lists });
 
@@ -167,7 +167,7 @@ function AlarmRecordsTab() {
     <KeywordInput
       placeholder="搜索规则 / 设备 / 内容..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -177,7 +177,7 @@ function AlarmRecordsTab() {
      
       items={IOT_ALARM_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
@@ -186,7 +186,7 @@ function AlarmRecordsTab() {
       placeholder="全部级别"
       items={IOT_ALARM_LEVEL_OPTIONS}
       value={draftParams.level}
-      onChange={(v) => setDraftParams((p) => ({ ...p, level: v }))}
+      onChange={setField('level')}
     />
   );
 
@@ -195,7 +195,7 @@ function AlarmRecordsTab() {
       placeholder="全部类型"
       items={IOT_ALARM_RULE_TYPE_OPTIONS}
       value={draftParams.ruleType}
-      onChange={(v) => setDraftParams((p) => ({ ...p, ruleType: v }))}
+      onChange={setField('ruleType')}
     />
   );
 
@@ -328,7 +328,7 @@ function AlarmRulesTab() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<RuleSearchParams>({ defaults: defaultRuleSearch, listKey: iotAlarmRuleKeys.lists });
 
@@ -449,7 +449,7 @@ function AlarmRulesTab() {
     <KeywordInput
       placeholder="搜索规则名称..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -459,7 +459,7 @@ function AlarmRulesTab() {
       placeholder="全部类型"
       items={IOT_ALARM_RULE_TYPE_OPTIONS}
       value={draftParams.ruleType}
-      onChange={(v) => setDraftParams((p) => ({ ...p, ruleType: v }))}
+      onChange={setField('ruleType')}
     />
   );
 
@@ -467,7 +467,7 @@ function AlarmRulesTab() {
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
@@ -578,7 +578,7 @@ function MaintenanceWindowsTab() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams,
+    draftParams, setField,
     handleSearch, handleReset, submittedParams,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: iotMaintenanceWindowKeys.lists });
 
@@ -667,7 +667,7 @@ function MaintenanceWindowsTab() {
           <KeywordInput
             placeholder="搜索窗口名称..."
             value={draftParams.keyword}
-            onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+            onChange={setField('keyword')}
             onSearch={handleSearch}
           />
         )}

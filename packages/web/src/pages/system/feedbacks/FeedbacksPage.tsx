@@ -61,7 +61,7 @@ export default function FeedbacksPage() {
   // ─── 搜索状态 ──────────────────────────────────────────────────────────
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: userFeedbackKeys.lists });
 
@@ -176,7 +176,7 @@ export default function FeedbacksPage() {
 
   // ─── 搜索区渲染 ────────────────────────────────────────────────────────
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索反馈内容..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索反馈内容..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderCategoryFilter = () => (
@@ -184,7 +184,7 @@ export default function FeedbacksPage() {
       placeholder="全部分类"
       items={CATEGORY_OPTIONS}
       value={draftParams.category}
-      onChange={(v) => setDraftParams((p) => ({ ...p, category: v as UserFeedbackCategory | undefined }))}
+      onChange={(v) => setField('category')(v as UserFeedbackCategory | undefined)}
     />
   );
 
@@ -192,12 +192,12 @@ export default function FeedbacksPage() {
     <StatusSelect
       items={STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v as UserFeedbackStatus | undefined }))}
+      onChange={(v) => setField('status')(v as UserFeedbackStatus | undefined)}
     />
   );
 
   const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setDraftParams((p) => ({ ...p, dateRange: value ? (value as [Date, Date]) : null }))} />
+    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setField('dateRange')(value ? (value as [Date, Date]) : null)} />
   );
 
   const renderBatchDeleteButton = () => selectedRowKeys.length > 0 && hasPermission('system:feedback:delete') ? (

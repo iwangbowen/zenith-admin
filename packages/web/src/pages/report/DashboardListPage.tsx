@@ -48,7 +48,7 @@ export default function DashboardListPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setDraftParams, setField, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportDashboardKeys.lists });
 
@@ -229,13 +229,13 @@ export default function DashboardListPage() {
   ];
 
   const renderKeyword = () => (
-    <KeywordInput placeholder="搜索名称/备注..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索名称/备注..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
   const renderLifecycleFilter = () => (
@@ -247,7 +247,7 @@ export default function DashboardListPage() {
        { value: 'offline', label: '已下线' },
      ]}
       value={draftParams.lifecycleStatus}
-      onChange={(v) => setDraftParams((p) => ({ ...p, lifecycleStatus: v as SearchParams['lifecycleStatus'] | undefined }))}
+      onChange={(v) => setField('lifecycleStatus')(v as SearchParams['lifecycleStatus'] | undefined)}
       width={140}
     />
   );
@@ -256,7 +256,7 @@ export default function DashboardListPage() {
       placeholder="全部负责人"
       items={users.map((u) => ({ value: u.id, label: u.nickname || u.username }))}
       value={draftParams.ownerId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, ownerId: v as number | undefined }))}
+      onChange={(v) => setField('ownerId')(v as number | undefined)}
       width={140}
       filter
     />
@@ -266,7 +266,7 @@ export default function DashboardListPage() {
       placeholder="全部目录"
       items={folders.map((f) => ({ value: f.id, label: f.name }))}
       value={draftParams.folderId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, folderId: v as number | undefined }))}
+      onChange={(v) => setField('folderId')(v as number | undefined)}
       width={140}
       filter
     />
@@ -280,7 +280,7 @@ export default function DashboardListPage() {
       placeholder="全部分类"
       items={categories.map((c) => ({ value: c.id, label: c.name }))}
       value={draftParams.categoryId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, categoryId: v as number | undefined }))}
+      onChange={(v) => setField('categoryId')(v as number | undefined)}
       width={140}
     />
   );

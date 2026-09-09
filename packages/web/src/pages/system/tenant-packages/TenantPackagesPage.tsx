@@ -38,7 +38,7 @@ export default function TenantPackagesPage() {
   // draft：搜索区输入中的条件；submitted：点击查询后实际生效的条件（进入 query key）
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tenantPackageKeys.lists });
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
@@ -155,14 +155,14 @@ export default function TenantPackagesPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索套餐名称" value={draftParams.keyword} onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索套餐名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+      onChange={setField('status')}
     />
   );
 

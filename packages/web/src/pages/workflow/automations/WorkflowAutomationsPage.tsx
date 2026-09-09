@@ -314,7 +314,7 @@ export default function WorkflowAutomationsPage() {
   const defaultSearchParams: SearchParams = { definitionId: undefined, trigger: undefined, status: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowAutomationKeys.lists });
   const listQuery = useWorkflowAutomationList({
@@ -459,7 +459,7 @@ export default function WorkflowAutomationsPage() {
       placeholder="全部所属流程"
       items={filterDefOptions}
       value={draftParams.definitionId}
-      onChange={(v) => setDraftParams(prev => ({ ...prev, definitionId: v as number | undefined }))}
+      onChange={(v) => setField('definitionId')(v as number | undefined)}
       width={220}
     />
   );
@@ -469,7 +469,7 @@ export default function WorkflowAutomationsPage() {
       placeholder="全部触发时机"
       items={TRIGGER_OPTIONS}
       value={draftParams.trigger}
-      onChange={(v) => setDraftParams(prev => ({ ...prev, trigger: v as WorkflowAutomationTrigger | undefined }))}
+      onChange={(v) => setField('trigger')(v as WorkflowAutomationTrigger | undefined)}
       width={140}
     />
   );
@@ -478,7 +478,7 @@ export default function WorkflowAutomationsPage() {
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams(prev => ({ ...prev, status: v as 'enabled' | 'disabled' | undefined }))}
+      onChange={(v) => setField('status')(v as 'enabled' | 'disabled' | undefined)}
     />
   );
 

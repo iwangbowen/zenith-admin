@@ -111,7 +111,7 @@ export default function PaymentOrdersPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentOrderKeys.lists });
 
@@ -371,14 +371,14 @@ export default function PaymentOrdersPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="订单号/标题..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="订单号/标题..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={180} />
   );
 
   const renderBizTypeFilter = () => (
     <Input
       placeholder="业务类型"
       value={draftParams.bizType}
-      onChange={(v) => setDraftParams((p) => ({ ...p, bizType: v }))}
+      onChange={setField('bizType')}
       showClear
       style={{ width: 120 }}
       onEnterPress={handleSearch}
@@ -390,7 +390,7 @@ export default function PaymentOrdersPage() {
       placeholder="全部渠道"
       items={PAYMENT_CHANNEL_OPTIONS}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
 
@@ -399,7 +399,7 @@ export default function PaymentOrdersPage() {
       placeholder="全部支付方式"
       items={PAYMENT_METHOD_OPTIONS}
       value={draftParams.payMethod}
-      onChange={(v) => setDraftParams((p) => ({ ...p, payMethod: v }))}
+      onChange={setField('payMethod')}
       width={140}
     />
   );
@@ -408,7 +408,7 @@ export default function PaymentOrdersPage() {
     <StatusSelect
       items={PAYMENT_ORDER_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
@@ -416,7 +416,7 @@ export default function PaymentOrdersPage() {
     <InputNumber
       placeholder="金额≥(元)"
       value={draftParams.minAmount ?? undefined}
-      onChange={(v) => setDraftParams((p) => ({ ...p, minAmount: v !== '' && v != null ? Number(v) : null }))}
+      onChange={(v) => setField('minAmount')(v !== '' && v != null ? Number(v) : null)}
       min={0}
       hideButtons
       style={{ width: 110 }}
@@ -427,7 +427,7 @@ export default function PaymentOrdersPage() {
     <InputNumber
       placeholder="金额≤(元)"
       value={draftParams.maxAmount ?? undefined}
-      onChange={(v) => setDraftParams((p) => ({ ...p, maxAmount: v !== '' && v != null ? Number(v) : null }))}
+      onChange={(v) => setField('maxAmount')(v !== '' && v != null ? Number(v) : null)}
       min={0}
       hideButtons
       style={{ width: 110 }}
@@ -435,7 +435,7 @@ export default function PaymentOrdersPage() {
   );
 
   const renderTimeRangeFilter = () => (
-    <DateRangeFilter placeholder={['创建开始', '创建结束']} value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))} />
+    <DateRangeFilter placeholder={['创建开始', '创建结束']} value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
   );
 
   const openCreateOrder = () => {

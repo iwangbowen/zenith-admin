@@ -35,7 +35,7 @@ export default function MpMaterialsPage() {
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpMaterialKeys.lists });
 
@@ -118,11 +118,11 @@ export default function MpMaterialsPage() {
       placeholder="全部类型"
       items={MP_MATERIAL_TYPE_OPTIONS}
       value={draftParams.filterType}
-      onChange={(v) => setDraftParams({ ...draftParams, filterType: enumValueOf(MP_MATERIAL_TYPES, v) })}
+      onChange={(v) => setField('filterType')(enumValueOf(MP_MATERIAL_TYPES, v))}
     />
   );
   const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索素材名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="搜索素材名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={180} />
   );
   const renderCreateButton = () => can('mp:material:create') ? (
     <CreateButton onClick={modal.openCreate} disabled={!currentId} />

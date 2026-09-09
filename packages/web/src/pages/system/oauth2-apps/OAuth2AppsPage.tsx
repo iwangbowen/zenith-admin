@@ -82,7 +82,7 @@ export default function OAuth2AppsPage() {
   const defaultSearchParams: SearchParams = { keyword: '' };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: oauth2AppKeys.lists });
 
@@ -324,20 +324,20 @@ export default function OAuth2AppsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索应用名称" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索应用名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部环境"
               items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
               value={draftParams.environment}
-              onChange={(environment) => setDraftParams({ ...draftParams, environment: environment as SearchParams['environment'] })}
+              onChange={(environment) => setField('environment')(environment as SearchParams['environment'])}
             />
             <FilterSelect
               placeholder="全部审核状态"
               items={OPEN_APP_REVIEW_STATUSES.map((value) => ({ value, label: OPEN_APP_REVIEW_STATUS_LABELS[value] }))}
               value={draftParams.reviewStatus}
-              onChange={(reviewStatus) => setDraftParams({ ...draftParams, reviewStatus: reviewStatus as SearchParams['reviewStatus'] })}
+              onChange={(reviewStatus) => setField('reviewStatus')(reviewStatus as SearchParams['reviewStatus'])}
               width={140}
             />
           </>

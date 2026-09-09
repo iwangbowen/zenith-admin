@@ -70,7 +70,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
   const defaultSearchParams: SearchParams = { keyword: '', clientId: undefined, status: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -306,21 +306,21 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={(<KeywordInput placeholder="搜索名称 / URL" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={200} />)}
+        keyword={(<KeywordInput placeholder="搜索名称 / URL" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />)}
         filters={(
           <>
             <FilterSelect
               placeholder="全部所属应用"
               items={appOptions.map((a) => ({ value: a.clientId, label: a.name }))}
               value={draftParams.clientId}
-              onChange={(v) => setDraftParams({ ...draftParams, clientId: v as string })}
+              onChange={(v) => setField('clientId')(v as string)}
               width={180}
               filter
             />
             <StatusSelect
               items={STATUS_OPTIONS}
               value={draftParams.status}
-              onChange={(v) => setDraftParams({ ...draftParams, status: v as string })}
+              onChange={(v) => setField('status')(v as string)}
             />
           </>
         )}

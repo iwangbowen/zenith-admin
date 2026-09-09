@@ -47,7 +47,7 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<ForwardSearchParams>({ defaults: defaultSearch, listKey: iotForwardRuleKeys.lists });
 
@@ -160,7 +160,7 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
     <KeywordInput
       placeholder="搜索规则名称..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -170,7 +170,7 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
       placeholder="全部数据源"
       items={IOT_FORWARD_SOURCE_OPTIONS}
       value={draftParams.source}
-      onChange={(v) => setDraftParams((p) => ({ ...p, source: v }))}
+      onChange={setField('source')}
       width={140}
     />
   );
@@ -179,7 +179,7 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
     <StatusSelect
       items={statusItems}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

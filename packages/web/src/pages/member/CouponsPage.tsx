@@ -53,7 +53,7 @@ export default function CouponsPage() {
   const issueFormApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.couponLists });
 
@@ -182,7 +182,7 @@ export default function CouponsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="券名称" value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="券名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={180} />
   );
 
   const renderTypeFilter = () => (
@@ -190,7 +190,7 @@ export default function CouponsPage() {
       placeholder="全部类型"
       items={typeOptions}
       value={draftParams.type}
-      onChange={(v) => setDraftParams((p) => ({ ...p, type: v as string | undefined }))}
+      onChange={(v) => setField('type')(v as string | undefined)}
     />
   );
 
@@ -198,7 +198,7 @@ export default function CouponsPage() {
     <StatusSelect
       items={statusOptions}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 

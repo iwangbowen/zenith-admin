@@ -117,7 +117,7 @@ export default function IdentityProvidersPage() {
   const [ldapSearchKeyword, setLdapSearchKeyword] = useState('');
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: identityProviderKeys.lists });
   const listQuery = useIdentityProviderList({
@@ -310,7 +310,7 @@ export default function IdentityProvidersPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称/编码" value={draftParams.keyword} onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
 
   const renderTypeFilter = () => (
@@ -318,7 +318,7 @@ export default function IdentityProvidersPage() {
       placeholder="全部类型"
       items={providerTypeOptions}
       value={draftParams.type}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, type: value }))}
+      onChange={setField('type')}
     />
   );
 
@@ -326,7 +326,7 @@ export default function IdentityProvidersPage() {
     <StatusSelect
       items={statusOptions}
       value={draftParams.status}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+      onChange={setField('status')}
     />
   );
 

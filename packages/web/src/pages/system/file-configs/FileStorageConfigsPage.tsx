@@ -206,7 +206,7 @@ export default function FileStorageConfigsPage() {
   const defaultSearchParams: SearchParams = { status: undefined, timeRange: null };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: fileStorageConfigKeys.lists });
   const [formProvider, setFormProvider] = useState<FileStorageProvider>('local');
@@ -506,9 +506,9 @@ export default function FileStorageConfigsPage() {
             <StatusSelect
               items={STATUS_FILTER_OPTIONS}
               value={draftParams.status}
-              onChange={(value) => setDraftParams((prev) => ({ ...prev, status: value }))}
+              onChange={setField('status')}
             />
-            <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))} />
+            <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(value) => setField('timeRange')(value ? (value as [Date, Date]) : null)} />
           </>
         )}
         onSearch={handleSearch}

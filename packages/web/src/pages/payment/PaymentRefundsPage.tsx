@@ -36,7 +36,7 @@ export default function PaymentRefundsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentRefundKeys.lists });
   const [detail, setDetail] = useState<PaymentRefund | null>(null);
@@ -133,7 +133,7 @@ export default function PaymentRefundsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="退款单号/订单号..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={200} />
+    <KeywordInput placeholder="退款单号/订单号..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
   );
 
   const renderChannelFilter = () => (
@@ -141,7 +141,7 @@ export default function PaymentRefundsPage() {
       placeholder="全部渠道"
       items={PAYMENT_CHANNEL_OPTIONS}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
 
@@ -149,7 +149,7 @@ export default function PaymentRefundsPage() {
     <StatusSelect
       items={PAYMENT_REFUND_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
@@ -158,13 +158,13 @@ export default function PaymentRefundsPage() {
       placeholder="全部审批状态"
       items={PAYMENT_REFUND_APPROVAL_STATUS_OPTIONS}
       value={draftParams.approvalStatus}
-      onChange={(v) => setDraftParams((p) => ({ ...p, approvalStatus: v }))}
+      onChange={setField('approvalStatus')}
       width={140}
     />
   );
 
   const renderTimeRangeFilter = () => (
-    <DateRangeFilter placeholder={['创建开始', '创建结束']} value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))} />
+    <DateRangeFilter placeholder={['创建开始', '创建结束']} value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
   );
 
   const renderExportButtons = () => <ExportButton entity="payment.refunds" query={buildQuery(submittedParams)} />;

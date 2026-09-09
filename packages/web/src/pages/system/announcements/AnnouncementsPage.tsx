@@ -84,7 +84,7 @@ export default function AnnouncementsPage() {
   const defaultSearchParams: SearchParams = { title: '', type: undefined, publishStatus: undefined, timeRange: null };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: announcementKeys.lists });
 
@@ -588,24 +588,24 @@ export default function AnnouncementsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标题" value={draftParams.title} onChange={(v) => setDraftParams((prev) => ({ ...prev, title: v }))} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="搜索标题" value={draftParams.title} onChange={setField('title')} onSearch={handleSearch} width={200} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部公告类型"
               items={typeItems}
               value={draftParams.type}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, type: v }))}
+              onChange={setField('type')}
               width={140}
             />
             <FilterSelect
               placeholder="全部发布状态"
               items={statusItems}
               value={draftParams.publishStatus}
-              onChange={(v) => setDraftParams((prev) => ({ ...prev, publishStatus: v }))}
+              onChange={setField('publishStatus')}
               width={140}
             />
-            <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setDraftParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))} />
+            <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
           </>
         )}
         onSearch={handleSearch}

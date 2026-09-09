@@ -64,7 +64,7 @@ export default function MpAutoRepliesPage() {
   const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpAutoReplyKeys.lists });
 
@@ -207,12 +207,12 @@ export default function MpAutoRepliesPage() {
       placeholder="全部回复类型"
       items={REPLY_TYPE_OPTIONS}
       value={draftParams.filterType}
-      onChange={(v) => setDraftParams({ ...draftParams, filterType: enumValueOf(MP_AUTO_REPLY_TYPES, v) })}
+      onChange={(v) => setField('filterType')(enumValueOf(MP_AUTO_REPLY_TYPES, v))}
       width={140}
     />
   );
   const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索关键词" value={draftParams.keyword} onChange={(v) => setDraftParams({ ...draftParams, keyword: v })} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="搜索关键词" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={180} />
   );
   const renderCreateButton = () => can('mp:reply:create') ? (
     <CreateButton onClick={openCreate} disabled={!currentId} />

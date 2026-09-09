@@ -67,7 +67,7 @@ export default function PaymentTransfersPage() {
   const [rejectRemark, setRejectRemark] = useState('');
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentTransferKeys.lists });
 
@@ -215,21 +215,21 @@ export default function PaymentTransfersPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="转账单号 / 收款账号..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="转账单号 / 收款账号..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
   );
   const renderChannelFilter = () => (
     <FilterSelect
       placeholder="全部渠道"
       items={PAYMENT_CHANNEL_OPTIONS}
       value={draftParams.channel}
-      onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))}
+      onChange={setField('channel')}
     />
   );
   const renderStatusFilter = () => (
     <StatusSelect
       items={PAYMENT_TRANSFER_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
   const renderApprovalFilter = () => (
@@ -237,7 +237,7 @@ export default function PaymentTransfersPage() {
       placeholder="全部审批状态"
       items={PAYMENT_TRANSFER_APPROVAL_STATUS_OPTIONS}
       value={draftParams.approvalStatus}
-      onChange={(v) => setDraftParams((p) => ({ ...p, approvalStatus: v }))}
+      onChange={setField('approvalStatus')}
       width={140}
     />
   );

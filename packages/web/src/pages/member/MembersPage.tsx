@@ -57,7 +57,7 @@ export default function MembersPage() {
   const pwdFormApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.memberLists });
   // 等级列表"会员数"等入口的深链筛选（?levelId=，消费后即从 URL 移除）
@@ -264,14 +264,14 @@ export default function MembersPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="昵称/手机号/用户名/邮箱" value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={240} />
+    <KeywordInput placeholder="昵称/手机号/用户名/邮箱" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusOptions}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
@@ -280,7 +280,7 @@ export default function MembersPage() {
       placeholder="全部等级"
       items={levels.map((l) => ({ value: l.id, label: l.name }))}
       value={draftParams.levelId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, levelId: v as number | undefined }))}
+      onChange={(v) => setField('levelId')(v as number | undefined)}
       width={140}
     />
   );
@@ -290,7 +290,7 @@ export default function MembersPage() {
       placeholder="全部标签"
       items={memberTags.map((t: MemberTag) => ({ value: t.id, label: t.name }))}
       value={draftParams.tagId}
-      onChange={(v) => setDraftParams((p) => ({ ...p, tagId: v as number | undefined }))}
+      onChange={(v) => setField('tagId')(v as number | undefined)}
       width={140}
     />
   );

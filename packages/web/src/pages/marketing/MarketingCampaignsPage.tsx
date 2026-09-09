@@ -53,7 +53,7 @@ export default function MarketingCampaignsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: marketingCampaignKeys.lists });
 
@@ -182,7 +182,7 @@ export default function MarketingCampaignsPage() {
     <KeywordInput
       placeholder="搜索活动名称..."
       value={draftParams.keyword}
-      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
+      onChange={setField('keyword')}
       onSearch={handleSearch}
     />
   );
@@ -191,14 +191,14 @@ export default function MarketingCampaignsPage() {
     <StatusSelect
       items={MARKETING_CAMPAIGN_STATUS_OPTIONS}
       value={draftParams.status}
-      onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+      onChange={setField('status')}
     />
   );
 
   const renderTimeRangeFilter = () => (
     <DateRangeFilter
       value={draftParams.timeRange}
-      onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))}
+      onChange={setField('timeRange')}
     />
   );
 

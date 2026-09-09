@@ -95,7 +95,7 @@ export default function CronJobsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: cronJobKeys.lists });
   const [cronExprValue, setCronExprValue] = useState('');
@@ -348,12 +348,12 @@ export default function CronJobsPage() {
       <Tabs collapsible="auto" type="line" lazyRender activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <Tabs.TabPane tab="任务管理" itemKey="jobs">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="搜索任务名称/处理器" value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} width={240} />}
+            keyword={<KeywordInput placeholder="搜索任务名称/处理器" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />}
             filters={(
               <StatusSelect
                 items={statusItems}
                 value={draftParams.status}
-                onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))}
+                onChange={setField('status')}
               />
             )}
             onSearch={handleSearch}
