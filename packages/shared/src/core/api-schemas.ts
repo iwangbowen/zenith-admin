@@ -26,6 +26,9 @@ export const paginationQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(200).default(10).meta({ description: '每页数量，最大 200', example: 10 }),
 });
 
+/** 契约解析后的分页参数（page / pageSize 已补默认值并限界），作为服务层列表函数的入参类型 */
+export type PaginationQuery = z.infer<typeof paginationQuery>;
+
 /**
  * 时间范围端点参数（`startTime` / `endTime` 等）。
  * 同时接受 `YYYY-MM-DD` 与 `YYYY-MM-DD HH:mm:ss`，非法输入直接 400 而不是被当成「无筛选」。

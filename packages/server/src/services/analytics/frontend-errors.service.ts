@@ -11,7 +11,7 @@ import { tenantScope, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime, formatDate, APP_TIME_ZONE, parseDateRangeStart } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
-import { parseClientEnv, computeErrorFingerprint, startOfDaysAgo, clampDays, clampLimit, resolveIngestPlatformFields } from '../../lib/analytics-helpers';
+import { parseClientEnv, computeErrorFingerprint, startOfDaysAgo, clampDays, resolveIngestPlatformFields } from '../../lib/analytics-helpers';
 import { clearSymbolicateCache, symbolicateStack } from '../../lib/source-map-symbolicate';
 import { evaluateAlertsForError } from './error-alert.service';
 import { isSiteOriginAllowed, resolveSiteByKey } from './analytics-sites.service';
@@ -236,8 +236,7 @@ export async function reportError(input: {
 // ─── 分组列表 ─────────────────────────────────────────────────────────────────
 export type GroupListQuery = ErrorGroupListQueryInput;
 export async function listGroups(q: GroupListQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = clampLimit(q.pageSize, 20, 100);
+  const { page, pageSize } = q;
   const conditions = [];
   if (q.status) conditions.push(eq(errorGroups.status, q.status as 'unresolved'));
   if (q.errorType) conditions.push(eq(errorGroups.errorType, q.errorType as 'js_error'));
@@ -448,8 +447,7 @@ export async function getErrorOverview(daysRaw: unknown) {
 // ─── 事件列表 ─────────────────────────────────────────────────────────────────
 export type ErrorEventListQuery = ErrorEventListQueryInput;
 export async function listErrorEvents(q: ErrorEventListQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = clampLimit(q.pageSize, 20, 100);
+  const { page, pageSize } = q;
   const conditions = [];
   if (q.groupId) conditions.push(eq(errorEvents.groupId, q.groupId));
   const where = buildWhere(...conditions, tenantScope(errorEvents));
@@ -487,8 +485,7 @@ export async function uploadSourceMap(input: SourceMapUploadInput) {
 
 export type SourceMapListQuery = SourceMapListQueryInput;
 export async function listSourceMaps(q: SourceMapListQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = clampLimit(q.pageSize, 20, 100);
+  const { page, pageSize } = q;
   const conditions = [];
   conditions.push(keywordCondition(q.release, [sourceMaps.release]));
   const where = buildWhere(...conditions, tenantScope(sourceMaps));

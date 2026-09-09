@@ -25,6 +25,7 @@ vi.mock('../../lib/context', () => ({
   currentUser: () => ({ userId: 1, tenantId: effectiveTenantId, roles: ['user'] }),
 }));
 
+import { analyticsDebugEventsQuery } from '@zenith/shared/analytics';
 import { listDebugEvents, qualityTenantScope, queryQuality } from './analytics-quality.service';
 
 describe('qualityTenantScope — tenant safety aligned with rollupTenantScope semantics', () => {
@@ -85,10 +86,11 @@ describe('listDebugEvents', () => {
     platformAdmin = false;
   });
 
-  it('clamps pageSize to at most 100 regardless of a larger requested value', async () => {
-    select.mockReturnValue({ from: () => ({ where: () => ({ orderBy: () => ({ limit: (n: number) => { expect(n).toBeLessThanOrEqual(100); return { offset: () => Promise.resolve([]) }; } }) }) }) });
+  it('pageSize 上限由契约 analyticsDebugEventsQuery 守住（≤200），服务层按解析值原样下发 limit', async () => {
+    expect(analyticsDebugEventsQuery.safeParse({ pageSize: 500 }).success).toBe(false);
+    select.mockReturnValue({ from: () => ({ where: () => ({ orderBy: () => ({ limit: (n: number) => { expect(n).toBe(200); return { offset: () => Promise.resolve([]) }; } }) }) }) });
     count.mockResolvedValue(0);
-    await listDebugEvents({ pageSize: 500 });
+    await listDebugEvents(analyticsDebugEventsQuery.parse({ pageSize: '200' }));
   });
 
   it('attaches deduplicated same-day issueTypes for each returned event by eventName', async () => {

@@ -29,8 +29,7 @@ export type QualityQuery = AnalyticsQualityQueryInput;
 
 export async function queryQuality(q: QualityQuery) {
   const days = clampDays(q.days, 7, 90);
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 50, 1), 200);
+  const { page, pageSize } = q;
   const startDate = formatDate(new Date(Date.now() - (days - 1) * 86_400_000));
 
   const conditions: SQL[] = [gte(analyticsEventQualityDaily.statDate, startDate)];
@@ -72,8 +71,7 @@ export async function queryQuality(q: QualityQuery) {
 export type DebugEventsQuery = AnalyticsDebugEventsQueryInput;
 
 export async function listDebugEvents(q: DebugEventsQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const conditions: SQL[] = [];
   if (q.eventName) conditions.push(eq(userEvents.eventName, q.eventName));
   const scope = tenantScope(userEvents);

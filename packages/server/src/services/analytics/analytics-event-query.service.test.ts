@@ -21,6 +21,7 @@ vi.mock('../../db', () => ({ db: { select } }));
 vi.mock('./analytics-segments.service', () => ({ ensureSegmentAccessible, segmentMemberDistinctIdSubquery }));
 vi.mock('../../lib/tenant', () => ({ tenantScope }));
 
+import { analyticsEventQuerySchema } from '@zenith/shared/analytics';
 import { queryEvents } from './analytics-event-query.service';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,10 +96,11 @@ describe('queryEvents — groupBy 白名单 + 属性注入防护 + tenantScope +
     expect(tenantScope).toHaveBeenCalledTimes(1);
   });
 
-  it('clamps pageSize to the [1, 200] range', async () => {
+  it('pageSize 上限由契约 analyticsEventQuerySchema 守住（1..200），服务层按解析值原样下发 limit', async () => {
+    expect(analyticsEventQuerySchema.safeParse({ pageSize: 5000 }).success).toBe(false);
     const chain = makeChain([]);
     select.mockReturnValue(chain);
-    await queryEvents({ pageSize: 5000 });
+    await queryEvents(analyticsEventQuerySchema.parse({ pageSize: 200 }));
     expect(chain.limit).toHaveBeenCalledWith(200);
   });
 

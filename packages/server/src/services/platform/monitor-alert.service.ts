@@ -144,8 +144,7 @@ export function buildRuleListWhere(q: MonitorAlertRuleQuery) {
 }
 
 export async function listRules(q: MonitorAlertRuleQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const where = buildRuleListWhere(q);
   return buildListResult({
     page,
@@ -352,8 +351,7 @@ export function buildEventListWhere(q: MonitorAlertEventQuery) {
 }
 
 export async function listEvents(q: MonitorAlertEventQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const where = buildEventListWhere(q);
   return buildListResult({
     page,

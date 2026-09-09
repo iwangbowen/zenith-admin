@@ -24,6 +24,7 @@ import { currentCreateTenantId, tenantScope, exactTenantCondition } from '../../
 import { startOfDaysAgo } from '../../lib/analytics-helpers';
 import logger from '../../lib/logger';
 import { buildJsonPropertyCondition, buildColumnCompareCondition, PROPERTY_KEY_RE } from './analytics-property-filter';
+import type { PaginationQuery } from '@zenith/shared/core';
 
 export function mapSegment(row: AnalyticsUserSegmentRow) {
   return {
@@ -68,8 +69,7 @@ function validateRules(rules: AnalyticsSegmentRule): void {
 export type SegmentListQuery = AnalyticsSegmentListQueryInput;
 
 export async function listSegments(q: SegmentListQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const conditions: (SQL | undefined)[] = [];
   conditions.push(keywordCondition(q.keyword, [analyticsUserSegments.name], 'ilike'));
   if (q.status) conditions.push(eq(analyticsUserSegments.status, q.status as 'enabled' | 'disabled'));
@@ -146,11 +146,10 @@ export async function deleteSegment(id: number) {
 }
 
 // ─── 成员分页 ─────────────────────────────────────────────────────────────────
-export interface SegmentMembersQuery { page?: number; pageSize?: number }
+export type SegmentMembersQuery = PaginationQuery;
 export async function listSegmentMembers(id: number, q: SegmentMembersQuery) {
   await ensureSegmentExists(id);
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const where = eq(analyticsSegmentMembers.segmentId, id);
   return buildListResult({
     page,

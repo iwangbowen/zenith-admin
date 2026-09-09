@@ -82,8 +82,7 @@ function invalidateSiteCache(siteKey?: string): void {
 }
 
 export async function listSites(q: AnalyticsSiteListQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const conditions: (SQL | undefined)[] = [];
   conditions.push(keywordCondition(q.name, [analyticsSites.name], 'ilike'));
   if (q.appId) conditions.push(eq(analyticsSites.appId, q.appId));

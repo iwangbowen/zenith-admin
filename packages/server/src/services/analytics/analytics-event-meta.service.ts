@@ -68,8 +68,7 @@ async function resolveOwnerName(ownerId: number): Promise<string> {
 
 export type EventMetaListQuery = AnalyticsEventMetaListQueryInput;
 export async function listEventMeta(q: EventMetaListQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const conditions = [];
   conditions.push(keywordCondition(q.keyword, [analyticsEventMeta.eventName]));
   if (q.status) conditions.push(eq(analyticsEventMeta.status, q.status as 'active'));

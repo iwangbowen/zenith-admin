@@ -100,8 +100,7 @@ function buildExperimentWhere(q: ListExperimentsQuery): SQL | undefined {
 }
 
 export async function listExperiments(q: ListExperimentsQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const where = buildExperimentWhere(q);
   return buildListResult({
     page: page,

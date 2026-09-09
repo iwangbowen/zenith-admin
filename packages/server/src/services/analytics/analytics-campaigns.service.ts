@@ -77,8 +77,7 @@ function buildCampaignWhere(q: ListCampaignsQuery): SQL | undefined {
 }
 
 export async function listCampaigns(q: ListCampaignsQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   if (q.segmentId) await ensureSegmentExists(q.segmentId);
   const where = buildCampaignWhere(q);
   const base = db.select({

@@ -622,6 +622,8 @@ export const analyticsEventQuerySchema = z.object({
 
 /** 事件分析查询（客户端形态：带默认值的字段可省略） */
 export type AnalyticsEventQueryInput = z.input<typeof analyticsEventQuerySchema>;
+/** 解析后的事件分析查询（page / pageSize 已补默认值），服务层入参类型 */
+export type AnalyticsEventQuery = z.infer<typeof analyticsEventQuerySchema>;
 
 export const sourceMapUploadSchema = z.object({
   release: z.string().min(1).max(64),

@@ -40,8 +40,7 @@ export function requireViewingTenantId(): number {
 export type EventOverrideListQuery = AnalyticsEventOverrideListQueryInput;
 export async function listEventOverrides(q: EventOverrideListQuery) {
   const tenantId = requireViewingTenantId();
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const conditions = [eq(analyticsEventOverrides.tenantId, tenantId)];
   if (q.eventName) conditions.push(eq(analyticsEventOverrides.eventName, q.eventName));
   if (q.status) conditions.push(eq(analyticsEventOverrides.status, q.status as 'enabled'));

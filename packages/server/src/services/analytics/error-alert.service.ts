@@ -11,6 +11,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { validateAlertDelivery } from '../../lib/alert-validation';
 import { dispatchAlertChannels } from '../../lib/alert-dispatch';
+import type { PaginationQuery } from '@zenith/shared/core';
 
 export function mapRule(row: ErrorAlertRuleRow) {
   return {
@@ -31,10 +32,9 @@ export function mapRule(row: ErrorAlertRuleRow) {
   };
 }
 
-export interface AlertRuleListQuery { page?: number; pageSize?: number }
+export type AlertRuleListQuery = PaginationQuery;
 export async function listAlertRules(q: AlertRuleListQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const where = tenantScope(errorAlertRules);
   return buildListResult({
     page: page,
@@ -284,8 +284,7 @@ export function mapAlertLog(row: ErrorAlertLogRow) {
 
 export type AlertLogListQuery = ErrorAlertLogListQueryInput;
 export async function listAlertLogs(q: AlertLogListQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+  const { page, pageSize } = q;
   const where = buildWhere(q.ruleId != null ? eq(errorAlertLogs.ruleId, q.ruleId) : undefined, tenantScope(errorAlertLogs));
   return buildListResult({
     page: page,

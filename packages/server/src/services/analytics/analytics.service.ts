@@ -5,7 +5,8 @@ import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
 import { userEvents, analyticsSessions, analyticsDailyRollup } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import type { TrackEventInput, AnalyticsEventSource, AnalyticsEnvironment, AnalyticsIdentityType, AnalyticsDeviceType, UserBehaviorEventType, AnalyticsSessionListQueryInput } from '@zenith/shared/analytics';
+import type { PaginationQuery } from '@zenith/shared/core';
+import type { TrackEventInput, AnalyticsEventSource, AnalyticsEnvironment, AnalyticsIdentityType, AnalyticsDeviceType, AnalyticsSessionListQueryInput, AnalyticsPagedDaysQueryInput, AnalyticsFeatureStatsQueryInput, AnalyticsEventListQueryInput } from '@zenith/shared/analytics';
 import { ANALYTICS_RAGE_CLICK_EVENT, ANALYTICS_PATH_EXIT_PAGE } from '@zenith/shared/analytics';
 import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
@@ -670,15 +671,6 @@ export async function getTrends(input: TrendsInput) {
 // 页面停留 / 功能使用 / 热力图 / 用户统计
 // ════════════════════════════════════════════════════════════════════════════
 
-const ANALYTICS_PAGE_SIZE_MAX = 200;
-
-/** 分页入参归一：页码/页长兜底并夹紧上界，避免 pageSize=100000 打穿一次查询 */
-function normalizePageQuery(q: { page?: number; pageSize?: number }): { page: number; pageSize: number } {
-  const page = Math.max(1, Math.trunc(Number(q.page) || 1));
-  const pageSize = Math.min(Math.max(1, Math.trunc(Number(q.pageSize) || 20)), ANALYTICS_PAGE_SIZE_MAX);
-  return { page, pageSize };
-}
-
 /**
  * 分组总数：分页列表的 total 必须是**分组后的行数**，而不是 db.$count 的原始事件数。
  * 直接用事件数会让页码算多出十几倍，翻到后面全是空页。
@@ -696,10 +688,10 @@ function countDistinctGroups(column: PgColumn, where?: SQL): Promise<number> {
   return countGroups(sql`${column}`, where);
 }
 
-export interface PageStatsQuery { days?: number; page?: number; pageSize?: number }
+export type PageStatsQuery = AnalyticsPagedDaysQueryInput;
 export async function getPageStats(q: PageStatsQuery) {
   const days = clampDays(q.days, 30);
-  const { page, pageSize } = normalizePageQuery(q);
+  const { page, pageSize } = q;
   const start = startOfDaysAgo(days);
   const where = buildWhere(
     and(eq(userEvents.eventType, 'page_leave'), isNotNull(userEvents.durationMs), gte(userEvents.createdAt, start)),
@@ -753,10 +745,10 @@ export async function getPageStats(q: PageStatsQuery) {
   };
 }
 
-export interface FeatureStatsQuery { days?: number; page?: number; pageSize?: number; pagePath?: string }
+export type FeatureStatsQuery = AnalyticsFeatureStatsQueryInput;
 export async function getFeatureStats(q: FeatureStatsQuery) {
   const days = clampDays(q.days, 30);
-  const { page, pageSize } = normalizePageQuery(q);
+  const { page, pageSize } = q;
   const start = startOfDaysAgo(days);
   const conditions = [eq(userEvents.eventType, 'feature_use'), isNotNull(userEvents.elementKey), gte(userEvents.createdAt, start)];
   if (q.pagePath) conditions.push(eq(userEvents.pagePath, q.pagePath));
@@ -978,10 +970,10 @@ export async function getHeatmapPageList(q: HeatmapPageListQuery) {
   return { pages: Array.from(pageMap.values()).map((p) => ({ pagePath: p.pagePath, pageTitle: p.pageTitle, areas: Array.from(p.areas) })) };
 }
 
-export interface UserStatsQuery { days?: number; page?: number; pageSize?: number }
+export type UserStatsQuery = AnalyticsPagedDaysQueryInput;
 export async function getUserStats(q: UserStatsQuery) {
   const days = clampDays(q.days, 30);
-  const { page, pageSize } = normalizePageQuery(q);
+  const { page, pageSize } = q;
   const start = startOfDaysAgo(days);
   const where = buildWhere(gte(userEvents.createdAt, start), tenantScope(userEvents));
 
@@ -1034,8 +1026,7 @@ export async function getUserStats(q: UserStatsQuery) {
 
 export type SessionListQuery = AnalyticsSessionListQueryInput;
 export async function listSessions(q: SessionListQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = clampLimit(q.pageSize, 20, 100);
+  const { page, pageSize } = q;
   const conditions = [];
   conditions.push(keywordCondition(q.username, [analyticsSessions.username]));
   if (q.deviceType) conditions.push(eq(analyticsSessions.deviceType, q.deviceType as 'desktop'));
@@ -1479,19 +1470,12 @@ export async function getRealtime() {
 // 事件列表 / 详情 / 清理
 // ════════════════════════════════════════════════════════════════════════════
 
-export interface EventListQuery {
-  page?: number;
-  pageSize?: number;
-  eventType?: UserBehaviorEventType;
-  eventName?: string;
-  username?: string;
-  pagePath?: string;
-  deviceType?: string;
-  startTime?: Date;
-  endTime?: Date;
-}
+/** 事件列表筛选：字段由契约派生，时间范围由路由 / 导出定义经 parseDateRangeStart / End 预解析为 Date */
+export type EventListFilter = Omit<AnalyticsEventListQueryInput, 'page' | 'pageSize' | 'startTime' | 'endTime'> & { startTime?: Date; endTime?: Date };
 
-function buildEventListWhere(q: EventListQuery) {
+export type EventListQuery = EventListFilter & PaginationQuery;
+
+function buildEventListWhere(q: EventListFilter) {
   const conditions = [];
   if (q.eventType) conditions.push(eq(userEvents.eventType, q.eventType));
   if (q.eventName) conditions.push(eq(userEvents.eventName, q.eventName));
@@ -1504,8 +1488,7 @@ function buildEventListWhere(q: EventListQuery) {
 }
 
 export async function listAnalyticsEvents(q: EventListQuery) {
-  const page = Math.max(Number(q.page) || 1, 1);
-  const pageSize = clampLimit(q.pageSize, 20, 100);
+  const { page, pageSize } = q;
   const where = buildEventListWhere(q);
 
   return buildListResult({
@@ -1605,7 +1588,7 @@ export async function getEventDetail(id: number) {
   };
 }
 
-export async function listEventsForExport(q: EventListQuery, max = 50_000) {
+export async function listEventsForExport(q: EventListFilter, max = 50_000) {
   const where = buildEventListWhere(q);
   const rows = await db
     .select({
@@ -1635,7 +1618,7 @@ export async function listEventsForExport(q: EventListQuery, max = 50_000) {
   return rows.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt) }));
 }
 
-export async function countEventsForExport(q: EventListQuery, max = 50_000): Promise<number> {
+export async function countEventsForExport(q: EventListFilter, max = 50_000): Promise<number> {
   return Math.min(await db.$count(userEvents, buildEventListWhere(q)), max);
 }
 

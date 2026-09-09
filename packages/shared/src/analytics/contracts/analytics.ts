@@ -89,9 +89,14 @@ export const analyticsDaysQuery = z.object({ days: daysQuery(365, 30) });
 
 export const analyticsPagedDaysQuery = paginationQuery.extend({ days: daysQuery(365, 30) });
 
+/** 分页 + 统计天数（页面 / 用户统计等分页榜单的服务层入参类型） */
+export type AnalyticsPagedDaysQueryInput = z.infer<typeof analyticsPagedDaysQuery>;
+
 export const analyticsFeatureStatsQuery = analyticsPagedDaysQuery.extend({
   pagePath: z.string().optional(),
 });
+
+export type AnalyticsFeatureStatsQueryInput = z.infer<typeof analyticsFeatureStatsQuery>;
 
 export const analyticsHeatmapQuery = z.object({
   pagePath: z.string().min(1),
@@ -147,6 +152,8 @@ export const analyticsEventListQuery = paginationQuery.extend({
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
 });
+
+export type AnalyticsEventListQueryInput = z.infer<typeof analyticsEventListQuery>;
 
 export const analyticsCleanQuery = z.object({
   days: z.coerce.number().int().min(0).default(0).meta({ description: '仅清除 N 天前的数据；0 = 全部' }),

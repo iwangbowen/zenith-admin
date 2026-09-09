@@ -12,7 +12,7 @@ import type { PgColumn } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { userEvents } from '../../db/schema';
-import type { AnalyticsEventQueryInput, AnalyticsEventQueryResult, AnalyticsEventQueryGroupByField, AnalyticsEventQueryMetric } from '@zenith/shared/analytics';
+import type { AnalyticsEventQuery, AnalyticsEventQueryResult, AnalyticsEventQueryGroupByField, AnalyticsEventQueryMetric } from '@zenith/shared/analytics';
 import { ANALYTICS_EVENT_QUERY_METRICS, analyticsMetricRequiresProperty } from '@zenith/shared/analytics';
 import { tenantScope } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
@@ -123,13 +123,13 @@ function metricPropertyGuard(metric: AnalyticsEventQueryMetric, metricProperty: 
 }
 
 /** 通用事件分析：白名单维度分组 + 多指标统计，返回 rows/total/queryMeta。 */
-export async function queryEvents(input: AnalyticsEventQueryInput): Promise<AnalyticsEventQueryResult> {
+export async function queryEvents(input: AnalyticsEventQuery): Promise<AnalyticsEventQueryResult> {
   const groupBy = (input.groupBy && input.groupBy.length > 0 ? input.groupBy : (['date'] as AnalyticsEventQueryGroupByField[])).slice(0, 2);
   const metric: AnalyticsEventQueryMetric = (ANALYTICS_EVENT_QUERY_METRICS as readonly string[]).includes(input.metric ?? '')
     ? (input.metric as AnalyticsEventQueryMetric)
     : 'events';
   const metricProperty = input.metricProperty?.trim() || null;
-  const { page, pageSize } = normalizeEventQueryPage(input);
+  const { page, pageSize } = input;
   const { start, end, startLabel, endLabel } = resolveDateRange(input);
 
   const conditions: SQL[] = [gte(userEvents.createdAt, start), lte(userEvents.createdAt, end), isNotNull(userEvents.distinctId)];
@@ -195,10 +195,3 @@ export async function queryEvents(input: AnalyticsEventQueryInput): Promise<Anal
   };
 }
 
-const EVENT_QUERY_PAGE_SIZE_MAX = 200;
-
-function normalizeEventQueryPage(input: { page?: number; pageSize?: number }): { page: number; pageSize: number } {
-  const page = Math.max(1, Math.trunc(Number(input.page) || 1));
-  const pageSize = Math.min(Math.max(1, Math.trunc(Number(input.pageSize) || 20)), EVENT_QUERY_PAGE_SIZE_MAX);
-  return { page, pageSize };
-}

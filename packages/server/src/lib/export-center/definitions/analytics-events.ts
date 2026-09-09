@@ -1,4 +1,4 @@
-import { listEventsForExport, countEventsForExport, type EventListQuery } from '../../../services/analytics/analytics.service';
+import { listEventsForExport, countEventsForExport, type EventListFilter } from '../../../services/analytics/analytics.service';
 import { parseDateRangeEnd, parseDateRangeStart } from '../../datetime';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
@@ -8,13 +8,13 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function normalizeQuery(query: Record<string, unknown>): EventListQuery {
+function normalizeQuery(query: Record<string, unknown>): EventListFilter {
   return {
-    eventType: asString(query.eventType) as EventListQuery['eventType'],
+    eventType: asString(query.eventType) as EventListFilter['eventType'],
     eventName: asString(query.eventName),
     username: asString(query.username),
     pagePath: asString(query.pagePath),
-    deviceType: asString(query.deviceType),
+    deviceType: asString(query.deviceType) as EventListFilter['deviceType'],
     startTime: parseDateRangeStart(asString(query.startTime)) ?? undefined,
     endTime: parseDateRangeEnd(asString(query.endTime)) ?? undefined,
   };
