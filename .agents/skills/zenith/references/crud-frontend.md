@@ -130,10 +130,11 @@ export default function XxxPage() {
   const canUpdate = hasPermission('system:xxx:update');
 
   // ─── 搜索状态：draft 绑输入框，submitted 进 query key ────────────────────
-  // useListSearch 内部整合 usePagination，并保证「查询 / 重置」必定失效 listKey
+  // useListSearch 内部整合 usePagination，并保证「查询 / 重置」必定失效 listKey；
+  // 筛选控件用 bind / bindKeyword 整体绑定，只有 Checkbox 之类非 value/onChange 形态的控件才取 setField
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: xxxKeys.lists });
 
@@ -184,7 +185,8 @@ export default function XxxPage() {
     disabled: !canUpdate,
   });
 
-  const { items: statusItems } = useDictItems('common_status');
+  // items 给筛选栏 StatusSelect；options（{ value, label }[]）直接给表单 Form.Select 的 optionList
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   // 导出条件：compactQuery 丢弃 undefined / null / 空串，时间区间直接展开 formatDateTimeRangeForApi(range)
   const buildExportQuery = () => compactQuery({
@@ -219,13 +221,14 @@ export default function XxxPage() {
   return (
     <div className="page-container">
       {/* 桌面：关键词 → 筛选 → 查询 / 重置 → 新增 → 低频操作；移动：主区 关键词 + 查询 + 新增，筛选进抽屉，低频操作进更多菜单 */}
-      {/* 筛选控件的 onChange 一律 setField('字段')；控件值需转换时 (e) => setField('x')(转换(e)) */}
+      {/* 控件直接写在槽位里，不再定义 renderXxx 渲染闭包；关键字用 bindKeyword（含回车查询），其余筛选用 bind */}
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索名称..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索名称..." {...bindKeyword('keyword')} />}
         filters={(
           <>
-            <StatusSelect items={statusItems} value={draftParams.status} onChange={setField('status')} />
-            {/* <DateRangeFilter value={draftParams.timeRange} onChange={setField('timeRange')} /> */}
+            <StatusSelect items={statusItems} {...bind('status')} />
+            {/* <DateRangeFilter {...bind('timeRange')} /> */}
+            {/* 控件回传比字段宽时传 parse 收窄：{...bind('type', (v) => enumValueOf(XXX_TYPES, v))} */}
           </>
         )}
         onSearch={handleSearch}
@@ -265,7 +268,7 @@ export default function XxxPage() {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Select field="status" label="状态" style={{ width: '100%' }}
-                  optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+                  optionList={statusOptions}
                   rules={[{ required: true, message: '请选择状态' }]} />
               </Col>
             </Row>
@@ -308,9 +311,12 @@ onSelect={(deptId) => applySearch({ ...draftParams, departmentId: deptId })}
 | `StatusSelect` | `FilterSelect` 的状态特化，占位固定「全部状态」 | `width` / `items` |
 | `DateRangeFilter` | `dateTimeRange`、占位「开始时间/结束时间」、宽度 400（`DATE_TIME_RANGE_FILTER_WIDTH`） | `type="dateRange"`（占位「开始日期/结束日期」，宽度 280 = `DATE_RANGE_FILTER_WIDTH`）/ `placeholder` / `width`（只用于 `"100%"`、`style={{ flex: 1 }}` 这类自适应场景，**不要改小**） |
 
-- 只收敛**装饰性属性**，业务属性（`value` / `onChange` / `items` / `placeholder`）仍显式传入
+- 只收敛**装饰性属性**，业务属性（`items` / `placeholder`）仍显式传入；`value` / `onChange` 一律由
+  `useListSearch` 的 `bind('字段')` 展开（关键字用 `bindKeyword`，额外接回车触发的 `onSearch`），
+  控件回传类型比字段宽时传 `parse`：`bind('status', (v) => enumValueOf(STATUSES, v))`
 - 适用范围、占位 / 哨兵 / 空值规则见 [constraints-frontend.md → 搜索栏与表格](./constraints-frontend.md#搜索栏与表格)；
-  `items` 取 shared 导出的 `XXX_OPTIONS` 或 `useDictItems(...).items`，动态数据自行映射为 `{ value, label }`，需分组时传 `groups`
+  `items` 取 shared 导出的 `XXX_OPTIONS` 或 `useDictItems(...).items`，表单 `Form.Select` 的 `optionList` 取 `useDictItems(...).options`，
+  动态数据自行映射为 `{ value, label }`，需分组时传 `groups`
 - `DateRangeFilter` 把 Semi 宽松的 `onChange` 收窄为 `[Date, Date] | null`，
   页面不必再写 `Array.isArray(v) && v.length >= 2` 之类的判断；区间状态统一声明为 `[Date, Date] | null`（或 `?: [Date, Date]`），
   提交时用 `formatDateTimeRangeForApi(range)` 得到 `{ startTime, endTime }`
@@ -394,7 +400,7 @@ const handleBatchDelete = () => confirmAndDelete({
 
 ## 状态与时间的展示
 
-- 状态选项用 `useDictItems('common_status')`；表格中用
+- 状态选项用 `useDictItems('common_status')`：筛选栏用 `items`，表单 `Form.Select` 用 `options`；表格中用
   `<DictTag dictCode="common_status" value={status} />` 或手动 `find` 映射
 - 时间列用 `utils/table-columns` 的列工厂（`dateTimeColumn` / `dateColumn`，`createdAt` / `updatedAt` 直接用预置的
   `createdAtColumn` / `updatedAtColumn`），长文本列用 `renderEllipsis`

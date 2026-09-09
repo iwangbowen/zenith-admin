@@ -105,7 +105,7 @@ export const useAssignXxxMenus = () =>
 ```tsx
 const {
   page, pageSize, buildPagination,
-  draftParams, setField, submittedParams,
+  bind, bindKeyword, submittedParams,
   handleSearch, handleReset, applySearch,
 } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: xxxKeys.lists });
 
@@ -116,11 +116,13 @@ const listQuery = useXxxList({
   status: enumValueOf(XXX_STATUSES, submittedParams.status),   // 契约按枚举声明，先收窄 string
 });
 
-// 筛选控件绑定草稿字段：setField(key) 按 key 缓存、引用稳定
-<KeywordInput value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
+// 受控筛选控件整体绑定：bind(key) 展开 value / onChange（onChange 按 key 缓存、引用稳定），bindKeyword 额外接回车查询
+<KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />
+<StatusSelect items={statusItems} {...bind('status')} />
 ```
 
-`setField(key)` 返回单字段 setter，是筛选控件 `onChange` 的标准写法；控件值需要转换时写 `(e) => setField('archived')(!!e.target.checked)`，一次改多个字段才用 `setDraftParams`。
+`bind(key)` / `bindKeyword(key)` 是受控筛选控件的标准绑定；控件回传类型比字段宽时传 `parse` 收窄：`bind('status', (v) => enumValueOf(XXX_STATUSES, v))`。
+`Checkbox` 等非 `value` / `onChange` 形态的控件才用 `setField(key)`（如 `(e) => setField('archived')(!!e.target.checked)`），一次改多个字段才用 `setDraftParams`。
 `applySearch(params)` 用于点击部门树、标签、收藏开关、保存视图等不经过输入框的筛选；它同步更新 draft 与 submitted，回到第一页并失效列表。不要暴露 `submittedParams` 的裸 setter。
 
 表格接线：

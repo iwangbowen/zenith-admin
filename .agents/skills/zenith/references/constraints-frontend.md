@@ -31,7 +31,7 @@
 | 新增 / 编辑弹窗 | `hooks/useEditModal.ts` | `useRef<FormApi>` + `editingRecord` + `try { validate() } catch` + `Toast` + 关闭四件套 | 确定按钮永远转圈；异步详情进不了表单；下次「新增」带出上次记录 |
 | 弹窗 / 抽屉自定义页脚 | `components/ModalFooter.tsx`（`<ModalFooter {...modal.footerProps} okText="保存" />`，独立提交状态传 `onCancel` / `onOk` / `loading`；左侧次要动作传 `extra`） | `<div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>` + 取消 / 确认两个 `Button` | 按钮次序、主次样式与间距各页不一；详情加载中未禁用提交 |
 | Excel / CSV 导入入口 | `components/ImportButton.tsx`；自定义导入面板用 `hooks/useImportUpload.tsx`（隐藏 file input → 上传文件中心 → 提交任务，正式 / 预检） | 手写 `<input type="file">` + `useUploadFile` + `useSubmitImportJob` 串联 | 预检标记与 loading 归属错乱；上下文参数漏传 |
-| 列表页搜索状态 | `hooks/useListSearch.ts`；筛选控件绑定草稿字段一律 `onChange={setField('字段')}`（值需转换时 `(e) => setField('x')(转换(e))`），一次改多个字段才用 `setDraftParams` | `draftParams` / `submittedParams` 双状态 + `handleSearch` / `handleReset`；单字段写入手写 `setDraftParams((p) => ({ ...p, x: v }))` / `setDraftParams({ ...draftParams, x: v })` | 条件未变时点「查询」不回源，且列表仍有数据、不报错；非函数式写法在同一 tick 改多个字段互相覆盖 |
+| 列表页搜索状态 | `hooks/useListSearch.ts`；受控筛选控件一律整体绑定：`<StatusSelect items={statusItems} {...bind('status')} />`，控件回传比字段宽时 `bind('status', (v) => enumValueOf(STATUSES, v))`，关键字输入框用 `{...bindKeyword('keyword')}`（额外接回车查询）；`Checkbox` 等非 `value` / `onChange` 形态的控件才用 `setField`，一次改多个字段才用 `setDraftParams`；控件直接写在 `ListSearchToolbar` 槽位里 | `draftParams` / `submittedParams` 双状态 + `handleSearch` / `handleReset`；手写 `value={draftParams.x} onChange={setField('x')} onSearch={handleSearch}` 三件套或 `onChange={(v) => setField('x')(v as T)}` 断言；`const renderKeyword = () => (...)` 之类只调用一次的渲染闭包；单字段写入手写 `setDraftParams((p) => ({ ...p, x: v }))` | 条件未变时点「查询」不回源，且列表仍有数据、不报错；关键字漏接 `onSearch` 回车不查询；下拉控件误接 `onSearch` 会把 Semi 的下拉搜索回调当成查询触发 |
 | 导出 / 深链等对象参数的空值过滤 | `lib/query.ts` 的 `compactQuery({ ... })`（丢弃 `undefined` / `null` / 空串），时间区间直接展开 `...formatDateTimeRangeForApi(range)` | `...(x ? { x } : {})` 条件展开、`x || undefined` 逐字段手写 | 各页对空串 / `0` / `false` 的取舍不一致 |
 | 列表页工具栏排布 | `components/list-page` 的 `ListSearchToolbar`（`keyword` / `filters` / `create` / `actions` 槽位 + `onSearch` / `onReset`） | 手写 `SearchToolbar` 的 `primary` / `mobilePrimary` / `mobileFilters` 双份 JSX、`renderKeywordSearch` 之类的渲染闭包 | 桌面 / 移动排布各页不一致；移动端漏掉查询或新增 |
 | 状态开关列 | `components/list-page` 的 `useStatusToggle({ toggle, confirmDisable, disabled })` → `status.column()` | `togglingId = mutation.isPending ? mutation.variables?.id : null` + 手写 `Switch` + `Modal.confirm` + `Toast.success('已启用')` | 行内 loading 与载荷形状耦合；停用确认样式各页不一 |
@@ -211,8 +211,8 @@
 
   | 枚举性质 | 来源 |
   | --- | --- |
-  | 运营可扩展的自由文本枚举 | 字典 `useDictItems('code')`（种子在 `shared/src/seed/platform.ts`） |
-  | 通用启用 / 禁用 | `useDictItems('common_status')`（前端）/ `COMMON_STATUS_LABELS`（server，`@zenith/shared/core`） |
+  | 运营可扩展的自由文本枚举 | 字典 `useDictItems('code')`（种子在 `shared/src/seed/platform.ts`）：筛选栏 `items` 直接用 `.items`，表单 `Form.Select` / `Select` 的 `optionList` 用 `.options`，**禁止**页面里 `items.map((i) => ({ value: i.value, label: i.label }))` |
+  | 通用启用 / 禁用 | `useDictItems('common_status')`（前端）/ `COMMON_STATUS_LABELS`（server，`@zenith/shared/core`）；表单单选组用 `components/FormStatusRadioGroup.tsx` |
   | 代码耦合枚举（pg enum / 状态机 / 协议值） | `shared/src/{业务域}/constants.ts` 的 `XXX_LABELS` / `XXX_OPTIONS` |
   | 工作流实例 / 任务状态 | `components/workflow/workflow-runtime.ts` 的 `INSTANCE_STATUS_MAP` / `TASK_STATUS_MAP` |
 
