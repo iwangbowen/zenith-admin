@@ -6,7 +6,7 @@ import type {
 } from '../types';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
 import { renderCmsWidgetHtml } from '../widgets';
-import { Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, Pagination, SeoHead, buildAnalyticsBeacon, searchResultHref, SinglePageArticle, TagLinks, externalLinkProps } from '../_shared';
+import { Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, Pagination, SeoHead, buildAnalyticsBeacon, SinglePageArticle, TagLinks, SearchResultLink, SearchResultList } from '../_shared';
 
 /** 暗色变量组；注册进主题对象 darkVars 供样式装配 */
 export const DOCS_THEME_DARK_VARS = '--text:#dfdfd6; --text-2:#98989f; --border:#3c3f44; --bg:#1b1b1f; --bg-2:#242429;';
@@ -204,24 +204,20 @@ function SearchTemplate(ctx: CmsSearchContext) {
   return (
     <Layout ctx={ctx}>
       <h1 className="page-title">搜索「{ctx.keyword}」</h1>
-      <div className="doc-list search-result">
-        {ctx.results.length === 0 ? (
-          <div className="empty">未找到相关内容</div>
-        ) : ctx.results.map((r) => (
+      <SearchResultList
+        ctx={ctx}
+        className="doc-list"
+        renderItem={(r) => (
           <div className="doc-item" key={r.id}>
-            <h3><a
-              href={searchResultHref(r, ctx.baseUrl)}
-              {...externalLinkProps(r.isExternal)}
-              dangerouslySetInnerHTML={{ __html: r.titleHighlight }}
-            /></h3>
+            <h3><SearchResultLink result={r} baseUrl={ctx.baseUrl} /></h3>
             <div className="summary" dangerouslySetInnerHTML={{ __html: r.snippet }} />
             <div className="meta">
               {r.channelName ? <span>{r.channelName}</span> : null}
               {r.publishedAt ? <time>{r.publishedAt}</time> : null}
             </div>
           </div>
-        ))}
-      </div>
+        )}
+      />
       <Pagination p={ctx.pagination} />
     </Layout>
   );

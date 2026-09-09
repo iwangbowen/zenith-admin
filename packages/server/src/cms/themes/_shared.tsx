@@ -7,8 +7,8 @@
  * SeoHead 统一消费渲染管线注入的 ctx.assets（正式外链 / 预览内联）。
  */
 import type { CSSProperties, ReactNode } from 'react';
-import type { CmsContentAttachment, CmsFormField } from '@zenith/shared/cms';
-import type { CmsBaseContext, CmsBodyPagination, CmsBreadcrumb, CmsContentDetail, CmsFrontFormConfig, CmsModelFieldValue, CmsPageContext, CmsPagination } from './types';
+import type { CmsContentAttachment, CmsFormField, CmsSearchResult } from '@zenith/shared/cms';
+import type { CmsBaseContext, CmsBodyPagination, CmsBreadcrumb, CmsContentDetail, CmsFrontFormConfig, CmsModelFieldValue, CmsPageContext, CmsPagination, CmsRenderSite, CmsSearchContext, CmsThemeContentCollection, CmsThemeDataApi } from './types';
 import { serializeJsonForScript } from '../../lib/json-script';
 
 /** 暗色初始化脚本（head 内先行执行防闪烁）+ 切换按钮事件委托 */
@@ -360,6 +360,59 @@ export function externalLinkProps(isExternal: boolean): { target?: string; rel?:
 /** 搜索结果链接：外链原样，站内链接补站点 baseUrl */
 export function searchResultHref(result: { url: string; isExternal: boolean }, baseUrl: string): string {
   return result.isExternal ? result.url : `${baseUrl}${result.url}`;
+}
+
+/** 搜索结果标题链接：高亮标题 + 外链新窗口 */
+export function SearchResultLink({ result, baseUrl }: { result: CmsSearchResult; baseUrl: string }) {
+  return (
+    <a
+      href={searchResultHref(result, baseUrl)}
+      {...externalLinkProps(result.isExternal)}
+      dangerouslySetInnerHTML={{ __html: result.titleHighlight }}
+    />
+  );
+}
+
+/**
+ * 搜索结果列表：空态文案统一；默认条目为「标题链接 + 发布日期」，
+ * 需要摘要 / 栏目名等更丰富条目的主题传 renderItem（条目根元素自带 key）。
+ */
+export function SearchResultList({ ctx, className = 'content-list', renderItem }: {
+  ctx: CmsSearchContext;
+  className?: string;
+  renderItem?: (result: CmsSearchResult) => ReactNode;
+}) {
+  const render = renderItem ?? ((r: CmsSearchResult) => (
+    <div className="content-item" key={r.id}>
+      <SearchResultLink result={r} baseUrl={ctx.baseUrl} />
+      <PublishedDate value={r.publishedAt} />
+    </div>
+  ));
+  return (
+    <div className={`${className} search-result`}>
+      {ctx.results.length === 0 ? (
+        <div className="empty">未找到相关内容</div>
+      ) : ctx.results.map((r) => render(r))}
+    </div>
+  );
+}
+
+/** 首页栏目区块：栏目已解析（不存在的栏目已被过滤） */
+export type CmsThemeHomeBlock = CmsThemeContentCollection & { channel: NonNullable<CmsThemeContentCollection['channel']> };
+
+/**
+ * 首页栏目区块取数：主题参数 homeChannels 为逗号（中英文）分隔的栏目标识，
+ * 截取前 maxChannels 个并发读取各栏目最新内容，跳过站内不存在的栏目。
+ */
+export async function loadHomeBlocks(
+  cms: CmsThemeDataApi,
+  site: CmsRenderSite,
+  { limit, maxChannels = 6 }: { limit: number; maxChannels?: number },
+): Promise<CmsThemeHomeBlock[]> {
+  const raw = typeof site.themeConfig.homeChannels === 'string' ? site.themeConfig.homeChannels : '';
+  const codes = raw.split(/[,，]/).map((code) => code.trim()).filter(Boolean).slice(0, maxChannels);
+  const blocks = await Promise.all(codes.map((code) => cms.contents.list({ channelCode: code, limit })));
+  return blocks.filter((block): block is CmsThemeHomeBlock => block.channel !== null);
 }
 
 /** 发布日期（`YYYY-MM-DD` 部分）；无值不渲染 */

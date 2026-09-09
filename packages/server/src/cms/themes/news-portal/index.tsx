@@ -14,9 +14,9 @@ import type { ReactNode } from 'react';
 import type {
   CmsBaseContext, CmsContentItem, CmsListContext, CmsDetailContext,
   CmsPageContext, CmsSearchContext, CmsTagPageContext, CmsNotFoundContext,
-  CmsTheme, CmsThemeContentCollection,
+  CmsTheme,
 } from '../types';
-import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon, externalLinkProps, searchResultHref, PublishedDate, SinglePageArticle, TagLinks } from '../_shared';
+import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon, externalLinkProps, PublishedDate, SinglePageArticle, TagLinks, loadHomeBlocks, SearchResultLink, SearchResultList } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import { renderCmsWidgetHtml } from '../widgets';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
@@ -114,15 +114,8 @@ function NewsBox({ title, moreUrl, children }: { title: string; moreUrl?: string
 
 // ─── 首页（Theme API：load 声明式取数）────────────────────────────────────────
 
-type HomeBlock = CmsThemeContentCollection & { channel: NonNullable<CmsThemeContentCollection['channel']> };
-
 const HomeTemplate = defineHomeTemplate({
-  load: async ({ cms, site }) => {
-    const raw = typeof site.themeConfig.homeChannels === 'string' ? site.themeConfig.homeChannels : '';
-    const codes = raw.split(/[,，]/).map((code) => code.trim()).filter(Boolean).slice(0, 6);
-    const blocks = await Promise.all(codes.map((code) => cms.contents.list({ channelCode: code, limit: 8 })));
-    return { blocks: blocks.filter((block): block is HomeBlock => block.channel !== null) };
-  },
+  load: async ({ cms, site }) => ({ blocks: await loadHomeBlocks(cms, site, { limit: 8 }) }),
   Component: ({ data, ...ctx }) => {
     const [primary, ...rest] = data.blocks;
     const primaryItems = primary?.list ?? ctx.latest;
@@ -336,24 +329,17 @@ function SearchTemplate(ctx: CmsSearchContext) {
   return (
     <NewsLayout ctx={ctx}>
       <h1 className="page-title">搜索「{ctx.keyword}」</h1>
-      <div className="content-list search-result">
-        {ctx.results.length === 0 ? (
-          <div className="empty">未找到相关内容</div>
-        ) : ctx.results.map((r) => (
+      <SearchResultList
+        ctx={ctx}
+        renderItem={(r) => (
           <div className="content-item" key={r.id}>
             <div className="ci-body">
-              <h3>
-                <a
-                  href={searchResultHref(r, ctx.baseUrl)}
-                  {...externalLinkProps(r.isExternal)}
-                  dangerouslySetInnerHTML={{ __html: r.titleHighlight }}
-                />
-              </h3>
+              <h3><SearchResultLink result={r} baseUrl={ctx.baseUrl} /></h3>
               <div className="meta"><PublishedDate value={r.publishedAt} /></div>
             </div>
           </div>
-        ))}
-      </div>
+        )}
+      />
       <Pagination p={ctx.pagination} />
     </NewsLayout>
   );

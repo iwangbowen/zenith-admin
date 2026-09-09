@@ -12,7 +12,7 @@ import {
   signCmsAdRenderProof,
 } from '../../../services/cms/cms-ad-render-proof';
 import { renderCmsWidgetHtml } from '../widgets';
-import { ArticleNav, Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, MediaBlock, ModelFieldTable, PageLinks, Pagination, RelatedArticles, searchResultHref, PublishedDate, SinglePageArticle, TagLinks, externalLinkProps } from '../_shared';
+import { ArticleNav, Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, MediaBlock, ModelFieldTable, PageLinks, Pagination, RelatedArticles, PublishedDate, SinglePageArticle, TagLinks, externalLinkProps, loadHomeBlocks, SearchResultLink, SearchResultList } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import type { CmsThemeContentCollection } from '../types';
 import { formatBytes } from '@zenith/shared/core';
@@ -356,14 +356,7 @@ export function IndexTemplate(ctx: CmsHomeContext) {
  * 未配置时回落「最新发布」时间流。
  */
 export const HomeTemplate = defineHomeTemplate({
-  load: async ({ cms, site }) => {
-    const raw = typeof site.themeConfig.homeChannels === 'string' ? site.themeConfig.homeChannels : '';
-    const codes = raw.split(/[,，]/).map((code) => code.trim()).filter(Boolean).slice(0, 8);
-    const channelBlocks = await Promise.all(
-      codes.map((code) => cms.contents.list({ channelCode: code, limit: 8 })),
-    );
-    return { channelBlocks: channelBlocks.filter((block) => block.channel !== null) };
-  },
+  load: async ({ cms, site }) => ({ channelBlocks: await loadHomeBlocks(cms, site, { limit: 8, maxChannels: 8 }) }),
   Component: ({ data, ...ctx }) => <IndexBody ctx={ctx} channelBlocks={data.channelBlocks} />,
 });
 
@@ -484,31 +477,41 @@ function InteractionBar({ content }: { content: CmsDetailContext['content'] }) {
   );
 }
 
+/** 详情正文公共段：标题、元信息（作者 / 关注 / 来源 / 时间 / 阅读）、媒体、模型字段、正文、正文分页、附件 */
+function ArticleBody({ ctx }: { ctx: CmsDetailContext }) {
+  const { content } = ctx;
+  return (
+    <>
+      <h1 style={titleStyleOf(content.titleStyle)}>{content.title}</h1>
+      <div className="meta">
+        {content.author ? <span>作者：{content.author}</span> : null}
+        {content.author ? (
+          <CmsFollowButton siteId={ctx.site.id} subjectType="author" subjectKey={content.author} label={content.author} />
+        ) : null}
+        {content.source ? <span>来源：{content.source}</span> : null}
+        {content.publishedAt ? <time>{content.publishedAt}</time> : null}
+        <span>{content.viewCount} 阅读</span>
+      </div>
+      <MediaBlock content={content} />
+      {content.modelFields.length > 0 ? (
+        <>
+          <ModelFieldTable fields={content.modelFields} />
+        </>
+      ) : null}
+      <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
+      <BodyPagination p={content.bodyPagination} />
+      <AttachmentSection items={content.attachments} />
+    </>
+  );
+}
+
 export function DetailTemplate(ctx: CmsDetailContext) {
   const { content } = ctx;
   return (
     <Layout ctx={ctx} currentUrl={ctx.channel.url}>
       <Breadcrumbs items={ctx.breadcrumbs} />
       <article className="article">
-        <h1 style={titleStyleOf(content.titleStyle)}>{content.title}</h1>
-        <div className="meta">
-          {content.author ? <span>作者：{content.author}</span> : null}
-          {content.author ? (
-            <CmsFollowButton siteId={ctx.site.id} subjectType="author" subjectKey={content.author} label={content.author} />
-          ) : null}
-          {content.source ? <span>来源：{content.source}</span> : null}
-          {content.publishedAt ? <time>{content.publishedAt}</time> : null}
-          <span>{content.viewCount} 阅读</span>
-        </div>
-        <MediaBlock content={content} />
-        {content.modelFields.length > 0 ? (
-          <>
-            <ModelFieldTable fields={content.modelFields} />
-          </>
-        ) : null}
-        <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
-        <BodyPagination p={content.bodyPagination} />
-        <AttachmentSection items={content.attachments} />
+        <ArticleBody ctx={ctx} />
         <TagLinks tags={content.tags} className="tags" wrapName />
         <InteractionBar content={content} />
       </article>
@@ -548,17 +551,12 @@ export function SearchTemplate(ctx: CmsSearchContext) {
   return (
     <Layout ctx={ctx}>
       <h1 className="page-title">搜索「{ctx.keyword}」</h1>
-      <div className="content-list search-result">
-        {ctx.results.length === 0 ? (
-          <div className="empty">未找到相关内容</div>
-        ) : ctx.results.map((r) => (
+      <SearchResultList
+        ctx={ctx}
+        renderItem={(r) => (
           <div className="content-item" key={r.id}>
             <div>
-              <h3><a
-                href={searchResultHref(r, ctx.baseUrl)}
-                {...externalLinkProps(r.isExternal)}
-                dangerouslySetInnerHTML={{ __html: r.titleHighlight }}
-              /></h3>
+              <h3><SearchResultLink result={r} baseUrl={ctx.baseUrl} /></h3>
               <div className="summary" dangerouslySetInnerHTML={{ __html: r.snippet }} />
               <div className="meta">
                 {r.channelName ? <span>{r.channelName}</span> : null}
@@ -566,8 +564,8 @@ export function SearchTemplate(ctx: CmsSearchContext) {
               </div>
             </div>
           </div>
-        ))}
-      </div>
+        )}
+      />
       <Pagination p={ctx.pagination} />
     </Layout>
   );
@@ -704,25 +702,7 @@ export function DetailPlainTemplate(ctx: CmsDetailContext) {
       `}</style>
       <Breadcrumbs items={ctx.breadcrumbs} />
       <article className="article article-plain">
-        <h1 style={titleStyleOf(content.titleStyle)}>{content.title}</h1>
-        <div className="meta">
-          {content.author ? <span>作者：{content.author}</span> : null}
-          {content.author ? (
-            <CmsFollowButton siteId={ctx.site.id} subjectType="author" subjectKey={content.author} label={content.author} />
-          ) : null}
-          {content.source ? <span>来源：{content.source}</span> : null}
-          {content.publishedAt ? <time>{content.publishedAt}</time> : null}
-          <span>{content.viewCount} 阅读</span>
-        </div>
-        <MediaBlock content={content} />
-        {content.modelFields.length > 0 ? (
-          <>
-            <ModelFieldTable fields={content.modelFields} />
-          </>
-        ) : null}
-        <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
-        <BodyPagination p={content.bodyPagination} />
-        <AttachmentSection items={content.attachments} />
+        <ArticleBody ctx={ctx} />
       </article>
       <ArticleNav prev={content.prev} next={content.next} />
     </Layout>

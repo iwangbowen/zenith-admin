@@ -1,10 +1,12 @@
 import { createElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { loadHomeBlocks } from './_shared';
 import type {
   CmsBaseContext,
   CmsListContext,
   CmsPageContext,
+  CmsThemeDataApi,
 } from './types';
 import { defaultTheme } from './default';
 import { docsTheme } from './docs';
@@ -158,5 +160,29 @@ describe('CMS shared theme rendering', () => {
     expect(html).toContain('href="/news/?page=4"');
     expect(html.match(/class="current">3/g)).toHaveLength(3);
     expect(html).toContain('京ICP备12345678号-1');
+  });
+});
+
+describe('loadHomeBlocks', () => {
+  it('按中英文逗号切分 homeChannels、去空白、截断上限并过滤不存在的栏目', async () => {
+    const list = vi.fn(async ({ channelCode }: { channelCode?: string; limit: number }) => ({
+      channel: channelCode === 'missing' ? null : { id: 1, code: channelCode ?? '', name: channelCode ?? '', url: /${channelCode}/ },
+      list: [],
+    }));
+    const cms: CmsThemeDataApi = { contents: { list } };
+    const site = { ...base('default').site, themeConfig: { homeChannels: ' a ，b,missing, c,d,e,f,g ' } };
+
+    const blocks = await loadHomeBlocks(cms, site, { limit: 9 });
+    expect(list).toHaveBeenCalledTimes(6);
+    expect(list).toHaveBeenCalledWith({ channelCode: 'a', limit: 9 });
+    expect(blocks.map((block) => block.channel.code)).toEqual(['a', 'b', 'c', 'd', 'e']);
+
+    list.mockClear();
+    await loadHomeBlocks(cms, site, { limit: 8, maxChannels: 8 });
+    expect(list).toHaveBeenCalledTimes(8);
+
+    list.mockClear();
+    expect(await loadHomeBlocks(cms, { ...site, themeConfig: {} }, { limit: 8 })).toEqual([]);
+    expect(list).not.toHaveBeenCalled();
   });
 });

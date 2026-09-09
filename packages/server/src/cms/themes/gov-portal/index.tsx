@@ -9,9 +9,9 @@ import type { ReactNode } from 'react';
 import type {
   CmsBaseContext, CmsContentItem, CmsListContext, CmsDetailContext,
   CmsPageContext, CmsSearchContext, CmsTagPageContext, CmsNotFoundContext,
-  CmsTheme, CmsThemeContentCollection, CmsNavItem as CmsNavItemType,
+  CmsTheme, CmsNavItem as CmsNavItemType,
 } from '../types';
-import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon, searchResultHref, PublishedDate, SinglePageArticle, externalLinkProps } from '../_shared';
+import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon, PublishedDate, SinglePageArticle, externalLinkProps, loadHomeBlocks, SearchResultList } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import { renderCmsWidgetHtml } from '../widgets';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
@@ -142,15 +142,8 @@ function parseServiceLinks(raw: unknown): { name: string; url: string }[] {
 
 // ─── 首页（Theme API：load 声明式取数）────────────────────────────────────────
 
-type HomeBlock = CmsThemeContentCollection & { channel: NonNullable<CmsThemeContentCollection['channel']> };
-
 const HomeTemplate = defineHomeTemplate({
-  load: async ({ cms, site }) => {
-    const raw = typeof site.themeConfig.homeChannels === 'string' ? site.themeConfig.homeChannels : '';
-    const codes = raw.split(/[,，]/).map((code) => code.trim()).filter(Boolean).slice(0, 6);
-    const blocks = await Promise.all(codes.map((code) => cms.contents.list({ channelCode: code, limit: 9 })));
-    return { blocks: blocks.filter((block): block is HomeBlock => block.channel !== null) };
-  },
+  load: async ({ cms, site }) => ({ blocks: await loadHomeBlocks(cms, site, { limit: 9 }) }),
   Component: ({ data, ...ctx }) => {
     const [primary, ...rest] = data.blocks;
     const services = parseServiceLinks(ctx.site.themeConfig.serviceLinks);
@@ -273,20 +266,7 @@ function SearchTemplate(ctx: CmsSearchContext) {
   return (
     <GovLayout ctx={ctx}>
       <h1 className="page-title">搜索「{ctx.keyword}」</h1>
-      <div className="content-list search-result">
-        {ctx.results.length === 0 ? (
-          <div className="empty">未找到相关内容</div>
-        ) : ctx.results.map((r) => (
-          <div className="content-item" key={r.id}>
-            <a
-              href={searchResultHref(r, ctx.baseUrl)}
-              {...externalLinkProps(r.isExternal)}
-              dangerouslySetInnerHTML={{ __html: r.titleHighlight }}
-            />
-            <PublishedDate value={r.publishedAt} />
-          </div>
-        ))}
-      </div>
+      <SearchResultList ctx={ctx} />
       <Pagination p={ctx.pagination} />
     </GovLayout>
   );
