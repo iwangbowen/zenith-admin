@@ -8,35 +8,32 @@ import {
   useState,
 } from 'react';
 import { Empty, Spin } from '@douyinfe/semi-ui';
-import { Download, RefreshCw } from 'lucide-react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
-import { toPng } from 'html-to-image';
 import '@/pages/report/report-grid.css';
 import '@/pages/report/report-screen.css';
-import { ScreenCanvas } from '@/pages/report/widgets/ScreenCanvas';
 import { FilterBar } from '@/pages/report/widgets/FilterBar';
 import { MobileDashboardHeader } from '@/pages/report/widgets/MobileDashboardHeader';
+import {
+  dashboardMobileActions,
+  defaultFilterValues,
+  downloadDataUrl,
+  drilldownPayload,
+  exportDashboardPng,
+  openDrilldownUrl,
+  safeFilterValue,
+  useDashboardWidgetQueries,
+  widgetClickPayload,
+  widgetStateFromDataMap,
+} from '@/pages/report/widgets/dashboard-runtime';
+import { DashboardCanvasView } from '@/pages/report/widgets/DashboardCanvasView';
 import { useIsMobile } from '@/hooks/useMediaQuery';
-import type { ReportCanvasItem, ReportDashboardConfig, ReportEmbedDrilldownPayload, ReportEmbedFilterChangePayload, ReportEmbedFilterValue, ReportEmbedFilterValues, ReportEmbedState, ReportEmbedWidgetClickPayload, ReportFilter, ReportGridItem, ReportWidget, ReportDatasetQueryOptions } from '@zenith/shared/report';
+import type { ReportEmbedDrilldownPayload, ReportEmbedFilterChangePayload, ReportEmbedFilterValue, ReportEmbedFilterValues, ReportEmbedState, ReportEmbedWidgetClickPayload, ReportWidget } from '@zenith/shared/report';
 import { useReportDashboardWidgetData } from '@/hooks/queries/report-dashboards';
 import { useReportEmbedDashboard, useReportEmbedData } from '@/hooks/queries/reports-embed';
-import { openExternalUrl } from '@/utils/safe-url';
 import {
   sanitizeReportEmbedFilterValues,
   useReportEmbedBridge,
 } from './report-embed-bridge';
-
-function defaultFilterValues(filters: readonly ReportFilter[]): Record<string, unknown> {
-  return Object.fromEntries(filters.map((filter) => [
-    filter.id,
-    filter.defaultValue !== undefined ? filter.defaultValue : (filter.type === 'multiSelect' ? [] : undefined),
-  ]));
-}
-
-function safeFilterValue(value: unknown): ReportEmbedFilterValue {
-  const sanitized = sanitizeReportEmbedFilterValues({ value });
-  return sanitized.value ?? String(value ?? '');
-}
 
 export interface ReportEmbedHandle {
   refresh: () => Promise<void>;
@@ -104,7 +101,7 @@ export const ReportEmbed = forwardRef<ReportEmbedHandle, Readonly<ReportEmbedPro
   const isMobile = useIsMobile();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [innerValues, setInnerValues] = useState<Record<string, unknown>>({});
-  const [widgetQueries, setWidgetQueries] = useState<Record<string, ReportDatasetQueryOptions>>({});
+  const { widgetQueries, resetWidgetQueries, handleWidgetQueryChange } = useDashboardWidgetQueries();
   const dashboardQuery = useReportEmbedDashboard(dashboardId, embedToken);
   const dashboard = dashboardQuery.data ?? null;
   const filterOptions = dashboard?.filterOptions;
@@ -122,9 +119,6 @@ export const ReportEmbed = forwardRef<ReportEmbedHandle, Readonly<ReportEmbedPro
   effectiveValuesRef.current = effectiveValues;
   const [debouncedValues] = useDebouncedValue(effectiveValues, { wait: 250 });
 
-  const isCanvas = dashboard?.config?.layoutMode === 'canvas';
-  const screen = dashboard?.config?.screenConfig;
-  const aspect = isCanvas ? `${screen?.width || 1920} / ${screen?.height || 1080}` : undefined;
   const { get: getData, query: widgetDataQuery } = useReportDashboardWidgetData(
     embedToken ? undefined : dashboardId,
     widgets,
@@ -144,25 +138,21 @@ export const ReportEmbed = forwardRef<ReportEmbedHandle, Readonly<ReportEmbedPro
       effectiveValuesRef.current = defaults;
       setInnerValues(defaults);
     }
-    setWidgetQueries({});
-  }, [controlled, dashboard, dashboardId, defaults, embedToken]);
+    resetWidgetQueries();
+  }, [controlled, dashboard, dashboardId, defaults, embedToken, resetWidgetQueries]);
 
   useEffect(() => {
-    setWidgetQueries({});
-  }, [effectiveValues]);
-
-  const handleWidgetQueryChange = useCallback((widgetId: string, next: ReportDatasetQueryOptions) => {
-    setWidgetQueries((previous) => ({ ...previous, [widgetId]: next }));
-  }, []);
+    resetWidgetQueries();
+  }, [effectiveValues, resetWidgetQueries]);
 
   const setProgrammaticFilter = useCallback((filterId: string, value: ReportEmbedFilterValue): boolean => {
     if (effectiveReadOnly || controlled || !filters.some((filter) => filter.id === filterId)) return false;
     const next = { ...effectiveValuesRef.current, [filterId]: value };
     effectiveValuesRef.current = next;
     setInnerValues(next);
-    setWidgetQueries({});
+    resetWidgetQueries();
     return true;
-  }, [controlled, effectiveReadOnly, filters]);
+  }, [controlled, effectiveReadOnly, filters, resetWidgetQueries]);
 
   const setProgrammaticFilters = useCallback((values: ReportEmbedFilterValues) => {
     if (effectiveReadOnly || controlled) return;
@@ -173,16 +163,16 @@ export const ReportEmbed = forwardRef<ReportEmbedHandle, Readonly<ReportEmbedPro
     };
     effectiveValuesRef.current = next;
     setInnerValues(next);
-    setWidgetQueries({});
-  }, [controlled, effectiveReadOnly, filters]);
+    resetWidgetQueries();
+  }, [controlled, effectiveReadOnly, filters, resetWidgetQueries]);
 
   const resetProgrammaticFilters = useCallback((): boolean => {
     if (effectiveReadOnly || controlled) return false;
     effectiveValuesRef.current = defaults;
     setInnerValues(defaults);
-    setWidgetQueries({});
+    resetWidgetQueries();
     return true;
-  }, [controlled, defaults, effectiveReadOnly]);
+  }, [controlled, defaults, effectiveReadOnly, resetWidgetQueries]);
 
   const refresh = useCallback(async () => {
     await dashboardQuery.refetch();
@@ -190,15 +180,7 @@ export const ReportEmbed = forwardRef<ReportEmbedHandle, Readonly<ReportEmbedPro
     else await widgetDataQuery.refetch();
   }, [dashboardQuery, embedDataQuery, embedToken, widgetDataQuery]);
 
-  const exportPng = useCallback(async (): Promise<string | null> => {
-    if (!rootRef.current) return null;
-    const backgroundColor = window.getComputedStyle(rootRef.current).backgroundColor;
-    return toPng(rootRef.current, {
-      backgroundColor: backgroundColor === 'rgba(0, 0, 0, 0)' ? undefined : backgroundColor,
-      pixelRatio: 2,
-      cacheBust: true,
-    });
-  }, []);
+  const exportPng = useCallback(() => exportDashboardPng(rootRef.current), []);
 
   const getState = useCallback((): ReportEmbedState => ({
     ...(dashboardId ? { dashboardId } : {}),
@@ -264,7 +246,7 @@ export const ReportEmbed = forwardRef<ReportEmbedHandle, Readonly<ReportEmbedPro
       effectiveValuesRef.current = next;
       setInnerValues(next);
     }
-    setWidgetQueries({});
+    resetWidgetQueries();
     const allowedIds = new Set(filters.map((filter) => filter.id));
     const payload: ReportEmbedFilterChangePayload = {
       ...(filterId ? { filterId, value: safeFilterValue(next[filterId]) } : {}),
@@ -272,18 +254,14 @@ export const ReportEmbed = forwardRef<ReportEmbedHandle, Readonly<ReportEmbedPro
     };
     onFilterChange?.(payload);
     bridge.emit('filterChanged', payload);
-  }, [bridge, controlled, effectiveReadOnly, filters, onFilterChange]);
+  }, [bridge, controlled, effectiveReadOnly, filters, onFilterChange, resetWidgetQueries]);
 
   const handleUserFilter = useCallback((filterId: string, value: unknown) => {
     applyUserFilters({ ...effectiveValuesRef.current, [filterId]: value }, filterId);
   }, [applyUserFilters]);
 
   const handleWidgetClick = useCallback((widget: ReportWidget) => {
-    const payload: ReportEmbedWidgetClickPayload = {
-      widgetId: widget.i,
-      widgetTitle: widget.title || widget.i,
-      widgetType: widget.type,
-    };
+    const payload = widgetClickPayload(widget);
     onWidgetClick?.(payload);
     bridge.emit('widgetClicked', payload);
   }, [bridge, onWidgetClick]);
@@ -297,28 +275,19 @@ export const ReportEmbed = forwardRef<ReportEmbedHandle, Readonly<ReportEmbedPro
       const filterId = widget.interaction.setFilterId;
       applyUserFilters({ ...effectiveValuesRef.current, [filterId]: value }, filterId);
     }
-    if (!widget.drilldown?.enabled) return;
-    const drilldownType = widget.drilldown.type ?? 'fields';
-    const payload: ReportEmbedDrilldownPayload = {
-      widgetId: widget.i,
-      widgetTitle: widget.title || widget.i,
-      widgetType: widget.type,
-      selected,
-      drilldownType,
-      ...(widget.drilldown.targetDashboardId ? { targetDashboardId: widget.drilldown.targetDashboardId } : {}),
-      ...(widget.drilldown.paramName ? { paramName: widget.drilldown.paramName } : {}),
-    };
+    const payload = drilldownPayload(widget, selected);
+    if (!payload) return;
     onDrilldown?.(payload);
     bridge.emit('drilldown', payload);
     if (interceptDrilldown) return;
-    if (drilldownType === 'url' && widget.drilldown.url) {
-      openExternalUrl(widget.drilldown.url.replace('{value}', encodeURIComponent(value)));
-    } else if (drilldownType === 'dashboard' && widget.drilldown.targetDashboardId) {
-      const query = widget.drilldown.paramName
-        ? `?${encodeURIComponent(widget.drilldown.paramName)}=${encodeURIComponent(value)}`
+    if (payload.drilldownType === 'url') {
+      openDrilldownUrl(widget, value);
+    } else if (payload.drilldownType === 'dashboard' && payload.targetDashboardId) {
+      const query = payload.paramName
+        ? `?${encodeURIComponent(payload.paramName)}=${encodeURIComponent(value)}`
         : '';
       window.open(
-        `/report/dashboards/${widget.drilldown.targetDashboardId}/view${query}`,
+        `/report/dashboards/${payload.targetDashboardId}/view${query}`,
         '_blank',
         'noopener,noreferrer',
       );
@@ -327,12 +296,7 @@ export const ReportEmbed = forwardRef<ReportEmbedHandle, Readonly<ReportEmbedPro
 
   async function downloadPng() {
     try {
-      const dataUrl = await exportPng();
-      if (!dataUrl) return;
-      const anchor = document.createElement('a');
-      anchor.href = dataUrl;
-      anchor.download = `${dashboard?.name ?? 'dashboard'}.png`;
-      anchor.click();
+      downloadDataUrl(await exportPng(), `${dashboard?.name ?? 'dashboard'}.png`);
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error('导出失败'));
     }
@@ -371,34 +335,20 @@ export const ReportEmbed = forwardRef<ReportEmbedHandle, Readonly<ReportEmbedPro
           title={dashboard.name}
           dark={dashboard.config?.theme === 'dark'}
           filter={filterControl}
-          actions={[
-            { key: 'refresh', label: '刷新', icon: <RefreshCw size={15} />, onClick: () => void refresh() },
-            { key: 'export', label: '导出图片', icon: <Download size={15} />, onClick: () => void downloadPng() },
-          ]}
+          actions={dashboardMobileActions(() => void refresh(), () => void downloadPng())}
         />
       ) : filterControl}
-      {widgets.length === 0 ? (
-        <Empty description="该仪表盘还没有组件" style={{ padding: 40 }} />
-      ) : (
-        <div style={isCanvas && !isMobile ? { width: '100%', aspectRatio: aspect } : undefined}>
-          <ScreenCanvas
-            widgets={widgets}
-            layout={(dashboard.layout ?? []) as ReportGridItem[]}
-            canvasLayout={(dashboard.canvasLayout ?? []) as ReportCanvasItem[]}
-            config={(dashboard.config ?? {}) as ReportDashboardConfig}
-            filterValues={effectiveValues}
-            getWidgetState={(widget: ReportWidget) => embedToken ? ({
-              data: embedDataQuery.data?.[widget.i]?.data ?? null,
-              loading: embedDataQuery.isFetching,
-              error: embedDataQuery.data?.[widget.i]?.error?.message ?? null,
-            }) : getData(widget)}
-            getWidgetQuery={(widget) => widgetQueries[widget.i]}
-            onWidgetQueryChange={effectiveReadOnly ? undefined : handleWidgetQueryChange}
-            onCategoryClick={handleCategoryClick}
-            onWidgetClick={handleWidgetClick}
-          />
-        </div>
-      )}
+      <DashboardCanvasView
+        dashboard={dashboard}
+        isMobile={isMobile}
+        filterValues={effectiveValues}
+        getWidgetState={embedToken ? widgetStateFromDataMap(embedDataQuery.data, embedDataQuery.isFetching) : getData}
+        getWidgetQuery={(widget) => widgetQueries[widget.i]}
+        onWidgetQueryChange={effectiveReadOnly ? undefined : handleWidgetQueryChange}
+        onCategoryClick={handleCategoryClick}
+        onWidgetClick={handleWidgetClick}
+        emptyStyle={{ padding: 40 }}
+      />
     </div>
   );
 });

@@ -2,29 +2,31 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Button, Input, Spin, Empty, Toast } from '@douyinfe/semi-ui';
-import { Download, Lock, RefreshCw } from 'lucide-react';
-import { toPng } from 'html-to-image';
+import { Lock } from 'lucide-react';
 import './report-grid.css';
 import './report-screen.css';
-import { ScreenCanvas } from './widgets/ScreenCanvas';
 import { FilterBar } from './widgets/FilterBar';
 import { MobileDashboardHeader } from './widgets/MobileDashboardHeader';
 import { filterValuesFromSearch, withFilterParam } from './widgets/filter-url';
+import {
+  dashboardMobileActions,
+  defaultFilterValue,
+  defaultFilterValues,
+  downloadDataUrl,
+  drilldownPayload,
+  exportDashboardPng,
+  openDrilldownUrl,
+  safeFilterValue,
+  useDashboardWidgetQueries,
+  widgetClickPayload,
+  widgetStateFromDataMap,
+} from './widgets/dashboard-runtime';
+import { DashboardCanvasView } from './widgets/DashboardCanvasView';
 import { useIsMobile } from '@/hooks/useMediaQuery';
-import type { ReportCanvasItem, ReportDatasetQueryOptions, ReportEmbedDrilldownPayload, ReportEmbedFilterChangePayload, ReportEmbedFilterValue, ReportEmbedFilterValues, ReportEmbedState, ReportEmbedWidgetClickPayload, ReportFilter, ReportGridItem, ReportPublicDashboard, ReportWidget } from '@zenith/shared/report';
+import type { ReportEmbedFilterChangePayload, ReportEmbedFilterValues, ReportEmbedState, ReportPublicDashboard, ReportWidget } from '@zenith/shared/report';
 import { usePublicReportDashboard, usePublicReportDashboardAccess, usePublicReportDashboardData } from '@/hooks/queries/report-dashboards';
 import { ApiError } from '@/lib/query';
 import { sanitizeReportEmbedFilterValues, useReportEmbedBridge } from '@/components/report-embed-bridge';
-import { openExternalUrl } from '@/utils/safe-url';
-
-function defaultFilterValue(f: ReportFilter): unknown {
-  if (f.defaultValue !== undefined) return f.defaultValue;
-  return f.type === 'multiSelect' ? [] : undefined;
-}
-
-function defaultFilterValues(filters: readonly ReportFilter[]): Record<string, unknown> {
-  return Object.fromEntries(filters.map((filter) => [filter.id, defaultFilterValue(filter)]));
-}
 
 export default function PublicDashboardPage() {
   const { token } = useParams<{ token: string }>();
@@ -36,7 +38,7 @@ export default function PublicDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterValues, setFilterValues] = useState<Record<string, unknown>>({});
   const [debouncedFilterValues] = useDebouncedValue(filterValues, { wait: 250 });
-  const [widgetQueries, setWidgetQueries] = useState<Record<string, ReportDatasetQueryOptions>>({});
+  const { widgetQueries, resetWidgetQueries, handleWidgetQueryChange } = useDashboardWidgetQueries();
   const [sessionToken, setSessionToken] = useState<string | undefined>(undefined);
   const [bootstrapDashboard, setBootstrapDashboard] = useState<ReportPublicDashboard | null>(null);
 
@@ -44,7 +46,6 @@ export default function PublicDashboardPage() {
   const dashboardQuery = usePublicReportDashboard(token, sessionToken, !!sessionToken);
   const dashboard = dashboardQuery.data ?? bootstrapDashboard;
   const dataQuery = usePublicReportDashboardData(token, sessionToken, debouncedFilterValues, widgetQueries, !!dashboard && !!sessionToken);
-  const dataMap = dataQuery.data ?? {};
   const filters = useMemo(() => dashboard?.filters ?? [], [dashboard]);
   const filterDefaults = useMemo(() => defaultFilterValues(filters), [filters]);
   const filterValuesRef = useRef<Record<string, unknown>>(filterValues);
@@ -62,7 +63,7 @@ export default function PublicDashboardPage() {
     const initialValues = filterValuesFromSearch(dashboard.filters ?? [], searchParams, defaultFilterValue);
     filterValuesRef.current = initialValues;
     setFilterValues(initialValues);
-    setWidgetQueries({});
+    resetWidgetQueries();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- searchParams 为初始化时的闭包快照，回写不重置
   }, [dashboard, sessionToken, token]);
 
@@ -96,38 +97,26 @@ export default function PublicDashboardPage() {
     const next = { ...filterValuesRef.current, [fid]: val };
     filterValuesRef.current = next;
     setFilterValues(next);
-    setWidgetQueries({});
+    resetWidgetQueries();
     setSearchParams((prev) => withFilterParam(prev, fid, val), { replace: true });
   }
 
   const setFiltersAndUrl = useCallback((values: Record<string, unknown>) => {
     filterValuesRef.current = values;
     setFilterValues(values);
-    setWidgetQueries({});
+    resetWidgetQueries();
     setSearchParams((previous) => {
       let next = new URLSearchParams(previous);
       for (const filter of filters) next = withFilterParam(next, filter.id, values[filter.id]);
       return next;
     }, { replace: true });
-  }, [filters, setSearchParams]);
-
-  const handleWidgetQueryChange = useCallback((widgetId: string, next: ReportDatasetQueryOptions) => {
-    setWidgetQueries((prev) => ({ ...prev, [widgetId]: next }));
-  }, []);
+  }, [filters, resetWidgetQueries, setSearchParams]);
 
   const refresh = useCallback(async () => {
     await Promise.all([dashboardQuery.refetch(), dataQuery.refetch()]);
   }, [dashboardQuery, dataQuery]);
 
-  const exportPng = useCallback(async (): Promise<string | null> => {
-    if (!rootRef.current) return null;
-    const backgroundColor = window.getComputedStyle(rootRef.current).backgroundColor;
-    return toPng(rootRef.current, {
-      backgroundColor: backgroundColor === 'rgba(0, 0, 0, 0)' ? undefined : backgroundColor,
-      pixelRatio: 2,
-      cacheBust: true,
-    });
-  }, []);
+  const exportPng = useCallback(() => exportDashboardPng(rootRef.current), []);
 
   const getState = useCallback((): ReportEmbedState => ({
     ...(dashboard?.name ? { dashboardName: dashboard.name } : {}),
@@ -182,10 +171,7 @@ export default function PublicDashboardPage() {
     if (effectiveReadOnly) return;
     setFiltersAndUrl(values);
     const payload: ReportEmbedFilterChangePayload = {
-      ...(filterId ? {
-        filterId,
-        value: (sanitizeReportEmbedFilterValues({ value: values[filterId] }).value ?? String(values[filterId] ?? '')) as ReportEmbedFilterValue,
-      } : {}),
+      ...(filterId ? { filterId, value: safeFilterValue(values[filterId]) } : {}),
       filterValues: sanitizeReportEmbedFilterValues(values, new Set(filters.map((filter) => filter.id))),
     };
     bridge.emit('filterChanged', payload);
@@ -196,12 +182,7 @@ export default function PublicDashboardPage() {
   }, [applyUserFilters]);
 
   const handleWidgetClick = useCallback((widget: ReportWidget) => {
-    const payload: ReportEmbedWidgetClickPayload = {
-      widgetId: widget.i,
-      widgetTitle: widget.title || widget.i,
-      widgetType: widget.type,
-    };
-    bridge.emit('widgetClicked', payload);
+    bridge.emit('widgetClicked', widgetClickPayload(widget));
   }, [bridge]);
 
   const handleCategoryClick = useCallback((widget: ReportWidget, value: string) => {
@@ -209,31 +190,15 @@ export default function PublicDashboardPage() {
     if (widget.interaction?.enabled && widget.interaction.setFilterId && !effectiveReadOnly) {
       handlePublicFilterChange(widget.interaction.setFilterId, value);
     }
-    if (!widget.drilldown?.enabled) return;
-    const drilldownType = widget.drilldown.type ?? 'fields';
-    const payload: ReportEmbedDrilldownPayload = {
-      widgetId: widget.i,
-      widgetTitle: widget.title || widget.i,
-      widgetType: widget.type,
-      selected,
-      drilldownType,
-      ...(widget.drilldown.targetDashboardId ? { targetDashboardId: widget.drilldown.targetDashboardId } : {}),
-      ...(widget.drilldown.paramName ? { paramName: widget.drilldown.paramName } : {}),
-    };
+    const payload = drilldownPayload(widget, selected);
+    if (!payload) return;
     bridge.emit('drilldown', payload);
-    if (drilldownType === 'url' && widget.drilldown.url) {
-      openExternalUrl(widget.drilldown.url.replace('{value}', encodeURIComponent(value)));
-    }
+    if (payload.drilldownType === 'url') openDrilldownUrl(widget, value);
   }, [bridge, effectiveReadOnly, handlePublicFilterChange]);
 
   async function downloadPng() {
     try {
-      const dataUrl = await exportPng();
-      if (!dataUrl) return;
-      const anchor = document.createElement('a');
-      anchor.href = dataUrl;
-      anchor.download = `${dashboard?.name ?? 'dashboard'}.png`;
-      anchor.click();
+      downloadDataUrl(await exportPng(), `${dashboard?.name ?? 'dashboard'}.png`);
     } catch {
       Toast.error('导出失败，请重试');
     }
@@ -254,11 +219,8 @@ export default function PublicDashboardPage() {
     );
   }
 
-  const widgets = dashboard?.widgets ?? [];
   const isDark = dashboard?.config?.theme === 'dark';
   const isCanvas = dashboard?.config?.layoutMode === 'canvas';
-  const screen = dashboard?.config?.screenConfig;
-  const aspect = isCanvas ? `${screen?.width || 1920} / ${screen?.height || 1080}` : undefined;
 
   return (
     <div ref={rootRef} className="report-view" style={{ minHeight: '100vh', ...(isDark ? { background: isCanvas ? '#060c1f' : '#0b1020' } : {}) }}>
@@ -279,10 +241,7 @@ export default function PublicDashboardPage() {
               disabled={effectiveReadOnly}
             />
           )}
-          actions={[
-            { key: 'refresh', label: '刷新', icon: <RefreshCw size={15} />, onClick: () => void refresh() },
-            { key: 'export', label: '导出图片', icon: <Download size={15} />, onClick: () => void downloadPng() },
-          ]}
+          actions={dashboardMobileActions(() => void refresh(), () => void downloadPng())}
         />
       ) : (
         <>
@@ -297,28 +256,18 @@ export default function PublicDashboardPage() {
           />
         </>
       )}
-      {widgets.length === 0 ? (
-        <Empty description="该仪表盘还没有组件" style={{ paddingTop: 80 }} />
-      ) : (
-        <div style={isCanvas && !isMobile ? { width: '100%', aspectRatio: aspect, maxHeight: 'calc(100vh - 120px)' } : undefined}>
-          <ScreenCanvas
-            widgets={widgets}
-            layout={(dashboard?.layout ?? []) as ReportGridItem[]}
-            canvasLayout={(dashboard?.canvasLayout ?? []) as ReportCanvasItem[]}
-            config={dashboard?.config ?? {}}
-            filterValues={filterValues}
-            getWidgetState={(w: ReportWidget) => ({
-              data: dataMap[w.i]?.data ?? null,
-              loading: dataQuery.isFetching,
-              error: dataMap[w.i]?.error?.message ?? null,
-            })}
-            getWidgetQuery={(widget) => widgetQueries[widget.i]}
-            onWidgetQueryChange={effectiveReadOnly ? undefined : handleWidgetQueryChange}
-            onCategoryClick={handleCategoryClick}
-            onWidgetClick={handleWidgetClick}
-          />
-        </div>
-      )}
+      <DashboardCanvasView
+        dashboard={dashboard ?? {}}
+        isMobile={isMobile}
+        filterValues={filterValues}
+        getWidgetState={widgetStateFromDataMap(dataQuery.data, dataQuery.isFetching)}
+        getWidgetQuery={(widget) => widgetQueries[widget.i]}
+        onWidgetQueryChange={effectiveReadOnly ? undefined : handleWidgetQueryChange}
+        onCategoryClick={handleCategoryClick}
+        onWidgetClick={handleWidgetClick}
+        emptyStyle={{ paddingTop: 80 }}
+        canvasStyle={{ maxHeight: 'calc(100vh - 120px)' }}
+      />
     </div>
   );
 }
