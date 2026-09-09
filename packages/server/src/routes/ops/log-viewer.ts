@@ -6,23 +6,29 @@ import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
-import { readLastLines, spawnTailFollow, openLogForDownload, resolveAllowedLogPath, getLocalLogRoots, getRemoteLogRoots } from '../../services/ops/log-viewer.service';
+import {
+  readLastLines, followLogLines, openLogForDownload, resolveAllowedLogPath, assertTailable, getLocalLogRoots, getRemoteLogRoots,
+} from '../../services/ops/log-viewer.service';
+import { TAIL_REPLAY_LINES } from '../../services/ops/log-reader';
 import { assertRemoteHostAccess } from '../../lib/host-access';
-import { streamProcessOutput } from '../../lib/http-stream';
+import { streamLogTail } from '../../lib/http-stream';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const view = [authMiddleware, guard({ permission: 'system:log:view' })] as const;
 
-// tail -f 逐行流式输出
-const streamRoute = defineContractRoute(logViewerContract.stream, {
+// SSE 实时跟踪：先回放末尾 100 行，再持续推送新增行（与 /api/log-files/{filename}/tail 同协议）
+const tailRoute = defineContractRoute(logViewerContract.tail, {
   middleware: view,
   handler: async (c) => {
     const { path: filePath, hostId } = c.req.valid('query');
     await assertRemoteHostAccess(c, hostId);
     // 白名单 / 存在性校验放在开流之前，错误以 JSON 状态码返回而不是流式正文
-    await resolveAllowedLogPath(filePath, hostId);
-    return streamProcessOutput(c, (onData, onExit) => spawnTailFollow(filePath, onData, onExit, hostId));
+    assertTailable(await resolveAllowedLogPath(filePath, hostId));
+    return streamLogTail(c, {
+      replay: () => readLastLines(filePath, TAIL_REPLAY_LINES, hostId),
+      follow: (signal, emit) => followLogLines(filePath, hostId, signal, emit),
+    });
   },
 });
 
@@ -57,11 +63,10 @@ const downloadRoute = defineContractRoute(logViewerContract.download, {
 const contentRoute = defineContractRoute(logViewerContract.content, {
   middleware: view,
   handler: async (c) => {
-    const { path: filePath, lines, hostId } = c.req.valid('query');
+    const { path: filePath, lines, keyword, context, hostId } = c.req.valid('query');
     await assertRemoteHostAccess(c, hostId);
-    const lineCount = Math.min(Number.parseInt(lines ?? '500', 10) || 500, 5000);
-    const content = await readLastLines(filePath, lineCount, hostId);
-    return c.json(okBody({ content }), 200);
+    const result = await readLastLines(filePath, lines ?? 500, hostId, { keyword, context });
+    return c.json(okBody({ lines: result }), 200);
   },
 });
 
@@ -74,6 +79,6 @@ const rootsRoute = defineContractRoute(logViewerContract.roots, {
   },
 });
 
-router.openapiRoutes([streamRoute, downloadRoute, contentRoute, rootsRoute] as const);
+router.openapiRoutes([tailRoute, downloadRoute, contentRoute, rootsRoute] as const);
 
 export default router;

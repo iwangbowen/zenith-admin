@@ -746,7 +746,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/log-viewer/content",
   "GET /api/log-viewer/download",
   "GET /api/log-viewer/roots",
-  "GET /api/log-viewer/stream",
+  "GET /api/log-viewer/tail",
   "GET /api/login-logs",
   "GET /api/login-logs/stats",
   "GET /api/maintenance",

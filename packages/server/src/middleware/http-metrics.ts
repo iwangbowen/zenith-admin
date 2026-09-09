@@ -5,7 +5,7 @@ import type { MiddlewareHandler } from 'hono';
 import { metricsSampler } from '../lib/metrics-sampler';
 
 /** 不计入请求指标的前缀：Prometheus 自身抓取、文档、WebSocket 与 SSE 长流 */
-const EXCLUDE_PREFIXES = ['/metrics', '/api/openapi.json', '/api/docs', '/api/ws', '/api/log-files'];
+const EXCLUDE_PREFIXES = ['/metrics', '/api/openapi.json', '/api/docs', '/api/ws', '/api/log-files', '/api/log-viewer'];
 
 export const httpMetricsMiddleware: MiddlewareHandler = async (c, next) => {
   const path = c.req.path;

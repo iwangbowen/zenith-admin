@@ -114,20 +114,28 @@
 
 ## 日志查看
 
-系统提供两类日志能力。
+系统提供两个日志入口，寻址方式与权限码不同，但共用同一套读取内核、同形的契约与同一个前端查看器：
+
+- **读取内核**（`services/ops/log-reader.ts`）：末尾 N 行采用 readline 流式逐行 + 固定容量环形缓冲，普通日志与 `.gz` 归档走同一条路径，
+  峰值内存为 O(N 行)；`keyword` 在整个文件范围内做大小写不敏感的子串匹配，`context` 在命中行前后各保留 N 行（0-10）。
+  实时追踪按文件增长轮询（周期 1 秒），不依赖 `tail` 二进制，Windows 同样可用。
+- **契约形状**（`shared/ops/contracts/log-lines.ts`）：两套 `content` 接口共用 `logTailQuery`（`lines` / `keyword` / `context`）与响应
+  `{ lines: string[] }`；两套实时追踪接口都是 SSE，每行一个 `event: log` 事件，连接建立时先回放末尾 100 行。
+- **前端查看器**（`components/log-workbench/`）：虚拟滚动、正则搜索、大小写切换、上一个 / 下一个匹配导航、仅匹配行模式、
+  服务端全文过滤、级别识别（NDJSON 数字级别 / `[level]` 标记 / 大写级别词，续行继承上一行级别）与筛选、
+  暂停 / 继续实时追踪（暂停期间积压）、断线自动重连、复制当前视图 / 复制全部 / 导出当前视图、跳到指定行号、行号与自动换行偏好。
+  带 ANSI 颜色序列的行按片段着色，搜索、级别识别与复制导出都基于去色文本。
 
 ### 日志查看器
 
-「日志查看器」（`/system/log-viewer`）只允许读取**目录白名单**内的常规日志文件，接口前缀为 `/api/log-viewer`，权限码 `system:log:view`。白名单 = 应用日志目录（`LOG_DIR`）+ 环境变量 `LOG_VIEWER_ROOTS`（逗号分隔绝对路径，非 Windows 默认 `/var/log`）；本机路径先解析符号链接再判定归属，并拒绝目录、设备与 FIFO，白名单外一律 403（不区分文件是否存在），因此该权限不能用来读取 `.env`、密钥等任意文件。传 `hostId` 时读取远端日志：路径按 POSIX 规范化后同样必须落在 `LOG_VIEWER_ROOTS` 内，末尾内容用 SSH `tail`，实时追踪用 SSH 流式通道，下载用 SFTP 可读流（100 MB 上限，不把完整文件读入内存）。支持 `?path=` / `?hostId=` 深链。
+「日志查看器」（`/system/log-viewer`）只允许读取**目录白名单**内的常规日志文件，接口前缀为 `/api/log-viewer`，权限码 `system:log:view`。白名单 = 应用日志目录（`LOG_DIR`）+ 环境变量 `LOG_VIEWER_ROOTS`（逗号分隔绝对路径，非 Windows 默认 `/var/log`）；本机路径先解析符号链接再判定归属，并拒绝目录、设备与 FIFO，白名单外一律 403（不区分文件是否存在），因此该权限不能用来读取 `.env`、密钥等任意文件。传 `hostId` 时读取远端日志：路径按 POSIX 规范化后同样必须落在 `LOG_VIEWER_ROOTS` 内，末尾内容用 SSH `tail -n`（带关键词时为 `grep -i -F -C` 管道，`.gz` 归档先 `gzip -dc`，参数经 `sh` 位置参数传递不拼接命令串），实时追踪用 SSH `tail -f` 流式通道并在服务端切分成整行，下载用 SFTP 可读流（100 MB 上限，不把完整文件读入内存）。支持 `?path=` / `?hostId=` 深链。
 
 | 接口 | 说明 |
 | --- | --- |
 | `GET /api/log-viewer/roots` | 当前允许读取的目录白名单（页面据此提示） |
-| `GET /api/log-viewer/content?path=...&lines=500` | 读取日志末尾内容，最多 5000 行 |
-| `GET /api/log-viewer/stream?path=...` | 通过 `tail -f -n 0` 流式追踪 |
+| `GET /api/log-viewer/content?path=...&lines=500` | 读取日志末尾 N 行，最多 5000 行；支持 `keyword` / `context` 全文过滤 |
+| `GET /api/log-viewer/tail?path=...` | SSE 实时追踪（`event: log`），`.gz` 文件不支持 |
 | `GET /api/log-viewer/download?path=...` | 下载日志文件，默认最大 100 MB |
-
-前端使用 ANSI 渲染日志行，支持关键词高亮、仅显示匹配行、`ERROR` / `WARN` / `INFO` / `DEBUG` 级别识别、颜色高亮、级别筛选与下载。
 
 ### 日志文件
 
@@ -143,9 +151,7 @@
 | `GET /api/log-files/:filename/download` | `system:log:files:download` | 下载日志文件 |
 | `DELETE /api/log-files/:filename` | `system:log:files:delete` | 删除日志文件 |
 
-读取采用 readline 流式逐行 + 固定容量环形缓冲，普通日志与 `.gz` 归档走同一条路径，峰值内存为 O(N 行)。`context` 参数在关键词命中行前后各保留 N 行。实时追踪通过轮询文件追加内容实现，周期为 1 秒。
-
-前端查看器支持虚拟滚动、正则搜索、大小写切换、上一个 / 下一个匹配导航、仅匹配行模式、服务端全文过滤、级别筛选、暂停 / 继续实时追踪、断线自动重连、复制当前视图 / 复制全部 / 导出当前视图、跳到指定行号，以及按 URL 参数 `?file=` / `?level=` 深链定位。
+页面左侧为文件列表（下载 / 删除 / 清理压缩日志），右侧为共用查看器，支持按 URL 参数 `?file=` / `?level=` 深链定位。
 
 ## 防火墙管理
 

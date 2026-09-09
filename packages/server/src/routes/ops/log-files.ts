@@ -1,5 +1,4 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { streamSSE } from 'hono/streaming';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import { logFileContract } from '@zenith/shared/ops';
@@ -7,10 +6,11 @@ import { authMiddleware } from '../../middleware/auth';
 import { guard, setAuditBeforeData } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { ErrorResponse, errBody, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
+import { streamLogTail } from '../../lib/http-stream';
 import {
-  readLastLines, watchTail,
   listLogFiles, readLogFileLines, deleteLogFile, resolveLogFile, getLogFileBeforeAudit,
 } from '../../services/ops/log-files.service';
+import { TAIL_REPLAY_LINES, readTailLinesStream, watchTail } from '../../services/ops/log-reader';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -30,9 +30,9 @@ const contentRoute = defineContractRoute(logFileContract.content, {
   middleware: view,
   responses: fileErrorResponses,
   handler: async (c) => {
-    const q = c.req.valid('query');
-    const lines = await readLogFileLines(c.req.valid('param').filename, q.lines ?? 500, q.keyword, q.context);
-    return c.json(okBody({ lines }, 'success'), 200);
+    const { lines, keyword, context } = c.req.valid('query');
+    const result = await readLogFileLines(c.req.valid('param').filename, lines ?? 500, { keyword, context });
+    return c.json(okBody({ lines: result }, 'success'), 200);
   },
 });
 
@@ -75,19 +75,12 @@ const tailRoute = defineContractRoute(logFileContract.tail, {
     const rawName = c.req.valid('param').filename;
     if (rawName.endsWith('.gz')) return c.json(errBody('压缩文件不支持实时追踪'), 400);
     const { filepath } = await resolveLogFile(rawName);
-    return streamSSE(c, async (stream) => {
-      const initialLines = await readLastLines(filepath, 100);
-      for (const line of initialLines) {
-        await stream.writeSSE({ data: line, event: 'log' });
-      }
-      let position = (await fsp.stat(filepath)).size;
-      const signal = c.req.raw.signal;
-      await watchTail(filepath, signal, position, async (newLines, newPos) => {
-        position = newPos;
-        for (const line of newLines) {
-          await stream.writeSSE({ data: line, event: 'log' });
-        }
-      });
+    return streamLogTail(c, {
+      replay: () => readTailLinesStream(filepath, TAIL_REPLAY_LINES),
+      follow: async (signal, emit) => {
+        const position = (await fsp.stat(filepath)).size;
+        await watchTail(filepath, signal, position, (lines) => emit(lines));
+      },
     });
   },
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSearchIndex, compileSearchPattern, computeEffectiveLevels, detectLogLevel, findMatchRanges } from './logFilesSearch';
+import { buildSearchIndex, compileSearchPattern, computeEffectiveLevels, detectLogLevel, findMatchRanges } from './log-search';
 
 describe('log file search helpers', () => {
   it('finds all case-insensitive match ranges in one line', () => {

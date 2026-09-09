@@ -16,9 +16,11 @@ export function useLogFiles() {
   return useApiQuery(logFileContract.list);
 }
 
+/** 日志内容随时在变，不复用 30s 内的缓存：每次挂载 / 切换都回源 */
 export function useLogFileContent(filename: string | undefined, params: LogFileContentParams, enabled = true) {
   return useApiQuery(logFileContract.content, { params: { filename: filename ?? '' }, query: params }, {
     enabled: enabled && !!filename,
+    staleTime: 0,
   });
 }
 

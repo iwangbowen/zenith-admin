@@ -1,103 +1,13 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import {
-  Button, Input, Tag, Typography, Select, Switch,
-} from '@douyinfe/semi-ui';
-import { FolderOpen, Play, Square, Search, FileText, Download } from 'lucide-react';
+import { Button, Dropdown, Input, Select, Typography } from '@douyinfe/semi-ui';
+import { Download, FolderOpen, FileText } from 'lucide-react';
 import { request } from '@/utils/request';
-import { streamText } from '@/utils/streaming';
-import { logViewerDownloadUrl, logViewerKeys, logViewerStreamUrl, useLogViewerContent, useLogViewerRoots } from '@/hooks/queries/log-viewer';
+import { logViewerDownloadUrl, useLogViewerRoots } from '@/hooks/queries/log-viewer';
+import { logSourceKey, type LogSource } from '@/hooks/queries/log-source';
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
-import { FilterSelect } from '@/components/search-filters';
-import { CommandOutputPanel } from '@/components/ops/CommandOutputPanel';
-
-// ─── ANSI 颜色解析器 ────────────────────────────────────────────────────────
-const ANSI_FG = ['#3c3c3c','#c0392b','#27ae60','#d4ac0d','#2980b9','#8e44ad','#17a589','#bdc3c7'];
-const ANSI_FG_BRIGHT = ['#7f8c8d','#e74c3c','#2ecc71','#f1c40f','#3498db','#9b59b6','#1abc9c','#ecf0f1'];
-
-interface AnsiSpan { text: string; color?: string; bg?: string; bold?: boolean; italic?: boolean; dim?: boolean }
-
-function parseAnsi(raw: string): AnsiSpan[] {
-  const result: AnsiSpan[] = [];
-  let color: string | undefined;
-  let bg: string | undefined;
-  let bold = false; let italic = false; let dim = false;
-  const segs = raw.split(
-    // eslint-disable-next-line no-control-regex
-    /(\x1b\[[0-9;]*m)/,
-  );
-  for (const seg of segs) {
-    if (seg.startsWith('\x1b[') && seg.endsWith('m')) {
-      const codes = seg.slice(2, -1).split(';').map(Number);
-      for (const code of codes) {
-        if (code === 0) { color = undefined; bg = undefined; bold = false; italic = false; dim = false; }
-        else if (code === 1) { bold = true; }
-        else if (code === 2) { dim = true; }
-        else if (code === 3) { italic = true; }
-        else if (code === 22) { bold = false; dim = false; }
-        else if (code === 23) { italic = false; }
-        else if (code === 39) { color = undefined; }
-        else if (code === 49) { bg = undefined; }
-        else if (code >= 30 && code <= 37) { color = ANSI_FG[code - 30]; }
-        else if (code >= 90 && code <= 97) { color = ANSI_FG_BRIGHT[code - 90]; }
-        else if (code >= 40 && code <= 47) { bg = ANSI_FG[code - 40]; }
-      }
-    } else if (seg) {
-      result.push({ text: seg, color, bg, bold: bold || undefined, italic: italic || undefined, dim: dim || undefined });
-    }
-  }
-  return result;
-}
-
-/** 去除所有 ANSI 转义序列（用于关键词匹配） */
-function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replaceAll(/\x1b\[[0-9;]*m/g, '');
-}
-
-type LogLevel = 'error' | 'warn' | 'info' | 'debug';
-const LEVEL_BORDER: Record<LogLevel, string> = { error: '#e74c3c', warn: '#f39c12', info: '#3498db', debug: '#95a5a6' };
-const LEVEL_RE: Record<LogLevel, RegExp> = {
-  error: /\b(error|err|fatal|critical|crit|panic|emerg|fail(ed|ure)?)\b/i,
-  warn: /\b(warn(ing)?)\b/i,
-  info: /\b(info|notice)\b/i,
-  debug: /\b(debug|trace|verbose)\b/i,
-};
-/** 检测一行日志的级别（按优先级 error>warn>info>debug） */
-function detectLevel(line: string): LogLevel | null {
-  const s = stripAnsi(line);
-  if (LEVEL_RE.error.test(s)) return 'error';
-  if (LEVEL_RE.warn.test(s)) return 'warn';
-  if (LEVEL_RE.info.test(s)) return 'info';
-  if (LEVEL_RE.debug.test(s)) return 'debug';
-  return null;
-}
-
-/** 渲染单行（含 ANSI 颜色 + 日志级别高亮） */
-function AnsiLine({ raw, highlight, level }: { raw: string; highlight: boolean; level: LogLevel | null }) {
-  const spans = useMemo(() => parseAnsi(raw), [raw]);
-  const levelStyle = level && !highlight
-    ? { display: 'block', borderLeft: `3px solid ${LEVEL_BORDER[level]}`, paddingLeft: 4, background: level === 'error' ? 'rgba(231,76,60,0.07)' : level === 'warn' ? 'rgba(243,156,18,0.06)' : undefined }
-    : undefined;
-  const hlStyle = highlight ? { background: 'rgba(255,230,0,0.25)', display: 'block', borderLeft: '3px solid #f1c40f', paddingLeft: 4 } : undefined;
-  return (
-    <span style={hlStyle ?? levelStyle}>
-      {spans.map((s, i) => (
-        <span key={i} style={{
-          color: s.color,
-          backgroundColor: s.bg,
-          fontWeight: s.bold ? 'bold' : undefined,
-          fontStyle: s.italic ? 'italic' : undefined,
-          opacity: s.dim ? 0.6 : undefined,
-        }}>
-          {s.text}
-        </span>
-      ))}
-    </span>
-  );
-}
+import { LogWorkbench } from '@/components/log-workbench/LogWorkbench';
 
 /** 常用日志路径 */
 const COMMON_LOG_PATHS = [
@@ -114,10 +24,16 @@ const COMMON_LOG_PATHS = [
   '/var/log/redis/redis-server.log',
 ];
 
+interface SubmittedLog {
+  path: string;
+  hostId: number | null;
+  /** 每次点「加载」递增：同一路径重复加载时重挂载工作台（停掉追踪、重新回源） */
+  seq: number;
+}
+
 export default function LogViewerPage() {
-  const queryClient = useQueryClient();
   const [filePath, setFilePath] = useState('');
-  const [submittedPath, setSubmittedPath] = useState('');
+  const [submitted, setSubmitted] = useState<SubmittedLog | null>(null);
   // 深链:?path= 直接加载指定日志(Nginx 站点页等跳入),消费后清空参数
   const [searchParams, setSearchParams] = useSearchParams();
   const initialHostId = (() => {
@@ -133,91 +49,29 @@ export default function LogViewerPage() {
     const p = searchParams.get('path');
     if (!p) return;
     setFilePath(p);
-    setSubmittedPath(p);
+    setSubmitted((prev) => ({ path: p, hostId, seq: (prev?.seq ?? 0) + 1 }));
     setSearchParams(hostId == null ? {} : { hostId: String(hostId) }, { replace: true });
   }, [searchParams, setSearchParams, hostId]);
-  const [keyword, setKeyword] = useState('');
-  const [filterOnly, setFilterOnly] = useState(false);
-  const [levelFilter, setLevelFilter] = useState<string | undefined>();
-  const [content, setContent] = useState('');
-  const [downloading, setDownloading] = useState(false);
-  const [following, setFollowing] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const contentParams = { path: submittedPath, lines: 500, ...(hostId == null ? {} : { hostId }) };
-  const contentQuery = useLogViewerContent(contentParams, !!submittedPath && !following);
   const rootsQuery = useLogViewerRoots(hostId ?? undefined);
-
-
-  // 追踪模式下自动滚到底部
-  useEffect(() => {
-    if (following && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [content, following]);
-
-  // 组件卸载清理
-  useEffect(() => () => { abortRef.current?.abort(); }, []);
-
-  useEffect(() => {
-    if (!following && contentQuery.data) {
-      setContent(contentQuery.data.content);
-    }
-  }, [contentQuery.data, following]);
+  const [downloading, setDownloading] = useState(false);
 
   const loadContent = useCallback(() => {
     const path = filePath.trim();
     if (!path) return;
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setFollowing(false);
-    if (path === submittedPath) {
-      void queryClient.invalidateQueries({
-        queryKey: logViewerKeys.content({ path, lines: 500, ...(hostId == null ? {} : { hostId }) }),
-      });
-      void contentQuery.refetch();
-      return;
-    }
-    setSubmittedPath(path);
-  }, [contentQuery, filePath, queryClient, submittedPath, hostId]);
-
-  const startFollow = useCallback(() => {
-    if (!filePath.trim()) return;
-    abortRef.current?.abort();
-    const abort = new AbortController();
-    abortRef.current = abort;
-    setFollowing(true);
-    void streamText(logViewerStreamUrl(filePath.trim(), hostId), (text) => setContent((prev) => prev + text), abort.signal)
-      .catch(() => { /* abort = ok */ })
-      .finally(() => setFollowing(false));
+    setSubmitted((prev) => ({ path, hostId, seq: (prev?.seq ?? 0) + 1 }));
   }, [filePath, hostId]);
 
-  const stopFollow = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setFollowing(false);
-    setContent((prev) => `${prev}\n\n⬛ 已停止追踪\n`);
-  }, []);
-
-  const handleDownload = useCallback(async () => {
-    if (!filePath.trim()) return;
+  const handleDownload = useCallback(async (target: SubmittedLog) => {
     setDownloading(true);
     try {
-      const name = filePath.trim().split('/').pop() ?? 'log.txt';
-      await request.download(logViewerDownloadUrl(filePath.trim(), hostId), name);
+      const name = target.path.split('/').pop() || 'log.txt';
+      await request.download(logViewerDownloadUrl(target.path, target.hostId), name);
     } finally {
       setDownloading(false);
     }
-  }, [filePath, hostId]);
+  }, []);
 
-  // 按关键词过滤行（在去除 ANSI 码的文本上匹配）+ 级别过滤 + 级别检测
-  const displayLines = useMemo(() => {
-    const lines = content.split('\n');
-    const kw = keyword.trim().toLowerCase();
-    return lines
-      .map((raw) => ({ raw, level: detectLevel(raw), highlight: kw ? stripAnsi(raw).toLowerCase().includes(kw) : false }))
-      .filter((l) => (!filterOnly || !kw || l.highlight) && (!levelFilter || l.level === levelFilter));
-  }, [content, keyword, filterOnly, levelFilter]);
+  const source: LogSource | null = submitted ? { kind: 'path', path: submitted.path, hostId: submitted.hostId } : null;
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 12 }}>
@@ -228,11 +82,8 @@ export default function LogViewerPage() {
         <HostSelector
           value={hostId}
           onChange={(next) => {
-            abortRef.current?.abort();
-            setFollowing(false);
             setHostId(next);
-            setSubmittedPath('');
-            setContent('');
+            setSubmitted(null);
           }}
         />
       </div>
@@ -254,7 +105,7 @@ export default function LogViewerPage() {
             value={filePath}
             onChange={setFilePath}
             showClear
-            onEnterPress={() => void loadContent()}
+            onEnterPress={loadContent}
           />
         </div>
         <div style={{ minWidth: 200 }}>
@@ -266,82 +117,49 @@ export default function LogViewerPage() {
             optionList={COMMON_LOG_PATHS.map((p) => ({ value: p, label: p.split('/').pop() ?? p }))}
           />
         </div>
-        <Button type="primary" icon={<FolderOpen size={13} />} loading={contentQuery.isFetching} onClick={() => void loadContent()}>
+        <Button type="primary" icon={<FolderOpen size={13} />} onClick={loadContent} disabled={!filePath.trim()}>
           加载
         </Button>
-        {!following
-          ? <Button icon={<Play size={13} />} onClick={startFollow} disabled={!filePath.trim()}>追踪末尾</Button>
-          : <Button type="danger" icon={<Square size={13} />} onClick={stopFollow}>停止追踪</Button>
-        }
-        <Button icon={<Download size={13} />} loading={downloading} onClick={() => void handleDownload()} disabled={!filePath.trim()}>下载</Button>
       </div>
 
-      {/* 关键词过滤区 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Input
-            prefix={<Search size={13} />}
-            placeholder="关键词高亮"
-            value={keyword}
-            onChange={setKeyword}
-            showClear
-            style={{ width: 220 }}
+      {/* 日志工作台：与「日志文件」页面共用同一查看器（搜索 / 级别 / 实时追踪 / 复制导出） */}
+      <div style={{
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        border: '1px solid var(--semi-color-border)',
+        borderRadius: 'var(--semi-border-radius-medium)',
+        overflow: 'hidden',
+        background: 'var(--surface-card)',
+      }}>
+        {submitted && source ? (
+          <LogWorkbench
+            key={`${logSourceKey(source)}|${submitted.seq}`}
+            source={source}
+            title={(
+              <>
+                <FileText size={14} style={{ flexShrink: 0, color: 'var(--semi-color-primary)' }} />
+                <Typography.Text style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600 }}>
+                  {submitted.path}
+                </Typography.Text>
+              </>
+            )}
+            menuExtra={(
+              <Dropdown.Item disabled={downloading} onClick={() => void handleDownload(submitted)}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Download size={14} /> 下载
+                </span>
+              </Dropdown.Item>
+            )}
           />
-          <Typography.Text size="small" type="secondary">仅显示匹配行</Typography.Text>
-          <Switch size="small" checked={filterOnly} onChange={setFilterOnly} />
-        </div>
-        <FilterSelect
-          placeholder="全部级别"
-          items={[
-            { label: 'ERROR', value: 'error' },
-            { label: 'WARN', value: 'warn' },
-            { label: 'INFO', value: 'info' },
-            { label: 'DEBUG', value: 'debug' },
-          ]}
-          value={levelFilter}
-          onChange={setLevelFilter}
-          size="small"
-        />
-        {following && <Tag color="green" size="small">● 实时追踪中</Tag>}
-        {content && (
-          <Typography.Text size="small" type="tertiary">
-            {displayLines.length} 行{keyword && ` / 全 ${content.split('\n').length} 行`}
-          </Typography.Text>
-        )}
-        {content && (
-          <Button size="small" theme="borderless" type="tertiary" onClick={() => setContent('')}>清空</Button>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <FileText size={40} style={{ color: 'var(--semi-color-text-3)' }} />
+            <Typography.Text type="tertiary">请输入日志文件路径并点击「加载」</Typography.Text>
+          </div>
         )}
       </div>
-
-      {/* 输出区（ANSI 色彩渲染） */}
-      <CommandOutputPanel output={content} emptyText={contentQuery.isFetching ? '加载中...' : '请选择日志文件并点击「加载」'}>
-        <div
-          ref={scrollRef}
-          style={{
-            padding: '8px 12px',
-            fontFamily: 'Consolas, "Courier New", monospace',
-            fontSize: 12,
-            lineHeight: 1.6,
-            background: 'var(--surface-card)',
-            height: '100%',
-            overflow: 'auto',
-            color: 'var(--semi-color-text-0)',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-          }}
-        >
-          {displayLines.length > 0 && content
-            ? displayLines.map((line, i) => (
-                <AnsiLine key={i} raw={line.raw} highlight={line.highlight} level={line.level} />
-              ))
-            : (
-              <Typography.Text type="tertiary" style={{ fontStyle: 'italic' }}>
-                {contentQuery.isFetching ? '加载中...' : '请选择日志文件并点击「加载」'}
-              </Typography.Text>
-            )
-          }
-        </div>
-      </CommandOutputPanel>
     </div>
   );
 }

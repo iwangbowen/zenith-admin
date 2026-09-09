@@ -3,7 +3,8 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { ChevronsDown, ChevronsUp } from 'lucide-react';
-import type { LogLevel, MatchRange, SearchMatch } from './logFilesSearch';
+import type { LogLevel, MatchRange, SearchMatch } from './log-search';
+import { hasAnsi, parseAnsi, type AnsiSpan } from './ansi';
 
 const LEVEL_COLORS: Partial<Record<LogLevel, string>> = {
   error: 'var(--semi-color-danger)',
@@ -29,26 +30,60 @@ const activeMarkStyle: CSSProperties = {
 const GUTTER_FILL_LAYER = 'linear-gradient(var(--semi-color-fill-0), var(--semi-color-fill-0))';
 const GUTTER_ACTIVE_LAYER = 'linear-gradient(var(--semi-color-primary-light-default), var(--semi-color-primary-light-default))';
 
-function renderHighlightedLine(text: string, ranges: MatchRange[] | undefined, activeStart: number | null): ReactNode {
+/**
+ * 渲染一段文本并标出落在其中的匹配区间。`base` 是该段在整行（去色文本）中的起始偏移，
+ * 匹配区间以整行偏移表示，跨片段的匹配会在两段各标一半。
+ */
+function renderHighlightedSegment(text: string, ranges: MatchRange[] | undefined, activeStart: number | null, base = 0): ReactNode {
   if (!ranges || ranges.length === 0) return text;
 
   const parts: ReactNode[] = [];
   let cursor = 0;
   ranges.forEach((range, index) => {
-    if (range.start > cursor) parts.push(text.slice(cursor, range.start));
+    const start = Math.max(range.start - base, 0);
+    const end = Math.min(range.end - base, text.length);
+    if (end <= 0 || start >= text.length || start >= end) return;
+    if (start > cursor) parts.push(text.slice(cursor, start));
     parts.push(
       <mark key={`${index}-${range.start}`} style={range.start === activeStart ? activeMarkStyle : markStyle}>
-        {text.slice(range.start, range.end)}
+        {text.slice(start, end)}
       </mark>,
     );
-    cursor = range.end;
+    cursor = end;
   });
+  if (parts.length === 0) return text;
   if (cursor < text.length) parts.push(text.slice(cursor));
   return parts;
 }
 
+function ansiSpanStyle(span: AnsiSpan): CSSProperties | undefined {
+  if (!span.color && !span.bg && !span.bold && !span.italic && !span.dim) return undefined;
+  return {
+    color: span.color,
+    backgroundColor: span.bg,
+    fontWeight: span.bold ? 'bold' : undefined,
+    fontStyle: span.italic ? 'italic' : undefined,
+    opacity: span.dim ? 0.6 : undefined,
+  };
+}
+
+/** 渲染整行：带 ANSI 颜色的行按片段着色，匹配高亮映射到去色文本的偏移上 */
+function renderLine(raw: string, ranges: MatchRange[] | undefined, activeStart: number | null): ReactNode {
+  if (!hasAnsi(raw)) return renderHighlightedSegment(raw, ranges, activeStart);
+  let offset = 0;
+  return parseAnsi(raw).map((span, index) => {
+    const base = offset;
+    offset += span.text.length;
+    return (
+      <span key={index} style={ansiSpanStyle(span)}>
+        {renderHighlightedSegment(span.text, ranges, activeStart, base)}
+      </span>
+    );
+  });
+}
+
 export interface LogContentViewProps {
-  /** 原始行（静态内容或 tail 缓冲） */
+  /** 原始行（静态内容或 tail 缓冲；可含 ANSI 颜色序列，渲染时按片段着色） */
   lines: string[];
   /** 展示行 → 原始行下标（级别过滤后的可见行） */
   visibleIndexes: number[];
@@ -279,7 +314,7 @@ export const LogContentView = forwardRef<LogContentViewHandle, LogContentViewPro
                       color: level ? LEVEL_COLORS[level] : undefined,
                     }}
                   >
-                    {renderHighlightedLine(text, ranges, isActiveLine ? (activeMatch?.start ?? null) : null)}
+                    {renderLine(text, ranges, isActiveLine ? (activeMatch?.start ?? null) : null)}
                   </span>
                 </div>
               );
