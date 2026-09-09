@@ -55,6 +55,15 @@ export const useAssignXxxMenus = () =>
     },
   });
 
+/** 非标准命名的新增 / 编辑对（createRule / updateRule、slotCreate / slotUpdate…）：无 id 走前者、有 id 走后者 */
+export const useSaveXxxRule = () =>
+  useSaveMutation(xxxContract.createRule, xxxContract.updateRule, {
+    invalidate: (qc, saved) => {
+      void qc.invalidateQueries({ queryKey: xxxKeys.ruleDetail(saved.id) });
+      void qc.invalidateQueries({ queryKey: xxxKeys.ruleLists });
+    },
+  });
+
 /** 单个只读操作 */
 export const useXxxStats = (id?: number) =>
   useQuery(apiQueryOptions(xxxContract.stats, { params: { id: id ?? 0 } }, { enabled: id !== undefined }));
@@ -100,6 +109,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactQuery } from '@/lib/query';
 // 有日期时间范围筛选时：import { formatDateTimeRangeForApi } from '@/utils/date';
 // beforeSave 需要中断提交时：import { abortSubmit } from '@/lib/abort-submit';
 import { useDeleteXxxs, useSaveXxx, useXxxDetail, useXxxList, xxxKeys } from '@/hooks/queries/xxxs';
@@ -123,7 +133,7 @@ export default function XxxPage() {
   // useListSearch 内部整合 usePagination，并保证「查询 / 重置」必定失效 listKey
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    draftParams, setField, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: xxxKeys.lists });
 
@@ -176,9 +186,11 @@ export default function XxxPage() {
 
   const { items: statusItems } = useDictItems('common_status');
 
-  const buildExportQuery = (): Record<string, unknown> => ({
-    keyword: submittedParams.keyword || undefined,
+  // 导出条件：compactQuery 丢弃 undefined / null / 空串，时间区间直接展开 formatDateTimeRangeForApi(range)
+  const buildExportQuery = () => compactQuery({
+    keyword: submittedParams.keyword,
     status: enumValueOf(XXX_STATUSES, submittedParams.status),
+    // ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
 
   // ─── 表格列 ─────────────────────────────────────────────────────────────
@@ -207,17 +219,13 @@ export default function XxxPage() {
   return (
     <div className="page-container">
       {/* 桌面：关键词 → 筛选 → 查询 / 重置 → 新增 → 低频操作；移动：主区 关键词 + 查询 + 新增，筛选进抽屉，低频操作进更多菜单 */}
+      {/* 筛选控件的 onChange 一律 setField('字段')；控件值需转换时 (e) => setField('x')(转换(e)) */}
       <ListSearchToolbar
-        keyword={(
-          <KeywordInput placeholder="搜索名称..." value={draftParams.keyword}
-            onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
-        )}
+        keyword={<KeywordInput placeholder="搜索名称..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
         filters={(
           <>
-            <StatusSelect items={statusItems} value={draftParams.status}
-              onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
-            {/* <DateRangeFilter value={draftParams.timeRange}
-              onChange={(v) => setDraftParams((p) => ({ ...p, timeRange: v }))} /> */}
+            <StatusSelect items={statusItems} value={draftParams.status} onChange={setField('status')} />
+            {/* <DateRangeFilter value={draftParams.timeRange} onChange={setField('timeRange')} /> */}
           </>
         )}
         onSearch={handleSearch}

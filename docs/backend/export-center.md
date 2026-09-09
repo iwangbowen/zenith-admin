@@ -127,15 +127,14 @@ export const positionsExportDefinition = defineExport({
 
 ## 前端接入
 
-列表页使用 `ExportButton`，将当前已提交筛选条件传给 `query`：
+列表页使用 `ExportButton`，将当前已提交筛选条件传给 `query`；条件用 `compactQuery`（`lib/query.ts`）去掉 `undefined` / `null` / 空串，时间区间直接展开 `formatDateTimeRangeForApi(range)`：
 
 ```tsx
-function buildExportQuery(): Record<string, unknown> {
-  return {
-    keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-  };
-}
+const buildExportQuery = () => compactQuery({
+  keyword: submittedParams.keyword,
+  status: submittedParams.status,
+  ...formatDateTimeRangeForApi(submittedParams.timeRange),
+});
 
 const renderExportButtons = () => hasPermission('system:xxx:export') ? (
   <ExportButton entity="system.xxxs" query={buildExportQuery()} />

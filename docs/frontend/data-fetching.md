@@ -13,7 +13,7 @@
 ```text
 packages/web/src/
 ├── lib/query.ts            # queryClient 单例 + unwrap + toQueryString + compactQuery + LOOKUP_STALE_TIME + createLimiter
-├── lib/contract-query.ts   # 契约调用层：api / useApiQuery / useApiMutation / createResourceQueries
+├── lib/contract-query.ts   # 契约调用层：api / useApiQuery / useApiMutation / useSaveMutation / createResourceQueries
 ├── lib/api-conformance.test.ts  # 字面量 URL 对照服务端路由快照
 ├── hooks/useListSearch.ts  # 列表搜索状态：draft/submitted + 分页 + 查询必回源
 ├── hooks/useEditModal.ts   # 新增/编辑弹窗编排：校验/提交/提示/关闭/表单重挂载
@@ -53,6 +53,7 @@ packages/web/src/
 | `contractKey(op, input?)` | 单操作查询的 query key：`[资源键, 操作名, input]`；省略 input 得到该操作的公共前缀（`invalidateQueries` / `useListSearch({ listKey })`） |
 | `apiQueryOptions(op, input?, options?)` / `useApiQuery(op, input?, options?)` | 可缓存查询；`options` 透传 TanStack Query 选项（`enabled`、`staleTime`…） |
 | `useApiMutation(op, { invalidate, requestOptions, ...mutationOptions })` | 变更；变量即契约输入，`invalidate(qc, output, input)` 负责失效 |
+| `useSaveMutation(createOp, updateOp, { invalidate, requestOptions, ...mutationOptions })` | 非标准命名的新增 / 编辑对：变量 `{ id?, values }`，无 id 走 `createOp`、有 id 走 `updateOp`（路径参数 `id`）；`values` 接受 create / update 入参的部分形态，`invalidate(qc, saved, vars)` 负责失效 |
 | `createResourceQueries(contract, options?)` | 标准 CRUD 契约组的 `keys` 与 `useList` / `useDetail` / `useSave` / `useDelete` / `useLookup` |
 
 `createResourceQueries` 依赖契约操作命名：`list`（分页）必填；`detail` / `create` / `update` / `remove` / `removeBatch`（多条删除走 `/batch`）/ `all`（下拉源）均可选，声明了才提供对应 hook（未声明 `detail` 时不提供 `useDetail`，实体类型取列表项）。主键类型依次取 `detail` / `update` / `remove` 的路径参数 `id`（`idParam` → number，`z.object({ id: z.string() })` → string），`useDetail` / `useSave` / `useDelete` / `keys.detail` 随之推导。
@@ -104,7 +105,7 @@ export const useAssignXxxMenus = () =>
 ```tsx
 const {
   page, pageSize, buildPagination,
-  draftParams, setDraftParams, submittedParams,
+  draftParams, setField, submittedParams,
   handleSearch, handleReset, applySearch,
 } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: xxxKeys.lists });
 
@@ -114,8 +115,12 @@ const listQuery = useXxxList({
   keyword: submittedParams.keyword || undefined,
   status: enumValueOf(XXX_STATUSES, submittedParams.status),   // 契约按枚举声明，先收窄 string
 });
+
+// 筛选控件绑定草稿字段：setField(key) 按 key 缓存、引用稳定
+<KeywordInput value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
 ```
 
+`setField(key)` 返回单字段 setter，是筛选控件 `onChange` 的标准写法；控件值需要转换时写 `(e) => setField('archived')(!!e.target.checked)`，一次改多个字段才用 `setDraftParams`。
 `applySearch(params)` 用于点击部门树、标签、收藏开关、保存视图等不经过输入框的筛选；它同步更新 draft 与 submitted，回到第一页并失效列表。不要暴露 `submittedParams` 的裸 setter。
 
 表格接线：

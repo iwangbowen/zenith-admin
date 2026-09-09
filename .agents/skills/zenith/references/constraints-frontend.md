@@ -27,10 +27,12 @@
 | --- | --- | --- | --- |
 | 服务端调用 | `lib/contract-query.ts`：`api(op, input)` / `useApiQuery(op, input)` / `useApiMutation(op)`，`op` 来自 `@zenith/shared/{域}` 的契约 | `request.get<T>('/api/...')` 等路径字面量与响应泛型（`api-conformance.test.ts` 对照服务端路由表守住残留字面量） | 路径写错线上 404 而 Demo 全绿；响应类型与服务端漂移 |
 | 标准 CRUD 域 hooks | `lib/contract-query.ts` 的 `createResourceQueries(xxxContract)` | 手抄 `xxxKeys` 与列表 / 详情 / 保存 / 删除 / 下拉源 | 保存后列表不变；已删记录重新打开弹窗时闪出旧数据 |
+| 非标准命名的新增 / 编辑对（`createRule` / `updateRule`、`slotCreate` / `slotUpdate`…） | `lib/contract-query.ts` 的 `useSaveMutation(createOp, updateOp, { invalidate, requestOptions })`，变量 `{ id?, values }` | 手写 `useMutation({ mutationFn: ({ id, values }) => id === undefined ? api(create, …) : api(update, …), onSuccess })` | create / update 的 requestOptions 与失效各写一份，两处漂移 |
 | 新增 / 编辑弹窗 | `hooks/useEditModal.ts` | `useRef<FormApi>` + `editingRecord` + `try { validate() } catch` + `Toast` + 关闭四件套 | 确定按钮永远转圈；异步详情进不了表单；下次「新增」带出上次记录 |
 | 弹窗 / 抽屉自定义页脚 | `components/ModalFooter.tsx`（`<ModalFooter {...modal.footerProps} okText="保存" />`，独立提交状态传 `onCancel` / `onOk` / `loading`；左侧次要动作传 `extra`） | `<div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>` + 取消 / 确认两个 `Button` | 按钮次序、主次样式与间距各页不一；详情加载中未禁用提交 |
 | Excel / CSV 导入入口 | `components/ImportButton.tsx`；自定义导入面板用 `hooks/useImportUpload.tsx`（隐藏 file input → 上传文件中心 → 提交任务，正式 / 预检） | 手写 `<input type="file">` + `useUploadFile` + `useSubmitImportJob` 串联 | 预检标记与 loading 归属错乱；上下文参数漏传 |
-| 列表页搜索状态 | `hooks/useListSearch.ts` | `draftParams` / `submittedParams` 双状态 + `handleSearch` / `handleReset` | 条件未变时点「查询」不回源，且列表仍有数据、不报错 |
+| 列表页搜索状态 | `hooks/useListSearch.ts`；筛选控件绑定草稿字段一律 `onChange={setField('字段')}`（值需转换时 `(e) => setField('x')(转换(e))`），一次改多个字段才用 `setDraftParams` | `draftParams` / `submittedParams` 双状态 + `handleSearch` / `handleReset`；单字段写入手写 `setDraftParams((p) => ({ ...p, x: v }))` / `setDraftParams({ ...draftParams, x: v })` | 条件未变时点「查询」不回源，且列表仍有数据、不报错；非函数式写法在同一 tick 改多个字段互相覆盖 |
+| 导出 / 深链等对象参数的空值过滤 | `lib/query.ts` 的 `compactQuery({ ... })`（丢弃 `undefined` / `null` / 空串），时间区间直接展开 `...formatDateTimeRangeForApi(range)` | `...(x ? { x } : {})` 条件展开、`x || undefined` 逐字段手写 | 各页对空串 / `0` / `false` 的取舍不一致 |
 | 列表页工具栏排布 | `components/list-page` 的 `ListSearchToolbar`（`keyword` / `filters` / `create` / `actions` 槽位 + `onSearch` / `onReset`） | 手写 `SearchToolbar` 的 `primary` / `mobilePrimary` / `mobileFilters` 双份 JSX、`renderKeywordSearch` 之类的渲染闭包 | 桌面 / 移动排布各页不一致；移动端漏掉查询或新增 |
 | 状态开关列 | `components/list-page` 的 `useStatusToggle({ toggle, confirmDisable, disabled })` → `status.column()` | `togglingId = mutation.isPending ? mutation.variables?.id : null` + 手写 `Switch` + `Modal.confirm` + `Toast.success('已启用')` | 行内 loading 与载荷形状耦合；停用确认样式各页不一 |
 | 列表删除动作 | `components/list-page` 的 `deleteAction`（操作列）/ `confirmAndDelete`（批量按钮） | 操作列里手写 `{ key: 'delete', danger: true, onClick: () => confirmDelete({ onOk: async () => { await mutateAsync(); Toast.success('删除成功'); } }) }` | 漏 Toast / 漏 danger / 成功后忘清选中 |
@@ -41,6 +43,9 @@
 | React Flow 关系图点选高亮 | `hooks/useGraphSelectionHighlight.ts`（返回 `nodes` / `edges` / `onNodesChange` / `handleNodeClick` / `handlePaneClick`） | 手写 `useNodesState` + 同步 effect + `related` / `relatedEdges` 集合 + `dimmed` 回写 | 输入变化时选中态未清空；淡化规则各图漂移 |
 | 异步任务表格列 | `components/async-task-columns.tsx` 的 `asyncTaskStatusColumn()`（含「取消中 / 等待重试」派生态）与 `asyncTaskItemColumns()` | 页面内联状态 `render` 与任务项五列 | 派生态文案 / 颜色两页不一致 |
 | 人员选择器 | `components/UserSelect.tsx`：系统全量用户用默认导出 `UserSelect`；其它权限范围的数据源（工作流可选人员等）各自取数后交给 `UserSelectBase({ users, loading, ...props })` 渲染 | 复制一份 `Select` + `optionList` 映射再换 hook | 「昵称（部门）」标签、加载中禁用、`maxTagCount` 等交互各处漂移 |
+| 用户下拉选项（筛选 `FilterSelect` / 表单 `Form.Select` 的 `optionList`） | `hooks/queries/users.ts` 的 `toUserOptions(users)`（标签取昵称，空则回退用户名） | `users.map((u) => ({ value: u.id, label: u.nickname \|\| u.username }))` | 回退规则各页不一 |
+| 报表资源页的负责人 / 目录筛选与下拉源 | `pages/report/report-filters.tsx`：`useReportOwnerFolderOptions(resourceType)` 取全量用户 + 目录树平铺，`ReportOwnerFilter` / `ReportFolderFilter` 渲染（`items` / `width` / `placeholder` 可覆盖） | 逐页 `useAllUsers` + `flattenReportFolders(useReportFolderTree(...))` + 手写 `FilterSelect placeholder="全部负责人"` | 宽度、可搜索与占位各页漂移 |
+| 网盘空间列表列 | `pages/drive/drive-space-columns.tsx` 的 `driveSpaceNameColumn(navigate)` / `driveSpaceTypeColumn` / `driveSpaceOwnerColumn({ orphanTag })` / `driveSpaceDefaultRoleColumn` / `driveSpaceUsageColumn({ width, customQuotaMark })` | 「我的空间」与「空间治理」各抄一份名称 / 类型 / 用量列 | 用量进度条阈值与类型标签颜色两页不一致 |
 | 仪表盘查看态（登录 / 嵌入 / 公开链接） | `pages/report/widgets/dashboard-runtime.tsx`（`defaultFilterValues` / `useDashboardWidgetQueries` / `exportDashboardPng` / `downloadDataUrl` / `dashboardMobileActions` / `widgetClickPayload` / `drilldownPayload` / `openDrilldownUrl` / `widgetStateFromDataMap`）+ `DashboardCanvasView.tsx`；数据源、筛选状态机与鉴权留在各入口 | 在新入口里再抄 `toPng` 导出、下钻载荷、`ScreenCanvas` 空态 / 等比容器 | 桥接事件载荷字段两端不一致；导出背景 / 像素比不同 |
 | 会员前台统计数值 / 表单行 | `member/components/StatCard.tsx`（`--m-*` 令牌，与后台 `components/charts/StatCard` 是不同体系）、`member/components/FieldRow.tsx` | 页面内再定义同名局部组件 | 会员端视觉令牌与字号漂移 |
 | 支付域表单 / 筛选控件 | `pages/payment/payment-form-fields.tsx` 的 `PaymentAppField`（选中后由调用方重置依赖字段）/ `PaymentMerchantConfigField` / `PaymentCurrencyField` / `PaymentAppFilterSelect`；应用 + 绑定商户配置联动取数用 `payment-app-options.ts` 的 `useAppMerchantConfigLookup(selectedAppId)` | 逐页手写 `Form.Select field="applicationId"` / `channelConfigId` / `currency` 与 `[{ value: 'CNY', … }]` | 必填文案、可搜索、宽度各页不一 |
@@ -58,8 +63,10 @@
 补充判定：
 
 - `createResourceQueries` 覆盖契约的 `list` / `detail` / `create` / `update` / `remove` / `removeBatch` / `all`；
-  域内其余操作用 `useApiMutation(xxxContract.op, { invalidate })` / `useApiQuery(xxxContract.op, input)`，
-  失效用工厂导出的 `keys`。mutation 变量即契约输入 `{ params?, query?, headers?, body? }`，**禁止**再包一层手写 `useMutation`
+  非标准命名的新增 / 编辑对用 `useSaveMutation(createOp, updateOp, { invalidate })`（`values` 接受 create / update 入参的部分形态，
+  路径参数固定为 `id`；带父级路径参数的成对操作仍手写 `useMutation`），域内其余操作用 `useApiMutation(xxxContract.op, { invalidate })` /
+  `useApiQuery(xxxContract.op, input)`，失效用工厂导出的 `keys`。mutation 变量即契约输入 `{ params?, query?, headers?, body? }`，
+  **禁止**再包一层手写 `useMutation`
 - 需要读取响应信封（结果 `message`、非零 `code` 分支、限流倒计时等）的调用用 `apiRaw(op, input, options)`，
   **禁止**用 `request.post<T>(urlOf(op), body)` 手写响应泛型；`urlOf(op)` 只用于上传 / 下载 / SSE 等非 JSON 通道
 - `useEditModal` 的表单值类型取契约的创建入参：`useEditModal<Xxx, Partial<CreateXxxInput>>`；记录里的 `null`

@@ -109,6 +109,10 @@ export const SEED_XXXS: Xxx[] = [
 **新增 seed 分片时**在 `shared/src/seed/index.ts` 补 `export * from './{业务域}';`，
 否则 `@zenith/shared/seed` 拿不到新常量。
 
+带「已发布快照」的资源（仪表盘 `publishedSnapshot`、填报模板 `publishedSchema` 等）在 seed 里没有草稿改动：
+把定义写成一份常量或工厂参数，快照用 `structuredClone(定义)` 派生（见 `seed/report.ts` 的 `publishedDashboard`），
+**禁止**把同一份 layout / widgets / fields 手抄两遍；深拷贝是为了 Demo 模式下编辑草稿不会连带改动快照。
+
 ### 10b：在 `server/src/db/seed.ts` 中导入并插入
 
 ```ts

@@ -47,8 +47,10 @@
 
 `createResourceQueries` 是标准 CRUD 的统一契约：保存后失效 `detail(id)`、`lists` 与（契约声明 `all` 时）`lookup`，
 删除后移除详情并失效列表与 lookup。使用工厂的域不得自行改写这套行为。
+非标准命名的新增 / 编辑对（`createRule` / `updateRule` 等）走 `useSaveMutation(createOp, updateOp, { invalidate })`，
+失效策略写在 `invalidate(qc, saved, vars)` 里，按下表选型。
 
-下表用于**其余操作**（`useApiMutation(op, { invalidate })` 的 `invalidate` 回调，或页面内 `useMutation`）：
+下表用于**其余操作**（`useApiMutation(op, { invalidate })` / `useSaveMutation(...)` 的 `invalidate` 回调，或页面内 `useMutation`）：
 
 | mutation 形态 | 策略 |
 | --- | --- |

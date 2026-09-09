@@ -10,12 +10,9 @@
  * <SearchToolbar
  *   primary={(
  *     <>
- *       <KeywordInput placeholder="搜索名称/编码" value={draftParams.keyword}
- *         onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
- *       <StatusSelect items={statusItems} value={draftParams.status}
- *         onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />
- *       <FilterSelect placeholder="全部渠道" items={PAYMENT_CHANNEL_OPTIONS} value={draftParams.channel}
- *         onChange={(v) => setDraftParams((p) => ({ ...p, channel: v }))} />
+ *       <KeywordInput placeholder="搜索名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
+ *       <StatusSelect items={statusItems} value={draftParams.status} onChange={setField('status')} />
+ *       <FilterSelect placeholder="全部渠道" items={PAYMENT_CHANNEL_OPTIONS} value={draftParams.channel} onChange={setField('channel')} />
  *       <SearchButton onClick={handleSearch} />
  *       <ResetButton onClick={handleReset} />
  *     </>

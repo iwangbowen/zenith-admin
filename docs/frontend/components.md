@@ -90,10 +90,10 @@ const operationColumn = createOperationColumn<User>({
 
 ```tsx
 <SearchToolbar
-  primary={<><KeywordInput value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} /><SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} /></>}
-  filters={<StatusSelect items={statusItems} value={draftParams.status} onChange={(v) => setDraftParams((p) => ({ ...p, status: v }))} />}
+  primary={<><KeywordInput value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} /><SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} /></>}
+  filters={<StatusSelect items={statusItems} value={draftParams.status} onChange={setField('status')} />}
   actions={<CreateButton onClick={modal.openCreate} />}
-  mobilePrimary={<><KeywordInput value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} /><SearchButton onClick={handleSearch} /><CreateButton onClick={modal.openCreate} /></>}
+  mobilePrimary={<><KeywordInput value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} /><SearchButton onClick={handleSearch} /><CreateButton onClick={modal.openCreate} /></>}
   onFilterApply={handleSearch}
   onFilterReset={handleReset}
 />

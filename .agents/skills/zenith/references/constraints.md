@@ -133,6 +133,10 @@
   在事务内清除范围内其它默认标记，范围条件由调用方给出；**禁止**在 service 里手写 `update(table).set({ isDefault: false })`
 - **工作流实例并发保护**：实例上的审批 / 推进 / 管理操作在事务内用 `services/workflow/instances/shared.ts` 的
   `lockInstanceExpecting(tx, id, expectedStatus, message)` 加行级锁并重校验状态；**禁止**手写 `SELECT status … FOR UPDATE` + 409 样板
+- **工作流新任务事件**：推进 / 跳转 / 恢复产生的新任务一律经 `services/workflow/instances/shared.ts` 的
+  `emitTasksEnteredEvents(instanceId, tasks, meta, executor?)` 补发 `node.entered` → `task.created` → 按状态 `task.assigned` /
+  `task.approved` / `task.rejected`（事务内传 `executor` 并 `await`，提交后同步发射不传）；**禁止**在各推进路径手写这组循环；
+  `instance.approved` / `instance.rejected` 仍由调用方按终态单独发射
 - **并行查询**：分页列表的 count 与 list **必须** `Promise.all` 并行，禁止串行 `await`
 - **只读快照统计**：同一（组）表的多条统计查询要求结果相互一致时（汇总卡片 + 明细榜单、对账）
   用 `readSnapshot()`（`db/index.ts`，repeatable read + read only）；事务内语句串行执行，
