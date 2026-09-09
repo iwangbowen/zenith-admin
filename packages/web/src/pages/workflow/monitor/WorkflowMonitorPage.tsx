@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowExecutionToken, WorkflowFlowData, WorkflowInstanceListItem, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared/workflow';
 import { WORKFLOW_ISSUE_SEVERITY_META as ISSUE_SEVERITY_MAP } from './constants';
 import { downloadBlob } from '@/utils/download';
+import { formatSecondsBetween } from '@/utils/format';
 import { UserAvatar } from '@/components/UserAvatar';
 import AppModal from '@/components/AppModal';
 import ExportButton from '@/components/ExportButton';
@@ -214,18 +215,6 @@ function buildDiagNodes(
   });
 }
 
-/** 计算流程耗时：运行中算到当前，已结束算到最后更新时间 */
-function formatDuration(start: string, end: string): string {
-  let sec = Math.max(0, dayjs(end).diff(dayjs(start), 'second'));
-  const d = Math.floor(sec / 86400); sec -= d * 86400;
-  const h = Math.floor(sec / 3600); sec -= h * 3600;
-  const m = Math.floor(sec / 60); sec -= m * 60;
-  if (d > 0) return `${d}天${h}小时`;
-  if (h > 0) return `${h}小时${m}分`;
-  if (m > 0) return `${m}分${sec}秒`;
-  return `${sec}秒`;
-}
-
 type FocusSeverity = 'success' | 'info' | 'warning' | 'critical';
 
 const FOCUS_SEVERITY_META: Record<FocusSeverity, { text: string; color: TagColor }> = {
@@ -321,10 +310,10 @@ function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes:
 
   const activeNodeText = oldestActiveTask ? (oldestActiveTask.nodeName || oldestActiveTask.nodeKey) : '—';
   const assigneeText = summarizeNames(activeTasks.map((task) => task.assigneeName), '未指定处理人');
-  const waitText = oldestActiveTask ? formatDuration(oldestActiveTask.createdAt, diagnostics.generatedAt) : '—';
+  const waitText = oldestActiveTask ? formatSecondsBetween(oldestActiveTask.createdAt, diagnostics.generatedAt) : '—';
   const assigneeSource = oldestActiveNode?.config.assigneeType ? ASSIGNEE_TYPE_LABEL[oldestActiveNode.config.assigneeType] ?? oldestActiveNode.config.assigneeType : '—';
   const longestStayText = longestTask && longestTask.seconds > 0
-    ? `${longestTask.task.nodeName || longestTask.task.nodeKey} ${formatDuration(longestTask.task.createdAt, getTaskEndTime(longestTask.task, diagnostics.generatedAt))}`
+    ? `${longestTask.task.nodeName || longestTask.task.nodeKey} ${formatSecondsBetween(longestTask.task.createdAt, getTaskEndTime(longestTask.task, diagnostics.generatedAt))}`
     : '—';
 
   let title = '流程已结束';
@@ -846,7 +835,7 @@ export default function WorkflowMonitorPage() {
                       <Typography.Text size="small">{task.assigneeName || '未指定'}</Typography.Text>
                     </Space>
                     <Typography.Text type="tertiary" size="small">
-                      等待 {formatDuration(task.createdAt, diagnostics.generatedAt)}
+                      等待 {formatSecondsBetween(task.createdAt, diagnostics.generatedAt)}
                     </Typography.Text>
                   </div>
                 ))}
@@ -999,7 +988,7 @@ export default function WorkflowMonitorPage() {
         // 草稿尚未提交，从创建时间累计耗时没有意义
         if (record.status === 'draft') return <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>;
         const end = RUNNING_STATUSES.has(record.status) ? dayjs().format('YYYY-MM-DD HH:mm:ss') : record.updatedAt;
-        return <span style={{ color: 'var(--semi-color-text-1)' }}>{formatDuration(record.createdAt, end)}</span>;
+        return <span style={{ color: 'var(--semi-color-text-1)' }}>{formatSecondsBetween(record.createdAt, end)}</span>;
       },
     },
     workflowInstanceStatusColumn<WorkflowInstanceListItem>(),

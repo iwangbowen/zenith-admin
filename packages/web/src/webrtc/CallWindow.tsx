@@ -5,14 +5,7 @@ import { MediaTile } from './MediaTile';
 import { callManager } from './callManager';
 import type { CallSnapshot } from './callManager';
 import type { RtcPeerInfo } from '@zenith/shared/chat';
-
-function formatDuration(startedAt: number | null): string {
-  if (!startedAt) return '00:00';
-  const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
+import { formatClock } from '@/utils/format';
 
 function gridColumns(count: number): number {
   if (count <= 1) return 1;
@@ -28,7 +21,7 @@ function CallDuration({ startedAt }: Readonly<{ startedAt: number | null }>) {
     const t = setInterval(() => tick((v) => v + 1), 1000);
     return () => clearInterval(t);
   }, [startedAt]);
-  return <>{formatDuration(startedAt)}</>;
+  return <>{formatClock(startedAt ? (Date.now() - startedAt) / 1000 : 0)}</>;
 }
 
 export function CallWindow({ snapshot, self }: Readonly<{ snapshot: CallSnapshot; self: RtcPeerInfo }>) {

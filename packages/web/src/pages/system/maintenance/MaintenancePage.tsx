@@ -18,6 +18,7 @@ import PageLoading from '@/components/PageLoading';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
+import { formatSecondsHuman } from '@/utils/format';
 import {
   maintenanceKeys,
   useMaintenanceLogs,
@@ -35,19 +36,6 @@ interface FormValues {
 }
 
 /** 将秒数格式化为「X 天 Y 小时 Z 分」 */
-function formatDuration(sec: number | null): string {
-  if (sec == null) return '—';
-  if (sec < 60) return `${sec} 秒`;
-  const d = Math.floor(sec / 86400);
-  const h = Math.floor((sec % 86400) / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const parts: string[] = [];
-  if (d) parts.push(`${d} 天`);
-  if (h) parts.push(`${h} 小时`);
-  if (m) parts.push(`${m} 分`);
-  return parts.length > 0 ? parts.join(' ') : '不足 1 分';
-}
-
 export default function MaintenancePage() {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:maintenance:manage');
@@ -105,7 +93,7 @@ export default function MaintenancePage() {
   const logColumns: ColumnProps<MaintenanceLog>[] = [
     dateTimeColumn('开始时间', 'startedAt'),
     dateTimeColumn('结束时间', 'endedAt'),
-    { title: '时长', dataIndex: 'durationSeconds', width: 120, align: 'right', render: (v: number | null) => formatDuration(v) },
+    { title: '时长', dataIndex: 'durationSeconds', width: 120, align: 'right', render: (v: number | null) => formatSecondsHuman(v) },
     { title: '维护提示', dataIndex: 'message', ellipsis: { showTitle: true } },
     { title: '开启人', dataIndex: 'startedByName', width: 120, render: (v: string | null) => v ?? <Text type="tertiary">—</Text> },
     {

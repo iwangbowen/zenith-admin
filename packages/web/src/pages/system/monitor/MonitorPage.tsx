@@ -5,6 +5,7 @@ import { Button, Descriptions, Skeleton, Tabs, TabPane, Toast, Typography, Selec
 import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
 import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network, Wifi, History, Thermometer, ListTree, Download, Copy as CopyIcon, ExternalLink } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
+import { formatSecondsHuman } from '@/utils/format';
 import { request } from '@/utils/request';
 import { readSseStream } from '@/utils/streaming';
 import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
@@ -56,23 +57,6 @@ const HISTORY_RANGES: { label: string; value: MonitorHistoryRange }[] = [
 ];
 
 const numberFormatter = new Intl.NumberFormat('zh-CN');function formatNumber(value: number): string { return numberFormatter.format(value); }
-
-function formatUptime(seconds: number): string {
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const parts: string[] = [];
-  if (d > 0) parts.push(`${d}天`);
-  if (h > 0) parts.push(`${h}时`);
-  if (m > 0) parts.push(`${m}分`);
-  parts.push(`${s}秒`);
-  return parts.join(' ');
-}
-
-function formatDuration(ms: number): string {
-  return formatUptime(Math.max(0, Math.floor(ms / 1000)));
-}
 
 function getProgressClass(percent: number): string {
   if (percent >= 90) return 'monitor-progress-danger';
@@ -839,8 +823,8 @@ export default function MonitorPage() {
                   { key: '主机名', value: data.os.hostname },
                   { key: 'Node 版本', value: data.node.version },
                   { key: '操作系统', value: `${data.os.platform} ${data.os.release} (${data.os.arch})`, span: 2 },
-                  { key: '系统运行时长', value: formatUptime(data.os.uptimeSeconds) },
-                  { key: '进程运行时长', value: formatUptime(data.node.uptime) },
+                  { key: '系统运行时长', value: formatSecondsHuman(data.os.uptimeSeconds) },
+                  { key: '进程运行时长', value: formatSecondsHuman(data.node.uptime) },
                   { key: '进程 PID', value: String(data.node.pid), span: 2 },
                 ]}
                 column={2}
@@ -1022,7 +1006,7 @@ export default function MonitorPage() {
               data={[
                 { key: '进程 PID', value: String(data.node.pid) },
                 { key: 'Node 版本', value: data.node.version },
-                { key: '进程运行时长', value: formatUptime(data.node.uptime) },
+                { key: '进程运行时长', value: formatSecondsHuman(data.node.uptime) },
                 { key: '堆内存使用率', value: `${heapPercent}%` },
                 { key: 'RSS 内存', value: formatBytes(data.node.memoryUsage.rss) },
                 { key: '堆内存总量', value: formatBytes(data.node.memoryUsage.heapTotal) },
@@ -1164,7 +1148,7 @@ export default function MonitorPage() {
                     data={[
                       { key: '版本', value: r.version },
                       { key: '角色', value: r.role },
-                      { key: '运行时长', value: formatUptime(r.uptimeSeconds), span: 2 },
+                      { key: '运行时长', value: formatSecondsHuman(r.uptimeSeconds), span: 2 },
                     ]}
                     column={2}
                     layout="horizontal"
@@ -1287,7 +1271,7 @@ export default function MonitorPage() {
                   { title: 'Token', dataIndex: 'tokenId', render: (v: string) => <Text type="tertiary" size="small">{v.slice(0, 8)}…</Text> },
                   dateTimeColumn('建立时间', 'connectedAt'),
                   dateTimeColumn('最近活动', 'lastActivityAt'),
-                  { title: '已持续', dataIndex: 'connectedAt', align: 'right' as const, key: 'duration', render: (v: number) => formatDuration(Date.now() - v) },
+                  { title: '已持续', dataIndex: 'connectedAt', align: 'right' as const, key: 'duration', render: (v: number) => formatSecondsHuman((Date.now() - v) / 1000) },
                   { title: '发送', dataIndex: 'sent', align: 'right' as const, render: (v: number) => formatNumber(v) },
                   { title: '接收', dataIndex: 'recv', align: 'right' as const, render: (v: number) => formatNumber(v) },
                 ]}
@@ -1314,7 +1298,7 @@ export default function MonitorPage() {
                   },
                   dateTimeColumn('断开时间', 'at'),
                   { title: '原因', dataIndex: 'reason', render: (v: string) => <Tag size="small">{v || '-'}</Tag> },
-                  { title: '持续时长', dataIndex: 'duration', render: (v: number) => formatDuration(v) },
+                  { title: '持续时长', dataIndex: 'duration', render: (v: number) => formatSecondsHuman(v / 1000) },
                   { title: '发送', dataIndex: 'sent', align: 'right' as const, render: (v: number) => formatNumber(v) },
                   { title: '接收', dataIndex: 'recv', align: 'right' as const, render: (v: number) => formatNumber(v) },
                 ]}

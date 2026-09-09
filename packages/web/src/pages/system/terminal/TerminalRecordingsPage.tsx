@@ -9,6 +9,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { useListSearch } from '@/hooks/useListSearch';
 import { useUserOptions } from '@/hooks/useUserOptions';
 import { formatDateTimeRangeForApi } from '@/utils/date';
+import { formatClock } from '@/utils/format';
 import RecordingPlayer from './RecordingPlayer';
 import {
   terminalKeys,
@@ -37,12 +38,6 @@ interface CommandItem {
 }
 
 const defaultSearchParams: SearchParams = { keyword: '', operatorUserId: null, timeRange: null };
-
-function formatDuration(secs: number): string {
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
 
 /** 从录屏事件中还原用户执行的命令列表（按行切割 'i' 输入事件，处理退格和 ANSI 转义序列）。 */
 function extractCommands(events: TerminalRecordingEvent[]): CommandItem[] {
@@ -212,7 +207,7 @@ export default function TerminalRecordingsPage() {
       align: 'right',
       dataIndex: 'duration',
       width: 90,
-      render: (v: number) => formatDuration(v),
+      render: (v: number) => formatClock(v),
     },
     {
       title: '命令数',
@@ -374,7 +369,7 @@ export default function TerminalRecordingsPage() {
                 <Terminal size={15} />
                 <span>{detailRec.title || '命令详情'}</span>
                 <Tag color="blue" size="small">{detailRec.username}</Tag>
-                <Tag size="small">{formatDuration(detailRec.duration)}</Tag>
+                <Tag size="small">{formatClock(detailRec.duration)}</Tag>
               </Space>
             }
             visible

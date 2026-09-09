@@ -19,6 +19,7 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn } from '@/utils/table-columns';
+import { formatDurationMs } from '@/utils/format';
 import { confirmDelete } from '@/utils/confirm';
 import { exportReplayHtml } from '@/utils/replay-export';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -77,13 +78,6 @@ const sourceOptions = [
   { value: 'web_admin', label: '管理后台' },
   { value: 'web_member', label: '会员前台' },
 ];
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m${s % 60}s`;
-}
 
 export default function SessionReplaysPage() {
   const navigate = useNavigate();
@@ -156,7 +150,7 @@ export default function SessionReplaysPage() {
     },
     {
       title: '时长', dataIndex: 'durationMs', width: 90,
-      render: (v: number) => formatDuration(v),
+      render: (v: number) => formatDurationMs(v),
     },
     {
       title: '错误', dataIndex: 'errorCount', width: 70, align: 'right',
@@ -316,7 +310,7 @@ export default function SessionReplaysPage() {
               row
               data={[
                 { key: '用户', value: detail.username ?? (detail.memberId ? `会员#${detail.memberId}` : '匿名') },
-                { key: '时长', value: formatDuration(detail.durationMs) },
+                { key: '时长', value: formatDurationMs(detail.durationMs) },
                 { key: '分片', value: `${detail.segmentCount} 个 · ${formatBytes(detail.totalBytes)}` },
                 { key: '环境', value: `${detail.browser ?? '?'} / ${detail.os ?? '?'}` },
               ]}
@@ -352,7 +346,7 @@ export default function SessionReplaysPage() {
                         style={seg.id === detail.id ? undefined : { cursor: 'pointer' }}
                         onClick={seg.id === detail.id ? undefined : () => setDetailId(seg.id)}
                       >
-                        片段{i + 1} · {seg.startedAt.slice(11, 19)} · {formatDuration(seg.durationMs)}{seg.errorCount > 0 ? ` · ${seg.errorCount} 错误` : ''}
+                        片段{i + 1} · {seg.startedAt.slice(11, 19)} · {formatDurationMs(seg.durationMs)}{seg.errorCount > 0 ? ` · ${seg.errorCount} 错误` : ''}
                       </Tag>
                     ))}
                 </Space>
