@@ -14,7 +14,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import v8 from 'node:v8';
 import { performance, PerformanceObserver, monitorEventLoopDelay, constants as perfConstants } from 'node:perf_hooks';
-import type { IntervalHistogram } from 'node:perf_hooks';
 import logger from './logger';
 
 // ─── 类型 ───────────────────────────────────────────────────────────────
@@ -242,7 +241,8 @@ class MetricsSampler {
   private extPending = false;
   private latestExt: ExtMetrics | null = null;
 
-  private readonly elDelay: IntervalHistogram = monitorEventLoopDelay({ resolution: 20 });
+  // 类型随 @types/node 推断（26.x 起为 ELDHistogram，此前为 IntervalHistogram），不按名字引用
+  private readonly elDelay = monitorEventLoopDelay({ resolution: 20 });
   private gcObserver: PerformanceObserver | null = null;
   private readonly gcAcc: GcStats = { totalCount: 0, totalDurationMs: 0, byKind: {} };
 

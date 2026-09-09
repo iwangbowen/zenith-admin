@@ -202,10 +202,10 @@ export function buildRefRebuildStages(siteId: number, executor: DbExecutor = db)
     key,
     label,
     ownerType,
-    fetchAfter: (afterId, limit) => executor.select(ownerColumns(table, ownerType)).from(table)
+    fetchAfter: (afterId, limit) => executor.select(ownerColumns(table, ownerType)).from(table as PgTable)
       .where(and(eq(table.siteId, siteId), gt(table.id, afterId)))
       .orderBy(asc(table.id))
-      .limit(limit) as Promise<OwnerRow[]>,
+      .limit(limit) as unknown as Promise<OwnerRow[]>,
   });
 
   return [
@@ -215,7 +215,7 @@ export function buildRefRebuildStages(siteId: number, executor: DbExecutor = db)
       ownerType: 'site',
       fetchAfter: (afterId, limit) => executor.select(ownerColumns(cmsSites, 'site')).from(cmsSites)
         .where(and(eq(cmsSites.id, siteId), gt(cmsSites.id, afterId)))
-        .limit(limit) as Promise<OwnerRow[]>,
+        .limit(limit) as unknown as Promise<OwnerRow[]>,
     },
     bySite('channel', '栏目', 'channel', cmsChannels),
     bySite('content', '内容', 'content', cmsContents),
@@ -227,7 +227,7 @@ export function buildRefRebuildStages(siteId: number, executor: DbExecutor = db)
         .innerJoin(cmsContents, eq(cmsContentVersions.contentId, cmsContents.id))
         .where(and(eq(cmsContents.siteId, siteId), gt(cmsContentVersions.id, afterId)))
         .orderBy(asc(cmsContentVersions.id))
-        .limit(limit) as Promise<OwnerRow[]>,
+        .limit(limit) as unknown as Promise<OwnerRow[]>,
     },
     bySite('friendLink', '友情链接', 'friendLink', cmsFriendLinks),
     {
@@ -238,7 +238,7 @@ export function buildRefRebuildStages(siteId: number, executor: DbExecutor = db)
         .innerJoin(cmsAdSlots, eq(cmsAds.slotId, cmsAdSlots.id))
         .where(and(eq(cmsAdSlots.siteId, siteId), gt(cmsAds.id, afterId)))
         .orderBy(asc(cmsAds.id))
-        .limit(limit) as Promise<OwnerRow[]>,
+        .limit(limit) as unknown as Promise<OwnerRow[]>,
     },
     bySite('page', '搭建页面', 'page', cmsPages),
     bySite('form', '表单', 'form', cmsForms),
