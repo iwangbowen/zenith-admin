@@ -4,6 +4,74 @@
 
 ---
 
+## v2.26.0 - 2026-09-09
+
+**性能与健壮性修补 + 第二轮重复实现收敛**：连接池容量、聊天未读聚合、CMS 素材引用重建、审批人候选下发与
+Windows 盘符探测等热点路径逐项整治，pg_dump 备份与图片上传补齐失败判定与资源上限，数据库备份并入数据库管理页；
+同时以 jscpd + 语义扫描为依据，把列表页筛选绑定、新增 / 编辑保存、导出条件、报表 / 网盘共用件与
+工作流事件发射等仍在逐页手抄的样板收口到共享 helper（分 9 次提交，每批 lint / 类型检查 / 三套测试全绿）。
+
+### Added
+
+#### 运维与工作流
+
+- 数据库备份新增 `lib/pg-client`：从 `DATABASE_URL` 解析连接参数、以环境变量传递凭据（不进程序参数与进程列表），
+  `pg_dump` 直接 spawn + Node zlib 压缩；新增 `PG_DUMP_PATH` 配置（与 `PSQL_PATH` 同形）
+- 工作流「下一节点自选审批人」契约新增 `nodeKey` / `keyword` / `limit`（默认 50）与分组 `truncated` 标记；
+  后台审批面板与移动审批端对被截断的组启用远程搜索（防抖 300ms，按节点只查该组），已选人姓名不退化为「用户#id」
+- `DATABASE_MAX_CONNECTIONS` 默认 10 → 20，`.env.example` / 部署 / 数据库文档补齐容量公式
+  （单实例对 PG 连接 ≈ 本值 + 25，多实例须低于 `max_connections`，否则前置 pgBouncer）
+
+#### 共享 helper / 组件（开发者向，规则已登记到 zenith skill）
+
+- web：`useListSearch` 新增 `setField(key)`（按 key 缓存的稳定单字段 setter）；`lib/contract-query` 新增
+  `useSaveMutation(createOp, updateOp, { invalidate, requestOptions })`，`createResourceQueries.useSave` 复用同一实现；
+  `hooks/queries/users` 新增 `toUserOptions`；`pages/report/report-lookups` + `report-filters`
+  （`useReportOwnerFolderOptions` / `ReportOwnerFilter` / `ReportFolderFilter`）；`pages/drive/drive-space-columns`
+- server：`services/workflow/instances/shared` 新增 `emitTasksEnteredEvents`（新任务 `node.entered` → `task.created` →
+  按状态 `assigned` / `approved` / `rejected`，事务内 outbox 与提交后同步两条路径）；`failure-policy` 抽出 `settleMaterialized`
+- 新增测试：`useListSearch.setField`、`useSaveMutation`、工作流 `shared.test.ts`（事件顺序 / 状态分支 / outbox 路径）、
+  `pg-client`（成功落盘 / 非零退出 / 可执行文件缺失）、db-admin 备份失效与轮询
+
+### Changed
+
+- **数据库备份并入数据库管理页**：改为顶层 Tab「备份」（`?tab=backups` 直达），权限复用 `system:db-admin:view` / `maintain`；
+  移除独立页面、菜单 2110–2113 与 `system:db-backup:*` 权限码（迁移 `0002` 清理 `role_menus` / `user_menus`），
+  备份契约并入 `dbAdminContract`（`/api/db-admin/backups`）
+- 聊天会话列表未读与 @提醒改为 LATERAL 子查询按会话聚合（新增索引 `chat_messages(conversation_id, created_at)`），
+  不再把全部消息拉到内存逐条比较；顶栏未读徽标、通知器、快捷入口与机器人群选择共用 `chatKeys.conversations` 一份缓存，
+  删除 60s 定时与 focus 重拉
+- CMS 素材引用索引重建按 id 游标每 200 行一片、每片一个短事务原子替换（`rebuildCmsResourceRefsForOwners`），
+  只投影 id 与承载字段，断点细化到「阶段 + 游标 + 计数」；`syncCmsResourceRefs` 成为其单 owner 特例
+- 仪表盘引用校验改为每类一条 `IN` 查询 + 一次性判权（`filterReportResourceRowsByAccess`），查询数不再随引用数增长
+- Windows 文件浏览器盘符探测改为 `fs.access` 26 个字母并行（单字母 2s 超时视为不存在），结果 60s TTL 缓存
+- 图片上传 `Buffer` 直接作为 `File` 的 BlobPart，去掉两次多余拷贝；`.env.example` 的 `REQUEST_BODY_LIMIT` 示例改为 64 MB
+- 依赖升级 35 项：`es-module-lexer` 3（`bundle-analyze` 适配 tagged union 与函数式 `init`）、`@mastra/*` 1.65、
+  AWS SDK 3.1128、`@file-viewer/*` 3.0.2、`lucide-react` 1.43、`maplibre-gl` 6.8、`rrweb` 2.1.4、`typescript-eslint` 8.70、
+  electron 44.3 等；`@mastra/evals` 继续锁定 `~1.9.0`
+- **重复实现收敛（开发者向）**：129 个列表页的 448 处 `setDraftParams((p) => ({ ...p, x: v }))` 绑定改为 `setField('x')`；
+  40 个域 hooks 文件的 54 个手写 `useMutation` + `id === undefined` 三目保存 hook 迁到 `useSaveMutation`；
+  23 页导出条件从 `...(x ? { x } : {})` 改为 `compactQuery`（数值 id 用 `?.toString()` 保持载荷不变）；
+  报表七页负责人 / 目录筛选与 13 页 `nickname || username` 映射收口；「我的空间」与「空间治理」共用名称 / 类型 /
+  所有者 / 默认角色 / 用量列；工作流 5 处新任务事件循环与 2 处 materialize 落定逻辑收口；12 处「取首行判空抛 404」
+  改用 `requireRow` / `requireFirstRow`；28 处 Mock 关键词过滤改用 `filterByKeyword`；seed 中已发布仪表盘的
+  `publishedSnapshot` 与填报模板的 `publishedSchema` 由同一份定义深拷贝派生（数据与之前逐字相等）
+- zenith skill：`constraints-frontend.md` 新增筛选字段绑定、非标准新增 / 编辑对、导出空值过滤、用户下拉选项、
+  报表筛选与网盘列的复用规则；`constraints.md` 新增工作流新任务事件发射规则；`crud-frontend.md` / `query-cache.md` /
+  `seed-config.md` 与文档站模板同步为当前写法
+
+### Fixed
+
+- pg_dump 备份此前经 `pg_dump | gzip` 管道，退出码只反映 gzip：pg_dump 缺失、连接 / 认证失败或版本不匹配时留下 20 字节空 gzip
+  却记成「成功」；现按 pg_dump 退出码与 stderr 判定，失败删除半成品，`ENOENT` 给出安装 / `PG_DUMP_PATH` 提示
+- CMS 图片上传此前在解码 / 压缩 / 水印之后才校验体积，且沿用 sharp 默认 2.68 亿像素上限，高压缩「像素炸弹」可申请约 1 GB 栅格；
+  现先按 `files.uploadMaxSizeMb` 拒绝再读取，并以 5000 万像素上限（`limitInputPixels` 兜底）返回 400
+- 备份列表轮询间隔从观察者选项读取（`query.observers[0].options.refetchInterval`），修复 `tsc -b` 的 TS2339
+- 22 个列表页此前以非函数式 `setDraftParams({ ...draftParams, x: v })` 写草稿，同一 tick 内改多个字段会互相覆盖；
+  随 `setField` 统一为函数式更新后消除
+
+---
+
 ## v2.25.0 - 2026-09-09
 
 **全域重复实现清理**：以 jscpd 精确匹配 + 逐项人工核验为依据，把散落在 server / web / shared / mock 中的重复实现
