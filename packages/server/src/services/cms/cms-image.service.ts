@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
-import { uploadManagedFile } from '../files/files.service';
+import { HTTPException } from 'hono/http-exception';
+import { assertUploadSizeAllowed, uploadManagedFile } from '../files/files.service';
 import { ensureCmsSiteExists, assertSiteAccess } from './cms-sites.service';
 
 // 惰性加载：sharp 含原生二进制、模块图大，仅在首次处理图片时加载
@@ -7,6 +8,34 @@ import { ensureCmsSiteExists, assertSiteAccess } from './cms-sites.service';
 const require = createRequire(import.meta.url);
 const sharp = (...args: Parameters<typeof import('sharp')['default']>) =>
   (require('sharp') as unknown as typeof import('sharp')['default'])(...args);
+
+/**
+ * 单张图片解码后的像素上限（宽 × 高）。sharp 默认放行 0x3FFF² ≈ 2.68 亿像素（RGBA 栅格约 1 GB），
+ * 一张高压缩比的「像素炸弹」就能把与 API 同进程的服务打到 OOM；5000 万像素（栅格约 200 MB）已远超 CMS 配图所需。
+ */
+export const IMAGE_MAX_INPUT_PIXELS = 50_000_000;
+
+/**
+ * 只读文件头取图片元数据，并在解码前按像素上限拒绝：超限一律 400，而不是让 sharp 的
+ * 「Input image exceeds pixel limit」以 500 冒出。sharp 自带的 2.68 亿像素上限在读头阶段也会触发，一并映射。
+ */
+export async function readImageMetadataWithinLimit(input: Buffer): Promise<import('sharp').Metadata> {
+  let meta: import('sharp').Metadata;
+  try {
+    meta = await sharp(input, { failOn: 'none' }).metadata();
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('exceeds pixel limit')) {
+      throw new HTTPException(400, { message: `图片像素超过上限（最多 ${IMAGE_MAX_INPUT_PIXELS / 1_000_000} 百万像素）` });
+    }
+    throw err;
+  }
+  if ((meta.width ?? 0) * (meta.height ?? 0) > IMAGE_MAX_INPUT_PIXELS) {
+    throw new HTTPException(400, {
+      message: `图片像素超过上限（${meta.width}×${meta.height}，最多 ${IMAGE_MAX_INPUT_PIXELS / 1_000_000} 百万像素）`,
+    });
+  }
+  return meta;
+}
 
 /** 站点图片处理配置（cms_sites.settings JSONB） */
 export interface CmsImageSettings {
@@ -94,6 +123,9 @@ export interface CmsProcessedImage {
  */
 export async function processCmsImageUpload(file: File, siteId: number): Promise<CmsProcessedImage> {
   await assertSiteAccess(siteId);
+  // 体积上限必须先于读入内存与解码判定：此前只由 uploadManagedFile 在末尾校验，
+  // 超限图片在被拒绝前已经被 sharp 完整解码、压缩并生成过缩略图
+  await assertUploadSizeAllowed(file.size);
   const site = await ensureCmsSiteExists(siteId);
   const cfg = resolveImageSettings(site.settings as Record<string, unknown>);
 
@@ -103,8 +135,9 @@ export async function processCmsImageUpload(file: File, siteId: number): Promise
   }
 
   const input = Buffer.from(await file.arrayBuffer());
-  let pipeline = sharp(input, { failOn: 'none' }).rotate();
-  const meta = await pipeline.metadata();
+  const meta = await readImageMetadataWithinLimit(input);
+  // limitInputPixels 与上面的读头判定同值：文件头缺失尺寸时仍由 sharp 在解码阶段兜底
+  let pipeline = sharp(input, { failOn: 'none', limitInputPixels: IMAGE_MAX_INPUT_PIXELS }).rotate();
 
   if (cfg.imageMaxWidth > 0 && (meta.width ?? 0) > cfg.imageMaxWidth) {
     pipeline = pipeline.resize({ width: cfg.imageMaxWidth, withoutEnlargement: true });
@@ -121,15 +154,18 @@ export async function processCmsImageUpload(file: File, siteId: number): Promise
   else if (file.type === 'image/avif') pipeline = pipeline.avif({ quality: 60 });
 
   const output = await pipeline.toBuffer({ resolveWithObject: true });
-  const processedFile = new File([new Blob([new Uint8Array(output.data)], { type: file.type })], file.name, { type: file.type });
+  // Buffer 本身就是合法的 BlobPart：直接交给 File，不再经 Uint8Array + Blob 多拷贝两份
+  const processedFile = new File([output.data], file.name, { type: file.type });
   const main = await uploadManagedFile(processedFile);
 
   let thumbUrl: string | null = null;
   if (cfg.thumbEnabled) {
-    const thumbBuf = await sharp(output.data).resize({ width: cfg.thumbWidth, withoutEnlargement: true }).toBuffer();
+    const thumbBuf = await sharp(output.data, { limitInputPixels: IMAGE_MAX_INPUT_PIXELS })
+      .resize({ width: cfg.thumbWidth, withoutEnlargement: true })
+      .toBuffer();
     const dot = file.name.lastIndexOf('.');
     const thumbName = dot > 0 ? `${file.name.slice(0, dot)}_thumb${file.name.slice(dot)}` : `${file.name}_thumb`;
-    const thumbFile = new File([new Blob([new Uint8Array(thumbBuf)], { type: file.type })], thumbName, { type: file.type });
+    const thumbFile = new File([thumbBuf], thumbName, { type: file.type });
     const thumb = await uploadManagedFile(thumbFile);
     thumbUrl = thumb.url ?? null;
   }
