@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { formatMinorAmount, formatYuan } from '@/utils/payment';
 import { Button, Form, SideSheet, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -19,7 +19,6 @@ import {
   usePaymentSettlementList,
   useUpdatePaymentSettlementStatus,
 } from '@/hooks/queries/payment-settlements';
-import { usePaymentChannelOperationLookup } from '@/hooks/queries/payment-channels';
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CHANNELS, PAYMENT_SETTLEMENT_STATUS_LABELS, PAYMENT_SETTLEMENT_STATUSES, PAYMENT_CHANNEL_OPTIONS, PAYMENT_SETTLEMENT_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type { CreatePaymentSettlementInput, PaymentChannel, PaymentSettlementBatch, PaymentSettlementItem, PaymentSettlementStatus } from '@zenith/shared/payment';
@@ -27,7 +26,8 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
-import { paymentAppBoundConfigIds, useAppBoundConfigOptions, useEnabledPaymentAppLookup } from './payment-app-options';
+import { paymentAppBoundConfigIds, useAppMerchantConfigLookup } from './payment-app-options';
+import { PaymentAppField, PaymentCurrencyField, PaymentMerchantConfigField } from './payment-form-fields';
 
 const yuan = formatYuan;
 const channelOptions = PAYMENT_CHANNEL_OPTIONS;
@@ -56,14 +56,7 @@ export default function PaymentSettlementsPage() {
     channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
     status: enumValueOf(PAYMENT_SETTLEMENT_STATUSES, submittedParams.status),
   });
-  const channelConfigsQuery = usePaymentChannelOperationLookup();
-  const operationChannelConfigs = useMemo(() => channelConfigsQuery.data ?? [], [channelConfigsQuery.data]);
-  const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
-  const { configById: channelConfigById, options: merchantConfigOptions } = useAppBoundConfigOptions({
-    selectedAppId,
-    configs: operationChannelConfigs,
-    apps: paymentApps,
-  });
+  const { channelConfigsQuery, appById, appOptions, appsFetching, channelConfigById, merchantConfigOptions } = useAppMerchantConfigLookup(selectedAppId);
   const generateMutation = useGeneratePaymentSettlement();
   const itemsQuery = usePaymentSettlementItems(detailBatch?.id, !!detailBatch);
   const transitionMutation = useUpdatePaymentSettlementStatus();
@@ -260,28 +253,17 @@ export default function PaymentSettlementsPage() {
 
       <AppModal {...generateModal.modalProps} title="生成结算批次" width={520}>
         <Form key={generateModal.formKey} {...generateModal.formProps}>
-          <Form.Select
-            field="applicationId"
-            label="支付应用"
-            style={{ width: '100%' }}
+          <PaymentAppField
             optionList={appOptions}
-            filter
             loading={appsFetching}
-            onChange={(value) => {
-              setSelectedAppId((value as number | undefined) ?? null);
+            requiredMessage="请选择启用的支付应用"
+            onChange={(appId) => {
+              setSelectedAppId(appId);
               generateModal.formApi.current?.setValue('channelConfigId', undefined);
             }}
-            rules={[{ required: true, message: '请选择启用的支付应用' }]}
           />
-          <Form.Select
-            field="channelConfigId"
-            label="商户配置"
-            style={{ width: '100%' }}
-            optionList={merchantConfigOptions}
-            loading={channelConfigsQuery.isFetching}
-            rules={[{ required: true, message: '请选择启用的商户配置' }]}
-          />
-          <Form.Select field="currency" label="币种" style={{ width: '100%' }} optionList={[{ value: 'CNY', label: 'CNY · 人民币' }]} rules={[{ required: true, message: '请选择币种' }]} />
+          <PaymentMerchantConfigField optionList={merchantConfigOptions} loading={channelConfigsQuery.isFetching} />
+          <PaymentCurrencyField />
           <Form.DatePicker
             field="period"
             label="账期"

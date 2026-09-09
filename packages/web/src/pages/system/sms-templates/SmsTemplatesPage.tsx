@@ -21,6 +21,7 @@ import {
 } from '@/hooks/queries/sms-templates';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { TemplateNameCodeRow, TemplateVariablesRemarkRows } from '../message-template-form';
 
 export default function SmsTemplatesPage() {
   const { hasPermission: can } = usePermission();
@@ -137,16 +138,7 @@ export default function SmsTemplatesPage() {
       <AppModal {...templateModal.modalProps} width={720}>
         <Spin spinning={templateModal.detailLoading} wrapperClassName="modal-spin-wrapper">
         <Form key={templateModal.formKey} {...templateModal.formProps}>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Input field="name" label="模板名称" placeholder="请输入模板名称"
-                rules={[{ required: true, message: '请输入模板名称' }]} />
-            </Col>
-            <Col span={12}>
-              <Form.Input field="code" label="模板编码" disabled={templateModal.isEdit} placeholder="如：order_paid"
-                rules={[{ required: true, message: '请输入模板编码' }]} />
-            </Col>
-          </Row>
+          <TemplateNameCodeRow isEdit={templateModal.isEdit} codePlaceholder="如：order_paid" />
           <Row gutter={16}>
             <Col span={12}>
               <Form.Input field="templateCode" label="服务商模板号" placeholder="请输入服务商模板号"
@@ -182,16 +174,7 @@ export default function SmsTemplatesPage() {
                 )} />
             </Col>
           </Row>
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Input field="variables" label="变量" placeholder='如：{"code":"验证码"}' />
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.TextArea field="remark" label="备注" rows={2} placeholder="请输入备注" />
-            </Col>
-          </Row>
+          <TemplateVariablesRemarkRows variablesPlaceholder='如：{"code":"验证码"}' />
         </Form>
         </Spin>
       </AppModal>

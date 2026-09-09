@@ -21,7 +21,6 @@ import {
   usePaymentReconItems,
   usePaymentReconSampleBill,
 } from '@/hooks/queries/payment-recon';
-import { usePaymentChannelOperationLookup } from '@/hooks/queries/payment-channels';
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_RECON_HANDLE_STATUS_LABELS, PAYMENT_RECON_HANDLE_STATUSES, PAYMENT_RECON_RESULT_LABELS, PAYMENT_RECON_RESULTS, PAYMENT_RECON_SOURCE_LABELS, PAYMENT_RECON_STATUS_LABELS, PAYMENT_RECON_STATUSES, PAYMENT_RECON_STATUS_OPTIONS, PAYMENT_RECON_RESULT_OPTIONS, PAYMENT_RECON_HANDLE_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type { AutoPaymentReconInput, CreatePaymentReconBatchInput, PaymentChannel, PaymentReconBatch, PaymentReconHandleStatus, PaymentReconItem, PaymentReconResult, PaymentReconSource, PaymentReconStatus } from '@zenith/shared/payment';
@@ -31,7 +30,8 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
-import { paymentAppBoundConfigIds, useAppBoundConfigOptions, useEnabledPaymentAppLookup } from './payment-app-options';
+import { paymentAppBoundConfigIds, useAppMerchantConfigLookup } from './payment-app-options';
+import { PaymentAppField, PaymentCurrencyField, PaymentMerchantConfigField } from './payment-form-fields';
 
 const STATUS_COLOR = { pending: 'grey', comparing: 'blue', done: 'green', failed: 'red' } as const satisfies Record<PaymentReconStatus, string>;
 const RESULT_COLOR = { matched: 'green', local_only: 'amber', channel_only: 'orange', amount_diff: 'red', status_diff: 'red' } as const satisfies Record<PaymentReconResult, string>;
@@ -89,14 +89,9 @@ export default function PaymentReconPage() {
     channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
     status: enumValueOf(PAYMENT_RECON_STATUSES, submittedParams.status),
   });
-  const channelConfigsQuery = usePaymentChannelOperationLookup();
-  const operationChannelConfigs = useMemo(() => channelConfigsQuery.data ?? [], [channelConfigsQuery.data]);
-  const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
-  const { configById: channelConfigById, options: merchantConfigOptions } = useAppBoundConfigOptions({
-    selectedAppId,
-    configs: operationChannelConfigs,
-    apps: paymentApps,
-  });
+  const {
+    channelConfigsQuery, operationChannelConfigs, paymentApps, appById, appOptions, appsFetching, channelConfigById, merchantConfigOptions,
+  } = useAppMerchantConfigLookup(selectedAppId);
   const autoOptions = useMemo(() => operationChannelConfigs
     .flatMap((config) => paymentApps
       .filter((app) => [app.wechatConfigId, app.alipayConfigId, app.unionpayConfigId].includes(config.id))
@@ -335,28 +330,17 @@ export default function PaymentReconPage() {
 
       <AppModal {...createModal.modalProps} title="新建对账" width={720}>
         <Form key={createModal.formKey} {...createModal.formProps}>
-          <Form.Select
-            field="applicationId"
-            label="支付应用"
-            style={{ width: '100%' }}
+          <PaymentAppField
             optionList={appOptions}
-            filter
             loading={appsFetching}
-            onChange={(value) => {
-              setSelectedAppId((value as number | undefined) ?? null);
+            requiredMessage="请选择启用的支付应用"
+            onChange={(appId) => {
+              setSelectedAppId(appId);
               createModal.formApi.current?.setValue('channelConfigId', undefined);
             }}
-            rules={[{ required: true, message: '请选择启用的支付应用' }]}
           />
-          <Form.Select
-            field="channelConfigId"
-            label="商户配置"
-            style={{ width: '100%' }}
-            optionList={merchantConfigOptions}
-            loading={channelConfigsQuery.isFetching}
-            rules={[{ required: true, message: '请选择启用的商户配置' }]}
-          />
-          <Form.Select field="currency" label="币种" style={{ width: '100%' }} optionList={[{ value: 'CNY', label: 'CNY · 人民币' }]} disabled rules={[{ required: true, message: '请选择币种' }]} />
+          <PaymentMerchantConfigField optionList={merchantConfigOptions} loading={channelConfigsQuery.isFetching} />
+          <PaymentCurrencyField disabled />
           <Form.DatePicker field="billDate" label="账单日期" type="date" style={{ width: '100%' }} rules={[{ required: true, message: '请选择账单日期' }]} />
           <Button type="tertiary" loading={sampleBillMutation.isPending} onClick={handleSampleBill} style={{ marginLeft: 100, marginBottom: 12 }}>生成模拟账单</Button>
           <Form.TextArea field="billText" label="账单内容" rows={8} placeholder="订单号,渠道交易号,金额(分),状态" rules={[{ required: true, message: '请输入账单内容' }]} />

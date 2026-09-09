@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { PaymentApp, PaymentChannel, PaymentChannelConfig } from '@zenith/shared/payment';
 import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared/payment';
 import { usePaymentAppList } from '@/hooks/queries/payment-apps';
+import { usePaymentChannelOperationLookup } from '@/hooks/queries/payment-channels';
 
 export type PaymentAppOption = { value: number; label: string };
 
@@ -46,4 +47,26 @@ export function useAppBoundConfigOptions({
     }));
   }, [appById, configs, label, selectedAppId]);
   return { configById, options };
+}
+
+/** 启用的支付应用 + 运营中的商户配置，按所选应用给出其绑定的商户配置候选（对账 / 结算等表单） */
+export function useAppMerchantConfigLookup(selectedAppId: number | null) {
+  const channelConfigsQuery = usePaymentChannelOperationLookup();
+  const operationChannelConfigs = useMemo(() => channelConfigsQuery.data ?? [], [channelConfigsQuery.data]);
+  const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
+  const { configById: channelConfigById, options: merchantConfigOptions } = useAppBoundConfigOptions({
+    selectedAppId,
+    configs: operationChannelConfigs,
+    apps: paymentApps,
+  });
+  return {
+    channelConfigsQuery,
+    operationChannelConfigs,
+    paymentApps,
+    appById,
+    appOptions,
+    appsFetching,
+    channelConfigById,
+    merchantConfigOptions,
+  };
 }

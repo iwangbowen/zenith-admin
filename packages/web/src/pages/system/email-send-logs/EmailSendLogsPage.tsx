@@ -19,9 +19,10 @@ import {
   useEmailSendLogList,
   useTestEmailSendLog,
 } from '@/hooks/queries/email-send-logs';
-import { SEND_LOG_STATUS_OPTIONS as STATUS_OPTIONS, SEND_SOURCE_OPTIONS as SOURCE_OPTIONS, parseTemplateVariables } from '../send-log-constants';
-import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { SendStatusTag } from '../send-log-ui';
+import { parseTemplateVariables } from '../send-log-constants';
+import { KeywordInput } from '@/components/search-filters';
+import { SendLogStatusSourceFilters } from '../send-log-ui';
+import { sendLogErrorColumn, sendLogOperatorColumn, sendLogSourceColumn, sendLogStatusColumn } from '../send-log-columns';
 
 /** 测试发送表单值：变量以 JSON 文本输入 */
 interface TestEmailFormValues {
@@ -80,15 +81,12 @@ export default function EmailSendLogsPage() {
     { title: '收件人', dataIndex: 'toEmail', width: 200 },
     { title: '邮件主题', dataIndex: 'subject', render: renderEllipsis },
     { title: '模板', dataIndex: 'templateName', width: 140, render: (v: string | null) => v || '—' },
-    { title: '来源', dataIndex: 'source', width: 90, render: (v: string) => SOURCE_OPTIONS.find((s) => s.value === v)?.label ?? v },
-    { title: '操作人', dataIndex: 'userName', width: 120, render: (v: string | null) => v || '—' },
+    sendLogSourceColumn<EmailSendLog>(),
+    sendLogOperatorColumn<EmailSendLog>(),
     { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v || '—' },
     dateTimeColumn('发送时间', 'sentAt'),
-    { title: '错误信息', dataIndex: 'errorMsg', render: renderEllipsis },
-    {
-      title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
-      render: (v: SendStatus) => <SendStatusTag value={v} />,
-    },
+    sendLogErrorColumn<EmailSendLog>(),
+    sendLogStatusColumn<EmailSendLog>(),
     createOperationColumn<EmailSendLog>({
       width: 100,
       actions: (record) => [
@@ -109,16 +107,11 @@ export default function EmailSendLogsPage() {
           <>
             <Input placeholder="收件人邮箱" value={draftParams.toEmail} onChange={(v) => setDraftParams({ ...draftParams, toEmail: v })}
               onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-            <StatusSelect
-              items={STATUS_OPTIONS}
-              value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as SendStatus | undefined })}
-            />
-            <FilterSelect
-              placeholder="全部来源"
-              items={SOURCE_OPTIONS}
-              value={draftParams.filterSource}
-              onChange={(v) => setDraftParams({ ...draftParams, filterSource: v as string | undefined })}
+            <SendLogStatusSourceFilters
+              status={draftParams.filterStatus}
+              source={draftParams.filterSource}
+              onStatusChange={(v) => setDraftParams({ ...draftParams, filterStatus: v })}
+              onSourceChange={(v) => setDraftParams({ ...draftParams, filterSource: v })}
             />
           </>
         )}

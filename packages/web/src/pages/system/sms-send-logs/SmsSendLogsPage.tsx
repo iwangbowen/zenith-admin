@@ -19,9 +19,10 @@ import {
   useSmsSendLogList,
   useTestSmsSendLog,
 } from '@/hooks/queries/sms-send-logs';
-import { SEND_LOG_STATUS_OPTIONS as STATUS_OPTIONS, SEND_SOURCE_OPTIONS as SOURCE_OPTIONS, parseTemplateVariables } from '../send-log-constants';
-import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { SendStatusTag } from '../send-log-ui';
+import { parseTemplateVariables } from '../send-log-constants';
+import { KeywordInput } from '@/components/search-filters';
+import { SendLogStatusSourceFilters } from '../send-log-ui';
+import { sendLogErrorColumn, sendLogOperatorColumn, sendLogSourceColumn, sendLogStatusColumn } from '../send-log-columns';
 
 /** 测试发送表单值：变量以 JSON 文本输入 */
 interface TestSmsFormValues {
@@ -81,14 +82,11 @@ export default function SmsSendLogsPage() {
       render: (v: string) => SMS_PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,
     },
     { title: '内容', dataIndex: 'content', render: renderEllipsis },
-    { title: '来源', dataIndex: 'source', width: 90, render: (v: string) => SOURCE_OPTIONS.find((s) => s.value === v)?.label ?? v },
-    { title: '操作人', dataIndex: 'userName', width: 120, render: (v: string | null) => v || '—' },
+    sendLogSourceColumn<SmsSendLog>(),
+    sendLogOperatorColumn<SmsSendLog>(),
     dateTimeColumn('发送时间', 'sentAt'),
-    { title: '错误信息', dataIndex: 'errorMsg', render: renderEllipsis },
-    {
-      title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
-      render: (v: SendStatus) => <SendStatusTag value={v} />,
-    },
+    sendLogErrorColumn<SmsSendLog>(),
+    sendLogStatusColumn<SmsSendLog>(),
     createOperationColumn<SmsSendLog>({
       width: 100,
       actions: (record) => [
@@ -109,16 +107,11 @@ export default function SmsSendLogsPage() {
           <>
             <Input placeholder="手机号" value={draftParams.phone} onChange={(v) => setDraftParams({ ...draftParams, phone: v })}
               onEnterPress={handleSearch} showClear style={{ width: 160 }} />
-            <StatusSelect
-              items={STATUS_OPTIONS}
-              value={draftParams.filterStatus}
-              onChange={(v) => setDraftParams({ ...draftParams, filterStatus: v as SendStatus | undefined })}
-            />
-            <FilterSelect
-              placeholder="全部来源"
-              items={SOURCE_OPTIONS}
-              value={draftParams.filterSource}
-              onChange={(v) => setDraftParams({ ...draftParams, filterSource: v as string | undefined })}
+            <SendLogStatusSourceFilters
+              status={draftParams.filterStatus}
+              source={draftParams.filterSource}
+              onStatusChange={(v) => setDraftParams({ ...draftParams, filterStatus: v })}
+              onSourceChange={(v) => setDraftParams({ ...draftParams, filterSource: v })}
             />
           </>
         )}

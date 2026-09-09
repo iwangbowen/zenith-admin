@@ -19,6 +19,7 @@ import {
 } from '@/hooks/queries/email-templates';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
+import { TemplateNameCodeRow, TemplateVariablesRemarkRows } from '../message-template-form';
 
 export default function EmailTemplatesPage() {
   const { hasPermission: can } = usePermission();
@@ -119,16 +120,7 @@ export default function EmailTemplatesPage() {
       <AppModal {...modal.modalProps} width={720}>
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">
         <Form key={modal.formKey} {...modal.formProps}>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Input field="name" label="模板名称" placeholder="请输入模板名称"
-                rules={[{ required: true, message: '请输入模板名称' }]} />
-            </Col>
-            <Col span={12}>
-              <Form.Input field="code" label="模板编码" disabled={modal.isEdit} placeholder="如：welcome_email"
-                rules={[{ required: true, message: '请输入模板编码' }]} />
-            </Col>
-          </Row>
+          <TemplateNameCodeRow isEdit={modal.isEdit} codePlaceholder="如：welcome_email" />
           <Row gutter={16}>
             <Col span={12}>
               <Form.Input field="subject" label="邮件主题" placeholder="请输入邮件主题"
@@ -145,16 +137,7 @@ export default function EmailTemplatesPage() {
                 rules={[{ required: true, message: '请输入邮件内容' }]} />
             </Col>
           </Row>
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Input field="variables" label="变量" placeholder='如：{"username":"用户名"}' />
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.TextArea field="remark" label="备注" rows={2} placeholder="请输入备注" />
-            </Col>
-          </Row>
+          <TemplateVariablesRemarkRows />
         </Form>
         </Spin>
       </AppModal>

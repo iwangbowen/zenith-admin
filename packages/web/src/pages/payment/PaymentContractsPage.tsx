@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { formatYuan } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
-import { Col, Form, Modal, Row, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Col, Form, Modal, Row, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -34,6 +34,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useEnabledPaymentAppLookup } from './payment-app-options';
+import { PaymentAppField, PaymentAppFilterSelect, PaymentCurrencyField } from './payment-form-fields';
 import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -310,17 +311,14 @@ export default function PaymentContractsPage() {
     <KeywordInput placeholder="协议号/签约账号/业务ID..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
   );
   const renderAppFilter = () => (
-    <Select
-      placeholder="支付应用"
+    <PaymentAppFilterSelect
       value={effectiveContractAppId}
-      onChange={(value) => {
-        setContractAppId(value as number);
+      onChange={(appId) => {
+        setContractAppId(appId);
         setCPage(1);
       }}
       optionList={appOptions}
-      filter
       loading={appsFetching}
-      style={{ width: 180 }}
     />
   );
   const renderStatusFilter = () => (
@@ -423,8 +421,8 @@ export default function PaymentContractsPage() {
         <Form key={signModal.formKey} {...signModal.formProps} initValues={{ ...signModal.formProps.initValues, currency: 'CNY' }}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Select field="applicationId" label="支付应用" style={{ width: '100%' }} optionList={appOptions} filter loading={appsFetching}
-                onChange={(value) => { setSelectedAppId((value as number | undefined) ?? null); signModal.formApi.current?.setValue('payMethod', undefined); }} rules={[{ required: true, message: '请选择支付应用' }]} />
+              <PaymentAppField optionList={appOptions} loading={appsFetching}
+                onChange={(appId) => { setSelectedAppId(appId); signModal.formApi.current?.setValue('payMethod', undefined); }} />
             </Col>
             <Col span={12}>
               <Form.Select field="planId" label="扣款计划" style={{ width: '100%' }} rules={[{ required: true, message: '请选择扣款计划' }]}
@@ -436,7 +434,7 @@ export default function PaymentContractsPage() {
               <Form.Select field="payMethod" label="代扣方式" style={{ width: '100%' }} optionList={deductMethodOptions} disabled={selectedAppId == null} rules={[{ required: true, message: '请选择代扣方式' }]} />
             </Col>
             <Col span={12}>
-              <Form.Select field="currency" label="币种" style={{ width: '100%' }} optionList={[{ value: 'CNY', label: 'CNY · 人民币' }]} disabled rules={[{ required: true, message: '请选择币种' }]} />
+              <PaymentCurrencyField disabled />
             </Col>
           </Row>
           <Row gutter={16}>

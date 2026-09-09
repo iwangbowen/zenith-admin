@@ -33,6 +33,7 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { PaymentChannelTag } from './payment-display';
 import { useEnabledPaymentAppLookup } from './payment-app-options';
+import { PaymentAppField, PaymentCurrencyField } from './payment-form-fields';
 
 const yuan = formatYuan;
 const STATUS_COLOR = { pending: 'grey', processing: 'blue', unknown: 'orange', success: 'green', failed: 'red' } as const satisfies Record<PaymentTransferStatus, string>;
@@ -292,8 +293,8 @@ export default function PaymentTransfersPage() {
         <Form key={transferModal.formKey} {...transferModal.formProps}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Select field="applicationId" label="支付应用" style={{ width: '100%' }} optionList={appOptions} filter loading={appsFetching}
-                onChange={(value) => { setSelectedAppId((value as number | undefined) ?? null); transferModal.formApi.current?.setValue('channel', undefined); }} rules={[{ required: true, message: '请选择支付应用' }]} />
+              <PaymentAppField optionList={appOptions} loading={appsFetching}
+                onChange={(appId) => { setSelectedAppId(appId); transferModal.formApi.current?.setValue('channel', undefined); }} />
             </Col>
             <Col span={12}>
               <Form.Select field="channel" label="渠道" style={{ width: '100%' }}
@@ -302,7 +303,7 @@ export default function PaymentTransfersPage() {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Select field="currency" label="币种" style={{ width: '100%' }} optionList={[{ value: 'CNY', label: 'CNY · 人民币' }]} disabled rules={[{ required: true, message: '请选择币种' }]} />
+              <PaymentCurrencyField disabled />
             </Col>
             <Col span={12}>
               <Form.InputNumber field="amountYuan" label="转账金额(元)" min={0.01} step={0.01} precision={2} style={{ width: '100%' }} rules={[{ required: true, message: '请输入转账金额' }]} />

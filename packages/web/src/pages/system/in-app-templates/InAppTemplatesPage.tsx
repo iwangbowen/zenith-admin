@@ -20,6 +20,7 @@ import {
 import { IN_APP_MESSAGE_TYPE_OPTIONS_WITH_COLOR as TYPE_OPTIONS } from '../in-app-message-constants';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { TemplateNameCodeRow, TemplateVariablesRemarkRows } from '../message-template-form';
 
 export default function InAppTemplatesPage() {
   const { hasPermission: can } = usePermission();
@@ -134,16 +135,7 @@ export default function InAppTemplatesPage() {
       <AppModal {...modal.modalProps} width={720}>
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">
         <Form key={modal.formKey} {...modal.formProps}>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Input field="name" label="模板名称" placeholder="请输入模板名称"
-                rules={[{ required: true, message: '请输入模板名称' }]} />
-            </Col>
-            <Col span={12}>
-              <Form.Input field="code" label="模板编码" disabled={modal.isEdit} placeholder="请输入模板编码"
-                rules={[{ required: true, message: '请输入模板编码' }]} />
-            </Col>
-          </Row>
+          <TemplateNameCodeRow isEdit={modal.isEdit} />
           <Row gutter={16}>
             <Col span={12}>
               <Form.Select field="type" label="类型" style={{ width: '100%' }} optionList={TYPE_OPTIONS}
@@ -167,16 +159,7 @@ export default function InAppTemplatesPage() {
                 rules={[{ required: true, message: '请输入内容' }]} />
             </Col>
           </Row>
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Input field="variables" label="变量" placeholder='如：{"username":"用户名"}' />
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.TextArea field="remark" label="备注" rows={2} placeholder="请输入备注" />
-            </Col>
-          </Row>
+          <TemplateVariablesRemarkRows />
         </Form>
         </Spin>
       </AppModal>

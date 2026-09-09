@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef } from 'react';
 import { formatYuan } from '@/utils/payment';
-import { Banner, Button, Col, Form, Input, Modal, Row, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Col, Form, Input, Modal, Row, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -25,6 +25,7 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useEnabledPaymentAppLookup } from './payment-app-options';
+import { PaymentAppField, PaymentAppFilterSelect, PaymentCurrencyField } from './payment-form-fields';
 
 const yuan = formatYuan;
 const STATUS_COLOR = { pending: 'grey', unknown: 'orange', frozen: 'blue', captured: 'green', released: 'teal', failed: 'red' } as const satisfies Record<PaymentPreauthStatus, string>;
@@ -182,17 +183,14 @@ export default function PaymentPreauthsPage() {
     <KeywordInput placeholder="预授权单号/付款人/事由..." value={draftParams.keyword} onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))} onSearch={handleSearch} />
   );
   const renderAppFilter = () => (
-    <Select
-      placeholder="支付应用"
+    <PaymentAppFilterSelect
       value={effectivePreauthAppId}
-      onChange={(value) => {
-        setPreauthAppId(value as number);
+      onChange={(appId) => {
+        setPreauthAppId(appId);
         setPage(1);
       }}
       optionList={appOptions}
-      filter
       loading={appsFetching}
-      style={{ width: 180 }}
     />
   );
   const renderStatusFilter = () => (
@@ -239,8 +237,8 @@ export default function PaymentPreauthsPage() {
         <Form key={createModal.formKey} {...createModal.formProps}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Select field="applicationId" label="支付应用" style={{ width: '100%' }} optionList={appOptions} filter loading={appsFetching}
-                onChange={(value) => { setSelectedAppId((value as number | undefined) ?? null); createModal.formApi.current?.setValue('payMethod', undefined); }} rules={[{ required: true, message: '请选择支付应用' }]} />
+              <PaymentAppField optionList={appOptions} loading={appsFetching}
+                onChange={(appId) => { setSelectedAppId(appId); createModal.formApi.current?.setValue('payMethod', undefined); }} />
             </Col>
             <Col span={12}>
               <Form.Select field="payMethod" label="预授权方式" style={{ width: '100%' }} optionList={preauthMethodOptions} disabled={selectedAppId == null} rules={[{ required: true, message: '请选择方式' }]} />
@@ -248,7 +246,7 @@ export default function PaymentPreauthsPage() {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Select field="currency" label="币种" style={{ width: '100%' }} optionList={[{ value: 'CNY', label: 'CNY · 人民币' }]} disabled rules={[{ required: true, message: '请选择币种' }]} />
+              <PaymentCurrencyField disabled />
             </Col>
             <Col span={12}>
               <Form.InputNumber field="amountYuan" label="冻结金额(元)" min={0.01} step={0.01} precision={2} style={{ width: '100%' }} rules={[{ required: true, message: '请输入冻结金额' }]} />
