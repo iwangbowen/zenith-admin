@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { departmentContract, type Department } from '@zenith/shared/identity';
-import { api, useApiMutation } from '@/lib/contract-query';
+import { departmentContract } from '@zenith/shared/identity';
+import { api, useSaveMutation, useApiMutation } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type DepartmentTreeParams = NonNullable<QueryOf<typeof departmentContract.tree>>;
@@ -57,13 +57,8 @@ export function useDepartmentDetail(id: number | undefined, enabled = true) {
 }
 
 export function useSaveDepartment() {
-  const qc = useQueryClient();
-  return useMutation<Department, Error, { id?: number; values: DepartmentFormValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(departmentContract.create, { body: values as BodyOf<typeof departmentContract.create> })
-        : api(departmentContract.update, { params: { id }, body: values }),
-    onSuccess: (saved) => {
+  return useSaveMutation(departmentContract.create, departmentContract.update, {
+    invalidate: (qc, saved) => {
       // 树与扁平列表都会注入 children / userCount 等聚合字段，写接口响应不含，故不回填
       void qc.invalidateQueries({ queryKey: departmentKeys.detail(saved.id) });
       // tree 是 treeSearch 的前缀，一并覆盖带筛选条件的树

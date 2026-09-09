@@ -1,26 +1,8 @@
 import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
 import { useMySettings } from './settings';
-import {
-  decisionFlowContract,
-  decisionTableContract,
-  ruleExecutionContract,
-  ruleListContract,
-  type CreateDecisionFlowInput,
-  type CreateDecisionTableInput,
-  type CreateRuleListInput,
-  type CreateRuleTestCaseInput,
-  type RuleDecisionFlow,
-  type RuleDecisionTable,
-  type RuleList,
-  type RuleTestCase,
-  type RuleUsageItem,
-  type UpdateDecisionFlowInput,
-  type UpdateDecisionTableInput,
-  type UpdateRuleListInput,
-  type UpdateRuleTestCaseInput,
-} from '@zenith/shared/rules';
-import { api, apiRaw, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { decisionFlowContract, decisionTableContract, ruleExecutionContract, ruleListContract, type CreateDecisionFlowInput, type CreateDecisionTableInput, type CreateRuleListInput, type CreateRuleTestCaseInput, type RuleTestCase, type RuleUsageItem, type UpdateDecisionFlowInput, type UpdateDecisionTableInput, type UpdateRuleListInput, type UpdateRuleTestCaseInput } from '@zenith/shared/rules';
+import { api, useSaveMutation, apiRaw, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
 
 export type RuleDecisionTableListParams = NonNullable<QueryOf<typeof decisionTableContract.list>>;
@@ -76,12 +58,8 @@ export type RuleDecisionTableSaveValues = Partial<CreateDecisionTableInput & Upd
 
 /** 无 id 走 create，有 id 走 update（key 仅创建时提交） */
 export function useSaveRuleDecisionTable() {
-  const qc = useQueryClient();
-  return useMutation<RuleDecisionTable, Error, { id?: number; values: RuleDecisionTableSaveValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(decisionTableContract.create, { body: values as CreateDecisionTableInput })
-      : api(decisionTableContract.update, { params: { id }, body: values as UpdateDecisionTableInput })),
-    onSuccess: () => invalidateDecisionTables(qc),
+  return useSaveMutation(decisionTableContract.create, decisionTableContract.update, {
+    invalidate: (qc) => invalidateDecisionTables(qc),
   });
 }
 
@@ -204,12 +182,8 @@ export function useRuleFlowList(params: RuleFlowListParams) {
 export type RuleFlowSaveValues = Partial<CreateDecisionFlowInput & UpdateDecisionFlowInput>;
 
 export function useSaveRuleFlow() {
-  const qc = useQueryClient();
-  return useMutation<RuleDecisionFlow, Error, { id?: number; values: RuleFlowSaveValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(decisionFlowContract.create, { body: values as CreateDecisionFlowInput })
-      : api(decisionFlowContract.update, { params: { id }, body: values as UpdateDecisionFlowInput })),
-    onSuccess: () => invalidateFlows(qc),
+  return useSaveMutation(decisionFlowContract.create, decisionFlowContract.update, {
+    invalidate: (qc) => invalidateFlows(qc),
   });
 }
 
@@ -249,12 +223,8 @@ export function useRuleListList(params: RuleListListParams, enabled = true) {
 export type RuleListSaveValues = Partial<CreateRuleListInput & UpdateRuleListInput>;
 
 export function useSaveRuleList() {
-  const qc = useQueryClient();
-  return useMutation<RuleList, Error, { id?: number; values: RuleListSaveValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(ruleListContract.create, { body: values as CreateRuleListInput })
-      : api(ruleListContract.update, { params: { id }, body: values as UpdateRuleListInput })),
-    onSuccess: () => invalidateRuleLists(qc),
+  return useSaveMutation(ruleListContract.create, ruleListContract.update, {
+    invalidate: (qc) => invalidateRuleLists(qc),
   });
 }
 

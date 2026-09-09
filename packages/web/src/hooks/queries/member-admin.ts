@@ -1,26 +1,8 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { resourceKeyOf } from '@zenith/shared/core';
-import {
-  checkinMilestoneContract,
-  checkinRuleContract,
-  checkinSettingsContract,
-  couponContract,
-  memberCheckinContract,
-  memberContract,
-  memberLevelContract,
-  memberPointContract,
-  memberRechargeContract,
-  memberStatsContract,
-  memberTagContract,
-  memberWalletContract,
-  type CheckinMilestone,
-  type CheckinRule,
-  type Member,
-  type MemberLevel,
-  type MemberTag,
-} from '@zenith/shared/member';
-import { api, apiQueryOptions, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { checkinMilestoneContract, checkinRuleContract, checkinSettingsContract, couponContract, memberCheckinContract, memberContract, memberLevelContract, memberPointContract, memberRechargeContract, memberStatsContract, memberTagContract, memberWalletContract } from '@zenith/shared/member';
+import { api, useSaveMutation, apiQueryOptions, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { memberLookupKeys } from './members-lookup';
 
 export type MemberListParams = NonNullable<QueryOf<typeof memberContract.list>>;
@@ -117,13 +99,8 @@ export const useDeleteMembers = memberResource.useDelete;
 
 /** 保存会员：等级列表含各等级会员数、看板含会员总量、下拉源展示昵称 / 等级，写后一并回源 */
 export function useSaveMember() {
-  const qc = useQueryClient();
-  return useMutation<Member, Error, { id?: number; values: MemberFormValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(memberContract.create, { body: values as BodyOf<typeof memberContract.create> })
-        : api(memberContract.update, { params: { id }, body: values }),
-    onSuccess: (saved) => {
+  return useSaveMutation(memberContract.create, memberContract.update, {
+    invalidate: (qc, saved) => {
       qc.setQueryData(memberResource.keys.detail(saved.id), saved);
       invalidateMembers(qc);
       invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.stats]);
@@ -184,13 +161,8 @@ export function useMemberTags() {
 
 /** 标签列表含绑定会员数，会员列表展示标签名与颜色，改名 / 换色后一并回源 */
 export function useSaveMemberTag() {
-  const qc = useQueryClient();
-  return useMutation<MemberTag, Error, { id?: number; values: MemberTagFormValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(memberTagContract.create, { body: values as BodyOf<typeof memberTagContract.create> })
-        : api(memberTagContract.update, { params: { id }, body: values }),
-    onSuccess: () => {
+  return useSaveMutation(memberTagContract.create, memberTagContract.update, {
+    invalidate: (qc) => {
       invalidate(qc, [memberAdminKeys.memberTags]);
       invalidateMembers(qc);
     },
@@ -235,13 +207,8 @@ export function useMemberLevels() {
 
 /** 等级改名 / 改阈值影响会员列表的等级列与看板等级分布 */
 export function useSaveMemberLevel() {
-  const qc = useQueryClient();
-  return useMutation<MemberLevel, Error, { id?: number; values: MemberLevelFormValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(memberLevelContract.create, { body: values as BodyOf<typeof memberLevelContract.create> })
-        : api(memberLevelContract.update, { params: { id }, body: values }),
-    onSuccess: (saved) => {
+  return useSaveMutation(memberLevelContract.create, memberLevelContract.update, {
+    invalidate: (qc, saved) => {
       qc.setQueryData(memberAdminKeys.levelDetail(saved.id), saved);
       invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.stats]);
       invalidateMembers(qc);
@@ -376,13 +343,8 @@ export function useSaveCheckinSettings() {
 }
 
 export function useSaveCheckinRule() {
-  const qc = useQueryClient();
-  return useMutation<CheckinRule, Error, { id?: number; values: CheckinRuleFormValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(checkinRuleContract.create, { body: values as BodyOf<typeof checkinRuleContract.create> })
-        : api(checkinRuleContract.update, { params: { id }, body: values }),
-    onSuccess: () => invalidateCheckins(qc),
+  return useSaveMutation(checkinRuleContract.create, checkinRuleContract.update, {
+    invalidate: (qc) => invalidateCheckins(qc),
   });
 }
 
@@ -430,13 +392,8 @@ export function useCheckinMilestones() {
 }
 
 export function useSaveCheckinMilestone() {
-  const qc = useQueryClient();
-  return useMutation<CheckinMilestone, Error, { id?: number; values: CheckinMilestoneFormValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(checkinMilestoneContract.create, { body: values as BodyOf<typeof checkinMilestoneContract.create> })
-        : api(checkinMilestoneContract.update, { params: { id }, body: values }),
-    onSuccess: () => invalidateCheckins(qc),
+  return useSaveMutation(checkinMilestoneContract.create, checkinMilestoneContract.update, {
+    invalidate: (qc) => invalidateCheckins(qc),
   });
 }
 

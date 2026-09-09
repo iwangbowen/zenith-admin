@@ -1,7 +1,6 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { reportFolderContract, type ReportFolder, type ReportFolderTreeNode } from '@zenith/shared/report';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { reportFolderContract, type ReportFolderTreeNode } from '@zenith/shared/report';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type ReportFolderListParams = NonNullable<QueryOf<typeof reportFolderContract.tree>>;
@@ -29,12 +28,9 @@ export type SaveReportFolderValues = Partial<BodyOf<typeof reportFolderContract.
 
 /** 无 id 走 create，有 id 走 update（供 useEditModal 使用） */
 export function useSaveReportFolder() {
-  const qc = useQueryClient();
-  return useMutation<ReportFolder, Error, { id?: number; values: SaveReportFolderValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(reportFolderContract.create, { body: values as BodyOf<typeof reportFolderContract.create> }, { silent: true })
-      : api(reportFolderContract.update, { params: { id }, body: values }, { silent: true })),
-    onSuccess: (saved) => {
+  return useSaveMutation(reportFolderContract.create, reportFolderContract.update, {
+    requestOptions: { silent: true },
+    invalidate: (qc, saved) => {
       void qc.invalidateQueries({ queryKey: reportFolderKeys.detail(saved.id) });
       void qc.invalidateQueries({ queryKey: reportFolderKeys.lists });
     },

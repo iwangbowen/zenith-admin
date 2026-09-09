@@ -1,8 +1,8 @@
-import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
 import { developerAppContract } from '@zenith/shared/open-platform';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type MyAppListParams = QueryOf<typeof developerAppContract.list>;
 
@@ -47,13 +47,8 @@ export function useMyAppDetail(id: number | undefined, enabled = true) {
 
 /** 无 id 走创建（POST，返回含一次性 clientSecret），有 id 走更新（PUT） */
 export function useSaveMyApp() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: SaveMyAppValues }) =>
-      (id === undefined
-        ? api(developerAppContract.create, { body: values as BodyOf<typeof developerAppContract.create> })
-        : api(developerAppContract.update, { params: { id }, body: values })),
-    onSuccess: () => invalidateMyApps(qc),
+  return useSaveMutation(developerAppContract.create, developerAppContract.update, {
+    invalidate: (qc) => invalidateMyApps(qc),
   });
 }
 

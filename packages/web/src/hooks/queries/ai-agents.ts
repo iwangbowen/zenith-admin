@@ -1,8 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { aiAgentContract } from '@zenith/shared/ai';
-import type { AiAgent, CreateAiAgentInput } from '@zenith/shared/ai';
-import { resourceKeyOf, type BodyOf } from '@zenith/shared/core';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import type { CreateAiAgentInput } from '@zenith/shared/ai';
+import { resourceKeyOf } from '@zenith/shared/core';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 /** 新增与编辑共用同一表单：必填字段由表单 rules 保证，服务端 schema 兜底校验 */
 export type SaveAiAgentValues = Partial<CreateAiAgentInput>;
@@ -29,13 +28,8 @@ export function useAiAgentDetail(id: number | null) {
 
 /** 无 id 走创建，有 id 走更新；列表行即完整实体，整体失效本域即可 */
 export function useSaveAiAgent() {
-  const qc = useQueryClient();
-  return useMutation<AiAgent, Error, { id?: number; values: SaveAiAgentValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(aiAgentContract.create, { body: values as BodyOf<typeof aiAgentContract.create> })
-        : api(aiAgentContract.update, { params: { id }, body: values }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: aiAgentKeys.all }),
+  return useSaveMutation(aiAgentContract.create, aiAgentContract.update, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: aiAgentKeys.all }),
   });
 }
 

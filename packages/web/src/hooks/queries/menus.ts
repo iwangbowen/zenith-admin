@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf } from '@zenith/shared/core';
-import { menuContract, type Menu } from '@zenith/shared/identity';
-import { api, useApiMutation } from '@/lib/contract-query';
+import { menuContract } from '@zenith/shared/identity';
+import { api, useSaveMutation, useApiMutation } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { authKeys } from './auth';
 import { dataMaskKeys } from './data-mask';
@@ -53,13 +53,8 @@ export function useMenuDetail(id: number | undefined, enabled = true) {
 }
 
 export function useSaveMenu() {
-  const qc = useQueryClient();
-  return useMutation<Menu, Error, { id?: number; values: MenuFormValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(menuContract.create, { body: values as BodyOf<typeof menuContract.create> })
-        : api(menuContract.update, { params: { id }, body: values }),
-    onSuccess: (saved) => {
+  return useSaveMutation(menuContract.create, menuContract.update, {
+    invalidate: (qc, saved) => {
       void qc.invalidateQueries({ queryKey: menuKeys.detail(saved.id) });
       void qc.invalidateQueries({ queryKey: menuKeys.tree });
       // 菜单结构变化直接影响所有用户的导航树与动态路由

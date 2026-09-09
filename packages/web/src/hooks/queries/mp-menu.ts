@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf } from '@zenith/shared/core';
 import { mpConditionalMenuContract, mpMenuContract, type MpMenuButton } from '@zenith/shared/mp';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { api, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export const mpMenuKeys = {
   /** 全部自定义菜单查询的公共前缀 */
@@ -62,13 +62,8 @@ export type MpConditionalMenuSaveValues = BodyOf<typeof mpConditionalMenuContrac
 
 /** 无 id 走新增、有 id 走编辑；列表不分页，故不走 createResourceQueries */
 export function useSaveMpConditionalMenu() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: MpConditionalMenuSaveValues }) =>
-      id === undefined
-        ? api(mpConditionalMenuContract.create, { body: values })
-        : api(mpConditionalMenuContract.update, { params: { id }, body: values }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mpMenuKeys.conditionalAll }),
+  return useSaveMutation(mpConditionalMenuContract.create, mpConditionalMenuContract.update, {
+    invalidate: (qc) => qc.invalidateQueries({ queryKey: mpMenuKeys.conditionalAll }),
   });
 }
 

@@ -1,12 +1,7 @@
-import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
-import {
-  ruleScorecardContract,
-  type CreateRuleScorecardInput,
-  type RuleScorecard,
-  type UpdateRuleScorecardInput,
-} from '@zenith/shared/rules';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { ruleScorecardContract, type CreateRuleScorecardInput, type UpdateRuleScorecardInput } from '@zenith/shared/rules';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type RuleScorecardListParams = NonNullable<QueryOf<typeof ruleScorecardContract.list>>;
 
@@ -28,12 +23,8 @@ export type RuleScorecardSaveValues = Partial<CreateRuleScorecardInput & UpdateR
 
 /** 无 id 走 create，有 id 走 update（key 仅创建时提交） */
 export function useSaveRuleScorecard() {
-  const qc = useQueryClient();
-  return useMutation<RuleScorecard, Error, { id?: number; values: RuleScorecardSaveValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(ruleScorecardContract.create, { body: values as CreateRuleScorecardInput })
-      : api(ruleScorecardContract.update, { params: { id }, body: values as UpdateRuleScorecardInput })),
-    onSuccess: () => invalidateScorecards(qc),
+  return useSaveMutation(ruleScorecardContract.create, ruleScorecardContract.update, {
+    invalidate: (qc) => invalidateScorecards(qc),
   });
 }
 

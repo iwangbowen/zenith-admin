@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { reportEnvironmentContract, reportGovernanceContract, type ReportEnvironment } from '@zenith/shared/report';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { reportEnvironmentContract, reportGovernanceContract } from '@zenith/shared/report';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 const silent = { requestOptions: { silent: true } } as const;
 
@@ -100,12 +100,9 @@ export type SaveReportEnvironmentValues = Partial<BodyOf<typeof reportEnvironmen
 
 /** 无 id 走 create，有 id 走 update（供 useEditModal 使用） */
 export function useSaveReportEnvironment() {
-  const qc = useQueryClient();
-  return useMutation<ReportEnvironment, Error, { id?: number; values: SaveReportEnvironmentValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(reportEnvironmentContract.create, { body: values as BodyOf<typeof reportEnvironmentContract.create> }, { silent: true })
-      : api(reportEnvironmentContract.update, { params: { id }, body: values }, { silent: true })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: reportEnvironmentKeys.all }),
+  return useSaveMutation(reportEnvironmentContract.create, reportEnvironmentContract.update, {
+    requestOptions: { silent: true },
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportEnvironmentKeys.all }),
   });
 }
 

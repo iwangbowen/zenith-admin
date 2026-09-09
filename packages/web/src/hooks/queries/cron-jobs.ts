@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
-import { cronJobContract, type CreateCronJobInput, type CronJob } from '@zenith/shared/platform';
-import { api, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { cronJobContract } from '@zenith/shared/platform';
+import { api, useSaveMutation, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type CronJobListParams = NonNullable<QueryOf<typeof cronJobContract.list>>;
@@ -68,13 +68,8 @@ export function useCronJobAllLogs(params: CronJobAllLogsParams, enabled = true) 
  * 不再对详情发起一次必然返回相同数据的回源。
  */
 export function useSaveCronJob() {
-  const qc = useQueryClient();
-  return useMutation<CronJob, Error, { id?: number; values: Partial<CreateCronJobInput> }>({
-    // 同一表单同时服务新增与编辑，必填字段由表单 rules 保证、服务端 schema 兜底校验
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(cronJobContract.create, { body: values as CreateCronJobInput })
-      : api(cronJobContract.update, { params: { id }, body: values })),
-    onSuccess: (saved) => {
+  return useSaveMutation(cronJobContract.create, cronJobContract.update, {
+    invalidate: (qc, saved) => {
       qc.setQueryData(cronJobKeys.detail(saved.id), saved);
       void qc.invalidateQueries({ queryKey: cronJobKeys.lists });
       // 概览含 totalJobs / enabledJobs 与 perJob.jobName，新增或改名都会变

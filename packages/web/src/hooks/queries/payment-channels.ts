@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { paymentChannelContract, type PaymentChannelConfig } from '@zenith/shared/payment';
-import { api, contractKey, useApiMutation } from '@/lib/contract-query';
+import { paymentChannelContract } from '@zenith/shared/payment';
+import { api, useSaveMutation, contractKey, useApiMutation } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type PaymentChannelListParams = NonNullable<QueryOf<typeof paymentChannelContract.channels>>;
@@ -50,13 +50,8 @@ export function usePaymentChannelDetail(id: number | undefined, enabled = true) 
 
 /** 无 id 走新增，有 id 走更新；isDefault 全域唯一，设为默认会连带清掉原默认渠道，其它渠道的详情缓存一并失效 */
 export function useSavePaymentChannel() {
-  const qc = useQueryClient();
-  return useMutation<PaymentChannelConfig, Error, { id?: number; values: PaymentChannelSaveValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(paymentChannelContract.createChannel, { body: values as BodyOf<typeof paymentChannelContract.createChannel> })
-        : api(paymentChannelContract.updateChannel, { params: { id }, body: values }),
-    onSuccess: (saved) => {
+  return useSaveMutation(paymentChannelContract.createChannel, paymentChannelContract.updateChannel, {
+    invalidate: (qc, saved) => {
       if (saved.isDefault) void qc.invalidateQueries({ queryKey: paymentChannelKeys.details });
       else void qc.invalidateQueries({ queryKey: paymentChannelKeys.detail(saved.id) });
       invalidateChannelCollections(qc);

@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BodyOf, OutputOf, QueryOf } from '@zenith/shared/core';
-import { cmsResourceContract, type CmsResourceFolder } from '@zenith/shared/cms';
-import { api, apiQueryOptions, contractKey, urlOf, useApiMutation } from '@/lib/contract-query';
+import { cmsResourceContract } from '@zenith/shared/cms';
+import { useSaveMutation, apiQueryOptions, contractKey, urlOf, useApiMutation } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
 
@@ -41,13 +41,8 @@ export function useCmsResourceFolders(siteId: number | undefined) {
 export type CmsResourceFolderSaveValues = Partial<BodyOf<typeof cmsResourceContract.folderCreate>>;
 
 export function useSaveCmsResourceFolder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CmsResourceFolderSaveValues }): Promise<CmsResourceFolder> =>
-      id === undefined
-        ? api(cmsResourceContract.folderCreate, { body: values as BodyOf<typeof cmsResourceContract.folderCreate> })
-        : api(cmsResourceContract.folderUpdate, { params: { id }, body: values }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
+  return useSaveMutation(cmsResourceContract.folderCreate, cmsResourceContract.folderUpdate, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsResourceKeys.all }),
   });
 }
 

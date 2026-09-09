@@ -1,8 +1,8 @@
-import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import { aiChatModelContract, aiProviderContract } from '@zenith/shared/ai';
-import type { AiProviderConfig, CreateAiProviderConfigInput } from '@zenith/shared/ai';
+import type { CreateAiProviderConfigInput } from '@zenith/shared/ai';
 import { resourceKeyOf, type BodyOf } from '@zenith/shared/core';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type AiProviderTestPayload = BodyOf<typeof aiProviderContract.testConnection>;
@@ -47,13 +47,8 @@ export function useAiProviderDetail(id: number | undefined, enabled = true) {
 
 /** 无 id 走创建，有 id 走更新；聊天可用模型由启用中的供应商配置派生，改动后必须回源 */
 export function useSaveAiProvider() {
-  const qc = useQueryClient();
-  return useMutation<AiProviderConfig, Error, { id?: number; values: SaveAiProviderValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(aiProviderContract.create, { body: values as BodyOf<typeof aiProviderContract.create> })
-        : api(aiProviderContract.update, { params: { id }, body: values }),
-    onSuccess: (saved) => {
+  return useSaveMutation(aiProviderContract.create, aiProviderContract.update, {
+    invalidate: (qc, saved) => {
       void qc.invalidateQueries({ queryKey: aiProviderKeys.detail(saved.id) });
       void qc.invalidateQueries({ queryKey: aiProviderKeys.lists });
       void qc.invalidateQueries({ queryKey: aiProviderKeys.chatModels });

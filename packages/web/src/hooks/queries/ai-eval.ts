@@ -1,9 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import type { UseQueryOptions } from '@tanstack/react-query';
 import { aiEvalContract } from '@zenith/shared/ai';
-import type { AiEvalDataset, AiEvalExperiment, CreateAiEvalDatasetInput, UpdateAiEvalDatasetInput } from '@zenith/shared/ai';
+import type { AiEvalExperiment } from '@zenith/shared/ai';
 import { resourceKeyOf } from '@zenith/shared/core';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export const aiEvalKeys = {
   all: [resourceKeyOf(aiEvalContract.basePath)] as const,
@@ -29,13 +29,8 @@ export function useAiEvalItems(datasetId: string | null) {
 
 /** 无 id 走创建，有 id 走更新（Mastra dataset ID 为字符串，不走 useEditModal） */
 export function useSaveAiEvalDataset() {
-  const qc = useQueryClient();
-  return useMutation<AiEvalDataset, Error, { id?: string; values: CreateAiEvalDatasetInput | UpdateAiEvalDatasetInput }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(aiEvalContract.create, { body: values as CreateAiEvalDatasetInput })
-        : api(aiEvalContract.update, { params: { id }, body: values }),
-    onSuccess: () => invalidateAiEval(qc),
+  return useSaveMutation(aiEvalContract.create, aiEvalContract.update, {
+    invalidate: (qc) => invalidateAiEval(qc),
   });
 }
 

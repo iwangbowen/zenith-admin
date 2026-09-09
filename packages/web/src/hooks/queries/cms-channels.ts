@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { resourceKeyOf, type BodyOf } from '@zenith/shared/core';
-import { cmsChannelContract, type CmsChannel } from '@zenith/shared/cms';
-import { api, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
+import { cmsChannelContract } from '@zenith/shared/cms';
+import { useSaveMutation, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
 import { cmsContentKeys } from './cms-contents';
 
 /** 栏目没有分页列表，树即列表；任何写操作都改变树结构，按域根整体失效 */
@@ -30,13 +30,8 @@ export function useCmsChannelDetail(id: number | undefined, enabled = true) {
 }
 
 export function useSaveCmsChannel() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CmsChannelSaveValues }): Promise<CmsChannel> =>
-      id === undefined
-        ? api(cmsChannelContract.create, { body: values as BodyOf<typeof cmsChannelContract.create> })
-        : api(cmsChannelContract.update, { params: { id }, body: values }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: cmsChannelKeys.all }),
+  return useSaveMutation(cmsChannelContract.create, cmsChannelContract.update, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsChannelKeys.all }),
   });
 }
 

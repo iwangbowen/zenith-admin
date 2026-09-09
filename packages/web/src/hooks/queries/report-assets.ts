@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { reportAssetContract, type ReportAssetTemplate, type ReportDeprecationNotice, type ReportResourceType } from '@zenith/shared/report';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { reportAssetContract, type ReportResourceType } from '@zenith/shared/report';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type ReportAssetCatalogParams = NonNullable<QueryOf<typeof reportAssetContract.catalog>>;
 export type ReportAssetTopParams = NonNullable<QueryOf<typeof reportAssetContract.topAssets>>;
@@ -60,12 +60,9 @@ export type SaveReportDeprecationValues = Partial<BodyOf<typeof reportAssetContr
 
 /** 无 id 走 createDeprecation，有 id 走 updateDeprecation（供 useEditModal 使用） */
 export function useSaveReportDeprecation() {
-  const qc = useQueryClient();
-  return useMutation<ReportDeprecationNotice, Error, { id?: number; values: SaveReportDeprecationValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(reportAssetContract.createDeprecation, { body: values as BodyOf<typeof reportAssetContract.createDeprecation> }, { silent: true })
-      : api(reportAssetContract.updateDeprecation, { params: { id }, body: values }, { silent: true })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: reportAssetKeys.deprecationLists }),
+  return useSaveMutation(reportAssetContract.createDeprecation, reportAssetContract.updateDeprecation, {
+    requestOptions: { silent: true },
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportAssetKeys.deprecationLists }),
   });
 }
 
@@ -97,12 +94,9 @@ export type SaveReportAssetTemplateValues = Partial<BodyOf<typeof reportAssetCon
 
 /** 无 id 走 createTemplate，有 id 走 updateTemplate（供 useEditModal 使用） */
 export function useSaveReportAssetTemplate() {
-  const qc = useQueryClient();
-  return useMutation<ReportAssetTemplate, Error, { id?: number; values: SaveReportAssetTemplateValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(reportAssetContract.createTemplate, { body: values as BodyOf<typeof reportAssetContract.createTemplate> }, { silent: true })
-      : api(reportAssetContract.updateTemplate, { params: { id }, body: values }, { silent: true })),
-    onSuccess: (saved) => {
+  return useSaveMutation(reportAssetContract.createTemplate, reportAssetContract.updateTemplate, {
+    requestOptions: { silent: true },
+    invalidate: (qc, saved) => {
       void qc.invalidateQueries({ queryKey: reportAssetKeys.templateDetail(saved.id) });
       void qc.invalidateQueries({ queryKey: reportAssetKeys.templateLists });
     },

@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { paymentSharingContract, type PaymentSharingReceiver } from '@zenith/shared/payment';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { paymentSharingContract } from '@zenith/shared/payment';
+import { api, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type PaymentSharingReceiverListParams = NonNullable<QueryOf<typeof paymentSharingContract.receivers>>;
@@ -45,13 +45,8 @@ export function usePaymentSharingReceivers(params: PaymentSharingReceiverListPar
 
 /** 无 id 走新增，有 id 走更新 */
 export function useSavePaymentSharingReceiver() {
-  const qc = useQueryClient();
-  return useMutation<PaymentSharingReceiver, Error, { id?: number; values: PaymentSharingReceiverSaveValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(paymentSharingContract.createReceiver, { body: values as BodyOf<typeof paymentSharingContract.createReceiver> })
-        : api(paymentSharingContract.updateReceiver, { params: { id }, body: values }),
-    onSuccess: () => invalidateReceivers(qc),
+  return useSaveMutation(paymentSharingContract.createReceiver, paymentSharingContract.updateReceiver, {
+    invalidate: (qc) => invalidateReceivers(qc),
   });
 }
 

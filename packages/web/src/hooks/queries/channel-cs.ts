@@ -1,8 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { channelCsContract } from '@zenith/shared/messaging';
-import type { ChannelQuickReply } from '@zenith/shared/messaging';
-import { api, useApiMutation } from '@/lib/contract-query';
+import { api, useSaveMutation, useApiMutation } from '@/lib/contract-query';
 
 export type ChannelConversationParams = NonNullable<QueryOf<typeof channelCsContract.conversations>>;
 
@@ -107,13 +106,8 @@ export function useSetChannelConversationTags() {
 }
 
 export function useSaveChannelQuickReply() {
-  const qc = useQueryClient();
-  return useMutation<ChannelQuickReply, Error, { id?: number; values: ChannelQuickReplyValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(channelCsContract.createQuickReply, { body: values as BodyOf<typeof channelCsContract.createQuickReply> })
-        : api(channelCsContract.updateQuickReply, { params: { id }, body: values }),
-    onSuccess: () => invalidateWorkbench(qc),
+  return useSaveMutation(channelCsContract.createQuickReply, channelCsContract.updateQuickReply, {
+    invalidate: (qc) => invalidateWorkbench(qc),
   });
 }
 

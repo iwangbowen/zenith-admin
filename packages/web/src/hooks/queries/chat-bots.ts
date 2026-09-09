@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
 import { chatBotContract, type ChatConversation } from '@zenith/shared/chat';
 import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { conversationsQueryOptions } from '@/hooks/queries/chat';
 
 export type ChatBotListParams = QueryOf<typeof chatBotContract.list>;
@@ -35,13 +35,8 @@ export function useChatBotGroupConversations(enabled = true) {
 
 /** 无 id 走创建（POST），有 id 走更新（PATCH） */
 export function useSaveChatBot() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: SaveChatBotValues }) =>
-      (id === undefined
-        ? api(chatBotContract.create, { body: values as BodyOf<typeof chatBotContract.create> })
-        : api(chatBotContract.update, { params: { id }, body: values })),
-    onSuccess: () => invalidateChatBots(qc),
+  return useSaveMutation(chatBotContract.create, chatBotContract.update, {
+    invalidate: (qc) => invalidateChatBots(qc),
   });
 }
 

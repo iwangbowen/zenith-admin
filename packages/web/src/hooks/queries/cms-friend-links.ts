@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { cmsFriendLinkContract, type CmsFriendLinkGroup } from '@zenith/shared/cms';
-import { api, apiQueryOptions, contractKey, createResourceQueries } from '@/lib/contract-query';
+import type { QueryOf } from '@zenith/shared/core';
+import { cmsFriendLinkContract } from '@zenith/shared/cms';
+import { api, useSaveMutation, apiQueryOptions, contractKey, createResourceQueries } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type CmsFriendLinkListParams = NonNullable<QueryOf<typeof cmsFriendLinkContract.list>>;
@@ -41,13 +41,8 @@ export function useAllCmsFriendLinkGroups(siteId: number | undefined, enabled = 
 
 /** 分组改名 / 删除会改变友链列表里的分组名与归属，整域失效 */
 export function useSaveCmsFriendLinkGroup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: Partial<BodyOf<typeof cmsFriendLinkContract.groupCreate>> }): Promise<CmsFriendLinkGroup> =>
-      id === undefined
-        ? api(cmsFriendLinkContract.groupCreate, { body: values as BodyOf<typeof cmsFriendLinkContract.groupCreate> })
-        : api(cmsFriendLinkContract.groupUpdate, { params: { id }, body: values }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: cmsFriendLinkKeys.all }),
+  return useSaveMutation(cmsFriendLinkContract.groupCreate, cmsFriendLinkContract.groupUpdate, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsFriendLinkKeys.all }),
   });
 }
 

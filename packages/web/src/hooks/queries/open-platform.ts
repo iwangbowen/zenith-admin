@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
 import {
   apiScopeContract,
@@ -11,7 +11,7 @@ import {
   type AppWebhookContract,
 } from '@zenith/shared/open-platform';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
-import { api, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 // ─── API Scope ───────────────────────────────────────────────────────────────
 
@@ -90,14 +90,9 @@ export function useWebhookList(params: WebhookListParams, scope: WebhookApiScope
 
 /** 无 id 走创建（POST，返回含一次性 secret），有 id 走更新（PUT） */
 export function useSaveWebhook(scope: WebhookApiScope = 'open') {
-  const qc = useQueryClient();
   const contract = webhookContractOf(scope);
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: SaveWebhookValues }) =>
-      (id === undefined
-        ? api(contract.create, { body: values as BodyOf<AppWebhookContract['create']> })
-        : api(contract.update, { params: { id }, body: values })),
-    onSuccess: () => invalidateWebhookCaches(qc),
+  return useSaveMutation(contract.create, contract.update, {
+    invalidate: (qc) => invalidateWebhookCaches(qc),
   });
 }
 

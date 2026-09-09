@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { cmsAdContract, type CmsAdSlot } from '@zenith/shared/cms';
-import { api, apiQueryOptions, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { cmsAdContract } from '@zenith/shared/cms';
+import { useSaveMutation, apiQueryOptions, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
 
 export type CmsAdListParams = NonNullable<QueryOf<typeof cmsAdContract.list>>;
 
@@ -34,13 +34,8 @@ export function useCmsAdSlots(siteId: number | undefined) {
 export type CmsAdSlotSaveValues = Partial<BodyOf<typeof cmsAdContract.slotCreate>>;
 
 export function useSaveCmsAdSlot() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CmsAdSlotSaveValues }): Promise<CmsAdSlot> =>
-      id === undefined
-        ? api(cmsAdContract.slotCreate, { body: values as BodyOf<typeof cmsAdContract.slotCreate> })
-        : api(cmsAdContract.slotUpdate, { params: { id }, body: values }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: cmsAdKeys.all }),
+  return useSaveMutation(cmsAdContract.slotCreate, cmsAdContract.slotUpdate, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsAdKeys.all }),
   });
 }
 

@@ -1,8 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
 import { channelContract, channelMessageContract } from '@zenith/shared/messaging';
-import type { ChannelAutoReply, ChannelMessage, ChannelMessageTemplate } from '@zenith/shared/messaging';
-import { api, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import type { ChannelAutoReply, ChannelMessage } from '@zenith/shared/messaging';
+import { api, useSaveMutation, createResourceQueries, useApiMutation } from '@/lib/contract-query';
 
 export type ChannelListParams = NonNullable<QueryOf<typeof channelContract.list>>;
 
@@ -177,13 +177,8 @@ export function useAudienceEstimate() {
 }
 
 export function useSaveChannelTemplate() {
-  const qc = useQueryClient();
-  return useMutation<ChannelMessageTemplate, Error, { id?: number; values: ChannelTemplateValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(channelMessageContract.createTemplate, { body: values as BodyOf<typeof channelMessageContract.createTemplate> })
-        : api(channelMessageContract.updateTemplate, { params: { id }, body: values }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: channelKeys.templates }),
+  return useSaveMutation(channelMessageContract.createTemplate, channelMessageContract.updateTemplate, {
+    invalidate: (qc) => qc.invalidateQueries({ queryKey: channelKeys.templates }),
   });
 }
 

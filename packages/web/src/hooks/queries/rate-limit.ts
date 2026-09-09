@@ -1,17 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { resourceKeyOf } from '@zenith/shared/core';
-import {
-  rateLimitContract,
-  type CreateRateLimitRuleInput,
-  type RateLimitAlgorithm,
-  type RateLimitKeyType,
-  type RateLimitMode,
-  type RateLimitMountSource,
-  type RateLimitRule,
-  type UpdateRateLimitRuleInput,
-} from '@zenith/shared/platform';
+import { rateLimitContract, type RateLimitAlgorithm, type RateLimitKeyType, type RateLimitMode, type RateLimitMountSource } from '@zenith/shared/platform';
 import { config } from '@/config';
-import { api, apiRaw, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useSaveMutation, apiRaw, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type { RateLimitAlgorithm, RateLimitKeyType, RateLimitMode, RateLimitMountSource };
@@ -59,12 +50,8 @@ function invalidateRuleViews(qc: import('@tanstack/react-query').QueryClient) {
 
 /** 无 id 新增，有 id 部分更新（规则名称不可更改） */
 export function useSaveRateLimitRule() {
-  const qc = useQueryClient();
-  return useMutation<RateLimitRule, Error, { id?: number; values: Partial<CreateRateLimitRuleInput> }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(rateLimitContract.createRule, { body: values as CreateRateLimitRuleInput })
-      : api(rateLimitContract.updateRule, { params: { id }, body: values as UpdateRateLimitRuleInput })),
-    onSuccess: () => invalidateRuleViews(qc),
+  return useSaveMutation(rateLimitContract.createRule, rateLimitContract.updateRule, {
+    invalidate: (qc) => invalidateRuleViews(qc),
   });
 }
 

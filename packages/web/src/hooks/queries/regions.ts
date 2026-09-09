@@ -1,7 +1,7 @@
-import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
-import { regionContract, type CreateRegionInput, type Region } from '@zenith/shared/platform';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { regionContract } from '@zenith/shared/platform';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type RegionTreeParams = NonNullable<QueryOf<typeof regionContract.tree>>;
@@ -40,12 +40,8 @@ function invalidateRegionViews(qc: QueryClient) {
 
 /** 无 id 走 create，有 id 走 update；同一表单同时服务新增与编辑 */
 export function useSaveRegion() {
-  const qc = useQueryClient();
-  return useMutation<Region, Error, { id?: number; values: Partial<CreateRegionInput> }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(regionContract.create, { body: values as CreateRegionInput })
-      : api(regionContract.update, { params: { id }, body: values })),
-    onSuccess: (saved) => {
+  return useSaveMutation(regionContract.create, regionContract.update, {
+    invalidate: (qc, saved) => {
       void qc.invalidateQueries({ queryKey: regionKeys.detail(saved.id) });
       invalidateRegionViews(qc);
     },

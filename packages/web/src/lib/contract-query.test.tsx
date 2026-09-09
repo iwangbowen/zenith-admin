@@ -15,7 +15,7 @@ import {
 const recorder = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => recorder) }));
 
-import { api, apiQueryOptions, apiRaw, contractKey, createResourceQueries, urlOf, useApiMutation } from './contract-query';
+import { api, apiQueryOptions, apiRaw, contractKey, createResourceQueries, urlOf, useApiMutation, useSaveMutation } from './contract-query';
 
 const itemSchema = z.object({ id: z.int(), name: z.string() });
 const itemContract = defineContract('/api/items', {
@@ -245,5 +245,43 @@ describe('useApiMutation', () => {
     await result.current.mutateAsync({ params: { id: 8 }, body: { reason: 'done' } });
     expect(recorder.calls).toEqual([{ method: 'POST', url: '/api/items/8/archive', body: { reason: 'done' } }]);
     expect(invalidate).toHaveBeenCalledWith(qc, null, { params: { id: 8 }, body: { reason: 'done' } });
+  });
+});
+
+describe('useSaveMutation', () => {
+  it('routes to create without id and to update with id, passing saved + vars to invalidate', async () => {
+    const qc = createTestQueryClient();
+    const invalidate = vi.fn();
+    const { result } = renderHook(() => useSaveMutation(itemContract.create, itemContract.update, { invalidate }), { wrapper: createWrapper(qc) });
+
+    const created = await result.current.mutateAsync({ values: { name: 'a' } });
+    expect(created).toEqual({ id: 9, name: 'a' });
+    expect(recorder.calls).toEqual([{ method: 'POST', url: '/api/items', body: { name: 'a' } }]);
+    expect(invalidate).toHaveBeenLastCalledWith(qc, { id: 9, name: 'a' }, { values: { name: 'a' } });
+
+    recorder.resetCalls();
+    const updated = await result.current.mutateAsync({ id: 9, values: { name: 'b' } });
+    expect(updated).toEqual({ id: 9, name: 'b' });
+    expect(recorder.calls).toEqual([{ method: 'PUT', url: '/api/items/9', body: { name: 'b' } }]);
+    expect(invalidate).toHaveBeenLastCalledWith(qc, { id: 9, name: 'b' }, { id: 9, values: { name: 'b' } });
+  });
+
+  it('applies requestOptions to both branches and still runs onSuccess', async () => {
+    const qc = createTestQueryClient();
+    const onSuccess = vi.fn();
+    const { result } = renderHook(
+      () => useSaveMutation(itemContract.create, itemContract.update, { requestOptions: { headers: { 'x-test': '1' } }, onSuccess }),
+      { wrapper: createWrapper(qc) },
+    );
+    await result.current.mutateAsync({ values: { name: 'a' } });
+    await result.current.mutateAsync({ id: 9, values: { name: 'b' } });
+    expect(recorder.calls.map((c) => c.headers?.['x-test'])).toEqual(['1', '1']);
+    expect(onSuccess).toHaveBeenCalledTimes(2);
+  });
+
+  it('derives the id type from the update contract params', () => {
+    const qc = createTestQueryClient();
+    const { result } = renderHook(() => useSaveMutation(docContract.create, docContract.update), { wrapper: createWrapper(qc) });
+    expectTypeOf(result.current.mutateAsync).parameter(0).toHaveProperty('id').toEqualTypeOf<string | undefined>();
   });
 });

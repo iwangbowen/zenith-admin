@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { paymentDeductPlanContract, paymentSigningContract, type PaymentDeductPlan } from '@zenith/shared/payment';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { paymentDeductPlanContract, paymentSigningContract } from '@zenith/shared/payment';
+import { api, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { paymentOrderKeys } from './payment-orders';
 
@@ -110,13 +110,8 @@ export function useAllDeductPlans() {
 
 /** 无 id 走新增，有 id 走更新 */
 export function useSaveDeductPlan() {
-  const qc = useQueryClient();
-  return useMutation<PaymentDeductPlan, Error, { id?: number; values: DeductPlanSaveValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(paymentDeductPlanContract.createDeductPlan, { body: values as BodyOf<typeof paymentDeductPlanContract.createDeductPlan> })
-        : api(paymentDeductPlanContract.updateDeductPlan, { params: { id }, body: values }),
-    onSuccess: () => invalidatePlan(qc),
+  return useSaveMutation(paymentDeductPlanContract.createDeductPlan, paymentDeductPlanContract.updateDeductPlan, {
+    invalidate: (qc) => invalidatePlan(qc),
   });
 }
 

@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
-import { reportQueryCapacityContract, type ReportQueryQuota } from '@zenith/shared/report';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { reportQueryCapacityContract } from '@zenith/shared/report';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type ReportQueryQuotaListParams = NonNullable<QueryOf<typeof reportQueryCapacityContract.quotas>>;
 export type ReportQueryCostLogParams = NonNullable<QueryOf<typeof reportQueryCapacityContract.costLogs>>;
@@ -38,12 +38,9 @@ export type SaveReportQueryQuotaValues = Partial<BodyOf<typeof reportQueryCapaci
 
 /** 无 id 走 createQuota，有 id 走 updateQuota（供 useEditModal 使用） */
 export function useSaveReportQueryQuota() {
-  const qc = useQueryClient();
-  return useMutation<ReportQueryQuota, Error, { id?: number; values: SaveReportQueryQuotaValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(reportQueryCapacityContract.createQuota, { body: values as BodyOf<typeof reportQueryCapacityContract.createQuota> }, { silent: true })
-      : api(reportQueryCapacityContract.updateQuota, { params: { id }, body: values }, { silent: true })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: reportQueryCapacityKeys.all }),
+  return useSaveMutation(reportQueryCapacityContract.createQuota, reportQueryCapacityContract.updateQuota, {
+    requestOptions: { silent: true },
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportQueryCapacityKeys.all }),
   });
 }
 

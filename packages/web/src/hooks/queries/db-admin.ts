@@ -1,12 +1,7 @@
 import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
-import {
-  dbAdminContract,
-  type CreateDbQueryFavoriteInput,
-  type DbAdminSqlExportMode,
-  type DbBackupStatus,
-} from '@zenith/shared/ops';
-import { api, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { dbAdminContract, type DbAdminSqlExportMode, type DbBackupStatus } from '@zenith/shared/ops';
+import { api, useSaveMutation, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type DbAdminHistoryParams = NonNullable<QueryOf<typeof dbAdminContract.history>>;
 
@@ -122,14 +117,8 @@ export function dbAdminTableExportSqlUrl(schema: string, table: string, mode: Db
 
 /** 无 id 走新增，有 id 走更新；收藏夹为当前用户私有清单，只失效自身 */
 export function useSaveDbQueryFavorite() {
-  const qc = useQueryClient();
-  return useMutation({
-    // 同一表单同时服务新增与编辑，必填字段由表单 rules 保证、服务端 schema 兜底校验
-    mutationFn: ({ id, values }: { id?: number; values: Partial<CreateDbQueryFavoriteInput> }) =>
-      (id === undefined
-        ? api(dbAdminContract.createFavorite, { body: values as CreateDbQueryFavoriteInput })
-        : api(dbAdminContract.updateFavorite, { params: { id }, body: values })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.favorites }),
+  return useSaveMutation(dbAdminContract.createFavorite, dbAdminContract.updateFavorite, {
+    invalidate: (qc) => qc.invalidateQueries({ queryKey: dbAdminKeys.favorites }),
   });
 }
 

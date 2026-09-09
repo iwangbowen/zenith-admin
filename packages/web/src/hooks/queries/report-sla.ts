@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
-import { reportSlaContract, type ReportSlaRule } from '@zenith/shared/report';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { reportSlaContract } from '@zenith/shared/report';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type ReportSlaRuleListParams = NonNullable<QueryOf<typeof reportSlaContract.rules>>;
 export type ReportSlaViolationListParams = NonNullable<QueryOf<typeof reportSlaContract.violations>>;
@@ -32,12 +32,9 @@ export type SaveReportSlaRuleValues = Partial<BodyOf<typeof reportSlaContract.cr
 
 /** 无 id 走 createRule，有 id 走 updateRule（供 useEditModal 使用） */
 export function useSaveReportSlaRule() {
-  const qc = useQueryClient();
-  return useMutation<ReportSlaRule, Error, { id?: number; values: SaveReportSlaRuleValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(reportSlaContract.createRule, { body: values as BodyOf<typeof reportSlaContract.createRule> }, { silent: true })
-      : api(reportSlaContract.updateRule, { params: { id }, body: values }, { silent: true })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: reportSlaKeys.all }),
+  return useSaveMutation(reportSlaContract.createRule, reportSlaContract.updateRule, {
+    requestOptions: { silent: true },
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportSlaKeys.all }),
   });
 }
 

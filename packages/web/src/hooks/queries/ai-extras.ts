@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   aiArenaContract,
   aiConversationContract,
@@ -7,9 +7,9 @@ import {
   aiPromptTemplateContract,
   aiSettingsContract,
 } from '@zenith/shared/ai';
-import type { AiKnowledgeBase, ArenaVoteInput, CreateAiKnowledgeBaseInput } from '@zenith/shared/ai';
-import { resourceKeyOf, type BodyOf } from '@zenith/shared/core';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import type { ArenaVoteInput, CreateAiKnowledgeBaseInput } from '@zenith/shared/ai';
+import { resourceKeyOf } from '@zenith/shared/core';
+import { api, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { aiPromptKeys } from './ai-prompts';
 
@@ -97,13 +97,8 @@ export function useAvailableKnowledgeBases(enabled = true) {
 
 /** 无 id 走创建，有 id 走更新；文档列表不受知识库改名影响，故不失效 */
 export function useSaveAiKnowledgeBase() {
-  const qc = useQueryClient();
-  return useMutation<AiKnowledgeBase, Error, { id?: number; values: SaveAiKnowledgeBaseValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(aiKnowledgeBaseContract.create, { body: values as BodyOf<typeof aiKnowledgeBaseContract.create> })
-        : api(aiKnowledgeBaseContract.update, { params: { id }, body: values }),
-    onSuccess: () => {
+  return useSaveMutation(aiKnowledgeBaseContract.create, aiKnowledgeBaseContract.update, {
+    invalidate: (qc) => {
       void qc.invalidateQueries({ queryKey: aiKbKeys.lists });
       void qc.invalidateQueries({ queryKey: aiKbKeys.available });
     },

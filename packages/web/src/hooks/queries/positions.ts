@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { BodyOf } from '@zenith/shared/core';
-import { positionContract, type Position } from '@zenith/shared/identity';
-import { api, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { positionContract } from '@zenith/shared/identity';
+import { api, useSaveMutation, createResourceQueries, useApiMutation } from '@/lib/contract-query';
 
 /** 保存载荷：创建入参的部分形态，同一表单同时服务新增与编辑 */
 export type PositionFormValues = Partial<BodyOf<typeof positionContract.create>>;
@@ -41,13 +41,8 @@ export function usePositionMembers(id: number | undefined, enabled = true) {
  * 列表注入了 userCount / userPreview 需回源，下拉源渲染岗位名称与状态，改名 / 停用后必须回源。
  */
 export function useSavePosition() {
-  const qc = useQueryClient();
-  return useMutation<Position, Error, { id?: number; values: PositionFormValues }>({
-    mutationFn: ({ id, values }) =>
-      id === undefined
-        ? api(positionContract.create, { body: values as BodyOf<typeof positionContract.create> })
-        : api(positionContract.update, { params: { id }, body: values }),
-    onSuccess: (saved) => {
+  return useSaveMutation(positionContract.create, positionContract.update, {
+    invalidate: (qc, saved) => {
       qc.setQueryData(positionKeys.detail(saved.id), saved);
       void qc.invalidateQueries({ queryKey: positionKeys.lists });
       void qc.invalidateQueries({ queryKey: positionKeys.lookup });

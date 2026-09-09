@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
-import { reportDqContract, type ReportDqRule } from '@zenith/shared/report';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { reportDqContract } from '@zenith/shared/report';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type ReportDqRuleListParams = NonNullable<QueryOf<typeof reportDqContract.rules>>;
 export type ReportDqRunListParams = NonNullable<QueryOf<typeof reportDqContract.runs>>;
@@ -37,12 +37,9 @@ export type SaveReportDqRuleValues = Partial<BodyOf<typeof reportDqContract.crea
 
 /** 无 id 走 createRule，有 id 走 updateRule（供 useEditModal 使用） */
 export function useSaveReportDqRule() {
-  const qc = useQueryClient();
-  return useMutation<ReportDqRule, Error, { id?: number; values: SaveReportDqRuleValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(reportDqContract.createRule, { body: values as BodyOf<typeof reportDqContract.createRule> }, { silent: true })
-      : api(reportDqContract.updateRule, { params: { id }, body: values }, { silent: true })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: reportDqKeys.all }),
+  return useSaveMutation(reportDqContract.createRule, reportDqContract.updateRule, {
+    requestOptions: { silent: true },
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportDqKeys.all }),
   });
 }
 

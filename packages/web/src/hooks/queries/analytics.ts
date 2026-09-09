@@ -1,5 +1,5 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { resourceKeyOf, type AnyOperation, type BodyOf, type InputOf, type QueryOf } from '@zenith/shared/core';
+import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import { resourceKeyOf, type AnyOperation, type BodyOf, type QueryOf } from '@zenith/shared/core';
 import {
   ANALYTICS_CONFIG_VERSION_KEY,
   analyticsCampaignContract,
@@ -13,7 +13,7 @@ import {
   type AnalyticsEventSource,
 } from '@zenith/shared/analytics';
 import { userContract } from '@zenith/shared/identity';
-import { api, apiQueryOptions, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useSaveMutation, apiQueryOptions, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { reloadTrackerConfig } from '@/utils/tracker';
 
 // ─── 查询参数类型（均由契约推导）────────────────────────────────────────────
@@ -42,7 +42,6 @@ export type FrontendAlertLogParams = QueryOf<typeof frontendErrorContract.alertL
 export type { AnalyticsDrillUsersInput, AnalyticsEventQueryInput };
 
 /** 新增 / 编辑共用的保存载荷：必填字段由表单 rules 保证，服务端 schema 兜底校验 */
-type SaveValues<Op extends AnyOperation> = Partial<NonNullable<BodyOf<Op>>>;
 
 // ─── query key ───────────────────────────────────────────────────────────────
 
@@ -254,13 +253,8 @@ export function useEventMetaReferences(eventName: string | undefined, enabled = 
 }
 
 export function useSaveAnalyticsEventMeta() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: SaveValues<typeof analyticsContract.createEventMeta> }) =>
-      (id === undefined
-        ? api(analyticsContract.createEventMeta, { body: values } as InputOf<typeof analyticsContract.createEventMeta>)
-        : api(analyticsContract.updateEventMeta, { params: { id }, body: values })),
-    onSuccess: () => invalidateAnalyticsData(qc),
+  return useSaveMutation(analyticsContract.createEventMeta, analyticsContract.updateEventMeta, {
+    invalidate: (qc) => invalidateAnalyticsData(qc),
   });
 }
 
@@ -300,13 +294,8 @@ export function useAnalyticsEventOverrides(params: AnalyticsOverrideParams, enab
 }
 
 export function useSaveAnalyticsEventOverride() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: SaveValues<typeof analyticsContract.createEventOverride> }) =>
-      (id === undefined
-        ? api(analyticsContract.createEventOverride, { body: values } as InputOf<typeof analyticsContract.createEventOverride>)
-        : api(analyticsContract.updateEventOverride, { params: { id }, body: values })),
-    onSuccess: () => invalidateAnalyticsData(qc),
+  return useSaveMutation(analyticsContract.createEventOverride, analyticsContract.updateEventOverride, {
+    invalidate: (qc) => invalidateAnalyticsData(qc),
   });
 }
 
@@ -418,13 +407,8 @@ export function useAnalyticsSegmentMembers(id: number | undefined, params: Analy
 const invalidateSegments = (qc: QueryClient) => void qc.invalidateQueries({ queryKey: analyticsKeys.data.segmentsLists });
 
 export function useSaveAnalyticsSegment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: SaveValues<typeof analyticsContract.createSegment> }) =>
-      (id === undefined
-        ? api(analyticsContract.createSegment, { body: values } as InputOf<typeof analyticsContract.createSegment>)
-        : api(analyticsContract.updateSegment, { params: { id }, body: values })),
-    onSuccess: () => invalidateSegments(qc),
+  return useSaveMutation(analyticsContract.createSegment, analyticsContract.updateSegment, {
+    invalidate: (qc) => invalidateSegments(qc),
   });
 }
 
@@ -525,13 +509,8 @@ export function useFrontendAlerts(params: FrontendSimplePageParams, enabled = tr
 const invalidateAlerts = (qc: QueryClient) => void qc.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.alertsLists });
 
 export function useSaveFrontendAlert() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: SaveValues<typeof frontendErrorContract.createAlert> }) =>
-      (id === undefined
-        ? api(frontendErrorContract.createAlert, { body: values } as InputOf<typeof frontendErrorContract.createAlert>)
-        : api(frontendErrorContract.updateAlert, { params: { id }, body: values })),
-    onSuccess: () => invalidateAlerts(qc),
+  return useSaveMutation(frontendErrorContract.createAlert, frontendErrorContract.updateAlert, {
+    invalidate: (qc) => invalidateAlerts(qc),
   });
 }
 

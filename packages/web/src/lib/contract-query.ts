@@ -34,6 +34,7 @@ import { LOOKUP_STALE_TIME, toQueryString, unwrap } from '@/lib/query';
  * - `apiRaw(op, input)`：单次调用，返回完整响应信封（需要 `message` / 非零 `code` 时）
  * - `apiQueryOptions(op, input)` / `useApiQuery(op, input)`：可缓存查询
  * - `useApiMutation(op)`：变更，变量即契约输入 `{ params?, query?, body? }`
+ * - `useSaveMutation(createOp, updateOp)`：新增 / 编辑共用的保存，变量 `{ id?, values }`
  * - `createResourceQueries(contract)`：标准 CRUD 资源的 keys 与全套 hooks，失效契约焊死在工厂里
  */
 
@@ -223,6 +224,70 @@ type DetailOp = AnyOperation & { method: 'get' };
 type WriteOp = AnyOperation & { method: 'post' | 'put' | 'patch' };
 type RemoveOp = AnyOperation & { method: 'delete' };
 
+// ─── 新增 / 编辑共用的保存 mutation ──────────────────────────────────────────
+
+type IdFromParams<Op> = Op extends AnyOperation
+  ? (Op['params'] extends ParamsSchema ? (ShapeInput<Op['params']> extends { id: infer TId } ? TId : number) : number)
+  : never;
+
+/**
+ * 保存载荷：create 入参的部分形态。同一表单同时服务新增与编辑，必填字段由表单 rules 保证、
+ * 服务端 schema 兜底校验。
+ */
+export type SaveValues<Op extends AnyOperation> = Partial<NonNullable<BodyOf<Op>>>;
+
+/** 保存 mutation 的变量：无 id 走 create，有 id 走 update */
+export interface SaveVariables<TId, TValues> {
+  id?: TId;
+  values: TValues;
+}
+
+type SaveOutput<CreateOp extends AnyOperation, UpdateOp extends AnyOperation> = OutputOf<CreateOp> | OutputOf<UpdateOp>;
+
+export interface SaveMutationOptions<CreateOp extends WriteOp, UpdateOp extends WriteOp, TValues> extends Omit<
+  UseMutationOptions<SaveOutput<CreateOp, UpdateOp>, Error, SaveVariables<IdFromParams<UpdateOp>, TValues>>,
+  'mutationFn'
+> {
+  /** 成功后的缓存失效 / 回填；`vars.id` 为 undefined 表示这次是新增。`onSuccess` 仍可用于业务副作用 */
+  invalidate?: (qc: QueryClient, saved: SaveOutput<CreateOp, UpdateOp>, vars: SaveVariables<IdFromParams<UpdateOp>, TValues>) => void;
+  /** 同时作用于 create 与 update 两次调用 */
+  requestOptions?: ApiCallOptions;
+}
+
+/**
+ * 「无 id 走 create、有 id 走 update」的保存 mutation：`mutate({ id?, values })`。
+ * 供 `createResourceQueries` 之外的非标准命名操作（`createRule` / `updateRule`、`slotCreate` / `slotUpdate`…）复用，
+ * 缓存失效写在 `invalidate` 里，路径参数名固定为 `id`。
+ * `values` 默认接受 create 或 update 入参的部分形态，仅存在于 update 入参的字段（如 `status`）同样可提交。
+ */
+export function useSaveMutation<
+  CreateOp extends WriteOp,
+  UpdateOp extends WriteOp,
+  TValues = SaveValues<CreateOp> | SaveValues<UpdateOp>,
+>(
+  createOp: CreateOp,
+  updateOp: UpdateOp,
+  options: SaveMutationOptions<CreateOp, UpdateOp, TValues> = {},
+) {
+  const qc = useQueryClient();
+  const { invalidate, requestOptions, onSuccess, ...rest } = options;
+  return useMutation<SaveOutput<CreateOp, UpdateOp>, Error, SaveVariables<IdFromParams<UpdateOp>, TValues>>({
+    mutationFn: ({ id, values }) => {
+      if (id === undefined) {
+        if (!createOp) throw new Error(`契约 ${updateOp?.basePath} 未声明 create 操作`);
+        return api(createOp, ...([{ body: values }, requestOptions] as unknown as [...InputArgs<CreateOp>, ApiCallOptions?]));
+      }
+      if (!updateOp) throw new Error(`契约 ${createOp?.basePath} 未声明 update 操作`);
+      return api(updateOp, ...([{ params: { id }, body: values }, requestOptions] as unknown as [...InputArgs<UpdateOp>, ApiCallOptions?]));
+    },
+    onSuccess: (saved, vars, onMutateResult, context) => {
+      invalidate?.(qc, saved, vars);
+      return onSuccess?.(saved, vars, onMutateResult, context);
+    },
+    ...rest,
+  });
+}
+
 /**
  * 标准 CRUD 契约组的形态约定：
  * - `list`：分页列表，`query` 含 page / pageSize，响应 `paginated(entity)`
@@ -248,9 +313,6 @@ type ListItemOf<C extends ResourceContract> = OutputOf<C['list']> extends { list
 /** 实体类型：detail 的响应；未声明 detail 时取列表项 */
 type EntityOf<C extends ResourceContract> = [OpAt<C, 'detail'>] extends [never] ? ListItemOf<C> : OutputOf<OpAt<C, 'detail'>>;
 type ListParamsOf<C extends ResourceContract> = NonNullable<QueryOf<C['list']>>;
-type IdFromParams<Op> = Op extends AnyOperation
-  ? (Op['params'] extends ParamsSchema ? (ShapeInput<Op['params']> extends { id: infer TId } ? TId : number) : number)
-  : never;
 /** 资源主键类型：依次取 detail / update / remove 操作路径参数 `id`（数值主键为 number，UUID 主键为 string） */
 type IdOf<C extends ResourceContract> = [OpAt<C, 'detail'>] extends [never]
   ? [OpAt<C, 'update'>] extends [never]
@@ -258,12 +320,11 @@ type IdOf<C extends ResourceContract> = [OpAt<C, 'detail'>] extends [never]
     : IdFromParams<OpAt<C, 'update'>>
   : IdFromParams<OpAt<C, 'detail'>>;
 /**
- * 保存载荷：create 入参的部分形态。同一表单同时服务新增与编辑，必填字段由表单 rules 保证、
- * 服务端 schema 兜底校验；未声明 create 时取 update 入参。
+ * 保存载荷：create 入参的部分形态；未声明 create 时取 update 入参。
  */
 type SaveValuesOf<C extends ResourceContract> = C['create'] extends AnyOperation
-  ? Partial<NonNullable<BodyOf<C['create']>>>
-  : C['update'] extends AnyOperation ? Partial<NonNullable<BodyOf<C['update']>>> : never;
+  ? SaveValues<C['create']>
+  : C['update'] extends AnyOperation ? SaveValues<C['update']> : never;
 type LookupOf<C extends ResourceContract> = C['all'] extends AnyOperation ? OutputOf<C['all']> : never;
 
 export interface ResourceQueryKeys<TListParams, TId = number> {
@@ -350,20 +411,12 @@ export function createResourceQueries<const C extends ResourceContract>(
   }
 
   function useSave() {
-    const qc = useQueryClient();
-    return useMutation<EntityOf<C>, Error, { id?: IdOf<C>; values: SaveValuesOf<C> }>({
-      mutationFn: ({ id, values }) => {
-        if (id === undefined) {
-          if (!contract.create) throw new Error(`契约 ${contract.basePath} 未声明 create 操作`);
-          return call(contract.create, { body: values } as InputOf<WriteOp>) as Promise<EntityOf<C>>;
-        }
-        if (!contract.update) throw new Error(`契约 ${contract.basePath} 未声明 update 操作`);
-        return call(contract.update, { params: { id }, body: values } as InputOf<WriteOp>) as Promise<EntityOf<C>>;
-      },
-      onSuccess: (saved) => {
+    return useSaveMutation(contract.create as WriteOp, contract.update as WriteOp, {
+      requestOptions,
+      invalidate: (qc, saved) => {
         void qc.invalidateQueries({ queryKey: keys.detail((saved as { id: IdOf<C> }).id) });
         invalidateCommon(qc);
-        onSaved?.(qc, saved);
+        onSaved?.(qc, saved as EntityOf<C>);
       },
     });
   }

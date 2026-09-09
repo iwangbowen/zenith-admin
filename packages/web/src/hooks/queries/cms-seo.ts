@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { cmsSeoContract, type CmsLinkWord, type CmsRedirect } from '@zenith/shared/cms';
-import { api, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
+import { cmsSeoContract } from '@zenith/shared/cms';
+import { useSaveMutation, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
 
 export type CmsSeoListParams = NonNullable<QueryOf<typeof cmsSeoContract.redirectList>>;
 
@@ -34,13 +34,8 @@ export function useCmsRedirectList(params: CmsSeoListParams, enabled = true) {
 export type CmsRedirectSaveValues = Partial<BodyOf<typeof cmsSeoContract.redirectCreate>>;
 
 export function useSaveCmsRedirect() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CmsRedirectSaveValues }): Promise<CmsRedirect> =>
-      id === undefined
-        ? api(cmsSeoContract.redirectCreate, { body: values as BodyOf<typeof cmsSeoContract.redirectCreate> })
-        : api(cmsSeoContract.redirectUpdate, { params: { id }, body: values }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: cmsRedirectKeys.lists }),
+  return useSaveMutation(cmsSeoContract.redirectCreate, cmsSeoContract.redirectUpdate, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsRedirectKeys.lists }),
   });
 }
 
@@ -62,13 +57,8 @@ export function useCmsLinkWordList(params: CmsSeoListParams, enabled = true) {
 export type CmsLinkWordSaveValues = Partial<BodyOf<typeof cmsSeoContract.linkWordCreate>>;
 
 export function useSaveCmsLinkWord() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CmsLinkWordSaveValues }): Promise<CmsLinkWord> =>
-      id === undefined
-        ? api(cmsSeoContract.linkWordCreate, { body: values as BodyOf<typeof cmsSeoContract.linkWordCreate> })
-        : api(cmsSeoContract.linkWordUpdate, { params: { id }, body: values }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: cmsLinkWordKeys.lists }),
+  return useSaveMutation(cmsSeoContract.linkWordCreate, cmsSeoContract.linkWordUpdate, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsLinkWordKeys.lists }),
   });
 }
 

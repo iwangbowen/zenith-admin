@@ -1,19 +1,8 @@
 import { useCallback } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
-import {
-  reportCategoryContract,
-  reportDashboardContract,
-  reportDashboardOpsContract,
-  reportExecutionContract,
-  reportPublicContract,
-  type ReportDashboard,
-  type ReportDashboardCategory,
-  type ReportDatasetQueryOptions,
-  type ReportWidget,
-  type ReportWidgetDataResult,
-} from '@zenith/shared/report';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { reportCategoryContract, reportDashboardContract, reportDashboardOpsContract, reportExecutionContract, reportPublicContract, type ReportDatasetQueryOptions, type ReportWidget, type ReportWidgetDataResult } from '@zenith/shared/report';
+import { api, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { useReportLookup, type ReportLookupParams } from './report-lookups';
 
 export type ReportDashboardListParams = NonNullable<QueryOf<typeof reportDashboardContract.list>>;
@@ -100,12 +89,8 @@ export type SaveReportDashboardValues = Partial<BodyOf<typeof reportDashboardCon
 
 /** 无 id 走 create，有 id 走 update（供 useEditModal 使用；编辑时必须携带 expectedRevision） */
 export function useSaveReportDashboard() {
-  const qc = useQueryClient();
-  return useMutation<ReportDashboard, Error, { id?: number; values: SaveReportDashboardValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(reportDashboardContract.create, { body: values as BodyOf<typeof reportDashboardContract.create> })
-      : api(reportDashboardContract.update, { params: { id }, body: values as BodyOf<typeof reportDashboardContract.update> })),
-    onSuccess: (_data, vars) => {
+  return useSaveMutation(reportDashboardContract.create, reportDashboardContract.update, {
+    invalidate: (qc, _data, vars) => {
       void qc.invalidateQueries({ queryKey: reportDashboardKeys.lists });
       if (vars.id) invalidateDashboardContent(qc, vars.id);
     },
@@ -165,12 +150,8 @@ export type SaveReportDashboardCategoryValues = Partial<BodyOf<typeof reportCate
 
 /** 无 id 走 create，有 id 走 update（供 useEditModal 使用） */
 export function useSaveReportDashboardCategory() {
-  const qc = useQueryClient();
-  return useMutation<ReportDashboardCategory, Error, { id?: number; values: SaveReportDashboardCategoryValues }>({
-    mutationFn: ({ id, values }) => (id === undefined
-      ? api(reportCategoryContract.create, { body: values as BodyOf<typeof reportCategoryContract.create> })
-      : api(reportCategoryContract.update, { params: { id }, body: values })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: reportDashboardKeys.categories }),
+  return useSaveMutation(reportCategoryContract.create, reportCategoryContract.update, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.categories }),
   });
 }
 

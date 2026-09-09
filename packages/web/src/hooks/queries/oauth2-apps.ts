@@ -1,8 +1,8 @@
-import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
 import { apiScopeContract, oauth2ClientContract, ratePlanContract } from '@zenith/shared/open-platform';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type OAuth2AppListParams = QueryOf<typeof oauth2ClientContract.list>;
 
@@ -49,13 +49,8 @@ function invalidateApp(qc: QueryClient, id: number) {
 
 /** 无 id 走创建（POST，返回含一次性 clientSecret），有 id 走更新（PUT） */
 export function useSaveOAuth2App() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: SaveOAuth2AppValues }) =>
-      (id === undefined
-        ? api(oauth2ClientContract.create, { body: values as BodyOf<typeof oauth2ClientContract.create> })
-        : api(oauth2ClientContract.update, { params: { id }, body: values })),
-    onSuccess: (_data, { id }) => {
+  return useSaveMutation(oauth2ClientContract.create, oauth2ClientContract.update, {
+    invalidate: (qc, _data, { id }) => {
       if (id !== undefined) void qc.invalidateQueries({ queryKey: oauth2AppKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: oauth2AppKeys.lists });
     },

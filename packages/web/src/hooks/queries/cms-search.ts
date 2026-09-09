@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { cmsSearchContract, cmsStaticContract, type CmsHotwordGroup, type CmsSearchWord } from '@zenith/shared/cms';
-import { api, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
+import { cmsSearchContract, cmsStaticContract } from '@zenith/shared/cms';
+import { api, useSaveMutation, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
 
 // ─── 静态化 / 索引重建（任务中心执行）────────────────────────────────────────
 export function useCmsStaticBuild() {
@@ -71,11 +71,7 @@ export type CmsSearchWordSaveValues = Partial<BodyOf<typeof cmsSearchContract.wo
 
 export function useSaveCmsSearchWord() {
   const invalidate = useInvalidateSearchWords();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CmsSearchWordSaveValues }): Promise<CmsSearchWord> =>
-      id === undefined
-        ? api(cmsSearchContract.wordCreate, { body: values as BodyOf<typeof cmsSearchContract.wordCreate> })
-        : api(cmsSearchContract.wordUpdate, { params: { id }, body: values }),
+  return useSaveMutation(cmsSearchContract.wordCreate, cmsSearchContract.wordUpdate, {
     onSuccess: () => invalidate(),
   });
 }
@@ -121,11 +117,7 @@ export type CmsHotwordGroupSaveValues = Partial<BodyOf<typeof cmsSearchContract.
 
 export function useSaveCmsHotwordGroup() {
   const invalidate = useInvalidateSearchWords();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CmsHotwordGroupSaveValues }): Promise<CmsHotwordGroup> =>
-      id === undefined
-        ? api(cmsSearchContract.hotwordGroupCreate, { body: values as BodyOf<typeof cmsSearchContract.hotwordGroupCreate> })
-        : api(cmsSearchContract.hotwordGroupUpdate, { params: { id }, body: values }),
+  return useSaveMutation(cmsSearchContract.hotwordGroupCreate, cmsSearchContract.hotwordGroupUpdate, {
     onSuccess: () => invalidate(),
   });
 }
@@ -142,11 +134,7 @@ export type CmsHotwordSaveValues = Partial<BodyOf<typeof cmsSearchContract.hotwo
 
 export function useSaveCmsHotword() {
   const invalidate = useInvalidateSearchWords();
-  return useMutation({
-    mutationFn: ({ id, values }: { id?: number; values: CmsHotwordSaveValues }): Promise<null> =>
-      id === undefined
-        ? api(cmsSearchContract.hotwordCreate, { body: values as BodyOf<typeof cmsSearchContract.hotwordCreate> })
-        : api(cmsSearchContract.hotwordUpdate, { params: { id }, body: values }),
+  return useSaveMutation(cmsSearchContract.hotwordCreate, cmsSearchContract.hotwordUpdate, {
     onSuccess: () => invalidate(),
   });
 }
