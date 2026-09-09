@@ -268,25 +268,6 @@
 
 /* Sticky group headers: 进一步插入到 sidebar 全部规则之后（避免 no-descending-specificity 告警） */
 
-/* 侧边栏菜单极窄滚动条 */
-.admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-.admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar-thumb {
-  background-color: var(--color-border);
-  border-radius: var(--semi-border-radius-small);
-}
-
-.admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar-thumb:hover {
-  background-color: var(--color-text-secondary);
-}
-
-.admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar-track {
-  background: transparent;
-}
-
 .admin-nav-link-wrapper {
   display: block;
   width: 100%;
@@ -507,24 +488,6 @@
 .semi-navigation-popup {
   max-height: calc(100vh - 20px) !important;
   overflow-y: auto !important;
-}
-
-.semi-navigation-popup::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-.semi-navigation-popup::-webkit-scrollbar-thumb {
-  background-color: var(--color-border);
-  border-radius: var(--semi-border-radius-small);
-}
-
-.semi-navigation-popup::-webkit-scrollbar-thumb:hover {
-  background-color: var(--color-text-secondary);
-}
-
-.semi-navigation-popup::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 /* 子级菜单缩进 — 一级子项

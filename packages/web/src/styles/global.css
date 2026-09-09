@@ -11,6 +11,10 @@
   --sidebar-double-width: 260px;
   --header-height: 48px;
   --radius: 6px;
+  /* 自定义滚动条：全站唯一来源（表格横向条、分栏侧栏、侧边菜单、日志查看器…），局部不得另写像素值。
+     --scrollbar-size 是命中区（实际占位宽度），拇指再按 --scrollbar-thumb-inset 向内收：看着细、鼠标仍好抓 */
+  --scrollbar-size: 6px;
+  --scrollbar-thumb-inset: 1px;
 }
 
 /* 布局自有的语义色变量，一律取自 Semi 的对应 token，不手写色值——否则与 Semi 组件
@@ -29,6 +33,9 @@ body {
   --color-text: var(--semi-color-text-0);
   --color-text-secondary: var(--semi-color-text-2);
   --color-border: var(--semi-color-border);
+  /* 滚动条拇指色：取填充 token，明暗主题自动切换 */
+  --scrollbar-thumb: var(--semi-color-fill-2);
+  --scrollbar-thumb-hover: var(--semi-color-text-3);
   /* 表面层级语义变量：组件只声明「我是卡片」，不必知道自己被渲染在页面里还是弹层里。
      弹层内部会整体提升一档（见下方 .semi-modal-content / .semi-sidesheet-inner）。 */
   --surface-card: var(--semi-color-bg-1);
@@ -56,6 +63,8 @@ body .semi-always-dark {
   --color-text: var(--semi-color-text-0);
   --color-text-secondary: var(--semi-color-text-2);
   --color-border: var(--semi-color-border);
+  --scrollbar-thumb: var(--semi-color-fill-2);
+  --scrollbar-thumb-hover: var(--semi-color-text-3);
   --surface-card: var(--semi-color-bg-1);
   --topbar-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
 }
@@ -674,17 +683,20 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   }
 }
 
-/* scrollbar */
+/* scrollbar：尺寸与拇指色只认上面的 token；需要隐藏滚动条的局部（标签栏、xterm 视口、导航轨）另写 display/height 0 */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
+  /* 透明边框 + padding-box 裁切 = 拇指比命中区细；两处都用 background-color，shorthand 会把 clip 重置回 border-box */
+  background-color: var(--scrollbar-thumb);
+  border: var(--scrollbar-thumb-inset) solid transparent;
+  background-clip: padding-box;
   border-radius: var(--semi-border-radius-small);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
+  background-color: var(--scrollbar-thumb-hover);
 }
 ::-webkit-scrollbar-track {
   background: transparent;

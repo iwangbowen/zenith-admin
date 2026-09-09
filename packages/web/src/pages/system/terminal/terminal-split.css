@@ -1,17 +1,19 @@
 /* 终端分屏布局样式 */
 
 /* ── xterm.js 滚动条收窄（xterm.js v6 使用 Monaco 自定义滚动条）── */
-/* xterm 通过 JS 内联 style 设置 width: 14px，需 !important 覆盖 */
+/* xterm 通过 JS 内联 style 设置 width: 14px，需 !important 覆盖；尺寸与拇指色跟随全站滚动条 token */
 .xterm .xterm-scrollable-element > .scrollbar.vertical {
-  width: 5px !important;
+  width: var(--scrollbar-size) !important;
 }
 .xterm .xterm-scrollable-element > .scrollbar.vertical .slider {
-  width: 5px !important;
+  width: var(--scrollbar-size) !important;
+  border: var(--scrollbar-thumb-inset) solid transparent;
+  background-clip: padding-box;
   border-radius: var(--semi-border-radius-small);
-  background: var(--semi-color-fill-2) !important;
+  background-color: var(--scrollbar-thumb) !important;
 }
 .xterm .xterm-scrollable-element > .scrollbar.vertical .slider:hover {
-  background: var(--semi-color-fill-3) !important;
+  background-color: var(--scrollbar-thumb-hover) !important;
 }
 /* 隐藏原生 .xterm-viewport 滚动条（已被 xterm 自定义滚动条替代） */
 .xterm .xterm-viewport::-webkit-scrollbar {
@@ -56,10 +58,6 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 0;
-}
-
-.terminal-sidebar__list::-webkit-scrollbar {
-  width: 4px;
 }
 
 /** 右侧单个标签 item */
