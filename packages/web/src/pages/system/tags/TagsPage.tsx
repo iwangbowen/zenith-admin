@@ -114,13 +114,13 @@ function ColorInput({ value, onChange }: { readonly value?: string; readonly onC
 
 export default function TagsPage() {
   const { hasPermission: can } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   interface SearchParams { keyword: string; filterStatus: string | undefined; filterGroup: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterStatus: undefined, filterGroup: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tagKeys.lists });
 
@@ -238,20 +238,18 @@ export default function TagsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标签名称或描述" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="搜索标签名称或描述" {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部所属分组"
               items={groupOptions}
-              value={draftParams.filterGroup}
-              onChange={(v) => setField('filterGroup')(v as string | undefined)}
+              {...bind('filterGroup')}
               width={160}
             />
             <StatusSelect
               items={statusItems}
-              value={draftParams.filterStatus}
-              onChange={(v) => setField('filterStatus')(v as string | undefined)}
+              {...bind('filterStatus')}
             />
           </>
         )}
@@ -309,7 +307,7 @@ export default function TagsPage() {
             label="状态"
             placeholder="请选择状态"
             style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+            optionList={statusOptions}
           />
           <Form.InputNumber
             field="sortOrder"

@@ -23,13 +23,13 @@ import { TemplateNameCodeRow, TemplateVariablesRemarkRows } from '../message-tem
 
 export default function EmailTemplatesPage() {
   const { hasPermission: can } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   interface SearchParams { keyword: string; filterStatus: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterStatus: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: emailTemplateKeys.lists });
 
@@ -96,12 +96,11 @@ export default function EmailTemplatesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索模板名称/编码/主题" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索模板名称/编码/主题" {...bindKeyword('keyword')} />}
         filters={(
           <StatusSelect
             items={statusItems}
-            value={draftParams.filterStatus}
-            onChange={(v) => setField('filterStatus')(v as string | undefined)}
+            {...bind('filterStatus')}
           />
         )}
         onSearch={handleSearch}
@@ -128,7 +127,7 @@ export default function EmailTemplatesPage() {
             </Col>
             <Col span={12}>
               <Form.Select field="status" label="状态" style={{ width: '100%' }} placeholder="请选择状态"
-                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+                optionList={statusOptions} />
             </Col>
           </Row>
           <Row gutter={16}>

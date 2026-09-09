@@ -89,7 +89,7 @@ export default function WorkflowEventSubscriptionsPage() {
   const defaultSearchParams: SearchParams = { keyword: '', definitionId: undefined, enabled: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowEventSubscriptionKeys.lists });
   const listQuery = useWorkflowEventSubscriptionList({
@@ -193,7 +193,6 @@ export default function WorkflowEventSubscriptionsPage() {
     await toggleMutation.mutateAsync({ params: { id: row.id }, body: { enabled: !row.enabled } });
     Toast.success('已切换');
   };
-
 
   const handleViewSecret = async (id: number) => {
     const secret = await secretMutation.mutateAsync({ params: { id } });
@@ -337,57 +336,43 @@ export default function WorkflowEventSubscriptionsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <Input
-      prefix={<Search size={14} />}
-      placeholder="名称 / URL"
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      showClear
-      style={{ width: 220 }}
-      onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-    />
-  );
-
-  const renderDefinitionFilter = () => (
-    <FilterSelect
-      placeholder="全部所属流程"
-      items={defs.map((d) => ({ value: d.id, label: d.name }))}
-      value={draftParams.definitionId}
-      onChange={(v) => setField('definitionId')(v as number | undefined)}
-      width={200}
-    />
-  );
-
-  const renderEnabledFilter = () => (
-    <StatusSelect
-      items={[
-        { value: 'true', label: '启用' },
-        { value: 'false', label: '禁用' },
-      ]}
-      value={draftParams.enabled}
-      onChange={(v) => setField('enabled')(v as 'true' | 'false' | undefined)}
-    />
-  );
-
-
-  const renderCreateButton = () => canManageEventSubscription ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="名称 / URL"
+            {...bind('keyword')}
+            showClear
+            style={{ width: 220 }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+          />
+        )}
         filters={(
           <>
-            {renderDefinitionFilter()}
-            {renderEnabledFilter()}
+            <FilterSelect
+              placeholder="全部所属流程"
+              items={defs.map((d) => ({ value: d.id, label: d.name }))}
+              {...bind('definitionId')}
+              width={200}
+            />
+            <StatusSelect
+              items={[
+                { value: 'true', label: '启用' },
+                { value: 'false', label: '禁用' },
+              ]}
+              {...bind('enabled')}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          canManageEventSubscription ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
         filterTitle="订阅筛选"
       />
 

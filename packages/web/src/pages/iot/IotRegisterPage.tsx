@@ -37,7 +37,7 @@ export default function IotRegisterPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, setField, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<WhitelistSearchParams>({ defaults: defaultSearch, listKey: iotWhitelistKeys.lists });
 
@@ -126,33 +126,6 @@ export default function IotRegisterPage() {
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput
-      placeholder="搜索 SN / 备注..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderProductFilter = () => (
-    <FilterSelect
-      placeholder="全部产品"
-      items={productOptions}
-      value={draftParams.productId ?? undefined}
-      onChange={(v) => setField('productId')(v ?? null)}
-      width={180}
-    />
-  );
-
-  const renderUsedFilter = () => (
-    <StatusSelect
-      items={[{ value: 'false', label: '待注册' }, { value: 'true', label: '已注册' }]}
-      value={draftParams.used}
-      onChange={(v) => setField('used')(v as WhitelistSearchParams['used'] | '')}
-    />
-  );
-
   return (
     <div className="page-container">
       <StatGrid minItemWidth={200} style={{ marginBottom: 16 }}>
@@ -205,10 +178,24 @@ export default function IotRegisterPage() {
       )}
 
       <ListSearchToolbar
-        keyword={renderKeyword()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索 SN / 备注..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={<>
-          {renderProductFilter()}
-          {renderUsedFilter()}
+          <FilterSelect
+            placeholder="全部产品"
+            items={productOptions}
+            value={draftParams.productId ?? undefined}
+            onChange={(v) => setField('productId')(v ?? null)}
+            width={180}
+          />
+          <StatusSelect
+            items={[{ value: 'false', label: '待注册' }, { value: 'true', label: '已注册' }]}
+            {...bind('used', (v) => v as WhitelistSearchParams['used'] | '')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}

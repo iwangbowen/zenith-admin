@@ -111,7 +111,7 @@ export default function PaymentOrdersPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, setField, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentOrderKeys.lists });
 
@@ -370,83 +370,10 @@ export default function PaymentOrdersPage() {
     dateTimeColumn('退款时间', 'refundedAt'),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="订单号/标题..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={180} />
-  );
-
-  const renderBizTypeFilter = () => (
-    <Input
-      placeholder="业务类型"
-      value={draftParams.bizType}
-      onChange={setField('bizType')}
-      showClear
-      style={{ width: 120 }}
-      onEnterPress={handleSearch}
-    />
-  );
-
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={PAYMENT_CHANNEL_OPTIONS}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-
-  const renderPayMethodFilter = () => (
-    <FilterSelect
-      placeholder="全部支付方式"
-      items={PAYMENT_METHOD_OPTIONS}
-      value={draftParams.payMethod}
-      onChange={setField('payMethod')}
-      width={140}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={PAYMENT_ORDER_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderMinAmountFilter = () => (
-    <InputNumber
-      placeholder="金额≥(元)"
-      value={draftParams.minAmount ?? undefined}
-      onChange={(v) => setField('minAmount')(v !== '' && v != null ? Number(v) : null)}
-      min={0}
-      hideButtons
-      style={{ width: 110 }}
-    />
-  );
-
-  const renderMaxAmountFilter = () => (
-    <InputNumber
-      placeholder="金额≤(元)"
-      value={draftParams.maxAmount ?? undefined}
-      onChange={(v) => setField('maxAmount')(v !== '' && v != null ? Number(v) : null)}
-      min={0}
-      hideButtons
-      style={{ width: 110 }}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter placeholder={['创建开始', '创建结束']} value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
-  );
-
   const openCreateOrder = () => {
     setSelectedApplicationId(undefined);
     createOrderModal.openCreate();
   };
-  const renderCreateButton = () => hasPermission('payment:order:create') ? (
-    <Button type="primary" icon={<Plus size={14} />} onClick={openCreateOrder}>手动下单</Button>
-  ) : null;
-  const renderExportButtons = () => <ExportButton entity="payment.orders" query={buildQuery(submittedParams)} />;
-  const renderMobileExportActions = () => <ExportButton entity="payment.orders" query={buildQuery(submittedParams)} variant="flat" />;
 
   return (
     <div className="page-container page-tabs-page">
@@ -462,23 +389,59 @@ export default function PaymentOrdersPage() {
             </StatGrid>
           )}
           <ListSearchToolbar
-            keyword={renderKeywordSearch()}
+            keyword={<KeywordInput placeholder="订单号/标题..." {...bindKeyword('keyword')} width={180} />}
             filters={(
               <>
-                {renderBizTypeFilter()}
-                {renderChannelFilter()}
-                {renderPayMethodFilter()}
-                {renderStatusFilter()}
-                {renderMinAmountFilter()}
-                {renderMaxAmountFilter()}
-                {renderTimeRangeFilter()}
+                <Input
+                  placeholder="业务类型"
+                  {...bind('bizType')}
+                  showClear
+                  style={{ width: 120 }}
+                  onEnterPress={handleSearch}
+                />
+                <FilterSelect
+                  placeholder="全部渠道"
+                  items={PAYMENT_CHANNEL_OPTIONS}
+                  {...bind('channel')}
+                />
+                <FilterSelect
+                  placeholder="全部支付方式"
+                  items={PAYMENT_METHOD_OPTIONS}
+                  {...bind('payMethod')}
+                  width={140}
+                />
+                <StatusSelect
+                  items={PAYMENT_ORDER_STATUS_OPTIONS}
+                  {...bind('status')}
+                />
+                <InputNumber
+                  placeholder="金额≥(元)"
+                  value={draftParams.minAmount ?? undefined}
+                  onChange={(v) => setField('minAmount')(v !== '' && v != null ? Number(v) : null)}
+                  min={0}
+                  hideButtons
+                  style={{ width: 110 }}
+                />
+                <InputNumber
+                  placeholder="金额≤(元)"
+                  value={draftParams.maxAmount ?? undefined}
+                  onChange={(v) => setField('maxAmount')(v !== '' && v != null ? Number(v) : null)}
+                  min={0}
+                  hideButtons
+                  style={{ width: 110 }}
+                />
+                <DateRangeFilter placeholder={['创建开始', '创建结束']} {...bind('timeRange')} />
               </>
             )}
             onSearch={handleSearch}
             onReset={handleReset}
-            create={renderCreateButton()}
-            actions={renderExportButtons()}
-            mobileActions={renderMobileExportActions()}
+            create={(
+              hasPermission('payment:order:create') ? (
+                <Button type="primary" icon={<Plus size={14} />} onClick={openCreateOrder}>手动下单</Button>
+              ) : null
+            )}
+            actions={<ExportButton entity="payment.orders" query={buildQuery(submittedParams)} />}
+            mobileActions={<ExportButton entity="payment.orders" query={buildQuery(submittedParams)} variant="flat" />}
             filterTitle="支付订单筛选"
           />
           <ConfigurableTable<PaymentOrder>

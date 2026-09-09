@@ -30,7 +30,7 @@ export default function LoginLogsPage() {
 
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: loginLogKeys.all });
   const listQuery = useLoginLogList({
@@ -50,31 +50,6 @@ export default function LoginLogsPage() {
     onCleared: () => setPage(1),
   });
 
-  const renderUsernameSearch = () => (
-    <KeywordInput placeholder="用户名 / 昵称" value={draftParams.username} onChange={setField('username')} onSearch={handleSearch} width={180} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderEventTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部事件"
-      items={EVENT_TYPE_OPTIONS}
-      value={draftParams.eventType}
-      onChange={setField('eventType')}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
-  );
-
   const buildExportQuery = () => compactQuery({
     username: draftParams.username,
     eventType: draftParams.eventType,
@@ -82,39 +57,38 @@ export default function LoginLogsPage() {
     ...formatDateTimeRangeForApi(draftParams.timeRange),
   });
 
-  const renderExportButtons = () => <ExportButton entity="system.login-logs" query={buildExportQuery()} />;
-
-  const renderMobileExportActions = () => <ExportButton entity="system.login-logs" query={buildExportQuery()} variant="flat" />;
-
-  const renderClearButtons = () => <ClearLogsButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />;
-
-  const renderMobileClearActions = () => <ClearLogsMobileButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />;
-
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" lazyRender activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <TabPane tab="日志列表" itemKey="list">
           <ListSearchToolbar
-            keyword={renderUsernameSearch()}
+            keyword={<KeywordInput placeholder="用户名 / 昵称" {...bindKeyword('username')} width={180} />}
             filters={(
               <>
-                {renderEventTypeFilter()}
-                {renderStatusFilter()}
-                {renderTimeRangeFilter()}
+                <FilterSelect
+                  placeholder="全部事件"
+                  items={EVENT_TYPE_OPTIONS}
+                  {...bind('eventType')}
+                />
+                <StatusSelect
+                  items={STATUS_OPTIONS}
+                  {...bind('status')}
+                />
+                <DateRangeFilter {...bind('timeRange')} />
               </>
             )}
             onSearch={handleSearch}
             onReset={handleReset}
             actions={(
               <>
-                {renderExportButtons()}
-                {renderClearButtons()}
+                <ExportButton entity="system.login-logs" query={buildExportQuery()} />
+                <ClearLogsButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}
             mobileActions={(
               <>
-                {renderMobileExportActions()}
-                {renderMobileClearActions()}
+                <ExportButton entity="system.login-logs" query={buildExportQuery()} variant="flat" />
+                <ClearLogsMobileButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}
             filterTitle="登录日志筛选"

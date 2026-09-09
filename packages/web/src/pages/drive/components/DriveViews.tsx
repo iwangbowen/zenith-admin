@@ -65,7 +65,7 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
   const watermark = useDrivePreviewWatermark(useAuth().user);
   const spacesQuery = useMyDriveSpaces();
   const listKey = driveKeys.viewOf(view === 'links' ? 'links' : view);
-  const { page, pageSize, buildPagination, draftParams, setField, submittedParams, handleSearch, handleReset } =
+  const { page, pageSize, buildPagination, bind, bindKeyword, submittedParams, handleSearch, handleReset } =
     useListSearch<ViewSearch>({ defaults: { keyword: '', spaceId: undefined }, listKey });
   const baseParams = { page, pageSize, keyword: submittedParams.keyword || undefined };
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -203,11 +203,9 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
       <SearchToolbar
         filters={(
           <>
-            <KeywordInput value={draftParams.keyword} width={200} placeholder={view === 'links' ? '搜索文件名 / 备注' : '搜索名称'}
-              onChange={setField('keyword')} onSearch={handleSearch} />
+            <KeywordInput {...bindKeyword('keyword')} width={200} placeholder={view === 'links' ? '搜索文件名 / 备注' : '搜索名称'} />
             {view === 'recycle' && (
-              <FilterSelect<number> value={draftParams.spaceId} placeholder="全部空间" width={160} items={spaceOptions}
-                onChange={setField('spaceId')} />
+              <FilterSelect<number> {...bind('spaceId')} placeholder="全部空间" width={160} items={spaceOptions} />
             )}
           </>
         )}
@@ -242,7 +240,7 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
     spaceId: number | undefined; type: DriveNodeType | undefined; extension: string; tagId: number | undefined;
     createdBy: number | undefined; timeRange: [Date, Date] | null;
   }>({ defaults: { spaceId: undefined, type: undefined, extension: '', tagId: undefined, createdBy: undefined, timeRange: null }, listKey: driveKeys.viewOf('search') });
-  const { page, setPage, draftParams, setDraftParams, setField, submittedParams } = filters;
+  const { page, setPage, draftParams, setDraftParams, bind, bindKeyword, submittedParams } = filters;
   useEffect(() => setPage(1), [keyword, fullText, setPage]);
   const spaces = useMyDriveSpaces();
   const tags = useDriveTags(draftParams.spaceId);
@@ -287,16 +285,12 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
         <FilterSelect<number> value={draftParams.spaceId} placeholder="全部空间"
           items={(spaces.data ?? []).map((space) => ({ value: space.id, label: space.name }))}
           onChange={(spaceId) => setDraftParams((previous) => ({ ...previous, spaceId, tagId: undefined }))} />
-        <FilterSelect<DriveNodeType> value={draftParams.type} placeholder="全部类型" items={DRIVE_NODE_TYPE_OPTIONS}
-          onChange={setField('type')} />
-        <KeywordInput value={draftParams.extension} width={120} placeholder="扩展名，如 pdf"
-          onChange={setField('extension')} onSearch={filters.handleSearch} />
-        <FilterSelect<number> value={draftParams.tagId} placeholder="全部标签" disabled={!draftParams.spaceId}
-          items={(tags.data ?? []).map((tag) => ({ value: tag.id, label: tag.name }))}
-          onChange={setField('tagId')} />
-        <UserSelect value={draftParams.createdBy} placeholder="全部上传人" style={{ width: 160 }}
-          onChange={(value) => setField('createdBy')(typeof value === 'number' ? value : undefined)} />
-        <DateRangeFilter value={draftParams.timeRange} onChange={setField('timeRange')} />
+        <FilterSelect<DriveNodeType> {...bind('type')} placeholder="全部类型" items={DRIVE_NODE_TYPE_OPTIONS} />
+        <KeywordInput {...bindKeyword('extension')} width={120} placeholder="扩展名，如 pdf" />
+        <FilterSelect<number> {...bind('tagId')} placeholder="全部标签" disabled={!draftParams.spaceId}
+          items={(tags.data ?? []).map((tag) => ({ value: tag.id, label: tag.name }))} />
+        <UserSelect {...bind('createdBy', (value) => typeof value === 'number' ? value : undefined)} placeholder="全部上传人" style={{ width: 160 }} />
+        <DateRangeFilter {...bind('timeRange')} />
       </>} actions={<><SearchButton onClick={filters.handleSearch} /><ResetButton onClick={filters.handleReset} /></>} />
       <ConfigurableTable<DriveSearchItem> bordered size="small" rowKey="id" columns={columns} dataSource={list}
         loading={query.isFetching} onRefresh={() => void query.refetch()} refreshLoading={query.isFetching}

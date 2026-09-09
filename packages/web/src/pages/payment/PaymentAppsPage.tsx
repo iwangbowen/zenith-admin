@@ -40,14 +40,13 @@ function channelOptions(configs: PaymentChannelConfig[], channel: PaymentChannel
 }
 
 export default function PaymentAppsPage() {
-  const { items: statusItems } = useDictItems('common_status');
-  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const canManage = hasPermission('payment:app:manage');
   const [environmentWatch, setEnvironmentWatch] = useState<PaymentApp['environment'] | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentAppKeys.lists });
   const listQuery = usePaymentAppList({
@@ -139,28 +138,21 @@ export default function PaymentAppsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="名称..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-  const renderCreateButton = () => canManage ? <CreateButton onClick={openCreate} /> : null;
-
   return (
     <div className="page-container">
       <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }}
         description="支付应用绑定已审核的 Open OAuth 客户端，并按客户端环境路由同环境商户配置" />
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="名称..." {...bindKeyword('keyword')} width={200} />}
+        filters={(
+          <StatusSelect
+            items={statusOptions}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={canManage ? <CreateButton onClick={openCreate} /> : null}
         filterTitle="支付应用筛选"
       />
 
@@ -197,7 +189,7 @@ export default function PaymentAppsPage() {
           <Form.Select field="wechatConfigId" label="微信配置" style={{ width: '100%' }} optionList={channelSelectOptions.wechat} showClear placeholder="可选" />
           <Form.Select field="alipayConfigId" label="支付宝配置" style={{ width: '100%' }} optionList={channelSelectOptions.alipay} showClear placeholder="可选" />
           <Form.Select field="unionpayConfigId" label="云闪付配置" style={{ width: '100%' }} optionList={channelSelectOptions.unionpay} showClear placeholder="可选" />
-          <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={STATUS_OPTIONS} rules={[{ required: true, message: '请选择状态' }]} />
+          <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} rules={[{ required: true, message: '请选择状态' }]} />
           <Form.TextArea field="remark" label="备注" autosize rows={1} placeholder="可选" />
         </Form>
       </AppModal>

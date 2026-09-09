@@ -58,14 +58,14 @@ const emptyArticle = (): MpReplyArticle => ({ title: '', description: '', picUrl
 
 export default function MpAutoRepliesPage() {
   const { hasPermission: can } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { options: statusOptions } = useDictItems('common_status');
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
 
   interface SearchParams { filterType: MpAutoReplyType | undefined; keyword: string; }
   const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpAutoReplyKeys.lists });
 
@@ -200,24 +200,6 @@ export default function MpAutoRepliesPage() {
     await deleteHotwordMutation.mutateAsync({ params: { id } });
   };
 
-  const renderAccountFilter = () => (
-    <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-  );
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部回复类型"
-      items={REPLY_TYPE_OPTIONS}
-      value={draftParams.filterType}
-      onChange={(v) => setField('filterType')(enumValueOf(MP_AUTO_REPLY_TYPES, v))}
-      width={140}
-    />
-  );
-  const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索关键词" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={180} />
-  );
-  const renderCreateButton = () => can('mp:reply:create') ? (
-    <CreateButton onClick={openCreate} disabled={!currentId} />
-  ) : null;
   const renderHotwordsButton = () => can('mp:reply:list') ? (
     <Button icon={<Flame size={14} />} disabled={!currentId} onClick={() => void openHotwords()}>未命中热词</Button>
   ) : null;
@@ -225,16 +207,25 @@ export default function MpAutoRepliesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordInput()}
+        keyword={<KeywordInput placeholder="搜索关键词" {...bindKeyword('keyword')} width={180} />}
         filters={(
           <>
-            {renderAccountFilter()}
-            {renderTypeFilter()}
+            <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
+            <FilterSelect
+              placeholder="全部回复类型"
+              items={REPLY_TYPE_OPTIONS}
+              {...bind('filterType', (v) => enumValueOf(MP_AUTO_REPLY_TYPES, v))}
+              width={140}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          can('mp:reply:create') ? (
+            <CreateButton onClick={openCreate} disabled={!currentId} />
+          ) : null
+        )}
         actions={renderHotwordsButton()}
         mobileActions={(renderHotwordsButton())}
         filterTitle="自动回复筛选"
@@ -328,7 +319,7 @@ export default function MpAutoRepliesPage() {
             )}
 
             <Form.Select field="status" label="状态" style={{ width: '100%' }}
-              optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))} />
+              optionList={statusOptions} />
             <Form.Switch field="transferToKf" label="命中转人工" extraText="命中该关键词后引导粉丝进入多客服会话队列" />
           </Form>
         </Spin>

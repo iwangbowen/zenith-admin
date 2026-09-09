@@ -91,7 +91,7 @@ export default function UsersPage() {
   const { updateUser } = useAuth();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, bind, bindKeyword, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: userKeys.lists });
   const [batchPasswordModalVisible, setBatchPasswordModalVisible] = useState(false);
@@ -110,7 +110,7 @@ export default function UsersPage() {
   const [batchPwdVal, setBatchPwdVal] = useState('');
 
   const { items: statusItems } = useDictItems('common_status');
-  const { items: genderItems } = useDictItems('user_gender');
+  const { options: genderOptions } = useDictItems('user_gender');
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [deptTreeExpandedKeys, setDeptTreeExpandedKeys] = useState<string[]>([]);
 
@@ -556,26 +556,6 @@ export default function UsersPage() {
     </Button>
   );
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索用户名/昵称/邮箱" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={260} />
-  );
-
-  const renderPhoneSearch = () => (
-    <KeywordInput placeholder="搜索手机号码" value={draftParams.phone} onChange={setField('phone')} onSearch={handleSearch} width={180} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter placeholder={["开始时间", "结束时间"]} value={draftParams.timeRange ?? undefined} onChange={(value) => setField('timeRange')(value ? (value as [Date, Date]) : null)} />
-  );
-
   const renderBatchActions = () => (
     <>
       {selectedDeletableCount > 0 && hasPermission('system:user:delete') && (
@@ -597,26 +577,12 @@ export default function UsersPage() {
     </>
   );
 
-  const renderExportButtons = () => hasPermission('system:user:export')
-    ? <ExportButton entity="system.users" query={buildExportQuery()} watermark={false} />
-    : null;
-
-  const renderMobileExportActions = () => (
-    hasPermission('system:user:export')
-      ? <ExportButton entity="system.users" query={buildExportQuery()} watermark={false} label="导出" variant="flat" />
-      : null
-  );
-
   const renderImportButton = () => hasPermission('system:user:import') ? (
     <ImportButton
       entity="identity.users"
       title="用户"
       onFinished={() => void refetchUserList()}
     />
-  ) : null;
-
-  const renderCreateButton = () => hasPermission('system:user:create') ? (
-    <CreateButton onClick={openCreate} />
   ) : null;
 
   return (
@@ -626,22 +592,31 @@ export default function UsersPage() {
         detail={
         <div className="users-content">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索用户名/昵称/邮箱" {...bindKeyword('keyword')} width={260} />}
         filters={(
           <>
-            {renderPhoneSearch()}
-            {renderStatusFilter()}
-            {renderTimeRangeFilter()}
+            <KeywordInput placeholder="搜索手机号码" {...bindKeyword('phone')} width={180} />
+            <StatusSelect
+              items={statusItems}
+              {...bind('status')}
+            />
+            <DateRangeFilter placeholder={["开始时间", "结束时间"]} {...bind('timeRange')} />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:user:create') ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
         actions={(
           <>
             {renderDepartmentButton()}
             {renderBatchActions()}
-            {renderExportButtons()}
+            {hasPermission('system:user:export')
+              ? <ExportButton entity="system.users" query={buildExportQuery()} watermark={false} />
+              : null}
             {renderImportButton()}
           </>
         )}
@@ -649,7 +624,9 @@ export default function UsersPage() {
           <>
             {renderDepartmentButton(true)}
             {renderBatchActions()}
-            {renderMobileExportActions()}
+            {hasPermission('system:user:export')
+              ? <ExportButton entity="system.users" query={buildExportQuery()} watermark={false} label="导出" variant="flat" />
+              : null}
             {renderImportButton()}
           </>
         )}
@@ -770,7 +747,7 @@ export default function UsersPage() {
                 label="性别"
                 style={{ width: '100%' }}
                 showClear
-                optionList={genderItems.map((i) => ({ value: i.value, label: i.label }))}
+                optionList={genderOptions}
                 placeholder="请选择性别"
               />
             </Col>

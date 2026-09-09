@@ -111,7 +111,7 @@ export default function TerminalRecordingsPage() {
   const queryClient = useQueryClient();
   const {
     page, pageSize, resetPage, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, setField, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: terminalKeys.recordingLists });
   const [playRec, setPlayRec] = useState<TerminalRecordingDetail | null>(null);
@@ -257,7 +257,7 @@ export default function TerminalRecordingsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标题" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索标题" {...bindKeyword('keyword')} />}
         filters={(
           <>
             <FilterSelect
@@ -270,7 +270,7 @@ export default function TerminalRecordingsPage() {
               filter
               onFocus={() => { void ensureLoaded(); }}
             />
-            <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
+            <DateRangeFilter {...bind('timeRange')} />
           </>
         )}
         onSearch={handleSearch}

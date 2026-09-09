@@ -59,7 +59,7 @@ export default function DirectorySyncConflictsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -183,42 +183,28 @@ export default function DirectorySyncConflictsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索姓名 / 外部 ID..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderSourceFilter = () => (
-    <FilterSelect
-      placeholder="全部同步源"
-      width={160}
-      items={sourceItems}
-      value={draftParams.sourceId}
-      onChange={setField('sourceId')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-     
-      items={DIRECTORY_SYNC_CONFLICT_STATUSES.map((s) => ({ value: s, label: DIRECTORY_SYNC_CONFLICT_STATUS_LABELS[s] }))}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索姓名 / 外部 ID..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={(
           <>
-            {renderSourceFilter()}
-            {renderStatusFilter()}
+            <FilterSelect
+              placeholder="全部同步源"
+              width={160}
+              items={sourceItems}
+              {...bind('sourceId')}
+            />
+            <StatusSelect
+
+              items={DIRECTORY_SYNC_CONFLICT_STATUSES.map((s) => ({ value: s, label: DIRECTORY_SYNC_CONFLICT_STATUS_LABELS[s] }))}
+              {...bind('status')}
+            />
           </>
         )}
         onSearch={handleSearch}

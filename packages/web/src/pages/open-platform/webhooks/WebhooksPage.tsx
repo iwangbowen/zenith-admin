@@ -61,8 +61,7 @@ export interface WebhooksPageProps {
 
 export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPageProps>) {
   const paymentScope = scope === 'payment';
-  const { items: statusItems } = useDictItems('common_status');
-  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const canManage = hasPermission(paymentScope ? 'payment:webhook:manage' : 'open:webhook:manage');
 
@@ -70,7 +69,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
   const defaultSearchParams: SearchParams = { keyword: '', clientId: undefined, status: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -306,21 +305,19 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={(<KeywordInput placeholder="搜索名称 / URL" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />)}
+        keyword={(<KeywordInput placeholder="搜索名称 / URL" {...bindKeyword('keyword')} width={200} />)}
         filters={(
           <>
             <FilterSelect
               placeholder="全部所属应用"
               items={appOptions.map((a) => ({ value: a.clientId, label: a.name }))}
-              value={draftParams.clientId}
-              onChange={(v) => setField('clientId')(v as string)}
+              {...bind('clientId')}
               width={180}
               filter
             />
             <StatusSelect
-              items={STATUS_OPTIONS}
-              value={draftParams.status}
-              onChange={(v) => setField('status')(v as string)}
+              items={statusOptions}
+              {...bind('status')}
             />
           </>
         )}
@@ -374,7 +371,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
             disabled={formEvents.some((event) => SENSITIVE_EVENTS.has(event))}
             rules={[{ required: true, message: '请选择签名方式' }]} />
           <Form.TextArea field="headersText" label="自定义请求头" placeholder='JSON 格式，如 {"X-Custom":"abc"}（可选）' rows={2} />
-          <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={STATUS_OPTIONS} rules={[{ required: true, message: '请选择状态' }]} />
+          <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} rules={[{ required: true, message: '请选择状态' }]} />
         </Form>
       </AppModal>
 

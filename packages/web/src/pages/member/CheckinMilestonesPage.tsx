@@ -97,21 +97,15 @@ export default function CheckinMilestonesPage() {
     }),
   ];
 
-  const renderRefreshButton = () => (
-    <RefreshButton onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.checkinMilestones })} />
-  );
-
-  const renderCreateButton = () => hasPermission('member:checkin:milestone:create') ? (
-    <CreateButton onClick={() => openModal(null)} />
-  ) : null;
-
   return (
     <div className="page-container">
       <SearchToolbar
         primary={(
           <>
-            {renderRefreshButton()}
-            {renderCreateButton()}
+            <RefreshButton onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.checkinMilestones })} />
+            {hasPermission('member:checkin:milestone:create') ? (
+              <CreateButton onClick={() => openModal(null)} />
+            ) : null}
           </>
         )}
       />

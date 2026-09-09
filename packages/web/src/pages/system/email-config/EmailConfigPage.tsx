@@ -12,7 +12,7 @@ const { Title, Text } = Typography;
 
 export default function EmailConfigPage() {
   const { hasPermission } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { options: statusOptions } = useDictItems('common_status');
   const formApi = useRef<FormApi | null>(null);
   const [testModalVisible, setTestModalVisible] = useState(false);
   const [testEmail, setTestEmail] = useState('');
@@ -119,7 +119,7 @@ export default function EmailConfigPage() {
           label="状态"
           style={{ width: '100%' }}
           placeholder="请选择状态"
-          optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
+          optionList={statusOptions}
         />
       </Form>
 

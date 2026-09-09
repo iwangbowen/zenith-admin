@@ -137,7 +137,7 @@ function RangeInputs({
 }
 
 export default function PrintDesignerPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { options: statusOptions } = useDictItems('common_status');
   const routeParams = useParams<{ id: string }>();
   const templateId = Number(routeParams.id);
   const navigate = useNavigate();
@@ -661,7 +661,7 @@ export default function PrintDesignerPage() {
         <Select
           value={status}
           onChange={(value) => setStatus((value as ReportPrintTemplate['status']) ?? 'enabled')}
-          optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
+          optionList={statusOptions}
           style={{ width: 110 }}
         />
         <div style={{ flex: 1 }} />

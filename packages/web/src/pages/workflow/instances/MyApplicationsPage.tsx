@@ -366,7 +366,7 @@ export default function MyApplicationsPage() {
   const launchFormRef = useRef<WorkflowLaunchFormHandle>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<{ status?: string; priority?: string }>({ defaults: { status: undefined, priority: undefined }, listKey: workflowInstanceKeys.lists });
   const [detailVisible, setDetailVisible] = useState(false);
@@ -555,7 +555,6 @@ export default function MyApplicationsPage() {
     });
   };
 
-
   const handleResubmit = async (id: number) => {
     await resubmitMutation.mutateAsync({ params: { id } });
     Toast.success('已生成草稿，请在草稿箱中编辑提交');
@@ -710,39 +709,6 @@ export default function MyApplicationsPage() {
     </Space>
   );
 
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={Object.entries(INSTANCE_STATUS_MAP).map(([value, s]) => ({ value, label: s.text }))}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderPriorityFilter = () => (
-    <FilterSelect
-      placeholder="全部优先级"
-      items={WORKFLOW_PRIORITY_OPTIONS}
-      value={draftParams.priority}
-      onChange={setField('priority')}
-      width={140}
-    />
-  );
-
-
-  const renderBatchWithdrawButton = () => selectedWithdrawableIds.length > 0 ? (
-    <Button type="tertiary" icon={<Undo2 size={14} />} disabled={selectedWithdrawableIds.length === 0} onClick={openBatchWithdraw}>批量撤回</Button>
-  ) : null;
-
-  const renderBatchUrgeButton = () => selectedRunningIds.length > 0 ? (
-    <Button type="primary" icon={<Megaphone size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchUrge}>批量催办</Button>
-  ) : null;
-
-  const renderCreateButton = () => (
-    <Button type="primary" icon={<Plus size={14} />} onClick={() => { void openApply(); }}>
-      发起申请
-    </Button>
-  );
-
   return (
     <div className="page-container">
       <SavedViewsBar
@@ -756,17 +722,33 @@ export default function MyApplicationsPage() {
       <ListSearchToolbar
         filters={(
           <>
-            {renderStatusFilter()}
-            {renderPriorityFilter()}
+            <StatusSelect
+              items={Object.entries(INSTANCE_STATUS_MAP).map(([value, s]) => ({ value, label: s.text }))}
+              {...bind('status')}
+            />
+            <FilterSelect
+              placeholder="全部优先级"
+              items={WORKFLOW_PRIORITY_OPTIONS}
+              {...bind('priority')}
+              width={140}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          <Button type="primary" icon={<Plus size={14} />} onClick={() => { void openApply(); }}>
+            发起申请
+          </Button>
+        )}
         actions={(
           <>
-            {renderBatchWithdrawButton()}
-            {renderBatchUrgeButton()}
+            {selectedWithdrawableIds.length > 0 ? (
+              <Button type="tertiary" icon={<Undo2 size={14} />} disabled={selectedWithdrawableIds.length === 0} onClick={openBatchWithdraw}>批量撤回</Button>
+            ) : null}
+            {selectedRunningIds.length > 0 ? (
+              <Button type="primary" icon={<Megaphone size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchUrge}>批量催办</Button>
+            ) : null}
           </>
         )}
         filterTitle="我的申请筛选"

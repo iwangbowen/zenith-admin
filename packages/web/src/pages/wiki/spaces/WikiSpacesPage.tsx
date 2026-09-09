@@ -40,7 +40,7 @@ export default function WikiSpacesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiSpaceKeys.lists });
 
@@ -79,7 +79,7 @@ export default function WikiSpacesPage() {
     }),
     disabled: !hasPermission('wiki:space:edit'),
   });
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   // ─── 成员授权抽屉 ──────────────────────────────────────────────────────────
   const [memberSpace, setMemberSpace] = useState<WikiSpace | null>(null);
@@ -157,47 +157,33 @@ export default function WikiSpacesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索空间名称..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderVisibilityFilter = () => (
-    <FilterSelect
-      placeholder="全部可见性"
-      items={WIKI_SPACE_VISIBILITY_OPTIONS}
-      value={draftParams.visibility}
-      onChange={setField('visibility')}
-      width={140}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('wiki:space:create')
-    ? <CreateButton onClick={modal.openCreate} /> : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索空间名称..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={<>
-          {renderVisibilityFilter()}
-          {renderStatusFilter()}
+          <FilterSelect
+            placeholder="全部可见性"
+            items={WIKI_SPACE_VISIBILITY_OPTIONS}
+            {...bind('visibility')}
+            width={140}
+          />
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('wiki:space:create')
+            ? <CreateButton onClick={modal.openCreate} /> : null
+        )}
         filterTitle="筛选条件"
       />
 
@@ -228,7 +214,7 @@ export default function WikiSpacesPage() {
               </Col>
               <Col span={12}>
                 <Form.Select field="status" label="状态" style={{ width: '100%' }}
-                  optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+                  optionList={statusOptions}
                   rules={[{ required: true, message: '请选择状态' }]} />
               </Col>
             </Row>

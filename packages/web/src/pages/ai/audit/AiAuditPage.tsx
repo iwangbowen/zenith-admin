@@ -123,31 +123,22 @@ export default function AiAuditPage() {
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput placeholder="搜索消息内容" value={draft.keyword} onChange={(v) => setDraft((p) => ({ ...p, keyword: String(v ?? '') }))} onSearch={handleSearch} />
-  );
-  const renderRole = () => (
-    <FilterSelect
-      placeholder="全部角色"
-      items={ROLE_OPTIONS}
-      value={draft.role}
-      onChange={(v) => setDraft((p) => ({ ...p, role: v }))}
-    />
-  );
-  const renderRange = () => (
-    <DateRangeFilter type="dateRange" value={draftRange ?? undefined} onChange={(value) => {
-        if (Array.isArray(value) && value.length >= 2 && value[0] instanceof Date && value[1] instanceof Date) setDraftRange([value[0], value[1]]);
-        else setDraftRange(null);
-      }} />
-  );
   return (
     <div className="page-container">
       <ListSearchToolbar
         filters={(
           <>
-            {renderKeyword()}
-            {renderRole()}
-            {renderRange()}
+            <KeywordInput placeholder="搜索消息内容" value={draft.keyword} onChange={(v) => setDraft((p) => ({ ...p, keyword: String(v ?? '') }))} onSearch={handleSearch} />
+            <FilterSelect
+              placeholder="全部角色"
+              items={ROLE_OPTIONS}
+              value={draft.role}
+              onChange={(v) => setDraft((p) => ({ ...p, role: v }))}
+            />
+            <DateRangeFilter type="dateRange" value={draftRange ?? undefined} onChange={(value) => {
+                if (Array.isArray(value) && value.length >= 2 && value[0] instanceof Date && value[1] instanceof Date) setDraftRange([value[0], value[1]]);
+                else setDraftRange(null);
+              }} />
           </>
         )}
         onSearch={handleSearch}

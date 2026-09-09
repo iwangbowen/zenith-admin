@@ -488,7 +488,7 @@ function ReleaseManageTab({ active }: { active: boolean }) {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: appReleaseKeys.lists });
 
@@ -616,40 +616,17 @@ function ReleaseManageTab({ active }: { active: boolean }) {
     <FilterSelect
       placeholder="全部应用"
       items={appOptions}
-      value={draftParams.appId}
-      onChange={(v) => setField('appId')(v as number | undefined)}
+      {...bind('appId')}
       width={160}
-    />
-  );
-
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={APP_RELEASE_CHANNEL_OPTIONS}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={APP_RELEASE_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
     />
   );
 
   const renderKeywordSearch = () => (
     <KeywordInput
       placeholder="搜索版本号 / 更新日志..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
+      {...bindKeyword('keyword')}
     />
   );
-
-  const renderCreateButton = () => hasPermission('system:app-release:create')
-    ? <CreateButton onClick={modal.openCreate}>新增版本</CreateButton> : null;
 
   const renderAppsManageButton = (borderless?: boolean) => (
     <Button
@@ -669,15 +646,25 @@ function ReleaseManageTab({ active }: { active: boolean }) {
         keyword={renderKeywordSearch()}
         filters={<>
           {renderAppFilter()}
-          {renderChannelFilter()}
-          {renderStatusFilter()}
+          <FilterSelect
+            placeholder="全部渠道"
+            items={APP_RELEASE_CHANNEL_OPTIONS}
+            {...bind('channel')}
+          />
+          <StatusSelect
+            items={APP_RELEASE_STATUS_OPTIONS}
+            {...bind('status')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
         actions={<>
           {renderAppsManageButton()}
         </>}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:app-release:create')
+            ? <CreateButton onClick={modal.openCreate}>新增版本</CreateButton> : null
+        )}
         mobileActions={renderAppsManageButton(true)}
         filterTitle="筛选条件"
       />
@@ -890,7 +877,7 @@ function DevicesTab({ active }: { active: boolean }) {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<DeviceSearchParams>({ defaults: defaultDeviceSearchParams, listKey: clientDeviceKeys.lists });
 
@@ -971,47 +958,15 @@ function DevicesTab({ active }: { active: boolean }) {
     <FilterSelect
       placeholder="全部应用"
       items={appOptions}
-      value={draftParams.appId}
-      onChange={(v) => setField('appId')(v as number | undefined)}
+      {...bind('appId')}
       width={160}
-    />
-  );
-
-  const renderPlatformFilter = () => (
-    <FilterSelect
-      placeholder="全部平台"
-      items={APP_PLATFORM_OPTIONS}
-      value={draftParams.platform}
-      onChange={setField('platform')}
-    />
-  );
-
-  const renderSubjectFilter = () => (
-    <FilterSelect
-      placeholder="全部绑定人类型"
-      items={SUBJECT_TYPE_OPTIONS}
-      value={draftParams.subjectType}
-      onChange={setField('subjectType')}
-      width={140}
-    />
-  );
-
-  const renderPushBoundFilter = () => (
-    <FilterSelect
-      placeholder="全部推送绑定"
-      width={130}
-      items={PUSH_BOUND_OPTIONS}
-      value={draftParams.pushBound}
-      onChange={setField('pushBound')}
     />
   );
 
   const renderKeywordSearch = () => (
     <KeywordInput
       placeholder="搜索设备标识 / 型号 / 版本..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
+      {...bindKeyword('keyword')}
     />
   );
 
@@ -1021,9 +976,23 @@ function DevicesTab({ active }: { active: boolean }) {
         keyword={renderKeywordSearch()}
         filters={<>
           {renderAppFilter()}
-          {renderPlatformFilter()}
-          {renderSubjectFilter()}
-          {renderPushBoundFilter()}
+          <FilterSelect
+            placeholder="全部平台"
+            items={APP_PLATFORM_OPTIONS}
+            {...bind('platform')}
+          />
+          <FilterSelect
+            placeholder="全部绑定人类型"
+            items={SUBJECT_TYPE_OPTIONS}
+            {...bind('subjectType')}
+            width={140}
+          />
+          <FilterSelect
+            placeholder="全部推送绑定"
+            width={130}
+            items={PUSH_BOUND_OPTIONS}
+            {...bind('pushBound')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}

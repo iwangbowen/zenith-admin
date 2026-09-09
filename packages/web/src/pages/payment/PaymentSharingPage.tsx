@@ -44,7 +44,7 @@ interface ReceiverFormValues { name: string; receiverType: PaymentSharingReceive
 interface DispatchFormValues { orderNo: string; receiverId: number; amountYuan?: number; remark?: string; }
 
 export default function PaymentSharingPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const canManage = hasPermission('payment:sharing:manage');
@@ -303,43 +303,19 @@ export default function PaymentSharingPage() {
     void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.reversalLists });
   };
 
-  const renderReceiverKeywordSearch = () => (
-    <KeywordInput placeholder="名称..." value={receiverKeyword} onChange={setReceiverKeyword} onSearch={handleReceiverSearch} width={200} />
-  );
-  const renderReceiverCreateButton = () => canManage ? (
-    <CreateButton onClick={receiverModal.openCreate} />
-  ) : null;
-
-  const renderOrderKeywordSearch = () => (
-    <KeywordInput placeholder="订单号..." value={orderKeyword} onChange={setOrderKeyword} onSearch={handleOrderSearch} width={200} />
-  );
-  const renderOrderStatusFilter = () => (
-    <StatusSelect
-      items={PAYMENT_SHARING_ORDER_STATUS_OPTIONS}
-      value={orderStatus}
-      onChange={setOrderStatus}
-    />
-  );
-  const renderDispatchButton = () => canDispatch ? (
-    <Button type="primary" icon={<Plus size={14} />} onClick={openDispatch}>发起分账</Button>
-  ) : null;
-  const renderReversalStatusFilter = () => (
-    <StatusSelect
-      items={PAYMENT_SHARING_REVERSAL_STATUS_OPTIONS}
-      value={reversalStatus}
-      onChange={setReversalStatus}
-    />
-  );
-
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as 'receivers' | 'orders' | 'reversals')} type="line" lazyRender keepDOM={false}>
         <TabPane tab="分账接收方" itemKey="receivers">
           <ListSearchToolbar
-            keyword={renderReceiverKeywordSearch()}
+            keyword={<KeywordInput placeholder="名称..." value={receiverKeyword} onChange={setReceiverKeyword} onSearch={handleReceiverSearch} width={200} />}
             onSearch={handleReceiverSearch}
             onReset={handleReceiverReset}
-            create={renderReceiverCreateButton()}
+            create={(
+              canManage ? (
+                <CreateButton onClick={receiverModal.openCreate} />
+              ) : null
+            )}
           />
           <ConfigurableTable
             columns={receiverColumns}
@@ -348,11 +324,21 @@ export default function PaymentSharingPage() {
         </TabPane>
         <TabPane tab="分账单" itemKey="orders">
           <ListSearchToolbar
-            keyword={renderOrderKeywordSearch()}
-            filters={renderOrderStatusFilter()}
+            keyword={<KeywordInput placeholder="订单号..." value={orderKeyword} onChange={setOrderKeyword} onSearch={handleOrderSearch} width={200} />}
+            filters={(
+              <StatusSelect
+                items={PAYMENT_SHARING_ORDER_STATUS_OPTIONS}
+                value={orderStatus}
+                onChange={setOrderStatus}
+              />
+            )}
             onSearch={handleOrderSearch}
             onReset={handleOrderReset}
-            create={renderDispatchButton()}
+            create={(
+              canDispatch ? (
+                <Button type="primary" icon={<Plus size={14} />} onClick={openDispatch}>发起分账</Button>
+              ) : null
+            )}
             filterTitle="分账单筛选"
           />
           <ConfigurableTable
@@ -362,7 +348,13 @@ export default function PaymentSharingPage() {
         </TabPane>
         <TabPane tab="冲正记录" itemKey="reversals">
           <ListSearchToolbar
-            filters={renderReversalStatusFilter()}
+            filters={(
+              <StatusSelect
+                items={PAYMENT_SHARING_REVERSAL_STATUS_OPTIONS}
+                value={reversalStatus}
+                onChange={setReversalStatus}
+              />
+            )}
             onSearch={handleReversalSearch}
             onReset={handleReversalReset}
             filterTitle="冲正记录筛选"
@@ -381,7 +373,7 @@ export default function PaymentSharingPage() {
           <Form.Input field="account" label="账号" placeholder="商户号 / 个人 openid" rules={[{ required: true, message: '账号不能为空' }]} />
           <Form.InputNumber field="ratioPercent" label="默认比例(%)" min={0} max={100} step={0.01} precision={2} style={{ width: '100%' }} placeholder="可选，发起分账时可覆盖" />
           <Form.Switch field="autoShare" label="自动分账" extraText="开启后支付成功将按默认比例自动向该接收方发起分账" />
-          <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+          <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} />
           <Form.TextArea field="remark" label="备注" autosize rows={1} placeholder="可选" />
         </Form>
       </AppModal>

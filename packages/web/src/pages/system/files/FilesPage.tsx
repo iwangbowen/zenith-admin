@@ -128,7 +128,7 @@ export default function FilesPage() {
   const [uploadProgressVisible, setUploadProgressVisible] = useState(false);
   const uploadControllersRef = useRef(new Map<string, AbortController>());
   const {
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: fileKeys.lists });
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination(
@@ -346,55 +346,36 @@ export default function FilesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索文件名 / 对象键 / 文件服务"
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-      style={{ width: 'min(280px, 100%)' }}
-    />
-  );
-
-  const renderProviderFilter = () => (
-    <FilterSelect
-      placeholder="全部存储类型"
-      items={FILE_STORAGE_PROVIDER_OPTIONS}
-      value={draftParams.provider}
-      onChange={setField('provider')}
-      width={140}
-    />
-  );
-
-  const renderFileTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部文件类型"
-      items={FILE_TYPE_FILTER_OPTIONS}
-      value={draftParams.fileType}
-      onChange={setField('fileType')}
-      width={140}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter
-      type="dateTimeRange"
-      value={draftParams.timeRange ?? undefined}
-      onChange={(value) => setField('timeRange')(value ? (value as [Date, Date]) : null)}
-    />
-  );
-
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <TabPane tab="文件列表" itemKey="list">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索文件名 / 对象键 / 文件服务"
+            {...bindKeyword('keyword')}
+            style={{ width: 'min(280px, 100%)' }}
+          />
+        )}
         filters={(
           <>
-            {renderProviderFilter()}
-            {renderFileTypeFilter()}
-            {renderTimeRangeFilter()}
+            <FilterSelect
+              placeholder="全部存储类型"
+              items={FILE_STORAGE_PROVIDER_OPTIONS}
+              {...bind('provider')}
+              width={140}
+            />
+            <FilterSelect
+              placeholder="全部文件类型"
+              items={FILE_TYPE_FILTER_OPTIONS}
+              {...bind('fileType')}
+              width={140}
+            />
+            <DateRangeFilter
+              type="dateTimeRange"
+              {...bind('timeRange')}
+            />
           </>
         )}
         onSearch={handleSearch}

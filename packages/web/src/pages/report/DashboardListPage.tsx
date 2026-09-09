@@ -41,14 +41,14 @@ interface SearchParams { keyword: string; status?: string; lifecycleStatus?: Rep
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, lifecycleStatus: undefined, favorited: false, ownerId: undefined, folderId: undefined };
 
 export default function DashboardListPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, setField, submittedParams,
+    draftParams, setDraftParams, bind, bindKeyword, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportDashboardKeys.lists });
 
@@ -227,56 +227,8 @@ export default function DashboardListPage() {
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput placeholder="搜索名称/备注..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-  const renderLifecycleFilter = () => (
-    <FilterSelect
-      placeholder="全部生命周期"
-      items={[
-       { value: 'draft', label: '草稿' },
-       { value: 'published', label: '已发布' },
-       { value: 'offline', label: '已下线' },
-     ]}
-      value={draftParams.lifecycleStatus}
-      onChange={(v) => setField('lifecycleStatus')(v as SearchParams['lifecycleStatus'] | undefined)}
-      width={140}
-    />
-  );
-  const renderOwnerFilter = () => (
-    <ReportOwnerFilter items={userOptions} value={draftParams.ownerId} onChange={setField('ownerId')} />
-  );
-  const renderFolderFilter = () => (
-    <ReportFolderFilter items={folderOptions} value={draftParams.folderId} onChange={setField('folderId')} />
-  );
-  const renderCreateBtn = () => hasPermission('report:dashboard:create')
-    ? <CreateButton onClick={dashboardModal.openCreate} /> : null;
   const renderCategoryManageBtn = () => hasPermission('report:dashboard:update')
     ? <Button icon={<FolderTree size={14} />} onClick={() => setCategorySheetVisible(true)}>分类管理</Button> : null;
-  const renderCategoryFilter = () => (
-    <FilterSelect
-      placeholder="全部分类"
-      items={categories.map((c) => ({ value: c.id, label: c.name }))}
-      value={draftParams.categoryId}
-      onChange={(v) => setField('categoryId')(v as number | undefined)}
-      width={140}
-    />
-  );
-  const renderFavToggle = () => (
-    <Button theme={draftParams.favorited ? 'solid' : 'light'} type={draftParams.favorited ? 'warning' : 'tertiary'} icon={<Star size={14} />}
-      onClick={() => setDraftParams((p) => {
-        const np = { ...p, favorited: !p.favorited };
-        applySearch(np);
-        return np;
-      })}>收藏</Button>
-  );
   const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dashboard:update')
     ? <Button onClick={() => void handleBatchStatus('enabled')}>批量启用</Button> : null;
   const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dashboard:update')
@@ -285,11 +237,36 @@ export default function DashboardListPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeyword()}
-        filters={<>{renderCategoryFilter()}{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}{renderLifecycleFilter()}{renderFavToggle()}</>}
+        keyword={<KeywordInput placeholder="搜索名称/备注..." {...bindKeyword('keyword')} />}
+        filters={<><FilterSelect
+          placeholder="全部分类"
+          items={categories.map((c) => ({ value: c.id, label: c.name }))}
+          {...bind('categoryId')}
+          width={140}
+        /><ReportOwnerFilter items={userOptions} {...bind('ownerId')} /><ReportFolderFilter items={folderOptions} {...bind('folderId')} /><StatusSelect
+          items={statusItems}
+          {...bind('status')}
+        /><FilterSelect
+          placeholder="全部生命周期"
+          items={[
+           { value: 'draft', label: '草稿' },
+           { value: 'published', label: '已发布' },
+           { value: 'offline', label: '已下线' },
+         ]}
+          {...bind('lifecycleStatus')}
+          width={140}
+        /><Button theme={draftParams.favorited ? 'solid' : 'light'} type={draftParams.favorited ? 'warning' : 'tertiary'} icon={<Star size={14} />}
+          onClick={() => setDraftParams((p) => {
+            const np = { ...p, favorited: !p.favorited };
+            applySearch(np);
+            return np;
+          })}>收藏</Button></>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateBtn()}
+        create={(
+          hasPermission('report:dashboard:create')
+            ? <CreateButton onClick={dashboardModal.openCreate} /> : null
+        )}
         actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCategoryManageBtn()}</>}
         mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCategoryManageBtn()}</>}
         filterTitle="仪表盘筛选"
@@ -318,7 +295,7 @@ export default function DashboardListPage() {
           <Form.Select field="folderId" label="资源目录" filter showClear style={{ width: '100%' }}
             optionList={folderOptions} />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+            optionList={statusOptions} />
           <Form.Select field="categoryId" label="分类" style={{ width: '100%' }} showClear placeholder="未分类"
             optionList={categories.map((c) => ({ value: c.id, label: c.name }))} />
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />

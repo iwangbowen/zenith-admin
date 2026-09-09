@@ -41,7 +41,7 @@ const deliveryStatusColorMap: Record<string, 'green' | 'red' | 'orange' | 'grey'
 };
 
 export default function SubscriptionsPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
@@ -164,18 +164,16 @@ export default function SubscriptionsPage() {
     }),
   ];
 
-  const renderKeyword = () => <KeywordInput placeholder="搜索 Cron/备注" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={200} />;
-  const renderCreate = () => hasPermission('report:subscription:create') ? <CreateButton onClick={openCreate} /> : null;
   const renderBatchEnable = () => selectedRowKeys.length > 0 && hasPermission('report:subscription:update') ? <Button onClick={() => handleBatchEnabled(true)}>批量启用</Button> : null;
   const renderBatchDisable = () => selectedRowKeys.length > 0 && hasPermission('report:subscription:update') ? <Button type="danger" onClick={() => handleBatchEnabled(false)}>批量停用</Button> : null;
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeyword()}
+        keyword={<KeywordInput placeholder="搜索 Cron/备注" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={200} />}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreate()}
+        create={hasPermission('report:subscription:create') ? <CreateButton onClick={openCreate} /> : null}
         actions={<>{renderBatchEnable()}{renderBatchDisable()}</>}
         mobileActions={<>{renderBatchEnable()}{renderBatchDisable()}</>}
       />
@@ -213,7 +211,7 @@ export default function SubscriptionsPage() {
             <Form.Input field="webhookUrl" label="Webhook 地址" placeholder="企微/钉钉机器人 Webhook URL 或通用 JSON 端点"
               rules={[{ required: true, message: '请填写 Webhook 地址' }]} showClear />
           )}
-          <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+          <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={statusOptions} />
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
         </Form>
       </AppModal>

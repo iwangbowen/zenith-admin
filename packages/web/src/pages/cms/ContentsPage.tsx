@@ -495,69 +495,9 @@ export default function ContentsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索标题/作者..." value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />
-  );
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部内容形态"
-      items={CMS_CONTENT_TYPE_OPTIONS}
-      value={contentType}
-      onChange={(v) => { setContentType(v as CmsContentType | undefined); setPage(1); setSelectedIds([]); }}
-      width={140}
-    />
-  );
   const gotoCreate = (type: CmsContentType) => navigate(
     `/cms/contents/edit?siteId=${siteId}${channelId ? `&channelId=${channelId}` : ''}&contentType=${type}`,
   );
-  const renderCreateButton = () => hasPermission('cms:content:create') && siteId ? (
-    <SplitButtonGroup>
-      <CreateButton onClick={() => gotoCreate('article')} />
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={(
-          <Dropdown.Menu>
-            {Object.entries(CMS_CONTENT_TYPE_LABELS).map(([value, label]) => (
-              <Dropdown.Item key={value} onClick={() => gotoCreate(value as CmsContentType)}>
-                新增{label}
-              </Dropdown.Item>
-            ))}
-          </Dropdown.Menu>
-        )}
-      >
-        <Button type="primary" icon={<ChevronDown size={14} />} />
-      </Dropdown>
-    </SplitButtonGroup>
-  ) : null;
-  const renderImportButton = () => hasPermission('cms:content:create') && siteId ? (
-    <ImportButton
-      entity="cms.contents"
-      title="CMS 内容"
-      context={{ siteId, channelId }}
-      beforeSubmit={() => {
-        if (!channelId) {
-          Toast.warning('请先在左侧栏目树选择导入的目标栏目');
-          return false;
-        }
-        return true;
-      }}
-      onFinished={() => void queryClient.invalidateQueries({ queryKey: cmsContentKeys.lists })}
-    />
-  ) : null;
-  const renderExportButton = () => siteId && hasPermission('cms:content:export') ? (
-    <ExportButton
-      entity="cms.contents"
-      permission="cms:content:export"
-      query={{
-        siteId,
-        channelId,
-        status: statusFilter,
-        keyword: submittedKeyword || undefined,
-      }}
-    />
-  ) : null;
 
   /** 窄屏单栏模式下的「按栏目」入口（宽屏侧栏常驻时隐藏，与用户管理「按部门」一致） */
   const renderChannelTreeButton = (forceVisible = false) => (
@@ -646,12 +586,67 @@ export default function ContentsPage() {
   const tableContent = (
     <>
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderTypeFilter()}
+        keyword={<KeywordInput placeholder="搜索标题/作者..." value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />}
+        filters={(
+          <FilterSelect
+            placeholder="全部内容形态"
+            items={CMS_CONTENT_TYPE_OPTIONS}
+            value={contentType}
+            onChange={(v) => { setContentType(v as CmsContentType | undefined); setPage(1); setSelectedIds([]); }}
+            width={140}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
-        actions={<>{renderChannelTreeButton()}{batchBar}{renderExportButton()}{renderImportButton()}</>}
+        create={(
+          hasPermission('cms:content:create') && siteId ? (
+            <SplitButtonGroup>
+              <CreateButton onClick={() => gotoCreate('article')} />
+              <Dropdown
+                trigger="click"
+                position="bottomRight"
+                clickToHide
+                render={(
+                  <Dropdown.Menu>
+                    {Object.entries(CMS_CONTENT_TYPE_LABELS).map(([value, label]) => (
+                      <Dropdown.Item key={value} onClick={() => gotoCreate(value as CmsContentType)}>
+                        新增{label}
+                      </Dropdown.Item>
+                    ))}
+                  </Dropdown.Menu>
+                )}
+              >
+                <Button type="primary" icon={<ChevronDown size={14} />} />
+              </Dropdown>
+            </SplitButtonGroup>
+          ) : null
+        )}
+        actions={<>{renderChannelTreeButton()}{batchBar}{siteId && hasPermission('cms:content:export') ? (
+          <ExportButton
+            entity="cms.contents"
+            permission="cms:content:export"
+            query={{
+              siteId,
+              channelId,
+              status: statusFilter,
+              keyword: submittedKeyword || undefined,
+            }}
+          />
+        ) : null}{hasPermission('cms:content:create') && siteId ? (
+          <ImportButton
+            entity="cms.contents"
+            title="CMS 内容"
+            context={{ siteId, channelId }}
+            beforeSubmit={() => {
+              if (!channelId) {
+                Toast.warning('请先在左侧栏目树选择导入的目标栏目');
+                return false;
+              }
+              return true;
+            }}
+            onFinished={() => void queryClient.invalidateQueries({ queryKey: cmsContentKeys.lists })}
+          />
+        ) : null}</>}
         mobileActions={renderChannelTreeButton(true)}
         filterTitle="筛选条件"
       />

@@ -99,7 +99,7 @@ export default function CheckinLogsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.checkinLogLists });
   // 会员详情等入口的深链筛选（?memberKeyword=，消费后即从 URL 移除）
@@ -157,15 +157,14 @@ export default function CheckinLogsPage() {
   ];
 
   const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员ID/昵称" value={draftParams.memberKeyword} onChange={setField('memberKeyword')} onSearch={handleSearch} width={180} />
+    <KeywordInput placeholder="会员ID/昵称" {...bindKeyword('memberKeyword')} width={180} />
   );
 
   const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setField('dateRange')(value ? (value as [Date, Date]) : null)} />
+    <DateRangeFilter type="dateRange" {...bind('dateRange')} />
   );
 
   const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} />;
   const buildExportQuery = () => {
     const [ds, de] = submittedParams.dateRange ?? [];
     return compactQuery({
@@ -224,7 +223,7 @@ export default function CheckinLogsPage() {
                 {renderKeywordSearch()}
                 {renderDateRangeFilter()}
                 {renderSearchButton()}
-                {renderResetButton()}
+                <ResetButton onClick={handleReset} />
                 {renderExportButton()}
               </>
             )}

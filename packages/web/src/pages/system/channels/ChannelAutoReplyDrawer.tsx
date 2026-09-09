@@ -58,7 +58,7 @@ const MATCH_COLOR: Record<string, 'green' | 'blue' | 'orange'> = {
 
 export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClose }: Readonly<Props>) {
   const { hasPermission } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { options: statusOptions } = useDictItems('common_status');
   const canSave = hasPermission('channel:reply:save');
   const canDelete = hasPermission('channel:reply:delete');
 
@@ -281,7 +281,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
                   field="status"
                   label="状态"
                   style={{ width: '100%' }}
-                  optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
+                  optionList={statusOptions}
                 />
               </>
             );

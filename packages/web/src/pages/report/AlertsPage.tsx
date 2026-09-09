@@ -84,11 +84,11 @@ function formatRule(record: ReportAlertRule) {
 }
 
 export default function AlertsPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, setField, submittedParams,
+    draftParams, setDraftParams, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportAlertKeys.lists });
 
@@ -314,38 +314,6 @@ export default function AlertsPage() {
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput placeholder="搜索名称/备注" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
-  );
-  const renderDatasetFilter = () => (
-    <FilterSelect
-      placeholder="全部数据集"
-      items={datasets.map((dataset) => ({ value: String(dataset.id), label: dataset.name }))}
-      value={draftParams.datasetId}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, datasetId: value, metricId: undefined }))}
-      width={180}
-      filter
-    />
-  );
-  const renderMetricFilter = () => (
-    <FilterSelect
-      placeholder="全部指标"
-      items={metrics.map((metric) => ({ value: String(metric.id), label: metric.name }))}
-      value={draftParams.metricId}
-      onChange={(value) => setDraftParams((prev) => ({ ...prev, metricId: value, datasetId: undefined }))}
-      width={180}
-      filter
-    />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.enabled}
-      onChange={setField('enabled')}
-    />
-  );
-  const renderCreateBtn = () => hasPermission('report:alert:create')
-    ? <CreateButton onClick={openCreate} /> : null;
   const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:alert:update')
     ? <Button onClick={() => handleBatchEnabled(true)}>批量启用</Button> : null;
   const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:alert:update')
@@ -354,11 +322,31 @@ export default function AlertsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeyword()}
-        filters={<>{renderDatasetFilter()}{renderMetricFilter()}{renderStatusFilter()}</>}
+        keyword={<KeywordInput placeholder="搜索名称/备注" {...bindKeyword('keyword')} width={200} />}
+        filters={<><FilterSelect
+          placeholder="全部数据集"
+          items={datasets.map((dataset) => ({ value: String(dataset.id), label: dataset.name }))}
+          value={draftParams.datasetId}
+          onChange={(value) => setDraftParams((prev) => ({ ...prev, datasetId: value, metricId: undefined }))}
+          width={180}
+          filter
+        /><FilterSelect
+          placeholder="全部指标"
+          items={metrics.map((metric) => ({ value: String(metric.id), label: metric.name }))}
+          value={draftParams.metricId}
+          onChange={(value) => setDraftParams((prev) => ({ ...prev, metricId: value, datasetId: undefined }))}
+          width={180}
+          filter
+        /><StatusSelect
+          items={statusItems}
+          {...bind('enabled')}
+        /></>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateBtn()}
+        create={(
+          hasPermission('report:alert:create')
+            ? <CreateButton onClick={openCreate} /> : null
+        )}
         actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="预警筛选"
@@ -505,7 +493,7 @@ export default function AlertsPage() {
                 <Form.Switch field="notifyOnRecover" label="恢复通知" extraText="从触发恢复正常时发送一条恢复通知" />
               </Col>
               <Col xs={24} md={12}>
-                <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+                <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={statusOptions} />
               </Col>
               <Col xs={24}>
                 <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />

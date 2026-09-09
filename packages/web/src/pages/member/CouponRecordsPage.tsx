@@ -29,7 +29,7 @@ export default function CouponRecordsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.couponRecords });
   // 会员详情/优惠券列表入口的深链筛选（?memberKeyword= / ?couponId=，消费后即从 URL 移除）
@@ -109,31 +109,6 @@ export default function CouponRecordsPage() {
     ] : []),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员ID/昵称" value={draftParams.memberKeyword} onChange={setField('memberKeyword')} onSearch={handleSearch} width={180} />
-  );
-
-  const renderCouponIdFilter = () => (
-    <InputNumber
-      placeholder="优惠券ID"
-      value={draftParams.couponId}
-      min={1}
-      style={{ width: 120 }}
-      onChange={(v) => setField('couponId')(v as number | undefined)}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusOptions}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderRedeemButton = () => hasPermission('member:coupon:update') ? (
-    <Button type="primary" icon={<ScanLine size={14} />} onClick={openRedeem}>核销券码</Button>
-  ) : null;
   const buildExportQuery = () => compactQuery({
     memberKeyword: submittedParams.memberKeyword,
     couponId: submittedParams.couponId?.toString(),
@@ -146,16 +121,28 @@ export default function CouponRecordsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="会员ID/昵称" {...bindKeyword('memberKeyword')} width={180} />}
         filters={(
           <>
-            {renderCouponIdFilter()}
-            {renderStatusFilter()}
+            <InputNumber
+              placeholder="优惠券ID"
+              {...bind('couponId', (v) => v as number | undefined)}
+              min={1}
+              style={{ width: 120 }}
+            />
+            <StatusSelect
+              items={statusOptions}
+              {...bind('status')}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderRedeemButton()}
+        create={(
+          hasPermission('member:coupon:update') ? (
+            <Button type="primary" icon={<ScanLine size={14} />} onClick={openRedeem}>核销券码</Button>
+          ) : null
+        )}
         actions={renderExportButton()}
         mobileActions={renderExportButton('flat')}
         filterTitle="领券记录筛选"

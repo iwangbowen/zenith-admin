@@ -277,14 +277,6 @@ export default function MenusPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="菜单名称" value={pendingKeyword} onChange={setPendingKeyword} onSearch={handleSearch} width={200} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect items={statusItems} value={pendingStatus} onChange={setPendingStatus} />
-  );
-
   const renderExpandButton = () => (
     <Button
       type="primary"
@@ -295,18 +287,18 @@ export default function MenusPage() {
     </Button>
   );
 
-  const renderCreateButton = () => hasPermission('system:menu:create') ? (
-    <CreateButton onClick={() => openCreate()} />
-  ) : null;
-
   return (
     <div className="page-container" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="菜单名称" value={pendingKeyword} onChange={setPendingKeyword} onSearch={handleSearch} width={200} />}
+        filters={<StatusSelect items={statusItems} value={pendingStatus} onChange={setPendingStatus} />}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:menu:create') ? (
+            <CreateButton onClick={() => openCreate()} />
+          ) : null
+        )}
         actions={renderExpandButton()}
         mobileActions={renderExpandButton()}
         filterTitle="菜单筛选"

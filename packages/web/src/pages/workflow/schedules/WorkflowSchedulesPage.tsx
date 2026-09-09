@@ -76,13 +76,12 @@ function renderLastRunStatus(status: string | null, message: string | null) {
 }
 
 export default function WorkflowSchedulesPage() {
-  const { items: statusItems } = useDictItems('common_status');
-  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowScheduleKeys.lists });
   const listQuery = useWorkflowScheduleList({
@@ -162,7 +161,6 @@ export default function WorkflowSchedulesPage() {
 
   const openCreate = () => { setCronExprValue(''); setModalDefinitionId(null); scheduleModal.openCreate(); };
   const openEdit = (row: WorkflowSchedule) => { setCronExprValue(row.cronExpression ?? ''); setModalDefinitionId(row.definitionId); scheduleModal.openEdit(row); };
-
 
   const handleRunOnce = async (row: WorkflowSchedule) => {
     await runMutation.mutateAsync({ params: { id: row.id } });
@@ -245,44 +243,31 @@ export default function WorkflowSchedulesPage() {
     }),
   ];
 
-  const renderDefinitionFilter = () => (
-    <FilterSelect
-      placeholder="全部流程"
-      items={definitionOptions}
-      value={draftParams.definitionId}
-      onChange={(value) =>
-        setField('definitionId')(value as number | undefined)}
-      width={220}
-      filter
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={(value) =>
-        setField('status')(value as ScheduleStatus | undefined)}
-    />
-  );
-
-
-  const renderCreateButton = () => canCreate ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
         filters={(
           <>
-            {renderDefinitionFilter()}
-            {renderStatusFilter()}
+            <FilterSelect
+              placeholder="全部流程"
+              items={definitionOptions}
+              {...bind('definitionId')}
+              width={220}
+              filter
+            />
+            <StatusSelect
+              items={statusOptions}
+              {...bind('status', (value) => value as ScheduleStatus | undefined)}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          canCreate ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
         filterTitle="定时规则筛选"
       />
 
@@ -379,7 +364,7 @@ export default function WorkflowSchedulesPage() {
             field="status"
             label="状态"
             style={{ width: '100%' }}
-            optionList={STATUS_OPTIONS}
+            optionList={statusOptions}
             rules={[{ required: true, message: '请选择状态' }]}
             initValue="enabled"
           />

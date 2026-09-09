@@ -47,7 +47,7 @@ export default function MpFansPage() {
   const defaultSearch: SearchParams = { keyword: '', subscribe: undefined, tagId: undefined, blacklisted: undefined };
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, setField, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpFanKeys.lists });
 
@@ -186,40 +186,6 @@ export default function MpFansPage() {
     }),
   ];
 
-  const renderAccountFilter = () => (
-    <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-  );
-  const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索昵称/openid/备注" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
-  );
-  const renderSubscribeFilter = () => (
-    <FilterSelect
-      placeholder="全部关注状态"
-      items={SUBSCRIBE_OPTIONS}
-      value={draftParams.subscribe}
-      onChange={(v) => setField('subscribe')(enumValueOf(MP_FAN_SUBSCRIBES, v))}
-      width={140}
-    />
-  );
-  const renderTagFilter = () => (
-    <FilterSelect
-      placeholder="全部标签"
-      items={tags.map((t) => ({ label: t.name, value: t.id }))}
-      value={draftParams.tagId}
-      onChange={(v) => setField('tagId')(v as number | undefined)}
-      width={150}
-      filter
-    />
-  );
-  const renderBlacklistFilter = () => (
-    <FilterSelect
-      placeholder="全部黑名单"
-      items={[{ label: '黑名单', value: 'true' }, { label: '正常', value: 'false' }]}
-      value={draftParams.blacklisted === undefined ? undefined : String(draftParams.blacklisted)}
-      onChange={(v) => setField('blacklisted')(v === undefined ? undefined : v === 'true')}
-      width={140}
-    />
-  );
   const renderSyncActions = () => {
     const syncButton = can('mp:fan:sync') ? (
       <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>同步粉丝</Button>
@@ -233,13 +199,30 @@ export default function MpFansPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordInput()}
+        keyword={<KeywordInput placeholder="搜索昵称/openid/备注" {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
-            {renderAccountFilter()}
-            {renderSubscribeFilter()}
-            {renderTagFilter()}
-            {renderBlacklistFilter()}
+            <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
+            <FilterSelect
+              placeholder="全部关注状态"
+              items={SUBSCRIBE_OPTIONS}
+              {...bind('subscribe', (v) => enumValueOf(MP_FAN_SUBSCRIBES, v))}
+              width={140}
+            />
+            <FilterSelect
+              placeholder="全部标签"
+              items={tags.map((t) => ({ label: t.name, value: t.id }))}
+              {...bind('tagId')}
+              width={150}
+              filter
+            />
+            <FilterSelect
+              placeholder="全部黑名单"
+              items={[{ label: '黑名单', value: 'true' }, { label: '正常', value: 'false' }]}
+              value={draftParams.blacklisted === undefined ? undefined : String(draftParams.blacklisted)}
+              onChange={(v) => setField('blacklisted')(v === undefined ? undefined : v === 'true')}
+              width={140}
+            />
           </>
         )}
         onSearch={handleSearch}

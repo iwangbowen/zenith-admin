@@ -29,7 +29,7 @@ export default function WikiTemplatesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiTemplateKeys.lists });
 
@@ -65,7 +65,7 @@ export default function WikiTemplatesPage() {
     }),
     disabled: !hasPermission('wiki:template:edit'),
   });
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   const columns: ColumnProps<WikiTemplate>[] = [
     { title: '模板名称', dataIndex: 'name', width: 200, render: renderEllipsis },
@@ -90,34 +90,27 @@ export default function WikiTemplatesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索模板名称..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('wiki:template:create')
-    ? <CreateButton onClick={modal.openCreate} /> : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索模板名称..."
+            {...bindKeyword('keyword')}
+          />
+        )}
+        filters={(
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('wiki:template:create')
+            ? <CreateButton onClick={modal.openCreate} /> : null
+        )}
         filterTitle="筛选条件"
       />
 
@@ -145,7 +138,7 @@ export default function WikiTemplatesPage() {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Select field="status" label="状态" style={{ width: '100%' }}
-                  optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+                  optionList={statusOptions}
                   rules={[{ required: true, message: '请选择状态' }]} />
               </Col>
             </Row>

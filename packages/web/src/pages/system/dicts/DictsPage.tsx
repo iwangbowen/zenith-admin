@@ -79,7 +79,7 @@ export default function DictsPage() {
   const [itemColor, setItemColor] = useState<string | null>(null);
   // metadataStr 仅用于 JsonViewer 的初始值（非受控），提交时通过 ref.getValue() 读取
   const [metadataStr, setMetadataStr] = useState<string>('{}');
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const tagColor = (color: string) => color as ComponentProps<typeof Tag>['color'];
 
   // 单栏（窄屏）下 showDetail 由 selectedDict 驱动，若沿用桌面端「默认选中第一项」
@@ -496,26 +496,6 @@ export default function DictsPage() {
     }),
   ];
 
-  const renderItemKeywordSearch = () => (
-    <KeywordInput
-      placeholder="标签/键值"
-      value={pendingItemKeyword}
-      onChange={setPendingItemKeyword}
-      onSearch={handleItemSearch}
-      width={180}
-      disabled={!selectedDict}
-    />
-  );
-
-  const renderItemStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={pendingItemStatus}
-      onChange={setPendingItemStatus}
-      disabled={!selectedDict}
-    />
-  );
-
   const renderItemExpandButton = () => allRowKeys.length > 0 ? (
     <Button
       type="primary"
@@ -525,10 +505,6 @@ export default function DictsPage() {
     >
       {isAllExpanded ? '全部折叠' : '全部展开'}
     </Button>
-  ) : null;
-
-  const renderItemCreateButton = () => hasPermission('system:dict:item') ? (
-    <CreateButton onClick={() => { setEditingItemRecord(null); setItemParentId(null); setItemColor(null); setMetadataStr('{}'); setItemModalVisible(true); }} disabled={!selectedDict} />
   ) : null;
 
   const dictDetail = (
@@ -555,11 +531,31 @@ export default function DictsPage() {
       </MasterDetailLayout.Header>
       <MasterDetailLayout.Body>
         <ListSearchToolbar
-          keyword={renderItemKeywordSearch()}
-          filters={renderItemStatusFilter()}
+          keyword={(
+            <KeywordInput
+              placeholder="标签/键值"
+              value={pendingItemKeyword}
+              onChange={setPendingItemKeyword}
+              onSearch={handleItemSearch}
+              width={180}
+              disabled={!selectedDict}
+            />
+          )}
+          filters={(
+            <StatusSelect
+              items={statusItems}
+              value={pendingItemStatus}
+              onChange={setPendingItemStatus}
+              disabled={!selectedDict}
+            />
+          )}
           onSearch={handleItemSearch}
           onReset={handleItemReset}
-          create={renderItemCreateButton()}
+          create={(
+            hasPermission('system:dict:item') ? (
+              <CreateButton onClick={() => { setEditingItemRecord(null); setItemParentId(null); setItemColor(null); setMetadataStr('{}'); setItemModalVisible(true); }} disabled={!selectedDict} />
+            ) : null
+          )}
           actions={renderItemExpandButton()}
           mobileActions={renderItemExpandButton()}
           filterTitle="字典项筛选"
@@ -613,7 +609,7 @@ export default function DictsPage() {
           <Form.Input field="code" label="字典编码" placeholder="请输入字典编码" style={{ width: '100%' }} rules={[{ required: true, message: '请输入字典编码' }]} />
           <Form.Input field="description" label="描述" placeholder="请输入描述" style={{ width: '100%' }} />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+            optionList={statusOptions}
             placeholder="请选择状态"
           />
         </Form>
@@ -655,7 +651,7 @@ export default function DictsPage() {
                   field="status"
                   label="状态"
                   style={{ width: '100%' }}
-                  optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+                  optionList={statusOptions}
                   placeholder="请选择状态"
                 />
               </Col>

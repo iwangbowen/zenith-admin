@@ -30,7 +30,7 @@ export default function MemberLoginLogsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.loginLogLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ keyword: memberKeyword, dateRange: null }) });
@@ -55,22 +55,6 @@ export default function MemberLoginLogsPage() {
     dateTimeColumn('登录时间', 'createdAt', { fixed: 'right' }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员昵称/手机号/用户名" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusOptions}
-      value={draftParams.status}
-      onChange={(value) => setField('status')(value as 'success' | 'fail' | undefined)}
-    />
-  );
-
-  const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setField('dateRange')(value ? (value as [Date, Date]) : null)} />
-  );
-
   const buildExportQuery = () => {
     const [ds, de] = submittedParams.dateRange ?? [];
     return compactQuery({
@@ -87,11 +71,14 @@ export default function MemberLoginLogsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="会员昵称/手机号/用户名" {...bindKeyword('keyword')} />}
         filters={(
           <>
-            {renderStatusFilter()}
-            {renderDateRangeFilter()}
+            <StatusSelect
+              items={statusOptions}
+              {...bind('status', (value) => value as 'success' | 'fail' | undefined)}
+            />
+            <DateRangeFilter type="dateRange" {...bind('dateRange')} />
           </>
         )}
         onSearch={handleSearch}

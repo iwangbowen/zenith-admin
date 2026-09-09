@@ -62,7 +62,7 @@ export default function DirectorySyncLogsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: directorySyncRunKeys.lists });
 
@@ -168,39 +168,24 @@ export default function DirectorySyncLogsPage() {
     { title: '说明', dataIndex: 'message', width: 200, render: renderEllipsis },
   ];
 
-  const renderSourceFilter = () => (
-    <FilterSelect
-      placeholder="全部同步源"
-      width={160}
-      items={sourceItems}
-      value={draftParams.sourceId}
-      onChange={setField('sourceId')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={DIRECTORY_SYNC_RUN_STATUSES.map((s) => ({ value: s, label: DIRECTORY_SYNC_RUN_STATUS_LABELS[s] }))}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter
-      value={draftParams.timeRange}
-      onChange={setField('timeRange')}
-    />
-  );
-
   return (
     <div className="page-container">
       <ListSearchToolbar
         filters={(
           <>
-            {renderSourceFilter()}
-            {renderStatusFilter()}
-            {renderTimeRangeFilter()}
+            <FilterSelect
+              placeholder="全部同步源"
+              width={160}
+              items={sourceItems}
+              {...bind('sourceId')}
+            />
+            <StatusSelect
+              items={DIRECTORY_SYNC_RUN_STATUSES.map((s) => ({ value: s, label: DIRECTORY_SYNC_RUN_STATUS_LABELS[s] }))}
+              {...bind('status')}
+            />
+            <DateRangeFilter
+              {...bind('timeRange')}
+            />
           </>
         )}
         onSearch={handleSearch}

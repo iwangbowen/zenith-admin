@@ -73,7 +73,7 @@ export default function ShortLinksPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -134,7 +134,7 @@ export default function ShortLinksPage() {
     editing && (editing.utmSource || editing.utmMedium || editing.utmCampaign || editing.utmTerm || editing.utmContent),
   );
 
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   const buildExportQuery = (): Record<string, unknown> => ({
     keyword: submittedParams.keyword || undefined,
@@ -217,39 +217,6 @@ export default function ShortLinksPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索短码 / 标题 / 目标地址..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderBizTypeFilter = () => (
-    <FilterSelect
-      items={SHORT_LINK_BIZ_TYPE_OPTIONS}
-      placeholder="全部来源"
-      value={draftParams.bizType}
-      onChange={setField('bizType')}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter
-      value={draftParams.timeRange}
-      onChange={setField('timeRange')}
-    />
-  );
-
   const renderBatchButtons = () => selectedRowKeys.length > 0 ? (
     <>
       {hasPermission('shortlink:link:update') && (
@@ -268,34 +235,44 @@ export default function ShortLinksPage() {
     </>
   ) : null;
 
-  const renderCreateButton = () => hasPermission('shortlink:link:create')
-    ? <CreateButton onClick={modal.openCreate} /> : null;
-
-  const renderExportButtons = () => hasPermission('shortlink:link:export')
-    ? <ExportButton entity="shortlink.links" query={buildExportQuery()} /> : null;
-
-  const renderMobileExportActions = () => hasPermission('shortlink:link:export')
-    ? <ExportButton entity="shortlink.links" query={buildExportQuery()} label="导出" variant="flat" /> : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索短码 / 标题 / 目标地址..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={<>
-          {renderStatusFilter()}
-          {renderBizTypeFilter()}
-          {renderTimeRangeFilter()}
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
+          <FilterSelect
+            items={SHORT_LINK_BIZ_TYPE_OPTIONS}
+            placeholder="全部来源"
+            {...bind('bizType')}
+          />
+          <DateRangeFilter
+            {...bind('timeRange')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('shortlink:link:create')
+            ? <CreateButton onClick={modal.openCreate} /> : null
+        )}
         actions={<>
           {renderBatchButtons()}
-          {renderExportButtons()}
+          {hasPermission('shortlink:link:export')
+            ? <ExportButton entity="shortlink.links" query={buildExportQuery()} /> : null}
         </>}
         mobileActions={<>
           {renderBatchButtons()}
-          {renderMobileExportActions()}
+          {hasPermission('shortlink:link:export')
+            ? <ExportButton entity="shortlink.links" query={buildExportQuery()} label="导出" variant="flat" /> : null}
         </>}
         filterTitle="筛选条件"
       />
@@ -351,7 +328,7 @@ export default function ShortLinksPage() {
               <Col span={12}>
                 <Form.Select
                   field="status" label="状态" style={{ width: '100%' }}
-                  optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+                  optionList={statusOptions}
                   rules={[{ required: true, message: '请选择状态' }]}
                 />
               </Col>

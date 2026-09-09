@@ -69,7 +69,7 @@ export default function IotDevicesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, setField, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: iotDeviceKeys.lists });
 
@@ -292,53 +292,6 @@ export default function IotDevicesPage() {
     },
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索 SN / 设备名..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderProductFilter = () => (
-    <FilterSelect
-      placeholder="全部产品"
-      items={products.map((p) => ({ value: String(p.id), label: p.name }))}
-      value={draftParams.productId === null ? '' : String(draftParams.productId)}
-      onChange={(v) => setField('productId')(v ? Number(v) : null)}
-    />
-  );
-
-  const renderGroupFilter = () => (
-    <FilterSelect
-      placeholder="全部分组"
-      items={groups.map((g) => ({ value: String(g.id), label: g.name }))}
-      value={draftParams.groupId === null ? '' : String(draftParams.groupId)}
-      onChange={(v) => setField('groupId')(v ? Number(v) : null)}
-    />
-  );
-
-  const renderNodeTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部形态"
-      items={IOT_NODE_TYPE_OPTIONS}
-      value={draftParams.nodeType}
-      onChange={setField('nodeType')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('iot:device:create')
-    ? <CreateButton onClick={modal.openCreate}>注册设备</CreateButton> : null;
-
   const canBatch = hasPermission('iot:device:batch');
 
   const buildExportQuery = () => compactQuery({
@@ -351,16 +304,41 @@ export default function IotDevicesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索 SN / 设备名..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={<>
-          {renderProductFilter()}
-          {renderGroupFilter()}
-          {renderNodeTypeFilter()}
-          {renderStatusFilter()}
+          <FilterSelect
+            placeholder="全部产品"
+            items={products.map((p) => ({ value: String(p.id), label: p.name }))}
+            value={draftParams.productId === null ? '' : String(draftParams.productId)}
+            onChange={(v) => setField('productId')(v ? Number(v) : null)}
+          />
+          <FilterSelect
+            placeholder="全部分组"
+            items={groups.map((g) => ({ value: String(g.id), label: g.name }))}
+            value={draftParams.groupId === null ? '' : String(draftParams.groupId)}
+            onChange={(v) => setField('groupId')(v ? Number(v) : null)}
+          />
+          <FilterSelect
+            placeholder="全部形态"
+            items={IOT_NODE_TYPE_OPTIONS}
+            {...bind('nodeType')}
+          />
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('iot:device:create')
+            ? <CreateButton onClick={modal.openCreate}>注册设备</CreateButton> : null
+        )}
         actions={<>
           {canBatch && selectedRowKeys.length > 0 && (
             <>

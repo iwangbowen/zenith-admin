@@ -365,7 +365,7 @@ export default function WorkflowMonitorPage() {
   const defaultSearchParams: SearchParams = { keyword: '', initiator: '', status: undefined, categoryId: undefined, definitionId: undefined, priority: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, bind, bindKeyword, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowMonitorKeys.monitorLists });
   const listQuery = useWorkflowMonitorList({
@@ -530,7 +530,6 @@ export default function WorkflowMonitorPage() {
       },
     });
   };
-
 
   const stats = data?.stats ?? { total: 0, running: 0, suspended: 0, returned: 0, approved: 0, rejected: 0, withdrawn: 0, cancelled: 0 };
   // 首次加载完成前显示占位符，避免统计短暂闪现误导性的 0
@@ -1044,63 +1043,6 @@ export default function WorkflowMonitorPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索申请标题 / 流程名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
-  );
-
-  const renderCategoryFilter = () => (
-    <FilterSelect
-      placeholder="全部所有分类"
-      items={categories.map((c: WorkflowCategory) => ({ label: c.name, value: c.id }))}
-      value={draftParams.categoryId}
-      onChange={v => setField('categoryId')(v as number | undefined)}
-      width={140}
-    />
-  );
-
-  const renderDefinitionFilter = () => (
-    <FilterSelect
-      placeholder="全部所有流程"
-      items={definitions.map((d) => ({ label: d.name, value: d.id }))}
-      value={draftParams.definitionId}
-      onChange={v => setField('definitionId')(v as number | undefined)}
-      width={160}
-      filter
-    />
-  );
-
-  const renderInitiatorFilter = () => (
-    <Input
-      placeholder="申请人"
-      showClear
-      value={draftParams.initiator}
-      onChange={setField('initiator')}
-      onEnterPress={handleSearch}
-      style={{ width: 120 }}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <FilterSelect
-      placeholder="全部所有状态"
-      items={['running', 'suspended', 'returned', 'approved', 'rejected', 'withdrawn', 'cancelled'].map((s) => ({ value: s, label: INSTANCE_STATUS_MAP[s].text }))}
-      value={draftParams.status}
-      onChange={setField('status')}
-      width={140}
-    />
-  );
-
-  const renderPriorityFilter = () => (
-    <FilterSelect
-      placeholder="全部所有优先级"
-      items={WORKFLOW_PRIORITY_OPTIONS}
-      value={draftParams.priority}
-      onChange={setField('priority')}
-      width={140}
-    />
-  );
-
-
   const buildExportQuery = () => {
     const { keyword, status, categoryId, definitionId, initiator, priority } = draftParams;
     return compactQuery({
@@ -1112,16 +1054,6 @@ export default function WorkflowMonitorPage() {
       priority,
     });
   };
-
-  const renderExportButton = () => (
-    <ExportButton entity="workflow.instances" query={buildExportQuery()} formats={['xlsx']} />
-  );
-
-  const renderHandoverButton = () => (
-    hasPermission('workflow:task:handover') ? (
-      <Button type="primary" icon={<UserRoundCog size={14} />} onClick={() => setHandoverVisible(true)}>离职交接</Button>
-    ) : null
-  );
 
   return (
     <div className="page-container page-tabs-page">
@@ -1149,22 +1081,51 @@ export default function WorkflowMonitorPage() {
         }}
       />
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索申请标题 / 流程名称" {...bindKeyword('keyword')} width={240} />}
         filters={(
           <>
-            {renderCategoryFilter()}
-            {renderDefinitionFilter()}
-            {renderInitiatorFilter()}
-            {renderStatusFilter()}
-            {renderPriorityFilter()}
+            <FilterSelect
+              placeholder="全部所有分类"
+              items={categories.map((c: WorkflowCategory) => ({ label: c.name, value: c.id }))}
+              {...bind('categoryId')}
+              width={140}
+            />
+            <FilterSelect
+              placeholder="全部所有流程"
+              items={definitions.map((d) => ({ label: d.name, value: d.id }))}
+              {...bind('definitionId')}
+              width={160}
+              filter
+            />
+            <Input
+              placeholder="申请人"
+              showClear
+              {...bind('initiator')}
+              onEnterPress={handleSearch}
+              style={{ width: 120 }}
+            />
+            <FilterSelect
+              placeholder="全部所有状态"
+              items={['running', 'suspended', 'returned', 'approved', 'rejected', 'withdrawn', 'cancelled'].map((s) => ({ value: s, label: INSTANCE_STATUS_MAP[s].text }))}
+              {...bind('status')}
+              width={140}
+            />
+            <FilterSelect
+              placeholder="全部所有优先级"
+              items={WORKFLOW_PRIORITY_OPTIONS}
+              {...bind('priority')}
+              width={140}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
         actions={(
           <>
-            {renderExportButton()}
-            {renderHandoverButton()}
+            <ExportButton entity="workflow.instances" query={buildExportQuery()} formats={['xlsx']} />
+            {hasPermission('workflow:task:handover') ? (
+              <Button type="primary" icon={<UserRoundCog size={14} />} onClick={() => setHandoverVisible(true)}>离职交接</Button>
+            ) : null}
           </>
         )}
         filterTitle="实例监控筛选"

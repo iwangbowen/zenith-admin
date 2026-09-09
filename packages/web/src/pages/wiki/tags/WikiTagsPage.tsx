@@ -26,7 +26,7 @@ export default function WikiTagsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiTagKeys.lists });
 
@@ -73,25 +73,21 @@ export default function WikiTagsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索标签名称..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('wiki:tag:create')
-    ? <CreateButton onClick={modal.openCreate} /> : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索标签名称..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('wiki:tag:create')
+            ? <CreateButton onClick={modal.openCreate} /> : null
+        )}
       />
 
       <ConfigurableTable<WikiTag>

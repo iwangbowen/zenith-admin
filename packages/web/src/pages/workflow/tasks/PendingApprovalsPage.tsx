@@ -50,7 +50,7 @@ export default function PendingApprovalsPage() {
   const queryClient = useQueryClient();
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, setField, bindKeyword, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowTaskKeys.pendingLists });
   const [sheet, setSheet] = useState<SheetState | null>(null);
@@ -231,36 +231,6 @@ export default function PendingApprovalsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="请输入审批标题" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
-  );
-
-  const renderDefinitionFilter = () => (
-    <FilterSelect
-      placeholder="全部流程类型"
-      items={definitions.map((d) => ({ value: d.id, label: d.name }))}
-      value={draftParams.definitionId ?? undefined}
-      onChange={(v) => setField('definitionId')(v ?? null)}
-      width={180}
-    />
-  );
-
-
-  const renderMyConsultsButton = () => (
-    <Button type="tertiary" onClick={openMyConsults}>我的协办</Button>
-  );
-
-  const renderBatchButtons = () => selectedRowKeys.length > 0 ? (
-    <>
-      <Button type="primary" theme="solid" icon={<Plus size={14} />} onClick={() => setBatch({ mode: 'approve', comment: '' })}>
-        批量同意（{selectedRowKeys.length}）
-      </Button>
-      <Button type="danger" theme="solid" onClick={() => setBatch({ mode: 'reject', comment: '' })}>
-        批量拒绝（{selectedRowKeys.length}）
-      </Button>
-    </>
-  ) : null;
-
   return (
     <div className="page-container">
       <SavedViewsBar
@@ -272,14 +242,31 @@ export default function PendingApprovalsPage() {
         }}
       />
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderDefinitionFilter()}
+        keyword={<KeywordInput placeholder="请输入审批标题" {...bindKeyword('keyword')} width={200} />}
+        filters={(
+          <FilterSelect
+            placeholder="全部流程类型"
+            items={definitions.map((d) => ({ value: d.id, label: d.name }))}
+            value={draftParams.definitionId ?? undefined}
+            onChange={(v) => setField('definitionId')(v ?? null)}
+            width={180}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
         actions={(
           <>
-            {renderMyConsultsButton()}
-            {renderBatchButtons()}
+            <Button type="tertiary" onClick={openMyConsults}>我的协办</Button>
+            {selectedRowKeys.length > 0 ? (
+              <>
+                <Button type="primary" theme="solid" icon={<Plus size={14} />} onClick={() => setBatch({ mode: 'approve', comment: '' })}>
+                  批量同意（{selectedRowKeys.length}）
+                </Button>
+                <Button type="danger" theme="solid" onClick={() => setBatch({ mode: 'reject', comment: '' })}>
+                  批量拒绝（{selectedRowKeys.length}）
+                </Button>
+              </>
+            ) : null}
           </>
         )}
         filterTitle="待办审批筛选"

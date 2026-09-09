@@ -98,7 +98,7 @@ export default function DriveAdminSpacesPage() {
   const { hasPermission } = usePermission();
   const canEdit = hasPermission('drive:admin:space:edit');
   const statsQuery = useDriveAdminStats();
-  const { page, pageSize, buildPagination, draftParams, setField, submittedParams, handleSearch, handleReset } =
+  const { page, pageSize, buildPagination, draftParams, setField, bind, bindKeyword, submittedParams, handleSearch, handleReset } =
     useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined, status: undefined, orphaned: false, archived: false }, listKey: driveKeys.adminSpacesPrefix, extraKeys: [driveKeys.adminStats] });
   const listQuery = useDriveAdminSpaces({
     page, pageSize, keyword: submittedParams.keyword || undefined, type: submittedParams.type, status: submittedParams.status,
@@ -200,9 +200,9 @@ export default function DriveAdminSpacesPage() {
       <SearchToolbar
         filters={(
           <>
-            <KeywordInput value={draftParams.keyword} placeholder="搜索空间 / 所有者" onChange={setField('keyword')} onSearch={handleSearch} />
-            <FilterSelect<DriveSpaceType> value={draftParams.type} placeholder="全部类型" items={DRIVE_SPACE_TYPE_OPTIONS} onChange={setField('type')} />
-            <StatusSelect<'enabled' | 'disabled'> value={draftParams.status} items={STATUS_OPTIONS} onChange={setField('status')} />
+            <KeywordInput {...bindKeyword('keyword')} placeholder="搜索空间 / 所有者" />
+            <FilterSelect<DriveSpaceType> {...bind('type')} placeholder="全部类型" items={DRIVE_SPACE_TYPE_OPTIONS} />
+            <StatusSelect<'enabled' | 'disabled'> {...bind('status')} items={STATUS_OPTIONS} />
             <Checkbox checked={draftParams.orphaned} onChange={(event) => setField('orphaned')(!!event.target.checked)}>仅待接管</Checkbox>
             <Checkbox checked={draftParams.archived} onChange={(event) => setField('archived')(!!event.target.checked)}>仅已归档</Checkbox>
           </>

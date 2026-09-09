@@ -24,13 +24,13 @@ import { TemplateNameCodeRow, TemplateVariablesRemarkRows } from '../message-tem
 
 export default function InAppTemplatesPage() {
   const { hasPermission: can } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   interface SearchParams { keyword: string; filterType: InAppMessageType | undefined; filterStatus: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterType: undefined, filterStatus: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: inAppTemplateKeys.lists });
 
@@ -103,19 +103,17 @@ export default function InAppTemplatesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索模板名称/编码/标题" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />}
+        keyword={<KeywordInput placeholder="搜索模板名称/编码/标题" {...bindKeyword('keyword')} width={240} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部类型"
               items={TYPE_OPTIONS}
-              value={draftParams.filterType}
-              onChange={(v) => setField('filterType')(v as InAppMessageType | undefined)}
+              {...bind('filterType')}
             />
             <StatusSelect
               items={statusItems}
-              value={draftParams.filterStatus}
-              onChange={(v) => setField('filterStatus')(v as string | undefined)}
+              {...bind('filterStatus')}
             />
           </>
         )}
@@ -144,7 +142,7 @@ export default function InAppTemplatesPage() {
             </Col>
             <Col span={12}>
               <Form.Select field="status" label="状态" style={{ width: '100%' }} placeholder="请选择状态"
-                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+                optionList={statusOptions} />
             </Col>
           </Row>
           <Row gutter={16}>

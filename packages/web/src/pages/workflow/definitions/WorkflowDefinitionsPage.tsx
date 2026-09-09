@@ -69,7 +69,7 @@ export default function WorkflowDefinitionsPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, bind, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -143,7 +143,6 @@ export default function WorkflowDefinitionsPage() {
     await enableMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('已启用');
   };
-
 
   const batchDisable = () => {
     if (selectedRowKeys.length === 0) return;
@@ -390,35 +389,6 @@ export default function WorkflowDefinitionsPage() {
     }),
   ];
 
-  const renderCategoryButton = () => (
-    <Button
-      theme="borderless"
-      icon={<Layers size={14} />}
-      onClick={() => setShowCategorySidebar(true)}
-      style={{ display: isLayoutNarrow ? undefined : 'none' }}
-    >分类</Button>
-  );
-
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索流程名称" value={draftParams.keyword} onChange={setField('keyword')} width={200} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={STATUS_FILTER_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-
-  const renderCreateButton = () => hasPermission('workflow:definition:create') ? (
-    <CreateButton onClick={() => {
-      const qs = draftParams.selectedCategoryId === null ? '' : `?categoryId=${draftParams.selectedCategoryId}`;
-      navigate(`/workflow/designer/new${qs}`);
-    }}>新建流程</CreateButton>
-  ) : null;
-
   const renderImportButton = () => hasPermission('workflow:definition:create') ? (
     <Button
       type="primary"
@@ -485,11 +455,23 @@ export default function WorkflowDefinitionsPage() {
             onChange={(event) => { void handleImportFile(event); }}
           />
           <ListSearchToolbar
-            keyword={renderKeywordSearch()}
-            filters={renderStatusFilter()}
+            keyword={<KeywordInput placeholder="搜索流程名称" {...bind('keyword')} width={200} />}
+            filters={(
+              <StatusSelect
+                items={STATUS_FILTER_OPTIONS}
+                {...bind('status')}
+              />
+            )}
             onSearch={handleSearch}
             onReset={handleReset}
-            create={renderCreateButton()}
+            create={(
+              hasPermission('workflow:definition:create') ? (
+                <CreateButton onClick={() => {
+                  const qs = draftParams.selectedCategoryId === null ? '' : `?categoryId=${draftParams.selectedCategoryId}`;
+                  navigate(`/workflow/designer/new${qs}`);
+                }}>新建流程</CreateButton>
+              ) : null
+            )}
             actions={(
               <>
                 {renderImportButton()}
@@ -499,7 +481,12 @@ export default function WorkflowDefinitionsPage() {
             )}
             mobileActions={(
               <>
-                {renderCategoryButton()}
+                <Button
+                  theme="borderless"
+                  icon={<Layers size={14} />}
+                  onClick={() => setShowCategorySidebar(true)}
+                  style={{ display: isLayoutNarrow ? undefined : 'none' }}
+                >分类</Button>
                 {renderImportButton()}
                 {renderTemplateButton()}
                 {renderBatchButtons()}

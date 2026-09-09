@@ -37,7 +37,7 @@ export default function OperationLogsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, setField, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: operationLogKeys.all });
   const listQuery = useOperationLogList({
@@ -81,81 +81,6 @@ export default function OperationLogsPage() {
     });
   };
 
-  const renderUsernameSearch = () => (
-    <KeywordInput placeholder="操作人用户名 / 昵称" value={draftParams.username} onChange={setField('username')} onSearch={handleSearch} width={160} />
-  );
-
-  const renderModuleSearch = () => (
-    <KeywordInput placeholder="请输入功能模块" value={draftParams.module} onChange={setField('module')} onSearch={handleSearch} width={160} />
-  );
-
-  const renderDescriptionSearch = () => (
-    <KeywordInput placeholder="请输入操作描述" value={draftParams.description} onChange={setField('description')} onSearch={handleSearch} width={160} />
-  );
-
-  const renderMethodFilter = () => (
-    <FilterSelect
-      placeholder="全部请求方法"
-      items={METHOD_OPTIONS}
-      value={draftParams.method}
-      onChange={setField('method')}
-      width={140}
-    />
-  );
-
-  const renderPathSearch = () => (
-    <KeywordInput placeholder="请输入请求路径" value={draftParams.path} onChange={setField('path')} onSearch={handleSearch} width={180} />
-  );
-
-  const renderIpSearch = () => (
-    <KeywordInput placeholder="请输入 IP 地址" value={draftParams.ip} onChange={setField('ip')} onSearch={handleSearch} width={160} />
-  );
-
-  const renderContentSearch = () => (
-    <KeywordInput placeholder="请求/变更内容包含…" value={draftParams.content} onChange={setField('content')} onSearch={handleSearch} width={180} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
-  );
-
-  const renderDurationFilters = () => (
-    <>
-      <InputNumber
-        placeholder="耗时 ≥ (ms)"
-        value={draftParams.minDurationMs ?? undefined}
-        onChange={(v) => setField('minDurationMs')(v !== '' && v != null ? Number(v) : null)}
-        min={0}
-        style={{ width: 130 }}
-        hideButtons
-      />
-      <InputNumber
-        placeholder="耗时 ≤ (ms)"
-        value={draftParams.maxDurationMs ?? undefined}
-        onChange={(v) => setField('maxDurationMs')(v !== '' && v != null ? Number(v) : null)}
-        min={0}
-        style={{ width: 130 }}
-        hideButtons
-      />
-    </>
-  );
-
-  const renderExportButtons = () => <ExportButton entity="system.operation-logs" query={buildExportQuery()} />;
-
-  const renderMobileExportActions = () => <ExportButton entity="system.operation-logs" query={buildExportQuery()} variant="flat" />;
-
-  const renderClearButtons = () => <ClearLogsButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />;
-
-  const renderMobileClearActions = () => <ClearLogsMobileButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />;
-
   return (
     <div className="page-container page-tabs-page">
       <Tabs
@@ -168,32 +93,57 @@ export default function OperationLogsPage() {
       >
         <TabPane tab="日志列表" itemKey="list">
           <ListSearchToolbar
-            keyword={renderUsernameSearch()}
+            keyword={<KeywordInput placeholder="操作人用户名 / 昵称" {...bindKeyword('username')} width={160} />}
             filters={(
               <>
-                {renderModuleSearch()}
-                {renderDescriptionSearch()}
-                {renderMethodFilter()}
-                {renderPathSearch()}
-                {renderIpSearch()}
-                {renderContentSearch()}
-                {renderStatusFilter()}
-                {renderTimeRangeFilter()}
-                {renderDurationFilters()}
+                <KeywordInput placeholder="请输入功能模块" {...bindKeyword('module')} width={160} />
+                <KeywordInput placeholder="请输入操作描述" {...bindKeyword('description')} width={160} />
+                <FilterSelect
+                  placeholder="全部请求方法"
+                  items={METHOD_OPTIONS}
+                  {...bind('method')}
+                  width={140}
+                />
+                <KeywordInput placeholder="请输入请求路径" {...bindKeyword('path')} width={180} />
+                <KeywordInput placeholder="请输入 IP 地址" {...bindKeyword('ip')} width={160} />
+                <KeywordInput placeholder="请求/变更内容包含…" {...bindKeyword('content')} width={180} />
+                <StatusSelect
+                  items={STATUS_OPTIONS}
+                  {...bind('status')}
+                />
+                <DateRangeFilter {...bind('timeRange')} />
+                <>
+                  <InputNumber
+                    placeholder="耗时 ≥ (ms)"
+                    value={draftParams.minDurationMs ?? undefined}
+                    onChange={(v) => setField('minDurationMs')(v !== '' && v != null ? Number(v) : null)}
+                    min={0}
+                    style={{ width: 130 }}
+                    hideButtons
+                  />
+                  <InputNumber
+                    placeholder="耗时 ≤ (ms)"
+                    value={draftParams.maxDurationMs ?? undefined}
+                    onChange={(v) => setField('maxDurationMs')(v !== '' && v != null ? Number(v) : null)}
+                    min={0}
+                    style={{ width: 130 }}
+                    hideButtons
+                  />
+                </>
               </>
             )}
             onSearch={handleSearch}
             onReset={handleReset}
             actions={(
               <>
-                {renderExportButtons()}
-                {renderClearButtons()}
+                <ExportButton entity="system.operation-logs" query={buildExportQuery()} />
+                <ClearLogsButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}
             mobileActions={(
               <>
-                {renderMobileExportActions()}
-                {renderMobileClearActions()}
+                <ExportButton entity="system.operation-logs" query={buildExportQuery()} variant="flat" />
+                <ClearLogsMobileButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}
             filterTitle="操作日志筛选"

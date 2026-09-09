@@ -118,18 +118,16 @@ export default function AiUsagePage() {
     },
   });
 
-  const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" value={draftRange} onChange={(value) => {
-        if (Array.isArray(value) && value.length >= 2 && value[0] instanceof Date && value[1] instanceof Date) {
-          setDraftRange([value[0], value[1]]);
-        }
-      }} />
-  );
-
   return (
     <div className="page-container zx-flat-panels">
       <ListSearchToolbar
-        filters={renderDateRangeFilter()}
+        filters={(
+          <DateRangeFilter type="dateRange" value={draftRange} onChange={(value) => {
+              if (Array.isArray(value) && value.length >= 2 && value[0] instanceof Date && value[1] instanceof Date) {
+                setDraftRange([value[0], value[1]]);
+              }
+            }} />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
         filterTitle="用量筛选"

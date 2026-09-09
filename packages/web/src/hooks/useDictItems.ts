@@ -19,6 +19,9 @@ export function useDictItems(code: string) {
 
   const items = useMemo(() => data ?? [], [data]);
 
+  /** `{ value, label }` 选项数组：直接交给 `Form.Select` / `Select` 的 `optionList`，页面不再逐个 `.map` 转换 */
+  const options = useMemo(() => items.map((item) => ({ value: item.value, label: item.label })), [items]);
+
   /** 根据 value 查找 label */
   const getLabel = useCallback(
     (value: string) => items.find((i) => i.value === value)?.label ?? value,
@@ -31,5 +34,5 @@ export function useDictItems(code: string) {
     [items],
   );
 
-  return { items, loading: !!code && isPending, getLabel, getColor };
+  return { items, options, loading: !!code && isPending, getLabel, getColor };
 }

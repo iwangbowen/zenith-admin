@@ -77,7 +77,7 @@ export default function AiFeedbackPage() {
   const formApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: aiFeedbackKeys.lists });
   const [modalVisible, setModalVisible] = useState(false);
@@ -219,44 +219,6 @@ export default function AiFeedbackPage() {
     }),
   ];
 
-  const renderFeedbackFilter = () => (
-    <FilterSelect
-      placeholder="全部反馈类型"
-      items={FEEDBACK_OPTIONS}
-      value={draftParams.feedback}
-      onChange={(v) => setField('feedback')(String(v))}
-      width={140}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <FilterSelect
-      placeholder="全部处理状态"
-      items={STATUS_FILTER_OPTIONS}
-      value={draftParams.status}
-      onChange={(v) => setField('status')(String(v))}
-      width={140}
-    />
-  );
-
-  const renderModelFilter = () => (
-    <FilterSelect
-      placeholder="全部模型"
-      items={modelOptions}
-      value={draftParams.model}
-      onChange={setField('model')}
-      width={160}
-      filter
-    />
-  );
-
-  const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" value={draftParams.timeRange ?? undefined} onChange={(value) => {
-        const [from, to] = Array.isArray(value) ? value : [];
-        setField('timeRange')(from instanceof Date && to instanceof Date ? [from, to] : null);
-      }} />
-  );
-
   const renderExportButton = () => (
     <Button type="primary" icon={<Download size={14} />} onClick={handleExport}>导出</Button>
   );
@@ -266,10 +228,26 @@ export default function AiFeedbackPage() {
       <ListSearchToolbar
         filters={(
           <>
-            {renderFeedbackFilter()}
-            {renderStatusFilter()}
-            {renderModelFilter()}
-            {renderDateRangeFilter()}
+            <FilterSelect
+              placeholder="全部反馈类型"
+              items={FEEDBACK_OPTIONS}
+              {...bind('feedback', (v) => String(v))}
+              width={140}
+            />
+            <FilterSelect
+              placeholder="全部处理状态"
+              items={STATUS_FILTER_OPTIONS}
+              {...bind('status', (v) => String(v))}
+              width={140}
+            />
+            <FilterSelect
+              placeholder="全部模型"
+              items={modelOptions}
+              {...bind('model')}
+              width={160}
+              filter
+            />
+            <DateRangeFilter type="dateRange" {...bind('timeRange')} />
           </>
         )}
         onSearch={handleSearch}

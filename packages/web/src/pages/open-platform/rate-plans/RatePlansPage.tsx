@@ -20,8 +20,7 @@ const { Text } = Typography;
 const fmtQuota = (n: number) => (n > 0 ? n.toLocaleString() : '不限');
 
 export default function RatePlansPage() {
-  const { items: statusItems } = useDictItems('common_status');
-  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const canManage = hasPermission('open:rate-plan:manage');
 
@@ -29,7 +28,7 @@ export default function RatePlansPage() {
   const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: ratePlanKeys.lists });
 
@@ -101,13 +100,12 @@ export default function RatePlansPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索套餐编码 / 名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索套餐编码 / 名称" {...bindKeyword('keyword')} />}
         filters={(
           <>
             <StatusSelect
-              items={STATUS_OPTIONS}
-              value={draftParams.status}
-              onChange={(v) => setField('status')(v as string)}
+              items={statusOptions}
+              {...bind('status')}
             />
           </>
         )}
@@ -155,7 +153,7 @@ export default function RatePlansPage() {
               <Form.Switch field="isDefault" label="默认套餐" extraText="应用未绑定套餐时回退使用" />
             </Col>
             <Col span={12}>
-              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={STATUS_OPTIONS} rules={[{ required: true, message: '请选择状态' }]} />
+              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} rules={[{ required: true, message: '请选择状态' }]} />
             </Col>
           </Row>
           <Form.TextArea field="description" label="描述" placeholder="套餐说明（可选）" rows={2} />

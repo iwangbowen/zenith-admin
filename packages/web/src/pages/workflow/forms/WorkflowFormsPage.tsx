@@ -46,7 +46,7 @@ export default function WorkflowFormsPage() {
   const { items: statusItems } = useDictItems('common_status');
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowFormKeys.lists });
   const { categories } = useWorkflowCategories();
@@ -69,7 +69,6 @@ export default function WorkflowFormsPage() {
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
   );
-
 
   const handleDuplicate = async (id: number) => {
     try {
@@ -157,46 +156,31 @@ export default function WorkflowFormsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索表单名称/标识" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={(value) => setField('status')(toStatus(value))}
-    />
-  );
-
-  const renderCategoryFilter = () => (
-    <FilterSelect
-      placeholder="全部分类"
-      items={categoryOptions}
-      value={draftParams.categoryId}
-      onChange={setField('categoryId')}
-      width={160}
-    />
-  );
-
-
-  const renderCreateButton = () => hasPermission('workflow:form:create') ? (
-    <CreateButton onClick={() => navigate('/workflow/forms/designer')}>新建表单</CreateButton>
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索表单名称/标识" {...bindKeyword('keyword')} />}
         filters={(
           <>
-            {renderStatusFilter()}
-            {renderCategoryFilter()}
+            <StatusSelect
+              items={statusItems}
+              {...bind('status', (value) => toStatus(value))}
+            />
+            <FilterSelect
+              placeholder="全部分类"
+              items={categoryOptions}
+              {...bind('categoryId')}
+              width={160}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('workflow:form:create') ? (
+            <CreateButton onClick={() => navigate('/workflow/forms/designer')}>新建表单</CreateButton>
+          ) : null
+        )}
         filterTitle="表单筛选"
       />
 

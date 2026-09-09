@@ -58,7 +58,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, setField, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<FirmwareSearchParams>({ defaults: defaultFirmwareSearch, listKey: iotFirmwareKeys.lists });
 
@@ -158,44 +158,37 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
   const renderKeyword = () => (
     <KeywordInput
       placeholder="搜索版本 / 文件名..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderProductFilter = () => (
-    <FilterSelect
-      placeholder="全部产品"
-      items={products.map((p) => ({ value: String(p.id), label: p.name }))}
-      value={draftParams.productId === null ? '' : String(draftParams.productId)}
-      onChange={(v) => setField('productId')(v ? Number(v) : null)}
+      {...bindKeyword('keyword')}
     />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
+      {...bind('status')}
     />
   );
-
-  const renderUploadButton = () => hasPermission('iot:ota:firmware:manage')
-    ? <CreateButton onClick={() => { setUploadVisible(true); uploadFileRef.current = null; }}>上传固件</CreateButton>
-    : null;
 
   return (
     <>
       <ListSearchToolbar
         keyword={renderKeyword()}
         filters={<>
-          {renderProductFilter()}
+          <FilterSelect
+            placeholder="全部产品"
+            items={products.map((p) => ({ value: String(p.id), label: p.name }))}
+            value={draftParams.productId === null ? '' : String(draftParams.productId)}
+            onChange={(v) => setField('productId')(v ? Number(v) : null)}
+          />
           {renderStatusFilter()}
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderUploadButton()}
+        create={(
+          hasPermission('iot:ota:firmware:manage')
+            ? <CreateButton onClick={() => { setUploadVisible(true); uploadFileRef.current = null; }}>上传固件</CreateButton>
+            : null
+        )}
         filterTitle="筛选条件"
       />
       <ConfigurableTable<IotFirmware>
@@ -276,7 +269,7 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<TaskSearchParams>({ defaults: defaultTaskSearch, listKey: iotOtaTaskKeys.lists });
 
@@ -372,9 +365,7 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
   const renderKeyword = () => (
     <KeywordInput
       placeholder="搜索任务 / 版本..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
+      {...bindKeyword('keyword')}
     />
   );
 
@@ -382,8 +373,7 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
     <StatusSelect
      
       items={IOT_OTA_TASK_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
+      {...bind('status')}
     />
   );
 

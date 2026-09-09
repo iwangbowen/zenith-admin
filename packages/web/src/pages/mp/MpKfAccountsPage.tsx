@@ -114,15 +114,6 @@ export default function MpKfAccountsPage() {
     }),
   ];
 
-  const renderAccountFilter = () => (
-    <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-  );
-  const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索客服昵称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={180} />
-  );
-  const renderCreateButton = () => can('mp:kf:create') ? (
-    <CreateButton onClick={modal.openCreate} disabled={!currentId}>添加客服</CreateButton>
-  ) : null;
   const renderSyncButton = () => can('mp:kf:sync') ? (
     <Button icon={<RefreshCw size={14} />} loading={syncMutation.isPending} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>
   ) : null;
@@ -130,11 +121,15 @@ export default function MpKfAccountsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordInput()}
-        filters={renderAccountFilter()}
+        keyword={<KeywordInput placeholder="搜索客服昵称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={180} />}
+        filters={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          can('mp:kf:create') ? (
+            <CreateButton onClick={modal.openCreate} disabled={!currentId}>添加客服</CreateButton>
+          ) : null
+        )}
         actions={renderSyncButton()}
         mobileActions={(renderSyncButton())}
         filterTitle="多客服筛选"

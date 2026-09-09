@@ -140,32 +140,29 @@ export default function AnalyticsSessionsTab() {
     }),
   ];
 
-  const renderUsernameSearch = () => (
-    <Input
-      prefix={<Search size={14} />}
-      placeholder="用户名"
-      value={usernameInput}
-      showClear
-      onChange={setUsernameInput}
-      onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-      style={{ width: 200 }}
-    />
-  );
-  const renderDeviceFilter = () => (
-    <FilterSelect
-      placeholder="全部设备"
-      items={ANALYTICS_DEVICE_TYPE_OPTIONS}
-      value={deviceInput}
-      onChange={setDeviceInput}
-      width={150}
-    />
-  );
-
   return (
     <div style={sectionStyle}>
       <ListSearchToolbar
-        keyword={renderUsernameSearch()}
-        filters={renderDeviceFilter()}
+        keyword={(
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="用户名"
+            value={usernameInput}
+            showClear
+            onChange={setUsernameInput}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+            style={{ width: 200 }}
+          />
+        )}
+        filters={(
+          <FilterSelect
+            placeholder="全部设备"
+            items={ANALYTICS_DEVICE_TYPE_OPTIONS}
+            value={deviceInput}
+            onChange={setDeviceInput}
+            width={150}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
         filterTitle="会话筛选"

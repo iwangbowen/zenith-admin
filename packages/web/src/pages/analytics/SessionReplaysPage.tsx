@@ -85,7 +85,7 @@ export default function SessionReplaysPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, setField, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: replayKeys.lists });
 
@@ -218,41 +218,32 @@ export default function SessionReplaysPage() {
           <SearchToolbar>
         <StatusSelect
           items={statusOptions}
-          value={draftParams.status}
-          onChange={setField('status')}
+          {...bind('status')}
         />
         <FilterSelect
           placeholder="全部触发方式"
           items={triggerOptions}
-          value={draftParams.triggerType}
-          onChange={setField('triggerType')}
+          {...bind('triggerType')}
           width={140}
         />
         <FilterSelect
           placeholder="全部来源"
           items={sourceOptions}
-          value={draftParams.source}
-          onChange={setField('source')}
+          {...bind('source')}
         />
         <KeywordInput
           placeholder="用户名/页面/回放 ID"
-          value={draftParams.keyword}
-          onChange={setField('keyword')}
-          onSearch={handleSearch}
+          {...bindKeyword('keyword')}
           width={200}
         />
         <KeywordInput
           placeholder="访问过的页面路径"
-          value={draftParams.pagePath}
-          onChange={setField('pagePath')}
-          onSearch={handleSearch}
+          {...bindKeyword('pagePath')}
           width={170}
         />
         <KeywordInput
           placeholder="点击过的内容"
-          value={draftParams.clickLabel}
-          onChange={setField('clickLabel')}
-          onSearch={handleSearch}
+          {...bindKeyword('clickLabel')}
           width={150}
         />
         <Checkbox

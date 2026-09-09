@@ -105,7 +105,7 @@ export default function TaskCenterPage() {
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: asyncTaskKeys.lists });
   const [detailTask, setDetailTask] = useState<AsyncTask | null>(null);
@@ -497,21 +497,18 @@ export default function TaskCenterPage() {
             <FilterSelect
               placeholder="全部任务类型"
               items={typeOptions}
-              value={draftParams.taskType}
-              onChange={setField('taskType')}
+              {...bind('taskType')}
               width={210}
             />
             <StatusSelect
               items={statusOptions}
-              value={draftParams.status}
-              onChange={setField('status')}
+              {...bind('status')}
             />
-            <KeywordInput placeholder="搜索任务标题/类型" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={190} />
-            <KeywordInput placeholder="任务内容包含…" value={draftParams.content} onChange={setField('content')} onSearch={handleSearch} width={170} />
+            <KeywordInput placeholder="搜索任务标题/类型" {...bindKeyword('keyword')} width={190} />
+            <KeywordInput placeholder="任务内容包含…" {...bindKeyword('content')} width={170} />
             <Input
               placeholder="提交人（用户名/昵称）"
-              value={draftParams.createdBy}
-              onChange={setField('createdBy')}
+              {...bind('createdBy')}
               onEnterPress={handleSearch}
               style={{ width: 170 }}
               showClear

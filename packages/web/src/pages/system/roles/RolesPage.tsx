@@ -47,10 +47,10 @@ export default function RolesPage() {
   }
 
   const defaultSearchParams: SearchParams = { keyword: '', status: undefined, timeRange: null };
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: roleKeys.lists });
   const [menuModalVisible, setMenuModalVisible] = useState(false);
@@ -235,49 +235,34 @@ export default function RolesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索角色名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter placeholder={["开始时间", "结束时间"]} value={draftParams.timeRange ?? undefined} onChange={(value) => setField('timeRange')(value ? (value as [Date, Date]) : null)} />
-  );
-
   const buildExportQuery = () => compactQuery({
     keyword: submittedParams.keyword,
     status: submittedParams.status,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
 
-  const renderExportButtons = () => <ExportButton entity="system.roles" query={buildExportQuery()} />;
-  const renderMobileExportActions = () => <ExportButton entity="system.roles" query={buildExportQuery()} variant="flat" />;
-  const renderCreateButton = () => hasPermission('system:role:create') ? (
-    <CreateButton onClick={roleModal.openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索角色名称/编码" {...bindKeyword('keyword')} />}
         filters={(
           <>
-            {renderStatusFilter()}
-            {renderTimeRangeFilter()}
+            <StatusSelect
+              items={statusItems}
+              {...bind('status')}
+            />
+            <DateRangeFilter placeholder={["开始时间", "结束时间"]} {...bind('timeRange')} />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
-        actions={renderExportButtons()}
-        mobileActions={renderMobileExportActions()}
+        create={(
+          hasPermission('system:role:create') ? (
+            <CreateButton onClick={roleModal.openCreate} />
+          ) : null
+        )}
+        actions={<ExportButton entity="system.roles" query={buildExportQuery()} />}
+        mobileActions={<ExportButton entity="system.roles" query={buildExportQuery()} variant="flat" />}
         filterTitle="角色筛选"
         actionTitle="角色操作"
       />
@@ -305,7 +290,7 @@ export default function RolesPage() {
           />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             disabled={editingRole?.code === 'super_admin'}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+            optionList={statusOptions}
             placeholder="请选择状态"
           />
         </Form>

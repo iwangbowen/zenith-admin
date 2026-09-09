@@ -62,7 +62,7 @@ export default function FeedbacksPage() {
   // ─── 搜索状态 ──────────────────────────────────────────────────────────
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: userFeedbackKeys.lists });
 
@@ -122,7 +122,6 @@ export default function FeedbacksPage() {
     });
   }
 
-
   // ─── 表格列 ────────────────────────────────────────────────────────────
   const columns: ColumnProps<UserFeedback>[] = useMemo(() => [
     { title: '提交人', dataIndex: 'userNickname', width: 110, render: (v: string | null, r: UserFeedback) => v || `#${r.userId}` },
@@ -176,30 +175,6 @@ export default function FeedbacksPage() {
   ], [hasPermission]);
 
   // ─── 搜索区渲染 ────────────────────────────────────────────────────────
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索反馈内容..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderCategoryFilter = () => (
-    <FilterSelect
-      placeholder="全部分类"
-      items={CATEGORY_OPTIONS}
-      value={draftParams.category}
-      onChange={(v) => setField('category')(v as UserFeedbackCategory | undefined)}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={(v) => setField('status')(v as UserFeedbackStatus | undefined)}
-    />
-  );
-
-  const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setField('dateRange')(value ? (value as [Date, Date]) : null)} />
-  );
 
   const renderBatchDeleteButton = () => selectedRowKeys.length > 0 && hasPermission('system:feedback:delete') ? (
     <BatchDeleteButton count={selectedRowKeys.length} onClick={confirmBatchDelete} />
@@ -208,8 +183,6 @@ export default function FeedbacksPage() {
   const renderExportButton = (variant?: 'flat') => hasPermission('system:feedback:list') ? (
     <ExportButton entity="system.userFeedbacks" query={buildExportQuery()} variant={variant} />
   ) : null;
-
-
 
   return (
     <div className="page-container">
@@ -232,12 +205,19 @@ export default function FeedbacksPage() {
       )}
 
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索反馈内容..." {...bindKeyword('keyword')} />}
         filters={(
           <>
-            {renderCategoryFilter()}
-            {renderStatusFilter()}
-            {renderDateRangeFilter()}
+            <FilterSelect
+              placeholder="全部分类"
+              items={CATEGORY_OPTIONS}
+              {...bind('category')}
+            />
+            <StatusSelect
+              items={STATUS_OPTIONS}
+              {...bind('status')}
+            />
+            <DateRangeFilter type="dateRange" {...bind('dateRange')} />
           </>
         )}
         onSearch={handleSearch}

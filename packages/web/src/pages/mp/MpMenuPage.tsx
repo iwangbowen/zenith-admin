@@ -219,7 +219,6 @@ export default function MpMenuPage() {
   const renderDeleteButton = () => can('mp:menu:delete') ? (
     <Button type="danger" icon={<Trash2 size={14} />} loading={busy === 'delete'} disabled={!currentId} onClick={doDelete}>删除微信菜单</Button>
   ) : null;
-  const renderMobilePrimaryAction = () => renderPublishButton() ?? renderSaveButton();
   const renderMobileActions = () => {
     const pullButton = renderPullButton();
     const saveButton = can('mp:menu:publish') ? renderSaveButton() : null;
@@ -245,7 +244,7 @@ export default function MpMenuPage() {
         mobilePrimary={(
           <>
             {renderStatusTag()}
-            {renderMobilePrimaryAction()}
+            {renderPublishButton() ?? renderSaveButton()}
           </>
         )}
         mobileFilters={renderAccountFilter()}

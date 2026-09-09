@@ -55,7 +55,7 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
 
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: dbAdminKeys.backupLists });
   const listQuery = useDbBackups({ page, pageSize, status: submittedParams.status, type: submittedParams.type }, active);
@@ -146,14 +146,12 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
             <FilterSelect<DbBackupType>
               placeholder="全部备份类型"
               items={DB_BACKUP_TYPE_OPTIONS}
-              value={draftParams.type}
-              onChange={setField('type')}
+              {...bind('type')}
               width={150}
             />
             <StatusSelect<DbBackupStatus>
               items={DB_BACKUP_STATUS_OPTIONS}
-              value={draftParams.status}
-              onChange={setField('status')}
+              {...bind('status')}
             />
           </>
         )}

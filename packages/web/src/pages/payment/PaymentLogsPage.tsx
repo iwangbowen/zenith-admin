@@ -23,7 +23,7 @@ function formatRaw(raw: string | null | undefined): string {
 
 export default function PaymentLogsPage() {  const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentLogKeys.lists });
 
@@ -69,53 +69,29 @@ export default function PaymentLogsPage() {  const {
     </div>
   ) : null);
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="订单号..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
-  );
-
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={PAYMENT_CHANNEL_OPTIONS}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-
-  const renderSceneFilter = () => (
-    <FilterSelect
-      placeholder="全部场景"
-      items={[{ value: 'payment', label: '支付回调' }, { value: 'refund', label: '退款回调' }]}
-      value={draftParams.scene}
-      onChange={setField('scene')}
-    />
-  );
-
-  const renderSignatureFilter = () => (
-    <FilterSelect
-      placeholder="全部验签结果"
-      items={[{ value: 'true', label: '验签通过' }, { value: 'false', label: '验签失败' }]}
-      value={draftParams.signatureValid}
-      onChange={setField('signatureValid')}
-      width={140}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
-  );
-
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="订单号..." {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
-            {renderChannelFilter()}
-            {renderSceneFilter()}
-            {renderSignatureFilter()}
-            {renderTimeRangeFilter()}
+            <FilterSelect
+              placeholder="全部渠道"
+              items={PAYMENT_CHANNEL_OPTIONS}
+              {...bind('channel')}
+            />
+            <FilterSelect
+              placeholder="全部场景"
+              items={[{ value: 'payment', label: '支付回调' }, { value: 'refund', label: '退款回调' }]}
+              {...bind('scene')}
+            />
+            <FilterSelect
+              placeholder="全部验签结果"
+              items={[{ value: 'true', label: '验签通过' }, { value: 'false', label: '验签失败' }]}
+              {...bind('signatureValid')}
+              width={140}
+            />
+            <DateRangeFilter {...bind('timeRange')} />
           </>
         )}
         onSearch={handleSearch}

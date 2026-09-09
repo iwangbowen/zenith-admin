@@ -591,13 +591,13 @@ export default function PaymentLedgerPage() {
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} type="line" lazyRender keepDOM={false}>
         <TabPane tab="账本账户" itemKey="accounts">
           <ListSearchToolbar
-            keyword={(<KeywordInput placeholder="账户号/账户名称" value={accountSearch.draftParams.keyword} onChange={accountSearch.setField('keyword')} onSearch={accountSearch.handleSearch} />)}
+            keyword={(<KeywordInput placeholder="账户号/账户名称" {...accountSearch.bindKeyword('keyword')} />)}
             filters={(
               <>
                 {appFilter(accountSearch.draftParams.appId, accountSearch.setField('appId'))}
                 {merchantFilter(accountSearch.draftParams.channelConfigId, accountSearch.setField('channelConfigId'))}
                 {currencyFilter(accountSearch.draftParams.currency, accountSearch.setField('currency'))}
-                <StatusSelect items={ACCOUNT_STATUS_ITEMS} value={accountSearch.draftParams.status} onChange={accountSearch.setField('status')} />
+                <StatusSelect items={ACCOUNT_STATUS_ITEMS} {...accountSearch.bind('status')} />
               </>
             )}
             onSearch={accountSearch.handleSearch}
@@ -614,13 +614,13 @@ export default function PaymentLedgerPage() {
 
         <TabPane tab="资金凭证" itemKey="journals">
           <ListSearchToolbar
-            keyword={(<KeywordInput placeholder="来源类型" value={journalSearch.draftParams.sourceType} onChange={journalSearch.setField('sourceType')} onSearch={journalSearch.handleSearch} />)}
+            keyword={(<KeywordInput placeholder="来源类型" {...journalSearch.bindKeyword('sourceType')} />)}
             filters={(
               <>
                 {appFilter(journalSearch.draftParams.appId, journalSearch.setField('appId'))}
                 {merchantFilter(journalSearch.draftParams.channelConfigId, journalSearch.setField('channelConfigId'))}
                 {currencyFilter(journalSearch.draftParams.currency, journalSearch.setField('currency'))}
-                <DateRangeFilter value={journalSearch.draftParams.timeRange} onChange={journalSearch.setField('timeRange')} />
+                <DateRangeFilter {...journalSearch.bind('timeRange')} />
               </>
             )}
             onSearch={journalSearch.handleSearch}
@@ -637,19 +637,18 @@ export default function PaymentLedgerPage() {
 
         <TabPane tab="资金预占" itemKey="reservations">
           <ListSearchToolbar
-            keyword={(<KeywordInput placeholder="来源类型" value={reservationSearch.draftParams.sourceType} onChange={reservationSearch.setField('sourceType')} onSearch={reservationSearch.handleSearch} />)}
+            keyword={(<KeywordInput placeholder="来源类型" {...reservationSearch.bindKeyword('sourceType')} />)}
             filters={(
               <>
                 <FilterSelect
                   placeholder="全部账户"
                   items={accountOptions}
-                  value={reservationSearch.draftParams.accountId}
-                  onChange={(accountId) => reservationSearch.setField('accountId')(accountId as number | undefined)}
+                  {...reservationSearch.bind('accountId')}
                   width={180}
                   filter
                 />
-                <StatusSelect items={RESERVATION_STATUS_ITEMS} value={reservationSearch.draftParams.status} onChange={reservationSearch.setField('status')} />
-                <DateRangeFilter value={reservationSearch.draftParams.timeRange} onChange={reservationSearch.setField('timeRange')} />
+                <StatusSelect items={RESERVATION_STATUS_ITEMS} {...reservationSearch.bind('status')} />
+                <DateRangeFilter {...reservationSearch.bind('timeRange')} />
               </>
             )}
             onSearch={reservationSearch.handleSearch}

@@ -37,14 +37,14 @@ interface SearchParams { keyword: string; status?: string; ownerId?: number; fol
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, ownerId: undefined, folderId: undefined };
 
 export default function PrintTemplatesPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
   const exportResolveRef = useRef<((value: Record<string, unknown> | null) => void) | null>(null);
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportPrintKeys.lists });
 
@@ -229,24 +229,6 @@ export default function PrintTemplatesPage() {
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput placeholder="搜索名称/备注..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-  const renderOwnerFilter = () => (
-    <ReportOwnerFilter items={userOptions} value={draftParams.ownerId} onChange={setField('ownerId')} />
-  );
-  const renderFolderFilter = () => (
-    <ReportFolderFilter items={folderOptions} value={draftParams.folderId} onChange={setField('folderId')} />
-  );
-  const renderCreateBtn = () => hasPermission('report:print:create')
-    ? <CreateButton onClick={printModal.openCreate} /> : null;
   const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:print:update')
     ? <Button onClick={() => handleBatchStatus('enabled')}>批量启用</Button> : null;
   const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:print:update')
@@ -255,11 +237,17 @@ export default function PrintTemplatesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeyword()}
-        filters={<>{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}</>}
+        keyword={<KeywordInput placeholder="搜索名称/备注..." {...bindKeyword('keyword')} />}
+        filters={<><ReportOwnerFilter items={userOptions} {...bind('ownerId')} /><ReportFolderFilter items={folderOptions} {...bind('folderId')} /><StatusSelect
+          items={statusItems}
+          {...bind('status')}
+        /></>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateBtn()}
+        create={(
+          hasPermission('report:print:create')
+            ? <CreateButton onClick={printModal.openCreate} /> : null
+        )}
         actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="打印模板筛选"
@@ -296,7 +284,7 @@ export default function PrintTemplatesPage() {
             showClear
           />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+            optionList={statusOptions} />
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
         </Form>
       </AppModal>

@@ -53,7 +53,7 @@ export default function CouponsPage() {
   const issueFormApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.couponLists });
 
@@ -181,44 +181,30 @@ export default function CouponsPage() {
     ] : []),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="券名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={180} />
-  );
-
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={typeOptions}
-      value={draftParams.type}
-      onChange={(v) => setField('type')(v as string | undefined)}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusOptions}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('member:coupon:create') ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="券名称" {...bindKeyword('keyword')} width={180} />}
         filters={(
           <>
-            {renderTypeFilter()}
-            {renderStatusFilter()}
+            <FilterSelect
+              placeholder="全部类型"
+              items={typeOptions}
+              {...bind('type')}
+            />
+            <StatusSelect
+              items={statusOptions}
+              {...bind('status')}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('member:coupon:create') ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
         filterTitle="优惠券筛选"
       />
 

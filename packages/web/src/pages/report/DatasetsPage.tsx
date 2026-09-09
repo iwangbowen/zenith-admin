@@ -82,14 +82,14 @@ function fieldsFromColumns(columns: string[], rows: Record<string, unknown>[] = 
 }
 
 export default function DatasetsPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
   const staticFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportDatasetKeys.lists });
 
@@ -573,24 +573,6 @@ export default function DatasetsPage() {
   const previewColumns: ColumnProps<Record<string, unknown>>[] = (preview?.columns ?? []).map((c) => ({ title: c, dataIndex: c, width: 140 }));
   const previewData = (preview?.rows ?? []).map((r, i) => ({ ...r, __rk: i }));
 
-  const renderKeyword = () => (
-    <KeywordInput placeholder="搜索名称/备注..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-  const renderOwnerFilter = () => (
-    <ReportOwnerFilter items={userOptions} value={draftParams.ownerId} onChange={setField('ownerId')} />
-  );
-  const renderFolderFilter = () => (
-    <ReportFolderFilter items={folderOptions} value={draftParams.folderId} onChange={setField('folderId')} />
-  );
-  const renderCreateBtn = () => hasPermission('report:dataset:create')
-    ? <CreateButton onClick={openCreate} /> : null;
   const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dataset:update')
     ? <Button onClick={() => handleBatchStatus('enabled')}>批量启用</Button> : null;
   const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dataset:update')
@@ -599,11 +581,17 @@ export default function DatasetsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeyword()}
-        filters={<>{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}</>}
+        keyword={<KeywordInput placeholder="搜索名称/备注..." {...bindKeyword('keyword')} />}
+        filters={<><ReportOwnerFilter items={userOptions} {...bind('ownerId')} /><ReportFolderFilter items={folderOptions} {...bind('folderId')} /><StatusSelect
+          items={statusItems}
+          {...bind('status')}
+        /></>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateBtn()}
+        create={(
+          hasPermission('report:dataset:create')
+            ? <CreateButton onClick={openCreate} /> : null
+        )}
         actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="数据集筛选"
@@ -667,7 +655,7 @@ export default function DatasetsPage() {
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Select field="status" label="状态" style={{ width: '100%' }}
-                    optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+                    optionList={statusOptions} />
                 </Col>
                 <Col span={12}>
                   <Form.InputNumber field="cacheTtl" label="缓存(秒)" min={0} max={86400} style={{ width: '100%' }} helpText="0=不缓存；命中按数据集+参数缓存" />

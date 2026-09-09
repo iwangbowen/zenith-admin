@@ -40,12 +40,11 @@ interface DataSourceFormValues {
 }
 
 export default function WorkflowDataSourcesPage() {
-  const { items: statusItems } = useDictItems('common_status');
-  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowDataSourceKeys.lists });
   const listQuery = useWorkflowDataSourceList({
@@ -145,31 +144,23 @@ export default function WorkflowDataSourcesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称 / 地址..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-
-  const renderCreateButton = () => hasPermission('workflow:datasource:create') ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="搜索名称 / 地址..." {...bindKeyword('keyword')} />}
+        filters={(
+          <StatusSelect
+            items={statusOptions}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('workflow:datasource:create') ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
         filterTitle="数据源筛选"
       />
 
@@ -213,7 +204,7 @@ export default function WorkflowDataSourcesPage() {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={STATUS_OPTIONS} rules={[{ required: true, message: '请选择状态' }]} />
+              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} rules={[{ required: true, message: '请选择状态' }]} />
             </Col>
           </Row>
           <Form.TextArea field="headersText" label="请求头(JSON)" placeholder='可选，如 {"Authorization":"Bearer xxx"}' autosize={{ minRows: 2, maxRows: 5 }} />

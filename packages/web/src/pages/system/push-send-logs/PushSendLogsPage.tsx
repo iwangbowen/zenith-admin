@@ -123,7 +123,7 @@ function PushStatsSection() {
 export default function PushSendLogsPage() {
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: pushSendLogKeys.lists });
 
@@ -181,39 +181,25 @@ export default function PushSendLogsPage() {
     },
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索标题 / 内容 / 事件..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={SEND_LOG_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter
-      value={draftParams.timeRange}
-      onChange={setField('timeRange')}
-    />
-  );
-
   return (
     <div className="page-container zx-flat-panels">
       <PushStatsSection />
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索标题 / 内容 / 事件..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={(
           <>
-            {renderStatusFilter()}
-            {renderTimeRangeFilter()}
+            <StatusSelect
+              items={SEND_LOG_STATUS_OPTIONS}
+              {...bind('status')}
+            />
+            <DateRangeFilter
+              {...bind('timeRange')}
+            />
           </>
         )}
         onSearch={handleSearch}

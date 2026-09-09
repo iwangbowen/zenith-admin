@@ -67,7 +67,7 @@ export default function PaymentTransfersPage() {
   const [rejectRemark, setRejectRemark] = useState('');
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentTransferKeys.lists });
 
@@ -214,37 +214,6 @@ export default function PaymentTransfersPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="转账单号 / 收款账号..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={PAYMENT_CHANNEL_OPTIONS}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={PAYMENT_TRANSFER_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-  const renderApprovalFilter = () => (
-    <FilterSelect
-      placeholder="全部审批状态"
-      items={PAYMENT_TRANSFER_APPROVAL_STATUS_OPTIONS}
-      value={draftParams.approvalStatus}
-      onChange={setField('approvalStatus')}
-      width={140}
-    />
-  );
-  const renderCreateButton = () => canCreate ? (
-    <Button type="primary" icon={<SendHorizontal size={14} />} onClick={() => { setSelectedAppId(null); transferIdempotencyKey.current = crypto.randomUUID(); transferModal.openCreate(); }}>发起转账</Button>
-  ) : null;
-
   const summaryText = summary
     ? `累计转出 ${yuan(summary.totalAmount)}（成功 ${summary.successCount} 笔 · 处理中 ${summary.processingCount} 笔 · 失败 ${summary.failedCount} 笔）`
     : '';
@@ -252,17 +221,33 @@ export default function PaymentTransfersPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="转账单号 / 收款账号..." {...bindKeyword('keyword')} />}
         filters={(
           <>
-            {renderChannelFilter()}
-            {renderStatusFilter()}
-            {renderApprovalFilter()}
+            <FilterSelect
+              placeholder="全部渠道"
+              items={PAYMENT_CHANNEL_OPTIONS}
+              {...bind('channel')}
+            />
+            <StatusSelect
+              items={PAYMENT_TRANSFER_STATUS_OPTIONS}
+              {...bind('status')}
+            />
+            <FilterSelect
+              placeholder="全部审批状态"
+              items={PAYMENT_TRANSFER_APPROVAL_STATUS_OPTIONS}
+              {...bind('approvalStatus')}
+              width={140}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          canCreate ? (
+            <Button type="primary" icon={<SendHorizontal size={14} />} onClick={() => { setSelectedAppId(null); transferIdempotencyKey.current = crypto.randomUUID(); transferModal.openCreate(); }}>发起转账</Button>
+          ) : null
+        )}
         filterTitle="转账单筛选"
       />
 

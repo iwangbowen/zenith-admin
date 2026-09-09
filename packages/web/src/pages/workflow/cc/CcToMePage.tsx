@@ -27,7 +27,7 @@ interface SearchParams {
 }
 
 export default function CcToMePage() {
-  const { page, pageSize, buildPagination, draftParams, setField, submittedParams, handleSearch, handleReset, applySearch } =
+  const { page, pageSize, buildPagination, bindKeyword, submittedParams, handleSearch, handleReset, applySearch } =
     useListSearch<SearchParams>({ defaults: { keyword: '' }, listKey: workflowInstanceKeys.lists });
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -112,7 +112,7 @@ export default function CcToMePage() {
         onApply={(filters) => applySearch({ keyword: typeof filters.keyword === 'string' ? filters.keyword : '' })}
       />
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标题 / 流程名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索标题 / 流程名称" {...bindKeyword('keyword')} />}
         onSearch={handleSearch}
         onReset={handleReset}
       />

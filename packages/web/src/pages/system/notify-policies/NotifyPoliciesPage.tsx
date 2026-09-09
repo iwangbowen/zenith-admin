@@ -224,7 +224,7 @@ function DispatchLogTab() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<DispatchSearchParams>({ defaults: defaultDispatchParams, listKey: notificationPolicyKeys.dispatches });
 
@@ -271,24 +271,21 @@ function DispatchLogTab() {
             <FilterSelect
               placeholder="全部事件"
               items={eventOptions}
-              value={draftParams.eventKey}
-              onChange={(v) => setField('eventKey')(v as string | undefined)}
+              {...bind('eventKey')}
               width={240}
               filter
             />
             <FilterSelect
               placeholder="全部渠道"
               items={CHANNEL_OPTIONS}
-              value={draftParams.channel}
-              onChange={(v) => setField('channel')(v as NotificationChannel | undefined)}
+              {...bind('channel')}
             />
             <FilterSelect
               placeholder="全部结论"
               items={NOTIFICATION_DECISION_OPTIONS}
-              value={draftParams.decision}
-              onChange={(v) => setField('decision')(v as NotificationDecision | undefined)}
+              {...bind('decision')}
             />
-            <DateRangeFilter value={draftParams.timeRange} onChange={setField('timeRange')} />
+            <DateRangeFilter {...bind('timeRange')} />
           </>
         )}
         onSearch={handleSearch}

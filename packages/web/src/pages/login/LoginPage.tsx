@@ -264,114 +264,6 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
     </Form>
   );
 
-  const renderMfaForm = () => (
-    <Form onSubmit={handleMfaVerify} initValues={{ rememberDevice: true }} style={{ marginTop: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <div style={{
-          width: 36,
-          height: 36,
-          borderRadius: 'var(--semi-border-radius-medium)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--semi-color-primary)',
-          background: 'var(--semi-color-primary-light-default)',
-        }}>
-          <ShieldCheck size={18} />
-        </div>
-        <div>
-          <Text strong>需要二次验证</Text>
-          <Text type="tertiary" size="small" style={{ display: 'block' }}>
-            {mfaChallenge?.reason || '请输入身份验证器中的 6 位动态码'}
-          </Text>
-        </div>
-      </div>
-      <Form.PinCode
-        field="code"
-        noLabel
-        count={6}
-        rules={[{ required: true, message: '请输入动态验证码' }]}
-        size="large"
-      />
-      <Form.Checkbox field="rememberDevice" noLabel>
-        信任此设备，减少二次验证
-      </Form.Checkbox>
-      <Button
-        htmlType="submit"
-        type="primary"
-        theme="solid"
-        loading={loading}
-        block
-        size="large"
-        style={{ marginTop: 8, borderRadius: 'var(--semi-border-radius-medium)', height: 42 }}
-      >
-        验证并登录
-      </Button>
-      <Button
-        type="tertiary"
-        theme="borderless"
-        block
-        style={{ marginTop: 8 }}
-        onClick={() => {
-          setMfaChallenge(null);
-          if (captchaEnabled) fetchCaptcha();
-        }}
-      >
-        返回账号密码登录
-      </Button>
-    </Form>
-  );
-
-  const renderRegisterForm = () => (
-    <Form onSubmit={handleRegister} style={{ marginTop: 12 }}>
-      <Form.Input
-        field="username"
-        noLabel
-        placeholder="用户名（3~32 个字符）"
-        prefix={<User />}
-        rules={[{ required: true, message: '请输入用户名' }]}
-        size="large"
-      />
-      <Form.Input
-        field="nickname"
-        noLabel
-        placeholder="昵称"
-        prefix={<AtSign />}
-        rules={[{ required: true, message: '请输入昵称' }]}
-        size="large"
-      />
-      <Form.Input
-        field="email"
-        noLabel
-        placeholder="邮箱"
-        prefix={<Mail />}
-        rules={[{ required: true, type: 'string', message: '请输入邮箱' }]}
-        size="large"
-      />
-      <Form.Input
-        field="password"
-        noLabel
-        type="password"
-        placeholder="密码（至少6个字符）"
-        prefix={<Lock />}
-        rules={[{ required: true, message: '请输入密码' }]}
-        size="large"
-      />
-      <Button
-        htmlType="submit"
-        type="primary"
-        theme="solid"
-        loading={loading}
-        disabled={retrySeconds > 0}
-        block
-        size="large"
-        style={{ marginTop: 8, borderRadius: 'var(--semi-border-radius-medium)', height: 42 }}
-      >
-        {retrySeconds > 0 ? `${retrySeconds}s 后可重试` : '注册'}
-      </Button>
-    </Form>
-  );
-
   let formSubtitle = '请输入您的账号信息以登录工作台';
 
   const handleOAuthLogin = async (provider: OAuthProviderType) => {
@@ -526,7 +418,61 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
           )}
           {mfaChallenge ? (
             <div style={{ marginBottom: 20 }}>
-              {renderMfaForm()}
+              <Form onSubmit={handleMfaVerify} initValues={{ rememberDevice: true }} style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                  <div style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 'var(--semi-border-radius-medium)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--semi-color-primary)',
+                    background: 'var(--semi-color-primary-light-default)',
+                  }}>
+                    <ShieldCheck size={18} />
+                  </div>
+                  <div>
+                    <Text strong>需要二次验证</Text>
+                    <Text type="tertiary" size="small" style={{ display: 'block' }}>
+                      {mfaChallenge?.reason || '请输入身份验证器中的 6 位动态码'}
+                    </Text>
+                  </div>
+                </div>
+                <Form.PinCode
+                  field="code"
+                  noLabel
+                  count={6}
+                  rules={[{ required: true, message: '请输入动态验证码' }]}
+                  size="large"
+                />
+                <Form.Checkbox field="rememberDevice" noLabel>
+                  信任此设备，减少二次验证
+                </Form.Checkbox>
+                <Button
+                  htmlType="submit"
+                  type="primary"
+                  theme="solid"
+                  loading={loading}
+                  block
+                  size="large"
+                  style={{ marginTop: 8, borderRadius: 'var(--semi-border-radius-medium)', height: 42 }}
+                >
+                  验证并登录
+                </Button>
+                <Button
+                  type="tertiary"
+                  theme="borderless"
+                  block
+                  style={{ marginTop: 8 }}
+                  onClick={() => {
+                    setMfaChallenge(null);
+                    if (captchaEnabled) fetchCaptcha();
+                  }}
+                >
+                  返回账号密码登录
+                </Button>
+              </Form>
             </div>
           ) : isDemoMode || !allowRegistration ? (
             <div style={{ marginBottom: 20 }}>
@@ -538,7 +484,53 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
                 {renderLoginForm()}
               </TabPane>
               <TabPane tab="注册" itemKey="register">
-                {renderRegisterForm()}
+                <Form onSubmit={handleRegister} style={{ marginTop: 12 }}>
+                  <Form.Input
+                    field="username"
+                    noLabel
+                    placeholder="用户名（3~32 个字符）"
+                    prefix={<User />}
+                    rules={[{ required: true, message: '请输入用户名' }]}
+                    size="large"
+                  />
+                  <Form.Input
+                    field="nickname"
+                    noLabel
+                    placeholder="昵称"
+                    prefix={<AtSign />}
+                    rules={[{ required: true, message: '请输入昵称' }]}
+                    size="large"
+                  />
+                  <Form.Input
+                    field="email"
+                    noLabel
+                    placeholder="邮箱"
+                    prefix={<Mail />}
+                    rules={[{ required: true, type: 'string', message: '请输入邮箱' }]}
+                    size="large"
+                  />
+                  <Form.Input
+                    field="password"
+                    noLabel
+                    type="password"
+                    placeholder="密码（至少6个字符）"
+                    prefix={<Lock />}
+                    rules={[{ required: true, message: '请输入密码' }]}
+                    size="large"
+                  />
+                  <Button
+                    htmlType="submit"
+                    type="primary"
+                    theme="solid"
+                    loading={loading}
+                    disabled={retrySeconds > 0}
+                    block
+                    size="large"
+                    style={{ marginTop: 8, borderRadius: 'var(--semi-border-radius-medium)', height: 42 }}
+                  >
+                    {retrySeconds > 0 ? `${retrySeconds}s 后可重试` : '注册'}
+                  </Button>
+                </Form>
               </TabPane>
             </Tabs>
           )}

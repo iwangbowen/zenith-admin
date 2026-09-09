@@ -44,7 +44,7 @@ export default function PaymentEventsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentEventKeys.lists });
   const listQuery = usePaymentEventList({
@@ -113,41 +113,19 @@ export default function PaymentEventsPage() {
     </div>
   ) : null);
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="订单号..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={EVENT_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderTypeFilter = () => (
-    <KeywordInput placeholder="事件类型..." value={draftParams.type} onChange={setField('type')} onSearch={handleSearch} width={180} />
-  );
-
   // 与订单统计等页面统一的无边框统计形态（StatGrid/StatCard）
-  const renderHealthCards = () => (
-    <StatGrid minItemWidth={148} style={{ marginBottom: 12 }}>
-      {HEALTH_LABELS.map(([key, label]) => {
-        const value = health?.[key] ?? 0;
-        const danger = (key === 'outboxFailed' || key === 'webhookFailed24h') && value > 0;
-        return <StatCard key={key} title={label} value={value} accent={danger ? 'var(--semi-color-danger)' : undefined} />;
-      })}
-    </StatGrid>
-  );
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="订单号..." {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
-            {renderStatusFilter()}
-            {renderTypeFilter()}
+            <StatusSelect
+              items={EVENT_STATUS_OPTIONS}
+              {...bind('status')}
+            />
+            <KeywordInput placeholder="事件类型..." {...bindKeyword('type')} width={180} />
           </>
         )}
         onSearch={handleSearch}
@@ -155,7 +133,13 @@ export default function PaymentEventsPage() {
         filterTitle="支付事件筛选"
       />
 
-      {renderHealthCards()}
+      <StatGrid minItemWidth={148} style={{ marginBottom: 12 }}>
+        {HEALTH_LABELS.map(([key, label]) => {
+          const value = health?.[key] ?? 0;
+          const danger = (key === 'outboxFailed' || key === 'webhookFailed24h') && value > 0;
+          return <StatCard key={key} title={label} value={value} accent={danger ? 'var(--semi-color-danger)' : undefined} />;
+        })}
+      </StatGrid>
 
       <ConfigurableTable
         columns={columns}

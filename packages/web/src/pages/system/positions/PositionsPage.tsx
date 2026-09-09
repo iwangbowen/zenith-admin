@@ -48,7 +48,7 @@ export default function PositionsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: positionKeys.lists });
   const listQuery = usePositionList({
@@ -59,7 +59,7 @@ export default function PositionsPage() {
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   // 成员管理
   const allUsersQuery = useAllUsers();
@@ -107,7 +107,6 @@ export default function PositionsPage() {
       onDeleted: () => setSelectedRowKeys([]),
     });
   };
-
 
   const openMembers = (pos: Position) => {
     setMemberPosition(pos);
@@ -163,59 +162,41 @@ export default function PositionsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索岗位名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(value) => setField('timeRange')(value ? (value as [Date, Date]) : null)} />
-  );
-
-  const renderCreateButton = () => hasPermission('system:position:create') ? (
-    <CreateButton onClick={positionModal.openCreate} />
-  ) : null;
-
   const buildExportQuery = () => compactQuery({
     keyword: submittedParams.keyword,
     status: submittedParams.status,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
 
-  const renderExportButtons = () => <ExportButton entity="system.positions" query={buildExportQuery()} />;
-
-  const renderMobileExportActions = () => <ExportButton entity="system.positions" query={buildExportQuery()} variant="flat" />;
-
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索岗位名称/编码" {...bindKeyword('keyword')} width={240} />}
         filters={(
           <>
-            {renderStatusFilter()}
-            {renderTimeRangeFilter()}
+            <StatusSelect
+              items={statusItems}
+              {...bind('status')}
+            />
+            <DateRangeFilter {...bind('timeRange')} />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:position:create') ? (
+            <CreateButton onClick={positionModal.openCreate} />
+          ) : null
+        )}
         actions={(
           <>
-            {renderExportButtons()}
+            <ExportButton entity="system.positions" query={buildExportQuery()} />
             {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
           </>
         )}
         mobileActions={(
           <>
-            {renderMobileExportActions()}
+            <ExportButton entity="system.positions" query={buildExportQuery()} variant="flat" />
             {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
           </>
         )}
@@ -243,7 +224,7 @@ export default function PositionsPage() {
           <Form.Select
             field="status"
             label="状态"
-            optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
+            optionList={statusOptions}
             style={{ width: '100%' }}
             placeholder="请选择状态"
           />

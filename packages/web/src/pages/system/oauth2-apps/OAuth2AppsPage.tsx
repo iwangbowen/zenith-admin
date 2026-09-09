@@ -60,7 +60,7 @@ type OAuth2ClientSaved = OAuth2Client & {
 
 export default function OAuth2AppsPage() {
   const navigate = useNavigate();
-  const { items: statusItems } = useDictItems('common_status');
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:oauth2-apps:manage');
   const toggleStatusMutation = useSaveOAuth2App();
@@ -82,7 +82,7 @@ export default function OAuth2AppsPage() {
   const defaultSearchParams: SearchParams = { keyword: '' };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: oauth2AppKeys.lists });
 
@@ -324,20 +324,18 @@ export default function OAuth2AppsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索应用名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索应用名称" {...bindKeyword('keyword')} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部环境"
               items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
-              value={draftParams.environment}
-              onChange={(environment) => setField('environment')(environment as SearchParams['environment'])}
+              {...bind('environment')}
             />
             <FilterSelect
               placeholder="全部审核状态"
               items={OPEN_APP_REVIEW_STATUSES.map((value) => ({ value, label: OPEN_APP_REVIEW_STATUS_LABELS[value] }))}
-              value={draftParams.reviewStatus}
-              onChange={(reviewStatus) => setField('reviewStatus')(reviewStatus as SearchParams['reviewStatus'])}
+              {...bind('reviewStatus')}
               width={140}
             />
           </>
@@ -456,7 +454,7 @@ export default function OAuth2AppsPage() {
                     field="status"
                     label="状态"
                     style={{ width: '100%' }}
-                    optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+                    optionList={statusOptions}
                     rules={[{ required: true, message: '请选择状态' }]}
                   />
                 </Col>

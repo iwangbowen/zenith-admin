@@ -136,7 +136,7 @@ function QuotaRequestModal({ space, onClose }: { readonly space: DriveSpace | nu
 export default function DriveSpacesPage() {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
-  const { page, pageSize, buildPagination, draftParams, setField, submittedParams, handleSearch, handleReset } =
+  const { page, pageSize, buildPagination, draftParams, setField, bind, bindKeyword, submittedParams, handleSearch, handleReset } =
     useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined, archived: false }, listKey: driveKeys.spaceLists });
   const listQuery = useDriveSpaceList({ page, pageSize, keyword: submittedParams.keyword || undefined, type: submittedParams.type, archived: submittedParams.archived || undefined });
   const remove = useDeleteDriveSpaces();
@@ -194,8 +194,8 @@ export default function DriveSpacesPage() {
       <SearchToolbar
         filters={(
           <>
-            <KeywordInput value={draftParams.keyword} placeholder="搜索空间名称" onChange={setField('keyword')} onSearch={handleSearch} />
-            <FilterSelect<DriveSpaceType> value={draftParams.type} placeholder="全部类型" items={DRIVE_SPACE_TYPE_OPTIONS} onChange={setField('type')} />
+            <KeywordInput {...bindKeyword('keyword')} placeholder="搜索空间名称" />
+            <FilterSelect<DriveSpaceType> {...bind('type')} placeholder="全部类型" items={DRIVE_SPACE_TYPE_OPTIONS} />
             <Checkbox checked={draftParams.archived} onChange={(e) => setField('archived')(!!e.target.checked)}>只看已归档</Checkbox>
           </>
         )}

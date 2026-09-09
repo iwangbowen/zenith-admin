@@ -103,7 +103,7 @@ export default function AlertEventsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     // URL 携带的筛选作为初始条件，保证跳转过来时表单控件与列表结果一致
@@ -223,72 +223,6 @@ export default function AlertEventsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索规则名称或描述..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderMetricFilter = () => (
-    <MonitorMetricFilterSelect
-      value={draftParams.metric}
-      onChange={setField('metric')}
-    />
-  );
-
-  const renderLevelFilter = () => (
-    <FilterSelect
-      placeholder="全部级别"
-      items={MONITOR_ALERT_LEVEL_OPTIONS}
-      value={draftParams.level}
-      onChange={setField('level')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={MONITOR_ALERT_EVENT_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderHandleStatusFilter = () => (
-    <FilterSelect
-      placeholder="全部处理状态"
-      items={MONITOR_ALERT_HANDLE_STATUS_OPTIONS}
-      value={draftParams.handleStatus}
-      onChange={setField('handleStatus')}
-      width={140}
-    />
-  );
-
-  const renderNotifyStatusFilter = () => (
-    <FilterSelect
-      placeholder="全部通知状态"
-      items={MONITOR_ALERT_NOTIFY_STATUS_OPTIONS}
-      value={draftParams.notifyStatus}
-      onChange={setField('notifyStatus')}
-      width={140}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter
-      value={draftParams.timeRange}
-      onChange={setField('timeRange')}
-    />
-  );
-
-  const renderRuleFilterTag = () => ruleId ? (
-    <Tag closable color="blue" onClose={() => setUrlParams({}, { replace: true })}>
-      仅看规则 #{ruleId}
-    </Tag>
-  ) : null;
-
   const renderBatchActions = () => canHandle && selectedRowKeys.length > 0 ? (
     <>
       <Button theme="light" onClick={() => openHandleModal(selectedRowKeys, 'acknowledged')}>
@@ -309,14 +243,42 @@ export default function AlertEventsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<>{renderRuleFilterTag()}{renderKeywordSearch()}</>}
+        keyword={<>{ruleId ? (
+          <Tag closable color="blue" onClose={() => setUrlParams({}, { replace: true })}>
+            仅看规则 #{ruleId}
+          </Tag>
+        ) : null}<KeywordInput
+          placeholder="搜索规则名称或描述..."
+          {...bindKeyword('keyword')}
+        /></>}
         filters={<>
-          {renderMetricFilter()}
-          {renderLevelFilter()}
-          {renderStatusFilter()}
-          {renderHandleStatusFilter()}
-          {renderNotifyStatusFilter()}
-          {renderTimeRangeFilter()}
+          <MonitorMetricFilterSelect
+            {...bind('metric')}
+          />
+          <FilterSelect
+            placeholder="全部级别"
+            items={MONITOR_ALERT_LEVEL_OPTIONS}
+            {...bind('level')}
+          />
+          <StatusSelect
+            items={MONITOR_ALERT_EVENT_STATUS_OPTIONS}
+            {...bind('status')}
+          />
+          <FilterSelect
+            placeholder="全部处理状态"
+            items={MONITOR_ALERT_HANDLE_STATUS_OPTIONS}
+            {...bind('handleStatus')}
+            width={140}
+          />
+          <FilterSelect
+            placeholder="全部通知状态"
+            items={MONITOR_ALERT_NOTIFY_STATUS_OPTIONS}
+            {...bind('notifyStatus')}
+            width={140}
+          />
+          <DateRangeFilter
+            {...bind('timeRange')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}

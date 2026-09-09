@@ -77,7 +77,7 @@ export default function AlertRulesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -255,51 +255,6 @@ export default function AlertRulesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索规则名称..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderMetricFilter = () => (
-    <MonitorMetricFilterSelect
-      value={draftParams.metric}
-      onChange={setField('metric')}
-    />
-  );
-
-  const renderLevelFilter = () => (
-    <FilterSelect
-      placeholder="全部级别"
-      items={MONITOR_ALERT_LEVEL_OPTIONS}
-      value={draftParams.level}
-      onChange={setField('level')}
-    />
-  );
-
-  const renderStateFilter = () => (
-    <FilterSelect
-      placeholder="全部告警状态"
-      items={STATE_OPTIONS}
-      value={draftParams.state}
-      onChange={setField('state')}
-      width={140}
-    />
-  );
-
-  const renderEnabledFilter = () => (
-    <FilterSelect
-      placeholder="全部启用状态"
-      items={ENABLED_OPTIONS}
-      value={draftParams.enabled}
-      onChange={setField('enabled')}
-      width={140}
-    />
-  );
-
   const renderBatchActions = () => selectedRowKeys.length > 0 ? (
     <>
       {canUpdate && (
@@ -318,21 +273,40 @@ export default function AlertRulesPage() {
     </>
   ) : null;
 
-  const renderCreateButton = () => canCreate ? <CreateButton onClick={alertModal.openCreate}>新增规则</CreateButton> : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索规则名称..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={<>
-          {renderMetricFilter()}
-          {renderLevelFilter()}
-          {renderStateFilter()}
-          {renderEnabledFilter()}
+          <MonitorMetricFilterSelect
+            {...bind('metric')}
+          />
+          <FilterSelect
+            placeholder="全部级别"
+            items={MONITOR_ALERT_LEVEL_OPTIONS}
+            {...bind('level')}
+          />
+          <FilterSelect
+            placeholder="全部告警状态"
+            items={STATE_OPTIONS}
+            {...bind('state')}
+            width={140}
+          />
+          <FilterSelect
+            placeholder="全部启用状态"
+            items={ENABLED_OPTIONS}
+            {...bind('enabled')}
+            width={140}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={canCreate ? <CreateButton onClick={alertModal.openCreate}>新增规则</CreateButton> : null}
         actions={renderBatchActions()}
         mobileActions={renderBatchActions()}
         filterTitle="告警规则筛选"

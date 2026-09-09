@@ -118,24 +118,18 @@ export default function MpDraftsPage() {
     }),
   ];
 
-  const renderAccountFilter = () => (
-    <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-  );
-  const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索标题" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={180} />
-  );
-  const renderCreateButton = () => can('mp:draft:create') ? (
-    <CreateButton onClick={openCreate} disabled={!currentId}>新增图文</CreateButton>
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordInput()}
-        filters={renderAccountFilter()}
+        keyword={<KeywordInput placeholder="搜索标题" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={180} />}
+        filters={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          can('mp:draft:create') ? (
+            <CreateButton onClick={openCreate} disabled={!currentId}>新增图文</CreateButton>
+          ) : null
+        )}
         filterTitle="图文草稿筛选"
       />
 

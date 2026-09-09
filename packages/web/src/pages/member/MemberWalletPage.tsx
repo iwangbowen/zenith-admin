@@ -36,7 +36,7 @@ export default function MemberWalletPage() {
   const formApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.walletLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ memberKeyword }) });
@@ -77,19 +77,6 @@ export default function MemberWalletPage() {
     createdAtColumn,
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员ID/昵称" value={draftParams.memberKeyword} onChange={setField('memberKeyword')} onSearch={handleSearch} width={180} />
-  );
-
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={typeOptions}
-      value={draftParams.type}
-      onChange={(v) => setField('type')(v as string | undefined)}
-    />
-  );
-
   const buildExportQuery = () => compactQuery({
     memberKeyword: submittedParams.memberKeyword,
     type: submittedParams.type,
@@ -97,21 +84,25 @@ export default function MemberWalletPage() {
   const renderExportButton = (variant?: 'flat') => hasPermission('member:wallet:list') ? (
     <ExportButton entity="member.wallet-transactions" query={buildExportQuery()} variant={variant} />
   ) : null;
-  const renderAdjustButton = () => hasPermission('member:wallet:adjust') ? (
-    <Button type="primary" icon={<WalletCards size={14} />} onClick={() => openModal('adjust')}>调整余额</Button>
-  ) : null;
-  const renderRefundButton = () => hasPermission('member:wallet:refund') ? (
-    <Button type="primary" icon={<Undo2 size={14} />} onClick={() => openModal('refund')}>退款</Button>
-  ) : null;
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderTypeFilter()}
+        keyword={<KeywordInput placeholder="会员ID/昵称" {...bindKeyword('memberKeyword')} width={180} />}
+        filters={(
+          <FilterSelect
+            placeholder="全部类型"
+            items={typeOptions}
+            {...bind('type')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={<>{renderAdjustButton()}{renderRefundButton()}</>}
+        create={<>{hasPermission('member:wallet:adjust') ? (
+          <Button type="primary" icon={<WalletCards size={14} />} onClick={() => openModal('adjust')}>调整余额</Button>
+        ) : null}{hasPermission('member:wallet:refund') ? (
+          <Button type="primary" icon={<Undo2 size={14} />} onClick={() => openModal('refund')}>退款</Button>
+        ) : null}</>}
         actions={renderExportButton()}
         mobileActions={renderExportButton('flat')}
         filterTitle="钱包流水筛选"

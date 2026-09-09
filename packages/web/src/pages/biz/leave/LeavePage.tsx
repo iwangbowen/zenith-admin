@@ -53,10 +53,10 @@ const DEFAULT_LEAVE_SEARCH_PARAMS: LeaveSearchParams = {
 
 export default function LeavePage() {
   const navigate = useNavigate();
-  const { items: leaveTypeItems, getLabel: getLeaveTypeLabel } = useDictItems('leave_type');
+  const { options: leaveTypeOptions, getLabel: getLeaveTypeLabel } = useDictItems('leave_type');
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<LeaveSearchParams>({ defaults: DEFAULT_LEAVE_SEARCH_PARAMS, listKey: bizLeaveKeys.lists });
 
@@ -140,7 +140,6 @@ export default function LeavePage() {
     modal.close();
   };
 
-
   const handleSubmitApproval = async (id: number) => {
     await submitFromListMutation.mutateAsync({ params: { id } });
     Toast.success('已提交审批');
@@ -219,28 +218,19 @@ export default function LeavePage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索事由" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={Object.entries(STATUS_MAP).map(([value, s]) => ({ value, label: s.text }))}
-      value={draftParams.status}
-      onChange={(value) => setField('status')(value as LeaveSearchParams['status'] | undefined)}
-    />
-  );
-
-  const renderCreateButton = () => <CreateButton onClick={openCreate}>新建请假</CreateButton>;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="搜索事由" {...bindKeyword('keyword')} />}
+        filters={(
+          <StatusSelect
+            items={Object.entries(STATUS_MAP).map(([value, s]) => ({ value, label: s.text }))}
+            {...bind('status', (value) => value as LeaveSearchParams['status'] | undefined)}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={<CreateButton onClick={openCreate}>新建请假</CreateButton>}
         filterTitle="请假筛选"
       />
 
@@ -273,7 +263,7 @@ export default function LeavePage() {
             const days = dayjs(range[1]).startOf('day').diff(dayjs(range[0]).startOf('day'), 'day') + 1;
             if (days > 0) modal.formApi.current?.setValue('days', days);
           }}>
-          <Form.Select field="leaveType" label="请假类型" optionList={leaveTypeItems.map((i) => ({ value: i.value, label: i.label }))} rules={[{ required: true, message: '请选择请假类型' }]} style={{ width: '100%' }} />
+          <Form.Select field="leaveType" label="请假类型" optionList={leaveTypeOptions} rules={[{ required: true, message: '请选择请假类型' }]} style={{ width: '100%' }} />
           <Form.DatePicker field="dateRange" label="请假日期" type="dateRange" style={{ width: '100%' }} rules={[{ required: true, message: '请选择请假日期' }]} />
           <Form.InputNumber field="days" label="天数" min={0.5} step={0.5} style={{ width: '100%' }} rules={[{ required: true, message: '请输入天数' }]} />
           <Form.TextArea field="reason" label="事由" autosize rows={2} maxCount={500} />

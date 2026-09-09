@@ -35,7 +35,7 @@ interface SearchParams { filterIp: string; filterBlockType: string | undefined; 
   const defaultSearchParams: SearchParams = { filterIp: '', filterBlockType: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: ipAccessKeys.logs });
   const logsQuery = useIpAccessLogs({
@@ -64,13 +64,12 @@ interface SearchParams { filterIp: string; filterBlockType: string | undefined; 
   return (
     <>
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索 IP 地址" value={draftParams.filterIp} onChange={(v) => { setField('filterIp')(v); }} width={200} />}
+        keyword={<KeywordInput placeholder="搜索 IP 地址" {...bind('filterIp')} width={200} />}
         filters={(
           <FilterSelect
             placeholder="全部拦截类型"
             items={BLOCK_TYPE_OPTIONS}
-            value={draftParams.filterBlockType}
-            onChange={(v) => { setField('filterBlockType')(v); }}
+            {...bind('filterBlockType')}
             width={140}
           />
         )}

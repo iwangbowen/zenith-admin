@@ -194,32 +194,26 @@ export default function MpBroadcastsPage() {
     ? materials.map((m) => ({ label: `${m.name}（${m.wechatMediaId}）`, value: m.wechatMediaId as string }))
     : drafts.map((d) => ({ label: `${d.title}（${d.wechatMediaId}）`, value: d.wechatMediaId as string }));
 
-  const renderAccountFilter = () => (
-    <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={STATUS_OPTIONS}
-      value={draftStatus}
-      onChange={(v) => setDraftStatus(v as MpBroadcastStatus | undefined)}
-    />
-  );
-  const renderCreateButton = () => can('mp:broadcast:create') ? (
-    <CreateButton onClick={openCreate} disabled={!currentId}>新增群发</CreateButton>
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
         filters={
           <>
-            {renderAccountFilter()}
-            {renderStatusFilter()}
+            <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
+            <StatusSelect
+              items={STATUS_OPTIONS}
+              value={draftStatus}
+              onChange={(v) => setDraftStatus(v as MpBroadcastStatus | undefined)}
+            />
           </>
         }
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          can('mp:broadcast:create') ? (
+            <CreateButton onClick={openCreate} disabled={!currentId}>新增群发</CreateButton>
+          ) : null
+        )}
         filterTitle="群发筛选"
       />
 

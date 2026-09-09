@@ -114,7 +114,7 @@ const tsToText = (ts: number | undefined): string | undefined => (ts == null ? u
 
 /** 字典条件选择：单选=等值，多选=in 集合；不可表达的语法回退原始文本框 */
 function DictConditionCell({ dictCode, cell, onChange }: Readonly<{ dictCode: string; cell: string | undefined; onChange: (v: string) => void }>) {
-  const { items } = useDictItems(dictCode);
+  const { options } = useDictItems(dictCode);
   const parsed = parseRuleCell(cell, 'string');
   const representable = parsed.kind === 'any' || parsed.kind === 'eq' || (parsed.kind === 'in' && !parsed.negate);
   if (!representable) {
@@ -129,7 +129,7 @@ function DictConditionCell({ dictCode, cell, onChange }: Readonly<{ dictCode: st
       maxTagCount={2}
       value={selected}
       placeholder="任意"
-      optionList={items.map((i) => ({ value: i.value, label: i.label }))}
+      optionList={options}
       onChange={(next) => {
         const values = (next as string[] | undefined) ?? [];
         onChange(values.length === 0 ? '-' : values.length === 1 ? values[0] : `in ${values.join(',')}`);

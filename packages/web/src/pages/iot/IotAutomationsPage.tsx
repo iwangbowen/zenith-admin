@@ -127,7 +127,7 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<AutomationSearchParams>({ defaults: defaultSearch, listKey: iotAutomationKeys.lists });
 
@@ -252,47 +252,33 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput
-      placeholder="搜索联动名称..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderTriggerFilter = () => (
-    <FilterSelect
-      placeholder="全部触发器"
-      items={IOT_AUTOMATION_TRIGGER_OPTIONS}
-      value={draftParams.triggerType}
-      onChange={setField('triggerType')}
-      width={140}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('iot:automation:create')
-    ? <CreateButton onClick={modal.openCreate}>新增联动</CreateButton> : null;
-
   return (
     <>
       <ListSearchToolbar
-        keyword={renderKeyword()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索联动名称..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={<>
-          {renderTriggerFilter()}
-          {renderStatusFilter()}
+          <FilterSelect
+            placeholder="全部触发器"
+            items={IOT_AUTOMATION_TRIGGER_OPTIONS}
+            {...bind('triggerType')}
+            width={140}
+          />
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('iot:automation:create')
+            ? <CreateButton onClick={modal.openCreate}>新增联动</CreateButton> : null
+        )}
         filterTitle="筛选条件"
       />
       <ConfigurableTable<IotAutomation>

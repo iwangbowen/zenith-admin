@@ -46,7 +46,7 @@ export default function PaymentSettlementsPage() {
   const [detailBatch, setDetailBatch] = useState<PaymentSettlementBatch | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentSettlementKeys.lists });
 
@@ -213,35 +213,29 @@ export default function PaymentSettlementsPage() {
     createdAtColumn as ColumnProps<PaymentSettlementItem>,
   ];
 
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={channelOptions}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={PAYMENT_SETTLEMENT_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderGenerateButton = () => hasPermission('payment:settlement:generate') ? (
-    <Button type="primary" icon={<Plus size={14} />} onClick={openGenerate}>生成结算</Button>
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderChannelFilter()}
-        filters={renderStatusFilter()}
+        keyword={(
+          <FilterSelect
+            placeholder="全部渠道"
+            items={channelOptions}
+            {...bind('channel')}
+          />
+        )}
+        filters={(
+          <StatusSelect
+            items={PAYMENT_SETTLEMENT_STATUS_OPTIONS}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderGenerateButton()}
+        create={(
+          hasPermission('payment:settlement:generate') ? (
+            <Button type="primary" icon={<Plus size={14} />} onClick={openGenerate}>生成结算</Button>
+          ) : null
+        )}
         filterTitle="结算批次筛选"
       />
 

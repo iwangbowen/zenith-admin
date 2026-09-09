@@ -33,12 +33,12 @@ const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
 export default function TenantPackagesPage() {
   const { hasPermission } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   // draft：搜索区输入中的条件；submitted：点击查询后实际生效的条件（进入 query key）
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tenantPackageKeys.lists });
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
@@ -154,30 +154,23 @@ export default function TenantPackagesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索套餐名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('system:tenant-package:create') ? (
-    <CreateButton onClick={modal.openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="搜索套餐名称" {...bindKeyword('keyword')} />}
+        filters={(
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:tenant-package:create') ? (
+            <CreateButton onClick={modal.openCreate} />
+          ) : null
+        )}
         actions={selectedRowKeys.length > 0 && hasPermission('system:tenant-package:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
         filterTitle="套餐筛选"
         actionTitle="套餐操作"
@@ -209,7 +202,7 @@ export default function TenantPackagesPage() {
               field="status"
               label="状态"
               style={{ width: '100%' }}
-              optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
+              optionList={statusOptions}
               placeholder="请选择状态"
             />
             <Form.TextArea field="remark" label="备注" placeholder="请输入备注" rows={3} />

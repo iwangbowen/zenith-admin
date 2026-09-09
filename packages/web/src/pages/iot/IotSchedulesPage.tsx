@@ -56,7 +56,7 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<ScheduleSearchParams>({ defaults: defaultSearch, listKey: iotScheduleKeys.lists });
 
@@ -162,34 +162,27 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput
-      placeholder="搜索计划名称..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('iot:schedule:create')
-    ? <CreateButton onClick={modal.openCreate}>新增计划</CreateButton> : null;
-
   return (
     <>
       <ListSearchToolbar
-        keyword={renderKeyword()}
-        filters={renderStatusFilter()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索计划名称..."
+            {...bindKeyword('keyword')}
+          />
+        )}
+        filters={(
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('iot:schedule:create')
+            ? <CreateButton onClick={modal.openCreate}>新增计划</CreateButton> : null
+        )}
         filterTitle="筛选条件"
       />
       <ConfigurableTable<IotSchedule>

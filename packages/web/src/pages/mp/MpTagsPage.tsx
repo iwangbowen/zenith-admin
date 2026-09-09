@@ -94,15 +94,6 @@ export default function MpTagsPage() {
     }),
   ];
 
-  const renderAccountFilter = () => (
-    <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-  );
-  const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索标签名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={180} />
-  );
-  const renderCreateButton = () => can('mp:tag:create') ? (
-    <CreateButton onClick={modal.openCreate} disabled={!currentId} />
-  ) : null;
   const renderSyncButton = () => can('mp:tag:sync') ? (
     <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>
   ) : null;
@@ -110,12 +101,16 @@ export default function MpTagsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordInput()}
-        filters={renderAccountFilter()}
+        keyword={<KeywordInput placeholder="搜索标签名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={180} />}
+        filters={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
         onSearch={handleSearch}
         onReset={handleReset}
         actions={renderSyncButton()}
-        create={renderCreateButton()}
+        create={(
+          can('mp:tag:create') ? (
+            <CreateButton onClick={modal.openCreate} disabled={!currentId} />
+          ) : null
+        )}
         mobileActions={renderSyncButton()}
         filterTitle="标签筛选"
         actionTitle="标签操作"

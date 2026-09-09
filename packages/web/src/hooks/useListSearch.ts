@@ -27,12 +27,29 @@ export interface UseListSearchReturn<T> extends UsePaginationReturn {
   readonly draftParams: T;
   readonly setDraftParams: React.Dispatch<React.SetStateAction<T>>;
   /**
-   * 单个草稿字段的 setter，是筛选控件 `onChange` 的标准写法：
-   * `onChange={setField('keyword')}`；控件值需要转换时 `onChange={(e) => setField('archived')(!!e.target.checked)}`。
+   * 单个草稿字段的 setter。受控筛选控件优先用 `bind` / `bindKeyword` 整体绑定；
+   * 只有控件不是 `value` / `onChange` 形态（如 `Checkbox` 的 `checked` + `e.target.checked`）时才直接用它：
+   * `onChange={(e) => setField('archived')(!!e.target.checked)}`。
    * 同一 key 跨渲染返回同一引用，可直接交给 memo 化的子组件。
    * 一次改多个字段仍用 `setDraftParams((p) => ({ ...p, a, b }))`。
    */
   readonly setField: <K extends keyof T>(key: K) => (value: T[K]) => void;
+  /**
+   * 受控筛选控件的标准绑定：`<StatusSelect items={statusItems} {...bind('status')} />`，
+   * 展开为 `value={draftParams.status} onChange={setField('status')}`。
+   * 控件回传类型比字段宽（枚举收窄、`null` / `undefined` 归一）时传 `parse`：
+   * `{...bind('status', (v) => enumValueOf(STATUSES, v))}`；`parse` 的入参即控件 `onChange` 的实参。
+   */
+  readonly bind: {
+    <K extends keyof T>(key: K): { readonly value: T[K]; readonly onChange: (value: T[K]) => void };
+    <K extends keyof T, R = unknown>(key: K, parse: (raw: R) => T[K]): { readonly value: T[K]; readonly onChange: (raw: NoInfer<R>) => void };
+  };
+  /**
+   * 关键字输入框绑定：`<KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />`，
+   * 在 `bind` 之上再接回车触发查询的 `onSearch`。只用于 `KeywordInput`——
+   * 下拉类控件的 `onSearch` 是 Semi 的下拉搜索回调，不能混入。
+   */
+  readonly bindKeyword: <K extends keyof T>(key: K) => { readonly value: T[K]; readonly onChange: (value: T[K]) => void; readonly onSearch: () => void };
   /** 进入 query key；变化自动触发请求 */
   readonly submittedParams: T;
   /** 提交草稿条件、回到第 1 页，并强制失效列表 */
@@ -62,12 +79,13 @@ export interface UseListSearchReturn<T> extends UsePaginationReturn {
  * @example
  * const {
  *   page, pageSize, buildPagination,
- *   draftParams, setField, submittedParams,
+ *   bind, bindKeyword, submittedParams,
  *   handleSearch, handleReset,
  * } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tagKeys.lists });
  *
  * const listQuery = useTagList({ page, pageSize, keyword: submittedParams.keyword || undefined });
- * <KeywordInput value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
+ * <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />
+ * <StatusSelect items={statusItems} {...bind('status')} />
  */
 export function useListSearch<T>({
   defaults,
@@ -128,11 +146,27 @@ export function useListSearch<T>({
     onReset?.();
   }, [setPage, invalidate, onReset, defaults]);
 
+  const bind = useCallback(<K extends keyof T, R>(key: K, parse?: (raw: R) => T[K]) => {
+    const setter = setField(key);
+    return {
+      value: draftParams[key],
+      onChange: parse ? (raw: R) => setter(parse(raw)) : setter,
+    };
+  }, [draftParams, setField]) as UseListSearchReturn<T>['bind'];
+
+  const bindKeyword = useCallback(<K extends keyof T>(key: K) => ({
+    value: draftParams[key],
+    onChange: setField(key),
+    onSearch: handleSearch,
+  }), [draftParams, setField, handleSearch]);
+
   return {
     ...pagination,
     draftParams,
     setDraftParams,
     setField,
+    bind,
+    bindKeyword,
     submittedParams,
     handleSearch,
     applySearch,

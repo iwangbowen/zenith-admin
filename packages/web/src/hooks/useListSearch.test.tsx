@@ -183,3 +183,38 @@ describe('额外副作用回调', () => {
     expect(onSearch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('bind / bindKeyword 受控控件绑定', () => {
+  it('bind 展开为当前草稿值 + 该字段的 setter', () => {
+    const { result } = setup();
+    expect(result.current.bind('status').value).toBe('');
+    expect(result.current.bind('status').onChange).toBe(result.current.setField('status'));
+
+    act(() => { result.current.bind('status').onChange('enabled'); });
+    expect(result.current.draftParams).toEqual({ keyword: '', status: 'enabled' });
+    expect(result.current.bind('status').value).toBe('enabled');
+  });
+
+  it('bind 带 parse 时先把控件回传值收窄再写入字段', () => {
+    const { result } = setup();
+    const parse = (raw: unknown) => (raw === 'enabled' || raw === 'disabled' ? raw : '');
+
+    act(() => { result.current.bind('status', parse).onChange('enabled'); });
+    expect(result.current.draftParams.status).toBe('enabled');
+
+    act(() => { result.current.bind('status', parse).onChange('bogus'); });
+    expect(result.current.draftParams.status).toBe('');
+  });
+
+  it('bindKeyword 额外接回车查询：onSearch 即 handleSearch，提交草稿并回源', () => {
+    const { result, client } = setup();
+    expect(result.current.bindKeyword('keyword').onSearch).toBe(result.current.handleSearch);
+
+    act(() => { result.current.bindKeyword('keyword').onChange('abc'); });
+    expect(result.current.submittedParams.keyword).toBe('');
+
+    act(() => { result.current.bindKeyword('keyword').onSearch(); });
+    expect(result.current.submittedParams.keyword).toBe('abc');
+    expect(isInvalidated(client, [...listKey, { page: 1 }])).toBe(true);
+  });
+});

@@ -53,7 +53,7 @@ export default function MarketingCampaignsPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: marketingCampaignKeys.lists });
 
@@ -178,44 +178,30 @@ export default function MarketingCampaignsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索活动名称..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={MARKETING_CAMPAIGN_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter
-      value={draftParams.timeRange}
-      onChange={setField('timeRange')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('marketing:campaign:create')
-    ? <CreateButton onClick={modal.openCreate} /> : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索活动名称..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={<>
-          {renderStatusFilter()}
-          {renderTimeRangeFilter()}
+          <StatusSelect
+            items={MARKETING_CAMPAIGN_STATUS_OPTIONS}
+            {...bind('status')}
+          />
+          <DateRangeFilter
+            {...bind('timeRange')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('marketing:campaign:create')
+            ? <CreateButton onClick={modal.openCreate} /> : null
+        )}
         filterTitle="筛选条件"
       />
 

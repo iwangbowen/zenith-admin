@@ -68,7 +68,7 @@ export default function PaymentReconPage() {
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentReconKeys.lists });
 
@@ -278,45 +278,32 @@ export default function PaymentReconPage() {
     }),
   ];
 
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={PAYMENT_CHANNEL_OPTIONS}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={PAYMENT_RECON_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('payment:recon:create') ? (
-    <CreateButton onClick={openCreate}>新建对账</CreateButton>
-  ) : null;
-  const renderAutoButton = () => hasPermission('payment:recon:create') ? (
-    <Button type="primary" icon={<CloudDownload size={14} />} onClick={autoModal.openCreate}>自动拉取</Button>
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
         filters={(
           <>
-            {renderChannelFilter()}
-            {renderStatusFilter()}
+            <FilterSelect
+              placeholder="全部渠道"
+              items={PAYMENT_CHANNEL_OPTIONS}
+              {...bind('channel')}
+            />
+            <StatusSelect
+              items={PAYMENT_RECON_STATUS_OPTIONS}
+              {...bind('status')}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
         create={(
           <>
-            {renderAutoButton()}
-            {renderCreateButton()}
+            {hasPermission('payment:recon:create') ? (
+              <Button type="primary" icon={<CloudDownload size={14} />} onClick={autoModal.openCreate}>自动拉取</Button>
+            ) : null}
+            {hasPermission('payment:recon:create') ? (
+              <CreateButton onClick={openCreate}>新建对账</CreateButton>
+            ) : null}
           </>
         )}
         filterTitle="对账批次筛选"

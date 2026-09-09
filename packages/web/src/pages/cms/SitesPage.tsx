@@ -47,7 +47,7 @@ export default function SitesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -263,56 +263,44 @@ export default function SitesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称/标识/域名..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('cms:site:create') ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
-  const renderImportButton = () => hasPermission('cms:site:create') ? (
-    <Button icon={<UploadIcon size={14} />} loading={importMutation.isPending} onClick={() => importFileRef.current?.click()}>导入</Button>
-  ) : null;
-  const renderViewToggle = () => (
-    <Button
-      type="tertiary"
-      icon={treeView ? <ListIcon size={14} /> : <ListTree size={14} />}
-      onClick={() => setTreeView((value) => !value)}
-    >
-      {treeView ? '列表视图' : '树视图'}
-    </Button>
-  );
-  const renderExpandToggle = () => treeView ? (
-    <Button
-      type="tertiary"
-      icon={allExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-      onClick={toggleExpandAll}
-    >
-      {allExpanded ? '全部折叠' : '全部展开'}
-    </Button>
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="搜索名称/标识/域名..." {...bindKeyword('keyword')} />}
+        filters={(
+          <StatusSelect
+            items={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('cms:site:create') ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
         actions={(
           <>
-            {renderViewToggle()}
-            {renderExpandToggle()}
-            {renderImportButton()}
+            <Button
+              type="tertiary"
+              icon={treeView ? <ListIcon size={14} /> : <ListTree size={14} />}
+              onClick={() => setTreeView((value) => !value)}
+            >
+              {treeView ? '列表视图' : '树视图'}
+            </Button>
+            {treeView ? (
+              <Button
+                type="tertiary"
+                icon={allExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+                onClick={toggleExpandAll}
+              >
+                {allExpanded ? '全部折叠' : '全部展开'}
+              </Button>
+            ) : null}
+            {hasPermission('cms:site:create') ? (
+              <Button icon={<UploadIcon size={14} />} loading={importMutation.isPending} onClick={() => importFileRef.current?.click()}>导入</Button>
+            ) : null}
           </>
         )}
         filterTitle="筛选条件"

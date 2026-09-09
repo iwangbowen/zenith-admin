@@ -41,7 +41,7 @@ export default function EmailSendLogsPage() {
   const defaultSearchParams: SearchParams = { keyword: '', toEmail: '', filterStatus: undefined, filterSource: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, setField, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: emailSendLogKeys.lists });
 
@@ -103,10 +103,10 @@ export default function EmailSendLogsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="主题/内容关键词" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="主题/内容关键词" {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
-            <Input placeholder="收件人邮箱" value={draftParams.toEmail} onChange={setField('toEmail')}
+            <Input placeholder="收件人邮箱" {...bind('toEmail')}
               onEnterPress={handleSearch} showClear style={{ width: 200 }} />
             <SendLogStatusSourceFilters
               status={draftParams.filterStatus}

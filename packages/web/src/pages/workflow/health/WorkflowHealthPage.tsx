@@ -144,27 +144,6 @@ export default function WorkflowHealthPage() {
     }),
   ];
 
-  const renderThresholdFilter = () => (
-    <Select
-      value={thresholdMinutes}
-      onChange={(v) => setThresholdMinutes(Number(v) || 30)}
-      optionList={THRESHOLD_OPTIONS}
-      prefix="只看等待"
-      suffix="的问题"
-      style={{ width: 320 }}
-    />
-  );
-
-  const renderMobileThresholdFilter = () => (
-    <FilterSelect
-      placeholder="全部等待阈值"
-      items={THRESHOLD_OPTIONS}
-      value={thresholdMinutes}
-      onChange={(v) => setThresholdMinutes(Number(v) || 30)}
-      width={180}
-    />
-  );
-
   const renderIssueTypeFilter = () => (
     <FilterSelect
       placeholder="全部问题类型"
@@ -180,24 +159,33 @@ export default function WorkflowHealthPage() {
     <SearchButton onClick={handleSearch} />
   );
 
-  const renderResetButton = () => (
-    <ResetButton onClick={handleReset} />
-  );
-
   return (
     <div className="page-container">
       <SearchToolbar
         primary={(
           <>
-            {renderThresholdFilter()}
+            <Select
+              value={thresholdMinutes}
+              onChange={(v) => setThresholdMinutes(Number(v) || 30)}
+              optionList={THRESHOLD_OPTIONS}
+              prefix="只看等待"
+              suffix="的问题"
+              style={{ width: 320 }}
+            />
             {renderIssueTypeFilter()}
             {renderSearchButton()}
-            {renderResetButton()}
+            <ResetButton onClick={handleReset} />
           </>
         )}
         mobilePrimary={(
           <>
-            {renderMobileThresholdFilter()}
+            <FilterSelect
+              placeholder="全部等待阈值"
+              items={THRESHOLD_OPTIONS}
+              value={thresholdMinutes}
+              onChange={(v) => setThresholdMinutes(Number(v) || 30)}
+              width={180}
+            />
             {renderSearchButton()}
           </>
         )}

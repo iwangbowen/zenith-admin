@@ -53,13 +53,13 @@ function buildCallbackUrl(id: number): string {
 
 export default function MpAccountsPage() {
   const { hasPermission: can } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   interface SearchParams { keyword: string; filterType: MpAccountType | undefined; filterStatus: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterType: undefined, filterStatus: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: mpAccountKeys.lists });
 
@@ -189,41 +189,30 @@ export default function MpAccountsPage() {
     }),
   ];
 
-  const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索名称/微信号/AppID" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={TYPE_OPTIONS}
-      value={draftParams.filterType}
-      onChange={(v) => setField('filterType')(v as MpAccountType | undefined)}
-    />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.filterStatus}
-      onChange={(v) => setField('filterStatus')(v as string | undefined)}
-    />
-  );
-  const renderCreateButton = () => can('mp:account:create') ? (
-    <CreateButton onClick={modal.openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordInput()}
+        keyword={<KeywordInput placeholder="搜索名称/微信号/AppID" {...bindKeyword('keyword')} />}
         filters={(
           <>
-            {renderTypeFilter()}
-            {renderStatusFilter()}
+            <FilterSelect
+              placeholder="全部类型"
+              items={TYPE_OPTIONS}
+              {...bind('filterType', (v) => v as MpAccountType | undefined)}
+            />
+            <StatusSelect
+              items={statusItems}
+              {...bind('filterStatus')}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          can('mp:account:create') ? (
+            <CreateButton onClick={modal.openCreate} />
+          ) : null
+        )}
         filterTitle="公众号账号筛选"
       />
 
@@ -258,7 +247,7 @@ export default function MpAccountsPage() {
                 </Col>
                 <Col span={12}>
                   <Form.Select field="status" label="状态" style={{ width: '100%' }} placeholder="请选择状态"
-                    optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+                    optionList={statusOptions} />
                 </Col>
               </Row>
               <Form.Input field="qrCodeUrl" label="二维码地址" placeholder="公众号二维码图片 URL（选填）" />

@@ -203,7 +203,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
   const [execView, setExecView] = useState<'timeline' | 'table'>('timeline');
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const clearSelection = useCallback(() => setSelectedRowKeys([]), []);
-  const { page, pageSize, buildPagination, draftParams, setField, submittedParams, handleSearch, handleReset, applySearch } =
+  const { page, pageSize, buildPagination, draftParams, bind, bindKeyword, submittedParams, handleSearch, handleReset, applySearch } =
     useListSearch<JobSearchParams>({
       defaults: JOB_SEARCH_DEFAULTS,
       listKey: workflowMonitorKeys.jobLists,
@@ -584,12 +584,11 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
       </div>
 
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="幂等键 / TraceId / 节点" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="幂等键 / TraceId / 节点" {...bindKeyword('keyword')} />}
         filters={(
           <StatusSelect
             items={JOB_STATUS_OPTIONS}
-            value={draftParams.status}
-            onChange={(v) => setField('status')(v as WorkflowJobStatus | undefined)}
+            {...bind('status')}
           />
         )}
         onSearch={handleSearch}

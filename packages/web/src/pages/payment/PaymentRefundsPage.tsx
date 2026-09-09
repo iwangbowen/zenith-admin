@@ -36,7 +36,7 @@ export default function PaymentRefundsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentRefundKeys.lists });
   const [detail, setDetail] = useState<PaymentRefund | null>(null);
@@ -132,60 +132,34 @@ export default function PaymentRefundsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="退款单号/订单号..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
-  );
-
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={PAYMENT_CHANNEL_OPTIONS}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={PAYMENT_REFUND_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderApprovalFilter = () => (
-    <FilterSelect
-      placeholder="全部审批状态"
-      items={PAYMENT_REFUND_APPROVAL_STATUS_OPTIONS}
-      value={draftParams.approvalStatus}
-      onChange={setField('approvalStatus')}
-      width={140}
-    />
-  );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter placeholder={['创建开始', '创建结束']} value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
-  );
-
-  const renderExportButtons = () => <ExportButton entity="payment.refunds" query={buildQuery(submittedParams)} />;
-  const renderMobileExportActions = () => <ExportButton entity="payment.refunds" query={buildQuery(submittedParams)} variant="flat" />;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="退款单号/订单号..." {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
-            {renderChannelFilter()}
-            {renderStatusFilter()}
-            {renderApprovalFilter()}
-            {renderTimeRangeFilter()}
+            <FilterSelect
+              placeholder="全部渠道"
+              items={PAYMENT_CHANNEL_OPTIONS}
+              {...bind('channel')}
+            />
+            <StatusSelect
+              items={PAYMENT_REFUND_STATUS_OPTIONS}
+              {...bind('status')}
+            />
+            <FilterSelect
+              placeholder="全部审批状态"
+              items={PAYMENT_REFUND_APPROVAL_STATUS_OPTIONS}
+              {...bind('approvalStatus')}
+              width={140}
+            />
+            <DateRangeFilter placeholder={['创建开始', '创建结束']} {...bind('timeRange')} />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        actions={renderExportButtons()}
-        mobileActions={renderMobileExportActions()}
+        actions={<ExportButton entity="payment.refunds" query={buildQuery(submittedParams)} />}
+        mobileActions={<ExportButton entity="payment.refunds" query={buildQuery(submittedParams)} variant="flat" />}
         filterTitle="退款记录筛选"
       />
 

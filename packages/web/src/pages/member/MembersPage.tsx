@@ -54,11 +54,11 @@ const defaultSearch: SearchParams = { keyword: '', status: undefined, levelId: u
 export default function MembersPage() {
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
-  const { items: genderItems } = useDictItems('user_gender');
+  const { options: genderOptions } = useDictItems('user_gender');
   const pwdFormApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.memberLists });
   // 等级列表"会员数"等入口的深链筛选（?levelId=，消费后即从 URL 移除）
@@ -264,77 +264,53 @@ export default function MembersPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="昵称/手机号/用户名/邮箱" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusOptions}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderLevelFilter = () => (
-    <FilterSelect
-      placeholder="全部等级"
-      items={levels.map((l) => ({ value: l.id, label: l.name }))}
-      value={draftParams.levelId}
-      onChange={(v) => setField('levelId')(v as number | undefined)}
-      width={140}
-    />
-  );
-
-  const renderTagFilter = () => (
-    <FilterSelect
-      placeholder="全部标签"
-      items={memberTags.map((t: MemberTag) => ({ value: t.id, label: t.name }))}
-      value={draftParams.tagId}
-      onChange={(v) => setField('tagId')(v as number | undefined)}
-      width={140}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('member:member:create') ? (
-    <CreateButton onClick={memberModal.openCreate} />
-  ) : null;
-  const renderTagsManageButton = () => hasPermission('member:member:update') ? (
-    <Button type="tertiary" icon={<Tags size={14} />} onClick={() => setTagsManageVisible(true)}>标签管理</Button>
-  ) : null;
-
-  const renderExportButtons = () => hasPermission('member:member:list') ? (
-    <ExportButton entity="member.members" query={buildExportQuery()} />
-  ) : null;
-
-  const renderImportButton = () => hasPermission('member:member:create') ? (
-    <ImportButton
-      entity="member.members"
-      title="会员"
-      onFinished={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.memberLists })}
-    />
-  ) : null;
-
-  const renderMobileExportActions = () => hasPermission('member:member:list') ? (
-    <ExportButton entity="member.members" query={buildExportQuery()} variant="flat" />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="昵称/手机号/用户名/邮箱" {...bindKeyword('keyword')} width={240} />}
         filters={(
           <>
-            {renderStatusFilter()}
-            {renderLevelFilter()}
-            {renderTagFilter()}
+            <StatusSelect
+              items={statusOptions}
+              {...bind('status')}
+            />
+            <FilterSelect
+              placeholder="全部等级"
+              items={levels.map((l) => ({ value: l.id, label: l.name }))}
+              {...bind('levelId')}
+              width={140}
+            />
+            <FilterSelect
+              placeholder="全部标签"
+              items={memberTags.map((t: MemberTag) => ({ value: t.id, label: t.name }))}
+              {...bind('tagId')}
+              width={140}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
-        actions={<>{renderExportButtons()}{renderImportButton()}{renderTagsManageButton()}</>}
-        mobileActions={renderMobileExportActions()}
+        create={(
+          hasPermission('member:member:create') ? (
+            <CreateButton onClick={memberModal.openCreate} />
+          ) : null
+        )}
+        actions={<>{hasPermission('member:member:list') ? (
+          <ExportButton entity="member.members" query={buildExportQuery()} />
+        ) : null}{hasPermission('member:member:create') ? (
+          <ImportButton
+            entity="member.members"
+            title="会员"
+            onFinished={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.memberLists })}
+          />
+        ) : null}{hasPermission('member:member:update') ? (
+          <Button type="tertiary" icon={<Tags size={14} />} onClick={() => setTagsManageVisible(true)}>标签管理</Button>
+        ) : null}</>}
+        mobileActions={(
+          hasPermission('member:member:list') ? (
+            <ExportButton entity="member.members" query={buildExportQuery()} variant="flat" />
+          ) : null
+        )}
         filterTitle="会员筛选"
       />
 
@@ -387,7 +363,7 @@ export default function MembersPage() {
             </Col>
             <Col span={12}>
               <Form.Select field="gender" label="性别" placeholder="请选择" style={{ width: '100%' }} showClear
-                optionList={genderItems.map((i) => ({ value: i.value, label: i.label }))} />
+                optionList={genderOptions} />
             </Col>
           </Row>
           <Form.TextArea field="remark" label="备注" placeholder="请输入备注" maxCount={256} />

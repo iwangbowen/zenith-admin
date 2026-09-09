@@ -201,12 +201,6 @@ export default function MpKfSessionsPage() {
   const agentOptions = (stats?.agents ?? []).filter((a) => a.status === 'enabled' && (pickModal.mode === 'accept' || a.kfId !== detail?.kfId));
   const acting = acceptMutation.isPending || transferMutation.isPending;
 
-  const renderAccountFilter = () => (
-    <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-  );
-  const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索 openid / 粉丝昵称" value={keyword} onChange={setKeyword} onSearch={handleSearch} width={200} />
-  );
   const renderSessionActions = () => {
     const configButton = can('mp:kf:session:config') ? (
       <Button icon={<Settings size={14} />} disabled={!currentId} onClick={openConfig}>路由配置</Button>
@@ -222,8 +216,8 @@ export default function MpKfSessionsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordInput()}
-        filters={renderAccountFilter()}
+        keyword={<KeywordInput placeholder="搜索 openid / 粉丝昵称" value={keyword} onChange={setKeyword} onSearch={handleSearch} width={200} />}
+        filters={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
         onSearch={handleSearch}
         onReset={handleReset}
         actions={renderSessionActions()}

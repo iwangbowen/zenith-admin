@@ -46,7 +46,7 @@ export default function PaymentPreauthsPage() {
   const latestCreateResult = useRef<PaymentPreauth | null>(null);
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch({ defaults: defaultSearchParams, listKey: paymentPreauthKeys.lists });
   const [captureTarget, setCaptureTarget] = useState<PaymentPreauth | null>(null);
@@ -179,49 +179,36 @@ export default function PaymentPreauthsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="预授权单号/付款人/事由..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-  const renderAppFilter = () => (
-    <PaymentAppFilterSelect
-      value={effectivePreauthAppId}
-      onChange={(appId) => {
-        setPreauthAppId(appId);
-        setPage(1);
-      }}
-      optionList={appOptions}
-      loading={appsFetching}
-    />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect items={PAYMENT_PREAUTH_STATUS_OPTIONS} value={draftParams.status} onChange={setField('status')} />
-  );
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={channelOptions}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-  const renderCreateButton = () => canManage ? (
-    <Button type="primary" icon={<Plus size={14} />} onClick={() => { setSelectedAppId(null); createModal.openCreate(); }}>发起冻结</Button>
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="预授权单号/付款人/事由..." {...bindKeyword('keyword')} />}
         filters={(
           <>
-            {renderAppFilter()}
-            {renderStatusFilter()}
-            {renderChannelFilter()}
+            <PaymentAppFilterSelect
+              value={effectivePreauthAppId}
+              onChange={(appId) => {
+                setPreauthAppId(appId);
+                setPage(1);
+              }}
+              optionList={appOptions}
+              loading={appsFetching}
+            />
+            <StatusSelect items={PAYMENT_PREAUTH_STATUS_OPTIONS} {...bind('status')} />
+            <FilterSelect
+              placeholder="全部渠道"
+              items={channelOptions}
+              {...bind('channel')}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          canManage ? (
+            <Button type="primary" icon={<Plus size={14} />} onClick={() => { setSelectedAppId(null); createModal.openCreate(); }}>发起冻结</Button>
+          ) : null
+        )}
         filterTitle="预授权筛选"
       />
 

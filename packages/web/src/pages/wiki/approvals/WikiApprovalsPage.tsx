@@ -43,7 +43,7 @@ function PendingPane() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiDocKeys.lists });
 
@@ -115,19 +115,15 @@ function PendingPane() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索标题..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
   return (
     <>
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索标题..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
       />

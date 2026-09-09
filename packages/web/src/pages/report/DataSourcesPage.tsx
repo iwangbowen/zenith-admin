@@ -40,13 +40,13 @@ function isExternalDbType(type: unknown): type is 'mysql' | 'postgresql' | 'sqls
 }
 
 export default function DataSourcesPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportDatasourceKeys.lists });
 
@@ -277,33 +277,6 @@ export default function DataSourcesPage() {
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput placeholder="搜索名称/备注..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={REPORT_DATASOURCE_TYPE_OPTIONS}
-      value={draftParams.type}
-      onChange={setField('type')}
-      width={140}
-    />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-  const renderOwnerFilter = () => (
-    <ReportOwnerFilter items={userOptions} value={draftParams.ownerId} onChange={setField('ownerId')} />
-  );
-  const renderFolderFilter = () => (
-    <ReportFolderFilter items={folderOptions} value={draftParams.folderId} onChange={setField('folderId')} />
-  );
-  const renderCreateBtn = () => hasPermission('report:datasource:create')
-    ? <CreateButton onClick={datasourceModal.openCreate} /> : null;
   const renderBatchHealthBtn = () => selectedRowKeys.length > 0 && hasPermission('report:datasource:update')
     ? <Button icon={<Activity size={14} />} onClick={() => void handleHealthCheck(selectedRowKeys)}>批量检测</Button> : null;
   const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:datasource:update')
@@ -314,11 +287,22 @@ export default function DataSourcesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeyword()}
-        filters={<>{renderTypeFilter()}{renderOwnerFilter()}{renderFolderFilter()}{renderStatusFilter()}</>}
+        keyword={<KeywordInput placeholder="搜索名称/备注..." {...bindKeyword('keyword')} />}
+        filters={<><FilterSelect
+          placeholder="全部类型"
+          items={REPORT_DATASOURCE_TYPE_OPTIONS}
+          {...bind('type')}
+          width={140}
+        /><ReportOwnerFilter items={userOptions} {...bind('ownerId')} /><ReportFolderFilter items={folderOptions} {...bind('folderId')} /><StatusSelect
+          items={statusItems}
+          {...bind('status')}
+        /></>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateBtn()}
+        create={(
+          hasPermission('report:datasource:create')
+            ? <CreateButton onClick={datasourceModal.openCreate} /> : null
+        )}
         actions={<>{renderBatchHealthBtn()}{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         mobileActions={<>{renderBatchHealthBtn()}{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="数据源筛选"
@@ -435,7 +419,7 @@ export default function DataSourcesPage() {
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Select field="status" label="状态" style={{ width: '100%' }}
-                    optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+                    optionList={statusOptions} />
                 </Col>
               </Row>
               <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />

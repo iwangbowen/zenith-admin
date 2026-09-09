@@ -117,7 +117,7 @@ export default function PayDemoPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<PayDemoSearchParams>({ defaults: DEFAULT_PAY_DEMO_SEARCH_PARAMS, listKey: bizPayDemoKeys.lists });
 
@@ -254,20 +254,6 @@ export default function PayDemoPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索示例事项" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={(Object.keys(STATUS_MAP) as BizPayDemoStatus[]).map((value) => ({ value, label: STATUS_MAP[value].text }))}
-      value={draftParams.status}
-      onChange={(value) => setField('status')(value as PayDemoSearchParams['status'] | undefined)}
-    />
-  );
-
-  const renderCreateButton = () => <CreateButton onClick={createModal.openCreate}>新建示例单</CreateButton>;
-
   return (
     <div className="page-container">
       <Banner
@@ -279,11 +265,16 @@ export default function PayDemoPage() {
       />
 
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="搜索示例事项" {...bindKeyword('keyword')} />}
+        filters={(
+          <StatusSelect
+            items={(Object.keys(STATUS_MAP) as BizPayDemoStatus[]).map((value) => ({ value, label: STATUS_MAP[value].text }))}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={<CreateButton onClick={createModal.openCreate}>新建示例单</CreateButton>}
         filterTitle="支付示例筛选"
       />
 

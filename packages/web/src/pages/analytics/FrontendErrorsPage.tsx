@@ -970,63 +970,6 @@ export default function FrontendErrorsPage() {
   const renderOverviewRefreshButton = () => (
     <Button type="primary" icon={<RefreshCcw size={14} />} loading={overviewQuery.isFetching} onClick={() => void overviewQuery.refetch()}>刷新</Button>
   );
-  const renderIssueStatusFilter = () => (
-    <StatusSelect
-      items={statusOptions}
-      value={issueFilters.status}
-      onChange={(value) => setIssueFilters((prev) => ({ ...prev, status: value as ErrorStatus | undefined }))}
-    />
-  );
-  const renderIssueTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={typeOptions}
-      value={issueFilters.errorType}
-      onChange={(value) => setIssueFilters((prev) => ({ ...prev, errorType: value as FrontendErrorType | undefined }))}
-      width={150}
-    />
-  );
-  const renderIssueLevelFilter = () => (
-    <FilterSelect
-      placeholder="全部级别"
-      items={levelOptions}
-      value={issueFilters.level}
-      onChange={(value) => setIssueFilters((prev) => ({ ...prev, level: value as ErrorLevel | undefined }))}
-    />
-  );
-  const renderIssueEnvironmentFilter = () => (
-    <FilterSelect
-      placeholder="全部环境"
-      items={ENVIRONMENT_OPTIONS}
-      value={issueFilters.environment}
-      onChange={(value) => setIssueFilters((prev) => ({ ...prev, environment: value as AnalyticsEnvironment | undefined }))}
-    />
-  );
-  const renderIssueKeywordSearch = () => (
-    <KeywordInput placeholder="错误信息关键词" value={issueFilters.keyword} onChange={(value) => setIssueFilters((prev) => ({ ...prev, keyword: value }))} onSearch={handleIssueSearch} />
-  );
-  const renderIssueBatchActions = () => selectedRowKeys.length > 0 ? (
-    <>
-      <SplitButtonGroup>
-        <Button type="primary" icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('resolved')}>
-          批量标记已解决 ({selectedRowKeys.length})
-        </Button>
-        <Dropdown
-          trigger="click"
-          render={(
-            <Dropdown.Menu>
-              <Dropdown.Item onClick={() => batchUpdateStatus('ignored')}>批量忽略</Dropdown.Item>
-            </Dropdown.Menu>
-          )}
-        >
-          <Button type="primary" icon={<ChevronDown size={14} />} />
-        </Dropdown>
-      </SplitButtonGroup>
-      <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={batchDeleteGroups}>
-        批量删除
-      </Button>
-    </>
-  ) : null;
   const renderMobileIssueBatchActions = () => selectedRowKeys.length > 0 ? (
     <>
       <Button icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('resolved')}>
@@ -1060,18 +1003,61 @@ export default function FrontendErrorsPage() {
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as TabKey)} lazyRender>
         <TabPane tab="错误 Issue" itemKey="issues">
           <ListSearchToolbar
-            keyword={renderIssueKeywordSearch()}
+            keyword={<KeywordInput placeholder="错误信息关键词" value={issueFilters.keyword} onChange={(value) => setIssueFilters((prev) => ({ ...prev, keyword: value }))} onSearch={handleIssueSearch} />}
             filters={(
               <>
-                {renderIssueStatusFilter()}
-                {renderIssueTypeFilter()}
-                {renderIssueLevelFilter()}
-                {renderIssueEnvironmentFilter()}
+                <StatusSelect
+                  items={statusOptions}
+                  value={issueFilters.status}
+                  onChange={(value) => setIssueFilters((prev) => ({ ...prev, status: value as ErrorStatus | undefined }))}
+                />
+                <FilterSelect
+                  placeholder="全部类型"
+                  items={typeOptions}
+                  value={issueFilters.errorType}
+                  onChange={(value) => setIssueFilters((prev) => ({ ...prev, errorType: value as FrontendErrorType | undefined }))}
+                  width={150}
+                />
+                <FilterSelect
+                  placeholder="全部级别"
+                  items={levelOptions}
+                  value={issueFilters.level}
+                  onChange={(value) => setIssueFilters((prev) => ({ ...prev, level: value as ErrorLevel | undefined }))}
+                />
+                <FilterSelect
+                  placeholder="全部环境"
+                  items={ENVIRONMENT_OPTIONS}
+                  value={issueFilters.environment}
+                  onChange={(value) => setIssueFilters((prev) => ({ ...prev, environment: value as AnalyticsEnvironment | undefined }))}
+                />
               </>
             )}
             onSearch={handleIssueSearch}
             onReset={handleIssueReset}
-            actions={renderIssueBatchActions()}
+            actions={(
+              selectedRowKeys.length > 0 ? (
+                <>
+                  <SplitButtonGroup>
+                    <Button type="primary" icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('resolved')}>
+                      批量标记已解决 ({selectedRowKeys.length})
+                    </Button>
+                    <Dropdown
+                      trigger="click"
+                      render={(
+                        <Dropdown.Menu>
+                          <Dropdown.Item onClick={() => batchUpdateStatus('ignored')}>批量忽略</Dropdown.Item>
+                        </Dropdown.Menu>
+                      )}
+                    >
+                      <Button type="primary" icon={<ChevronDown size={14} />} />
+                    </Dropdown>
+                  </SplitButtonGroup>
+                  <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={batchDeleteGroups}>
+                    批量删除
+                  </Button>
+                </>
+              ) : null
+            )}
             mobileActions={(renderMobileIssueBatchActions())}
             filterTitle="错误 Issue 筛选"
             actionTitle="Issue 操作"

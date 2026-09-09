@@ -47,7 +47,7 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<ForwardSearchParams>({ defaults: defaultSearch, listKey: iotForwardRuleKeys.lists });
 
@@ -156,47 +156,33 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput
-      placeholder="搜索规则名称..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderSourceFilter = () => (
-    <FilterSelect
-      placeholder="全部数据源"
-      items={IOT_FORWARD_SOURCE_OPTIONS}
-      value={draftParams.source}
-      onChange={setField('source')}
-      width={140}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('iot:forward:create')
-    ? <CreateButton onClick={modal.openCreate}>新增规则</CreateButton> : null;
-
   return (
     <>
       <ListSearchToolbar
-        keyword={renderKeyword()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索规则名称..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={<>
-          {renderSourceFilter()}
-          {renderStatusFilter()}
+          <FilterSelect
+            placeholder="全部数据源"
+            items={IOT_FORWARD_SOURCE_OPTIONS}
+            {...bind('source')}
+            width={140}
+          />
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('iot:forward:create')
+            ? <CreateButton onClick={modal.openCreate}>新增规则</CreateButton> : null
+        )}
         filterTitle="筛选条件"
       />
       <ConfigurableTable<IotForwardRule>

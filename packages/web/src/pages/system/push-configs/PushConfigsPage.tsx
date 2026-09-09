@@ -100,7 +100,7 @@ export default function PushConfigsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: pushConfigKeys.lists });
 
@@ -176,34 +176,27 @@ export default function PushConfigsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索名称 / 备注..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('system:push:create')
-    ? <CreateButton onClick={modal.openCreate}>新增配置</CreateButton> : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索名称 / 备注..."
+            {...bindKeyword('keyword')}
+          />
+        )}
+        filters={(
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:push:create')
+            ? <CreateButton onClick={modal.openCreate}>新增配置</CreateButton> : null
+        )}
         filterTitle="筛选条件"
       />
 

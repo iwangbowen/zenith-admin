@@ -63,7 +63,7 @@ export default function DirectorySyncSourcesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: directorySyncSourceKeys.lists });
 
@@ -247,43 +247,29 @@ export default function DirectorySyncSourcesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索名称..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={DIRECTORY_SYNC_SOURCE_TYPES.map((t) => ({ value: t, label: DIRECTORY_SYNC_SOURCE_TYPE_LABELS[t] }))}
-      value={draftParams.type}
-      onChange={setField('type')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('system:dirsync-source:create')
-    ? <CreateButton onClick={modal.openCreate} /> : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={<>{renderTypeFilter()}{renderStatusFilter()}</>}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索名称..."
+            {...bindKeyword('keyword')}
+          />
+        )}
+        filters={<><FilterSelect
+          placeholder="全部类型"
+          items={DIRECTORY_SYNC_SOURCE_TYPES.map((t) => ({ value: t, label: DIRECTORY_SYNC_SOURCE_TYPE_LABELS[t] }))}
+          {...bind('type')}
+        /><StatusSelect
+          items={statusItems}
+          {...bind('status')}
+        /></>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:dirsync-source:create')
+            ? <CreateButton onClick={modal.openCreate} /> : null
+        )}
         filterTitle="筛选条件"
       />
 

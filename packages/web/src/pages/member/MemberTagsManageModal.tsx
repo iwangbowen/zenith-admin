@@ -17,7 +17,7 @@ interface Props {
 
 /** 会员标签轻量管理（列表 + 新增/编辑/删除，嵌在会员管理页）*/
 export function MemberTagsManageModal({ visible, onClose }: Readonly<Props>) {
-  const { items: statusItems } = useDictItems('common_status');
+  const { options: statusOptions } = useDictItems('common_status');
   const tagsQuery = useMemberTags();
   const saveMutation = useSaveMemberTag();
   const deleteMutation = useDeleteMemberTag();
@@ -86,7 +86,7 @@ export function MemberTagsManageModal({ visible, onClose }: Readonly<Props>) {
           <Form.Input field="description" label="说明" placeholder="选填" maxLength={256} />
           <Form.InputNumber field="sort" label="排序" style={{ width: '100%' }} precision={0} />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+            optionList={statusOptions} />
         </Form>
       </AppModal>
     </Modal>

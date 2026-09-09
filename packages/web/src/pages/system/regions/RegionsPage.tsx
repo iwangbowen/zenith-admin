@@ -39,13 +39,13 @@ export default function RegionsPage() {
   const { hasPermission } = usePermission();
 
   const {
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: regionKeys.trees });
   const [editingLevel, setEditingLevel] = useState<string>('province');
   const { ref: tableWrapperRef, height: tableHeight } = useElementSize<HTMLDivElement>({ height: 500 });
 
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const treeQuery = useRegionTree({
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
@@ -182,27 +182,6 @@ export default function RegionsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称或代码..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderLevelFilter = () => (
-    <FilterSelect
-      placeholder="全部级别"
-      items={LEVEL_OPTIONS}
-      value={draftParams.level}
-      onChange={setField('level')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
   const renderExpandButton = () => (
     <Button
       type="primary"
@@ -217,39 +196,45 @@ export default function RegionsPage() {
     status: submittedParams.status,
     level: submittedParams.level,
   });
-  const renderExportButtons = () => hasPermission('system:region:export') ? (
-    <ExportButton entity="system.regions" query={buildExportQuery()} />
-  ) : null;
-  const renderMobileExportActions = () => hasPermission('system:region:export') ? (
-    <ExportButton entity="system.regions" query={buildExportQuery()} variant="flat" />
-  ) : null;
-  const renderCreateButton = () => hasPermission('system:region:create') ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
 
   return (
     <div className="page-container regions-page" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索名称或代码..." {...bindKeyword('keyword')} />}
         filters={(
           <>
-            {renderLevelFilter()}
-            {renderStatusFilter()}
+            <FilterSelect
+              placeholder="全部级别"
+              items={LEVEL_OPTIONS}
+              {...bind('level')}
+            />
+            <StatusSelect
+              items={statusItems}
+              {...bind('status')}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:region:create') ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
         actions={(
           <>
             {renderExpandButton()}
-            {renderExportButtons()}
+            {hasPermission('system:region:export') ? (
+              <ExportButton entity="system.regions" query={buildExportQuery()} />
+            ) : null}
           </>
         )}
         mobileActions={(
           <>
             {renderExpandButton()}
-            {renderMobileExportActions()}
+            {hasPermission('system:region:export') ? (
+              <ExportButton entity="system.regions" query={buildExportQuery()} variant="flat" />
+            ) : null}
           </>
         )}
         filterTitle="地区筛选"
@@ -323,7 +308,7 @@ export default function RegionsPage() {
           <Form.Select
             field="status"
             label="状态"
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+            optionList={statusOptions}
             rules={[{ required: true, message: '请选择状态' }]}
             placeholder="请选择状态"
             style={{ width: '100%' }}

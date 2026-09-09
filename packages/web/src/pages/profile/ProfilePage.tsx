@@ -121,7 +121,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const [activeSection, setActiveSection] = useUrlTabState(['profile', 'security', 'notifications', 'devices', 'login', 'operation', 'api-tokens', 'authorized-apps'] as const, 'profile');
 
   // ─── 基本信息 ────────────────────────────────────────────────────────────────
-  const { items: genderItems } = useDictItems('user_gender');
+  const { options: genderOptions } = useDictItems('user_gender');
 
   // ─── 头像裁剪 ────────────────────────────────────────────────────────────────
   const [presetModalVisible, setPresetModalVisible] = useState(false);
@@ -488,7 +488,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                       label="性别"
                       style={{ width: 320 }}
                       showClear
-                      optionList={genderItems.map((i) => ({ value: i.value, label: i.label }))}
+                      optionList={genderOptions}
                       placeholder="请选择性别（选填）"
                     />
                     <Form.Slot>

@@ -108,8 +108,7 @@ function mappingForType(type: IdentityProviderType) {
 }
 
 export default function IdentityProvidersPage() {
-  const { items: statusItems } = useDictItems('common_status');
-  const statusOptions = statusItems.map((i) => ({ value: i.value, label: i.label }));
+  const { options: statusOptions } = useDictItems('common_status');
   const queryClient = useQueryClient();
   const [providerType, setProviderType] = useState<IdentityProviderType>('oidc');
   const [ldapSearchVisible, setLdapSearchVisible] = useState(false);
@@ -117,7 +116,7 @@ export default function IdentityProvidersPage() {
   const [ldapSearchKeyword, setLdapSearchKeyword] = useState('');
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: identityProviderKeys.lists });
   const listQuery = useIdentityProviderList({
@@ -309,34 +308,18 @@ export default function IdentityProvidersPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={providerTypeOptions}
-      value={draftParams.type}
-      onChange={setField('type')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusOptions}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={<>{renderTypeFilter()}{renderStatusFilter()}</>}
+        keyword={<KeywordInput placeholder="搜索名称/编码" {...bindKeyword('keyword')} />}
+        filters={<><FilterSelect
+          placeholder="全部类型"
+          items={providerTypeOptions}
+          {...bind('type')}
+        /><StatusSelect
+          items={statusOptions}
+          {...bind('status')}
+        /></>}
         onSearch={handleSearch}
         onReset={handleReset}
         create={<CreateButton onClick={openCreate} />}

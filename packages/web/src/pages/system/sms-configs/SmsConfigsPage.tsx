@@ -24,13 +24,13 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 
 export default function SmsConfigsPage() {
   const { hasPermission: can } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   interface SearchParams { keyword: string; filterProvider: SmsProvider | undefined; filterStatus: string | undefined; }
   const defaultSearchParams: SearchParams = { keyword: '', filterProvider: undefined, filterStatus: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: smsConfigKeys.lists });
 
@@ -126,20 +126,18 @@ export default function SmsConfigsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索名称/签名" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="搜索名称/签名" {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部服务商"
               items={SMS_PROVIDER_OPTIONS}
-              value={draftParams.filterProvider}
-              onChange={(v) => setField('filterProvider')(v as SmsProvider | undefined)}
+              {...bind('filterProvider')}
               width={140}
             />
             <StatusSelect
               items={statusItems}
-              value={draftParams.filterStatus}
-              onChange={(v) => setField('filterStatus')(v as string | undefined)}
+              {...bind('filterStatus')}
             />
           </>
         )}
@@ -192,7 +190,7 @@ export default function SmsConfigsPage() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Select field="status" label="状态" style={{ width: '100%' }} placeholder="请选择状态"
-                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+                optionList={statusOptions} />
             </Col>
             <Col span={12}>
               <Form.Switch field="isDefault" label="设为默认" />

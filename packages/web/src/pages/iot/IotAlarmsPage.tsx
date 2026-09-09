@@ -57,7 +57,7 @@ function AlarmRecordsTab() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<AlarmSearchParams>({ defaults: defaultAlarmSearch, listKey: iotAlarmKeys.lists });
 
@@ -166,9 +166,7 @@ function AlarmRecordsTab() {
   const renderKeyword = () => (
     <KeywordInput
       placeholder="搜索规则 / 设备 / 内容..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
+      {...bindKeyword('keyword')}
     />
   );
 
@@ -176,17 +174,7 @@ function AlarmRecordsTab() {
     <StatusSelect
      
       items={IOT_ALARM_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderLevelFilter = () => (
-    <FilterSelect
-      placeholder="全部级别"
-      items={IOT_ALARM_LEVEL_OPTIONS}
-      value={draftParams.level}
-      onChange={setField('level')}
+      {...bind('status')}
     />
   );
 
@@ -194,8 +182,7 @@ function AlarmRecordsTab() {
     <FilterSelect
       placeholder="全部类型"
       items={IOT_ALARM_RULE_TYPE_OPTIONS}
-      value={draftParams.ruleType}
-      onChange={setField('ruleType')}
+      {...bind('ruleType')}
     />
   );
 
@@ -226,7 +213,11 @@ function AlarmRecordsTab() {
         keyword={renderKeyword()}
         filters={<>
           {renderStatusFilter()}
-          {renderLevelFilter()}
+          <FilterSelect
+            placeholder="全部级别"
+            items={IOT_ALARM_LEVEL_OPTIONS}
+            {...bind('level')}
+          />
           {renderTypeFilter()}
         </>}
         onSearch={handleSearch}
@@ -328,7 +319,7 @@ function AlarmRulesTab() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<RuleSearchParams>({ defaults: defaultRuleSearch, listKey: iotAlarmRuleKeys.lists });
 
@@ -448,9 +439,7 @@ function AlarmRulesTab() {
   const renderKeyword = () => (
     <KeywordInput
       placeholder="搜索规则名称..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
+      {...bindKeyword('keyword')}
     />
   );
 
@@ -458,21 +447,16 @@ function AlarmRulesTab() {
     <FilterSelect
       placeholder="全部类型"
       items={IOT_ALARM_RULE_TYPE_OPTIONS}
-      value={draftParams.ruleType}
-      onChange={setField('ruleType')}
+      {...bind('ruleType')}
     />
   );
 
   const renderStatusFilter = () => (
     <StatusSelect
       items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
+      {...bind('status')}
     />
   );
-
-  const renderCreateButton = () => hasPermission('iot:alarm:rule:create')
-    ? <CreateButton onClick={modal.openCreate}>新增规则</CreateButton> : null;
 
   return (
     <>
@@ -484,7 +468,10 @@ function AlarmRulesTab() {
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('iot:alarm:rule:create')
+            ? <CreateButton onClick={modal.openCreate}>新增规则</CreateButton> : null
+        )}
         filterTitle="筛选条件"
       />
       <ConfigurableTable<IotAlarmRule>
@@ -578,7 +565,7 @@ function MaintenanceWindowsTab() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField,
+    bindKeyword,
     handleSearch, handleReset, submittedParams,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: iotMaintenanceWindowKeys.lists });
 
@@ -666,9 +653,7 @@ function MaintenanceWindowsTab() {
         keyword={(
           <KeywordInput
             placeholder="搜索窗口名称..."
-            value={draftParams.keyword}
-            onChange={setField('keyword')}
-            onSearch={handleSearch}
+            {...bindKeyword('keyword')}
           />
         )}
         onSearch={handleSearch}

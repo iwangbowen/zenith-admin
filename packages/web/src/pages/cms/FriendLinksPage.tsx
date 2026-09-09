@@ -31,7 +31,7 @@ export default function FriendLinksPage() {
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: cmsFriendLinkKeys.lists });
   const [groupSheetVisible, setGroupSheetVisible] = useState(false);
@@ -104,15 +104,14 @@ export default function FriendLinksPage() {
     <div className="page-container">
       <SearchToolbar>
         <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setPage(1); }} width={180} />
-        <KeywordInput placeholder="搜索名称..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
+        <KeywordInput placeholder="搜索名称..." {...bindKeyword('keyword')} width={200} />
         <FilterSelect
           placeholder="全部分组"
           items={[
             { value: 0, label: '未分组' },
             ...groupOptions.map((g) => ({ value: g.id, label: g.name })),
           ]}
-          value={draftParams.groupId}
-          onChange={setField('groupId')}
+          {...bind('groupId')}
           width={160}
           disabled={!siteId}
         />

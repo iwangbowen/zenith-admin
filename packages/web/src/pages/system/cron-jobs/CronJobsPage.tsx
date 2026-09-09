@@ -92,11 +92,11 @@ const buildRunLogColumns = (outputWidth: number) => [
 
 export default function CronJobsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['jobs', 'dashboard'] as const, 'jobs');
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: cronJobKeys.lists });
   const [cronExprValue, setCronExprValue] = useState('');
@@ -349,12 +349,11 @@ export default function CronJobsPage() {
       <Tabs collapsible="auto" type="line" lazyRender activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <Tabs.TabPane tab="任务管理" itemKey="jobs">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="搜索任务名称/处理器" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />}
+            keyword={<KeywordInput placeholder="搜索任务名称/处理器" {...bindKeyword('keyword')} width={240} />}
             filters={(
               <StatusSelect
                 items={statusItems}
-                value={draftParams.status}
-                onChange={setField('status')}
+                {...bind('status')}
               />
             )}
             onSearch={handleSearch}
@@ -405,7 +404,7 @@ export default function CronJobsPage() {
               <Form.Select
                 field="status"
                 label="状态"
-                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+                optionList={statusOptions}
                 style={{ width: '100%' }}
               />
             </Col>

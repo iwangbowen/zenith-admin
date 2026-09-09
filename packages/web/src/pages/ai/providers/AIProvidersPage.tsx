@@ -165,32 +165,26 @@ export default function AIProvidersPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称/模型" value={search} onChange={(v) => setSearch(String(v ?? ''))} onSearch={handleSearch} />
-  );
-
-  const renderExpandButton = () => (
-    <Button
-      type="primary"
-      icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-      onClick={toggleExpandAll}
-    >
-      {isAllExpanded ? '全部折叠' : '全部展开'}
-    </Button>
-  );
-
-  const renderCreateButton = () => hasPermission('ai:provider:create') ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索名称/模型" value={search} onChange={(v) => setSearch(String(v ?? ''))} onSearch={handleSearch} />}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
-        actions={renderExpandButton()}
+        create={(
+          hasPermission('ai:provider:create') ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
+        actions={(
+          <Button
+            type="primary"
+            icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+            onClick={toggleExpandAll}
+          >
+            {isAllExpanded ? '全部折叠' : '全部展开'}
+          </Button>
+        )}
         actionTitle="表格操作"
       />
       <ConfigurableTable

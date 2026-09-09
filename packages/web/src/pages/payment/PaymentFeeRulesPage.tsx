@@ -46,11 +46,11 @@ interface FeeFormValues {
 }
 
 export default function PaymentFeeRulesPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentFeeKeys.lists });
 
@@ -128,39 +128,29 @@ export default function PaymentFeeRulesPage() {
     }),
   ];
 
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={channelOptions}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('payment:fee:create') ? (
-    <CreateButton onClick={modal.openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
         filters={(
           <>
-            {renderChannelFilter()}
-            {renderStatusFilter()}
+            <FilterSelect
+              placeholder="全部渠道"
+              items={channelOptions}
+              {...bind('channel')}
+            />
+            <StatusSelect
+              items={statusItems}
+              {...bind('status')}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('payment:fee:create') ? (
+            <CreateButton onClick={modal.openCreate} />
+          ) : null
+        )}
         filterTitle="费率规则筛选"
       />
 
@@ -188,7 +178,7 @@ export default function PaymentFeeRulesPage() {
             </div>
             <div className="auto-grid" style={{ ['--auto-grid-min']: '220px', ['--auto-grid-cols']: 2 } as CSSProperties}>
               <Form.InputNumber field="priority" label="优先级" min={0} max={9999} step={1} precision={0} style={{ width: '100%' }} extraText="数值越大越优先匹配" />
-              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} />
             </div>
             <Form.TextArea field="remark" label="备注" autosize rows={1} placeholder="可选" />
           </Form>

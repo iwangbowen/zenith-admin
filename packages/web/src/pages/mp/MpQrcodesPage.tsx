@@ -37,7 +37,7 @@ export default function MpQrcodesPage() {
   const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpQrcodeKeys.lists });
 
@@ -110,37 +110,27 @@ export default function MpQrcodesPage() {
     }),
   ];
 
-  const renderAccountFilter = () => (
-    <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-  );
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={TYPE_OPTIONS}
-      value={draftParams.filterType}
-      onChange={(v) => setField('filterType')(enumValueOf(MP_QRCODE_TYPES, v))}
-    />
-  );
-  const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索名称 / 场景值" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
-  );
-  const renderCreateButton = () => can('mp:qrcode:create') ? (
-    <Button type="primary" icon={<Plus size={14} />} disabled={!currentId} onClick={openCreate}>生成二维码</Button>
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordInput()}
+        keyword={<KeywordInput placeholder="搜索名称 / 场景值" {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
-            {renderAccountFilter()}
-            {renderTypeFilter()}
+            <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
+            <FilterSelect
+              placeholder="全部类型"
+              items={TYPE_OPTIONS}
+              {...bind('filterType', (v) => enumValueOf(MP_QRCODE_TYPES, v))}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          can('mp:qrcode:create') ? (
+            <Button type="primary" icon={<Plus size={14} />} disabled={!currentId} onClick={openCreate}>生成二维码</Button>
+          ) : null
+        )}
         filterTitle="二维码筛选"
       />
 

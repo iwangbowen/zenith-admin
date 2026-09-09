@@ -37,7 +37,7 @@ export default function MemberRechargesPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.rechargeLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ keyword: memberKeyword, dateRange: null }) });
@@ -65,31 +65,6 @@ export default function MemberRechargesPage() {
     dateTimeColumn('创建时间', 'createdAt', { fixed: 'right' }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员昵称/手机号/订单号" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={channelOptions}
-      value={draftParams.channel}
-      onChange={(value) => setField('channel')(value as PaymentChannel | undefined)}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusOptions}
-      value={draftParams.status}
-      onChange={(value) => setField('status')(value as MemberRechargeStatus | undefined)}
-    />
-  );
-
-  const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" value={draftParams.dateRange ?? undefined} onChange={(value) => setField('dateRange')(value ? (value as [Date, Date]) : null)} />
-  );
-
   const buildExportQuery = () => {
     const [ds, de] = submittedParams.dateRange ?? [];
     return compactQuery({
@@ -107,12 +82,19 @@ export default function MemberRechargesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="会员昵称/手机号/订单号" {...bindKeyword('keyword')} />}
         filters={(
           <>
-            {renderChannelFilter()}
-            {renderStatusFilter()}
-            {renderDateRangeFilter()}
+            <FilterSelect
+              placeholder="全部渠道"
+              items={channelOptions}
+              {...bind('channel')}
+            />
+            <StatusSelect
+              items={statusOptions}
+              {...bind('status')}
+            />
+            <DateRangeFilter type="dateRange" {...bind('dateRange')} />
           </>
         )}
         onSearch={handleSearch}

@@ -40,7 +40,7 @@ export default function PaymentDisputesPage() {
   const canHandle = hasPermission('payment:dispute:handle');
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch({ defaults: defaultSearchParams, listKey: paymentDisputeKeys.lists });
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -163,40 +163,6 @@ export default function PaymentDisputesPage() {
     route: submittedParams.route || undefined,
   };
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="投诉单号/订单号/投诉人..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect items={PAYMENT_DISPUTE_STATUS_OPTIONS} value={draftParams.status} onChange={setField('status')} />
-  );
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={PAYMENT_DISPUTE_TYPE_OPTIONS}
-      value={draftParams.type}
-      onChange={setField('type')}
-    />
-  );
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={channelOptions}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-  const renderRouteFilter = () => (
-    <FilterSelect
-      placeholder="全部分流"
-      items={PAYMENT_DISPUTE_ROUTE_OPTIONS}
-      value={draftParams.route}
-      onChange={setField('route')}
-    />
-  );
-  const renderSimulateButton = () => canHandle ? (
-    <Button type="primary" icon={<FlaskConical size={14} />} loading={simulateMutation.isPending} onClick={() => void handleSimulate()}>模拟投诉</Button>
-  ) : null;
-
   const statsText = stats
     ? `未完结 ${stats.open} 单（超时 ${stats.overdue}） · 近30天投诉 ${stats.last30dCount} 单 · 投诉率 ${stats.last30dRate}% · 平均处理 ${stats.avgResolveHours} 小时`
     : '';
@@ -206,18 +172,34 @@ export default function PaymentDisputesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="投诉单号/订单号/投诉人..." {...bindKeyword('keyword')} />}
         filters={(
           <>
-            {renderStatusFilter()}
-            {renderTypeFilter()}
-            {renderChannelFilter()}
-            {renderRouteFilter()}
+            <StatusSelect items={PAYMENT_DISPUTE_STATUS_OPTIONS} {...bind('status')} />
+            <FilterSelect
+              placeholder="全部类型"
+              items={PAYMENT_DISPUTE_TYPE_OPTIONS}
+              {...bind('type')}
+            />
+            <FilterSelect
+              placeholder="全部渠道"
+              items={channelOptions}
+              {...bind('channel')}
+            />
+            <FilterSelect
+              placeholder="全部分流"
+              items={PAYMENT_DISPUTE_ROUTE_OPTIONS}
+              {...bind('route')}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderSimulateButton()}
+        create={(
+          canHandle ? (
+            <Button type="primary" icon={<FlaskConical size={14} />} loading={simulateMutation.isPending} onClick={() => void handleSimulate()}>模拟投诉</Button>
+          ) : null
+        )}
         actions={<ExportButton entity="payment.disputes" query={exportQuery} />}
         mobileActions={<ExportButton entity="payment.disputes" query={exportQuery} variant="flat" />}
         filterTitle="投诉筛选"

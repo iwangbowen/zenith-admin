@@ -40,7 +40,7 @@ const TYPE_META: Record<string, { text: string; color: 'green' | 'blue' }> = {
 export default function ChannelsPage() {
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { options: statusOptions } = useDictItems('common_status');
   const { page, setPage, pageSize, buildPagination } = usePagination();
   const [draftKeyword, setDraftKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
@@ -232,7 +232,7 @@ export default function ChannelsPage() {
           </Form.Slot>
           <Form.TextArea field="description" label="简介" autosize={{ minRows: 2, maxRows: 4 }} />
           {modal.isEdit && (
-            <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))} />
+            <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} />
           )}
         </Form>
       </AppModal>

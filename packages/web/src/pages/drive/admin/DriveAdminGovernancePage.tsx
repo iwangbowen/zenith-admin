@@ -62,7 +62,7 @@ function LegalHoldsTab() {
   const { hasPermission } = usePermission();
   const canEdit = hasPermission('drive:admin:legal-hold:edit');
   const spaceOptions = useSpaceOptions();
-  const { page, pageSize, buildPagination, draftParams, setField, submittedParams, handleSearch, handleReset } =
+  const { page, pageSize, buildPagination, draftParams, setField, bind, submittedParams, handleSearch, handleReset } =
     useListSearch<HoldSearch>({ defaults: { spaceId: undefined, activeOnly: true }, listKey: driveKeys.adminLegalHoldsPrefix });
   const query = useDriveLegalHolds({ page, pageSize, spaceId: submittedParams.spaceId, active: submittedParams.activeOnly ? true : undefined });
   const release = useReleaseDriveLegalHold();
@@ -96,7 +96,7 @@ function LegalHoldsTab() {
       <SearchToolbar
         filters={(
           <>
-            <FilterSelect<number> value={draftParams.spaceId} placeholder="全部空间" width={200} items={spaceOptions} onChange={setField('spaceId')} />
+            <FilterSelect<number> {...bind('spaceId')} placeholder="全部空间" width={200} items={spaceOptions} />
             <Checkbox checked={draftParams.activeOnly} onChange={(e) => setField('activeOnly')(!!e.target.checked)}>仅保留中</Checkbox>
           </>
         )}
@@ -152,7 +152,7 @@ function QuotaRequestsTab() {
   const { hasPermission } = usePermission();
   const canApprove = hasPermission('drive:admin:quota:approve');
   const spaceOptions = useSpaceOptions();
-  const { page, pageSize, buildPagination, draftParams, setField, submittedParams, handleSearch, handleReset } =
+  const { page, pageSize, buildPagination, bind, submittedParams, handleSearch, handleReset } =
     useListSearch<QuotaSearch>({ defaults: { status: 'pending', spaceId: undefined }, listKey: driveKeys.adminQuotaRequestsPrefix });
   const query = useDriveAdminQuotaRequests({ page, pageSize, status: submittedParams.status, spaceId: submittedParams.spaceId });
   const decide = useDecideDriveQuotaRequest();
@@ -187,8 +187,8 @@ function QuotaRequestsTab() {
       <SearchToolbar
         filters={(
           <>
-            <FilterSelect<DriveQuotaRequestStatus> value={draftParams.status} placeholder="全部状态" width={130} items={STATUS_OPTIONS} onChange={setField('status')} />
-            <FilterSelect<number> value={draftParams.spaceId} placeholder="全部空间" width={200} items={spaceOptions} onChange={setField('spaceId')} />
+            <FilterSelect<DriveQuotaRequestStatus> {...bind('status')} placeholder="全部状态" width={130} items={STATUS_OPTIONS} />
+            <FilterSelect<number> {...bind('spaceId')} placeholder="全部空间" width={200} items={spaceOptions} />
           </>
         )}
         actions={(<><SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} /></>)}
@@ -220,7 +220,7 @@ interface LogSearch { spaceId: number | undefined; shareId: number | undefined; 
 function ShareAccessLogsTab() {
   const navigate = useNavigate();
   const spaceOptions = useSpaceOptions();
-  const { page, pageSize, buildPagination, draftParams, setField, submittedParams, handleSearch, handleReset } =
+  const { page, pageSize, buildPagination, bind, submittedParams, handleSearch, handleReset } =
     useListSearch<LogSearch>({ defaults: { spaceId: undefined, shareId: undefined, action: undefined, ok: undefined, timeRange: null }, listKey: driveKeys.adminShareAccessLogsPrefix });
   const listParams = {
     spaceId: submittedParams.spaceId, shareId: submittedParams.shareId, action: submittedParams.action,
@@ -246,11 +246,11 @@ function ShareAccessLogsTab() {
       <SearchToolbar
         filters={(
           <>
-            <FilterSelect<number> value={draftParams.spaceId} placeholder="全部空间" width={200} items={spaceOptions} onChange={setField('spaceId')} />
-            <InputNumber min={1} placeholder="外链 ID" value={draftParams.shareId} onChange={(v) => setField('shareId')(typeof v === 'number' ? v : undefined)} style={{ width: 120 }} hideButtons />
-            <FilterSelect<string> value={draftParams.action} placeholder="全部动作" width={130} items={LOG_ACTION_OPTIONS} onChange={setField('action')} />
-            <FilterSelect<'true' | 'false'> value={draftParams.ok} placeholder="全部结果" width={110} items={[{ value: 'true', label: '通过' }, { value: 'false', label: '拒绝' }]} onChange={setField('ok')} />
-            <DateRangeFilter value={draftParams.timeRange} onChange={setField('timeRange')} />
+            <FilterSelect<number> {...bind('spaceId')} placeholder="全部空间" width={200} items={spaceOptions} />
+            <InputNumber min={1} placeholder="外链 ID" {...bind('shareId', (v) => typeof v === 'number' ? v : undefined)} style={{ width: 120 }} hideButtons />
+            <FilterSelect<string> {...bind('action')} placeholder="全部动作" width={130} items={LOG_ACTION_OPTIONS} />
+            <FilterSelect<'true' | 'false'> {...bind('ok')} placeholder="全部结果" width={110} items={[{ value: 'true', label: '通过' }, { value: 'false', label: '拒绝' }]} />
+            <DateRangeFilter {...bind('timeRange')} />
           </>
         )}
         actions={(<><SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} />{exportButton}</>)}

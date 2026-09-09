@@ -83,7 +83,7 @@ export default function BroadcastsPage() {
   const qc = useQueryClient();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: broadcastKeys.lists });
 
@@ -217,34 +217,27 @@ export default function BroadcastsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索标题 / 内容..."
-      value={draftParams.keyword}
-      onChange={setField('keyword')}
-      onSearch={handleSearch}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={BROADCAST_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('system:broadcast:create')
-    ? <CreateButton onClick={modal.openCreate}>新建活动</CreateButton> : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索标题 / 内容..."
+            {...bindKeyword('keyword')}
+          />
+        )}
+        filters={(
+          <StatusSelect
+            items={BROADCAST_STATUS_OPTIONS}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:broadcast:create')
+            ? <CreateButton onClick={modal.openCreate}>新建活动</CreateButton> : null
+        )}
         filterTitle="筛选条件"
       />
 

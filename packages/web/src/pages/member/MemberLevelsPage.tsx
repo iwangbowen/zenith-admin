@@ -18,8 +18,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 
 export default function MemberLevelsPage() {
   const navigate = useNavigate();
-  const { items: statusItems } = useDictItems('common_status');
-  const statusOptions = statusItems.map((i) => ({ value: i.value, label: i.label }));
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const listQuery = useMemberLevels();
@@ -63,21 +62,15 @@ export default function MemberLevelsPage() {
     }),
   ];
 
-  const renderRefreshButton = () => (
-    <RefreshButton onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.levels })} />
-  );
-
-  const renderCreateButton = () => hasPermission('member:level:create') ? (
-    <CreateButton onClick={levelModal.openCreate}>新增等级</CreateButton>
-  ) : null;
-
   return (
     <div className="page-container">
       <SearchToolbar
         primary={(
           <>
-            {renderRefreshButton()}
-            {renderCreateButton()}
+            <RefreshButton onClick={() => void queryClient.invalidateQueries({ queryKey: memberAdminKeys.levels })} />
+            {hasPermission('member:level:create') ? (
+              <CreateButton onClick={levelModal.openCreate}>新增等级</CreateButton>
+            ) : null}
           </>
         )}
       />

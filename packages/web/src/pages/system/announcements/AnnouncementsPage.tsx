@@ -85,7 +85,7 @@ export default function AnnouncementsPage() {
   const defaultSearchParams: SearchParams = { title: '', type: undefined, publishStatus: undefined, timeRange: null };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: announcementKeys.lists });
 
@@ -106,9 +106,9 @@ export default function AnnouncementsPage() {
   const [attachmentFileIds, setAttachmentFileIds] = useState<string[]>([]);
   const [uploadedAttachments, setUploadedAttachments] = useState<AnnouncementAttachment[]>([]);
 
-  const { items: typeItems } = useDictItems('announcement_type');
+  const { items: typeItems, options: typeOptions } = useDictItems('announcement_type');
   const { items: statusItems } = useDictItems('announcement_publish_status');
-  const { items: priorityItems } = useDictItems('announcement_priority');
+  const { options: priorityOptions } = useDictItems('announcement_priority');
 
   // ─── 查看详情 ─────────────────────────────────────────────────────────────────────────────
   const [viewOnly, setViewOnly] = useState(false);
@@ -587,24 +587,22 @@ export default function AnnouncementsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标题" value={draftParams.title} onChange={setField('title')} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="搜索标题" {...bindKeyword('title')} width={200} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部公告类型"
               items={typeItems}
-              value={draftParams.type}
-              onChange={setField('type')}
+              {...bind('type')}
               width={140}
             />
             <FilterSelect
               placeholder="全部发布状态"
               items={statusItems}
-              value={draftParams.publishStatus}
-              onChange={setField('publishStatus')}
+              {...bind('publishStatus')}
               width={140}
             />
-            <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
+            <DateRangeFilter {...bind('timeRange')} />
           </>
         )}
         onSearch={handleSearch}
@@ -672,7 +670,7 @@ export default function AnnouncementsPage() {
             <Form.Select
               field="type"
               label="公告类型"
-              optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
+              optionList={typeOptions}
               placeholder="请选择类型"
               style={{ width: '100%' }}
               disabled={viewOnly}
@@ -688,7 +686,7 @@ export default function AnnouncementsPage() {
             <Form.Select
               field="priority"
               label="优先级"
-              optionList={priorityItems.map((i) => ({ label: i.label, value: i.value }))}
+              optionList={priorityOptions}
               placeholder="请选择优先级"
               style={{ width: '100%' }}
               disabled={viewOnly}

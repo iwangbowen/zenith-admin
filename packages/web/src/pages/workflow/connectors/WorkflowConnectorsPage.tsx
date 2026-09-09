@@ -83,12 +83,11 @@ function parseJsonObject(text: string | undefined, label: string): Record<string
 }
 
 export default function WorkflowConnectorsPage() {
-  const { items: statusItems } = useDictItems('common_status');
-  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowConnectorKeys.lists });
   const listQuery = useWorkflowConnectorList({
@@ -231,30 +230,18 @@ export default function WorkflowConnectorsPage() {
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput placeholder="搜索名称 / 编码..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={TYPE_OPTIONS}
-      value={draftParams.type}
-      onChange={setField('type')}
-    />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect items={STATUS_OPTIONS} value={draftParams.status} onChange={setField('status')} />
-  );
-  const renderCreate = () => hasPermission('workflow:connector:create') ? <CreateButton onClick={openCreate} /> : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeyword()}
-        filters={(<>{renderTypeFilter()}{renderStatusFilter()}</>)}
+        keyword={<KeywordInput placeholder="搜索名称 / 编码..." {...bindKeyword('keyword')} />}
+        filters={(<><FilterSelect
+          placeholder="全部类型"
+          items={TYPE_OPTIONS}
+          {...bind('type')}
+        /><StatusSelect items={statusOptions} {...bind('status')} /></>)}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreate()}
+        create={hasPermission('workflow:connector:create') ? <CreateButton onClick={openCreate} /> : null}
         filterTitle="连接器筛选"
       />
 
@@ -285,7 +272,7 @@ export default function WorkflowConnectorsPage() {
             </Row>
             <Row gutter={16}>
               <Col span={12}><Form.Select field="type" label="类型" style={{ width: '100%' }} optionList={TYPE_OPTIONS} rules={[{ required: true, message: '请选择类型' }]} /></Col>
-              <Col span={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={STATUS_OPTIONS} /></Col>
+              <Col span={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} /></Col>
             </Row>
             <Form.Input field="description" label="描述" placeholder="可选" />
           </Form.Section>

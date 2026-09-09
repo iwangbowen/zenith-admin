@@ -892,20 +892,6 @@ export default function WorkflowSimulationDrawer({
     );
   };
 
-  const renderPathChips = () => (
-    <div className="fd-simulation-inspector__chips">
-      {selectedBranch && (
-        <Tag color="blue" closable onClose={() => setSelectedBranch(null)}>分支 · {selectedBranch.branchNodeName} / {selectedBranch.name}</Tag>
-      )}
-      {pathCompare?.changedAt ? <Tag color="orange">第 {pathCompare.changedAt} 步分叉</Tag> : null}
-      {primaryEdge && (
-        <Tag color={primaryEdge.taken ? 'green' : 'grey'}>
-          {primaryEdge.taken ? '命中' : '未命中'}：{primaryEdge.reason ?? primaryEdge.conditionSummary ?? primaryEdge.label ?? '普通连线'}
-        </Tag>
-      )}
-    </div>
-  );
-
   const renderInspector = () => {
     if (!result || !currentItem) return null;
     if (!inspectorOpen) {
@@ -940,7 +926,17 @@ export default function WorkflowSimulationDrawer({
           <div className="fd-simulation-inspector__section">
             <div className="fd-simulation-inspector__section-title"><GitCompare size={13} /> 路径与分支</div>
             <div className="fd-simulation-inspector__path" title={pathText(result, flowData)}>{pathText(result, flowData)}</div>
-            {renderPathChips()}
+            <div className="fd-simulation-inspector__chips">
+              {selectedBranch && (
+                <Tag color="blue" closable onClose={() => setSelectedBranch(null)}>分支 · {selectedBranch.branchNodeName} / {selectedBranch.name}</Tag>
+              )}
+              {pathCompare?.changedAt ? <Tag color="orange">第 {pathCompare.changedAt} 步分叉</Tag> : null}
+              {primaryEdge && (
+                <Tag color={primaryEdge.taken ? 'green' : 'grey'}>
+                  {primaryEdge.taken ? '命中' : '未命中'}：{primaryEdge.reason ?? primaryEdge.conditionSummary ?? primaryEdge.label ?? '普通连线'}
+                </Tag>
+              )}
+            </div>
           </div>
         )}
 

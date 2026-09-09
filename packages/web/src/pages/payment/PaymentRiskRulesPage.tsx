@@ -62,7 +62,7 @@ interface RiskFormValues {
 type ReviewDecision = 'approve' | 'reject';
 
 export default function PaymentRiskRulesPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const canReview = hasPermission('payment:risk:review');
@@ -75,7 +75,7 @@ export default function PaymentRiskRulesPage() {
   // ── 规则 ──
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentRiskKeys.lists });
   const [scopeWatch, setScopeWatch] = useState<PaymentRiskScope>('global');
@@ -278,44 +278,6 @@ export default function PaymentRiskRulesPage() {
     }),
   ];
 
-  const renderScopeFilter = () => (
-    <FilterSelect
-      placeholder="全部作用域"
-      items={scopeOptions}
-      value={draftParams.scope}
-      onChange={setField('scope')}
-      width={140}
-    />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect items={statusItems} value={draftParams.status} onChange={setField('status')} />
-  );
-  const renderCreateButton = () => hasPermission('payment:risk:create') ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
-
-  const renderHitKeyword = () => (
-    <KeywordInput placeholder="规则名/订单号/业务ID..." value={hitKeyword} onChange={setHitKeyword} onSearch={handleHitSearch} />
-  );
-  const renderHitActionFilter = () => (
-    <FilterSelect placeholder="全部动作" items={actionOptions} value={hitAction} onChange={setHitAction} />
-  );
-  const renderHitDimensionFilter = () => (
-    <FilterSelect
-      placeholder="全部维度"
-      items={dimensionOptions}
-      value={hitDimension}
-      onChange={setHitDimension}
-    />
-  );
-
-  const renderReviewKeyword = () => (
-    <KeywordInput placeholder="审核单号/订单号/业务ID..." value={reviewKeyword} onChange={setReviewKeyword} onSearch={handleReviewSearch} />
-  );
-  const renderReviewStatusFilter = () => (
-    <StatusSelect items={reviewStatusOptions} value={reviewStatus} onChange={setReviewStatus} />
-  );
-
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as 'rules' | 'hits' | 'reviews')} type="line" lazyRender keepDOM={false}>
@@ -324,11 +286,22 @@ export default function PaymentRiskRulesPage() {
             两层裁决：规则中心决策表 <Typography.Text code size="small">payment_risk</Typography.Text> 发布后优先接管（输出 block / review / pass，未命中回退本页规则）；名单统一引用规则中心名单库
           </Typography.Text>
           <ListSearchToolbar
-            keyword={renderScopeFilter()}
-            filters={renderStatusFilter()}
+            keyword={(
+              <FilterSelect
+                placeholder="全部作用域"
+                items={scopeOptions}
+                {...bind('scope')}
+                width={140}
+              />
+            )}
+            filters={<StatusSelect items={statusItems} {...bind('status')} />}
             onSearch={handleSearch}
             onReset={handleReset}
-            create={renderCreateButton()}
+            create={(
+              hasPermission('payment:risk:create') ? (
+                <CreateButton onClick={openCreate} />
+              ) : null
+            )}
             filterTitle="风控规则筛选"
           />
           <ConfigurableTable
@@ -339,11 +312,16 @@ export default function PaymentRiskRulesPage() {
 
         <TabPane tab="拦截记录" itemKey="hits">
           <ListSearchToolbar
-            keyword={renderHitKeyword()}
+            keyword={<KeywordInput placeholder="规则名/订单号/业务ID..." value={hitKeyword} onChange={setHitKeyword} onSearch={handleHitSearch} />}
             filters={(
               <>
-                {renderHitActionFilter()}
-                {renderHitDimensionFilter()}
+                <FilterSelect placeholder="全部动作" items={actionOptions} value={hitAction} onChange={setHitAction} />
+                <FilterSelect
+                  placeholder="全部维度"
+                  items={dimensionOptions}
+                  value={hitDimension}
+                  onChange={setHitDimension}
+                />
               </>
             )}
             onSearch={handleHitSearch}
@@ -358,8 +336,8 @@ export default function PaymentRiskRulesPage() {
 
         <TabPane tab="审核队列" itemKey="reviews">
           <ListSearchToolbar
-            keyword={renderReviewKeyword()}
-            filters={renderReviewStatusFilter()}
+            keyword={<KeywordInput placeholder="审核单号/订单号/业务ID..." value={reviewKeyword} onChange={setReviewKeyword} onSearch={handleReviewSearch} />}
+            filters={<StatusSelect items={reviewStatusOptions} value={reviewStatus} onChange={setReviewStatus} />}
             onSearch={handleReviewSearch}
             onReset={handleReviewReset}
             filterTitle="审核队列筛选"
@@ -384,7 +362,7 @@ export default function PaymentRiskRulesPage() {
           {scopeWatch === 'bizType' && <Form.Input field="bizType" label="业务类型" placeholder="如：membership" rules={[{ required: true, message: '请输入业务类型' }]} />}
           <div className="auto-grid" style={{ ['--auto-grid-min']: '220px', ['--auto-grid-cols']: 2 } as CSSProperties}>
             <Form.Select field="action" label="命中动作" style={{ width: '100%' }} optionList={actionOptions} rules={[{ required: true, message: '请选择命中动作' }]} />
-            <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+            <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} />
           </div>
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', margin: '-8px 0 8px 100px' }}>直接拦截=命中即拒绝下单；人工审核=订单挂起进入审核队列，放行后可继续支付</Typography.Text>
           <div className="auto-grid" style={{ ['--auto-grid-min']: '220px', ['--auto-grid-cols']: 2 } as CSSProperties}>

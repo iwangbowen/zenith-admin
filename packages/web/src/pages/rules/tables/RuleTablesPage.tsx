@@ -124,13 +124,13 @@ const csvEscape = (v: unknown): string => {
 
 /** 字典绑定输入的测试/用例控件（组件封装保证 hooks 数量稳定） */
 function DictValueSelect({ dictCode, value, onChange, placeholder, size }: Readonly<{ dictCode: string; value: unknown; onChange: (v: string | undefined) => void; placeholder?: string; size?: 'small' | 'default' }>) {
-  const { items } = useDictItems(dictCode);
+  const { options } = useDictItems(dictCode);
   return (
     <Select
       size={size}
       value={value == null || value === '' ? undefined : String(value)}
       onChange={(v) => onChange(v == null ? undefined : String(v))}
-      optionList={items.map((i) => ({ value: i.value, label: i.label }))}
+      optionList={options}
       showClear
       filter
       placeholder={placeholder}

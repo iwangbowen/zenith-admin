@@ -50,11 +50,11 @@ type SimpleUser = UserTransferUser & {
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
 export default function UserGroupsPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: userGroupKeys.lists });
   const listQuery = useUserGroupList({
@@ -149,7 +149,6 @@ export default function UserGroupsPage() {
       onDeleted: () => setSelectedRowKeys([]),
     });
   };
-
 
   const openMembers = (group: UserGroup) => {
     setMemberGroup(group);
@@ -249,30 +248,23 @@ export default function UserGroupsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('system:user-groups:create') ? (
-    <CreateButton onClick={groupModal.openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="搜索名称/编码" {...bindKeyword('keyword')} width={240} />}
+        filters={(
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:user-groups:create') ? (
+            <CreateButton onClick={groupModal.openCreate} />
+          ) : null
+        )}
         actions={selectedRowKeys.length > 0 && hasPermission('system:user-groups:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
         filterTitle="用户组筛选"
         actionTitle="用户组操作"
@@ -316,7 +308,7 @@ export default function UserGroupsPage() {
                 />
                 <Form.Select
                   field="status" label="状态" style={{ width: '100%' }}
-                  optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+                  optionList={statusOptions}
                 />
                 <Form.RadioGroup
                   field="memberMode" label="成员模式" type="button"

@@ -19,7 +19,6 @@ import { DateRangeFilter } from '@/components/search-filters';
 const yuan = formatYuan;
 const groupByOptions = PAYMENT_REPORT_GROUP_BY_OPTIONS;
 
-
 /** 环比增幅：上一周期为 0 时不显示 */
 function calcDelta(cur: number, prev: number | undefined | null): number | null {
   if (prev == null || prev === 0) return null;
@@ -58,7 +57,7 @@ export default function PaymentReportsPage() {
   const canView = hasPermission('payment:report:view');
   const palette = useChartPalette();
   const {
-    draftParams, setField, submittedParams,
+    draftParams, setField, bind, submittedParams,
     applySearch, handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentReportKeys.lists });
   const summaryQuery = usePaymentReportSummary({
@@ -195,7 +194,7 @@ export default function PaymentReportsPage() {
   );
 
   const renderTimeRangeFilter = () => (
-    <DateRangeFilter value={draftParams.timeRange ?? undefined} onChange={(v) => setField('timeRange')(v ? (v as [Date, Date]) : null)} />
+    <DateRangeFilter {...bind('timeRange')} />
   );
 
   const renderCompareToggle = () => (
@@ -209,7 +208,6 @@ export default function PaymentReportsPage() {
   );
 
   const renderSearchButton = () => <SearchButton onClick={handleSearch} disabled={!canView} />;
-  const renderResetButton = () => <ResetButton onClick={handleReset} disabled={!canView} />;
   const renderExportButton = () => (
     <Button icon={<Download size={14} />} disabled={!canView || !summary?.rows.length} onClick={() => summary && exportReportCsv(dimensionTitle, summary.rows)}>
       导出 CSV
@@ -225,7 +223,7 @@ export default function PaymentReportsPage() {
             {renderTimeRangeFilter()}
             {renderCompareToggle()}
             {renderSearchButton()}
-            {renderResetButton()}
+            <ResetButton onClick={handleReset} disabled={!canView} />
           </>
         )}
         actions={renderExportButton()}

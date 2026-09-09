@@ -3,20 +3,21 @@
  *
  * 与 `toolbar-controls.tsx`（查询/重置/新增按钮）配套：那边收敛的是动作按钮，
  * 这边收敛的是筛选输入。二者都只把**装饰性 props**（图标、尺寸、showClear、
- * 默认宽度）收进默认值，业务 props（value/onChange/items/placeholder）仍由页面显式传入——
+ * 默认宽度）收进默认值，业务 props（items/placeholder）仍由页面显式传入，
+ * value/onChange 由 `useListSearch` 的 `bind` / `bindKeyword` 整体展开——
  * 否则组件会退化成难以定制的黑盒。
  *
  * @example
- * <SearchToolbar
- *   primary={(
+ * <ListSearchToolbar
+ *   keyword={<KeywordInput placeholder="搜索名称/编码" {...bindKeyword('keyword')} />}
+ *   filters={(
  *     <>
- *       <KeywordInput placeholder="搜索名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
- *       <StatusSelect items={statusItems} value={draftParams.status} onChange={setField('status')} />
- *       <FilterSelect placeholder="全部渠道" items={PAYMENT_CHANNEL_OPTIONS} value={draftParams.channel} onChange={setField('channel')} />
- *       <SearchButton onClick={handleSearch} />
- *       <ResetButton onClick={handleReset} />
+ *       <StatusSelect items={statusItems} {...bind('status')} />
+ *       <FilterSelect placeholder="全部渠道" items={PAYMENT_CHANNEL_OPTIONS} {...bind('channel')} />
  *     </>
  *   )}
+ *   onSearch={handleSearch}
+ *   onReset={handleReset}
  * />
  */
 import type { ReactNode } from 'react';

@@ -34,7 +34,7 @@ export default function MemberPointsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.pointLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ memberKeyword }) });
@@ -67,19 +67,6 @@ export default function MemberPointsPage() {
     createdAtColumn,
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员ID/昵称" value={draftParams.memberKeyword} onChange={setField('memberKeyword')} onSearch={handleSearch} width={180} />
-  );
-
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={typeOptions}
-      value={draftParams.type}
-      onChange={(v) => setField('type')(v as string | undefined)}
-    />
-  );
-
   const buildExportQuery = () => compactQuery({
     memberKeyword: submittedParams.memberKeyword,
     type: submittedParams.type,
@@ -87,18 +74,25 @@ export default function MemberPointsPage() {
   const renderExportButton = (variant?: 'flat') => hasPermission('member:point:list') ? (
     <ExportButton entity="member.point-transactions" query={buildExportQuery()} variant={variant} />
   ) : null;
-  const renderAdjustButton = () => hasPermission('member:point:adjust') ? (
-    <Button type="primary" icon={<Coins size={14} />} onClick={adjustModal.openCreate}>调整积分</Button>
-  ) : null;
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderTypeFilter()}
+        keyword={<KeywordInput placeholder="会员ID/昵称" {...bindKeyword('memberKeyword')} width={180} />}
+        filters={(
+          <FilterSelect
+            placeholder="全部类型"
+            items={typeOptions}
+            {...bind('type')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderAdjustButton()}
+        create={(
+          hasPermission('member:point:adjust') ? (
+            <Button type="primary" icon={<Coins size={14} />} onClick={adjustModal.openCreate}>调整积分</Button>
+          ) : null
+        )}
         actions={renderExportButton()}
         mobileActions={renderExportButton('flat')}
         filterTitle="积分流水筛选"

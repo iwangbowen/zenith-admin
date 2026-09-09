@@ -57,7 +57,7 @@ export default function WorkflowDelegationsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowDelegationKeys.lists });
   const listQuery = useWorkflowDelegationList({ page, pageSize, scope: submittedParams.scope });
@@ -77,7 +77,6 @@ export default function WorkflowDelegationsPage() {
     () => (definitionsQuery.data?.list ?? []).map((d) => ({ value: d.id, label: d.name })),
     [definitionsQuery.data],
   );
-
 
   const delegationModal = useEditModal<WorkflowDelegation, FormValues, Record<string, unknown>>({
     entityName: '审批代理',
@@ -168,30 +167,26 @@ export default function WorkflowDelegationsPage() {
     }),
   ];
 
-  const renderScopeFilter = () => (
-    <Select
-      value={draftParams.scope}
-      onChange={(v) => setField('scope')(v as Scope)}
-      optionList={[
-        { value: 'mine', label: '我的' },
-        { value: 'all', label: '全部' },
-      ]}
-      style={{ width: 140 }}
-    />
-  );
-
-
-  const renderCreateButton = () => canManage ? (
-    <CreateButton onClick={delegationModal.openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        filters={renderScopeFilter()}
+        filters={(
+          <Select
+            {...bind('scope', (v) => v as Scope)}
+            optionList={[
+              { value: 'mine', label: '我的' },
+              { value: 'all', label: '全部' },
+            ]}
+            style={{ width: 140 }}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          canManage ? (
+            <CreateButton onClick={delegationModal.openCreate} />
+          ) : null
+        )}
         filterTitle="审批代理筛选"
       />
 

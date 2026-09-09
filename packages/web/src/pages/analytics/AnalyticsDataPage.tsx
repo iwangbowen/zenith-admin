@@ -814,91 +814,6 @@ export default function AnalyticsDataPage() {
     );
   };
 
-  const renderEventTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部事件类型"
-      items={EVENT_TYPE_OPTIONS}
-      value={eventSearch.eventType}
-      onChange={(value) => setEventSearch((prev) => ({ ...prev, eventType: value }))}
-      width={150}
-    />
-  );
-  const renderEventNameSearch = () => (
-    <KeywordInput placeholder="事件名" value={eventSearch.eventName} onChange={(value) => setEventSearch((prev) => ({ ...prev, eventName: value }))} onSearch={handleEventSearch} width={160} />
-  );
-  const renderEventUsernameSearch = () => (
-    <KeywordInput placeholder="用户名" value={eventSearch.username} onChange={(value) => setEventSearch((prev) => ({ ...prev, username: value }))} onSearch={handleEventSearch} width={140} />
-  );
-  const renderEventPagePathSearch = () => (
-    <KeywordInput placeholder="页面路径" value={eventSearch.pagePath} onChange={(value) => setEventSearch((prev) => ({ ...prev, pagePath: value }))} onSearch={handleEventSearch} width={180} />
-  );
-  const renderEventDeviceFilter = () => (
-    <FilterSelect
-      placeholder="全部设备"
-      items={DEVICE_OPTIONS}
-      value={eventSearch.deviceType}
-      onChange={(value) => setEventSearch((prev) => ({ ...prev, deviceType: value }))}
-    />
-  );
-  const renderEventTimeRangeFilter = () => (
-    <DateRangeFilter
-      value={eventSearch.timeRange ?? undefined}
-      onChange={handleEventRangeChange}
-    />
-  );
-  const renderEventExportButtons = () => <ExportButton entity="analytics.events" query={buildExportQuery()} />;
-  const renderEventCleanButtons = () => canClean ? (
-    <SplitButtonGroup>
-      <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={cleanMutation.isPending} onClick={() => handleClean(90)}>清除数据</Button>
-      <Dropdown trigger="click" position="bottomRight" clickToHide render={(
-        <Dropdown.Menu>
-          {CLEAN_DAY_OPTIONS.map((item) => (
-            <Dropdown.Item
-              key={item.value}
-              type={item.value === 0 ? 'danger' : 'primary'}
-              onClick={() => handleClean(item.value)}
-            >
-              清除{item.label === '全部' ? '全部数据' : `${item.label}前数据`}
-            </Dropdown.Item>
-          ))}
-        </Dropdown.Menu>
-      )}>
-        <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
-      </Dropdown>
-    </SplitButtonGroup>
-  ) : null;
-  const renderMobileEventActions = () => (
-    <>
-      <ExportButton entity="analytics.events" query={buildExportQuery()} variant="flat" />
-      {canClean && CLEAN_DAY_OPTIONS.map((item) => (
-        <Button
-          key={item.value}
-          type={item.value === 0 ? 'danger' : 'tertiary'}
-          theme="light"
-          icon={<Trash2 size={14} />}
-          loading={cleanMutation.isPending}
-          onClick={() => handleClean(item.value)}
-        >
-          清除{item.label === '全部' ? '全部数据' : `${item.label}前数据`}
-        </Button>
-      ))}
-    </>
-  );
-
-  const renderMetaKeywordSearch = () => (
-    <KeywordInput placeholder="关键词" value={metaSearch.keyword} onChange={(value) => setMetaSearch((prev) => ({ ...prev, keyword: value }))} onSearch={handleMetaSearch} width={180} />
-  );
-  const renderMetaCategorySearch = () => (
-    <KeywordInput placeholder="分类" value={metaSearch.category} onChange={(value) => setMetaSearch((prev) => ({ ...prev, category: value }))} onSearch={handleMetaSearch} width={140} />
-  );
-  const renderMetaStatusFilter = () => (
-    <StatusSelect
-      items={META_STATUS_OPTIONS}
-      value={metaSearch.status}
-      onChange={(value) => setMetaSearch((prev) => ({ ...prev, status: value as AnalyticsEventMeta['status'] | undefined }))}
-    />
-  );
-  const renderMetaCreateButton = () => <CreateButton onClick={metaModal.openCreate} />;
   const renderRollupDaysFilter = () => (
     <Select value={rollupDays} onChange={handleRollupDaysChange} optionList={ROLLUP_DAY_OPTIONS} style={{ width: 130 }} />
   );
@@ -911,25 +826,74 @@ export default function AnalyticsDataPage() {
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} type="line" lazyRender keepDOM={false}>
         <TabPane tab="事件明细" itemKey="events">
           <ListSearchToolbar
-            keyword={renderEventNameSearch()}
+            keyword={<KeywordInput placeholder="事件名" value={eventSearch.eventName} onChange={(value) => setEventSearch((prev) => ({ ...prev, eventName: value }))} onSearch={handleEventSearch} width={160} />}
             filters={
               <>
-                {renderEventTypeFilter()}
-                {renderEventUsernameSearch()}
-                {renderEventPagePathSearch()}
-                {renderEventDeviceFilter()}
-                {renderEventTimeRangeFilter()}
+                <FilterSelect
+                  placeholder="全部事件类型"
+                  items={EVENT_TYPE_OPTIONS}
+                  value={eventSearch.eventType}
+                  onChange={(value) => setEventSearch((prev) => ({ ...prev, eventType: value }))}
+                  width={150}
+                />
+                <KeywordInput placeholder="用户名" value={eventSearch.username} onChange={(value) => setEventSearch((prev) => ({ ...prev, username: value }))} onSearch={handleEventSearch} width={140} />
+                <KeywordInput placeholder="页面路径" value={eventSearch.pagePath} onChange={(value) => setEventSearch((prev) => ({ ...prev, pagePath: value }))} onSearch={handleEventSearch} width={180} />
+                <FilterSelect
+                  placeholder="全部设备"
+                  items={DEVICE_OPTIONS}
+                  value={eventSearch.deviceType}
+                  onChange={(value) => setEventSearch((prev) => ({ ...prev, deviceType: value }))}
+                />
+                <DateRangeFilter
+                  value={eventSearch.timeRange ?? undefined}
+                  onChange={handleEventRangeChange}
+                />
               </>
             }
             onSearch={handleEventSearch}
             onReset={handleEventReset}
             actions={
               <>
-                {renderEventExportButtons()}
-                {renderEventCleanButtons()}
+                <ExportButton entity="analytics.events" query={buildExportQuery()} />
+                {canClean ? (
+                  <SplitButtonGroup>
+                    <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={cleanMutation.isPending} onClick={() => handleClean(90)}>清除数据</Button>
+                    <Dropdown trigger="click" position="bottomRight" clickToHide render={(
+                      <Dropdown.Menu>
+                        {CLEAN_DAY_OPTIONS.map((item) => (
+                          <Dropdown.Item
+                            key={item.value}
+                            type={item.value === 0 ? 'danger' : 'primary'}
+                            onClick={() => handleClean(item.value)}
+                          >
+                            清除{item.label === '全部' ? '全部数据' : `${item.label}前数据`}
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    )}>
+                      <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
+                    </Dropdown>
+                  </SplitButtonGroup>
+                ) : null}
               </>
             }
-            mobileActions={renderMobileEventActions()}
+            mobileActions={(
+              <>
+                <ExportButton entity="analytics.events" query={buildExportQuery()} variant="flat" />
+                {canClean && CLEAN_DAY_OPTIONS.map((item) => (
+                  <Button
+                    key={item.value}
+                    type={item.value === 0 ? 'danger' : 'tertiary'}
+                    theme="light"
+                    icon={<Trash2 size={14} />}
+                    loading={cleanMutation.isPending}
+                    onClick={() => handleClean(item.value)}
+                  >
+                    清除{item.label === '全部' ? '全部数据' : `${item.label}前数据`}
+                  </Button>
+                ))}
+              </>
+            )}
             filterTitle="事件筛选"
             actionTitle="事件操作"
           />
@@ -968,16 +932,20 @@ export default function AnalyticsDataPage() {
         </TabPane>
         <TabPane tab="事件字典" itemKey="meta">
           <ListSearchToolbar
-            keyword={renderMetaKeywordSearch()}
+            keyword={<KeywordInput placeholder="关键词" value={metaSearch.keyword} onChange={(value) => setMetaSearch((prev) => ({ ...prev, keyword: value }))} onSearch={handleMetaSearch} width={180} />}
             filters={
               <>
-                {renderMetaCategorySearch()}
-                {renderMetaStatusFilter()}
+                <KeywordInput placeholder="分类" value={metaSearch.category} onChange={(value) => setMetaSearch((prev) => ({ ...prev, category: value }))} onSearch={handleMetaSearch} width={140} />
+                <StatusSelect
+                  items={META_STATUS_OPTIONS}
+                  value={metaSearch.status}
+                  onChange={(value) => setMetaSearch((prev) => ({ ...prev, status: value as AnalyticsEventMeta['status'] | undefined }))}
+                />
               </>
             }
             onSearch={handleMetaSearch}
             onReset={handleMetaReset}
-            create={renderMetaCreateButton()}
+            create={<CreateButton onClick={metaModal.openCreate} />}
             filterTitle="事件字典筛选"
           />
 

@@ -54,7 +54,7 @@ export default function WorkflowTriggerExecutionsPage() {
   const defaultSearchParams: SearchParams = { status: undefined, instanceId: undefined, nodeKey: '' };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowTriggerExecutionKeys.lists });
 
@@ -137,37 +137,22 @@ export default function WorkflowTriggerExecutionsPage() {
     }),
   ];
 
-  const renderNodeKeySearch = () => (
-    <KeywordInput placeholder="节点 key" value={draftParams.nodeKey} onChange={setField('nodeKey')} width={180} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderInstanceIdFilter = () => (
-    <InputNumber
-      value={draftParams.instanceId}
-      onChange={(v) => setField('instanceId')(typeof v === 'number' ? v : undefined)}
-      placeholder="实例 ID"
-      min={1}
-      style={{ width: 140 }}
-    />
-  );
-
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderNodeKeySearch()}
+        keyword={<KeywordInput placeholder="节点 key" {...bind('nodeKey')} width={180} />}
         filters={(
           <>
-            {renderStatusFilter()}
-            {renderInstanceIdFilter()}
+            <StatusSelect
+              items={STATUS_OPTIONS}
+              {...bind('status')}
+            />
+            <InputNumber
+              {...bind('instanceId', (v) => typeof v === 'number' ? v : undefined)}
+              placeholder="实例 ID"
+              min={1}
+              style={{ width: 140 }}
+            />
           </>
         )}
         onSearch={handleSearch}

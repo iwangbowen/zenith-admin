@@ -34,11 +34,11 @@ interface SearchParams {
 const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: '' };
 
 export default function PaymentChannelsPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentChannelKeys.lists });
 
@@ -165,44 +165,30 @@ export default function PaymentChannelsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />
-  );
-
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={PAYMENT_CHANNEL_OPTIONS}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
-  const renderCreateButton = () => hasPermission('payment:channel:create') ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索名称..." {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
-            {renderChannelFilter()}
-            {renderStatusFilter()}
+            <FilterSelect
+              placeholder="全部渠道"
+              items={PAYMENT_CHANNEL_OPTIONS}
+              {...bind('channel')}
+            />
+            <StatusSelect
+              items={statusItems}
+              {...bind('status')}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('payment:channel:create') ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
         filterTitle="支付渠道筛选"
       />
 
@@ -228,7 +214,7 @@ export default function PaymentChannelsPage() {
               <Col span={12}><Form.Select field="channel" label="渠道" style={{ width: '100%' }} disabled={modal.isEdit} optionList={PAYMENT_CHANNEL_OPTIONS} rules={[{ required: true }]} /></Col>
             </Row>
             <Row gutter={16}>
-              <Col span={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} /></Col>
+              <Col span={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} /></Col>
               <Col span={12}><Form.Switch field="isDefault" label="设为默认" /></Col>
             </Row>
             <Row gutter={16}>

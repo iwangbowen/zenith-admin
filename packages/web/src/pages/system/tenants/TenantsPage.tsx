@@ -49,10 +49,10 @@ interface TenantFormValues extends Partial<Omit<CreateTenantInput, 'expireAt' | 
 
 export default function TenantsPage() {
   const { hasPermission } = usePermission();
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tenantKeys.lists });
 
@@ -200,38 +200,30 @@ export default function TenantsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索租户名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
   const buildExportQuery = () => compactQuery({
     keyword: submittedParams.keyword,
     status: submittedParams.status,
   });
-  const renderExportButtons = () => <ExportButton entity="system.tenants" query={buildExportQuery()} />;
-  const renderMobileExportActions = () => <ExportButton entity="system.tenants" query={buildExportQuery()} variant="flat" />;
-  const renderCreateButton = () => hasPermission('system:tenant:create') ? (
-    <CreateButton onClick={tenantModal.openCreate} />
-  ) : null;
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="搜索租户名称/编码" {...bindKeyword('keyword')} />}
+        filters={(
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
-        actions={renderExportButtons()}
-        mobileActions={renderMobileExportActions()}
+        create={(
+          hasPermission('system:tenant:create') ? (
+            <CreateButton onClick={tenantModal.openCreate} />
+          ) : null
+        )}
+        actions={<ExportButton entity="system.tenants" query={buildExportQuery()} />}
+        mobileActions={<ExportButton entity="system.tenants" query={buildExportQuery()} variant="flat" />}
         filterTitle="租户筛选"
         actionTitle="租户操作"
       />
@@ -276,7 +268,7 @@ export default function TenantsPage() {
                 field="status"
                 label="状态"
                 style={{ width: '100%' }}
-                optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
+                optionList={statusOptions}
                 placeholder="请选择状态"
               />
             </Col>

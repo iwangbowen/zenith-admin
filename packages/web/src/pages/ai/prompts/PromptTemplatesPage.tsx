@@ -67,7 +67,7 @@ export default function PromptTemplatesPage() {
   const queryClient = useQueryClient();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: aiPromptKeys.lists });
   const [versionTemplate, setVersionTemplate] = useState<AiPromptTemplate | null>(null);
@@ -155,43 +155,31 @@ export default function PromptTemplatesPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索名称/描述" value={draftParams.keyword} onChange={(value) => setField('keyword')(String(value ?? ''))} onSearch={handleSearch} />
-  );
-
-  const renderScopeFilter = () => (
-    <FilterSelect
-      placeholder="全部作用域"
-      items={scopeFormOptions}
-      value={draftParams.scope}
-      onChange={(value) => setField('scope')(value as AiPromptScope | undefined)}
-      width={140}
-    />
-  );
-
-
-
-  const renderCreateButton = () => hasPermission('ai:prompt:create') ? (
-    <CreateButton onClick={promptModal.openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderScopeFilter()}
+        keyword={<KeywordInput placeholder="搜索名称/描述" {...bindKeyword('keyword')} />}
+        filters={(
+          <FilterSelect
+            placeholder="全部作用域"
+            items={scopeFormOptions}
+            {...bind('scope', (value) => value as AiPromptScope | undefined)}
+            width={140}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('ai:prompt:create') ? (
+            <CreateButton onClick={promptModal.openCreate} />
+          ) : null
+        )}
         filterTitle="提示词筛选"
       />
 
       <ConfigurableTable
 
         columns={columns}
-
-
-
 
         empty="暂无提示词模板"
         {...listTableProps(listQuery, { pagination: buildPagination })}

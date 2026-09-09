@@ -90,7 +90,7 @@ export default function DataMaskPage() {
   const { hasPermission } = usePermission();
   const canUpdate = hasPermission('system:data-mask:update');
   const {
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: dataMaskKeys.fields });
 
@@ -225,13 +225,13 @@ export default function DataMaskPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索实体 / 字段 / 标签" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索实体 / 字段 / 标签" {...bindKeyword('keyword')} />}
         filters={(
           <>
-            <FilterSelect placeholder="全部实体" items={entityOptions} value={draftParams.entity} onChange={setField('entity')} width={160} />
-            <FilterSelect placeholder="全部脱敏类型" items={MASK_TYPE_OPTIONS} value={draftParams.maskType} onChange={setField('maskType')} width={150} />
-            <FilterSelect placeholder="全部启用状态" items={ENABLED_FILTER_OPTIONS} value={draftParams.enabled} onChange={setField('enabled')} width={140} />
-            <FilterSelect placeholder="全部来源" items={SOURCE_FILTER_OPTIONS} value={draftParams.overridden} onChange={setField('overridden')} />
+            <FilterSelect placeholder="全部实体" items={entityOptions} {...bind('entity')} width={160} />
+            <FilterSelect placeholder="全部脱敏类型" items={MASK_TYPE_OPTIONS} {...bind('maskType')} width={150} />
+            <FilterSelect placeholder="全部启用状态" items={ENABLED_FILTER_OPTIONS} {...bind('enabled')} width={140} />
+            <FilterSelect placeholder="全部来源" items={SOURCE_FILTER_OPTIONS} {...bind('overridden')} />
           </>
         )}
         onSearch={handleSearch}

@@ -125,7 +125,7 @@ export default function TerminalSessionsPage() {
   const defaultSearchParams: SearchParams = { keyword: '', kind: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    draftParams, bindKeyword, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: terminalKeys.sessionLists });
 
@@ -207,7 +207,7 @@ export default function TerminalSessionsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索用户/主机/IP" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索用户/主机/IP" {...bindKeyword('keyword')} />}
         filters={(
           <FilterSelect
             placeholder="全部类型"

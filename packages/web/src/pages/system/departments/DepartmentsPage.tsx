@@ -67,11 +67,11 @@ function collectDescendantIds(items: Department[], departmentId: number): Set<nu
 export default function DepartmentsPage() {
   const { hasPermission } = usePermission();
   const {
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: departmentKeys.tree });
-  const { items: statusItems } = useDictItems('common_status');
-  const { items: categoryItems } = useDictItems('department_category');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
+  const { options: categoryOptions } = useDictItems('department_category');
 
   const treeQuery = useDepartmentTreeSearch({
     keyword: submittedParams.keyword || undefined,
@@ -144,7 +144,6 @@ export default function DepartmentsPage() {
     disabled: !hasPermission('system:department:update'),
   });
 
-
   const columns: ColumnProps<Department>[] = [
     { title: '部门名称', dataIndex: 'name', minWidth: 220 },
     { title: '部门编码', dataIndex: 'code', width: 180, render: renderEllipsis },
@@ -180,18 +179,6 @@ export default function DepartmentsPage() {
     }),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="搜索部门名称/编码" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={240} />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={setField('status')}
-    />
-  );
-
   const renderExpandButton = (flat = false) => (
     <Button
       type="primary"
@@ -206,30 +193,34 @@ export default function DepartmentsPage() {
     keyword: submittedParams.keyword,
     status: submittedParams.status,
   });
-  const renderExportButtons = () => <ExportButton entity="system.departments" query={buildExportQuery()} />;
-  const renderMobileExportActions = () => <ExportButton entity="system.departments" query={buildExportQuery()} variant="flat" />;
-  const renderCreateButton = () => hasPermission('system:department:create') ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="搜索部门名称/编码" {...bindKeyword('keyword')} width={240} />}
+        filters={(
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          hasPermission('system:department:create') ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
         actions={(
           <>
             {renderExpandButton()}
-            {renderExportButtons()}
+            <ExportButton entity="system.departments" query={buildExportQuery()} />
           </>
         )}
         mobileActions={(
           <>
             {renderExpandButton(true)}
-            {renderMobileExportActions()}
+            <ExportButton entity="system.departments" query={buildExportQuery()} variant="flat" />
           </>
         )}
         filterTitle="部门筛选"
@@ -280,7 +271,7 @@ export default function DepartmentsPage() {
               <Form.Select
                 field="category"
                 label="类别"
-                optionList={categoryItems.map((item) => ({ value: item.value, label: item.label }))}
+                optionList={categoryOptions}
                 style={{ width: '100%' }}
                 placeholder="请选择类别"
                 rules={[{ required: true, message: '请选择类别' }]}
@@ -317,7 +308,7 @@ export default function DepartmentsPage() {
               <Form.Select
                 field="status"
                 label="状态"
-                optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
+                optionList={statusOptions}
                 style={{ width: '100%' }}
                 placeholder="请选择状态"
               />

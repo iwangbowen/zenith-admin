@@ -175,7 +175,6 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
   );
 }
 
-
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -306,7 +305,7 @@ function draftToAction(d: ActionDraft): WorkflowAutomationAction | { __error: st
 }
 
 export default function WorkflowAutomationsPage() {
-  const { items: statusItems } = useDictItems('common_status');
+  const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const canEditAutomation = hasPermission('workflow:definition:edit');
 
@@ -314,7 +313,7 @@ export default function WorkflowAutomationsPage() {
   const defaultSearchParams: SearchParams = { definitionId: undefined, trigger: undefined, status: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowAutomationKeys.lists });
   const listQuery = useWorkflowAutomationList({
@@ -331,7 +330,6 @@ export default function WorkflowAutomationsPage() {
   const [runsRule, setRunsRule] = useState<WorkflowAutomation | null>(null);
   const saveMutation = useSaveWorkflowAutomation();
   const deleteMutation = useDeleteWorkflowAutomations();
-
 
   const addAction = (type: ActionDraft['type']) => {
     setActions((prev) => [...prev, createDefaultActionDraft(type)]);
@@ -391,7 +389,6 @@ export default function WorkflowAutomationsPage() {
     setActions(row.actions.map(actionToDraft));
     automationModal.openEdit(row);
   };
-
 
   const defOptions = useMemo(
     () => defs
@@ -454,52 +451,36 @@ export default function WorkflowAutomationsPage() {
     }),
   ];
 
-  const renderDefinitionFilter = () => (
-    <FilterSelect
-      placeholder="全部所属流程"
-      items={filterDefOptions}
-      value={draftParams.definitionId}
-      onChange={(v) => setField('definitionId')(v as number | undefined)}
-      width={220}
-    />
-  );
-
-  const renderTriggerFilter = () => (
-    <FilterSelect
-      placeholder="全部触发时机"
-      items={TRIGGER_OPTIONS}
-      value={draftParams.trigger}
-      onChange={(v) => setField('trigger')(v as WorkflowAutomationTrigger | undefined)}
-      width={140}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      value={draftParams.status}
-      onChange={(v) => setField('status')(v as 'enabled' | 'disabled' | undefined)}
-    />
-  );
-
-
-  const renderCreateButton = () => canEditAutomation ? (
-    <CreateButton onClick={openCreate} />
-  ) : null;
-
   return (
     <div className="page-container">
       <ListSearchToolbar
         filters={(
           <>
-            {renderDefinitionFilter()}
-            {renderTriggerFilter()}
-            {renderStatusFilter()}
+            <FilterSelect
+              placeholder="全部所属流程"
+              items={filterDefOptions}
+              {...bind('definitionId')}
+              width={220}
+            />
+            <FilterSelect
+              placeholder="全部触发时机"
+              items={TRIGGER_OPTIONS}
+              {...bind('trigger')}
+              width={140}
+            />
+            <StatusSelect
+              items={statusItems}
+              {...bind('status', (v) => v as 'enabled' | 'disabled' | undefined)}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          canEditAutomation ? (
+            <CreateButton onClick={openCreate} />
+          ) : null
+        )}
         filterTitle="自动化规则筛选"
       />
 
@@ -538,7 +519,7 @@ export default function WorkflowAutomationsPage() {
               <Form.Select field="trigger" label="触发时机" style={{ width: '100%' }} rules={[{ required: true }]} optionList={TRIGGER_OPTIONS} />
             </Col>
             <Col span={12}>
-              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} />
             </Col>
           </Row>
           <Row gutter={16}>

@@ -69,7 +69,7 @@ export default function PaymentContractsPage() {
   // ── 签约协议 ──
   const {
     page: cPage, pageSize: cPageSize, setPage: setCPage, buildPagination: buildCPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch({ defaults: defaultSearchParams, listKey: paymentContractKeys.lists });
 
@@ -307,60 +307,39 @@ export default function PaymentContractsPage() {
     channel: submittedParams.channel || undefined,
   };
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="协议号/签约账号/业务ID..." value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} />
-  );
-  const renderAppFilter = () => (
-    <PaymentAppFilterSelect
-      value={effectiveContractAppId}
-      onChange={(appId) => {
-        setContractAppId(appId);
-        setCPage(1);
-      }}
-      optionList={appOptions}
-      loading={appsFetching}
-    />
-  );
-  const renderStatusFilter = () => (
-    <StatusSelect items={contractStatusOptions} value={draftParams.status} onChange={setField('status')} />
-  );
-  const renderChannelFilter = () => (
-    <FilterSelect
-      placeholder="全部渠道"
-      items={channelOptions}
-      value={draftParams.channel}
-      onChange={setField('channel')}
-    />
-  );
-  const renderCreateContract = () => canManage ? (
-    <CreateButton onClick={() => { setSelectedAppId(null); signModal.openCreate(); }}>新增签约</CreateButton>
-  ) : null;
-  const renderExportButtons = () => <ExportButton entity="payment.contracts" query={exportQuery} />;
-
-  const renderPlanKeywordSearch = () => (
-    <KeywordInput placeholder="计划名称..." value={planKeyword} onChange={setPlanKeyword} onSearch={handlePlanSearch} width={200} />
-  );
-  const renderCreatePlan = () => canPlan ? (
-    <CreateButton onClick={openCreatePlan} />
-  ) : null;
-
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as 'contracts' | 'plans')} type="line" lazyRender keepDOM={false}>
         <TabPane tab="签约协议" itemKey="contracts">
           <ListSearchToolbar
-            keyword={renderKeywordSearch()}
+            keyword={<KeywordInput placeholder="协议号/签约账号/业务ID..." {...bindKeyword('keyword')} />}
             filters={(
               <>
-                {renderAppFilter()}
-                {renderStatusFilter()}
-                {renderChannelFilter()}
+                <PaymentAppFilterSelect
+                  value={effectiveContractAppId}
+                  onChange={(appId) => {
+                    setContractAppId(appId);
+                    setCPage(1);
+                  }}
+                  optionList={appOptions}
+                  loading={appsFetching}
+                />
+                <StatusSelect items={contractStatusOptions} {...bind('status')} />
+                <FilterSelect
+                  placeholder="全部渠道"
+                  items={channelOptions}
+                  {...bind('channel')}
+                />
               </>
             )}
             onSearch={handleSearch}
             onReset={handleReset}
-            create={renderCreateContract()}
-            actions={renderExportButtons()}
+            create={(
+              canManage ? (
+                <CreateButton onClick={() => { setSelectedAppId(null); signModal.openCreate(); }}>新增签约</CreateButton>
+              ) : null
+            )}
+            actions={<ExportButton entity="payment.contracts" query={exportQuery} />}
             mobileActions={(<ExportButton entity="payment.contracts" query={exportQuery} variant="flat" />)}
             filterTitle="签约协议筛选"
           />
@@ -371,10 +350,14 @@ export default function PaymentContractsPage() {
         </TabPane>
         <TabPane tab="扣款计划" itemKey="plans">
           <ListSearchToolbar
-            keyword={renderPlanKeywordSearch()}
+            keyword={<KeywordInput placeholder="计划名称..." value={planKeyword} onChange={setPlanKeyword} onSearch={handlePlanSearch} width={200} />}
             onSearch={handlePlanSearch}
             onReset={handlePlanReset}
-            create={renderCreatePlan()}
+            create={(
+              canPlan ? (
+                <CreateButton onClick={openCreatePlan} />
+              ) : null
+            )}
           />
           <ConfigurableTable
             bordered columns={planColumns} dataSource={plans} loading={planQuery.isFetching} rowKey="id" size="small" empty="暂无数据"

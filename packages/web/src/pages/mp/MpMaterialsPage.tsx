@@ -36,7 +36,7 @@ export default function MpMaterialsPage() {
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpMaterialKeys.lists });
 
@@ -111,23 +111,6 @@ export default function MpMaterialsPage() {
     }),
   ];
 
-  const renderAccountFilter = () => (
-    <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-  );
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={MP_MATERIAL_TYPE_OPTIONS}
-      value={draftParams.filterType}
-      onChange={(v) => setField('filterType')(enumValueOf(MP_MATERIAL_TYPES, v))}
-    />
-  );
-  const renderKeywordInput = () => (
-    <KeywordInput placeholder="搜索素材名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={180} />
-  );
-  const renderCreateButton = () => can('mp:material:create') ? (
-    <CreateButton onClick={modal.openCreate} disabled={!currentId} />
-  ) : null;
   const renderMaterialActions = () => {
     const syncButton = can('mp:material:sync') ? (
       <Button icon={<RefreshCw size={14} />} loading={syncMutation.isPending} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>
@@ -141,16 +124,24 @@ export default function MpMaterialsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={renderKeywordInput()}
+        keyword={<KeywordInput placeholder="搜索素材名称" {...bindKeyword('keyword')} width={180} />}
         filters={(
           <>
-            {renderAccountFilter()}
-            {renderTypeFilter()}
+            <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
+            <FilterSelect
+              placeholder="全部类型"
+              items={MP_MATERIAL_TYPE_OPTIONS}
+              {...bind('filterType', (v) => enumValueOf(MP_MATERIAL_TYPES, v))}
+            />
           </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        create={renderCreateButton()}
+        create={(
+          can('mp:material:create') ? (
+            <CreateButton onClick={modal.openCreate} disabled={!currentId} />
+          ) : null
+        )}
         actions={renderMaterialActions()}
         mobileActions={(renderMaterialActions())}
         filterTitle="素材筛选"

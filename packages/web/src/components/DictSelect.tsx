@@ -28,7 +28,7 @@ export default function DictSelect({
   showClear = true,
   style,
 }: Readonly<DictSelectProps>) {
-  const { items, loading } = useDictItems(dictCode ?? '');
+  const { options, loading } = useDictItems(dictCode ?? '');
 
   if (!dictCode) {
     return (
@@ -51,7 +51,7 @@ export default function DictSelect({
       showClear={showClear}
       maxTagCount={4}
       style={{ width: '100%', ...style }}
-      optionList={items.map((i) => ({ value: i.value, label: i.label }))}
+      optionList={options}
     />
   );
 }

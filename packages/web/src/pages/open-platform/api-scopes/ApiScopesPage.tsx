@@ -27,8 +27,7 @@ const { Text } = Typography;
 const GROUP_OPTIONS = API_SCOPE_GROUPS.map((g) => ({ value: g, label: API_SCOPE_GROUP_LABELS[g] ?? g }));
 
 export default function ApiScopesPage() {
-  const { items: statusItems } = useDictItems('common_status');
-  const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.value, label: i.label }));
+  const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const canManage = hasPermission('open:scope:manage');
 
@@ -36,7 +35,7 @@ export default function ApiScopesPage() {
   const defaultSearchParams: SearchParams = { keyword: '', scopeGroup: undefined, status: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: apiScopeKeys.lists });
 
@@ -122,19 +121,17 @@ export default function ApiScopesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索编码 / 名称" value={draftParams.keyword} onChange={setField('keyword')} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="搜索编码 / 名称" {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部分组"
               items={GROUP_OPTIONS}
-              value={draftParams.scopeGroup}
-              onChange={(v) => setField('scopeGroup')(v as string)}
+              {...bind('scopeGroup')}
             />
             <StatusSelect
-              items={STATUS_OPTIONS}
-              value={draftParams.status}
-              onChange={(v) => setField('status')(v as string)}
+              items={statusOptions}
+              {...bind('status')}
             />
           </>
         )}
@@ -174,7 +171,7 @@ export default function ApiScopesPage() {
               <Form.Select field="scopeGroup" label="分组" style={{ width: '100%' }} optionList={GROUP_OPTIONS} filter allowCreate rules={[{ required: true, message: '请选择分组' }]} />
             </Col>
             <Col span={12}>
-              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={STATUS_OPTIONS} rules={[{ required: true, message: '请选择状态' }]} />
+              <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} rules={[{ required: true, message: '请选择状态' }]} />
             </Col>
           </Row>
           <Form.TextArea field="description" label="描述" placeholder="该 scope 授予的权限说明（可选）" rows={2} />
