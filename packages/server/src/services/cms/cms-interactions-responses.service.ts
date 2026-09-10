@@ -245,7 +245,7 @@ export function applyInteractionMarkers(html: string, siteCode: string, siteId?:
   const safeSiteCode = siteCode.replace(/[^a-z0-9-]/gi, '');
   const siteIdAttr = Number.isInteger(siteId) && siteId! > 0 ? ` data-site-id="${siteId}"` : '';
   return withoutLegacy.replace(INTERACTION_MARKER_RE, (_match, code: string) =>
-    `<div class="cms-interaction" data-site="${safeSiteCode}"${siteIdAttr} data-code="${code}"></div>`);
+    `<div class="cms-interaction" data-island="survey" data-site="${safeSiteCode}"${siteIdAttr} data-code="${code}"></div>`);
 }
 
 export function canExposeCmsInteractionResults(input: {

@@ -89,15 +89,11 @@ describe('CMS Stage4 unified interactions', () => {
   });
 
   it('serializes question replacement with submissions and keeps multiple forms reusable', async () => {
-    const [service, theme] = await Promise.all([
-      readFile(new URL('./cms-interactions-forms.service.ts', import.meta.url), 'utf8'),
-      readFile(new URL('../../cms/themes/default/templates.tsx', import.meta.url), 'utf8'),
-    ]);
+    const service = await readFile(new URL('./cms-interactions-forms.service.ts', import.meta.url), 'utf8');
     expect((service.match(/\.for\('update'\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(service).toContain('current.responseCount > 0');
     expect(service).toContain('validateInteractionAnswers(questions, input)');
-    expect(theme).toContain("i.repeatPolicy==='multiple'");
-    expect(theme).toContain('f.reset()');
+    // 多次参与表单提交后复用（保留表单、刷新实时结果、清空答案）由 cms/islands/survey/survey.test.ts 以 DOM 行为断言
   });
 
   it('copies every question presentation and branching property', async () => {
@@ -125,20 +121,16 @@ describe('CMS Stage4 unified interactions', () => {
     expect(canExposeCmsInteractionResults({ visibility: 'after_close', status: 'published', submitted: true })).toBe(false);
   });
 
-  it('validates and drafts on the client before hitting the server', async () => {
-    const theme = await readFile(new URL('../../cms/themes/default/templates.tsx', import.meta.url), 'utf8');
-    // 多选/矩阵/「其他」的必答与数量约束先在浏览器校验，不再靠服务端 400 + alert
-    expect(theme).toContain('function questionError(q,fs)');
-    expect(theme).toContain('function validate(form,state,onlyCurrentPage)');
-    expect(theme).not.toContain("alert(r&&r.message");
-    expect(theme).toContain('setFormError');
-    // 分页只影响可见性：跨页答案必须一起提交，只有条件未命中才 disabled
-    expect(theme).toContain('fs.disabled=condHidden');
-    // localStorage 草稿：断点续答，提交成功后清除
-    expect(theme).toContain('function saveDraft(box,form,state)');
-    expect(theme).toContain('clearDraft(box)');
-    // 属性上下文必须转义引号，否则 data-cond 的 JSON 会被首个引号截断
-    expect(theme).toContain("replace(/\"/g,'&quot;')");
+  it('renders the survey as an island container instead of an inline script', async () => {
+    const [theme, marker] = await Promise.all([
+      readFile(new URL('../../cms/themes/default/templates.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('./cms-interactions-responses.service.ts', import.meta.url), 'utf8'),
+    ]);
+    // 问卷交互（题型渲染、条件显隐 / 分页、多选与「其他」校验、草稿、提交与验证码重取）全部位于
+    // cms/islands/survey/**，由 survey.test.ts 以 DOM 行为断言；主题与正文标记只输出同一 data 契约
+    expect(theme).not.toContain('INTERACTION_SCRIPT');
+    expect(theme).toContain('className="cms-interaction" data-island="survey"');
+    expect(marker).toContain('class="cms-interaction" data-island="survey"');
   });
 
   it('generates non-colliding copy codes and never nests -copy suffixes', () => {

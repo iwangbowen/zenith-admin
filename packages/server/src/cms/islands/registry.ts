@@ -8,6 +8,7 @@ import { mountCaptcha } from './captcha';
 import { mountComments } from './comments';
 import { mountFollow } from './follow';
 import { mountLikes } from './likes';
+import { mountSurvey } from './survey';
 import { runAds } from './ads';
 import { runAnalytics } from './analytics';
 
@@ -21,6 +22,7 @@ export const registry: Readonly<Record<string, IslandMount>> = {
   likes: mountLikes,
   captcha: mountCaptcha,
   comments: mountComments,
+  survey: mountSurvey,
   'article-tools': mountArticleTools,
 };
 
