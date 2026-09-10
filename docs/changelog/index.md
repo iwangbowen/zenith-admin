@@ -4,22 +4,49 @@
 
 ---
 
-## Unreleased
+## v2.28.0 - 2026-09-11
 
-**后端进程角色拆分与多进程实时通道**：服务端引入 `api` / `worker` 角色模型，Docker Compose 以 `migrate` 一次性迁移 + `api` + `worker` 三个服务部署，迁移作为独立部署步骤执行；WebSocket / IoT 推送经 Redis 在进程间扇出，在线状态为集群合并视图，worker 提供独立探针端点，日志 / 指标 / 链路按角色标注。
+**后端进程角色拆分 + 多进程实时通道 + CMS 前台脚本岛化**：服务端引入 `api` / `worker` 角色模型（`ZENITH_ROLES`），Docker Compose 以 `migrate` 一次性迁移 + `api` + `worker` 三个服务部署；WebSocket / IoT 推送经 Redis 在进程间扇出，在线状态为集群合并视图；监控告警新增「后台调度」指标组并由 api 进程兜底评估 worker 缺失；CMS 前台 9 段内联脚本迁移为有类型、可测试的岛模块，CSP 头全站恒定；鉴权主体校验接入进程内缓存，WebSocket 连接按 socket 逐条登记。
+
+### 升级注意
+
+- 非 `NODE_ENV=development` 环境必须显式设置 `ZENITH_ROLES`（`api` / `worker` / `all`），缺失则拒绝启动；单机全量部署设 `all`。
+- 迁移不再随服务启动执行：Docker Compose 由 `migrate` 服务完成，源码 / dist 部署先跑 `npm run db:migrate` 或 `npm run start:migrate -w @zenith/server`。
+- 本次包含迁移 `0005`（users / tenants 失效触发器）、`0006`（`process_role` 枚举、`system_scheduler_nodes.roles`、`async_tasks.node_id`，节点心跳表清空重建）、`0007`（`monitor_metric` 枚举新增两值）；重跑 `npm run db:seed` 补入两条调度告警规则。
+- 多进程部署依赖 Redis pub/sub 承载跨进程推送；本地磁盘型存储（local / kodo / sftp、CMS 静态化）跨主机拆分时须共享卷并在 worker 设置 `STORAGE_SHARED=true`。
 
 ### Added
 
-- `ZENITH_ROLES` 进程角色：`api` 负责 HTTP / WebSocket / IoT 接入 / CMS SSR / 终端 / OpenAPI / Mastra 代理；`worker` 负责任务中心、业务 Cron、系统周期任务与系统队列 worker；`all` 表示单进程全量角色。非 development 环境必须显式设置。
+#### 进程角色与部署
+
+- `ZENITH_ROLES` 进程角色：`api` 负责 HTTP / WebSocket / IoT 接入 / CMS SSR / 终端 / OpenAPI / Mastra 代理；`worker` 负责任务中心、业务 Cron、系统周期任务与系统队列 worker；`all` 表示单进程全量角色。
 - Docker Compose 拓扑：`migrate` 一次性迁移、`api` 与 `worker` 服务，支持 `docker compose up -d --scale api=2 --scale worker=3`；`api_storage` 卷同时挂载到 api 与 worker；`docker-compose.single.yml` 提供单容器 `ZENITH_ROLES=all` 部署。
+- 纯 worker 探针应用（`WORKER_HEALTH_PORT`，默认 3301）：`/health`、`/ready`、`/metrics`，无业务路由。新增 `SHUTDOWN_GRACE_MS`（worker 的在飞作业排空预算同时传给 pg-boss）、`STORAGE_SHARED` 配置。
+- `npm run dev:split`（开发期分别启动 api 与 worker 进程）、`npm run verify:split`（本地端到端验证拆分链路）、VS Code compound「Debug: Split」。
+
+#### 跨进程实时通道
+
 - 跨进程 WebSocket 扇出（`lib/ws-fanout.ts`）：所有 WS 推送本地投递后经 Redis pub/sub 到达持有连接的 api 进程；IoT 指令、期望属性与 OTA 帧同路转发，由持有设备连接的节点回写送达状态。
 - 集群级在线状态：api 进程发布本地上下线增量与 30 秒全量快照，远端镜像 90 秒无刷新视为离线，进程有序停机时主动宣告离线。
+
+#### 任务中心与调度
+
 - 任务中心 handler 支持 `affinity: 'node'`：本机文件任务（终端压缩 / 解压）投递到提交进程专属队列 `async-tasks/node/<hostname_pid>`；目标进程无心跳时由兜底扫描标记失败；节点队列被对账误删时按原参数重建并重试投递；兜底扫描逐条容错。`async_tasks` 新增 `node_id`。
-- 纯 worker 探针应用（`WORKER_HEALTH_PORT`，默认 3301）：`/health`、`/ready`、`/metrics`，无业务路由。新增 `SHUTDOWN_GRACE_MS`（worker 的在飞作业排空预算同时传给 pg-boss）、`STORAGE_SHARED` 配置。
-- 健康与指标：api `/api/health` 返回 `roles`，`checks` 增加 `wsFanout`、`workers`；Prometheus 默认标签 `process_role`，WS 扇出 published / publish_failed / delivered / dropped 计数；`zenith_pgboss_queue_jobs{queue,state}`（ready 为可立即领取的积压，worker 扩缩容信号）与 `zenith_scheduler_worker_nodes`。
-- 监控告警新增「后台调度」指标组：`schedulerWorkerNodes`（有心跳的 worker 进程数）与 `schedulerQueueBacklog`（可领取作业总数），种子规则「后台 worker 进程缺失」（< 1，持续 2 分钟，critical）与「后台作业持续积压」（≥ 200，持续 5 分钟）。worker 全部下线时评估器已停，api 进程的 watchdog 每分钟自查并按该指标子集调用评估器，规则、收件人、静默期与事件落库与其他告警一致（迁移 `0007_scheduler_monitor_metrics`）。
-- 迁移 `0006_process_roles`：`process_role` 枚举、`system_scheduler_nodes.roles`（非空）、`async_tasks.node_id`；节点心跳表在加列前清空（心跳行为进程运行期状态，重启即重建）。
-- `npm run dev:split`（开发期分别启动 api 与 worker 进程）、`npm run verify:split`（本地端到端验证拆分链路）、VS Code compound「Debug: Split」。
+- 系统周期任务 `scheduler-node-queue-gc`（每 10 分钟）回收已下线进程遗留的节点队列，覆盖进程被强杀 / 崩溃未走优雅停机的情况。
+- 监控告警新增「后台调度」指标组：`schedulerWorkerNodes`（有心跳的 worker 进程数）与 `schedulerQueueBacklog`（可领取作业总数），种子规则「后台 worker 进程缺失」（< 1，持续 2 分钟，critical）与「后台作业持续积压」（≥ 200，持续 5 分钟）。worker 全部下线时评估器已停，api 进程的 watchdog（`lib/worker-watchdog.ts`）每分钟自查并按该指标子集调用评估器，规则、收件人、静默期与事件落库与其他告警一致。
+
+#### 可观测
+
+- api `/api/health` 返回 `roles`，`checks` 增加 `wsFanout`、`workers`。
+- Prometheus 默认标签 `process_role`；WS 扇出 published / publish_failed / delivered / dropped 计数；`zenith_pgboss_queue_jobs{queue,state}`（`ready` 为可立即领取的积压，worker 扩缩容信号）与 `zenith_scheduler_worker_nodes`。
+- 日志行带 `role` 字段，拆分部署时日志文件为 `logs/app-api.*.log` 与 `logs/app-worker.*.log`；OTel 资源属性 `zenith.process.role`；调度节点 ID 统一为 `hostname:pid`，`system_scheduler_nodes` 记录 `roles`，「系统调度 → 节点」展示角色标签。
+
+#### CMS 前台脚本（islands）
+
+- 新增 `src/cms/islands/`（独立 `tsconfig.islands.json`，DOM lib）：按 `[data-island]` 挂载、单岛失败隔离；`scripts/build-islands.mjs` 预构建，开发 / 测试按源码 mtime 由 esbuild 内存构建，以 `_assets/islands.{hash}.js` 内容指纹交付（命中 immutable，旧指纹返回当前内容 + no-cache）。
+- 主题 9 段字符串内联脚本迁移为岛模块：follow / likes / comments（含回复定位、会员通道、401 回退游客表单）/ captcha / article-tools（gov-portal 字号与打印）/ analytics / ads，以及 18KB 的问卷 / 投票 `survey` 岛（题型渲染、条件显隐、分页、校验、验证码、草稿、提交与结果渲染）；配置改经 `<meta name="cms-site" / "cms-analytics-key" / "cms-content-id">` 输出。
+- `cms-theme-shared-render.test` 守卫：五套主题渲染结果不含内联可执行脚本、均引用 islands module；CSP 只对可执行内联脚本计算哈希，JSON-LD 不参与，同站各页 CSP 头完全一致，可进 CDN / 浏览器缓存。详情页快照体积 46.8KB → 16.9KB。
+- 文档：`docs/cms/themes.md` 新增「前台交互脚本（islands）」章节；zenith skill `constraints.md` 新增「CMS 前台脚本（islands）」规范。
 
 ### Changed
 
@@ -27,9 +54,17 @@
 - 纯 worker 启动时校验存储拓扑：启用本地磁盘型存储（local / kodo / sftp）或 CMS 静态化时须声明 `STORAGE_SHARED=true`，否则拒绝启动。
 - 迁移独立于服务进程：`docker/entrypoint.sh` 只启动服务或执行传入命令，`npm start` = `node dist/index.js`，`npm run start:migrate` = `node dist/db/migrate.js`。
 - api 停机先宣告在线用户离线并关闭全部 WS 连接（1001）再关闭监听；compose 为 api 设 `stop_grace_period: 25s`，worker 130s。
-- 日志行带 `role` 字段；拆分部署时日志文件为 `logs/app-api.*.log` 与 `logs/app-worker.*.log`；OTel 资源属性 `zenith.process.role`。
-- 调度节点 ID 统一为 `hostname:pid`；管理端「系统调度 → 节点」展示角色标签。
+- 鉴权中间件的用户 / 租户权威行校验接入进程内 `TtlCache`（5s、单飞），订阅 `cache_invalidate` 总线的 users / tenants 主题即时失效（迁移 `0005` 为两表挂 `notify_cache_invalidate` 触发器）；WebSocket 升级鉴权同步受益。`lib/redis` 开启 `enableAutoPipelining`，鉴权链路的 EXISTS + GETEX + GET 合并为一次往返。
+- WebSocket 连接按 socket 逐条登记（`Map<WSContext, ConnMeta>` + tokenId / userId 索引）：多标签页各自收到推送，关闭其中一个不把用户标为离线；`closeTokenConnection` 关闭该登录会话全部标签页；监控契约 `MonitorWsConnection` / `MonitorWsDisconnect` 新增 `connId` 作为唯一行键。
+- presence 上下线进入 1 秒合并窗口后批量广播（`chat:presence` payload 为 `ChatPresence[]`），服务重启全体重连时消息量从 O(N²) 降为 O(N)；web 重连退避加 ±50% 抖动；新增 `scheduleBroadcast()`，全员推送不再全表查询 users。
 
+### Fixed
+
+- 多实例部署下 WebSocket 推送只送达发出进程持有的连接：任务进度、站内信、工作流通知、会话吊销在其他节点上的浏览器收不到（经 Redis 扇出修复）。
+- 同一 access token 的多标签页 / 断网重连并存连接互相覆盖：关闭一个标签页把用户标为离线、打断进行中的音视频通话。
+- 停用租户或把租户改到已过期时未吊销该租户用户的会话，与禁用用户、到期巡检口径不一致。
+- CMS 前台关注按钮从未绑定事件、广告令牌与曝光从未上报：原脚本位于 `<body>` 起始同步执行，早于正文解析；改为 module 脚本 defer 后修复。
+- CMS 问卷 / 投票完成提示读取响应信封的 `message`（恒为 `success`），后台配置的感谢语从未展示；现读 `data.message`。
 ## v2.27.0 - 2026-09-10
 
 **定时任务执行概览重做 + pg-boss 调度按官方最佳实践重构 + React 19.3 路由过渡**：执行概览从 6 张今日快照卡
