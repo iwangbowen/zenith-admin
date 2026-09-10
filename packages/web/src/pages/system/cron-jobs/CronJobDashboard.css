@@ -43,20 +43,43 @@
   color: var(--semi-color-text-2);
 }
 
-.cron-scheduler__warnings {
+/* 调度器健康 / 警告状态芯片：ok 绿、warn 橙、danger 红、neutral 灰 */
+.cron-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 1px 8px;
   border-radius: var(--semi-border-radius-full);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
   color: var(--semi-color-text-1);
   background: var(--semi-color-fill-0);
+  cursor: default;
+}
+
+.cron-chip--clickable {
   cursor: pointer;
 }
 
-.cron-scheduler__warnings--severe {
+.cron-chip--ok {
+  color: var(--semi-color-success);
+  background: var(--semi-color-success-light-default);
+}
+
+.cron-chip--warn {
   color: var(--semi-color-warning);
   background: var(--semi-color-warning-light-default);
+}
+
+.cron-chip--danger {
+  color: var(--semi-color-danger);
+  background: var(--semi-color-danger-light-default);
+}
+
+.cron-chip--neutral {
+  color: var(--semi-color-text-2);
+  background: var(--semi-color-fill-0);
 }
 
 .cron-warnings {

@@ -23,12 +23,24 @@ import {
   isCronNearTimeout,
   isCronRunningTimeout,
   isCronSlowTail,
+  toMinuteCron,
 } from '@zenith/shared/platform';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { db, readSnapshot } from '../../db';
 import type { DbTransaction } from '../../db/types';
 import { cronJobs, cronJobLogs, systemSchedulerNodes } from '../../db/schema';
-import { CRON_SCHEDULE_TZ, scheduleJob, stopJob, runJobOnce, validateCronExpression, getSchedulerIntrospection } from '../../lib/pg-boss-scheduler';
+import {
+  CRON_SCHEDULE_TZ,
+  getSchedulerBamSummary,
+  getSchedulerHealth,
+  getSchedulerIntrospection,
+  inspectCronSchedules,
+  isSchedulerMaintaining,
+  runJobOnce,
+  scheduleJob,
+  stopJob,
+  validateCronExpression,
+} from '../../lib/pg-boss-scheduler';
 import { HTTPException } from 'hono/http-exception';
 import { currentUserOrNull } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -82,7 +94,7 @@ export async function createCronJob(data: typeof cronJobs.$inferInsert) {
   const [existing] = await db.select().from(cronJobs).where(eq(cronJobs.name, data.name)).limit(1);
   if (existing) throw new HTTPException(400, { message: '任务名称已存在' });
   const [row] = await db.insert(cronJobs).values(data).returning();
-  if (row.status === 'enabled') await scheduleJob(row.id, row.name, row.cronExpression, row.handler, row.params, { retryCount: row.retryCount, retryDelay: row.retryInterval, retryBackoff: row.retryBackoff, monitorTimeout: row.monitorTimeout });
+  if (row.status === 'enabled') await scheduleJob(row);
   return mapCronJob(row);
 }
 
@@ -90,15 +102,15 @@ export async function updateCronJob(id: number, data: Partial<typeof cronJobs.$i
   if (data.cronExpression && !validateCronExpression(data.cronExpression)) throw new HTTPException(400, { message: 'Cron 表达式无效' });
   const [row] = await db.update(cronJobs).set({ ...data }).where(eq(cronJobs.id, id)).returning();
   requireRow(row, '任务不存在');
-  if (row.status === 'enabled') await scheduleJob(row.id, row.name, row.cronExpression, row.handler, row.params, { retryCount: row.retryCount, retryDelay: row.retryInterval, retryBackoff: row.retryBackoff, monitorTimeout: row.monitorTimeout });
-  else await stopJob(row.id, row.name);
+  if (row.status === 'enabled') await scheduleJob(row);
+  else await stopJob(row.id);
   return mapCronJob(row);
 }
 
 export async function deleteCronJob(id: number) {
   const [row] = await db.select({ id: cronJobs.id, name: cronJobs.name }).from(cronJobs).where(eq(cronJobs.id, id)).limit(1);
   requireRow(row, '任务不存在');
-  await stopJob(row.id, row.name);
+  await stopJob(row.id);
   await db.delete(cronJobs).where(eq(cronJobs.id, id));
 }
 
@@ -123,8 +135,8 @@ export async function runCronJob(id: number) {
 export async function setCronJobStatus(id: number, status: 'enabled' | 'disabled') {
   const [row] = await db.update(cronJobs).set({ status }).where(eq(cronJobs.id, id)).returning();
   requireRow(row, '任务不存在');
-  if (status === 'enabled') await scheduleJob(row.id, row.name, row.cronExpression, row.handler, row.params, { retryCount: row.retryCount, retryDelay: row.retryInterval, retryBackoff: row.retryBackoff, monitorTimeout: row.monitorTimeout });
-  else await stopJob(row.id, row.name);
+  if (status === 'enabled') await scheduleJob(row);
+  else await stopJob(row.id);
   return status === 'enabled' ? '已启用' : '已停用';
 }
 
@@ -253,9 +265,10 @@ function toNullableInt(value: number | string | null | undefined): number | null
   return value == null ? null : Number(value);
 }
 
+/** 与 pg-boss 同一口径：去掉秒位后按调度时区求值，否则「下次执行」会与实际触发对不上 */
 function parseCron(expression: string, currentDate?: Date) {
   try {
-    return CronExpressionParser.parse(expression, { tz: CRON_SCHEDULE_TZ, ...(currentDate ? { currentDate } : {}) });
+    return CronExpressionParser.parse(toMinuteCron(expression), { tz: CRON_SCHEDULE_TZ, ...(currentDate ? { currentDate } : {}) });
   } catch {
     return null;
   }
@@ -611,7 +624,7 @@ export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJo
   const warningMap = new Map<string, CronJobSchedulerWarning>();
   const collect = (nodeId: string, list: readonly { type: string; message: string; at: string }[]) => {
     for (const w of list) {
-      const key = `||`;
+      const key = `${nodeId}|${w.type}|${w.message}`;
       const existing = warningMap.get(key);
       if (!existing || existing.at < w.at) warningMap.set(key, { type: w.type, message: w.message, nodeId, at: w.at });
     }
@@ -621,6 +634,11 @@ export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJo
   const schedulerWarnings = [...warningMap.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, SCHEDULER_WARNINGS_LIMIT);
   const thisNodeHeartbeat = snapshot.nodeRows.find((n) => n.nodeId === scheduler.node.id)?.lastHeartbeatAt
     ?? snapshot.nodeRows.reduce<Date | null>((latest, n) => (latest && latest > n.lastHeartbeatAt ? latest : n.lastHeartbeatAt), null);
+  const health = getSchedulerHealth();
+  const [bam, scheduleReconcile] = await Promise.all([
+    getSchedulerBamSummary().catch(() => ({ pending: 0, failed: 0 })),
+    inspectCronSchedules().catch(() => ({ missing: [], orphans: [] })),
+  ]);
 
   return {
     days,
@@ -641,6 +659,14 @@ export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJo
       lastHeartbeatAt: formatNullableDateTime(thisNodeHeartbeat),
       wipCount: scheduler.runningJobCount,
       warnings: schedulerWarnings,
+      schemaVersion: health.schemaVersion,
+      schemaDriftOk: health.schemaDriftOk,
+      schemaDriftIssues: health.schemaDriftIssues,
+      maintaining: isSchedulerMaintaining(),
+      bamPending: bam.pending,
+      bamFailed: bam.failed,
+      scheduleMissing: scheduleReconcile.missing,
+      scheduleOrphans: scheduleReconcile.orphans,
     },
     alerts: buildAlerts(snapshot.allJobs, perJobMap, snapshot.runningLogs, now),
     perJob: snapshot.perJob,

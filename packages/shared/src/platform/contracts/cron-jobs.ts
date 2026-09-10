@@ -138,6 +138,14 @@ export const cronJobSchedulerStatusSchema = z.object({
   lastHeartbeatAt: z.string().nullable(),
   wipCount: z.int().meta({ description: '本节点（当前接口进程）正在执行的任务数' }),
   warnings: z.array(cronJobSchedulerWarningSchema).meta({ description: '在线节点最近上报的 pg-boss 运维警告（新 → 旧，最多 20 条）' }),
+  schemaVersion: z.int().nullable().meta({ description: 'pg-boss schema 版本（boss.schemaVersion()）' }),
+  schemaDriftOk: z.boolean().nullable().meta({ description: 'detectSchemaDrift() 是否无漂移；尚未检查时为 null' }),
+  schemaDriftIssues: z.int().meta({ description: '漂移条目数（缺失 / 无效 / 不一致的表、索引、函数、列、约束、枚举）' }),
+  maintaining: z.boolean().meta({ description: '本节点是否正在执行维护（isMaintaining()）' }),
+  bamPending: z.int().meta({ description: '待执行 / 进行中的异步迁移命令数' }),
+  bamFailed: z.int().meta({ description: '失败的异步迁移命令数' }),
+  scheduleMissing: z.array(z.int()).meta({ description: '启用中却没有 pg-boss schedule 的任务 ID' }),
+  scheduleOrphans: z.array(z.string()).meta({ description: '有 schedule 但任务已停用或不存在的 key' }),
 }).meta({ id: 'CronJobSchedulerStatus' });
 
 export type CronJobSchedulerStatus = z.infer<typeof cronJobSchedulerStatusSchema>;

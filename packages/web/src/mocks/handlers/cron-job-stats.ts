@@ -17,6 +17,7 @@ import {
   isCronLowSuccessRate,
   isCronNearTimeout,
   isCronSlowTail,
+  toMinuteCron,
 } from '@zenith/shared/platform';
 import { mockCronJobs } from '@/mocks/data/system';
 import { mockCronJobLogs, type MockCronJobLog } from '@/mocks/data/cron-job-logs';
@@ -62,7 +63,8 @@ function summarize(logs: readonly MockCronJobLog[]): CronJobRunSummary {
 
 function nextRuns(expression: string, from: Date, limit: number, deadline: number): Date[] {
   try {
-    const interval = CronExpressionParser.parse(expression, { currentDate: from });
+    // 与服务端一致：pg-boss 按分钟调度，秒位不参与计算
+    const interval = CronExpressionParser.parse(toMinuteCron(expression), { currentDate: from });
     const out: Date[] = [];
     for (let i = 0; i < limit; i++) {
       const next = interval.next().toDate();
@@ -229,9 +231,17 @@ export function buildMockCronJobStats(days: number): CronJobStats {
       lastHeartbeatAt: mockDateTimeOffset(-12_000),
       wipCount: logs.filter((l) => l.status === 'running').length,
       warnings: [
-        { type: 'queue_backlog', message: 'Queue cron-job-2 has 1,240 queued jobs and 1 active worker', nodeId: 'demo-node:4321', at: mockDateTimeOffset(-6 * 60_000) },
+        { type: 'queue_backlog', message: 'Queue cron-jobs has 1,240 queued jobs and 1 active worker', nodeId: 'demo-node:4321', at: mockDateTimeOffset(-6 * 60_000) },
         { type: 'index_bloat', message: 'Index pgboss.job_i11 has 3.1 live entries per page (threshold 5); a REINDEX is scheduled', nodeId: 'demo-node:4321', at: mockDateTimeOffset(-42 * 60_000) },
       ],
+      schemaVersion: 40,
+      schemaDriftOk: true,
+      schemaDriftIssues: 0,
+      maintaining: false,
+      bamPending: 0,
+      bamFailed: 0,
+      scheduleMissing: [],
+      scheduleOrphans: [],
     },
     alerts,
     perJob,

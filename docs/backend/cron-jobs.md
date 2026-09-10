@@ -43,6 +43,39 @@
 执行概览的健康判定阈值（连续失败次数、成功率下限、P95 / 平均倍数、接近超时比例、未按计划执行容差）
 统一定义在 `packages/shared/src/platform/cron-health.ts`，服务端聚合与 Demo Mock 共用。
 
+### 在 pg-boss 上的映射
+
+所有业务定时任务共用**一条** pg-boss 队列 `cron-jobs`（`packages/server/src/lib/pg-boss-scheduler.ts`）：
+
+| 概念 | 实现 |
+| --- | --- |
+| 队列 | `cron-jobs`，policy `stately`，`heartbeatSeconds: 60`，排队保留 7 天、完成后 1 天删除（执行历史以 `cron_job_logs` 为准），积压超过 200 条触发 `queue_backlog` 警告 |
+| 任务 → schedule | 每个启用任务是该队列上 `key = jobId` 的一条 schedule，`schedule()` 按 (队列, key) 幂等 upsert；停用 / 删除时 `unschedule(key)` 并取消其尚未开始的作业 |
+| 不重叠执行 | 作业带 `singletonKey = jobId`，`stately` 保证同一任务最多「1 条排队 + 1 条执行中」：执行时间超过周期只补跑一次，不会无限积压 |
+| 重试 / 超时 | `retryLimit` / `retryDelay` / `retryBackoff` 逐作业显式下发（含 `retryLimit: 0`），不依赖队列默认值（默认会重试 2 次）；超时由 worker 内按 `monitorTimeout` 判定并记为 `timeout`，pg-boss 的 `expireInSeconds` 只作兜底（`monitorTimeout + 30s`，未配置超时时取上限 24 小时，避免 15 分钟默认过期把正常执行的作业判死后重叠执行） |
+| worker | 每个进程只 `work()` 一次，`localConcurrency: 8`（8 个轮询 worker 各取 1 条），worker 在执行期间自动续心跳；进程崩溃后作业在 60 秒内被判定失联并按重试策略处理 |
+| 手动执行 | `send()` 同 key 作业 + `notifyWorker()` 立刻取用；若该任务已有排队作业，插入被合并并返回提示 |
+| 启动对账 | 删除旧版 `cron-job-{id}` 每任务队列；启用任务全部重新 `schedule()`，多余的 schedule 删除；队列 policy 与代码不一致时重建 |
+
+**Cron 表达式精度**：pg-boss 每 30 秒评估一次 schedule，只支持分钟级。管理端保存的 6 段表达式（含秒位）
+在注册到 pg-boss 与计算「下次执行 / 未按计划执行」时统一经 `toMinuteCron()` 去掉秒位
+（`packages/shared/src/platform/cron-expression.ts`），秒位非 0 的任务会在列表中提示「秒位不生效」。
+需要秒级节奏的工作应交给任务中心或专用 worker，定时任务只负责分钟级触发。
+
+### 调度器健康
+
+`GET /stats` 的 `scheduler` 段除节点心跳、WIP 与 pg-boss 运维警告外，还包含：
+
+| 字段 | 来源 |
+| --- | --- |
+| `schemaVersion` / `schemaDriftOk` / `schemaDriftIssues` | `boss.schemaVersion()` + `boss.detectSchemaDrift()`，启动时检查并随心跳每 10 分钟复检；有漂移时进 `schema_drift` 警告 |
+| `maintaining` | `boss.isMaintaining()`，本节点是否正在执行维护 |
+| `bamPending` / `bamFailed` | `boss.getBamStatus()` 后台异步迁移（大索引重建等）计数；失败进 `bam_failed` 警告 |
+| `scheduleMissing` / `scheduleOrphans` | 只读对账 `cron_jobs` 与 `getSchedules('cron-jobs')`：启用却无 schedule 的任务、有 schedule 却已停用 / 不存在的 key |
+
+运维警告（`boss.on('warning')`，含 `queue_backlog` / `xmin_horizon` / `index_bloat` 等）同时开启 `persistWarnings`
+落到 `pgboss.warning` 表保留 7 天，各节点最近 20 条随心跳写入 `system_scheduler_nodes.metadata`，概览合并所有在线节点展示。
+
 ## Handler Registry
 
 `packages/server/src/lib/pg-boss-scheduler.ts` 注册可被 `cron_jobs.handler` 引用的处理器：
@@ -121,3 +154,6 @@
 - 新增业务可配置任务时，先注册 handler，再通过种子或管理端创建 `cron_jobs`。
 - 新增平台级固定任务时，使用 `registerSystemRecurringJob()`。
 - 长耗时、可重试、需要进度的批处理优先接入任务中心；定时任务只负责触发。
+- 不要为业务定时任务再建独立 pg-boss 队列或调用 `work()`：全部走 `cron-jobs` 队列的 keyed schedule，
+  每个进程只有一个 worker；队列参数（心跳、保留期、policy）只在 `pg-boss-scheduler.ts` 中声明。
+- Cron 表达式按分钟设计；同一分钟触发的任务会并发执行（`localConcurrency: 8`），有先后依赖的工作应合并为一个 handler 或交给工作流。

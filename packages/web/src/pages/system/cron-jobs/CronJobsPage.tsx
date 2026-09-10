@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, Col, Dropdown, SplitButtonGroup, Row, SideSheet, Form, Modal, Popover, Space, Spin, Table, Tabs, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
 import type { CreateCronJobInput, CronJob, CronJobLog, CronRunTrigger } from '@zenith/shared/platform';
-import { CRON_RUN_STATUS_LABELS, CRON_RUN_TRIGGER_LABELS } from '@zenith/shared/platform';
+import { CRON_RUN_STATUS_LABELS, CRON_RUN_TRIGGER_LABELS, cronSecondsIgnored, toMinuteCron } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -244,8 +244,10 @@ export default function CronJobsPage() {
       title: 'Cron 表达式', dataIndex: 'cronExpression', width: 200,
       render: (v: string) => {
         let scheduleContent: React.ReactNode = '表达式无效';
+        const secondsIgnored = cronSecondsIgnored(v);
         try {
-          const interval = CronExpressionParser.parse(v);
+          // pg-boss 按分钟调度，秒位不参与计算，与服务端「下次执行」保持一致
+          const interval = CronExpressionParser.parse(toMinuteCron(v));
           const times = Array.from({ length: 5 }, () => {
             const d = dayjs(interval.next().toDate());
             const dateStr = d.format('YYYY-MM-DD');
@@ -255,12 +257,17 @@ export default function CronJobsPage() {
             if (dateStr === today) prefix = '今天';
             else if (dateStr === tomorrow) prefix = '明天';
             else prefix = d.format('MM-DD');
-            return `${prefix} ${d.format('HH:mm:ss')}`;
+            return `${prefix} ${d.format('HH:mm')}`;
           });
           scheduleContent = (
             <div style={{ fontSize: 12, lineHeight: 1.8 }}>
               <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)' }}>最近 5 次执行时间：</div>
               {times.map((t) => <div key={t} style={{ fontVariantNumeric: 'tabular-nums' }}>{t}</div>)}
+              {secondsIgnored && (
+                <div style={{ marginTop: 6, color: 'var(--semi-color-warning)' }}>
+                  秒位不生效：调度器按分钟触发，实际在整分钟执行
+                </div>
+              )}
             </div>
           );
         } catch { /* invalid */ }
@@ -275,7 +282,7 @@ export default function CronJobsPage() {
               showArrow
               style={{ padding: '10px 14px', minWidth: 180 }}
             >
-              <HelpCircle size={13} style={{ color: 'var(--semi-color-text-2)', flexShrink: 0, cursor: 'help' }} />
+              <HelpCircle size={13} style={{ color: secondsIgnored ? 'var(--semi-color-warning)' : 'var(--semi-color-text-2)', flexShrink: 0, cursor: 'help' }} />
             </Popover>
           </Space>
         );
@@ -308,7 +315,7 @@ export default function CronJobsPage() {
       render: (_: unknown, record: CronJob) => {
         if (record.status !== 'enabled') return <span style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>已停用</span>;
         try {
-          const next = CronExpressionParser.parse(record.cronExpression).next().toDate();
+          const next = CronExpressionParser.parse(toMinuteCron(record.cronExpression)).next().toDate();
           const t = dayjs(next);
           const dateStr = t.format('YYYY-MM-DD');
           const today = dayjs().format('YYYY-MM-DD');
@@ -319,7 +326,7 @@ export default function CronJobsPage() {
           else prefix = t.format('MM-DD');
           return (
             <span style={{ fontSize: 12, color: 'var(--semi-color-text-1)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-              {prefix} {t.format('HH:mm:ss')}
+              {prefix} {t.format('HH:mm')}
             </span>
           );
         } catch {

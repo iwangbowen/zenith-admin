@@ -79,11 +79,82 @@ function SchedulerWarnings({ warnings, now }: Readonly<{ warnings: CronJobStats[
         </div>
       )}
     >
-      <span className={`cron-scheduler__warnings${severe ? ' cron-scheduler__warnings--severe' : ''}`}>
-        <AlertTriangle size={13} />
+      <span className={`cron-chip cron-chip--clickable ${severe ? 'cron-chip--warn' : 'cron-chip--neutral'}`}>
+        <AlertTriangle size={12} />
         {warnings.length} 条运维警告
       </span>
     </Popover>
+  );
+}
+
+function HealthChip({ tone, tooltip, children }: Readonly<{ tone: 'ok' | 'warn' | 'danger' | 'neutral'; tooltip: React.ReactNode; children: React.ReactNode }>) {
+  return (
+    <Tooltip content={tooltip} position="bottom">
+      <span className={`cron-chip cron-chip--${tone}`}>{children}</span>
+    </Tooltip>
+  );
+}
+
+function SchedulerHealth({ scheduler }: Readonly<{ scheduler: CronJobStats['scheduler'] }>) {
+  const inconsistent = scheduler.scheduleMissing.length + scheduler.scheduleOrphans.length;
+  return (
+    <>
+      {scheduler.schemaVersion != null && (
+        scheduler.schemaDriftOk === false ? (
+          <HealthChip tone="danger" tooltip={`pg-boss schema v${scheduler.schemaVersion}：detectSchemaDrift() 发现 ${scheduler.schemaDriftIssues} 项结构不一致（缺失 / 无效 / 不匹配的表、索引、函数、列、约束或枚举），请检查 pg-boss 迁移是否完整执行`}>
+            <AlertTriangle size={12} />
+            schema v{scheduler.schemaVersion} 漂移 {scheduler.schemaDriftIssues}
+          </HealthChip>
+        ) : (
+          <HealthChip tone={scheduler.schemaDriftOk ? 'ok' : 'neutral'} tooltip={scheduler.schemaDriftOk ? `pg-boss schema v${scheduler.schemaVersion}，结构校验通过（每 10 分钟复检）` : `pg-boss schema v${scheduler.schemaVersion}，尚未完成结构校验`}>
+            schema v{scheduler.schemaVersion}
+          </HealthChip>
+        )
+      )}
+      {inconsistent > 0 ? (
+        <Popover
+          position="bottomLeft"
+          showArrow
+          content={(
+            <div className="cron-warnings">
+              <div className="cron-warnings__title">任务与 pg-boss 调度计划不一致（启动时会自动对账，持续存在请检查日志）</div>
+              {scheduler.scheduleMissing.length > 0 && (
+                <div className="cron-warning">
+                  <div className="cron-warning__head"><Tag size="small" color="red" type="light">启用中但未注册计划</Tag></div>
+                  <div className="cron-warning__message cron-mono">{scheduler.scheduleMissing.map((id) => `#${id}`).join('、')}</div>
+                </div>
+              )}
+              {scheduler.scheduleOrphans.length > 0 && (
+                <div className="cron-warning">
+                  <div className="cron-warning__head"><Tag size="small" color="orange" type="light">计划已注册但任务不存在或已停用</Tag></div>
+                  <div className="cron-warning__message cron-mono">{scheduler.scheduleOrphans.map((key) => `key ${key}`).join('、')}</div>
+                </div>
+              )}
+            </div>
+          )}
+        >
+          <span className="cron-chip cron-chip--danger cron-chip--clickable">
+            <AlertTriangle size={12} />
+            计划不一致 {inconsistent}
+          </span>
+        </Popover>
+      ) : (
+        <HealthChip tone="ok" tooltip="启用中的每个任务在 pg-boss 中都有且仅有一条对应的调度计划">计划一致</HealthChip>
+      )}
+      {scheduler.maintaining && (
+        <HealthChip tone="neutral" tooltip="本节点正在执行 pg-boss 维护（归档、清理、索引整理），期间取用新作业可能略有延迟">维护中</HealthChip>
+      )}
+      {scheduler.bamFailed > 0 ? (
+        <HealthChip tone="danger" tooltip={`pg-boss 后台异步迁移（如大索引重建）有 ${scheduler.bamFailed} 条失败，请查看运维警告与服务端日志`}>
+          <AlertTriangle size={12} />
+          异步迁移失败 {scheduler.bamFailed}
+        </HealthChip>
+      ) : scheduler.bamPending > 0 ? (
+        <HealthChip tone="warn" tooltip={`pg-boss 有 ${scheduler.bamPending} 条后台异步迁移待执行或进行中，完成前部分索引可能尚未生效`}>
+          异步迁移中 {scheduler.bamPending}
+        </HealthChip>
+      ) : null}
+    </>
   );
 }
 
@@ -102,6 +173,7 @@ function SchedulerBar({ scheduler, now }: Readonly<{ scheduler: CronJobStats['sc
       <span className="cron-scheduler__meta">
         心跳 {scheduler.lastHeartbeatAt ? formatRelativeTime(scheduler.lastHeartbeatAt, now) : '无记录'}
       </span>
+      <SchedulerHealth scheduler={scheduler} />
       <SchedulerWarnings warnings={scheduler.warnings} now={now} />
     </div>
   );

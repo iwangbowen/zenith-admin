@@ -6,7 +6,7 @@
  */
 import { uniquePositiveInts } from '@zenith/shared/core';
 import os from 'node:os';
-import { PgBoss, type JobWithMetadata, type QueueOptions, type SendOptions, type Warning } from 'pg-boss';
+import { PgBoss, type JobWithMetadata, type Queue, type QueueOptions, type SendOptions, type Warning } from 'pg-boss';
 import { eq, and, gte, inArray, isNull, or, desc, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { cronJobs, cronJobLogs, dbBackups, systemSchedulerNodes, systemSchedulerRuns, systemSchedulerTaskConfigs, users } from '../db/schema';
@@ -18,7 +18,7 @@ import { config } from '../config';
 import { dispatchAlertChannels } from './alert-dispatch';
 import type { SystemSchedulerAlertChannel } from '@zenith/shared/chat';
 import type { CronRunStatus, CronRunTrigger, SystemSchedulerTaskBase, SystemSchedulerTaskType, SystemSchedulerRunStatus, SystemSchedulerTriggerType } from '@zenith/shared/platform';
-import { CRON_HEALTH_RULES, SCHEDULER_WARNING_SEVERE_TYPES, schedulerWarningLabel } from '@zenith/shared/platform';
+import { CRON_HEALTH_RULES, SCHEDULER_WARNING_SEVERE_TYPES, schedulerWarningLabel, toMinuteCron } from '@zenith/shared/platform';
 import { notify } from '../services/messaging/notification-outbox.service';
 
 /** 定时任务失败 → 推送告警卡片给任务创建者（无则推给系统管理员） */
@@ -45,14 +45,6 @@ async function pushCronFailureAlert(jobId: number, jobName: string, message: str
   }
 }
 import { CronExpressionParser } from 'cron-parser';
-
-// ─── 队列名工具 ───────────────────────────────────────────────────────────────
-// pg-boss 队列名只允许：字母数字、连字符、句点、斜杠
-// cron_jobs.name 可能包含中文，故改用 "cron-job-{id}" 作为队列名
-
-function queueName(jobId: number): string {
-  return `cron-job-${jobId}`;
-}
 
 /** 业务定时任务的 Cron 求值时区（pg-boss 调度与统计侧的下次执行 / 漏跑判定共用） */
 export const CRON_SCHEDULE_TZ = 'Asia/Shanghai';
@@ -270,8 +262,21 @@ function registeredSystemTaskCount(): number {
   return systemRecurringJobs.size + systemQueueWorkers.size;
 }
 
+/** 按队列聚合 pg-boss WIP：localConcurrency > 1 时同一队列有多个轮询 worker，逐条上报只会重复 */
+function getWipByQueue(): Array<{ name: string; count: number }> {
+  if (!boss) return [];
+  const byName = new Map<string, number>();
+  for (const item of boss.getWipData()) byName.set(item.name, (byName.get(item.name) ?? 0) + item.count);
+  return [...byName].map(([name, count]) => ({ name, count }));
+}
+
 async function heartbeatSystemSchedulerNode(active = true): Promise<void> {
   const now = new Date();
+  const metadata = {
+    wip: getWipByQueue(),
+    warnings: getRecentSchedulerWarnings(),
+    health: schedulerHealth,
+  };
   await db.insert(systemSchedulerNodes).values({
     nodeId: schedulerNodeId,
     hostname: schedulerNodeHostname,
@@ -282,10 +287,7 @@ async function heartbeatSystemSchedulerNode(active = true): Promise<void> {
     registeredTaskCount: registeredSystemTaskCount(),
     runningJobCount: getRunningJobCount(),
     active,
-    metadata: {
-      wip: boss?.getWipData().map((item) => ({ name: item.name, count: item.count })) ?? [],
-      warnings: getRecentSchedulerWarnings(),
-    },
+    metadata,
   }).onConflictDoUpdate({
     target: systemSchedulerNodes.nodeId,
     set: {
@@ -297,19 +299,23 @@ async function heartbeatSystemSchedulerNode(active = true): Promise<void> {
       registeredTaskCount: registeredSystemTaskCount(),
       runningJobCount: getRunningJobCount(),
       active,
-      metadata: {
-        wip: boss?.getWipData().map((item) => ({ name: item.name, count: item.count })) ?? [],
-        warnings: getRecentSchedulerWarnings(),
-      },
+      metadata,
       updatedAt: now,
     },
   });
 }
 
+const SCHEDULER_HEALTH_REFRESH_MS = 10 * 60_000;
+let schedulerHealthCheckedAtMs = 0;
+
 function startSchedulerHeartbeat(): void {
   if (schedulerHeartbeatTimer) return;
   void heartbeatSystemSchedulerNode(true).catch((err) => logger.warn('[system-scheduler] 节点心跳上报失败', err));
   schedulerHeartbeatTimer = setInterval(() => {
+    // schema 漂移 / 版本检查只查 catalog，代价很小，随心跳每 10 分钟复检一次
+    if (boss && Date.now() - schedulerHealthCheckedAtMs >= SCHEDULER_HEALTH_REFRESH_MS) {
+      void refreshSchedulerHealth().catch((err) => logger.warn('pg-boss: schema 健康检查失败', err));
+    }
     void heartbeatSystemSchedulerNode(true).catch((err) => logger.warn('[system-scheduler] 节点心跳上报失败', err));
   }, 30_000);
   schedulerHeartbeatTimer.unref?.();
@@ -843,68 +849,138 @@ class CronRunTimeoutError extends Error {
   }
 }
 
-async function registerWorker(queue: string): Promise<void> {
+/** 单条业务定时任务队列上执行一条作业（jobs 数组按 batchSize=1 只有一项） */
+async function runCronJob(jobs: CronJobWithMetadata[]): Promise<void> {
+  const job = jobs[0];
+  const { handlerName, params, jobId } = job.data;
+  const fn = handlerRegistry.get(handlerName);
+  const startedAt = new Date();
+  // 重试由 pg-boss 发起，此时 retryCount > 0；首次执行按投递方声明的来源记录
+  const attempt = job.retryCount ?? 0;
+  const trigger: CronRunTrigger = attempt > 0 ? 'retry' : (job.data.trigger ?? 'schedule');
+  const scheduledAt = job.startAfter ?? job.createdOn ?? null;
+  const runContext = {
+    trigger,
+    attempt,
+    scheduledAt,
+    nodeId: schedulerNodeId,
+    triggeredBy: job.data.triggeredBy ?? null,
+  };
+
+  const [jobRow] = await db.select({ name: cronJobs.name, monitorTimeout: cronJobs.monitorTimeout })
+    .from(cronJobs).where(eq(cronJobs.id, jobId)).limit(1);
+  const jobName = jobRow?.name ?? `job_${jobId}`;
+  const executionCount = await db.$count(cronJobLogs, eq(cronJobLogs.jobId, jobId)) + 1;
+
+  if (!fn) {
+    const msg = `Handler "${handlerName}" not found`;
+    await Promise.all([
+      db.update(cronJobs).set({ lastRunAt: startedAt, lastRunStatus: 'fail', lastRunMessage: msg }).where(eq(cronJobs.id, jobId)),
+      db.insert(cronJobLogs).values({
+        jobId, jobName, executionCount, startedAt, endedAt: new Date(), durationMs: 0, status: 'fail', errorMessage: msg, ...runContext,
+      }),
+    ]);
+    void pushCronFailureAlert(jobId, jobName, msg);
+    throw new Error(msg);
+  }
+
+  const [logRow] = await db.insert(cronJobLogs).values({
+    jobId, jobName, executionCount, startedAt, status: 'running', ...runContext,
+  }).returning();
+  await db.update(cronJobs).set({ lastRunAt: startedAt, lastRunStatus: 'running', lastRunMessage: null }).where(eq(cronJobs.id, jobId));
+
+  // 超时后 handler 仍在后台运行，迟到的结果只记日志、不再回写，避免把 timeout 覆盖成 success
+  const execution = fn(params);
+  let resultMessage: string;
+  try {
+    resultMessage = await raceWithTimeout(execution, jobRow?.monitorTimeout ?? null);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const status = err instanceof CronRunTimeoutError ? 'timeout' : 'fail';
+    await settleCronRun(logRow.id, jobId, startedAt, status, errorMessage);
+    if (status === 'timeout') {
+      execution.then(
+        () => logger.warn(`Cron job ${jobId} (${jobName}) finished after timeout was recorded`),
+        (lateErr: unknown) => logger.warn(`Cron job ${jobId} (${jobName}) failed after timeout was recorded:`, lateErr),
+      );
+    }
+    logger.error(`Cron job ${jobId} (${jobName}) ${status}:`, err);
+    void pushCronFailureAlert(jobId, jobName, errorMessage);
+    throw err;
+  }
+  await settleCronRun(logRow.id, jobId, startedAt, 'success', resultMessage);
+}
+
+// ─── 业务定时任务队列：一条队列 + 按任务 key 的 schedule ─────────────────────────
+// pg-boss 的 work() 每调用一次就多一个轮询 worker，且队列参数只在建队列时生效。
+// 因此所有业务定时任务共用一条队列，每个进程只注册一次 worker（localConcurrency 决定并发），
+// 每个任务是该队列上的一条 keyed schedule；stately 策略 + singletonKey=jobId 保证同一任务
+// 最多「1 条排队 + 1 条执行中」：不重叠执行，执行超过周期时也只补跑一次而不是无限积压。
+
+export const CRON_JOBS_QUEUE = 'cron-jobs';
+const CRON_QUEUE_POLICY = 'stately';
+const CRON_WORKER_LOCAL_CONCURRENCY = 8;
+/** 旧版「每任务一条队列」的命名，启动对账时清理 */
+const LEGACY_CRON_QUEUE_PATTERN = /^cron-job-\d+$/;
+/** worker 崩溃后多久判定该次执行失联并交给 pg-boss 重试（文档建议 ≥ monitorIntervalSeconds） */
+const CRON_QUEUE_HEARTBEAT_SECONDS = 60;
+const CRON_QUEUE_OPTIONS: Omit<Queue, 'name' | 'policy' | 'partition' | 'deadLetter'> = {
+  heartbeatSeconds: CRON_QUEUE_HEARTBEAT_SECONDS,
+  // 排队作业最多保留 7 天；执行记录以 cron_job_logs 为准，pg-boss 侧完成的作业 1 天后清理以保持 job 表精简
+  retentionSeconds: 60 * 60 * 24 * 7,
+  deleteAfterSeconds: 60 * 60 * 24,
+  warningQueueSize: 200,
+};
+
+let cronWorkerId: string | null = null;
+let cronQueueEnsured = false;
+
+function cronScheduleKey(jobId: number): string {
+  return String(jobId);
+}
+
+/** 任务自身的重试 / 超时配置显式下发到每条作业，不再依赖队列默认值（默认会重试 2 次、15 分钟过期） */
+function cronJobSendOptions(job: Pick<typeof cronJobs.$inferSelect, 'id' | 'retryCount' | 'retryInterval' | 'retryBackoff' | 'monitorTimeout'>): SendOptions {
+  return {
+    singletonKey: cronScheduleKey(job.id),
+    retryLimit: Math.max(job.retryCount, 0),
+    retryDelay: Math.max(job.retryInterval, 0),
+    retryBackoff: job.retryBackoff,
+    // 超时由 worker 内的 monitorTimeout 计时器判定并记为 timeout；pg-boss 自己的过期只作兜底，
+    // 比 monitorTimeout 多留 30 秒以免抢先把作业判失败。未配置超时的任务给到上限（1 ≤ expireInSeconds ≤ 86400），
+    // 否则 15 分钟默认过期会把仍在正常执行的作业判死、释放 stately 锁而导致重叠执行；进程崩溃由队列心跳兜底。
+    expireInSeconds: job.monitorTimeout ? Math.min(Math.max(job.monitorTimeout, 1) + 30, 86_400) : 86_400,
+  };
+}
+
+function cronJobPayload(job: Pick<typeof cronJobs.$inferSelect, 'id' | 'handler' | 'params'>, trigger: CronRunTrigger, triggeredBy: number | null = null): JobData {
+  return { handlerName: job.handler, params: job.params, jobId: job.id, trigger, triggeredBy };
+}
+
+async function ensureCronQueue(): Promise<void> {
+  if (cronQueueEnsured) return;
   const b = getBoss();
-  await b.work<JobData, void, { includeMetadata: true }>(queue, { includeMetadata: true }, async (jobs: CronJobWithMetadata[]) => {
-    const job = jobs[0];
-    const { handlerName, params, jobId } = job.data;
-    const fn = handlerRegistry.get(handlerName);
-    const startedAt = new Date();
-    // 重试由 pg-boss 发起，此时 retryCount > 0；首次执行按投递方声明的来源记录
-    const attempt = job.retryCount ?? 0;
-    const trigger: CronRunTrigger = attempt > 0 ? 'retry' : (job.data.trigger ?? 'schedule');
-    const scheduledAt = job.startAfter ?? job.createdOn ?? null;
-    const runContext = {
-      trigger,
-      attempt,
-      scheduledAt,
-      nodeId: schedulerNodeId,
-      triggeredBy: job.data.triggeredBy ?? null,
-    };
+  // policy 建队后不可修改：策略不一致时重建（排队中的作业由 schedule 在下一个周期重新产生）
+  const existing = await b.getQueue(CRON_JOBS_QUEUE);
+  if (existing && existing.policy !== CRON_QUEUE_POLICY) {
+    logger.warn(`pg-boss: 队列 ${CRON_JOBS_QUEUE} 策略为 ${existing.policy}，按代码要求重建为 ${CRON_QUEUE_POLICY}`);
+    await b.deleteQueue(CRON_JOBS_QUEUE);
+  }
+  await b.createQueue(CRON_JOBS_QUEUE, { policy: CRON_QUEUE_POLICY, ...CRON_QUEUE_OPTIONS });
+  // createQueue 对已存在的队列不更新参数，心跳 / 保留期等以代码为准同步一次
+  await b.updateQueue(CRON_JOBS_QUEUE, CRON_QUEUE_OPTIONS);
+  cronQueueEnsured = true;
+}
 
-    const [jobRow] = await db.select({ name: cronJobs.name, monitorTimeout: cronJobs.monitorTimeout })
-      .from(cronJobs).where(eq(cronJobs.id, jobId)).limit(1);
-    const jobName = jobRow?.name ?? `job_${jobId}`;
-    const executionCount = await db.$count(cronJobLogs, eq(cronJobLogs.jobId, jobId)) + 1;
-
-    if (!fn) {
-      const msg = `Handler "${handlerName}" not found`;
-      await Promise.all([
-        db.update(cronJobs).set({ lastRunAt: startedAt, lastRunStatus: 'fail', lastRunMessage: msg }).where(eq(cronJobs.id, jobId)),
-        db.insert(cronJobLogs).values({
-          jobId, jobName, executionCount, startedAt, endedAt: new Date(), durationMs: 0, status: 'fail', errorMessage: msg, ...runContext,
-        }),
-      ]);
-      void pushCronFailureAlert(jobId, jobName, msg);
-      throw new Error(msg);
-    }
-
-    const [logRow] = await db.insert(cronJobLogs).values({
-      jobId, jobName, executionCount, startedAt, status: 'running', ...runContext,
-    }).returning();
-    await db.update(cronJobs).set({ lastRunAt: startedAt, lastRunStatus: 'running', lastRunMessage: null }).where(eq(cronJobs.id, jobId));
-
-    // 超时后 handler 仍在后台运行，迟到的结果只记日志、不再回写，避免把 timeout 覆盖成 success
-    const execution = fn(params);
-    let resultMessage: string;
-    try {
-      resultMessage = await raceWithTimeout(execution, jobRow?.monitorTimeout ?? null);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const status = err instanceof CronRunTimeoutError ? 'timeout' : 'fail';
-      await settleCronRun(logRow.id, jobId, startedAt, status, errorMessage);
-      if (status === 'timeout') {
-        execution.then(
-          () => logger.warn(`Cron job ${jobId} (${jobName}) finished after timeout was recorded`),
-          (lateErr: unknown) => logger.warn(`Cron job ${jobId} (${jobName}) failed after timeout was recorded:`, lateErr),
-        );
-      }
-      logger.error(`Cron job ${jobId} (${jobName}) ${status}:`, err);
-      void pushCronFailureAlert(jobId, jobName, errorMessage);
-      throw err;
-    }
-    await settleCronRun(logRow.id, jobId, startedAt, 'success', resultMessage);
-  });
+async function ensureCronWorker(): Promise<string> {
+  if (cronWorkerId) return cronWorkerId;
+  const b = getBoss();
+  cronWorkerId = await b.work<JobData, void, { includeMetadata: true; localConcurrency: number }>(
+    CRON_JOBS_QUEUE,
+    { includeMetadata: true, localConcurrency: CRON_WORKER_LOCAL_CONCURRENCY },
+    runCronJob,
+  );
+  return cronWorkerId;
 }
 
 /**
@@ -941,6 +1017,110 @@ async function closeOrphanRunningLogs(): Promise<void> {
   logger.warn(`pg-boss: 已关闭 ${closed.length} 条无归属节点的运行中执行记录`);
 }
 
+/** 旧版每任务一条队列（cron-job-{id}）：连同其 schedule 与作业一起删除，执行历史在 cron_job_logs 不受影响 */
+async function purgeLegacyCronQueues(): Promise<void> {
+  const b = getBoss();
+  const queues = await b.getQueues();
+  const legacy = queues.filter((q) => LEGACY_CRON_QUEUE_PATTERN.test(q.name));
+  for (const queue of legacy) {
+    await b.unschedule(queue.name).catch(() => undefined);
+    await b.offWork(queue.name, { wait: false }).catch(() => undefined);
+    await b.deleteQueue(queue.name);
+  }
+  if (legacy.length > 0) logger.warn(`pg-boss: 已删除 ${legacy.length} 条旧版每任务队列（cron-job-*），业务定时任务统一到队列 ${CRON_JOBS_QUEUE}`);
+}
+
+export interface CronScheduleReconcileResult {
+  /** 启用中却没有 schedule 的任务 ID */
+  missing: number[];
+  /** 有 schedule 但任务已停用 / 不存在的 key */
+  orphans: string[];
+}
+
+/** 对账 pg-boss schedule 与 cron_jobs：启用任务必须各有一条 keyed schedule，多余的 schedule 删除 */
+async function reconcileCronSchedules(enabledJobs: Array<typeof cronJobs.$inferSelect>): Promise<CronScheduleReconcileResult> {
+  const b = getBoss();
+  const schedules = await b.getSchedules(CRON_JOBS_QUEUE);
+  const desired = new Map(enabledJobs.map((job) => [cronScheduleKey(job.id), job]));
+  const orphans = schedules.map((s) => s.key ?? '').filter((key) => !desired.has(key));
+  for (const key of orphans) {
+    await b.unschedule(CRON_JOBS_QUEUE, key || undefined).catch((err) => logger.warn(`pg-boss: 删除孤儿 schedule ${key} 失败`, err));
+  }
+  for (const job of enabledJobs) {
+    await _scheduleOne(job);
+  }
+  return { missing: [], orphans };
+}
+
+/** 只读对账（供健康状态查询）：不修改任何 schedule */
+export async function inspectCronSchedules(): Promise<CronScheduleReconcileResult> {
+  if (!boss) return { missing: [], orphans: [] };
+  const [schedules, enabledJobs] = await Promise.all([
+    boss.getSchedules(CRON_JOBS_QUEUE),
+    db.select({ id: cronJobs.id }).from(cronJobs).where(eq(cronJobs.status, 'enabled')),
+  ]);
+  const scheduled = new Set(schedules.map((s) => s.key ?? ''));
+  const enabled = new Set(enabledJobs.map((j) => cronScheduleKey(j.id)));
+  return {
+    missing: enabledJobs.filter((j) => !scheduled.has(cronScheduleKey(j.id))).map((j) => j.id),
+    orphans: [...scheduled].filter((key) => !enabled.has(key)),
+  };
+}
+
+// ─── pg-boss 自身健康：schema 版本 / 漂移 / 异步迁移 ─────────────────────────────
+
+export interface SchedulerHealthSnapshot {
+  schemaVersion: number | null;
+  schemaDriftOk: boolean | null;
+  schemaDriftIssues: number;
+  checkedAt: string | null;
+}
+
+let schedulerHealth: SchedulerHealthSnapshot = { schemaVersion: null, schemaDriftOk: null, schemaDriftIssues: 0, checkedAt: null };
+
+/** 读取 schema 版本并做一次 catalog 级漂移检查（无锁、无表扫描）；结果缓存供状态接口读取 */
+async function refreshSchedulerHealth(): Promise<void> {
+  const b = getBoss();
+  schedulerHealthCheckedAtMs = Date.now();
+  const schemaVersion = await b.schemaVersion();
+  const drift = await b.detectSchemaDrift();
+  const issues = drift.missingTables.length + drift.missing.length + drift.invalid.length + drift.mismatched.length
+    + drift.missingFunctions.length + drift.mismatchedFunctions.length + drift.columnDrift.length + drift.constraintDrift.length
+    + (drift.enumDrift ? 1 : 0);
+  schedulerHealth = { schemaVersion, schemaDriftOk: drift.ok, schemaDriftIssues: issues, checkedAt: formatDateTime(new Date()) };
+  if (!drift.ok) {
+    const summary = [
+      drift.missingTables.length ? `缺表 ${drift.missingTables.join('、')}` : '',
+      drift.missing.length ? `缺索引 ${drift.missing.map((i) => i.name).join('、')}` : '',
+      drift.invalid.length ? `无效索引 ${drift.invalid.map((i) => i.name).join('、')}` : '',
+      drift.mismatched.length ? `索引定义不一致 ${drift.mismatched.map((i) => i.name).join('、')}` : '',
+      drift.missingFunctions.length || drift.mismatchedFunctions.length ? `函数漂移 ${drift.missingFunctions.length + drift.mismatchedFunctions.length} 个` : '',
+      drift.columnDrift.length ? `列漂移 ${drift.columnDrift.map((c) => c.table).join('、')}` : '',
+      drift.constraintDrift.length ? `约束漂移 ${drift.constraintDrift.map((c) => c.table).join('、')}` : '',
+      drift.enumDrift ? 'job_state 枚举漂移' : '',
+    ].filter(Boolean).join('；');
+    recordSchedulerWarning({ message: `pg-boss schema v${schemaVersion} 存在漂移：${summary}（运行 npx pg-boss doctor 查看修复语句）`, data: { type: 'schema_drift', issues } });
+  } else {
+    logger.info(`pg-boss: schema v${schemaVersion}，漂移检查通过`);
+  }
+}
+
+export function getSchedulerHealth(): SchedulerHealthSnapshot {
+  return schedulerHealth;
+}
+
+/** 异步迁移（BAM）状态：pending / in_progress / failed 计数 */
+export async function getSchedulerBamSummary(): Promise<{ pending: number; failed: number }> {
+  if (!boss) return { pending: 0, failed: 0 };
+  const rows = await boss.getBamStatus();
+  const count = (status: string) => rows.filter((r) => r.status === status).reduce((sum, r) => sum + r.count, 0);
+  return { pending: count('pending') + count('in_progress'), failed: count('failed') };
+}
+
+export function isSchedulerMaintaining(): boolean {
+  return boss?.isMaintaining() ?? false;
+}
+
 // ─── 公开 API ────────────────────────────────────────────────────────────────
 
 export async function initCronScheduler(): Promise<void> {
@@ -957,20 +1137,31 @@ export async function initCronScheduler(): Promise<void> {
   boss.on('error', (err: unknown) => logger.error('pg-boss error:', err));
   // warning 事件没有监听者时会被静默丢弃：队列积压、vacuum 受阻、索引膨胀等都在这里上报
   boss.on('warning', recordSchedulerWarning);
+  // 异步索引迁移（BAM）进度：失败进警告缓冲，其余记日志
+  boss.on('bam', (event) => {
+    if (event.status === 'failed') {
+      recordSchedulerWarning({ message: `异步迁移 ${event.name}（${event.table}）失败：${event.error ?? '未知错误'}`, data: { type: 'bam_failed', ...event } });
+    } else {
+      logger.info(`pg-boss BAM ${event.name} ${event.status}${event.table ? ` (${event.table})` : ''}`);
+    }
+  });
 
   logger.info('pg-boss: starting...');
   await boss.start();
   logger.info('pg-boss started');
   startSchedulerHeartbeat();
+  await refreshSchedulerHealth().catch((err) => logger.warn('pg-boss: schema 健康检查失败', err));
 
   await purgeOrphanCronJobs();
   await closeOrphanRunningLogs().catch((err) => logger.warn('pg-boss: 关闭无归属运行中记录失败', err));
+  await purgeLegacyCronQueues().catch((err) => logger.warn('pg-boss: 清理旧版每任务队列失败', err));
 
+  await ensureCronQueue();
+  await ensureCronWorker();
   const jobs = await db.select().from(cronJobs).where(eq(cronJobs.status, 'enabled'));
-  for (const job of jobs) {
-    await _scheduleOne(job);
-  }
-  logger.info(`pg-boss: ${jobs.length} enabled job(s) scheduled`);
+  const reconciled = await reconcileCronSchedules(jobs);
+  logger.info(`pg-boss: ${jobs.length} enabled job(s) scheduled on ${CRON_JOBS_QUEUE}`
+    + (reconciled.orphans.length ? `，清理孤儿 schedule ${reconciled.orphans.length} 条` : ''));
 }
 
 /**
@@ -988,7 +1179,7 @@ async function purgeOrphanCronJobs(): Promise<void> {
     .returning({ id: cronJobs.id, name: cronJobs.name, handler: cronJobs.handler });
   if (orphans.length === 0) return;
   for (const job of orphans) {
-    await getBoss().unschedule(queueName(job.id)).catch(() => undefined);
+    await getBoss().unschedule(CRON_JOBS_QUEUE, cronScheduleKey(job.id)).catch(() => undefined);
   }
   logger.warn(
     `pg-boss: 已清理 ${orphans.length} 个 handler 失效的定时任务：`
@@ -998,72 +1189,29 @@ async function purgeOrphanCronJobs(): Promise<void> {
 
 async function _scheduleOne(job: typeof cronJobs.$inferSelect): Promise<boolean> {
   const b = getBoss();
-  const queue = queueName(job.id);
-
-  await b.createQueue(queue, { retentionSeconds: 60 * 60 * 24 * 7 });
-  await registerWorker(queue);
-
-  const retryOptions: { retryLimit?: number; retryDelay?: number; retryBackoff?: boolean } = {};
-  if (job.retryCount > 0) {
-    retryOptions.retryLimit = job.retryCount;
-    retryOptions.retryDelay = Math.max(job.retryInterval, 0);
-    retryOptions.retryBackoff = job.retryBackoff;
-  }
-
-  await b.schedule(queue, job.cronExpression, {
-    handlerName: job.handler,
-    params: job.params,
-    jobId: job.id,
-    trigger: 'schedule',
-  } satisfies JobData, {
+  // 同名 key 的 schedule 已存在时 pg-boss 直接更新表达式与选项
+  await b.schedule(CRON_JOBS_QUEUE, toMinuteCron(job.cronExpression), cronJobPayload(job, 'schedule'), {
     tz: CRON_SCHEDULE_TZ,
-    ...retryOptions,
-    ...(job.monitorTimeout ? { expireInSeconds: job.monitorTimeout } : {}),
+    key: cronScheduleKey(job.id),
+    ...cronJobSendOptions(job),
   });
-
   return true;
 }
 
-interface ScheduleOptions {
-  retryCount?: number;
-  retryDelay?: number;
-  retryBackoff?: boolean;
-  monitorTimeout?: number | null;
+/** 注册 / 更新一个任务的 schedule（任务保存或启用时调用） */
+export async function scheduleJob(job: typeof cronJobs.$inferSelect): Promise<boolean> {
+  await ensureCronQueue();
+  await ensureCronWorker();
+  return _scheduleOne(job);
 }
 
-export async function scheduleJob(
-  jobId: number,
-  _jobName: string,
-  expression: string,
-  handler: string,
-  params: string | null,
-  opts: ScheduleOptions = {},
-): Promise<boolean> {
-  const { retryCount = 0, retryDelay = 0, retryBackoff = false, monitorTimeout } = opts;
-  const b = getBoss();
-  const queue = queueName(jobId);
-
-  await b.createQueue(queue);
-  await registerWorker(queue);
-
-  await b.schedule(queue, expression, {
-    handlerName: handler,
-    params,
-    jobId,
-    trigger: 'schedule',
-  } satisfies JobData, {
-    tz: CRON_SCHEDULE_TZ,
-    ...(retryCount > 0 ? { retryLimit: retryCount, retryDelay, retryBackoff } : {}),
-    ...(monitorTimeout ? { expireInSeconds: monitorTimeout } : {}),
-  });
-
-  return true;
-}
-
-export async function stopJob(jobId: number, _jobName: string): Promise<void> {
+/** 停用 / 删除任务：删掉 schedule，并取消该任务尚未开始的排队作业 */
+export async function stopJob(jobId: number): Promise<void> {
   try {
     const b = getBoss();
-    await b.unschedule(queueName(jobId));
+    await b.unschedule(CRON_JOBS_QUEUE, cronScheduleKey(jobId));
+    const queued = await b.findJobs(CRON_JOBS_QUEUE, { key: cronScheduleKey(jobId), queued: true });
+    if (queued.length > 0) await b.cancel(CRON_JOBS_QUEUE, queued.map((j) => j.id));
   } catch (err) {
     logger.warn(`pg-boss: failed to unschedule job ${jobId}:`, err);
   }
@@ -1074,21 +1222,19 @@ export async function runJobOnce(jobId: number, triggeredBy: number | null = nul
   if (!job) return { success: false, message: '任务不存在' };
 
   const b = getBoss();
-  const queue = queueName(jobId);
+  await ensureCronQueue();
+  const workerId = await ensureCronWorker();
 
-  await b.createQueue(queue);
-  await registerWorker(queue);
-
-  await b.send(queue, {
-    handlerName: job.handler,
-    params: job.params,
-    jobId,
-    trigger: 'manual',
-    triggeredBy,
-  } satisfies JobData);
+  const logsBefore = await db.$count(cronJobLogs, eq(cronJobLogs.jobId, jobId));
+  const sentId = await b.send(CRON_JOBS_QUEUE, cronJobPayload(job, 'manual', triggeredBy), cronJobSendOptions(job));
+  // stately 策略下同一任务已有一条排队作业时插入被吞掉（返回 null），本次触发与之合并
+  if (!sentId) {
+    return { success: true, message: '该任务已有一次待执行的作业，本次手动触发已与其合并' };
+  }
+  // 跳过本轮轮询间隔，让 worker 立刻去取
+  b.notifyWorker(workerId);
 
   const deadline = Date.now() + 30_000;
-  const logsBefore = await db.$count(cronJobLogs, eq(cronJobLogs.jobId, jobId));
   while (Date.now() < deadline) {
     const logsNow = await db.$count(cronJobLogs, eq(cronJobLogs.jobId, jobId));
     if (logsNow > logsBefore) {
@@ -1104,7 +1250,7 @@ export async function runJobOnce(jobId: number, triggeredBy: number | null = nul
     await new Promise<void>((r) => setTimeout(r, 500));
   }
 
-  return { success: true, message: '任务已投递，正在后台执行' };
+  return { success: true, message: '任务已投递，正在后台执行（同一任务不重叠执行，可能在排队）' };
 }
 
 export async function stopAllJobs(): Promise<void> {
@@ -1116,6 +1262,8 @@ export async function stopAllJobs(): Promise<void> {
     await heartbeatSystemSchedulerNode(false).catch((err) => logger.warn('[system-scheduler] 节点离线标记失败', err));
     await boss.stop();
     boss = null;
+    cronWorkerId = null;
+    cronQueueEnsured = false;
     logger.info('pg-boss stopped');
   }
 }
@@ -1136,7 +1284,7 @@ export function getSchedulerIntrospection(): {
   wip: Array<{ name: string; count: number }>;
   warnings: SchedulerWarningRecord[];
 } {
-  const wip = boss?.getWipData().map((item) => ({ name: item.name, count: item.count })) ?? [];
+  const wip = getWipByQueue();
   return {
     initialized: boss !== null,
     runningJobCount: wip.filter((item) => item.count > 0).reduce((sum, item) => sum + item.count, 0),

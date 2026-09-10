@@ -294,6 +294,7 @@ export type CronAlertLevel = (typeof CRON_ALERT_LEVELS)[number];
 
 /**
  * pg-boss 运维警告类型（`boss.on('warning')` 的 `data.type`），与 pg-boss `WarningType` 对齐；
+ * `schema_drift` / `bam_failed` 是我们基于 detectSchemaDrift() / bam 事件补充的自有类型。
  * 未列出的新类型按原字符串透传。
  */
 export const SCHEDULER_WARNING_TYPES = [
@@ -306,6 +307,8 @@ export const SCHEDULER_WARNING_TYPES = [
   'xmin_horizon',
   'autovacuum_disabled',
   'monitor_backoff',
+  'schema_drift',
+  'bam_failed',
 ] as const;
 
 export type SchedulerWarningType = (typeof SCHEDULER_WARNING_TYPES)[number];
@@ -320,6 +323,8 @@ export const SCHEDULER_WARNING_LABELS: Record<SchedulerWarningType, string> = {
   xmin_horizon: '事务视界被占用，vacuum 无法回收',
   autovacuum_disabled: 'autovacuum 已关闭',
   monitor_backoff: '监控统计退避',
+  schema_drift: 'pg-boss schema 漂移',
+  bam_failed: '异步索引迁移失败',
 };
 
 /** 需要运维介入的警告类型（其余仅提示） */
@@ -329,6 +334,8 @@ export const SCHEDULER_WARNING_SEVERE_TYPES: readonly SchedulerWarningType[] = [
   'autovacuum_disabled',
   'listen_notify_unavailable',
   'invalid_schedule',
+  'schema_drift',
+  'bam_failed',
 ];
 
 /** 未知类型回退为原始字符串 */
