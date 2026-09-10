@@ -1253,7 +1253,7 @@ export default function MonitorPage() {
                 size="small"
                 bordered
                 dataSource={wsMetrics.connections}
-                rowKey="tokenId"
+                rowKey="connId"
                 pagination={wsMetrics.connections.length > 10 ? {
                   ...connectionsPagination,
                   showSizeChanger: true,
@@ -1281,7 +1281,7 @@ export default function MonitorPage() {
                 size="small"
                 bordered
                 dataSource={wsMetrics.recentDisconnects}
-                rowKey={(r) => (r ? `${r.tokenId}-${r.at}` : '')}
+                rowKey={(r) => (r ? `${r.connId}-${r.at}` : '')}
                 pagination={wsMetrics.recentDisconnects.length > 10 ? {
                   ...disconnectsPagination,
                   showSizeChanger: true,

@@ -5,7 +5,8 @@ type WsManager = typeof import('./ws-manager');
 
 function fakeWs() {
   const send = vi.fn();
-  return { ws: { send, close: vi.fn() } as unknown as WSContext, send };
+  const close = vi.fn();
+  return { ws: { send, close } as unknown as WSContext, send, close };
 }
 
 function framesOf(send: ReturnType<typeof vi.fn>, type: string) {
@@ -14,6 +15,8 @@ function framesOf(send: ReturnType<typeof vi.fn>, type: string) {
     .filter((m) => m.type === type)
     .map((m) => m.payload);
 }
+
+const PING: import('@zenith/shared/platform').WsMessage = { type: 'announcement:read-all', payload: {} };
 
 let m: WsManager;
 
@@ -56,7 +59,7 @@ describe('presence 合并广播', () => {
 
     const flapper = fakeWs();
     m.registerConnection(2, 'flap', flapper.ws);
-    m.removeConnection(2, 'flap', 'close', flapper.ws);
+    m.removeConnection(flapper.ws);
     vi.advanceTimersByTime(1_000);
 
     const frames = framesOf(observer.send, 'chat:presence');
@@ -74,7 +77,7 @@ describe('presence 合并广播', () => {
     vi.advanceTimersByTime(1_000);
     observer.send.mockClear();
 
-    m.removeConnection(2, 't2', 'close', first.ws);
+    m.removeConnection(first.ws);
     const second = fakeWs();
     m.registerConnection(2, 't2', second.ws);
     vi.advanceTimersByTime(1_000);
@@ -86,57 +89,107 @@ describe('presence 合并广播', () => {
   it('没有任何连接时不做无谓的序列化与广播', () => {
     const a = fakeWs();
     m.registerConnection(1, 'ta', a.ws);
-    m.removeConnection(1, 'ta', 'close', a.ws);
+    m.removeConnection(a.ws);
     vi.advanceTimersByTime(1_000);
     expect(a.send).not.toHaveBeenCalled();
   });
 });
 
-describe('同一 token 重连接管', () => {
-  it('旧 socket 迟到的 close 不会删掉新连接或把用户标为离线', () => {
+describe('同一 token 多条连接', () => {
+  it('多标签页各自登记，按用户 / 按 token / 全量推送都到达每一条连接', () => {
+    const tabA = fakeWs();
+    const tabB = fakeWs();
+    const other = fakeWs();
+    m.registerConnection(1, 'jti-1', tabA.ws);
+    m.registerConnection(1, 'jti-1', tabB.ws);
+    m.registerConnection(2, 'jti-2', other.ws);
+
+    m.sendToUser(1, PING);
+    expect(tabA.send).toHaveBeenCalledTimes(1);
+    expect(tabB.send).toHaveBeenCalledTimes(1);
+    expect(other.send).not.toHaveBeenCalled();
+
+    m.sendToToken('jti-1', PING);
+    expect(tabA.send).toHaveBeenCalledTimes(2);
+    expect(tabB.send).toHaveBeenCalledTimes(2);
+
+    m.broadcast(PING);
+    expect(tabA.send).toHaveBeenCalledTimes(3);
+    expect(tabB.send).toHaveBeenCalledTimes(3);
+    expect(other.send).toHaveBeenCalledTimes(1);
+
+    const snap = m.getWsSnapshot();
+    expect(snap.currentConnections).toBe(3);
+    expect(snap.currentUsers).toBe(2);
+    expect(new Set(snap.connections.map((c) => c.connId)).size).toBe(3);
+  });
+
+  it('关闭其中一个标签页不影响另一条连接，也不会把用户标为离线', () => {
+    const tabA = fakeWs();
+    const tabB = fakeWs();
+    m.registerConnection(1, 'jti-1', tabA.ws);
+    m.registerConnection(1, 'jti-1', tabB.ws);
+
+    m.removeConnection(tabA.ws);
+    expect(m.isUserOnline(1)).toBe(true);
+    m.sendToUser(1, PING);
+    expect(tabB.send).toHaveBeenCalledTimes(1);
+    expect(tabA.send).not.toHaveBeenCalled();
+
+    m.removeConnection(tabB.ws);
+    expect(m.isUserOnline(1)).toBe(false);
+    const snap = m.getWsSnapshot();
+    expect(snap.totalConnects).toBe(2);
+    expect(snap.totalDisconnects).toBe(2);
+    expect(snap.currentConnections).toBe(0);
+  });
+
+  it('断网重连：新旧连接并存期间旧 socket 迟到的 close 不影响新连接', () => {
     const stale = fakeWs();
     const fresh = fakeWs();
     m.registerConnection(1, 'jti-1', stale.ws);
     m.registerConnection(1, 'jti-1', fresh.ws);
 
-    expect(m.isSupersededConnection('jti-1', stale.ws)).toBe(true);
-    expect(m.isSupersededConnection('jti-1', fresh.ws)).toBe(false);
-
-    m.removeConnection(1, 'jti-1', 'close', stale.ws);
+    m.removeConnection(stale.ws);
     expect(m.isUserOnline(1)).toBe(true);
-    m.sendToUser(1, { type: 'announcement:read-all', payload: {} });
+    m.sendToUser(1, PING);
     expect(fresh.send).toHaveBeenCalledTimes(1);
     expect(stale.send).not.toHaveBeenCalled();
+  });
 
-    // 被接管的旧连接按 replaced 计入断开统计，连接 / 断开计数保持平衡
+  it('closeTokenConnection 关闭该 token 全部连接，其后 socket 自身的 close 事件是幂等的', () => {
+    const tabA = fakeWs();
+    const tabB = fakeWs();
+    const otherSession = fakeWs();
+    m.registerConnection(1, 'jti-1', tabA.ws);
+    m.registerConnection(1, 'jti-1', tabB.ws);
+    m.registerConnection(1, 'jti-2', otherSession.ws);
+
+    m.closeTokenConnection('jti-1', 'force-logout');
+    expect(tabA.close).toHaveBeenCalledWith(1000, 'force-logout');
+    expect(tabB.close).toHaveBeenCalledWith(1000, 'force-logout');
+    expect(otherSession.close).not.toHaveBeenCalled();
+    // 另一登录会话仍在线
+    expect(m.isUserOnline(1)).toBe(true);
+
+    m.removeConnection(tabA.ws);
+    m.removeConnection(tabB.ws);
     const snap = m.getWsSnapshot();
     expect(snap.currentConnections).toBe(1);
-    expect(snap.totalConnects).toBe(2);
-    expect(snap.totalDisconnects).toBe(1);
-    expect(snap.recentDisconnects[0]).toMatchObject({ tokenId: 'jti-1', userId: 1, reason: 'replaced' });
-
-    m.removeConnection(1, 'jti-1', 'close', fresh.ws);
-    expect(m.isUserOnline(1)).toBe(false);
-    expect(m.getWsSnapshot().totalDisconnects).toBe(2);
+    expect(snap.totalDisconnects).toBe(2);
+    expect(snap.recentDisconnects.map((d) => d.reason)).toEqual(['force-logout', 'force-logout']);
   });
 
-  it('未传 ws 的调用（强制下线等）保持原有语义', () => {
+  it('closeUserConnections 关闭用户全部会话的全部连接', () => {
     const a = fakeWs();
+    const b = fakeWs();
     m.registerConnection(1, 'jti-1', a.ws);
-    m.removeConnection(1, 'jti-1', 'force-logout');
+    m.registerConnection(1, 'jti-2', b.ws);
+    m.closeUserConnections(1, 'disabled');
+    expect(a.close).toHaveBeenCalledWith(1000, 'disabled');
+    expect(b.close).toHaveBeenCalledWith(1000, 'disabled');
     expect(m.isUserOnline(1)).toBe(false);
     expect(m.getWsSnapshot().currentConnections).toBe(0);
-  });
-
-  it('closeTokenConnection 之后 socket 自身的 close 事件是幂等的', () => {
-    const a = fakeWs();
-    m.registerConnection(1, 'jti-1', a.ws);
-    m.closeTokenConnection('jti-1', 'force-logout');
-    m.removeConnection(1, 'jti-1', 'close', a.ws);
-    const snap = m.getWsSnapshot();
-    expect(snap.totalDisconnects).toBe(1);
-    expect(snap.recentDisconnects).toHaveLength(1);
-    expect(snap.recentDisconnects[0].reason).toBe('force-logout');
   });
 });
 
@@ -147,11 +200,11 @@ describe('scheduleBroadcast', () => {
     m.registerConnection(1, 'ta', a.ws);
     m.registerConnection(2, 'tb', b.ws);
 
-    m.scheduleBroadcast({ type: 'announcement:read-all', payload: {} });
+    m.scheduleBroadcast(PING);
     expect(a.send).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(0);
-    expect(framesOf(a.send, 'announcement:read-all')).toHaveLength(1);
-    expect(framesOf(b.send, 'announcement:read-all')).toHaveLength(1);
+    expect(framesOf(a.send, PING.type)).toHaveLength(1);
+    expect(framesOf(b.send, PING.type)).toHaveLength(1);
   });
 });

@@ -319,6 +319,7 @@ export type MonitorHistory = z.infer<typeof monitorHistorySchema>;
 // ─── WebSocket 连接 ───────────────────────────────────────────────────────────
 
 export const monitorWsConnectionSchema = z.object({
+  connId: z.string().meta({ description: '进程内唯一的连接标识；同一 token 多标签页各有一条' }),
   tokenId: z.string(),
   userId: z.int(),
   username: z.string().nullable(),
@@ -332,6 +333,7 @@ export const monitorWsConnectionSchema = z.object({
 export type MonitorWsConnection = z.infer<typeof monitorWsConnectionSchema>;
 
 export const monitorWsDisconnectSchema = z.object({
+  connId: z.string(),
   tokenId: z.string(),
   userId: z.int(),
   username: z.string().nullable(),

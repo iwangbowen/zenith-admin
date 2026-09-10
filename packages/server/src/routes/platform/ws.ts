@@ -14,7 +14,7 @@ import type { UpgradeWebSocket } from 'hono/ws';
 import { z } from 'zod';
 import type { JwtPayload } from '../../middleware/auth';
 import { authenticateAdminWs } from '../../lib/ws-auth';
-import { registerConnection, removeConnection, sendToUser, incWsRecv, isSupersededConnection } from '../../lib/ws-manager';
+import { registerConnection, removeConnection, sendToUser, incWsRecv, isUserOnline } from '../../lib/ws-manager';
 import { getCallConversation, joinRoom, leaveAllRooms, leaveRoom } from '../../lib/rtc-manager';
 import { getConversationMemberIds } from '../../lib/chat-member-cache';
 import type { RtcPeerInfo } from '@zenith/shared/chat';
@@ -219,7 +219,7 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
         },
         async onMessage(evt, ws) {
           if (!identity) return;
-          incWsRecv(identity.payload.jti ?? '');
+          incWsRecv(ws);
           if (!bucket.take()) return;
           const frame = parseFrame(evt.data);
           if (!frame) return;
@@ -242,19 +242,19 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
         },
         onClose(evt, ws) {
           if (!identity) return;
-          const { userId, jti } = identity.payload;
-          // 同一 token 已由新连接接管（断网重连 / 多标签页）：迟到的 close 不做任何按用户维度的清理
-          if (isSupersededConnection(jti ?? '', ws)) return;
-          // 断线：离开所有群通话房间并通知其余成员
+          const { userId } = identity.payload;
+          const reason = evt && typeof evt === 'object' && 'reason' in evt && typeof (evt as { reason: unknown }).reason === 'string'
+            ? ((evt as { reason: string }).reason || 'close')
+            : 'close';
+          removeConnection(ws, reason);
+          // 通话房间按用户记账：仅当用户最后一条连接断开时才离开所有房间并通知其余成员；
+          // 断网重连的新旧连接并存、其它标签页关闭都不会打断进行中的通话
+          if (isUserOnline(userId)) return;
           for (const { callId: id, conversationId, remaining } of leaveAllRooms(userId)) {
             for (const target of remaining) {
               sendToUser(target, { type: 'rtc:leave', payload: { callId: id, conversationId, from: userId, to: target } });
             }
           }
-          const reason = evt && typeof evt === 'object' && 'reason' in evt && typeof (evt as { reason: unknown }).reason === 'string'
-            ? ((evt as { reason: string }).reason || 'close')
-            : 'close';
-          removeConnection(userId, jti ?? '', reason, ws);
         },
         onError() {
           // 连接级错误由 @hono/node-server 的 WS 适配器内部处理

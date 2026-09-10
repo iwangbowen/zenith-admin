@@ -199,7 +199,7 @@ GET /api/ws
 Sec-WebSocket-Protocol: zenith-auth, <accessToken>
 ```
 
-服务端在握手时按管理端口径校验 JWT（拒绝会员 / refresh token，实时校验用户与租户状态）并检查吊销黑名单。鉴权失败关闭连接，关闭码为 `4001`。入站帧经 zod 校验并限速，`chat:typing` 的发送者身份由服务端覆写且要求是会话成员，详见 [WebSocket 事件清单](../backend/websocket-events)。连接建立后，`ws-manager` 按 `tokenId` 精确保存连接，并按 `userId` 维护用户的多端连接集合。
+服务端在握手时按管理端口径校验 JWT（拒绝会员 / refresh token，实时校验用户与租户状态）并检查吊销黑名单。鉴权失败关闭连接，关闭码为 `4001`。入站帧经 zod 校验并限速，`chat:typing` 的发送者身份由服务端覆写且要求是会话成员，详见 [WebSocket 事件清单](../backend/websocket-events)。连接建立后，`ws-manager` 按 socket 逐条登记，并分别按 `tokenId`（同一登录会话的多个标签页）与 `userId`（用户的全部多端连接）维护索引：按会话强制下线会关闭该 token 的全部标签页，按用户推送会到达每一条连接。
 
 心跳机制：
 
@@ -247,7 +247,7 @@ WebSocket 断开期间仍可通过 HTTP 接口发送消息。重连成功后，�
 - 用户全部连接断开时记录 `lastSeen`
 - 上线 / 下线变更进入 1 秒合并窗口，到期以当时的真实连接状态批量广播一条 `chat:presence`（窗口内的抖动被折叠；
   服务重启后全体客户端重连时消息量从 O(N²) 降为 O(N)）
-- 同一 access token 重连（断网恢复 / 多标签页）时新连接接管登记，旧连接迟到的 close 不会把用户误标为离线
+- 每条 socket 独立登记：同一 access token 的多个标签页、断网重连时短暂并存的新旧连接互不覆盖；只有用户最后一条连接断开才记 `lastSeen`、离开通话房间
 - 批量查询接口为 `GET /api/chat/presence?userIds=1,2,3`；前端在会话列表或群成员变化、断线重连后以此接口重拉快照
 
 ### WebRTC 信令
