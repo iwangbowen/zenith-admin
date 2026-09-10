@@ -207,6 +207,14 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
   // 相对时间以本次数据到达时刻为基准，随刷新一起推进
   const dataUpdatedAt = statsQuery.dataUpdatedAt;
   const now = useMemo(() => new Date(dataUpdatedAt || Date.now()), [dataUpdatedAt]);
+  // 图表只在首次出现时播放入场动画；之后的自动刷新直接换数据，不再重播柱子生长
+  const [chartAnimation, setChartAnimation] = useState(true);
+  const hasStats = stats != null;
+  useEffect(() => {
+    if (!hasStats) return;
+    const timer = setTimeout(() => setChartAnimation(false), 1500);
+    return () => clearTimeout(timer);
+  }, [hasStats]);
   const updatedAgo = dataUpdatedAt ? formatRelativeTime(new Date(dataUpdatedAt)) : '';
 
   const openDetail = (jobId: number, jobName: string) => {
@@ -284,7 +292,7 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
     });
   }, [stats, days, now]);
 
-  const trendSpec = useMemo(() => makeMixedBarLineSpec({
+  const trendSpec = useMemo(() => ({ ...makeMixedBarLineSpec({
     data: filledDaily,
     xField: 'date',
     palette,
@@ -297,7 +305,7 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
     extraLines: [{ field: 'p95DurationMs', name: 'P95 耗时', color: P95_COLOR, lineWidth: 1.5, showPoint: false, format: (v) => formatDurationMs(v) }],
     axis: { xLabel: (d) => d.slice(5), rightLabel: (v) => formatDurationMs(v) },
     tooltip: { title: (x) => `日期：${x}`, barValue: (v) => `${v} 次` },
-  }), [filledDaily, palette]);
+  }), animation: chartAnimation }), [filledDaily, palette, chartAnimation]);
 
   const heatmapData = useMemo(() => {
     const map = new Map((stats?.dowHourStats ?? []).map((d) => [`${d.dow}-${d.hour}`, d]));
@@ -317,7 +325,7 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
     return cells;
   }, [stats]);
 
-  const heatmapSpec = useMemo(() => makeHeatmapSpec({
+  const heatmapSpec = useMemo(() => ({ ...makeHeatmapSpec({
     data: heatmapData,
     xField: 'hour',
     yField: 'weekday',
@@ -329,7 +337,7 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
       valueName: '执行',
       value: (v, d) => `${v} 次 · 失败 ${(d as { failCount?: number })?.failCount ?? 0}`,
     },
-  }), [heatmapData, palette]);
+  }), animation: chartAnimation }), [heatmapData, palette, chartAnimation]);
 
   const handleSelectError = (item: CronJobTopError) => {
     // 归一化错误同时来自失败与超时记录，不限定状态，只按关键字定位
@@ -338,6 +346,10 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
   };
 
   if (statsQuery.isLoading || !stats) return <LogStatsSkeleton />;
+
+  // 只有切换统计周期（拿旧周期数据占位）时才盖遮罩；30 秒自动刷新与手动刷新静默换数据，
+  // 进度只通过右上角「刷新中…」与旋转图标提示，避免整页周期性闪一次 loading
+  const switchingPeriod = statsQuery.isPlaceholderData;
 
   const { today, yesterday, yesterdaySameTime, period, prevPeriod, scheduler, alerts } = stats;
   const todayRate = cronSuccessRatePercent(today.successCount, today.total);
@@ -367,7 +379,7 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
         </div>
       </div>
 
-      <Spin spinning={statsQuery.isFetching}>
+      <Spin spinning={switchingPeriod}>
         <StatGrid minItemWidth={150} gap={16} style={{ marginBottom: 16 }}>
           <StatCard
             title="任务总数" value={stats.totalJobs}
@@ -464,7 +476,7 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
         >
           <CronJobHealthTable
             rows={filteredJobs}
-            loading={statsQuery.isFetching}
+            loading={switchingPeriod}
             now={now}
             onRefresh={() => { void statsQuery.refetch(); }}
             canExecute={canExecute}

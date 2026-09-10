@@ -219,7 +219,8 @@ export function CronJobDetailDrawer({ jobId, jobName, days, visible, onClose, on
       width={960}
       closeOnEsc
     >
-      <Spin spinning={query.isFetching}>
+      {/* 切换到另一任务时用上一任务数据占位并盖遮罩；概览自动刷新联动的静默重取不盖 */}
+      <Spin spinning={query.isPlaceholderData || (query.isFetching && !detail)}>
         {detail
           ? <DetailBody detail={detail} days={days} updatedAt={query.dataUpdatedAt} onViewLogs={onViewLogs} />
           : <div className="cron-empty" style={{ height: 240 }}>{query.isError ? <Empty description="加载失败" /> : null}</div>}
