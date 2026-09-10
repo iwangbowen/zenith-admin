@@ -6,7 +6,7 @@
  */
 import { uniquePositiveInts } from '@zenith/shared/core';
 import os from 'node:os';
-import { PgBoss, type JobWithMetadata, type QueueOptions, type SendOptions } from 'pg-boss';
+import { PgBoss, type JobWithMetadata, type QueueOptions, type SendOptions, type Warning } from 'pg-boss';
 import { eq, and, gte, inArray, isNull, or, desc, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { cronJobs, cronJobLogs, dbBackups, systemSchedulerNodes, systemSchedulerRuns, systemSchedulerTaskConfigs, users } from '../db/schema';
@@ -18,7 +18,7 @@ import { config } from '../config';
 import { dispatchAlertChannels } from './alert-dispatch';
 import type { SystemSchedulerAlertChannel } from '@zenith/shared/chat';
 import type { CronRunStatus, CronRunTrigger, SystemSchedulerTaskBase, SystemSchedulerTaskType, SystemSchedulerRunStatus, SystemSchedulerTriggerType } from '@zenith/shared/platform';
-import { CRON_HEALTH_RULES } from '@zenith/shared/platform';
+import { CRON_HEALTH_RULES, SCHEDULER_WARNING_SEVERE_TYPES, schedulerWarningLabel } from '@zenith/shared/platform';
 import { notify } from '../services/messaging/notification-outbox.service';
 
 /** 定时任务失败 → 推送告警卡片给任务创建者（无则推给系统管理员） */
@@ -60,6 +60,35 @@ export const CRON_SCHEDULE_TZ = 'Asia/Shanghai';
 // ─── pg-boss 实例（单例）─────────────────────────────────────────────────────
 
 let boss: PgBoss | null = null;
+
+/** pg-boss 运维警告（队列积压 / vacuum 受阻 / 索引膨胀等）的本进程环形缓冲，随心跳同步到节点表 */
+export interface SchedulerWarningRecord {
+  type: string;
+  message: string;
+  at: string;
+}
+const SCHEDULER_WARNINGS_LIMIT = 20;
+const recentSchedulerWarnings: SchedulerWarningRecord[] = [];
+
+function recordSchedulerWarning(warning: Warning): void {
+  const data = (warning.data ?? {}) as { type?: unknown };
+  const type = typeof data.type === 'string' ? data.type : 'unknown';
+  const record: SchedulerWarningRecord = { type, message: warning.message, at: formatDateTime(new Date()) };
+  // 同类同文案只保留最新一条，避免每个维护周期重复刷屏
+  const existing = recentSchedulerWarnings.findIndex((w) => w.type === type && w.message === warning.message);
+  if (existing >= 0) recentSchedulerWarnings.splice(existing, 1);
+  recentSchedulerWarnings.unshift(record);
+  if (recentSchedulerWarnings.length > SCHEDULER_WARNINGS_LIMIT) recentSchedulerWarnings.length = SCHEDULER_WARNINGS_LIMIT;
+  const severe = (SCHEDULER_WARNING_SEVERE_TYPES as readonly string[]).includes(type);
+  const log = severe ? logger.warn.bind(logger) : logger.info.bind(logger);
+  log({ pgBossWarning: warning.data }, `pg-boss[${schedulerWarningLabel(type)}]: ${warning.message}`);
+}
+
+/** 本进程最近的 pg-boss 运维警告（新 → 旧） */
+export function getRecentSchedulerWarnings(): SchedulerWarningRecord[] {
+  return [...recentSchedulerWarnings];
+}
+
 const schedulerNodeHostname = os.hostname();
 const schedulerNodePid = process.pid;
 const schedulerNodeId = `${schedulerNodeHostname}:${schedulerNodePid}`;
@@ -255,6 +284,7 @@ async function heartbeatSystemSchedulerNode(active = true): Promise<void> {
     active,
     metadata: {
       wip: boss?.getWipData().map((item) => ({ name: item.name, count: item.count })) ?? [],
+      warnings: getRecentSchedulerWarnings(),
     },
   }).onConflictDoUpdate({
     target: systemSchedulerNodes.nodeId,
@@ -269,6 +299,7 @@ async function heartbeatSystemSchedulerNode(active = true): Promise<void> {
       active,
       metadata: {
         wip: boss?.getWipData().map((item) => ({ name: item.name, count: item.count })) ?? [],
+        warnings: getRecentSchedulerWarnings(),
       },
       updatedAt: now,
     },
@@ -918,9 +949,14 @@ export async function initCronScheduler(): Promise<void> {
     schema: 'pgboss',
     supervise: true,
     superviseIntervalSeconds: 30,
+    // 运维警告落到 pgboss 自己的表里保留 7 天，多实例可回溯；实时信号仍走 warning 事件
+    persistWarnings: true,
+    warningRetentionDays: 7,
   });
 
   boss.on('error', (err: unknown) => logger.error('pg-boss error:', err));
+  // warning 事件没有监听者时会被静默丢弃：队列积压、vacuum 受阻、索引膨胀等都在这里上报
+  boss.on('warning', recordSchedulerWarning);
 
   logger.info('pg-boss: starting...');
   await boss.start();
@@ -1098,6 +1134,7 @@ export function getSchedulerIntrospection(): {
   systemRecurringJobs: SystemRecurringJobInfo[];
   systemQueueWorkers: SystemQueueWorkerInfo[];
   wip: Array<{ name: string; count: number }>;
+  warnings: SchedulerWarningRecord[];
 } {
   const wip = boss?.getWipData().map((item) => ({ name: item.name, count: item.count })) ?? [];
   return {
@@ -1108,6 +1145,7 @@ export function getSchedulerIntrospection(): {
     systemRecurringJobs: [...systemRecurringJobs.values()],
     systemQueueWorkers: [...systemQueueWorkers.values()],
     wip,
+    warnings: getRecentSchedulerWarnings(),
   };
 }
 

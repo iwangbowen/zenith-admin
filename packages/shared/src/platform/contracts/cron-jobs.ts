@@ -120,6 +120,15 @@ export const cronJobRunSummarySchema = z.object({
 
 export type CronJobRunSummary = z.infer<typeof cronJobRunSummarySchema>;
 
+export const cronJobSchedulerWarningSchema = z.object({
+  type: z.string().meta({ description: 'pg-boss 警告类型，如 queue_backlog / xmin_horizon / autovacuum_disabled' }),
+  message: z.string(),
+  nodeId: z.string().meta({ description: '发出警告的调度节点' }),
+  at: z.string(),
+}).meta({ id: 'CronJobSchedulerWarning' });
+
+export type CronJobSchedulerWarning = z.infer<typeof cronJobSchedulerWarningSchema>;
+
 export const cronJobSchedulerStatusSchema = z.object({
   online: z.boolean().meta({ description: '当前进程的调度器已初始化' }),
   nodeId: z.string(),
@@ -128,6 +137,7 @@ export const cronJobSchedulerStatusSchema = z.object({
   activeNodes: z.int().meta({ description: '心跳未过期的调度节点数' }),
   lastHeartbeatAt: z.string().nullable(),
   wipCount: z.int().meta({ description: '本节点（当前接口进程）正在执行的任务数' }),
+  warnings: z.array(cronJobSchedulerWarningSchema).meta({ description: '在线节点最近上报的 pg-boss 运维警告（新 → 旧，最多 20 条）' }),
 }).meta({ id: 'CronJobSchedulerStatus' });
 
 export type CronJobSchedulerStatus = z.infer<typeof cronJobSchedulerStatusSchema>;

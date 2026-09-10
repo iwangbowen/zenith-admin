@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Empty, Modal, Radio, RadioGroup, Spin, Toast, Tooltip } from '@douyinfe/semi-ui';
-import { RefreshCw } from 'lucide-react';
+import { Button, Card, Empty, Modal, Popover, Radio, RadioGroup, Spin, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 import type { CronJobStats, CronJobStatsPerJob, CronJobTopError, CronJobUpcomingRun } from '@zenith/shared/platform';
-import { CRON_HEALTH_RULES, cronSuccessRatePercent } from '@zenith/shared/platform';
+import { CRON_HEALTH_RULES, SCHEDULER_WARNING_SEVERE_TYPES, cronSuccessRatePercent, schedulerWarningLabel } from '@zenith/shared/platform';
 import dayjs from 'dayjs';
 import {
   CommonChart,
@@ -54,6 +54,39 @@ interface Props {
   readonly onViewLogs: (jobId: number, jobName: string) => void;
 }
 
+function SchedulerWarnings({ warnings, now }: Readonly<{ warnings: CronJobStats['scheduler']['warnings']; now: Date }>) {
+  if (warnings.length === 0) return null;
+  const severe = warnings.some((w) => (SCHEDULER_WARNING_SEVERE_TYPES as readonly string[]).includes(w.type));
+  return (
+    <Popover
+      position="bottomLeft"
+      showArrow
+      content={(
+        <div className="cron-warnings">
+          <div className="cron-warnings__title">pg-boss 运维警告（在线节点最近上报）</div>
+          {warnings.map((w) => (
+            <div key={`${w.nodeId}-${w.type}-${w.message}`} className="cron-warning">
+              <div className="cron-warning__head">
+                <Tag size="small" color={(SCHEDULER_WARNING_SEVERE_TYPES as readonly string[]).includes(w.type) ? 'orange' : 'grey'} type="light">
+                  {schedulerWarningLabel(w.type)}
+                </Tag>
+                <span className="cron-warning__meta cron-mono">{w.nodeId}</span>
+                <span className="cron-warning__meta">{formatRelativeTime(w.at, now)}</span>
+              </div>
+              <div className="cron-warning__message">{w.message}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    >
+      <span className={`cron-scheduler__warnings${severe ? ' cron-scheduler__warnings--severe' : ''}`}>
+        <AlertTriangle size={13} />
+        {warnings.length} 条运维警告
+      </span>
+    </Popover>
+  );
+}
+
 function SchedulerBar({ scheduler, now }: Readonly<{ scheduler: CronJobStats['scheduler']; now: Date }>) {
   const online = scheduler.activeNodes > 0;
   return (
@@ -69,6 +102,7 @@ function SchedulerBar({ scheduler, now }: Readonly<{ scheduler: CronJobStats['sc
       <span className="cron-scheduler__meta">
         心跳 {scheduler.lastHeartbeatAt ? formatRelativeTime(scheduler.lastHeartbeatAt, now) : '无记录'}
       </span>
+      <SchedulerWarnings warnings={scheduler.warnings} now={now} />
     </div>
   );
 }

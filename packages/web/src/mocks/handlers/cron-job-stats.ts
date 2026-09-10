@@ -36,7 +36,7 @@ function percentile(values: number[], p: number): number | null {
 
 function describeMs(ms: number | null): string {
   if (ms == null) return '—';
-  return ms < 1000 ? ` 毫秒` : ` 秒`;
+  return ms < 1000 ? `${ms} 毫秒` : `${(ms / 1000).toFixed(1)} 秒`;
 }
 
 function average(values: number[]): number | null {
@@ -228,6 +228,10 @@ export function buildMockCronJobStats(days: number): CronJobStats {
       activeNodes: 1,
       lastHeartbeatAt: mockDateTimeOffset(-12_000),
       wipCount: logs.filter((l) => l.status === 'running').length,
+      warnings: [
+        { type: 'queue_backlog', message: 'Queue cron-job-2 has 1,240 queued jobs and 1 active worker', nodeId: 'demo-node:4321', at: mockDateTimeOffset(-6 * 60_000) },
+        { type: 'index_bloat', message: 'Index pgboss.job_i11 has 3.1 live entries per page (threshold 5); a REINDEX is scheduled', nodeId: 'demo-node:4321', at: mockDateTimeOffset(-42 * 60_000) },
+      ],
     },
     alerts,
     perJob,

@@ -292,6 +292,50 @@ export const CRON_ALERT_LEVELS = ['danger', 'warning', 'info'] as const;
 
 export type CronAlertLevel = (typeof CRON_ALERT_LEVELS)[number];
 
+/**
+ * pg-boss 运维警告类型（`boss.on('warning')` 的 `data.type`），与 pg-boss `WarningType` 对齐；
+ * 未列出的新类型按原字符串透传。
+ */
+export const SCHEDULER_WARNING_TYPES = [
+  'slow_query',
+  'queue_backlog',
+  'clock_skew',
+  'listen_notify_unavailable',
+  'invalid_schedule',
+  'index_bloat',
+  'xmin_horizon',
+  'autovacuum_disabled',
+  'monitor_backoff',
+] as const;
+
+export type SchedulerWarningType = (typeof SCHEDULER_WARNING_TYPES)[number];
+
+export const SCHEDULER_WARNING_LABELS: Record<SchedulerWarningType, string> = {
+  slow_query: '慢查询',
+  queue_backlog: '队列积压',
+  clock_skew: '时钟偏差',
+  listen_notify_unavailable: 'LISTEN/NOTIFY 不可用',
+  invalid_schedule: '调度表达式无效',
+  index_bloat: '索引膨胀',
+  xmin_horizon: '事务视界被占用，vacuum 无法回收',
+  autovacuum_disabled: 'autovacuum 已关闭',
+  monitor_backoff: '监控统计退避',
+};
+
+/** 需要运维介入的警告类型（其余仅提示） */
+export const SCHEDULER_WARNING_SEVERE_TYPES: readonly SchedulerWarningType[] = [
+  'queue_backlog',
+  'xmin_horizon',
+  'autovacuum_disabled',
+  'listen_notify_unavailable',
+  'invalid_schedule',
+];
+
+/** 未知类型回退为原始字符串 */
+export function schedulerWarningLabel(type: string): string {
+  return (SCHEDULER_WARNING_LABELS as Record<string, string>)[type] ?? type;
+}
+
 // ─── 系统调度 ─────────────────────────────────────────────────────────────────
 
 export const SYSTEM_SCHEDULER_TASK_TYPES = ['recurring', 'queue'] as const;

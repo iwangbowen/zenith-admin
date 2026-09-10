@@ -43,6 +43,63 @@
   color: var(--semi-color-text-2);
 }
 
+.cron-scheduler__warnings {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--semi-border-radius-full);
+  color: var(--semi-color-text-1);
+  background: var(--semi-color-fill-0);
+  cursor: pointer;
+}
+
+.cron-scheduler__warnings--severe {
+  color: var(--semi-color-warning);
+  background: var(--semi-color-warning-light-default);
+}
+
+.cron-warnings {
+  width: 420px;
+  max-width: 80vw;
+  padding: 8px 12px;
+}
+
+.cron-warnings__title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.cron-warning {
+  padding: 6px 0;
+}
+
+.cron-warning + .cron-warning {
+  border-top: 1px dashed var(--semi-color-border);
+}
+
+.cron-warning__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cron-warning__meta {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+.cron-warning__message {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+  color: var(--semi-color-text-1);
+}
+
 .cron-mono {
   font-family: Menlo, Consolas, "Courier New", monospace;
   font-variant-numeric: tabular-nums;

@@ -7,6 +7,7 @@ import type {
   CronJobDetailStats,
   CronJobLogListQueryInput,
   CronJobRunSummary,
+  CronJobSchedulerWarning,
   CronJobStats,
   CronJobStatsPerJob,
   CronJobStatsQueryInput,
@@ -188,6 +189,19 @@ const UPCOMING_WINDOW_MS = 24 * 60 * 60_000;
 const TOP_ERRORS_LIMIT = 10;
 
 const RUNNING_STATUS: CronRunStatus = 'running';
+const SCHEDULER_WARNINGS_LIMIT = 20;
+
+/** 节点心跳 metadata.warnings 的形状校验（jsonb，来源不可信） */
+function readNodeWarnings(metadata: Record<string, unknown> | null): Array<{ type: string; message: string; at: string }> {
+  const raw = metadata?.warnings;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((w): w is { type: string; message: string; at: string } => (
+    typeof w === 'object' && w !== null
+    && typeof (w as { type?: unknown }).type === 'string'
+    && typeof (w as { message?: unknown }).message === 'string'
+    && typeof (w as { at?: unknown }).at === 'string'
+  ));
+}
 
 type JobRow = Pick<
   typeof cronJobs.$inferSelect,
@@ -304,7 +318,7 @@ const ALERT_LEVEL_ORDER = { danger: 0, warning: 1, info: 2 } as const;
 /** 提醒文案里的耗时：毫秒级直接显示毫秒，否则保留一位小数的秒 */
 function describeMs(ms: number | null): string {
   if (ms == null) return '—';
-  return ms < 1000 ? ` 毫秒` : ` 秒`;
+  return ms < 1000 ? `${ms} 毫秒` : `${(ms / 1000).toFixed(1)} 秒`;
 }
 
 function buildAlerts(
@@ -584,7 +598,7 @@ export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJo
       .where(eq(runStatus, RUNNING_STATUS));
 
     const staleBefore = new Date(now.getTime() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs);
-    const nodeRows = await tx.select({ nodeId: systemSchedulerNodes.nodeId, lastHeartbeatAt: systemSchedulerNodes.lastHeartbeatAt })
+    const nodeRows = await tx.select({ nodeId: systemSchedulerNodes.nodeId, lastHeartbeatAt: systemSchedulerNodes.lastHeartbeatAt, metadata: systemSchedulerNodes.metadata })
       .from(systemSchedulerNodes)
       .where(and(eq(systemSchedulerNodes.active, true), gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore)));
 
@@ -593,6 +607,18 @@ export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJo
 
   const perJobMap = new Map(snapshot.perJob.map((p) => [p.jobId, p]));
   const scheduler = getSchedulerIntrospection();
+  // 各在线节点随心跳上报的 pg-boss 警告 + 本进程尚未随心跳落库的最新几条，按时间倒序去重
+  const warningMap = new Map<string, CronJobSchedulerWarning>();
+  const collect = (nodeId: string, list: readonly { type: string; message: string; at: string }[]) => {
+    for (const w of list) {
+      const key = `||`;
+      const existing = warningMap.get(key);
+      if (!existing || existing.at < w.at) warningMap.set(key, { type: w.type, message: w.message, nodeId, at: w.at });
+    }
+  };
+  for (const node of snapshot.nodeRows) collect(node.nodeId, readNodeWarnings(node.metadata));
+  collect(scheduler.node.id, scheduler.warnings);
+  const schedulerWarnings = [...warningMap.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, SCHEDULER_WARNINGS_LIMIT);
   const thisNodeHeartbeat = snapshot.nodeRows.find((n) => n.nodeId === scheduler.node.id)?.lastHeartbeatAt
     ?? snapshot.nodeRows.reduce<Date | null>((latest, n) => (latest && latest > n.lastHeartbeatAt ? latest : n.lastHeartbeatAt), null);
 
@@ -614,6 +640,7 @@ export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJo
       activeNodes: snapshot.nodeRows.length,
       lastHeartbeatAt: formatNullableDateTime(thisNodeHeartbeat),
       wipCount: scheduler.runningJobCount,
+      warnings: schedulerWarnings,
     },
     alerts: buildAlerts(snapshot.allJobs, perJobMap, snapshot.runningLogs, now),
     perJob: snapshot.perJob,
