@@ -21,6 +21,7 @@
 | 搜索 | `/search?q=`（永远动态） |
 | 草稿预览 | `/__cms/{siteCode}/preview/{id}?exp=&sig=`（签名校验） |
 | 主题样式资产 | `/_assets/theme.{hash}.css` |
+| 前台岛脚本资产 | `/_assets/islands.{hash}.js`（全站同一份，`type="module"` 外链） |
 | 站点资源 | `/sitemap.xml`、`/robots.txt`、`/rss.xml`、`/{channelPath}/rss.xml` |
 
 ## 静态化三模式
@@ -176,6 +177,9 @@ SSR 响应按页面类型分级缓存：
 - 站点切换主题时服务端校验主题已注册并原子递增 `themeRevision`；整站/主题发布任务同时携带 `templateRefsRevision` 与 `publicRevision` 做**过期栅栏**，执行中发现任一修订变化即失效退出
 - 模板解析链为 内容/栏目级覆盖 → 站点有效 `defaultTemplates`（经站群继承 resolver）→ 主题默认；主题升级导致的失效模板引用在站点保存时自动摘除（自愈机制见[主题文档](./themes#变体模板与解析链)）
 - 正式渲染输出 `/_assets/theme.{hash}.css` 指纹外链，文件缺失时由前台 `_assets/` 路由现场生成；整站孤儿清扫保留 `_assets/` 目录。主题配置中的链接值仍必须遵守 CMS 安全 URL 约定，不能把任意协议字符串传给模板。
+- 前台交互脚本以同一机制交付：`/_assets/islands.{hash}.js`（`type="module"` 外链，正式与预览渲染均输出，预览不落盘）。
+  静态页只含容器与 `data-*` 契约、不含内联可执行脚本；陈旧静态页引用旧指纹时路由返回当前脚本并降为 `no-cache`，
+  岛在找不到期望容器时静默 no-op，因此新旧产物混跑不会报错。详见[主题文档 · 前台交互脚本](./themes#前台交互脚本islands)。
 
 ## 页面部件与主题插槽
 

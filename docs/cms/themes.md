@@ -72,6 +72,32 @@ themes/
 
 主题源码里**不要**手写 `<style>` 或内联样式字符串——公共组件样式进 `base.css`，主题差异进自己的 `styles.css`。
 
+## 前台交互脚本（islands）
+
+主题组件是纯服务端组件（无 hook、无事件处理 prop）。浏览器端交互一律放在 `packages/server/src/cms/islands/`
+里的 TS 模块（"岛"），主题**只输出容器与 `data-*` 契约**，不在 TSX 里写字符串脚本或 `dangerouslySetInnerHTML` 注入脚本。
+
+| 组成 | 位置 | 说明 |
+|------|------|------|
+| 入口 / 加载器 | `islands/index.ts`、`mount.ts` | 按 `[data-island="name"]` 查找容器、按注册表挂载一次；单岛失败隔离 |
+| 容器岛 | `follow`、`likes`、`comments`、`captcha`、`survey/**`、`article-tools` | 每个岛只读自身容器上的 `data-*`，找不到期望元素时静默 no-op |
+| 页面岛 | `analytics`、`ads` | 无容器、每页运行一次；配置来自 `SeoHead` 输出的 `<meta name="cms-site" / "cms-analytics-key" / "cms-content-id">` |
+| 共享件 | `islands/shared/` | 会员 token 读取与登录跳转、`fetch` + 鉴权头 + `code` 判定、meta 读取 |
+| 类型检查 / 测试 | `tsconfig.islands.json`（lib DOM，`npm run lint` 内）、`*.test.ts`（`// @vitest-environment jsdom`） | 与服务端 tsc 隔离；类型可仅类型导入 `@zenith/shared/cms` 契约 |
+
+**交付**：`scripts/build-islands.mjs` 用 esbuild 打成单个 ESM（生产预构建到 `dist/cms/islands/islands.js`；开发 / 测试由
+`themes/islands-asset.ts` 按源码 mtime 在内存中按需构建，改岛源码刷新即生效）。渲染管线以内容指纹外链
+`/_assets/islands.{hash}.js`（`SeoHead` 输出 `<script type="module" src>`，module 默认 defer，执行时文档已解析完毕），
+落盘 / 自愈 / `immutable` / 旧指纹降级规则与主题 CSS 资产完全一致；内容全站相同、预览页同样加载（不落盘）。
+
+**保留内联的两段脚本**（内容恒定、必须尽早同步执行）：`THEME_TOGGLE_SCRIPT`（head 内暗色初始化防闪烁）与 default 主题的
+会员受众重载 / 清理脚本。除此之外主题不得新增内联可执行脚本——`cms-theme-shared-render.test.ts` 以渲染结果断言这一点，
+`html-security-headers.ts` 的 CSP 也因此在全站各页恒定。
+
+**新增一个岛**：① 在 `islands/` 新建模块导出 `mount(el: HTMLElement)`（或页面岛 `run(doc)`），只依赖 `data-*` 与共享件；
+② 在 `registry.ts` 登记；③ 主题容器加 `data-island="name"` 与所需 `data-*`；④ 补 jsdom 单测（`test-utils.ts` 提供
+`stubFetch` / `flush` / `setMemberToken` / `html`）；⑤ 若产出静态页需重建以引用新指纹（发布会自动处理）。
+
 ## Theme API：首页声明式取数
 
 首页模板可用 `defineHomeTemplate` 定义体替代普通组件，把「取什么数据」与「怎么渲染」分离：
@@ -153,14 +179,15 @@ settingsSchema: [
 
 | 组件 / 常量 | 职责 |
 |------|------|
-| `SeoHead` | 完整 SEO head：TDK、canonical、Open Graph、Twitter Card、JSON-LD、hreflang；样式经 `ctx.assets` 输出（正式外链指纹 CSS / 预览内联），暗色模式自动注入切换脚本 |
+| `SeoHead` | 完整 SEO head：TDK、canonical、Open Graph、Twitter Card、JSON-LD、hreflang；样式经 `ctx.assets` 输出（正式外链指纹 CSS / 预览内联）；输出岛脚本 `<script type="module">` 与页面岛配置 `<meta name="cms-*">`；暗色模式自动注入切换脚本 |
 | `Breadcrumbs` / `Pagination` | 面包屑 / 分页导航（语义结构，样式由主题 CSS 决定） |
 | `ArticleNav` / `RelatedArticles` / `AttachmentList` | 详情页上下篇导航（`.article-nav`）、相关阅读（`.related-articles`，可传 `title` / `heading`）、附件下载链接（`.attachments`）；空数据时不渲染 |
 | `ModelFieldTable` | 模型字段双栏键值表，按 `detailGroup` 分组（公文信息表头样式钩子 `.model-fields*`，公共样式在 `_shared/base.css`） |
 | `MediaBlock` | 内容形态区块：图集九宫格 / 音视频播放器（article/link 返回 null，公共样式在 `_shared/base.css`）。**详情模板须在正文前调用**，否则 album/media 形态丢失主图 |
 | `SearchResultList` / `SearchResultLink` | 搜索结果列表（空态文案统一；默认条目为「标题链接 + 发布日期」，需要摘要 / 栏目名的主题传 `renderItem`，条目根元素自带 `key`）与高亮标题链接（外链新窗口、不拼 baseUrl） |
 | `loadHomeBlocks` / `CmsThemeHomeBlock` | 首页栏目区块取数：解析 `themeConfig.homeChannels`（中英文逗号分隔，默认最多 6 个，可传 `maxChannels`）并发读取各栏目、过滤站内不存在的栏目 |
-| `THEME_TOGGLE_SCRIPT` / `buildAnalyticsBeacon` | 暗色切换脚本 / 访问统计 beacon |
+| `CaptchaBox` / `CmsFollowButton`（default） | 算术验证码容器（`data-island="captcha"`）/ 关注按钮（`data-island="follow"`）：只输出容器契约，交互见 [前台交互脚本（islands）](#前台交互脚本islands) |
+| `THEME_TOGGLE_SCRIPT` | 暗色切换脚本（唯一保留在 head 内联的可执行脚本） |
 
 五套内置主题的搜索页与 default 详情页 HTML 由 `cms-theme-markup-snapshot.test.ts` 快照锁定，改动共享件后快照必须逐字节一致或有意更新。
 

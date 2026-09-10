@@ -128,7 +128,7 @@ IP 访问控制由 `packages/server/src/middleware/ip-access.ts` 实现，配置
 ## 安全头、CORS、CSRF
 
 - 安全响应头由 `secureHeaders` 设置，`X-Frame-Options: SAMEORIGIN` 对全部响应生效（本进程直出 CMS 前台、短链 / 退订 / 表单提示页等 HTML）。
-- 直出 HTML 的内容安全策略由 `lib/html-security-headers.ts` 的中间件统一补齐：凡 `text/html` 且未自带 CSP 的响应，按正文实际包含的内联 `<script>` 计算 sha256 哈希放行（不使用 `'unsafe-inline'`），并设置 `object-src 'none'`、`base-uri 'self'`、`form-action 'self'`、`frame-ancestors 'self'`，第三方仅放行 Cloudflare Turnstile；CMS 静态化产物出站时同样计算，`/api/docs`（Swagger UI，依赖 CDN 脚本）除外。该中间件位于 `compress` 内侧，读取的是压缩前正文。
+- 直出 HTML 的内容安全策略由 `lib/html-security-headers.ts` 的中间件统一补齐：凡 `text/html` 且未自带 CSP 的响应，按正文实际包含的**可执行**内联 `<script>` 计算 sha256 哈希放行（不使用 `'unsafe-inline'`；JSON-LD 等数据块不参与哈希），并设置 `object-src 'none'`、`base-uri 'self'`、`form-action 'self'`、`frame-ancestors 'self'`，第三方仅放行 Cloudflare Turnstile；CMS 静态化产物出站时同样计算，`/api/docs`（Swagger UI，依赖 CDN 脚本）除外。该中间件位于 `compress` 内侧，读取的是压缩前正文。CMS 前台交互脚本以外链 `/_assets/islands.{hash}.js` 交付（`'self'` 放行），主题只保留内容恒定的暗色初始化与会员受众重载两段内联脚本，因此 CSP 头在同站各页面间恒定，可随页面进入缓存。
 - 管理端 SPA 的 CSP 在 Vite 构建期注入入口 HTML 的 `<meta>`（`packages/web/vite.config.ts`），帧保护由 nginx 下发（见 [Docker 部署 · Nginx 行为](../guide/docker#nginx-行为)）。
 - CORS 使用 `CORS_ORIGIN` 与 `ALLOWED_ORIGINS`。
 - CSRF 中间件保护需要浏览器 Cookie 语义的写入请求；第三方回调、OAuth2 授权端点和 Open API 等机器接口按排除规则处理。

@@ -1,10 +1,12 @@
 /**
  * 服务端直出 HTML（CMS 前台 SSR / 静态化产物 / 前台表单提示页）的安全响应头。
  *
- * 内联脚本全部来自主题代码（主题切换、统计 beacon、广告事件、验证码、互动），正文里的用户 HTML
- * 已由 sanitizeCmsHtml 剔除脚本；因此可以按响应实际包含的内联 <script> 计算 sha256 哈希放行，
- * 不使用 'unsafe-inline'——即便净化被绕过，注入的脚本 / 事件属性 / javascript: 也不会执行。
- * 静态化文件同样在出站时计算，CDN / 浏览器缓存复用的是同一份 HTML，哈希天然一致。
+ * CMS 前台交互由外链岛脚本（/_assets/islands.{hash}.js，'self' 放行）承担，主题里仅保留极少量
+ * 内容恒定的内联脚本（暗色初始化、会员受众重载）；正文里的用户 HTML 已由 sanitizeCmsHtml 剔除脚本。
+ * 因此可以按响应实际包含的可执行内联 <script> 计算 sha256 哈希放行，不使用 'unsafe-inline'——
+ * 即便净化被绕过，注入的脚本 / 事件属性 / javascript: 也不会执行。
+ * JSON-LD 等数据块（type 非 JavaScript）浏览器不会执行，不参与哈希，CSP 头因而在同站各页面间恒定，
+ * 可随页面一起进入 CDN / 浏览器缓存。静态化文件同样在出站时计算，哈希天然一致。
  */
 import { createHash } from 'node:crypto';
 import { createMiddleware } from 'hono/factory';
@@ -13,13 +15,23 @@ import { createMiddleware } from 'hono/factory';
 const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
 
 const INLINE_SCRIPT_RE = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
+const SCRIPT_TYPE_RE = /\stype\s*=\s*["']?\s*([^"'\s>]+)/i;
+/** 浏览器视为可执行的 type：缺省、JavaScript MIME、module（其余如 application/ld+json、text/template 为数据块） */
+const EXECUTABLE_SCRIPT_TYPES = new Set(['module', 'text/javascript', 'application/javascript', 'text/ecmascript', 'application/ecmascript', 'text/jscript']);
 
-/** 收集 HTML 中所有无 src 的内联脚本哈希（'sha256-…' 形式，去重） */
+function isExecutableScript(attrs: string): boolean {
+  const match = SCRIPT_TYPE_RE.exec(` ${attrs}`);
+  if (!match) return true;
+  return EXECUTABLE_SCRIPT_TYPES.has(match[1].toLowerCase());
+}
+
+/** 收集 HTML 中所有无 src 且可执行的内联脚本哈希（'sha256-…' 形式，去重） */
 export function collectInlineScriptHashes(html: string): string[] {
   const hashes = new Set<string>();
   for (const match of html.matchAll(INLINE_SCRIPT_RE)) {
     const attrs = match[1] ?? '';
     if (/\ssrc\s*=/i.test(` ${attrs}`)) continue;
+    if (!isExecutableScript(attrs)) continue;
     const body = match[2] ?? '';
     if (!body) continue;
     hashes.add(`'sha256-${createHash('sha256').update(body, 'utf8').digest('base64')}'`);

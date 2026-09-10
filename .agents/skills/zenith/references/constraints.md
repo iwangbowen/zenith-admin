@@ -392,3 +392,21 @@ server 启动时加载全部路由 / 服务模块图，任何模块顶层静态 
 - **进程入口导入顺序固定**：`src/index.ts` 第一条 import 为 `./lib/fatal-handlers`（自装上述兜底），第二条为
   `import '@hono/zod-openapi'`（shared schema 须在原型补丁后构造）；`src/test-setup.ts` 首条 import 同为
   `@hono/zod-openapi`（`index.import-order.test.ts` 锁定）；新增进程入口同样如此
+
+### CMS 前台脚本（islands）
+
+- **主题不得内联可执行脚本**：`packages/server/src/cms/themes/**` 是纯服务端组件，禁止字符串脚本常量与
+  `<script dangerouslySetInnerHTML>`（仅 `THEME_TOGGLE_SCRIPT` 与 default 主题的会员受众重载 / 清理两段内容恒定的
+  引导脚本例外；JSON-LD 是数据块不在此列）。`cms-theme-shared-render.test.ts` 以渲染结果锁定，
+  CSP（`lib/html-security-headers.ts`）据此在全站恒定
+- **交互写成岛**：浏览器端逻辑放 `packages/server/src/cms/islands/`（独立 `tsconfig.islands.json`，lib DOM，不进服务端 tsc），
+  导出 `mount(el)` 并在 `registry.ts` 登记；主题只输出 `<el data-island="name" data-…>` 容器，页面级配置经 `SeoHead`
+  的 `<meta name="cms-*">` 传递。岛只读 `data-*` / meta，找不到期望元素时**静默 no-op**（陈旧静态页会引用新脚本）
+- **构建 HTML 用 `survey/dom.ts` 的 `h()`**，文本走 `textContent`、属性走 `setAttribute`；**禁止**字符串拼 HTML +
+  手写转义写入 `innerHTML`（服务端返回的可信 SVG 除外）
+- **接口约定**：会员 token 经 `islands/shared/member.ts` 读取；请求经 `shared/api.ts`（`apiJson` / `apiHeaders` / `isOk`）；
+  展示给用户的文案取 `data.message`（信封 `message` 恒为 `'success'`），除非路由显式用 `okBody(null, 文案)`
+- **测试**：每个岛配 `// @vitest-environment jsdom` 单测，用 `islands/test-utils.ts` 的 `stubFetch` / `flush` /
+  `setMemberToken` / `html` 断言 DOM 行为与请求契约；不要再写 grep 主题源码的字符串断言
+- **交付不需改**：`scripts/build-islands.mjs` 打包、`themes/islands-asset.ts` 指纹、`_assets/islands.{hash}.js` 路由已就位，
+  新增岛只需上述四步；产物由 `npm run build` 生成、`npm run lint` 含 `tsc -p tsconfig.islands.json`

@@ -6,9 +6,17 @@ import { createHash } from 'node:crypto';
 const sha = (s: string) => `'sha256-${createHash('sha256').update(s, 'utf8').digest('base64')}'`;
 
 describe('html-security-headers（M7）', () => {
-  it('收集无 src 的内联脚本哈希，忽略外部脚本与空脚本', () => {
-    const html = '<script>alert(1)</script><script src="/a.js"></script><script type="application/ld+json">{"a":1}</script><script></script>';
-    expect(collectInlineScriptHashes(html)).toEqual([sha('alert(1)'), sha('{"a":1}')]);
+  it('收集无 src 的可执行内联脚本哈希，忽略外部脚本、空脚本与数据块（JSON-LD 等）', () => {
+    const html = '<script>alert(1)</script><script src="/a.js"></script><script type="application/ld+json">{"a":1}</script><script></script>'
+      + '<script type="module">m()</script><script type="text/javascript">j()</script><script type="text/template"><p>x</p></script>';
+    expect(collectInlineScriptHashes(html)).toEqual([sha('alert(1)'), sha('m()'), sha('j()')]);
+  });
+
+  it('CSP 不随 JSON-LD 内容变化：同一套内联脚本的页面得到相同的 script-src', () => {
+    const a = buildHtmlCsp('<script type="application/ld+json">{"headline":"A"}</script><script>init()</script>');
+    const b = buildHtmlCsp('<script type="application/ld+json">{"headline":"B"}</script><script>init()</script>');
+    expect(a).toBe(b);
+    expect(a).toContain(`script-src 'self' ${sha('init()')} https://challenges.cloudflare.com`);
   });
 
   it('CSP 不含 unsafe-inline 脚本，放行 Turnstile，默认仅同源可嵌入', () => {

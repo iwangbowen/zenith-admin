@@ -81,7 +81,7 @@ function base(theme: string): CmsBaseContext {
     analytics: null,
     langAlternates: [],
     audience: { dynamic: false, member: false },
-    assets: { cssHref: null, inlineCss: '', darkMode: 'light', jsHref: null },
+    assets: { cssHref: null, inlineCss: '', darkMode: 'light', jsHref: '/_assets/islands.test.js' },
   };
 }
 
@@ -162,6 +162,31 @@ describe('CMS shared theme rendering', () => {
     expect(html).toContain('href="/news/?page=4"');
     expect(html.match(/class="current">3/g)).toHaveLength(3);
     expect(html).toContain('京ICP备12345678号-1');
+  });
+
+  it('ships no inline executable script: interactions live in the islands bundle (only the theme-toggle bootstrap may stay inline)', () => {
+    const executableInline = (markup: string) =>
+      [...markup.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+        .filter(([, attrs]) => !/\ssrc=/.test(` ${attrs}`) && !/type="application\/ld\+json"/.test(attrs))
+        .map(([, , body]) => body);
+
+    const lightPages = [
+      render(defaultTheme.templates.page, pageContext('default')),
+      render(docsTheme.templates.page, pageContext('docs')),
+      render(govPortalTheme.templates.list, listContext('gov-portal')),
+      render(magazineTheme.templates.list, listContext('magazine')),
+      render(newsPortalTheme.templates.list, listContext('news-portal')),
+    ];
+    for (const page of lightPages) {
+      expect(executableInline(page)).toEqual([]);
+      expect(page).toContain('<script type="module" src="/_assets/islands.test.js"></script>');
+    }
+
+    // 暗色站点：唯一允许的内联脚本是内容恒定的主题初始化（须先于首帧执行防闪烁）
+    const darkCtx = { ...pageContext('default'), assets: { ...pageContext('default').assets, darkMode: 'auto' as const } };
+    const darkScripts = executableInline(render(defaultTheme.templates.page, darkCtx));
+    expect(darkScripts).toHaveLength(1);
+    expect(darkScripts[0]).toContain("localStorage.getItem('cms_theme')");
   });
 });
 
