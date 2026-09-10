@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button, Col, Dropdown, SplitButtonGroup, Row, SideSheet, Form, Modal, Popover, Space, Spin, Table, Tabs, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
-import type { CreateCronJobInput, CronJob } from '@zenith/shared/platform';
-import { CRON_RUN_STATUS_LABELS } from '@zenith/shared/platform';
+import type { CreateCronJobInput, CronJob, CronJobLog, CronRunTrigger } from '@zenith/shared/platform';
+import { CRON_RUN_STATUS_LABELS, CRON_RUN_TRIGGER_LABELS } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -17,6 +17,7 @@ import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from
 import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import CronJobDashboard from './CronJobDashboard';
+import { TRIGGER_TAG } from './cron-dashboard-shared';
 import {
   cronJobKeys,
   useClearCronJobLogs,
@@ -51,6 +52,7 @@ const runStatusColor: Record<string, import('@douyinfe/semi-ui/lib/es/tag/interf
   success: 'green',
   fail: 'red',
   running: 'blue',
+  timeout: 'orange',
 };
 
 const runStatusLabel: Record<string, string> = CRON_RUN_STATUS_LABELS;
@@ -83,10 +85,20 @@ const buildRunLogColumns = (outputWidth: number) => [
     ),
   },
   {
-    title: '输出',
+    title: '触发',
+    dataIndex: 'trigger',
+    width: 90,
+    render: (v: CronRunTrigger, r: CronJobLog) => (
+      <Tag color={TRIGGER_TAG[v]} size="small" type="light">{CRON_RUN_TRIGGER_LABELS[v]}{r.attempt > 0 ? ` #${r.attempt}` : ''}</Tag>
+    ),
+  },
+  {
+    title: '输出 / 错误',
     dataIndex: 'output',
     width: outputWidth,
-    render: renderEllipsis,
+    render: (v: string | null, r: CronJobLog) => (r.errorMessage
+      ? <span style={{ color: 'var(--semi-color-danger)' }}>{renderEllipsis(r.errorMessage)}</span>
+      : renderEllipsis(v)),
   },
 ];
 
@@ -465,8 +477,8 @@ export default function CronJobsPage() {
             <Col span={12}>
               <Form.InputNumber
                 field="monitorTimeout"
-                label="监控超时(ms)"
-                placeholder="可选，超时报警阈值"
+                label="监控超时(秒)"
+                placeholder="可选，超过该秒数仍未完成则记为超时"
                 min={0}
                 style={{ width: '100%' }}
               />

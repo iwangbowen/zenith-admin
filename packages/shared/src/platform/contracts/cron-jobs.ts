@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { auditFieldsSchema, dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { CRON_ALERT_LEVELS, CRON_ALERT_TYPES, CRON_JOB_STATUSES, CRON_RUN_STATUSES } from '../constants';
+import { CRON_ALERT_LEVELS, CRON_ALERT_TYPES, CRON_JOB_STATUSES, CRON_RUN_STATUSES, CRON_RUN_TRIGGERS } from '../constants';
 import { createCronJobSchema, cronJobStatusSchema, cronValidateSchema, updateCronJobSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
@@ -37,7 +37,14 @@ export const cronJobLogSchema = z.object({
   endedAt: z.string().nullable(),
   durationMs: z.int().nullable(),
   status: z.enum(CRON_RUN_STATUSES),
-  output: z.string().nullable(),
+  output: z.string().nullable().meta({ description: '正常输出；失败 / 超时原因见 errorMessage' }),
+  trigger: z.enum(CRON_RUN_TRIGGERS),
+  attempt: z.int().meta({ description: '重试序号，0 = 首次执行' }),
+  scheduledAt: z.string().nullable().meta({ description: '计划触发时刻' }),
+  latencyMs: z.int().nullable().meta({ description: '调度延迟：实际开始 − 计划触发（毫秒）' }),
+  errorMessage: z.string().nullable(),
+  nodeId: z.string().nullable().meta({ description: '执行节点 hostname:pid' }),
+  triggeredBy: z.int().nullable().meta({ description: '手动执行的操作人' }),
 }).meta({ id: 'CronJobLog' });
 
 export type CronJobLog = z.infer<typeof cronJobLogSchema>;
@@ -59,6 +66,8 @@ export const cronJobStatsPerJobSchema = z.object({
   runs: z.int().meta({ description: '统计周期内执行次数' }),
   successCount: z.int(),
   failCount: z.int(),
+  timeoutCount: z.int(),
+  retryCount: z.int().meta({ description: '周期内由失败重试触发的执行次数' }),
   successRate: z.number().nullable().meta({ description: '周期内成功率（%），无执行时为 null' }),
   prevSuccessRate: z.number().nullable().meta({ description: '上一周期成功率（%），用于环比' }),
   todayRuns: z.int(),
@@ -67,6 +76,7 @@ export const cronJobStatsPerJobSchema = z.object({
   prevAvgDurationMs: z.int().nullable().meta({ description: '上一周期平均耗时，用于耗时恶化提示' }),
   p95DurationMs: z.int().nullable().meta({ description: 'P95 耗时（长尾性能），无已完成执行时为 null' }),
   maxDurationMs: z.int().nullable(),
+  avgLatencyMs: z.int().nullable().meta({ description: '周期内平均调度延迟' }),
   recentResults: z.array(z.enum(CRON_RUN_STATUSES)).meta({ description: '近 20 次执行状态（旧 → 新）' }),
   recentDurations: z.array(z.int().nullable()).meta({ description: '近 20 次执行耗时（旧 → 新），运行中为 null' }),
   consecutiveFails: z.int().meta({ description: '当前连续失败次数（最近一次成功后归零）' }),
@@ -79,6 +89,7 @@ export const cronJobDailyStatSchema = z.object({
   total: z.int(),
   successCount: z.int(),
   failCount: z.int(),
+  timeoutCount: z.int(),
   avgDurationMs: z.int().nullable().meta({ description: '当日已完成执行的平均耗时' }),
   p95DurationMs: z.int().nullable(),
 }).meta({ id: 'CronJobDailyStat' });
@@ -98,9 +109,13 @@ export const cronJobRunSummarySchema = z.object({
   total: z.int(),
   successCount: z.int(),
   failCount: z.int(),
+  timeoutCount: z.int(),
   runningCount: z.int(),
+  retryCount: z.int().meta({ description: '由失败重试触发的执行次数' }),
+  manualCount: z.int().meta({ description: '手动触发的执行次数' }),
   avgDurationMs: z.int().nullable(),
   p95DurationMs: z.int().nullable(),
+  avgLatencyMs: z.int().nullable().meta({ description: '平均调度延迟（实际开始 − 计划触发）' }),
 }).meta({ id: 'CronJobRunSummary' });
 
 export type CronJobRunSummary = z.infer<typeof cronJobRunSummarySchema>;
@@ -129,7 +144,7 @@ export const cronJobAlertSchema = z.object({
 export type CronJobAlert = z.infer<typeof cronJobAlertSchema>;
 
 export const cronJobTopErrorSchema = z.object({
-  message: z.string().meta({ description: '归一化后的错误信息（数字已替换为 #）' }),
+  message: z.string().meta({ description: '归一化后的错误信息（数字已替换为 #），来自失败 / 超时记录的 errorMessage' }),
   count: z.int(),
   jobNames: z.array(z.string()),
   lastAt: z.string(),
@@ -181,6 +196,7 @@ export const cronJobListQuery = paginationQuery.extend({
 export const cronJobLogListQuery = paginationQuery.extend({
   jobId: z.coerce.number().int().positive().optional(),
   status: queryEnum(CRON_RUN_STATUSES, '按执行状态筛选'),
+  trigger: queryEnum(CRON_RUN_TRIGGERS, '按触发方式筛选'),
   keyword: z.string().optional().meta({ description: '按任务名称 / 输出模糊匹配' }),
   startTime: dateRangeBound('开始时间下限'),
   endTime: dateRangeBound('开始时间上限'),

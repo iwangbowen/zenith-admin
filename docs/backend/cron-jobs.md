@@ -25,6 +25,20 @@
 
 任务字段包括 `name`、`cronExpression`、`handler`、`params`、`status`、`retryCount`、`retryInterval`、`retryBackoff`、`monitorTimeout`（秒）和最近运行结果。
 
+`cron_job_logs` 每条执行记录除状态 / 耗时 / 输出外，还记录执行上下文：
+
+| 列 | 含义 |
+| --- | --- |
+| `trigger` | 触发方式：`schedule` 计划 / `manual` 手动 / `retry` pg-boss 失败重试 |
+| `attempt` | 重试序号，0 = 首次 |
+| `scheduled_at` / `latency_ms` | 计划触发时刻与调度延迟（生成列 = `started_at − scheduled_at`） |
+| `error_message` | 失败 / 超时原因（与正常 `output` 分离，供失败原因聚合） |
+| `node_id` | 执行节点 `hostname:pid` |
+| `triggered_by` | 手动执行的操作人 |
+
+状态含 `timeout`：worker 按任务 `monitorTimeout`（秒）计时，到点未完成即记为超时并抛错交给 pg-boss 重试策略；
+调度器启动时会把不属于任何在线节点的 `running` 记录关闭为失败（进程崩溃遗留）。
+
 执行概览的健康判定阈值（连续失败次数、成功率下限、P95 / 平均倍数、接近超时比例、未按计划执行容差）
 统一定义在 `packages/shared/src/platform/cron-health.ts`，服务端聚合与 Demo Mock 共用。
 

@@ -1,4 +1,5 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 
@@ -44,7 +45,10 @@ export const systemRuntimeState = pgTable('system_runtime_state', {
 export type SystemRuntimeStateRow = typeof systemRuntimeState.$inferSelect;
 
 // ─── 定时任务表 ──────────────────────────────────────────────────────────────
-export const cronRunStatusEnum = pgEnum('cron_run_status', ['success', 'fail', 'running']);
+export const cronRunStatusEnum = pgEnum('cron_run_status', ['success', 'fail', 'running', 'timeout']);
+
+/** 执行触发方式：计划触发 / 手动执行 / pg-boss 失败重试 */
+export const cronRunTriggerEnum = pgEnum('cron_run_trigger', ['schedule', 'manual', 'retry']);
 
 export const cronJobs = pgTable('cron_jobs', {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
@@ -81,10 +85,25 @@ export const cronJobLogs = pgTable('cron_job_logs', {
   endedAt:        timestamp({ withTimezone: true }),
   durationMs:     integer(),
   status:         cronRunStatusEnum().notNull().default('running'),
+  /** 正常输出（handler 返回的结果文案）；失败信息见 errorMessage */
   output:         text(),
+  trigger:        cronRunTriggerEnum().notNull().default('schedule'),
+  /** pg-boss 重试序号，0 = 首次执行 */
+  attempt:        integer().notNull().default(0),
+  /** 计划触发时刻（pg-boss 任务的 startAfter）；与 startedAt 之差即调度延迟 */
+  scheduledAt:    timestamp({ withTimezone: true }),
+  /** 调度延迟（毫秒）= startedAt − scheduledAt，由数据库生成，无计划时刻时为 null */
+  latencyMs:      integer().generatedAlwaysAs(sql`CAST(EXTRACT(EPOCH FROM (started_at - scheduled_at)) * 1000 AS integer)`),
+  errorMessage:   text(),
+  /** 执行节点（hostname:pid），多实例部署时定位问题机器 */
+  nodeId:         varchar({ length: 128 }),
+  /** 手动执行的操作人 */
+  triggeredBy:    integer().references(() => users.id, { onDelete: 'set null' }),
 }, (t) => [
   index('cron_job_logs_started_at_idx').on(t.startedAt),
   index('cron_job_logs_job_idx').on(t.jobId),
+  index('cron_job_logs_job_started_idx').on(t.jobId, t.startedAt.desc()),
+  index('cron_job_logs_status_started_idx').on(t.status, t.startedAt.desc()),
 ]);
 
 export type CronJobLogRow = typeof cronJobLogs.$inferSelect;

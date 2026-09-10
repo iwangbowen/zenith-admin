@@ -6,8 +6,8 @@
  */
 import { uniquePositiveInts } from '@zenith/shared/core';
 import os from 'node:os';
-import { PgBoss, type QueueOptions, type SendOptions, type WorkHandler } from 'pg-boss';
-import { eq, and, isNull, desc, notInArray, sql } from 'drizzle-orm';
+import { PgBoss, type JobWithMetadata, type QueueOptions, type SendOptions } from 'pg-boss';
+import { eq, and, gte, inArray, isNull, or, desc, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { cronJobs, cronJobLogs, dbBackups, systemSchedulerNodes, systemSchedulerRuns, systemSchedulerTaskConfigs, users } from '../db/schema';
 import logger from './logger';
@@ -17,7 +17,8 @@ import { formatFileTimestamp, formatDateTime } from './datetime';
 import { config } from '../config';
 import { dispatchAlertChannels } from './alert-dispatch';
 import type { SystemSchedulerAlertChannel } from '@zenith/shared/chat';
-import type { SystemSchedulerTaskBase, SystemSchedulerTaskType, SystemSchedulerRunStatus, SystemSchedulerTriggerType } from '@zenith/shared/platform';
+import type { CronRunStatus, CronRunTrigger, SystemSchedulerTaskBase, SystemSchedulerTaskType, SystemSchedulerRunStatus, SystemSchedulerTriggerType } from '@zenith/shared/platform';
+import { CRON_HEALTH_RULES } from '@zenith/shared/platform';
 import { notify } from '../services/messaging/notification-outbox.service';
 
 /** 定时任务失败 → 推送告警卡片给任务创建者（无则推给系统管理员） */
@@ -760,17 +761,78 @@ interface JobData {
   handlerName: string;
   params: string | null;
   jobId: number;
+  /** 投递来源；缺省视为计划触发（兼容升级前已入队的任务） */
+  trigger?: CronRunTrigger;
+  /** 手动执行的操作人 */
+  triggeredBy?: number | null;
+}
+
+type CronJobWithMetadata = JobWithMetadata<JobData>;
+
+/** 执行结果落库：日志行 + 任务最近状态一次写完 */
+async function settleCronRun(
+  logId: number,
+  jobId: number,
+  startedAt: Date,
+  status: Extract<CronRunStatus, 'success' | 'fail' | 'timeout'>,
+  message: string,
+): Promise<void> {
+  const endedAt = new Date();
+  const durationMs = endedAt.getTime() - startedAt.getTime();
+  const isSuccess = status === 'success';
+  await Promise.all([
+    db.update(cronJobs).set({ lastRunStatus: status, lastRunMessage: message.slice(0, 1024) }).where(eq(cronJobs.id, jobId)),
+    db.update(cronJobLogs).set({
+      endedAt,
+      durationMs,
+      status,
+      output: isSuccess ? message.slice(0, 2048) : null,
+      errorMessage: isSuccess ? null : message.slice(0, 2048),
+    }).where(eq(cronJobLogs.id, logId)),
+  ]);
+}
+
+/** 按 monitorTimeout（秒）给 handler 计时；超时时先落库再抛错，handler 本身无法被打断 */
+function raceWithTimeout<T>(promise: Promise<T>, timeoutSeconds: number | null): Promise<T> {
+  if (!timeoutSeconds || timeoutSeconds <= 0) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new CronRunTimeoutError(timeoutSeconds)), timeoutSeconds * 1000);
+    timer.unref?.();
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err: unknown) => { clearTimeout(timer); reject(err instanceof Error ? err : new Error(String(err))); },
+    );
+  });
+}
+
+class CronRunTimeoutError extends Error {
+  constructor(readonly timeoutSeconds: number) {
+    super(`执行超过 ${timeoutSeconds} 秒仍未完成，已按超时处理`);
+    this.name = 'CronRunTimeoutError';
+  }
 }
 
 async function registerWorker(queue: string): Promise<void> {
   const b = getBoss();
-  await b.work<JobData>(queue, async (jobs: Parameters<WorkHandler<JobData>>[0]) => {
+  await b.work<JobData, void, { includeMetadata: true }>(queue, { includeMetadata: true }, async (jobs: CronJobWithMetadata[]) => {
     const job = jobs[0];
     const { handlerName, params, jobId } = job.data;
     const fn = handlerRegistry.get(handlerName);
     const startedAt = new Date();
+    // 重试由 pg-boss 发起，此时 retryCount > 0；首次执行按投递方声明的来源记录
+    const attempt = job.retryCount ?? 0;
+    const trigger: CronRunTrigger = attempt > 0 ? 'retry' : (job.data.trigger ?? 'schedule');
+    const scheduledAt = job.startAfter ?? job.createdOn ?? null;
+    const runContext = {
+      trigger,
+      attempt,
+      scheduledAt,
+      nodeId: schedulerNodeId,
+      triggeredBy: job.data.triggeredBy ?? null,
+    };
 
-    const [jobRow] = await db.select({ name: cronJobs.name }).from(cronJobs).where(eq(cronJobs.id, jobId)).limit(1);
+    const [jobRow] = await db.select({ name: cronJobs.name, monitorTimeout: cronJobs.monitorTimeout })
+      .from(cronJobs).where(eq(cronJobs.id, jobId)).limit(1);
     const jobName = jobRow?.name ?? `job_${jobId}`;
     const executionCount = await db.$count(cronJobLogs, eq(cronJobLogs.jobId, jobId)) + 1;
 
@@ -778,40 +840,73 @@ async function registerWorker(queue: string): Promise<void> {
       const msg = `Handler "${handlerName}" not found`;
       await Promise.all([
         db.update(cronJobs).set({ lastRunAt: startedAt, lastRunStatus: 'fail', lastRunMessage: msg }).where(eq(cronJobs.id, jobId)),
-        db.insert(cronJobLogs).values({ jobId, jobName, executionCount, startedAt, endedAt: new Date(), durationMs: 0, status: 'fail', output: msg }),
+        db.insert(cronJobLogs).values({
+          jobId, jobName, executionCount, startedAt, endedAt: new Date(), durationMs: 0, status: 'fail', errorMessage: msg, ...runContext,
+        }),
       ]);
       void pushCronFailureAlert(jobId, jobName, msg);
       throw new Error(msg);
     }
 
     const [logRow] = await db.insert(cronJobLogs).values({
-      jobId, jobName, executionCount, startedAt, status: 'running',
+      jobId, jobName, executionCount, startedAt, status: 'running', ...runContext,
     }).returning();
     await db.update(cronJobs).set({ lastRunAt: startedAt, lastRunStatus: 'running', lastRunMessage: null }).where(eq(cronJobs.id, jobId));
 
+    // 超时后 handler 仍在后台运行，迟到的结果只记日志、不再回写，避免把 timeout 覆盖成 success
+    const execution = fn(params);
     let resultMessage: string;
     try {
-      resultMessage = await fn(params);
+      resultMessage = await raceWithTimeout(execution, jobRow?.monitorTimeout ?? null);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      const endedAt = new Date();
-      const durationMs = endedAt.getTime() - startedAt.getTime();
-      await Promise.all([
-        db.update(cronJobs).set({ lastRunStatus: 'fail', lastRunMessage: errorMessage.slice(0, 1024) }).where(eq(cronJobs.id, jobId)),
-        db.update(cronJobLogs).set({ endedAt, durationMs, status: 'fail', output: errorMessage.slice(0, 2048) }).where(eq(cronJobLogs.id, logRow.id)),
-      ]);
-      logger.error(`Cron job ${jobId} (${jobName}) failed:`, err);
+      const status = err instanceof CronRunTimeoutError ? 'timeout' : 'fail';
+      await settleCronRun(logRow.id, jobId, startedAt, status, errorMessage);
+      if (status === 'timeout') {
+        execution.then(
+          () => logger.warn(`Cron job ${jobId} (${jobName}) finished after timeout was recorded`),
+          (lateErr: unknown) => logger.warn(`Cron job ${jobId} (${jobName}) failed after timeout was recorded:`, lateErr),
+        );
+      }
+      logger.error(`Cron job ${jobId} (${jobName}) ${status}:`, err);
       void pushCronFailureAlert(jobId, jobName, errorMessage);
       throw err;
     }
-
-    const endedAt = new Date();
-    const durationMs = endedAt.getTime() - startedAt.getTime();
-    await Promise.all([
-      db.update(cronJobs).set({ lastRunStatus: 'success', lastRunMessage: resultMessage.slice(0, 1024) }).where(eq(cronJobs.id, jobId)),
-      db.update(cronJobLogs).set({ endedAt, durationMs, status: 'success', output: resultMessage.slice(0, 2048) }).where(eq(cronJobLogs.id, logRow.id)),
-    ]);
+    await settleCronRun(logRow.id, jobId, startedAt, 'success', resultMessage);
   });
+}
+
+/**
+ * 启动期对账：上一进程在执行中崩溃 / 重启时留下的 `running` 记录永远不会被收尾，
+ * 会让「运行中」长期虚高并误报运行超时。把不属于任何在线节点的运行中记录标为失败。
+ * 本节点在此之前已上报心跳，因此自己刚写入的记录不会被误伤。
+ */
+async function closeOrphanRunningLogs(): Promise<void> {
+  const staleBefore = new Date(Date.now() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs);
+  const activeNodeIds = (await db.select({ nodeId: systemSchedulerNodes.nodeId })
+    .from(systemSchedulerNodes)
+    .where(and(eq(systemSchedulerNodes.active, true), gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore))))
+    .map((r) => r.nodeId);
+  // notInArray([]) 求值为 true，会把全部运行中记录关掉；无在线节点时只处理无归属的旧记录
+  const orphanCondition = activeNodeIds.length > 0
+    ? or(isNull(cronJobLogs.nodeId), notInArray(cronJobLogs.nodeId, activeNodeIds))
+    : isNull(cronJobLogs.nodeId);
+  const closed = await db.update(cronJobLogs)
+    .set({
+      status: 'fail',
+      endedAt: sql`now()`,
+      durationMs: sql`CAST(EXTRACT(EPOCH FROM (now() - ${cronJobLogs.startedAt})) * 1000 AS integer)`,
+      errorMessage: '调度节点重启，执行被中断',
+    })
+    .where(and(eq(cronJobLogs.status, 'running'), orphanCondition))
+    .returning({ id: cronJobLogs.id, jobId: cronJobLogs.jobId });
+  if (closed.length === 0) return;
+  // 任务表的最近状态若仍停在 running，同样收尾（只改被关闭记录对应的任务）
+  const jobIds = [...new Set(closed.map((r) => r.jobId))];
+  await db.update(cronJobs)
+    .set({ lastRunStatus: 'fail', lastRunMessage: '调度节点重启，执行被中断' })
+    .where(and(inArray(cronJobs.id, jobIds), eq(cronJobs.lastRunStatus, 'running')));
+  logger.warn(`pg-boss: 已关闭 ${closed.length} 条无归属节点的运行中执行记录`);
 }
 
 // ─── 公开 API ────────────────────────────────────────────────────────────────
@@ -832,6 +927,7 @@ export async function initCronScheduler(): Promise<void> {
   startSchedulerHeartbeat();
 
   await purgeOrphanCronJobs();
+  await closeOrphanRunningLogs().catch((err) => logger.warn('pg-boss: 关闭无归属运行中记录失败', err));
 
   const jobs = await db.select().from(cronJobs).where(eq(cronJobs.status, 'enabled'));
   for (const job of jobs) {
@@ -881,6 +977,7 @@ async function _scheduleOne(job: typeof cronJobs.$inferSelect): Promise<boolean>
     handlerName: job.handler,
     params: job.params,
     jobId: job.id,
+    trigger: 'schedule',
   } satisfies JobData, {
     tz: CRON_SCHEDULE_TZ,
     ...retryOptions,
@@ -916,6 +1013,7 @@ export async function scheduleJob(
     handlerName: handler,
     params,
     jobId,
+    trigger: 'schedule',
   } satisfies JobData, {
     tz: CRON_SCHEDULE_TZ,
     ...(retryCount > 0 ? { retryLimit: retryCount, retryDelay, retryBackoff } : {}),
@@ -934,7 +1032,7 @@ export async function stopJob(jobId: number, _jobName: string): Promise<void> {
   }
 }
 
-export async function runJobOnce(jobId: number): Promise<{ success: boolean; message: string }> {
+export async function runJobOnce(jobId: number, triggeredBy: number | null = null): Promise<{ success: boolean; message: string }> {
   const [job] = await db.select().from(cronJobs).where(eq(cronJobs.id, jobId)).limit(1);
   if (!job) return { success: false, message: '任务不存在' };
 
@@ -948,6 +1046,8 @@ export async function runJobOnce(jobId: number): Promise<{ success: boolean; mes
     handlerName: job.handler,
     params: job.params,
     jobId,
+    trigger: 'manual',
+    triggeredBy,
   } satisfies JobData);
 
   const deadline = Date.now() + 30_000;
@@ -958,10 +1058,10 @@ export async function runJobOnce(jobId: number): Promise<{ success: boolean; mes
       const [latestLog] = await db.select()
         .from(cronJobLogs)
         .where(eq(cronJobLogs.jobId, jobId))
-        .orderBy(cronJobLogs.id)
+        .orderBy(desc(cronJobLogs.id))
         .limit(1);
       if (latestLog && latestLog.status !== 'running') {
-        return { success: latestLog.status === 'success', message: latestLog.output ?? '' };
+        return { success: latestLog.status === 'success', message: latestLog.output ?? latestLog.errorMessage ?? '' };
       }
     }
     await new Promise<void>((r) => setTimeout(r, 500));

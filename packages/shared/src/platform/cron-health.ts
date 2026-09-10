@@ -21,13 +21,13 @@ export const CRON_HEALTH_RULES = {
   schedulerHeartbeatStaleMs: 90_000,
 } as const;
 
-/** 当前连续失败次数：从最新往回数 fail，running 跳过不中断，遇到 success 归零 */
+/** 当前连续失败次数：从最新往回数 fail / timeout，running 跳过不中断，遇到 success 归零 */
 export function countConsecutiveFails(recentResults: readonly CronRunStatus[]): number {
   let count = 0;
   for (let i = recentResults.length - 1; i >= 0; i--) {
     const status = recentResults[i];
     if (status === 'running') continue;
-    if (status !== 'fail') break;
+    if (status !== 'fail' && status !== 'timeout') break;
     count++;
   }
   return count;

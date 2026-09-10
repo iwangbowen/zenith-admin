@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { CronJobLog, CronRunStatus } from '@zenith/shared/platform';
-import { CRON_RUN_STATUSES, CRON_RUN_STATUS_OPTIONS } from '@zenith/shared/platform';
+import type { CronJobLog, CronRunStatus, CronRunTrigger } from '@zenith/shared/platform';
+import { CRON_RUN_STATUSES, CRON_RUN_STATUS_OPTIONS, CRON_RUN_TRIGGERS, CRON_RUN_TRIGGER_LABELS, CRON_RUN_TRIGGER_OPTIONS } from '@zenith/shared/platform';
 import { enumValueOf } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -13,7 +13,7 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { formatDurationMs } from '@/utils/format';
 import { DATE_TIME_COLUMN_WIDTH, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { compactQuery } from '@/lib/query';
-import { RelativeTime, statusMeta, type RecentLogsSearchParams } from './cron-dashboard-shared';
+import { RelativeTime, TRIGGER_TAG, statusMeta, type RecentLogsSearchParams } from './cron-dashboard-shared';
 
 interface Props {
   readonly jobOptions: readonly { value: number; label: string }[];
@@ -31,6 +31,7 @@ export function CronJobRecentLogs({ jobOptions, now, search, onViewLogs }: Props
     pageSize,
     keyword: submittedParams.keyword,
     status: submittedParams.status,
+    trigger: submittedParams.trigger,
     jobId: submittedParams.jobId,
     ...formatDateTimeRangeForApi(submittedParams.range),
   }), [page, pageSize, submittedParams]);
@@ -64,25 +65,47 @@ export function CronJobRecentLogs({ jobOptions, now, search, onViewLogs }: Props
       },
     },
     {
+      title: '触发', dataIndex: 'trigger', width: 96,
+      render: (v: CronRunTrigger, r: CronJobLog) => (
+        <div className="cron-cell">
+          <span><Tag color={TRIGGER_TAG[v]} size="small" type="light">{CRON_RUN_TRIGGER_LABELS[v]}</Tag></span>
+          {r.attempt > 0 && <span className="cron-cell__sub">第 {r.attempt} 次重试</span>}
+        </div>
+      ),
+    },
+    {
       title: '耗时', dataIndex: 'durationMs', width: 96, align: 'right',
       render: (v: number | null, r: CronJobLog) => (r.status === 'running' ? <span style={{ color: 'var(--semi-color-text-2)' }}>运行中</span> : formatDurationMs(v)),
     },
+    {
+      title: '调度延迟', dataIndex: 'latencyMs', width: 100, align: 'right',
+      render: (v: number | null, r: CronJobLog) => (
+        <span title={r.scheduledAt ? `计划 ${r.scheduledAt}` : undefined} style={v != null && v >= 10_000 ? { color: 'var(--semi-color-warning)' } : undefined}>
+          {formatDurationMs(v == null ? null : Math.max(v, 0))}
+        </span>
+      ),
+    },
     dateTimeColumn('结束时间', 'endedAt'),
     {
-      title: '输出', dataIndex: 'output', minWidth: 240,
-      render: (v: string | null, r: CronJobLog) => (
-        <span style={r.status === 'fail' ? { color: 'var(--semi-color-danger)' } : undefined}>{renderEllipsis(v)}</span>
-      ),
+      title: '节点', dataIndex: 'nodeId', width: 150,
+      render: (v: string | null) => <span className="cron-mono" style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>{renderEllipsis(v)}</span>,
+    },
+    {
+      title: '输出 / 错误', dataIndex: 'output', minWidth: 240,
+      render: (v: string | null, r: CronJobLog) => (r.errorMessage
+        ? <span style={{ color: 'var(--semi-color-danger)' }}>{renderEllipsis(r.errorMessage)}</span>
+        : renderEllipsis(v)),
     },
   ];
 
   return (
     <>
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索任务名称 / 输出" {...bindKeyword('keyword')} />}
+        keyword={<KeywordInput placeholder="搜索任务名称 / 输出 / 错误" {...bindKeyword('keyword')} />}
         filters={(
           <>
             <StatusSelect items={CRON_RUN_STATUS_OPTIONS} {...bind('status', (v) => enumValueOf(CRON_RUN_STATUSES, v))} />
+            <FilterSelect placeholder="全部触发方式" items={CRON_RUN_TRIGGER_OPTIONS} {...bind('trigger', (v) => enumValueOf(CRON_RUN_TRIGGERS, v))} />
             <FilterSelect<number> placeholder="全部任务" items={jobOptions} width={180} {...bind('jobId')} />
             <DateRangeFilter {...bind('range')} />
           </>

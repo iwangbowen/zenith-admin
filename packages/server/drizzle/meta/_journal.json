@@ -29,6 +29,13 @@
       "when": 1788959655855,
       "tag": "0003_chat_unread_index",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789018929621,
+      "tag": "0004_cron_job_logs_execution_context",
+      "breakpoints": true
     }
   ]
 }

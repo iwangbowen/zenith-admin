@@ -28,6 +28,7 @@ import {
   P95_COLOR,
   RelativeTime,
   SUCCESS_COLOR,
+  TIMEOUT_COLOR,
   TrendMark,
   useRecentLogsSearch,
   type CronStatsDays,
@@ -226,6 +227,7 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
         total: d?.total ?? 0,
         successCount: d?.successCount ?? 0,
         failCount: d?.failCount ?? 0,
+        timeoutCount: d?.timeoutCount ?? 0,
         avgDurationMs: d?.avgDurationMs ?? 0,
         p95DurationMs: d?.p95DurationMs ?? 0,
       };
@@ -237,7 +239,10 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
     xField: 'date',
     palette,
     bar: { field: 'successCount', name: '成功', color: SUCCESS_COLOR },
-    stackedBars: [{ field: 'failCount', name: '失败', color: FAIL_COLOR }],
+    stackedBars: [
+      { field: 'failCount', name: '失败', color: FAIL_COLOR },
+      { field: 'timeoutCount', name: '超时', color: TIMEOUT_COLOR },
+    ],
     line: { field: 'avgDurationMs', name: '平均耗时', color: DURATION_COLOR, format: (v) => formatDurationMs(v) },
     extraLines: [{ field: 'p95DurationMs', name: 'P95 耗时', color: P95_COLOR, lineWidth: 1.5, showPoint: false, format: (v) => formatDurationMs(v) }],
     axis: { xLabel: (d) => d.slice(5), rightLabel: (v) => formatDurationMs(v) },
@@ -277,7 +282,8 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
   }), [heatmapData, palette]);
 
   const handleSelectError = (item: CronJobTopError) => {
-    recentLogsSearch.applySearch({ keyword: keywordFromNormalizedError(item.message), status: 'fail', jobId: undefined, range: null });
+    // 归一化错误同时来自失败与超时记录，不限定状态，只按关键字定位
+    recentLogsSearch.applySearch({ keyword: keywordFromNormalizedError(item.message), status: undefined, trigger: undefined, jobId: undefined, range: null });
     logsPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -319,7 +325,7 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
           />
           <StatCard
             title="今日成功率" value={todayRate == null ? '—' : `${todayRate}%`}
-            sub={`昨日全天 ${cronSuccessRatePercent(yesterday.successCount, yesterday.total) ?? '—'}%（${yesterday.total} 次）`}
+            sub={`昨日全天 ${cronSuccessRatePercent(yesterday.successCount, yesterday.total) ?? '—'}%`}
             accent={rateAccent(todayRate)}
             delta={calcSuccessRateDelta(today, yesterdaySameTime)} deltaLabel="较昨日同时段" deltaFormat="ratio"
           />
@@ -339,14 +345,29 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
             )}
           />
           <StatCard
-            title="失败次数" value={period.failCount}
+            title="失败 / 超时" value={`${period.failCount} / ${period.timeoutCount}`}
             sub={(
               <>
-                上期 {prevPeriod.failCount}{' '}
-                <TrendMark current={period.failCount} previous={prevPeriod.failCount} invert format={(d) => `${d}`} />
+                上期 {prevPeriod.failCount} / {prevPeriod.timeoutCount}{' '}
+                <TrendMark
+                  current={period.failCount + period.timeoutCount}
+                  previous={prevPeriod.failCount + prevPeriod.timeoutCount}
+                  invert
+                  format={(d) => `${d}`}
+                />
               </>
             )}
-            accent={period.failCount > 0 ? 'var(--semi-color-danger)' : undefined}
+            accent={period.failCount + period.timeoutCount > 0 ? 'var(--semi-color-danger)' : undefined}
+          />
+          <StatCard
+            title="平均调度延迟" value={formatDurationMs(period.avgLatencyMs)}
+            sub={(
+              <>
+                重试 {period.retryCount} · 手动 {period.manualCount}{' '}
+                <TrendMark current={period.avgLatencyMs} previous={prevPeriod.avgLatencyMs} invert format={(d) => formatDurationMs(d)} />
+              </>
+            )}
+            accent={period.avgLatencyMs != null && period.avgLatencyMs >= 10_000 ? 'var(--semi-color-warning)' : undefined}
           />
           <StatCard
             title="异常任务" value={alertingJobs}

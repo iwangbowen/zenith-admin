@@ -14,6 +14,7 @@ import {
   RecentResultBlocks,
   RelativeTime,
   SUCCESS_COLOR,
+  TIMEOUT_COLOR,
   TrendMark,
   statusMeta,
 } from './cron-dashboard-shared';
@@ -104,12 +105,16 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
       ),
     },
     {
-      title: '失败', dataIndex: 'failCount', width: 96, align: 'right',
-      sorter: numberSorter((r) => r.failCount),
+      title: '失败 / 超时', dataIndex: 'failCount', width: 110, align: 'right',
+      sorter: numberSorter((r) => r.failCount + r.timeoutCount),
       render: (_: unknown, r: CronJobStatsPerJob) => (
         <div className="cron-cell cron-cell--right">
-          <span style={r.failCount > 0 ? { color: FAIL_COLOR, fontWeight: 500 } : undefined}>{r.failCount}</span>
-          <span className="cron-cell__sub">今日 {r.todayFailCount}</span>
+          <span>
+            <span style={r.failCount > 0 ? { color: FAIL_COLOR, fontWeight: 500 } : undefined}>{r.failCount}</span>
+            <span style={{ color: 'var(--semi-color-text-3)' }}> / </span>
+            <span style={r.timeoutCount > 0 ? { color: TIMEOUT_COLOR, fontWeight: 500 } : undefined}>{r.timeoutCount}</span>
+          </span>
+          <span className="cron-cell__sub">今日 {r.todayFailCount}{r.retryCount > 0 ? ` · 重试 ${r.retryCount}` : ''}</span>
         </div>
       ),
     },
@@ -136,6 +141,15 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
       },
     },
     {
+      title: '调度延迟', dataIndex: 'avgLatencyMs', width: 100, align: 'right',
+      sorter: numberSorter((r) => r.avgLatencyMs),
+      render: (v: number | null) => (
+        <span style={v != null && v >= 10_000 ? { color: 'var(--semi-color-warning)' } : undefined} title="周期内平均：实际开始 − 计划触发">
+          {formatDurationMs(v == null ? null : Math.max(v, 0))}
+        </span>
+      ),
+    },
+    {
       // 复合列：状态 + 相对时间 + 精确时刻，宽度按时间列口径
       title: '最近执行', dataIndex: 'lastRunAt', width: DATE_TIME_COLUMN_WIDTH,
       sorter: (a?: CronJobStatsPerJob, b?: CronJobStatsPerJob) => (a && b ? (a.lastRunAt ?? '').localeCompare(b.lastRunAt ?? '') : 0),
@@ -149,7 +163,7 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
               {r.lastRunAt && <span style={{ color: 'var(--semi-color-text-2)' }}>· {formatRelativeTime(r.lastRunAt, now)}</span>}
             </div>
             <span className="cron-cell__sub" title={r.lastError ?? undefined}>
-              {r.lastRunStatus === 'fail' && r.lastError ? r.lastError : (r.lastRunAt ?? '尚无执行记录')}
+              {(r.lastRunStatus === 'fail' || r.lastRunStatus === 'timeout') && r.lastError ? r.lastError : (r.lastRunAt ?? '尚无执行记录')}
             </span>
           </div>
         );

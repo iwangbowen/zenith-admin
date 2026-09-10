@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { Tooltip } from '@douyinfe/semi-ui';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag/interface';
-import type { CronRunStatus } from '@zenith/shared/platform';
+import type { CronRunStatus, CronRunTrigger } from '@zenith/shared/platform';
 import { CRON_RUN_STATUS_LABELS } from '@zenith/shared/platform';
 import { cronJobKeys } from '@/hooks/queries/cron-jobs';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -12,6 +12,7 @@ import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 export const SUCCESS_COLOR = '#10b981';
 export const FAIL_COLOR = '#ef4444';
 export const RUNNING_COLOR = '#3b82f6';
+export const TIMEOUT_COLOR = '#f97316';
 export const DURATION_COLOR = '#8b5cf6';
 export const P95_COLOR = '#f59e0b';
 
@@ -23,11 +24,12 @@ export type CronStatsDays = (typeof CRON_STATS_DAYS_OPTIONS)[number];
 export interface RecentLogsSearchParams {
   keyword: string;
   status?: CronRunStatus;
+  trigger?: CronRunTrigger;
   jobId?: number;
   range?: [Date, Date] | null;
 }
 
-const RECENT_LOGS_DEFAULTS: RecentLogsSearchParams = { keyword: '', status: undefined, jobId: undefined, range: null };
+const RECENT_LOGS_DEFAULTS: RecentLogsSearchParams = { keyword: '', status: undefined, trigger: undefined, jobId: undefined, range: null };
 
 /** 执行记录面板的搜索状态：由概览页持有，失败原因榜单点击时经 `applySearch` 直接下发条件 */
 export function useRecentLogsSearch() {
@@ -38,6 +40,13 @@ export const RESULT_META: Record<CronRunStatus, { color: string; label: string; 
   success: { color: SUCCESS_COLOR, label: CRON_RUN_STATUS_LABELS.success, tag: 'green' },
   fail: { color: FAIL_COLOR, label: CRON_RUN_STATUS_LABELS.fail, tag: 'red' },
   running: { color: RUNNING_COLOR, label: CRON_RUN_STATUS_LABELS.running, tag: 'blue' },
+  timeout: { color: TIMEOUT_COLOR, label: CRON_RUN_STATUS_LABELS.timeout, tag: 'orange' },
+};
+
+export const TRIGGER_TAG: Record<CronRunTrigger, TagColor> = {
+  schedule: 'grey',
+  manual: 'blue',
+  retry: 'orange',
 };
 
 export function statusMeta(status: CronRunStatus | null): { label: string; color: string; tag: TagColor } {

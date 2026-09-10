@@ -238,7 +238,7 @@ export const CRON_JOB_STATUSES = ['enabled', 'disabled'] as const;
 
 export type CronJobStatus = (typeof CRON_JOB_STATUSES)[number];
 
-export const CRON_RUN_STATUSES = ['success', 'fail', 'running'] as const;
+export const CRON_RUN_STATUSES = ['success', 'fail', 'running', 'timeout'] as const;
 
 export type CronRunStatus = (typeof CRON_RUN_STATUSES)[number];
 
@@ -247,9 +247,23 @@ export const CRON_RUN_STATUS_LABELS: Record<(typeof CRON_RUN_STATUSES)[number], 
   success: '成功',
   fail: '失败',
   running: '运行中',
+  timeout: '超时',
 };
 
 export const CRON_RUN_STATUS_OPTIONS = createLabelOptionsFromMap(CRON_RUN_STATUS_LABELS);
+
+/** 执行触发方式：计划触发 / 手动执行 / 失败后重试 */
+export const CRON_RUN_TRIGGERS = ['schedule', 'manual', 'retry'] as const;
+
+export type CronRunTrigger = (typeof CRON_RUN_TRIGGERS)[number];
+
+export const CRON_RUN_TRIGGER_LABELS: Record<CronRunTrigger, string> = {
+  schedule: '计划',
+  manual: '手动',
+  retry: '重试',
+};
+
+export const CRON_RUN_TRIGGER_OPTIONS = createLabelOptionsFromMap(CRON_RUN_TRIGGER_LABELS);
 
 /** 执行概览健康提醒类型 */
 export const CRON_ALERT_TYPES = [

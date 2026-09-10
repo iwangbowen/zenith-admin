@@ -39,13 +39,18 @@ function average(values: number[]): number | null {
 
 function summarize(logs: readonly MockCronJobLog[]): CronJobRunSummary {
   const durations = logs.map((l) => l.durationMs).filter((d): d is number => d != null);
+  const latencies = logs.map((l) => l.latencyMs).filter((d): d is number => d != null && d >= 0);
   return {
     total: logs.length,
     successCount: logs.filter((l) => l.status === 'success').length,
     failCount: logs.filter((l) => l.status === 'fail').length,
+    timeoutCount: logs.filter((l) => l.status === 'timeout').length,
     runningCount: logs.filter((l) => l.status === 'running').length,
+    retryCount: logs.filter((l) => l.trigger === 'retry').length,
+    manualCount: logs.filter((l) => l.trigger === 'manual').length,
     avgDurationMs: average(durations),
     p95DurationMs: percentile(durations, 0.95),
+    avgLatencyMs: average(latencies),
   };
 }
 
@@ -84,7 +89,7 @@ export function buildMockCronJobStats(days: number): CronJobStats {
     const recent = all.slice(0, RECENT_LIMIT).reverse();
     const periodDurations = period.map((l) => l.durationMs).filter((d): d is number => d != null);
     const prevDurations = prev.map((l) => l.durationMs).filter((d): d is number => d != null);
-    const lastFail = all.find((l) => l.status === 'fail') ?? null;
+    const lastFail = all.find((l) => l.status === 'fail' || l.status === 'timeout') ?? null;
     const lastSuccess = all.find((l) => l.status === 'success') ?? null;
     const latest = all[0] ?? null;
     const successCount = period.filter((l) => l.status === 'success').length;
@@ -103,11 +108,13 @@ export function buildMockCronJobStats(days: number): CronJobStats {
       lastRunStatus: latest?.status ?? null,
       lastSuccessAt: lastSuccess?.startedAt ?? null,
       lastFailAt: lastFail?.startedAt ?? null,
-      lastError: lastFail?.output ?? null,
+      lastError: lastFail?.errorMessage ?? null,
       totalRuns: all.length,
       runs: period.length,
       successCount,
       failCount: period.filter((l) => l.status === 'fail').length,
+      timeoutCount: period.filter((l) => l.status === 'timeout').length,
+      retryCount: period.filter((l) => l.trigger === 'retry').length,
       successRate: cronSuccessRatePercent(successCount, period.length),
       prevSuccessRate: cronSuccessRatePercent(prevSuccessCount, prev.length),
       todayRuns: todayLogs.length,
@@ -116,6 +123,7 @@ export function buildMockCronJobStats(days: number): CronJobStats {
       prevAvgDurationMs: average(prevDurations),
       p95DurationMs: percentile(periodDurations, 0.95),
       maxDurationMs: periodDurations.length ? Math.max(...periodDurations) : null,
+      avgLatencyMs: average(period.map((l) => l.latencyMs).filter((d): d is number => d != null && d >= 0)),
       recentResults: recent.map((l) => l.status),
       recentDurations: recent.map((l) => l.durationMs),
       consecutiveFails: countConsecutiveFails(recent.map((l) => l.status)),
@@ -132,7 +140,7 @@ export function buildMockCronJobStats(days: number): CronJobStats {
     if (stat.consecutiveFails >= CRON_HEALTH_RULES.consecutiveFailThreshold) {
       push('consecutive_fail', 'danger', `连续失败 ${stat.consecutiveFails} 次`, stat.lastError);
     } else if (isCronLowSuccessRate(stat.successRate, stat.runs)) {
-      push('low_success_rate', 'warning', `成功率仅 ${stat.successRate}%（${stat.failCount}/${stat.runs} 次失败）`, stat.lastError);
+      push('low_success_rate', 'warning', `成功率仅 ${stat.successRate}%（失败 ${stat.failCount} · 超时 ${stat.timeoutCount} / ${stat.runs} 次）`, stat.lastError);
     }
     if (isCronNearTimeout(stat.avgDurationMs, job.monitorTimeout)) {
       push('near_timeout', 'warning', `平均耗时 ${Math.round((stat.avgDurationMs ?? 0) / 1000)} 秒，接近监控超时 ${job.monitorTimeout} 秒，有超时风险`);
@@ -154,7 +162,7 @@ export function buildMockCronJobStats(days: number): CronJobStats {
   }
   const dailyStats = [...dailyMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, list]) => {
     const s = summarize(list);
-    return { date, total: s.total, successCount: s.successCount, failCount: s.failCount, avgDurationMs: s.avgDurationMs, p95DurationMs: s.p95DurationMs };
+    return { date, total: s.total, successCount: s.successCount, failCount: s.failCount, timeoutCount: s.timeoutCount, avgDurationMs: s.avgDurationMs, p95DurationMs: s.p95DurationMs };
   });
 
   const dowHourMap = new Map<string, { dow: number; hour: number; total: number; failCount: number }>();
@@ -164,14 +172,14 @@ export function buildMockCronJobStats(days: number): CronJobStats {
     const key = `${dow}-${d.hour()}`;
     const cell = dowHourMap.get(key) ?? { dow, hour: d.hour(), total: 0, failCount: 0 };
     cell.total += 1;
-    if (l.status === 'fail') cell.failCount += 1;
+    if (l.status === 'fail' || l.status === 'timeout') cell.failCount += 1;
     dowHourMap.set(key, cell);
   }
 
   const errorMap = new Map<string, { count: number; jobNames: Set<string>; lastTs: number }>();
   for (const l of periodLogs) {
-    if (l.status !== 'fail') continue;
-    const message = (l.output ?? '').replaceAll(/\d+/g, '#').slice(0, 200);
+    if (l.status !== 'fail' && l.status !== 'timeout') continue;
+    const message = (l.errorMessage ?? l.output ?? '').replaceAll(/\d+/g, '#').slice(0, 200);
     const entry = errorMap.get(message) ?? { count: 0, jobNames: new Set<string>(), lastTs: 0 };
     entry.count += 1;
     entry.jobNames.add(l.jobName);
