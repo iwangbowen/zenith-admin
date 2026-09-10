@@ -13,7 +13,7 @@ import {
 } from '../../services/cms/cms-render.service';
 import { verifyContentPreviewToken } from '../../services/cms/cms-preview.service';
 import { readStaticFile, writeStaticFile, generateSitemapXml, buildRobotsTxt, isCmsStaticArtifactCurrent, assertCmsHybridWriteSafe } from '../../services/cms/cms-static.service';
-import { generateRssXml, findChannelByPath, ensureSiteThemeCssAsset } from '../../services/cms/cms-render.service';
+import { generateRssXml, findChannelByPath, ensureSiteThemeCssAsset, ensureSiteIslandsAsset } from '../../services/cms/cms-render.service';
 import { recordCmsVisit, pageKindFromPath } from '../../services/cms/cms-stats.service';
 import { optionalMemberSessionMiddleware } from '../../middleware/optional-member-session';
 import { resolveDynamicCmsPageForPath } from '../../services/cms/cms-pages.service';
@@ -171,6 +171,23 @@ export function createCmsFrontendRoutes(): Hono {
       const isCurrent = sitePath === asset.relPath;
       return c.newResponse(asset.css, 200, {
         'Content-Type': 'text/css; charset=utf-8',
+        'Cache-Control': isCurrent ? 'public, max-age=31536000, immutable' : 'no-cache',
+      });
+    }
+
+    // 岛脚本资产（同上规则；内容全站相同，按内容指纹命名）
+    if (sitePath.startsWith('_assets/') && sitePath.endsWith('.js')) {
+      const cached = await readStaticFile(site.code, sitePath);
+      if (cached !== null) {
+        return c.newResponse(cached, 200, {
+          'Content-Type': 'text/javascript; charset=utf-8',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        });
+      }
+      const asset = await ensureSiteIslandsAsset(site);
+      const isCurrent = sitePath === asset.relPath;
+      return c.newResponse(asset.js, 200, {
+        'Content-Type': 'text/javascript; charset=utf-8',
         'Cache-Control': isCurrent ? 'public, max-age=31536000, immutable' : 'no-cache',
       });
     }

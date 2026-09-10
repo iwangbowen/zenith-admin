@@ -9,7 +9,7 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/**/*.typecheck.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/**/*.typecheck.ts", "src/cms/islands/**"],
   "references": [
     { "path": "../shared" }
   ]

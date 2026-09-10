@@ -198,8 +198,10 @@ export interface CmsBaseContext {
   /**
    * 主题样式资产（渲染管线装配）：正式渲染输出外链 cssHref（/_assets/theme.{hash}.css，
    * immutable 缓存）；预览渲染内联 inlineCss 保证改动即时可见。SeoHead 统一消费。
+   * jsHref：前台岛脚本（/_assets/islands.{hash}.js，type=module 外链），正式与预览渲染均输出，
+   * 站点无关；null 时不输出脚本标签（如快照 / 部件缩略图等无交互场景）。
    */
-  assets: { cssHref: string | null; inlineCss: string | null; darkMode: 'auto' | 'light' | 'dark' };
+  assets: { cssHref: string | null; inlineCss: string | null; darkMode: 'auto' | 'light' | 'dark'; jsHref: string | null };
 }
 
 export interface CmsHomeContext extends CmsBaseContext {

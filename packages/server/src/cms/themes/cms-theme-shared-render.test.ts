@@ -81,7 +81,7 @@ function base(theme: string): CmsBaseContext {
     analytics: null,
     langAlternates: [],
     audience: { dynamic: false, member: false },
-    assets: { cssHref: null, inlineCss: '', darkMode: 'light' },
+    assets: { cssHref: null, inlineCss: '', darkMode: 'light', jsHref: null },
   };
 }
 

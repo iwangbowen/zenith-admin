@@ -91,6 +91,8 @@ export function SeoHead({ ctx, langAlternates = false, children }: SeoHeadProps)
       {assets.cssHref
         ? <link rel="stylesheet" href={assets.cssHref} />
         : <style dangerouslySetInnerHTML={{ __html: assets.inlineCss ?? '' }} />}
+      {/* 前台岛脚本：module 默认 defer，放 head 以尽早并行下载；无 src 才需要 CSP 哈希，外链由 'self' 放行 */}
+      {assets.jsHref ? <script type="module" src={assets.jsHref} /> : null}
       {assets.darkMode !== 'light' ? (
         <script dangerouslySetInnerHTML={{ __html: THEME_TOGGLE_SCRIPT }} />
       ) : null}

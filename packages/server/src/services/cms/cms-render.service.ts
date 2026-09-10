@@ -14,6 +14,7 @@ import type {
 } from '../../cms/themes/types';
 import { isHomeTemplateDefinition } from '../../cms/themes/sdk';
 import { buildSiteThemeCss } from '../../cms/themes/theme-css';
+import { getIslandsAsset, type IslandsAsset } from '../../cms/themes/islands-asset';
 import { resolveStaticFile } from './cms-static-path';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -269,19 +270,41 @@ export async function ensureSiteThemeCssAsset(site: CmsSiteRow): Promise<{ relPa
   return { relPath, hash: result.hash, css: result.css, darkMode: result.darkMode };
 }
 
+// ─── 岛脚本资产 ───────────────────────────────────────────────────────────────
+
+/**
+ * 确保站点目录下存在当前指纹的岛脚本（_assets/islands.{hash}.js），返回相对路径与内容。
+ * 内容全站相同、按内容指纹命名，与主题 CSS 资产同一套落盘 / 自愈规则；前台 _assets 路由 miss 时调用。
+ */
+export async function ensureSiteIslandsAsset(site: CmsSiteRow): Promise<IslandsAsset> {
+  const asset = await getIslandsAsset();
+  const abs = resolveStaticFile(site.code, asset.relPath);
+  if (abs) {
+    try {
+      await fs.access(abs);
+    } catch {
+      await fs.mkdir(path.dirname(abs), { recursive: true });
+      await fs.writeFile(abs, asset.js, 'utf8');
+    }
+  }
+  return asset;
+}
+
 /**
  * 主题样式资产装配：预览路径内联（改主题/参数即时可见、不落盘），
  * 正式渲染确保指纹资产落盘并输出外链。
+ * 岛脚本正式与预览均为外链（预览不落盘，_assets 路由 miss 时现场自愈）。
  */
 async function resolveThemeAssets(site: CmsSiteRow, baseUrl: string): Promise<CmsBaseContext['assets']> {
   const isPreview = baseUrl !== '';
   if (isPreview) {
     const theme = getBuiltinThemeFallback(site.theme);
     const result = buildSiteThemeCss(theme, site.settings as Record<string, unknown> | null);
-    return { cssHref: null, inlineCss: result.css, darkMode: result.darkMode };
+    const islands = await getIslandsAsset();
+    return { cssHref: null, inlineCss: result.css, darkMode: result.darkMode, jsHref: `${baseUrl}/${islands.relPath}` };
   }
-  const asset = await ensureSiteThemeCssAsset(site);
-  return { cssHref: `${baseUrl}/${asset.relPath}`, inlineCss: null, darkMode: asset.darkMode };
+  const [asset, islands] = await Promise.all([ensureSiteThemeCssAsset(site), ensureSiteIslandsAsset(site)]);
+  return { cssHref: `${baseUrl}/${asset.relPath}`, inlineCss: null, darkMode: asset.darkMode, jsHref: `${baseUrl}/${islands.relPath}` };
 }
 
 /**

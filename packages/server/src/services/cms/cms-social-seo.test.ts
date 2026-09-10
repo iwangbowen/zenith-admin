@@ -51,7 +51,7 @@ describe('CMS social SEO rendering behavior', () => {
       analytics: null,
       langAlternates: [],
       audience: { dynamic: false, member: false },
-      assets: { cssHref: null, inlineCss: '', darkMode: 'light' },
+      assets: { cssHref: null, inlineCss: '', darkMode: 'light', jsHref: null },
     } as CmsBaseContext;
     const htmlOutputs = [
       renderToStaticMarkup(createElement(DefaultLayout, { ctx, currentUrl: '/', children: 'body' })),
