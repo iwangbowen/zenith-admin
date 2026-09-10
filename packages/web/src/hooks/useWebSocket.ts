@@ -11,6 +11,8 @@ const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
 
 const MAX_RECONNECT_DELAY = 30_000;
 const BASE_RECONNECT_DELAY = 1_000;
+/** 重连退避的随机抖动幅度（±50%）：服务重启 / 网络抖动时全体客户端不会在同一秒同时重连，摊平 WS 与补拉请求的尖峰 */
+const RECONNECT_JITTER = 0.5;
 /** 心跳间隔（毫秒）：每 25s 发一次 ping */
 const HEARTBEAT_INTERVAL = 25_000;
 /** 等待 pong 超时（毫秒）：超时则认为连接已断，主动关闭并重连 */
@@ -48,7 +50,8 @@ function notifyStatus(connected: boolean) {
 
 function scheduleReconnect() {
   if (reconnectTimer || manuallyClosed || listeners.size === 0) return;
-  const delay = Math.min(BASE_RECONNECT_DELAY * 2 ** reconnectRetries, MAX_RECONNECT_DELAY);
+  const baseDelay = Math.min(BASE_RECONNECT_DELAY * 2 ** reconnectRetries, MAX_RECONNECT_DELAY);
+  const delay = Math.round(baseDelay * (1 + RECONNECT_JITTER * (2 * Math.random() - 1)));
   reconnectRetries += 1;
   reconnectTimer = setTimeout(() => connectSharedSocket(), delay);
 }

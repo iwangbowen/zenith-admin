@@ -6,6 +6,7 @@ import { confirmDelete } from '@/utils/confirm';
 import { useChatAnnouncementHistory, useDeleteChatAnnouncementHistory } from '@/hooks/queries/chat';
 import type { ChatConversation, ChatMessage, ChatMessageContext, ChatGroupMember, ChatReadState } from '@zenith/shared/chat';
 import type { MessageReadReceipt, Setter } from '../types';
+import { applyPresenceToLastSeen, applyPresenceToOnlineIds } from '../utils-state';
 
 const EMPTY_ANNOUNCEMENT_HISTORY: ChatMessage[] = [];
 
@@ -115,19 +116,8 @@ export function useConversationExtras({
     if (ids.length === 0) return;
     const presence = await api(chatContract.presence, { query: { userIds: ids.join(',') } }, { silent: true }).catch(() => null);
     if (!presence) return;
-    setOnlineUserIds((prev) => {
-      const next = new Set(prev);
-      for (const p of presence) {
-        if (p.online) next.add(p.userId);
-        else next.delete(p.userId);
-      }
-      return next;
-    });
-    setLastSeenMap((prev) => {
-      const next = { ...prev };
-      for (const p of presence) next[p.userId] = p.lastSeen;
-      return next;
-    });
+    setOnlineUserIds(applyPresenceToOnlineIds(presence));
+    setLastSeenMap(applyPresenceToLastSeen(presence));
   }, []);
 
   useEffect(() => {

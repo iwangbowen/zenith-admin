@@ -26,7 +26,7 @@ import { buildListResult } from '../../lib/list-query';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
-import { broadcast, scheduleSendToUsers } from '../../lib/ws-manager';
+import { broadcast, scheduleBroadcast, scheduleSendToUsers } from '../../lib/ws-manager';
 import { keywordCondition } from '../../lib/where-helpers';
 import { sanitizeCmsHtml } from '../cms/cms-html-sanitizer';
 import logger from '../../lib/logger';
@@ -110,8 +110,8 @@ export async function publishBroadcast(channelId: number, input: PublishInput): 
   }).returning();
 
   const msg = mapChannelMessage(row, false);
-  const allUsers = await db.select({ userId: users.id }).from(users);
-  scheduleSendToUsers(allUsers, { type: 'channel:message', payload: msg });
+  // 全员消息直接推给全部在线连接（WS 仅管理员可连，与 users 全表等价），省掉整表查询
+  scheduleBroadcast({ type: 'channel:message', payload: msg });
   return msg;
 }
 
@@ -291,8 +291,7 @@ export async function markChannelCardDone(messageId: number, statusText: string)
 
   const msg = mapChannelMessage(updated, false);
   if (updated.audienceType === 'broadcast') {
-    const allUsers = await db.select({ userId: users.id }).from(users);
-    scheduleSendToUsers(allUsers, { type: 'channel:message', payload: msg });
+    scheduleBroadcast({ type: 'channel:message', payload: msg });
   } else {
     const tg = await db.select({ userId: channelMessageTargets.userId })
       .from(channelMessageTargets).where(eq(channelMessageTargets.messageId, messageId));
@@ -543,8 +542,7 @@ async function deliverDeferredRow(row: ChannelMessageRow): Promise<void> {
   await db.update(channelMessages).set({ status: 'sent' }).where(eq(channelMessages.id, row.id));
   const msg = mapChannelMessage({ ...row, status: 'sent' }, false);
   if (row.audienceType === 'broadcast') {
-    const allUsers = await db.select({ userId: users.id }).from(users);
-    scheduleSendToUsers(allUsers, { type: 'channel:message', payload: msg });
+    scheduleBroadcast({ type: 'channel:message', payload: msg });
     return;
   }
   const spec = (row.targetSpec as ChannelPublishAudienceInput | null) ?? { mode: 'all' };

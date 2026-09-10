@@ -9,7 +9,7 @@ import { chatKeys } from '@/hooks/queries/chat';
 import type { ChatConversation, ChatMessage, ChatReadState } from '@zenith/shared/chat';
 import type { Channel } from '@zenith/shared/messaging';
 import type { WsMessage } from '@zenith/shared/platform';
-import { getNextMentionUnread, markConversationReadById, recallMessageById, removeConversationById, removeMessageById, setMessageReactions, setMessageVoteData } from '../utils-state';
+import { getNextMentionUnread, markConversationReadById, recallMessageById, removeConversationById, removeMessageById, setMessageReactions, setMessageVoteData, applyPresenceToLastSeen, applyPresenceToOnlineIds } from '../utils-state';
 import type { GroupAvatarMap, Setter, TypingUsersMap } from '../types';
 
 /** WebSocket 消息分发、群头像成员刷新、触底/触顶回调、断线重连兜底（自 ChatPage 原样搬移） */
@@ -210,14 +210,8 @@ export function useChatWebSocket({
       if (conversationId !== activeConvId || userId === currentUserId) return;
       setReadStates((prev) => prev.map((s) => (s.userId === userId ? { ...s, lastReadAt: readAt } : s)));
     } else if (wsMsg.type === 'chat:presence') {
-      const { userId, online, lastSeen } = wsMsg.payload;
-      setOnlineUserIds((prev) => {
-        const next = new Set(prev);
-        if (online) next.add(userId);
-        else next.delete(userId);
-        return next;
-      });
-      setLastSeenMap((prev) => ({ ...prev, [userId]: online ? null : lastSeen }));
+      setOnlineUserIds(applyPresenceToOnlineIds(wsMsg.payload));
+      setLastSeenMap(applyPresenceToLastSeen(wsMsg.payload));
     }
   }, [activeChannelId, activeConvId, appendMessageOnce, applyMessageUpdate, conversations, currentUserId, fetchConversations, queryClient, refreshGroupAvatarMembers]);
 

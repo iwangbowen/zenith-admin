@@ -1,4 +1,5 @@
 import type { WSContext } from 'hono/ws';
+import type { ChatPresence } from '@zenith/shared/chat';
 import type { WsMessage } from '@zenith/shared/platform';
 import { formatDateTime } from './datetime';
 
@@ -44,7 +45,30 @@ function trySend(ws: WSContext, data: string, tokenId: string) {
   } catch { /* connection may be stale */ }
 }
 
+function recordDisconnect(tokenId: string, userId: number, reason: string) {
+  const meta = connMeta.get(tokenId);
+  if (!meta) return;
+  counters.totalDisconnects += 1;
+  const now = Date.now();
+  recentDisconnects.unshift({
+    tokenId,
+    userId,
+    at: now,
+    reason,
+    duration: now - meta.connectedAt,
+    sent: meta.sent,
+    recv: meta.recv,
+  });
+  if (recentDisconnects.length > RECENT_DISCONNECT_MAX) {
+    recentDisconnects.length = RECENT_DISCONNECT_MAX;
+  }
+  connMeta.delete(tokenId);
+}
+
 export function registerConnection(userId: number, tokenId: string, ws: WSContext) {
+  // 同一 access token 再次登记（断网后重连 / 多标签页）：旧 socket 让位并按断开计入统计
+  const previous = tokenConnections.get(tokenId);
+  if (previous && previous !== ws) recordDisconnect(tokenId, userId, 'replaced');
   tokenConnections.set(tokenId, ws);
   let set = userTokens.get(userId);
   const wentOnline = !set || set.size === 0;
@@ -58,11 +82,22 @@ export function registerConnection(userId: number, tokenId: string, ws: WSContex
   counters.totalConnects += 1;
   if (wentOnline) {
     userLastSeen.delete(userId);
-    broadcastPresence(userId, true);
+    queuePresenceChange(userId);
   }
 }
 
-export function removeConnection(userId: number, tokenId: string, reason = 'close') {
+/** 该 token 是否已由另一个 socket 接管（同一 access token 断网重连 / 多标签页时旧连接为 true） */
+export function isSupersededConnection(tokenId: string, ws: WSContext): boolean {
+  const current = tokenConnections.get(tokenId);
+  return current !== undefined && current !== ws;
+}
+
+/**
+ * 移除连接。传入 ws 时若该 token 已被新 socket 接管则直接忽略：
+ * 旧 socket 迟到的 close 不得把活连接删掉、也不得把用户标为离线
+ */
+export function removeConnection(userId: number, tokenId: string, reason = 'close', ws?: WSContext) {
+  if (ws && isSupersededConnection(tokenId, ws)) return;
   tokenConnections.delete(tokenId);
   const set = userTokens.get(userId);
   let wentOffline = false;
@@ -73,27 +108,10 @@ export function removeConnection(userId: number, tokenId: string, reason = 'clos
       wentOffline = true;
     }
   }
-  const meta = connMeta.get(tokenId);
-  if (meta) {
-    counters.totalDisconnects += 1;
-    const now = Date.now();
-    recentDisconnects.unshift({
-      tokenId,
-      userId,
-      at: now,
-      reason,
-      duration: now - meta.connectedAt,
-      sent: meta.sent,
-      recv: meta.recv,
-    });
-    if (recentDisconnects.length > RECENT_DISCONNECT_MAX) {
-      recentDisconnects.length = RECENT_DISCONNECT_MAX;
-    }
-    connMeta.delete(tokenId);
-  }
+  recordDisconnect(tokenId, userId, reason);
   if (wentOffline) {
     userLastSeen.set(userId, Date.now());
-    broadcastPresence(userId, false);
+    queuePresenceChange(userId);
   }
 }
 
@@ -143,7 +161,7 @@ export function closeTokenConnection(tokenId: string, reason?: string) {
   } catch { /* ignore */ }
   const meta = connMeta.get(tokenId);
   if (meta) {
-    removeConnection(meta.userId, tokenId, reason ?? 'force-logout');
+    removeConnection(meta.userId, tokenId, reason ?? 'force-logout', ws);
   } else {
     tokenConnections.delete(tokenId);
   }
@@ -160,7 +178,7 @@ export function closeUserConnections(userId: number, reason?: string) {
     try {
       ws.close(1000, reason ?? 'force-logout');
     } catch { /* ignore */ }
-    removeConnection(userId, tokenId, reason ?? 'force-logout');
+    removeConnection(userId, tokenId, reason ?? 'force-logout', ws);
   }
 }
 
@@ -177,7 +195,17 @@ export function scheduleSendToUsers(members: { userId: number }[], message: WsMe
   });
 }
 
+/** 全量广播的延后版本：先让当前 HTTP 响应落盘，下一个 I/O tick 再推送 */
+export function scheduleBroadcast(message: WsMessage): void {
+  setImmediate(() => broadcast(message));
+}
+
 // ─── 在线状态（presence）─────────────────────────────────────────────────
+/** presence 变更合并窗口（ms）：窗口内的上下线折叠为一条批量广播，重连风暴下从 O(N²) 条消息降为 O(N) */
+const PRESENCE_FLUSH_DELAY_MS = 1_000;
+const pendingPresenceUserIds = new Set<number>();
+let presenceFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
 /** 用户是否在线（至少有一个活跃连接） */
 export function isUserOnline(userId: number): boolean {
   return userTokens.has(userId);
@@ -194,12 +222,30 @@ export function getUserLastSeen(userId: number): number | null {
   return userLastSeen.get(userId) ?? null;
 }
 
-/** 上下线变更时向所有连接广播在线状态 */
-function broadcastPresence(userId: number, online: boolean): void {
-  broadcast({
-    type: 'chat:presence',
-    payload: { userId, online, lastSeen: online ? null : formatDateTime(new Date()) },
-  });
+/** 单个用户的在线状态快照（WS 推送与 GET /api/chat/presence 同一口径） */
+export function getUserPresence(userId: number): ChatPresence {
+  const lastSeenMs = getUserLastSeen(userId);
+  return {
+    userId,
+    online: isUserOnline(userId),
+    lastSeen: lastSeenMs === null ? null : formatDateTime(new Date(lastSeenMs)),
+  };
+}
+
+/** 上下线变更进入合并窗口；到期按 flush 时刻的真实连接状态一次性广播 */
+function queuePresenceChange(userId: number): void {
+  pendingPresenceUserIds.add(userId);
+  if (presenceFlushTimer) return;
+  presenceFlushTimer = setTimeout(flushPresenceChanges, PRESENCE_FLUSH_DELAY_MS);
+}
+
+function flushPresenceChanges(): void {
+  presenceFlushTimer = null;
+  if (pendingPresenceUserIds.size === 0) return;
+  const changes = [...pendingPresenceUserIds].map(getUserPresence);
+  pendingPresenceUserIds.clear();
+  if (tokenConnections.size === 0) return;
+  broadcast({ type: 'chat:presence', payload: changes });
 }
 
 // ─── 监控查询 ──────────────────────────────────────────────────────────

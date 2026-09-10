@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatReactionGroup, ChatVoteData } from '../chat/contracts';
+import type { ChatMessage, ChatPresence, ChatReactionGroup, ChatVoteData } from '../chat/contracts';
 import type { RtcIceCandidateInit, RtcInvitePayload, RtcPeerInfo } from '../chat/types';
 import type { Announcement, ChannelMessage, InAppMessage } from '../messaging/contracts';
 import type { MpMessageDirection, MpMessageType } from '../mp/constants';
@@ -43,7 +43,7 @@ export type WsMessage =
   | { type: 'chat:reaction'; payload: { conversationId: number; messageId: number; reactions: ChatReactionGroup[] } }
   | { type: 'chat:edit'; payload: ChatMessage }
   | { type: 'chat:vote-update'; payload: { conversationId: number; messageId: number; voteData: ChatVoteData } }
-  | { type: 'chat:presence'; payload: { userId: number; online: boolean; lastSeen: string | null } }
+  | { type: 'chat:presence'; payload: ChatPresence[] }
   | { type: 'channel:message'; payload: ChannelMessage }
   | { type: 'channel:message-retract'; payload: { channelId: number; messageId: number } }
   | { type: 'channel:cs-message'; payload: { channelId: number } }

@@ -49,7 +49,7 @@ Sec-WebSocket-Protocol: zenith-auth, eyJ...
 | `chat:reaction` | `unknown` | 表情回应 |
 | `chat:edit` | `unknown` | 编辑消息 |
 | `chat:vote-update` | `unknown` | 投票更新 |
-| `chat:presence` | `unknown` | 在线状态 |
+| `chat:presence` | `ChatPresence[]`（`@zenith/shared/chat`） | 在线状态变更；服务端按 1 秒窗口合并后批量推送 |
 | `channel:message` | `ChannelMessage`（`@zenith/shared/messaging`） | 频道消息 |
 | `channel:message-retract` | `unknown` | 频道消息撤回 |
 | `channel:cs-message` | `unknown` | 客服消息 |

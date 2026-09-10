@@ -1,9 +1,8 @@
 import { eq, and } from 'drizzle-orm';
 import { db } from '../../db';
 import { chatConversations, chatConversationMembers, chatMessages } from '../../db/schema';
-import { scheduleSendToUsers, isUserOnline, getUserLastSeen } from '../../lib/ws-manager';
+import { scheduleSendToUsers, getUserPresence } from '../../lib/ws-manager';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
 import { config } from '../../config';
 import { requireRow } from '../../lib/db-assert';
 import type { ChatCallRecordInput, ChatPresence, RtcConfig } from '@zenith/shared/chat';
@@ -12,16 +11,7 @@ import { mapChatMessage, listConversationMemberIds } from './chat-shared';
 // ─── 在线状态：批量查询用户在线/最近在线 ───────────────────────────────────────
 
 export function getPresenceForUsers(userIds: number[]): ChatPresence[] {
-  const unique = [...new Set(userIds)];
-  return unique.map((userId) => {
-    const online = isUserOnline(userId);
-    const lastSeenMs = online ? null : getUserLastSeen(userId);
-    return {
-      userId,
-      online,
-      lastSeen: lastSeenMs ? formatDateTime(new Date(lastSeenMs)) : null,
-    };
-  });
+  return [...new Set(userIds)].map(getUserPresence);
 }
 
 // ─── WebRTC 音视频通话 ───────────────────────────────────────────────────────

@@ -231,7 +231,7 @@ WebSocket 断开期间仍可通过 HTTP 接口发送消息。重连成功后，�
 | `chat:typing` | 客户端 → 服务端 → 客户端 | 输入中状态，服务端转发给会话内其他成员 |
 | `chat:reaction` | 服务端 → 客户端 | 表情回应聚合结果变化 |
 | `chat:vote-update` | 服务端 → 客户端 | 投票数据变化 |
-| `chat:presence` | 服务端 → 客户端 | 用户上线 / 下线状态，包含 `lastSeen` |
+| `chat:presence` | 服务端 → 客户端 | 用户上线 / 下线状态批量变更（`ChatPresence[]`，含 `lastSeen`） |
 | `channel:message` | 服务端 → 客户端 | 频道或客服消息实时追加 |
 | `channel:message-retract` | 服务端 → 客户端 | 频道或客服消息撤回 |
 | `channel:cs-message` | 服务端 → 客户端 | 客服工作台轻量刷新信号 |
@@ -245,8 +245,10 @@ WebSocket 断开期间仍可通过 HTTP 接口发送消息。重连成功后，�
 
 - 用户至少存在一个活跃连接时为在线
 - 用户全部连接断开时记录 `lastSeen`
-- 上线 / 下线广播 `chat:presence`
-- 批量查询接口为 `GET /api/chat/presence?userIds=1,2,3`
+- 上线 / 下线变更进入 1 秒合并窗口，到期以当时的真实连接状态批量广播一条 `chat:presence`（窗口内的抖动被折叠；
+  服务重启后全体客户端重连时消息量从 O(N²) 降为 O(N)）
+- 同一 access token 重连（断网恢复 / 多标签页）时新连接接管登记，旧连接迟到的 close 不会把用户误标为离线
+- 批量查询接口为 `GET /api/chat/presence?userIds=1,2,3`；前端在会话列表或群成员变化、断线重连后以此接口重拉快照
 
 ### WebRTC 信令
 

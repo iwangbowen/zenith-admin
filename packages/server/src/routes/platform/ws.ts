@@ -14,7 +14,7 @@ import type { UpgradeWebSocket } from 'hono/ws';
 import { z } from 'zod';
 import type { JwtPayload } from '../../middleware/auth';
 import { authenticateAdminWs } from '../../lib/ws-auth';
-import { registerConnection, removeConnection, sendToUser, incWsRecv } from '../../lib/ws-manager';
+import { registerConnection, removeConnection, sendToUser, incWsRecv, isSupersededConnection } from '../../lib/ws-manager';
 import { getCallConversation, joinRoom, leaveAllRooms, leaveRoom } from '../../lib/rtc-manager';
 import { getConversationMemberIds } from '../../lib/chat-member-cache';
 import type { RtcPeerInfo } from '@zenith/shared/chat';
@@ -240,9 +240,11 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
             await handleRtc(identity, frame);
           } catch { /* 成员查询失败等：丢弃该帧 */ }
         },
-        onClose(evt, _ws) {
+        onClose(evt, ws) {
           if (!identity) return;
           const { userId, jti } = identity.payload;
+          // 同一 token 已由新连接接管（断网重连 / 多标签页）：迟到的 close 不做任何按用户维度的清理
+          if (isSupersededConnection(jti ?? '', ws)) return;
           // 断线：离开所有群通话房间并通知其余成员
           for (const { callId: id, conversationId, remaining } of leaveAllRooms(userId)) {
             for (const target of remaining) {
@@ -252,7 +254,7 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
           const reason = evt && typeof evt === 'object' && 'reason' in evt && typeof (evt as { reason: unknown }).reason === 'string'
             ? ((evt as { reason: string }).reason || 'close')
             : 'close';
-          removeConnection(userId, jti ?? '', reason);
+          removeConnection(userId, jti ?? '', reason, ws);
         },
         onError() {
           // 连接级错误由 @hono/node-server 的 WS 适配器内部处理

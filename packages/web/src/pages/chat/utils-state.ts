@@ -1,4 +1,4 @@
-import type { ChatConversation, ChatGroupMember, ChatMessage, ChatVoteData } from '@zenith/shared/chat';
+import type { ChatConversation, ChatGroupMember, ChatMessage, ChatPresence, ChatVoteData } from '@zenith/shared/chat';
 import type { Channel } from '@zenith/shared/messaging';
 import type { FailedMessage, LeftListItem } from './types';
 import { getAssetMeta } from './utils';
@@ -79,6 +79,21 @@ export function formatPresenceText(online: boolean, lastSeen: string | null | un
   if (!lastSeen) return '离线';
   return `最近在线 ${lastSeen.slice(5, 16)}`;
 }
+
+// 批量在线状态合并进本地 state（WS 推送与 GET /api/chat/presence 快照共用同一份逻辑）
+export const applyPresenceToOnlineIds = (changes: ChatPresence[]) => (prev: Set<number>) => {
+  const next = new Set(prev);
+  for (const p of changes) {
+    if (p.online) next.add(p.userId);
+    else next.delete(p.userId);
+  }
+  return next;
+};
+export const applyPresenceToLastSeen = (changes: ChatPresence[]) => (prev: Record<number, string | null>) => {
+  const next = { ...prev };
+  for (const p of changes) next[p.userId] = p.lastSeen;
+  return next;
+};
 
 /** 左栏列表派生数据（纯函数）：搜索过滤 + 归档分组 + 频道/会话混排 */
 export function computeLeftListModel({ conversations, channels, convSearch, showArchived }: {
