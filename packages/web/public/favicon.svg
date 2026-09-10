@@ -1,17 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#4d8aff"/>
-      <stop offset="100%" stop-color="#3370ff"/>
+    <linearGradient id="top" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8dbbff"/>
+      <stop offset="1" stop-color="#63a0ff"/>
+    </linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b64f0"/>
+      <stop offset="1" stop-color="#4483ff"/>
+    </linearGradient>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1f50d8"/>
+      <stop offset="1" stop-color="#163fb5"/>
     </linearGradient>
   </defs>
-  <rect width="32" height="32" rx="7" fill="url(#g)"/>
-  <text
-    x="16" y="23"
-    text-anchor="middle"
-    font-family="system-ui,-apple-system,BlinkMacSystemFont,sans-serif"
-    font-size="22"
-    font-weight="700"
-    fill="white"
-  >Z</text>
+  <path d="M14 7 L56 7 L33.9 19 L14 19Z" fill="url(#top)" stroke="url(#top)" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M56 7 L33.9 19 L6.84 57 L32.62 43Z" fill="url(#band)" stroke="url(#band)" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M32.62 43 L58 43 L58 57 L6.84 57Z" fill="url(#base)" stroke="url(#base)" stroke-width="2.5" stroke-linejoin="round"/>
 </svg>

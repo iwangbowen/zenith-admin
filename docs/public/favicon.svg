@@ -1,10 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="18" fill="url(#g)"/>
-  <path d="M18 20H46L24 44H46" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
   <defs>
-    <linearGradient id="g" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#60A5FA"/>
-      <stop offset="1" stop-color="#1D4ED8"/>
+    <linearGradient id="top" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8dbbff"/>
+      <stop offset="1" stop-color="#63a0ff"/>
+    </linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b64f0"/>
+      <stop offset="1" stop-color="#4483ff"/>
+    </linearGradient>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1f50d8"/>
+      <stop offset="1" stop-color="#163fb5"/>
     </linearGradient>
   </defs>
+  <path d="M14 7 L56 7 L33.9 19 L14 19Z" fill="url(#top)" stroke="url(#top)" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M56 7 L33.9 19 L6.84 57 L32.62 43Z" fill="url(#band)" stroke="url(#band)" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M32.62 43 L58 43 L58 57 L6.84 57Z" fill="url(#base)" stroke="url(#base)" stroke-width="2.5" stroke-linejoin="round"/>
 </svg>

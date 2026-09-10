@@ -153,10 +153,11 @@ export default defineConfig(({ mode }) => {
           start_url: base,
           scope: base,
           lang: 'zh-CN',
+          // 图标为透明底、仅含 logo 本体，不满足 maskable 的满版安全区要求，故只声明 any：
+          // Android 安装时由系统在白底上加边距合成自适应图标
           icons: [
             { src: `${base}icons/icon-192.png`, sizes: '192x192', type: 'image/png' },
             { src: `${base}icons/icon-512.png`, sizes: '512x512', type: 'image/png' },
-            { src: `${base}icons/icon-512.png`, sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
           ],
         },
         workbox: {
