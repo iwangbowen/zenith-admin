@@ -37,11 +37,11 @@ function start(label, env) {
   return child;
 }
 
-/** 终止全部子进程并等待退出（tsx 会把信号转给它拉起的 node；超时后强杀） */
+/** 终止全部子进程并等待退出（tsx 会把信号转给它拉起的 node；worker 的优雅停机含 offWork / 删节点队列 / boss.stop，给足预算后再强杀） */
 async function stopAll() {
   const alive = children.filter((child) => child.exitCode === null && child.signalCode === null);
   for (const child of alive) child.kill('SIGTERM');
-  const deadline = Date.now() + 8_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && alive.some((child) => child.exitCode === null && child.signalCode === null)) {
     await sleep(200);
   }

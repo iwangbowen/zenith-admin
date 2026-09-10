@@ -10,6 +10,8 @@ const fake = vi.hoisted(() => {
   const calls: Record<string, unknown[][]> = {};
   const record = (name: string) => (...args: unknown[]) => { (calls[name] ??= []).push(args); };
   const ctorOptions: Array<Record<string, unknown>> = [];
+  /** 额外的队列（用例按需塞入下线节点的节点队列） */
+  const extraQueues: Array<Record<string, unknown>> = [];
   class PgBoss {
     constructor(options: Record<string, unknown>) { ctorOptions.push(options); }
     on = record('on');
@@ -21,6 +23,12 @@ const fake = vi.hoisted(() => {
       missingFunctions: [], mismatchedFunctions: [], columnDrift: [], constraintDrift: [], enumDrift: false,
     });
     getQueue = async () => null;
+    getQueues = async () => [
+      { name: 'async-tasks', queuedCount: 12, deferredCount: 4, readyCount: 8, activeCount: 3, failedCount: 1, totalCount: 40 },
+      { name: 'cron-jobs', queuedCount: 0, deferredCount: 0, readyCount: 0, activeCount: 1, failedCount: 0, totalCount: 5 },
+      { name: '__pgboss__send-it', queuedCount: 9, deferredCount: 0, readyCount: 9, activeCount: 0, failedCount: 0, totalCount: 9 },
+      ...extraQueues,
+    ];
     createQueue = async (...args: unknown[]) => { record('createQueue')(...args); };
     updateQueue = async (...args: unknown[]) => { record('updateQueue')(...args); };
     work = async (...args: unknown[]) => { record('work')(...args); return `worker-${(calls.work ?? []).length}`; };
@@ -28,7 +36,6 @@ const fake = vi.hoisted(() => {
     schedule = async (...args: unknown[]) => { record('schedule')(...args); };
     unschedule = async (...args: unknown[]) => { record('unschedule')(...args); };
     getSchedules = async () => [];
-    getQueues = async () => [];
     deleteQueue = async (...args: unknown[]) => { record('deleteQueue')(...args); };
     findJobs = async () => [];
     cancel = async () => undefined;
@@ -40,8 +47,8 @@ const fake = vi.hoisted(() => {
     isMaintaining = () => false;
     getBamStatus = async () => [];
   }
-  const reset = () => { for (const key of Object.keys(calls)) delete calls[key]; ctorOptions.length = 0; };
-  return { PgBoss, calls, ctorOptions, reset };
+  const reset = () => { for (const key of Object.keys(calls)) delete calls[key]; ctorOptions.length = 0; extraQueues.length = 0; };
+  return { PgBoss, calls, ctorOptions, extraQueues, reset };
 });
 
 vi.mock('pg-boss', () => ({ PgBoss: fake.PgBoss }));
@@ -172,6 +179,44 @@ describe('声明漂移守卫', () => {
     }
     expect(snapshots.api).toEqual(snapshots.worker);
     expect(snapshots.worker).toEqual(snapshots.all);
+  });
+});
+
+describe('队列积压读数', () => {
+  it('getQueueDepths 排除 pg-boss 内部队列，ready 取 readyCount；getQueueBacklog 为各队列 ready 之和', async () => {
+    const s = await loadScheduler('api');
+    await s.initCronScheduler();
+    const depths = await s.getQueueDepths();
+    expect(depths.map((d) => d.queue)).toEqual(['async-tasks', 'cron-jobs']);
+    expect(depths[0]).toEqual({ queue: 'async-tasks', ready: 8, deferred: 4, active: 3, failed: 1, total: 40 });
+    await expect(s.getQueueBacklog()).resolves.toBe(8);
+  });
+
+  it('pg-boss 未初始化时返回空读数，不抛错', async () => {
+    const s = await loadScheduler('api');
+    await expect(s.getQueueDepths()).resolves.toEqual([]);
+    await expect(s.getQueueBacklog()).resolves.toBe(0);
+  });
+});
+
+describe('gcDeadNodeQueues', () => {
+  it('只在 worker 角色执行；回收无心跳节点的队列，保留本进程的节点队列，不动普通队列', async () => {
+    const api = await loadScheduler('api');
+    await api.initCronScheduler();
+    await expect(api.gcDeadNodeQueues()).rejects.toThrow(/worker 角色/);
+
+    const s = await loadScheduler('worker');
+    await s.initCronScheduler();
+    const mine = await s.registerLocalNodeQueueWorker('async-tasks', async () => undefined);
+    // db 替身的 select 返回 []：没有任何节点有近期心跳 → 除本进程外的节点队列都视为下线
+    fake.extraQueues.push(
+      { name: mine, readyCount: 0 },
+      { name: 'async-tasks/node/dead-host_1', readyCount: 0 },
+      { name: 'async-tasks/node/dead-host_2', readyCount: 3 },
+    );
+    fake.calls.deleteQueue = [];
+    await expect(s.gcDeadNodeQueues()).resolves.toBe(2);
+    expect(fake.calls.deleteQueue.map(([name]) => name).sort()).toEqual(['async-tasks/node/dead-host_1', 'async-tasks/node/dead-host_2']);
   });
 });
 

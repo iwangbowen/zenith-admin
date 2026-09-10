@@ -1076,6 +1076,63 @@ export async function isSchedulerNodeAlive(nodeId: string): Promise<boolean> {
   return (await activeSchedulerNodeIds()).has(nodeId);
 }
 
+/**
+ * 近期仍有心跳的 worker 角色进程数——「投递的作业有没有人执行」的判据。
+ * 供 /api/health 的 workers 检查、监控指标 schedulerWorkerNodes 与 api 侧 watchdog 共用。
+ */
+export async function countActiveWorkerNodes(): Promise<number> {
+  const staleBefore = new Date(Date.now() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs);
+  return db.$count(systemSchedulerNodes, and(
+    eq(systemSchedulerNodes.active, true),
+    gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore),
+    sql`${systemSchedulerNodes.roles} @> ARRAY['worker']::process_role[]`,
+  ));
+}
+
+export interface QueueDepth {
+  queue: string;
+  /** 已到执行时间、等待领取的作业（真实积压） */
+  ready: number;
+  /** 延后执行（start_after 在未来）的作业 */
+  deferred: number;
+  active: number;
+  /** 保留期内的失败作业（滚动计数，非累计） */
+  failed: number;
+  total: number;
+}
+
+const QUEUE_DEPTH_CACHE_MS = 10_000;
+let queueDepthCache: { at: number; value: QueueDepth[] } | null = null;
+
+/**
+ * 各队列的作业积压读数（不含 pg-boss 内部队列）。
+ * 计数来自 pg-boss 维护在 pgboss.queue 上的缓存统计（由执行角色的 supervisor 每分钟刷新），一次小表查询即可；
+ * 进程内再缓存 10s，Prometheus 抓取与监控评估同时到来时不重复查库。pg-boss 未初始化时返回空数组。
+ */
+export async function getQueueDepths(): Promise<QueueDepth[]> {
+  if (!boss) return [];
+  if (queueDepthCache && Date.now() - queueDepthCache.at < QUEUE_DEPTH_CACHE_MS) return queueDepthCache.value;
+  const queues = await boss.getQueues();
+  const value = queues
+    .filter((q) => !isPgBossInternalQueue(q.name))
+    .map((q) => ({
+      queue: q.name,
+      ready: q.readyCount ?? Math.max((q.queuedCount ?? 0) - (q.deferredCount ?? 0), 0),
+      deferred: q.deferredCount ?? 0,
+      active: q.activeCount ?? 0,
+      failed: q.failedCount ?? 0,
+      total: q.totalCount ?? 0,
+    }));
+  queueDepthCache = { at: Date.now(), value };
+  return value;
+}
+
+/** 全部队列可立即领取的作业总数（监控指标 schedulerQueueBacklog） */
+export async function getQueueBacklog(): Promise<number> {
+  const depths = await getQueueDepths();
+  return depths.reduce((sum, d) => sum + d.ready, 0);
+}
+
 const localNodeQueueOptions = new Map<string, Omit<QueueOptions, 'name'> | undefined>();
 
 /**
@@ -1128,22 +1185,41 @@ export function isQueueNotFoundError(err: unknown): boolean {
 /**
  * 回收已下线进程遗留的节点亲和队列（其作业已无人能执行；对应任务由任务中心兜底扫描标记失败）。
  * 判活阈值取心跳过期时间的 2 倍：误删代价（该节点须重建队列、期间提交失败一次）高于晚删代价（残留一个空队列）。
+ * 返回回收的队列数。
  */
-async function purgeDeadNodeQueues(queues: Array<{ name: string }>): Promise<void> {
+async function purgeDeadNodeQueues(queues: Array<{ name: string }>): Promise<number> {
   const nodeQueues = queues.filter((q) => isNodeQueue(q.name));
-  if (nodeQueues.length === 0) return;
+  if (nodeQueues.length === 0) return 0;
   const staleBefore = new Date(Date.now() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs * 2);
   const recent = await db.select({ nodeId: systemSchedulerNodes.nodeId })
     .from(systemSchedulerNodes)
     .where(gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore));
   const alive = new Set(recent.map((r) => nodeQueueSuffix(r.nodeId)));
   const b = getBoss();
+  let purged = 0;
   for (const queue of nodeQueues) {
     const suffix = queue.name.slice(queue.name.indexOf(NODE_QUEUE_MARKER) + NODE_QUEUE_MARKER.length);
     if (alive.has(suffix) || localNodeQueues.has(queue.name)) continue;
-    await b.deleteQueue(queue.name).catch((err) => logger.warn(`pg-boss: 删除下线节点队列 ${queue.name} 失败`, err));
-    logger.info(`pg-boss: 已回收下线节点的队列 ${queue.name}`);
+    try {
+      await b.deleteQueue(queue.name);
+      purged += 1;
+      logger.info(`pg-boss: 已回收下线节点的队列 ${queue.name}`);
+    } catch (err) {
+      logger.warn(`pg-boss: 删除下线节点队列 ${queue.name} 失败`, err);
+    }
   }
+  return purged;
+}
+
+/**
+ * 周期回收下线进程的节点队列（系统周期任务 `scheduler-node-queue-gc`，worker 执行）。
+ * 进程被 SIGKILL / 崩溃时不会走优雅停机的队列删除，只靠 worker 启动对账会让残留一直累积到下一次重启。
+ */
+export async function gcDeadNodeQueues(): Promise<number> {
+  assertExecutesJobs('节点队列回收');
+  const b = getBoss();
+  queueDepthCache = null;
+  return purgeDeadNodeQueues(await b.getQueues());
 }
 
 /**
@@ -1480,6 +1556,7 @@ export async function stopAllJobs(drainTimeoutMs?: number): Promise<void> {
       ? { graceful: true, timeout: Math.max(drainTimeoutMs ?? 30_000, 1_000) }
       : { graceful: false });
     boss = null;
+    queueDepthCache = null;
     localNodeQueues.clear();
     localNodeQueueOptions.clear();
     scheduledQueueWorkerIds.clear();

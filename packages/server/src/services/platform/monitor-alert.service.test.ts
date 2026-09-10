@@ -30,7 +30,9 @@ vi.mock('../../lib/context', () => ({
 }));
 
 import { db } from '../../db';
-import { handleEvent, setRuleEnabled, setRulesEnabled, updateRule } from './monitor-alert.service';
+import { evaluateMonitorAlerts, handleEvent, setRuleEnabled, setRulesEnabled, updateRule } from './monitor-alert.service';
+import { getMetricSnapshotsByTenant } from './monitor-history.service';
+import { dispatchAlertChannels } from '../../lib/alert-dispatch';
 
 const dbMock = vi.mocked(db);
 
@@ -310,5 +312,44 @@ describe('handleEvent', () => {
       handledAt: null,
       handleNote: null,
     });
+  });
+});
+
+describe('evaluateMonitorAlerts 指标子集', () => {
+  it('传入 metrics 时只评估这些指标的启用规则（api 侧 worker watchdog 只碰 schedulerWorkerNodes）', async () => {
+    const cpuRule = alertRule({ id: 1, metric: 'cpu', state: 'ok', breachingSince: null, lastTriggeredAt: null });
+    const workerRule = alertRule({
+      id: 19, metric: 'schedulerWorkerNodes', operator: 'lt', threshold: 1, durationMinutes: 0,
+      state: 'ok', breachingSince: null, lastTriggeredAt: null,
+    });
+    dbMock.select.mockReturnValueOnce(createChain([cpuRule, workerRule]));
+    // 只有 schedulerWorkerNodes 越界；cpu 也越界，但不在子集里不得被评估
+    const snapshot = { cpu: 99, schedulerWorkerNodes: 0 } as unknown as Record<string, number>;
+    vi.mocked(getMetricSnapshotsByTenant).mockResolvedValue(new Map([[null, snapshot as never]]));
+    const insert = createChain([{ id: 501 }]);
+    const insertValues = vi.fn(() => insert);
+    dbMock.insert = vi.fn(() => ({ values: insertValues })) as never;
+    dbMock.update.mockReturnValue(createChain([]));
+    vi.mocked(dispatchAlertChannels).mockResolvedValue({ status: 'success', channels: ['inapp'], error: null } as never);
+
+    const result = await evaluateMonitorAlerts({ metrics: ['schedulerWorkerNodes'] });
+
+    expect(result).toEqual({ evaluated: 1, fired: 1, resolved: 0 });
+    expect(getMetricSnapshotsByTenant).toHaveBeenCalledWith([null]);
+    // 触发的是 worker 规则而不是 cpu 规则：落库的事件行指向 rule 19
+    expect(dispatchAlertChannels).toHaveBeenCalledTimes(1);
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(insertValues.mock.calls[0][0]).toMatchObject({ ruleId: 19, metric: 'schedulerWorkerNodes', value: 0, status: 'firing' });
+  });
+
+  it('不传 metrics 时评估全部启用规则', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([
+      alertRule({ id: 1, metric: 'cpu', state: 'ok', breachingSince: null }),
+      alertRule({ id: 19, metric: 'schedulerWorkerNodes', operator: 'lt', threshold: 1, state: 'ok', breachingSince: null }),
+    ]));
+    vi.mocked(getMetricSnapshotsByTenant).mockResolvedValue(new Map([[null, { cpu: 10, schedulerWorkerNodes: 2 } as never]]));
+    dbMock.update.mockReturnValue(createChain([]));
+    const result = await evaluateMonitorAlerts();
+    expect(result).toEqual({ evaluated: 2, fired: 0, resolved: 0 });
   });
 });

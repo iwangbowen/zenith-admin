@@ -704,6 +704,10 @@ export const SEED_MONITOR_ALERT_RULES: Array<{
   { id: 17, name: '事件循环阻塞',         metric: 'loopLag',                   operator: 'gte', threshold: 200, durationMinutes: 3,  level: 'warning',  channels: ['inapp'], recipientUserIds: [1], recipientEmails: [], silenceMinutes: 30, enabled: true },
   { id: 15, name: '日志错误频率异常',     metric: 'logErrorPerMin',            operator: 'gte', threshold: 10,  durationMinutes: 3,  level: 'critical', channels: ['inapp'], recipientUserIds: [1], recipientEmails: [], silenceMinutes: 30, enabled: true },
   { id: 16, name: '日志警告频率异常',     metric: 'logWarnPerMin',             operator: 'gte', threshold: 30,  durationMinutes: 5,  level: 'warning',  channels: ['inapp'], recipientUserIds: [1], recipientEmails: [], silenceMinutes: 60, enabled: true },
+  // 后台调度：worker 缺失由 api 进程的 watchdog 评估（worker 全部下线时评估器本身已停）；
+  // durationMinutes 2 覆盖心跳过期（90s）+ 一次评估间隔，滚动重启的短暂空窗不告警
+  { id: 19, name: '后台 worker 进程缺失',  metric: 'schedulerWorkerNodes',      operator: 'lt',  threshold: 1,   durationMinutes: 2,  level: 'critical', channels: ['inapp'], recipientUserIds: [1], recipientEmails: [], silenceMinutes: 30, enabled: true },
+  { id: 20, name: '后台作业持续积压',      metric: 'schedulerQueueBacklog',     operator: 'gte', threshold: 200, durationMinutes: 5,  level: 'warning',  channels: ['inapp'], recipientUserIds: [1], recipientEmails: [], silenceMinutes: 60, enabled: true },
   // 流程引擎
   { id: 5, name: '流程引擎健康分过低',    metric: 'workflowHealth',            operator: 'lt',  threshold: 60,  durationMinutes: 5,  level: 'warning',  channels: ['inapp'], recipientUserIds: [1], recipientEmails: [], silenceMinutes: 60, enabled: true },
   { id: 6, name: '流程作业出现死信',      metric: 'workflowDeadLetter',        operator: 'gte', threshold: 1,   durationMinutes: 0,  level: 'warning',  channels: ['inapp'], recipientUserIds: [1], recipientEmails: [], silenceMinutes: 120, enabled: true },

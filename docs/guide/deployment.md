@@ -271,11 +271,11 @@ Docker 构建会自动执行该步骤。手动部署时需先 `npm run build`，
 
 | 能力 | 地址 / 配置 |
 | --- | --- |
-| api 健康检查 | `GET /api/health`，响应包含 `roles`，并在 `checks` 中报告 `wsFanout` 与 `workers`（无可用 worker 心跳时为 `degraded`） |
+| api 健康检查 | `GET /api/health`，响应包含 `roles`，并在 `checks` 中报告 `wsFanout` 与 `workers`（无可用 worker 心跳时为 `degraded`）。同一状况由监控告警「后台 worker 进程缺失」规则发出通知：api 进程每分钟自查心跳，worker 全部下线时仍能触发 |
 | worker 探针 | 纯 worker 暴露 `GET /health`、`GET /ready`（pg-boss 启动前 503）、`GET /metrics`，端口 `WORKER_HEALTH_PORT`（默认 3301） |
 | Swagger UI | `GET /api/docs`（api 角色） |
 | OpenAPI JSON | `GET /api/openapi.json`（api 角色） |
-| Prometheus | api 为 `GET /metrics`；worker 为 `GET /metrics`。指标默认标签包含 `process_role`，WS 扇出提供 published / failed / delivered / dropped 计数 |
+| Prometheus | api 为 `GET /metrics`；worker 为 `GET /metrics`。指标默认标签包含 `process_role`；WS 扇出提供 published / failed / delivered / dropped 计数；`zenith_pgboss_queue_jobs{queue,state}`（`state="ready"` 为可立即领取的积压，可作 worker HPA 信号）与 `zenith_scheduler_worker_nodes`（有心跳的 worker 进程数） |
 | 日志 | 日志行包含 `role` 字段；`all` 角色写 `logs/app.*.log`，拆分时分别写 `logs/app-api.*.log` 与 `logs/app-worker.*.log` |
 | OpenTelemetry | `OTEL_ENABLED=true` 或配置 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_ENDPOINT`。启用后自动插桩入站 HTTP（每请求 span）与出站 fetch（undici），资源属性包含 `zenith.process.role`，日志行追加 `trace_id` / `span_id` 便于 APM 关联；停机时自动 flush 未导出的 span |
 

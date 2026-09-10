@@ -56,7 +56,7 @@
 | worker | 每个 worker 角色进程对每条队列只 `work()` 一次，`localConcurrency: 8`（8 个轮询 worker 各取 1 条），执行期间自动续心跳；进程崩溃后作业在 60 秒内被判定失联并按重试策略处理 |
 | 手动执行 | `send()` 同 key 作业，本进程持有 worker 时 `notifyWorker()` 立刻取用（api 角色无本地 worker，由 worker 进程按轮询间隔领取）；该任务已有排队作业时本次触发与之合并，只返回提示 |
 | 进程角色 | 队列 / schedule / 注册表在 api 与 worker 都声明（api 要校验任务类型、投递、在后台改启停、展示概览）；api 的 pg-boss 实例 `supervise: false, schedule: false`、连接池 2，只 `send()` / `schedule()` 不 `work()`；worker 开启 supervise 与 cron monitor 并执行作业。节点心跳（`system_scheduler_nodes`）记录 `roles`，节点 ID 为 `hostname:pid` |
-| 启动对账 | 只在 worker 角色执行：pg-boss 里只允许存在代码声明的队列（两条调度队列 + 已注册的队列型 worker），未声明的队列连同 schedule、作业一起删除；两条调度队列上的 schedule 与启用任务一一对应，多余的删除；队列 policy 与代码不一致时重建。节点亲和队列 `<base>/node/<hostname_pid>` 不在声明集合内，按节点心跳回收（心跳过期时间的 2 倍内无心跳才删除） |
+| 启动对账 | 只在 worker 角色执行：pg-boss 里只允许存在代码声明的队列（两条调度队列 + 已注册的队列型 worker），未声明的队列连同 schedule、作业一起删除；两条调度队列上的 schedule 与启用任务一一对应，多余的删除；队列 policy 与代码不一致时重建。节点亲和队列 `<base>/node/<hostname_pid>` 不在声明集合内，按节点心跳回收（心跳过期时间的 2 倍内无心跳才删除）：启动对账时执行一次，其后由系统周期任务 `scheduler-node-queue-gc` 每 10 分钟执行，覆盖进程被强杀 / 崩溃未走优雅停机的情况 |
 
 **Cron 表达式精度**：pg-boss 每 30 秒评估一次 schedule，只支持分钟级。管理端保存的 6 段表达式（含秒位）
 在注册到 pg-boss 与计算「下次执行 / 未按计划执行」时统一经 `toMinuteCron()` 去掉秒位
@@ -137,6 +137,7 @@
 | `files-gc` | 托管文件孤儿对象回收 | 文件与存储 | `15 * * * *` |
 | `export-file-cleanup` | 导出文件自动清理 | 导出中心 | `0 3 * * *` |
 | `async-tasks-drain` | 异步任务兜底扫描 | 任务中心 | `* * * * *` |
+| `scheduler-node-queue-gc` | 下线节点队列回收 | 任务中心 | `*/10 * * * *` |
 | `workflow-schedule-tick` | 工作流定时发起扫描 | 工作流 | `* * * * *` |
 | `workflow-jobs-drain` | 工作流作业兜底扫描 | 工作流 | `* * * * *` |
 | `workflow-engine-health-capture` | 流程引擎健康采集 | 工作流 | `*/5 * * * *` |

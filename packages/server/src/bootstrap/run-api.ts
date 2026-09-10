@@ -13,6 +13,7 @@ import { config } from '../config';
 import logger from '../lib/logger';
 import { startWsFanoutSubscriber, stopWsFanoutSubscriber } from '../lib/ws-fanout';
 import { startPresenceSync, stopPresenceSync } from '../lib/ws-manager';
+import { startWorkerWatchdog, stopWorkerWatchdog } from '../lib/worker-watchdog';
 import { bootstrapRateLimitRules } from '../middleware/rate-limit';
 import { warmupOpenApiDoc } from './openapi-warmup';
 import { withTimeout } from './shutdown';
@@ -63,6 +64,8 @@ export async function startApiRole(): Promise<ApiRoleHandle> {
   await startWsFanoutSubscriber();
   // 在线状态跨进程同步：立即广播本进程持有情况，并周期快照 / 淘汰失联节点镜像
   startPresenceSync();
+  // 纯 api 进程每分钟自查 worker 心跳：worker 全部下线时评估器已停，只有这里还能发出「worker 缺失」告警
+  startWorkerWatchdog();
 
   // 终端会话持久化：先接生命周期回调，再结算上一轮遗留记录，最后启动活跃时间回写。
   // PTY 进程随本进程存在，只有 api 角色需要；独立 try/catch 以免失败牵连其他启动步骤。
@@ -78,6 +81,7 @@ export async function startApiRole(): Promise<ApiRoleHandle> {
 
   return {
     async stopIngress() {
+      stopWorkerWatchdog();
       // 先宣告本进程用户离线（其他进程立刻更新镜像；此时 socket 仍在登记表里，宣告的集合完整），
       // 再主动关闭全部 WS 连接：升级后的 socket 不受 server.close() 管辖却会让它一直等待，
       // 不关就要烧满下面 10s 超时；1001 = Going Away，客户端按既有重连退避回到其他副本

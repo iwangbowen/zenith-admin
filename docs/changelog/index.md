@@ -16,7 +16,8 @@
 - 集群级在线状态：api 进程发布本地上下线增量与 30 秒全量快照，远端镜像 90 秒无刷新视为离线，进程有序停机时主动宣告离线。
 - 任务中心 handler 支持 `affinity: 'node'`：本机文件任务（终端压缩 / 解压）投递到提交进程专属队列 `async-tasks/node/<hostname_pid>`；目标进程无心跳时由兜底扫描标记失败；节点队列被对账误删时按原参数重建并重试投递；兜底扫描逐条容错。`async_tasks` 新增 `node_id`。
 - 纯 worker 探针应用（`WORKER_HEALTH_PORT`，默认 3301）：`/health`、`/ready`、`/metrics`，无业务路由。新增 `SHUTDOWN_GRACE_MS`（worker 的在飞作业排空预算同时传给 pg-boss）、`STORAGE_SHARED` 配置。
-- 健康与指标：api `/api/health` 返回 `roles`，`checks` 增加 `wsFanout`、`workers`；Prometheus 默认标签 `process_role`，WS 扇出 published / publish_failed / delivered / dropped 计数。
+- 健康与指标：api `/api/health` 返回 `roles`，`checks` 增加 `wsFanout`、`workers`；Prometheus 默认标签 `process_role`，WS 扇出 published / publish_failed / delivered / dropped 计数；`zenith_pgboss_queue_jobs{queue,state}`（ready 为可立即领取的积压，worker 扩缩容信号）与 `zenith_scheduler_worker_nodes`。
+- 监控告警新增「后台调度」指标组：`schedulerWorkerNodes`（有心跳的 worker 进程数）与 `schedulerQueueBacklog`（可领取作业总数），种子规则「后台 worker 进程缺失」（< 1，持续 2 分钟，critical）与「后台作业持续积压」（≥ 200，持续 5 分钟）。worker 全部下线时评估器已停，api 进程的 watchdog 每分钟自查并按该指标子集调用评估器，规则、收件人、静默期与事件落库与其他告警一致（迁移 `0007_scheduler_monitor_metrics`）。
 - 迁移 `0006_process_roles`：`process_role` 枚举、`system_scheduler_nodes.roles`（非空）、`async_tasks.node_id`；节点心跳表在加列前清空（心跳行为进程运行期状态，重启即重建）。
 - `npm run dev:split`（开发期分别启动 api 与 worker 进程）、`npm run verify:split`（本地端到端验证拆分链路）、VS Code compound「Debug: Split」。
 

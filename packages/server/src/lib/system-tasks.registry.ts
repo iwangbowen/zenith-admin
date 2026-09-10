@@ -246,6 +246,20 @@ export async function registerSystemTasks(): Promise<void> {
     },
   });
 
+  const { gcDeadNodeQueues } = await import('./pg-boss-scheduler');
+  await registerSystemRecurringJob({
+    name: 'scheduler-node-queue-gc',
+    title: '下线节点队列回收',
+    module: '任务中心',
+    cronExpression: '*/10 * * * *',
+    description: '每 10 分钟回收已下线进程（超过 2 倍心跳过期时间无心跳）遗留的节点亲和队列；进程被强杀 / 崩溃时不会走优雅停机的队列删除。',
+    allowManualRun: true,
+    run: async () => {
+      const purged = await gcDeadNodeQueues();
+      return purged > 0 ? `回收 ${purged} 条下线节点队列` : '无下线节点队列';
+    },
+  });
+
   const { runTenantExpiryCheck } = await import('../services/identity/tenant-lifecycle.service');
   await registerSystemRecurringJob({
     name: 'tenant-expiry-check',

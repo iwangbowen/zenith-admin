@@ -18,6 +18,7 @@ import { getLatestEngineHealthMetrics } from '../workflow/workflow-engine-ops.se
 import { getWorkflowJobAlertMetrics } from '../workflow/workflow-jobs.service';
 import { getPaymentAlertMetrics, type PaymentAlertMetrics } from '../payment/payment-alert-metrics.service';
 import { getOpenPlatformAlertMetrics } from '../open-platform/open-platform-alert-metrics.service';
+import { getSchedulerAlertMetrics } from './scheduler-alert-metrics.service';
 import { getReplayStorageMbMetric } from '../analytics/session-replays.service';
 import { getLogAlertMetrics } from '../../lib/log-metrics';
 import { MONITOR_HISTORY_RANGE_CONFIG, type MonitorHistoryRange, type MonitorMetric } from '@zenith/shared/platform';
@@ -66,16 +67,18 @@ type GlobalMetricSnapshot = Omit<MetricSnapshot, keyof PaymentAlertMetrics>;
 
 /** 采集全部 scope 为 'global' 的指标。 */
 async function getGlobalMetricSnapshot(): Promise<GlobalMetricSnapshot> {
-  const [infra, engineHealth, jobMetrics, openMetrics, replayStorageMb] = await Promise.all([
+  const [infra, engineHealth, jobMetrics, openMetrics, replayStorageMb, schedulerMetrics] = await Promise.all([
     getInfraMetricSnapshot(),
     getLatestEngineHealthMetrics(),
     getWorkflowJobAlertMetrics(),
     getOpenPlatformAlertMetrics(),
     getReplayStorageMbMetric(),
+    getSchedulerAlertMetrics(),
   ]);
   return {
     ...infra,
     ...getLogAlertMetrics(),
+    ...schedulerMetrics,
     workflowHealth: engineHealth.workflowHealth,
     workflowBacklog: engineHealth.workflowBacklog,
     workflowDeadLetter: jobMetrics.workflowDeadLetter,

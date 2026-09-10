@@ -69,6 +69,18 @@ const rules: MonitorAlertRule[] = [
     silenceMinutes: 30, enabled: true, state: 'firing', lastTriggeredAt: minsAgo(6), lastValue: 24.6,
     createdAt: minsAgo(10 * 24 * 60), updatedAt: minsAgo(6),
   },
+  {
+    id: 10, name: '后台 worker 进程缺失', metric: 'schedulerWorkerNodes', operator: 'lt', threshold: 1, durationMinutes: 2,
+    level: 'critical', channels: ['inapp'], webhookUrl: null, recipientUserIds: [1], recipientEmails: [],
+    silenceMinutes: 30, enabled: true, state: 'ok', lastTriggeredAt: null, lastValue: 2,
+    createdAt: minsAgo(3 * 24 * 60), updatedAt: minsAgo(1),
+  },
+  {
+    id: 11, name: '后台作业持续积压', metric: 'schedulerQueueBacklog', operator: 'gte', threshold: 200, durationMinutes: 5,
+    level: 'warning', channels: ['inapp'], webhookUrl: null, recipientUserIds: [1], recipientEmails: [],
+    silenceMinutes: 60, enabled: true, state: 'ok', lastTriggeredAt: null, lastValue: 7,
+    createdAt: minsAgo(3 * 24 * 60), updatedAt: minsAgo(1),
+  },
 ];
 
 const events: MonitorAlertEvent[] = [

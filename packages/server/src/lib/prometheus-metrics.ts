@@ -8,6 +8,7 @@
 import { Gauge, type Registry } from 'prom-client';
 import { config } from '../config';
 import { metricsSampler } from './metrics-sampler';
+import { countActiveWorkerNodes, getQueueDepths } from './pg-boss-scheduler';
 import { getWsFanoutCounters } from './ws-fanout';
 import { getWsSnapshot } from './ws-manager';
 
@@ -62,4 +63,42 @@ export function registerZenithMetrics(registry: Registry): void {
   gauge('zenith_db_connections', 'PostgreSQL connections to current database', () => latest()?.dbConnections ?? 0);
   gauge('zenith_redis_memory_bytes', 'Redis used memory in bytes', () => latest()?.redisMemBytes ?? 0);
   gauge('zenith_redis_hit_rate_percent', 'Redis keyspace hit rate percent (sampling window delta)', () => latest()?.redisHitRate ?? 0);
+
+  // ── 后台调度（api / worker 拆分部署的执行面）──
+  // 抓取时异步取数：队列读数来自 pg-boss 在 pgboss.queue 上的缓存统计（进程内再缓存 10s），worker 数来自节点心跳表。
+  // 取数失败保留上一次值而不是归零，避免抓取抖动被 HPA / 告警当成「积压清空 / worker 全没了」。
+  new Gauge({
+    name: 'zenith_pgboss_queue_jobs',
+    help: 'pg-boss jobs per queue and state (ready = runnable now, the worker scaling signal; deferred = start_after in the future; failed = retained recent failures)',
+    labelNames: ['queue', 'state'],
+    registers: [registry],
+    async collect() {
+      let depths;
+      try {
+        depths = await getQueueDepths();
+      } catch {
+        return;
+      }
+      this.reset();
+      for (const d of depths) {
+        this.set({ queue: d.queue, state: 'ready' }, d.ready);
+        this.set({ queue: d.queue, state: 'deferred' }, d.deferred);
+        this.set({ queue: d.queue, state: 'active' }, d.active);
+        this.set({ queue: d.queue, state: 'failed' }, d.failed);
+        this.set({ queue: d.queue, state: 'total' }, d.total);
+      }
+    },
+  });
+  new Gauge({
+    name: 'zenith_scheduler_worker_nodes',
+    help: 'Worker-role processes with a recent scheduler heartbeat (0 = queued jobs have no executor)',
+    registers: [registry],
+    async collect() {
+      try {
+        this.set(await countActiveWorkerNodes());
+      } catch {
+        /* keep last value */
+      }
+    },
+  });
 }

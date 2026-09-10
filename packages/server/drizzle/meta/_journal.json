@@ -50,6 +50,13 @@
       "when": 1789052996288,
       "tag": "0006_process_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789068192119,
+      "tag": "0007_scheduler_monitor_metrics",
+      "breakpoints": true
     }
   ]
 }

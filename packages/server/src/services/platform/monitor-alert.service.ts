@@ -638,8 +638,17 @@ export async function getAlertOverview(range: MonitorAlertOverviewRange): Promis
 }
 
 // ─── 评估器（cron）─────────────────────────────────────────────────────────
-export async function evaluateMonitorAlerts(): Promise<{ evaluated: number; fired: number; resolved: number }> {
-  const rules = await db.select().from(monitorAlertRules).where(eq(monitorAlertRules.enabled, true));
+export interface EvaluateMonitorAlertsOptions {
+  /**
+   * 只评估这些指标的规则。api 进程的 worker watchdog 用它在 worker 全部下线时只评估 `schedulerWorkerNodes`——
+   * 此时 cron 评估器（跑在 worker 上）已停，而其他指标仍应留给 worker 侧评估，避免两处并发改同一条规则的状态。
+   */
+  metrics?: readonly MonitorMetric[];
+}
+
+export async function evaluateMonitorAlerts(options: EvaluateMonitorAlertsOptions = {}): Promise<{ evaluated: number; fired: number; resolved: number }> {
+  const rules = (await db.select().from(monitorAlertRules).where(eq(monitorAlertRules.enabled, true)))
+    .filter((rule) => !options.metrics || options.metrics.includes(rule.metric as MonitorMetric));
   if (rules.length === 0) return { evaluated: 0, fired: 0, resolved: 0 };
 
   // 按规则所属租户取快照：业务指标按租户过滤，宿主机 / 平台级指标共享同一次取数

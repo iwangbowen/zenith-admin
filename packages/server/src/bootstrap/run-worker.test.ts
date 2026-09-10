@@ -11,7 +11,12 @@ vi.mock('../lib/invalidation-bus', async (original) => ({
   ...await original<typeof import('../lib/invalidation-bus')>(),
   invalidationBusState: () => 'listening',
 }));
-vi.mock('../lib/pg-boss-scheduler', () => ({ getSchedulerIntrospection: () => ({ initialized: mocks.initialized }), purgeOrphanSystemTasks: vi.fn() }));
+vi.mock('../lib/pg-boss-scheduler', () => ({
+  getSchedulerIntrospection: () => ({ initialized: mocks.initialized }),
+  purgeOrphanSystemTasks: vi.fn(),
+  getQueueDepths: async () => [{ queue: 'async-tasks', ready: 5, deferred: 1, active: 2, failed: 0, total: 30 }],
+  countActiveWorkerNodes: async () => 1,
+}));
 vi.mock('../lib/storage-topology', () => ({ assertWorkerStorageTopology: async () => { if (mocks.topologyError) throw mocks.topologyError; } }));
 vi.mock('../lib/metrics-sampler', () => ({ metricsSampler: { getLatest: () => null, http: { totals: () => ({ total: 0, total4xx: 0, total5xx: 0 }) } } }));
 vi.mock('../lib/ws-manager', () => ({ getWsSnapshot: () => ({ currentConnections: 0, currentUsers: 0 }) }));
@@ -54,7 +59,11 @@ describe('createWorkerApp', () => {
 
     const metrics = await app.request('/metrics');
     expect(metrics.status).toBe(200);
-    expect(await metrics.text()).toContain('zenith_ws_fanout_published_total');
+    const body = await metrics.text();
+    expect(body).toContain('zenith_ws_fanout_published_total');
+    // 队列积压与 worker 数是 worker 扩缩容 / 告警的信号，抓取时异步取数
+    expect(body).toContain('zenith_pgboss_queue_jobs{queue="async-tasks",state="ready",process_role="worker"} 5');
+    expect(body).toContain('zenith_scheduler_worker_nodes{process_role="worker"} 1');
 
     const business = await app.request('/api/auth/me');
     expect(business.status).toBe(404);

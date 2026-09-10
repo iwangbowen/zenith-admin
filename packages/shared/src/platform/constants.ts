@@ -400,12 +400,13 @@ export const REGION_LEVEL_LABELS: Record<RegionLevel, string> = {
 // ─── 系统监控告警指标 ─────────────────────────────────────────────────────────
 
 /** 指标分组：决定告警规则表单里下拉的分组顺序 */
-export const MONITOR_METRIC_GROUPS = ['infra', 'workflow', 'payment', 'openPlatform', 'analytics'] as const;
+export const MONITOR_METRIC_GROUPS = ['infra', 'scheduler', 'workflow', 'payment', 'openPlatform', 'analytics'] as const;
 
 export type MonitorMetricGroup = (typeof MONITOR_METRIC_GROUPS)[number];
 
 export const MONITOR_METRIC_GROUP_LABELS: Record<MonitorMetricGroup, string> = {
   infra: '基础设施',
+  scheduler: '后台调度',
   workflow: '流程引擎',
   payment: '支付',
   openPlatform: '开放平台',
@@ -441,6 +442,8 @@ export const MONITOR_METRICS = [
   'cpu', 'memory', 'disk', 'swap', 'load1', 'procCpu', 'heap', 'loopLag',
   'qps', 'errorRate', 'netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps',
   'logErrorPerMin', 'logWarnPerMin',
+  // 后台调度（api / worker 拆分部署的执行面健康）
+  'schedulerWorkerNodes', 'schedulerQueueBacklog',
   // 流程引擎
   'workflowHealth', 'workflowBacklog', 'workflowDeadLetter', 'workflowFailureRate', 'workflowStuckRunning',
   // 支付
@@ -470,6 +473,9 @@ export const MONITOR_METRIC_META: Record<MonitorMetric, MonitorMetricMeta> = {
   diskWriteBps: { label: '磁盘写入', group: 'infra', unit: 'bps', scope: 'global', description: '磁盘写入速率' },
   logErrorPerMin: { label: '日志 ERROR 频率', group: 'infra', unit: 'number', scope: 'global', description: '近 5 分钟应用日志 ERROR 级别平均每分钟条数；覆盖后台任务、事件订阅者等 HTTP 之外的错误' },
   logWarnPerMin: { label: '日志 WARN 频率', group: 'infra', unit: 'number', scope: 'global', description: '近 5 分钟应用日志 WARN 级别平均每分钟条数' },
+
+  schedulerWorkerNodes: { label: '后台 worker 进程数', group: 'scheduler', unit: 'count', scope: 'global', description: '近 90 秒内有心跳的 worker 角色进程数。为 0 时任务中心 / 定时任务 / 系统作业只会排队而无人执行，建议规则 < 1；该指标在 api 进程上也会被评估，worker 全部下线时告警仍能发出' },
+  schedulerQueueBacklog: { label: '后台作业积压', group: 'scheduler', unit: 'count', scope: 'global', description: '全部 pg-boss 队列中已到执行时间、等待 worker 领取的作业总数（不含延后执行的作业）；持续偏高说明 worker 副本不足，可作为 worker 扩容信号' },
 
   workflowHealth: { label: '流程引擎健康分', group: 'workflow', unit: 'score', scope: 'global', description: '最近一次引擎健康快照的综合评分（越低越差，建议用 < 比较）' },
   workflowBacklog: { label: '流程引擎队列积压', group: 'workflow', unit: 'count', scope: 'global', description: '最近一次健康快照的各队列待处理作业总数' },

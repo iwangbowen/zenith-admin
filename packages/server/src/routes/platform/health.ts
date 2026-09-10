@@ -1,13 +1,13 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { and, eq, gte, sql } from 'drizzle-orm';
-import { CRON_HEALTH_RULES, healthContract, type HealthCheckResult, type HealthStatus } from '@zenith/shared/platform';
+import { sql } from 'drizzle-orm';
+import { healthContract, type HealthCheckResult, type HealthStatus } from '@zenith/shared/platform';
 import { config } from '../../config';
 import { db } from '../../db';
-import { systemSchedulerNodes } from '../../db/schema';
 import redis from '../../lib/redis';
 import { invalidationBusState } from '../../lib/invalidation-bus';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
+import { countActiveWorkerNodes } from '../../lib/pg-boss-scheduler';
 import { wsFanoutState } from '../../lib/ws-fanout';
 
 const startTime = Date.now();
@@ -22,13 +22,7 @@ const health = new OpenAPIHono({ defaultHook: validationHook });
 async function checkWorkers(): Promise<HealthCheckResult> {
   if (config.roles.worker) return 'ok';
   try {
-    const staleBefore = new Date(Date.now() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs);
-    const alive = await db.$count(systemSchedulerNodes, and(
-      eq(systemSchedulerNodes.active, true),
-      gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore),
-      sql`${systemSchedulerNodes.roles} @> ARRAY['worker']::process_role[]`,
-    ));
-    return alive > 0 ? 'ok' : 'degraded';
+    return (await countActiveWorkerNodes()) > 0 ? 'ok' : 'degraded';
   } catch {
     return 'error';
   }
