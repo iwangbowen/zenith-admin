@@ -12,7 +12,7 @@ import {
   signCmsAdRenderProof,
 } from '../../../services/cms/cms-ad-render-proof';
 import { renderCmsWidgetHtml } from '../widgets';
-import { ArticleNav, Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, MediaBlock, ModelFieldTable, PageLinks, Pagination, RelatedArticles, PublishedDate, SinglePageArticle, TagLinks, externalLinkProps, loadHomeBlocks, SearchResultLink, SearchResultList } from '../_shared';
+import { ArticleNav, Breadcrumbs, FrontForm, MediaBlock, ModelFieldTable, PageLinks, Pagination, RelatedArticles, PublishedDate, SinglePageArticle, TagLinks, externalLinkProps, loadHomeBlocks, SearchResultLink, SearchResultList } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import type { CmsThemeContentCollection } from '../types';
 import { formatBytes } from '@zenith/shared/core';
@@ -123,16 +123,16 @@ function AdSlot({ ctx, code }: { ctx: CmsBaseContext; code: string }) {
 }
 
 /**
- * 评论区会员增强：检测 zenith_member_token —— 有 token 时隐藏昵称输入并改走会员 API（JSON POST），
- * 401 自动回退游客表单；游客保持原生 form POST 零依赖。会员通道无需验证码，一并隐藏。
+ * 评论区会员增强、回复定位与验证码加载均由岛脚本承担（islands/comments.ts、islands/captcha.ts），
+ * 服务端只输出容器与 data 契约：section.comments[data-island=comments]、form#comment-form[data-member-api]。
+ * 游客保持原生 form POST 零依赖；会员通道由岛在有 token 时改走 JSON 接口。
  */
-const COMMENT_MEMBER_SCRIPT = `(function(){var f=document.getElementById('comment-form');if(!f)return;var api=f.getAttribute('data-member-api');var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}if(!t||!api)return;var nickRow=document.getElementById('comment-nick-row');if(nickRow){nickRow.style.display='none';var inp=nickRow.querySelector('input');if(inp){inp.required=false;inp.value='会员'}}var capRow=f.querySelector('.cms-captcha-box');if(capRow){capRow.style.display='none';var ci=capRow.querySelector('input[name="captchaAnswer"]');if(ci)ci.required=false}var hint=document.createElement('p');hint.style.cssText='font-size:12px;color:#59636e;margin:0';hint.textContent='已以会员身份登录，评论将使用会员昵称';f.insertBefore(hint,f.firstChild);f.addEventListener('submit',function(e){e.preventDefault();var content=f.querySelector('textarea[name="content"]').value.trim();if(!content)return;var parentId=Number(document.getElementById('comment-parent-id').value)||0;fetch(api,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({content:content,parentId:parentId})}).then(function(r){return r.json()}).then(function(r){if(r&&r.code===0){f.innerHTML='<p class="survey-done">'+(r.message||'评论已提交，审核通过后显示')+'</p>'}else if(r&&r.code===401){t=null;f.removeAttribute('data-member-api');if(nickRow){nickRow.style.display='';var i2=nickRow.querySelector('input');if(i2){i2.required=true;i2.value=''}}if(capRow){capRow.style.display=''}hint.remove();alert('会员登录已过期，请以游客身份提交或重新登录')}else{alert((r&&r.message)||'提交失败，请稍后再试')}}).catch(function(){alert('提交失败，请稍后再试')})});})();`;
 
-/** 验证码行（站点开启时渲染；SVG 由脚本注入，点击刷新） */
+/** 验证码行（站点开启时渲染；SVG 由 captcha 岛注入，点击刷新） */
 function CommentCaptchaBox({ enabled }: { enabled: boolean }) {
   if (!enabled) return null;
   return (
-    <div className="cms-captcha-box" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="cms-captcha-box" style={{ display: 'flex', alignItems: 'center', gap: 8 }} data-island="captcha">
       <input type="hidden" name="captchaId" value="" />
       <label style={{ flex: 1 }}>验证码 <span className="req">*</span><input type="text" name="captchaAnswer" required autoComplete="off" placeholder="计算结果" /></label>
       <span className="cms-captcha-img" style={{ cursor: 'pointer', lineHeight: 0 }} />
@@ -320,7 +320,7 @@ function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: C
     </div>
   );
   return (
-    <section className="comments">
+    <section className="comments" data-island="comments">
       <h2>评论（{comments.length}）</h2>
       {topLevel.map((cm) => renderItem(cm, false))}
       <form className="front-form" id="comment-form" method="post" action={form.action} data-member-api={form.memberSubmitApi}>
@@ -336,11 +336,6 @@ function CommentsBlock({ comments, form }: { comments: CmsCommentItem[]; form: C
         <CommentCaptchaBox enabled={form.captchaEnabled} />
         <button type="submit">提交评论（审核后显示）</button>
       </form>
-      <script
-        dangerouslySetInnerHTML={{
-          __html: 'document.querySelectorAll(".comment-reply-btn").forEach(function(b){b.addEventListener("click",function(){document.getElementById("comment-parent-id").value=b.dataset.commentId;document.getElementById("reply-target").textContent=b.dataset.nickname;document.getElementById("reply-hint").style.display="block";document.getElementById("comment-form").scrollIntoView({behavior:"smooth"});});});var c=document.getElementById("cancel-reply");if(c){c.addEventListener("click",function(){document.getElementById("comment-parent-id").value="0";document.getElementById("reply-hint").style.display="none";});}' + COMMENT_MEMBER_SCRIPT + (form.captchaEnabled ? CAPTCHA_SCRIPT : ''),
-        }}
-      />
     </section>
   );
 }
@@ -459,21 +454,16 @@ function BodyPagination({ p }: { p: CmsDetailContext['content']['bodyPagination'
 }
 
 /**
- * 会员互动条（点赞/收藏）：内联 JS 读取会员 token（zenith_member_token），
+ * 会员互动条（点赞/收藏）：交互由 islands/likes.ts 按 data-island 挂载（契约：data-content-id 与子元素 id）。
  * 已登录 fetch 会员 API 并上报浏览历史；未登录点击跳会员端登录。静态页可用。
  */
-const CONTENT_INTERACTION_SCRIPT = `(function(){var bar=document.getElementById('interaction-bar');if(!bar)return;var id=bar.getAttribute('data-content-id');var t=null;try{t=localStorage.getItem('zenith_member_token')}catch(e){}function hdr(){var h={'Content-Type':'application/json'};if(t)h.Authorization='Bearer '+t;return h}function api(m,p){return fetch('/api/member/cms/contents/'+id+p,{method:m,headers:hdr()}).then(function(r){return r.json()})}function paint(s){var lb=document.getElementById('btn-like'),fb=document.getElementById('btn-fav');if(!s||!lb||!fb)return;lb.classList.toggle('active',!!s.liked);fb.classList.toggle('active',!!s.favorited);document.getElementById('like-count').textContent=s.likeCount;document.getElementById('fav-count').textContent=s.favoriteCount;lb.dataset.on=s.liked?'1':'';fb.dataset.on=s.favorited?'1':''}if(t){api('GET','/interaction-state').then(function(r){if(r&&r.code===0)paint(r.data)}).catch(function(){});api('POST','/view').catch(function(){})}bar.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(!t){location.href='/member.html#/';return}var isLike=b.id==='btn-like';var on=b.dataset.on==='1';api(on?'DELETE':'POST',isLike?'/like':'/favorite').then(function(r){if(r&&r.code===0)paint(r.data);else if(r&&r.code===401){location.href='/member.html#/'}}).catch(function(){})});})();`;
-
 function InteractionBar({ content }: { content: CmsDetailContext['content'] }) {
   return (
-    <>
-      <div className="interaction-bar" id="interaction-bar" data-content-id={content.id}>
-        <button type="button" id="btn-like" aria-label="点赞">👍 赞 <span id="like-count">{content.likeCount}</span></button>
-        <button type="button" id="btn-fav" aria-label="收藏">⭐ 收藏 <span id="fav-count">{content.favoriteCount}</span></button>
-        <span className="interaction-hint">登录会员后可点赞收藏，同步至会员中心</span>
-      </div>
-      <script dangerouslySetInnerHTML={{ __html: CONTENT_INTERACTION_SCRIPT }} />
-    </>
+    <div className="interaction-bar" id="interaction-bar" data-island="likes" data-content-id={content.id}>
+      <button type="button" id="btn-like" aria-label="点赞">👍 赞 <span id="like-count">{content.likeCount}</span></button>
+      <button type="button" id="btn-fav" aria-label="收藏">⭐ 收藏 <span id="fav-count">{content.favoriteCount}</span></button>
+      <span className="interaction-hint">登录会员后可点赞收藏，同步至会员中心</span>
+    </div>
   );
 }
 

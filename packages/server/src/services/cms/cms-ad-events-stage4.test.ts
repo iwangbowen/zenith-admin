@@ -46,14 +46,18 @@ describe('CMS Stage4 ad event policy', () => {
   });
 
   it('requires signed one-time page-bound tokens before public view/click recording', async () => {
-    const [routes, theme] = await Promise.all([
+    // 令牌换取逻辑位于浏览器端岛脚本 islands/ads.ts（原内联于 default/Layout.tsx）
+    const [routes, island, layout] = await Promise.all([
       readFile(new URL('../../routes/cms/front-public.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../../cms/islands/ads.ts', import.meta.url), 'utf8'),
       readFile(new URL('../../cms/themes/default/Layout.tsx', import.meta.url), 'utf8'),
     ]);
     expect(routes).toContain('consumeCmsAdEventToken');
     expect(routes).toContain("eventType: 'click'");
     expect(routes).toContain("eventType: 'impression'");
-    expect(theme).toContain('/api/public/cms/ads/tokens/');
-    expect(theme).not.toContain("JSON.stringify({ids:ids");
+    expect(island).toContain('/api/public/cms/ads/tokens/');
+    expect(island).toContain('data-ad-render-proof');
+    expect(island).not.toContain("JSON.stringify({ids:ids");
+    expect(layout).not.toContain('/api/public/cms/ads/tokens/');
   });
 });

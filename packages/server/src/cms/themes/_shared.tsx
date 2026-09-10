@@ -21,22 +21,6 @@ var next=cur==='dark'?'light':(cur==='light'?'dark':(window.matchMedia('(prefers
 h.setAttribute('data-theme',next);localStorage.setItem('cms_theme',next);});
 }catch(e){}})();`;
 
-/** 行为采集 beacon 脚本（page_view + 详情页浏览计数），仅站点开启统计时注入 */
-export function buildAnalyticsBeacon(analytics: NonNullable<CmsBaseContext['analytics']>): string {
-  return `(function(){try{
-var K=${serializeJsonForScript(analytics.siteKey)};var C=${analytics.contentId ?? 'null'};
-var ls=window.localStorage,ss=window.sessionStorage;
-var aid=ls.getItem('cms_aid')||(Date.now().toString(36)+Math.random().toString(36).slice(2,10));ls.setItem('cms_aid',aid);
-var sid=ss.getItem('cms_sid')||(Date.now().toString(36)+Math.random().toString(36).slice(2,10));ss.setItem('cms_sid',sid);
-var ev={eventType:'page_view',sessionId:sid,anonymousId:aid,pagePath:location.pathname,pageTitle:document.title,referrer:document.referrer||undefined};
-navigator.sendBeacon('/api/analytics/events?siteKey='+encodeURIComponent(K),new Blob([JSON.stringify({events:[ev]})],{type:'application/json'}));
-if(C){navigator.sendBeacon('/api/public/cms/view',new Blob([JSON.stringify({contentId:C})],{type:'application/json'}));}
-}catch(e){}})();`;
-}
-
-/** 图形验证码加载：为页面上所有 .cms-captcha-box 拉取算术题 SVG，点击图片刷新 */
-export const CAPTCHA_SCRIPT = `(function(){function load(box){fetch('/api/public/cms/captcha').then(function(r){return r.json()}).then(function(r){if(!r||r.code!==0)return;box.querySelector('input[name="captchaId"]').value=r.data.id;var img=box.querySelector('.cms-captcha-img');img.innerHTML=r.data.svg;img.title='看不清？点击刷新'}).catch(function(){})}document.querySelectorAll('.cms-captcha-box').forEach(function(box){load(box);var img=box.querySelector('.cms-captcha-img');if(img)img.addEventListener('click',function(){load(box)})});})();`;
-
 export interface SeoHeadProps {
   ctx: CmsBaseContext;
   /** 是否输出 hreflang 备用语言链接（仅多语言站点主题需要） */
@@ -85,6 +69,10 @@ export function SeoHead({ ctx, langAlternates = false, children }: SeoHeadProps)
       {seo.twitterImageAlt ? <meta name="twitter:image:alt" content={seo.twitterImageAlt} /> : null}
       {site.favicon ? <link rel="icon" href={site.favicon} /> : null}
       <meta name="generator" content="Zenith CMS" />
+      {/* 页面级岛配置（非执行内容，不进 CSP 哈希）：站点编码供广告令牌；统计开启时输出采集 key 与详情内容 id */}
+      <meta name="cms-site" content={site.code} />
+      {ctx.analytics ? <meta name="cms-analytics-key" content={ctx.analytics.siteKey} /> : null}
+      {ctx.analytics?.contentId ? <meta name="cms-content-id" content={String(ctx.analytics.contentId)} /> : null}
       {seo.jsonLd ? (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonForScript(seo.jsonLd) }} />
       ) : null}
@@ -153,14 +141,11 @@ export function CaptchaBox({
   if (provider === 'none') return null;
   if (provider === 'math') {
     return (
-      <>
-        <div className={className} style={mathBoxStyle}>
-          <input type="hidden" name="captchaId" value="" />
-          <label style={mathLabelStyle}>验证码 <span className="req">*</span><input type="text" name="captchaAnswer" required autoComplete={mathInputAutoComplete} placeholder={mathInputPlaceholder} /></label>
-          <span className="cms-captcha-img" style={mathImageStyle} />
-        </div>
-        <script dangerouslySetInnerHTML={{ __html: CAPTCHA_SCRIPT }} />
-      </>
+      <div className={className} style={mathBoxStyle} data-island="captcha">
+        <input type="hidden" name="captchaId" value="" />
+        <label style={mathLabelStyle}>验证码 <span className="req">*</span><input type="text" name="captchaAnswer" required autoComplete={mathInputAutoComplete} placeholder={mathInputPlaceholder} /></label>
+        <span className="cms-captcha-img" style={mathImageStyle} />
+      </div>
     );
   }
   if (!siteKey) return null;

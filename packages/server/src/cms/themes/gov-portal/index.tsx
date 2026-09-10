@@ -11,7 +11,7 @@ import type {
   CmsPageContext, CmsSearchContext, CmsTagPageContext, CmsNotFoundContext,
   CmsTheme, CmsNavItem as CmsNavItemType,
 } from '../types';
-import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon, PublishedDate, SinglePageArticle, externalLinkProps, loadHomeBlocks, SearchResultList } from '../_shared';
+import { SeoHead, Breadcrumbs, Pagination, ModelFieldTable, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, PublishedDate, SinglePageArticle, externalLinkProps, loadHomeBlocks, SearchResultList } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import { renderCmsWidgetHtml } from '../widgets';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
@@ -55,7 +55,6 @@ function GovLayout({ ctx, currentUrl, children }: { ctx: CmsBaseContext; current
     <html lang="zh-CN">
       <SeoHead ctx={ctx} langAlternates />
       <body>
-        {ctx.analytics ? <script dangerouslySetInnerHTML={{ __html: buildAnalyticsBeacon(ctx.analytics) }} /> : null}
         <header className="masthead">
           <div className="w1200">
             <a className="masthead-brand" href={`${baseUrl}/`}>
@@ -207,24 +206,12 @@ function ListTemplate(ctx: CmsListContext) {
 // ─── 详情页 ───────────────────────────────────────────────────────────────────
 
 /** 详情页工具条脚本（静态化后运行）：字号切换 + 打印，政务网站阅读标配 */
-const ARTICLE_TOOLS_SCRIPT = `(function(){
-var bar=document.querySelector('.article-tools');var art=document.querySelector('.article');
-if(!bar||!art)return;
-bar.addEventListener('click',function(e){
-var btn=e.target.closest('button');if(!btn)return;
-if(btn.hasAttribute('data-print')){window.print();return;}
-var fs=btn.getAttribute('data-fs');if(fs===null)return;
-art.classList.remove('fs-small','fs-large');if(fs)art.classList.add(fs);
-bar.querySelectorAll('button[data-fs]').forEach(function(b){b.classList.toggle('on',b===btn);});
-});
-})();`;
-
 function DetailTemplate(ctx: CmsDetailContext) {
   const { content } = ctx;
   return (
     <GovLayout ctx={ctx} currentUrl={ctx.channel.url}>
       <Breadcrumbs items={ctx.breadcrumbs} />
-      <div className="article-tools">
+      <div className="article-tools" data-island="article-tools">
         <span>字号：</span>
         <button type="button" data-fs="fs-small">小</button>
         <button type="button" data-fs="" className="on">中</button>
@@ -246,7 +233,6 @@ function DetailTemplate(ctx: CmsDetailContext) {
       </article>
       <ArticleNav prev={content.prev} next={content.next} />
       <RelatedArticles items={ctx.related} />
-      <script dangerouslySetInnerHTML={{ __html: ARTICLE_TOOLS_SCRIPT }} />
     </GovLayout>
   );
 }

@@ -155,7 +155,9 @@ describe('CMS shared theme rendering', () => {
     expect(html).toContain('name="name"');
     expect(html).toContain('minLength="2"');
     expect(html).toContain('pattern="1[3-9][0-9]{9}"');
-    expect(html).toContain("fetch('/api/public/cms/captcha')");
+    // 验证码由 islands/captcha.ts 按容器挂载：服务端只输出容器契约，不再内联脚本
+    expect(html).toContain('data-island="captcha"');
+    expect(html).not.toContain("fetch('/api/public/cms/captcha')");
     expect(html).toContain('href="/news/?page=2"');
     expect(html).toContain('href="/news/?page=4"');
     expect(html.match(/class="current">3/g)).toHaveLength(3);

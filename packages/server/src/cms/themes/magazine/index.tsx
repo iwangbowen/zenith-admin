@@ -12,7 +12,7 @@ import type {
   CmsPageContext, CmsSearchContext, CmsTagPageContext, CmsNotFoundContext,
   CmsTheme, CmsModelFieldValue,
 } from '../types';
-import { SeoHead, Breadcrumbs, Pagination, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, buildAnalyticsBeacon, PublishedDate, SinglePageArticle, TagLinks, externalLinkProps, loadHomeBlocks, SearchResultList } from '../_shared';
+import { SeoHead, Breadcrumbs, Pagination, MediaBlock, ArticleNav, RelatedArticles, AttachmentList, ThemeFooterLinks, PublishedDate, SinglePageArticle, TagLinks, externalLinkProps, loadHomeBlocks, SearchResultList } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import { renderCmsWidgetHtml } from '../widgets';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
@@ -28,7 +28,6 @@ function MagLayout({ ctx, currentUrl, children }: { ctx: CmsBaseContext; current
     <html lang="zh-CN">
       <SeoHead ctx={ctx} langAlternates />
       <body>
-        {ctx.analytics ? <script dangerouslySetInnerHTML={{ __html: buildAnalyticsBeacon(ctx.analytics) }} /> : null}
         <header className="topbar">
           <div className="w1200">
             <a className="brand" href={`${baseUrl}/`}>

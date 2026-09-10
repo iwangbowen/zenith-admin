@@ -6,7 +6,7 @@ import type {
 } from '../types';
 import { CMS_WIDGET_RENDERER_KEYS } from '@zenith/shared/cms';
 import { renderCmsWidgetHtml } from '../widgets';
-import { Breadcrumbs, CAPTCHA_SCRIPT, FrontForm, Pagination, SeoHead, buildAnalyticsBeacon, SinglePageArticle, TagLinks, SearchResultLink, SearchResultList } from '../_shared';
+import { Breadcrumbs, FrontForm, Pagination, SeoHead, SinglePageArticle, TagLinks, SearchResultLink, SearchResultList } from '../_shared';
 
 /** 暗色变量组；注册进主题对象 darkVars 供样式装配 */
 export const DOCS_THEME_DARK_VARS = '--text:#dfdfd6; --text-2:#98989f; --border:#3c3f44; --bg:#1b1b1f; --bg-2:#242429;';
@@ -44,9 +44,6 @@ export function Layout({ ctx, currentUrl, sidebar = true, children }: DocLayoutP
     <html lang="zh-CN">
       <SeoHead ctx={ctx} />
       <body>
-        {ctx.analytics ? (
-          <script dangerouslySetInnerHTML={{ __html: buildAnalyticsBeacon(ctx.analytics) }} />
-        ) : null}
         <header className="doc-header">
           <a className="doc-brand" href={`${baseUrl}/`}>
             {site.logo ? <img src={site.logo} alt={site.name} /> : null}
@@ -174,16 +171,13 @@ function DetailTemplate(ctx: CmsDetailContext) {
           <label>昵称 <span className="req">*</span><input type="text" name="nickname" required maxLength={50} /></label>
           <label>评论内容 <span className="req">*</span><textarea name="content" required maxLength={1000} /></label>
           {ctx.commentForm.captchaEnabled ? (
-            <div className="cms-captcha-box" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="cms-captcha-box" style={{ display: 'flex', alignItems: 'center', gap: 8 }} data-island="captcha">
               <input type="hidden" name="captchaId" value="" />
               <label style={{ flex: 1 }}>验证码 <span className="req">*</span><input type="text" name="captchaAnswer" required autoComplete="off" placeholder="计算结果" /></label>
               <span className="cms-captcha-img" style={{ cursor: 'pointer', lineHeight: 0 }} />
             </div>
           ) : null}
           <button type="submit">提交评论（审核后显示）</button>
-          {ctx.commentForm.captchaEnabled ? (
-            <script dangerouslySetInnerHTML={{ __html: CAPTCHA_SCRIPT }} />
-          ) : null}
         </form>
       </section>
     </Layout>

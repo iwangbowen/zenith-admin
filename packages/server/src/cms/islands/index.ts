@@ -6,6 +6,13 @@
  * 与 cms/themes/islands-asset.ts（开发态内存构建）。
  */
 import { mountIslands } from './mount';
-import { registry } from './registry';
+import { pageIslands, registry } from './registry';
 
 mountIslands(document, registry);
+for (const run of pageIslands) {
+  try {
+    run(document);
+  } catch (error) {
+    console.error('[cms-islands] 页面岛执行失败', error);
+  }
+}
