@@ -321,3 +321,15 @@
 .cron-row--alert .semi-table-row-cell {
   background: var(--semi-color-danger-light-default);
 }
+
+/* ── 单任务下钻抽屉 ── */
+.cron-detail .chart-grid {
+  margin-top: 16px;
+}
+
+.cron-detail__title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}

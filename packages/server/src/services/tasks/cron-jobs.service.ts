@@ -4,6 +4,7 @@ import { eq, and, desc, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import { CronExpressionParser } from 'cron-parser';
 import type {
   CronJobAlert,
+  CronJobDetailStats,
   CronJobLogListQueryInput,
   CronJobRunSummary,
   CronJobStats,
@@ -300,6 +301,12 @@ function detectMissedRun(job: JobRow, now: Date): Date | null {
 
 const ALERT_LEVEL_ORDER = { danger: 0, warning: 1, info: 2 } as const;
 
+/** 提醒文案里的耗时：毫秒级直接显示毫秒，否则保留一位小数的秒 */
+function describeMs(ms: number | null): string {
+  if (ms == null) return '—';
+  return ms < 1000 ? ` 毫秒` : ` 秒`;
+}
+
 function buildAlerts(
   jobs: JobRow[],
   perJob: Map<number, CronJobStatsPerJob>,
@@ -341,12 +348,12 @@ function buildAlerts(
 
     if (isCronNearTimeout(stat.avgDurationMs, job.monitorTimeout)) {
       push('near_timeout', 'warning', job,
-        `平均耗时 ${Math.round((stat.avgDurationMs ?? 0) / 1000)} 秒，已达监控超时 ${job.monitorTimeout} 秒的 ${Math.round(((stat.avgDurationMs ?? 0) / 1000 / (job.monitorTimeout ?? 1)) * 100)}%，有超时风险`);
+        `平均耗时 ${describeMs(stat.avgDurationMs)}，已达监控超时 ${job.monitorTimeout} 秒的 ${Math.round(((stat.avgDurationMs ?? 0) / 1000 / (job.monitorTimeout ?? 1)) * 100)}%，有超时风险`);
     }
 
     if (stat.runs >= CRON_HEALTH_RULES.successRateMinRuns && isCronSlowTail(stat.avgDurationMs, stat.p95DurationMs)) {
       push('slow_tail', 'info', job,
-        `最慢 5% 的执行耗时约 ${Math.round((stat.p95DurationMs ?? 0) / 1000)} 秒，是平均值的 ${((stat.p95DurationMs ?? 0) / Math.max(stat.avgDurationMs ?? 1, 1)).toFixed(1)} 倍`);
+        `最慢 5% 的执行耗时约 ${describeMs(stat.p95DurationMs)}，是平均值 ${describeMs(stat.avgDurationMs)} 的 ${((stat.p95DurationMs ?? 0) / Math.max(stat.avgDurationMs ?? 1, 1)).toFixed(1)} 倍`);
     }
 
     if (job.status === 'enabled' && stat.totalRuns === 0 && !missedAt) {
@@ -358,136 +365,95 @@ function buildAlerts(
   return alerts.sort((a, b) => ALERT_LEVEL_ORDER[a.level] - ALERT_LEVEL_ORDER[b.level] || a.jobName.localeCompare(b.jobName));
 }
 
-export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJobStats> {
-  const { days } = q;
-  const now = new Date();
-  const periodWindow = gte(startedAt, dateBefore(days - 1));
-  const prevWindow = and(gte(startedAt, dateBefore(2 * days - 1)), lt(startedAt, dateBefore(days - 1)));
-  const todayWindow = gte(startedAt, dateBefore(0));
-  const yesterdayWindow = and(gte(startedAt, dateBefore(1)), lt(startedAt, dateBefore(0)));
-  const yesterdaySameTimeWindow = and(gte(startedAt, dateBefore(1)), lt(startedAt, sql`(now() - INTERVAL '1 day')`));
-  const inPeriod = sql`${startedAt} >= ${dateBefore(days - 1)}`;
-  const inPrev = sql`${startedAt} >= ${dateBefore(2 * days - 1)} AND ${startedAt} < ${dateBefore(days - 1)}`;
-  const inToday = sql`${startedAt} >= CURRENT_DATE`;
+interface PeriodWindows {
+  readonly days: number;
+  readonly inPeriod: SQL;
+  readonly inPrev: SQL;
+  readonly inToday: SQL;
+}
 
-  // 汇总卡片与明细榜单读同一快照，避免统计期间新落库的记录让各面板数字互相对不上
-  const snapshot = await readSnapshot(async (tx) => {
-    const allJobs: JobRow[] = await tx.select({
-      id: cronJobs.id,
-      name: cronJobs.name,
-      handler: cronJobs.handler,
-      cronExpression: cronJobs.cronExpression,
-      status: cronJobs.status,
-      monitorTimeout: cronJobs.monitorTimeout,
-      lastRunAt: cronJobs.lastRunAt,
-      lastRunStatus: cronJobs.lastRunStatus,
-      createdAt: cronJobs.createdAt,
-      updatedAt: cronJobs.updatedAt,
-    }).from(cronJobs).orderBy(cronJobs.id);
+function periodWindows(days: number): PeriodWindows {
+  return {
+    days,
+    inPeriod: sql`${startedAt} >= ${dateBefore(days - 1)}`,
+    inPrev: sql`${startedAt} >= ${dateBefore(2 * days - 1)} AND ${startedAt} < ${dateBefore(days - 1)}`,
+    inToday: sql`${startedAt} >= CURRENT_DATE`,
+  };
+}
 
-    const today = await runSummary(tx, todayWindow);
-    const yesterday = await runSummary(tx, yesterdayWindow);
-    const yesterdaySameTime = await runSummary(tx, yesterdaySameTimeWindow);
-    const period = await runSummary(tx, periodWindow);
-    const prevPeriod = await runSummary(tx, prevWindow);
+const jobColumns = {
+  id: cronJobs.id,
+  name: cronJobs.name,
+  handler: cronJobs.handler,
+  cronExpression: cronJobs.cronExpression,
+  status: cronJobs.status,
+  monitorTimeout: cronJobs.monitorTimeout,
+  lastRunAt: cronJobs.lastRunAt,
+  lastRunStatus: cronJobs.lastRunStatus,
+  createdAt: cronJobs.createdAt,
+  updatedAt: cronJobs.updatedAt,
+};
 
-    const runningJobs = await tx.$count(cronJobLogs, eq(runStatus, RUNNING_STATUS));
+/**
+ * 逐任务指标（概览任务表与单任务下钻共用）。
+ * `jobId` 给定时只聚合该任务的日志，避免下钻时把全表重新扫一遍。
+ */
+async function loadPerJobStats(tx: DbTransaction, windows: PeriodWindows, now: Date, jobId?: number): Promise<{ jobs: JobRow[]; perJob: CronJobStatsPerJob[] }> {
+  const { inPeriod, inPrev, inToday } = windows;
+  const jobCondition = jobId ? eq(cronJobLogs.jobId, jobId) : undefined;
+  const jobs: JobRow[] = await tx.select(jobColumns).from(cronJobs)
+    .where(jobId ? eq(cronJobs.id, jobId) : undefined)
+    .orderBy(cronJobs.id);
 
-    const perJobAggRows = await tx.select({
-      jobId: cronJobLogs.jobId,
-      totalRuns: sql<number>`CAST(COUNT(*) AS int)`,
-      runs: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod}) AS int)`,
-      successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod} AND ${runStatus} = 'success') AS int)`,
-      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod} AND ${runStatus} = 'fail') AS int)`,
-      timeoutCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod} AND ${runStatus} = 'timeout') AS int)`,
-      retryCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod} AND ${runTrigger} = 'retry') AS int)`,
-      avgLatencyMs: sql<number | null>`CAST(ROUND(AVG(${latencyMs}) FILTER (WHERE ${inPeriod} AND ${latencyMs} >= 0)) AS int)`,
-      avgDurationMs: sql<number | null>`CAST(ROUND(AVG(${durationMs}) FILTER (WHERE ${inPeriod})) AS int)`,
-      p95DurationMs: sql<number | null>`CAST(ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ${durationMs}) FILTER (WHERE ${inPeriod} AND ${durationMs} IS NOT NULL)) AS int)`,
-      maxDurationMs: sql<number | null>`MAX(${durationMs}) FILTER (WHERE ${inPeriod})`,
-      prevRuns: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPrev}) AS int)`,
-      prevSuccessCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPrev} AND ${runStatus} = 'success') AS int)`,
-      prevAvgDurationMs: sql<number | null>`CAST(ROUND(AVG(${durationMs}) FILTER (WHERE ${inPrev})) AS int)`,
-      todayRuns: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inToday}) AS int)`,
-      todayFailCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inToday} AND ${runStatus} = 'fail') AS int)`,
-      lastSuccessAt: sql<Date | null>`MAX(${startedAt}) FILTER (WHERE ${runStatus} = 'success')`,
-      lastFailAt: sql<Date | null>`MAX(${startedAt}) FILTER (WHERE ${runStatus} IN ('fail', 'timeout'))`,
-    }).from(cronJobLogs).groupBy(cronJobLogs.jobId);
+  const perJobAggRows = await tx.select({
+    jobId: cronJobLogs.jobId,
+    totalRuns: sql<number>`CAST(COUNT(*) AS int)`,
+    runs: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod}) AS int)`,
+    successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod} AND ${runStatus} = 'success') AS int)`,
+    failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod} AND ${runStatus} = 'fail') AS int)`,
+    timeoutCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod} AND ${runStatus} = 'timeout') AS int)`,
+    retryCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod} AND ${runTrigger} = 'retry') AS int)`,
+    avgLatencyMs: sql<number | null>`CAST(ROUND(AVG(${latencyMs}) FILTER (WHERE ${inPeriod} AND ${latencyMs} >= 0)) AS int)`,
+    avgDurationMs: sql<number | null>`CAST(ROUND(AVG(${durationMs}) FILTER (WHERE ${inPeriod})) AS int)`,
+    p95DurationMs: sql<number | null>`CAST(ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ${durationMs}) FILTER (WHERE ${inPeriod} AND ${durationMs} IS NOT NULL)) AS int)`,
+    maxDurationMs: sql<number | null>`MAX(${durationMs}) FILTER (WHERE ${inPeriod})`,
+    prevRuns: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPrev}) AS int)`,
+    prevSuccessCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPrev} AND ${runStatus} = 'success') AS int)`,
+    prevAvgDurationMs: sql<number | null>`CAST(ROUND(AVG(${durationMs}) FILTER (WHERE ${inPrev})) AS int)`,
+    todayRuns: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inToday}) AS int)`,
+    todayFailCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inToday} AND ${runStatus} = 'fail') AS int)`,
+    lastSuccessAt: sql<Date | null>`MAX(${startedAt}) FILTER (WHERE ${runStatus} = 'success')`,
+    lastFailAt: sql<Date | null>`MAX(${startedAt}) FILTER (WHERE ${runStatus} IN ('fail', 'timeout'))`,
+  }).from(cronJobLogs).where(jobCondition).groupBy(cronJobLogs.jobId);
 
-    // 每任务最近一次失败 / 超时的原因
-    const lastErrorRows = await tx.execute<{ job_id: number; output: string | null }>(sql`
-      SELECT DISTINCT ON (${cronJobLogs.jobId}) ${cronJobLogs.jobId} AS job_id, ${failureMessage} AS output
+  // 每任务最近一次失败 / 超时的原因
+  const lastErrorRows = await tx.execute<{ job_id: number; output: string | null }>(sql`
+    SELECT DISTINCT ON (${cronJobLogs.jobId}) ${cronJobLogs.jobId} AS job_id, ${failureMessage} AS output
+    FROM ${cronJobLogs}
+    WHERE ${runStatus} IN ('fail', 'timeout') ${jobCondition ? sql`AND ${jobCondition}` : sql``}
+    ORDER BY ${cronJobLogs.jobId}, ${startedAt} DESC
+  `);
+
+  // 每任务最近 N 次执行状态与耗时（窗口函数），返回时按时间升序（旧 → 新）
+  const recentPerJobRows = await tx.execute<{ job_id: number; status: CronRunStatus; duration_ms: number | null }>(sql`
+    SELECT job_id, status, duration_ms FROM (
+      SELECT ${cronJobLogs.jobId} AS job_id, ${runStatus} AS status, ${durationMs} AS duration_ms, ${startedAt} AS started_at,
+             ROW_NUMBER() OVER (PARTITION BY ${cronJobLogs.jobId} ORDER BY ${startedAt} DESC) AS rn
       FROM ${cronJobLogs}
-      WHERE ${runStatus} IN ('fail', 'timeout')
-      ORDER BY ${cronJobLogs.jobId}, ${startedAt} DESC
-    `);
+      ${jobCondition ? sql`WHERE ${jobCondition}` : sql``}
+    ) t WHERE rn <= ${RECENT_RESULTS_LIMIT} ORDER BY job_id, started_at ASC
+  `);
 
-    // 每任务最近 N 次执行状态与耗时（窗口函数），返回时按时间升序（旧 → 新）
-    const recentPerJobRows = await tx.execute<{ job_id: number; status: CronRunStatus; duration_ms: number | null }>(sql`
-      SELECT job_id, status, duration_ms FROM (
-        SELECT ${cronJobLogs.jobId} AS job_id, ${runStatus} AS status, ${durationMs} AS duration_ms, ${startedAt} AS started_at,
-               ROW_NUMBER() OVER (PARTITION BY ${cronJobLogs.jobId} ORDER BY ${startedAt} DESC) AS rn
-        FROM ${cronJobLogs}
-      ) t WHERE rn <= ${RECENT_RESULTS_LIMIT} ORDER BY job_id, started_at ASC
-    `);
-
-    const dailyRows = await tx.select({
-      date: sql<string>`to_char(date(${startedAt}), 'YYYY-MM-DD')`,
-      total: sql<number>`CAST(COUNT(*) AS int)`,
-      successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'success') AS int)`,
-      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'fail') AS int)`,
-      timeoutCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'timeout') AS int)`,
-      avgDurationMs: sql<number | null>`CAST(ROUND(AVG(${durationMs})) AS int)`,
-      p95DurationMs: sql<number | null>`CAST(ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ${durationMs}) FILTER (WHERE ${durationMs} IS NOT NULL)) AS int)`,
-    }).from(cronJobLogs)
-      .where(periodWindow)
-      .groupBy(sql`date(${startedAt})`)
-      .orderBy(sql`date(${startedAt})`);
-
-    const dowHourRows = await tx.select({
-      dow: sql<number>`CAST(EXTRACT(ISODOW FROM ${startedAt}) AS int)`,
-      hour: sql<number>`CAST(EXTRACT(HOUR FROM ${startedAt}) AS int)`,
-      total: sql<number>`CAST(COUNT(*) AS int)`,
-      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} IN ('fail', 'timeout')) AS int)`,
-    }).from(cronJobLogs)
-      .where(periodWindow)
-      .groupBy(sql`EXTRACT(ISODOW FROM ${startedAt})`, sql`EXTRACT(HOUR FROM ${startedAt})`);
-
-    // 失败原因归一化聚合：数字（ID / 时间 / 行数）替换为 # 后再分组，让同类错误合并
-    const normalizedError = sql`left(regexp_replace(coalesce(${failureMessage}, ''), '[0-9]+', '#', 'g'), 200)`;
-    const topErrorRows = await tx.select({
-      message: sql<string>`${normalizedError}`,
-      count: sql<number>`CAST(COUNT(*) AS int)`,
-      jobNames: sql<string[]>`array_agg(DISTINCT ${cronJobLogs.jobName})`,
-      lastAt: sql<Date>`MAX(${startedAt})`,
-    }).from(cronJobLogs)
-      .where(and(periodWindow, inArray(runStatus, ['fail', 'timeout'])))
-      .groupBy(normalizedError)
-      .orderBy(desc(sql`COUNT(*)`), desc(sql`MAX(${startedAt})`))
-      .limit(TOP_ERRORS_LIMIT);
-
-    const runningLogs = await tx.select({ jobId: cronJobLogs.jobId, startedAt })
-      .from(cronJobLogs)
-      .where(eq(runStatus, RUNNING_STATUS));
-
-    const staleBefore = new Date(now.getTime() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs);
-    const nodeRows = await tx.select({ nodeId: systemSchedulerNodes.nodeId, lastHeartbeatAt: systemSchedulerNodes.lastHeartbeatAt })
-      .from(systemSchedulerNodes)
-      .where(and(eq(systemSchedulerNodes.active, true), gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore)));
-
-    return { allJobs, today, yesterday, yesterdaySameTime, period, prevPeriod, runningJobs, perJobAggRows, lastErrorRows, recentPerJobRows, dailyRows, dowHourRows, topErrorRows, runningLogs, nodeRows };
-  });
-
-  const aggMap = new Map(snapshot.perJobAggRows.map((r) => [r.jobId, r]));
-  const lastErrorMap = new Map(snapshot.lastErrorRows.map((r) => [Number(r.job_id), r.output]));
+  const aggMap = new Map(perJobAggRows.map((r) => [r.jobId, r]));
+  const lastErrorMap = new Map(lastErrorRows.map((r) => [Number(r.job_id), r.output]));
   const recentMap = new Map<number, Array<{ status: CronRunStatus; durationMs: number | null }>>();
-  for (const row of snapshot.recentPerJobRows) {
+  for (const row of recentPerJobRows) {
     const list = recentMap.get(Number(row.job_id)) ?? [];
     list.push({ status: row.status, durationMs: toNullableInt(row.duration_ms) });
     recentMap.set(Number(row.job_id), list);
   }
 
-  const perJob: CronJobStatsPerJob[] = snapshot.allJobs.map((job) => {
+  const perJob: CronJobStatsPerJob[] = jobs.map((job) => {
     const agg = aggMap.get(job.id);
     const recent = recentMap.get(job.id) ?? [];
     const recentResults = recent.map((r) => r.status);
@@ -537,7 +503,95 @@ export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJo
     };
   }).sort((a, b) => b.runs - a.runs || b.totalRuns - a.totalRuns || a.jobName.localeCompare(b.jobName));
 
-  const perJobMap = new Map(perJob.map((p) => [p.jobId, p]));
+  return { jobs, perJob };
+}
+
+function mapDailyRow(r: { date: string; total: number; successCount: number; failCount: number; timeoutCount: number; avgDurationMs: number | null; p95DurationMs: number | null }) {
+  return {
+    date: r.date,
+    total: Number(r.total),
+    successCount: Number(r.successCount),
+    failCount: Number(r.failCount),
+    timeoutCount: Number(r.timeoutCount),
+    avgDurationMs: toNullableInt(r.avgDurationMs),
+    p95DurationMs: toNullableInt(r.p95DurationMs),
+  };
+}
+
+function dailyStatsQuery(tx: DbTransaction, where: SQL | undefined) {
+  return tx.select({
+    date: sql<string>`to_char(date(${startedAt}), 'YYYY-MM-DD')`,
+    total: sql<number>`CAST(COUNT(*) AS int)`,
+    successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'success') AS int)`,
+    failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'fail') AS int)`,
+    timeoutCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'timeout') AS int)`,
+    avgDurationMs: sql<number | null>`CAST(ROUND(AVG(${durationMs})) AS int)`,
+    p95DurationMs: sql<number | null>`CAST(ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ${durationMs}) FILTER (WHERE ${durationMs} IS NOT NULL)) AS int)`,
+  }).from(cronJobLogs)
+    .where(where)
+    .groupBy(sql`date(${startedAt})`)
+    .orderBy(sql`date(${startedAt})`);
+}
+
+export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJobStats> {
+  const { days } = q;
+  const now = new Date();
+  const windows = periodWindows(days);
+  const periodWindow = gte(startedAt, dateBefore(days - 1));
+  const prevWindow = and(gte(startedAt, dateBefore(2 * days - 1)), lt(startedAt, dateBefore(days - 1)));
+  const todayWindow = gte(startedAt, dateBefore(0));
+  const yesterdayWindow = and(gte(startedAt, dateBefore(1)), lt(startedAt, dateBefore(0)));
+  const yesterdaySameTimeWindow = and(gte(startedAt, dateBefore(1)), lt(startedAt, sql`(now() - INTERVAL '1 day')`));
+
+  // 汇总卡片与明细榜单读同一快照，避免统计期间新落库的记录让各面板数字互相对不上
+  const snapshot = await readSnapshot(async (tx) => {
+    const { jobs: allJobs, perJob } = await loadPerJobStats(tx, windows, now);
+
+    const today = await runSummary(tx, todayWindow);
+    const yesterday = await runSummary(tx, yesterdayWindow);
+    const yesterdaySameTime = await runSummary(tx, yesterdaySameTimeWindow);
+    const period = await runSummary(tx, periodWindow);
+    const prevPeriod = await runSummary(tx, prevWindow);
+
+    const runningJobs = await tx.$count(cronJobLogs, eq(runStatus, RUNNING_STATUS));
+
+    const dailyRows = await dailyStatsQuery(tx, periodWindow);
+
+    const dowHourRows = await tx.select({
+      dow: sql<number>`CAST(EXTRACT(ISODOW FROM ${startedAt}) AS int)`,
+      hour: sql<number>`CAST(EXTRACT(HOUR FROM ${startedAt}) AS int)`,
+      total: sql<number>`CAST(COUNT(*) AS int)`,
+      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} IN ('fail', 'timeout')) AS int)`,
+    }).from(cronJobLogs)
+      .where(periodWindow)
+      .groupBy(sql`EXTRACT(ISODOW FROM ${startedAt})`, sql`EXTRACT(HOUR FROM ${startedAt})`);
+
+    // 失败原因归一化聚合：数字（ID / 时间 / 行数）替换为 # 后再分组，让同类错误合并
+    const normalizedError = sql`left(regexp_replace(coalesce(${failureMessage}, ''), '[0-9]+', '#', 'g'), 200)`;
+    const topErrorRows = await tx.select({
+      message: sql<string>`${normalizedError}`,
+      count: sql<number>`CAST(COUNT(*) AS int)`,
+      jobNames: sql<string[]>`array_agg(DISTINCT ${cronJobLogs.jobName})`,
+      lastAt: sql<Date>`MAX(${startedAt})`,
+    }).from(cronJobLogs)
+      .where(and(periodWindow, inArray(runStatus, ['fail', 'timeout'])))
+      .groupBy(normalizedError)
+      .orderBy(desc(sql`COUNT(*)`), desc(sql`MAX(${startedAt})`))
+      .limit(TOP_ERRORS_LIMIT);
+
+    const runningLogs = await tx.select({ jobId: cronJobLogs.jobId, startedAt })
+      .from(cronJobLogs)
+      .where(eq(runStatus, RUNNING_STATUS));
+
+    const staleBefore = new Date(now.getTime() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs);
+    const nodeRows = await tx.select({ nodeId: systemSchedulerNodes.nodeId, lastHeartbeatAt: systemSchedulerNodes.lastHeartbeatAt })
+      .from(systemSchedulerNodes)
+      .where(and(eq(systemSchedulerNodes.active, true), gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore)));
+
+    return { allJobs, perJob, today, yesterday, yesterdaySameTime, period, prevPeriod, runningJobs, dailyRows, dowHourRows, topErrorRows, runningLogs, nodeRows };
+  });
+
+  const perJobMap = new Map(snapshot.perJob.map((p) => [p.jobId, p]));
   const scheduler = getSchedulerIntrospection();
   const thisNodeHeartbeat = snapshot.nodeRows.find((n) => n.nodeId === scheduler.node.id)?.lastHeartbeatAt
     ?? snapshot.nodeRows.reduce<Date | null>((latest, n) => (latest && latest > n.lastHeartbeatAt ? latest : n.lastHeartbeatAt), null);
@@ -562,16 +616,8 @@ export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJo
       wipCount: scheduler.runningJobCount,
     },
     alerts: buildAlerts(snapshot.allJobs, perJobMap, snapshot.runningLogs, now),
-    perJob,
-    dailyStats: snapshot.dailyRows.map((r) => ({
-      date: r.date,
-      total: Number(r.total),
-      successCount: Number(r.successCount),
-      failCount: Number(r.failCount),
-      timeoutCount: Number(r.timeoutCount),
-      avgDurationMs: toNullableInt(r.avgDurationMs),
-      p95DurationMs: toNullableInt(r.p95DurationMs),
-    })),
+    perJob: snapshot.perJob,
+    dailyStats: snapshot.dailyRows.map(mapDailyRow),
     dowHourStats: snapshot.dowHourRows.map((r) => ({
       dow: Number(r.dow),
       hour: Number(r.hour),
@@ -585,5 +631,119 @@ export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJo
       lastAt: formatDateTime(r.lastAt),
     })),
     upcoming: calcUpcomingRuns(snapshot.allJobs, now),
+  };
+}
+
+// ─── 单任务下钻 ──────────────────────────────────────────────────────────────
+
+const DETAIL_RUN_POINTS_LIMIT = 200;
+const DETAIL_RECENT_ERRORS_LIMIT = 10;
+const DETAIL_NEXT_RUNS = 10;
+
+const LATENCY_BUCKETS: ReadonlyArray<{ label: string; maxMs: number }> = [
+  { label: '<1s', maxMs: 1_000 },
+  { label: '1-5s', maxMs: 5_000 },
+  { label: '5-30s', maxMs: 30_000 },
+  { label: '>30s', maxMs: Number.POSITIVE_INFINITY },
+];
+
+/** 单任务在统计周期内的明细：耗时散点、延迟分布、最近错误、未来执行 */
+export async function getCronJobDetailStats(jobId: number, q: CronJobStatsQueryInput): Promise<CronJobDetailStats> {
+  const { days } = q;
+  const now = new Date();
+  const jobFilter = eq(cronJobLogs.jobId, jobId);
+  const periodWindow = and(jobFilter, gte(startedAt, dateBefore(days - 1)));
+  const prevWindow = and(jobFilter, gte(startedAt, dateBefore(2 * days - 1)), lt(startedAt, dateBefore(days - 1)));
+
+  const snapshot = await readSnapshot(async (tx) => {
+    const { perJob } = await loadPerJobStats(tx, periodWindows(days), now, jobId);
+    const job = perJob[0];
+    requireRow(job, '任务不存在');
+
+    const period = await runSummary(tx, periodWindow);
+    const prevPeriod = await runSummary(tx, prevWindow);
+    const dailyRows = await dailyStatsQuery(tx, periodWindow);
+
+    // 最近 N 条执行点：先按时间倒序截断，再翻回升序供散点图使用
+    const runRows = await tx.select({
+      id: cronJobLogs.id,
+      startedAt,
+      status: runStatus,
+      trigger: runTrigger,
+      durationMs,
+      latencyMs,
+    }).from(cronJobLogs)
+      .where(periodWindow)
+      .orderBy(desc(startedAt))
+      .limit(DETAIL_RUN_POINTS_LIMIT);
+
+    const latencyRows = await tx.select({
+      bucket: sql<number>`CASE
+        WHEN ${latencyMs} < 1000 THEN 0
+        WHEN ${latencyMs} < 5000 THEN 1
+        WHEN ${latencyMs} < 30000 THEN 2
+        ELSE 3 END`,
+      count: sql<number>`CAST(COUNT(*) AS int)`,
+    }).from(cronJobLogs)
+      .where(and(periodWindow, gte(latencyMs, 0)))
+      .groupBy(sql`1`);
+
+    const errorRows = await tx.select({
+      id: cronJobLogs.id,
+      startedAt,
+      status: runStatus,
+      trigger: runTrigger,
+      attempt: cronJobLogs.attempt,
+      durationMs,
+      message: sql<string>`coalesce(${failureMessage}, '')`,
+    }).from(cronJobLogs)
+      .where(and(periodWindow, inArray(runStatus, ['fail', 'timeout'])))
+      .orderBy(desc(startedAt))
+      .limit(DETAIL_RECENT_ERRORS_LIMIT);
+
+    return { job, period, prevPeriod, dailyRows, runRows, latencyRows, errorRows };
+  });
+  const { job } = snapshot;
+
+  const bucketCounts = new Map(snapshot.latencyRows.map((r) => [Number(r.bucket), Number(r.count)]));
+  const nextRuns: string[] = [];
+  if (job.enabled) {
+    const interval = parseCron(job.cronExpression, now);
+    if (interval) {
+      for (let i = 0; i < DETAIL_NEXT_RUNS; i++) {
+        try {
+          nextRuns.push(formatDateTime(interval.next().toDate()));
+        } catch {
+          break;
+        }
+      }
+    }
+  }
+
+  return {
+    days,
+    job,
+    period: snapshot.period,
+    prevPeriod: snapshot.prevPeriod,
+    dailyStats: snapshot.dailyRows.map(mapDailyRow),
+    runs: snapshot.runRows.reverse().map((r) => ({
+      logId: r.id,
+      startedAt: formatDateTime(r.startedAt),
+      status: r.status,
+      trigger: r.trigger,
+      durationMs: r.durationMs,
+      latencyMs: r.latencyMs,
+    })),
+    latencyBuckets: LATENCY_BUCKETS.map((b, i) => ({ bucket: b.label, count: bucketCounts.get(i) ?? 0 })),
+    recentErrors: snapshot.errorRows.map((r) => ({
+      logId: r.id,
+      startedAt: formatDateTime(r.startedAt),
+      status: r.status,
+      trigger: r.trigger,
+      attempt: r.attempt,
+      durationMs: r.durationMs,
+      message: r.message,
+    })),
+    nextRuns,
   };
 }

@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
-import { Card, Empty, Modal, Radio, RadioGroup, Spin, Toast, Tooltip } from '@douyinfe/semi-ui';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Card, Empty, Modal, Radio, RadioGroup, Spin, Toast, Tooltip } from '@douyinfe/semi-ui';
+import { RefreshCw } from 'lucide-react';
 import type { CronJobStats, CronJobStatsPerJob, CronJobTopError, CronJobUpcomingRun } from '@zenith/shared/platform';
 import { CRON_HEALTH_RULES, cronSuccessRatePercent } from '@zenith/shared/platform';
 import dayjs from 'dayjs';
@@ -15,10 +16,11 @@ import {
 } from '@/components/charts';
 import { LogStatsSkeleton, WEEKDAY_LABELS, calcSuccessRateDelta, deltaOf } from '@/components/logs/LogStatsScaffold';
 import { usePermission } from '@/hooks/usePermission';
-import { useCronJobStats, useRunCronJob, useUpdateCronJobStatus } from '@/hooks/queries/cron-jobs';
+import { CRON_STATS_REFETCH_INTERVAL_MS, useCronJobStats, useRunCronJob, useUpdateCronJobStatus } from '@/hooks/queries/cron-jobs';
 import { formatDurationMs } from '@/utils/format';
 import { formatRelativeTime } from '@/utils/date';
 import { CronJobAlertsPanel } from './CronJobAlertsPanel';
+import { CronJobDetailDrawer } from './CronJobDetailDrawer';
 import { CronJobHealthTable } from './CronJobHealthTable';
 import { CronJobRecentLogs } from './CronJobRecentLogs';
 import {
@@ -159,10 +161,24 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
   const toggleMutation = useUpdateCronJobStatus();
   const recentLogsSearch = useRecentLogsSearch();
   const logsPanelRef = useRef<HTMLDivElement>(null);
+  const [detailJob, setDetailJob] = useState<{ id: number; name: string } | null>(null);
+  const [detailVisible, setDetailVisible] = useState(false);
+  // 「更新于 x 秒前」每 5 秒触发一次重渲染重算；数据到达时刻本身由 dataUpdatedAt 驱动
+  const [, bumpClock] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => bumpClock((v) => v + 1), 5_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 相对时间以本次数据到达时刻为基准，随刷新一起推进
   const dataUpdatedAt = statsQuery.dataUpdatedAt;
   const now = useMemo(() => new Date(dataUpdatedAt || Date.now()), [dataUpdatedAt]);
+  const updatedAgo = dataUpdatedAt ? formatRelativeTime(new Date(dataUpdatedAt)) : '';
+
+  const openDetail = (jobId: number, jobName: string) => {
+    setDetailJob({ id: jobId, name: jobName });
+    setDetailVisible(true);
+  };
 
   const handleRun = (jobId: number, jobName: string) => {
     Modal.confirm({
@@ -300,9 +316,21 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
     <div className="zx-flat-panels cron-dashboard">
       <div className="cron-dashboard__toolbar">
         <SchedulerBar scheduler={scheduler} now={now} />
-        <RadioGroup type="button" value={days} onChange={(e) => setDays(e.target.value as CronStatsDays)}>
-          {CRON_STATS_DAYS_OPTIONS.map((d) => <Radio key={d} value={d}>近 {d} 天</Radio>)}
-        </RadioGroup>
+        <div className="cron-panel-extra">
+          <Tooltip content={`每 ${CRON_STATS_REFETCH_INTERVAL_MS / 1000} 秒自动刷新（页面后台时暂停）`} position="bottom">
+            <span className="cron-scheduler__meta">{statsQuery.isFetching ? '刷新中…' : updatedAgo ? `更新于 ${updatedAgo}` : ''}</span>
+          </Tooltip>
+          <Button
+            type="tertiary" theme="borderless" size="small"
+            icon={<RefreshCw size={14} className={statsQuery.isFetching ? 'spin' : ''} />}
+            aria-label="立即刷新" title="立即刷新"
+            disabled={statsQuery.isFetching}
+            onClick={() => { void statsQuery.refetch(); }}
+          />
+          <RadioGroup type="button" value={days} onChange={(e) => setDays(e.target.value as CronStatsDays)}>
+            {CRON_STATS_DAYS_OPTIONS.map((d) => <Radio key={d} value={d}>近 {d} 天</Radio>)}
+          </RadioGroup>
+        </div>
       </div>
 
       <Spin spinning={statsQuery.isFetching}>
@@ -408,6 +436,7 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
             canExecute={canExecute}
             canUpdate={canUpdate}
             onViewLogs={onViewLogs}
+            onOpenDetail={openDetail}
             onRun={handleRun}
             onToggleStatus={handleToggleStatus}
           />
@@ -428,6 +457,15 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
           </Card>
         </div>
       </Spin>
+
+      <CronJobDetailDrawer
+        jobId={detailJob?.id ?? null}
+        jobName={detailJob?.name ?? ''}
+        days={days}
+        visible={detailVisible}
+        onClose={() => setDetailVisible(false)}
+        onViewLogs={onViewLogs}
+      />
     </div>
   );
 }

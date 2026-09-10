@@ -22,6 +22,7 @@
 | `GET` | `/{id}/logs` | `system:cronjob:list` | 单任务执行日志 |
 | `GET` | `/logs` | `system:cronjob:list` | 全部执行日志，支持 `jobId` / `status` / `keyword` / `startTime` / `endTime` 筛选 |
 | `GET` | `/stats?days=14` | `system:cronjob:list` | 执行概览统计：今日 / 昨日同时段 / 周期与上一周期汇总、调度器状态、健康提醒、逐任务指标、每日趋势、星期 × 小时分布、失败原因聚合、下次执行 |
+| `GET` | `/{id}/stats?days=14` | `system:cronjob:list` | 单任务下钻：周期汇总与环比、每日趋势、耗时散点、调度延迟分布、最近失败 / 超时、未来 10 次执行 |
 
 任务字段包括 `name`、`cronExpression`、`handler`、`params`、`status`、`retryCount`、`retryInterval`、`retryBackoff`、`monitorTimeout`（秒）和最近运行结果。
 

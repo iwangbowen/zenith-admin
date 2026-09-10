@@ -553,6 +553,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/cron-jobs",
   "GET /api/cron-jobs/:id",
   "GET /api/cron-jobs/:id/logs",
+  "GET /api/cron-jobs/:id/stats",
   "GET /api/cron-jobs/handlers",
   "GET /api/cron-jobs/logs",
   "GET /api/cron-jobs/stats",

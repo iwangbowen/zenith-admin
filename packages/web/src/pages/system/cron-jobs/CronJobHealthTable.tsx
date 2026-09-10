@@ -1,4 +1,4 @@
-import { Tag, Tooltip } from '@douyinfe/semi-ui';
+import { Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { CronJobStatsPerJob } from '@zenith/shared/platform';
 import { CRON_HEALTH_RULES, isCronSlowTail } from '@zenith/shared/platform';
@@ -27,6 +27,7 @@ interface Props {
   readonly canExecute: boolean;
   readonly canUpdate: boolean;
   readonly onViewLogs: (jobId: number, jobName: string) => void;
+  readonly onOpenDetail: (jobId: number, jobName: string) => void;
   readonly onRun: (jobId: number, jobName: string) => void;
   readonly onToggleStatus: (job: CronJobStatsPerJob) => void;
 }
@@ -43,7 +44,7 @@ function numberSorter(pick: (row: CronJobStatsPerJob) => number | null) {
 }
 
 /** 任务健康表：每行一个任务，横向密排调度 / 结果 / 耗时 / 时间 / 操作 */
-export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, canUpdate, onViewLogs, onRun, onToggleStatus }: Props) {
+export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, canUpdate, onViewLogs, onOpenDetail, onRun, onToggleStatus }: Props) {
   const columns: ColumnProps<CronJobStatsPerJob>[] = [
     {
       title: '任务', dataIndex: 'jobName', minWidth: 200,
@@ -51,7 +52,7 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
       render: (_: unknown, r: CronJobStatsPerJob) => (
         <div className="cron-cell">
           <div className="cron-cell__main">
-            <span className="cron-cell__title" title={r.jobName}>{r.jobName}</span>
+            <Typography.Text link className="cron-cell__title" onClick={() => onOpenDetail(r.jobId, r.jobName)} title={r.jobName}>{r.jobName}</Typography.Text>
             {!r.enabled && <Tag size="small" color="grey" type="light">已停用</Tag>}
             {r.consecutiveFails >= CRON_HEALTH_RULES.consecutiveFailThreshold && (
               <Tag size="small" color="red">连败 {r.consecutiveFails}</Tag>
@@ -105,7 +106,7 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
       ),
     },
     {
-      title: '失败 / 超时', dataIndex: 'failCount', width: 110, align: 'right',
+      title: '失败 / 超时', dataIndex: 'failCount', width: 140, align: 'right',
       sorter: numberSorter((r) => r.failCount + r.timeoutCount),
       render: (_: unknown, r: CronJobStatsPerJob) => (
         <div className="cron-cell cron-cell--right">
@@ -141,7 +142,7 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
       },
     },
     {
-      title: '调度延迟', dataIndex: 'avgLatencyMs', width: 100, align: 'right',
+      title: '调度延迟', dataIndex: 'avgLatencyMs', width: 116, align: 'right',
       sorter: numberSorter((r) => r.avgLatencyMs),
       render: (v: number | null) => (
         <span style={v != null && v >= 10_000 ? { color: 'var(--semi-color-warning)' } : undefined} title="周期内平均：实际开始 − 计划触发">
@@ -185,8 +186,9 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
     },
     createOperationColumn<CronJobStatsPerJob>({
       width: 180,
-      desktopInlineKeys: ['execute', 'logs'],
+      desktopInlineKeys: ['detail', 'execute'],
       actions: (r) => [
+        { key: 'detail', label: '详情', onClick: () => onOpenDetail(r.jobId, r.jobName) },
         { key: 'execute', label: '执行', hidden: !canExecute, onClick: () => onRun(r.jobId, r.jobName) },
         { key: 'logs', label: '日志', onClick: () => onViewLogs(r.jobId, r.jobName) },
         { key: 'toggle', label: r.enabled ? '停用' : '启用', hidden: !canUpdate, danger: r.enabled, onClick: () => onToggleStatus(r) },

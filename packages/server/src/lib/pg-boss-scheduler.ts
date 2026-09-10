@@ -895,7 +895,8 @@ async function closeOrphanRunningLogs(): Promise<void> {
     .set({
       status: 'fail',
       endedAt: sql`now()`,
-      durationMs: sql`CAST(EXTRACT(EPOCH FROM (now() - ${cronJobLogs.startedAt})) * 1000 AS integer)`,
+      // 真实执行时长未知（进程何时消失无从得知），保持 null 以免拉高耗时均值
+      durationMs: null,
       errorMessage: '调度节点重启，执行被中断',
     })
     .where(and(eq(cronJobLogs.status, 'running'), orphanCondition))

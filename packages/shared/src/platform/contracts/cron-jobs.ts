@@ -183,6 +183,52 @@ export const cronJobStatsSchema = z.object({
 
 export type CronJobStats = z.infer<typeof cronJobStatsSchema>;
 
+// ─── 单任务下钻 ──────────────────────────────────────────────────────────────
+
+export const cronJobRunPointSchema = z.object({
+  logId: z.int(),
+  startedAt: z.string(),
+  status: z.enum(CRON_RUN_STATUSES),
+  trigger: z.enum(CRON_RUN_TRIGGERS),
+  durationMs: z.int().nullable(),
+  latencyMs: z.int().nullable(),
+}).meta({ id: 'CronJobRunPoint' });
+
+export type CronJobRunPoint = z.infer<typeof cronJobRunPointSchema>;
+
+export const cronJobLatencyBucketSchema = z.object({
+  bucket: z.string().meta({ description: '延迟区间标签，如 "<1s" / "1-5s" / "5-30s" / ">30s"' }),
+  count: z.int(),
+}).meta({ id: 'CronJobLatencyBucket' });
+
+export type CronJobLatencyBucket = z.infer<typeof cronJobLatencyBucketSchema>;
+
+export const cronJobRecentErrorSchema = z.object({
+  logId: z.int(),
+  startedAt: z.string(),
+  status: z.enum(CRON_RUN_STATUSES),
+  trigger: z.enum(CRON_RUN_TRIGGERS),
+  attempt: z.int(),
+  durationMs: z.int().nullable(),
+  message: z.string(),
+}).meta({ id: 'CronJobRecentError' });
+
+export type CronJobRecentError = z.infer<typeof cronJobRecentErrorSchema>;
+
+export const cronJobDetailStatsSchema = z.object({
+  days: z.int(),
+  job: cronJobStatsPerJobSchema,
+  period: cronJobRunSummarySchema.meta({ description: '近 days 天汇总' }),
+  prevPeriod: cronJobRunSummarySchema,
+  dailyStats: z.array(cronJobDailyStatSchema),
+  runs: z.array(cronJobRunPointSchema).meta({ description: '周期内最近的执行点（旧 → 新，最多 200 条），用于耗时散点' }),
+  latencyBuckets: z.array(cronJobLatencyBucketSchema),
+  recentErrors: z.array(cronJobRecentErrorSchema).meta({ description: '周期内最近的失败 / 超时（最多 10 条，新 → 旧）' }),
+  nextRuns: z.array(z.string()).meta({ description: '未来 10 次计划执行时刻；停用或表达式无效时为空' }),
+}).meta({ id: 'CronJobDetailStats' });
+
+export type CronJobDetailStats = z.infer<typeof cronJobDetailStatsSchema>;
+
 export const cronValidateResultSchema = z.object({ valid: z.boolean() }).meta({ id: 'CronValidateResult' });
 
 export type CronValidateResult = z.infer<typeof cronValidateResultSchema>;
@@ -228,5 +274,6 @@ export const cronJobContract = defineContract('/api/cron-jobs', {
   run: op.post('/{id}/run', { params: idParam, summary: '手动执行' }),
   setStatus: op.put('/{id}/status', { params: idParam, body: cronJobStatusSchema, summary: '切换状态' }),
   jobLogs: op.get('/{id}/logs', { params: idParam, query: paginationQuery, response: paginated(cronJobLogSchema), summary: '单任务日志' }),
+  jobStats: op.get('/{id}/stats', { params: idParam, query: cronJobStatsQuery, response: cronJobDetailStatsSchema, summary: '单任务执行统计' }),
   clearJobLogs: op.delete('/{id}/logs/clean', { params: idParam, query: cronJobClearLogsQuery, summary: '清除单任务执行日志' }),
 }, { tags: ['CronJobs'] });

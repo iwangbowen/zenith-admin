@@ -19,6 +19,7 @@ import {
   getClearCronJobLogsBeforeAudit,
   getCronJob,
   getCronJobStats,
+  getCronJobDetailStats,
 } from '../../services/tasks/cron-jobs.service';
 
 const cronJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -110,6 +111,14 @@ const idLogsRoute = defineContractRoute(cronJobContract.jobLogs, {
   },
 });
 
+const jobStatsRoute = defineContractRoute(cronJobContract.jobStats, {
+  middleware: read,
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await getCronJobDetailStats(id, c.req.valid('query'))), 200);
+  },
+});
+
 const clearAllLogsRoute = defineContractRoute(cronJobContract.clearLogs, {
   middleware: [authMiddleware, guard({ permission: 'system:cronjob:delete', audit: { module: '定时任务', description: '清除所有执行日志' } })],
   handler: async (c) => {
@@ -140,6 +149,6 @@ const statsRoute = defineContractRoute(cronJobContract.stats, {
   handler: async (c) => c.json(okBody(await getCronJobStats(c.req.valid('query'))), 200),
 });
 
-cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, logsRoute, clearAllLogsRoute, statsRoute, createRouteDef, getOneRoute, updateRouteDef, deleteRouteDef, runRoute, statusRoute, idLogsRoute, clearJobLogsRoute] as const);
+cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, logsRoute, clearAllLogsRoute, statsRoute, createRouteDef, getOneRoute, updateRouteDef, deleteRouteDef, runRoute, statusRoute, idLogsRoute, jobStatsRoute, clearJobLogsRoute] as const);
 
 export default cronJobsRoute;

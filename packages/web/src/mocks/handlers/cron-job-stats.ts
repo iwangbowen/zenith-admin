@@ -2,6 +2,7 @@ import dayjs from 'dayjs';
 import { CronExpressionParser } from 'cron-parser';
 import type {
   CronJobAlert,
+  CronJobDetailStats,
   CronJobRunSummary,
   CronJobStats,
   CronJobStatsPerJob,
@@ -31,6 +32,11 @@ function percentile(values: number[], p: number): number | null {
   const lo = Math.floor(idx);
   const hi = Math.ceil(idx);
   return Math.round(sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo));
+}
+
+function describeMs(ms: number | null): string {
+  if (ms == null) return '—';
+  return ms < 1000 ? ` 毫秒` : ` 秒`;
 }
 
 function average(values: number[]): number | null {
@@ -143,10 +149,10 @@ export function buildMockCronJobStats(days: number): CronJobStats {
       push('low_success_rate', 'warning', `成功率仅 ${stat.successRate}%（失败 ${stat.failCount} · 超时 ${stat.timeoutCount} / ${stat.runs} 次）`, stat.lastError);
     }
     if (isCronNearTimeout(stat.avgDurationMs, job.monitorTimeout)) {
-      push('near_timeout', 'warning', `平均耗时 ${Math.round((stat.avgDurationMs ?? 0) / 1000)} 秒，接近监控超时 ${job.monitorTimeout} 秒，有超时风险`);
+      push('near_timeout', 'warning', `平均耗时 ${describeMs(stat.avgDurationMs)}，接近监控超时 ${job.monitorTimeout} 秒，有超时风险`);
     }
     if (stat.runs >= CRON_HEALTH_RULES.successRateMinRuns && isCronSlowTail(stat.avgDurationMs, stat.p95DurationMs)) {
-      push('slow_tail', 'info', `最慢 5% 的执行耗时约 ${Math.round((stat.p95DurationMs ?? 0) / 1000)} 秒，是平均值的 ${((stat.p95DurationMs ?? 0) / Math.max(stat.avgDurationMs ?? 1, 1)).toFixed(1)} 倍`);
+      push('slow_tail', 'info', `最慢 5% 的执行耗时约 ${describeMs(stat.p95DurationMs)}，是平均值 ${describeMs(stat.avgDurationMs)} 的 ${((stat.p95DurationMs ?? 0) / Math.max(stat.avgDurationMs ?? 1, 1)).toFixed(1)} 倍`);
     }
     if (stat.enabled && stat.totalRuns === 0) {
       push('never_run', 'info', CRON_ALERT_TYPE_LABELS.never_run, stat.nextRunAt ? `下次执行 ${stat.nextRunAt}` : null);
@@ -230,4 +236,60 @@ export function buildMockCronJobStats(days: number): CronJobStats {
     topErrors,
     upcoming,
   };
+}
+
+/** Demo 模式的单任务下钻：从同一份 Demo 日志切出该任务的明细 */
+export function buildMockCronJobDetailStats(jobId: number, days: number): CronJobDetailStats | null {
+  const overview = buildMockCronJobStats(days);
+  const job = overview.perJob.find((p) => p.jobId === jobId);
+  if (!job) return null;
+  const now = Date.now();
+  const startOfToday = dayjs(now).startOf('day').valueOf();
+  const periodStart = startOfToday - (days - 1) * DAY_MS;
+  const prevStart = startOfToday - (2 * days - 1) * DAY_MS;
+  const all = mockCronJobLogs.filter((l) => l.jobId === jobId);
+  const period = all.filter((l) => l.ts >= periodStart);
+  const prev = all.filter((l) => l.ts >= prevStart && l.ts < periodStart);
+
+  const dailyMap = new Map<string, MockCronJobLog[]>();
+  for (const l of period) {
+    const key = l.startedAt.slice(0, 10);
+    dailyMap.set(key, [...(dailyMap.get(key) ?? []), l]);
+  }
+  const buckets = [
+    { label: '<1s', max: 1_000 },
+    { label: '1-5s', max: 5_000 },
+    { label: '5-30s', max: 30_000 },
+    { label: '>30s', max: Number.POSITIVE_INFINITY },
+  ];
+  const jobRow = mockCronJobs.find((j) => j.id === jobId);
+  const nextRuns = jobRow && jobRow.status === 'enabled'
+    ? nextRuns10(jobRow.cronExpression, new Date(now))
+    : [];
+
+  return {
+    days,
+    job,
+    period: summarize(period),
+    prevPeriod: summarize(prev),
+    dailyStats: [...dailyMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, list]) => {
+      const s = summarize(list);
+      return { date, total: s.total, successCount: s.successCount, failCount: s.failCount, timeoutCount: s.timeoutCount, avgDurationMs: s.avgDurationMs, p95DurationMs: s.p95DurationMs };
+    }),
+    runs: period.slice(0, 200).reverse().map((l) => ({
+      logId: l.id, startedAt: l.startedAt, status: l.status, trigger: l.trigger, durationMs: l.durationMs, latencyMs: l.latencyMs,
+    })),
+    latencyBuckets: buckets.map((b, i) => ({
+      bucket: b.label,
+      count: period.filter((l) => l.latencyMs != null && l.latencyMs >= 0 && l.latencyMs < b.max && (i === 0 || l.latencyMs >= buckets[i - 1].max)).length,
+    })),
+    recentErrors: period.filter((l) => l.status === 'fail' || l.status === 'timeout').slice(0, 10).map((l) => ({
+      logId: l.id, startedAt: l.startedAt, status: l.status, trigger: l.trigger, attempt: l.attempt, durationMs: l.durationMs, message: l.errorMessage ?? '',
+    })),
+    nextRuns,
+  };
+}
+
+function nextRuns10(expression: string, from: Date): string[] {
+  return nextRuns(expression, from, 10, Number.POSITIVE_INFINITY).map((d) => mockDateTime(d));
 }

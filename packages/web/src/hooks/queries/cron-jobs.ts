@@ -14,10 +14,18 @@ export type CronJobStatsParams = NonNullable<QueryOf<typeof cronJobContract.stat
 
 /** 执行概览（各统计周期）的公共前缀 */
 const statsKey = contractKey(cronJobContract.stats);
+/** 单任务下钻统计的公共前缀 */
+const jobStatsKey = contractKey(cronJobContract.jobStats);
 /** 全量执行日志（各筛选条件）的公共前缀 */
 const logsKey = contractKey(cronJobContract.logs);
 /** 单任务执行日志的公共前缀 */
 const jobLogsKey = contractKey(cronJobContract.jobLogs);
+
+/** 概览与单任务下钻都由日志聚合而来，凡影响概览的写操作两者同时失效 */
+function invalidateCronJobStats(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: statsKey });
+  void qc.invalidateQueries({ queryKey: jobStatsKey });
+}
 
 /** 执行日志分两个端点（全量 / 单任务），凡影响日志的写操作两者同时失效 */
 function invalidateCronJobLogs(qc: QueryClient) {
@@ -33,7 +41,7 @@ const {
 } = createResourceQueries(cronJobContract, {
   // 执行日志按任务级联清理，且全量日志列表带 jobName；概览含 totalJobs / enabledJobs
   onDeleted: (qc) => {
-    void qc.invalidateQueries({ queryKey: statsKey });
+    invalidateCronJobStats(qc);
     invalidateCronJobLogs(qc);
   },
 });
@@ -44,6 +52,7 @@ export const cronJobKeys = {
   ...resourceKeys,
   handlers: contractKey(cronJobContract.handlers),
   stats: statsKey,
+  jobStats: jobStatsKey,
   statsOf: (params: CronJobStatsParams) => contractKey(cronJobContract.stats, { query: params }),
   logs: logsKey,
   allLogs: (params: CronJobAllLogsParams) => contractKey(cronJobContract.logs, { query: params }),
@@ -55,9 +64,24 @@ export function useCronJobHandlers() {
   return useApiQuery(cronJobContract.handlers, { staleTime: LOOKUP_STALE_TIME });
 }
 
-/** 执行概览：切换统计周期时保留上一周期数据，避免整页闪成骨架 */
+/** 执行概览刷新周期：运行中 / 心跳等状态需要准实时 */
+export const CRON_STATS_REFETCH_INTERVAL_MS = 30_000;
+
+/** 执行概览：切换统计周期时保留上一周期数据，避免整页闪成骨架；页面可见时定时轮询 */
 export function useCronJobStats(params: CronJobStatsParams = {}) {
-  return useApiQuery(cronJobContract.stats, { query: params }, { placeholderData: keepPreviousData });
+  return useApiQuery(cronJobContract.stats, { query: params }, {
+    placeholderData: keepPreviousData,
+    refetchInterval: CRON_STATS_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+  });
+}
+
+/** 单任务下钻统计（抽屉打开时才拉取） */
+export function useCronJobDetailStats(jobId: number | null, params: CronJobStatsParams = {}) {
+  return useApiQuery(cronJobContract.jobStats, { params: { id: jobId ?? 0 }, query: params }, {
+    enabled: jobId != null,
+    placeholderData: keepPreviousData,
+  });
 }
 
 export function useCronJobLogs({ jobId, ...query }: CronJobLogsParams, enabled = true) {
@@ -78,7 +102,7 @@ export function useSaveCronJob() {
       qc.setQueryData(cronJobKeys.detail(saved.id), saved);
       void qc.invalidateQueries({ queryKey: cronJobKeys.lists });
       // 概览含 totalJobs / enabledJobs 与 perJob.jobName，新增或改名都会变
-      void qc.invalidateQueries({ queryKey: cronJobKeys.stats });
+      invalidateCronJobStats(qc);
     },
   });
 }
@@ -93,7 +117,7 @@ export function useRunCronJob() {
     invalidate: (qc, _output, { params }) => {
       void qc.invalidateQueries({ queryKey: cronJobKeys.lists });
       void qc.invalidateQueries({ queryKey: cronJobKeys.detail(params.id) });
-      void qc.invalidateQueries({ queryKey: cronJobKeys.stats });
+      invalidateCronJobStats(qc);
       invalidateCronJobLogs(qc);
     },
   });
@@ -106,7 +130,7 @@ export function useUpdateCronJobStatus() {
       void qc.invalidateQueries({ queryKey: cronJobKeys.lists });
       void qc.invalidateQueries({ queryKey: cronJobKeys.detail(params.id) });
       // 概览含 enabledJobs
-      void qc.invalidateQueries({ queryKey: cronJobKeys.stats });
+      invalidateCronJobStats(qc);
     },
   });
 }
@@ -121,7 +145,7 @@ export function useClearCronJobLogs() {
     onSuccess: () => {
       invalidateCronJobLogs(qc);
       // 概览的汇总 / 趋势 / perJob / 错误聚合均由日志聚合而来
-      void qc.invalidateQueries({ queryKey: cronJobKeys.stats });
+      invalidateCronJobStats(qc);
       // 任务本身字段不受影响，不动 lists / detail
     },
   });

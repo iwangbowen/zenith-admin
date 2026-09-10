@@ -3,11 +3,12 @@ import { cronJobContract } from '@zenith/shared/platform';
 import type { CronJob } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
+import { notFound } from '@/mocks/utils/handlers';
 import { mockCronJobs, getNextCronJobId } from '@/mocks/data/system';
 import { mockCronJobLogs } from '@/mocks/data/cron-job-logs';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
-import { buildMockCronJobStats } from './cron-job-stats';
+import { buildMockCronJobDetailStats, buildMockCronJobStats } from './cron-job-stats';
 
 export const cronJobsHandlers = [
   // 获取可用任务处理器列表（必须在 :id 路由之前声明）
@@ -35,6 +36,13 @@ export const cronJobsHandlers = [
 
   // 任务执行统计：全部由 Demo 日志聚合而来，健康判定复用 shared 的同一套阈值
   mock(cronJobContract.stats, ({ query, ok }) => ok(buildMockCronJobStats(query.days))),
+
+  // 单任务下钻统计
+  mock(cronJobContract.jobStats, ({ params, query, ok }) => {
+    const detail = buildMockCronJobDetailStats(params.id, query.days);
+    if (!detail) return notFound('任务不存在');
+    return ok(detail);
+  }),
 
   // 定时任务列表（分页）
   mock(cronJobContract.list, ({ query, ok, paginate }) => {
