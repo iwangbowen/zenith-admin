@@ -665,6 +665,8 @@ interface MixedSeriesOptions {
   readonly field: string;
   readonly name: string;
   readonly color?: string;
+  /** 该系列在 tooltip 中的数值格式，缺省回退到 `tooltip.barValue` / `tooltip.lineValue` */
+  readonly format?: (value: number, datum: ChartDatum) => string;
 }
 
 interface MixedBarOptions extends MixedSeriesOptions {
@@ -698,7 +700,11 @@ export interface MixedBarLineOptions {
   readonly palette: ChartPalette;
   readonly dataId?: string;
   readonly bar: MixedBarOptions;
+  /** 与 `bar` 堆叠在同一根柱上的额外柱系列（共用左轴） */
+  readonly stackedBars?: readonly MixedBarOptions[];
   readonly line: MixedLineOptions;
+  /** 额外的折线系列（共用右轴） */
+  readonly extraLines?: readonly MixedLineOptions[];
   readonly legend?: boolean;
   readonly axis?: MixedBarLineAxis;
   readonly tooltip?: MixedBarLineTooltip;
@@ -706,61 +712,98 @@ export interface MixedBarLineOptions {
 
 export function makeMixedBarLineSpec(o: MixedBarLineOptions): Partial<ICommonChartSpec> {
   const { palette } = o;
-  const barId = o.bar.id ?? o.bar.field;
-  const lineId = o.line.id ?? o.line.field;
-  const barColor = o.bar.color ?? palette.dataColors[0] ?? palette.primary;
-  const lineColor = o.line.color ?? palette.dataColors[2] ?? palette.active;
-  const curveType = o.line.smooth ?? true ? ('monotone' as const) : ('linear' as const);
+  const bars = [o.bar, ...(o.stackedBars ?? [])];
+  const lines = [o.line, ...(o.extraLines ?? [])];
+  const stacked = bars.length > 1;
+  const idOf = (s: MixedSeriesOptions) => s.id ?? s.field;
+  const barColorOf = (s: MixedBarOptions, i: number) => s.color ?? palette.dataColors[i] ?? palette.primary;
+  const lineColorOf = (s: MixedLineOptions, i: number) => s.color ?? palette.dataColors[2 + i] ?? palette.active;
   const titleField = o.tooltip?.titleField ?? o.xField;
   const barValueFmt = o.tooltip?.barValue ?? ((value: number) => compactCount(value));
   const lineValueFmt = o.tooltip?.lineValue ?? ((value: number) => compactCount(value));
+  const wideData = [...(o.data as readonly Record<string, unknown>[])];
+  const dataId = o.dataId ?? 'mixed';
+  const stackedBarId = `${idOf(o.bar)}-stack`;
 
   const leftAxis = {
     ...linearAxis('left', palette, o.axis?.leftLabel),
-    seriesId: [barId],
+    seriesId: stacked ? [stackedBarId] : [idOf(o.bar)],
   };
   const rightAxis = {
     ...linearAxis('right', palette, o.axis?.rightLabel),
-    seriesId: [lineId],
+    seriesId: lines.map(idOf),
     grid: { visible: false },
   };
 
-  return {
-    ...makeCommonCartesianSpec(palette),
-    data: [{ id: o.dataId ?? 'mixed', values: [...(o.data as readonly Record<string, unknown>[])] }],
-    series: [
-      {
-        type: 'bar',
-        id: barId,
+  // 堆叠：与 makeBarSpec 同一套做法——长表 + seriesField，由单个柱系列承载全部堆叠段，
+  // 而不是多个柱系列各自 stack（common 图表下多系列 stack 不会参与轴域计算，柱高为 0）
+  const barSeries = stacked
+    ? [{
+        type: 'bar' as const,
+        id: stackedBarId,
+        dataId: `${dataId}-bars`,
+        xField: '__x',
+        yField: '__value',
+        seriesField: '__type',
+        stack: true,
+        bar: {
+          style: {
+            fill: (datum: ChartDatum) => {
+              const index = bars.findIndex((b) => b.name === datumText(datum, '__type'));
+              return barColorOf(bars[Math.max(index, 0)], Math.max(index, 0));
+            },
+            fillOpacity: o.bar.fillOpacity ?? 0.92,
+          },
+        },
+      }]
+    : [{
+        type: 'bar' as const,
+        id: idOf(o.bar),
+        dataId,
         xField: o.xField,
         yField: o.bar.field,
         name: o.bar.name,
         bar: {
           style: {
-            fill: barColor,
+            fill: barColorOf(o.bar, 0),
             cornerRadius: o.bar.cornerRadius ?? [4, 4, 0, 0],
             fillOpacity: o.bar.fillOpacity ?? 0.92,
           },
         },
-      },
-      {
-        type: 'line',
-        id: lineId,
-        xField: o.xField,
-        yField: o.line.field,
-        name: o.line.name,
-        line: {
-          style: {
-            stroke: lineColor,
-            lineWidth: o.line.lineWidth ?? 2,
-            curveType,
+      }];
+
+  return {
+    ...makeCommonCartesianSpec(palette),
+    data: [
+      { id: dataId, values: wideData },
+      ...(stacked
+        ? [{ id: `${dataId}-bars`, values: wideToLong(wideData, o.xField, bars.map((b) => ({ field: b.field, name: b.name }))) }]
+        : []),
+    ],
+    series: [
+      ...barSeries,
+      ...lines.map((line, i) => {
+        const color = lineColorOf(line, i);
+        return {
+          type: 'line' as const,
+          id: idOf(line),
+          dataId,
+          xField: o.xField,
+          yField: line.field,
+          name: line.name,
+          line: {
+            style: {
+              stroke: color,
+              lineWidth: line.lineWidth ?? 2,
+              curveType: line.smooth ?? true ? ('monotone' as const) : ('linear' as const),
+            },
           },
-        },
-        point: {
-          visible: o.line.showPoint ?? true,
-          style: { fill: lineColor, size: o.line.pointSize ?? 5 },
-        },
-      },
+          point: {
+            visible: line.showPoint ?? true,
+            style: { fill: color, size: line.pointSize ?? 5 },
+          },
+        };
+      }),
     ],
     axes: [
       bandAxis('bottom', palette, o.axis?.xLabel),
@@ -779,20 +822,20 @@ export function makeMixedBarLineSpec(o: MixedBarLineOptions): Partial<ICommonCha
           },
         },
         content: [
-          {
-            key: o.bar.name,
+          ...bars.map((bar) => ({
+            key: bar.name,
             value: (datum?: ChartDatum | ChartDatum[]) => {
               const item = firstDatum(datum);
-              return barValueFmt(datumNumber(item, o.bar.field), item);
+              return (bar.format ?? barValueFmt)(datumNumber(item, bar.field), item);
             },
-          },
-          {
-            key: o.line.name,
+          })),
+          ...lines.map((line) => ({
+            key: line.name,
             value: (datum?: ChartDatum | ChartDatum[]) => {
               const item = firstDatum(datum);
-              return lineValueFmt(datumNumber(item, o.line.field), item);
+              return (line.format ?? lineValueFmt)(datumNumber(item, line.field), item);
             },
-          },
+          })),
         ],
       },
     },

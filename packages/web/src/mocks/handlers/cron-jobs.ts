@@ -1,10 +1,13 @@
+import dayjs from 'dayjs';
 import { cronJobContract } from '@zenith/shared/platform';
-import type { CronJob, CronJobLog, CronRunStatus } from '@zenith/shared/platform';
+import type { CronJob } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, updateItem, removeByIds } from '@/mocks/utils/crud';
 import { mockCronJobs, getNextCronJobId } from '@/mocks/data/system';
-import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '@/mocks/utils/date';
+import { mockCronJobLogs } from '@/mocks/data/cron-job-logs';
+import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
+import { buildMockCronJobStats } from './cron-job-stats';
 
 export const cronJobsHandlers = [
   // 获取可用任务处理器列表（必须在 :id 路由之前声明）
@@ -12,136 +15,26 @@ export const cronJobsHandlers = [
 
   mock(cronJobContract.validate, ({ body, ok }) => ok({ valid: body.expression.trim().split(/\s+/).length >= 5 })),
 
-  // 全量执行日志（必须在 :id 路由之前声明）
+  // 全量执行日志（必须在 :id 路由之前声明）：与执行概览共用同一份 Demo 日志
   mock(cronJobContract.logs, ({ query, ok, paginate }) => {
-    const statuses: CronRunStatus[] = ['success', 'success', 'success', 'fail', 'running'];
-    const allLogs: CronJobLog[] = mockCronJobs.flatMap((job, i) =>
-      Array.from({ length: 5 }, (_, j) => ({
-        id: i * 5 + j + 1,
-        jobId: job.id,
-        jobName: job.name,
-        executionCount: i * 5 + j + 1,
-        startedAt: mockDateTimeOffset(-(i * 5 + j + 1) * 1800000),
-        endedAt: mockDateTimeOffset(-(i * 5 + j + 1) * 1800000 + 1200 + j * 200),
-        durationMs: 1200 + j * 200,
-        status: statuses[j % statuses.length],
-        output: statuses[j % statuses.length] === 'fail' ? 'Error: Connection timeout' : 'Completed successfully',
-      }))
-    ).filter((log) => !query.jobId || log.jobId === query.jobId)
-      .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-
-    return ok(paginate(allLogs));
+    const from = query.startTime ? dayjs(query.startTime).valueOf() : null;
+    const to = query.endTime ? dayjs(query.endTime.length === 10 ? `${query.endTime} 23:59:59` : query.endTime).valueOf() : null;
+    const list = filterByKeyword(mockCronJobLogs, query.keyword, [(l) => l.jobName, (l) => l.output], { caseInsensitive: true })
+      .filter((l) => (!query.jobId || l.jobId === query.jobId)
+        && (!query.status || l.status === query.status)
+        && (from == null || l.ts >= from)
+        && (to == null || l.ts <= to));
+    return ok(paginate(list));
   }),
 
   // 按任务 ID 查询执行日志（必须在 :id 路由之前声明）
   mock(cronJobContract.jobLogs, ({ params, ok, paginate }) => {
-    const job = requireItem(mockCronJobs, params.id, '任务不存在');
-
-    const statuses: CronRunStatus[] = ['success', 'success', 'fail', 'success', 'running'];
-    const logs: CronJobLog[] = Array.from({ length: 10 }, (_, j) => ({
-      id: j + 1,
-      jobId: job.id,
-      jobName: job.name,
-      executionCount: j + 1,
-      startedAt: mockDateTimeOffset(-(j + 1) * 3600000),
-      endedAt: mockDateTimeOffset(-(j + 1) * 3600000 + 1500 + j * 100),
-      durationMs: 1500 + j * 100,
-      status: statuses[j % statuses.length],
-      output: statuses[j % statuses.length] === 'fail' ? 'Error: timeout' : 'OK',
-    }));
-
-    return ok(paginate(logs));
+    requireItem(mockCronJobs, params.id, '任务不存在');
+    return ok(paginate(mockCronJobLogs.filter((l) => l.jobId === params.id)));
   }),
 
-  // 任务执行统计
-  mock(cronJobContract.stats, ({ ok }) => {
-    const statuses: CronRunStatus[] = ['success', 'success', 'success', 'fail', 'running'];
-
-    const perJob = mockCronJobs.map((job, i) => {
-      const totalRuns = 20 + (i * 7 % 80);
-      const successCount = Math.floor(totalRuns * (0.7 + (i * 3 % 30) / 100));
-      const failCount = totalRuns - successCount;
-      // 近 10 次执行状态（确定性生成；第 2 个任务演示连续失败告警）
-      let recentResults: CronRunStatus[];
-      if (i === 1) {
-        recentResults = ['success', 'success', 'fail', 'success', 'success', 'success', 'fail', 'fail', 'fail', 'fail'];
-      } else {
-        recentResults = Array.from({ length: Math.min(10, totalRuns) }, (_, j) =>
-          (j * 7 + i * 3) % 9 === 0 ? 'fail' : 'success');
-      }
-      let consecutiveFails = 0;
-      for (let j = recentResults.length - 1; j >= 0; j--) {
-        if (recentResults[j] === 'running') continue;
-        if (recentResults[j] !== 'fail') break;
-        consecutiveFails++;
-      }
-      const avgDurationMs = 800 + (i * 137 % 2600);
-      return {
-        jobId: job.id, jobName: job.name, totalRuns, successCount, failCount,
-        successRate: Math.round((successCount / totalRuns) * 100),
-        avgDurationMs,
-        p95DurationMs: Math.round(avgDurationMs * (1.6 + (i % 4) * 0.45)),
-        recentResults,
-        consecutiveFails,
-        lastRunStatus: job.lastRunStatus ?? (failCount > successCount ? 'fail' : 'success'),
-        lastRunAt: job.lastRunAt ?? mockDateTimeOffset(-(i + 1) * 1800000),
-      };
-    });
-
-    // 近 14 天趋势（确定性生成）
-    const dailyStats = Array.from({ length: 14 }, (_, idx) => {
-      const offset = idx - 13;
-      const total = 12 + ((idx * 5 + 3) % 22);
-      const failCount = (idx * 3) % 5;
-      return {
-        date: mockDateOffset(offset), total, successCount: total - failCount, failCount,
-        avgDurationMs: 900 + ((idx * 173) % 1400),
-      };
-    });
-
-    // 近 7 天按小时执行分布（凌晨批处理高峰 + 工作时段小幅增量）
-    const hourlyStats = Array.from({ length: 24 }, (_, hour) => {
-      let total = 2 + ((hour * 3) % 5);
-      if (hour >= 1 && hour <= 4) total += 14 - hour * 2;
-      if (hour >= 9 && hour <= 18) total += 4;
-      let failCount = 0;
-      if ((hour * 7) % 11 === 0) failCount = 2;
-      else if (hour % 5 === 0) failCount = 1;
-      return { hour, total, failCount };
-    });
-
-    // 最近 12 条执行记录
-    const recentLogs = Array.from({ length: 12 }, (_, j) => {
-      const job = mockCronJobs[j % mockCronJobs.length];
-      const status = statuses[j % statuses.length];
-      let output: string;
-      if (status === 'fail') output = 'Error: Connection timeout after 30000ms';
-      else if (status === 'running') output = '任务执行中…';
-      else output = `任务「${job.name}」执行成功，处理 ${100 + j * 13} 条记录`;
-      return {
-        id: j + 1,
-        jobId: job.id,
-        jobName: job.name,
-        status,
-        durationMs: status === 'running' ? null : 600 + (j * 211 % 3200),
-        startedAt: mockDateTimeOffset(-(j + 1) * 900000),
-        executionCount: 1 + (j % 3),
-        output,
-      };
-    });
-
-    return ok({
-      totalJobs: mockCronJobs.length,
-      enabledJobs: mockCronJobs.filter(j => j.status === 'enabled').length,
-      runningJobs: 1,
-      todayRuns: 24, todaySuccesses: 21, todayFails: 3,
-      todayAvgDurationMs: 1450,
-      perJob,
-      dailyStats,
-      hourlyStats,
-      recentLogs,
-    });
-  }),
+  // 任务执行统计：全部由 Demo 日志聚合而来，健康判定复用 shared 的同一套阈值
+  mock(cronJobContract.stats, ({ query, ok }) => ok(buildMockCronJobStats(query.days))),
 
   // 定时任务列表（分页）
   mock(cronJobContract.list, ({ query, ok, paginate }) => {

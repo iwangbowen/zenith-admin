@@ -137,7 +137,7 @@ const clearJobLogsRoute = defineContractRoute(cronJobContract.clearJobLogs, {
 
 const statsRoute = defineContractRoute(cronJobContract.stats, {
   middleware: read,
-  handler: async (c) => c.json(okBody(await getCronJobStats()), 200),
+  handler: async (c) => c.json(okBody(await getCronJobStats(c.req.valid('query'))), 200),
 });
 
 cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, logsRoute, clearAllLogsRoute, statsRoute, createRouteDef, getOneRoute, updateRouteDef, deleteRouteDef, runRoute, statusRoute, idLogsRoute, clearJobLogsRoute] as const);

@@ -231,7 +231,7 @@ export const createCronJobSchema = z.object({
   /** 重试间隔，单位：秒 */
   retryInterval: z.number().int().min(0, '重试间隔不能为负').default(0),
   retryBackoff: z.boolean().default(false),
-  monitorTimeout: z.number().int().min(0).nullable().optional(),
+  monitorTimeout: z.number().int().min(0).nullable().optional().meta({ description: '监控超时，单位：秒；到点仍未完成视为超时' }),
 });
 
 export const updateCronJobSchema = partialForUpdate(createCronJobSchema);

@@ -18,10 +18,15 @@
 | `POST` | `/` | `system:cronjob:create` | 创建 |
 | `PUT` | `/{id}` | `system:cronjob:update` | 更新 |
 | `DELETE` | `/{id}` | `system:cronjob:delete` | 删除 |
-| `POST` | `/{id}/execute` | `system:cronjob:execute` | 手动执行 |
-| `GET` | `/{id}/logs` | `system:cronjob:list` | 执行日志 |
+| `POST` | `/{id}/run` | `system:cronjob:execute` | 手动执行 |
+| `GET` | `/{id}/logs` | `system:cronjob:list` | 单任务执行日志 |
+| `GET` | `/logs` | `system:cronjob:list` | 全部执行日志，支持 `jobId` / `status` / `keyword` / `startTime` / `endTime` 筛选 |
+| `GET` | `/stats?days=14` | `system:cronjob:list` | 执行概览统计：今日 / 昨日同时段 / 周期与上一周期汇总、调度器状态、健康提醒、逐任务指标、每日趋势、星期 × 小时分布、失败原因聚合、下次执行 |
 
-任务字段包括 `name`、`cronExpression`、`handler`、`params`、`status`、`retryCount`、`retryInterval`、`retryBackoff`、`monitorTimeout` 和最近运行结果。
+任务字段包括 `name`、`cronExpression`、`handler`、`params`、`status`、`retryCount`、`retryInterval`、`retryBackoff`、`monitorTimeout`（秒）和最近运行结果。
+
+执行概览的健康判定阈值（连续失败次数、成功率下限、P95 / 平均倍数、接近超时比例、未按计划执行容差）
+统一定义在 `packages/shared/src/platform/cron-health.ts`，服务端聚合与 Demo Mock 共用。
 
 ## Handler Registry
 

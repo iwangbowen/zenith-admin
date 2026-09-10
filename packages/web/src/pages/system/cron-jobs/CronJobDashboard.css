@@ -1,0 +1,323 @@
+/* 定时任务执行概览：密排面板的局部样式（布局与分隔沿用 .zx-flat-panels / .chart-grid） */
+
+.cron-dashboard__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* ── 调度器状态条 ── */
+.cron-scheduler {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--semi-color-text-1);
+}
+
+.cron-scheduler__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--semi-color-text-0);
+}
+
+.cron-scheduler__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--semi-color-success);
+}
+
+.cron-scheduler__dot--offline {
+  background: var(--semi-color-danger);
+}
+
+.cron-scheduler__meta {
+  color: var(--semi-color-text-2);
+}
+
+.cron-mono {
+  font-family: Menlo, Consolas, "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 健康提醒 ── */
+.cron-alerts {
+  display: flex;
+  flex-direction: column;
+}
+
+.cron-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 4px 0;
+}
+
+.cron-alert + .cron-alert {
+  border-top: 1px dashed var(--semi-color-border);
+}
+
+.cron-alert__level {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.cron-alert__level--danger { background: var(--semi-color-danger); }
+.cron-alert__level--warning { background: var(--semi-color-warning); }
+.cron-alert__level--info { background: var(--semi-color-text-3); }
+
+.cron-alert__job {
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cron-alert__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--semi-color-text-1);
+}
+
+.cron-alert__detail {
+  color: var(--semi-color-text-2);
+}
+
+.cron-alert__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.cron-alerts__more {
+  padding-top: 6px;
+}
+
+/* ── 表格复合单元格 ── */
+.cron-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.cron-cell__main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cron-cell__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cron-cell__sub {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cron-cell--right {
+  align-items: flex-end;
+}
+
+.cron-status-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.cron-rate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cron-rate__value {
+  min-width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cron-rate__bar {
+  flex: 1;
+  min-width: 0;
+}
+
+.cron-trend {
+  font-size: 11px;
+}
+
+.cron-trend--up { color: var(--semi-color-success); }
+.cron-trend--down { color: var(--semi-color-danger); }
+.cron-trend--worse { color: var(--semi-color-warning); }
+
+/* ── 近 N 次执行状态块 ── */
+.cron-result-blocks {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.cron-result-block {
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  border-radius: var(--semi-border-radius-extra-small);
+}
+
+/* ── 未来调度 / 失败原因 ── */
+.cron-list {
+  overflow-y: auto;
+}
+
+.cron-list__group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 3px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-2);
+  background: var(--surface-card);
+}
+
+.cron-upcoming {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  padding: 3px 0;
+}
+
+.cron-upcoming--soon .cron-upcoming__time {
+  color: var(--semi-color-warning);
+}
+
+.cron-upcoming__time {
+  flex-shrink: 0;
+  min-width: 64px;
+  color: var(--semi-color-primary);
+}
+
+.cron-upcoming__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cron-upcoming__meta {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+.cron-upcoming__cadence {
+  min-width: 84px;
+  text-align: right;
+}
+
+.cron-upcoming__eta {
+  min-width: 56px;
+  text-align: right;
+}
+
+.cron-error {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cron-error + .cron-error {
+  border-top: 1px dashed var(--semi-color-border);
+}
+
+.cron-error:hover .cron-error__message {
+  color: var(--semi-color-primary);
+}
+
+.cron-error__count {
+  flex-shrink: 0;
+  min-width: 36px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: right;
+  color: var(--semi-color-danger);
+  font-variant-numeric: tabular-nums;
+}
+
+.cron-error__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.cron-error__message {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.cron-error__meta {
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cron-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+/* 面板标题右侧的筛选按钮组 */
+.cron-panel-extra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cron-row--alert .semi-table-row-cell {
+  background: var(--semi-color-danger-light-default);
+}

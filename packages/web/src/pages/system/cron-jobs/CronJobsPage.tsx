@@ -201,8 +201,12 @@ export default function CronJobsPage() {
   };
 
   const openLogsDrawer = (record: CronJob) => {
-    setLogsJobId(record.id);
-    setLogsJobName(record.name);
+    openLogsDrawerFor(record.id, record.name);
+  };
+
+  const openLogsDrawerFor = (jobId: number, jobName: string) => {
+    setLogsJobId(jobId);
+    setLogsJobName(jobName);
     setLogsPage(1);
     setLogsDrawerVisible(true);
   };
@@ -381,7 +385,7 @@ export default function CronJobsPage() {
       />
         </Tabs.TabPane>
         <Tabs.TabPane tab="执行概览" itemKey="dashboard">
-          <CronJobDashboard jobs={data} />
+          <CronJobDashboard onViewLogs={openLogsDrawerFor} />
         </Tabs.TabPane>
       </Tabs>
 

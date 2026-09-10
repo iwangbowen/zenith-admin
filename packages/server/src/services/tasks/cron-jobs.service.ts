@@ -1,10 +1,32 @@
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { eq, and, desc, lt, sql } from 'drizzle-orm';
-import { withPagination, keywordCondition } from '../../lib/where-helpers';
-import { db } from '../../db';
-import { cronJobs, cronJobLogs } from '../../db/schema';
-import { scheduleJob, stopJob, runJobOnce, validateCronExpression, getRunningJobCount } from '../../lib/pg-boss-scheduler';
+import { eq, and, desc, gte, lt, sql, type SQL } from 'drizzle-orm';
+import { CronExpressionParser } from 'cron-parser';
+import type {
+  CronJobAlert,
+  CronJobLogListQueryInput,
+  CronJobRunSummary,
+  CronJobStats,
+  CronJobStatsPerJob,
+  CronJobStatsQueryInput,
+  CronJobUpcomingRun,
+  CronRunStatus,
+} from '@zenith/shared/platform';
+import {
+  CRON_HEALTH_RULES,
+  CRON_ALERT_TYPE_LABELS,
+  countConsecutiveFails,
+  cronSuccessRatePercent,
+  isCronLowSuccessRate,
+  isCronNearTimeout,
+  isCronRunningTimeout,
+  isCronSlowTail,
+} from '@zenith/shared/platform';
+import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
+import { db, readSnapshot } from '../../db';
+import type { DbTransaction } from '../../db/types';
+import { cronJobs, cronJobLogs, systemSchedulerNodes } from '../../db/schema';
+import { CRON_SCHEDULE_TZ, scheduleJob, stopJob, runJobOnce, validateCronExpression, getSchedulerIntrospection } from '../../lib/pg-boss-scheduler';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 
@@ -96,9 +118,14 @@ export async function setCronJobStatus(id: number, status: 'enabled' | 'disabled
   return status === 'enabled' ? '已启用' : '已停用';
 }
 
-export async function listAllCronJobLogs(q: { page: number; pageSize: number; jobId?: number }) {
-  const { page, pageSize, jobId } = q;
-  const where = jobId ? eq(cronJobLogs.jobId, jobId) : undefined;
+export async function listAllCronJobLogs(q: CronJobLogListQueryInput) {
+  const { page, pageSize, jobId, status, keyword, startTime, endTime } = q;
+  const where = buildWhere(
+    jobId ? eq(cronJobLogs.jobId, jobId) : undefined,
+    status ? eq(cronJobLogs.status, status) : undefined,
+    keywordCondition(keyword, [cronJobLogs.jobName, cronJobLogs.output], 'ilike'),
+    ...dateRangeConditions(cronJobLogs.startedAt, startTime, endTime),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -143,135 +170,391 @@ export async function clearCronJobLogs(days: number, jobId?: number) {
   return (result as unknown as { rowCount?: number }).rowCount ?? 0;
 }
 
-export async function getCronJobStats() {
-  const [allJobs, [summaryRow], perJobAggRows, dailyRows, hourlyRows, recentPerJobRows, recentRows] = await Promise.all([
-    db.select({
-      id: cronJobs.id,
-      name: cronJobs.name,
-      status: cronJobs.status,
-      lastRunStatus: cronJobs.lastRunStatus,
-      lastRunAt: cronJobs.lastRunAt,
-    }).from(cronJobs),
-    db.select({
-      todayRuns: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE) AS int)`,
-      todaySuccesses: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE AND ${cronJobLogs.status} = 'success') AS int)`,
-      todayFails: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE AND ${cronJobLogs.status} = 'fail') AS int)`,
-      todayAvgDurationMs: sql<number | null>`CAST(ROUND(AVG(${cronJobLogs.durationMs}) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE)) AS int)`,
-    }).from(cronJobLogs),
-    db.select({
-      jobId: cronJobLogs.jobId,
-      totalRuns: sql<number>`CAST(COUNT(*) AS int)`,
-      successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'success') AS int)`,
-      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'fail') AS int)`,
-      avgDurationMs: sql<number | null>`CAST(ROUND(AVG(${cronJobLogs.durationMs})) AS int)`,
-      p95DurationMs: sql<number | null>`CAST(ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ${cronJobLogs.durationMs}) FILTER (WHERE ${cronJobLogs.durationMs} IS NOT NULL)) AS int)`,
-    }).from(cronJobLogs).groupBy(cronJobLogs.jobId),
-    db.select({
-      date: sql<string>`to_char(date(${cronJobLogs.startedAt}), 'YYYY-MM-DD')`,
-      total: sql<number>`CAST(COUNT(*) AS int)`,
-      successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'success') AS int)`,
-      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'fail') AS int)`,
-      avgDurationMs: sql<number | null>`CAST(ROUND(AVG(${cronJobLogs.durationMs})) AS int)`,
-    }).from(cronJobLogs)
-      .where(sql`${cronJobLogs.startedAt} >= CURRENT_DATE - INTERVAL '13 days'`)
-      .groupBy(sql`date(${cronJobLogs.startedAt})`)
-      .orderBy(sql`date(${cronJobLogs.startedAt})`),
-    db.select({
-      hour: sql<number>`CAST(EXTRACT(HOUR FROM ${cronJobLogs.startedAt}) AS int)`,
-      total: sql<number>`CAST(COUNT(*) AS int)`,
-      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'fail') AS int)`,
-    }).from(cronJobLogs)
-      .where(sql`${cronJobLogs.startedAt} >= CURRENT_DATE - INTERVAL '6 days'`)
-      .groupBy(sql`EXTRACT(HOUR FROM ${cronJobLogs.startedAt})`)
-      .orderBy(sql`EXTRACT(HOUR FROM ${cronJobLogs.startedAt})`),
-    // 每任务最近 10 次执行状态（窗口函数），返回时按时间升序（旧 → 新）
-    db.execute<{ job_id: number; status: 'success' | 'fail' | 'running' }>(sql`
-      SELECT job_id, status FROM (
-        SELECT ${cronJobLogs.jobId} AS job_id, ${cronJobLogs.status} AS status, ${cronJobLogs.startedAt} AS started_at,
-               ROW_NUMBER() OVER (PARTITION BY ${cronJobLogs.jobId} ORDER BY ${cronJobLogs.startedAt} DESC) AS rn
-        FROM ${cronJobLogs}
-      ) t WHERE rn <= 10 ORDER BY job_id, started_at ASC
-    `),
-    db.select({
-      id: cronJobLogs.id,
-      jobId: cronJobLogs.jobId,
-      jobName: cronJobLogs.jobName,
-      status: cronJobLogs.status,
-      durationMs: cronJobLogs.durationMs,
-      startedAt: cronJobLogs.startedAt,
-      executionCount: cronJobLogs.executionCount,
-      output: cronJobLogs.output,
-    }).from(cronJobLogs).orderBy(desc(cronJobLogs.startedAt)).limit(12),
-  ]);
 
-  const aggMap = new Map(perJobAggRows.map(r => [r.jobId, r]));
-  const recentMap = new Map<number, Array<'success' | 'fail' | 'running'>>();
-  for (const row of recentPerJobRows) {
-    const list = recentMap.get(row.job_id) ?? [];
-    list.push(row.status);
-    recentMap.set(row.job_id, list);
+// ─── 执行概览统计 ────────────────────────────────────────────────────────────
+
+const RECENT_RESULTS_LIMIT = 20;
+const UPCOMING_WINDOW_MS = 24 * 60 * 60_000;
+const TOP_ERRORS_LIMIT = 10;
+
+const RUNNING_STATUS: CronRunStatus = 'running';
+
+type JobRow = Pick<
+  typeof cronJobs.$inferSelect,
+  'id' | 'name' | 'handler' | 'cronExpression' | 'status' | 'monitorTimeout' | 'lastRunAt' | 'lastRunStatus' | 'createdAt' | 'updatedAt'
+>;
+
+/** `CURRENT_DATE - n 天` 的日期边界（沿用数据库会话时区，与每日分桶口径一致） */
+function dateBefore(days: number) {
+  return sql`(CURRENT_DATE - make_interval(days => ${days}))`;
+}
+
+const startedAt = cronJobLogs.startedAt;
+const durationMs = cronJobLogs.durationMs;
+const runStatus = cronJobLogs.status;
+
+/** 单个时间窗内的执行汇总（成功 / 失败 / 运行中 / 平均 / P95） */
+async function runSummary(tx: DbTransaction, window: SQL | undefined): Promise<CronJobRunSummary> {
+  const [row] = await tx.select({
+    total: sql<number>`CAST(COUNT(*) AS int)`,
+    successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'success') AS int)`,
+    failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'fail') AS int)`,
+    runningCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'running') AS int)`,
+    avgDurationMs: sql<number | null>`CAST(ROUND(AVG(${durationMs})) AS int)`,
+    p95DurationMs: sql<number | null>`CAST(ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ${durationMs}) FILTER (WHERE ${durationMs} IS NOT NULL)) AS int)`,
+  }).from(cronJobLogs).where(window);
+  return {
+    total: Number(row?.total ?? 0),
+    successCount: Number(row?.successCount ?? 0),
+    failCount: Number(row?.failCount ?? 0),
+    runningCount: Number(row?.runningCount ?? 0),
+    avgDurationMs: row?.avgDurationMs == null ? null : Number(row.avgDurationMs),
+    p95DurationMs: row?.p95DurationMs == null ? null : Number(row.p95DurationMs),
+  };
+}
+
+function toNullableInt(value: number | string | null | undefined): number | null {
+  return value == null ? null : Number(value);
+}
+
+function parseCron(expression: string, currentDate?: Date) {
+  try {
+    return CronExpressionParser.parse(expression, { tz: CRON_SCHEDULE_TZ, ...(currentDate ? { currentDate } : {}) });
+  } catch {
+    return null;
+  }
+}
+
+/** 每个启用任务在未来 24 小时内的下一次执行；日频次按相邻两次触发间隔估算，避免逐分钟任务迭代上千次 */
+function calcUpcomingRuns(jobs: JobRow[], now: Date): CronJobUpcomingRun[] {
+  const deadline = now.getTime() + UPCOMING_WINDOW_MS;
+  const runs: Array<{ jobId: number; jobName: string; cronExpression: string; at: Date; runsPerDay: number | null }> = [];
+  for (const job of jobs) {
+    if (job.status !== 'enabled') continue;
+    const interval = parseCron(job.cronExpression, now);
+    if (!interval) continue;
+    let first: Date | null = null;
+    let second: Date | null = null;
+    try {
+      first = interval.next().toDate();
+      second = interval.next().toDate();
+    } catch {
+      // 表达式没有更多触发时刻：first 可能已取到，second 保持 null
+    }
+    if (!first || first.getTime() > deadline) continue;
+    const gapMs = second ? second.getTime() - first.getTime() : 0;
+    runs.push({
+      jobId: job.id,
+      jobName: job.name,
+      cronExpression: job.cronExpression,
+      at: first,
+      runsPerDay: gapMs > 0 ? Math.max(1, Math.round(UPCOMING_WINDOW_MS / gapMs)) : null,
+    });
+  }
+  return runs
+    .sort((a, b) => a.at.getTime() - b.at.getTime())
+    .map((r) => ({ jobId: r.jobId, jobName: r.jobName, cronExpression: r.cronExpression, runAt: formatDateTime(r.at), runsPerDay: r.runsPerDay }));
+}
+
+/**
+ * 未按计划执行：启用中的任务，按表达式在「now - 容差」之前应有一次执行，
+ * 但最近执行时刻早于该应执行时刻（或从未执行），且任务在该时刻之前就已存在并保持当前配置。
+ */
+function detectMissedRun(job: JobRow, now: Date): Date | null {
+  if (job.status !== 'enabled') return null;
+  const interval = parseCron(job.cronExpression, new Date(now.getTime() - CRON_HEALTH_RULES.missedRunGraceMs));
+  if (!interval) return null;
+  let expected: Date;
+  try {
+    expected = interval.prev().toDate();
+  } catch {
+    return null;
+  }
+  // 任务在应执行时刻之后才创建 / 修改（含启停切换），本轮不评估
+  const configuredAt = Math.max(job.createdAt.getTime(), job.updatedAt.getTime());
+  if (expected.getTime() <= configuredAt) return null;
+  if (job.lastRunAt && job.lastRunAt.getTime() >= expected.getTime()) return null;
+  return expected;
+}
+
+const ALERT_LEVEL_ORDER = { danger: 0, warning: 1, info: 2 } as const;
+
+function buildAlerts(
+  jobs: JobRow[],
+  perJob: Map<number, CronJobStatsPerJob>,
+  runningLogs: Array<{ jobId: number; startedAt: Date }>,
+  now: Date,
+): CronJobAlert[] {
+  const alerts: CronJobAlert[] = [];
+  const push = (type: CronJobAlert['type'], level: CronJobAlert['level'], job: JobRow, message: string, detail: string | null = null) => {
+    alerts.push({ type, level, jobId: job.id, jobName: job.name, message, detail });
+  };
+  const runningByJob = new Map<number, Date>();
+  for (const log of runningLogs) {
+    const current = runningByJob.get(log.jobId);
+    if (!current || log.startedAt < current) runningByJob.set(log.jobId, log.startedAt);
   }
 
-  const perJob = allJobs
-    .map(job => {
-      const agg = aggMap.get(job.id);
-      const total = Number(agg?.totalRuns ?? 0);
-      const success = Number(agg?.successCount ?? 0);
-      const recentResults = recentMap.get(job.id) ?? [];
-      // 连续失败：从最新往回数 fail（running 跳过不中断）
-      let consecutiveFails = 0;
-      for (let i = recentResults.length - 1; i >= 0; i--) {
-        if (recentResults[i] === 'running') continue;
-        if (recentResults[i] !== 'fail') break;
-        consecutiveFails++;
+  for (const job of jobs) {
+    const stat = perJob.get(job.id);
+    if (!stat) continue;
+
+    const runningSince = runningByJob.get(job.id);
+    if (runningSince && isCronRunningTimeout(runningSince.getTime(), now.getTime(), job.monitorTimeout)) {
+      push('running_timeout', 'danger', job,
+        `已运行 ${Math.round((now.getTime() - runningSince.getTime()) / 60_000)} 分钟，超过监控超时 ${job.monitorTimeout} 秒`,
+        `开始于 ${formatDateTime(runningSince)}`);
+    }
+
+    if (stat.consecutiveFails >= CRON_HEALTH_RULES.consecutiveFailThreshold) {
+      push('consecutive_fail', 'danger', job, `连续失败 ${stat.consecutiveFails} 次`, stat.lastError);
+    } else if (isCronLowSuccessRate(stat.successRate, stat.runs)) {
+      push('low_success_rate', 'warning', job, `成功率仅 ${stat.successRate}%（${stat.failCount}/${stat.runs} 次失败）`, stat.lastError);
+    }
+
+    const missedAt = detectMissedRun(job, now);
+    if (missedAt) {
+      push('missed_run', 'warning', job, `应于 ${formatDateTime(missedAt)} 执行，至今无执行记录`,
+        stat.lastRunAt ? `最近执行 ${stat.lastRunAt}` : '从未执行');
+    }
+
+    if (isCronNearTimeout(stat.avgDurationMs, job.monitorTimeout)) {
+      push('near_timeout', 'warning', job,
+        `平均耗时 ${Math.round((stat.avgDurationMs ?? 0) / 1000)} 秒，已达监控超时 ${job.monitorTimeout} 秒的 ${Math.round(((stat.avgDurationMs ?? 0) / 1000 / (job.monitorTimeout ?? 1)) * 100)}%，有超时风险`);
+    }
+
+    if (stat.runs >= CRON_HEALTH_RULES.successRateMinRuns && isCronSlowTail(stat.avgDurationMs, stat.p95DurationMs)) {
+      push('slow_tail', 'info', job,
+        `最慢 5% 的执行耗时约 ${Math.round((stat.p95DurationMs ?? 0) / 1000)} 秒，是平均值的 ${((stat.p95DurationMs ?? 0) / Math.max(stat.avgDurationMs ?? 1, 1)).toFixed(1)} 倍`);
+    }
+
+    if (job.status === 'enabled' && stat.totalRuns === 0 && !missedAt) {
+      push('never_run', 'info', job, CRON_ALERT_TYPE_LABELS.never_run,
+        stat.nextRunAt ? `下次执行 ${stat.nextRunAt}` : null);
+    }
+  }
+
+  return alerts.sort((a, b) => ALERT_LEVEL_ORDER[a.level] - ALERT_LEVEL_ORDER[b.level] || a.jobName.localeCompare(b.jobName));
+}
+
+export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJobStats> {
+  const { days } = q;
+  const now = new Date();
+  const periodWindow = gte(startedAt, dateBefore(days - 1));
+  const prevWindow = and(gte(startedAt, dateBefore(2 * days - 1)), lt(startedAt, dateBefore(days - 1)));
+  const todayWindow = gte(startedAt, dateBefore(0));
+  const yesterdayWindow = and(gte(startedAt, dateBefore(1)), lt(startedAt, dateBefore(0)));
+  const yesterdaySameTimeWindow = and(gte(startedAt, dateBefore(1)), lt(startedAt, sql`(now() - INTERVAL '1 day')`));
+  const inPeriod = sql`${startedAt} >= ${dateBefore(days - 1)}`;
+  const inPrev = sql`${startedAt} >= ${dateBefore(2 * days - 1)} AND ${startedAt} < ${dateBefore(days - 1)}`;
+  const inToday = sql`${startedAt} >= CURRENT_DATE`;
+
+  // 汇总卡片与明细榜单读同一快照，避免统计期间新落库的记录让各面板数字互相对不上
+  const snapshot = await readSnapshot(async (tx) => {
+    const allJobs: JobRow[] = await tx.select({
+      id: cronJobs.id,
+      name: cronJobs.name,
+      handler: cronJobs.handler,
+      cronExpression: cronJobs.cronExpression,
+      status: cronJobs.status,
+      monitorTimeout: cronJobs.monitorTimeout,
+      lastRunAt: cronJobs.lastRunAt,
+      lastRunStatus: cronJobs.lastRunStatus,
+      createdAt: cronJobs.createdAt,
+      updatedAt: cronJobs.updatedAt,
+    }).from(cronJobs).orderBy(cronJobs.id);
+
+    const today = await runSummary(tx, todayWindow);
+    const yesterday = await runSummary(tx, yesterdayWindow);
+    const yesterdaySameTime = await runSummary(tx, yesterdaySameTimeWindow);
+    const period = await runSummary(tx, periodWindow);
+    const prevPeriod = await runSummary(tx, prevWindow);
+
+    const runningJobs = await tx.$count(cronJobLogs, eq(runStatus, RUNNING_STATUS));
+
+    const perJobAggRows = await tx.select({
+      jobId: cronJobLogs.jobId,
+      totalRuns: sql<number>`CAST(COUNT(*) AS int)`,
+      runs: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod}) AS int)`,
+      successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod} AND ${runStatus} = 'success') AS int)`,
+      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPeriod} AND ${runStatus} = 'fail') AS int)`,
+      avgDurationMs: sql<number | null>`CAST(ROUND(AVG(${durationMs}) FILTER (WHERE ${inPeriod})) AS int)`,
+      p95DurationMs: sql<number | null>`CAST(ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ${durationMs}) FILTER (WHERE ${inPeriod} AND ${durationMs} IS NOT NULL)) AS int)`,
+      maxDurationMs: sql<number | null>`MAX(${durationMs}) FILTER (WHERE ${inPeriod})`,
+      prevRuns: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPrev}) AS int)`,
+      prevSuccessCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inPrev} AND ${runStatus} = 'success') AS int)`,
+      prevAvgDurationMs: sql<number | null>`CAST(ROUND(AVG(${durationMs}) FILTER (WHERE ${inPrev})) AS int)`,
+      todayRuns: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inToday}) AS int)`,
+      todayFailCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${inToday} AND ${runStatus} = 'fail') AS int)`,
+      lastSuccessAt: sql<Date | null>`MAX(${startedAt}) FILTER (WHERE ${runStatus} = 'success')`,
+      lastFailAt: sql<Date | null>`MAX(${startedAt}) FILTER (WHERE ${runStatus} = 'fail')`,
+    }).from(cronJobLogs).groupBy(cronJobLogs.jobId);
+
+    // 每任务最近一次失败的输出片段
+    const lastErrorRows = await tx.execute<{ job_id: number; output: string | null }>(sql`
+      SELECT DISTINCT ON (${cronJobLogs.jobId}) ${cronJobLogs.jobId} AS job_id, ${cronJobLogs.output} AS output
+      FROM ${cronJobLogs}
+      WHERE ${runStatus} = 'fail'
+      ORDER BY ${cronJobLogs.jobId}, ${startedAt} DESC
+    `);
+
+    // 每任务最近 N 次执行状态与耗时（窗口函数），返回时按时间升序（旧 → 新）
+    const recentPerJobRows = await tx.execute<{ job_id: number; status: CronRunStatus; duration_ms: number | null }>(sql`
+      SELECT job_id, status, duration_ms FROM (
+        SELECT ${cronJobLogs.jobId} AS job_id, ${runStatus} AS status, ${durationMs} AS duration_ms, ${startedAt} AS started_at,
+               ROW_NUMBER() OVER (PARTITION BY ${cronJobLogs.jobId} ORDER BY ${startedAt} DESC) AS rn
+        FROM ${cronJobLogs}
+      ) t WHERE rn <= ${RECENT_RESULTS_LIMIT} ORDER BY job_id, started_at ASC
+    `);
+
+    const dailyRows = await tx.select({
+      date: sql<string>`to_char(date(${startedAt}), 'YYYY-MM-DD')`,
+      total: sql<number>`CAST(COUNT(*) AS int)`,
+      successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'success') AS int)`,
+      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'fail') AS int)`,
+      avgDurationMs: sql<number | null>`CAST(ROUND(AVG(${durationMs})) AS int)`,
+      p95DurationMs: sql<number | null>`CAST(ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ${durationMs}) FILTER (WHERE ${durationMs} IS NOT NULL)) AS int)`,
+    }).from(cronJobLogs)
+      .where(periodWindow)
+      .groupBy(sql`date(${startedAt})`)
+      .orderBy(sql`date(${startedAt})`);
+
+    const dowHourRows = await tx.select({
+      dow: sql<number>`CAST(EXTRACT(ISODOW FROM ${startedAt}) AS int)`,
+      hour: sql<number>`CAST(EXTRACT(HOUR FROM ${startedAt}) AS int)`,
+      total: sql<number>`CAST(COUNT(*) AS int)`,
+      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'fail') AS int)`,
+    }).from(cronJobLogs)
+      .where(periodWindow)
+      .groupBy(sql`EXTRACT(ISODOW FROM ${startedAt})`, sql`EXTRACT(HOUR FROM ${startedAt})`);
+
+    // 失败原因归一化聚合：数字（ID / 时间 / 行数）替换为 # 后再分组，让同类错误合并
+    const normalizedError = sql`left(regexp_replace(coalesce(${cronJobLogs.output}, ''), '[0-9]+', '#', 'g'), 200)`;
+    const topErrorRows = await tx.select({
+      message: sql<string>`${normalizedError}`,
+      count: sql<number>`CAST(COUNT(*) AS int)`,
+      jobNames: sql<string[]>`array_agg(DISTINCT ${cronJobLogs.jobName})`,
+      lastAt: sql<Date>`MAX(${startedAt})`,
+    }).from(cronJobLogs)
+      .where(and(periodWindow, eq(runStatus, 'fail')))
+      .groupBy(normalizedError)
+      .orderBy(desc(sql`COUNT(*)`), desc(sql`MAX(${startedAt})`))
+      .limit(TOP_ERRORS_LIMIT);
+
+    const runningLogs = await tx.select({ jobId: cronJobLogs.jobId, startedAt })
+      .from(cronJobLogs)
+      .where(eq(runStatus, RUNNING_STATUS));
+
+    const staleBefore = new Date(now.getTime() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs);
+    const nodeRows = await tx.select({ nodeId: systemSchedulerNodes.nodeId, lastHeartbeatAt: systemSchedulerNodes.lastHeartbeatAt })
+      .from(systemSchedulerNodes)
+      .where(and(eq(systemSchedulerNodes.active, true), gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore)));
+
+    return { allJobs, today, yesterday, yesterdaySameTime, period, prevPeriod, runningJobs, perJobAggRows, lastErrorRows, recentPerJobRows, dailyRows, dowHourRows, topErrorRows, runningLogs, nodeRows };
+  });
+
+  const aggMap = new Map(snapshot.perJobAggRows.map((r) => [r.jobId, r]));
+  const lastErrorMap = new Map(snapshot.lastErrorRows.map((r) => [Number(r.job_id), r.output]));
+  const recentMap = new Map<number, Array<{ status: CronRunStatus; durationMs: number | null }>>();
+  for (const row of snapshot.recentPerJobRows) {
+    const list = recentMap.get(Number(row.job_id)) ?? [];
+    list.push({ status: row.status, durationMs: toNullableInt(row.duration_ms) });
+    recentMap.set(Number(row.job_id), list);
+  }
+
+  const perJob: CronJobStatsPerJob[] = snapshot.allJobs.map((job) => {
+    const agg = aggMap.get(job.id);
+    const recent = recentMap.get(job.id) ?? [];
+    const recentResults = recent.map((r) => r.status);
+    const runs = Number(agg?.runs ?? 0);
+    const successCount = Number(agg?.successCount ?? 0);
+    const prevRuns = Number(agg?.prevRuns ?? 0);
+    const nextRun = job.status === 'enabled' ? parseCron(job.cronExpression, now) : null;
+    let nextRunAt: string | null = null;
+    if (nextRun) {
+      try {
+        nextRunAt = formatDateTime(nextRun.next().toDate());
+      } catch {
+        nextRunAt = null;
       }
-      return {
-        jobId: job.id,
-        jobName: job.name,
-        totalRuns: total,
-        successCount: success,
-        failCount: Number(agg?.failCount ?? 0),
-        successRate: total > 0 ? Math.round((success / total) * 100) : 0,
-        avgDurationMs: agg?.avgDurationMs == null ? null : Number(agg.avgDurationMs),
-        p95DurationMs: agg?.p95DurationMs == null ? null : Number(agg.p95DurationMs),
-        recentResults,
-        consecutiveFails,
-        lastRunStatus: job.lastRunStatus,
-        lastRunAt: formatNullableDateTime(job.lastRunAt),
-      };
-    })
-    .sort((a, b) => b.totalRuns - a.totalRuns);
+    }
+    return {
+      jobId: job.id,
+      jobName: job.name,
+      handler: job.handler,
+      enabled: job.status === 'enabled',
+      cronExpression: job.cronExpression,
+      monitorTimeout: job.monitorTimeout,
+      nextRunAt,
+      lastRunAt: formatNullableDateTime(job.lastRunAt),
+      lastRunStatus: job.lastRunStatus,
+      lastSuccessAt: formatNullableDateTime(agg?.lastSuccessAt ?? null),
+      lastFailAt: formatNullableDateTime(agg?.lastFailAt ?? null),
+      lastError: lastErrorMap.get(job.id) ?? null,
+      totalRuns: Number(agg?.totalRuns ?? 0),
+      runs,
+      successCount,
+      failCount: Number(agg?.failCount ?? 0),
+      successRate: cronSuccessRatePercent(successCount, runs),
+      prevSuccessRate: cronSuccessRatePercent(Number(agg?.prevSuccessCount ?? 0), prevRuns),
+      todayRuns: Number(agg?.todayRuns ?? 0),
+      todayFailCount: Number(agg?.todayFailCount ?? 0),
+      avgDurationMs: toNullableInt(agg?.avgDurationMs),
+      prevAvgDurationMs: toNullableInt(agg?.prevAvgDurationMs),
+      p95DurationMs: toNullableInt(agg?.p95DurationMs),
+      maxDurationMs: toNullableInt(agg?.maxDurationMs),
+      recentResults,
+      recentDurations: recent.map((r) => r.durationMs),
+      consecutiveFails: countConsecutiveFails(recentResults),
+    };
+  }).sort((a, b) => b.runs - a.runs || b.totalRuns - a.totalRuns || a.jobName.localeCompare(b.jobName));
+
+  const perJobMap = new Map(perJob.map((p) => [p.jobId, p]));
+  const scheduler = getSchedulerIntrospection();
+  const thisNodeHeartbeat = snapshot.nodeRows.find((n) => n.nodeId === scheduler.node.id)?.lastHeartbeatAt
+    ?? snapshot.nodeRows.reduce<Date | null>((latest, n) => (latest && latest > n.lastHeartbeatAt ? latest : n.lastHeartbeatAt), null);
 
   return {
-    totalJobs: allJobs.length,
-    enabledJobs: allJobs.filter(j => j.status === 'enabled').length,
-    runningJobs: getRunningJobCount(),
-    todayRuns: Number(summaryRow?.todayRuns ?? 0),
-    todaySuccesses: Number(summaryRow?.todaySuccesses ?? 0),
-    todayFails: Number(summaryRow?.todayFails ?? 0),
-    todayAvgDurationMs: summaryRow?.todayAvgDurationMs == null ? null : Number(summaryRow.todayAvgDurationMs),
+    days,
+    totalJobs: snapshot.allJobs.length,
+    enabledJobs: snapshot.allJobs.filter((j) => j.status === 'enabled').length,
+    runningJobs: snapshot.runningJobs,
+    today: snapshot.today,
+    yesterday: snapshot.yesterday,
+    yesterdaySameTime: snapshot.yesterdaySameTime,
+    period: snapshot.period,
+    prevPeriod: snapshot.prevPeriod,
+    scheduler: {
+      online: scheduler.initialized,
+      nodeId: scheduler.node.id,
+      hostname: scheduler.node.hostname,
+      pid: scheduler.node.pid,
+      activeNodes: snapshot.nodeRows.length,
+      lastHeartbeatAt: formatNullableDateTime(thisNodeHeartbeat),
+      wipCount: scheduler.runningJobCount,
+    },
+    alerts: buildAlerts(snapshot.allJobs, perJobMap, snapshot.runningLogs, now),
     perJob,
-    dailyStats: dailyRows.map(r => ({
+    dailyStats: snapshot.dailyRows.map((r) => ({
       date: r.date,
       total: Number(r.total),
       successCount: Number(r.successCount),
       failCount: Number(r.failCount),
-      avgDurationMs: r.avgDurationMs == null ? null : Number(r.avgDurationMs),
+      avgDurationMs: toNullableInt(r.avgDurationMs),
+      p95DurationMs: toNullableInt(r.p95DurationMs),
     })),
-    hourlyStats: hourlyRows.map(r => ({
+    dowHourStats: snapshot.dowHourRows.map((r) => ({
+      dow: Number(r.dow),
       hour: Number(r.hour),
       total: Number(r.total),
       failCount: Number(r.failCount),
     })),
-    recentLogs: recentRows.map(r => ({
-      id: r.id,
-      jobId: r.jobId,
-      jobName: r.jobName,
-      status: r.status,
-      durationMs: r.durationMs,
-      startedAt: formatDateTime(r.startedAt),
-      executionCount: r.executionCount,
-      output: r.output,
+    topErrors: snapshot.topErrorRows.map((r) => ({
+      message: r.message,
+      count: Number(r.count),
+      jobNames: r.jobNames ?? [],
+      lastAt: formatDateTime(r.lastAt),
     })),
+    upcoming: calcUpcomingRuns(snapshot.allJobs, now),
   };
 }

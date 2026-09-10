@@ -1,4 +1,4 @@
-import { createLabelOptions } from '../core/enum-options';
+import { createLabelOptions, createLabelOptionsFromMap } from '../core/enum-options';
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 
@@ -248,6 +248,35 @@ export const CRON_RUN_STATUS_LABELS: Record<(typeof CRON_RUN_STATUSES)[number], 
   fail: '失败',
   running: '运行中',
 };
+
+export const CRON_RUN_STATUS_OPTIONS = createLabelOptionsFromMap(CRON_RUN_STATUS_LABELS);
+
+/** 执行概览健康提醒类型 */
+export const CRON_ALERT_TYPES = [
+  'consecutive_fail',
+  'missed_run',
+  'running_timeout',
+  'near_timeout',
+  'slow_tail',
+  'low_success_rate',
+  'never_run',
+] as const;
+
+export type CronAlertType = (typeof CRON_ALERT_TYPES)[number];
+
+export const CRON_ALERT_TYPE_LABELS: Record<CronAlertType, string> = {
+  consecutive_fail: '连续失败',
+  missed_run: '未按计划执行',
+  running_timeout: '运行超时',
+  near_timeout: '接近超时',
+  slow_tail: '耗时波动大',
+  low_success_rate: '成功率偏低',
+  never_run: '从未执行',
+};
+
+export const CRON_ALERT_LEVELS = ['danger', 'warning', 'info'] as const;
+
+export type CronAlertLevel = (typeof CRON_ALERT_LEVELS)[number];
 
 // ─── 系统调度 ─────────────────────────────────────────────────────────────────
 

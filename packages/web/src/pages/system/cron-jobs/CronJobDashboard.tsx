@@ -1,436 +1,412 @@
-import { useMemo } from 'react';
-import { Card, Table, Typography, Tag, Empty, Spin, Tooltip } from '@douyinfe/semi-ui';
-import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { useMemo, useRef, useState } from 'react';
+import { Card, Empty, Modal, Radio, RadioGroup, Spin, Toast, Tooltip } from '@douyinfe/semi-ui';
+import type { CronJobStats, CronJobStatsPerJob, CronJobTopError, CronJobUpcomingRun } from '@zenith/shared/platform';
+import { CRON_HEALTH_RULES, cronSuccessRatePercent } from '@zenith/shared/platform';
+import dayjs from 'dayjs';
 import {
-  BarChart,
   CommonChart,
-  PieChart,
+  HeatmapChart,
   chartOptions,
-  makeBarSpec,
+  makeHeatmapSpec,
   makeMixedBarLineSpec,
-  makePieSpec,
   useChartPalette,
   StatCard,
   StatGrid,
 } from '@/components/charts';
-import { CronExpressionParser } from 'cron-parser';
-import type { CronJob, CronJobStatsPerJob, CronJobRecentLog, CronRunStatus } from '@zenith/shared/platform';
-import { CRON_RUN_STATUS_LABELS } from '@zenith/shared/platform';
-import dayjs from 'dayjs';
-import { useCronJobStats } from '@/hooks/queries/cron-jobs';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { LogStatsSkeleton, WEEKDAY_LABELS, calcSuccessRateDelta, deltaOf } from '@/components/logs/LogStatsScaffold';
+import { usePermission } from '@/hooks/usePermission';
+import { useCronJobStats, useRunCronJob, useUpdateCronJobStatus } from '@/hooks/queries/cron-jobs';
 import { formatDurationMs } from '@/utils/format';
+import { formatRelativeTime } from '@/utils/date';
+import { CronJobAlertsPanel } from './CronJobAlertsPanel';
+import { CronJobHealthTable } from './CronJobHealthTable';
+import { CronJobRecentLogs } from './CronJobRecentLogs';
+import {
+  CRON_STATS_DAYS_OPTIONS,
+  DURATION_COLOR,
+  FAIL_COLOR,
+  P95_COLOR,
+  RelativeTime,
+  SUCCESS_COLOR,
+  TrendMark,
+  useRecentLogsSearch,
+  type CronStatsDays,
+} from './cron-dashboard-shared';
+import './CronJobDashboard.css';
 
-const SUCCESS_COLOR = '#10b981';
-const FAIL_COLOR = '#ef4444';
-const RUNNING_COLOR = '#3b82f6';
-const DURATION_COLOR = '#8b5cf6';
-const TREND_DAYS = 14;
-const PANEL_PREVIEW_HEIGHT = 300;
+const SIDE_PANEL_HEIGHT = 320;
+const SOON_THRESHOLD_MS = 60 * 60_000;
 
-interface UpcomingItem {
-  key: string;
-  jobId: number;
-  jobName: string;
-  time: Date;
-  timeStr: string;
-  dateLabel: string;
-}
+type JobFilter = 'all' | 'alerting' | 'running' | 'disabled' | 'never';
 
-interface HealthIssue {
-  key: string;
-  level: 'danger' | 'warning' | 'tertiary';
-  text: string;
-}
-
-interface Props {
-  jobs: CronJob[];
-}
-
-function statusMeta(status: CronRunStatus | null): { label: string; color: 'green' | 'red' | 'blue' | 'grey' } {
-  switch (status) {
-    case 'success': return { label: CRON_RUN_STATUS_LABELS.success, color: 'green' };
-    case 'fail': return { label: CRON_RUN_STATUS_LABELS.fail, color: 'red' };
-    case 'running': return { label: CRON_RUN_STATUS_LABELS.running, color: 'blue' };
-    default: return { label: '从未执行', color: 'grey' };
-  }
-}
-
-const RESULT_META: Record<CronRunStatus, { color: string; label: string }> = {
-  success: { color: SUCCESS_COLOR, label: CRON_RUN_STATUS_LABELS.success },
-  fail: { color: FAIL_COLOR, label: CRON_RUN_STATUS_LABELS.fail },
-  running: { color: RUNNING_COLOR, label: CRON_RUN_STATUS_LABELS.running },
+const JOB_FILTER_LABELS: Record<JobFilter, string> = {
+  all: '全部',
+  alerting: '有提醒',
+  running: '运行中',
+  disabled: '已停用',
+  never: '从未执行',
 };
 
-/** GitHub Actions 风格近 N 次执行状态块（旧 → 新） */
-function RecentResultBlocks({ results }: Readonly<{ results: CronRunStatus[] }>) {
-  if (results.length === 0) return <Typography.Text type="tertiary">—</Typography.Text>;
+interface Props {
+  readonly onViewLogs: (jobId: number, jobName: string) => void;
+}
+
+function SchedulerBar({ scheduler, now }: Readonly<{ scheduler: CronJobStats['scheduler']; now: Date }>) {
+  const online = scheduler.activeNodes > 0;
   return (
-    <div style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }} aria-label={`近 ${results.length} 次执行`}>
-      {results.map((r, i) => (
-        <Tooltip key={`${i}-${r}`} content={`第 ${i - results.length} 次：${RESULT_META[r].label}`} position="top">
-          <span style={{
-            width: 8,
-            height: 16,
-            borderRadius: 'var(--semi-border-radius-small)',
-            background: RESULT_META[r].color,
-            opacity: r === 'success' ? 0.75 : 1,
-            display: 'inline-block',
-          }} />
-        </Tooltip>
+    <div className="cron-scheduler">
+      <span className="cron-scheduler__state">
+        <span className={`cron-scheduler__dot${online ? '' : ' cron-scheduler__dot--offline'}`} />
+        {online ? `调度器在线 · ${scheduler.activeNodes} 个节点` : '调度器离线'}
+      </span>
+      <Tooltip content={scheduler.online ? '当前接口进程已初始化调度器' : '当前接口进程未运行调度器（由其它节点承担）'} position="bottom">
+        <span className="cron-scheduler__meta cron-mono">{scheduler.hostname}:{scheduler.pid}</span>
+      </Tooltip>
+      <Tooltip content="当前接口进程内正在执行的任务数；多实例部署时用于判断由哪台机器承担" position="bottom"><span className="cron-scheduler__meta">本节点执行中 {scheduler.wipCount}</span></Tooltip>
+      <span className="cron-scheduler__meta">
+        心跳 {scheduler.lastHeartbeatAt ? formatRelativeTime(scheduler.lastHeartbeatAt, now) : '无记录'}
+      </span>
+    </div>
+  );
+}
+
+function UpcomingList({ items, now }: Readonly<{ items: readonly CronJobUpcomingRun[]; now: Date }>) {
+  if (items.length === 0) {
+    return <div className="cron-empty" style={{ height: SIDE_PANEL_HEIGHT }}><Empty description="未来 24 小时无计划执行" /></div>;
+  }
+  const today = dayjs(now).format('YYYY-MM-DD');
+  const groups: Array<{ label: string; items: CronJobUpcomingRun[] }> = [];
+  for (const item of items) {
+    const label = item.runAt.startsWith(today) ? '今天' : '明天';
+    const last = groups.at(-1);
+    if (last?.label === label) last.items.push(item);
+    else groups.push({ label, items: [item] });
+  }
+  return (
+    <div className="cron-list" style={{ height: SIDE_PANEL_HEIGHT }}>
+      {groups.map((group) => (
+        <div key={group.label}>
+          <div className="cron-list__group">{group.label}</div>
+          {group.items.map((item) => {
+            const soon = dayjs(item.runAt).diff(now) <= SOON_THRESHOLD_MS;
+            return (
+              <div key={item.jobId} className={`cron-upcoming${soon ? ' cron-upcoming--soon' : ''}`}>
+                <span className="cron-upcoming__time cron-mono">{item.runAt.slice(11)}</span>
+                <span className="cron-upcoming__name" title={item.jobName}>{item.jobName}</span>
+                <span className="cron-upcoming__meta cron-mono" title={item.cronExpression}>{item.cronExpression}</span>
+                <span className="cron-upcoming__meta cron-upcoming__cadence">{item.runsPerDay != null ? `约 ${item.runsPerDay} 次/天` : '单次'}</span>
+                <span className="cron-upcoming__meta cron-upcoming__eta">{formatRelativeTime(item.runAt, now)}</span>
+              </div>
+            );
+          })}
+        </div>
       ))}
     </div>
   );
 }
 
-function calcUpcoming(jobs: CronJob[], total = 30): UpcomingItem[] {
-  const today = dayjs().format('YYYY-MM-DD');
-  const tomorrow = dayjs().add(1, 'day').format('YYYY-MM-DD');
-  const results: UpcomingItem[] = [];
-  const enabled = jobs.filter((j) => j.status === 'enabled');
-  const perJob = Math.ceil(total / Math.max(enabled.length, 1)) + 3;
-
-  for (const job of enabled) {
-    try {
-      const interval = CronExpressionParser.parse(job.cronExpression);
-      for (let i = 0; i < perJob; i++) {
-        const d = interval.next().toDate();
-        const dateStr = dayjs(d).format('YYYY-MM-DD');
-        let dateLabel: string;
-        if (dateStr === today) dateLabel = '今天';
-        else if (dateStr === tomorrow) dateLabel = '明天';
-        else dateLabel = dayjs(d).format('MM月DD日');
-        results.push({ key: `${job.id}-${i}`, jobId: job.id, jobName: job.name, time: d, timeStr: dayjs(d).format('HH:mm:ss'), dateLabel });
-      }
-    } catch { /* skip invalid expressions */ }
+function TopErrorList({ items, now, onSelect }: Readonly<{ items: readonly CronJobTopError[]; now: Date; onSelect: (item: CronJobTopError) => void }>) {
+  if (items.length === 0) {
+    return <div className="cron-empty" style={{ height: SIDE_PANEL_HEIGHT }}><Empty description="周期内没有失败记录" /></div>;
   }
-
-  return results.toSorted((a, b) => a.time.getTime() - b.time.getTime()).slice(0, total);
+  return (
+    <div className="cron-list" style={{ height: SIDE_PANEL_HEIGHT }}>
+      {items.map((item) => (
+        <button
+          type="button"
+          key={item.message}
+          className="cron-error"
+          title="点击在执行记录中筛选该错误"
+          onClick={() => onSelect(item)}
+        >
+          <span className="cron-error__count">{item.count}</span>
+          <span className="cron-error__body">
+            <span className="cron-error__message">{item.message || '（空输出）'}</span>
+            <span className="cron-error__meta">
+              {item.jobNames.join('、')} · 最近 <RelativeTime value={item.lastAt} now={now} />
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
-const ISSUE_DOT: Record<HealthIssue['level'], string> = {
-  danger: 'var(--semi-color-danger)',
-  warning: 'var(--semi-color-warning)',
-  tertiary: 'var(--semi-color-text-3)',
-};
+/** 归一化错误里数字已被替换为 #，取第一个占位符之前的文本作为关键字（过短则只按状态筛） */
+function keywordFromNormalizedError(message: string): string {
+  const head = message.split('#')[0]?.trim() ?? '';
+  return head.length >= 3 ? head : '';
+}
 
-export default function CronJobDashboard({ jobs }: Readonly<Props>) {
+function rateAccent(rate: number | null): string | undefined {
+  if (rate == null) return undefined;
+  if (rate < CRON_HEALTH_RULES.lowSuccessRatePercent) return 'var(--semi-color-danger)';
+  if (rate < 95) return 'var(--semi-color-warning)';
+  return 'var(--semi-color-success)';
+}
+
+export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
   const palette = useChartPalette();
-  const statsQuery = useCronJobStats();
+  const { hasPermission } = usePermission();
+  const canExecute = hasPermission('system:cronjob:execute');
+  const canUpdate = hasPermission('system:cronjob:update');
+  const [days, setDays] = useState<CronStatsDays>(14);
+  const [jobFilter, setJobFilter] = useState<JobFilter>('all');
+  const statsQuery = useCronJobStats({ days });
   const stats = statsQuery.data ?? null;
-  const loading = statsQuery.isFetching;
-  const upcoming = useMemo(() => calcUpcoming(jobs, 30), [jobs]);
+  const runMutation = useRunCronJob();
+  const toggleMutation = useUpdateCronJobStatus();
+  const recentLogsSearch = useRecentLogsSearch();
+  const logsPanelRef = useRef<HTMLDivElement>(null);
 
-  const todaySuccessRate =
-    stats && stats.todayRuns > 0 ? Math.round((stats.todaySuccesses / stats.todayRuns) * 100) : null;
+  // 相对时间以本次数据到达时刻为基准，随刷新一起推进
+  const dataUpdatedAt = statsQuery.dataUpdatedAt;
+  const now = useMemo(() => new Date(dataUpdatedAt || Date.now()), [dataUpdatedAt]);
 
-  let rateColor: string | undefined;
-  if (todaySuccessRate !== null) {
-    if (todaySuccessRate < 80) rateColor = 'var(--semi-color-warning)';
-    else if (todaySuccessRate >= 95) rateColor = 'var(--semi-color-success)';
-  }
+  const handleRun = (jobId: number, jobName: string) => {
+    Modal.confirm({
+      title: '确定要立即执行一次吗？',
+      content: `任务：${jobName}`,
+      onOk: async () => {
+        await runMutation.mutateAsync({ params: { id: jobId } });
+        Toast.success('已触发执行');
+      },
+    });
+  };
 
-  const disabledJobs = stats ? stats.totalJobs - stats.enabledJobs : 0;
-  const neverRunCount = stats ? stats.perJob.filter((p) => p.totalRuns === 0).length : 0;
-  const failingJobs = stats ? stats.perJob.filter((p) => p.consecutiveFails >= 2) : [];
-  const todayRunning = stats ? Math.max(0, stats.todayRuns - stats.todaySuccesses - stats.todayFails) : 0;
-
-  // 任务健康问题清单（连续失败 / 低成功率 / 从未执行）
-  const healthIssues = useMemo<HealthIssue[]>(() => {
-    if (!stats) return [];
-    const issues: HealthIssue[] = [];
-    for (const p of stats.perJob) {
-      if (p.consecutiveFails >= 2) {
-        issues.push({ key: `cf-${p.jobId}`, level: 'danger', text: `「${p.jobName}」连续失败 ${p.consecutiveFails} 次，最近执行 ${p.lastRunAt ?? '—'}` });
-      } else if (p.totalRuns >= 5 && p.successRate < 70) {
-        issues.push({ key: `sr-${p.jobId}`, level: 'warning', text: `「${p.jobName}」成功率仅 ${p.successRate}%（${p.failCount}/${p.totalRuns} 次失败）` });
-      }
+  const handleToggleStatus = (job: CronJobStatsPerJob) => {
+    const next = job.enabled ? 'disabled' : 'enabled';
+    const run = async () => {
+      await toggleMutation.mutateAsync({ params: { id: job.jobId }, body: { status: next } });
+      Toast.success(next === 'enabled' ? '已启用' : '已暂停');
+    };
+    if (next === 'enabled') {
+      void run();
+      return;
     }
-    const neverRun = stats.perJob.filter((p) => p.totalRuns === 0);
-    if (neverRun.length > 0) {
-      issues.push({
-        key: 'never-run',
-        level: 'tertiary',
-        text: `${neverRun.length} 个任务从未执行：${neverRun.map((p) => p.jobName).join('、')}`,
-      });
-    }
-    return issues;
-  }, [stats]);
+    Modal.confirm({
+      title: '暂停定时任务',
+      content: `确定要暂停「${job.jobName}」吗？暂停后该任务将不再自动执行。`,
+      okText: '暂停',
+      okButtonProps: { type: 'warning' },
+      cancelText: '取消',
+      onOk: run,
+    });
+  };
 
-  const statItems = [
-    { label: '任务总数', value: stats?.totalJobs ?? '—', sub: stats ? `启用 ${stats.enabledJobs} · 禁用 ${disabledJobs}` : null, color: undefined as string | undefined },
-    { label: '当前运行中', value: stats?.runningJobs ?? '—', sub: null as string | null, color: (stats?.runningJobs ?? 0) > 0 ? 'var(--semi-color-primary)' : undefined },
-    { label: '今日执行', value: stats?.todayRuns ?? '—', sub: stats ? `运行中 ${todayRunning}` : null, color: undefined },
-    { label: '今日成功率', value: todaySuccessRate === null ? '—' : `${todaySuccessRate}%`, sub: stats ? `成功 ${stats.todaySuccesses} · 失败 ${stats.todayFails}` : null, color: rateColor },
-    { label: '今日平均耗时', value: stats ? formatDurationMs(stats.todayAvgDurationMs) : '—', sub: '已完成执行', color: undefined },
-    { label: '连续失败', value: stats ? failingJobs.length : '—', sub: stats ? `从未执行 ${neverRunCount} 个` : null, color: failingJobs.length > 0 ? 'var(--semi-color-danger)' : undefined },
-  ];
+  const alertingJobIds = useMemo(
+    () => new Set((stats?.alerts ?? []).filter((a) => a.level !== 'info').map((a) => a.jobId)),
+    [stats],
+  );
+
+  const filteredJobs = useMemo(() => {
+    const rows = stats?.perJob ?? [];
+    switch (jobFilter) {
+      case 'alerting': return rows.filter((r) => alertingJobIds.has(r.jobId));
+      case 'running': return rows.filter((r) => r.lastRunStatus === 'running');
+      case 'disabled': return rows.filter((r) => !r.enabled);
+      case 'never': return rows.filter((r) => r.totalRuns === 0);
+      default: return rows;
+    }
+  }, [stats, jobFilter, alertingJobIds]);
+
+  const jobOptions = useMemo(
+    () => (stats?.perJob ?? []).map((p) => ({ value: p.jobId, label: p.jobName })).sort((a, b) => a.label.localeCompare(b.label)),
+    [stats],
+  );
 
   const filledDaily = useMemo(() => {
     const map = new Map((stats?.dailyStats ?? []).map((d) => [d.date, d]));
-    const today = dayjs();
-    return Array.from({ length: TREND_DAYS }, (_, i) => {
-      const date = today.subtract(TREND_DAYS - 1 - i, 'day').format('YYYY-MM-DD');
-      return map.get(date) ?? { date, total: 0, successCount: 0, failCount: 0, avgDurationMs: null };
-    });
-  }, [stats]);
-
-  // 近 14 天：柱 = 执行次数，线 = 平均耗时（右轴）
-  const trendSpec = useMemo(() => makeMixedBarLineSpec({
-    data: filledDaily.map((d) => ({ ...d, avgDurationMs: d.avgDurationMs ?? 0 })),
-    xField: 'date',
-    palette,
-    bar: { field: 'total', name: '执行次数', color: palette.dataColors[0] ?? palette.primary },
-    line: { field: 'avgDurationMs', name: '平均耗时', color: DURATION_COLOR },
-    axis: {
-      xLabel: (d) => d.slice(5),
-      rightLabel: (v) => formatDurationMs(v),
-    },
-    tooltip: {
-      title: (x) => `日期：${x}`,
-      barValue: (v, datum) => `${v} 次（成功 ${datum?.successCount ?? 0} · 失败 ${datum?.failCount ?? 0}）`,
-      lineValue: (v) => formatDurationMs(v),
-    },
-  }), [filledDaily, palette]);
-
-  // 近 7 天 24 小时执行分布（成功/失败堆叠）
-  const hourlyData = useMemo(() => {
-    const map = new Map((stats?.hourlyStats ?? []).map((h) => [h.hour, h]));
-    return Array.from({ length: 24 }, (_, hour) => {
-      const h = map.get(hour);
+    const today = dayjs(now);
+    return Array.from({ length: days }, (_, i) => {
+      const date = today.subtract(days - 1 - i, 'day').format('YYYY-MM-DD');
+      const d = map.get(date);
       return {
-        hourLabel: `${hour}`,
-        successCount: (h?.total ?? 0) - (h?.failCount ?? 0),
-        failCount: h?.failCount ?? 0,
+        date,
+        total: d?.total ?? 0,
+        successCount: d?.successCount ?? 0,
+        failCount: d?.failCount ?? 0,
+        avgDurationMs: d?.avgDurationMs ?? 0,
+        p95DurationMs: d?.p95DurationMs ?? 0,
       };
     });
+  }, [stats, days, now]);
+
+  const trendSpec = useMemo(() => makeMixedBarLineSpec({
+    data: filledDaily,
+    xField: 'date',
+    palette,
+    bar: { field: 'successCount', name: '成功', color: SUCCESS_COLOR },
+    stackedBars: [{ field: 'failCount', name: '失败', color: FAIL_COLOR }],
+    line: { field: 'avgDurationMs', name: '平均耗时', color: DURATION_COLOR, format: (v) => formatDurationMs(v) },
+    extraLines: [{ field: 'p95DurationMs', name: 'P95 耗时', color: P95_COLOR, lineWidth: 1.5, showPoint: false, format: (v) => formatDurationMs(v) }],
+    axis: { xLabel: (d) => d.slice(5), rightLabel: (v) => formatDurationMs(v) },
+    tooltip: { title: (x) => `日期：${x}`, barValue: (v) => `${v} 次` },
+  }), [filledDaily, palette]);
+
+  const heatmapData = useMemo(() => {
+    const map = new Map((stats?.dowHourStats ?? []).map((d) => [`${d.dow}-${d.hour}`, d]));
+    const cells: Array<{ hour: string; weekday: string; count: number; failCount: number }> = [];
+    // 纵轴按数据顺序自下而上排列：倒序喂入让周一落在最上方
+    for (let dow = 7; dow >= 1; dow--) {
+      for (let hour = 0; hour < 24; hour++) {
+        const d = map.get(`${dow}-${hour}`);
+        cells.push({
+          hour: `${String(hour).padStart(2, '0')}`,
+          weekday: WEEKDAY_LABELS[dow - 1] ?? `周${dow}`,
+          count: d?.total ?? 0,
+          failCount: d?.failCount ?? 0,
+        });
+      }
+    }
+    return cells;
   }, [stats]);
 
-  const hourlySpec = useMemo(() => makeBarSpec({
-    data: hourlyData,
-    xField: 'hourLabel',
-    series: [
-      { field: 'successCount', name: '成功', color: SUCCESS_COLOR },
-      { field: 'failCount', name: '失败', color: FAIL_COLOR },
-    ],
+  const heatmapSpec = useMemo(() => makeHeatmapSpec({
+    data: heatmapData,
+    xField: 'hour',
+    yField: 'weekday',
+    valueField: 'count',
     palette,
-    stack: true,
-    barMaxWidth: 14,
     axis: { xLabel: (v) => `${v}时` },
-    tooltip: { title: (x) => `${x}:00 - ${x}:59`, value: (v) => `${v} 次` },
-  }), [hourlyData, palette]);
+    tooltip: {
+      title: (d) => `${(d as { weekday?: string })?.weekday ?? ''} ${(d as { hour?: string })?.hour ?? ''}:00`,
+      valueName: '执行',
+      value: (v, d) => `${v} 次 · 失败 ${(d as { failCount?: number })?.failCount ?? 0}`,
+    },
+  }), [heatmapData, palette]);
 
-  const donutData = useMemo(() => {
-    if (!stats) return [];
-    return [
-      { name: '成功', value: stats.todaySuccesses, fill: SUCCESS_COLOR },
-      { name: '失败', value: stats.todayFails, fill: FAIL_COLOR },
-      { name: '运行中', value: todayRunning, fill: RUNNING_COLOR },
-    ].filter((d) => d.value > 0);
-  }, [stats, todayRunning]);
+  const handleSelectError = (item: CronJobTopError) => {
+    recentLogsSearch.applySearch({ keyword: keywordFromNormalizedError(item.message), status: 'fail', jobId: undefined, range: null });
+    logsPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
-  const donutSpec = useMemo(() => makePieSpec({
-    data: donutData,
-    categoryField: 'name',
-    valueField: 'value',
-    donut: true,
-    colors: donutData.map((d) => d.fill),
-    palette,
-    indicator: { title: String(stats?.todayRuns ?? 0), subtitle: '今日执行' },
-    valueUnit: '次',
-  }), [donutData, palette, stats?.todayRuns]);
+  if (statsQuery.isLoading || !stats) return <LogStatsSkeleton />;
 
-  const perJobColumns: ColumnProps<CronJobStatsPerJob>[] = [
-    {
-      title: '任务名称', dataIndex: 'jobName', ellipsis: { showTitle: true },
-      render: (v: string, record: CronJobStatsPerJob) => (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
-          {renderEllipsis(v)}
-          {record.consecutiveFails >= 2 && <Tag color="red" size="small">连败 {record.consecutiveFails}</Tag>}
-        </span>
-      ),
-    },
-    {
-      title: '近 10 次', dataIndex: 'recentResults', width: 130,
-      render: (v: CronRunStatus[]) => <RecentResultBlocks results={v ?? []} />,
-    },
-    {
-      title: '最近状态', dataIndex: 'lastRunStatus', width: 96,
-      render: (v: CronRunStatus | null, record: CronJobStatsPerJob) => {
-        const meta = statusMeta(v);
-        return <span title={record.lastRunAt ?? undefined}><Tag color={meta.color} size="small" type="light">{meta.label}</Tag></span>;
-      },
-    },
-    { title: '总执行', dataIndex: 'totalRuns', width: 84, align: 'right' },
-    {
-      title: '失败', dataIndex: 'failCount', width: 76, align: 'right',
-      render: (v: number) => (v > 0 ? <span style={{ color: 'var(--semi-color-danger)' }}>{v}</span> : <span>{v}</span>),
-    },
-    {
-      title: '平均耗时', dataIndex: 'avgDurationMs', width: 92, align: 'right',
-      render: (v: number | null) => formatDurationMs(v),
-    },
-    {
-      title: 'P95 耗时', dataIndex: 'p95DurationMs', width: 92, align: 'right',
-      render: (v: number | null, record: CronJobStatsPerJob) => {
-        const text = formatDurationMs(v);
-        // P95 显著高于平均（>2.5x）提示长尾恶化
-        const slowTail = v != null && record.avgDurationMs != null && record.avgDurationMs > 0 && v > record.avgDurationMs * 2.5;
-        return <span style={slowTail ? { color: 'var(--semi-color-warning)' } : undefined} title={slowTail ? 'P95 显著高于平均耗时，存在长尾执行' : undefined}>{text}</span>;
-      },
-    },
-    {
-      title: '成功率', dataIndex: 'successRate', width: 84, align: 'right',
-      render: (v: number, record: CronJobStatsPerJob) => {
-        if (record.totalRuns === 0) return '—';
-        let tagColor: 'green' | 'orange' | 'red' = 'red';
-        if (v >= 90) tagColor = 'green';
-        else if (v >= 70) tagColor = 'orange';
-        return <Tag color={tagColor} size="small">{v}%</Tag>;
-      },
-    },
-  ];
-
-  const recentColumns: ColumnProps<CronJobRecentLog>[] = [
-    dateTimeColumn('时间', 'startedAt'),
-    { title: '任务名称', dataIndex: 'jobName', width: 180, ellipsis: { showTitle: true } },
-    {
-      title: '状态', dataIndex: 'status', width: 90,
-      render: (v: CronRunStatus) => {
-        const meta = statusMeta(v);
-        return <Tag color={meta.color} size="small" type="light">{meta.label}</Tag>;
-      },
-    },
-    {
-      title: '耗时', dataIndex: 'durationMs', width: 96, align: 'right',
-      render: (v: number | null, record: CronJobRecentLog) => (record.status === 'running' ? '运行中' : formatDurationMs(v)),
-    },
-    {
-      title: '执行次数', dataIndex: 'executionCount', width: 130, align: 'right',
-      render: (v: number) => `第 ${v} 次`,
-    },
-    {
-      title: '输出', dataIndex: 'output', ellipsis: { showTitle: true },
-      render: (v: string | null) => (v == null || v === '' ? <Typography.Text type="tertiary">—</Typography.Text> : <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v}</Typography.Text>),
-    },
-  ];
-
-  // Group upcoming by dateLabel
-  const groupedUpcoming: Array<{ dateLabel: string; items: UpcomingItem[] }> = [];
-  for (const item of upcoming) {
-    const last = groupedUpcoming.at(-1);
-    if (last?.dateLabel === item.dateLabel) {
-      last.items.push(item);
-    } else {
-      groupedUpcoming.push({ dateLabel: item.dateLabel, items: [item] });
-    }
-  }
+  const { today, yesterday, yesterdaySameTime, period, prevPeriod, scheduler, alerts } = stats;
+  const todayRate = cronSuccessRatePercent(today.successCount, today.total);
+  const periodRate = cronSuccessRatePercent(period.successCount, period.total);
+  const disabledJobs = stats.totalJobs - stats.enabledJobs;
+  const neverRun = stats.perJob.filter((p) => p.totalRuns === 0).length;
+  const alertingJobs = alertingJobIds.size;
 
   return (
-    <Spin spinning={loading} wrapperClassName="zx-flat-panels">
-      <StatGrid minItemWidth={150} gap={16} style={{ marginBottom: 16 }}>
-        {statItems.map((s) => (
-          <StatCard key={s.label} title={s.label} value={String(s.value)} sub={s.sub} accent={s.color} />
-        ))}
-      </StatGrid>
+    <div className="zx-flat-panels cron-dashboard">
+      <div className="cron-dashboard__toolbar">
+        <SchedulerBar scheduler={scheduler} now={now} />
+        <RadioGroup type="button" value={days} onChange={(e) => setDays(e.target.value as CronStatsDays)}>
+          {CRON_STATS_DAYS_OPTIONS.map((d) => <Radio key={d} value={d}>近 {d} 天</Radio>)}
+        </RadioGroup>
+      </div>
 
-      {healthIssues.length > 0 && (
-        <Card title="任务健康提醒" style={{ marginBottom: 16 }} bodyStyle={{ padding: '8px 16px 12px' }}>
-          {healthIssues.map((issue) => (
-            <div key={issue.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: ISSUE_DOT[issue.level], flexShrink: 0 }} />
-              <Typography.Text type={issue.level === 'tertiary' ? 'tertiary' : undefined}>{issue.text}</Typography.Text>
-            </div>
-          ))}
-        </Card>
-      )}
+      <Spin spinning={statsQuery.isFetching}>
+        <StatGrid minItemWidth={150} gap={16} style={{ marginBottom: 16 }}>
+          <StatCard
+            title="任务总数" value={stats.totalJobs}
+            sub={`启用 ${stats.enabledJobs} · 停用 ${disabledJobs}`}
+            onClick={() => setJobFilter('all')} active={jobFilter === 'all'}
+          />
+          <StatCard
+            title="运行中" value={stats.runningJobs}
+            sub={`本节点执行中 ${scheduler.wipCount}`}
+            accent={stats.runningJobs > 0 ? 'var(--semi-color-primary)' : undefined}
+            onClick={() => setJobFilter('running')} active={jobFilter === 'running'}
+          />
+          <StatCard
+            title="今日执行" value={today.total}
+            sub={`成功 ${today.successCount} · 失败 ${today.failCount}`}
+            delta={deltaOf(today.total, yesterdaySameTime.total)} deltaLabel="较昨日同时段"
+          />
+          <StatCard
+            title="今日成功率" value={todayRate == null ? '—' : `${todayRate}%`}
+            sub={`昨日全天 ${cronSuccessRatePercent(yesterday.successCount, yesterday.total) ?? '—'}%（${yesterday.total} 次）`}
+            accent={rateAccent(todayRate)}
+            delta={calcSuccessRateDelta(today, yesterdaySameTime)} deltaLabel="较昨日同时段" deltaFormat="ratio"
+          />
+          <StatCard
+            title={`近 ${days} 天成功率`} value={periodRate == null ? '—' : `${periodRate}%`}
+            sub={`${period.total} 次执行`}
+            accent={rateAccent(periodRate)}
+            delta={calcSuccessRateDelta(period, prevPeriod)} deltaLabel="较上期" deltaFormat="ratio"
+          />
+          <StatCard
+            title="平均耗时" value={formatDurationMs(period.avgDurationMs)}
+            sub={(
+              <>
+                P95 {formatDurationMs(period.p95DurationMs)} · 上期 {formatDurationMs(prevPeriod.avgDurationMs)}{' '}
+                <TrendMark current={period.avgDurationMs} previous={prevPeriod.avgDurationMs} invert format={(d) => formatDurationMs(d)} />
+              </>
+            )}
+          />
+          <StatCard
+            title="失败次数" value={period.failCount}
+            sub={(
+              <>
+                上期 {prevPeriod.failCount}{' '}
+                <TrendMark current={period.failCount} previous={prevPeriod.failCount} invert format={(d) => `${d}`} />
+              </>
+            )}
+            accent={period.failCount > 0 ? 'var(--semi-color-danger)' : undefined}
+          />
+          <StatCard
+            title="异常任务" value={alertingJobs}
+            sub={`提醒 ${alerts.length} 条 · 从未执行 ${neverRun}`}
+            accent={alertingJobs > 0 ? 'var(--semi-color-danger)' : 'var(--semi-color-success)'}
+            onClick={() => setJobFilter('alerting')} active={jobFilter === 'alerting'}
+          />
+        </StatGrid>
 
-      <div className="chart-grid chart-grid--aside" style={{ ['--chart-aside-main' as string]: '1.4fr', ['--chart-aside-side' as string]: '1fr', marginBottom: 16 }}>
-        <Card title={`近 ${TREND_DAYS} 天执行次数与平均耗时`}>
-          <CommonChart {...trendSpec} options={chartOptions} height={260} />
-        </Card>
-        <Card title="今日执行状态分布">
-          {!stats || stats.todayRuns === 0 ? (
-            <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Empty description="今日暂无执行" />
-            </div>
-          ) : (
-            <PieChart {...donutSpec} options={chartOptions} height={260} />
+        {alerts.length > 0 && (
+          <Card title={`健康提醒 · ${alerts.length}`}>
+            <CronJobAlertsPanel alerts={alerts} canExecute={canExecute} onViewLogs={onViewLogs} onRun={handleRun} />
+          </Card>
+        )}
+
+        <div className="chart-grid chart-grid--aside" style={{ ['--chart-aside-main' as string]: '1.4fr', ['--chart-aside-side' as string]: '1fr', marginTop: 20 }}>
+          <Card title={`近 ${days} 天执行趋势`}>
+            <CommonChart {...trendSpec} options={chartOptions} height={260} />
+          </Card>
+          <Card title="执行时段分布（星期 × 小时）">
+            <HeatmapChart {...heatmapSpec} options={chartOptions} height={260} />
+          </Card>
+        </div>
+
+        <Card
+          title={`任务健康 · ${filteredJobs.length}/${stats.perJob.length}`}
+          headerExtraContent={(
+            <RadioGroup type="button" value={jobFilter} onChange={(e) => setJobFilter(e.target.value as JobFilter)}>
+              {(Object.keys(JOB_FILTER_LABELS) as JobFilter[]).map((k) => <Radio key={k} value={k}>{JOB_FILTER_LABELS[k]}</Radio>)}
+            </RadioGroup>
           )}
+        >
+          <CronJobHealthTable
+            rows={filteredJobs}
+            loading={statsQuery.isFetching}
+            now={now}
+            onRefresh={() => { void statsQuery.refetch(); }}
+            canExecute={canExecute}
+            canUpdate={canUpdate}
+            onViewLogs={onViewLogs}
+            onRun={handleRun}
+            onToggleStatus={handleToggleStatus}
+          />
         </Card>
-      </div>
 
-      <div className="chart-grid chart-grid--aside" style={{ ['--chart-aside-main' as string]: '1.4fr', ['--chart-aside-side' as string]: '1fr', marginBottom: 16 }}>
-        <Card title="近 7 天 24 小时执行分布">
-          <BarChart {...hourlySpec} options={chartOptions} height={PANEL_PREVIEW_HEIGHT} />
-        </Card>
-        <Card title={`调度预览（接下来 ${upcoming.length} 次执行）`}>
-          <div style={{ height: PANEL_PREVIEW_HEIGHT, overflowY: 'auto' }}>
-              {upcoming.length === 0 ? (
-                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Empty description="无启用中的任务" />
-                </div>
-              ) : (
-                <>
-                {groupedUpcoming.map((group) => (
-                  <div key={group.dateLabel} style={{ marginBottom: 8 }}>
-                    <div style={{
-                      padding: '3px 4px',
-                      marginBottom: 4,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: 'var(--semi-color-text-2)',
-                      borderBottom: '1px solid var(--semi-color-border)',
-                    }}>
-                      {group.dateLabel}
-                    </div>
-                    {group.items.map((item) => (
-                      <div key={item.key} style={{
-                        display: 'flex',
-                        gap: 12,
-                        padding: '5px 4px',
-                        alignItems: 'center',
-                        borderRadius: 'var(--semi-border-radius-small)',
-                      }}>
-                        <Typography.Text style={{ fontFamily: 'monospace', minWidth: 68, flexShrink: 0, color: 'var(--semi-color-primary)' }}>
-                          {item.timeStr}
-                        </Typography.Text>
-                        <Typography.Text ellipsis={{ showTooltip: true }} style={{ flex: 1 }}>
-                          {item.jobName}
-                        </Typography.Text>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-                </>
-              )}
-            </div>
-        </Card>
-      </div>
+        <div className="chart-grid" style={{ marginTop: 20 }}>
+          <Card title={`未来 24 小时调度 · ${stats.upcoming.length}`}>
+            <UpcomingList items={stats.upcoming} now={now} />
+          </Card>
+          <Card title={`失败原因 Top ${stats.topErrors.length}`}>
+            <TopErrorList items={stats.topErrors} now={now} onSelect={handleSelectError} />
+          </Card>
+        </div>
 
-      <Card title="任务执行统计" style={{ marginBottom: 16 }}>
-        <Table
-          size="small"
-          rowKey="jobId"
-          dataSource={stats?.perJob ?? []}
-          columns={perJobColumns}
-          pagination={false}
-          empty={<Empty description="暂无任务" />}
-          loading={loading}
-        />
-      </Card>
-
-      <Card title="最近执行记录">
-        <Table
-          size="small"
-          rowKey="id"
-          dataSource={stats?.recentLogs ?? []}
-          columns={recentColumns}
-          pagination={false}
-          empty={<Empty description="暂无执行记录" />}
-          loading={loading}
-        />
-      </Card>
-    </Spin>
+        <div ref={logsPanelRef}>
+          <Card title="执行记录">
+            <CronJobRecentLogs jobOptions={jobOptions} now={now} search={recentLogsSearch} onViewLogs={onViewLogs} />
+          </Card>
+        </div>
+      </Spin>
+    </div>
   );
 }

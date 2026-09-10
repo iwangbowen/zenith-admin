@@ -10,6 +10,9 @@ export type CronJobLogsParams = { jobId: number } & NonNullable<QueryOf<typeof c
 
 export type CronJobAllLogsParams = NonNullable<QueryOf<typeof cronJobContract.logs>>;
 
+export type CronJobStatsParams = NonNullable<QueryOf<typeof cronJobContract.stats>>;
+
+/** 执行概览（各统计周期）的公共前缀 */
 const statsKey = contractKey(cronJobContract.stats);
 /** 全量执行日志（各筛选条件）的公共前缀 */
 const logsKey = contractKey(cronJobContract.logs);
@@ -41,6 +44,7 @@ export const cronJobKeys = {
   ...resourceKeys,
   handlers: contractKey(cronJobContract.handlers),
   stats: statsKey,
+  statsOf: (params: CronJobStatsParams) => contractKey(cronJobContract.stats, { query: params }),
   logs: logsKey,
   allLogs: (params: CronJobAllLogsParams) => contractKey(cronJobContract.logs, { query: params }),
   jobLogs: jobLogsKey,
@@ -51,8 +55,9 @@ export function useCronJobHandlers() {
   return useApiQuery(cronJobContract.handlers, { staleTime: LOOKUP_STALE_TIME });
 }
 
-export function useCronJobStats() {
-  return useApiQuery(cronJobContract.stats);
+/** 执行概览：切换统计周期时保留上一周期数据，避免整页闪成骨架 */
+export function useCronJobStats(params: CronJobStatsParams = {}) {
+  return useApiQuery(cronJobContract.stats, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useCronJobLogs({ jobId, ...query }: CronJobLogsParams, enabled = true) {
@@ -115,7 +120,7 @@ export function useClearCronJobLogs() {
       : api(cronJobContract.clearLogs, { query: { days } })),
     onSuccess: () => {
       invalidateCronJobLogs(qc);
-      // 概览的 recentLogs / dailyStats / perJob 均由日志聚合而来
+      // 概览的汇总 / 趋势 / perJob / 错误聚合均由日志聚合而来
       void qc.invalidateQueries({ queryKey: cronJobKeys.stats });
       // 任务本身字段不受影响，不动 lists / detail
     },

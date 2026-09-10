@@ -53,6 +53,9 @@ function queueName(jobId: number): string {
   return `cron-job-${jobId}`;
 }
 
+/** 业务定时任务的 Cron 求值时区（pg-boss 调度与统计侧的下次执行 / 漏跑判定共用） */
+export const CRON_SCHEDULE_TZ = 'Asia/Shanghai';
+
 // ─── pg-boss 实例（单例）─────────────────────────────────────────────────────
 
 let boss: PgBoss | null = null;
@@ -879,7 +882,7 @@ async function _scheduleOne(job: typeof cronJobs.$inferSelect): Promise<boolean>
     params: job.params,
     jobId: job.id,
   } satisfies JobData, {
-    tz: 'Asia/Shanghai',
+    tz: CRON_SCHEDULE_TZ,
     ...retryOptions,
     ...(job.monitorTimeout ? { expireInSeconds: job.monitorTimeout } : {}),
   });
@@ -914,7 +917,7 @@ export async function scheduleJob(
     params,
     jobId,
   } satisfies JobData, {
-    tz: 'Asia/Shanghai',
+    tz: CRON_SCHEDULE_TZ,
     ...(retryCount > 0 ? { retryLimit: retryCount, retryDelay, retryBackoff } : {}),
     ...(monitorTimeout ? { expireInSeconds: monitorTimeout } : {}),
   });

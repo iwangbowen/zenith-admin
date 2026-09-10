@@ -133,3 +133,23 @@ export function formatDurationBetween(start: DateInput, end: DateInput): string 
   const hour = totalHour % 24;
   return hour > 0 ? `${day}天${hour}小时` : `${day}天`;
 }
+
+/**
+ * 相对当前时刻的粗粒度表述：过去 →「刚刚 / N 分钟前 / N 小时前 / N 天前」，未来 →「N 秒后 / N 分钟后 / …」。
+ * 适合「最近执行」「下次执行」这类需要一眼看出远近的场景；精确时刻由调用方另行以 tooltip 或相邻文本给出。
+ * 入参为空 / 非法时返回空串。
+ */
+export function formatRelativeTime(date: DateInput, now: DateInput = new Date()): string {
+  if (!date) return '';
+  const d = dayjs(typeof date === 'string' ? date.replace(' ', 'T') : date);
+  const base = dayjs(typeof now === 'string' ? now.replace(' ', 'T') : now);
+  if (!d.isValid() || !base.isValid()) return '';
+  const diffSec = Math.round(d.diff(base) / 1000);
+  const abs = Math.abs(diffSec);
+  const suffix = diffSec < 0 ? '前' : '后';
+  if (abs < 10 && diffSec <= 0) return '刚刚';
+  if (abs < 60) return `${abs} 秒${suffix}`;
+  if (abs < 3600) return `${Math.floor(abs / 60)} 分钟${suffix}`;
+  if (abs < 86400) return `${Math.floor(abs / 3600)} 小时${suffix}`;
+  return `${Math.floor(abs / 86400)} 天${suffix}`;
+}
