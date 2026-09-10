@@ -121,8 +121,7 @@ services:
     # api 停机硬闸 15s（SHUTDOWN_GRACE_MS 缺省）：Docker 默认 10s 会在关连接 / 宣告离线 / IoT 缓冲落库前 SIGKILL
     stop_grace_period: 25s
     volumes:
-      # api 与 worker 共享（卷名沿用历史的 api_storage，升级无需迁移数据）：
-      # 上传文件本体 / 分片暂存 / CMS 静态化产物（worker 写、api 读）
+      # api 与 worker 同时挂载：上传文件本体 / 分片暂存 / CMS 静态化产物（worker 写、api 读）
       - api_storage:/app/packages/server/storage
       - api_logs:/app/packages/server/logs
     ports:

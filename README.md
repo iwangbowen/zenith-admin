@@ -30,12 +30,12 @@
 | 图标体系 | [lucide-react](https://lucide.dev/) |
 | 数据库 ORM | [Drizzle ORM](https://orm.drizzle.team/) + PostgreSQL |
 | 会话 / 缓存 | [Redis](https://redis.io/)（ioredis） |
-| 任务调度 | [pg-boss](https://github.com/timgit/pg-boss)（PostgreSQL 任务队列） |
+| 任务调度 | [pg-boss](https://github.com/timgit/pg-boss)（PostgreSQL 任务队列）；后端按 `ZENITH_ROLES` 拆为 api（接入）/ worker（执行）两种进程角色，可独立扩缩 |
 | 前端路由 | [React Router](https://reactrouter.com/) v7 |
 | 参数验证 | [Zod](https://zod.dev/)（前后端共享） |
 | 认证方案 | JWT（Access + Refresh Token 自动续期）+ OAuth2 + 企业 SSO（OIDC / SAML / LDAP / AD） |
 | AI 框架 | [Mastra](https://mastra.ai/)（模型目录 / Memory / RAG / 评测 / Studio） |
-| 实时通信 | WebSocket + WebRTC（音视频通话） |
+| 实时通信 | WebSocket（经 Redis pub/sub 跨进程扇出）+ WebRTC（音视频通话） |
 | 流程 / 终端 | [React Flow](https://reactflow.dev/)（@xyflow/react）+ [xterm.js](https://xtermjs.org/) |
 | 图表 / 编辑器 | [VChart](https://www.visactor.io/vchart) + [Univer](https://univer.ai/)（打印报表）+ [Monaco Editor](https://microsoft.github.io/monaco-editor/)（SQL 控制台）+ [wangEditor](https://www.wangeditor.com/)（富文本） |
 | 可观测性 | OpenTelemetry + Prometheus |
@@ -303,7 +303,7 @@ npm run build          # 顺序构建：shared → server → web
 
 构建产物：后端 `packages/server/dist/`，前端 `packages/web/dist/`。
 
-> 完整部署说明（Docker、Nginx 反代等）参见文档站：[快速开始](https://iwangbowen.github.io/zenith-admin/guide/getting-started)。
+> 完整部署说明（进程角色、Docker Compose、Nginx 反代等）参见文档站：[部署说明](https://iwangbowen.github.io/zenith-admin/guide/deployment) 与 [Docker 部署](https://iwangbowen.github.io/zenith-admin/guide/docker)。
 
 ---
 

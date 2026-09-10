@@ -6,28 +6,28 @@
 
 ## Unreleased
 
-**后端进程角色拆分与多实例实时通道补齐**：服务端新增 `api` / `worker` 角色模型，Docker Compose 拆分迁移、API 与后台 worker，迁移从入口脚本中移出；同时补齐跨进程 WebSocket / IoT 推送扇出、集群级在线状态、worker 探针与角色化可观测能力。
+**后端进程角色拆分与多进程实时通道**：服务端引入 `api` / `worker` 角色模型，Docker Compose 以 `migrate` 一次性迁移 + `api` + `worker` 三个服务部署，迁移作为独立部署步骤执行；WebSocket / IoT 推送经 Redis 在进程间扇出，在线状态为集群合并视图，worker 提供独立探针端点，日志 / 指标 / 链路按角色标注。
 
 ### Added
 
-- 新增 `ZENITH_ROLES` 进程角色：`api` 负责 HTTP / WebSocket / IoT 接入 / CMS SSR / 终端 / OpenAPI / Mastra 代理；`worker` 负责任务中心、业务 Cron、系统周期任务与系统队列 worker；`all` 表示单进程全量角色。
-- Docker Compose 拓扑拆分为 `migrate` 一次性迁移、`api` 与 `worker` 服务，支持 `docker compose up -d --scale api=2 --scale worker=3`；`storage/` 沿用 `api_storage` 卷并同时挂载到两个服务，从单容器版本升级无需迁移数据；新增 `docker-compose.single.yml` 提供单容器 `ZENITH_ROLES=all` 部署。
-- 节点亲和队列自愈：本进程节点队列被对账误删时按原参数重建并重试投递；兜底扫描逐条容错，单条重投失败不再中断本轮其余任务。
-- 新增跨进程 WebSocket 扇出：所有 WS 推送本地投递后通过 Redis pub/sub 广播到其它 api 节点；IoT 命令、期望属性与 OTA 帧同步走扇出并由持有设备连接的节点回写送达 ACK。
-- 在线状态改为集群级 presence：api 节点发布本地增量与 30 秒快照，节点关闭时广播用户离线。
-- 任务中心 handler 支持 `affinity: 'node'`，终端文件压缩 / 解压等本机文件任务投递到提交进程专属队列；`async_tasks` 新增 `node_id`。
-- 纯 worker 新增 `WORKER_HEALTH_PORT` 探针应用，提供 `/health`、`/ready` 与 `/metrics`；新增 `SHUTDOWN_GRACE_MS`、`STORAGE_SHARED` 配置。
-- 健康与指标扩展：api `/api/health` 返回 `roles`，新增 `checks.wsFanout`、`checks.workers`；Prometheus 指标增加默认标签 `process_role`，并新增 WS 扇出发布 / 失败 / 投递 / 丢弃计数。
-- 迁移 `0006_process_roles`：新增 `process_role` 枚举、`system_scheduler_nodes.roles`、`async_tasks.node_id`，并清理历史心跳行。
+- `ZENITH_ROLES` 进程角色：`api` 负责 HTTP / WebSocket / IoT 接入 / CMS SSR / 终端 / OpenAPI / Mastra 代理；`worker` 负责任务中心、业务 Cron、系统周期任务与系统队列 worker；`all` 表示单进程全量角色。非 development 环境必须显式设置。
+- Docker Compose 拓扑：`migrate` 一次性迁移、`api` 与 `worker` 服务，支持 `docker compose up -d --scale api=2 --scale worker=3`；`api_storage` 卷同时挂载到 api 与 worker；`docker-compose.single.yml` 提供单容器 `ZENITH_ROLES=all` 部署。
+- 跨进程 WebSocket 扇出（`lib/ws-fanout.ts`）：所有 WS 推送本地投递后经 Redis pub/sub 到达持有连接的 api 进程；IoT 指令、期望属性与 OTA 帧同路转发，由持有设备连接的节点回写送达状态。
+- 集群级在线状态：api 进程发布本地上下线增量与 30 秒全量快照，远端镜像 90 秒无刷新视为离线，进程有序停机时主动宣告离线。
+- 任务中心 handler 支持 `affinity: 'node'`：本机文件任务（终端压缩 / 解压）投递到提交进程专属队列 `async-tasks/node/<hostname_pid>`；目标进程无心跳时由兜底扫描标记失败；节点队列被对账误删时按原参数重建并重试投递；兜底扫描逐条容错。`async_tasks` 新增 `node_id`。
+- 纯 worker 探针应用（`WORKER_HEALTH_PORT`，默认 3301）：`/health`、`/ready`、`/metrics`，无业务路由。新增 `SHUTDOWN_GRACE_MS`（worker 的在飞作业排空预算同时传给 pg-boss）、`STORAGE_SHARED` 配置。
+- 健康与指标：api `/api/health` 返回 `roles`，`checks` 增加 `wsFanout`、`workers`；Prometheus 默认标签 `process_role`，WS 扇出 published / publish_failed / delivered / dropped 计数。
+- 迁移 `0006_process_roles`：`process_role` 枚举、`system_scheduler_nodes.roles`（非空）、`async_tasks.node_id`；节点心跳表在加列前清空（心跳行为进程运行期状态，重启即重建）。
+- `npm run dev:split`（开发期分别启动 api 与 worker 进程）、`npm run verify:split`（本地端到端验证拆分链路）、VS Code compound「Debug: Split」。
 
 ### Changed
 
-- 任务、Cron、系统队列和 pg-boss schedule 在所有角色中统一声明，只有 worker 执行通用 `work()`、cron 监控、孤儿清理与队列对账；api 的 pg-boss 为 send-only 模式。
-- 纯 worker 启动时校验存储拓扑：使用本地磁盘型存储或 CMS 静态化时必须声明 `STORAGE_SHARED=true`，表示 `storage/` 在 api 与 worker 间共享。
-- 迁移从 server 入口和 `docker/entrypoint.sh` 移出；`npm start` 仅执行 `node dist/index.js`，新增 `npm run start:migrate` 作为显式迁移命令。
-- 新增 `npm run dev:split`（开发期同时启动 api 与 worker）和 `npm run verify:split`（本地端到端验证拆分部署链路）。
-- 日志行新增 `role` 字段；拆分部署时日志文件分别写入 `logs/app-api.*.log` 与 `logs/app-worker.*.log`，OTel 资源属性增加 `zenith.process.role`。
-- 调度节点 ID 统一为 `hostname:pid`，`system_scheduler_nodes` 与管理端「系统调度 → 节点」展示角色标签。
+- 任务、Cron、系统队列与 pg-boss schedule 在所有角色统一声明；只有 worker 执行 `work()`、cron 监控、孤儿清理与队列对账，api 的 pg-boss 为 send-only 实例（`supervise: false, schedule: false`，连接池 2）。
+- 纯 worker 启动时校验存储拓扑：启用本地磁盘型存储（local / kodo / sftp）或 CMS 静态化时须声明 `STORAGE_SHARED=true`，否则拒绝启动。
+- 迁移独立于服务进程：`docker/entrypoint.sh` 只启动服务或执行传入命令，`npm start` = `node dist/index.js`，`npm run start:migrate` = `node dist/db/migrate.js`。
+- api 停机先宣告在线用户离线并关闭全部 WS 连接（1001）再关闭监听；compose 为 api 设 `stop_grace_period: 25s`，worker 130s。
+- 日志行带 `role` 字段；拆分部署时日志文件为 `logs/app-api.*.log` 与 `logs/app-worker.*.log`；OTel 资源属性 `zenith.process.role`。
+- 调度节点 ID 统一为 `hostname:pid`；管理端「系统调度 → 节点」展示角色标签。
 
 ## v2.27.0 - 2026-09-10
 

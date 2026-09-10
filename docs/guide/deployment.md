@@ -291,11 +291,11 @@ Docker 构建会自动执行该步骤。手动部署时需先 `npm run build`，
 
 ## 升级版本
 
-1. 可选：在发布前执行 `npm run verify:split` 验证本地 api / worker 拆分链路。
-2. 停止 worker，并等待其在 `SHUTDOWN_GRACE_MS` 内完成排空。
+1. 可选：在发布前执行 `npm run verify:split` 验证本地 api / worker 拆分链路（需要可用的 PostgreSQL 与 Redis）。
+2. 停止 worker，等待其在 `SHUTDOWN_GRACE_MS` 内完成在飞作业的收尾。
 3. 切换到目标 tag 并安装依赖：`git fetch --tags && git checkout vX.Y.Z && npm ci`。
 4. 显式执行迁移：源码部署用 `npm run db:migrate`，dist 产物用 `npm run start:migrate -w @zenith/server`。
 5. 启动 worker。
-6. 滚动重启 api；api 重启不再中断后台作业。
+6. 滚动重启 api；api 只承载接入面，重启不影响 worker 上的后台作业。
 7. 重新构建或替换 `packages/web/dist/`，Nginx 无需重启。
 8. Electron 客户端可通过「系统设置 → 应用版本」发布热更新包或安装包，详见 [Electron 桌面客户端](./electron.md)。

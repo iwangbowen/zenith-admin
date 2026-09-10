@@ -11,6 +11,7 @@
 	"scripts": {
 		"dev": "concurrently \"npm run dev -w @zenith/server\" \"npm run dev -w @zenith/web\"",
 		"dev:split": "concurrently \"npm run dev:split -w @zenith/server\" \"npm run dev -w @zenith/web\"",
+		"verify:split": "npm run verify:split -w @zenith/server",
 		"dev:server": "npm run dev -w @zenith/server",
 		"dev:web": "npm run dev -w @zenith/web",
 		"dev:studio": "mastra studio -p 5380 -s 3300 --server-api-prefix /api/mastra",

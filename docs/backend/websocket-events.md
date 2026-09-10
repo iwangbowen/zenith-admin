@@ -49,7 +49,7 @@ Sec-WebSocket-Protocol: zenith-auth, eyJ...
 | `chat:reaction` | `unknown` | 表情回应 |
 | `chat:edit` | `unknown` | 编辑消息 |
 | `chat:vote-update` | `unknown` | 投票更新 |
-| `chat:presence` | `ChatPresence[]`（`@zenith/shared/chat`） | 在线状态变更；服务端按 1 秒窗口合并后批量推送 |
+| `chat:presence` | `ChatPresence[]`（`@zenith/shared/chat`） | 在线状态变更；服务端按 1 秒窗口合并后批量推送。在线判定是集群合并视图：用户在任一 api 进程有连接即在线，各进程经扇出交换本地增量与 30 秒全量快照，远端镜像 90 秒无刷新视为该进程离线 |
 | `channel:message` | `ChannelMessage`（`@zenith/shared/messaging`） | 频道消息 |
 | `channel:message-retract` | `unknown` | 频道消息撤回 |
 | `channel:cs-message` | `unknown` | 客服消息 |

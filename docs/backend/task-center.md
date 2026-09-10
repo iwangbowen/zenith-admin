@@ -15,24 +15,27 @@
 ## 架构
 
 ```text
-业务页面提交
+业务页面提交（api 进程）
    │  业务接口调用 submitAsyncTask()
    ▼
-async_tasks（pending，快照 maxAttempts / retryDelayMs / tenant / createdBy）
+async_tasks（pending，快照 maxAttempts / retryDelayMs / tenant / createdBy / nodeId）
    │
-   │  pg-boss 队列 async-tasks
+   │  pg-boss 队列 async-tasks（affinity: 'any'，任意 worker 领取）
+   │  或 async-tasks/node/<hostname_pid>（affinity: 'node'，只有提交它的进程领取）
    ▼
-registerAsyncTaskWorker() → runAsyncTask(taskId) → handler.run(ctx)
+registerAsyncTaskWorker() → runAsyncTask(taskId) → handler.run(ctx)      （worker 进程）
    │                                     │
    │                                     ├─ ctx.progress(): 进度 / 断点 / 心跳 / WS 推送
    │                                     ├─ ctx.reportItems(): async_task_items 行级明细 upsert
    │                                     └─ 抛错: 自动重试或 failed
-   ├─ WebSocket task:progress（推送给创建者）
+   ├─ WebSocket task:progress（经 Redis 扇出，送达持有创建者连接的 api 进程）
    └─ system_scheduler_runs（系统调度运行日志）
 
-async-tasks-drain（每分钟）:
+async-tasks-drain（每分钟，worker 执行）:
   - 回收心跳超时的 running 任务并重投
   - 重投长时间停留 pending 且已到执行时间的任务
+  - 节点亲和任务的目标进程已无心跳时标记 failed，提示重新提交
+  - 单条重投失败只记日志，不影响本轮其余任务
 
 data-retention（每天 03:00）:
   - 按数据保留策略清理已结束任务；类型级 retentionDays 可覆盖
@@ -43,7 +46,7 @@ data-retention（每天 03:00）:
 - `packages/server/src/lib/task-center/`：框架入口、类型、注册表、运行器、策略与实体映射。
 - `packages/server/src/routes/tasks/async-tasks.ts`：任务中心管理 API。
 - `packages/server/src/services/tasks/async-tasks.service.ts`：列表、统计、权限、操作服务。
-- `packages/server/src/bootstrap/workers.ts`：任务类型注册与 Worker 启动编排。
+- `packages/server/src/bootstrap/workers.ts`：任务类型与队列声明清单（所有角色执行；是否领取作业由 `lib/pg-boss-scheduler.ts` 按角色决定）。
 - `packages/server/src/lib/system-tasks.registry.ts`：`async-tasks-drain` 兜底扫描注册。
 - 前端：`useAsyncTasks` / `TaskTray` / `/system/task-center` / `/biz/task-demo`。
 
@@ -51,7 +54,7 @@ data-retention（每天 03:00）:
 
 | 表 | 说明 |
 | --- | --- |
-| `async_tasks` | 任务实例、状态、进度、断点、结果、错误、重试策略快照、幂等键、租户和创建者 |
+| `async_tasks` | 任务实例、状态、进度、断点、结果、错误、重试策略快照、幂等键、租户、创建者；`node_id` 记录节点亲和任务的目标进程（`hostname:pid`），普通任务为 `null` |
 | `async_task_items` | 可选的行级处理明细，按 `task_id + item_key` 幂等覆盖 |
 | `async_task_type_configs` | 任务类型运行时策略，覆盖注册默认值 |
 

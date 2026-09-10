@@ -19,8 +19,8 @@ npm run secret:generate -- --docker
 
 docker compose up -d
 
-# 首次部署或需要补齐内置数据时执行，可重复运行
-docker compose exec api node dist/db/seed.js
+# 首次部署或需要补齐内置数据时执行，可重复运行（复用 migrate 服务的一次性容器）
+docker compose run --rm migrate node dist/db/seed.js
 
 docker compose ps
 ```
@@ -70,7 +70,7 @@ api ⇄ api_storage ⇄ worker       （本地文件、上传暂存、CMS 静态
 | 阶段 | 基础镜像 | 行为 |
 | --- | --- | --- |
 | `builder` | `node:24-alpine` | 安装全量依赖，构建 shared、analytics-sdk、server、web，执行 `docker/build-studio.mjs`，最后用 `docker/patch-shared-exports.mjs` 把 `@zenith/shared` 的 exports 指向编译产物 |
-| `server` | `node:24-alpine` | 安装生产依赖，复制 server dist、Drizzle 迁移与 shared dist，写入 entrypoint；entrypoint 只按参数执行命令或启动 `node dist/index.js`，不再自动迁移；`storage` / `logs` 归属 `node` 后切换 `USER node` |
+| `server` | `node:24-alpine` | 安装生产依赖，复制 server dist、Drizzle 迁移与 shared dist，写入 entrypoint；entrypoint 传入参数时直接执行该命令（`migrate` 服务据此运行 `node dist/db/migrate.js`），否则启动 `node dist/index.js`；`storage` / `logs` 归属 `node` 后切换 `USER node` |
 | `web` | `nginx:1.30-alpine` | 复制 `packages/web/dist` 与 `docker/nginx.conf` |
 
 `node-pty` 在 Linux 下需要编译，构建阶段安装 `python3 make g++`；server 阶段保留 `libstdc++` 并移除编译工具链。
@@ -178,7 +178,7 @@ npm run dev
 | --- | --- |
 | `postgres_data` | PostgreSQL 数据 |
 | `redis_data` | Redis AOF 数据 |
-| `api_storage` | `storage/` 整体，由 api 与 worker 共享挂载：本地上传文件、分片上传暂存目录、CMS 静态化产物。卷名沿用拆分前的 `api_storage`，从单容器版本升级无需迁移数据 |
+| `api_storage` | `storage/` 整体，同时挂载到 api 与 worker：本地上传文件、分片上传暂存目录、CMS 静态化产物（worker 写、api 读） |
 | `api_logs` | api 角色日志 |
 | `worker_logs` | worker 角色日志 |
 

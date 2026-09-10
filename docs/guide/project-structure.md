@@ -28,13 +28,13 @@ zenith-admin/
 | 目录 / 文件 | 职责 |
 | --- | --- |
 | `src/app.ts` | 创建 Hono 应用、装配中间件、领域路由、OpenAPI、CMS 兜底与全局错误处理 |
-| `src/index.ts` | 进程启动、监听、worker / subscriber 注册、遥测与优雅停机 |
-| `src/bootstrap/` | 后台 worker 与事件订阅者注册 |
+| `src/index.ts` | 进程启动编排：校验密钥与 `ZENITH_ROLES`、遥测、失效总线，按角色启动接入面 / 执行面，后台作业声明、事件订阅与优雅停机 |
+| `src/bootstrap/` | `run-api.ts`（监听、WebSocket、fan-out 订阅、终端会话）、`run-worker.ts`（存储拓扑自检、探针端点、对账与启动补齐）、`workers.ts`（角色无关的任务 / 队列 / 周期任务声明清单）、`subscribers.ts`（事件订阅者）、`shutdown.ts`、OpenAPI 预热 |
 | `src/routes/` | HTTP 协议边界，当前 18 个领域目录见下方清单 |
 | `src/services/` | 业务规则、事务、数据映射、前置校验 |
 | `src/db/` | Drizzle schema、迁移、seed、数据库封装 |
 | `src/middleware/` | 认证、权限、限流、幂等、CSRF、维护模式、开放平台网关、HTTP 日志等 |
-| `src/lib/` | 契约路由适配（`contract-route.ts`）、运行时设置（`settings/`）与跨实例失效总线（`invalidation-bus.ts`）、时间、JWT、Redis、文件存储、任务中心、通知 outbox、HTTP 客户端、日志等通用能力 |
+| `src/lib/` | 契约路由适配（`contract-route.ts`）、运行时设置（`settings/`）与跨实例失效总线（`invalidation-bus.ts`）、跨进程 WebSocket 扇出（`ws-fanout.ts`）与连接管理（`ws-manager.ts`）、pg-boss 调度（`pg-boss-scheduler.ts`）、任务中心（`task-center/`）、进程身份（`process-identity.ts`）、存储拓扑自检（`storage-topology.ts`）、时间、JWT、Redis、文件存储、通知 outbox、HTTP 客户端、日志等通用能力 |
 | `drizzle/` | Drizzle 生成的迁移文件 |
 
 `packages/server/src/routes/` 当前领域目录：
