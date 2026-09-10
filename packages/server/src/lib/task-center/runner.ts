@@ -9,7 +9,8 @@ import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, asyncTaskTypeConfigs, users } from '../../db/schema';
 import type { AsyncTaskRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
-import { registerSystemQueueWorker, sendSystemJob, sendSystemJobAfter } from '../pg-boss-scheduler';
+import { registerLocalNodeQueueWorker, registerSystemQueueWorker, isSchedulerNodeAlive, nodeQueueName, sendSystemJob, sendSystemJobAfter } from '../pg-boss-scheduler';
+import { PROCESS_ID } from '../process-identity';
 import { currentUser, runWithCurrentUser, currentTraceId, runWithTraceId, currentParentRef, runWithParentRef } from '../context';
 import { exactTenantCondition, getCreateTenantId } from '../tenant';
 import { nullableEq } from '../where-helpers';
@@ -95,6 +96,8 @@ export async function persistAsyncTask(
     // 显式写入而非依赖 db Proxy 的审计注入：createdBy 是幂等作用域的一部分，
     // 下面的冲突回查要按它过滤，作用域不能取决于别处的副作用。
     createdBy: user.userId,
+    // 节点亲和任务只能由本进程执行（操作本机资源），投递到本进程独有的队列
+    nodeId: handler.affinity === 'node' ? PROCESS_ID : null,
   };
   let row: AsyncTaskRow | undefined;
   if (idempotencyKey) {
@@ -130,19 +133,31 @@ async function lockTaskAdmission(executor: DbTransaction, taskType: string, user
 
 async function enqueueCommittedTask(row: AsyncTaskRow): Promise<void> {
   if (row.status !== 'pending') return;
-  await enqueueAsyncTask(row.id).catch((err) => {
+  await enqueueTaskRow(row).catch((err) => {
     logger.error('[task-center] 已持久化任务投递失败，等待 pending 扫描补投', { taskId: row.id, err });
   });
   pushTaskProgress(row, { force: true });
 }
 
-export async function enqueueAsyncTask(taskId: number): Promise<void> {
+/** 任务所属队列：节点亲和任务走目标进程独有的节点队列，其余走共享队列 */
+function queueForTask(task: Pick<AsyncTaskRow, 'nodeId'>): string {
+  return task.nodeId ? nodeQueueName(ASYNC_TASK_QUEUE, task.nodeId) : ASYNC_TASK_QUEUE;
+}
+
+async function enqueueTaskRow(task: Pick<AsyncTaskRow, 'id' | 'nodeId'>): Promise<void> {
   // singletonKey 防止同一任务在队列中堆积多条待消费消息；worker 侧原子领取兜底
-  await sendSystemJob(ASYNC_TASK_QUEUE, { taskId }, {
+  await sendSystemJob(queueForTask(task), { taskId: task.id }, {
     retryLimit: 0,
-    singletonKey: `async-task-${taskId}`,
+    singletonKey: `async-task-${task.id}`,
     retentionSeconds: 60 * 60 * 24,
   });
+}
+
+export async function enqueueAsyncTask(taskId: number): Promise<void> {
+  const [row] = await db.select({ id: asyncTasks.id, nodeId: asyncTasks.nodeId }).from(asyncTasks)
+    .where(eq(asyncTasks.id, taskId)).limit(1);
+  if (!row) return;
+  await enqueueTaskRow(row);
 }
 
 /** 从任务行还原创建者身份（handler 内可用 currentUser()、审计上下文） */
@@ -316,7 +331,7 @@ export async function runAsyncTask(taskId: number): Promise<string> {
         .returning();
       if (retryRow) {
         pushTaskProgress(retryRow, { force: true });
-        await sendSystemJobAfter(ASYNC_TASK_QUEUE, { taskId }, nextRunAt, {
+        await sendSystemJobAfter(queueForTask(claimed), { taskId }, nextRunAt, {
           retryLimit: 0,
           singletonKey: `async-task-retry-${taskId}-${claimed.attempts}`,
           retentionSeconds: 60 * 60 * 24,
@@ -438,23 +453,49 @@ export async function drainAsyncTasks(): Promise<{ recovered: number; redispatch
   const recoveredRows = await db.update(asyncTasks)
     .set({ status: 'pending', heartbeatAt: null })
     .where(and(staleRunning, eq(asyncTasks.cancelRequested, false)))
-    .returning({ id: asyncTasks.id });
-  for (const { id } of recoveredRows) {
-    logger.warn(`[task-center] 回收卡死任务 #${id}，已重投从断点续跑`);
-    await enqueueAsyncTask(id);
+    .returning({ id: asyncTasks.id, nodeId: asyncTasks.nodeId });
+  let orphaned = 0;
+  for (const row of recoveredRows) {
+    if (await failIfNodeGone(row)) { orphaned += 1; continue; }
+    logger.warn(`[task-center] 回收卡死任务 #${row.id}，已重投从断点续跑`);
+    await enqueueTaskRow(row);
   }
 
   // 长时间停留 pending 且已到执行时间 → 兜底重投（原子领取保证重复投递无害；退避中的重试任务不提前投）
   const pendingCutoff = new Date(Date.now() - PENDING_REDISPATCH_MS);
-  const stalePending = await db.select({ id: asyncTasks.id }).from(asyncTasks)
+  const stalePending = await db.select({ id: asyncTasks.id, nodeId: asyncTasks.nodeId }).from(asyncTasks)
     .where(and(
       eq(asyncTasks.status, 'pending'),
       lt(asyncTasks.updatedAt, pendingCutoff),
       or(isNull(asyncTasks.nextRunAt), lte(asyncTasks.nextRunAt, new Date())),
     ));
-  for (const { id } of stalePending) await enqueueAsyncTask(id);
+  for (const row of stalePending) {
+    if (await failIfNodeGone(row)) { orphaned += 1; continue; }
+    await enqueueTaskRow(row);
+  }
 
-  return { recovered: cancelledRows.length + recoveredRows.length, redispatched: stalePending.length };
+  return { recovered: cancelledRows.length + recoveredRows.length, redispatched: stalePending.length - orphaned };
+}
+
+/**
+ * 节点亲和任务的目标进程已下线（无活跃心跳）时没有任何进程能执行它：标记失败并告知用户重新提交，
+ * 而不是让它永远停在 pending 被反复重投。返回 true 表示已按孤儿处理。
+ */
+async function failIfNodeGone(task: Pick<AsyncTaskRow, 'id' | 'nodeId'>): Promise<boolean> {
+  if (!task.nodeId || await isSchedulerNodeAlive(task.nodeId)) return false;
+  const [row] = await db.update(asyncTasks)
+    .set({
+      status: 'failed',
+      errorMessage: `执行节点 ${task.nodeId} 已下线，该任务只能在提交它的服务节点执行，请重新提交`,
+      completedAt: new Date(),
+    })
+    .where(and(eq(asyncTasks.id, task.id), eq(asyncTasks.status, 'pending')))
+    .returning();
+  if (row) {
+    pushTaskProgress(row, { force: true });
+    logger.warn(`[task-center] 节点亲和任务 #${task.id} 的目标节点 ${task.nodeId} 已下线，已标记失败`);
+  }
+  return true;
 }
 
 /** 清理超过保留期的已结束任务记录（支持类型级保留期覆盖），返回清理数量 */
@@ -509,11 +550,16 @@ export async function countCleanableAsyncTasks(retentionDays = ASYNC_TASK_RETENT
   return pending + await db.$count(asyncTasks, and(...conditions));
 }
 
-/** 注册任务中心队列 Worker（启动时调用一次；会出现在系统调度页） */
+/**
+ * 注册任务中心队列 Worker（启动时调用一次；会出现在系统调度页）。
+ * 共享队列的声明在任何角色都做（api 要能投递），领取只在 worker 角色激活（pg-boss-scheduler 内部按角色门控）；
+ * 存在节点亲和任务类型时，本进程无论角色都消费自己的节点队列——那是唯一允许 api 执行作业的例外。
+ */
 export async function registerAsyncTaskWorker(): Promise<void> {
   // 为所有已注册任务类型落库默认策略（已存在则保留用户修改）
   const { listTaskHandlers } = await import('./registry');
-  for (const handler of listTaskHandlers()) {
+  const handlers = listTaskHandlers();
+  for (const handler of handlers) {
     await ensureTaskTypeConfig(handler).catch((err) => logger.warn('[task-center] 类型策略初始化失败', { taskType: handler.taskType, err }));
   }
   await registerSystemQueueWorker<{ taskId: number }>({
@@ -524,4 +570,11 @@ export async function registerAsyncTaskWorker(): Promise<void> {
     handler: ({ taskId }) => runAsyncTask(taskId),
     queueOptions: { retentionSeconds: 60 * 60 * 24 * 7 },
   });
+  if (handlers.some((handler) => handler.affinity === 'node')) {
+    await registerLocalNodeQueueWorker<{ taskId: number }>(
+      ASYNC_TASK_QUEUE,
+      async ({ taskId }) => { await runAsyncTask(taskId); },
+      { retentionSeconds: 60 * 60 * 24 },
+    );
+  }
 }

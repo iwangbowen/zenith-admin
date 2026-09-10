@@ -13,7 +13,7 @@ Sec-WebSocket-Protocol: zenith-auth, eyJ...
 
 服务端只回显 `zenith-auth`（`WebSocketServer.handleProtocols`），绝不把 token 写回握手响应；`?token=` 查询串已不再接受。升级鉴权（`lib/ws-auth.ts`）与 HTTP `authMiddleware` 同一口径：拒绝会员 / refresh token、实时校验用户与租户状态（`checkAdminJwtSubject`）、检查吊销黑名单；三个 WebSocket 端点（`/api/ws`、`/api/ws/terminal`、`/api/ws/terminal-monitor`）共用。
 
-认证失败关闭连接：`4001 Unauthorized`。Redis 检查异常时 fail-open。连接成功后按用户维度建立连接集合，用于单用户、多用户和广播推送。
+认证失败关闭连接：`4001 Unauthorized`。Redis 检查异常时 fail-open。连接成功后按用户维度建立本地连接集合，并通过 Redis pub/sub 在 api 进程之间扇出；worker 产生的任务进度、站内信、工作流事件与 IoT 送达帧也经同一链路到达持有浏览器或设备连接的节点。扇出语义为 at-most-once，Redis 不可用时实时增量可能丢弃，客户端重连后应回源补齐。
 
 ### 入站帧约束
 

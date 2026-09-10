@@ -1,5 +1,6 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { PROCESS_ROLES } from '@zenith/shared/platform';
 import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 
@@ -8,6 +9,9 @@ export const systemSchedulerTaskTypeEnum = pgEnum('system_scheduler_task_type', 
 export const systemSchedulerRunStatusEnum = pgEnum('system_scheduler_run_status', ['running', 'success', 'failed']);
 
 export const systemSchedulerTriggerTypeEnum = pgEnum('system_scheduler_trigger_type', ['schedule', 'manual', 'queue']);
+
+/** 服务进程角色（与 `@zenith/shared/platform` 的 PROCESS_ROLES / Zod enum 三端同步） */
+export const processRoleEnum = pgEnum('process_role', PROCESS_ROLES);
 
 // ─── 运行时设置 ──────────────────────────────────────────────────────────────
 /**
@@ -175,6 +179,8 @@ export const systemSchedulerNodes = pgTable('system_scheduler_nodes', {
   nodeId: varchar({ length: 128 }).primaryKey(),
   hostname: varchar({ length: 128 }).notNull(),
   pid: integer().notNull(),
+  /** 该进程承担的角色（ZENITH_ROLES）；只含 api 的节点仅声明任务，不执行 */
+  roles: processRoleEnum().array().notNull(),
   version: varchar({ length: 64 }),
   startedAt: timestamp({ withTimezone: true }).notNull(),
   lastHeartbeatAt: timestamp({ withTimezone: true }).notNull(),

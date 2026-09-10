@@ -27,10 +27,18 @@ import { trace, isSpanContextValid } from '@opentelemetry/api';
 import { currentTraceId } from './trace-context';
 import { config } from '../config';
 import { recordLogLevel } from './log-metrics';
+import { PROCESS_HOSTNAME } from './process-identity';
 
 // pino-pretty 只在 Windows 终端分支于主线程加载；其余场景由 worker 按 target 名自行解析
 const require = createRequire(import.meta.url);
 const loadPinoPretty = () => require('pino-pretty') as typeof import('pino-pretty');
+
+/**
+ * 进程角色标签（日志行 role 字段、日志文件名后缀）。
+ * 大量单测以局部对象 mock `../config`，那里没有 roles；日志模块是几乎所有模块图的公共依赖，
+ * 不能因此在加载期抛错，缺省按全量进程处理。
+ */
+const processRoleLabel: string = (config as { roles?: { label?: string } }).roles?.label ?? 'all';
 
 /**
  * 级别方法同时接受两种写法（由 logMethod hook 归一化）：
@@ -92,7 +100,9 @@ const fileTarget: TransportTargetOptions = {
   // 必须显式跟随 logger 级别，否则 LOG_LEVEL=debug/trace 的日志到不了输出
   level: config.log.level,
   options: {
-    file: path.join(config.log.dir, 'app'),
+    // 同一台机器上 api 与 worker 各自一份文件：pino-roll 带 removeOtherLogFiles，共用前缀会互删轮转文件。
+    // 全量进程保持历史文件名 app.*，拆分角色后为 app-api.* / app-worker.*
+    file: path.join(config.log.dir, processRoleLabel === 'all' ? 'app' : `app-${processRoleLabel}`),
     frequency: 'daily',
     dateFormat: 'yyyy-MM-dd',
     extension: '.log',
@@ -129,6 +139,8 @@ const consoleOnMainThread = process.platform === 'win32' && process.stdout.isTTY
 const options = {
   level: config.log.level,
   timestamp: localIsoTime,
+  // 每行带进程角色：多进程部署时按 role 过滤 / 聚合日志（pid / hostname 沿用 pino 默认）
+  base: { pid: process.pid, hostname: PROCESS_HOSTNAME, role: processRoleLabel },
   // 级别保持 pino 默认的数字形式（10-60，行首第一个键），日志查看器与采集端按数字映射
   serializers: { err: stdSerializers.err, error: stdSerializers.err },
   hooks: { logMethod },

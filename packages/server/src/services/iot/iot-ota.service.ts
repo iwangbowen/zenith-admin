@@ -238,7 +238,7 @@ export async function createIotOtaTask(input: CreateIotOtaTaskInput) {
   const payload = buildOtaPayload(task.id, firmware);
   const notifiedIds: number[] = [];
   for (const d of firstBatch) {
-    if (pushOtaToDevice(d.sn, payload)) notifiedIds.push(d.id);
+    if (pushOtaToDevice(d.sn, payload, { taskId: task.id, deviceId: d.id })) notifiedIds.push(d.id);
   }
   if (notifiedIds.length > 0) {
     await db.update(iotOtaTaskDevices)
@@ -277,7 +277,7 @@ export async function releaseNextIotOtaBatch(id: number) {
   const payload = buildOtaPayload(id, firmware);
   const notifiedIds: number[] = [];
   for (const d of batchDevices) {
-    if (pushOtaToDevice(d.sn, payload)) notifiedIds.push(d.deviceId);
+    if (pushOtaToDevice(d.sn, payload, { taskId: id, deviceId: d.deviceId })) notifiedIds.push(d.deviceId);
   }
   if (notifiedIds.length > 0) {
     await db.update(iotOtaTaskDevices)

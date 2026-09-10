@@ -22,6 +22,8 @@ export function registerTerminalFileTaskHandlers(): void {
     module: '文件管理',
     description: '将选中的文件/目录打包为 ZIP；支持查看条目进度与中途取消。',
     allowConcurrent: true,
+    // 操作的是文件管理器所在服务节点的本地文件系统：只能由提交任务的进程执行
+    affinity: 'node',
     async run(ctx) {
       const paths = Array.isArray(ctx.payload.paths) ? (ctx.payload.paths as string[]) : [];
       const destPath = String(ctx.payload.destPath ?? '');
@@ -53,6 +55,7 @@ export function registerTerminalFileTaskHandlers(): void {
     module: '文件管理',
     description: '解压 zip / tar / tar.gz / tar.bz2 / tar.xz / gz；支持中途取消。',
     allowConcurrent: true,
+    affinity: 'node',
     async run(ctx) {
       const archivePath = String(ctx.payload.path ?? '');
       const destDir = ctx.payload.destDir ? String(ctx.payload.destDir) : undefined;

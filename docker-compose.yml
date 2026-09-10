@@ -5,16 +5,52 @@
 #   2. docker compose up -d
 #   3. 前端访问 http://localhost:80（API 与 WebSocket 由 Nginx 同源代理 /api）
 #
-# 服务拓扑：
-#   postgres  ─┐
-#   redis     ─┤─→  api (Node.js)  ─→  web (Nginx, 80)
+# 服务拓扑（api / worker 角色拆分，同一镜像两种 ZENITH_ROLES）：
+#   postgres ─┐
+#   redis    ─┤─→ migrate（一次性，跑完退出）─→ api ×N（HTTP / WS，只投递作业）─→ web (Nginx, 80)
+#             └─────────────────────────────→ worker ×M（任务中心 / cron / 后台作业，不对外监听）
+#
+#   - 迁移只在 migrate 服务执行一次；api / worker 依赖它成功完成后再启动，多副本不会并发迁移
+#   - api 与 worker 共享 storage 卷：本地磁盘型存储（local / kodo / sftp 分片暂存、CMS 静态化产物）
+#     由 worker 写、api 读，必须同一个卷；因此 worker 声明 STORAGE_SHARED=true
+#   - 横向扩容：docker compose up -d --scale api=2 --scale worker=3（服务未固定 container_name）
+#   - 单容器全量部署（演示 / 小规模）：docker compose -f docker-compose.yml -f docker-compose.single.yml up -d
 #
 # 安全基线：
 #   - PostgreSQL / Redis 不映射宿主机端口（Docker 端口映射会绕过 ufw / firewalld），
 #     仅 compose 内网可达；本机排障需要直连时叠加 docker-compose.debug.yml（绑定 127.0.0.1）
 #   - PostgreSQL 与 Redis 口令均为必填、无默认值；API 端口默认只绑定 127.0.0.1（对外走 Nginx）
-#   - API 容器以非 root 用户 node 运行（见 Dockerfile server 阶段）
+#   - worker 的健康端口（3301）不映射宿主机，只供 compose 健康检查 / 内网采集器访问
+#   - 服务容器以非 root 用户 node 运行（见 Dockerfile server 阶段）
 name: zenith-admin
+
+# api / worker / migrate 共用的环境变量（角色相关项在各服务内覆盖）
+x-server-env: &server-env
+  NODE_ENV: production
+  # ── Auth / Encryption（无默认值；生成：npm run secret:generate）────────
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (run `npm run secret:generate`)}
+  FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY is required (run `npm run secret:generate`)}
+  # ── Database ─────────────────────────────────────────────────────────
+  DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/zenith_admin
+  # ── Redis（口令来自 REDIS_PASSWORD；外部 Redis 可整体覆盖 REDIS_URL）──────
+  REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+  # ── CORS / Security ───────────────────────────────────────────────────
+  CORS_ORIGIN: ${CORS_ORIGIN:-*}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+  # ── Logging ───────────────────────────────────────────────────────────
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  LOG_DIR: /app/packages/server/logs
+  # ── Optional OAuth ────────────────────────────────────────────────────
+  OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
+  OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
+  OAUTH_CALLBACK_BASE_URL: ${OAUTH_CALLBACK_BASE_URL:-http://localhost}
+
+x-server-image: &server-image
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: server
+  image: zenith-admin-api:${TAG:-latest}
 
 services:
   # ─── PostgreSQL ───────────────────────────────────────────────────────────
@@ -40,7 +76,7 @@ services:
     image: redis:7-alpine
     container_name: zenith-redis
     restart: unless-stopped
-    # Redis 承载会话 / 限流 / 验证码状态，始终要求口令 + AOF 持久化。
+    # Redis 承载会话 / 限流 / 验证码状态 / 跨进程 WS 推送（pub/sub），始终要求口令 + AOF 持久化。
     # $$VAR escapes compose interpolation so the container shell expands it;
     # double quotes (not single) are required for that expansion to happen.
     command: >
@@ -56,44 +92,35 @@ services:
       retries: 5
       start_period: 5s
 
-  # ─── Backend API (Hono + Node.js) ────────────────────────────────────────
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: server
-    image: zenith-admin-api:${TAG:-latest}
-    container_name: zenith-api
-    restart: unless-stopped
+  # ─── 数据库迁移（一次性）────────────────────────────────────────────────────
+  # 同一镜像，只跑 drizzle 迁移后退出；api / worker 等它 completed_successfully 再启动。
+  # 手动重跑：docker compose run --rm migrate
+  migrate:
+    <<: *server-image
+    restart: "no"
+    command: ["node", "dist/db/migrate.js"]
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      <<: *server-env
+
+  # ─── api 角色（HTTP / WebSocket 接入面，只投递作业不执行）────────────────────
+  api:
+    <<: *server-image
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     environment:
-      NODE_ENV: production
+      <<: *server-env
       PORT: 3300
-      # ── Auth / Encryption（无默认值；生成：npm run secret:generate）────────
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (run `npm run secret:generate`)}
-      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY is required (run `npm run secret:generate`)}
-      # ── Database ─────────────────────────────────────────────────────────
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/zenith_admin
-      # ── Redis（口令来自 REDIS_PASSWORD；外部 Redis 可整体覆盖 REDIS_URL）──────
-      REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
-      # ── CORS / Security ───────────────────────────────────────────────────
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
-      # ── Logging ───────────────────────────────────────────────────────────
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_DIR: /app/packages/server/logs
-      # ── Optional OAuth ────────────────────────────────────────────────────
-      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
-      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
-      OAUTH_CALLBACK_BASE_URL: ${OAUTH_CALLBACK_BASE_URL:-http://localhost}
+      ZENITH_ROLES: api
     volumes:
-      # Persist local file uploads
-      - api_storage:/app/packages/server/storage
-      # Persist server logs
+      # api 与 worker 共享：上传文件本体 / 分片暂存 / CMS 静态化产物（worker 写、api 读）
+      - server_storage:/app/packages/server/storage
       - api_logs:/app/packages/server/logs
     ports:
       # 默认只绑定本机回环；需要直接对外暴露 API 时设置 API_BIND=0.0.0.0
@@ -104,6 +131,34 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # ─── worker 角色（任务中心 / cron / 后台作业执行面，不对外监听业务端口）──────────
+  worker:
+    <<: *server-image
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *server-env
+      ZENITH_ROLES: worker
+      WORKER_HEALTH_PORT: 3301
+      # storage 卷与 api 共享（见上），声明后 worker 才允许使用本地磁盘型存储
+      STORAGE_SHARED: "true"
+      # 停机时排空在飞作业的预算；stop_grace_period 须大于它
+      SHUTDOWN_GRACE_MS: ${WORKER_SHUTDOWN_GRACE_MS:-120000}
+    stop_grace_period: 130s
+    volumes:
+      - server_storage:/app/packages/server/storage
+      - worker_logs:/app/packages/server/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3301/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
 
   # ─── Frontend (Nginx serving Vite static build) ───────────────────────────
   web:
@@ -123,5 +178,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  api_storage:
+  server_storage:
   api_logs:
+  worker_logs:

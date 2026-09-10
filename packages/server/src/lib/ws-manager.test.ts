@@ -208,3 +208,152 @@ describe('scheduleBroadcast', () => {
     expect(framesOf(b.send, PING.type)).toHaveLength(1);
   });
 });
+
+describe('跨进程 fan-out', () => {
+  type PublishedEnvelope = { v: number; from: string; kind: string } & Record<string, unknown>;
+
+  async function publishedEnvelopes(): Promise<PublishedEnvelope[]> {
+    const redis = (await import('./redis')).default as unknown as { publish: ReturnType<typeof vi.fn> };
+    return redis.publish.mock.calls.map(([, raw]) => JSON.parse(raw as string) as PublishedEnvelope);
+  }
+
+  it('每个公开的发送 / 关闭函数都在本地投递之外恰好发布一封信封', async () => {
+    const a = fakeWs();
+    m.registerConnection(1, 'jti-1', a.ws);
+
+    m.sendToUser(1, PING);
+    m.sendToToken('jti-1', PING);
+    m.broadcast(PING);
+    m.closeTokenConnection('jti-1');
+    m.closeUserConnections(1, 'disabled');
+    m.scheduleSendToUsers([{ userId: 1 }, { userId: 2 }, { userId: 1 }], PING);
+    vi.advanceTimersByTime(0);
+
+    expect(framesOf(a.send, PING.type)).toHaveLength(3);
+    const envelopes = await publishedEnvelopes();
+    expect(envelopes.map((e) => e.kind)).toEqual(['user', 'token', 'broadcast', 'closeToken', 'closeUser', 'users']);
+    expect(envelopes[3]).toMatchObject({ target: 'jti-1', reason: 'force-logout' });
+    expect(envelopes[4]).toMatchObject({ target: 1, reason: 'disabled' });
+    // 批量成员去重后一封信封
+    expect(envelopes[5]).toMatchObject({ targets: [1, 2] });
+    expect(new Set(envelopes.map((e) => e.from)).size).toBe(1);
+  });
+
+  it('本进程没有连接时 presence 变更仍以本地增量发布给其他进程', async () => {
+    const a = fakeWs();
+    m.registerConnection(1, 'ta', a.ws);
+    m.removeConnection(a.ws);
+    vi.advanceTimersByTime(1_000);
+    expect(a.send).not.toHaveBeenCalled();
+    const envelopes = await publishedEnvelopes();
+    const presence = envelopes.find((e) => e.kind === 'presence');
+    expect(presence).toMatchObject({ changes: [{ userId: 1, online: false, lastSeen: expect.any(Number) }] });
+  });
+
+  it('两个进程：worker 侧发出的推送经订阅到达 api 侧持有的 socket，api 自己的信封不重复投递', async () => {
+    // 进程 A（api）：持有 socket 并订阅
+    const fanoutA = await import('./ws-fanout');
+    await fanoutA.startWsFanoutSubscriber();
+    const socketOnA = fakeWs();
+    m.registerConnection(42, 'jti-42', socketOnA.ws);
+
+    // 进程 B（worker）：隔离加载第二份模块图，进程标识不同，没有任何 socket
+    vi.resetModules();
+    vi.doMock('./process-identity', () => ({ PROCESS_HOSTNAME: 'worker-host', PROCESS_PID: 2, PROCESS_ID: 'worker-host:2' }));
+    const b = await import('./ws-manager');
+    vi.doUnmock('./process-identity');
+
+    b.sendToUser(42, PING);
+    b.closeUserConnections(42, 'disabled');
+    await vi.waitFor(() => expect(socketOnA.close).toHaveBeenCalledWith(1000, 'disabled'));
+    expect(framesOf(socketOnA.send, PING.type)).toHaveLength(1);
+
+    // A 自己发出的信封：本地已投递，订阅端按 from 跳过，不会出现第二帧
+    const another = fakeWs();
+    m.registerConnection(43, 'jti-43', another.ws);
+    m.sendToUser(43, PING);
+    await vi.waitFor(() => expect(fanoutA.getWsFanoutCounters().published).toBeGreaterThan(0));
+    expect(framesOf(another.send, PING.type)).toHaveLength(1);
+    await fanoutA.stopWsFanoutSubscriber();
+  });
+});
+
+describe('跨进程 presence 合并视图', () => {
+  /** 加载第二份隔离的 ws-manager（模拟另一进程），进程标识不同；可选让它也订阅 fan-out */
+  async function loadPeer(nodeId: string, subscribe = true): Promise<WsManager> {
+    vi.resetModules();
+    vi.doMock('./process-identity', () => ({ PROCESS_HOSTNAME: nodeId, PROCESS_PID: 1, PROCESS_ID: `${nodeId}:1` }));
+    const peer = await import('./ws-manager');
+    if (subscribe) await (await import('./ws-fanout')).startWsFanoutSubscriber();
+    vi.doUnmock('./process-identity');
+    return peer;
+  }
+
+  it('另一进程上的连接算在线；它下线后本进程拿到带 lastSeen 的离线状态', async () => {
+    await (await import('./ws-fanout')).startWsFanoutSubscriber();
+    const observer = fakeWs();
+    m.registerConnection(1, 'obs', observer.ws);
+
+    const b = await loadPeer('node-b');
+    const remoteUser = fakeWs();
+    b.registerConnection(7, 'jti-7', remoteUser.ws);
+    vi.advanceTimersByTime(1_000); // B 的合并窗口到期 → 发布本地增量
+
+    expect(m.isUserOnline(7)).toBe(true);
+    expect(m.getOnlineUserIds()).toEqual(expect.arrayContaining([1, 7]));
+    expect(framesOf(observer.send, 'chat:presence').at(-1)).toEqual([{ userId: 7, online: true, lastSeen: null }]);
+
+    b.removeConnection(remoteUser.ws);
+    vi.advanceTimersByTime(1_000);
+    expect(m.isUserOnline(7)).toBe(false);
+    expect(m.getUserPresence(7)).toEqual({ userId: 7, online: false, lastSeen: expect.stringMatching(/^\d{4}-\d{2}-\d{2} /) });
+  });
+
+  it('同一用户在两个进程都在线时，一边断开不会被误报为离线', async () => {
+    await (await import('./ws-fanout')).startWsFanoutSubscriber();
+    const local = fakeWs();
+    m.registerConnection(9, 'jti-a', local.ws);
+    vi.advanceTimersByTime(1_000);
+
+    const b = await loadPeer('node-b');
+    m.startPresenceSync(); // A 立即发快照，B 据此知道 9 在 A 上
+    const remote = fakeWs();
+    b.registerConnection(9, 'jti-b', remote.ws);
+    vi.advanceTimersByTime(1_000);
+
+    b.removeConnection(remote.ws);
+    vi.advanceTimersByTime(1_000);
+    expect(m.isUserOnline(9)).toBe(true);
+    expect(b.isUserOnline(9)).toBe(true);
+    m.stopPresenceSync();
+  });
+
+  it('远端进程失联（不再有增量与快照）超过 TTL 后其用户视为离线并保留 lastSeen', async () => {
+    await (await import('./ws-fanout')).startWsFanoutSubscriber();
+    const b = await loadPeer('node-b', false);
+    b.registerConnection(5, 'jti-5', fakeWs().ws);
+    vi.advanceTimersByTime(1_000);
+    expect(m.isUserOnline(5)).toBe(true);
+
+    m.startPresenceSync(); // 周期任务负责淘汰失联镜像
+    vi.advanceTimersByTime(120_000);
+    expect(m.isUserOnline(5)).toBe(false);
+    expect(m.getUserLastSeen(5)).toEqual(expect.any(Number));
+    m.stopPresenceSync();
+  });
+
+  it('错过增量的进程可由对方的周期快照自愈；对方有序停机时主动宣告离线', async () => {
+    const fanoutA = await import('./ws-fanout'); // 须在加载对端前拿到 A 自己的模块实例（resetModules 会换注册表）
+    const b = await loadPeer('node-b', false);
+    b.registerConnection(8, 'jti-8', fakeWs().ws);
+    vi.advanceTimersByTime(1_000); // 此时 A 尚未订阅，增量丢失
+    await fanoutA.startWsFanoutSubscriber();
+    expect(m.isUserOnline(8)).toBe(false);
+
+    b.startPresenceSync(); // 立即发一次全量快照
+    expect(m.isUserOnline(8)).toBe(true);
+
+    b.stopPresenceSync(); // 宣告本进程用户离线
+    expect(m.isUserOnline(8)).toBe(false);
+  });
+});

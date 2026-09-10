@@ -3,9 +3,16 @@
  * 基于 PostgreSQL SKIP LOCKED 实现精确一次执行和多进程安全。
  *
  * 用户可配置 Cron 与系统启动任务共用 pg-boss 执行，但日志与注册元数据分离。
+ *
+ * ─── 进程角色（config.roles）────────────────────────────────────────────────
+ * 「声明」与「执行」在此分离，调用方（bootstrap / 各业务模块的 register*）不感知角色：
+ * - 声明：注册表元数据、任务策略落库、createQueue / updateQueue、schedule / unschedule 写入。
+ *   每个角色都做——api 要能校验任务类型、投递作业、在后台改启停、展示执行概览。
+ * - 执行：work()（轮询领取作业）、pg-boss 的 supervise / cron monitor、孤儿清理与队列对账。
+ *   只有 worker 角色做。api 角色的 boss 是「只发不执行」实例（supervise / schedule 关闭、小连接池）。
+ * 例外：`forceLocal` 的系统队列 worker（节点亲和的任务中心队列）在任何角色都激活。
  */
 import { uniquePositiveInts } from '@zenith/shared/core';
-import os from 'node:os';
 import { PgBoss, type JobWithMetadata, type Queue, type QueueOptions, type SendOptions, type Warning } from 'pg-boss';
 import { eq, and, gte, inArray, isNull, or, desc, notInArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db';
@@ -15,9 +22,10 @@ import { cleanExpiredCaptchas } from './captcha';
 import { createPgDumpBackup, createDrizzleExportBackup } from './db-backup';
 import { formatFileTimestamp, formatDateTime } from './datetime';
 import { config } from '../config';
+import { PROCESS_HOSTNAME, PROCESS_ID, PROCESS_PID } from './process-identity';
 import { dispatchAlertChannels } from './alert-dispatch';
 import type { SystemSchedulerAlertChannel } from '@zenith/shared/chat';
-import type { CronRunStatus, CronRunTrigger, SystemSchedulerTaskBase, SystemSchedulerTaskType, SystemSchedulerRunStatus, SystemSchedulerTriggerType } from '@zenith/shared/platform';
+import type { CronRunStatus, CronRunTrigger, ProcessRole, SystemSchedulerTaskBase, SystemSchedulerTaskType, SystemSchedulerRunStatus, SystemSchedulerTriggerType } from '@zenith/shared/platform';
 import { CRON_HEALTH_RULES, SCHEDULER_WARNING_SEVERE_TYPES, schedulerWarningLabel, toMinuteCron } from '@zenith/shared/platform';
 import { notify } from '../services/messaging/notification-outbox.service';
 
@@ -81,9 +89,21 @@ export function getRecentSchedulerWarnings(): SchedulerWarningRecord[] {
   return [...recentSchedulerWarnings];
 }
 
-const schedulerNodeHostname = os.hostname();
-const schedulerNodePid = process.pid;
-const schedulerNodeId = `${schedulerNodeHostname}:${schedulerNodePid}`;
+const schedulerNodeHostname = PROCESS_HOSTNAME;
+const schedulerNodePid = PROCESS_PID;
+const schedulerNodeId = PROCESS_ID;
+
+/** 本进程是否执行作业（work / cron monitor / 对账）；false = 只发不执行的 api 角色 */
+export function schedulerExecutesJobs(): boolean {
+  return config.roles.worker;
+}
+
+/** 只允许 worker 角色调用的入口（孤儿清理 / 队列对账）：api 误调用会删掉别的进程正在服务的声明 */
+function assertExecutesJobs(operation: string): void {
+  if (!schedulerExecutesJobs()) {
+    throw new Error(`pg-boss: ${operation} 只能在 worker 角色执行（当前 ZENITH_ROLES=${config.roles.label}）`);
+  }
+}
 
 export type { SystemSchedulerTaskType, SystemSchedulerRunStatus, SystemSchedulerTriggerType, SystemSchedulerAlertChannel };
 
@@ -160,6 +180,11 @@ export interface SystemQueueWorkerRegistration<T extends object> {
   alertWebhookUrl?: string | null;
   handler: (data: T) => Promise<unknown>;
   queueOptions?: Omit<QueueOptions, 'name'>;
+  /**
+   * 在任何角色都激活本地 worker（默认只有 worker 角色执行）。
+   * 仅限绑定本进程资源的队列（节点亲和的任务中心队列）；普通业务队列不得设置，否则 api 又回到执行作业的老路。
+   */
+  forceLocal?: boolean;
 }
 
 interface SystemRecurringJobPayload {
@@ -282,6 +307,7 @@ async function heartbeatSystemSchedulerNode(active = true): Promise<void> {
     nodeId: schedulerNodeId,
     hostname: schedulerNodeHostname,
     pid: schedulerNodePid,
+    roles: config.roles.list,
     version: config.otel.serviceVersion,
     startedAt: schedulerStartedAt,
     lastHeartbeatAt: now,
@@ -294,6 +320,7 @@ async function heartbeatSystemSchedulerNode(active = true): Promise<void> {
     set: {
       hostname: schedulerNodeHostname,
       pid: schedulerNodePid,
+      roles: config.roles.list,
       version: config.otel.serviceVersion,
       startedAt: schedulerStartedAt,
       lastHeartbeatAt: now,
@@ -956,8 +983,12 @@ async function ensureScheduledQueue(name: string): Promise<void> {
   ensuredScheduledQueues.add(name);
 }
 
-/** 每个进程对同一队列只注册一次 worker，返回 workerId 供 notifyWorker 唤醒 */
-async function ensureScheduledWorker<T extends object>(name: string, handler: (job: JobWithMetadata<T>) => Promise<void>): Promise<string> {
+/**
+ * 每个进程对同一队列只注册一次 worker，返回 workerId 供 notifyWorker 唤醒。
+ * 非执行角色（api）返回 null：队列已声明，作业由 worker 进程轮询领取。
+ */
+async function ensureScheduledWorker<T extends object>(name: string, handler: (job: JobWithMetadata<T>) => Promise<void>): Promise<string | null> {
+  if (!schedulerExecutesJobs()) return null;
   const existing = scheduledQueueWorkerIds.get(name);
   if (existing) return existing;
   const workerId = await getBoss().work<T, void, { includeMetadata: true; localConcurrency: number }>(
@@ -1009,14 +1040,88 @@ function declaredQueueNames(): Set<string> {
   return new Set([CRON_JOBS_QUEUE, SYSTEM_RECURRING_QUEUE, ...systemQueueWorkers.keys()]);
 }
 
+// ─── 节点亲和队列：只由创建它的进程消费 ──────────────────────────────────────
+// 名称形如 `<base>/node/<hostname_pid>`，不进系统任务注册表（每个进程独有，worker 对账不能把别的进程的队列当孤儿删掉）；
+// 进程下线后由 worker 启动对账按节点心跳回收。
+
+const NODE_QUEUE_MARKER = '/node/';
+const localNodeQueues = new Set<string>();
+
+function nodeQueueSuffix(nodeId: string): string {
+  // pg-boss 队列名只允许 [\w.-/]，hostname:pid 里的冒号等一律折成下划线
+  return nodeId.replace(/[^\w.-]+/g, '_');
+}
+
+/** 某进程独有的节点亲和队列名 */
+export function nodeQueueName(base: string, nodeId: string = PROCESS_ID): string {
+  return `${base}${NODE_QUEUE_MARKER}${nodeQueueSuffix(nodeId)}`;
+}
+
+function isNodeQueue(name: string): boolean {
+  return name.includes(NODE_QUEUE_MARKER);
+}
+
+/** 最近仍在上报心跳的节点 ID 集合（任何角色都上报心跳） */
+async function activeSchedulerNodeIds(): Promise<Set<string>> {
+  const staleBefore = new Date(Date.now() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs);
+  const rows = await db.select({ nodeId: systemSchedulerNodes.nodeId })
+    .from(systemSchedulerNodes)
+    .where(and(eq(systemSchedulerNodes.active, true), gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore)));
+  return new Set(rows.map((r) => r.nodeId));
+}
+
+/** 目标进程是否仍在线（节点亲和任务能否被执行的判据） */
+export async function isSchedulerNodeAlive(nodeId: string): Promise<boolean> {
+  if (nodeId === PROCESS_ID) return true;
+  return (await activeSchedulerNodeIds()).has(nodeId);
+}
+
+/**
+ * 注册本进程独有的节点亲和队列并立即消费——无论角色。这是 api 角色唯一允许执行作业的地方：
+ * 队列里只有本进程自己提交、且必须在本机执行的任务（见 task-center 的 affinity: 'node'）。
+ */
+export async function registerLocalNodeQueueWorker<T extends object>(
+  base: string,
+  handler: (data: T) => Promise<void>,
+  queueOptions?: Omit<QueueOptions, 'name'>,
+): Promise<string> {
+  const b = getBoss();
+  const name = nodeQueueName(base);
+  if (localNodeQueues.has(name)) return name;
+  await b.createQueue(name, queueOptions);
+  await b.work<T>(name, async (jobs) => {
+    for (const job of jobs) await handler(job.data);
+  });
+  localNodeQueues.add(name);
+  logger.info(`pg-boss: local node queue "${name}" registered`);
+  return name;
+}
+
+/** 回收已下线进程遗留的节点亲和队列（其作业已无人能执行；对应任务由任务中心兜底扫描标记失败） */
+async function purgeDeadNodeQueues(queues: Array<{ name: string }>): Promise<void> {
+  const nodeQueues = queues.filter((q) => isNodeQueue(q.name));
+  if (nodeQueues.length === 0) return;
+  const alive = new Set([...await activeSchedulerNodeIds()].map(nodeQueueSuffix));
+  const b = getBoss();
+  for (const queue of nodeQueues) {
+    const suffix = queue.name.slice(queue.name.indexOf(NODE_QUEUE_MARKER) + NODE_QUEUE_MARKER.length);
+    if (alive.has(suffix) || localNodeQueues.has(queue.name)) continue;
+    await b.deleteQueue(queue.name).catch((err) => logger.warn(`pg-boss: 删除下线节点队列 ${queue.name} 失败`, err));
+    logger.info(`pg-boss: 已回收下线节点的队列 ${queue.name}`);
+  }
+}
+
 /**
  * 队列对账：pg-boss 里只允许存在代码声明的队列。未声明的队列连同其 schedule 与作业一起删除，
  * 执行历史在 cron_job_logs / system_scheduler_runs 中不受影响。须在全部 worker 注册完成后调用。
+ * 节点亲和队列不在声明集合里（每个进程独有），只按节点心跳回收已下线进程的。
  */
 export async function reconcileSchedulerQueues(): Promise<void> {
+  assertExecutesJobs('队列对账');
   const b = getBoss();
   const declared = declaredQueueNames();
-  const undeclared = (await b.getQueues()).filter((q) => !declared.has(q.name) && !isPgBossInternalQueue(q.name));
+  const queues = await b.getQueues();
+  const undeclared = queues.filter((q) => !declared.has(q.name) && !isPgBossInternalQueue(q.name) && !isNodeQueue(q.name));
   for (const queue of undeclared) {
     const schedules = await b.getSchedules(queue.name).catch(() => []);
     for (const s of schedules) await b.unschedule(queue.name, s.key || undefined).catch(() => undefined);
@@ -1030,6 +1135,7 @@ export async function reconcileSchedulerQueues(): Promise<void> {
   if (orphanSystemSchedules.length > 0) {
     logger.warn(`pg-boss: 已删除 ${orphanSystemSchedules.length} 条无对应系统任务的 schedule：${orphanSystemSchedules.join('、')}`);
   }
+  await purgeDeadNodeQueues(queues).catch((err) => logger.warn('pg-boss: 回收下线节点队列失败', err));
 }
 
 // ─── 业务定时任务（cron_jobs）在调度队列上的映射 ─────────────────────────────────
@@ -1050,7 +1156,7 @@ function cronJobPayload(job: Pick<typeof cronJobs.$inferSelect, 'id' | 'handler'
   return { handlerName: job.handler, params: job.params, jobId: job.id, trigger, triggeredBy };
 }
 
-async function ensureCronQueue(): Promise<string> {
+async function ensureCronQueue(): Promise<string | null> {
   await ensureScheduledQueue(CRON_JOBS_QUEUE);
   return ensureScheduledWorker<JobData>(CRON_JOBS_QUEUE, runCronJob);
 }
@@ -1177,11 +1283,17 @@ export function isSchedulerMaintaining(): boolean {
 // ─── 公开 API ────────────────────────────────────────────────────────────────
 
 export async function initCronScheduler(): Promise<void> {
+  const executes = schedulerExecutesJobs();
   boss = new PgBoss({
     connectionString: config.databaseUrl,
     schema: 'pgboss',
-    supervise: true,
+    // api 角色只投递不执行：关闭维护（过期 / 归档 / 心跳判死）与 cron monitor，两者都由 worker 承担；
+    // schedule() / unschedule() 是纯 SQL 写入，不受 schedule 开关影响，后台改启停仍可在 api 上生效
+    supervise: executes,
     superviseIntervalSeconds: 30,
+    schedule: executes,
+    // 只发不执行的实例只需要极少的连接：send / schedule 都是单条 SQL
+    ...(executes ? {} : { max: 2 }),
     // 运维警告落到 pgboss 自己的表里保留 7 天，多实例可回溯；实时信号仍走 warning 事件
     persistWarnings: true,
     warningRetentionDays: 7,
@@ -1199,11 +1311,19 @@ export async function initCronScheduler(): Promise<void> {
     }
   });
 
-  logger.info('pg-boss: starting...');
+  logger.info(`pg-boss: starting (${executes ? 'executes jobs' : 'send-only'})...`);
   await boss.start();
   logger.info('pg-boss started');
   startSchedulerHeartbeat();
   await refreshSchedulerHealth().catch((err) => logger.warn('pg-boss: schema 健康检查失败', err));
+
+  // 两条调度队列是代码声明的一部分：api 也要建好，否则全新库上 worker 启动前的 send() 会因队列不存在失败
+  await ensureScheduledQueue(CRON_JOBS_QUEUE);
+  await ensureScheduledQueue(SYSTEM_RECURRING_QUEUE);
+  if (!executes) {
+    logger.info('pg-boss: 本进程不执行作业，跳过孤儿清理与 schedule 对账');
+    return;
+  }
 
   await purgeOrphanCronJobs();
   await closeOrphanRunningLogs().catch((err) => logger.warn('pg-boss: 关闭无归属运行中记录失败', err));
@@ -1222,6 +1342,7 @@ export async function initCronScheduler(): Promise<void> {
  * 启动时对账删除，保证「代码里的 handler 注册表」是任务存在与否的唯一依据。
  */
 async function purgeOrphanCronJobs(): Promise<void> {
+  assertExecutesJobs('清理 handler 失效的定时任务');
   const known = [...handlerRegistry.keys()];
   // 注册表为空说明 handler 模块尚未加载完成，此时对账会误删全部任务
   if (known.length === 0) return;
@@ -1279,8 +1400,8 @@ export async function runJobOnce(jobId: number, triggeredBy: number | null = nul
   if (!sentId) {
     return { success: true, message: '该任务已有一次待执行的作业，本次手动触发已与其合并' };
   }
-  // 跳过本轮轮询间隔，让 worker 立刻去取
-  b.notifyWorker(workerId);
+  // 跳过本轮轮询间隔，让 worker 立刻去取；api 角色没有本地 worker，由 worker 进程按轮询间隔领取
+  if (workerId) b.notifyWorker(workerId);
 
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
@@ -1308,8 +1429,15 @@ export async function stopAllJobs(): Promise<void> {
       schedulerHeartbeatTimer = null;
     }
     await heartbeatSystemSchedulerNode(false).catch((err) => logger.warn('[system-scheduler] 节点离线标记失败', err));
+    // 本进程独有的节点队列随进程消失：先等该队列在飞作业收尾，再删队列（stop 之后连接已关，不能再操作）。
+    // 尚未领取的作业对应的任务保持 pending，由任务中心兜底扫描按「节点已下线」标记失败。
+    for (const name of localNodeQueues) {
+      await boss.offWork(name, { wait: true }).catch(() => undefined);
+      await boss.deleteQueue(name).catch((err) => logger.warn(`pg-boss: 删除本进程节点队列 ${name} 失败`, err));
+    }
     await boss.stop();
     boss = null;
+    localNodeQueues.clear();
     scheduledQueueWorkerIds.clear();
     ensuredScheduledQueues.clear();
     logger.info('pg-boss stopped');
@@ -1325,7 +1453,7 @@ export function getRunningJobCount(): number {
 export function getSchedulerIntrospection(): {
   initialized: boolean;
   runningJobCount: number;
-  node: { id: string; hostname: string; pid: number };
+  node: { id: string; hostname: string; pid: number; roles: ProcessRole[] };
   registeredHandlers: string[];
   systemRecurringJobs: SystemRecurringJobInfo[];
   systemQueueWorkers: SystemQueueWorkerInfo[];
@@ -1336,7 +1464,7 @@ export function getSchedulerIntrospection(): {
   return {
     initialized: boss !== null,
     runningJobCount: wip.filter((item) => item.count > 0).reduce((sum, item) => sum + item.count, 0),
-    node: { id: schedulerNodeId, hostname: schedulerNodeHostname, pid: schedulerNodePid },
+    node: { id: schedulerNodeId, hostname: schedulerNodeHostname, pid: schedulerNodePid, roles: config.roles.list },
     registeredHandlers: getRegisteredHandlers(),
     systemRecurringJobs: [...systemRecurringJobs.values()],
     systemQueueWorkers: [...systemQueueWorkers.values()],
@@ -1411,7 +1539,7 @@ async function runSystemRecurringJob(job: JobWithMetadata<SystemRecurringJobPayl
   await executeSystemTask(info, trigger, run, { runId, triggeredBy: triggeredBy ?? null, jobId: job.id });
 }
 
-async function ensureSystemRecurringQueue(): Promise<string> {
+async function ensureSystemRecurringQueue(): Promise<string | null> {
   await ensureScheduledQueue(SYSTEM_RECURRING_QUEUE);
   return ensureScheduledWorker<SystemRecurringJobPayload>(SYSTEM_RECURRING_QUEUE, runSystemRecurringJob);
 }
@@ -1518,8 +1646,8 @@ export async function runSystemRecurringJobNow(name: string, triggeredBy?: numbe
   }
 
   await db.update(systemSchedulerRuns).set({ jobId }).where(eq(systemSchedulerRuns.id, run.id));
-  // 跳过本轮轮询间隔，让 worker 立刻去取
-  b.notifyWorker(workerId);
+  // 跳过本轮轮询间隔，让 worker 立刻去取；api 角色没有本地 worker，由 worker 进程按轮询间隔领取
+  if (workerId) b.notifyWorker(workerId);
   return { message: `任务已投递后台执行，运行日志 #${run.id} 可跟踪结果`, runId: run.id, jobId };
 }
 
@@ -1577,13 +1705,16 @@ export async function registerSystemQueueWorker<T extends object>(registration: 
   };
 
   await b.createQueue(registration.name, registration.queueOptions);
-  await b.work<T>(registration.name, async (jobs) => {
-    for (const job of jobs) {
-      await executeSystemTask(info, 'queue', () => registration.handler(job.data), { jobId: job.id });
-    }
-  });
+  // 声明到此为止；轮询领取只在执行角色（或显式要求本地执行的节点亲和队列）激活
+  if (schedulerExecutesJobs() || registration.forceLocal) {
+    await b.work<T>(registration.name, async (jobs) => {
+      for (const job of jobs) {
+        await executeSystemTask(info, 'queue', () => registration.handler(job.data), { jobId: job.id });
+      }
+    });
+  }
   systemQueueWorkers.set(registration.name, info);
-  logger.info(`pg-boss: system queue worker "${registration.name}" registered`);
+  logger.info(`pg-boss: system queue worker "${registration.name}" ${schedulerExecutesJobs() || registration.forceLocal ? 'registered' : 'declared (not executing in this role)'}`);
   await heartbeatSystemSchedulerNode(true).catch((err) => logger.warn('[system-scheduler] 节点心跳上报失败', err));
 }
 
@@ -1592,6 +1723,7 @@ export async function registerSystemQueueWorker<T extends object>(registration: 
  * 删除代码中已移除任务的配置、运行日志与 schedule，并让 pg-boss 里的队列 / schedule 与代码声明一致。
  */
 export async function purgeOrphanSystemTasks(): Promise<void> {
+  assertExecutesJobs('系统任务对账');
   const known = [...systemRecurringJobs.keys(), ...systemQueueWorkers.keys()];
   // 一个任务都没注册说明注册流程异常中断，此时对账会误删全部配置
   if (known.length === 0) return;

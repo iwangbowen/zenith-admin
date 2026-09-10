@@ -5,8 +5,11 @@
 	"type": "module",
 	"scripts": {
 		"dev": "node scripts/dev.mjs",
+		"dev:split": "node scripts/dev.mjs --split",
 		"build": "tsc && tsc-alias --resolve-full-paths && node scripts/copy-theme-assets.mjs && node scripts/build-islands.mjs",
-		"start": "node dist/db/migrate.js && node dist/index.js",
+		"start": "node dist/index.js",
+		"start:migrate": "node dist/db/migrate.js",
+		"verify:split": "node scripts/verify-split.mjs",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "tsx src/db/migrate.ts",
 		"db:seed": "tsx src/db/seed.ts",

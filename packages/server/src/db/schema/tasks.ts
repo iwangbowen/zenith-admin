@@ -102,6 +102,8 @@ export const asyncTasks = pgTable('async_tasks', {
   traceId: varchar({ length: 64 }),
   /** 因果父引用（`kind:refId` 或 `request`），链路时间线树形展示的触发源 */
   parentRef: varchar({ length: 32 }),
+  /** 节点亲和任务（handler.affinity = 'node'）的目标进程（hostname:pid）；普通任务为 null，任何 worker 可领取 */
+  nodeId: varchar({ length: 128 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
   startedAt: timestamp(),

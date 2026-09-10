@@ -71,6 +71,7 @@ registerTaskHandler({
   maxAttempts: 3,
   retryDelayMs: 5000,
   retentionDays: 90,
+  affinity: 'any', // 默认任意 worker；本机文件系统任务用 'node'
   async run(ctx) {
     let processed = Number(ctx.checkpoint?.processed ?? 0);
     const rows = await loadRows(ctx.payload);
@@ -93,7 +94,9 @@ registerTaskHandler({
 });
 ```
 
-注册时机放在 `src/bootstrap/workers.ts` 的 `registerBackgroundWorkers()` 中，并确保业务 handler 在 `registerAsyncTaskWorker()` 前完成注册。重复注册同一 `taskType` 时后注册者覆盖先注册者。启动 Worker 时会把注册默认策略落库到 `async_task_type_configs`，已有配置保留管理员修改。
+注册时机放在 `src/bootstrap/workers.ts` 的 `declareBackgroundJobs()` 中，并确保业务 handler 在 `registerAsyncTaskWorker()` 前完成声明。重复注册同一 `taskType` 时后注册者覆盖先注册者。启动 Worker 时会把注册默认策略落库到 `async_task_type_configs`，已有配置保留管理员修改。
+
+`affinity` 默认为 `any`，任务由任意 worker 进程执行；触碰提交请求所在节点本地文件系统的任务必须声明 `node`，框架会投递到提交进程专属队列，目标进程离线时任务失败并提示重新提交。handler 通常不在接收 HTTP 请求的 api 进程中运行，不应依赖请求对象、连接或进程内临时状态；任务中心会恢复创建者身份、租户与 trace 上下文。
 
 ### ② 业务接口中提交任务
 

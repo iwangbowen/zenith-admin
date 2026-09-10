@@ -6,7 +6,7 @@ import { AlertTriangle, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react';
 import type { SystemSchedulerAlertChannel } from '@zenith/shared/chat';
 import { enumValueOf } from '@zenith/shared/core';
 import type { SystemSchedulerNode, SystemSchedulerRun, SystemSchedulerRunStatus, SystemSchedulerTask, SystemSchedulerTaskType, SystemSchedulerTriggerType } from '@zenith/shared/platform';
-import { SYSTEM_SCHEDULER_ALERT_FILTERS, SYSTEM_SCHEDULER_RUN_STATUSES, SYSTEM_SCHEDULER_TASK_TYPES, SYSTEM_SCHEDULER_TRIGGER_TYPES } from '@zenith/shared/platform';
+import { PROCESS_ROLE_LABELS, SYSTEM_SCHEDULER_ALERT_FILTERS, SYSTEM_SCHEDULER_RUN_STATUSES, SYSTEM_SCHEDULER_TASK_TYPES, SYSTEM_SCHEDULER_TRIGGER_TYPES } from '@zenith/shared/platform';
 import { NOTIFY_CHANNEL_LABELS, NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
 import UserSelect from '@/components/UserSelect';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -507,6 +507,19 @@ export default function SystemSchedulerPage() {
       ),
     },
     { title: '状态', dataIndex: 'active', width: 120, render: (_: unknown, record) => <Tag color={record.active && !record.stale ? 'green' : 'red'}>{record.active && !record.stale ? '在线' : '离线'}</Tag> },
+    {
+      title: '角色',
+      dataIndex: 'roles',
+      width: 150,
+      // 只含 api 的节点仅声明任务、投递作业；执行由 worker 节点承担
+      render: (_: unknown, record) => (
+        <Space spacing={4}>
+          {record.roles.map((role) => (
+            <Tag key={role} color={role === 'worker' ? 'blue' : 'grey'}>{PROCESS_ROLE_LABELS[role]}</Tag>
+          ))}
+        </Space>
+      ),
+    },
     { title: '版本', dataIndex: 'version', minWidth: 140, render: (value: string | null) => value ?? '-' },
     dateTimeColumn('启动时间', 'startedAt'),
     dateTimeColumn('最近心跳', 'lastHeartbeatAt'),

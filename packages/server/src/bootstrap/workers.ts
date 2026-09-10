@@ -1,8 +1,13 @@
 /**
- * 后台 worker / 任务处理器注册。
+ * 后台作业声明清单（所有角色一致）。
  *
- * 从 src/index.ts 抽出：这些注册依赖 pg-boss 调度器，与 HTTP 应用装配无关，
- * 且整块包在 try/catch 中——任一处失败只降级后台能力，不影响已启动的 HTTP 服务。
+ * 这里的每一项都是「声明」：把任务类型、系统队列、系统周期任务登记到注册表、落库默认策略、
+ * 建好 pg-boss 队列与 schedule。api 角色也必须完整声明——它要校验提交的任务类型、投递作业、
+ * 在后台改任务启停、展示执行概览。是否真正 work() / 跟随 cron 领取，由 lib/pg-boss-scheduler.ts
+ * 内部按 config.roles 门控，本文件与各业务模块的 register* 不感知角色。
+ *
+ * 整块包在 try/catch 中——任一处失败只降级后台能力，不影响已启动的 HTTP 服务。
+ * 与角色绑定的启动步骤不在此：终端会话持久化见 run-api.ts，孤儿对账 / 启动期补齐见 run-worker.ts。
  */
 import logger from '../lib/logger';
 import { initCronScheduler } from '../lib/pg-boss-scheduler';
@@ -16,19 +21,8 @@ import { registerReportDqTaskHandlers } from '../services/report/report-dq-tasks
 import { registerReportFillTasks } from '../services/report/report-fill-task.service';
 import { registerReportSlaTaskHandlers } from '../services/report/report-sla-tasks';
 
-export async function registerBackgroundWorkers(): Promise<void> {
-  // 终端会话持久化：先接生命周期回调，再结算上一轮遗留记录，最后启动活跃时间回写。
-  // 与 pg-boss 无关，独立 try/catch 以免任一失败牵连另一方。
-  try {
-    const { registerTerminalSessionPersistence, reconcileTerminalSessionsOnStartup, startTerminalSessionReaper } =
-      await import('../services/ops/terminal-sessions.service');
-    registerTerminalSessionPersistence();
-    await reconcileTerminalSessionsOnStartup();
-    startTerminalSessionReaper();
-  } catch (err) {
-    logger.error('Failed to initialize terminal session persistence', err);
-  }
-
+/** 启动 pg-boss 并完成全部后台作业声明；返回是否成功（失败已记日志，调用方据此决定是否继续执行期收尾） */
+export async function declareBackgroundJobs(): Promise<boolean> {
   try {
     await initCronScheduler();
     const { registerExportJobWorker } = await import('../services/tasks/export-jobs.service');
@@ -37,7 +31,7 @@ export async function registerBackgroundWorkers(): Promise<void> {
     const { registerDirectorySyncTaskHandlers } = await import('../services/identity/directory-sync-engine');
     registerDirectorySyncTaskHandlers(); // 通讯录同步 / 差异预览
     const { registerTerminalFileTaskHandlers } = await import('../services/ops/terminal-file-tasks');
-    registerTerminalFileTaskHandlers(); // 文件压缩 / 解压
+    registerTerminalFileTaskHandlers(); // 文件压缩 / 解压（节点亲和：只在提交它的进程执行）
     registerCmsTaskHandlers(); // CMS 全站静态化 / 检索索引重建 / 死链检测
     const { registerBroadcastTaskHandlers } = await import('../services/messaging/broadcast-tasks');
     registerBroadcastTaskHandlers(); // 运营群发分批派发
@@ -60,7 +54,7 @@ export async function registerBackgroundWorkers(): Promise<void> {
     const { registerDriveOpenEventWorker } = await import('../services/drive/drive-open-events.service');
     await registerDriveOpenEventWorker(); // 网盘文件变更 → 开放平台 Webhook 事件
     const { reloadCmsSearchDict } = await import('../services/cms/cms-search.service');
-    await reloadCmsSearchDict(); // CMS 检索自定义词典（DB → jieba）
+    await reloadCmsSearchDict(); // CMS 检索自定义词典（DB → jieba）：内容保存（api）与索引重建（worker）都要分词
     // AI 评测已迁移至 Mastra Datasets/Experiments(自带异步执行),不再挂任务中心
     registerReportDatasourceTaskHandlers();
     registerReportDatasetTaskHandlers();
@@ -69,20 +63,11 @@ export async function registerBackgroundWorkers(): Promise<void> {
     registerReportSlaTaskHandlers();
     registerReportFillTasks();
     registerAnalyticsTaskHandlers();
-    // 埋点聚合断档自愈：上次每日聚合与昨日之间的缺口在启动时补齐（best-effort）
-    const { catchUpRollupGaps } = await import('../services/analytics/analytics-rollup.service');
-    void catchUpRollupGaps()
-      .then((n) => { if (n > 0) logger.info(`[analytics] rollup catch-up rebuilt ${n} rows`); })
-      .catch((err) => logger.warn('[analytics] rollup catch-up failed', err));
     await registerExportJobWorker();
     await registerSystemTasks();
-    // 全部系统任务注册完毕后对账：清理代码中已移除任务的残留，并让 pg-boss 队列 / schedule 与代码声明一致
-    const { purgeOrphanSystemTasks } = await import('../lib/pg-boss-scheduler');
-    await purgeOrphanSystemTasks();
-    // 主题代码指纹检测：变更自动重建受影响站点静态页（零维护，详见 cms-theme-watch.service）
-    const { checkThemeChangesAndRebuild } = await import('../services/cms/cms-theme-watch.service');
-    void checkThemeChangesAndRebuild();
+    return true;
   } catch (err) {
-    logger.error('Failed to initialize cron scheduler', err);
+    logger.error('Failed to initialize background jobs', err);
+    return false;
   }
 }

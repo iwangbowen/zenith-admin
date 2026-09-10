@@ -39,6 +39,7 @@ npm run secret:generate   # 输出 JWT_SECRET / FIELD_ENCRYPTION_KEY 两行，�
 
 ```dotenv
 PORT=3300
+ZENITH_ROLES=all
 JWT_SECRET=<npm run secret:generate 输出>
 FIELD_ENCRYPTION_KEY=<npm run secret:generate 输出>
 DATABASE_URL=postgresql://zenith:strong-password@db.example.com:5432/zenith_admin
@@ -57,7 +58,11 @@ ALLOWED_ORIGINS=https://admin.example.com
 
 | 变量 | 用途 |
 | --- | --- |
-| `DATABASE_MAX_CONNECTIONS` | 业务连接池上限，默认 `20`。HTTP、WebSocket、任务 worker、事件订阅、指标采样与 CMS SSR 同进程共用这一个池；pg-boss（约 10）与 Mastra（10 + 5）另有独立连接池，因此**单实例对 PG 的连接总量 ≈ 该值 + 25**。多实例部署时须保证「实例数 × (该值 + 25)」低于 PostgreSQL 的 `max_connections`（默认 100），超出时前置 pgBouncer（会话池模式，事务池无法透传 LISTEN/NOTIFY）或调低该值；调低到 10 以下会让列表接口的 count + rows 并行与后台任务互相排队 |
+| `DATABASE_MAX_CONNECTIONS` | 单个进程的业务连接池上限，默认 `20`。连接预算按角色累计：业务池 + pg-boss 池（worker 约 10，api send-only 约 2）+ 1 条 LISTEN 连接；api 还包含 Mastra 10 + 5。所有 api / worker 进程总和必须低于 PostgreSQL `max_connections`，超出时前置 pgBouncer（会话池模式，事务池无法透传 LISTEN/NOTIFY）或调低该值 |
+| `ZENITH_ROLES` | 进程角色，逗号分隔：`api` / `worker` / `all`（等于两者）。非 `NODE_ENV=development` 环境必填；单机全量部署显式设为 `all` |
+| `WORKER_HEALTH_PORT` | 纯 worker 探针端口，默认 `3301`，提供 `/health`、`/ready`、`/metrics` |
+| `SHUTDOWN_GRACE_MS` | 优雅停机硬截止；默认 api/all `15000`，纯 worker `120000`。容器 `stop_grace_period` / K8s `terminationGracePeriodSeconds` 必须大于该值 |
+| `STORAGE_SHARED` | 默认 `false`。纯 worker 使用本地磁盘相关存储或 CMS 静态化时，设为 `true` 表示 `storage/` 由 api 与 worker 共享 |
 | `REQUEST_BODY_LIMIT` | 请求体大小上限，`0` 或未设置表示不启用全局限制（此时只有各上传端点按 `file.size` 自行拦截），生产环境务必设置（`.env.example` 示例为 64 MB，67108864）；至少要容纳一个分片（`files.chunkSizeMb`，最大 32 MB）加 multipart 开销，建议 ≥ 40 MB（41943040）；反向代理的 `client_max_body_size` 同理 |
 | `REQUEST_TIMEOUT_MS` | 请求超时，自动排除 `/api/ws`、`/api/files`、`/api/db-admin` 与 `/export` 接口 |
 | `UPLOAD_TEMP_DIR` | 分片上传本地暂存根目录，默认 `storage/tmp/uploads`；多实例部署见下文「多实例与本地存储」 |
@@ -73,7 +78,23 @@ ALLOWED_ORIGINS=https://admin.example.com
 
 跨域部署时同时设置 `CORS_ORIGIN=https://admin.example.com`。同域反向代理 `/api` 时通常不需要 CORS。
 
-### 3. 初始化数据库
+### 3. 进程角色（api / worker）
+
+后端进程通过 `ZENITH_ROLES` 选择运行角色：
+
+| 角色 | 职责 | 端口与探针 |
+| --- | --- | --- |
+| `api` | HTTP / WebSocket 入口、IoT 设备接入、CMS SSR、终端 PTY、OpenAPI、限流规则、Mastra 代理；pg-boss 只声明队列与入队，不执行 `work()` | 监听 `PORT`（默认 3300），健康检查走 `/api/health` |
+| `worker` | 执行任务中心、业务 `cron_jobs`、系统周期任务与系统队列 worker（导出、网盘渲染、工作流作业等） | 纯 worker 不监听业务端口；在 `WORKER_HEALTH_PORT`（默认 3301）暴露 `/health`、`/ready`、`/metrics`，业务路径返回 404 |
+| `all` | 单进程同时承担 api 与 worker | 仅允许开发默认；生产单机部署也必须显式设置 `ZENITH_ROLES=all` |
+
+`ZENITH_ROLES` 未设置时仅 `NODE_ENV=development` 允许默认 `all`；生产或未设置 `NODE_ENV` 时会拒绝启动。
+
+任务 handler、系统队列和调度元数据在所有角色中都会声明，便于 api 校验任务类型、入队、管理开关和展示调度概览；只有 worker 负责通用执行、cron 监控、孤儿清理与队列对账。节点亲和任务（如终端文件压缩 / 解压）会投递到提交进程专属队列，是 api 进程执行 worker 的唯一例外。
+
+纯 worker 启动前会检查存储拓扑：启用 `local`、`kodo`、`sftp` 等本地暂存型文件存储，或存在非 dynamic 的 CMS 静态站点时，必须使用共享卷 / 共享目录并设置 `STORAGE_SHARED=true`；否则 worker 拒绝启动。跨主机部署可改用对象存储，或共享 `storage/`（含 `localRootPath`、`UPLOAD_TEMP_DIR`、`CMS_STATIC_ROOT`）。
+
+### 4. 初始化数据库
 
 ```bash
 npm run db:migrate
@@ -82,41 +103,52 @@ npm run db:seed
 
 `db:seed` 写入默认管理员 `admin` / `123456`、菜单、字典和各域种子数据，可重复执行；升级版本后重跑只会补入新增的菜单与配置，不会覆盖已在管理后台调整过的内置数据。
 
-### 4. 启动后端
+### 5. 启动后端
 
-生产部署请在 `.env` 或进程环境中显式设置 `NODE_ENV=production`（Docker Compose 已内置）。未设置时服务按严格模式运行（密钥必填、验证码不回传），但部分依赖 `NODE_ENV` 的第三方库仍会以开发模式加载。
+生产部署请在 `.env` 或进程环境中显式设置 `NODE_ENV=production` 与 `ZENITH_ROLES`（Docker Compose 已内置）。未设置 `NODE_ENV` 时服务按严格模式运行（密钥必填、验证码不回传），但部分第三方库仍可能以开发模式加载。
 
-源码方式可直接用 TypeScript 运行：
+源码方式可直接用 TypeScript 运行。单机全量部署示例：
 
 ```bash
 cd packages/server
-npx tsx src/index.ts
+ZENITH_ROLES=all npx tsx src/index.ts
 ```
 
-也可以运行编译产物（与 Docker 镜像同一条链路，无需 tsx）：
+拆分部署建议分别启动 api 与 worker：
+
+```bash
+cd packages/server
+ZENITH_ROLES=api npx tsx src/index.ts
+ZENITH_ROLES=worker WORKER_HEALTH_PORT=3301 npx tsx src/index.ts
+```
+
+运行编译产物时，迁移需要作为显式步骤执行；`npm start` 只启动 `node dist/index.js`：
 
 ```bash
 npm run build -w @zenith/shared && npm run build -w @zenith/server
 node docker/patch-shared-exports.mjs   # 把 @zenith/shared 的 exports 指向 dist（部署机执行）
-npm start -w @zenith/server            # migrate + node dist/index.js
+npm run start:migrate -w @zenith/server
+ZENITH_ROLES=api npm start -w @zenith/server
+ZENITH_ROLES=worker WORKER_HEALTH_PORT=3301 npm start -w @zenith/server
 ```
 
 ::: warning
 `patch-shared-exports.mjs` 会就地修改 `packages/shared/package.json`。开发机执行后 tsx / Vite 将改为消费 dist，请用 `git checkout packages/shared/package.json` 还原；仅建议在部署机或 CI 产物目录中执行。
 :::
 
-使用 PM2 管理进程时在仓库根目录执行：
+使用 PM2 管理进程时在仓库根目录执行两个应用，迁移先单独运行 `npm run db:migrate`（或 dist 产物用 `npm run start:migrate -w @zenith/server`）：
 
 ```bash
 npm install -g pm2
-pm2 start node_modules/tsx/dist/cli.mjs --name zenith-server --cwd packages/server -- src/index.ts
+NODE_ENV=production ZENITH_ROLES=api pm2 start node_modules/tsx/dist/cli.mjs --name zenith-api --cwd packages/server -- src/index.ts
+NODE_ENV=production ZENITH_ROLES=worker WORKER_HEALTH_PORT=3301 pm2 start node_modules/tsx/dist/cli.mjs --name zenith-worker --cwd packages/server -- src/index.ts
 pm2 save
 pm2 startup
 ```
 
-后端默认监听 `http://localhost:3300`。
+api 默认监听 `http://localhost:3300`；纯 worker 不占用业务端口，健康探针默认在 `http://localhost:3301/health`。
 
-### 5. 多实例与本地存储
+### 6. 多实例与本地存储
 
 后端进程本身无状态，会话、限流等运行时状态在 Redis / PostgreSQL 中，可以横向扩多个实例。但有两类数据落在进程所在机器的磁盘上，
 多实例部署时必须放到各实例共享的卷（NFS / 云盘多点挂载等），否则请求被负载均衡到不同节点后彼此看不到对方写的文件：
@@ -128,7 +160,9 @@ pm2 startup
 | `storage/cms-static`（`CMS_STATIC_ROOT`） | CMS 静态化产物 | 启用了 CMS 静态化 |
 
 默认文件服务为 `oss` / `s3` / `cos` / `obs` / `azure` / `bos` 时，分片直传云端 multipart、进度记在数据库，不依赖本地磁盘，
-无需共享卷。Docker Compose 单实例部署已把 `storage/` 整体挂到 `api_storage` 卷，容器重建不会丢失进行中的分片。
+无需共享卷。api / worker 拆分且 worker 需要访问本地暂存或 CMS 静态产物时，必须共享 `storage/` 并在 worker 设置 `STORAGE_SHARED=true`。Docker Compose 已用 `server_storage` 共享卷挂载到 api 与 worker，容器重建不会丢失进行中的分片。
+
+多 api / worker 进程依赖 Redis 保持运行时正确性：会话、限流、权限缓存与跨进程 WebSocket / IoT 推送都经 Redis 协作；WS 扇出使用 Redis pub/sub，Redis 故障时实时推送按 at-most-once 语义丢弃，客户端重连后回源补齐。
 
 ## 前端部署
 
@@ -237,11 +271,13 @@ Docker 构建会自动执行该步骤。手动部署时需先 `npm run build`，
 
 | 能力 | 地址 / 配置 |
 | --- | --- |
-| 健康检查 | `GET /api/health` |
-| Swagger UI | `GET /api/docs` |
-| OpenAPI JSON | `GET /api/openapi.json` |
-| Prometheus | `GET /metrics` |
-| OpenTelemetry | `OTEL_ENABLED=true` 或配置 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_ENDPOINT`。启用后自动插桩入站 HTTP（每请求 span）与出站 fetch（undici），日志行追加 `trace_id` / `span_id` 便于 APM 关联；停机时自动 flush 未导出的 span |
+| api 健康检查 | `GET /api/health`，响应包含 `roles`，并在 `checks` 中报告 `wsFanout` 与 `workers`（无可用 worker 心跳时为 `degraded`） |
+| worker 探针 | 纯 worker 暴露 `GET /health`、`GET /ready`（pg-boss 启动前 503）、`GET /metrics`，端口 `WORKER_HEALTH_PORT`（默认 3301） |
+| Swagger UI | `GET /api/docs`（api 角色） |
+| OpenAPI JSON | `GET /api/openapi.json`（api 角色） |
+| Prometheus | api 为 `GET /metrics`；worker 为 `GET /metrics`。指标默认标签包含 `process_role`，WS 扇出提供 published / failed / delivered / dropped 计数 |
+| 日志 | 日志行包含 `role` 字段；`all` 角色写 `logs/app.*.log`，拆分时分别写 `logs/app-api.*.log` 与 `logs/app-worker.*.log` |
+| OpenTelemetry | `OTEL_ENABLED=true` 或配置 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_ENDPOINT`。启用后自动插桩入站 HTTP（每请求 span）与出站 fetch（undici），资源属性包含 `zenith.process.role`，日志行追加 `trace_id` / `span_id` 便于 APM 关联；停机时自动 flush 未导出的 span |
 
 `/metrics` 默认无鉴权，生产环境应只向内网、VPN 或采集器开放。
 
@@ -255,9 +291,11 @@ Docker 构建会自动执行该步骤。手动部署时需先 `npm run build`，
 
 ## 升级版本
 
-1. 停止当前后端进程。
-2. 切换到目标 tag 并安装依赖：`git fetch --tags && git checkout vX.Y.Z && npm ci`。
-3. 执行 `npm run db:migrate`。
-4. 重启后端。
-5. 重新构建或替换 `packages/web/dist/`，Nginx 无需重启。
-6. Electron 客户端可通过「系统设置 → 应用版本」发布热更新包或安装包，详见 [Electron 桌面客户端](./electron.md)。
+1. 可选：在发布前执行 `npm run verify:split` 验证本地 api / worker 拆分链路。
+2. 停止 worker，并等待其在 `SHUTDOWN_GRACE_MS` 内完成排空。
+3. 切换到目标 tag 并安装依赖：`git fetch --tags && git checkout vX.Y.Z && npm ci`。
+4. 显式执行迁移：源码部署用 `npm run db:migrate`，dist 产物用 `npm run start:migrate -w @zenith/server`。
+5. 启动 worker。
+6. 滚动重启 api；api 重启不再中断后台作业。
+7. 重新构建或替换 `packages/web/dist/`，Nginx 无需重启。
+8. Electron 客户端可通过「系统设置 → 应用版本」发布热更新包或安装包，详见 [Electron 桌面客户端](./electron.md)。

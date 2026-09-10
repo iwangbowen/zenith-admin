@@ -151,6 +151,10 @@ Client → Middleware → Route（契约）→ Service → Database / Adapter �
 `createApp()` 只负责应用装配，不启动进程级副作用。跨域后续动作通过事件订阅解耦；
 耗时、批量、可重试或需要进度的工作进入统一任务运行时。
 
+后端进程通过 `ZENITH_ROLES` 选择 `api`、`worker` 或 `all` 角色。任务、Cron 与队列元数据在各角色中统一声明，
+但只有 worker 负责通用后台执行；api 负责 HTTP / WebSocket / CMS / 设备接入等入口。
+跨进程 WebSocket 与设备推送经 Redis pub/sub 扇出，保证 worker 产生的进度和通知能送达任一 api 节点上的浏览器。
+
 ---
 
 ## 前端运行时

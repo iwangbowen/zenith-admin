@@ -53,7 +53,7 @@
 | 任务 → schedule | 每个启用任务是所属队列上的一条 keyed schedule（业务任务 `key = jobId`，系统任务 `key = 任务名`），`schedule()` 按 (队列, key) 幂等 upsert；停用 / 删除时 `unschedule(key)` 并取消其尚未开始的作业 |
 | 不重叠执行 | 作业带 `singletonKey = key`，`stately` 保证同一任务最多「1 条排队 + 1 条执行中」：执行时间超过周期只补跑一次，不会无限积压 |
 | 重试 / 超时 | 作业级参数显式下发，不依赖队列默认值：业务任务按自身 `retryLimit` / `retryDelay` / `retryBackoff`（含 `retryLimit: 0`），系统任务固定 `retryLimit: 0`（幂等扫描，等下一周期）；超时由 worker 内按 `monitorTimeout` 判定并记为 `timeout`，pg-boss 的 `expireInSeconds` 只作兜底（`monitorTimeout + 30s`，未配置超时时取上限 24 小时，避免默认 15 分钟过期把正常执行的作业判死后重叠执行） |
-| worker | 每个进程对每条队列只 `work()` 一次，`localConcurrency: 8`（8 个轮询 worker 各取 1 条），worker 在执行期间自动续心跳；进程崩溃后作业在 60 秒内被判定失联并按重试策略处理 |
+| worker | 每个 worker 角色进程对每条队列只 `work()` 一次，`localConcurrency: 8`（8 个轮询 worker 各取 1 条），执行期间自动续心跳；进程崩溃后作业在 60 秒内被判定失联并按重试策略处理 |
 | 手动执行 | `send()` 同 key 作业 + `notifyWorker()` 立刻取用；该任务已有排队作业时本次触发与之合并，只返回提示 |
 | 启动对账 | pg-boss 里只允许存在代码声明的队列（两条调度队列 + 已注册的队列型 worker），未声明的队列连同 schedule、作业一起删除；两条调度队列上的 schedule 与启用任务一一对应，多余的删除；队列 policy 与代码不一致时重建 |
 
@@ -186,6 +186,6 @@
 - 新增平台级固定任务时，使用 `registerSystemRecurringJob()`；只有需要由业务代码按需投递作业的场景才用 `registerSystemQueueWorker()` 建独立队列。
 - 长耗时、可重试、需要进度的批处理优先接入任务中心；定时任务只负责触发。
 - 不要为周期任务另建 pg-boss 队列或直接调用 `work()`：全部走两条调度队列的 keyed schedule，
-  每个进程对每条队列只有一个 worker；队列参数（心跳、保留期、policy）只在 `pg-boss-scheduler.ts` 中声明，
+  每个 worker 角色进程对每条队列只有一个 worker；队列参数（心跳、保留期、policy）只在 `pg-boss-scheduler.ts` 中声明，
   启动对账会删除代码未声明的队列。
 - Cron 表达式按分钟设计；同一分钟触发的任务会并发执行（`localConcurrency: 8`），有先后依赖的工作应合并为一个 handler 或交给工作流。

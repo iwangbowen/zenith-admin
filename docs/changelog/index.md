@@ -4,6 +4,30 @@
 
 ---
 
+## Unreleased
+
+**后端进程角色拆分与多实例实时通道补齐**：服务端新增 `api` / `worker` 角色模型，Docker Compose 拆分迁移、API 与后台 worker，迁移从入口脚本中移出；同时补齐跨进程 WebSocket / IoT 推送扇出、集群级在线状态、worker 探针与角色化可观测能力。
+
+### Added
+
+- 新增 `ZENITH_ROLES` 进程角色：`api` 负责 HTTP / WebSocket / IoT 接入 / CMS SSR / 终端 / OpenAPI / Mastra 代理；`worker` 负责任务中心、业务 Cron、系统周期任务与系统队列 worker；`all` 表示单进程全量角色。
+- Docker Compose 拓扑拆分为 `migrate` 一次性迁移、`api` 与 `worker` 服务，支持 `docker compose up -d --scale api=2 --scale worker=3`；新增 `docker-compose.single.yml` 提供单容器 `ZENITH_ROLES=all` 部署。
+- 新增跨进程 WebSocket 扇出：所有 WS 推送本地投递后通过 Redis pub/sub 广播到其它 api 节点；IoT 命令、期望属性与 OTA 帧同步走扇出并由持有设备连接的节点回写送达 ACK。
+- 在线状态改为集群级 presence：api 节点发布本地增量与 30 秒快照，节点关闭时广播用户离线。
+- 任务中心 handler 支持 `affinity: 'node'`，终端文件压缩 / 解压等本机文件任务投递到提交进程专属队列；`async_tasks` 新增 `node_id`。
+- 纯 worker 新增 `WORKER_HEALTH_PORT` 探针应用，提供 `/health`、`/ready` 与 `/metrics`；新增 `SHUTDOWN_GRACE_MS`、`STORAGE_SHARED` 配置。
+- 健康与指标扩展：api `/api/health` 返回 `roles`，新增 `checks.wsFanout`、`checks.workers`；Prometheus 指标增加默认标签 `process_role`，并新增 WS 扇出发布 / 失败 / 投递 / 丢弃计数。
+- 迁移 `0006_process_roles`：新增 `process_role` 枚举、`system_scheduler_nodes.roles`、`async_tasks.node_id`，并清理历史心跳行。
+
+### Changed
+
+- 任务、Cron、系统队列和 pg-boss schedule 在所有角色中统一声明，只有 worker 执行通用 `work()`、cron 监控、孤儿清理与队列对账；api 的 pg-boss 为 send-only 模式。
+- 纯 worker 启动时校验存储拓扑：使用本地磁盘型存储或 CMS 静态化时必须声明 `STORAGE_SHARED=true`，表示 `storage/` 在 api 与 worker 间共享。
+- 迁移从 server 入口和 `docker/entrypoint.sh` 移出；`npm start` 仅执行 `node dist/index.js`，新增 `npm run start:migrate` 作为显式迁移命令。
+- 新增 `npm run dev:split`（开发期同时启动 api 与 worker）和 `npm run verify:split`（本地端到端验证拆分部署链路）。
+- 日志行新增 `role` 字段；拆分部署时日志文件分别写入 `logs/app-api.*.log` 与 `logs/app-worker.*.log`，OTel 资源属性增加 `zenith.process.role`。
+- 调度节点 ID 统一为 `hostname:pid`，`system_scheduler_nodes` 与管理端「系统调度 → 节点」展示角色标签。
+
 ## v2.27.0 - 2026-09-10
 
 **定时任务执行概览重做 + pg-boss 调度按官方最佳实践重构 + React 19.3 路由过渡**：执行概览从 6 张今日快照卡

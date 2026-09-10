@@ -103,6 +103,7 @@ function mapNode(row: typeof systemSchedulerNodes.$inferSelect) {
     nodeId: row.nodeId,
     hostname: row.hostname,
     pid: row.pid,
+    roles: row.roles,
     version: row.version,
     startedAt: formatDateTime(row.startedAt),
     lastHeartbeatAt: formatDateTime(row.lastHeartbeatAt),

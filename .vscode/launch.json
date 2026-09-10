@@ -14,6 +14,28 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Debug: Server (api role)",
+      "runtimeExecutable": "npm",
+      "args": ["run", "dev:server"],
+      "cwd": "${workspaceFolder}",
+      "env": { "ZENITH_ROLES": "api" },
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug: Worker",
+      "runtimeExecutable": "npx",
+      "args": ["tsx", "watch", "--exclude", "storage/**", "--exclude", "logs/**", "src/index.ts"],
+      "cwd": "${workspaceFolder}/packages/server",
+      "env": { "NODE_ENV": "development", "ZENITH_ROLES": "worker" },
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Debug: Web",
       "runtimeExecutable": "npm",
       "args": ["run", "dev", "-w", "@zenith/web"],
@@ -41,6 +63,11 @@
     {
       "name": "Debug: Full Stack + Studio",
       "configurations": ["Debug: Server", "Debug: Web", "Mastra Studio"],
+      "stopAll": true
+    },
+    {
+      "name": "Debug: Split (api + worker + Web)",
+      "configurations": ["Debug: Server (api role)", "Debug: Worker", "Debug: Web"],
       "stopAll": true
     }
   ]

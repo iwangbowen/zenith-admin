@@ -1,0 +1,15 @@
+# 单容器全量部署覆盖文件（演示 / 小规模 / 单机）：一个进程同时承担 api + worker。
+#
+#   docker compose -f docker-compose.yml -f docker-compose.single.yml up -d
+#
+# 与默认拆分拓扑的差别：api 服务以 ZENITH_ROLES=all 运行并执行全部后台作业；worker 服务缩到 0 副本。
+# 同进程同盘，无需 STORAGE_SHARED；停机预算按 worker 口径放宽以排空在飞作业。
+services:
+  api:
+    environment:
+      ZENITH_ROLES: all
+      SHUTDOWN_GRACE_MS: ${SHUTDOWN_GRACE_MS:-60000}
+    stop_grace_period: 70s
+  worker:
+    deploy:
+      replicas: 0

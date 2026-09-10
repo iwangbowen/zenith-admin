@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { defineContract, op } from '../../core/contract';
+import { PROCESS_ROLES } from '../constants';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -16,7 +17,12 @@ export const healthSchema = z.object({
   status: z.enum(HEALTH_STATUSES).meta({ example: 'ok' }),
   version: z.string().meta({ example: '2.17.0' }),
   uptimeSeconds: z.int().meta({ example: 12345 }),
-  checks: z.record(z.string(), z.enum(HEALTH_CHECK_RESULTS)).meta({ example: { database: 'ok', redis: 'ok', invalidationBus: 'ok' } }),
+  /** 应答进程承担的角色（`ZENITH_ROLES`） */
+  roles: z.array(z.enum(PROCESS_ROLES)).meta({ example: ['api'] }),
+  checks: z.record(z.string(), z.enum(HEALTH_CHECK_RESULTS)).meta({
+    description: '`workers`：仅 api 角色输出，近期无活跃 worker 心跳时为 degraded（作业会排队但无人执行）',
+    example: { database: 'ok', redis: 'ok', invalidationBus: 'ok', workers: 'ok' },
+  }),
 }).meta({ id: 'Health' });
 
 export type Health = z.infer<typeof healthSchema>;

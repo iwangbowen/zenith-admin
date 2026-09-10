@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
+  PROCESS_ROLES,
   SYSTEM_SCHEDULER_ALERT_CHANNELS,
   SYSTEM_SCHEDULER_ALERT_FILTERS,
   SYSTEM_SCHEDULER_RUN_STATUSES,
@@ -99,6 +100,8 @@ export const systemSchedulerNodeSchema = z.object({
   nodeId: z.string(),
   hostname: z.string(),
   pid: z.int(),
+  /** 该进程承担的角色；只含 `api` 的节点仅声明任务、不执行 */
+  roles: z.array(z.enum(PROCESS_ROLES)),
   version: z.string().nullable(),
   startedAt: z.string(),
   lastHeartbeatAt: z.string(),

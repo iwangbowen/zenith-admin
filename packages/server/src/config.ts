@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import path from 'node:path';
 import * as z from 'zod';
+import { PROCESS_ROLES, type ProcessRole } from '@zenith/shared/platform';
 import { collectRuntimeSecretErrors, isDevelopmentEnv, resolveRuntimeSecrets, RUNTIME_SECRETS_HINT } from './lib/secrets';
 
 // ─── HTTP Log Types ──────────────────────────────────────────────────────────────────────────────
@@ -19,6 +20,24 @@ const envBool = (def: boolean) => z.preprocess((v) => (v === '' ? undefined : v)
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3300),
+  /**
+   * 进程角色，逗号分隔（`api` / `worker`），`all` = 全部角色。缺省时按全部角色运行（仅限开发模式）；
+   * 非开发环境必须显式设置，由 assertRuntimeRoles() 在启动时校验——避免某个副本静默以全量模式运行、
+   * 在 api 集群里偷偷执行后台作业。取值非法直接终止（CLI 同样受此约束，拼写错误立即暴露）。
+   */
+  ZENITH_ROLES: z.string().default(''),
+  /** worker 角色的健康 / 指标端口（`/health`、`/ready`、`/metrics`）；纯 worker 进程不监听业务端口 */
+  WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(3301),
+  /**
+   * 优雅停机硬闸（毫秒）：超过后强制退出。缺省 api 15s（断连接即可），纯 worker 120s（要排空在飞作业）；
+   * 容器 stop_grace_period / k8s terminationGracePeriodSeconds 须大于该值
+   */
+  SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1_000).optional(),
+  /**
+   * 声明本地磁盘型存储（local / kodo / sftp 的分片暂存、CMS 静态化产物）已挂载到各进程共享的卷。
+   * 纯 worker 角色 + 本地磁盘型存储驱动 + 未声明共享时拒绝启动（产物会落在 worker 磁盘、api 读不到）
+   */
+  STORAGE_SHARED: envBool(false),
   /**
    * JWT 签名密钥（HS256，≥ 32 字符随机值），按服务实例独立。无内置默认值：
    * 非开发环境缺失 / 不合规时由 assertRuntimeSecrets() 在启动时终止进程；
@@ -206,6 +225,68 @@ export function assertRuntimeSecrets(log: { warn(msg: string): void; error(msg: 
   }
 }
 
+// ─── Process Roles ─────────────────────────────────────────────────────────────────────────────
+
+export interface ProcessRolesConfig {
+  /** 承担 HTTP / WS / 接入面 */
+  api: boolean;
+  /** 执行任务中心、系统周期任务、业务 cron 与后台作业 */
+  worker: boolean;
+  /** 是否由 ZENITH_ROLES 显式指定（非开发环境必须显式） */
+  explicit: boolean;
+  /** 规范化后的角色列表（按 PROCESS_ROLES 顺序），用于心跳、日志与指标标签 */
+  list: ProcessRole[];
+  /** 人类可读标签：`all` / `api` / `worker` */
+  label: 'all' | ProcessRole;
+}
+
+function parseProcessRoles(raw: string): ProcessRolesConfig {
+  const tokens = raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const build = (roles: readonly ProcessRole[], explicit: boolean): ProcessRolesConfig => {
+    const list = PROCESS_ROLES.filter((r) => roles.includes(r));
+    return {
+      api: list.includes('api'),
+      worker: list.includes('worker'),
+      explicit,
+      list,
+      label: list.length === PROCESS_ROLES.length ? 'all' : list[0],
+    };
+  };
+  if (tokens.length === 0) return build(PROCESS_ROLES, false);
+  if (tokens.includes('all')) {
+    if (tokens.length > 1) {
+      console.error(`❌ ZENITH_ROLES: "all" 不能与其他角色同时出现（当前值 "${raw}"）`);
+      process.exit(1);
+    }
+    return build(PROCESS_ROLES, true);
+  }
+  const invalid = tokens.filter((t) => !(PROCESS_ROLES as readonly string[]).includes(t));
+  if (invalid.length > 0) {
+    console.error(`❌ ZENITH_ROLES: 未知角色 ${invalid.map((t) => `"${t}"`).join('、')}；可选 ${PROCESS_ROLES.join(' / ')} 或 all`);
+    process.exit(1);
+  }
+  return build(tokens as ProcessRole[], true);
+}
+
+const processRoles = parseProcessRoles(env.ZENITH_ROLES);
+
+/**
+ * 服务进程（index.ts）启动时调用：非开发环境未显式设置 ZENITH_ROLES 直接终止。
+ * 与 assertRuntimeSecrets 同理，CLI（migrate / seed / 脚本）不调用本函数。
+ */
+export function assertRuntimeRoles(log: { warn(msg: string): void; error(msg: string): void }): void {
+  if (!processRoles.explicit && !isDevelopmentEnv(process.env.NODE_ENV)) {
+    log.error(
+      '❌ 未设置 ZENITH_ROLES，拒绝启动：生产部署必须显式声明进程角色（api / worker / all），'
+      + '否则 api 集群中的每个副本都会执行后台作业。单机全量部署请设置 ZENITH_ROLES=all。',
+    );
+    process.exit(1);
+  }
+  if (!processRoles.explicit) {
+    log.warn('⚠ 未设置 ZENITH_ROLES，按全部角色（api + worker）运行，仅限本地开发');
+  }
+}
+
 // ─── HTTP 日志方法覆盖辅助 ───────────────────────────────────────────────────────────────────────────
 
 function buildMethodOverrides(prefix: 'HTTP_LOG_INCOMING_METHOD' | 'HTTP_LOG_OUTGOING_METHOD'): Partial<Record<HttpLogMethod, HttpLogLevel>> {
@@ -233,6 +314,12 @@ function buildMethodOverrides(prefix: 'HTTP_LOG_INCOMING_METHOD' | 'HTTP_LOG_OUT
 
 export const config = {
   port: env.PORT,
+  /** 进程角色（见 ZENITH_ROLES）；决定本进程是否监听业务端口、是否执行 pg-boss 作业 */
+  roles: processRoles,
+  /** worker 角色的健康 / 指标端口 */
+  workerHealthPort: env.WORKER_HEALTH_PORT,
+  /** 优雅停机硬闸（毫秒）；纯 worker 缺省 120s（排空作业），其余 15s */
+  shutdownGraceMs: env.SHUTDOWN_GRACE_MS ?? (processRoles.worker && !processRoles.api ? 120_000 : 15_000),
   /**
    * 是否为开发模式（NODE_ENV=development，`npm run dev` 自动注入）。
    * 只有它才解锁「内置开发密钥」「验证码回传」等联调便利；未设置 NODE_ENV 一律按严格模式处理。
@@ -265,6 +352,8 @@ export const config = {
   requestTimeoutMs: env.REQUEST_TIMEOUT_MS,
   /** 分片上传本地暂存根目录（绝对路径） */
   uploadTempDir: env.UPLOAD_TEMP_DIR.trim() ? path.resolve(env.UPLOAD_TEMP_DIR.trim()) : path.resolve(process.cwd(), 'storage/tmp/uploads'),
+  /** 本地磁盘型存储已挂载为各进程共享卷（见 STORAGE_SHARED） */
+  storageShared: env.STORAGE_SHARED,
   allowedOrigins: env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean),
   trustedProxyCidrs: env.TRUSTED_PROXY_CIDRS.split(',').map(s => s.trim()).filter(Boolean),
   ai: {

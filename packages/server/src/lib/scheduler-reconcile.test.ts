@@ -3,7 +3,7 @@
  *
  * 背景：`sql`col <> ALL(${jsArray})`` 会被编译成元组语法 `ALL(($1, $2))`，
  * 这在 PostgreSQL 中是语法错误。该错误发生在 `initCronScheduler()` 内，
- * 而 `registerBackgroundWorkers()` 整块包在 try/catch 中，
+ * 而 `declareBackgroundJobs()` 整块包在 try/catch 中，
  * 结果是「系统调度任务列表」与「任务中心类型列表」双双为空且无明显报错。
  *
  * 这里锁定两点：必须用 `notInArray`（生成合法的 `not in (...)`），

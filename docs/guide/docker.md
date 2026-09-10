@@ -1,6 +1,6 @@
 # Docker 部署
 
-Docker Compose 会启动 PostgreSQL、Redis、API 与 Nginx，适合生产试运行与中小规模部署。配置文件位于仓库根目录：`Dockerfile`、`docker-compose.yml`、`docker-compose.dev.yml`、`.env.docker`。
+Docker Compose 会启动 PostgreSQL、Redis、一次性迁移、API、worker 与 Nginx，适合生产试运行与中小规模部署。配置文件位于仓库根目录：`Dockerfile`、`docker-compose.yml`、`docker-compose.dev.yml`、`.env.docker`。
 
 ## 前置依赖
 
@@ -19,6 +19,7 @@ npm run secret:generate -- --docker
 
 docker compose up -d
 
+# 首次部署或需要补齐内置数据时执行，可重复运行
 docker compose exec api node dist/db/seed.js
 
 docker compose ps
@@ -40,21 +41,28 @@ Compose 默认只对外映射 `80`（Web）；API 端口 `3300` 默认绑定宿�
 默认管理员：`admin` / `123456`。
 
 ::: tip
-后端容器入口 `docker/entrypoint.sh` 会在启动时执行 `node dist/db/migrate.js`，因此迁移自动应用；种子数据需手动执行一次，可重复执行。
+迁移由一次性 `migrate` 服务执行，`api` / `worker` 会等待其成功完成后启动；需要手动补迁移时执行 `docker compose run --rm migrate`。种子数据需手动执行一次，可重复执行。
 :::
 
 ## 服务拓扑
 
 ```text
 postgres ─┐
-redis    ─┤──→ api (Node.js :3300) ──→ web (Nginx :80)
+redis    ─┤──→ migrate（一次性迁移）
+          ├──→ api × N (ZENITH_ROLES=api, Node.js :3300) ──→ web (Nginx :80)
+          └──→ worker × M (ZENITH_ROLES=worker, probe :3301)
+
+api / worker → Redis pub/sub → api  （WebSocket / IoT 推送扇出）
+api ⇄ server_storage ⇄ worker       （本地文件、上传暂存、CMS 静态产物）
 ```
 
 | 服务 | 镜像 / 阶段 | 说明 |
 | --- | --- | --- |
 | `postgres` | `postgres:16-alpine` | 数据库，库名 `zenith_admin` |
-| `redis` | `redis:7-alpine` | 会话、限流、幂等与黑名单状态；始终 `requirepass` + AOF |
-| `api` | Dockerfile `server` stage | Hono 后端，端口 3300，启动时迁移；以非 root 用户 `node` 运行 |
+| `redis` | `redis:7-alpine` | 会话、限流、幂等、黑名单与 WS 扇出状态；始终 `requirepass` + AOF |
+| `migrate` | Dockerfile `server` stage | 一次性执行 `node dist/db/migrate.js`，`restart: "no"` |
+| `api` | Dockerfile `server` stage | Hono 后端，`ZENITH_ROLES=api`，端口 3300，健康检查 `/api/health`；以非 root 用户 `node` 运行 |
+| `worker` | Dockerfile `server` stage | 后台任务进程，`ZENITH_ROLES=worker`，健康检查 `http://localhost:3301/health`，默认不发布端口 |
 | `web` | Dockerfile `web` stage | Nginx 静态站点，代理 `/api` 与 `/api/ws` |
 
 ## Dockerfile 构建流程
@@ -62,7 +70,7 @@ redis    ─┤──→ api (Node.js :3300) ──→ web (Nginx :80)
 | 阶段 | 基础镜像 | 行为 |
 | --- | --- | --- |
 | `builder` | `node:24-alpine` | 安装全量依赖，构建 shared、analytics-sdk、server、web，执行 `docker/build-studio.mjs`，最后用 `docker/patch-shared-exports.mjs` 把 `@zenith/shared` 的 exports 指向编译产物 |
-| `server` | `node:24-alpine` | 安装生产依赖，复制 server dist、Drizzle 迁移与 shared dist，写入 entrypoint；`storage` / `logs` 归属 `node` 后切换 `USER node` |
+| `server` | `node:24-alpine` | 安装生产依赖，复制 server dist、Drizzle 迁移与 shared dist，写入 entrypoint；entrypoint 只按参数执行命令或启动 `node dist/index.js`，不再自动迁移；`storage` / `logs` 归属 `node` 后切换 `USER node` |
 | `web` | `nginx:1.30-alpine` | 复制 `packages/web/dist` 与 `docker/nginx.conf` |
 
 `node-pty` 在 Linux 下需要编译，构建阶段安装 `python3 make g++`；server 阶段保留 `libstdc++` 并移除编译工具链。
@@ -93,8 +101,9 @@ shared 与 server 的 `build` 脚本在 `tsc` 之后运行 `tsc-alias --resolve-
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | 空 | GitHub OAuth 登录凭据 |
 | `OAUTH_CALLBACK_BASE_URL` | `http://localhost` | OAuth 回调基础地址 |
 | `TAG` | `latest` | 本地构建镜像标签 |
+| `WORKER_SHUTDOWN_GRACE_MS` | `120000` | worker 优雅停机硬截止，Compose `stop_grace_period` 默认为 130s，应始终大于该值 |
 
-`JWT_SECRET` / `FIELD_ENCRYPTION_KEY` / `POSTGRES_PASSWORD` / `REDIS_PASSWORD` 任一留空时 `docker compose up` 直接失败（前两者为占位值时 API 启动也会失败）。生产环境请按实际域名设置 `ALLOWED_ORIGINS`。使用外部 Redis 时整体覆盖 `REDIS_URL`（含口令）即可。
+`JWT_SECRET` / `FIELD_ENCRYPTION_KEY` / `POSTGRES_PASSWORD` / `REDIS_PASSWORD` 任一留空时 `docker compose up` 直接失败（前两者为占位值时 API 启动也会失败）。生产环境请按实际域名设置 `ALLOWED_ORIGINS`。Compose 已固定 api / worker 的 `ZENITH_ROLES`，通常无需在 `.env` 中覆盖。使用外部 Redis 时整体覆盖 `REDIS_URL`（含口令）即可。
 
 API 容器以非 root 用户 `node` 运行；如需在容器内访问宿主机 Docker socket（运维模块的容器管理），请在自定义 override 中挂载 socket 并通过 `group_add` 加入 socket 所属组，不要改回 root。
 
@@ -119,6 +128,7 @@ API 容器以非 root 用户 `node` 运行；如需在容器内访问宿主机 D
 # 查看日志
 docker compose logs -f
 docker compose logs -f api
+docker compose logs -f worker
 docker compose logs -f web
 
 # 停止服务（保留数据卷）
@@ -126,6 +136,15 @@ docker compose down
 
 # 停止并删除数据卷
 docker compose down -v
+
+# 扩容 / 缩容
+docker compose up -d --scale api=2 --scale worker=3
+
+# 手动执行迁移
+docker compose run --rm migrate
+
+# 单容器 all-in-one 覆盖文件（worker 副本数为 0）
+docker compose -f docker-compose.yml -f docker-compose.single.yml up -d
 
 # 进入容器
 docker compose exec api sh
@@ -142,7 +161,7 @@ docker compose build --no-cache
 docker compose up -d
 ```
 
-API 容器重启时会自动迁移数据库。前端静态资源由 `web` 镜像提供，重建镜像后随容器替换生效。
+`migrate` 服务会先运行一次迁移，`api` 与 `worker` 通过 `depends_on: condition: service_completed_successfully` 等待迁移完成后再启动。前端静态资源由 `web` 镜像提供，重建镜像后随容器替换生效。需要单独补迁移时运行 `docker compose run --rm migrate`。
 
 ## 本地开发基础设施
 
@@ -159,8 +178,9 @@ npm run dev
 | --- | --- |
 | `postgres_data` | PostgreSQL 数据 |
 | `redis_data` | Redis AOF 数据 |
-| `api_storage` | `storage/` 整体：本地上传文件、分片上传暂存目录、CMS 静态化产物 |
-| `api_logs` | 后端日志 |
+| `server_storage` | `storage/` 整体，由 api 与 worker 共享：本地上传文件、分片上传暂存目录、CMS 静态化产物。旧 `api_storage` 卷名已不再使用 |
+| `api_logs` | api 角色日志 |
+| `worker_logs` | worker 角色日志 |
 
 ```bash
 # 备份 PostgreSQL

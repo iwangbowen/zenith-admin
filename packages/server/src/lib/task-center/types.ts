@@ -79,6 +79,12 @@ export interface TaskHandlerRegistration {
   retryDelayMs?: number;
   /** 已结束任务保留天数（默认 null 跟随全局 30 天）；可被运行时策略覆盖 */
   retentionDays?: number | null;
+  /**
+   * 执行亲和：`any`（默认）任何 worker 进程可领取；`node` 只能由提交任务的进程执行——
+   * 用于操作本进程所在主机本地资源（文件管理的压缩 / 解压等）。节点亲和任务投递到该进程独有的队列，
+   * 提交进程在任何角色下都会消费自己的节点队列；进程下线后未完成的节点亲和任务由兜底扫描标记失败。
+   */
+  affinity?: 'any' | 'node';
   /** 任务执行体；返回值写入 result 字段。抛错 → 自动重试或 failed；期间应周期调用 ctx.progress() */
   run(ctx: TaskRunContext): Promise<Record<string, unknown> | void>;
 }

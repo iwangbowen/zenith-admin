@@ -343,6 +343,23 @@ export function schedulerWarningLabel(type: string): string {
   return (SCHEDULER_WARNING_LABELS as Record<string, string>)[type] ?? type;
 }
 
+// ─── 服务进程角色 ─────────────────────────────────────────────────────────────
+
+/**
+ * 服务进程角色（`ZENITH_ROLES` 环境变量，逗号分隔；`all` = 全部）：
+ * - `api`：HTTP / WebSocket / IoT 接入、CMS SSR、终端会话；只向 pg-boss 投递作业，不执行
+ * - `worker`：任务中心、系统周期任务、业务定时任务与后台作业的执行方
+ * 一个进程可同时承担多个角色（单机部署 / 本地开发）。
+ */
+export const PROCESS_ROLES = ['api', 'worker'] as const;
+
+export type ProcessRole = (typeof PROCESS_ROLES)[number];
+
+export const PROCESS_ROLE_LABELS: Record<ProcessRole, string> = {
+  api: 'API',
+  worker: 'Worker',
+};
+
 // ─── 系统调度 ─────────────────────────────────────────────────────────────────
 
 export const SYSTEM_SCHEDULER_TASK_TYPES = ['recurring', 'queue'] as const;

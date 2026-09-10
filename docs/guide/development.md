@@ -7,7 +7,8 @@
 ### 项目开发
 
 ```bash
-npm run dev            # 同时启动 @zenith/server 与 @zenith/web
+npm run dev            # 单个 all 角色后端 + @zenith/web（开发默认）
+npm run dev:split      # 分别启动 api 角色与 worker 角色后端 + @zenith/web
 npm run dev:server     # 后端：迁移 → 种子 → tsx watch src/index.ts
 npm run dev:web        # 前端：Vite dev server，默认 5373
 npm run dev:studio     # Mastra Studio，端口 5380，API 前缀 /api/mastra
@@ -15,7 +16,7 @@ npm run dev:demo       # 前端 Demo 模式，读取 packages/web/.env.demo
 npm run dev:electron   # 前端 dev server + Electron 主进程 watch + Electron 窗口
 ```
 
-`npm run dev:server` 由 `packages/server/scripts/dev.mjs` 编排，在 Windows 下会剥离 VS Code Auto Attach 注入的 inspector 环境变量，避免 `node-pty` 与 Windows ConPTY 死锁。
+`npm run dev:server` 由 `packages/server/scripts/dev.mjs` 编排，在 Windows 下会剥离 VS Code Auto Attach 注入的 inspector 环境变量，避免 `node-pty` 与 Windows ConPTY 死锁。默认 `npm run dev` 使用单个 `ZENITH_ROLES=all` 进程；需要验证拆分部署、跨进程 WS 扇出或 worker 健康探针时使用 `npm run dev:split`。VS Code 提供 compound「Debug: Split (api + worker + Web)」。
 
 ### 构建与校验
 
@@ -32,6 +33,7 @@ npm run test:server            # 后端测试
 npm run test:web               # 前端测试
 npm run lint                   # shared + server + analytics-sdk + web
 npm run lint:fix               # 四个包自动修复
+npm run verify:split           # 本地端到端校验 api/worker 拆分部署链路
 ```
 
 前端 `lint` 同时运行 ESLint 与 Stylelint：`eslint src && stylelint "src/**/*.css"`。

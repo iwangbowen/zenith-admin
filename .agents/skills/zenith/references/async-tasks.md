@@ -33,7 +33,7 @@
 
 ### ① 注册 handler（模块加载时执行一次）
 
-新建 `packages/server/src/services/{业务域}/xxx-tasks.ts`（或就近放在业务 service），在 `packages/server/src/bootstrap/workers.ts` 的 `registerBackgroundWorkers()` 中、`registerSystemTasks()` **之前**调用注册函数（参考 `registerTaskDemoHandlers()` 的挂载位置）：
+新建 `packages/server/src/services/{业务域}/xxx-tasks.ts`（或就近放在业务 service），在 `packages/server/src/bootstrap/workers.ts` 的 `declareBackgroundJobs()` 中、`registerSystemTasks()` **之前**调用注册函数（参考 `registerTaskDemoHandlers()` 的挂载位置）：
 
 ```ts
 import { registerTaskHandler } from '../../lib/task-center';
@@ -46,6 +46,7 @@ export function registerXxxTaskHandlers(): void {
     allowConcurrent: false,            // 同用户是否允许并行提交
     maxAttempts: 3,                    // 失败自动重试（默认 1 = 不重试）
     retryDelayMs: 5000,                // 退避基数 5s → 10s → 20s
+    affinity: 'any',                  // 默认任意 worker；本机文件系统任务用 'node'
     async run(ctx) {
       // 断点恢复：跳过已处理部分（handler 必须按 checkpoint 幂等）
       let processed = Number(ctx.checkpoint?.processed ?? 0);
@@ -73,6 +74,8 @@ export function registerXxxTaskHandlers(): void {
 
 要点：
 
+- handler 默认 `affinity: 'any'`，由任意 worker 进程执行；触碰提交请求所在节点本地文件系统的任务必须声明 `affinity: 'node'`，框架会投递到该提交进程专属队列，目标进程离线时任务会失败并提示重新提交
+- handler 通常运行在 worker 进程，而不是接收 HTTP 请求的 api 进程；不要依赖请求对象、连接或进程内临时状态，只使用任务中心恢复的创建者身份、租户与 trace 上下文
 - `progress()` 兼作心跳，每个处理批次必须调用（>90s 无心跳会被判卡死回收）
 - `total: null`（或不传）= 不可枚举任务，前端显示不定进度
 - handler 内可用 `currentUser()`（框架已还原创建者身份），审计上下文同样生效

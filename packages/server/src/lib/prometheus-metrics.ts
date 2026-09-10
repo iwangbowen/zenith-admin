@@ -6,10 +6,14 @@
  * 所有指标通过 prom-client 的 collect() 钩子在抓取时惰性求值，零常驻开销。
  */
 import { Gauge, type Registry } from 'prom-client';
+import { config } from '../config';
 import { metricsSampler } from './metrics-sampler';
+import { getWsFanoutCounters } from './ws-fanout';
 import { getWsSnapshot } from './ws-manager';
 
 export function registerZenithMetrics(registry: Registry): void {
+  // 进程角色作为全局标签：api / worker 拆分部署后同一指标名来自不同角色，抓取端按 process_role 区分
+  registry.setDefaultLabels({ process_role: config.roles.label });
   const gauge = (name: string, help: string, fn: () => number) => {
     new Gauge({
       name,
@@ -48,6 +52,11 @@ export function registerZenithMetrics(registry: Registry): void {
   // ── WebSocket ──
   gauge('zenith_ws_connections', 'Current WebSocket connections', () => getWsSnapshot().currentConnections);
   gauge('zenith_ws_users', 'Current distinct WebSocket users', () => getWsSnapshot().currentUsers);
+  // 跨进程 fan-out：published 为本进程发出的信封数，delivered / dropped 为本进程作为订阅方的处理结果
+  gauge('zenith_ws_fanout_published_total', 'WS fan-out envelopes published by this process', () => getWsFanoutCounters().published);
+  gauge('zenith_ws_fanout_publish_failed_total', 'WS fan-out envelopes that failed to publish', () => getWsFanoutCounters().publishFailed);
+  gauge('zenith_ws_fanout_delivered_total', 'WS fan-out envelopes handled by this process', () => getWsFanoutCounters().delivered);
+  gauge('zenith_ws_fanout_dropped_total', 'WS fan-out envelopes dropped (malformed / no handler / handler error)', () => getWsFanoutCounters().dropped);
 
   // ── DB / Redis（外部采集器提供，缺省 0） ──
   gauge('zenith_db_connections', 'PostgreSQL connections to current database', () => latest()?.dbConnections ?? 0);

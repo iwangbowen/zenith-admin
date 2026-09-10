@@ -250,6 +250,15 @@
 
 ## 全局约束
 
+### 进程角色
+
+- **后台声明保持角色无关**：`registerTaskHandler`、`registerSystemQueueWorker`、`registerSystemRecurringJob` 等任务 / Cron / 系统队列注册**禁止**包在 `if (config.roles.worker)` 中；执行门禁只能位于 `lib/pg-boss-scheduler.ts` / `lib/task-center/runner.ts`。
+- **`forceLocal` 只给节点亲和队列**：`registerSystemQueueWorker({ forceLocal: true })` 仅用于必须在提交节点本机执行的 node-affine 队列，普通业务队列**禁止**使用。
+- **WebSocket 推送统一出口**：业务模块所有 WS 推送必须走 `lib/ws-manager.ts` 公共函数；IoT 设备推送走 `services/iot/iot-gateway.service.ts` 的 `push*`；**禁止**持有 `WSContext` 集合或直接 `ws.send()`，否则消息不会跨进程扇出。
+- **本机文件系统任务声明亲和性**：任何触碰服务请求所在节点本地文件系统的任务 handler 必须声明 `affinity: 'node'`。
+- **启动职责分层**：绑定角色的启动步骤放在 `bootstrap/run-api.ts` / `bootstrap/run-worker.ts`；角色无关的任务、Cron 与队列声明放在 `bootstrap/workers.ts`。
+- **新增环境变量同步样例**：新增 env 必须写入 `packages/server/.env.example`；涉及部署拓扑时同步 `docker-compose.yml` / `.env.docker`。
+
 ### 时间格式
 
 - **统一格式**：API 响应、入参、前端显示、MSW Mock 一律 `YYYY-MM-DD HH:mm:ss`

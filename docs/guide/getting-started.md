@@ -45,7 +45,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/zenith_admin
 REDIS_URL=redis://127.0.0.1:6379
 ```
 
-`JWT_SECRET` 与 `FIELD_ENCRYPTION_KEY` 本地开发可以留空：`npm run dev` 会以 `NODE_ENV=development` 启动并使用内置开发密钥，因此团队成员连接同一个开发库时不需要互相交换密钥。只有在需要自定义时才运行 `npm run secret:generate` 填入（`FIELD_ENCRYPTION_KEY` 按数据库共享，自定义后同库的同事必须使用同一把）。直接用 `tsx src/index.ts` 等方式启动而不设置 `NODE_ENV=development` 时按生产规则校验，两把密钥必填。
+`JWT_SECRET` 与 `FIELD_ENCRYPTION_KEY` 本地开发可以留空：`npm run dev` 会以 `NODE_ENV=development` 启动并使用内置开发密钥，因此团队成员连接同一个开发库时不需要互相交换密钥。只有在需要自定义时才运行 `npm run secret:generate` 填入（`FIELD_ENCRYPTION_KEY` 按数据库共享，自定义后同库的同事必须使用同一把）。直接用 `tsx src/index.ts` 等方式启动而不设置 `NODE_ENV=development` 时按生产规则校验，两把密钥与 `ZENITH_ROLES` 均必填。
 
 `packages/server/.env.example` 还列出开放平台、请求限制、CSRF、可信代理、出站私网 allowlist、Mastra Studio、WebRTC、HTTP 流量日志、支付、CMS 与 Webhook 等可选变量。
 
@@ -76,8 +76,11 @@ npm run db:seed
 ## 启动业务项目
 
 ```bash
-# 同时启动后端与前端
+# 同时启动后端与前端（后端为单个 all 角色开发进程）
 npm run dev
+
+# 验证 api / worker 拆分运行
+npm run dev:split
 
 # 或分别启动
 npm run dev:server
