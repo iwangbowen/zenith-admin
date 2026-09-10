@@ -4,6 +4,87 @@
 
 ---
 
+## v2.27.0 - 2026-09-10
+
+**定时任务执行概览重做 + pg-boss 调度按官方最佳实践重构 + React 19.3 路由过渡**：执行概览从 6 张今日快照卡
+重做为高密度运维面板（环比、趋势、星期 × 小时热力、逐任务健康表、失败原因聚合、单任务下钻），执行日志补齐触发方式 /
+重试 / 调度延迟 / 错误信息 / 节点等上下文并新增超时状态；对照 pg-boss 12.30 文档，业务定时任务与系统级周期任务
+分别收敛到一条 `stately` 调度队列（keyed schedule、显式重试 / 心跳 / 过期、启动对账）并接入 schema 漂移、异步迁移、
+维护状态与运维警告等健康检测；路由切换动画改用 React 19.3 `<ViewTransition>`；品牌 logo 重设计。
+
+### Added
+
+#### 定时任务执行概览
+
+- `GET /api/cron-jobs/stats?days=` 按面板重组：今日 / 昨日同时段 / 周期与上一周期汇总（成功率、平均 / P95 耗时、调度延迟、
+  重试与手动次数）、调度器状态、健康提醒、逐任务指标、每日趋势、星期 × 小时分布、失败原因聚合与未来 24 小时执行计划；
+  `GET /api/cron-jobs/{id}/stats` 单任务下钻（周期汇总与环比、每日趋势、耗时散点、调度延迟分布、最近失败 / 超时、未来 10 次执行）
+- 执行概览页重排：调度器状态条、9 张环比统计卡、健康提醒面板、成功 / 失败 / 超时堆叠趋势 + 平均 / P95 折线、7 × 24 热力图、
+  可排序健康表（近 20 次结果条、耗时趋势 Sparkline、日志 / 执行 / 暂停操作）、任务筛选（有提醒 / 运行中 / 已停用 / 从未执行）、
+  下次执行列表、失败原因 Top、可按状态 / 关键字 / 时间筛选的最近执行；点击任务打开下钻抽屉
+- 30 秒静默自动刷新（只换数据，不重播 loading 与图表入场动画），显示「更新于 x 秒前」与手动刷新
+- `cron_job_logs` 新增执行上下文（迁移 `0004`）：`trigger`（计划 / 手动 / 重试）、`attempt`、`scheduled_at`、
+  `latency_ms`（生成列）、`error_message`、`node_id`、`triggered_by`；状态新增 `timeout`，worker 按 `monitorTimeout`（秒）计时，
+  调度器启动时把不属于任何在线节点的 `running` 记录关闭为失败
+- 健康判定阈值（连续失败、成功率下限、P95 / 平均倍数、接近超时、未按计划执行容差）收口到 `shared/platform/cron-health.ts`，
+  服务端与 Demo Mock 共用；图表工具 `makeMixedBarLineSpec` 支持堆叠柱 + 多折线，新增 `formatRelativeTime`
+
+#### pg-boss 健康检测
+
+- 监听 `boss.on('warning')`（队列积压、慢查询、时钟偏差、索引膨胀、xmin 阻塞、autovacuum 关闭等）与 `boss.on('bam')`，
+  开启 `persistWarnings`（保留 7 天），各节点最近 20 条随心跳上报，执行概览合并展示并区分严重级别
+- `scheduler` 状态新增 `schemaVersion` / `schemaDriftOk` / `schemaDriftIssues`（`detectSchemaDrift()`，每 10 分钟复检）、
+  `maintaining`、`bamPending` / `bamFailed`（异步迁移）、`scheduleMissing` / `scheduleOrphans`（schedule 与任务对账），
+  状态条以芯片展示，异常时红 / 橙提示
+- 定时任务列表对秒位非 0 的 6 段表达式提示「秒位不生效」，下次执行按分钟口径计算
+
+#### Web
+
+- 路由切换动画改用 React 19.3 `<ViewTransition>`：新增 `RouteViewTransition` / `RouteSuspense`，keep-alive 缓存页签切换、
+  页签刷新与懒加载揭示均有进入 / 退出过渡；「左滑」偏好按页签方向滑动（`navigateWithDirection` + `addTransitionType`，
+  目标页签在左侧即为后退）；减弱动态效果时自动关闭
+- 品牌 logo 重设计（Z 形折带）：`AppLogo` 内联 SVG 随主题色与深色模式派生明暗，favicon / PWA 图标统一为同一几何，
+  新增 `npm run icons` 由 `favicon.svg` 生成透明底 PNG
+- `useListSearch` 新增 `bind(key[, parse])` / `bindKeyword(key)` 整体绑定筛选控件，`useDictItems` 新增 `options`；
+  新增共用组件 `FormStatusRadioGroup`、`FileDetailModal`、`MpAccountRequiredBanner`、支付结果 / 对话上下文 / 打印预览弹窗，
+  `departmentsToTreeData` 等部门树转换，`useOpsHostSelection`
+
+#### Server / Shared 共享 helper（开发者向）
+
+- `lib/session-liveness`（管理端 / 会员端认证共用会话活性检查）、`lib/export-center/query-normalize`、`lib/tenant.pickTenantScopedRow`、
+  `services/workflow/payload-utils`、`services/report/report-schedule-shared`、`buildPaymentEventPayload` 导出复用
+- shared：`countWorkflowJobStatuses` / `summarizeWorkflowJobChain`、工作流引擎巡检规则（`buildWorkflowEngineIssues` 等）
+  收敛到 shared，服务端与 Demo Mock 共用；新增 `toMinuteCron` / `cronSecondsIgnored`
+
+### Changed
+
+- **pg-boss 调度模型**：业务定时任务共用 `cron-jobs` 队列、系统级周期任务共用 `system-recurring` 队列，均为 `stately` 策略 +
+  `singletonKey = 任务 key`（同一任务最多 1 条排队 + 1 条执行中，不重叠、不无限积压），每个任务是 `key = jobId / 任务名` 的
+  keyed schedule；每个进程对每条队列只注册一个 worker（`localConcurrency: 8`）；队列 `heartbeatSeconds: 60`，
+  进程崩溃后作业 60 秒内判定失联；`retryLimit` / `retryDelay` / `retryBackoff` / `expireInSeconds` 逐作业显式下发
+  （系统任务固定不重试，业务任务未配置超时时过期取上限 24 小时）；完成的作业 1 天后删除，执行历史以
+  `cron_job_logs` / `system_scheduler_runs` 为准
+- 启动对账：pg-boss 中只保留代码声明的队列（两条调度队列 + 已注册的队列型 worker），未声明的连同 schedule、作业删除；
+  两条调度队列上的 schedule 与启用任务一一对应；队列 policy 与代码不一致时重建
+- 手动执行改为 `send` + `notifyWorker` 立即取用；该任务已有排队作业时与之合并并返回提示（系统任务运行结果 `runId` 可为 null）
+- 6 段 Cron 表达式注册到 pg-boss 与计算「下次执行 / 未按计划执行」时统一去掉秒位（pg-boss 按分钟调度）
+- 系统调度页任务读数改为一次 SQL 按（队列, `singletonKey`）统计；调度节点心跳的 WIP 按队列聚合
+- 定时任务 `monitorTimeout` 明确为秒；执行概览提醒文案改为「耗时波动大 / 未按计划执行 / 接近超时」等业务用语
+- React 19.2.8 → 19.3.0（含 `@types/react`、`@types/react-dom`、scheduler 0.28）
+- **重复实现收敛（开发者向）**：130 个列表页 414 处筛选控件改为 `bind` / `bindKeyword` 整体绑定并内联渲染闭包，
+  53 处字典下拉改用 `useDictItems().options`；部门树挂接、启用 / 禁用单选组、公众号未配置提示、文件详情等多处手写实现收敛为共用组件；
+  服务端会话活性、导出 query 归一化、支付事件载荷、租户作用域取行等 helper 收口；删除漂移的 `errorReportSchema`
+- zenith skill：`constraints-frontend.md` 列表页筛选改为 `bind` / `bindKeyword` 必须项，枚举来源补充 `useDictItems` 分工；
+  `docs/backend/cron-jobs.md` 重写 pg-boss 映射、调度器健康与系统级调度任务章节（41 个周期任务 + 5 个队列型 worker）
+
+### Fixed
+
+- 执行概览自动刷新不再整页 loading、图表不再重播入场动画（切换周期时保留占位数据）
+- 系统级周期任务不再继承 pg-boss 队列默认「失败立即重试 2 次、15 分钟过期」：失败重跑、超过 15 分钟被判死后与仍在执行的实例重叠、
+  每分钟任务执行超 1 分钟即重叠等问题随单队列 `stately` 模型消除
+- pg-boss 运维警告去重键、执行概览列宽（失败 / 超时表头换行、近 20 次与耗时趋势溢出）
+---
+
 ## v2.26.0 - 2026-09-09
 
 **性能与健壮性修补 + 第二轮重复实现收敛**：连接池容量、聊天未读聚合、CMS 素材引用重建、审批人候选下发与
