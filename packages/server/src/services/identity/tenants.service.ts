@@ -11,6 +11,9 @@ import { reserveTenantSeats } from '../../lib/tenant-quota';
 import type { DbTransaction } from '../../db/types';
 import { HTTPException } from 'hono/http-exception';
 import { clearUserPermissionCache } from '../../lib/permissions';
+import { forceLogoutAllByUsers } from '../../lib/session-manager';
+import { isTenantActive } from '../../lib/tenant';
+import logger from '../../lib/logger';
 import { validatePassword } from '@zenith/shared/settings';
 import { getSettings } from '../../lib/settings';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -242,9 +245,29 @@ export async function updateTenant(id: number, data: Partial<TenantInput>) {
   };
   const [row] = await db.update(tenants).set(values).where(eq(tenants.id, id)).returning();
   requireRow(row, '租户不存在');
+  // 停用 / 改到已过期：吊销该租户全部用户的在线会话，与「禁用用户」「到期巡检」同一口径——
+  // 否则已签发的 access token 只能等鉴权主体校验拒绝，而不是像强制下线那样立即失效
+  if ((data.status !== undefined || rawExpireAt !== undefined) && !isTenantActive(row)) {
+    await revokeTenantSessions(id);
+  }
   // 租户套餐变更会影响该租户下用户的有效菜单/权限，清空权限缓存使其即时生效。
   if ('packageId' in data) await clearUserPermissionCache();
   return getTenant(id);
+}
+
+/**
+ * 吊销某租户下全部用户的在线会话（access token 拉黑 + refresh 授权撤销 + 在线会话删除）。
+ * best-effort：会话存储故障只记 error，不阻断租户停用本身。返回被吊销的会话数。
+ */
+export async function revokeTenantSessions(tenantId: number): Promise<number> {
+  try {
+    const tenantUsers = await db.select({ id: users.id }).from(users).where(eq(users.tenantId, tenantId));
+    const tokens = await forceLogoutAllByUsers(tenantUsers.map((u) => u.id));
+    return tokens.length;
+  } catch (err) {
+    logger.error('吊销租户用户会话失败', { tenantId, err });
+    return 0;
+  }
 }
 
 export async function deleteTenant(id: number) {

@@ -133,6 +133,8 @@ import { db } from '../../db';
 import authRoutes from './auth';
 import { refreshAccessToken } from '../../services/identity/auth.service';
 import { verifyToken } from '../../lib/jwt';
+import { resetAdminSubjectCache, authMiddleware } from '../../middleware/auth';
+import { dispatchInvalidation } from '../../lib/invalidation-bus';
 
 const dbMock = vi.mocked(db);
 
@@ -192,7 +194,8 @@ function buildApp() {
 // ─── Setup ───────────────────────────────────────────────────────────────────
 beforeEach(() => {
   vi.clearAllMocks();
-  // authMiddleware now performs a live user/tenant lookup for every JWT.
+  // authMiddleware 对每个 JWT 做用户 / 租户实时校验；权威行带进程内副本，逐用例清空以免串台
+  resetAdminSubjectCache();
   dbMock.select.mockReturnValue(createChain([activeAdminSubject()]));
 });
 
@@ -388,6 +391,120 @@ describe('GET /api/auth/me - 认证中间件', () => {
 
     expect(res.status).toBe(401);
     expect(body.message).toBe('无效的访问令牌');
+  });
+});
+
+/**
+ * 主体权威行的进程内副本：命中即零查询，失效由 `cache_invalidate` 总线（users / tenants 触发器）驱动。
+ * 用只挂 authMiddleware 的探针路由计数 db.select，排除业务 handler 自身的查询。
+ */
+describe('authMiddleware - 主体校验缓存', () => {
+  function buildProbeApp() {
+    const app = new Hono();
+    app.use('*', contextStorage());
+    app.use('/probe', authMiddleware);
+    app.get('/probe', (c) => c.json({ user: c.get('user') }, 200));
+    return app;
+  }
+
+  async function probe(app: Hono, token: string) {
+    return app.request('/probe', { headers: { Authorization: `Bearer ${token}` } });
+  }
+
+  it('同一用户连续请求只回源一次；不同用户各自回源', async () => {
+    const app = buildProbeApp();
+    const tokenA = await makeToken({ userId: 1 });
+    const tokenB = await makeToken({ userId: 2, username: 'bob' });
+
+    expect((await probe(app, tokenA)).status).toBe(200);
+    expect((await probe(app, tokenA)).status).toBe(200);
+    expect((await probe(app, tokenA)).status).toBe(200);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+
+    expect((await probe(app, tokenB)).status).toBe(200);
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
+  });
+
+  it('并发冷加载单飞：同一用户的并发请求共用一条查询', async () => {
+    const app = buildProbeApp();
+    const token = await makeToken({ userId: 1 });
+
+    const responses = await Promise.all(Array.from({ length: 8 }, () => probe(app, token)));
+
+    expect(responses.every((r) => r.status === 200)).toBe(true);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('users 触发器广播（key=userId）→ 仅该用户下一请求回源，读到禁用即拒绝', async () => {
+    const app = buildProbeApp();
+    const tokenA = await makeToken({ userId: 1 });
+    const tokenB = await makeToken({ userId: 2, username: 'bob' });
+    await probe(app, tokenA);
+    await probe(app, tokenB);
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
+
+    dbMock.select.mockReturnValueOnce(createChain([activeAdminSubject({ status: 'disabled' })]));
+    dispatchInvalidation({ topic: 'users', key: '1' });
+
+    const denied = await probe(app, tokenA);
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).message).toBe('账号已被禁用');
+    // 用户 2 的副本未受影响
+    expect((await probe(app, tokenB)).status).toBe(200);
+    expect(dbMock.select).toHaveBeenCalledTimes(3);
+  });
+
+  it('tenants 触发器广播 → 全部主体副本清空，租户停用立即生效', async () => {
+    const app = buildProbeApp();
+    const token = await makeToken({ userId: 1, tenantId: 9 });
+    dbMock.select.mockReturnValueOnce(createChain([activeAdminSubject({ tenantId: 9, tenantStatus: 'enabled' })]));
+    expect((await probe(app, token)).status).toBe(200);
+
+    dbMock.select.mockReturnValueOnce(createChain([activeAdminSubject({ tenantId: 9, tenantStatus: 'disabled' })]));
+    dispatchInvalidation({ topic: 'tenants', key: '9' });
+
+    const denied = await probe(app, token);
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).message).toBe('租户已被禁用或过期');
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
+  });
+
+  it('缓存的是原始行：租户 expireAt 到点后即使命中缓存也拒绝', async () => {
+    const app = buildProbeApp();
+    const token = await makeToken({ userId: 1, tenantId: 9 });
+    // 200ms 后过期；首次请求可用，第二次请求仍在缓存有效期（5s）内、但应因到期被拒
+    dbMock.select.mockReturnValueOnce(createChain([activeAdminSubject({
+      tenantId: 9,
+      tenantStatus: 'enabled',
+      tenantExpireAt: new Date(Date.now() + 200),
+    })]));
+    expect((await probe(app, token)).status).toBe(200);
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const denied = await probe(app, token);
+    expect(denied.status).toBe(403);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('不存在的用户同样缓存，伪造 / 已删除主体不会反复回源', async () => {
+    const app = buildProbeApp();
+    const token = await makeToken({ userId: 404 });
+    dbMock.select.mockReturnValue(createChain([]));
+
+    expect((await probe(app, token)).status).toBe(401);
+    expect((await probe(app, token)).status).toBe(401);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('resetAdminSubjectCache 清空后重新回源', async () => {
+    const app = buildProbeApp();
+    const token = await makeToken({ userId: 1 });
+    await probe(app, token);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+
+    resetAdminSubjectCache();
+    await probe(app, token);
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
   });
 });
 

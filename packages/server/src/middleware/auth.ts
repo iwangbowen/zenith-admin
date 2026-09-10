@@ -11,6 +11,8 @@ import { errBody } from '../lib/openapi-schemas';
 import logger from '../lib/logger';
 import { isSuperAdmin } from '../lib/permissions';
 import { isTenantActive } from '../lib/tenant';
+import { TtlCache } from '../lib/ttl-cache';
+import { onInvalidate, onInvalidationReset } from '../lib/invalidation-bus';
 
 export interface JwtPayload {
   userId: number;
@@ -45,16 +47,39 @@ type AdminJwtCheck =
   | { ok: true; payload: JwtPayload }
   | { ok: false; status: 401 | 403; message: string };
 
+// ─── 主体权威行的进程内副本 ──────────────────────────────────────────────────
 /**
- * JWT signature verification is not enough for a long-lived access token:
- * users and tenants can be disabled after issuance.  Re-read the authoritative
- * rows on every request and reject stale tenant claims before setting `user`.
- * 同时供 WebSocket 升级鉴权（lib/ws-auth.ts）复用，保证 WS 与 HTTP 的主体校验口径一致。
+ * 每个已认证请求都要重读用户 / 租户权威行（见 checkAdminJwtSubject），它曾是全局中间件链上唯一未缓存的
+ * 每请求 PG 查询：管理端一次冷加载并发十余个请求，就同时占用同样多的连接做同一条主键点查。
+ *
+ * - 失效以 `users` / `tenants` 表触发器经 `cache_invalidate` 总线广播为准（覆盖任何写路径、事务提交后投递、
+ *   全部实例同时收到），TTL 只是 NOTIFY 不可用（pgBouncer 事务池、监听降级）时的兜底，取值与维护模式开关一致；
+ * - 关闭 stale-while-revalidate：鉴权不能拿过期值放行，过期即同步回源；单飞让冷加载的并发请求只发一条查询；
+ * - 缓存的是原始行而非判定结果：`expireAt` 到点在请求时求值，不受 TTL 影响；
+ * - 用户禁用 / 删除 / 改密 / 降权与租户停用 / 到期本身还会吊销 jti（`revokeUserSessions` / `revokeTenantSessions`），
+ *   黑名单检查不经本缓存，因此这些操作的「立即失效」不依赖 NOTIFY 时效。
  */
-export async function checkAdminJwtSubject(payload: JwtPayload): Promise<AdminJwtCheck> {
-  if (!Number.isInteger(payload.userId) || payload.userId <= 0) {
-    return { ok: false, status: 401, message: '无效的访问令牌' };
-  }
+const SUBJECT_CACHE_TTL_MS = 5_000;
+
+interface AdminSubjectRow {
+  username: string;
+  status: string;
+  tenantId: number | null;
+  tenantStatus: string | null;
+  tenantExpireAt: Date | null;
+}
+
+interface TenantLivenessRow {
+  status: string;
+  expireAt: Date | null;
+}
+
+/** userId → 用户行（含所属租户状态）；不存在的用户缓存为 null，避免伪造 / 已删除主体反复回源 */
+const subjectRows = new TtlCache<number, AdminSubjectRow | null>(SUBJECT_CACHE_TTL_MS, { staleWhileRevalidate: false });
+/** tenantId → 租户行；仅供平台管理员「切换租户视角」声明的活性校验 */
+const tenantRows = new TtlCache<number, TenantLivenessRow | null>(SUBJECT_CACHE_TTL_MS, { staleWhileRevalidate: false });
+
+async function loadSubjectRow(userId: number): Promise<AdminSubjectRow | null> {
   const [row] = await db.select({
     username: users.username,
     status: users.status,
@@ -64,8 +89,46 @@ export async function checkAdminJwtSubject(payload: JwtPayload): Promise<AdminJw
   })
     .from(users)
     .leftJoin(tenants, eq(users.tenantId, tenants.id))
-    .where(eq(users.id, payload.userId))
+    .where(eq(users.id, userId))
     .limit(1);
+  return row ?? null;
+}
+
+async function loadTenantRow(tenantId: number): Promise<TenantLivenessRow | null> {
+  const [row] = await db.select({ status: tenants.status, expireAt: tenants.expireAt })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+  return row ?? null;
+}
+
+/** 清空全部主体副本（监听重建 / 测试） */
+export function resetAdminSubjectCache(): void {
+  subjectRows.clear();
+  tenantRows.clear();
+}
+
+onInvalidate('users', (message) => {
+  const userId = Number(message.key);
+  if (Number.isInteger(userId) && userId > 0) subjectRows.delete(userId);
+  else subjectRows.clear();
+});
+// 用户副本按 userId 键、没有租户反向索引；租户行改动极少，整段清空即可
+onInvalidate('tenants', resetAdminSubjectCache);
+onInvalidationReset(resetAdminSubjectCache);
+
+/**
+ * JWT signature verification is not enough for a long-lived access token:
+ * users and tenants can be disabled after issuance.  Re-read the authoritative
+ * rows on every request and reject stale tenant claims before setting `user`.
+ * 同时供 WebSocket 升级鉴权（lib/ws-auth.ts）复用，保证 WS 与 HTTP 的主体校验口径一致。
+ * 权威行经进程内副本读取（见上），失效由 `cache_invalidate` 总线驱动。
+ */
+export async function checkAdminJwtSubject(payload: JwtPayload): Promise<AdminJwtCheck> {
+  if (!Number.isInteger(payload.userId) || payload.userId <= 0) {
+    return { ok: false, status: 401, message: '无效的访问令牌' };
+  }
+  const row = await subjectRows.get(payload.userId, () => loadSubjectRow(payload.userId));
   if (!row) return { ok: false, status: 401, message: '用户不存在' };
   if (row.status !== 'enabled') return { ok: false, status: 403, message: '账号已被禁用' };
 
@@ -84,10 +147,8 @@ export async function checkAdminJwtSubject(payload: JwtPayload): Promise<AdminJw
     if (!isSuperAdmin(payload) || dbTenantId !== null || !Number.isInteger(payload.viewingTenantId) || payload.viewingTenantId <= 0) {
       return { ok: false, status: 401, message: '登录状态已失效，请重新登录' };
     }
-    const [viewingTenant] = await db.select({ status: tenants.status, expireAt: tenants.expireAt })
-      .from(tenants)
-      .where(eq(tenants.id, payload.viewingTenantId))
-      .limit(1);
+    const viewingTenantId = payload.viewingTenantId;
+    const viewingTenant = await tenantRows.get(viewingTenantId, () => loadTenantRow(viewingTenantId));
     if (!viewingTenant) return { ok: false, status: 403, message: '租户不存在' };
     if (!isTenantActive(viewingTenant)) {
       return { ok: false, status: 403, message: '租户已被禁用或过期' };

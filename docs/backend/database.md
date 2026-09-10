@@ -64,6 +64,8 @@ npm run db:seed
 `pg_trgm` 扩展在 `0000_baseline.sql` 顶部创建；trigram 索引（含 `async_tasks.payload/result` 的「表达式 + gin_trgm_ops」形态）已全部收进 schema DSL，由 `drizzle-kit generate` 随基线生成。
 
 后续新增无法表达的 DDL 时，用 `drizzle-kit generate --custom` 建独立迁移；重建基线时将其内容并回 `0001_extensions.sql`。
+当前需要并回的增量手写 DDL：`0005_auth_subject_cache_invalidate.sql`——`users` / `tenants` 上的 `notify_cache_invalidate('id')` 触发器，
+供认证中间件的主体权威行副本跨实例失效，见[安全体系 · 认证令牌](./security.md#认证令牌)。
 
 ### 重建基线
 

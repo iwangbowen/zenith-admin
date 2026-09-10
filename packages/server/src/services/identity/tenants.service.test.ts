@@ -15,7 +15,7 @@ vi.mock('../../db', () => {
     update: vi.fn(),
     delete: vi.fn(),
     $count: vi.fn(),
-    query: { tenants: { findMany: vi.fn() } },
+    query: { tenants: { findMany: vi.fn(), findFirst: vi.fn() } },
     transaction: vi.fn(async (callback: (tx: typeof db) => unknown) => callback(db)),
   };
   return { db };
@@ -26,10 +26,20 @@ vi.mock('../../lib/redis', () => ({
   default: { get: vi.fn(), set: vi.fn(), del: vi.fn(), scan: vi.fn() },
 }));
 
+vi.mock('../../lib/session-manager', () => ({
+  forceLogoutAllByUsers: vi.fn(async () => []),
+}));
+
+vi.mock('../../lib/logger', () => ({
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
 import { db } from '../../db';
-import { listTenants } from './tenants.service';
+import { forceLogoutAllByUsers } from '../../lib/session-manager';
+import { listTenants, updateTenant } from './tenants.service';
 
 const dbMock = vi.mocked(db);
+const forceLogoutMock = vi.mocked(forceLogoutAllByUsers);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createChain(result: unknown[]): any {
@@ -105,5 +115,63 @@ describe('listTenants', () => {
 
     expect(res.list).toEqual([]);
     expect(dbMock.select).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 停用租户必须像禁用用户一样立即吊销在线会话：鉴权主体校验带进程内缓存后，
+ * 若只改库不吊销，已签发的 access token 会在缓存窗口内继续通过鉴权。
+ */
+describe('updateTenant 会话吊销', () => {
+  function arrangeUpdate(updatedRow: ReturnType<typeof tenantRow>, tenantUserIds: number[]) {
+    dbMock.update.mockReturnValueOnce(createChain([updatedRow]));
+    dbMock.select.mockReturnValueOnce(createChain(tenantUserIds.map((id) => ({ id }))));
+    dbMock.query.tenants.findFirst.mockResolvedValueOnce({ ...updatedRow, package: null });
+  }
+
+  it('status 改为 disabled → 吊销该租户全部用户的会话', async () => {
+    arrangeUpdate({ ...tenantRow(9), status: 'disabled' }, [11, 12, 13]);
+    forceLogoutMock.mockResolvedValueOnce(['jti-a', 'jti-b']);
+
+    await updateTenant(9, { status: 'disabled' });
+
+    expect(forceLogoutMock).toHaveBeenCalledTimes(1);
+    expect(forceLogoutMock).toHaveBeenCalledWith([11, 12, 13]);
+  });
+
+  it('expireAt 改到过去 → 同样吊销', async () => {
+    const past = new Date(Date.now() - 60_000);
+    arrangeUpdate({ ...tenantRow(9), expireAt: past }, [21]);
+
+    await updateTenant(9, { expireAt: past.toISOString() });
+
+    expect(forceLogoutMock).toHaveBeenCalledWith([21]);
+  });
+
+  it('仅改名称等无关字段（租户仍可用）→ 不扫描会话', async () => {
+    dbMock.update.mockReturnValueOnce(createChain([{ ...tenantRow(9), name: '新名' }]));
+    dbMock.query.tenants.findFirst.mockResolvedValueOnce({ ...tenantRow(9), name: '新名', package: null });
+
+    await updateTenant(9, { name: '新名' });
+
+    expect(forceLogoutMock).not.toHaveBeenCalled();
+    // 没有为查租户用户多发 select
+    expect(dbMock.select).not.toHaveBeenCalled();
+  });
+
+  it('已停用租户改名（status 未传）→ 不重复吊销', async () => {
+    dbMock.update.mockReturnValueOnce(createChain([{ ...tenantRow(9), status: 'disabled', name: '新名' }]));
+    dbMock.query.tenants.findFirst.mockResolvedValueOnce({ ...tenantRow(9), status: 'disabled', name: '新名', package: null });
+
+    await updateTenant(9, { name: '新名' });
+
+    expect(forceLogoutMock).not.toHaveBeenCalled();
+  });
+
+  it('会话存储故障不阻断停用本身', async () => {
+    arrangeUpdate({ ...tenantRow(9), status: 'disabled' }, [11]);
+    forceLogoutMock.mockRejectedValueOnce(new Error('redis down'));
+
+    await expect(updateTenant(9, { status: 'disabled' })).resolves.toMatchObject({ id: 9, status: 'disabled' });
   });
 });

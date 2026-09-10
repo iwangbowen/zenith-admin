@@ -1,12 +1,10 @@
 import { eq, and, isNotNull, lte, gt } from 'drizzle-orm';
 import { db } from '../../db';
 import { tenants, users, userRoles, roles } from '../../db/schema';
-import { forceLogoutAllByUsers } from '../../lib/session-manager';
 import { notify } from '../messaging/notification-outbox.service';
 import { formatDateTime } from '../../lib/datetime';
-import { TENANT_ADMIN_ROLE_CODE } from './tenants.service';
+import { TENANT_ADMIN_ROLE_CODE, revokeTenantSessions } from './tenants.service';
 import { listEnabledPlatformSuperAdmins } from './platform-admins.service';
-import logger from '../../lib/logger';
 
 const DAY_MS = 86_400_000;
 
@@ -59,14 +57,7 @@ export async function runTenantExpiryCheck(): Promise<string> {
   let revokedSessions = 0;
   let notified = 0;
   for (const t of expired) {
-    // 吊销该租户全部用户的在线会话（best-effort）
-    try {
-      const tenantUsers = await db.select({ id: users.id }).from(users).where(eq(users.tenantId, t.id));
-      const tokens = await forceLogoutAllByUsers(tenantUsers.map((u) => u.id));
-      revokedSessions += tokens.length;
-    } catch (err) {
-      logger.error('停用过期租户后吊销会话失败', { tenantId: t.id, err });
-    }
+    revokedSessions += await revokeTenantSessions(t.id);
     const { tenantAdminIds, platformAdminIds } = await resolveAdminAudiences(t.id);
     const vars = { tenantName: t.name, expireAt: formatDateTime(t.expireAt!) };
     await Promise.all([

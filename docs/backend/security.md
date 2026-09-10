@@ -29,7 +29,9 @@
 
 JWT payload 包含：`userId`、`username`、`roles`、`tenantId`、可选 `viewingTenantId`、`jti`、`authType`、`apiTokenId`。管理端接口拒绝会员 token。Access token 有效期为 2 小时，Refresh token 有效期为 30 天，同一次签发共享同一个 `jti`。
 
-会话状态保存在 Redis，每个 `jti` 对应三类 key：`session:{jti}`（在线会话，8h 滑动 TTL）、`refresh:{jti}`（refresh 授权，30d）、`blacklist:{jti}`（吊销标记，2h）。refresh token 本身只是承载 `jti` 的凭据，能否续签以 `refresh:{jti}` 是否存在为准；登出、强制下线、改密 / 重置密码、管理员重置密码、禁用 / 删除用户都会吊销 `jti`（写黑名单 + 删除会话与 refresh 授权），因此未过期的 access token 与 refresh token 会同时立即失效。认证中间件会检查黑名单并 touch 会话；Redis 访问异常时采用 fail-open（最长 2h 窗口）。会话缺失但 JWT 合法且未被吊销时，服务端会懒重建会话记录（仅影响在线列表，不会重新签发 refresh 授权）。
+会话状态保存在 Redis，每个 `jti` 对应三类 key：`session:{jti}`（在线会话，8h 滑动 TTL）、`refresh:{jti}`（refresh 授权，30d）、`blacklist:{jti}`（吊销标记，2h）。refresh token 本身只是承载 `jti` 的凭据，能否续签以 `refresh:{jti}` 是否存在为准；登出、强制下线、改密 / 重置密码、管理员重置密码、禁用 / 删除用户、停用租户或把租户改到已过期都会吊销 `jti`（写黑名单 + 删除会话与 refresh 授权），因此未过期的 access token 与 refresh token 会同时立即失效。认证中间件会检查黑名单并 touch 会话；Redis 访问异常时采用 fail-open（最长 2h 窗口）。会话缺失但 JWT 合法且未被吊销时，服务端会懒重建会话记录（仅影响在线列表，不会重新签发 refresh 授权）。
+
+JWT 签名有效不等于主体仍然有效：认证中间件（`middleware/auth.ts` 的 `checkAdminJwtSubject`，WebSocket 升级鉴权复用同一函数）还会核对用户 / 所属租户的权威行——用户被禁用、租户停用或到期、JWT 中的租户声明与库中不一致、平台管理员切换视角的租户失效，都会直接拒绝。权威行经进程内副本读取（`lib/ttl-cache.ts`，5s TTL、关闭 stale-while-revalidate、单飞），失效由 `users` / `tenants` 表上的 `notify_cache_invalidate` 触发器经 `invalidation-bus` 广播到全部实例（迁移 `0005_auth_subject_cache_invalidate.sql`）；缓存的是原始行，`expireAt` 到点在请求时求值。NOTIFY 不可用（pgBouncer 事务池、监听降级）时新鲜度退回 TTL，且上述吊销 `jti` 的操作不经该缓存，黑名单检查仍即时生效。
 
 ## 登录、刷新与退出
 
