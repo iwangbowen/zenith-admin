@@ -230,8 +230,8 @@ const durationMs = cronJobLogs.durationMs;
 const latencyMs = cronJobLogs.latencyMs;
 const runStatus = cronJobLogs.status;
 const runTrigger = cronJobLogs.trigger;
-/** 失败原因：新数据在 errorMessage，升级前的旧记录仍留在 output */
-const failureMessage = sql`coalesce(${cronJobLogs.errorMessage}, ${cronJobLogs.output})`;
+/** 失败 / 超时原因统一记录在 errorMessage */
+const failureMessage = cronJobLogs.errorMessage;
 
 /** 单个时间窗内的执行汇总（成功 / 失败 / 超时 / 运行中 / 重试 / 手动 / 平均 / P95 / 调度延迟） */
 async function runSummary(tx: DbTransaction, window: SQL | undefined): Promise<CronJobRunSummary> {

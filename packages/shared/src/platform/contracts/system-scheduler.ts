@@ -115,7 +115,7 @@ export type SystemSchedulerNode = z.infer<typeof systemSchedulerNodeSchema>;
 
 export const systemSchedulerRunResultSchema = z.object({
   message: z.string(),
-  runId: z.int(),
+  runId: z.int().nullable().meta({ description: '本次触发对应的运行记录；已有排队作业、本次触发与之合并时为 null' }),
   jobId: z.string().nullable(),
 }).meta({ id: 'SystemSchedulerRunResult' });
 

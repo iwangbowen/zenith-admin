@@ -76,7 +76,7 @@ export async function registerBackgroundWorkers(): Promise<void> {
       .catch((err) => logger.warn('[analytics] rollup catch-up failed', err));
     await registerExportJobWorker();
     await registerSystemTasks();
-    // 全部系统任务注册完毕后对账：清理代码中已移除任务的残留调度与配置
+    // 全部系统任务注册完毕后对账：清理代码中已移除任务的残留，并让 pg-boss 队列 / schedule 与代码声明一致
     const { purgeOrphanSystemTasks } = await import('../lib/pg-boss-scheduler');
     await purgeOrphanSystemTasks();
     // 主题代码指纹检测：变更自动重建受影响站点静态页（零维护，详见 cms-theme-watch.service）
