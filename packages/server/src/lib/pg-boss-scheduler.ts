@@ -1076,6 +1076,8 @@ export async function isSchedulerNodeAlive(nodeId: string): Promise<boolean> {
   return (await activeSchedulerNodeIds()).has(nodeId);
 }
 
+const localNodeQueueOptions = new Map<string, Omit<QueueOptions, 'name'> | undefined>();
+
 /**
  * 注册本进程独有的节点亲和队列并立即消费——无论角色。这是 api 角色唯一允许执行作业的地方：
  * 队列里只有本进程自己提交、且必须在本机执行的任务（见 task-center 的 affinity: 'node'）。
@@ -1093,15 +1095,48 @@ export async function registerLocalNodeQueueWorker<T extends object>(
     for (const job of jobs) await handler(job.data);
   });
   localNodeQueues.add(name);
+  localNodeQueueOptions.set(name, queueOptions);
   logger.info(`pg-boss: local node queue "${name}" registered`);
   return name;
 }
 
-/** 回收已下线进程遗留的节点亲和队列（其作业已无人能执行；对应任务由任务中心兜底扫描标记失败） */
+/**
+ * 本进程节点队列被别的 worker 当作「下线节点」误删（心跳因 GC 暂停 / 数据库抖动迟到超过阈值）时的自愈：
+ * 按原参数重建队列；已注册的轮询 worker 继续对该名字生效。返回是否重建。
+ */
+export async function ensureLocalNodeQueue(name: string): Promise<boolean> {
+  if (!boss || !localNodeQueues.has(name)) return false;
+  if (await boss.getQueue(name)) return false;
+  await boss.createQueue(name, localNodeQueueOptions.get(name));
+  logger.warn(`pg-boss: 本进程节点队列 ${name} 已不存在（可能被对账误删），已按原参数重建`);
+  return true;
+}
+
+/**
+ * 队列已被删除时 pg-boss 的三种表现：
+ * - manager.getQueueCache（send / sendAfter 等）：`Queue <name> does not exist`；
+ * - 队列缓存（60s）仍命中、INSERT 撞外键：PG 23503 `violates foreign key constraint "q_fkey"`；
+ * - timekeeper.schedule 的外键改写：`Queue <name> not found`。
+ */
+export function isQueueNotFoundError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (/queue .* (does not exist|not found)/i.test(err.message)) return true;
+  const code = (err as { code?: unknown }).code;
+  return code === '23503' || /q_fkey/.test(err.message);
+}
+
+/**
+ * 回收已下线进程遗留的节点亲和队列（其作业已无人能执行；对应任务由任务中心兜底扫描标记失败）。
+ * 判活阈值取心跳过期时间的 2 倍：误删代价（该节点须重建队列、期间提交失败一次）高于晚删代价（残留一个空队列）。
+ */
 async function purgeDeadNodeQueues(queues: Array<{ name: string }>): Promise<void> {
   const nodeQueues = queues.filter((q) => isNodeQueue(q.name));
   if (nodeQueues.length === 0) return;
-  const alive = new Set([...await activeSchedulerNodeIds()].map(nodeQueueSuffix));
+  const staleBefore = new Date(Date.now() - CRON_HEALTH_RULES.schedulerHeartbeatStaleMs * 2);
+  const recent = await db.select({ nodeId: systemSchedulerNodes.nodeId })
+    .from(systemSchedulerNodes)
+    .where(gte(systemSchedulerNodes.lastHeartbeatAt, staleBefore));
+  const alive = new Set(recent.map((r) => nodeQueueSuffix(r.nodeId)));
   const b = getBoss();
   for (const queue of nodeQueues) {
     const suffix = queue.name.slice(queue.name.indexOf(NODE_QUEUE_MARKER) + NODE_QUEUE_MARKER.length);
@@ -1422,7 +1457,12 @@ export async function runJobOnce(jobId: number, triggeredBy: number | null = nul
   return { success: true, message: '任务已投递，正在后台执行（同一任务不重叠执行，可能在排队）' };
 }
 
-export async function stopAllJobs(): Promise<void> {
+/**
+ * 停止 pg-boss。
+ * @param drainTimeoutMs 执行角色等待在飞作业收尾的预算（pg-boss graceful stop 的 timeout；缺省 30s）。
+ *   只发不执行的 api 实例没有在飞作业，直接非 graceful 关闭，不占用停机预算。
+ */
+export async function stopAllJobs(drainTimeoutMs?: number): Promise<void> {
   if (boss) {
     if (schedulerHeartbeatTimer) {
       clearInterval(schedulerHeartbeatTimer);
@@ -1435,9 +1475,13 @@ export async function stopAllJobs(): Promise<void> {
       await boss.offWork(name, { wait: true }).catch(() => undefined);
       await boss.deleteQueue(name).catch((err) => logger.warn(`pg-boss: 删除本进程节点队列 ${name} 失败`, err));
     }
-    await boss.stop();
+    const executes = schedulerExecutesJobs() || localNodeQueues.size > 0;
+    await boss.stop(executes
+      ? { graceful: true, timeout: Math.max(drainTimeoutMs ?? 30_000, 1_000) }
+      : { graceful: false });
     boss = null;
     localNodeQueues.clear();
+    localNodeQueueOptions.clear();
     scheduledQueueWorkerIds.clear();
     ensuredScheduledQueues.clear();
     logger.info('pg-boss stopped');

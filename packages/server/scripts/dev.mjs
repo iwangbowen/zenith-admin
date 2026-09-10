@@ -43,18 +43,35 @@ runSync('tsx src/db/seed.ts');
 const WATCH = 'tsx watch --exclude "storage/**" --exclude "logs/**" src/index.ts';
 const split = process.argv.includes('--split');
 
+const children = [];
+let exiting = false;
+
+/** 任一子进程退出 → 先终止其余子进程，再以同码退出；否则 split 模式下另一个 tsx watch 会成为孤儿继续占端口 */
+function exitAll(code) {
+  if (exiting) return;
+  exiting = true;
+  for (const child of children) {
+    if (child.exitCode === null) child.kill('SIGTERM');
+  }
+  process.exit(code);
+}
+
 function spawnServer(label, roles) {
   const child = spawn(WATCH, { stdio: 'inherit', env: { ...env, ZENITH_ROLES: roles }, shell: true });
   child.on('exit', (code) => {
     if (split) console.log(`[dev] ${label} 进程退出（code=${code ?? 0}）`);
-    process.exit(code ?? 0);
+    exitAll(code ?? 0);
   });
+  children.push(child);
   return child;
 }
 
-const children = split
-  ? [spawnServer('api', 'api'), spawnServer('worker', 'worker')]
-  : [spawnServer('all', env.ZENITH_ROLES ?? 'all')];
+if (split) {
+  spawnServer('api', 'api');
+  spawnServer('worker', 'worker');
+} else {
+  spawnServer('all', env.ZENITH_ROLES ?? 'all');
+}
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => { for (const child of children) child.kill(signal); });
 }

@@ -118,9 +118,12 @@ services:
       <<: *server-env
       PORT: 3300
       ZENITH_ROLES: api
+    # api 停机硬闸 15s（SHUTDOWN_GRACE_MS 缺省）：Docker 默认 10s 会在关连接 / 宣告离线 / IoT 缓冲落库前 SIGKILL
+    stop_grace_period: 25s
     volumes:
-      # api 与 worker 共享：上传文件本体 / 分片暂存 / CMS 静态化产物（worker 写、api 读）
-      - server_storage:/app/packages/server/storage
+      # api 与 worker 共享（卷名沿用历史的 api_storage，升级无需迁移数据）：
+      # 上传文件本体 / 分片暂存 / CMS 静态化产物（worker 写、api 读）
+      - api_storage:/app/packages/server/storage
       - api_logs:/app/packages/server/logs
     ports:
       # 默认只绑定本机回环；需要直接对外暴露 API 时设置 API_BIND=0.0.0.0
@@ -151,7 +154,7 @@ services:
       SHUTDOWN_GRACE_MS: ${WORKER_SHUTDOWN_GRACE_MS:-120000}
     stop_grace_period: 130s
     volumes:
-      - server_storage:/app/packages/server/storage
+      - api_storage:/app/packages/server/storage
       - worker_logs:/app/packages/server/logs
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3301/health || exit 1"]
@@ -178,6 +181,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  server_storage:
+  api_storage:
   api_logs:
   worker_logs:

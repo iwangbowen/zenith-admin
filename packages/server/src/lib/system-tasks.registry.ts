@@ -242,7 +242,7 @@ export async function registerSystemTasks(): Promise<void> {
     allowManualRun: true,
     run: async () => {
       const r = await drainAsyncTasks();
-      return `异步任务兜底：回收卡死 ${r.recovered}，重投待执行 ${r.redispatched}`;
+      return `异步任务兜底：回收卡死 ${r.recovered}，重投 ${r.redispatched}${r.orphaned ? `，节点下线标记失败 ${r.orphaned}` : ''}`;
     },
   });
 

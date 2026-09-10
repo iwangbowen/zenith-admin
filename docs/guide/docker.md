@@ -53,7 +53,7 @@ redis    ─┤──→ migrate（一次性迁移）
           └──→ worker × M (ZENITH_ROLES=worker, probe :3301)
 
 api / worker → Redis pub/sub → api  （WebSocket / IoT 推送扇出）
-api ⇄ server_storage ⇄ worker       （本地文件、上传暂存、CMS 静态产物）
+api ⇄ api_storage ⇄ worker       （本地文件、上传暂存、CMS 静态产物）
 ```
 
 | 服务 | 镜像 / 阶段 | 说明 |
@@ -101,7 +101,7 @@ shared 与 server 的 `build` 脚本在 `tsc` 之后运行 `tsc-alias --resolve-
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | 空 | GitHub OAuth 登录凭据 |
 | `OAUTH_CALLBACK_BASE_URL` | `http://localhost` | OAuth 回调基础地址 |
 | `TAG` | `latest` | 本地构建镜像标签 |
-| `WORKER_SHUTDOWN_GRACE_MS` | `120000` | worker 优雅停机硬截止，Compose `stop_grace_period` 默认为 130s，应始终大于该值 |
+| `WORKER_SHUTDOWN_GRACE_MS` | `120000` | worker 优雅停机硬截止（同时作为 pg-boss 等待在飞作业收尾的预算）；Compose 为 worker 设 `stop_grace_period: 130s`、为 api 设 `25s`（api 硬截止 15s），均须大于对应进程的硬截止 |
 
 `JWT_SECRET` / `FIELD_ENCRYPTION_KEY` / `POSTGRES_PASSWORD` / `REDIS_PASSWORD` 任一留空时 `docker compose up` 直接失败（前两者为占位值时 API 启动也会失败）。生产环境请按实际域名设置 `ALLOWED_ORIGINS`。Compose 已固定 api / worker 的 `ZENITH_ROLES`，通常无需在 `.env` 中覆盖。使用外部 Redis 时整体覆盖 `REDIS_URL`（含口令）即可。
 
@@ -178,7 +178,7 @@ npm run dev
 | --- | --- |
 | `postgres_data` | PostgreSQL 数据 |
 | `redis_data` | Redis AOF 数据 |
-| `server_storage` | `storage/` 整体，由 api 与 worker 共享：本地上传文件、分片上传暂存目录、CMS 静态化产物。旧 `api_storage` 卷名已不再使用 |
+| `api_storage` | `storage/` 整体，由 api 与 worker 共享挂载：本地上传文件、分片上传暂存目录、CMS 静态化产物。卷名沿用拆分前的 `api_storage`，从单容器版本升级无需迁移数据 |
 | `api_logs` | api 角色日志 |
 | `worker_logs` | worker 角色日志 |
 

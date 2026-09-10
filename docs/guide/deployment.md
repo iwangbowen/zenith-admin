@@ -61,7 +61,7 @@ ALLOWED_ORIGINS=https://admin.example.com
 | `DATABASE_MAX_CONNECTIONS` | 单个进程的业务连接池上限，默认 `20`。连接预算按角色累计：业务池 + pg-boss 池（worker 约 10，api send-only 约 2）+ 1 条 LISTEN 连接；api 还包含 Mastra 10 + 5。所有 api / worker 进程总和必须低于 PostgreSQL `max_connections`，超出时前置 pgBouncer（会话池模式，事务池无法透传 LISTEN/NOTIFY）或调低该值 |
 | `ZENITH_ROLES` | 进程角色，逗号分隔：`api` / `worker` / `all`（等于两者）。非 `NODE_ENV=development` 环境必填；单机全量部署显式设为 `all` |
 | `WORKER_HEALTH_PORT` | 纯 worker 探针端口，默认 `3301`，提供 `/health`、`/ready`、`/metrics` |
-| `SHUTDOWN_GRACE_MS` | 优雅停机硬截止；默认 api/all `15000`，纯 worker `120000`。容器 `stop_grace_period` / K8s `terminationGracePeriodSeconds` 必须大于该值 |
+| `SHUTDOWN_GRACE_MS` | 优雅停机硬截止；默认 api/all `15000`，纯 worker `120000`。worker 把该预算（扣除收尾步骤的 10s）传给 pg-boss 等待在飞作业收尾，超时的作业被标记失败、由任务中心兜底扫描按断点恢复。容器 `stop_grace_period` / K8s `terminationGracePeriodSeconds` 必须大于该值 |
 | `STORAGE_SHARED` | 默认 `false`。纯 worker 使用本地磁盘相关存储或 CMS 静态化时，设为 `true` 表示 `storage/` 由 api 与 worker 共享 |
 | `REQUEST_BODY_LIMIT` | 请求体大小上限，`0` 或未设置表示不启用全局限制（此时只有各上传端点按 `file.size` 自行拦截），生产环境务必设置（`.env.example` 示例为 64 MB，67108864）；至少要容纳一个分片（`files.chunkSizeMb`，最大 32 MB）加 multipart 开销，建议 ≥ 40 MB（41943040）；反向代理的 `client_max_body_size` 同理 |
 | `REQUEST_TIMEOUT_MS` | 请求超时，自动排除 `/api/ws`、`/api/files`、`/api/db-admin` 与 `/export` 接口 |
@@ -160,7 +160,7 @@ api 默认监听 `http://localhost:3300`；纯 worker 不占用业务端口，�
 | `storage/cms-static`（`CMS_STATIC_ROOT`） | CMS 静态化产物 | 启用了 CMS 静态化 |
 
 默认文件服务为 `oss` / `s3` / `cos` / `obs` / `azure` / `bos` 时，分片直传云端 multipart、进度记在数据库，不依赖本地磁盘，
-无需共享卷。api / worker 拆分且 worker 需要访问本地暂存或 CMS 静态产物时，必须共享 `storage/` 并在 worker 设置 `STORAGE_SHARED=true`。Docker Compose 已用 `server_storage` 共享卷挂载到 api 与 worker，容器重建不会丢失进行中的分片。
+无需共享卷。api / worker 拆分且 worker 需要访问本地暂存或 CMS 静态产物时，必须共享 `storage/` 并在 worker 设置 `STORAGE_SHARED=true`。Docker Compose 已把 `api_storage` 卷同时挂载到 api 与 worker，容器重建不会丢失进行中的分片。
 
 多 api / worker 进程依赖 Redis 保持运行时正确性：会话、限流、权限缓存与跨进程 WebSocket / IoT 推送都经 Redis 协作；WS 扇出使用 Redis pub/sub，Redis 故障时实时推送按 at-most-once 语义丢弃，客户端重连后回源补齐。
 

@@ -78,11 +78,16 @@ export async function startApiRole(): Promise<ApiRoleHandle> {
 
   return {
     async stopIngress() {
+      // 先宣告本进程用户离线（其他进程立刻更新镜像；此时 socket 仍在登记表里，宣告的集合完整），
+      // 再主动关闭全部 WS 连接：升级后的 socket 不受 server.close() 管辖却会让它一直等待，
+      // 不关就要烧满下面 10s 超时；1001 = Going Away，客户端按既有重连退避回到其他副本
+      stopPresenceSync();
+      for (const client of wss.clients) {
+        try { client.close(1001, 'server_shutdown'); } catch { /* 已断开 */ }
+      }
       // 10s 超时保护：防止 keep-alive 连接导致 server.close() 永久阻塞
       const closeServer = new Promise<void>((resolve) => server.close(() => resolve()));
       await withTimeout('closeServer', closeServer, 10_000);
-      // 先宣告本进程用户离线（其他进程立刻更新镜像），再退订
-      stopPresenceSync();
       await withTimeout('stopWsFanoutSubscriber', stopWsFanoutSubscriber(), 3_000);
     },
     async drainRuntime() {

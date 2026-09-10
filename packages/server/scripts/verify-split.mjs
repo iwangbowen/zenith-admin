@@ -8,7 +8,13 @@
 // /metrics 带 process_role="worker"；管理员登录后提交演示任务 → 必须由 worker 执行到终态（api 不执行）。
 // 任一断言失败以非零码退出。可用 VERIFY_ADMIN_USER / VERIFY_ADMIN_PASSWORD 覆盖登录账号（默认种子 admin / 123456）。
 import { spawn, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { setTimeout as sleep } from 'node:timers/promises';
+
+// 不经 shell 直接起 node + tsx CLI：shell:true 时 child.kill 在 Windows 只终止 cmd.exe，
+// tsx 与其下的 node src/index.ts 会成为孤儿继续占端口 / 持有 DB 连接，下一次运行就绑定失败
+const require = createRequire(import.meta.url);
+const TSX_CLI = require.resolve('tsx/cli');
 
 const API_PORT = Number(process.env.VERIFY_API_PORT ?? 3390);
 const WORKER_PORT = Number(process.env.VERIFY_WORKER_PORT ?? 3391);
@@ -23,7 +29,7 @@ delete baseEnv.VSCODE_INSPECTOR_OPTIONS;
 
 const children = [];
 function start(label, env) {
-  const child = spawn('tsx src/index.ts', { env: { ...baseEnv, ...env }, shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [TSX_CLI, 'src/index.ts'], { env: { ...baseEnv, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   const tag = (chunk) => chunk.toString().trimEnd().split('\n').map((line) => `[${label}] ${line}`).join('\n');
   child.stdout.on('data', (c) => process.stdout.write(`${tag(c)}\n`));
   child.stderr.on('data', (c) => process.stderr.write(`${tag(c)}\n`));
@@ -31,9 +37,16 @@ function start(label, env) {
   return child;
 }
 
-function stopAll() {
-  for (const child of children) {
-    if (child.exitCode === null) child.kill('SIGTERM');
+/** 终止全部子进程并等待退出（tsx 会把信号转给它拉起的 node；超时后强杀） */
+async function stopAll() {
+  const alive = children.filter((child) => child.exitCode === null && child.signalCode === null);
+  for (const child of alive) child.kill('SIGTERM');
+  const deadline = Date.now() + 8_000;
+  while (Date.now() < deadline && alive.some((child) => child.exitCode === null && child.signalCode === null)) {
+    await sleep(200);
+  }
+  for (const child of alive) {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
   }
 }
 
@@ -110,12 +123,12 @@ async function main() {
 }
 
 main()
-  .then(() => { stopAll(); process.exit(0); })
-  .catch((err) => {
+  .then(async () => { await stopAll(); process.exit(0); })
+  .catch(async (err) => {
     console.error(`\n❌ ${err.message}`);
-    stopAll();
+    await stopAll();
     process.exit(1);
   });
 for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => { stopAll(); process.exit(130); });
+  process.on(signal, () => { void stopAll().then(() => process.exit(130)); });
 }

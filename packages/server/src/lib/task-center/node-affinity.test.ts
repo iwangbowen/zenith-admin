@@ -7,7 +7,7 @@ import { asyncTaskTypeConfigs } from '../../db/schema';
 
 const mocks = vi.hoisted(() => ({
   send: vi.fn(), sendAfter: vi.fn(), handler: vi.fn(), select: vi.fn(), update: vi.fn(), transaction: vi.fn(), push: vi.fn(),
-  nodeAlive: vi.fn(), registerQueue: vi.fn(), registerLocal: vi.fn(),
+  nodeAlive: vi.fn(), registerQueue: vi.fn(), registerLocal: vi.fn(), ensureLocalQueue: vi.fn(),
   insert: vi.fn(() => ({ values: () => ({ onConflictDoNothing: async () => undefined }) })),
 }));
 vi.mock('../../db', () => ({ db: { select: mocks.select, update: mocks.update, transaction: mocks.transaction, insert: mocks.insert } }));
@@ -21,6 +21,10 @@ vi.mock('../pg-boss-scheduler', () => ({
   registerSystemQueueWorker: mocks.registerQueue,
   registerLocalNodeQueueWorker: mocks.registerLocal,
   isSchedulerNodeAlive: mocks.nodeAlive,
+  ensureLocalNodeQueue: mocks.ensureLocalQueue,
+  // 与真实实现同判据（pg-boss 的 "does not exist" / schedule 的 "not found" / PG 23503）
+  isQueueNotFoundError: (err: unknown) => err instanceof Error
+    && (/queue .* (does not exist|not found)/i.test(err.message) || (err as { code?: string }).code === '23503'),
   nodeQueueName: (base: string, nodeId: string) => `${base}/node/${nodeId.replace(/[^\w.-]+/g, '_')}`,
   sendSystemJob: mocks.send,
   sendSystemJobAfter: mocks.sendAfter,
@@ -74,6 +78,24 @@ describe('投递', () => {
     await enqueueAsyncTask(2);
     expect(mocks.send).toHaveBeenLastCalledWith('async-tasks', { taskId: 2 }, expect.any(Object));
   });
+
+  it('本进程节点队列被误删（pg-boss "does not exist"）时重建后重试一次；共享队列或其他错误直接抛出', async () => {
+    mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 3, nodeId: 'node-a:11' }] }) }) }));
+    mocks.send.mockRejectedValueOnce(new Error('Queue async-tasks/node/node-a_11 does not exist')).mockResolvedValueOnce('job');
+    mocks.ensureLocalQueue.mockResolvedValue(true);
+    await enqueueAsyncTask(3);
+    expect(mocks.ensureLocalQueue).toHaveBeenCalledWith('async-tasks/node/node-a_11');
+    expect(mocks.send).toHaveBeenCalledTimes(2);
+
+    mocks.send.mockReset().mockRejectedValue(new Error('connection refused'));
+    await expect(enqueueAsyncTask(3)).rejects.toThrow('connection refused');
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+
+    mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 4, nodeId: null }] }) }) }));
+    mocks.send.mockReset().mockRejectedValue(new Error('Queue async-tasks does not exist'));
+    await expect(enqueueAsyncTask(4)).rejects.toThrow('does not exist');
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('兜底扫描', () => {
@@ -104,7 +126,19 @@ describe('兜底扫描', () => {
     ]);
     expect(f.failed).toHaveLength(1);
     expect(mocks.push).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }), { force: true });
-    expect(result.redispatched).toBe(2);
+    expect(result).toEqual({ recovered: 0, redispatched: 2, orphaned: 1 });
+  });
+
+  it('单条重投失败只记日志，不中断本轮其余任务的补投', async () => {
+    drainFixture([{ id: 8, nodeId: null }, { id: 9, nodeId: null }, { id: 10, nodeId: null }]);
+    mocks.nodeAlive.mockResolvedValue(true);
+    mocks.send.mockReset()
+      .mockResolvedValueOnce('job')
+      .mockRejectedValueOnce(new Error('connection refused'))
+      .mockResolvedValueOnce('job');
+    const result = await drainAsyncTasks();
+    expect(mocks.send).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({ recovered: 0, redispatched: 2, orphaned: 0 });
   });
 });
 

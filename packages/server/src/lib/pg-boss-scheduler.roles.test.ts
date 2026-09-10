@@ -14,7 +14,7 @@ const fake = vi.hoisted(() => {
     constructor(options: Record<string, unknown>) { ctorOptions.push(options); }
     on = record('on');
     start = async () => { record('start')(); };
-    stop = async () => { record('stop')(); };
+    stop = async (...args: unknown[]) => { record('stop')(...args); };
     schemaVersion = async () => 27;
     detectSchemaDrift = async () => ({
       ok: true, missingTables: [], missing: [], invalid: [], mismatched: [],
@@ -180,5 +180,57 @@ describe('nodeQueueName', () => {
     const s = await loadScheduler('all');
     expect(s.nodeQueueName('async-tasks', 'ASUS-Vivobook:4321')).toBe('async-tasks/node/ASUS-Vivobook_4321');
     expect(s.nodeQueueName('async-tasks', 'host with spaces:1')).toBe('async-tasks/node/host_with_spaces_1');
+  });
+});
+
+describe('stopAllJobs', () => {
+  it('worker 把排空预算传入 pg-boss graceful stop；api 的 send-only 实例非 graceful 即时关闭', async () => {
+    const worker = await loadScheduler('worker');
+    await worker.initCronScheduler();
+    await worker.stopAllJobs(45_000);
+    expect(fake.calls.stop?.[0]).toEqual([{ graceful: true, timeout: 45_000 }]);
+
+    const api = await loadScheduler('api');
+    await api.initCronScheduler();
+    await api.stopAllJobs(45_000);
+    expect(fake.calls.stop?.[0]).toEqual([{ graceful: false }]);
+  });
+
+  it('api 持有本地节点队列时仍等待其在飞作业收尾', async () => {
+    const s = await loadScheduler('api');
+    await s.initCronScheduler();
+    await s.registerLocalNodeQueueWorker('async-tasks', async () => undefined);
+    await s.stopAllJobs(20_000);
+    expect(fake.calls.offWork?.[0]?.[1]).toEqual({ wait: true });
+    expect(fake.calls.deleteQueue?.[0]?.[0]).toMatch(/^async-tasks\/node\//);
+    expect(fake.calls.stop?.[0]).toEqual([{ graceful: true, timeout: 20_000 }]);
+  });
+});
+
+describe('ensureLocalNodeQueue（节点队列被误删后的自愈）', () => {
+  it('队列不存在时按原参数重建；仍存在或非本进程队列时不动', async () => {
+    const s = await loadScheduler('api');
+    await s.initCronScheduler();
+    const name = await s.registerLocalNodeQueueWorker('async-tasks', async () => undefined, { retentionSeconds: 60 });
+    expect(fake.calls.createQueue?.some(([n]) => n === name)).toBe(true);
+    fake.reset();
+
+    // getQueue 缺省返回 null（不存在）→ 重建
+    await expect(s.ensureLocalNodeQueue(name)).resolves.toBe(true);
+    expect(fake.calls.createQueue).toEqual([[name, { retentionSeconds: 60 }]]);
+    // 非本进程的队列不处理
+    await expect(s.ensureLocalNodeQueue('async-tasks/node/other_1')).resolves.toBe(false);
+  });
+
+  it('isQueueNotFoundError 识别 pg-boss 三种队列缺失表现，不误判其他错误', async () => {
+    const s = await loadScheduler('all');
+    // manager.getQueueCache（send / sendAfter）
+    expect(s.isQueueNotFoundError(new Error('Queue async-tasks/node/x does not exist'))).toBe(true);
+    // timekeeper.schedule 的外键改写
+    expect(s.isQueueNotFoundError(new Error('Queue async-tasks/node/x not found'))).toBe(true);
+    // 队列缓存仍命中、INSERT 撞外键（postgres 错误带 code）
+    expect(s.isQueueNotFoundError(Object.assign(new Error('insert or update on table "job" violates foreign key constraint "q_fkey"'), { code: '23503' }))).toBe(true);
+    expect(s.isQueueNotFoundError(new Error('connection refused'))).toBe(false);
+    expect(s.isQueueNotFoundError('not an error')).toBe(false);
   });
 });

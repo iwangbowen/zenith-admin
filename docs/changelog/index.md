@@ -11,7 +11,8 @@
 ### Added
 
 - 新增 `ZENITH_ROLES` 进程角色：`api` 负责 HTTP / WebSocket / IoT 接入 / CMS SSR / 终端 / OpenAPI / Mastra 代理；`worker` 负责任务中心、业务 Cron、系统周期任务与系统队列 worker；`all` 表示单进程全量角色。
-- Docker Compose 拓扑拆分为 `migrate` 一次性迁移、`api` 与 `worker` 服务，支持 `docker compose up -d --scale api=2 --scale worker=3`；新增 `docker-compose.single.yml` 提供单容器 `ZENITH_ROLES=all` 部署。
+- Docker Compose 拓扑拆分为 `migrate` 一次性迁移、`api` 与 `worker` 服务，支持 `docker compose up -d --scale api=2 --scale worker=3`；`storage/` 沿用 `api_storage` 卷并同时挂载到两个服务，从单容器版本升级无需迁移数据；新增 `docker-compose.single.yml` 提供单容器 `ZENITH_ROLES=all` 部署。
+- 节点亲和队列自愈：本进程节点队列被对账误删时按原参数重建并重试投递；兜底扫描逐条容错，单条重投失败不再中断本轮其余任务。
 - 新增跨进程 WebSocket 扇出：所有 WS 推送本地投递后通过 Redis pub/sub 广播到其它 api 节点；IoT 命令、期望属性与 OTA 帧同步走扇出并由持有设备连接的节点回写送达 ACK。
 - 在线状态改为集群级 presence：api 节点发布本地增量与 30 秒快照，节点关闭时广播用户离线。
 - 任务中心 handler 支持 `affinity: 'node'`，终端文件压缩 / 解压等本机文件任务投递到提交进程专属队列；`async_tasks` 新增 `node_id`。

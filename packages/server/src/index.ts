@@ -105,8 +105,10 @@ async function shutdown(signal: NodeJS.Signals) {
     // 固定丢失最后一批未导出的 span。放在清理链前部：监听已关闭、span 已完整，且导出走
     // 独立 HTTP 出口，不依赖后续 DB/Redis；未启用 OTel 时为 no-op
     await withTimeout('shutdownTelemetry', shutdownTelemetry(), 5_000);
-    // pg-boss：worker 等在飞作业收尾（预算 = 硬闸留出 10s 给后续步骤），api 的 send-only 实例即时关闭
-    await withTimeout('stopAllJobs', stopAllJobs(), Math.max(config.shutdownGraceMs - 10_000, 5_000));
+    // pg-boss：worker 等在飞作业收尾（预算 = 硬闸留出 10s 给后续步骤，并传入 pg-boss 的 graceful timeout），
+    // api 的 send-only 实例没有在飞作业，即时关闭
+    const drainBudgetMs = Math.max(config.shutdownGraceMs - 10_000, 5_000);
+    await withTimeout('stopAllJobs', stopAllJobs(drainBudgetMs - 1_000), drainBudgetMs);
     if (apiRole) await apiRole.drainRuntime();
     await withTimeout('closeDb', closeDb(), 5_000);
     await withTimeout('closeRedis', closeRedis(), 5_000);

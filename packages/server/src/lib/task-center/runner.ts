@@ -9,7 +9,7 @@ import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, asyncTaskTypeConfigs, users } from '../../db/schema';
 import type { AsyncTaskRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
-import { registerLocalNodeQueueWorker, registerSystemQueueWorker, isSchedulerNodeAlive, nodeQueueName, sendSystemJob, sendSystemJobAfter } from '../pg-boss-scheduler';
+import { ensureLocalNodeQueue, isQueueNotFoundError, registerLocalNodeQueueWorker, registerSystemQueueWorker, isSchedulerNodeAlive, nodeQueueName, sendSystemJob, sendSystemJobAfter } from '../pg-boss-scheduler';
 import { PROCESS_ID } from '../process-identity';
 import { currentUser, runWithCurrentUser, currentTraceId, runWithTraceId, currentParentRef, runWithParentRef } from '../context';
 import { exactTenantCondition, getCreateTenantId } from '../tenant';
@@ -145,12 +145,20 @@ function queueForTask(task: Pick<AsyncTaskRow, 'nodeId'>): string {
 }
 
 async function enqueueTaskRow(task: Pick<AsyncTaskRow, 'id' | 'nodeId'>): Promise<void> {
-  // singletonKey 防止同一任务在队列中堆积多条待消费消息；worker 侧原子领取兜底
-  await sendSystemJob(queueForTask(task), { taskId: task.id }, {
+  const queue = queueForTask(task);
+  const options = {
+    // singletonKey 防止同一任务在队列中堆积多条待消费消息；worker 侧原子领取兜底
     retryLimit: 0,
     singletonKey: `async-task-${task.id}`,
     retentionSeconds: 60 * 60 * 24,
-  });
+  };
+  try {
+    await sendSystemJob(queue, { taskId: task.id }, options);
+  } catch (err) {
+    // 本进程的节点队列可能被别的 worker 当作下线节点误删：重建后重试一次
+    if (!task.nodeId || !isQueueNotFoundError(err) || !(await ensureLocalNodeQueue(queue))) throw err;
+    await sendSystemJob(queue, { taskId: task.id }, options);
+  }
 }
 
 export async function enqueueAsyncTask(taskId: number): Promise<void> {
@@ -435,7 +443,7 @@ export async function restartAsyncTaskInTransaction(executor: DbTransaction, tas
  * 1. 回收卡死的 running 任务（心跳超时，进程崩溃/重启导致）→ 从断点重投续跑；
  * 2. 重投长时间未被领取的 pending 任务（如队列消息丢失）。
  */
-export async function drainAsyncTasks(): Promise<{ recovered: number; redispatched: number }> {
+export async function drainAsyncTasks(): Promise<{ recovered: number; redispatched: number; orphaned: number }> {
   const staleCutoff = new Date(Date.now() - HEARTBEAT_STALE_MS);
   const staleRunning = and(
     eq(asyncTasks.status, 'running'),
@@ -454,12 +462,6 @@ export async function drainAsyncTasks(): Promise<{ recovered: number; redispatch
     .set({ status: 'pending', heartbeatAt: null })
     .where(and(staleRunning, eq(asyncTasks.cancelRequested, false)))
     .returning({ id: asyncTasks.id, nodeId: asyncTasks.nodeId });
-  let orphaned = 0;
-  for (const row of recoveredRows) {
-    if (await failIfNodeGone(row)) { orphaned += 1; continue; }
-    logger.warn(`[task-center] 回收卡死任务 #${row.id}，已重投从断点续跑`);
-    await enqueueTaskRow(row);
-  }
 
   // 长时间停留 pending 且已到执行时间 → 兜底重投（原子领取保证重复投递无害；退避中的重试任务不提前投）
   const pendingCutoff = new Date(Date.now() - PENDING_REDISPATCH_MS);
@@ -469,12 +471,24 @@ export async function drainAsyncTasks(): Promise<{ recovered: number; redispatch
       lt(asyncTasks.updatedAt, pendingCutoff),
       or(isNull(asyncTasks.nextRunAt), lte(asyncTasks.nextRunAt, new Date())),
     ));
-  for (const row of stalePending) {
-    if (await failIfNodeGone(row)) { orphaned += 1; continue; }
-    await enqueueTaskRow(row);
-  }
 
-  return { recovered: cancelledRows.length + recoveredRows.length, redispatched: stalePending.length - orphaned };
+  // 逐条重投：单条失败（队列缺失、投递异常）只记日志，不中断本轮其余任务的补投
+  let redispatched = 0;
+  let orphaned = 0;
+  const redispatch = async (row: Pick<AsyncTaskRow, 'id' | 'nodeId'>, reason: string) => {
+    try {
+      if (await failIfNodeGone(row)) { orphaned += 1; return; }
+      await enqueueTaskRow(row);
+      redispatched += 1;
+      if (reason) logger.warn(`[task-center] ${reason} #${row.id}，已重投`);
+    } catch (err) {
+      logger.error(`[task-center] 任务 #${row.id} 兜底重投失败，等待下一轮`, err);
+    }
+  };
+  for (const row of recoveredRows) await redispatch(row, '回收卡死任务');
+  for (const row of stalePending) await redispatch(row, '');
+
+  return { recovered: cancelledRows.length + recoveredRows.length, redispatched, orphaned };
 }
 
 /**
