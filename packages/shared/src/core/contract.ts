@@ -173,6 +173,11 @@ export type ShapeInput<S extends ParamsSchema> = Prettify<
 
 export type ParamsOf<Op extends AnyOperation> = Op['params'] extends ParamsSchema ? ShapeInput<Op['params']> : undefined;
 export type QueryOf<Op extends AnyOperation> = Op['query'] extends ParamsSchema ? ShapeInput<Op['query']> : undefined;
+/**
+ * 服务端视角的查询参数：契约 `query` schema **解析后**的输出（`.default()` 已补齐、`queryEnum` 的空串已归一为 `undefined`），
+ * 与路由 handler 里 `c.req.valid('query')` 的类型一致。service 列表函数的入参用它，不再手写同形的 `interface XxxQuery`。
+ */
+export type QueryOutputOf<Op extends AnyOperation> = Op['query'] extends ParamsSchema ? z.output<Op['query']> : undefined;
 export type HeadersOf<Op extends AnyOperation> = Op['headers'] extends ParamsSchema ? ShapeInput<Op['headers']> : undefined;
 /** 请求体取 **输入** 类型：带默认值的字段可省略，由服务端补默认；multipart 请求体为 FormData */
 export type BodyOf<Op extends AnyOperation> = Op['body'] extends MultipartBody

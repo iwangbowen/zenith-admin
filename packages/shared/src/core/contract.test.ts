@@ -15,6 +15,7 @@ import {
   type InputOf,
   type OutputOf,
   type QueryOf,
+  type QueryOutputOf,
 } from './contract';
 import { idParam, paginated, paginationQuery } from './api-schemas';
 
@@ -107,6 +108,12 @@ describe('type inference', () => {
     expectTypeOf<OutputOf<typeof contract.remove>>().toEqualTypeOf<null>();
     expectTypeOf<OutputOf<typeof contract.list>['list']>().toEqualTypeOf<{ id: number; name: string }[]>();
     expectTypeOf<InputOf<typeof contract.upload>>().toEqualTypeOf<{ body: FormData }>();
+  });
+
+  it('derives the server-side parsed query shape with defaults applied', () => {
+    // 服务端拿到的是解析后的输出：page / pageSize 必填，可选筛选字段保持 optional
+    expectTypeOf<QueryOutputOf<typeof contract.list>>().toEqualTypeOf<{ page: number; pageSize: number; keyword?: string | undefined }>();
+    expectTypeOf<QueryOutputOf<typeof contract.detail>>().toEqualTypeOf<undefined>();
   });
 
   it('exposes declared business headers as an input segment', () => {
