@@ -1,7 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
-import { eq, asc, inArray, type SQL } from 'drizzle-orm';
+import { eq, asc, inArray } from 'drizzle-orm';
 import { cmsSearchContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsSearchWords } from '../../db/schema';
@@ -40,12 +40,13 @@ export async function ensureCmsSearchWordExists(id: number): Promise<CmsSearchWo
 export async function listCmsSearchWords(q: QueryOutputOf<typeof cmsSearchContract.wordList>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions: (SQL | undefined)[] = [eq(cmsSearchWords.siteId, q.siteId)];
-  conditions.push(keywordCondition(q.keyword, [cmsSearchWords.word]));
-  if (q.type) conditions.push(eq(cmsSearchWords.type, q.type));
-  if (q.groupName) conditions.push(eq(cmsSearchWords.groupName, q.groupName));
-  if (q.status) conditions.push(eq(cmsSearchWords.status, q.status));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsSearchWords.siteId, q.siteId),
+    keywordCondition(q.keyword, [cmsSearchWords.word]),
+    q.type ? eq(cmsSearchWords.type, q.type) : undefined,
+    q.groupName ? eq(cmsSearchWords.groupName, q.groupName) : undefined,
+    q.status ? eq(cmsSearchWords.status, q.status) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

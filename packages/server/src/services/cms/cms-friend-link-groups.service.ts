@@ -1,7 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
-import { eq, asc, and, type SQL } from 'drizzle-orm';
+import { eq, asc, and } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { cmsFriendLinkContract } from '@zenith/shared/cms';
 import { db } from '../../db';
@@ -47,10 +47,11 @@ export async function ensureFriendLinkGroupInSite(siteId: number, groupId: numbe
 export async function listCmsFriendLinkGroups(q: QueryOutputOf<typeof cmsFriendLinkContract.groupList>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions: (SQL | undefined)[] = [eq(cmsFriendLinkGroups.siteId, q.siteId)];
-  conditions.push(keywordCondition(q.keyword, [cmsFriendLinkGroups.name]));
-  if (q.status) conditions.push(eq(cmsFriendLinkGroups.status, q.status));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsFriendLinkGroups.siteId, q.siteId),
+    keywordCondition(q.keyword, [cmsFriendLinkGroups.name]),
+    q.status ? eq(cmsFriendLinkGroups.status, q.status) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

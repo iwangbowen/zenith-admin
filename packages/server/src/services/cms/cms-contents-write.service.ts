@@ -1,5 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
-import { eq, and, inArray, isNull, isNotNull, lte, sql, type SQL } from 'drizzle-orm';
+import { eq, and, inArray, isNull, isNotNull, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsContents, cmsContentTags, cmsTags, cmsChannels, cmsContentChannels, cmsContentRelations, cmsPages, users } from '../../db/schema';
@@ -7,6 +7,7 @@ import type { CmsContentRow, CmsSiteRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { parseDateTimeInput } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
+import { buildWhere } from '../../lib/where-helpers';
 import { contentSearchVector, contentSearchVectorOnUpdate } from './cms-search.service';
 import { listCmsModelFields } from './cms-models.service';
 import { assertChannelAccess, assertChannelsAccess } from './cms-channels.service';
@@ -635,23 +636,22 @@ export async function publishCmsContent(id: number, opts?: PublishCmsContentOpti
     assertLockedCmsPublishPreconditions(row.status, locked, opts);
     if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
     const oldPublish = await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true });
-    const conditions: SQL[] = [
+    const where = buildWhere(
       eq(cmsContents.id, id),
       eq(cmsContents.status, locked.status),
       isNull(cmsContents.deletedAt),
       isNull(cmsContents.archivedAt),
       isNull(cmsContents.lockedAt),
-    ];
-    if (opts?.scheduledAtBefore) {
-      conditions.push(isNotNull(cmsContents.scheduledAt), lte(cmsContents.scheduledAt, opts.scheduledAtBefore));
-    }
+      opts?.scheduledAtBefore ? isNotNull(cmsContents.scheduledAt) : undefined,
+      opts?.scheduledAtBefore ? lte(cmsContents.scheduledAt, opts.scheduledAtBefore) : undefined,
+    );
     const [updated] = await tx.update(cmsContents).set({
       status: 'published',
       publishedAt: new Date(),
       scheduledAt: null,
       rejectReason: null,
       version: sql`${cmsContents.version} + 1`,
-    }).where(buildWhere(...conditions)).returning();
+    }).where(where).returning();
     requireRow(updated, '内容已发布或定时发布条件已变化', 409);
     await logContentOp(tx, id, 'published', opts?.fromWorkflow ? '工作流审核通过' : null);
     const task = await insertContentPublishOutbox(tx, site, updated, 'publish', oldPublish.deletePaths, { build: true });

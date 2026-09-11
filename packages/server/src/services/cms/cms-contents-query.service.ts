@@ -1,7 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
-import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt, gt, sql, type SQL } from 'drizzle-orm';
+import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt, gt, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
@@ -14,7 +14,6 @@ import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { currentUserOrNull } from '../../lib/context';
 import { CMS_PREVIEW_PREFIX, cmsContentContract } from '@zenith/shared/cms';
-import type { CmsContentStatus } from '@zenith/shared/cms';
 import { pageOffset } from '../../lib/pagination';
 import { resolveCmsContentRow, resolveCmsContentRows } from './cms-resource-refs.service';
 import { buildCmsContentUrls } from './cms-urls';
@@ -206,36 +205,31 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
   const site = await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   if (q.channelId) await assertChannelAccess(q.channelId);
-  const conditions: (SQL | undefined)[] = [
-    eq(cmsContents.siteId, q.siteId),
-  ];
   const accessibleChannelIds = await getAccessibleChannelIds();
-  if (accessibleChannelIds !== null) conditions.push(inArray(cmsContents.channelId, accessibleChannelIds));
-  conditions.push(q.deleted ? isNotNull(cmsContents.deletedAt) : isNull(cmsContents.deletedAt));
-  // 归档独立视图：默认列表排除归档，archived=true 仅看归档（回收站视图不叠加归档过滤）
-  if (!q.deleted) conditions.push(q.archived ? isNotNull(cmsContents.archivedAt) : isNull(cmsContents.archivedAt));
-  if (q.channelId) conditions.push(eq(cmsContents.channelId, q.channelId));
-  if (q.status) conditions.push(eq(cmsContents.status, q.status));
-  if (q.contentType) conditions.push(eq(cmsContents.contentType, q.contentType));
-  if (q.isTop !== undefined) conditions.push(eq(cmsContents.isTop, q.isTop));
-  if (q.isRecommend !== undefined) conditions.push(eq(cmsContents.isRecommend, q.isRecommend));
-  if (q.isHot !== undefined) conditions.push(eq(cmsContents.isHot, q.isHot));
-  conditions.push(keywordCondition(q.keyword, [cmsContents.title, cmsContents.author]));
-  // 时间范围为闭区间：此前用 gt/lt 开区间，边界时刻创建的内容会被漏掉
-  conditions.push(...dateRangeConditions(cmsContents.createdAt, q.startTime, q.endTime));
-
-  // P5 部门数据权限：按创建时快照的部门/创建人过滤
   const scopeUser = currentUserOrNull();
-  if (scopeUser) {
-    const scopeCondition = await getDataScopeCondition({
+  const scopeCondition = scopeUser
+    ? await getDataScopeCondition({
       currentUserId: scopeUser.userId,
       deptColumn: cmsContents.deptId,
       ownerColumn: cmsContents.createdBy,
-    });
-    if (scopeCondition) conditions.push(scopeCondition);
-  }
+    })
+    : undefined;
 
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsContents.siteId, q.siteId),
+    accessibleChannelIds !== null ? inArray(cmsContents.channelId, accessibleChannelIds) : undefined,
+    q.deleted ? isNotNull(cmsContents.deletedAt) : isNull(cmsContents.deletedAt),
+    !q.deleted ? (q.archived ? isNotNull(cmsContents.archivedAt) : isNull(cmsContents.archivedAt)) : undefined,
+    q.channelId ? eq(cmsContents.channelId, q.channelId) : undefined,
+    q.status ? eq(cmsContents.status, q.status) : undefined,
+    q.contentType ? eq(cmsContents.contentType, q.contentType) : undefined,
+    q.isTop !== undefined ? eq(cmsContents.isTop, q.isTop) : undefined,
+    q.isRecommend !== undefined ? eq(cmsContents.isRecommend, q.isRecommend) : undefined,
+    q.isHot !== undefined ? eq(cmsContents.isHot, q.isHot) : undefined,
+    keywordCondition(q.keyword, [cmsContents.title, cmsContents.author]),
+    ...dateRangeConditions(cmsContents.createdAt, q.startTime, q.endTime),
+    scopeCondition,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
@@ -282,17 +276,17 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
 export async function checkCmsContentTitle(siteId: number, title: string, excludeId?: number) {
   await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
-  const conditions: SQL[] = [
+  const accessibleChannelIds = await getAccessibleChannelIds();
+  const where = buildWhere(
     eq(cmsContents.siteId, siteId),
     eq(cmsContents.title, title.trim()),
     isNull(cmsContents.deletedAt),
-  ];
-  const accessibleChannelIds = await getAccessibleChannelIds();
-  if (accessibleChannelIds !== null) conditions.push(inArray(cmsContents.channelId, accessibleChannelIds));
-  if (excludeId) conditions.push(ne(cmsContents.id, excludeId));
+    accessibleChannelIds !== null ? inArray(cmsContents.channelId, accessibleChannelIds) : undefined,
+    excludeId ? ne(cmsContents.id, excludeId) : undefined,
+  );
   const rows = await db.select({ id: cmsContents.id, title: cmsContents.title, status: cmsContents.status, channelId: cmsContents.channelId })
     .from(cmsContents)
-    .where(buildWhere(...conditions))
+    .where(where)
     .orderBy(desc(cmsContents.id))
     .limit(5);
   return {

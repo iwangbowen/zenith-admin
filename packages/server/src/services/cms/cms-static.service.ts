@@ -461,7 +461,7 @@ export async function generateSitemapXml(site: CmsSiteRow): Promise<string> {
   for (const ch of channels) {
     channelPathMap.set(ch.id, { path: ch.path, detailPathRule: ch.detailPathRule });
     if (ch.type === 'link') continue;
-    entries.push({ loc: `${origin}${channelUrl('', ch.path)}`, lastmod: formatIso8601(ch.updatedAt), priority: '0.8' });
+    entries.push({ loc: `${origin}${channelUrl('', ch.path, 1)}`, lastmod: formatIso8601(ch.updatedAt), priority: '0.8' });
   }
 
   const contents = await db.select({
@@ -507,7 +507,7 @@ export async function generateSitemapXml(site: CmsSiteRow): Promise<string> {
   const tags = await listSiteTags(site.id);
   for (const tag of tags) {
     if (!publicTagIds.has(tag.id)) continue;
-    entries.push({ loc: `${origin}${tagUrl('', tag.slug)}`, lastmod: null, priority: '0.4' });
+    entries.push({ loc: `${origin}${tagUrl('', tag.slug, 1)}`, lastmod: null, priority: '0.4' });
   }
 
   // 可视化搭建页面
@@ -690,7 +690,7 @@ export async function refreshContentStatic(contentId: number): Promise<void> {
   for (let p = 1; p <= bodyPages; p++) {
     purgePaths.push(contentUrl('', channel, content, p));
   }
-  purgePaths.push(channelUrl('', channel.path));
+  purgePaths.push(channelUrl('', channel.path, 1));
   purgePaths.push('');
   await writeStaticFile(site.code, 'sitemap.xml', await generateSitemapXml(site));
   await writeStaticFile(site.code, 'rss.xml', await generateRssXml(site));

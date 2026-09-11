@@ -199,6 +199,8 @@ export const CMS_PUBLISH_TASK_TYPES = [
   'cms-publish-build',
 ] as const;
 
+export const CMS_PUBLISHING_TASK_STATUS_FILTERS = ['pending', 'running', 'success', 'failed', 'cancelled', 'active', 'terminal'] as const;
+
 export const CMS_CHANNEL_TYPES = ['list', 'page', 'link'] as const;
 
 export const CMS_CHANNEL_TYPE_LABELS: Record<(typeof CMS_CHANNEL_TYPES)[number], string> = {

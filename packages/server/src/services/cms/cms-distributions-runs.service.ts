@@ -6,7 +6,6 @@ import {
   asc,
   desc,
   eq,
-  gte,
   inArray,
   isNotNull,
   lte,
@@ -21,9 +20,9 @@ import {
   cmsDistributionRules,
   cmsSites,
 } from '../../db/schema';
-import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { formatDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
-import { buildWhere } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { runWithCurrentUser } from '../../lib/context';
 import { mapAsyncTask } from '../../lib/task-center';
@@ -32,33 +31,39 @@ import { DISTRIBUTION_TASK_TYPE, nextSchedule, SYSTEM_USER } from './cms-distrib
 import { submitCmsDistributionRun } from './cms-distributions-sync.service';
 import { mapAsyncTaskItem } from '../../lib/task-center';
 
+export type CmsDistributionRunListFilter = Omit<QueryOutputOf<typeof cmsDistributionContract.runs>, 'page' | 'pageSize'>;
+
 export async function buildCmsDistributionRunConditions(
   query: CmsDistributionRunListFilter,
 ): Promise<(SQL | undefined)[]> {
-  const conditions: (SQL | undefined)[] = [eq(asyncTasks.taskType, DISTRIBUTION_TASK_TYPE)];
   const accessible = await getAccessibleSiteIds();
+  let accessibleSourceCondition: SQL | undefined;
+  let accessibleTargetCondition: SQL | undefined;
   if (accessible !== null) {
-    if (!accessible.length) conditions.push(sql`false`);
+    if (!accessible.length) accessibleSourceCondition = sql`false`;
     else {
       const values = sql.join(accessible.map((id) => sql`${String(id)}`), sql`, `);
-      conditions.push(sql`${asyncTasks.payload}->>'sourceSiteId' in (${values})`);
-      conditions.push(sql`${asyncTasks.payload}->>'targetSiteId' in (${values})`);
+      accessibleSourceCondition = sql`${asyncTasks.payload}->>'sourceSiteId' in (${values})`;
+      accessibleTargetCondition = sql`${asyncTasks.payload}->>'targetSiteId' in (${values})`;
     }
   }
-  if (query.ruleId) conditions.push(sql`${asyncTasks.payload}->>'ruleId' = ${String(query.ruleId)}`);
+  let siteCondition: SQL | undefined;
   if (query.siteId) {
     await assertSiteAccess(query.siteId);
-    conditions.push(sql`(
+    siteCondition = sql`(
       ${asyncTasks.payload}->>'sourceSiteId' = ${String(query.siteId)}
       or ${asyncTasks.payload}->>'targetSiteId' = ${String(query.siteId)}
-    )`);
+    )`;
   }
-  if (query.status) conditions.push(eq(asyncTasks.status, query.status));
-  const start = parseDateRangeStart(query.startTime);
-  const end = parseDateRangeEnd(query.endTime);
-  if (start) conditions.push(gte(asyncTasks.createdAt, start));
-  if (end) conditions.push(lte(asyncTasks.createdAt, end));
-  return conditions;
+  return [
+    eq(asyncTasks.taskType, DISTRIBUTION_TASK_TYPE),
+    accessibleSourceCondition,
+    accessibleTargetCondition,
+    query.ruleId ? sql`${asyncTasks.payload}->>'ruleId' = ${String(query.ruleId)}` : undefined,
+    siteCondition,
+    query.status ? eq(asyncTasks.status, query.status) : undefined,
+    ...dateRangeConditions(asyncTasks.createdAt, query.startTime, query.endTime),
+  ];
 }
 
 async function mapRuns(rows: Array<typeof asyncTasks.$inferSelect>) {
@@ -101,7 +106,7 @@ async function mapRuns(rows: Array<typeof asyncTasks.$inferSelect>) {
 }
 
 export async function listCmsDistributionRuns(query: QueryOutputOf<typeof cmsDistributionContract.runs>) {
-  const where = and(...await buildCmsDistributionRunConditions(query));
+  const where = buildWhere(...await buildCmsDistributionRunConditions(query));
   return buildListResult({
     page: query.page,
     pageSize: query.pageSize,
@@ -216,3 +221,4 @@ export async function dispatchDueCmsDistributionRules(): Promise<string> {
   }
   return `CMS 定时分发扫描完成：提交 ${submitted} 条规则，待重试 ${failures} 条`;
 }
+

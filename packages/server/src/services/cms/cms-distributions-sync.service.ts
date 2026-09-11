@@ -5,11 +5,9 @@ import {
   desc,
   eq,
   gt,
-  gte,
   inArray,
   isNotNull,
   isNull,
-  lte,
   or,
   sql,
   type SQL,
@@ -27,7 +25,7 @@ import {
   type CmsDistributionRuleRow,
 } from '../../db/schema';
 import { parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
-import { keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import {
   currentUserOrNull,
   hasPermission,
@@ -158,7 +156,8 @@ export async function deleteCmsDistributionRule(id: number): Promise<void> {
 
 async function sourceConditions(rule: CmsDistributionRuleRow, afterId?: number): Promise<(SQL | undefined)[]> {
   const filters = normalizedFilters(rule.filters);
-  const conditions: (SQL | undefined)[] = [
+  const effectiveChannels = await getEffectivelyEnabledCmsChannelIds(rule.sourceSiteId);
+  return [
     eq(cmsContents.siteId, rule.sourceSiteId),
     eq(cmsContents.status, 'published'),
     isNull(cmsContents.deletedAt),
@@ -166,19 +165,13 @@ async function sourceConditions(rule: CmsDistributionRuleRow, afterId?: number):
     or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date())),
     isNull(cmsContents.mappingSourceId),
     isNull(cmsContents.distributionSourceId),
+    rule.sourceChannelId != null ? eq(cmsContents.channelId, rule.sourceChannelId) : undefined,
+    effectiveChannels.size > 0 ? inArray(cmsContents.channelId, [...effectiveChannels]) : sql`false`,
+    filters.contentTypes.length ? inArray(cmsContents.contentType, filters.contentTypes) : undefined,
+    keywordCondition(filters.keyword, [cmsContents.title, cmsContents.summary], 'ilike'),
+    ...dateRangeConditions(cmsContents.publishedAt, filters.publishedFrom ?? undefined, filters.publishedTo ?? undefined),
+    afterId ? gt(cmsContents.id, afterId) : undefined,
   ];
-  if (rule.sourceChannelId != null) conditions.push(eq(cmsContents.channelId, rule.sourceChannelId));
-  const effectiveChannels = await getEffectivelyEnabledCmsChannelIds(rule.sourceSiteId);
-  conditions.push(effectiveChannels.size > 0 ? inArray(cmsContents.channelId, [...effectiveChannels]) : sql`false`);
-  if (filters.contentTypes.length) conditions.push(inArray(cmsContents.contentType, filters.contentTypes));
-  conditions.push(keywordCondition(filters.keyword, [cmsContents.title, cmsContents.summary], 'ilike'));
-
-  const start = parseDateRangeStart(filters.publishedFrom ?? undefined);
-  const end = parseDateRangeEnd(filters.publishedTo ?? undefined);
-  if (start) conditions.push(gte(cmsContents.publishedAt, start));
-  if (end) conditions.push(lte(cmsContents.publishedAt, end));
-  if (afterId) conditions.push(gt(cmsContents.id, afterId));
-  return conditions;
 }
 
 function sourceMatchesRule(rule: CmsDistributionRuleRow, source: CmsContentRow, effectiveChannelIds?: ReadonlySet<number>): boolean {
@@ -202,7 +195,7 @@ async function sourceWatermark(rule: CmsDistributionRuleRow): Promise<string> {
     maxId: sql<number>`coalesce(max(${cmsContents.id}), 0)::int`,
     maxVersion: sql<number>`coalesce(max(${cmsContents.version}), 0)::int`,
     count: sql<number>`count(*)::int`,
-  }).from(cmsContents).where(and(...await sourceConditions(rule)));
+  }).from(cmsContents).where(buildWhere(...await sourceConditions(rule)));
   return `${row?.count ?? 0}-${row?.maxId ?? 0}-${row?.maxVersion ?? 0}`;
 }
 
@@ -640,7 +633,7 @@ export function registerCmsDistributionTaskHandler(): void {
         throw new TaskCancelledError('分发目标栏目已停用、失效或不再是列表栏目', { stale: true, ruleId });
       }
       const sourceEffectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(rule.sourceSiteId);
-      const sourceTotal = await db.$count(cmsContents, and(...await sourceConditions(rule)));
+      const sourceTotal = await db.$count(cmsContents, buildWhere(...await sourceConditions(rule)));
       let total = sourceTotal;
       let lastSourceId = Number(ctx.checkpoint?.lastSourceId ?? 0);
       let lastTargetId = Number(ctx.checkpoint?.lastTargetId ?? 0);
@@ -652,7 +645,7 @@ export function registerCmsDistributionTaskHandler(): void {
       while (true) {
         await assertDistributionRuleFence(ruleId, expectedRevision);
         const rows = await db.select().from(cmsContents)
-          .where(and(...await sourceConditions(rule, lastSourceId)))
+          .where(buildWhere(...await sourceConditions(rule, lastSourceId)))
           .orderBy(asc(cmsContents.id))
           .limit(100);
         if (!rows.length) break;

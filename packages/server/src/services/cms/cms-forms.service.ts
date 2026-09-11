@@ -1,7 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
-import { eq, asc, desc, and, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, asc, desc, and, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsForms, cmsFormSubmissions } from '../../db/schema';
@@ -126,9 +126,10 @@ function notifyFormSubmission(form: CmsFormRow, data: Record<string, unknown>): 
 export async function listCmsForms(q: QueryOutputOf<typeof cmsFormContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions: (SQL | undefined)[] = [eq(cmsForms.siteId, q.siteId)];
-  conditions.push(keywordCondition(q.keyword, [cmsForms.name]));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsForms.siteId, q.siteId),
+    keywordCondition(q.keyword, [cmsForms.name]),
+  );
   // 提交数按表单分组后 LEFT JOIN（sql`` 裸列名不带表限定，禁止模板内跨表比较）
   const submissionCounts = db
     .select({ formId: cmsFormSubmissions.formId, cnt: sql<number>`count(*)::int`.as('cnt') })

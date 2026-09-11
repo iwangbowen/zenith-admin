@@ -43,8 +43,10 @@ export async function getCmsTag(id: number) {
 export async function listCmsTags(q: QueryOutputOf<typeof cmsTagContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions = [eq(cmsTags.siteId, q.siteId), keywordCondition(q.keyword, [cmsTags.name, cmsTags.slug])];
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsTags.siteId, q.siteId),
+    keywordCondition(q.keyword, [cmsTags.name, cmsTags.slug]),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

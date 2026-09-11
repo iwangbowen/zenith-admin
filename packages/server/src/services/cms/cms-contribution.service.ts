@@ -10,7 +10,7 @@ import { db } from '../../db';
 import { cmsContents, cmsChannels, cmsSites, members } from '../../db/schema';
 import type { CmsContentRow } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
-import { withPagination } from '../../lib/where-helpers';
+import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { currentMemberId } from '../../lib/member-context';
 import { contentSearchVector } from './cms-search.service';
 import { submitCmsContent } from './cms-contents.service';
@@ -77,9 +77,11 @@ export async function listContributableChannels() {
 
 export async function listMyContributions(params: { page: number; pageSize: number; status?: string }) {
   const memberId = currentMemberId();
-  const conds = [eq(cmsContents.memberId, memberId), isNull(cmsContents.deletedAt)];
-  if (params.status) conds.push(eq(cmsContents.status, params.status as CmsContentRow['status']));
-  const where = and(...conds);
+  const where = buildWhere(
+    eq(cmsContents.memberId, memberId),
+    isNull(cmsContents.deletedAt),
+    params.status ? eq(cmsContents.status, params.status as CmsContentRow['status']) : undefined,
+  );
   return buildListResult({
     page: params.page,
     pageSize: params.pageSize,
@@ -222,3 +224,4 @@ export async function deleteMyContribution(id: number) {
     await deleteCmsResourceRefsForOwner(tx, 'content', deleted.map((item) => item.id), row.siteId);
   });
 }
+

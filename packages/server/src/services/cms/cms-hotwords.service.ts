@@ -1,14 +1,16 @@
 import { requireRow } from '../../lib/db-assert';
-import { and, asc, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
+import { asc, desc, eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { cmsHotwordGroups, cmsHotwords, cmsSearchLogs } from '../../db/schema';
 import type { CmsHotwordGroupRow } from '../../db/schema';
 import { config } from '../../config';
 import redis from '../../lib/redis';
-import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
+import { cmsSearchContract } from '@zenith/shared/cms';
 import type { CmsHotKeyword, CreateCmsHotwordGroupInput, CreateCmsHotwordInput, UpdateCmsHotwordGroupInput, UpdateCmsHotwordInput } from '@zenith/shared/cms';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 
@@ -72,16 +74,12 @@ export async function deleteCmsHotwordGroup(id: number): Promise<void> {
 }
 
 async function loadKeywordCounts(siteId: number, startTime?: string, endTime?: string): Promise<Map<string, number>> {
-  const start = parseDateRangeStart(startTime);
-  const end = parseDateRangeEnd(endTime);
-  if (start || end) {
-    const conditions: SQL[] = [eq(cmsSearchLogs.siteId, siteId)];
-    if (start) conditions.push(gte(cmsSearchLogs.createdAt, start));
-    if (end) conditions.push(lte(cmsSearchLogs.createdAt, end));
+  const range = dateRangeConditions(cmsSearchLogs.createdAt, startTime, endTime);
+  if (range.length > 0) {
     const rows = await db.select({
       keyword: cmsSearchLogs.keyword,
       count: sql<number>`count(*)::int`,
-    }).from(cmsSearchLogs).where(buildWhere(...conditions))
+    }).from(cmsSearchLogs).where(buildWhere(eq(cmsSearchLogs.siteId, siteId), ...range))
       .groupBy(cmsSearchLogs.keyword)
       .orderBy(desc(sql`count(*)`))
       .limit(500);
@@ -93,25 +91,19 @@ async function loadKeywordCounts(siteId: number, startTime?: string, endTime?: s
   return counts;
 }
 
-export async function listCmsHotwords(input: {
-  siteId: number;
-  groupId?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  startTime?: string;
-  endTime?: string;
-  limit?: number;
-}) {
+export async function listCmsHotwords(input: QueryOutputOf<typeof cmsSearchContract.hotKeywords>) {
   await ensureCmsSiteExists(input.siteId);
   await assertSiteAccess(input.siteId);
-  const conditions: (SQL | undefined)[] = [eq(cmsHotwords.siteId, input.siteId)];
-  if (input.groupId) conditions.push(eq(cmsHotwords.groupId, input.groupId));
-  if (input.status) conditions.push(eq(cmsHotwords.status, input.status));
-  conditions.push(keywordCondition(input.keyword, [cmsHotwords.keyword], 'ilike'));
+  const where = buildWhere(
+    eq(cmsHotwords.siteId, input.siteId),
+    input.groupId ? eq(cmsHotwords.groupId, input.groupId) : undefined,
+    input.status ? eq(cmsHotwords.status, input.status) : undefined,
+    keywordCondition(input.keyword, [cmsHotwords.keyword], 'ilike'),
+  );
   const managed = await db.select({ hotword: cmsHotwords, groupName: cmsHotwordGroups.name })
     .from(cmsHotwords)
     .leftJoin(cmsHotwordGroups, eq(cmsHotwords.groupId, cmsHotwordGroups.id))
-    .where(buildWhere(...conditions))
+    .where(where)
     .orderBy(asc(cmsHotwords.sort), asc(cmsHotwords.id));
   const counts = await loadKeywordCounts(input.siteId, input.startTime, input.endTime);
   const result: CmsHotKeyword[] = managed.map(({ hotword, groupName }) => ({
@@ -131,7 +123,7 @@ export async function listCmsHotwords(input: {
       result.push({ id: null, siteId: input.siteId, groupId: null, groupName: null, keyword, count, sort: 999999, status: 'enabled' });
     }
   }
-  return result.sort((a, b) => a.sort - b.sort || b.count - a.count).slice(0, input.limit ?? 100);
+  return result.sort((a, b) => a.sort - b.sort || b.count - a.count).slice(0, input.limit);
 }
 
 async function ensureHotwordGroupForSite(siteId: number, groupId: number | null | undefined) {

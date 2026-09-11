@@ -1,7 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
-import { eq, asc, and, isNull, type SQL } from 'drizzle-orm';
+import { eq, asc, and, isNull } from 'drizzle-orm';
 import { cmsFriendLinkContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsFriendLinkGroups, cmsFriendLinks } from '../../db/schema';
@@ -43,13 +43,12 @@ export async function ensureCmsFriendLinkExists(id: number): Promise<CmsFriendLi
 export async function listCmsFriendLinks(q: QueryOutputOf<typeof cmsFriendLinkContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions: (SQL | undefined)[] = [eq(cmsFriendLinks.siteId, q.siteId)];
-  conditions.push(keywordCondition(q.keyword, [cmsFriendLinks.name]));
-  if (q.status) conditions.push(eq(cmsFriendLinks.status, q.status));
-  if (q.groupId !== undefined) {
-    conditions.push(q.groupId === 0 ? isNull(cmsFriendLinks.groupId) : eq(cmsFriendLinks.groupId, q.groupId));
-  }
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsFriendLinks.siteId, q.siteId),
+    keywordCondition(q.keyword, [cmsFriendLinks.name]),
+    q.status ? eq(cmsFriendLinks.status, q.status) : undefined,
+    q.groupId !== undefined ? (q.groupId === 0 ? isNull(cmsFriendLinks.groupId) : eq(cmsFriendLinks.groupId, q.groupId)) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

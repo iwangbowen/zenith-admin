@@ -2,7 +2,7 @@ import { desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { emailSendLogs } from '../../../db/schema';
 import { batchIterable } from '../../excel-export';
-import { buildListWhere, type ListEmailSendLogsQuery } from '../../../services/messaging/email-send-logs.service';
+import { buildListWhere, type EmailSendLogListFilter } from '../../../services/messaging/email-send-logs.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -18,7 +18,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 20, type: 'datetime' },
 ];
 
-export const emailSendLogsExportDefinition = defineExport<ListEmailSendLogsQuery & Record<string, unknown>, Record<string, unknown>>({
+export const emailSendLogsExportDefinition = defineExport<EmailSendLogListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'system.email-send-logs',
   moduleName: '邮件发送记录',
   filenamePrefix: '邮件发送记录',

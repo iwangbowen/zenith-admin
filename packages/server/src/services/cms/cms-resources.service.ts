@@ -1,7 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
-import { eq, and, desc, gt, inArray, isNull, notInArray, type SQL } from 'drizzle-orm';
+import { eq, and, desc, gt, inArray, isNull, notInArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { createRequire } from 'node:module';
 import { cmsResourceContract } from '@zenith/shared/cms';
@@ -70,12 +70,12 @@ function detectResourceType(mime: string): CmsResourceType {
 export async function listCmsResources(q: QueryOutputOf<typeof cmsResourceContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions: (SQL | undefined)[] = [eq(cmsResources.siteId, q.siteId)];
-  if (q.type) conditions.push(eq(cmsResources.type, q.type));
-  if (q.folderId === 0) conditions.push(isNull(cmsResources.folderId));
-  else if (q.folderId) conditions.push(eq(cmsResources.folderId, q.folderId));
-  conditions.push(keywordCondition(q.keyword, [cmsResources.name]));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsResources.siteId, q.siteId),
+    q.type ? eq(cmsResources.type, q.type) : undefined,
+    q.folderId !== undefined ? (q.folderId === 0 ? isNull(cmsResources.folderId) : eq(cmsResources.folderId, q.folderId)) : undefined,
+    keywordCondition(q.keyword, [cmsResources.name]),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

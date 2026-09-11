@@ -8,11 +8,10 @@ import {
   eq,
   inArray,
   sql,
-  type SQL,
-} from 'drizzle-orm';
+  } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { createCmsInteractionSchema, CMS_INTERACTION_CHOICE_QUESTION_TYPES, CMS_INTERACTION_MATRIX_SEPARATOR, CMS_INTERACTION_NPS_MAX, CMS_INTERACTION_OTHER_PREFIX, CMS_INTERACTION_OTHER_VALUE, cmsInteractionContract } from '@zenith/shared/cms';
-import type { CmsInteractionKind, CmsInteractionPublicStats, CreateCmsInteractionInput, SubmitCmsInteractionInput, UpdateCmsInteractionInput } from '@zenith/shared/cms';
+import type { CmsInteractionPublicStats, CreateCmsInteractionInput, SubmitCmsInteractionInput, UpdateCmsInteractionInput } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
   cmsInteractionAnswers,
@@ -97,11 +96,12 @@ export function mapCmsInteraction(row: CmsInteractionRow, questions?: CmsInterac
 export async function listCmsInteractions(q: QueryOutputOf<typeof cmsInteractionContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions: (SQL | undefined)[] = [eq(cmsInteractions.siteId, q.siteId)];
-  conditions.push(keywordCondition(q.keyword, [cmsInteractions.title], 'ilike'));
-  if (q.kind) conditions.push(eq(cmsInteractions.kind, q.kind));
-  if (q.status) conditions.push(eq(cmsInteractions.status, q.status));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsInteractions.siteId, q.siteId),
+    keywordCondition(q.keyword, [cmsInteractions.title], 'ilike'),
+    q.kind ? eq(cmsInteractions.kind, q.kind) : undefined,
+    q.status ? eq(cmsInteractions.status, q.status) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
@@ -658,12 +658,13 @@ export async function submitCmsInteraction(
   let responseId = transactionResult.responseId;
   let duplicate = false;
   if (!responseId) {
-    const duplicateConditions: SQL[] = [eq(cmsInteractionResponses.interactionId, transactionResult.interaction.id)];
-    if (requestKey) duplicateConditions.push(eq(cmsInteractionResponses.requestKey, requestKey));
-    else if (transactionResult.repeatKey) duplicateConditions.push(eq(cmsInteractionResponses.repeatKey, transactionResult.repeatKey));
-    else throw new HTTPException(409, { message: '请求已处理，请勿重复提交' });
+    if (!requestKey && !transactionResult.repeatKey) throw new HTTPException(409, { message: '请求已处理，请勿重复提交' });
     const [existing] = await db.select({ id: cmsInteractionResponses.id }).from(cmsInteractionResponses)
-      .where(and(...duplicateConditions)).limit(1);
+      .where(buildWhere(
+        eq(cmsInteractionResponses.interactionId, transactionResult.interaction.id),
+        requestKey ? eq(cmsInteractionResponses.requestKey, requestKey) : undefined,
+        !requestKey && transactionResult.repeatKey ? eq(cmsInteractionResponses.repeatKey, transactionResult.repeatKey) : undefined,
+      )).limit(1);
     requireRow(existing, '您已参与过本次互动', 409);
     if (!requestKey) throw new HTTPException(409, { message: '您已参与过本次互动' });
     responseId = existing.id;

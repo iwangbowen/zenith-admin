@@ -173,7 +173,7 @@ export async function buildCmsLinkResolver(
     const channel = channelMap.get(id);
     if (!channel) return null;
     if (channel.type === 'link') return follow(channel.linkUrl, seen);
-    return { url: channelUrl(baseUrl, channel.path), isExternal: false };
+    return { url: channelUrl(baseUrl, channel.path, 1), isExternal: false };
   }
 
   return (raw) => {

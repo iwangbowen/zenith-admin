@@ -1,7 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
-import { eq, asc, type SQL } from 'drizzle-orm';
+import { eq, asc } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsLinkWords } from '../../db/schema';
 import type { CmsLinkWordRow } from '../../db/schema';
@@ -105,9 +105,10 @@ export async function ensureCmsLinkWordExists(id: number): Promise<CmsLinkWordRo
 
 export async function listCmsLinkWords(q: QueryOutputOf<typeof cmsSeoContract.linkWordList>) {
   await assertSiteAccess(q.siteId);
-  const conditions: (SQL | undefined)[] = [eq(cmsLinkWords.siteId, q.siteId)];
-  conditions.push(keywordCondition(q.keyword, [cmsLinkWords.keyword]));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsLinkWords.siteId, q.siteId),
+    keywordCondition(q.keyword, [cmsLinkWords.keyword]),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

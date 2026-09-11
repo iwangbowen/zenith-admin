@@ -8,7 +8,7 @@ import { cmsPageBlockAcls, cmsPages, cmsChannels, cmsContents } from '../../db/s
 import type { CmsPageRow } from '../../db/schema';
 import type { CmsPageBlock } from '@zenith/shared/cms';
 import { formatDateTime } from '../../lib/datetime';
-import { withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
 import { ensureCmsSiteExists } from './cms-sites.service';
@@ -48,8 +48,10 @@ export function mapCmsPage(row: CmsPageRow, blocks?: CmsPageBlock[]) {
 export async function listCmsPages(params: { page: number; pageSize: number; siteId: number; keyword?: string }) {
   await ensureCmsSiteExists(params.siteId);
   await assertSiteAccess(params.siteId);
-  const conds = [eq(cmsPages.siteId, params.siteId), keywordCondition(params.keyword, [cmsPages.name, cmsPages.slug], 'ilike')];
-  const where = and(...conds);
+  const where = buildWhere(
+    eq(cmsPages.siteId, params.siteId),
+    keywordCondition(params.keyword, [cmsPages.name, cmsPages.slug], 'ilike'),
+  );
   return buildListResult({
     page: params.page,
     pageSize: params.pageSize,
@@ -109,18 +111,22 @@ async function assertCustomPagePathFree(executor: DbExecutor, siteId: number, pa
   if (content) {
     throw new HTTPException(400, { message: `访问路径已被内容「${content.title}」（#${content.id}）占用` });
   }
-  const conds = [eq(cmsPages.siteId, siteId), eq(cmsPages.path, path)];
-  if (exceptId) conds.push(ne(cmsPages.id, exceptId));
-  const [page] = await executor.select({ name: cmsPages.name }).from(cmsPages).where(and(...conds)).limit(1);
+  const [page] = await executor.select({ name: cmsPages.name }).from(cmsPages).where(buildWhere(
+    eq(cmsPages.siteId, siteId),
+    eq(cmsPages.path, path),
+    exceptId ? ne(cmsPages.id, exceptId) : undefined,
+  )).limit(1);
   if (page) {
     throw new HTTPException(400, { message: `访问路径已被页面「${page.name}」占用` });
   }
 }
 
 async function clearOtherHome(executor: DbExecutor, siteId: number, exceptId?: number) {
-  const conds = [eq(cmsPages.siteId, siteId), eq(cmsPages.isHome, true)];
-  if (exceptId) conds.push(ne(cmsPages.id, exceptId));
-  await executor.update(cmsPages).set({ isHome: false }).where(and(...conds));
+  await executor.update(cmsPages).set({ isHome: false }).where(buildWhere(
+    eq(cmsPages.siteId, siteId),
+    eq(cmsPages.isHome, true),
+    exceptId ? ne(cmsPages.id, exceptId) : undefined,
+  ));
 }
 
 export async function createCmsPage(input: CmsPageInput) {

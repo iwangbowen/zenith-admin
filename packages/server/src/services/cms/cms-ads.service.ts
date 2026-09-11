@@ -144,16 +144,14 @@ export async function deleteCmsAdSlot(id: number) {
 export async function listCmsAds(q: QueryOutputOf<typeof cmsAdContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions = [
+  const where = buildWhere(
     eq(cmsAdSlots.siteId, q.siteId),
-  ];
-  if (q.slotId) conditions.push(eq(cmsAds.slotId, q.slotId));
-  const where = buildWhere(...conditions);
-  const adConditions = [
+    q.slotId ? eq(cmsAds.slotId, q.slotId) : undefined,
+  );
+  const adWhere = buildWhere(
     inArray(cmsAds.slotId, db.select({ id: cmsAdSlots.id }).from(cmsAdSlots).where(eq(cmsAdSlots.siteId, q.siteId))),
-  ];
-  if (q.slotId) adConditions.push(eq(cmsAds.slotId, q.slotId));
-  const adWhere = and(...adConditions);
+    q.slotId ? eq(cmsAds.slotId, q.slotId) : undefined,
+  );
   const base = db.select({ ad: cmsAds, slotName: cmsAdSlots.name })
     .from(cmsAds)
     .innerJoin(cmsAdSlots, eq(cmsAds.slotId, cmsAdSlots.id))

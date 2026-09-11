@@ -5,6 +5,7 @@ import { db } from '../../db';
 import { cmsChannels, cmsTags, cmsContentTags, cmsContents, cmsModels, cmsSites } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatNullableDateTime, formatIso8601 } from '../../lib/datetime';
+import { buildWhere } from '../../lib/where-helpers';
 import { getBuiltinThemeFallback, resolveListTemplate, resolveDetailTemplate, resolveCustomPageTemplate, resolveInteractionTemplate, resolveThemeConfig } from '../../cms/themes/registry';
 import { renderBlocksHtml } from '../../cms/themes/blocks';
 import { filterCmsPageBlocksForViewer } from './cms-page-blocks';
@@ -152,7 +153,7 @@ async function navFromTree(tree: CmsChannel[], baseUrl: string, siteId: number):
       return {
         id: n.id,
         name: n.name,
-        url: n.type === 'link' ? (resolved?.url ?? '#') : channelUrl(baseUrl, n.path),
+        url: n.type === 'link' ? (resolved?.url ?? '#') : channelUrl(baseUrl, n.path, 1),
         target: n.type === 'link' ? (resolved?.isExternal ? '_blank' as const : '_self' as const) : '_self' as const,
         ...(n.children && n.children.length > 0 ? { children: walk(n.children) } : {}),
       };
@@ -400,7 +401,7 @@ async function buildBreadcrumbs(site: CmsSiteRow, baseUrl: string, channel: CmsC
     cursor = parent ?? null;
   }
   for (const ch of chain) {
-    crumbs.push({ name: ch.name, url: channelUrl(baseUrl, ch.path) });
+    crumbs.push({ name: ch.name, url: channelUrl(baseUrl, ch.path, 1) });
   }
   return crumbs;
 }
@@ -409,7 +410,7 @@ function toChannelInfo(channel: CmsChannelRow, baseUrl: string): CmsChannelInfo 
   return {
     id: channel.id,
     name: channel.name,
-    url: channelUrl(baseUrl, channel.path),
+    url: channelUrl(baseUrl, channel.path, 1),
     description: channel.seoDescription ?? null,
     image: channel.image ?? null,
   };
@@ -507,30 +508,29 @@ export async function renderCustomPage(
 async function listBlockContents(siteId: number, opts: { channelId?: number; tagSlug?: string; count: number; mode: 'latest' | 'recommend' | 'hot' }): Promise<ResolvedCmsContentListRow[]> {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
   if (effectiveChannelIds.size === 0 || (opts.channelId != null && !effectiveChannelIds.has(opts.channelId))) return [];
-  const conds = [
+  const tagCondition = opts.tagSlug
+    ? inArray(
+        cmsContents.id,
+        db.select({ id: cmsContentTags.contentId })
+          .from(cmsContentTags)
+          .innerJoin(cmsTags, eq(cmsContentTags.tagId, cmsTags.id))
+          .where(and(eq(cmsTags.siteId, siteId), eq(cmsTags.slug, opts.tagSlug))),
+      )
+    : undefined;
+  const where = buildWhere(
     eq(cmsContents.siteId, siteId),
     eq(cmsContents.status, 'published'),
     isNull(cmsContents.deletedAt),
     isNull(cmsContents.archivedAt),
     or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date()))!,
     inArray(cmsContents.channelId, [...effectiveChannelIds]),
-  ];
-  if (opts.tagSlug) {
-    // 标签聚合：跨栏目取同标签内容（专题页典型场景）；标签模式下忽略栏目条件
-    conds.push(inArray(
-      cmsContents.id,
-      db.select({ id: cmsContentTags.contentId })
-        .from(cmsContentTags)
-        .innerJoin(cmsTags, eq(cmsContentTags.tagId, cmsTags.id))
-        .where(and(eq(cmsTags.siteId, siteId), eq(cmsTags.slug, opts.tagSlug))),
-    ));
-  } else if (opts.channelId) {
-    conds.push(eq(cmsContents.channelId, opts.channelId));
-  }
-  if (opts.mode === 'recommend') conds.push(eq(cmsContents.isRecommend, true));
-  if (opts.mode === 'hot') conds.push(eq(cmsContents.isHot, true));
+    tagCondition,
+    !opts.tagSlug && opts.channelId ? eq(cmsContents.channelId, opts.channelId) : undefined,
+    opts.mode === 'recommend' ? eq(cmsContents.isRecommend, true) : undefined,
+    opts.mode === 'hot' ? eq(cmsContents.isHot, true) : undefined,
+  );
   const rows = await db.select(cmsContentListColumns).from(cmsContents)
-    .where(and(...conds))
+    .where(where)
     .orderBy(desc(cmsContents.isTop), desc(cmsContents.publishedAt), desc(cmsContents.id))
     .limit(opts.count);
   return resolveCmsContentRows(rows, siteId);
@@ -614,7 +614,7 @@ export function createCmsThemeDataApi(site: CmsSiteRow, baseUrl: string): CmsThe
           const listFieldDefs = await loadCmsListModelFieldDefs(rows.map((r) => r.modelId));
           return {
             channel: channel
-              ? { id: channel.id, code: channel.code, name: channel.name, url: channelUrl(baseUrl, channel.path) }
+              ? { id: channel.id, code: channel.code, name: channel.name, url: channelUrl(baseUrl, channel.path, 1) }
               : null,
             list: rows.map((row) => toContentItem(row, baseUrl, channelPathMap.get(row.channelId) ?? FALLBACK_URL_CHANNEL, resolveLink, listFieldDefs)),
           };
@@ -741,7 +741,7 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
         code: form.code,
         name: form.name,
         action: `/api/public/cms/forms/${site.code}/${form.code}`,
-        returnUrl: channelUrl(baseUrl, channel.path),
+        returnUrl: channelUrl(baseUrl, channel.path, 1),
         successMessage: form.successMessage ?? null,
         fields: (form.fields ?? []) as CmsFormField[],
         captcha: resolveCmsFormCaptcha(form, site),
@@ -891,7 +891,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
       ...extras,
       extend: resolved.extend,
       modelFields,
-      tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
+      tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug, 1) })),
       prev: adjacent.prev ? { title: adjacent.prev.title, url: contentUrl(baseUrl, channel, adjacent.prev) } : null,
       next: adjacent.next ? { title: adjacent.next.title, url: contentUrl(baseUrl, channel, adjacent.next) } : null,
     },
@@ -969,7 +969,7 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
       ...previewExtras,
       extend: resolved.extend,
       modelFields: previewModelFields,
-      tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug) })),
+      tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug, 1) })),
       prev: null,
       next: null,
     },
@@ -1130,7 +1130,7 @@ export async function renderTagPage(site: CmsSiteRow, baseUrl: string, slug: str
     tag: { name: tag.name, slug: tag.slug, contentCount: tag.contentCount },
     breadcrumbs: [
       { name: '首页', url: `${baseUrl}/` },
-      { name: `标签：${tag.name}`, url: tagUrl(baseUrl, slug) },
+      { name: `标签：${tag.name}`, url: tagUrl(baseUrl, slug, 1) },
     ],
     items: rows.map((r) => toContentItem(r, baseUrl, channelPathMap.get(r.channelId) ?? FALLBACK_URL_CHANNEL, resolveLink, tagFieldDefs)),
     pagination: buildCmsPagination({
@@ -1171,7 +1171,7 @@ export async function generateRssXml(site: CmsSiteRow, channel?: CmsChannelRow |
   const channelPathMap = await loadChannelPathMap(site.id);
   const resolveLink = await buildCmsLinkResolver(site.id, origin, rows.map((r) => r.externalLink));
   const feedTitle = channel ? `${channel.name} - ${site.name}` : (site.title?.trim() || site.name);
-  const feedLink = channel ? `${origin}${channelUrl('', channel.path)}` : `${origin}/`;
+  const feedLink = channel ? `${origin}${channelUrl('', channel.path, 1)}` : `${origin}/`;
   const items = rows.map((row) => {
     const rawLink = row.externalLink?.trim();
     const link = rawLink

@@ -5,9 +5,7 @@ import {
   and,
   desc,
   eq,
-  gte,
   inArray,
-  lte,
   sql,
   type SQL,
 } from 'drizzle-orm';
@@ -37,7 +35,7 @@ import {
   parseDateRangeEnd,
   parseDateRangeStart,
 } from '../../lib/datetime';
-import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import {
   currentUser,
   currentUserOrNull,
@@ -103,6 +101,8 @@ function taskTargetType(row: Pick<AsyncTaskRow, 'taskType' | 'payload'>): CmsPub
   return 'site';
 }
 
+export type CmsPublishingListFilter = Omit<QueryOutputOf<typeof cmsPublishingContract.list>, 'page' | 'pageSize'>;
+
 async function artifactCounts(taskIds: number[]) {
   if (!taskIds.length) return new Map<number, { total: number; failed: number }>();
   const rows = await db.select({
@@ -152,34 +152,41 @@ async function hasGlobalPublishingAccess(): Promise<boolean> {
 
 export async function buildCmsPublishingConditions(query: CmsPublishingListFilter): Promise<(SQL | undefined)[]> {
   const user = currentUser();
-  const conditions: (SQL | undefined)[] = [inArray(asyncTasks.taskType, [...CMS_PUBLISH_TASK_TYPES])];
   const global = await hasGlobalPublishingAccess();
+  let ownerCondition: SQL | undefined;
+  let accessibleCondition: SQL | undefined;
   if (!global) {
-    conditions.push(eq(asyncTasks.createdBy, user.userId));
+    ownerCondition = eq(asyncTasks.createdBy, user.userId);
     const accessible = await getAccessibleSiteIds();
-    if (!accessible?.length) conditions.push(sql`false`);
-    else conditions.push(sql`${asyncTasks.payload}->>'siteId' in (${sql.join(accessible.map((siteId) => sql`${String(siteId)}`), sql`, `)})`);
+    accessibleCondition = !accessible?.length
+      ? sql`false`
+      : sql`${asyncTasks.payload}->>'siteId' in (${sql.join(accessible.map((siteId) => sql`${String(siteId)}`), sql`, `)})`;
   }
+  let siteCondition: SQL | undefined;
   if (query.siteId) {
     if (!global) await assertSiteAccess(query.siteId);
-    conditions.push(sql`${asyncTasks.payload}->>'siteId' = ${String(query.siteId)}`);
+    siteCondition = sql`${asyncTasks.payload}->>'siteId' = ${String(query.siteId)}`;
   }
-  if (query.targetType) conditions.push(sql`${asyncTasks.payload}->>'targetType' = ${query.targetType}`);
-  conditions.push(asyncTaskStatusCondition(query.status));
-  if (query.taskType) conditions.push(eq(asyncTasks.taskType, query.taskType));
-  conditions.push(keywordCondition(query.keyword, [asyncTasks.title, asyncTasks.taskType], 'ilike'));
-  const start = parseDateRangeStart(query.startTime);
-  const end = parseDateRangeEnd(query.endTime);
-  if (start) conditions.push(gte(asyncTasks.createdAt, start));
-  if (end) conditions.push(lte(asyncTasks.createdAt, end));
+  let creatorCondition: SQL | undefined;
   if (query.createdBy?.trim()) {
     const { users } = await import('../../db/schema');
     const creators = await db.select({ id: users.id }).from(users)
       .where(keywordCondition(query.createdBy, [users.username, users.nickname], 'ilike'))
       .limit(500);
-    conditions.push(creators.length ? inArray(asyncTasks.createdBy, creators.map((row) => row.id)) : sql`false`);
+    creatorCondition = creators.length ? inArray(asyncTasks.createdBy, creators.map((row) => row.id)) : sql`false`;
   }
-  return conditions;
+  return [
+    inArray(asyncTasks.taskType, [...CMS_PUBLISH_TASK_TYPES]),
+    ownerCondition,
+    accessibleCondition,
+    siteCondition,
+    query.targetType ? sql`${asyncTasks.payload}->>'targetType' = ${query.targetType}` : undefined,
+    asyncTaskStatusCondition(query.status),
+    query.taskType ? eq(asyncTasks.taskType, query.taskType) : undefined,
+    keywordCondition(query.keyword, [asyncTasks.title, asyncTasks.taskType], 'ilike'),
+    ...dateRangeConditions(asyncTasks.createdAt, query.startTime, query.endTime),
+    creatorCondition,
+  ];
 }
 
 export async function listCmsPublishingTasks(query: QueryOutputOf<typeof cmsPublishingContract.list>) {
@@ -379,17 +386,19 @@ async function cmsPublishTaskNeedsFreshInput(task: Pick<AsyncTaskRow, 'payload' 
 
 export async function listCmsPublishArtifacts(query: QueryOutputOf<typeof cmsPublishingContract.artifacts>) {
   const taskConditions = await buildCmsPublishingConditions({ siteId: query.siteId });
-  if (query.taskId) taskConditions.push(eq(asyncTasks.id, query.taskId));
-  const conditions: (SQL | undefined)[] = [...taskConditions, eq(cmsPublishArtifacts.taskId, asyncTasks.id)];
-  if (query.targetType) conditions.push(eq(cmsPublishArtifacts.targetType, query.targetType));
-  if (query.status) conditions.push(eq(cmsPublishArtifacts.status, query.status));
-  conditions.push(keywordCondition(query.keyword, [cmsPublishArtifacts.path, cmsPublishArtifacts.url, cmsPublishArtifacts.error], 'ilike'));
   const start = parseDateRangeStart(query.startTime);
   const end = parseDateRangeEnd(query.endTime);
   const artifactTime = sql`coalesce(${cmsPublishArtifacts.generatedAt}, ${cmsPublishArtifacts.updatedAt})`;
-  if (start) conditions.push(sql`${artifactTime} >= ${start}`);
-  if (end) conditions.push(sql`${artifactTime} <= ${end}`);
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    ...taskConditions,
+    query.taskId ? eq(asyncTasks.id, query.taskId) : undefined,
+    eq(cmsPublishArtifacts.taskId, asyncTasks.id),
+    query.targetType ? eq(cmsPublishArtifacts.targetType, query.targetType) : undefined,
+    query.status ? eq(cmsPublishArtifacts.status, query.status) : undefined,
+    keywordCondition(query.keyword, [cmsPublishArtifacts.path, cmsPublishArtifacts.url, cmsPublishArtifacts.error], 'ilike'),
+    start ? sql`${artifactTime} >= ${start}` : undefined,
+    end ? sql`${artifactTime} <= ${end}` : undefined,
+  );
   const base = db.select({ artifact: cmsPublishArtifacts })
     .from(cmsPublishArtifacts)
     .innerJoin(asyncTasks, eq(cmsPublishArtifacts.taskId, asyncTasks.id))
@@ -836,3 +845,4 @@ export async function batchCmsPublishingAction(ids: number[], action: 'cancel' |
   }
   return { affected, errors };
 }
+

@@ -1,7 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
-import { eq, asc, type SQL } from 'drizzle-orm';
+import { eq, asc } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { cmsSeoContract } from '@zenith/shared/cms';
 import { db } from '../../db';
@@ -94,9 +94,10 @@ export async function ensureCmsRedirectExists(id: number): Promise<CmsRedirectRo
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 export async function listCmsRedirects(q: QueryOutputOf<typeof cmsSeoContract.redirectList>) {
   await assertSiteAccess(q.siteId);
-  const conditions: (SQL | undefined)[] = [eq(cmsRedirects.siteId, q.siteId)];
-  conditions.push(keywordCondition(q.keyword, [cmsRedirects.fromPath]));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsRedirects.siteId, q.siteId),
+    keywordCondition(q.keyword, [cmsRedirects.fromPath]),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

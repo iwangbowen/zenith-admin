@@ -2,6 +2,7 @@ import type { CmsPagination } from '../../cms/themes/types';
 
 export interface BuildCmsPaginationInput {
   page: number;
+  // eslint-disable-next-line no-restricted-syntax -- 前台主题渲染的分页视图模型，不是契约查询入参
   pageSize: number;
   total: number;
   makeUrl: (page: number) => string;

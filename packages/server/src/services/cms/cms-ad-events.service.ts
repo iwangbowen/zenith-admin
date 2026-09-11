@@ -1,11 +1,10 @@
 import { uniquePositiveInts } from '@zenith/shared/core';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
-import type { QueryOutputOf } from '@zenith/shared/core';
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { CmsAdEventType, CmsDeviceType } from '@zenith/shared/cms';
 import { cmsAdContract } from '@zenith/shared/cms';
+import type { CmsAdEventType } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
   cmsAdEvents,
@@ -16,8 +15,8 @@ import {
 } from '../../db/schema';
 import type { CmsAdEventRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
-import { formatDate, formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
-import { buildWhere, withPagination } from '../../lib/where-helpers';
+import { formatDate, formatDateTime } from '../../lib/datetime';
+import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
 import { streamByDescendingId } from '../../lib/export-center/cursor-stream';
 import { detectDeviceType } from './cms-stats.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
@@ -186,23 +185,17 @@ export async function recordCmsAdClick(id: number, meta: CmsAdEventMeta): Promis
 
 
 
-export function buildCmsAdEventWhere(q: CmsAdEventListFilter): SQL {
-  const conditions: SQL[] = [eq(cmsAdEvents.siteId, q.siteId)];
-  if (q.adId) conditions.push(eq(cmsAdEvents.adId, q.adId));
-  if (q.slotId) conditions.push(eq(cmsAdEvents.slotId, q.slotId));
-  if (q.eventType) conditions.push(eq(cmsAdEvents.eventType, q.eventType));
-  if (q.device) conditions.push(eq(cmsAdEvents.device, q.device));
-  if (q.startTime) {
-    const parsed = parseDateRangeStart(q.startTime);
-    if (!parsed) throw new HTTPException(400, { message: '开始时间格式无效' });
-    conditions.push(gte(cmsAdEvents.occurredAt, parsed));
-  }
-  if (q.endTime) {
-    const parsed = parseDateRangeEnd(q.endTime);
-    if (!parsed) throw new HTTPException(400, { message: '结束时间格式无效' });
-    conditions.push(lte(cmsAdEvents.occurredAt, parsed));
-  }
-  return buildWhere(...conditions);
+export type CmsAdEventListFilter = Omit<QueryOutputOf<typeof cmsAdContract.events>, 'page' | 'pageSize'>;
+
+export function buildCmsAdEventWhere(q: CmsAdEventListFilter): SQL | undefined {
+  return buildWhere(
+    eq(cmsAdEvents.siteId, q.siteId),
+    q.adId ? eq(cmsAdEvents.adId, q.adId) : undefined,
+    q.slotId ? eq(cmsAdEvents.slotId, q.slotId) : undefined,
+    q.eventType ? eq(cmsAdEvents.eventType, q.eventType) : undefined,
+    q.device ? eq(cmsAdEvents.device, q.device) : undefined,
+    ...dateRangeConditions(cmsAdEvents.occurredAt, q.startTime, q.endTime),
+  );
 }
 
 export function mapCmsAdEvent(row: CmsAdEventRow, extra?: {
@@ -329,11 +322,13 @@ export async function cleanupCmsAdEventsBatch(input: {
     await assertSiteAccess(input.siteId);
   }
   const threshold = new Date(Date.now() - retentionDays * 86_400_000);
-  const conditions: SQL[] = [lte(cmsAdEvents.occurredAt, threshold)];
-  if (input.siteId) conditions.push(eq(cmsAdEvents.siteId, input.siteId));
-  if (input.afterId) conditions.push(sql`${cmsAdEvents.id} > ${input.afterId}`);
+  const where = buildWhere(
+    lte(cmsAdEvents.occurredAt, threshold),
+    input.siteId ? eq(cmsAdEvents.siteId, input.siteId) : undefined,
+    input.afterId ? sql`${cmsAdEvents.id} > ${input.afterId}` : undefined,
+  );
   const ids = await db.select({ id: cmsAdEvents.id }).from(cmsAdEvents)
-    .where(buildWhere(...conditions))
+    .where(where)
     .orderBy(cmsAdEvents.id)
     .limit(Math.min(Math.max(input.limit ?? 1000, 1), 5000));
   if (ids.length === 0) return { deleted: 0, lastId: null, threshold };

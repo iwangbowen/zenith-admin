@@ -2,7 +2,7 @@ import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { clearDefaultFlag } from '../../lib/default-flag';
-import { eq, asc, and, or, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, asc, and, or, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import {
@@ -315,14 +315,13 @@ export async function getCmsSite(id: number) {
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
 export async function listCmsSites(q: QueryOutputOf<typeof cmsSiteContract.list>) {
-  const { keyword = '', status, page, pageSize } = q;
-  const conditions: (SQL | undefined)[] = [];
+  const { keyword, status, page, pageSize } = q;
   const accessible = await getAccessibleSiteIds();
-  if (accessible !== null) conditions.push(inArray(cmsSites.id, accessible));
-  conditions.push(keywordCondition(keyword, [cmsSites.name, cmsSites.code, cmsSites.domain]));
-  if (status) conditions.push(eq(cmsSites.status, status));
-
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    accessible !== null ? inArray(cmsSites.id, accessible) : undefined,
+    keywordCondition(keyword, [cmsSites.name, cmsSites.code, cmsSites.domain]),
+    status ? eq(cmsSites.status, status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -346,9 +345,10 @@ export async function listCmsSites(q: QueryOutputOf<typeof cmsSiteContract.list>
 /** 全部启用站点（下拉选择/站点切换器用，绑定用户仅见授权站点） */
 export async function listAllCmsSites() {
   const accessible = await getAccessibleSiteIds();
-  const conditions: (SQL | undefined)[] = [eq(cmsSites.status, 'enabled')];
-  if (accessible !== null) conditions.push(inArray(cmsSites.id, accessible));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsSites.status, 'enabled'),
+    accessible !== null ? inArray(cmsSites.id, accessible) : undefined,
+  );
   const rows = await db.select().from(cmsSites)
     .where(where)
     .orderBy(asc(cmsSites.sort), asc(cmsSites.id));
@@ -362,14 +362,15 @@ export async function listAllCmsSites() {
 
 type CmsSiteTreeNode = ReturnType<typeof mapCmsSite> & { children?: CmsSiteTreeNode[] };
 
-export async function listCmsSiteTree(query: { keyword?: string; status?: 'enabled' | 'disabled' }): Promise<CmsSiteTreeNode[]> {
+export async function listCmsSiteTree(query: QueryOutputOf<typeof cmsSiteContract.tree>): Promise<CmsSiteTreeNode[]> {
   const accessible = await getAccessibleSiteIds();
-  const conditions: (SQL | undefined)[] = [];
-  if (accessible !== null) conditions.push(inArray(cmsSites.id, accessible));
-  conditions.push(keywordCondition(query.keyword, [cmsSites.name, cmsSites.code, cmsSites.domain]));
-  if (query.status) conditions.push(eq(cmsSites.status, query.status));
+  const where = buildWhere(
+    accessible !== null ? inArray(cmsSites.id, accessible) : undefined,
+    keywordCondition(query.keyword, [cmsSites.name, cmsSites.code, cmsSites.domain]),
+    query.status ? eq(cmsSites.status, query.status) : undefined,
+  );
   const [rows, allRows, inheritanceRows] = await Promise.all([
-    db.select().from(cmsSites).where(buildWhere(...conditions))
+    db.select().from(cmsSites).where(where)
       .orderBy(asc(cmsSites.sort), asc(cmsSites.id)),
     db.select().from(cmsSites),
     db.select().from(cmsSiteInheritances),

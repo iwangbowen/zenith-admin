@@ -1,7 +1,8 @@
 /**
  * CMS 数据看板：站点内容概览（状态分布 / 发布趋势 / 热文 / 栏目分布 / 待办）。
  */
-import { and, desc, eq, gte, inArray, isNull, isNotNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
+import { buildWhere } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { cmsContents, cmsChannels, cmsComments } from '../../db/schema';
 import { formatDate, startOfRecentDays, startOfToday } from '../../lib/datetime';
@@ -33,35 +34,34 @@ export async function getCmsDashboardStats(siteId: number): Promise<CmsDashboard
   await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
   const accessibleChannelIds = await getAccessibleChannelIds();
-  const activeConditions: SQL[] = [
+  const accessibleChannelCondition = accessibleChannelIds !== null ? inArray(cmsContents.channelId, accessibleChannelIds) : undefined;
+  const activeWhere = buildWhere(
     eq(cmsContents.siteId, siteId),
     isNull(cmsContents.deletedAt),
-  ];
-  if (accessibleChannelIds !== null) activeConditions.push(inArray(cmsContents.channelId, accessibleChannelIds));
-  const activeWhere = and(...activeConditions)!;
-  const pendingCommentConditions: SQL[] = [
+    accessibleChannelCondition,
+  );
+  const pendingCommentWhere = buildWhere(
     eq(cmsComments.siteId, siteId),
     eq(cmsComments.status, 'pending'),
-  ];
-  if (accessibleChannelIds !== null) {
-    const contentIds = db.select({ id: cmsContents.id }).from(cmsContents).where(and(
-      eq(cmsContents.siteId, siteId),
-      inArray(cmsContents.channelId, accessibleChannelIds),
-    ));
-    pendingCommentConditions.push(inArray(cmsComments.contentId, contentIds));
-  }
+    accessibleChannelIds !== null
+      ? inArray(cmsComments.contentId, db.select({ id: cmsContents.id }).from(cmsContents).where(and(
+        eq(cmsContents.siteId, siteId),
+        inArray(cmsContents.channelId, accessibleChannelIds),
+      )))
+      : undefined,
+  );
   const todayStart = startOfToday();
   const trendStart = startOfRecentDays(TREND_DAYS);
 
   const [statusRows, recycled, pendingComments, todayPublished, viewsRow, trendRows, topViewed, channelRows] = await Promise.all([
     db.select({ status: cmsContents.status, count: sql<number>`count(*)::int` })
       .from(cmsContents).where(activeWhere).groupBy(cmsContents.status),
-    db.$count(cmsContents, and(
+    db.$count(cmsContents, buildWhere(
       eq(cmsContents.siteId, siteId),
       isNotNull(cmsContents.deletedAt),
-      accessibleChannelIds !== null ? inArray(cmsContents.channelId, accessibleChannelIds) : undefined,
+      accessibleChannelCondition,
     )),
-    db.$count(cmsComments, and(...pendingCommentConditions)),
+    db.$count(cmsComments, pendingCommentWhere),
     db.$count(cmsContents, and(activeWhere, eq(cmsContents.status, 'published'), gte(cmsContents.publishedAt, todayStart))),
     db.select({ total: sql<number>`coalesce(sum(${cmsContents.viewCount}), 0)::int` })
       .from(cmsContents).where(activeWhere),

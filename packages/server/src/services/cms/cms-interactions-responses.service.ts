@@ -13,7 +13,7 @@ import {
 import { HTTPException } from 'hono/http-exception';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { CMS_INTERACTION_MATRIX_SEPARATOR, CMS_INTERACTION_OTHER_PREFIX, CMS_INTERACTION_OTHER_VALUE, cmsInteractionContract } from '@zenith/shared/cms';
-import type { CmsInteractionAnswerDetail, CmsInteractionKind, CmsInteractionQuestionType, CmsInteractionRepeatPolicy, CmsInteractionResponse } from '@zenith/shared/cms';
+import type { CmsInteractionAnswerDetail, CmsInteractionQuestionType, CmsInteractionRepeatPolicy, CmsInteractionResponse } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
   cmsInteractionAnswers,
@@ -35,7 +35,7 @@ export type CmsInteractionResponseListFilter = Omit<QueryOutputOf<typeof cmsInte
 
 export function buildCmsInteractionResponseWhere(
   q: CmsInteractionResponseListFilter,
-): SQL {
+): SQL | undefined {
   const conditions: SQL[] = [eq(cmsInteractions.siteId, q.siteId)];
   if (q.interactionId) conditions.push(eq(cmsInteractionResponses.interactionId, q.interactionId));
   if (q.kind) conditions.push(eq(cmsInteractions.kind, q.kind));
@@ -160,30 +160,31 @@ export async function listCmsInteractionResponses(q: QueryOutputOf<typeof cmsInt
     .leftJoin(members, eq(cmsInteractionResponses.memberId, members.id))
     .where(where)
     .orderBy(desc(cmsInteractionResponses.createdAt), desc(cmsInteractionResponses.id));
-  const { list: rows, total } = await buildListResult({
+  return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
     count: () => db.select({ value: sql<number>`count(*)::int` }).from(cmsInteractionResponses)
       .innerJoin(cmsInteractions, eq(cmsInteractionResponses.interactionId, cmsInteractions.id))
       .where(where)
       .then((r) => r[0]?.value ?? 0),
-    rows: () => withPagination(base.$dynamic(), q.page, q.pageSize),
+    rows: async () => {
+      const rows = await withPagination(base.$dynamic(), q.page, q.pageSize);
+      const { answers, details } = await loadAnswers(rows.map((row) => row.response.id));
+      return rows.map((row): CmsInteractionResponse => ({
+        id: row.response.id,
+        interactionId: row.response.interactionId,
+        interactionTitle: row.interactionTitle,
+        kind: row.kind,
+        memberId: row.response.memberId,
+        memberDisplay: row.response.memberId ? maskedMemberDisplay(row, '游客') : '游客',
+        visitorHash: row.response.visitorHash,
+        ipHash: row.response.ipHash,
+        answers: answers.get(row.response.id) ?? {},
+        answerDetails: details.get(row.response.id) ?? [],
+        createdAt: formatDateTime(row.response.createdAt),
+      }));
+    },
   });
-  const { answers, details } = await loadAnswers(rows.map((row) => row.response.id));
-  const list: CmsInteractionResponse[] = rows.map((row) => ({
-    id: row.response.id,
-    interactionId: row.response.interactionId,
-    interactionTitle: row.interactionTitle,
-    kind: row.kind,
-    memberId: row.response.memberId,
-    memberDisplay: row.response.memberId ? maskedMemberDisplay(row, '游客') : '游客',
-    visitorHash: row.response.visitorHash,
-    ipHash: row.response.ipHash,
-    answers: answers.get(row.response.id) ?? {},
-    answerDetails: details.get(row.response.id) ?? [],
-    createdAt: formatDateTime(row.response.createdAt),
-  }));
-  return { list, total, page: q.page, pageSize: q.pageSize };
 }
 
 export async function* streamCmsInteractionResponses(

@@ -2,7 +2,7 @@ import { desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { smsSendLogs } from '../../../db/schema';
 import { batchIterable } from '../../excel-export';
-import { buildListWhere, type ListSmsSendLogsQuery } from '../../../services/messaging/sms-send-logs.service';
+import { buildListWhere, type SmsSendLogListFilter } from '../../../services/messaging/sms-send-logs.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -20,7 +20,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 20, type: 'datetime' },
 ];
 
-export const smsSendLogsExportDefinition = defineExport<ListSmsSendLogsQuery & Record<string, unknown>, Record<string, unknown>>({
+export const smsSendLogsExportDefinition = defineExport<SmsSendLogListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'system.sms-send-logs',
   moduleName: '短信发送记录',
   filenamePrefix: '短信发送记录',

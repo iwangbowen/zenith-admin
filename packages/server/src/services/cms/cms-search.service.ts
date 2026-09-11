@@ -5,7 +5,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { cmsContents, cmsChannels, cmsSearchWords } from '../../db/schema';
 import { formatNullableDateTime } from '../../lib/datetime';
-import { keywordCondition } from '../../lib/where-helpers';
+import { keywordCondition, buildWhere } from '../../lib/where-helpers';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
@@ -344,22 +344,19 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
   const tsquery = usesAppSegmentation()
     ? sql`plainto_tsquery(${cfg}::regconfig, ${tokens.join(' ')})`
     : sql`plainto_tsquery(${cfg}::regconfig, ${keyword.trim()})`;
-  const baseConditions: SQL[] = [
+  const effectivelyEnabledChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
+  if (effectivelyEnabledChannelIds.size === 0) return empty;
+  const baseWhere = buildWhere(
     eq(cmsContents.siteId, siteId),
     eq(cmsContents.status, 'published'),
     isNull(cmsContents.deletedAt),
     isNull(cmsContents.archivedAt),
-    or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date()))!,
+    or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date())),
     eq(cmsChannels.status, 'enabled'),
     eq(cmsChannels.siteId, siteId),
-  ];
-  const effectivelyEnabledChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
-  if (effectivelyEnabledChannelIds.size === 0) return empty;
-  baseConditions.push(inArray(cmsChannels.id, [...effectivelyEnabledChannelIds]));
-  if (accessibleChannelIds !== null) {
-    baseConditions.push(inArray(cmsContents.channelId, accessibleChannelIds));
-  }
-  const baseWhere = and(...baseConditions)!;
+    inArray(cmsChannels.id, [...effectivelyEnabledChannelIds]),
+    accessibleChannelIds !== null ? inArray(cmsContents.channelId, accessibleChannelIds) : undefined,
+  );
 
   const selectShape = {
     id: cmsContents.id,
@@ -378,7 +375,7 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
     publishedAt: cmsContents.publishedAt,
     createdAt: cmsContents.createdAt,
   };
-  const countMatching = async (where: SQL): Promise<number> => {
+  const countMatching = async (where: SQL | undefined): Promise<number> => {
     const [result] = await db.select({ count: sql<number>`count(*)::int` })
       .from(cmsContents)
       .innerJoin(cmsChannels, eq(cmsContents.channelId, cmsChannels.id))
@@ -386,7 +383,7 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
     return result?.count ?? 0;
   };
 
-  const ftsWhere = and(baseWhere, sql`${cmsContents.searchVector} @@ ${tsquery}`)!;
+  const ftsWhere = and(baseWhere, sql`${cmsContents.searchVector} @@ ${tsquery}`);
   const [total, rows] = await Promise.all([
     countMatching(ftsWhere),
     db.select({ ...selectShape, rank: sql<number>`ts_rank_cd(${cmsContents.searchVector}, ${tsquery})`.as('rank') })
@@ -409,7 +406,7 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
     const prefixTokens = tokens.filter((t) => /^[\p{L}\p{N}]+$/u.test(t)).slice(0, 10);
     if (prefixTokens.length > 0) {
       const orTsquery = sql`to_tsquery(${cfg}::regconfig, ${prefixTokens.map((t) => `${t}:*`).join(' | ')})`;
-      const orWhere = and(baseWhere, sql`${cmsContents.searchVector} @@ ${orTsquery}`)!;
+      const orWhere = and(baseWhere, sql`${cmsContents.searchVector} @@ ${orTsquery}`);
       const [orTotal, orRows] = await Promise.all([
         countMatching(orWhere),
         db.select({ ...selectShape, rank: sql<number>`ts_rank_cd(${cmsContents.searchVector}, ${orTsquery})`.as('rank') })
@@ -429,7 +426,7 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
 
   // 回退二：整串 ILIKE 模糊匹配标题（title 已建 gin_trgm 索引），兜住词典完全切不准的关键词
   if (keyword.trim().length <= 32) {
-    const likeWhere = and(baseWhere, keywordCondition(keyword, [cmsContents.title], 'ilike'))!;
+    const likeWhere = and(baseWhere, keywordCondition(keyword, [cmsContents.title], 'ilike'));
     const [likeTotal, likeRows] = await Promise.all([
       countMatching(likeWhere),
       db.select({ ...selectShape, rank: sql<number>`0`.as('rank') })

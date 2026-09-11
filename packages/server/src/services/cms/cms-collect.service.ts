@@ -5,7 +5,7 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { createRequire } from 'node:module';
-import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsCollectRules, cmsCollectItems, cmsContents, cmsChannels } from '../../db/schema';
@@ -13,7 +13,7 @@ import type { CmsCollectRuleRow } from '../../db/schema';
 import { httpRequest } from '../../lib/http-client';
 import { registerTaskHandler } from '../../lib/task-center';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
-import { withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { buildManagedFileProxyUrl } from '../../lib/file-storage';
 import { contentSearchVector } from './cms-search.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
@@ -61,15 +61,12 @@ export function mapCollectRule(row: CmsCollectRuleRow, channelName?: string | nu
 export async function listCollectRules(params: { page: number; pageSize: number; siteId: number; keyword?: string }) {
   await ensureCmsSiteExists(params.siteId);
   await assertSiteAccess(params.siteId);
-  const conds: (SQL | undefined)[] = [
-    eq(cmsCollectRules.siteId, params.siteId),
-  ];
   const accessibleChannelIds = await getAccessibleChannelIds();
-  if (accessibleChannelIds !== null) {
-    conds.push(inArray(cmsCollectRules.channelId, accessibleChannelIds));
-  }
-  conds.push(keywordCondition(params.keyword, [cmsCollectRules.name], 'ilike'));
-  const where = and(...conds);
+  const where = buildWhere(
+    eq(cmsCollectRules.siteId, params.siteId),
+    accessibleChannelIds !== null ? inArray(cmsCollectRules.channelId, accessibleChannelIds) : undefined,
+    keywordCondition(params.keyword, [cmsCollectRules.name], 'ilike'),
+  );
   return buildListResult({
     page: params.page,
     pageSize: params.pageSize,
@@ -194,11 +191,10 @@ export async function listCollectItems(params: { page: number; pageSize: number;
   const rule = await ensureCollectRuleExists(params.ruleId);
   await assertSiteAccess(rule.siteId);
   await assertChannelAccess(rule.channelId);
-  const conds = [
+  const where = buildWhere(
     eq(cmsCollectItems.ruleId, params.ruleId),
-  ];
-  if (params.status) conds.push(eq(cmsCollectItems.status, params.status as 'success' | 'skipped' | 'failed'));
-  const where = and(...conds);
+    params.status ? eq(cmsCollectItems.status, params.status as 'success' | 'skipped' | 'failed') : undefined,
+  );
   return buildListResult({
     page: params.page,
     pageSize: params.pageSize,

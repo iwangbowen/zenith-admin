@@ -1,6 +1,6 @@
 import { buildListResult } from '../../lib/list-query';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { eq, asc, desc, and, inArray, isNull, isNotNull, sql, type SQL } from 'drizzle-orm';
+import { eq, asc, desc, and, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { cmsCommentContract } from '@zenith/shared/cms';
 import { db } from '../../db';
@@ -15,7 +15,6 @@ import { invalidateCmsSiteCaches } from './cms-cache.service';
 import { sanitizeUserText } from './cms-sensitive-words.service';
 import { ensureCmsSubmitAllowed } from './cms-submit-guard';
 import { assertSiteAccess, assertSitesAccess, ensureCmsSiteExists } from './cms-sites.service';
-import type { CmsCommentStatus } from '@zenith/shared/cms';
 import { alias } from 'drizzle-orm/pg-core';
 import { assertCompleteCmsBatch } from './cms-access';
 import { assertChannelsAccess, getAccessibleChannelIds } from './cms-channels.service';
@@ -157,19 +156,20 @@ export async function listApprovedComments(contentId: number, limit = 100) {
 export async function listCmsComments(q: QueryOutputOf<typeof cmsCommentContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
-  const conditions: SQL[] = [eq(cmsComments.siteId, q.siteId)];
   const accessibleChannelIds = await getAccessibleChannelIds();
-  if (accessibleChannelIds !== null) {
-    const contentIds = db.select({ id: cmsContents.id }).from(cmsContents).where(and(
+  const contentIds = accessibleChannelIds === null
+    ? undefined
+    : db.select({ id: cmsContents.id }).from(cmsContents).where(and(
       eq(cmsContents.siteId, q.siteId),
       inArray(cmsContents.channelId, accessibleChannelIds),
     ));
-    conditions.push(inArray(cmsComments.contentId, contentIds));
-  }
-  if (q.status) conditions.push(eq(cmsComments.status, q.status));
-  if (q.source === 'member') conditions.push(isNotNull(cmsComments.memberId));
-  if (q.source === 'guest') conditions.push(isNull(cmsComments.memberId));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsComments.siteId, q.siteId),
+    contentIds ? inArray(cmsComments.contentId, contentIds) : undefined,
+    q.status ? eq(cmsComments.status, q.status) : undefined,
+    q.source === 'member' ? isNotNull(cmsComments.memberId) : undefined,
+    q.source === 'guest' ? isNull(cmsComments.memberId) : undefined,
+  );
   // 注意：不能用 RQB `with: { content: ... }`——关系名与评论正文列 content 同名，会覆盖正文字段
   const parentComments = alias(cmsComments, 'parent_comments');
   return buildListResult({
@@ -234,17 +234,16 @@ export async function deleteCmsComments(ids: number[]): Promise<number[]> {
 export async function countPendingComments(siteId: number): Promise<number> {
   await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
-  const conditions: SQL[] = [
-    eq(cmsComments.siteId, siteId),
-    eq(cmsComments.status, 'pending'),
-  ];
   const accessibleChannelIds = await getAccessibleChannelIds();
-  if (accessibleChannelIds !== null) {
-    const contentIds = db.select({ id: cmsContents.id }).from(cmsContents).where(and(
+  const contentIds = accessibleChannelIds === null
+    ? undefined
+    : db.select({ id: cmsContents.id }).from(cmsContents).where(and(
       eq(cmsContents.siteId, siteId),
       inArray(cmsContents.channelId, accessibleChannelIds),
     ));
-    conditions.push(inArray(cmsComments.contentId, contentIds));
-  }
-  return db.$count(cmsComments, buildWhere(...conditions));
+  return db.$count(cmsComments, buildWhere(
+    eq(cmsComments.siteId, siteId),
+    eq(cmsComments.status, 'pending'),
+    contentIds ? inArray(cmsComments.contentId, contentIds) : undefined,
+  ));
 }
