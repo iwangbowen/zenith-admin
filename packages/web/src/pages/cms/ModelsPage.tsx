@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -14,11 +13,11 @@ import { useCmsModelList, useSaveCmsModel, useDeleteCmsModel, cmsModelKeys } fro
 import { useDictList } from '@/hooks/queries/dicts';
 import { CMS_FIELD_OPTION_SOURCE_LABELS, CMS_FIELD_OPTION_SOURCES, CMS_FIELD_TYPES, CMS_FIELD_TYPES_WITH_OPTIONS, CMS_FIELD_TYPE_LABELS } from '@zenith/shared/cms';
 import type { CmsModel } from '@zenith/shared/cms';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { abortSubmit } from '@/lib/abort-submit';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 const FIELD_TYPE_OPTIONS = CMS_FIELD_TYPES.map((t) => ({ value: t, label: CMS_FIELD_TYPE_LABELS[t] }));
@@ -72,7 +71,7 @@ export default function ModelsPage() {
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: cmsModelKeys.lists });
 
@@ -183,15 +182,18 @@ export default function ModelsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); setPage(1); }} width={200} />
-        <KeywordInput placeholder="搜索模型名称/标识..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        {hasPermission('cms:model:create') ? (
-          <CreateButton onClick={modal.openCreate} disabled={!siteId} />
-        ) : null}
-      </SearchToolbar>
+      {/* 站点是列表的作用域而非筛选条件，与关键字一起留在移动端主区 */}
+      <ListSearchToolbar
+        keyword={(
+          <>
+            <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); setPage(1); }} width={200} />
+            <KeywordInput placeholder="搜索模型名称/标识..." {...bindKeyword('keyword')} />
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('cms:model:create') ? <CreateButton onClick={modal.openCreate} disabled={!siteId} /> : null}
+      />
 
       <ConfigurableTable<CmsModel>
         columns={columns}

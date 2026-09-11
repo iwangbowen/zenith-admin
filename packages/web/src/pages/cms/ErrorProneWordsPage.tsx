@@ -21,7 +21,7 @@ export default function ErrorProneWordsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: cmsErrorProneWordKeys.lists });
   const listQuery = useCmsErrorProneWordList({ page, pageSize, keyword: submittedParams.keyword || undefined });
@@ -67,7 +67,7 @@ export default function ErrorProneWordsPage() {
     <div className="page-container">
       <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="易错词库用于内容编辑辅助：在内容编辑页点击「内容检查」可标出正文中的易错词，并支持一键替换为正确写法。" />
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索易错词/正确写法..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索易错词/正确写法..." {...bindKeyword('keyword')} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={canManage ? <CreateButton onClick={modal.openCreate} /> : null}

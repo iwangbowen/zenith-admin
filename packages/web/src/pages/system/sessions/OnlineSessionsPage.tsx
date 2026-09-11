@@ -19,7 +19,7 @@ export default function OnlineSessionsPage() {
   const defaultSearchParams: SearchParams = { keyword: '' };
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: sessionKeys.lists });
   const listQuery = useSessionList({ page, pageSize, keyword: submittedParams.keyword || undefined });
@@ -104,7 +104,7 @@ export default function OnlineSessionsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索用户名/昵称/IP" value={draftParams.keyword} onChange={(v) => setDraftParams({ keyword: v })} onSearch={handleSearch} width={240} />}
+        keyword={<KeywordInput placeholder="搜索用户名/昵称/IP" {...bindKeyword('keyword')} />}
         onSearch={handleSearch}
         onReset={handleReset}
         actionTitle="会话操作"

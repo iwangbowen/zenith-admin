@@ -34,7 +34,7 @@ export default function IdentitySecurityPage() {
   const [activeTab, setActiveTab] = useUrlTabState(tabs, canManagePolicy ? 'policy' : 'risk');
   const formApi = useRef<FormApi | null>(null);
   const [policy, setPolicy] = useState<IdentitySecuritySettings>(defaultPolicy);
-  const { page, pageSize, buildPagination, draftParams, setDraftParams, submittedParams, handleSearch, handleReset } = useListSearch({
+  const { page, pageSize, buildPagination, bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch({
     defaults: { keyword: '' }, listKey: identitySecurityKeys.riskLists,
   });
   // 页面级全局配置表单（无弹窗、保存后不关闭），不走 useEditModal；策略由运行时设置 identitySecurity 模块承载
@@ -141,7 +141,7 @@ export default function IdentitySecurityPage() {
 
         {canReadRiskEvents && <TabPane tab="风险事件" itemKey="risk">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="搜索账号、IP、原因" value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />}
+            keyword={<KeywordInput placeholder="搜索账号、IP、原因" {...bindKeyword('keyword')} />}
             onSearch={handleSearch}
             onReset={handleReset}
           />

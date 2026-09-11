@@ -36,7 +36,7 @@ function RedirectsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<KeywordSearch>({ defaults: defaultKeywordSearch, listKey: cmsRedirectKeys.lists });
   const listQuery = useCmsRedirectList({ page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined }, siteId !== undefined);
@@ -79,7 +79,7 @@ function RedirectsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   return (
     <>
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索来源路径..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索来源路径..." {...bindKeyword('keyword')} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={canManage ? <CreateButton onClick={modal.openCreate} /> : null}
@@ -109,7 +109,7 @@ function LinkWordsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<KeywordSearch>({ defaults: defaultKeywordSearch, listKey: cmsLinkWordKeys.lists });
   const listQuery = useCmsLinkWordList({ page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined }, siteId !== undefined);
@@ -153,7 +153,7 @@ function LinkWordsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
     <>
       <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="内容详情页渲染时自动将正文中的关键词替换为站内链接（跳过已有链接区域），提升 SEO 内链密度。修改后新访问/重新生成的页面生效。" />
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索关键词..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索关键词..." {...bindKeyword('keyword')} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={canManage ? <CreateButton onClick={modal.openCreate} /> : null}

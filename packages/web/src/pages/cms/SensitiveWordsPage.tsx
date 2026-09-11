@@ -21,7 +21,7 @@ export default function SensitiveWordsPage() {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: cmsSensitiveWordKeys.lists });
   const listQuery = useCmsSensitiveWordList({ page, pageSize, keyword: submittedParams.keyword || undefined });
@@ -68,7 +68,7 @@ export default function SensitiveWordsPage() {
     <div className="page-container">
       <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="敏感词库全局生效，作用于前台评论与自定义表单提交：拦截模式命中直接拒绝提交，替换模式命中替换为指定文本。" />
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索敏感词..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索敏感词..." {...bindKeyword('keyword')} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={canManage ? <CreateButton onClick={modal.openCreate} /> : null}
