@@ -6,7 +6,8 @@
  *   npm run icons -w @zenith/web                 # 默认用系统 Chrome（与 smoke 脚本一致）
  *   npm run icons -w @zenith/web -- --channel chromium
  *
- * 修改 favicon.svg 后重新执行即可；`AppLogo.tsx` 与 favicon.svg 共用同一套几何，二者需同步调整。
+ * 修改 favicon.svg 后重新执行即可；几何与配色比例的唯一来源是 `src/lib/brand-logo.ts`（AppLogo 与运行时 favicon 同源），
+ * 静态 favicon.svg 需与之保持一致。
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';

@@ -3,7 +3,8 @@ import { flushSync } from 'react-dom';
 import { PREFERENCES_KEY } from '@zenith/shared/core';
 import { useTheme, applyThemeToDom, type ThemeMode } from '@/hooks/useTheme';
 import { usePrefersDark } from '@/hooks/useMediaQuery';
-import { applyThemeColor } from '@/lib/theme-color';
+import { applyThemeColor, getThemeColorVars } from '@/lib/theme-color';
+import { applyThemeFavicon } from '@/lib/brand-logo';
 import { withThemeTransition } from '@/lib/theme-transition';
 import { defaultPreferences, useOptionalPreferences } from '@/hooks/usePreferences';
 import { ThemeControllerContext, type ThemeControllerValue } from './theme-controller';
@@ -61,6 +62,8 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   useEffect(() => {
     applyThemeColor(themeColor, isDark);
+    // 标签页图标与左上角 logo 同源，跟随主题色与明暗切换
+    applyThemeFavicon(getThemeColorVars(themeColor, isDark).primary);
   }, [themeColor, isDark]);
 
   const setThemeMode = useCallback((nextMode: ThemeMode) => {

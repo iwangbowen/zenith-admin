@@ -3,29 +3,3 @@
   flex-shrink: 0;
   user-select: none;
 }
-
-/* 三块折面的明暗由主题主色派生：顶杠（远）偏浅、斜带取主色、底杠（近）偏深；
-   分区深色 / 全局深色下 --semi-color-primary 会被替换成更亮的主色，图形自动跟随 */
-.app-logo__top-a {
-  stop-color: color-mix(in srgb, var(--semi-color-primary) 52%, #fff);
-}
-
-.app-logo__top-b {
-  stop-color: color-mix(in srgb, var(--semi-color-primary) 70%, #fff);
-}
-
-.app-logo__band-a {
-  stop-color: color-mix(in srgb, var(--semi-color-primary) 92%, #000);
-}
-
-.app-logo__band-b {
-  stop-color: color-mix(in srgb, var(--semi-color-primary) 88%, #fff);
-}
-
-.app-logo__base-a {
-  stop-color: color-mix(in srgb, var(--semi-color-primary) 80%, #000);
-}
-
-.app-logo__base-b {
-  stop-color: color-mix(in srgb, var(--semi-color-primary) 66%, #000);
-}
