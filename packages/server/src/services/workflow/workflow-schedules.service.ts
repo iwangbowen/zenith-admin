@@ -6,7 +6,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  * 按 cron 周期自动以指定发起人身份发起流程实例。
  * 调度由系统启动任务 workflow-schedule-tick 每分钟触发 runDueWorkflowSchedules() 扫描执行。
  */
-import { and, desc, eq, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, lte, sql } from 'drizzle-orm';
 import { CronExpressionParser } from 'cron-parser';
 import { db } from '../../db';
 import { workflowSchedules, workflowDefinitions, users } from '../../db/schema';
@@ -66,12 +66,10 @@ function renderTitle(template: string | null | undefined, fallback: string): str
 }
 
 async function ensureScheduleDefinitionLaunchable(definitionId: number): Promise<void> {
-  const tc = tenantCondition(workflowDefinitions, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, definitionId), tc];
   const [def] = await db
     .select({ id: workflowDefinitions.id, formType: workflowDefinitions.formType })
     .from(workflowDefinitions)
-    .where(buildWhere(...conds))
+    .where(buildWhere(eq(workflowDefinitions.id, definitionId), tenantCondition(workflowDefinitions, currentUser())))
     .limit(1);
   requireRow(def, '流程定义不存在');
   if (def.formType === 'external') {
@@ -79,14 +77,19 @@ async function ensureScheduleDefinitionLaunchable(definitionId: number): Promise
   }
 }
 
+/** 按 id 定位当前租户可见的定时规则 */
+function findSchedule(id: number) {
+  return buildWhere(eq(workflowSchedules.id, id), tenantCondition(workflowSchedules, currentUser()));
+}
+
 export async function listSchedules(query: QueryOutputOf<typeof workflowScheduleContract.list>) {
   const user = currentUser();
   const { page, pageSize, definitionId, status } = query;
-  const tc = tenantCondition(workflowSchedules, user);
-  const conds: (SQL | undefined)[] = [tc];
-  if (definitionId) conds.push(eq(workflowSchedules.definitionId, definitionId));
-  if (status) conds.push(eq(workflowSchedules.status, status as 'enabled' | 'disabled'));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantCondition(workflowSchedules, user),
+    definitionId ? eq(workflowSchedules.definitionId, definitionId) : undefined,
+    status ? eq(workflowSchedules.status, status as 'enabled' | 'disabled') : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -143,9 +146,7 @@ export async function createSchedule(input: CreateWorkflowScheduleInput): Promis
 }
 
 export async function updateSchedule(id: number, input: UpdateWorkflowScheduleInput): Promise<WorkflowSchedule> {
-  const tc = tenantCondition(workflowSchedules, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowSchedules.id, id), tc];
-  const [existing] = await db.select().from(workflowSchedules).where(buildWhere(...conds)).limit(1);
+  const [existing] = await db.select().from(workflowSchedules).where(findSchedule(id)).limit(1);
   requireRow(existing, '定时规则不存在');
   const patch: Partial<typeof workflowSchedules.$inferInsert> = {};
   if (input.definitionId !== undefined) {
@@ -173,18 +174,14 @@ export async function updateSchedule(id: number, input: UpdateWorkflowScheduleIn
 }
 
 export async function deleteSchedule(id: number): Promise<void> {
-  const tc = tenantCondition(workflowSchedules, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowSchedules.id, id), tc];
-  const [existing] = await db.select({ id: workflowSchedules.id }).from(workflowSchedules).where(buildWhere(...conds)).limit(1);
+  const [existing] = await db.select({ id: workflowSchedules.id }).from(workflowSchedules).where(findSchedule(id)).limit(1);
   requireRow(existing, '定时规则不存在');
   await db.delete(workflowSchedules).where(eq(workflowSchedules.id, id));
 }
 
 /** 立即执行一次（手动触发，不影响 nextRunAt） */
 export async function runScheduleNow(id: number): Promise<WorkflowSchedule> {
-  const tc = tenantCondition(workflowSchedules, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowSchedules.id, id), tc];
-  const [s] = await db.select().from(workflowSchedules).where(buildWhere(...conds)).limit(1);
+  const [s] = await db.select().from(workflowSchedules).where(findSchedule(id)).limit(1);
   requireRow(s, '定时规则不存在');
   await fireSchedule(s);
   return loadScheduleWithNames(id);

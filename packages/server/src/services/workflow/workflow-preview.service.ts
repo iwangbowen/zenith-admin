@@ -4,7 +4,7 @@
  * 对已发布流程做"干跑"遍历：从 start 沿正常边走，按节点 assigneeType 解析出真实审批人姓名，
  * 供发起页在提交前展示「审批人：张三 → 李四 → …」。条件/并行分支会标注分支名并展开所有分支。
  */
-import { eq, inArray, type SQL } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { workflowDefinitions, users } from '../../db/schema';
@@ -23,9 +23,8 @@ export async function previewFlow(
   formData?: Record<string, unknown> | null,
 ): Promise<WorkflowApproverPreviewNode[]> {
   const user = currentUser();
-  const tc = tenantCondition(workflowDefinitions, user);
-  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, definitionId), tc];
-  const [def] = await db.select().from(workflowDefinitions).where(buildWhere(...conds)).limit(1);
+  const [def] = await db.select().from(workflowDefinitions)
+    .where(buildWhere(eq(workflowDefinitions.id, definitionId), tenantCondition(workflowDefinitions, user))).limit(1);
   requireRow(def, '流程定义不存在');
   const flowData = def.flowData as WorkflowFlowData | null;
   if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程未配置，无法预览' });

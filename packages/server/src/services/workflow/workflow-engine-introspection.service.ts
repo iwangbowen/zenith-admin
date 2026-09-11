@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { CronExpressionParser } from 'cron-parser';
 import type { WorkflowEngineApdex, WorkflowEngineComponent, WorkflowEngineComponentStatus, WorkflowEngineDefinitionSnapshot, WorkflowEngineEventBucket, WorkflowEngineHistogramBucket, WorkflowEngineInstanceBucket, WorkflowEngineIntrospection, WorkflowEngineMetric, WorkflowEngineQueueKey, WorkflowEngineQueueSnapshot, WorkflowEngineRuntimeIssue, WorkflowEngineRuntimeTask, WorkflowEngineScoreFactor, WorkflowEngineTelemetry, WorkflowEngineThresholds, WorkflowEngineTriggerExecution, WorkflowEngineOutboxEvent, WorkflowFlowData, WorkflowInstancePriority } from '@zenith/shared/workflow';
@@ -379,14 +379,9 @@ export async function getWorkflowEngineIntrospection(
       })
     : undefined;
 
-  const instanceBaseConds: SQL[] = [];
-  if (instTenant) instanceBaseConds.push(instTenant);
-  if (taskScope) instanceBaseConds.push(taskScope);
-  const instanceBaseWhere = buildWhere(...instanceBaseConds);
-
-  const taskBaseConds: SQL[] = [eq(workflowInstances.status, 'running')];
-  if (instTenant) taskBaseConds.push(instTenant);
-  if (taskScope) taskBaseConds.push(taskScope);
+  // 实例口径 = 租户 + 数据权限；任务口径在其上叠加「实例运行中」
+  const instanceBaseWhere = buildWhere(instTenant, taskScope);
+  const taskBaseWhere = buildWhere(eq(workflowInstances.status, 'running'), instTenant, taskScope);
 
   const since1h = new Date(now.getTime() - 60 * 60_000);
   const since24h = new Date(now.getTime() - 24 * 60 * 60_000);
@@ -401,14 +396,12 @@ export async function getWorkflowEngineIntrospection(
   const trDuration = sql`${workflowJobExecutions.durationMs}`;
   const terminalStatuses = ['approved', 'rejected', 'withdrawn', 'cancelled'] as const;
   const canceledStatuses = ['withdrawn', 'cancelled'] as const;
-  const outboxScopeConds: SQL[] = [];
-  if (outboxTenant) outboxScopeConds.push(outboxTenant);
-  outboxScopeConds.push(eq(workflowJobs.jobType, 'event_dispatch'));
-  outboxScopeConds.push(or(isNull(workflowJobs.instanceId), instanceBaseWhere ?? sql`true`)!);
-  const triggerScopeConds: SQL[] = [];
-  triggerScopeConds.push(eq(workflowJobExecutions.jobType, 'trigger_dispatch'));
-  if (instTenant) triggerScopeConds.push(instTenant);
-  if (taskScope) triggerScopeConds.push(taskScope);
+  const outboxScopeWhere = buildWhere(
+    outboxTenant,
+    eq(workflowJobs.jobType, 'event_dispatch'),
+    or(isNull(workflowJobs.instanceId), instanceBaseWhere ?? sql`true`)!,
+  );
+  const triggerScopeWhere = buildWhere(eq(workflowJobExecutions.jobType, 'trigger_dispatch'), instTenant, taskScope);
 
   const [definitions, runningInstanceRows, activeInstanceRows, runtimeTaskRows, triggerRows, outboxRows, eventStatsRows, triggerStatsRows, instanceStatsRows, eventSeriesRows, instanceSeriesRows] = await Promise.all([
     db.select().from(workflowDefinitions).where(defTenant),
@@ -424,12 +417,12 @@ export async function getWorkflowEngineIntrospection(
       .from(workflowInstances)
       .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-      .where(and(...instanceBaseConds, eq(workflowInstances.status, 'running'))),
+      .where(and(instanceBaseWhere, eq(workflowInstances.status, 'running'))),
     db.select({ instanceId: workflowTasks.instanceId })
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-      .where(and(...taskBaseConds, inArray(workflowTasks.status, ['pending', 'waiting']))),
+      .where(and(taskBaseWhere, inArray(workflowTasks.status, ['pending', 'waiting']))),
     db.select({
       taskId: workflowTasks.id,
       instanceId: workflowTasks.instanceId,
@@ -480,7 +473,7 @@ export async function getWorkflowEngineIntrospection(
       .leftJoin(timeoutJob, and(eq(timeoutJob.taskId, workflowTasks.id), eq(timeoutJob.jobType, 'task_timeout')))
       .leftJoin(delayJob, and(eq(delayJob.taskId, workflowTasks.id), eq(delayJob.jobType, 'delay_wake')))
       .where(and(
-        ...taskBaseConds,
+        taskBaseWhere,
         or(
           eq(workflowTasks.status, 'pending'),
           eq(workflowTasks.status, 'waiting'),
@@ -544,7 +537,7 @@ export async function getWorkflowEngineIntrospection(
       .from(workflowJobs)
       .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-      .where(buildWhere(...outboxScopeConds)),
+      .where(outboxScopeWhere),
     jobExecutionsWithJob({
       total24h: sql<number>`count(*) filter (where ${gte(workflowJobExecutions.createdAt, since24h)})`.mapWith(Number),
       success24h: sql<number>`count(*) filter (where ${and(eq(workflowJobExecutions.status, 'succeeded'), gte(workflowJobExecutions.createdAt, since24h))})`.mapWith(Number),
@@ -567,7 +560,7 @@ export async function getWorkflowEngineIntrospection(
     })
       .innerJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-      .where(buildWhere(...triggerScopeConds)),
+      .where(triggerScopeWhere),
     db.select({
       createdLast24h: sql<number>`count(*) filter (where ${gte(workflowInstances.createdAt, since24h)})`.mapWith(Number),
       completedLast24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.updatedAt, since24h))})`.mapWith(Number),
@@ -582,13 +575,13 @@ export async function getWorkflowEngineIntrospection(
       .from(workflowJobs)
       .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-      .where(buildWhere(...outboxScopeConds, gte(workflowJobs.createdAt, since24h)))
+      .where(buildWhere(outboxScopeWhere, gte(workflowJobs.createdAt, since24h)))
       .limit(SERIES_ROW_LIMIT),
     db.select({ createdAt: workflowInstances.createdAt, updatedAt: workflowInstances.updatedAt, status: workflowInstances.status })
       .from(workflowInstances)
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
       .where(buildWhere(
-        ...instanceBaseConds,
+        instanceBaseWhere,
         or(
           gte(workflowInstances.createdAt, since24h),
           and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.updatedAt, since24h)),

@@ -71,9 +71,7 @@ async function mapConnector(row: WorkflowConnectorRow): Promise<WorkflowConnecto
 }
 
 function findConnector(id: number): SQL {
-  const tc = tenantCondition(workflowConnectors, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowConnectors.id, id), tc];
-  return buildWhere(...conds)!;
+  return buildWhere(eq(workflowConnectors.id, id), tenantCondition(workflowConnectors, currentUser()))!;
 }
 
 async function ensureConnector(id: number): Promise<WorkflowConnectorRow> {
@@ -93,12 +91,12 @@ async function assertConnectorConfigSafe(type: string | undefined, cfg: Record<s
 
 export async function listWorkflowConnectors(query: QueryOutputOf<typeof workflowConnectorContract.list>) {
   const { page, pageSize, keyword, type, status } = query;
-  const tc = tenantCondition(workflowConnectors, currentUser());
-  const conds: (SQL | undefined)[] = [tc];
-  if (type) conds.push(eq(workflowConnectors.type, type));
-  if (status) conds.push(eq(workflowConnectors.status, status));
-  conds.push(keywordCondition(keyword, [workflowConnectors.name, workflowConnectors.code], 'ilike'));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantCondition(workflowConnectors, currentUser()),
+    type ? eq(workflowConnectors.type, type) : undefined,
+    status ? eq(workflowConnectors.status, status) : undefined,
+    keywordCondition(keyword, [workflowConnectors.name, workflowConnectors.code], 'ilike'),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -392,9 +390,8 @@ export async function testWorkflowConnector(id: number, input: TestWorkflowConne
 
 /** 按 code 取连接器（供运行时业务桥接按 code 引用）。 */
 export async function getConnectorRowByCode(code: string): Promise<WorkflowConnectorRow | null> {
-  const tc = tenantCondition(workflowConnectors, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowConnectors.code, code), tc];
-  const [row] = await db.select().from(workflowConnectors).where(buildWhere(...conds)).limit(1);
+  const [row] = await db.select().from(workflowConnectors)
+    .where(buildWhere(eq(workflowConnectors.code, code), tenantCondition(workflowConnectors, currentUser()))).limit(1);
   return row ?? null;
 }
 

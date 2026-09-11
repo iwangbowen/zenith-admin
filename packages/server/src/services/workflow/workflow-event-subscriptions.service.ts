@@ -1,6 +1,6 @@
 import { workflowEventSubscriptionContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { and, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db';
 import {
@@ -12,10 +12,10 @@ import {
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { inheritedTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
-import { buildWhere, keywordCondition, nullableEq } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition, nullableEq } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
@@ -83,10 +83,13 @@ export function mapSubscription(
   };
 }
 
+/** 按 id 定位当前租户可见的订阅 */
+function findSubscription(id: number) {
+  return buildWhere(eq(workflowEventSubscriptions.id, id), tenantCondition(workflowEventSubscriptions, currentUser()));
+}
+
 export async function ensureSubscriptionExists(id: number) {
-  const tc = tenantCondition(workflowEventSubscriptions, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowEventSubscriptions.id, id), tc];
-  const [row] = await db.select().from(workflowEventSubscriptions).where(buildWhere(...conds)).limit(1);
+  const [row] = await db.select().from(workflowEventSubscriptions).where(findSubscription(id)).limit(1);
   return requireRow(row, '事件订阅不存在');
 }
 
@@ -94,14 +97,12 @@ export type ListSubscriptionsQuery = QueryOutputOf<typeof workflowEventSubscript
 
 export async function listSubscriptions(q: ListSubscriptionsQuery) {
   const { page, pageSize } = q;
-  const tc = tenantCondition(workflowEventSubscriptions, currentUser());
-  const conds: (SQL | undefined)[] = [tc];
-  conds.push(keywordCondition(q.keyword, [workflowEventSubscriptions.name, workflowEventSubscriptions.url], 'ilike'));
-  if (q.definitionId !== undefined) {
-    conds.push(nullableEq(workflowEventSubscriptions.definitionId, q.definitionId));
-  }
-  if (q.enabled !== undefined) conds.push(eq(workflowEventSubscriptions.enabled, q.enabled));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantCondition(workflowEventSubscriptions, currentUser()),
+    keywordCondition(q.keyword, [workflowEventSubscriptions.name, workflowEventSubscriptions.url], 'ilike'),
+    q.definitionId !== undefined ? nullableEq(workflowEventSubscriptions.definitionId, q.definitionId) : undefined,
+    q.enabled !== undefined ? eq(workflowEventSubscriptions.enabled, q.enabled) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -188,8 +189,6 @@ export async function updateSubscription(id: number, input: Partial<UpsertSubscr
     await assertSafeWorkflowUrl(nextUrl);
   }
   const user = currentUser();
-  const tc = tenantCondition(workflowEventSubscriptions, user);
-  const conds: (SQL | undefined)[] = [eq(workflowEventSubscriptions.id, id), tc];
   const patch: Partial<typeof workflowEventSubscriptions.$inferInsert> = { updatedBy: user.userId, updatedAt: new Date() };
   if (input.name !== undefined) patch.name = input.name;
   if (input.description !== undefined) patch.description = input.description;
@@ -205,7 +204,7 @@ export async function updateSubscription(id: number, input: Partial<UpsertSubscr
   if (input.connectorId !== undefined) patch.connectorId = input.connectorId;
   if (input.enabled !== undefined) patch.enabled = input.enabled;
   try {
-    const [row] = await db.update(workflowEventSubscriptions).set(patch).where(buildWhere(...conds)).returning();
+    const [row] = await db.update(workflowEventSubscriptions).set(patch).where(findSubscription(id)).returning();
     return mapSubscription(requireRow(row, '事件订阅不存在'));
   } catch (err) {
     if (err instanceof HTTPException) throw err;
@@ -215,9 +214,7 @@ export async function updateSubscription(id: number, input: Partial<UpsertSubscr
 
 export async function deleteSubscription(id: number) {
   await ensureSubscriptionExists(id);
-  const tc = tenantCondition(workflowEventSubscriptions, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowEventSubscriptions.id, id), tc];
-  await db.delete(workflowEventSubscriptions).where(buildWhere(...conds));
+  await db.delete(workflowEventSubscriptions).where(findSubscription(id));
 }
 
 export async function toggleSubscription(id: number, enabled: boolean) {
@@ -417,20 +414,23 @@ export interface ReplayDeliveriesFilter {
  * 上限 DELIVERY_REPLAY_CAP，返回实际重放条数。
  */
 export async function replayDeliveriesByFilter(f: ReplayDeliveriesFilter): Promise<{ count: number }> {
-  const tc = tenantCondition(workflowJobs, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowJobs.jobType, 'webhook_delivery'), tc];
-  if (f.subscriptionId) conds.push(sql`(${workflowJobs.payload}->>'subscriptionId')::int = ${f.subscriptionId}`);
-  if (f.eventType) conds.push(sql`${workflowJobs.payload}->>'eventType' = ${f.eventType}`);
-  if (f.status === 'success') conds.push(eq(workflowJobs.status, 'succeeded'));
-  else if (f.status === 'failed') conds.push(inArray(workflowJobs.status, ['failed', 'dead']));
-  else if (f.status === 'pending') conds.push(eq(workflowJobs.status, 'pending'));
-  const start = parseDateRangeStart(f.startAt);
-  const end = parseDateRangeEnd(f.endAt);
-  if (start) conds.push(gte(workflowJobs.createdAt, start));
-  if (end) conds.push(lte(workflowJobs.createdAt, end));
-
+  const statusCondition = (): SQL | undefined => {
+    switch (f.status) {
+      case 'success': return eq(workflowJobs.status, 'succeeded');
+      case 'failed': return inArray(workflowJobs.status, ['failed', 'dead']);
+      case 'pending': return eq(workflowJobs.status, 'pending');
+      default: return undefined;
+    }
+  };
   const targets = await db.select().from(workflowJobs)
-    .where(buildWhere(...conds))
+    .where(buildWhere(
+      eq(workflowJobs.jobType, 'webhook_delivery'),
+      tenantCondition(workflowJobs, currentUser()),
+      f.subscriptionId ? sql`(${workflowJobs.payload}->>'subscriptionId')::int = ${f.subscriptionId}` : undefined,
+      f.eventType ? sql`${workflowJobs.payload}->>'eventType' = ${f.eventType}` : undefined,
+      statusCondition(),
+      ...dateRangeConditions(workflowJobs.createdAt, f.startAt, f.endAt),
+    ))
     .orderBy(desc(workflowJobs.id))
     .limit(DELIVERY_REPLAY_CAP);
   if (targets.length === 0) return { count: 0 };

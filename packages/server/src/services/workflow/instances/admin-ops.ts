@@ -1,5 +1,5 @@
 // ─── 管理员强制操作与令牌运维恢复（拆分自 workflow-instances.service.ts）───
-import { eq, and, asc, lte, inArray, gt, type SQL } from 'drizzle-orm';
+import { eq, and, asc, lte, inArray, gt } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks, workflowTokens, workflowDefinitions, workflowDelegations, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
@@ -301,21 +301,19 @@ const BATCH_RECOVERY_CAP = 200;
  */
 export async function batchSkipStuckTokens(input: { definitionId: number; nodeKey: string; olderThanMinutes?: number; reason?: string }): Promise<WorkflowRecoveryBatchResult> {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conds: (SQL | undefined)[] = [
-    eq(workflowTokens.status, 'active'),
-    eq(workflowTokens.nodeKey, input.nodeKey),
-    eq(workflowInstances.status, 'running'),
-    eq(workflowInstances.definitionId, input.definitionId),
-    tc,
-  ];
-  if (input.olderThanMinutes && input.olderThanMinutes > 0) {
-    conds.push(lte(workflowTokens.createdAt, new Date(Date.now() - input.olderThanMinutes * 60_000)));
-  }
   const rows = await db.select({ tokenId: workflowTokens.id })
     .from(workflowTokens)
     .innerJoin(workflowInstances, eq(workflowTokens.instanceId, workflowInstances.id))
-    .where(buildWhere(...conds))
+    .where(buildWhere(
+      eq(workflowTokens.status, 'active'),
+      eq(workflowTokens.nodeKey, input.nodeKey),
+      eq(workflowInstances.status, 'running'),
+      eq(workflowInstances.definitionId, input.definitionId),
+      tenantCondition(workflowInstances, user),
+      input.olderThanMinutes && input.olderThanMinutes > 0
+        ? lte(workflowTokens.createdAt, new Date(Date.now() - input.olderThanMinutes * 60_000))
+        : undefined,
+    ))
     .orderBy(asc(workflowTokens.id))
     .limit(BATCH_RECOVERY_CAP);
   let success = 0;
@@ -334,6 +332,16 @@ export async function batchSkipStuckTokens(input: { definitionId: number; nodeKe
 
 // ─── 离职交接：把某人名下未处理审批事务批量移交接手人 ─────────────────────────────
 
+/** 交接范围：某人名下、所属实例仍在运行 / 挂起中的未处理待办（需 join workflowInstances） */
+function handoverTaskScopeWhere(fromUserId: number, user: ReturnType<typeof currentUser>) {
+  return buildWhere(
+    eq(workflowTasks.assigneeId, fromUserId),
+    inArray(workflowTasks.status, ['pending', 'waiting']),
+    inArray(workflowInstances.status, ['running', 'suspended']),
+    tenantCondition(workflowInstances, user),
+  );
+}
+
 /** 离职交接影响范围预览（不落库） */
 export async function previewHandover(fromUserId: number): Promise<WorkflowHandoverPreview> {
   const user = currentUser();
@@ -341,17 +349,10 @@ export async function previewHandover(fromUserId: number): Promise<WorkflowHando
     .from(users).where(eq(users.id, fromUserId)).limit(1);
   requireRow(from, '交接人不存在');
 
-  const tc = tenantCondition(workflowInstances, user);
-  const taskConds: (SQL | undefined)[] = [
-    eq(workflowTasks.assigneeId, fromUserId),
-    inArray(workflowTasks.status, ['pending', 'waiting']),
-    inArray(workflowInstances.status, ['running', 'suspended']),
-    tc,
-  ];
   const tasks = await db.select({ id: workflowTasks.id, status: workflowTasks.status })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(buildWhere(...taskConds));
+    .where(handoverTaskScopeWhere(fromUserId, user));
 
   const delegations = await db.select({ id: workflowDelegations.id }).from(workflowDelegations)
     .where(and(eq(workflowDelegations.principalId, fromUserId), eq(workflowDelegations.enabled, true)));
@@ -391,17 +392,10 @@ export async function handoverTasks(input: { fromUserId: number; toUserId: numbe
   const [tgt] = await db.select({ id: users.id }).from(users).where(eq(users.id, toUserId)).limit(1);
   requireRow(tgt, '接手人不存在', 400);
 
-  const tc = tenantCondition(workflowInstances, user);
-  const taskConds: (SQL | undefined)[] = [
-    eq(workflowTasks.assigneeId, fromUserId),
-    inArray(workflowTasks.status, ['pending', 'waiting']),
-    inArray(workflowInstances.status, ['running', 'suspended']),
-    tc,
-  ];
   const tasks = await db.select({ id: workflowTasks.id, nodeName: workflowTasks.nodeName, title: workflowInstances.title })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(buildWhere(...taskConds))
+    .where(handoverTaskScopeWhere(fromUserId, user))
     .orderBy(asc(workflowTasks.id));
 
   const note = `[离职交接]${comment ? ' ' + comment : ''}`;

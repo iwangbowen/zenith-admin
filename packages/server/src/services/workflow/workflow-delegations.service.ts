@@ -1,6 +1,6 @@
 import { workflowDelegationContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { and, desc, eq, isNull, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowDelegations, users } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -79,9 +79,8 @@ async function ensureUserExists(id: number, msg: string) {
 
 async function ensureDelegationAccess(id: number): Promise<DelegationRow> {
   const user = currentUser();
-  const tc = tenantCondition(workflowDelegations, user);
-  const conds: (SQL | undefined)[] = [eq(workflowDelegations.id, id), tc];
-  const [row] = await db.select().from(workflowDelegations).where(buildWhere(...conds)).limit(1);
+  const [row] = await db.select().from(workflowDelegations)
+    .where(buildWhere(eq(workflowDelegations.id, id), tenantCondition(workflowDelegations, user))).limit(1);
   requireRow(row, '委托规则不存在');
   if (!isSuperAdmin(user) && row.principalId !== user.userId) {
     throw new HTTPException(403, { message: '无权操作他人的委托规则' });
@@ -103,15 +102,11 @@ export async function listWorkflowDelegations(q: ListWorkflowDelegationsQuery) {
   const { page, pageSize } = q;
   const user = currentUser();
   const admin = isSuperAdmin(user);
-  const tc = tenantCondition(workflowDelegations, user);
-  const conds: (SQL | undefined)[] = [tc];
-  // 非管理员或显式 scope='mine'：仅本人作为委托人的规则
-  if (!admin || q.scope === 'mine') {
-    conds.push(eq(workflowDelegations.principalId, user.userId));
-  } else if (q.principalId) {
-    conds.push(eq(workflowDelegations.principalId, q.principalId));
-  }
-  const where = buildWhere(...conds);
+  // 非管理员或显式 scope='mine'：仅本人作为委托人的规则；管理员可按 principalId 筛选
+  const principalCondition = !admin || q.scope === 'mine'
+    ? eq(workflowDelegations.principalId, user.userId)
+    : q.principalId ? eq(workflowDelegations.principalId, q.principalId) : undefined;
+  const where = buildWhere(tenantCondition(workflowDelegations, user), principalCondition);
   return buildListResult({
     page,
     pageSize,

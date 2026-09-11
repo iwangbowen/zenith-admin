@@ -2,7 +2,7 @@
  * 流程仿真用例服务：保存/列出/删除按流程定义归档的测试场景（表单数据 + 决策 + 发起人）。
  * 取代设计器仿真抽屉原先的 localStorage 占位，落库 + 租户隔离 + 重名覆盖（按 definitionId + name 唯一）。
  */
-import { desc, eq, type SQL } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowSimulationCases, workflowDefinitions } from '../../db/schema';
 import type { WorkflowSimulationCaseRow } from '../../db/schema';
@@ -32,17 +32,16 @@ function mapCase(row: WorkflowSimulationCaseRow): WorkflowSimulationCase {
 
 /** 校验流程定义在当前租户可见（越权 / 不存在抛 404）。 */
 async function ensureDefinitionAccess(definitionId: number): Promise<void> {
-  const tc = tenantCondition(workflowDefinitions, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, definitionId), tc];
-  const [def] = await db.select({ id: workflowDefinitions.id }).from(workflowDefinitions).where(buildWhere(...conds)).limit(1);
+  const [def] = await db.select({ id: workflowDefinitions.id }).from(workflowDefinitions)
+    .where(buildWhere(eq(workflowDefinitions.id, definitionId), tenantCondition(workflowDefinitions, currentUser()))).limit(1);
   requireRow(def, '流程定义不存在');
 }
 
 export async function listSimulationCases(definitionId: number): Promise<WorkflowSimulationCase[]> {
   await ensureDefinitionAccess(definitionId);
-  const tc = tenantCondition(workflowSimulationCases, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowSimulationCases.definitionId, definitionId), tc];
-  const rows = await db.select().from(workflowSimulationCases).where(buildWhere(...conds)).orderBy(desc(workflowSimulationCases.id));
+  const rows = await db.select().from(workflowSimulationCases)
+    .where(buildWhere(eq(workflowSimulationCases.definitionId, definitionId), tenantCondition(workflowSimulationCases, currentUser())))
+    .orderBy(desc(workflowSimulationCases.id));
   return rows.map(mapCase);
 }
 
@@ -77,9 +76,8 @@ export async function saveSimulationCase(input: SaveWorkflowSimulationCaseInput)
 }
 
 export async function deleteSimulationCase(id: number): Promise<void> {
-  const tc = tenantCondition(workflowSimulationCases, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowSimulationCases.id, id), tc];
-  const [row] = await db.select({ id: workflowSimulationCases.id }).from(workflowSimulationCases).where(buildWhere(...conds)).limit(1);
+  const [row] = await db.select({ id: workflowSimulationCases.id }).from(workflowSimulationCases)
+    .where(buildWhere(eq(workflowSimulationCases.id, id), tenantCondition(workflowSimulationCases, currentUser()))).limit(1);
   requireRow(row, '仿真用例不存在');
   await db.delete(workflowSimulationCases).where(eq(workflowSimulationCases.id, row.id));
 }

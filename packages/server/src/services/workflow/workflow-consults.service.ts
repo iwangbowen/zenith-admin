@@ -1,6 +1,6 @@
 import { workflowTaskContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { and, asc, desc, eq, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowTaskConsults, workflowTasks, workflowInstances } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -161,11 +161,11 @@ export async function getConsultInstanceIdForAudit(consultId: number): Promise<n
 export async function listMyConsults(query: QueryOutputOf<typeof workflowTaskContract.myConsults>) {
   const user = currentUser();
   const { page, pageSize } = query;
-  const tc = tenantCondition(workflowTaskConsults, user);
-  const conds: (SQL | undefined)[] = [eq(workflowTaskConsults.consulteeId, user.userId)];
-  if (query.status) conds.push(eq(workflowTaskConsults.status, query.status as ConsultRow['status']));
-  conds.push(tc);
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    eq(workflowTaskConsults.consulteeId, user.userId),
+    query.status ? eq(workflowTaskConsults.status, query.status as ConsultRow['status']) : undefined,
+    tenantCondition(workflowTaskConsults, user),
+  );
   return buildListResult({
     page,
     pageSize,

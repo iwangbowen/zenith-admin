@@ -1,7 +1,7 @@
 /**
  * 流程仿真服务：复用真实 DAG 引擎做 dry-run，不落库、不外呼、不创建真实实例。
  */
-import { eq, inArray, type SQL } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { users, workflowDefinitions } from '../../db/schema';
@@ -69,14 +69,16 @@ async function resolveFlowData(input: SimulateWorkflowInput): Promise<WorkflowFl
   if (!definitionId) {
     throw new HTTPException(400, { message: '请选择流程定义或传入流程数据' });
   }
-  const user = currentUser();
-  const tc = tenantCondition(workflowDefinitions, user);
-  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, definitionId), tc];
-  const [def] = await db.select().from(workflowDefinitions).where(buildWhere(...conds)).limit(1);
+  const [def] = await db.select().from(workflowDefinitions).where(findDefinition(definitionId)).limit(1);
   requireRow(def, '流程定义不存在');
   const flowData = def.flowData as WorkflowFlowData | null;
   if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程未配置，无法仿真' });
   return flowData;
+}
+
+/** 按 id 定位当前租户可见的流程定义 */
+function findDefinition(definitionId: number) {
+  return buildWhere(eq(workflowDefinitions.id, definitionId), tenantCondition(workflowDefinitions, currentUser()));
 }
 
 
@@ -733,10 +735,7 @@ async function resolveFormFieldMeta(input: WorkflowHealthCheckInput): Promise<{ 
   };
   if (input.formFields && input.formFields.length > 0) return build(input.formFields);
   if (!input.definitionId) return { keys: null, types: null };
-  const user = currentUser();
-  const tc = tenantCondition(workflowDefinitions, user);
-  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, input.definitionId), tc];
-  const [def] = await db.select({ formId: workflowDefinitions.formId }).from(workflowDefinitions).where(buildWhere(...conds)).limit(1);
+  const [def] = await db.select({ formId: workflowDefinitions.formId }).from(workflowDefinitions).where(findDefinition(input.definitionId)).limit(1);
   if (!def?.formId) return { keys: null, types: null };
   const snap = await resolveFormSnapshot(def.formId);
   if (!snap || snap.fields.length === 0) return { keys: null, types: null };

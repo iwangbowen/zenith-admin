@@ -138,12 +138,12 @@ function canUserInitiateByScope(
 export async function listDefinitions(query: QueryOutputOf<typeof workflowDefinitionContract.list>) {
   const user = currentUser();
   const { page, pageSize, keyword, status, categoryId } = query;
-  const tc = tenantCondition(workflowDefinitions, user);
-  const conditions: (SQL | undefined)[] = [tc];
-  conditions.push(keywordCondition(keyword, [workflowDefinitions.name]));
-  if (status) conditions.push(eq(workflowDefinitions.status, status as WorkflowDefinitionStatus));
-  if (categoryId) conditions.push(eq(workflowDefinitions.categoryId, categoryId));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    tenantCondition(workflowDefinitions, user),
+    keywordCondition(keyword, [workflowDefinitions.name]),
+    status ? eq(workflowDefinitions.status, status as WorkflowDefinitionStatus) : undefined,
+    categoryId ? eq(workflowDefinitions.categoryId, categoryId) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -165,11 +165,13 @@ export async function listDefinitions(query: QueryOutputOf<typeof workflowDefini
 
 export async function listPublishedDefinitions() {
   const user = currentUser();
-  const tc = tenantCondition(workflowDefinitions, user);
-  const conditions: (SQL | undefined)[] = [eq(workflowDefinitions.status, 'published'), ne(workflowDefinitions.formType, 'external'), tc];
   const [rows, me, roleRows] = await Promise.all([
     db.query.workflowDefinitions.findMany({
-      where: buildWhere(...conditions),
+      where: buildWhere(
+        eq(workflowDefinitions.status, 'published'),
+        ne(workflowDefinitions.formType, 'external'),
+        tenantCondition(workflowDefinitions, user),
+      ),
       with: { form: { columns: { name: true, schema: true } } },
       orderBy: desc(workflowDefinitions.updatedAt),
     }),
@@ -187,10 +189,12 @@ export async function listPublishedDefinitions() {
 }
 
 function findDefinition(id: number) {
-  const user = currentUser();
-  const tc = tenantCondition(workflowDefinitions, user);
-  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, id), tc];
-  return buildWhere(...conds);
+  return buildWhere(eq(workflowDefinitions.id, id), tenantCondition(workflowDefinitions, currentUser()));
+}
+
+/** 批量操作候选范围：给定 id 集合 ∩ 状态条件 ∩ 当前租户可见 */
+function batchDefinitionsWhere(ids: number[], statusCondition: SQL) {
+  return buildWhere(inArray(workflowDefinitions.id, ids), statusCondition, tenantCondition(workflowDefinitions, currentUser()));
 }
 
 export async function getDefinition(id: number) {
@@ -511,9 +515,8 @@ export async function importDefinition(data: {
     : null;
   let categoryId: number | null = null;
   if (data.categoryName) {
-    const tc = tenantCondition(workflowCategories, user);
-    const conds: (SQL | undefined)[] = [eq(workflowCategories.name, data.categoryName), tc];
-    const [cat] = await db.select({ id: workflowCategories.id }).from(workflowCategories).where(buildWhere(...conds)).limit(1);
+    const [cat] = await db.select({ id: workflowCategories.id }).from(workflowCategories)
+      .where(buildWhere(eq(workflowCategories.name, data.categoryName), tenantCondition(workflowCategories, user))).limit(1);
     categoryId = cat?.id ?? null;
   }
   const newId = await db.transaction(async (tx) => {
@@ -612,18 +615,17 @@ export async function deleteDefinition(id: number) {
 
 export async function batchDisableDefinitions(ids: number[]) {
   if (!ids.length) return { updated: 0, skipped: 0 };
-  const tc = tenantCondition(workflowDefinitions, currentUser());
-  const conds: (SQL | undefined)[] = [inArray(workflowDefinitions.id, ids), eq(workflowDefinitions.status, 'published'), tc];
-  const rows = await db.update(workflowDefinitions).set({ status: 'disabled' }).where(buildWhere(...conds)).returning({ id: workflowDefinitions.id });
+  const rows = await db.update(workflowDefinitions).set({ status: 'disabled' })
+    .where(batchDefinitionsWhere(ids, eq(workflowDefinitions.status, 'published')))
+    .returning({ id: workflowDefinitions.id });
   return { updated: rows.length, skipped: ids.length - rows.length };
 }
 
 export async function batchEnableDefinitions(ids: number[]) {
   if (!ids.length) return { updated: 0, skipped: 0 };
-  const tc = tenantCondition(workflowDefinitions, currentUser());
-  const conds: (SQL | undefined)[] = [inArray(workflowDefinitions.id, ids), eq(workflowDefinitions.status, 'disabled'), tc];
   // 与单个启用同口径：逐个过发布门禁，体检不过的跳过而非带病上线
-  const candidates = await db.select().from(workflowDefinitions).where(buildWhere(...conds));
+  const candidates = await db.select().from(workflowDefinitions)
+    .where(batchDefinitionsWhere(ids, eq(workflowDefinitions.status, 'disabled')));
   const passedIds: number[] = [];
   for (const def of candidates) {
     try {
@@ -640,12 +642,10 @@ export async function batchEnableDefinitions(ids: number[]) {
 
 export async function batchDeleteDefinitions(ids: number[]) {
   if (!ids.length) return { deleted: 0, skipped: 0 };
-  const tc = tenantCondition(workflowDefinitions, currentUser());
-  const scopeConds: (SQL | undefined)[] = [inArray(workflowDefinitions.id, ids), ne(workflowDefinitions.status, 'published'), tc];
   const candidates = await db
     .select({ id: workflowDefinitions.id })
     .from(workflowDefinitions)
-    .where(buildWhere(...scopeConds));
+    .where(batchDefinitionsWhere(ids, ne(workflowDefinitions.status, 'published')));
   const candidateIds = candidates.map((row) => row.id);
   if (!candidateIds.length) return { deleted: 0, skipped: ids.length };
   const used = await db
@@ -675,11 +675,8 @@ export async function getWorkflowDefinitionBeforeAudit(id: number) {
 
 export async function getWorkflowDefinitionsBeforeAudit(ids: number[]) {
   if (!ids.length) return [];
-  const user = currentUser();
-  const tc = tenantCondition(workflowDefinitions, user);
-  const conds: (SQL | undefined)[] = [inArray(workflowDefinitions.id, ids), tc];
   const rows = await db.query.workflowDefinitions.findMany({
-    where: buildWhere(...conds),
+    where: buildWhere(inArray(workflowDefinitions.id, ids), tenantCondition(workflowDefinitions, currentUser())),
     with: {
       createdByUser: { columns: { nickname: true } },
       category: { columns: { name: true, color: true, icon: true } },

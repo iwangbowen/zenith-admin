@@ -2,7 +2,7 @@
 import { uniquePositiveInts } from '@zenith/shared/core';
 import { randomUUID } from 'node:crypto';
 import { formatDateTime } from '../../../lib/datetime';
-import { eq, and, desc, inArray, type SQL } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks, workflowTaskUrges } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
@@ -93,10 +93,8 @@ export async function urgeTask(taskId: number, message?: string) {
     .where(eq(workflowTasks.id, taskId)).limit(1);
   requireRow(task, '任务不存在');
   if (task.status !== 'pending') throw new HTTPException(400, { message: '仅可催办未处理任务' });
-  const tc = tenantCondition(workflowInstances, user);
-  const instConditions: (SQL | undefined)[] = [eq(workflowInstances.id, task.instanceId), tc];
   const [inst] = await db.select().from(workflowInstances)
-    .where(buildWhere(...instConditions)).limit(1);
+    .where(buildWhere(eq(workflowInstances.id, task.instanceId), tenantCondition(workflowInstances, user))).limit(1);
   requireRow(inst, '任务不存在或无权操作');
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无需催办' });
 
@@ -154,10 +152,8 @@ export async function listInstanceUrges(instanceId: number) {
 /** 实例级批量催办：对实例所有 pending 任务依次催办，节流命中的任务静默跳过 */
 export async function urgeInstance(instanceId: number, message?: string) {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conditions: (SQL | undefined)[] = [eq(workflowInstances.id, instanceId), tc];
   const [inst] = await db.select().from(workflowInstances)
-    .where(buildWhere(...conditions)).limit(1);
+    .where(buildWhere(eq(workflowInstances.id, instanceId), tenantCondition(workflowInstances, user))).limit(1);
   requireRow(inst, '流程不存在');
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无需催办' });
   const isInitiator = inst.initiatorId === user.userId;
@@ -216,10 +212,8 @@ export async function urgeInstance(instanceId: number, message?: string) {
 /** 动态补加抄送：运行中实例为指定 ccNode 节点补加抄送人（去重 + 校验节点类型） */
 export async function addInstanceCc(instanceId: number, nodeKey: string, userIds: number[]) {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conditions: (SQL | undefined)[] = [eq(workflowInstances.id, instanceId), tc];
   const [inst] = await db.select().from(workflowInstances)
-    .where(buildWhere(...conditions)).limit(1);
+    .where(buildWhere(eq(workflowInstances.id, instanceId), tenantCondition(workflowInstances, user))).limit(1);
   requireRow(inst, '流程不存在');
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无法补加抄送' });
   const isInitiator = inst.initiatorId === user.userId;

@@ -1,6 +1,6 @@
 import { workflowInstanceContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { and, asc, eq, gte, desc, inArray, sql, type SQL } from 'drizzle-orm';
+import { asc, eq, gte, desc, inArray, sql } from 'drizzle-orm';
 import dayjs from 'dayjs';
 import { db } from '../../db';
 import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, workflowJobs, users } from '../../db/schema';
@@ -18,12 +18,9 @@ const FINISHED: WorkflowInstanceStatus[] = ['approved', 'rejected', 'withdrawn',
 export async function getWorkflowAnalytics(query: { definitionId?: number } = {}): Promise<WorkflowAnalytics> {
   const user = currentUser();
   const instTenant = tenantCondition(workflowInstances, user);
-
-  // 实例级筛选（监控可按流程定义过滤）
-  const instConds: SQL[] = [];
-  if (instTenant) instConds.push(instTenant);
-  if (query.definitionId) instConds.push(eq(workflowInstances.definitionId, query.definitionId));
-  const instWhere = buildWhere(...instConds);
+  const instDefinition = query.definitionId ? eq(workflowInstances.definitionId, query.definitionId) : undefined;
+  // 实例级筛选（监控可按流程定义过滤）；各统计项在 instConds 之上叠加自身条件
+  const instWhere = buildWhere(instTenant, instDefinition);
 
   const since14 = dayjs().subtract(13, 'day').startOf('day').toDate();
   const since7 = dayjs().subtract(7, 'day').toDate();
@@ -52,16 +49,16 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
     // 2. 已完结实例平均耗时
     db.select({ avg: durationExpr })
       .from(workflowInstances)
-      .where(and(...instConds, inArray(workflowInstances.status, FINISHED))),
+      .where(buildWhere(instTenant, instDefinition, inArray(workflowInstances.status, FINISHED))),
     // 3. 当前挂起任务总数
     db.select({ count: sql<number>`count(*)::int` })
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-      .where(and(...instConds, eq(workflowTasks.status, 'pending'))),
+      .where(buildWhere(instTenant, instDefinition, eq(workflowTasks.status, 'pending'))),
     // 4. 近 7 天发起数
     db.select({ count: sql<number>`count(*)::int` })
       .from(workflowInstances)
-      .where(and(...instConds, gte(workflowInstances.createdAt, since7))),
+      .where(buildWhere(instTenant, instDefinition, gte(workflowInstances.createdAt, since7))),
     // 5. 各流程定义统计
     db.select({
       definitionId: workflowInstances.definitionId,
@@ -91,7 +88,7 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .innerJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-      .where(and(...instConds, inArray(workflowTasks.nodeType, ['approve', 'handler'])))
+      .where(buildWhere(instTenant, instDefinition, inArray(workflowTasks.nodeType, ['approve', 'handler'])))
       .groupBy(workflowInstances.definitionId, workflowDefinitions.name, workflowTasks.nodeKey, workflowTasks.nodeName)
       .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`avg(extract(epoch from (${workflowTasks.actionAt} - ${workflowTasks.createdAt})))`))
       .limit(10),
@@ -106,32 +103,32 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .innerJoin(users, eq(workflowTasks.assigneeId, users.id))
-      .where(and(...instConds, inArray(workflowTasks.status, ['pending', 'approved', 'rejected'])))
+      .where(buildWhere(instTenant, instDefinition, inArray(workflowTasks.status, ['pending', 'approved', 'rejected'])))
       .groupBy(workflowTasks.assigneeId, users.nickname, users.username)
       .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`count(*)`))
       .limit(10),
     // 8a. 近 14 天发起趋势
     db.select({ d: sql<string>`to_char(${workflowInstances.createdAt}, 'YYYY-MM-DD')`, c: sql<number>`count(*)::int` })
       .from(workflowInstances)
-      .where(and(...instConds, gte(workflowInstances.createdAt, since14)))
+      .where(buildWhere(instTenant, instDefinition, gte(workflowInstances.createdAt, since14)))
       .groupBy(sql`to_char(${workflowInstances.createdAt}, 'YYYY-MM-DD')`),
     // 8b. 近 14 天完结趋势
     db.select({ d: sql<string>`to_char(${workflowInstances.updatedAt}, 'YYYY-MM-DD')`, c: sql<number>`count(*)::int` })
       .from(workflowInstances)
-      .where(and(...instConds, inArray(workflowInstances.status, FINISHED), gte(workflowInstances.updatedAt, since14)))
+      .where(buildWhere(instTenant, instDefinition, inArray(workflowInstances.status, FINISHED), gte(workflowInstances.updatedAt, since14)))
       .groupBy(sql`to_char(${workflowInstances.updatedAt}, 'YYYY-MM-DD')`),
     // 9. 已超时挂起任务数：仍 pending 且其 task_timeout 作业已到期未执行
     db.select({ count: sql<number>`count(*)::int` })
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .innerJoin(workflowJobs, eq(workflowJobs.taskId, workflowTasks.id))
-      .where(and(...instConds, eq(workflowTasks.status, 'pending'), eq(workflowJobs.jobType, 'task_timeout'), eq(workflowJobs.status, 'pending'), sql`${workflowJobs.runAt} <= now()`)),
+      .where(buildWhere(instTenant, instDefinition, eq(workflowTasks.status, 'pending'), eq(workflowJobs.jobType, 'task_timeout'), eq(workflowJobs.status, 'pending'), sql`${workflowJobs.runAt} <= now()`)),
     // 10. 24h 内即将超时的挂起任务数
     db.select({ count: sql<number>`count(*)::int` })
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .innerJoin(workflowJobs, eq(workflowJobs.taskId, workflowTasks.id))
-      .where(and(...instConds, eq(workflowTasks.status, 'pending'), eq(workflowJobs.jobType, 'task_timeout'), eq(workflowJobs.status, 'pending'), sql`${workflowJobs.runAt} > now() and ${workflowJobs.runAt} < now() + interval '24 hours'`)),
+      .where(buildWhere(instTenant, instDefinition, eq(workflowTasks.status, 'pending'), eq(workflowJobs.jobType, 'task_timeout'), eq(workflowJobs.status, 'pending'), sql`${workflowJobs.runAt} > now() and ${workflowJobs.runAt} < now() + interval '24 hours'`)),
     // 11. 作业健康（按状态计数）
     db.select({ status: workflowJobs.status, count: sql<number>`count(*)::int` }).from(workflowJobs).groupBy(workflowJobs.status),
     // 12. Webhook 投递（按状态计数）
@@ -222,16 +219,14 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
 export async function listOverdueTasks(query: QueryOutputOf<typeof workflowInstanceContract.overdue>): Promise<{ list: WorkflowOverdueTask[]; total: number; page: number; pageSize: number }> {
   const user = currentUser();
   const { page, pageSize } = query;
-  const instTenant = tenantCondition(workflowInstances, user);
-  const conds: (SQL | undefined)[] = [
+  const where = buildWhere(
     eq(workflowTasks.status, 'pending'),
     eq(workflowJobs.jobType, 'task_timeout'),
     eq(workflowJobs.status, 'pending'),
     sql`${workflowJobs.runAt} <= now()`,
-  ];
-  if (instTenant) conds.push(instTenant);
-  if (query.definitionId) conds.push(eq(workflowInstances.definitionId, query.definitionId));
-  const where = buildWhere(...conds);
+    tenantCondition(workflowInstances, user),
+    query.definitionId ? eq(workflowInstances.definitionId, query.definitionId) : undefined,
+  );
   const assignee = users;
   const now = Date.now();
   return buildListResult({
@@ -285,15 +280,14 @@ export type WorkflowInstanceExportQuery = Omit<QueryOutputOf<typeof workflowInst
 
 function buildInstancesExportWhere(query: WorkflowInstanceExportQuery) {
   const user = currentUser();
-  const conds: (SQL | undefined)[] = [];
-  const tc = tenantCondition(workflowInstances, user);
-  conds.push(tc);
-  if (query.status) conds.push(eq(workflowInstances.status, query.status as WorkflowInstanceStatus));
-  conds.push(keywordCondition(query.keyword, [workflowInstances.title, workflowDefinitions.name], 'ilike'));
-  if (query.categoryId) conds.push(eq(workflowDefinitions.categoryId, query.categoryId));
-  if (query.definitionId) conds.push(eq(workflowInstances.definitionId, query.definitionId));
-  conds.push(keywordCondition(query.initiatorKeyword, [users.nickname], 'ilike'));
-  return buildWhere(...conds);
+  return buildWhere(
+    tenantCondition(workflowInstances, user),
+    query.status ? eq(workflowInstances.status, query.status) : undefined,
+    keywordCondition(query.keyword, [workflowInstances.title, workflowDefinitions.name], 'ilike'),
+    query.categoryId ? eq(workflowDefinitions.categoryId, query.categoryId) : undefined,
+    query.definitionId ? eq(workflowInstances.definitionId, query.definitionId) : undefined,
+    keywordCondition(query.initiatorKeyword, [users.nickname], 'ilike'),
+  );
 }
 
 /** 导出流程实例列表（与监控筛选一致，最多 10000 行），返回展示就绪的行 */

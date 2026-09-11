@@ -94,10 +94,10 @@ export async function getDataSource(id: number): Promise<WorkflowDataSource> {
 
 export async function listDataSources(query: QueryOutputOf<typeof workflowDataSourceContract.list>) {
   const { page, pageSize, keyword, status } = query;
-  const conds = [];
-  conds.push(keywordCondition(keyword, [workflowDataSources.name, workflowDataSources.url], 'ilike'));
-  if (status) conds.push(eq(workflowDataSources.status, status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    keywordCondition(keyword, [workflowDataSources.name, workflowDataSources.url], 'ilike'),
+    status ? eq(workflowDataSources.status, status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

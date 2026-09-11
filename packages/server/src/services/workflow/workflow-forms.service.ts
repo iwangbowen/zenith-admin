@@ -1,6 +1,6 @@
 import { workflowFormContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowForms, workflowDefinitions } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -45,9 +45,7 @@ export function mapForm(row: FormRow, usageCount?: number) {
 }
 
 function findForm(id: number) {
-  const tc = tenantCondition(workflowForms, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowForms.id, id), tc];
-  return buildWhere(...conds);
+  return buildWhere(eq(workflowForms.id, id), tenantCondition(workflowForms, currentUser()));
 }
 
 export async function ensureFormExists(id: number) {
@@ -92,12 +90,12 @@ async function countUsage(formIds: number[]): Promise<Map<number, number>> {
 
 export async function listWorkflowForms(query: QueryOutputOf<typeof workflowFormContract.list>) {
   const { page, pageSize, keyword, status, categoryId } = query;
-  const tc = tenantCondition(workflowForms, currentUser());
-  const conds: (SQL | undefined)[] = [tc];
-  conds.push(keywordCondition(keyword, [workflowForms.name]));
-  if (status) conds.push(eq(workflowForms.status, status));
-  if (categoryId) conds.push(eq(workflowForms.categoryId, categoryId));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantCondition(workflowForms, currentUser()),
+    keywordCondition(keyword, [workflowForms.name]),
+    status ? eq(workflowForms.status, status) : undefined,
+    categoryId ? eq(workflowForms.categoryId, categoryId) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -121,10 +119,8 @@ export async function listWorkflowForms(query: QueryOutputOf<typeof workflowForm
 
 /** 流程设计器下拉选用：仅启用的表单，最小字段 */
 export async function listEnabledWorkflowForms() {
-  const tc = tenantCondition(workflowForms, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowForms.status, 'enabled'), tc];
   const rows = await db.query.workflowForms.findMany({
-    where: buildWhere(...conds),
+    where: buildWhere(eq(workflowForms.status, 'enabled'), tenantCondition(workflowForms, currentUser())),
     with: { category: { columns: { name: true } } },
     orderBy: [asc(workflowForms.name), desc(workflowForms.id)],
   });
@@ -196,10 +192,12 @@ export async function updateWorkflowForm(id: number, input: UpdateWorkflowFormIn
   if (input.expectedRevision != null && existing.revision !== input.expectedRevision) {
     throw new HTTPException(409, { message: '表单已被其他人更新，请刷新后重试' });
   }
-  const tc = tenantCondition(workflowForms, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowForms.id, id), tc];
   // 乐观锁：携带 expectedRevision 时按版本条件更新，冲突返回 409
-  if (input.expectedRevision != null) conds.push(eq(workflowForms.revision, input.expectedRevision));
+  const where = buildWhere(
+    eq(workflowForms.id, id),
+    tenantCondition(workflowForms, currentUser()),
+    input.expectedRevision != null ? eq(workflowForms.revision, input.expectedRevision) : undefined,
+  );
   try {
     const patch: Partial<typeof workflowForms.$inferInsert> = {};
     if (input.name !== undefined) patch.name = input.name;
@@ -214,7 +212,7 @@ export async function updateWorkflowForm(id: number, input: UpdateWorkflowFormIn
     const row = await db.transaction(async (tx) => {
       const [updated] = await tx.update(workflowForms)
         .set({ ...patch, revision: sql`${workflowForms.revision} + 1` })
-        .where(buildWhere(...conds))
+        .where(where)
         .returning();
       if (!updated) {
         throw new HTTPException(409, { message: '表单已被其他人更新，请刷新后重试' });
@@ -233,7 +231,5 @@ export async function deleteWorkflowForm(id: number): Promise<void> {
   await ensureFormExists(id);
   const used = await db.$count(workflowDefinitions, eq(workflowDefinitions.formId, id));
   if (used > 0) throw new HTTPException(400, { message: '该表单已被流程引用，无法删除' });
-  const tc = tenantCondition(workflowForms, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowForms.id, id), tc];
-  await db.delete(workflowForms).where(buildWhere(...conds));
+  await db.delete(workflowForms).where(findForm(id));
 }

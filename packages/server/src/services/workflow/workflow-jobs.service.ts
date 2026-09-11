@@ -2,7 +2,7 @@ import { workflowEngineContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { percentOf } from '@zenith/shared/core';
 import { WORKFLOW_JOB_TYPES, summarizeWorkflowJobChain } from '@zenith/shared/workflow';
-import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, lte, max, type SQL } from 'drizzle-orm';
+import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, lte, max } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowDefinitions, systemSchedulerNodes } from '../../db/schema';
 import type { WorkflowJobRow, WorkflowJobExecutionRow } from '../../db/schema';
@@ -70,12 +70,12 @@ function mapExecution(row: WorkflowJobExecutionRow) {
 
 export async function listWorkflowJobs(query: ListWorkflowJobsQuery) {
   const { page, pageSize } = query;
-  const conds: (SQL | undefined)[] = [];
-  if (query.jobType) conds.push(eq(workflowJobs.jobType, query.jobType));
-  if (query.status) conds.push(eq(workflowJobs.status, query.status));
-  if (query.instanceId != null) conds.push(eq(workflowJobs.instanceId, query.instanceId));
-  conds.push(keywordCondition(query.keyword, [workflowJobs.idempotencyKey, workflowJobs.traceId, workflowJobs.nodeKey], 'ilike'));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    query.jobType ? eq(workflowJobs.jobType, query.jobType) : undefined,
+    query.status ? eq(workflowJobs.status, query.status) : undefined,
+    query.instanceId != null ? eq(workflowJobs.instanceId, query.instanceId) : undefined,
+    keywordCondition(query.keyword, [workflowJobs.idempotencyKey, workflowJobs.traceId, workflowJobs.nodeKey], 'ilike'),
+  );
 
   return buildListResult({
     page,
@@ -250,21 +250,23 @@ export interface WorkflowJobReplayFilter {
   olderThanMinutes?: number;
 }
 
-function buildReplayConds(filter: WorkflowJobReplayFilter): (SQL | undefined)[] {
-  const conds: (SQL | undefined)[] = [eq(workflowJobs.status, filter.status ?? 'dead')];
-  if (filter.jobType) conds.push(eq(workflowJobs.jobType, filter.jobType));
-  if (filter.instanceId != null) conds.push(eq(workflowJobs.instanceId, filter.instanceId));
-  if (filter.traceId) conds.push(eq(workflowJobs.traceId, filter.traceId));
-  conds.push(keywordCondition(filter.reasonKeyword, [workflowJobs.lastError], 'ilike'));
-  if (filter.olderThanMinutes != null && filter.olderThanMinutes > 0) {
-    conds.push(lte(workflowJobs.createdAt, new Date(Date.now() - filter.olderThanMinutes * 60_000)));
-  }
-  return conds;
+/** 死信重放的圈定条件（预览与执行共用同一口径） */
+function replayJobsWhere(filter: WorkflowJobReplayFilter) {
+  return buildWhere(
+    eq(workflowJobs.status, filter.status ?? 'dead'),
+    filter.jobType ? eq(workflowJobs.jobType, filter.jobType) : undefined,
+    filter.instanceId != null ? eq(workflowJobs.instanceId, filter.instanceId) : undefined,
+    filter.traceId ? eq(workflowJobs.traceId, filter.traceId) : undefined,
+    keywordCondition(filter.reasonKeyword, [workflowJobs.lastError], 'ilike'),
+    filter.olderThanMinutes != null && filter.olderThanMinutes > 0
+      ? lte(workflowJobs.createdAt, new Date(Date.now() - filter.olderThanMinutes * 60_000))
+      : undefined,
+  );
 }
 
 /** 条件重放预览：仅统计匹配的死信/失败作业数量，不执行，供前端展示"将重放约 N 条"。 */
 export async function previewReplayJobs(filter: WorkflowJobReplayFilter): Promise<{ matched: number }> {
-  const matched = await db.$count(workflowJobs, buildWhere(...buildReplayConds(filter)));
+  const matched = await db.$count(workflowJobs, replayJobsWhere(filter));
   return { matched };
 }
 
@@ -286,10 +288,10 @@ export async function replayDeadJobs(
 ): Promise<WorkflowJobReplayResult> {
   const rate = clampRate(opts?.ratePerSecond);
   const limit = clampLimit(opts?.limit);
-  const conds = buildReplayConds(opts ?? {});
+  const where = replayJobsWhere(opts ?? {});
   const [matched, rows] = await Promise.all([
-    db.$count(workflowJobs, buildWhere(...conds)),
-    db.select({ id: workflowJobs.id }).from(workflowJobs).where(buildWhere(...conds)).orderBy(asc(workflowJobs.id)).limit(limit),
+    db.$count(workflowJobs, where),
+    db.select({ id: workflowJobs.id }).from(workflowJobs).where(where).orderBy(asc(workflowJobs.id)).limit(limit),
   ]);
   const success = await throttledRetry(rows.map((r) => r.id), rate);
   return { total: rows.length, success, skipped: rows.length - success, matched, ratePerSecond: rate, limit };

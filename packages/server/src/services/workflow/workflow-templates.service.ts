@@ -1,4 +1,4 @@
-import { asc, desc, eq, type SQL } from 'drizzle-orm';
+import { asc, desc, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowTemplates, workflowDefinitions, workflowForms } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -33,9 +33,8 @@ export function mapTemplate(row: TemplateRow): WorkflowTemplate {
 }
 
 async function ensureTemplate(id: number): Promise<TemplateRow> {
-  const tc = tenantCondition(workflowTemplates, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowTemplates.id, id), tc];
-  const [row] = await db.select().from(workflowTemplates).where(buildWhere(...conds)).limit(1);
+  const [row] = await db.select().from(workflowTemplates)
+    .where(buildWhere(eq(workflowTemplates.id, id), tenantCondition(workflowTemplates, currentUser()))).limit(1);
   return requireRow(row, '模板不存在');
 }
 
@@ -123,9 +122,8 @@ export async function cloneTemplateToDefinition(templateId: number, input: { nam
 /** 将现有流程定义另存为模板 */
 export async function saveAsTemplate(input: SaveAsTemplateInput): Promise<WorkflowTemplate> {
   const user = currentUser();
-  const tc = tenantCondition(workflowDefinitions, user);
-  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, input.definitionId), tc];
-  const [def] = await db.select().from(workflowDefinitions).where(buildWhere(...conds)).limit(1);
+  const [def] = await db.select().from(workflowDefinitions)
+    .where(buildWhere(eq(workflowDefinitions.id, input.definitionId), tenantCondition(workflowDefinitions, user))).limit(1);
   requireRow(def, '流程定义不存在');
   if (def.formType !== 'designer') {
     throw new HTTPException(400, { message: '模板库暂仅支持表单库设计器流程；自定义业务表单或业务系统主导流程请使用复制流程或导出导入复用' });
