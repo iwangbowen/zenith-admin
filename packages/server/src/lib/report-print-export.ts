@@ -680,6 +680,12 @@ export interface PdfRenderOptions {
   watermark?: string;
 }
 
+/** 多份渲染结果合并进一个 PDF（各自水印），批量打印审批单等场景一份文件多页 */
+export interface PdfDocumentPart {
+  result: ReportPrintRenderResult;
+  options?: PdfRenderOptions;
+}
+
 /** 水印：页面中心斜 30°，按 3×3 网格平铺，低不透明度不遮挡正文 */
 function drawPdfWatermark(doc: PDFKit.PDFDocument, text: string, fontName: string) {
   const { width, height } = doc.page;
@@ -705,25 +711,32 @@ function drawPdfWatermark(doc: PDFKit.PDFDocument, text: string, fontName: strin
 }
 
 export async function renderPrintResultToPdf(result: ReportPrintRenderResult, options: PdfRenderOptions = {}): Promise<Buffer> {
+  return renderPrintDocumentsToPdf([{ result, options }]);
+}
+
+export async function renderPrintDocumentsToPdf(parts: PdfDocumentPart[]): Promise<Buffer> {
   const PDFDocument = loadPdfDocument();
   const doc = new PDFDocument({ autoFirstPage: false, margin: 0 });
   const chunks: Uint8Array[] = [];
   const imageCache = new Map<string, RenderedGraphic>();
   const fontPath = resolvePdfFontPath();
-  if (!fontPath && (resultContainsCjk(result) || /[\u3400-\u9fff]/u.test(options.watermark ?? ''))) {
+  const needsCjk = parts.some((part) => resultContainsCjk(part.result) || /[\u3400-\u9fff]/u.test(part.options?.watermark ?? ''));
+  if (!fontPath && needsCjk) {
     throw new Error('PDF 导出包含中文，但未找到 CJK 字体（内置 assets/fonts 缺失且未配置 REPORT_PDF_FONT_PATH）');
   }
   const fontName = fontPath ? 'zh' : 'Helvetica';
   if (fontPath) doc.registerFont(fontName, fontPath);
   doc.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-  for (const page of result.pages) {
-    doc.addPage({
-      size: PDF_PAPER_SIZE[page.pageConfig.paper ?? 'A4'] ?? 'A4',
-      layout: page.pageConfig.orientation ?? 'portrait',
-      margin: 0,
-    });
-    await drawPdfGrid(doc, page, fontName, imageCache);
-    if (options.watermark) drawPdfWatermark(doc, options.watermark, fontName);
+  for (const { result, options = {} } of parts) {
+    for (const page of result.pages) {
+      doc.addPage({
+        size: PDF_PAPER_SIZE[page.pageConfig.paper ?? 'A4'] ?? 'A4',
+        layout: page.pageConfig.orientation ?? 'portrait',
+        margin: 0,
+      });
+      await drawPdfGrid(doc, page, fontName, imageCache);
+      if (options.watermark) drawPdfWatermark(doc, options.watermark, fontName);
+    }
   }
   await new Promise<void>((resolve) => {
     doc.on('end', () => resolve());

@@ -250,6 +250,11 @@ export default function AdvancedSettingsPanel({ settings, onChange, readOnly = f
                 </Typography.Text>
               </Form.Slot>
               <Form.Switch field="print.onlyWhenApproved" label="仅通过后可打印" extraText="用章 / 合同类流程建议开启，避免打印未生效的单据" />
+              <Form.Switch
+                field="print.autoArchive"
+                label="办结自动归档"
+                extraText="流程通过 / 驳回后由后台生成一份不可变的 PDF 存证（记录 SHA-256），之后打印默认返回归档原件，不再随模板或数据变化"
+              />
               <Form.Switch field="print.watermark" label="打印水印" />
               <div style={{ display: settings.print?.watermark ? undefined : 'none' }}>
                 <Form.Input

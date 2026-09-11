@@ -1,4 +1,5 @@
 import { mock } from '@/mocks/utils/contract';
+import { HttpResponse } from 'msw';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, fail, notFound } from '@/mocks/utils/handlers';
 import { demoPdfResponse } from '@/mocks/utils/pdf';
@@ -2102,17 +2103,33 @@ export const workflowHandlers = [
   }),
 
   // 审批单 PDF：Demo 无 pdfkit，返回最小 PDF 替身，保证预览 / 打印 / 下载链路可走通
-  mock(workflowInstanceContract.print, ({ params }) => {
+  mock(workflowInstanceContract.print, ({ params, query }) => {
     const inst = mockWorkflowInstances.find(i => i.id === params.id);
     if (!inst) return notFound('流程实例不存在');
+    const source = query.source ?? 'auto';
+    if (source === 'archive' && !inst.archive) return notFound('该审批单尚未生成归档件');
+    const fromArchive = source !== 'live' && !query.templateId && !!inst.archive;
     const tasks = mockWorkflowTasks.filter(t => t.instanceId === inst.id);
     return demoPdfResponse([
-      'Zenith Admin Demo - Approval Sheet',
+      fromArchive ? 'Zenith Admin Demo - Archived Approval Sheet' : 'Zenith Admin Demo - Approval Sheet',
       `Instance #${inst.id}  Serial: ${inst.serialNo ?? '-'}  Status: ${inst.status}`,
       `Created: ${inst.createdAt}`,
       `Approval records: ${tasks.length}`,
+      fromArchive ? `Archived at ${inst.archive?.archivedAt}  SHA-256 ${inst.archive?.sha256.slice(0, 16)}...` : 'Rendered live from the current snapshot.',
       'Demo mode renders a placeholder; the real server generates the full sheet as PDF.',
-    ], `${inst.serialNo ?? `approval-${inst.id}`}.pdf`);
+    ], `${inst.serialNo ?? `approval-${inst.id}`}.pdf`, { 'X-Zenith-Print-Source': fromArchive ? 'archive' : 'live' });
+  }),
+
+  // 审批单验真页：Demo 令牌格式 `demo-{instanceId}`，其余视为无效
+  mock(workflowInstanceContract.printVerify, ({ params }) => {
+    const id = Number(/^demo-(\d+)$/.exec(params.token)?.[1]);
+    const inst = Number.isInteger(id) ? mockWorkflowInstances.find(i => i.id === id) : undefined;
+    const body = inst
+      ? `<h1>审批单验真</h1><p>${inst.title}</p><p>单号：${inst.serialNo ?? '—'} · 状态：${inst.status}</p>${inst.archive ? `<p>归档 SHA-256：${inst.archive.sha256}</p>` : ''}`
+      : '<h1>验真失败</h1><p>该二维码无效</p>';
+    return new HttpResponse(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>审批单验真</title></head><body>${body}</body></html>`, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
   }),
 
   // 发起流程申请（支持保存草稿 asDraft）

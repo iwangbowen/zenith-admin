@@ -53,6 +53,8 @@ export async function declareBackgroundJobs(): Promise<boolean> {
     await registerDriveSecurityAlertJob(); // 网盘异常行为告警（批量下载 / 外链爆破）
     const { registerDriveOpenEventWorker } = await import('../services/drive/drive-open-events.service');
     await registerDriveOpenEventWorker(); // 网盘文件变更 → 开放平台 Webhook 事件
+    const { registerWorkflowPrintArchiveWorker } = await import('../services/workflow/workflow-print-archive');
+    await registerWorkflowPrintArchiveWorker(); // 审批单终态归档件（PDF 存证）生成
     const { reloadCmsSearchDict } = await import('../services/cms/cms-search.service');
     await reloadCmsSearchDict(); // CMS 检索自定义词典（DB → jieba）：内容保存（api）与索引重建（worker）都要分词
     // AI 评测已迁移至 Mastra Datasets/Experiments(自带异步执行),不再挂任务中心

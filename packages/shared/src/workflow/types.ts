@@ -578,6 +578,8 @@ export interface WorkflowPrintSettings {
   watermark?: boolean;
   /** 水印文本，支持 {printer} / {time} / {serialNo} 占位；空 = 「打印人 时间」 */
   watermarkText?: string;
+  /** 实例进入通过 / 驳回终态时自动生成 PDF 归档件（不可变存证），之后打印默认给归档件 */
+  autoArchive?: boolean;
 }
 
 /** 多渠道通知配置 */

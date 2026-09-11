@@ -37,11 +37,12 @@ export function buildDemoPdf(lines: string[]): Uint8Array {
   return new TextEncoder().encode(body);
 }
 
-export function demoPdfResponse(lines: string[], filename: string): HttpResponse<Uint8Array> {
+export function demoPdfResponse(lines: string[], filename: string, headers: Record<string, string> = {}): HttpResponse<Uint8Array> {
   return new HttpResponse(buildDemoPdf(lines), {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      ...headers,
     },
   });
 }

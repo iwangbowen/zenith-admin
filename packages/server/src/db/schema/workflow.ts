@@ -1,8 +1,9 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, foreignKey, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, foreignKey, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { WorkflowAutomationAction, WorkflowDefinitionSnapshot } from '@zenith/shared/workflow';
 import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
+import { managedFiles } from './files';
 import { reportPrintTemplates } from './report';
 
 // ─── 工作流引擎健康快照表（append-only，由定时任务 platform-wide 采集，驱动健康趋势 + 告警指标源）───
@@ -451,6 +452,13 @@ export const workflowInstances = pgTable('workflow_instances', {
   suspendedAt: timestamp(),
   /** 挂起原因（管理员填写） */
   suspendReason: varchar({ length: 500 }),
+  // ─── 审批单归档件：终态时按流程设置自动生成的 PDF（不可变存证），文件删除时解绑 ───
+  archiveFileId: pgUuid().references(() => managedFiles.id, { onDelete: 'set null' }),
+  /** 归档件 SHA-256（hex），验真页与下载校验比对 */
+  archiveSha256: varchar({ length: 64 }),
+  /** 归档时使用的打印模板；null = 按表单快照自动版式 */
+  archiveTemplateId: integer(),
+  archivedAt: timestamp({ withTimezone: true }),
   ...auditColumns(),
   ...timestampColumns(),
 }, (t) => [index('workflow_instances_definition_idx').on(t.definitionId), 

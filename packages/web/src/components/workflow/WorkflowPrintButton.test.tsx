@@ -24,12 +24,13 @@ vi.mock('@/components/PDFPreviewPanel', () => ({
 import { fetchWorkflowInstancePrintPdf } from '@/hooks/queries/workflow-instances';
 import WorkflowPrintButton from './WorkflowPrintButton';
 
-function pdfResponse(filename: string) {
+function pdfResponse(filename: string, source?: 'archive' | 'live') {
   return new Response(new Blob(['%PDF-1.4 demo'], { type: 'application/pdf' }), {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      ...(source ? { 'X-Zenith-Print-Source': source } : {}),
     },
   });
 }
@@ -40,16 +41,22 @@ beforeEach(() => {
 });
 
 describe('fetchWorkflowInstancePrintPdf', () => {
-  it('按契约路径请求 PDF，可选 templateId 进查询串，文件名取自 Content-Disposition', async () => {
-    mocks.fetchRaw.mockResolvedValue(pdfResponse('QJ-0007.pdf'));
-    const result = await fetchWorkflowInstancePrintPdf(7, 3);
+  it('按契约路径请求 PDF，可选 templateId / source 进查询串，文件名与来源取自响应头', async () => {
+    mocks.fetchRaw.mockResolvedValue(pdfResponse('QJ-0007.pdf', 'archive'));
+    const result = await fetchWorkflowInstancePrintPdf(7, { templateId: 3 });
     expect(mocks.fetchRaw).toHaveBeenCalledWith('/api/workflows/instances/7/print?templateId=3');
     expect(result.filename).toBe('QJ-0007.pdf');
     expect(result.blob.type).toBe('application/pdf');
+    expect(result.source).toBe('archive');
 
     mocks.fetchRaw.mockResolvedValue(pdfResponse('x.pdf'));
-    await fetchWorkflowInstancePrintPdf(8);
+    const live = await fetchWorkflowInstancePrintPdf(8);
     expect(mocks.fetchRaw).toHaveBeenLastCalledWith('/api/workflows/instances/8/print');
+    expect(live.source).toBe('live');
+
+    mocks.fetchRaw.mockResolvedValue(pdfResponse('x.pdf'));
+    await fetchWorkflowInstancePrintPdf(8, { source: 'live' });
+    expect(mocks.fetchRaw).toHaveBeenLastCalledWith('/api/workflows/instances/8/print?source=live');
   });
 
   it('非 2xx 时透出服务端信封 message；网络失败给通用文案', async () => {
@@ -79,5 +86,18 @@ describe('WorkflowPrintButton', () => {
     await waitFor(() => expect(mocks.fetchRaw).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByTestId('pdf-panel')).not.toBeInTheDocument();
+  });
+
+  it('返回归档原件时显示标识，「重新生成」以 source=live 重新拉取', async () => {
+    mocks.fetchRaw.mockResolvedValue(pdfResponse('BX-0001.pdf', 'archive'));
+    render(<WorkflowPrintButton instanceId={7} />);
+    fireEvent.click(screen.getByRole('button', { name: /打印/ }));
+    await waitFor(() => expect(screen.getByTestId('pdf-panel')).toBeInTheDocument());
+    expect(screen.getByText('归档原件')).toBeInTheDocument();
+
+    mocks.fetchRaw.mockResolvedValue(pdfResponse('BX-0001.pdf', 'live'));
+    fireEvent.click(screen.getByRole('button', { name: /按当前版式重新生成/ }));
+    await waitFor(() => expect(mocks.fetchRaw).toHaveBeenLastCalledWith('/api/workflows/instances/7/print?source=live'));
+    await waitFor(() => expect(screen.queryByText('归档原件')).not.toBeInTheDocument());
   });
 });

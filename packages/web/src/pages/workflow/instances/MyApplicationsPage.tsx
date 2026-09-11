@@ -20,6 +20,7 @@ import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared/workfl
 import { buildWorkflowSummaryItems } from '@zenith/shared/workflow';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
@@ -451,6 +452,9 @@ export default function MyApplicationsPage() {
 
   const selectedWithdrawableIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id && item.status === 'running' && item.allowWithdraw !== false));
 
+  // 已提交的申请都可导出审批单（草稿无审批链与流水号）
+  const selectedPrintableIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id && item.status !== 'draft'));
+
   const openBatchWithdraw = () => {
     if (selectedWithdrawableIds.length === 0) {
       Toast.warning('请选择审批中且允许撤回的申请');
@@ -636,6 +640,16 @@ export default function MyApplicationsPage() {
             {selectedRunningIds.length > 0 ? (
               <Button type="primary" icon={<Megaphone size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchUrge}>批量催办</Button>
             ) : null}
+            {selectedPrintableIds.length > 0 ? (
+              <ExportButton
+                entity="workflow.approval-sheets"
+                formats={['pdf']}
+                label={`导出审批单 PDF（${selectedPrintableIds.length}）`}
+                executionMode="auto"
+                permission="workflow:instance:print"
+                query={{ instanceIds: selectedPrintableIds }}
+              />
+            ) : null}
           </>
         )}
         filterTitle="我的申请筛选"
@@ -647,7 +661,7 @@ export default function MyApplicationsPage() {
           rowSelection: {
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
-            getCheckboxProps: (record: WorkflowInstance) => ({ disabled: record.status !== 'running' }),
+            getCheckboxProps: (record: WorkflowInstance) => ({ disabled: record.status === 'draft' }),
           },
         })}
       />

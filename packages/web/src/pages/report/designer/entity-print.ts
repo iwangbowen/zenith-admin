@@ -30,7 +30,7 @@ export function entityMainDatasetKey(catalog: EntityPrintCatalog): string {
 /** 「从流程表单生成模板」：自动版式 + 页面配置，直接作为设计器工作簿种子 */
 export function buildEntityTemplateDraft(kind: ReportPrintEntityKind, fields: WorkflowFormField[]): { content: ReportPrintContent; sheets: ReportPrintSheet[] } {
   void kind;
-  const content = generateWorkflowPrintContent(fields, { includeCc: true, includeComments: true });
+  const content = generateWorkflowPrintContent(fields, { includeCc: true, includeComments: true, includeVerifyQr: true });
   const pageConfig = workflowPrintPageConfig();
   const sheets = (content.sheets ?? []).map((sheet) => ({ ...sheet, pageConfig: { ...pageConfig, ...(sheet.pageConfig ?? {}) } }));
   return { content: { ...content, sheets }, sheets };

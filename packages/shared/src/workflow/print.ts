@@ -64,6 +64,7 @@ export const WORKFLOW_PRINT_INSTANCE_COLUMNS: WorkflowPrintDatasetColumn[] = [
   { key: 'attachmentCount', label: '附件数', kind: 'number' },
   { key: 'printerName', label: '打印人' },
   { key: 'printedAt', label: '打印时间' },
+  { key: 'verifyUrl', label: '验真链接（配合 QRCODE(verifyUrl) 生成二维码）' },
 ];
 
 export const WORKFLOW_PRINT_TASK_COLUMNS: WorkflowPrintDatasetColumn[] = [
@@ -127,6 +128,16 @@ export function workflowPrintDetailDatasetKey(fieldKey: string): string {
   return `form_${workflowPrintFieldKey(fieldKey)}`.toLowerCase();
 }
 
+/** 明细数值子列的格式化文本列（千分位 / 精度 / 单位），数值列本身保留给 ${SUM()} 等聚合 */
+export function workflowPrintDetailTextKey(childKey: string): string {
+  return `${workflowPrintFieldKey(childKey)}_text`;
+}
+
+/** 明细汇总列的合计（已格式化），写入主数据集 form */
+export function workflowPrintDetailTotalKey(fieldKey: string, childKey: string): string {
+  return `${workflowPrintFieldKey(fieldKey)}_${workflowPrintFieldKey(childKey)}_total`;
+}
+
 function isNumericFieldType(type: string): boolean {
   return type === 'number' || type === 'amount' || type === 'slider' || type === 'rate' || type === 'nps';
 }
@@ -161,15 +172,27 @@ export function describeWorkflowPrintDatasets(fields: WorkflowFormField[]): Work
       key: workflowPrintDetailDatasetKey(field.key),
       label: `明细：${field.label || field.key}`,
       cardinality: 'rows',
-      columns: (field.children ?? []).filter((child) => !LAYOUT_FIELD_TYPES.has(child.type)).map((child) => ({
-        key: workflowPrintFieldKey(child.key),
-        label: child.label || child.key,
-        kind: isNumericFieldType(child.type) ? 'number' : 'text',
-      })),
+      columns: (field.children ?? []).filter((child) => !LAYOUT_FIELD_TYPES.has(child.type)).flatMap((child): WorkflowPrintDatasetColumn[] => {
+        const label = child.label || child.key;
+        if (!isNumericFieldType(child.type)) return [{ key: workflowPrintFieldKey(child.key), label, kind: 'text' }];
+        return [
+          { key: workflowPrintFieldKey(child.key), label: `${label}（数值，可 SUM）`, kind: 'number' },
+          { key: workflowPrintDetailTextKey(child.key), label, kind: 'text' },
+        ];
+      }),
     }));
+  const detailTotalColumns: WorkflowPrintDatasetColumn[] = leaves
+    .filter((field) => field.type === 'detail')
+    .flatMap((field) => (field.children ?? [])
+      .filter((child) => child.detailSummary && isNumericFieldType(child.type))
+      .map((child) => ({
+        key: workflowPrintDetailTotalKey(field.key, child.key),
+        label: `${field.label || field.key}·${child.label || child.key} 合计`,
+        kind: 'text' as const,
+      })));
   return [
     { key: 'instance', label: '审批单', cardinality: 'single', columns: WORKFLOW_PRINT_INSTANCE_COLUMNS },
-    { key: 'form', label: '表单字段', cardinality: 'single', columns: formColumns },
+    { key: 'form', label: '表单字段', cardinality: 'single', columns: [...formColumns, ...detailTotalColumns] },
     { key: 'form_fields', label: '表单字段（逐行）', cardinality: 'rows', columns: WORKFLOW_PRINT_FORM_FIELD_COLUMNS },
     ...detailSets,
     { key: 'tasks', label: '审批记录', cardinality: 'rows', columns: WORKFLOW_PRINT_TASK_COLUMNS },
@@ -351,6 +374,8 @@ export interface WorkflowPrintDatasetInput {
   printerName: string;
   /** 已按系统时间规范格式化 */
   printedAt: string;
+  /** 验真页地址（服务端按 PUBLIC_BASE_URL 生成）；模板中 `${QRCODE(verifyUrl)}` 生成二维码 */
+  verifyUrl?: string;
 }
 
 function formatBytes(size: unknown): string {
@@ -449,6 +474,7 @@ export function buildWorkflowPrintDatasets(input: WorkflowPrintDatasetInput): Re
     attachmentCount: attachments.length,
     printerName: input.printerName,
     printedAt: input.printedAt,
+    verifyUrl: input.verifyUrl ?? '',
   };
 
   const formRow: Row = {};
@@ -462,22 +488,32 @@ export function buildWorkflowPrintDatasets(input: WorkflowPrintDatasetInput): Re
     if (field.type !== 'signature') formFieldRows.push({ key, label: field.label || field.key, value: text, type: field.type });
     if (field.type === 'detail') {
       const rows = Array.isArray(value) ? value : [];
+      const children = (field.children ?? []).filter((child) => !LAYOUT_FIELD_TYPES.has(child.type));
+      const sums = new Map<string, number>();
       datasets[workflowPrintDetailDatasetKey(field.key)] = rows.map((raw, index) => {
         const source = (typeof raw === 'object' && raw !== null ? raw : {}) as Row;
         const out: Row = { _index: index + 1 };
-        for (const child of field.children ?? []) {
-          if (LAYOUT_FIELD_TYPES.has(child.type)) continue;
+        for (const child of children) {
+          const childKey = workflowPrintFieldKey(child.key);
           const childValue = source[child.key];
-          // 数值子列保留数值（重复块合计 ${SUM(key)} 需要），其余格式化为文本
+          // 数值子列保留数值（重复块合计 ${SUM(key)} 需要），同时给出格式化文本列 `<key>_text`（千分位 / 精度 / 单位）
           if (isNumericFieldType(child.type)) {
             const num = typeof childValue === 'number' ? childValue : Number(childValue);
-            out[workflowPrintFieldKey(child.key)] = childValue === null || childValue === undefined || childValue === '' || !Number.isFinite(num) ? '' : num;
+            const blank = childValue === null || childValue === undefined || childValue === '' || !Number.isFinite(num);
+            out[childKey] = blank ? '' : num;
+            out[workflowPrintDetailTextKey(child.key)] = blank ? '' : formatWorkflowPrintValue(child, num, lookups);
+            if (!blank) sums.set(child.key, (sums.get(child.key) ?? 0) + num);
           } else {
-            out[workflowPrintFieldKey(child.key)] = formatWorkflowPrintValue(child, childValue, lookups);
+            out[childKey] = formatWorkflowPrintValue(child, childValue, lookups);
           }
         }
         return out;
       });
+      // 汇总列合计写入主数据集（已格式化），自动版式的合计行直接引用，避免 ${SUM()} 输出裸数字
+      for (const child of children) {
+        if (!child.detailSummary || !isNumericFieldType(child.type)) continue;
+        formRow[workflowPrintDetailTotalKey(field.key, child.key)] = formatWorkflowPrintValue(child, sums.get(child.key) ?? 0, lookups);
+      }
     }
   }
 
@@ -539,6 +575,8 @@ export interface WorkflowPrintLayoutOptions {
   includeComments?: boolean;
   /** 是否输出抄送行 */
   includeCc?: boolean;
+  /** 页脚是否带验真二维码（`${QRCODE(verifyUrl)}`） */
+  includeVerifyQr?: boolean;
   /** 页脚文本（支持 {page} / {pages} / {date}） */
   footer?: string;
 }
@@ -633,8 +671,10 @@ function layoutDetail(grid: GridBuilder, field: WorkflowFormField, x: number, wi
   cursor = x;
   if (seqUnits) { grid.text(bodyRow, cursor, seqUnits, '${_index}', STYLE.tableCellCenter, datasetKey); cursor += seqUnits; }
   children.forEach((child, index) => {
-    const style: ReportPrintCellStyle = isNumericFieldType(child.type) ? { ...STYLE.tableCell, align: 'right' } : STYLE.tableCell;
-    grid.text(bodyRow, cursor, units[index], `\${${workflowPrintFieldKey(child.key)}}`, style, datasetKey);
+    const numeric = isNumericFieldType(child.type);
+    const style: ReportPrintCellStyle = numeric ? { ...STYLE.tableCell, align: 'right' } : STYLE.tableCell;
+    const columnKey = numeric ? workflowPrintDetailTextKey(child.key) : workflowPrintFieldKey(child.key);
+    grid.text(bodyRow, cursor, units[index], `\${${columnKey}}`, style, datasetKey);
     cursor += units[index];
   });
   grid.block(`detail_${workflowPrintFieldKey(field.key)}`.toLowerCase(), datasetKey, bodyRow, bodyRow);
@@ -648,7 +688,8 @@ function layoutDetail(grid: GridBuilder, field: WorkflowFormField, x: number, wi
     for (let index = firstSummary; index < children.length; index++) {
       const child = children[index];
       if (child.detailSummary && isNumericFieldType(child.type)) {
-        grid.text(totalRow, cursor, units[index], `\${SUM(${workflowPrintFieldKey(child.key)})}`, STYLE.total, datasetKey);
+        // 合计取主数据集的已格式化值（数据集构建时按子字段精度 / 单位求和）
+        grid.text(totalRow, cursor, units[index], `\${${workflowPrintDetailTotalKey(field.key, child.key)}}`, { ...STYLE.total, align: 'right' }, 'form');
       } else {
         grid.blank(totalRow, cursor, units[index]);
       }
@@ -763,9 +804,23 @@ export function generateWorkflowPrintContent(fields: WorkflowFormField[], option
   const W = WORKFLOW_PRINT_GRID_COLS;
   const grid = new GridBuilder();
 
-  grid.text(grid.addRow(ROW_HEIGHT.title), 0, W, '${printTitle}', STYLE.title);
-  grid.text(grid.addRow(ROW_HEIGHT.subtitle), 0, W, '编号：${serialNo}    状态：${statusText}    发起时间：${createdAt}', STYLE.subtitle);
-  grid.addRow(ROW_HEIGHT.spacer);
+  if (options.includeVerifyQr) {
+    // 验真二维码放标题区右上角（4 栏 × 3 行 ≈ 1.9cm）：不占正文行，长单据分页时不会把二维码孤立到新页；
+    // 左侧对称留白，标题仍居页面中线
+    const QR = 4;
+    const titleRow = grid.addRow(ROW_HEIGHT.title);
+    const subtitleRow = grid.addRow(ROW_HEIGHT.subtitle);
+    const spacerRow = grid.addRow(ROW_HEIGHT.spacer + 10);
+    grid.cell(titleRow, 0, QR, { v: '', s: {} }, 3);
+    grid.text(titleRow, QR, W - QR * 2, '${printTitle}', STYLE.title);
+    grid.text(subtitleRow, QR, W - QR * 2, '编号：${serialNo}    状态：${statusText}    发起时间：${createdAt}', STYLE.subtitle);
+    grid.cell(spacerRow, QR, W - QR * 2, { v: '', s: {} });
+    grid.cell(titleRow, W - QR, QR, { v: '${QRCODE(verifyUrl)}', s: { valign: 'middle', align: 'center' } }, 3);
+  } else {
+    grid.text(grid.addRow(ROW_HEIGHT.title), 0, W, '${printTitle}', STYLE.title);
+    grid.text(grid.addRow(ROW_HEIGHT.subtitle), 0, W, '编号：${serialNo}    状态：${statusText}    发起时间：${createdAt}', STYLE.subtitle);
+    grid.addRow(ROW_HEIGHT.spacer);
+  }
 
   const info: Array<[string, string, string, string]> = [
     ['流程名称', '${definitionName}', '发起人', '${initiatorName}'],
@@ -824,7 +879,10 @@ export function generateWorkflowPrintContent(fields: WorkflowFormField[], option
   }
 
   grid.addRow(ROW_HEIGHT.spacer);
-  grid.text(grid.addRow(ROW_HEIGHT.footer), 0, W, '打印人：${printerName}    打印时间：${printedAt}', STYLE.footer);
+  // 打印人 / 打印时间进入页脚带（每页重复，见 workflowPrintPageConfig）；验真提示紧随正文，二维码已在标题区
+  grid.text(grid.addRow(ROW_HEIGHT.footer), 0, W, options.includeVerifyQr
+    ? '扫码右上角二维码验真：核对本单据的业务编号、状态与归档校验值'
+    : '打印人：${printerName}    打印时间：${printedAt}', STYLE.footer);
 
   const sheet: ReportPrintSheet = {
     id: 'approval-sheet',
@@ -845,12 +903,26 @@ export function generateWorkflowPrintContent(fields: WorkflowFormField[], option
   };
 }
 
-/** 审批单默认页面配置：A4 竖版，页脚页码 */
+/**
+ * 审批单默认页面配置：A4 竖版，页脚带打印人 / 打印时间 / 页码。
+ * `${printerName}` / `${printedAt}` 由渲染参数替换（服务端渲染时传入 workflowPrintRenderParams）。
+ */
 export function workflowPrintPageConfig(options: WorkflowPrintLayoutOptions = {}): ReportPrintPageConfig {
   return {
     paper: 'A4',
     orientation: 'portrait',
     margin: { top: 12, right: 14, bottom: 12, left: 14 },
-    footer: options.footer ?? '第 {page} / {pages} 页',
+    footer: options.footer ?? WORKFLOW_PRINT_DEFAULT_FOOTER,
   };
+}
+
+/** 默认页脚带：打印人 / 打印时间随每页重复，长单据翻页后仍可追溯 */
+export const WORKFLOW_PRINT_DEFAULT_FOOTER = '打印人：${printerName}    打印时间：${printedAt}    第 {page} / {pages} 页';
+
+/**
+ * 页眉 / 页脚带里 `${key}` 的替换参数（renderPrintContent 的 params）。
+ * 注意 params 会遮蔽同名数据集列，因此只放与 instance 数据集取值完全一致的打印人 / 打印时间。
+ */
+export function workflowPrintRenderParams(input: { printerName: string; printedAt: string }): Record<string, string> {
+  return { printerName: input.printerName, printedAt: input.printedAt };
 }

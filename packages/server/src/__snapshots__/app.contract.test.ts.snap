@@ -1271,6 +1271,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/workflows/instances/pending-mine",
   "GET /api/workflows/instances/pending-mine/count",
   "GET /api/workflows/instances/relation-options",
+  "GET /api/workflows/print-verify/:token",
   "GET /api/workflows/quick-phrases",
   "GET /api/workflows/saved-views",
   "GET /api/workflows/schedules",

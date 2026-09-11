@@ -6,7 +6,8 @@ import { defineContractRoute } from '../../../lib/contract-route';
 import { inlineOrAttachmentDisposition } from '../../../lib/content-disposition';
 import { okBody } from '../../../lib/openapi-schemas';
 import { listMyInstances, listPendingMine, listAllInstances, listMyCc, listMyHandled, getInstanceDetail, countMyCcUnread, countPendingMine, listRelationOptions, listAllTasks } from '../../../services/workflow/workflow-instances.service';
-import { renderWorkflowInstancePdf } from '../../../services/workflow/workflow-print.service';
+import { renderWorkflowInstancePdf, loadPrintVerifyView } from '../../../services/workflow/workflow-print.service';
+import { renderPrintVerifyPage } from './print-verify-page';
 import { getWorkflowAnalytics, listOverdueTasks } from '../../../services/workflow/workflow-analytics.service';
 import { listWorkflowSelectableUsers } from '../../../services/workflow/workflow-selectable-users.service';
 
@@ -85,13 +86,25 @@ export const printRoute = defineContractRoute(workflowInstanceContract.print, {
     }),
   ] as const,
   handler: async (c) => {
-    const { buffer, filename } = await renderWorkflowInstancePdf(c.req.valid('param').id, c.req.valid('query'));
+    const { buffer, filename, source } = await renderWorkflowInstancePdf(c.req.valid('param').id, c.req.valid('query'));
     return new Response(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': inlineOrAttachmentDisposition('application/pdf', filename),
         'Cache-Control': 'private, no-store',
+        'X-Zenith-Print-Source': source,
       },
+    });
+  },
+});
+
+/** 公开验真页：无登录、无脚本；令牌不可识别时同样返回 200 提示页（不给扫描者区分「不存在」与「伪造」的信号） */
+export const printVerifyRoute = defineContractRoute(workflowInstanceContract.printVerify, {
+  middleware: [],
+  handler: async (c) => {
+    const view = await loadPrintVerifyView(c.req.valid('param').token);
+    return new Response(renderPrintVerifyPage(view), {
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
     });
   },
 });

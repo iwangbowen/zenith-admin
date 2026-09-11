@@ -161,6 +161,16 @@ export const workflowInstanceSummaryItemSchema = z.object({
 
 export type WorkflowInstanceSummaryItem = z.infer<typeof workflowInstanceSummaryItemSchema>;
 
+/** 审批单归档件（终态时按流程设置自动生成的 PDF 存证） */
+export const workflowInstanceArchiveSchema = z.object({
+  fileId: z.string(),
+  sha256: z.string(),
+  templateId: z.int().nullable().meta({ description: '归档时使用的打印模板；null = 自动版式' }),
+  archivedAt: z.string(),
+}).meta({ id: 'WorkflowInstanceArchive' });
+
+export type WorkflowInstanceArchive = z.infer<typeof workflowInstanceArchiveSchema>;
+
 export const workflowInstanceSchema = z.object({
   id: z.int(),
   definitionId: z.int(),
@@ -203,6 +213,7 @@ export const workflowInstanceSchema = z.object({
   ccReadAt: z.string().nullable().optional(),
   ccDeliveredAt: z.string().nullable().optional(),
   predictedPath: z.array(workflowPredictedPathNodeSchema).nullable().optional().meta({ description: '运行中实例的预测剩余路径（详情场景填充）' }),
+  archive: workflowInstanceArchiveSchema.nullable().optional().meta({ description: '审批单归档件（详情场景填充；未归档为 null）' }),
   ...auditFieldsSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -435,9 +446,22 @@ export const workflowCcTaskParam = z.object({
 /** 审批单打印：可临时指定模板（设计器预览 / 更正版式），缺省用流程绑定模板，再缺省按表单快照自动生成 */
 export const workflowInstancePrintQuery = z.object({
   templateId: z.coerce.number().int().positive().optional().meta({ description: '临时指定的打印模板 ID（需为 workflow_instance 实体模板）' }),
+  source: z.enum(['auto', 'archive', 'live']).optional().meta({ description: 'auto（默认）= 有归档件则返回归档件否则实时渲染；archive = 只要归档件；live = 强制按当前模板重新渲染' }),
 });
 
 export type WorkflowInstancePrintQueryInput = z.infer<typeof workflowInstancePrintQuery>;
+
+/** 批量导出审批单 PDF（导出中心 workflow.approval-sheets 的查询载荷） */
+export const workflowBatchPrintQuerySchema = z.object({
+  instanceIds: z.array(z.int().positive()).min(1, '请选择要导出的审批单').max(200, '单次最多导出 200 份审批单'),
+});
+
+export type WorkflowBatchPrintQueryInput = z.infer<typeof workflowBatchPrintQuerySchema>;
+
+/** 审批单验真页（公开，凭打印件上的二维码令牌） */
+export const workflowPrintVerifyParam = z.object({
+  token: z.string().min(1).max(512).meta({ description: '打印件二维码中的签名令牌' }),
+});
 
 /**
  * 流程实例：查询 / 生命周期 / 抄送催办 / 评论 / 实例级批量操作。
@@ -459,7 +483,8 @@ export const workflowInstanceContract = defineContract('/api/workflows', {
   batchUrge: op.post('/instances/batch-urge', { body: batchUrgeWorkflowInstanceSchema, response: workflowInstanceBatchActionResponseSchema, summary: '批量催办' }),
   ccRead: op.post('/instances/cc/{ccTaskId}/read', { params: workflowCcTaskParam, summary: '标记抄送已读' }),
   detail: op.get('/instances/{id}', { params: idParam, response: workflowInstanceSchema, summary: '实例详情' }),
-  print: op.get('/instances/{id}/print', { params: idParam, query: workflowInstancePrintQuery, kind: 'file', summary: '审批单 PDF（预览 / 打印 / 下载同一份文件）' }),
+  print: op.get('/instances/{id}/print', { params: idParam, query: workflowInstancePrintQuery, kind: 'file', summary: '审批单 PDF（预览 / 打印 / 下载同一份文件；有归档件时默认返回归档件）' }),
+  printVerify: op.get('/print-verify/{token}', { params: workflowPrintVerifyParam, kind: 'file', public: true, summary: '审批单验真页（公开 HTML，凭打印件二维码令牌）' }),
   comments: op.get('/instances/{id}/comments', { params: idParam, response: z.array(workflowCommentSchema), summary: '流程评论列表' }),
   addComment: op.post('/instances/{id}/comments', { params: idParam, body: createWorkflowCommentSchema, response: workflowCommentSchema, summary: '发表流程评论' }),
   create: op.post('/instances', { body: createWorkflowInstanceWithDraftSchema, response: workflowInstanceSchema, summary: '发起流程' }),

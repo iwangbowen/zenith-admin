@@ -7,7 +7,7 @@ import { QueryClient, keepPreviousData, useMutation, useQuery, useQueryClient } 
 import type { BodyOf } from '@zenith/shared/core';
 import { workflowDefinitionContract, workflowInstanceContract, workflowQuickPhraseContract, workflowTaskContract, type WorkflowInstance, type WorkflowInstanceListItem, type WorkflowTask } from '@zenith/shared/workflow';
 import { authContract, userContract } from '@zenith/shared/identity';
-import { api } from '@/lib/contract-query';
+import { api, urlOf } from '@/lib/contract-query';
 import { approvalRequest } from './approval-request';
 
 export const approvalQueryClient = new QueryClient({
@@ -246,4 +246,16 @@ export async function fetchNextPendingTask(
     next: item?.pendingTaskId != null ? { instanceId: item.id, taskId: item.pendingTaskId } : null,
     remaining: data.total,
   };
+}
+
+/** 审批单 PDF（与后台同一份文件：有归档件返回归档件，否则实时渲染），供移动端分享 / 保存 */
+export async function fetchApprovalPrintPdf(instanceId: number): Promise<{ blob: Blob; filename: string }> {
+  const res = await approvalRequest.fetchRaw(urlOf(workflowInstanceContract.print, { params: { id: instanceId }, query: {} }));
+  if (!res) throw new Error('审批单生成失败');
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { message?: string } | null;
+    throw new Error(body?.message || `审批单生成失败（HTTP ${res.status}）`);
+  }
+  const match = /filename\*=UTF-8''([^;]+)/i.exec(res.headers.get('content-disposition') ?? '');
+  return { blob: await res.blob(), filename: match ? decodeURIComponent(match[1]) : `审批单-${instanceId}.pdf` };
 }

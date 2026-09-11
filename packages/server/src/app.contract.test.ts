@@ -158,8 +158,10 @@ describe('认证契约：声明与运行时行为必须一致', () => {
     // 均受路径绑定限流 drive_public_share 与 Redis 访问会话（sessionVersion 可整体吊销）约束。
     // CMS 前台 4 个匿名端点（/api/public/cms/*：验证码 / 互动问卷查询与提交 / 广告事件令牌），
     // 均受 Redis IP 限流、站点解析与一次性令牌约束。
+    // 审批单验真页 1 个匿名端点（GET /api/workflows/print-verify/{token}）：HMAC 签名令牌、只输出单据身份与终态、
+    // 无表单内容与参与人、无脚本、noindex；全局路径限流可按 /api/workflows/print-verify/* 配置。
     const publicOps = operations.filter((op) => op.isDeclaredPublic);
-    expect(publicOps.length).toBeLessThanOrEqual(66);
+    expect(publicOps.length).toBeLessThanOrEqual(67);
   });
 });
 

@@ -72,6 +72,28 @@ const entities: ExportEntityMeta[] = [
     },
   },
   {
+    entity: 'workflow.approval-sheets',
+    moduleName: '审批单',
+    filenamePrefix: '审批单',
+    sourcePath: '/workflow/applications',
+    formats: ['pdf'],
+    renderMode: 'custom',
+    sensitive: false,
+    columns: [],
+    execution: {
+      mode: 'auto',
+      syncMaxRows: 10,
+      maxRows: 50000,
+      forceAsyncWhenSensitive: false,
+      forceAsyncWhenRaw: false,
+      syncModeOverridesAsyncPolicies: false,
+    },
+    permissions: {
+      export: 'workflow:instance:print',
+      requireExportRawPermission: false,
+    },
+  },
+  {
     entity: 'cms.publish-artifacts',
     moduleName: 'CMS发布中心',
     filenamePrefix: 'CMS发布产物',

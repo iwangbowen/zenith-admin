@@ -3,6 +3,7 @@ import { uniquePositiveInts } from '@zenith/shared/core';
 import { randomUUID } from 'node:crypto';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
+import { releaseManagedFiles } from '../../files/file-gc.service';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 import { workflowInstances, workflowTasks, workflowDefinitions, users, userRoles } from '../../../db/schema';
 import { tenantCondition, getCreateTenantId } from '../../../lib/tenant';
@@ -344,7 +345,11 @@ export async function deleteInstance(id: number) {
   if (inst.status === 'running' || inst.status === 'draft') {
     throw new HTTPException(400, { message: '请先取消进行中的流程再删除' });
   }
-  await db.delete(workflowInstances).where(and(...conditions));
+  await db.transaction(async (tx) => {
+    await tx.delete(workflowInstances).where(and(...conditions));
+    // 归档件随实例生命周期：解除引用后由托管文件 GC 延迟回收
+    if (inst.archiveFileId) await releaseManagedFiles(tx, [inst.archiveFileId]);
+  });
 }
 
 async function loadOwnDraft(id: number) {

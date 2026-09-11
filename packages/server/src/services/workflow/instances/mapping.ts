@@ -127,6 +127,10 @@ export function mapInstance(
     ccTaskId: extras.ccTaskId ?? null,
     ccReadAt: extras.ccReadAt != null ? formatNullableDateTime(extras.ccReadAt as Date) : null,
     ccDeliveredAt: extras.ccDeliveredAt != null ? formatNullableDateTime(extras.ccDeliveredAt as Date) : null,
+    // 归档件：文件被清理（FK set null）后视为未归档，校验值与时间一并不再展示
+    archive: row.archiveFileId && row.archiveSha256 && row.archivedAt
+      ? { fileId: row.archiveFileId, sha256: row.archiveSha256, templateId: row.archiveTemplateId ?? null, archivedAt: formatDateTime(row.archivedAt) }
+      : null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),

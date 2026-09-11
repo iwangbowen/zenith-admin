@@ -107,6 +107,7 @@ export const workflowAdvancedSettingsSchema: z.ZodType<WorkflowAdvancedSettings>
     onlyWhenApproved: z.boolean().optional(),
     watermark: z.boolean().optional(),
     watermarkText: z.string().max(64).optional(),
+    autoArchive: z.boolean().optional(),
   }).optional(),
 }).meta({ id: 'WorkflowAdvancedSettings' });
 

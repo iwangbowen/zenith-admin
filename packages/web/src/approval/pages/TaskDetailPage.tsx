@@ -4,10 +4,11 @@ import {
   Avatar, Banner, Button, Empty, Form, Popconfirm, SideSheet, Skeleton, Tag, TextArea, Toast, Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { BellRing, ChevronLeft, RotateCcw, Send } from 'lucide-react';
+import { BellRing, ChevronLeft, RotateCcw, Send, Share2 } from 'lucide-react';
 import type { WorkflowActionButtonConfig, WorkflowFieldPermission, WorkflowTask } from '@zenith/shared/workflow';
 import { applyFieldPermissionsToFields, hasEditableFieldPermission } from '@zenith/shared/workflow';
 import { formatDateTime } from '@/utils/date';
+import { downloadBlob } from '@/utils/download';
 import ApprovalTimeline from '@/components/ApprovalTimeline';
 import FileAttachment from '@/components/FileAttachment';
 import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
@@ -26,6 +27,7 @@ import {
 } from '@/utils/workflow-snapshot';
 import ApproverPickerField from '../components/ApproverPicker';
 import {
+  fetchApprovalPrintPdf,
   fetchNextPendingTask,
   useAddApprovalComment, useApprovalDetail, useApprovalMe, useApprovalQuickPhrases, useApprovalUsers,
   useSelectableNextApprovers, useTaskAction, useUrgeInstance, useWithdrawInstance,
@@ -49,7 +51,7 @@ function resolveBtn(
 }
 
 /** 详情页头部骨架（返回键常驻，避免加载时无法退出） */
-function PageShell({ title, tag, children }: Readonly<{ title: string; tag?: React.ReactNode; children: React.ReactNode }>) {
+function PageShell({ title, tag, actions, children }: Readonly<{ title: string; tag?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }>) {
   const navigate = useNavigate();
   return (
     <div className="ap-page">
@@ -57,10 +59,35 @@ function PageShell({ title, tag, children }: Readonly<{ title: string; tag?: Rea
         <Button theme="borderless" icon={<ChevronLeft size={18} />} onClick={() => navigate(-1)} aria-label="返回" />
         <span className="ap-header__title">{title}</span>
         {tag}
+        {actions}
       </div>
       {children}
     </div>
   );
+}
+
+/** 分享审批单 PDF：支持 Web Share 的移动浏览器直接系统分享，否则退化为保存文件 */
+function SharePrintButton({ instanceId, title }: Readonly<{ instanceId: number; title: string }>) {
+  const [loading, setLoading] = useState(false);
+  const share = async () => {
+    setLoading(true);
+    try {
+      const { blob, filename } = await fetchApprovalPrintPdf(instanceId);
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title });
+      } else {
+        downloadBlob(blob, filename);
+      }
+    } catch (err) {
+      // 用户取消系统分享面板不是错误
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      Toast.error(err instanceof Error ? err.message : '审批单生成失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+  return <Button theme="borderless" icon={<Share2 size={18} />} loading={loading} onClick={() => void share()} aria-label="分享审批单 PDF" />;
 }
 
 export default function TaskDetailPage() {
@@ -325,8 +352,14 @@ export default function TaskDetailPage() {
     : action === 'reject' ? (btnReject.displayName ?? '拒绝')
     : (btnTransfer.displayName ?? '转办');
 
+  const canPrint = detail.status !== 'draft' && (me?.permissions?.includes('*') || me?.permissions?.includes('workflow:instance:print'));
+
   return (
-    <PageShell title={detail.title} tag={status && <Tag color={status.color}>{status.text}</Tag>}>
+    <PageShell
+      title={detail.title}
+      tag={status && <Tag color={status.color}>{status.text}</Tag>}
+      actions={canPrint ? <SharePrintButton instanceId={detail.id} title={detail.title} /> : null}
+    >
       <div className={`ap-body${hasFooter ? ' ap-body--with-footer' : ''}`}>
         {detail.status === 'suspended' && (
           <Banner type="warning" closeIcon={null} description={`流程已挂起${detail.suspendReason ? `：${detail.suspendReason}` : ''}，恢复前不可审批`} style={{ marginBottom: 12 }} />

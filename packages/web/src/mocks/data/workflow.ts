@@ -487,6 +487,8 @@ export const mockWorkflowInstances: WorkflowInstance[] = [
     initiatorAvatar: null,
     tenantId: 1,
     tasks: mockWorkflowTasks.filter(t => t.instanceId === 1),
+    // 办结时由后台固化的 PDF 存证（Demo 数据仅用于展示「已归档」标识与归档件优先返回）
+    archive: { fileId: 'demo-archive-1', sha256: 'a3f1c9d2e4b5670189abcdef0123456789abcdef0123456789abcdef01234567', templateId: null, archivedAt: '2026-03-15 10:31:05' },
     createdAt: '2026-03-14 09:00:00',
     updatedAt: '2026-03-15 10:31:00',
   },

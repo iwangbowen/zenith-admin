@@ -84,14 +84,24 @@ export function useWithdrawWorkflowInstance() {
 export interface WorkflowInstancePrintPdf {
   blob: Blob;
   filename: string;
+  /** archive = 服务端直接返回的归档原件；live = 本次实时渲染 */
+  source: 'archive' | 'live';
+}
+
+export interface WorkflowInstancePrintOptions {
+  /** 临时指定模板（设计器预览）；指定后服务端忽略归档件 */
+  templateId?: number;
+  /** auto（默认）优先归档件；live 强制按当前版式重渲；archive 只要归档件 */
+  source?: 'auto' | 'archive' | 'live';
 }
 
 /**
  * 审批单 PDF：预览 / 打印 / 下载共用同一份文件。二进制通道不走 api()，经 request.fetchRaw 取 Blob
  * 与响应头文件名；失败时服务端返回标准 JSON 信封，取其 message 抛出供调用方提示。
  */
-export async function fetchWorkflowInstancePrintPdf(id: number, templateId?: number): Promise<WorkflowInstancePrintPdf> {
-  const res = await request.fetchRaw(urlOf(workflowInstanceContract.print, { params: { id }, query: compactQuery({ templateId }) }));
+export async function fetchWorkflowInstancePrintPdf(id: number, options: WorkflowInstancePrintOptions = {}): Promise<WorkflowInstancePrintPdf> {
+  const query = compactQuery({ templateId: options.templateId, source: options.source });
+  const res = await request.fetchRaw(urlOf(workflowInstanceContract.print, { params: { id }, query }));
   if (!res) throw new Error('审批单生成失败');
   if (!res.ok) {
     const body = await res.json().catch(() => null) as { message?: string } | null;
@@ -100,7 +110,11 @@ export async function fetchWorkflowInstancePrintPdf(id: number, templateId?: num
   const blob = await res.blob();
   const disposition = res.headers.get('content-disposition') ?? '';
   const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
-  return { blob, filename: match ? decodeURIComponent(match[1]) : `审批单-${id}.pdf` };
+  return {
+    blob,
+    filename: match ? decodeURIComponent(match[1]) : `审批单-${id}.pdf`,
+    source: res.headers.get('x-zenith-print-source') === 'archive' ? 'archive' : 'live',
+  };
 }
 
 export function useBatchWithdrawWorkflowInstances() {

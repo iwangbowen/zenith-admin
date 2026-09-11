@@ -6,9 +6,9 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import {
   Descriptions, Empty, Skeleton, Table, Tabs, TabPane, Tag, Typography, Button,
-  Avatar, TextArea, Select, Toast, Popconfirm, Radio, RadioGroup,
+  Avatar, TextArea, Select, Toast, Popconfirm, Radio, RadioGroup, Tooltip,
 } from '@douyinfe/semi-ui';
-import { CornerUpLeft, Reply, Send, Undo2, X } from 'lucide-react';
+import { CornerUpLeft, Reply, Send, ShieldCheck, Undo2, X } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowDefinition, WorkflowFieldPermission, WorkflowInstance, WorkflowComment, WorkflowTask, WorkflowTaskConsult } from '@zenith/shared/workflow';
 import { applyFieldPermissionsToFields, WORKFLOW_TASK_STATUS_LABELS, workflowInstanceContract, workflowTaskContract } from '@zenith/shared/workflow';
@@ -442,7 +442,7 @@ export default function WorkflowInstanceDetailPanel({
           {instance.suspendReason ? ` 原因：${instance.suspendReason}` : ''}
         </div>
       )}
-      {(instance.parentInstanceId || extraActions || myRecallableTask || (instance.status !== 'draft' && hasPermission('workflow:instance:print'))) ? (
+      {(instance.parentInstanceId || extraActions || myRecallableTask || instance.archive || (instance.status !== 'draft' && hasPermission('workflow:instance:print'))) ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
           {instance.parentInstanceId ? (
             <Button
@@ -457,6 +457,11 @@ export default function WorkflowInstanceDetailPanel({
           ) : null}
           {/* 草稿尚无审批链与流水号，不提供打印；其余状态按打印权限提供当前快照的 PDF */}
           {instance.status !== 'draft' && hasPermission('workflow:instance:print') ? <WorkflowPrintButton instanceId={instance.id} /> : null}
+          {instance.archive ? (
+            <Tooltip content={`办结时固化的 PDF 存证 · ${formatDateTime(instance.archive.archivedAt)} · SHA-256 ${instance.archive.sha256.slice(0, 16)}…`}>
+              <Tag size="small" color="green" prefixIcon={<ShieldCheck size={12} />} style={{ cursor: 'default' }}>已归档</Tag>
+            </Tooltip>
+          ) : null}
           {extraActions}
           {myRecallableTask ? (
             <Popconfirm title="撤回我刚做的处理？" content="后续节点已处理时无法撤回。" onConfirm={() => void handleRecall()}>

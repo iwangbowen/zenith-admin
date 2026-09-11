@@ -69,6 +69,7 @@ ALLOWED_ORIGINS=https://admin.example.com
 | `TRUSTED_PROXY_CIDRS` | 仅信任指定代理的 `X-Forwarded-For` / `X-Real-IP` |
 | `REPORT_OUTBOUND_PRIVATE_ALLOWLIST` | 报表外部数据源访问私网的 allowlist |
 | `REPORT_PDF_FONT_PATH` | PDF 导出（报表打印 / 审批单）的 CJK 字体覆盖。默认使用随包内置的 Noto Sans SC（`packages/server/assets/fonts`，镜像与发布包均包含），仅企业要求自有字体时指向单个 TTF / OTF 文件 |
+| `PUBLIC_BASE_URL` | 对外可达的服务基址（默认 `http://localhost:3300`）。审批单打印件的验真二维码、通知退订链接等公开 URL 以此为前缀，生产环境必须设为用户 / 扫码者能访问的外网地址 |
 | `AI_OUTBOUND_PRIVATE_ALLOWLIST` | AI 服务商请求访问本地 / 私网模型的 allowlist，默认含 `127.0.0.1,localhost` |
 | `MASTRA_STUDIO_ALLOW_ANONYMOUS` | 开发环境放开 `/api/mastra` 鉴权；生产环境强制忽略 |
 | `WEBRTC_STUN_URLS` / `WEBRTC_TURN_*` | Chat 音视频通话 ICE 服务器配置 |

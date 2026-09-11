@@ -382,6 +382,9 @@ export default function WorkflowMonitorPage() {
 
   const { categories } = useWorkflowCategories();
   const { hasPermission } = usePermission();
+  // 勾选用于批量导出审批单 PDF；翻页 / 重新检索后仅保留仍在当前页的选中项
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const selectedPrintableIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id));
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailId, setDetailId] = useState<number | undefined>();
   const detailQuery = useWorkflowInstanceDetail(detailId, detailVisible);
@@ -1123,6 +1126,16 @@ export default function WorkflowMonitorPage() {
         actions={(
           <>
             <ExportButton entity="workflow.instances" query={buildExportQuery()} formats={['xlsx']} />
+            {selectedPrintableIds.length > 0 ? (
+              <ExportButton
+                entity="workflow.approval-sheets"
+                formats={['pdf']}
+                label={`导出审批单 PDF（${selectedPrintableIds.length}）`}
+                executionMode="auto"
+                permission="workflow:instance:print"
+                query={{ instanceIds: selectedPrintableIds }}
+              />
+            ) : null}
             {hasPermission('workflow:task:handover') ? (
               <Button type="primary" icon={<UserRoundCog size={14} />} onClick={() => setHandoverVisible(true)}>离职交接</Button>
             ) : null}
@@ -1133,7 +1146,13 @@ export default function WorkflowMonitorPage() {
 
       <ConfigurableTable<WorkflowInstanceListItem>
         columns={columns}
-        {...listTableProps(listQuery, { pagination: buildPagination })}
+        {...listTableProps(listQuery, {
+          pagination: buildPagination,
+          rowSelection: hasPermission('workflow:instance:print') ? {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
+          } : undefined,
+        })}
       />
         </TabPane>
         <TabPane tab="任务监控" itemKey="tasks">

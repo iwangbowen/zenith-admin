@@ -3,8 +3,8 @@
  * 详情面板 / 我的申请 / 待办 / 已办 / 流程监控共用；PDF 引擎按需懒加载，不进入首屏。
  */
 import { lazy, Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
-import { Button, Modal, Spin, Toast } from '@douyinfe/semi-ui';
-import { Download, Printer } from 'lucide-react';
+import { Button, Modal, Spin, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
+import { Download, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
 import { fetchWorkflowInstancePrintPdf, type WorkflowInstancePrintPdf } from '@/hooks/queries/workflow-instances';
 import { downloadBlob } from '@/utils/download';
 
@@ -51,10 +51,10 @@ export default function WorkflowPrintButton({ instanceId, templateId, size = 'sm
   // embedpdf 按 file 引用重新加载文档：同一份 PDF 只构造一次 File，避免每次渲染重开文档
   const file = useMemo(() => (pdf ? new File([pdf.blob], pdf.filename, { type: 'application/pdf' }) : null), [pdf]);
 
-  const open = useCallback(async () => {
+  const open = useCallback(async (source?: 'live') => {
     setLoading(true);
     try {
-      setPdf(await fetchWorkflowInstancePrintPdf(instanceId, templateId));
+      setPdf(await fetchWorkflowInstancePrintPdf(instanceId, { templateId, source }));
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '审批单生成失败');
     } finally {
@@ -100,6 +100,14 @@ export default function WorkflowPrintButton({ instanceId, templateId, size = 'sm
               style={{ width: '100%', borderLeft: 'none' }}
               actions={(
                 <>
+                  {pdf.source === 'archive' ? (
+                    <>
+                      <Tooltip content="流程办结时系统生成并固化的 PDF 存证，内容不随模板或数据变化">
+                        <Tag color="green" prefixIcon={<ShieldCheck size={12} />}>归档原件</Tag>
+                      </Tooltip>
+                      <Button theme="borderless" size="small" icon={<RefreshCw size={14} />} loading={loading} onClick={() => void open('live')}>按当前版式重新生成</Button>
+                    </>
+                  ) : null}
                   <Button theme="solid" size="small" icon={<Printer size={14} />} onClick={() => printPdfBlob(pdf.blob)}>打印</Button>
                   <Button theme="light" size="small" icon={<Download size={14} />} onClick={() => downloadBlob(pdf.blob, pdf.filename)}>下载 PDF</Button>
                 </>

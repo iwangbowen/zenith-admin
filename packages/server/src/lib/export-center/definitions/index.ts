@@ -25,6 +25,7 @@ import { paymentRefundsExportDefinition } from './payment-refunds';
 import { paymentContractsExportDefinition } from './payment-contracts';
 import { paymentDisputesExportDefinition } from './payment-disputes';
 import { workflowInstancesExportDefinition } from './workflow-instances';
+import { workflowApprovalSheetsExportDefinition } from './workflow-approval-sheets';
 import { memberPointTxExportDefinition } from './member-point-transactions';
 import { memberWalletTxExportDefinition } from './member-wallet-transactions';
 import { memberCouponRecordsExportDefinition } from './member-coupon-records';
@@ -82,6 +83,7 @@ const definitions = [
   paymentContractsExportDefinition,
   paymentDisputesExportDefinition,
   workflowInstancesExportDefinition,
+  workflowApprovalSheetsExportDefinition,
   memberPointTxExportDefinition,
   memberWalletTxExportDefinition,
   memberCouponRecordsExportDefinition,

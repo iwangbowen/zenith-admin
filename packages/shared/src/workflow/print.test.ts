@@ -15,8 +15,11 @@ import {
   formatWorkflowPrintValue,
   generateWorkflowPrintContent,
   workflowPrintDetailDatasetKey,
+  workflowPrintDetailTextKey,
+  workflowPrintDetailTotalKey,
   workflowPrintFieldKey,
   workflowPrintPageConfig,
+  workflowPrintRenderParams,
 } from './print';
 
 const field = (partial: Partial<WorkflowFormField> & Pick<WorkflowFormField, 'key' | 'type'>): WorkflowFormField => ({
@@ -172,12 +175,15 @@ describe('buildWorkflowPrintDatasets', () => {
     expect(datasets.form_fields.map((r) => r.key)).not.toContain('sign');
   });
 
-  it('明细子表：数值列保留数值供合计，空值为空串，带序号', () => {
+  it('明细子表：数值列保留数值供合计，另给格式化文本列；空值为空串，带序号；汇总列合计写入主数据集', () => {
     const rows = datasets[workflowPrintDetailDatasetKey('items')];
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toMatchObject({ _index: 1, name: '交通', qty: 2, price: 100 });
+    expect(rows[0]).toMatchObject({ _index: 1, name: '交通', qty: 2, price: 100, qty_text: '2', price_text: '100.00' });
     expect(rows[1].qty).toBe(3);
     expect(rows[2].qty).toBe('');
+    expect(rows[2].qty_text).toBe('');
+    expect(datasets.form[0][workflowPrintDetailTotalKey('items', 'qty')]).toBe('5');
+    expect(datasets.form[0]).not.toHaveProperty(workflowPrintDetailTotalKey('items', 'price'));
   });
 
   it('tasks 只含真实审批环节：排除抄送与 excluded 留痕；cc 单独成集', () => {
@@ -192,15 +198,11 @@ describe('generateWorkflowPrintContent', () => {
   const content = generateWorkflowPrintContent(FIELDS, { includeComments: true, includeCc: true });
   const sheet = content.sheets![0];
 
-  it('生成内容通过报表打印内容 schema 校验（含重复块 / 合并区域边界）', () => {
-    const parsed = reportPrintContentSchema.safeParse(content);
-    expect(parsed.success, JSON.stringify(parsed.error?.issues.slice(0, 3))).toBe(true);
-  });
-
-  it('单元格互不重叠：任一 (row, col) 至多被一个单元格（含合并区域）覆盖', () => {
+  /** 任一 (row, col) 至多被一个单元格（含合并区域）覆盖 */
+  function expectNoOverlap(grid: typeof sheet.grid) {
     const covered = new Set<string>();
-    const merges = new Map(sheet.grid.merges!.map((m) => [`${m.row}:${m.col}`, m]));
-    for (const cell of sheet.grid.cells) {
+    const merges = new Map(grid.merges!.map((m) => [`${m.row}:${m.col}`, m]));
+    for (const cell of grid.cells) {
       const merge = merges.get(`${cell.row}:${cell.col}`);
       const rowSpan = merge?.rowSpan ?? 1;
       const colSpan = merge?.colSpan ?? 1;
@@ -212,7 +214,35 @@ describe('generateWorkflowPrintContent', () => {
         }
       }
     }
-    expect(sheet.grid.rowHeights).toHaveLength(sheet.grid.rows);
+    expect(grid.rowHeights).toHaveLength(grid.rows);
+  }
+
+  it('生成内容通过报表打印内容 schema 校验（含重复块 / 合并区域边界）', () => {
+    const parsed = reportPrintContentSchema.safeParse(content);
+    expect(parsed.success, JSON.stringify(parsed.error?.issues.slice(0, 3))).toBe(true);
+  });
+
+  it('单元格互不重叠：任一 (row, col) 至多被一个单元格（含合并区域）覆盖', () => {
+    expectNoOverlap(sheet.grid);
+  });
+
+  it('验真二维码位于标题区右上角（4 栏 × 3 行），标题对称居中，不再有独占一行的二维码页脚', () => {
+    const withQr = generateWorkflowPrintContent(FIELDS, { includeVerifyQr: true, includeCc: true, includeComments: true });
+    const grid = withQr.sheets![0].grid;
+    expectNoOverlap(grid);
+    expect(reportPrintContentSchema.safeParse(withQr).success).toBe(true);
+    const qrCells = grid.cells.filter((c) => String(c.v ?? '').includes('QRCODE'));
+    expect(qrCells).toHaveLength(1);
+    expect(qrCells[0]).toMatchObject({ row: 0, col: 20 });
+    expect(grid.merges!.find((m) => m.row === 0 && m.col === 20)).toMatchObject({ rowSpan: 3, colSpan: 4 });
+    const title = grid.cells.find((c) => c.v === '${printTitle}')!;
+    expect(title.col).toBe(4);
+    expect(grid.merges!.find((m) => m.row === title.row && m.col === 4)?.colSpan).toBe(16);
+    const texts = grid.cells.map((c) => String(c.v ?? ''));
+    expect(texts.some((t) => t.startsWith('扫码右上角二维码验真'))).toBe(true);
+    // 打印人 / 时间只出现在页脚带
+    expect(texts.some((t) => t.includes('${printerName}'))).toBe(false);
+    expect(workflowPrintPageConfig().footer).toContain('${printerName}');
   });
 
   it('栅格行两列并排、明细形成重复块、签名为图片单元格、密码与说明不出现', () => {
@@ -233,8 +263,11 @@ describe('generateWorkflowPrintContent', () => {
 
     const blockIds = sheet.repeatBlocks!.map((b) => b.id);
     expect(blockIds).toEqual(expect.arrayContaining(['detail_items', 'tasks', 'comments']));
-    const sumCell = sheet.grid.cells.find((c) => c.v === '${SUM(qty)}')!;
-    expect(sumCell.datasetKey).toBe(workflowPrintDetailDatasetKey('items'));
+    // 明细数值列用格式化文本列，合计行引用主数据集的已格式化合计
+    const priceCell = sheet.grid.cells.find((c) => c.v === `\${${workflowPrintDetailTextKey('price')}}`)!;
+    expect(priceCell.datasetKey).toBe(workflowPrintDetailDatasetKey('items'));
+    const sumCell = sheet.grid.cells.find((c) => c.v === `\${${workflowPrintDetailTotalKey('items', 'qty')}}`)!;
+    expect(sumCell.datasetKey).toBe('form');
 
     const signature = sheet.grid.cells.find((c) => c.kind === 'image' && c.datasetKey === 'form')!;
     expect(signature.image?.src).toBe(`\${${workflowPrintFieldKey('sign')}}`);
@@ -246,7 +279,7 @@ describe('generateWorkflowPrintContent', () => {
     const lookups = emptyWorkflowPrintLookups();
     lookups.userNames.set(11, '甲').set(12, '乙');
     const datasets = buildWorkflowPrintDatasets({ instance: INSTANCE, fields: FIELDS, lookups, printerName: '管理员', printedAt: '2026-09-11 11:00:00' });
-    const result = renderPrintContent('审批单', content, datasets.instance, {}, workflowPrintPageConfig(), { datasets, renderedAt: '2026-09-11 11:00:00' });
+    const result = renderPrintContent('审批单', content, datasets.instance, workflowPrintRenderParams({ printerName: '管理员', printedAt: '2026-09-11 11:00:00' }), workflowPrintPageConfig(), { datasets, renderedAt: '2026-09-11 11:00:00' });
     expect(result.pages.length).toBeGreaterThan(0);
     const values = result.grid.cells.map((c) => c.v);
     expect(values).toContain('请假申请审批单');
@@ -257,12 +290,13 @@ describe('generateWorkflowPrintContent', () => {
     expect(values).toContain('直属领导');
     expect(values).toContain('王五'); // 抄送行
     expect(values).toContain('补充说明'); // 沟通记录
-    expect(values).toContain(5); // ${SUM(qty)} = 2 + 3
+    expect(values).toContain('5'); // 合计：qty 2 + 3（已格式化文本）
+    expect(values).toContain('100.00'); // 明细单价格式化列
     expect(values).toContain('交通');
     expect(values).toContain('住宿');
     const signatureCell = result.grid.cells.find((c) => c.kind === 'image' && c.image?.src === 'data:image/png;base64,AAAA');
     expect(signatureCell).toBeDefined();
-    expect(result.pages[0].footerText).toBe('第 1 / 1 页');
+    expect(result.pages[0].footerText).toBe('打印人：管理员    打印时间：2026-09-11 11:00:00    第 1 / 1 页');
     // 多行文本自动抬高行高
     const reasonCell = result.grid.cells.find((c) => c.v === '家中有事\n需要请假两天')!;
     expect(result.grid.rowHeights![reasonCell.row]).toBeGreaterThanOrEqual(52);
@@ -286,6 +320,7 @@ describe('describeWorkflowPrintDatasets', () => {
     expect(form.columns.map((c) => c.key)).not.toContain('secret');
     const detail = sets.find((s) => s.key === workflowPrintDetailDatasetKey('items'))!;
     expect(detail.cardinality).toBe('rows');
-    expect(detail.columns.map((c) => c.key)).toEqual(['name', 'qty', 'price']);
+    expect(detail.columns.map((c) => c.key)).toEqual(['name', 'qty', 'qty_text', 'price', 'price_text']);
+    expect(form.columns.map((c) => c.key)).toContain(workflowPrintDetailTotalKey('items', 'qty'));
   });
 });
