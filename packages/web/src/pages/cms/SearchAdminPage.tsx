@@ -144,7 +144,7 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
   const { hasPermission } = usePermission();
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: cmsSearchWordKeys.lists });
   const [type, setType] = useState<'extension' | 'stop' | undefined>(undefined);
@@ -200,7 +200,7 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
       <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="自定义词典用于纠正分词（如品牌名、行业术语）。新增/修改即时对新内容生效；历史内容需在「检索测试」中重建索引。" />
       <SearchToolbar>
         <CmsSiteSelect value={siteId} onChange={(value) => { onSiteChange(value); setPage(1); setSelectedIds([]); }} width={180} />
-        <KeywordInput placeholder="搜索词条..." value={draftParams.keyword} onChange={(v) => setDraftParams({ keyword: v })} onSearch={handleSearch} width={200} />
+        <KeywordInput placeholder="搜索词条..." {...bindKeyword('keyword')} width={200} />
         <FilterSelect
           placeholder="全部词典类型"
           items={CMS_SEARCH_WORD_TYPES.map((value) => ({ value, label: CMS_SEARCH_WORD_TYPE_LABELS[value] }))}

@@ -13,6 +13,24 @@ const clipboardRestrictions = [
   },
 ];
 
+// ── 列表页搜索纪律（constraints-frontend.md → 必须复用的公共 hook / 搜索栏与表格）：
+//    受控筛选控件一律 {...bind('字段')} / {...bindKeyword('keyword')}，时间区间一律 DateRangeFilter。
+//    漏用这些封装不会报错，只会表现为「点查询没反应」「回车不查询」等难以发现的行为异常。──
+const listSearchRestrictions = [
+  {
+    selector: 'CallExpression[callee.name="setDraftParams"] > ObjectExpression[properties.length=1]',
+    message: '单字段草稿写入请用 useListSearch 的 bind(\'字段\') / bindKeyword(\'keyword\') 整体绑定控件；一次改多个字段才用 setDraftParams((p) => ({ ...p, a, b }))。',
+  },
+  {
+    selector: 'JSXAttribute[name.name="onChange"] > JSXExpressionContainer > CallExpression[callee.name="setField"]',
+    message: '受控筛选控件请用 {...bind(\'字段\')} 整体绑定，控件回传比字段宽时传 parse：bind(\'x\', (v) => …)；setField 只用于 Checkbox 等非 value / onChange 形态的控件。',
+  },
+  {
+    selector: 'JSXOpeningElement[name.name="DatePicker"] > JSXAttribute[name.name="type"] > Literal[value=/Range$/]',
+    message: '搜索区的时间区间请用 @/components/search-filters 的 DateRangeFilter（秒级默认，日期级 type="dateRange"）；表单内用 Form.DatePicker。',
+  },
+];
+
 export default [
   { ignores: ['dist/**', 'node_modules/**', 'public/mockServiceWorker.js'] },
   js.configs.recommended,
@@ -101,6 +119,7 @@ export default [
       'no-restricted-syntax': [
         'error',
         ...clipboardRestrictions,
+        ...listSearchRestrictions,
         {
           selector: 'Property[key.name="borderRadius"][value.type="Literal"][value.value>=2][value.value<=14]',
           message: '内联圆角请使用 var(--semi-border-radius-small/medium/large)，以便跟随「圆角大小」偏好；刻意的造型值请加 eslint-disable 注释并注明理由。',
@@ -110,6 +129,13 @@ export default [
           message: '自写黑色阴影暗色模式下不可见，请使用 var(--semi-shadow-elevated)；刻意的强调投影请加 eslint-disable 注释并注明理由。',
         },
       ],
+    },
+  },
+  {
+    // 会员端 / 审批端不受 Token 纪律管辖，但列表页搜索纪律同样适用
+    files: ['src/member/**/*.tsx', 'src/approval/**/*.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', ...clipboardRestrictions, ...listSearchRestrictions],
     },
   },
 ];
