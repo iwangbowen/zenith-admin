@@ -7,7 +7,7 @@ import type { ErrorAlertRuleRow, ErrorAlertLogRow } from '../../db/schema';
 import { frontendErrorContract } from '@zenith/shared/analytics';
 import type { CreateErrorAlertRuleInput, UpdateErrorAlertRuleInput, FrontendErrorType, ErrorLevel } from '@zenith/shared/analytics';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
-import { buildWhere } from '../../lib/where-helpers';
+import { buildWhere, nullableEq } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { validateAlertDelivery } from '../../lib/alert-validation';
@@ -110,8 +110,13 @@ export async function deleteAlertRule(id: number) {
 }
 
 // ─── 告警评估（cron 定时保底 + 错误上报实时联动）─────────────────────────────
-function tenantFilter(tenantId: number | null) {
-  return tenantId == null ? undefined : tenantId;
+/** 规则作用域（错误类型 / 级别 / 租户归属：null → IS NULL），事件表与分组表共用同一组列名 */
+function ruleScopeConditions(rule: ErrorAlertRuleRow, table: typeof errorEvents | typeof errorGroups) {
+  return [
+    rule.errorType ? eq(table.errorType, rule.errorType) : undefined,
+    rule.level ? eq(table.level, rule.level) : undefined,
+    nullableEq(table.tenantId, rule.tenantId),
+  ];
 }
 
 async function dispatchAlert(rule: ErrorAlertRuleRow, detail: string): Promise<void> {
@@ -166,34 +171,24 @@ async function tryTriggerAlert(rule: ErrorAlertRuleRow, detail: string, source: 
 /** 评估单条规则是否命中（不含去抖/分发）。 */
 async function evaluateRule(rule: ErrorAlertRuleRow, now: number): Promise<{ hit: boolean; detail: string }> {
   const windowStart = new Date(now - rule.windowMinutes * 60_000);
-  const tId = tenantFilter(rule.tenantId);
-
-  const evConds = [gte(errorEvents.createdAt, windowStart)];
-  if (rule.errorType) evConds.push(eq(errorEvents.errorType, rule.errorType));
-  if (rule.level) evConds.push(eq(errorEvents.level, rule.level));
-  if (tId != null) evConds.push(eq(errorEvents.tenantId, tId));
-  else evConds.push(isNull(errorEvents.tenantId));
-  const evWhere = and(...evConds);
+  const evWhere = buildWhere(gte(errorEvents.createdAt, windowStart), ...ruleScopeConditions(rule, errorEvents));
 
   if (rule.condition === 'threshold') {
     const c = await db.$count(errorEvents, evWhere);
     if (c >= rule.thresholdCount) return { hit: true, detail: `${rule.windowMinutes} 分钟内发生 ${c} 次错误，已达阈值 ${rule.thresholdCount}` };
   } else if (rule.condition === 'new_error') {
-    const gConds = [gte(errorGroups.firstSeenAt, windowStart)];
-    if (rule.errorType) gConds.push(eq(errorGroups.errorType, rule.errorType));
-    if (rule.level) gConds.push(eq(errorGroups.level, rule.level));
-    if (tId != null) gConds.push(eq(errorGroups.tenantId, tId)); else gConds.push(isNull(errorGroups.tenantId));
-    const c = await db.$count(errorGroups, and(...gConds));
+    const c = await db.$count(errorGroups, buildWhere(gte(errorGroups.firstSeenAt, windowStart), ...ruleScopeConditions(rule, errorGroups)));
     if (c > 0) return { hit: true, detail: `${rule.windowMinutes} 分钟内新增 ${c} 类新错误` };
   } else if (rule.condition === 'spike') {
     const prevStart = new Date(now - rule.windowMinutes * 2 * 60_000);
-    const prevConds = [gte(errorEvents.createdAt, prevStart), lt(errorEvents.createdAt, windowStart)];
-    if (rule.errorType) prevConds.push(eq(errorEvents.errorType, rule.errorType));
-    if (rule.level) prevConds.push(eq(errorEvents.level, rule.level));
-    if (tId != null) prevConds.push(eq(errorEvents.tenantId, tId)); else prevConds.push(isNull(errorEvents.tenantId));
+    const prevWhere = buildWhere(
+      gte(errorEvents.createdAt, prevStart),
+      lt(errorEvents.createdAt, windowStart),
+      ...ruleScopeConditions(rule, errorEvents),
+    );
     const [cur, prev] = await Promise.all([
       db.$count(errorEvents, evWhere),
-      db.$count(errorEvents, and(...prevConds)),
+      db.$count(errorEvents, prevWhere),
     ]);
     if (cur >= rule.thresholdCount && cur > prev * 2) return { hit: true, detail: `错误激增：当前周期 ${cur} 次，上一周期 ${prev} 次` };
   }

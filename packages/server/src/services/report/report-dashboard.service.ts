@@ -49,7 +49,7 @@ import {
   validateReportResourcePlacement,
 } from './report-resource.service';
 import type { ReportDashboardRow } from '../../db/schema';
-import { computeWidgetParams, reportDashboardContract, type CreateReportDashboardInput, type ReportCanvasItem, type ReportDashboard, type ReportDashboardConfig, type ReportDashboardLifecycleStatus, type ReportDashboardSnapshot, type ReportDatasetQueryOptions, type ReportFilter, type ReportGridItem, type ReportLookupOption, type ReportMetricEvaluation, type ReportWidget, type ReportWidgetDataResult, type UpdateReportDashboardInput } from '@zenith/shared/report';
+import { computeWidgetParams, reportDashboardContract, type CreateReportDashboardInput, type ReportCanvasItem, type ReportDashboard, type ReportDashboardConfig, type ReportDashboardSnapshot, type ReportDatasetQueryOptions, type ReportFilter, type ReportGridItem, type ReportLookupOption, type ReportMetricEvaluation, type ReportWidget, type ReportWidgetDataResult, type UpdateReportDashboardInput } from '@zenith/shared/report';
 
 type DashboardRowExt = ReportDashboardRow & {
   category?: { name: string } | null;
@@ -201,27 +201,28 @@ export async function listDashboards(query: QueryOutputOf<typeof reportDashboard
     favorited,
   } = query;
   const uid = currentUserOrNull()?.userId;
-  const conds = [];
-  const tenantScope = reportTenantScope(reportDashboards);
-  if (tenantScope) conds.push(tenantScope);
   const accessibleIds = await listAccessibleReportResourceIds('dashboard');
   if (accessibleIds && accessibleIds.length === 0) return { list: [], total: 0, page, pageSize };
-  if (accessibleIds) conds.push(inArray(reportDashboards.id, accessibleIds));
-  if (folderId) conds.push(eq(reportDashboards.folderId, folderId));
-  if (ownerId) conds.push(eq(reportDashboards.ownerId, ownerId));
-  conds.push(keywordCondition(keyword, [reportDashboards.name, reportDashboards.remark], 'ilike'));
-  if (status === 'enabled' || status === 'disabled') conds.push(eq(reportDashboards.status, status));
-  if (lifecycleStatus) conds.push(eq(reportDashboards.lifecycleStatus, lifecycleStatus));
-  if (categoryId) conds.push(eq(reportDashboards.categoryId, categoryId));
+  // 「我的收藏」：先取收藏的仪表盘 id 集合，为空直接返回空页
+  let favoriteIds: number[] | undefined;
   if (favorited && uid) {
     const favRows = await db.select({ id: reportDashboardFavorites.dashboardId })
       .from(reportDashboardFavorites)
       .where(eq(reportDashboardFavorites.userId, uid));
-    const ids = favRows.map((row) => row.id);
-    if (ids.length === 0) return { list: [], total: 0, page, pageSize };
-    conds.push(inArray(reportDashboards.id, ids));
+    favoriteIds = favRows.map((row) => row.id);
+    if (favoriteIds.length === 0) return { list: [], total: 0, page, pageSize };
   }
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    reportTenantScope(reportDashboards),
+    accessibleIds ? inArray(reportDashboards.id, accessibleIds) : undefined,
+    folderId ? eq(reportDashboards.folderId, folderId) : undefined,
+    ownerId ? eq(reportDashboards.ownerId, ownerId) : undefined,
+    keywordCondition(keyword, [reportDashboards.name, reportDashboards.remark], 'ilike'),
+    status ? eq(reportDashboards.status, status) : undefined,
+    lifecycleStatus ? eq(reportDashboards.lifecycleStatus, lifecycleStatus) : undefined,
+    categoryId ? eq(reportDashboards.categoryId, categoryId) : undefined,
+    favoriteIds ? inArray(reportDashboards.id, favoriteIds) : undefined,
+  );
   const { list: rows, total } = await buildListResult({
     page,
     pageSize,

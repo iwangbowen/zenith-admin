@@ -18,7 +18,8 @@ import type {
   AnalyticsRetentionMode,
   AnalyticsRetentionPeriodType,
 } from '@zenith/shared/analytics';
-import { ANALYTICS_RETENTION_PERIOD_LIMITS, ANALYTICS_RETENTION_PERIOD_TYPES } from '@zenith/shared/analytics';
+import { ANALYTICS_RETENTION_PERIOD_LIMITS, ANALYTICS_RETENTION_PERIOD_TYPES, analyticsDrillUsersSchema } from '@zenith/shared/analytics';
+import type * as z from 'zod';
 import { clampDays, startOfDaysAgo } from '../../lib/analytics-helpers';
 import { APP_TIME_ZONE, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
@@ -28,11 +29,8 @@ import { findSeriesByKey, resolveComparisonSeries } from './analytics-breakdown'
 import { buildFunnelCtes, retentionPeriodAxis, topBreakdownValues } from './analytics-conversion.service';
 import { ensureSegmentAccessible } from './analytics-segments.service';
 
-export interface DrillUsersInput {
-  context: AnalyticsDrillContext;
-  page: number;
-  pageSize: number;
-}
+/** 路由解析后的请求体（page / pageSize 已补默认值），不再手写同形 interface */
+type DrillUsersBody = z.output<typeof analyticsDrillUsersSchema>;
 
 async function segmentDisplayName(segmentId: number): Promise<string> {
   const row = await ensureSegmentAccessible(segmentId);
@@ -148,7 +146,7 @@ function drillWindowStart(context: AnalyticsDrillContext): Date {
   return startOfDaysAgo(clampDays(context.days, limits.defaultDays, limits.maxDays));
 }
 
-export async function drillUsers(input: DrillUsersInput): Promise<AnalyticsDrillUsersResult> {
+export async function drillUsers(input: DrillUsersBody): Promise<AnalyticsDrillUsersResult> {
   const { context, page, pageSize } = input;
 
   // 对比轴的候选取值必须用与图表相同的时间窗统计，否则「其他」序列的边界会漂移

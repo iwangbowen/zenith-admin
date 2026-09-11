@@ -7,7 +7,7 @@
  *  - AND 用 SQL INTERSECT、OR 用 SQL UNION，全部下推数据库执行
  *  - 所有读写强制 tenantScope / currentCreateTenantId，物化任务通过 ensureSegmentExists 在任务执行上下文重新校验归属
  */
-import { and, desc, eq, gte, isNotNull, sql, type SQL } from 'drizzle-orm';
+import { desc, eq, gte, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
@@ -179,7 +179,8 @@ function buildEventConditionSelect(condition: AnalyticsSegmentEventCondition, te
     exactTenantCondition(sql`${userEvents.tenantId}`, tenantId),
   ];
   for (const f of condition.properties ?? []) conditions.push(buildJsonPropertyCondition(userEvents.properties, f));
-  const where = and(...conditions);
+  // 数据驱动的条件数组（按规则属性逐条追加）；基础条件保证非空
+  const where = buildWhere(...conditions);
   const minCount = condition.minCount ?? 1;
   if (minCount <= 1) {
     return sql`(SELECT DISTINCT ${userEvents.distinctId} AS distinct_id FROM ${userEvents} WHERE ${where})`;
@@ -200,7 +201,7 @@ function buildAttributeConditionSelect(condition: AnalyticsSegmentAttributeCondi
     if (!match) throw new HTTPException(400, { message: `不支持的属性字段：${condition.field}` });
     conditions.push(buildJsonPropertyCondition(analyticsUserProfiles.properties, { key: match[1], op: condition.op, value: condition.value }));
   }
-  return sql`(SELECT DISTINCT ${analyticsUserProfiles.distinctId} AS distinct_id FROM ${analyticsUserProfiles} WHERE ${and(...conditions)})`;
+  return sql`(SELECT DISTINCT ${analyticsUserProfiles.distinctId} AS distinct_id FROM ${analyticsUserProfiles} WHERE ${buildWhere(...conditions)})`;
 }
 
 /** 将分群规则编译为 distinctId 集合 SQL（AND→INTERSECT，OR→UNION），全部下推数据库执行。导出供单测验证注入防护与 AND/OR 语义。 */

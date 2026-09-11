@@ -466,13 +466,14 @@ export async function getReportAssetUsageTrend(query: {
 }) {
   const days = Math.min(Math.max(query.days ?? 30, 1), 90);
   const bucket = query.bucket ?? 'day';
-  const conds = [gte(reportAssetUsageLogs.occurredAt, dayjs().subtract(days, 'day').toDate())];
-  const scope = reportTenantScope(reportAssetUsageLogs);
-  if (scope) conds.push(scope);
-  conds.push(await resourceAclCondition(reportAssetUsageLogs.resourceType, reportAssetUsageLogs.resourceId));
-  if (query.resourceType) conds.push(eq(reportAssetUsageLogs.resourceType, query.resourceType));
-  if (query.resourceId) conds.push(eq(reportAssetUsageLogs.resourceId, query.resourceId));
   if (query.resourceType && query.resourceId) await ensureReportResourceAccess(query.resourceType, query.resourceId, 'viewer');
+  const where = buildWhere(
+    gte(reportAssetUsageLogs.occurredAt, dayjs().subtract(days, 'day').toDate()),
+    reportTenantScope(reportAssetUsageLogs),
+    await resourceAclCondition(reportAssetUsageLogs.resourceType, reportAssetUsageLogs.resourceId),
+    query.resourceType ? eq(reportAssetUsageLogs.resourceType, query.resourceType) : undefined,
+    query.resourceId ? eq(reportAssetUsageLogs.resourceId, query.resourceId) : undefined,
+  );
   const bucketSql = reportTimeBucketExpression(bucket, reportAssetUsageLogs.occurredAt);
   const rows = await db.select({
     bucket: bucketSql,
@@ -482,7 +483,7 @@ export async function getReportAssetUsageTrend(query: {
     embeds: sql<number>`sum(case when ${reportAssetUsageLogs.action} = 'embed' then 1 else 0 end)::int`,
     shares: sql<number>`sum(case when ${reportAssetUsageLogs.action} = 'share' then 1 else 0 end)::int`,
     uniqueUsers: sql<number>`count(distinct ${reportAssetUsageLogs.userId})::int`,
-  }).from(reportAssetUsageLogs).where(and(...conds)).groupBy(bucketSql).orderBy(bucketSql);
+  }).from(reportAssetUsageLogs).where(where).groupBy(bucketSql).orderBy(bucketSql);
   return rows.map((row) => ({
     bucket: formatDateTime(row.bucket),
     views: Number(row.views ?? 0),

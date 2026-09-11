@@ -10,8 +10,8 @@ import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { getUserPermissions, isSuperAdmin } from '../../lib/permissions';
 import { pageOffset } from '../../lib/pagination';
-import { keywordCondition } from '../../lib/where-helpers';
-import type { CancelReportFillRecordInput, CreateReportFillRecordInput, ReportFillRecord, ReportFillRecordStatus, ReviewReportFillRecordInput, SubmitReportFillRecordInput, UpdateReportFillRecordInput } from '@zenith/shared/report';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import type { CancelReportFillRecordInput, CreateReportFillRecordInput, ReportFillRecord, ReviewReportFillRecordInput, SubmitReportFillRecordInput, UpdateReportFillRecordInput } from '@zenith/shared/report';
 import { createInstance, withdrawInstance } from '../workflow/instances/lifecycle';
 import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
 import {
@@ -96,20 +96,20 @@ async function ensureVisibleRecord(id: number): Promise<RecordRow> {
 
 export async function listMyReportFillRecords(query: QueryOutputOf<typeof reportFillContract.myRecords>) {
   const { page, pageSize } = query;
-  const conditions = [
+  // 关键字匹配模板名称 / 编码：子查询换成模板 id 集合
+  const matchedTemplateIds = query.keyword
+    ? db.select({ id: reportFillTemplates.id }).from(reportFillTemplates).where(and(
+      reportTenantScope(reportFillTemplates),
+      keywordCondition(query.keyword, [reportFillTemplates.name, reportFillTemplates.code], 'ilike'),
+    ))
+    : undefined;
+  const where = buildWhere(
     reportTenantScope(reportFillRecords),
     eq(reportFillRecords.submitterId, currentUser().userId),
     query.status ? eq(reportFillRecords.status, query.status) : undefined,
     query.templateId ? eq(reportFillRecords.templateId, query.templateId) : undefined,
-  ];
-  let where = and(...conditions.filter((item): item is NonNullable<typeof item> => Boolean(item)));
-  if (query.keyword) {
-    const templateIds = db.select({ id: reportFillTemplates.id }).from(reportFillTemplates).where(and(
-      reportTenantScope(reportFillTemplates),
-      keywordCondition(query.keyword, [reportFillTemplates.name, reportFillTemplates.code], 'ilike'),
-    ));
-    where = and(where, inArray(reportFillRecords.templateId, templateIds));
-  }
+    matchedTemplateIds ? inArray(reportFillRecords.templateId, matchedTemplateIds) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

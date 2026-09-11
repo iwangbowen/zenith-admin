@@ -17,6 +17,8 @@ import { db } from '../../db';
 import { replaySessions, replaySegments, replayClickPoints, replayAccessLogs, errorEvents, analyticsSettings, userEvents } from '../../db/schema';
 import type { ReplaySessionRow, ReplaySegmentRow } from '../../db/schema';
 import type { ReplaySegmentUploadMetaInput } from '@zenith/shared/analytics';
+import { sessionReplayContract } from '@zenith/shared/analytics';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
 import { tenantScope, getCreateTenantId, exactTenantCondition } from '../../lib/tenant';
@@ -393,18 +395,18 @@ export function recordReplayAccess(replay: { id: string; tenantId: number | null
   })().catch(() => { /* 审计留痕失败不影响查看 */ });
 }
 
-export async function listReplayAccessLogs(query: { page: number; pageSize: number; replayId?: string; keyword?: string }) {
-  const conditions = [
+export async function listReplayAccessLogs(query: QueryOutputOf<typeof sessionReplayContract.accessLogs>) {
+  const where = buildWhere(
+    tenantScope(replayAccessLogs),
     query.replayId ? eq(replayAccessLogs.replayId, query.replayId) : undefined,
     query.keyword
       ? or(keywordCondition(query.keyword, [replayAccessLogs.username, replayAccessLogs.replayOwner], 'ilike'), eq(replayAccessLogs.replayId, query.keyword))
       : undefined,
-  ];
-  const where = buildWhere(tenantScope(replayAccessLogs), and(...conditions.filter(Boolean)));
+  );
   return buildListResult({
     page: query.page,
     pageSize: query.pageSize,
-    count: () => db.select({ total: sql<number>`count(*)::int` }).from(replayAccessLogs).where(where).then((r) => r[0]?.total ?? 0),
+    count: () => db.$count(replayAccessLogs, where),
     rows: () => db.select().from(replayAccessLogs).where(where)
       .orderBy(desc(replayAccessLogs.createdAt))
       .limit(query.pageSize).offset(pageOffset(query.page, query.pageSize)),
@@ -430,26 +432,12 @@ export async function bumpReplayErrorCount(replayId: string): Promise<void> {
 }
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
-export interface ReplayListQuery {
-  page: number;
-  pageSize: number;
-  status?: string;
-  mode?: string;
-  triggerType?: string;
-  keyword?: string;
-  hasError?: boolean;
-  source?: string;
-  /** 内容检索：访问过的页面路径（模糊） */
-  pagePath?: string;
-  /** 内容检索：点击过的元素文案（模糊） */
-  clickLabel?: string;
-}
-
-export async function listReplaySessions(query: ReplayListQuery) {
-  const conditions = [
-    query.status ? eq(replaySessions.status, query.status as ReplaySessionRow['status']) : undefined,
-    query.mode ? eq(replaySessions.mode, query.mode as ReplaySessionRow['mode']) : undefined,
-    query.source ? eq(replaySessions.source, query.source as ReplaySessionRow['source']) : undefined,
+export async function listReplaySessions(query: QueryOutputOf<typeof sessionReplayContract.list>) {
+  const where = buildWhere(
+    tenantScope(replaySessions),
+    query.status ? eq(replaySessions.status, query.status) : undefined,
+    query.mode ? eq(replaySessions.mode, query.mode) : undefined,
+    query.source ? eq(replaySessions.source, query.source) : undefined,
     query.hasError ? gte(replaySessions.errorCount, 1) : undefined,
     // triggers jsonb 数组按类型匹配（@> 走 GIN 语义，量级可控走 seq scan 亦可）
     query.triggerType ? sql`${replaySessions.triggers} @> ${JSON.stringify([{ type: query.triggerType }])}::jsonb` : undefined,
@@ -467,13 +455,12 @@ export async function listReplaySessions(query: ReplayListQuery) {
           eq(replaySessions.sessionId, query.keyword),
         )
       : undefined,
-  ];
-  const where = buildWhere(tenantScope(replaySessions), and(...conditions.filter(Boolean)));
+  );
 
   return buildListResult({
     page: query.page,
     pageSize: query.pageSize,
-    count: () => db.select({ total: sql<number>`count(*)::int` }).from(replaySessions).where(where).then((r) => r[0]?.total ?? 0),
+    count: () => db.$count(replaySessions, where),
     rows: () => db.select().from(replaySessions).where(where)
       .orderBy(desc(replaySessions.startedAt))
       .limit(query.pageSize).offset(pageOffset(query.page, query.pageSize)),

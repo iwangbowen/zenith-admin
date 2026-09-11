@@ -1,5 +1,6 @@
 import { and, gte, lt, sql, eq } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
+import { buildWhere } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { userEvents, analyticsSessions, analyticsDailyRollup } from '../../db/schema';
 import { clampDays } from '../../lib/analytics-helpers';
@@ -107,8 +108,11 @@ export async function rebuildRollup(daysRaw: unknown): Promise<number> {
 
   // ── 维度聚合（NULL 维度值以 '' 哨兵存储，查询侧映射回「未知」）──────────────
   for (const dim of DIM_SOURCES) {
-    const conditions = [gte(userEvents.createdAt, start), lt(userEvents.createdAt, todayStart)];
-    if (dim.onlyPv) conditions.push(eq(userEvents.eventType, 'page_view'));
+    const where = buildWhere(
+      gte(userEvents.createdAt, start),
+      lt(userEvents.createdAt, todayStart),
+      dim.onlyPv ? eq(userEvents.eventType, 'page_view') : undefined,
+    );
     const rows = await db
       .select({
         tenantId: sql<number>`COALESCE(${userEvents.tenantId}, 0)`,
@@ -117,7 +121,7 @@ export async function rebuildRollup(daysRaw: unknown): Promise<number> {
         value: sql<number>`COUNT(*)::int`,
       })
       .from(userEvents)
-      .where(and(...conditions))
+      .where(where)
       .groupBy(sql`1, 2, 3`);
     for (const r of rows) {
       upserts.push({ tenantId: Number(r.tenantId), statDate: r.statDate, metric: dim.metric, dimType: dim.dimType, dimValue: r.dimValue.slice(0, 256), value: Number(r.value) });

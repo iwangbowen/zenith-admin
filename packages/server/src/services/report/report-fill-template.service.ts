@@ -79,15 +79,16 @@ async function validatePlacement(input: { ownerId?: number | null; folderId?: nu
 
 export async function listReportFillTemplates(query: QueryOutputOf<typeof reportFillContract.templates>) {
   const { page, pageSize } = query;
-  const conditions = [reportTenantScope(reportFillTemplates)];
   const accessibleIds = await listAccessibleReportResourceIds('fill_template');
   if (accessibleIds && accessibleIds.length === 0) return { list: [], total: 0, page, pageSize };
-  if (accessibleIds) conditions.push(inArray(reportFillTemplates.id, accessibleIds));
-  conditions.push(keywordCondition(query.keyword, [reportFillTemplates.name, reportFillTemplates.code], 'ilike'));
-  if (query.status) conditions.push(eq(reportFillTemplates.status, query.status));
-  if (query.ownerId) conditions.push(eq(reportFillTemplates.ownerId, query.ownerId));
-  if (query.folderId) conditions.push(eq(reportFillTemplates.folderId, query.folderId));
-  const where = and(...conditions.filter((item): item is NonNullable<typeof item> => Boolean(item)));
+  const where = buildWhere(
+    reportTenantScope(reportFillTemplates),
+    accessibleIds ? inArray(reportFillTemplates.id, accessibleIds) : undefined,
+    keywordCondition(query.keyword, [reportFillTemplates.name, reportFillTemplates.code], 'ilike'),
+    query.status ? eq(reportFillTemplates.status, query.status) : undefined,
+    query.ownerId ? eq(reportFillTemplates.ownerId, query.ownerId) : undefined,
+    query.folderId ? eq(reportFillTemplates.folderId, query.folderId) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

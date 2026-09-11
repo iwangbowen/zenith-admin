@@ -52,16 +52,7 @@ const ingestRoute = defineContractRoute(sessionReplayContract.ingestSegment, {
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
 const listRoute = defineContractRoute(sessionReplayContract.list, {
   middleware: replayList,
-  handler: async (c) => {
-    const q = c.req.valid('query');
-    return c.json(okBody(await listReplaySessions({
-      page: q.page, pageSize: q.pageSize,
-      status: q.status, mode: q.mode,
-      triggerType: q.triggerType, keyword: q.keyword || undefined,
-      hasError: q.hasError, source: q.source,
-      pagePath: q.pagePath || undefined, clickLabel: q.clickLabel || undefined,
-    })), 200);
-  },
+  handler: async (c) => c.json(okBody(await listReplaySessions(c.req.valid('query'))), 200),
 });
 
 const statsRoute = defineContractRoute(sessionReplayContract.stats, {
@@ -89,13 +80,7 @@ const detailRoute = defineContractRoute(sessionReplayContract.detail, {
 
 const accessLogsRoute = defineContractRoute(sessionReplayContract.accessLogs, {
   middleware: replayManage,
-  handler: async (c) => {
-    const q = c.req.valid('query');
-    return c.json(okBody(await listReplayAccessLogs({
-      page: q.page, pageSize: q.pageSize,
-      replayId: q.replayId, keyword: q.keyword || undefined,
-    })), 200);
-  },
+  handler: async (c) => c.json(okBody(await listReplayAccessLogs(c.req.valid('query'))), 200),
 });
 
 const segmentDataRoute = defineContractRoute(sessionReplayContract.segmentData, {

@@ -5,6 +5,7 @@ import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { buildWhere } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { reportDashboardComments, users } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -128,9 +129,11 @@ export async function listComments(
   const viewer = currentUser();
   const canManage = await canManageComments();
   const { page, pageSize } = query;
-  const conds = [eq(reportDashboardComments.dashboardId, dashboardId), isNull(reportDashboardComments.parentId)];
-  if (query.widgetId) conds.push(eq(reportDashboardComments.widgetId, query.widgetId));
-  const where = and(...conds);
+  const where = buildWhere(
+    eq(reportDashboardComments.dashboardId, dashboardId),
+    isNull(reportDashboardComments.parentId),
+    query.widgetId ? eq(reportDashboardComments.widgetId, query.widgetId) : undefined,
+  );
   const { list: roots, total } = await buildListResult({
     page,
     pageSize,

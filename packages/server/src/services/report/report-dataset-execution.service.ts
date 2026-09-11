@@ -66,9 +66,11 @@ import type { ReportDataResult, ReportField, ReportFieldType, ReportDatasetConte
 
 type DatasetQueryArg = number | ReportDatasetQueryOptions | undefined;
 
+/** 数据集执行引擎的内部选项（仪表盘 / 组件取数），不是契约列表入参，分页缺省由引擎兜底 */
 interface NormalizedQueryOptions {
   limit?: number;
   page?: number;
+  // eslint-disable-next-line no-restricted-syntax -- 引擎内部选项，非契约 query
   pageSize?: number;
   sortField?: string;
   sortOrder?: ReportSortOrder;
@@ -190,6 +192,7 @@ function quoteSortField(field: string): string {
 function buildSqlQueryParts(options: NormalizedQueryOptions): { limit: number; offset: number; orderBy: string } {
   const usePaging = options.page !== undefined && options.pageSize !== undefined;
   const limit = usePaging ? Math.max(1, Math.min(options.pageSize ?? PREVIEW_LIMIT, 500)) : Math.max(1, Math.min(options.limit ?? PREVIEW_LIMIT, MAX_LIMIT));
+  // eslint-disable-next-line no-restricted-syntax -- 引擎内部分页缺省（组件未传 page 时从首页取），非契约 query
   const offset = usePaging ? pageOffset(options.page ?? 1, options.pageSize ?? limit) : 0;
   const orderBy = options.sortField ? ` ORDER BY ${quoteSortField(options.sortField)} ${(options.sortOrder === 'asc' ? 'ASC' : 'DESC')}` : '';
   return { limit, offset, orderBy };

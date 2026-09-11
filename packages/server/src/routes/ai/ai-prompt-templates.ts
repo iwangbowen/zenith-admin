@@ -22,10 +22,7 @@ const read = [authMiddleware, guard({ permission: 'ai:prompt:list' })] as const;
 
 const list = defineContractRoute(aiPromptTemplateContract.list, {
   middleware: read,
-  handler: async (c) => {
-    const { page, pageSize, scope, keyword } = c.req.valid('query');
-    return c.json(okBody(await listPromptTemplates({ page, pageSize, scope, keyword })), 200);
-  },
+  handler: async (c) => c.json(okBody(await listPromptTemplates(c.req.valid('query'))), 200),
 });
 
 const available = defineContractRoute(aiPromptTemplateContract.all, {

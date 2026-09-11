@@ -1,14 +1,15 @@
 import { eq, and, or, asc, desc, sql } from 'drizzle-orm';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import type { SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { aiPromptTemplates, aiPromptTemplateVersions, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
-import { keywordCondition, withPagination } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
-import type { CreateAiPromptTemplateInput, UpdateAiPromptTemplateInput, AiPromptScope } from '@zenith/shared/ai';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { aiPromptTemplateContract } from '@zenith/shared/ai';
+import type { AiPromptScope, CreateAiPromptTemplateInput, UpdateAiPromptTemplateInput } from '@zenith/shared/ai';
 
 function mapTemplate(row: typeof aiPromptTemplates.$inferSelect) {
   return {
@@ -38,17 +39,13 @@ function visibilityCond() {
 }
 
 /** 管理列表（分页）：可见模板，支持按范围与关键词筛选 */
-export async function listPromptTemplates(params: {
-  page: number;
-  pageSize: number;
-  scope?: AiPromptScope;
-  keyword?: string;
-}) {
-  const { page, pageSize, scope, keyword } = params;
-  const conds: (SQL | undefined)[] = [visibilityCond()];
-  if (scope) conds.push(eq(aiPromptTemplates.scope, scope));
-  conds.push(keywordCondition(keyword, [aiPromptTemplates.name, aiPromptTemplates.description], 'ilike'));
-  const where = and(...conds);
+export async function listPromptTemplates(q: QueryOutputOf<typeof aiPromptTemplateContract.list>) {
+  const { page, pageSize, scope, keyword } = q;
+  const where = buildWhere(
+    visibilityCond(),
+    scope ? eq(aiPromptTemplates.scope, scope) : undefined,
+    keywordCondition(keyword, [aiPromptTemplates.name, aiPromptTemplates.description], 'ilike'),
+  );
 
   const listQuery = db
     .select()

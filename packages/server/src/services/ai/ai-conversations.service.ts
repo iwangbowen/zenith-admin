@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { aiConversations, aiMessages, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime, formatFileTimestamp, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
-import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { streamToCsv } from '../../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { resolveAgentForChat, incrementAgentUsage } from './ai-agents.service';
@@ -115,29 +115,24 @@ export async function listConversations(opts: { archived?: boolean; keyword?: st
   const user = currentUser();
   const archived = opts.archived ?? false;
   const keyword = opts.keyword?.trim();
+  const tag = opts.tag?.trim();
 
-  const conds = [
+  // 命中条件：对话标题匹配，或对话内存在内容匹配的消息
+  const matchedConvIds = db
+    .select({ id: aiMessages.conversationId })
+    .from(aiMessages)
+    .where(keywordCondition(keyword, [aiMessages.content], 'ilike'));
+  const where = buildWhere(
     eq(aiConversations.userId, user.userId),
     eq(aiConversations.isArchived, archived),
-  ];
-
-  if (opts.tag?.trim()) {
-    conds.push(arrayContains(aiConversations.tags, [opts.tag.trim()]));
-  }
-
-  if (keyword) {
-    // 命中条件：对话标题匹配，或对话内存在内容匹配的消息
-    const matchedConvIds = db
-      .select({ id: aiMessages.conversationId })
-      .from(aiMessages)
-      .where(keywordCondition(keyword, [aiMessages.content], 'ilike'));
-    conds.push(or(keywordCondition(keyword, [aiConversations.title], 'ilike'), inArray(aiConversations.id, matchedConvIds))!);
-  }
+    tag ? arrayContains(aiConversations.tags, [tag]) : undefined,
+    keyword ? or(keywordCondition(keyword, [aiConversations.title], 'ilike'), inArray(aiConversations.id, matchedConvIds)) : undefined,
+  );
 
   let query = db
     .select()
     .from(aiConversations)
-    .where(and(...conds))
+    .where(where)
     .orderBy(desc(aiConversations.isPinned), desc(aiConversations.updatedAt))
     .$dynamic();
   if (opts.limit !== undefined) query = query.limit(opts.limit);
@@ -604,15 +599,15 @@ function feedbackConds(params: {
   startDate?: string;
   endDate?: string;
 }) {
-  const conds = [isNotNull(aiMessages.feedback), eq(aiMessages.role, 'assistant')];
-  if (params.feedback === 1 || params.feedback === -1) conds.push(eq(aiMessages.feedback, params.feedback));
-  if (params.status) conds.push(eq(aiMessages.feedbackStatus, params.status));
-  if (params.model?.trim()) conds.push(eq(aiMessages.model, params.model.trim()));
-  const start = params.startDate ? parseDateRangeStart(params.startDate) : null;
-  const end = params.endDate ? parseDateRangeEnd(params.endDate) : null;
-  if (start) conds.push(gte(aiMessages.createdAt, start));
-  if (end) conds.push(lte(aiMessages.createdAt, end));
-  return and(...conds);
+  const model = params.model?.trim();
+  return buildWhere(
+    isNotNull(aiMessages.feedback),
+    eq(aiMessages.role, 'assistant'),
+    params.feedback === 1 || params.feedback === -1 ? eq(aiMessages.feedback, params.feedback) : undefined,
+    params.status ? eq(aiMessages.feedbackStatus, params.status) : undefined,
+    model ? eq(aiMessages.model, model) : undefined,
+    ...dateRangeConditions(aiMessages.createdAt, params.startDate, params.endDate),
+  );
 }
 
 function feedbackSelect() {

@@ -3,7 +3,7 @@
  * 租户安全语义对齐 analytics-rollup.service.ts 的 rollupTenantScope（0 = 无租户哨兵，
  * 平台超管未选择查看租户时视为跨租户汇总，不强制报错——与治理覆盖（B.7）语义不同）。
  */
-import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
+import { desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { analyticsEventQualityDaily, userEvents } from '../../db/schema';
 import { buildListResult } from '../../lib/list-query';
@@ -106,13 +106,14 @@ export async function listDebugEvents(q: QueryOutputOf<typeof analyticsContract.
       const issueTypesByEventName = new Map<string, AnalyticsQualityIssueType[]>();
       if (eventNames.length > 0) {
         const today = formatDate(new Date());
-        const scopeQ = qualityTenantScope();
-        const issueConditions: SQL[] = [eq(analyticsEventQualityDaily.statDate, today), inArray(analyticsEventQualityDaily.eventName, eventNames)];
-        if (scopeQ) issueConditions.push(scopeQ);
         const issueRows = await db
           .select({ eventName: analyticsEventQualityDaily.eventName, issueType: analyticsEventQualityDaily.issueType })
           .from(analyticsEventQualityDaily)
-          .where(and(...issueConditions));
+          .where(buildWhere(
+            eq(analyticsEventQualityDaily.statDate, today),
+            inArray(analyticsEventQualityDaily.eventName, eventNames),
+            qualityTenantScope(),
+          ));
         for (const row of issueRows) {
           const list = issueTypesByEventName.get(row.eventName) ?? [];
           if (!list.includes(row.issueType)) list.push(row.issueType);

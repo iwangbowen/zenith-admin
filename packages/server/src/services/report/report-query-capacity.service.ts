@@ -21,7 +21,7 @@ import {
 } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import redis from '../../lib/redis';
-import { keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
 import { reportTimeBucketExpression } from './report-time-bucket';
 
@@ -498,17 +498,16 @@ export function parseReportQueryCostRange(start?: string, end?: string): { start
 export async function listReportQueryCostLogs(query: QueryOutputOf<typeof reportQueryCapacityContract.costLogs>) {
   const { page, pageSize } = query;
   const { startAt, endAt } = parseReportQueryCostRange(query.start, query.end);
-  const conds = [
+  const where = buildWhere(
     gte(reportQueryCostLogs.occurredAt, startAt),
     lte(reportQueryCostLogs.occurredAt, endAt),
     reportTenantScope(reportQueryCostLogs),
     keywordCondition(query.scene, [reportQueryCostLogs.scene], 'ilike'),
-  ];
-  if (query.userId) conds.push(eq(reportQueryCostLogs.userId, query.userId));
-  if (query.datasetId) conds.push(eq(reportQueryCostLogs.datasetId, query.datasetId));
-  if (query.datasourceId) conds.push(eq(reportQueryCostLogs.datasourceId, query.datasourceId));
-  if (query.success !== undefined) conds.push(eq(reportQueryCostLogs.success, query.success));
-  const where = and(...conds);
+    query.userId ? eq(reportQueryCostLogs.userId, query.userId) : undefined,
+    query.datasetId ? eq(reportQueryCostLogs.datasetId, query.datasetId) : undefined,
+    query.datasourceId ? eq(reportQueryCostLogs.datasourceId, query.datasourceId) : undefined,
+    query.success !== undefined ? eq(reportQueryCostLogs.success, query.success) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -519,18 +518,24 @@ export async function listReportQueryCostLogs(query: QueryOutputOf<typeof report
   });
 }
 
+/** 成本统计 / 趋势共用的范围条件：时间窗 + 租户 + 数据集 / 数据源 */
+function costLogScopeWhere(query: { datasetId?: number; datasourceId?: number; start?: string; end?: string }) {
+  const { startAt, endAt } = parseReportQueryCostRange(query.start, query.end);
+  return buildWhere(
+    gte(reportQueryCostLogs.occurredAt, startAt),
+    lte(reportQueryCostLogs.occurredAt, endAt),
+    reportTenantScope(reportQueryCostLogs),
+    query.datasetId ? eq(reportQueryCostLogs.datasetId, query.datasetId) : undefined,
+    query.datasourceId ? eq(reportQueryCostLogs.datasourceId, query.datasourceId) : undefined,
+  );
+}
+
 export async function getReportQueryCostStats(query: {
   datasetId?: number;
   datasourceId?: number;
   start?: string;
   end?: string;
 }) {
-  const { startAt, endAt } = parseReportQueryCostRange(query.start, query.end);
-  const conds = [gte(reportQueryCostLogs.occurredAt, startAt), lte(reportQueryCostLogs.occurredAt, endAt)];
-  const scope = reportTenantScope(reportQueryCostLogs);
-  if (scope) conds.push(scope);
-  if (query.datasetId) conds.push(eq(reportQueryCostLogs.datasetId, query.datasetId));
-  if (query.datasourceId) conds.push(eq(reportQueryCostLogs.datasourceId, query.datasourceId));
   const [row] = await db.select({
     queries: sql<number>`count(*)::int`,
     rows: sql<number>`coalesce(sum(${reportQueryCostLogs.rowCount}), 0)::bigint`,
@@ -538,7 +543,7 @@ export async function getReportQueryCostStats(query: {
     costUnits: sql<number>`coalesce(sum(${reportQueryCostLogs.costUnits}), 0)::double precision`,
     avgDurationMs: sql<number>`coalesce(round(avg(${reportQueryCostLogs.durationMs})), 0)::int`,
     failures: sql<number>`sum(case when not ${reportQueryCostLogs.success} then 1 else 0 end)::int`,
-  }).from(reportQueryCostLogs).where(and(...conds));
+  }).from(reportQueryCostLogs).where(costLogScopeWhere(query));
   return {
     queries: Number(row?.queries ?? 0),
     rows: Number(row?.rows ?? 0),
@@ -558,12 +563,6 @@ export async function getReportQueryCostTrend(query: {
   end?: string;
 }) {
   const bucket = query.bucket ?? 'day';
-  const { startAt, endAt } = parseReportQueryCostRange(query.start, query.end);
-  const conds = [gte(reportQueryCostLogs.occurredAt, startAt), lte(reportQueryCostLogs.occurredAt, endAt)];
-  const scope = reportTenantScope(reportQueryCostLogs);
-  if (scope) conds.push(scope);
-  if (query.datasetId) conds.push(eq(reportQueryCostLogs.datasetId, query.datasetId));
-  if (query.datasourceId) conds.push(eq(reportQueryCostLogs.datasourceId, query.datasourceId));
   const bucketSql = reportTimeBucketExpression(bucket, reportQueryCostLogs.occurredAt);
   const rows = await db.select({
     bucket: bucketSql,
@@ -573,7 +572,7 @@ export async function getReportQueryCostTrend(query: {
     costUnits: sql<number>`coalesce(sum(${reportQueryCostLogs.costUnits}), 0)::double precision`,
     avgDurationMs: sql<number>`coalesce(round(avg(${reportQueryCostLogs.durationMs})), 0)::int`,
     queueMs: sql<number>`coalesce(round(avg(${reportQueryCostLogs.queuedMs})), 0)::int`,
-  }).from(reportQueryCostLogs).where(and(...conds))
+  }).from(reportQueryCostLogs).where(costLogScopeWhere(query))
     .groupBy(bucketSql).orderBy(bucketSql);
   return rows.map((row) => ({
     bucket: formatDateTime(row.bucket),
