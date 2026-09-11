@@ -116,6 +116,7 @@ import {
 } from '@/hooks/queries/app-releases';
 import { formatBytes } from '@zenith/shared/core';
 import { urlOf } from '@/lib/contract-query';
+import { shortDate } from '@/utils/date';
 
 const { Text } = Typography;
 
@@ -130,10 +131,6 @@ const STATUS_TAG_COLORS: Record<AppReleaseStatus, 'grey' | 'green' | 'red'> = {
   published: 'green',
   revoked: 'red',
 };
-
-function shortDate(dateStr: string) {
-  return dateStr.length >= 5 ? dateStr.slice(5) : dateStr;
-}
 
 /** 复制托管制品的公开下载链接（external 直接复制外链） */
 function copyArtifactLink(release: AppRelease, artifact: AppArtifact) {

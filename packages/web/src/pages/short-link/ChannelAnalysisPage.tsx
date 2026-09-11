@@ -15,6 +15,7 @@ import {
   type ChannelAnalysisDimension, type ChannelAnalysisRow,
 } from '@zenith/shared/short-link';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { shortDate } from '@/utils/date';
 
 const { Text } = Typography;
 
@@ -44,7 +45,7 @@ export default function ChannelAnalysisPage() {
     ],
     palette,
     fillOpacity: 0.16,
-    axis: { xLabel: (value) => value.slice(5) },
+    axis: { xLabel: shortDate },
     tooltip: { title: (value) => `日期：${value}` },
   }), [data?.trend, palette]);
 

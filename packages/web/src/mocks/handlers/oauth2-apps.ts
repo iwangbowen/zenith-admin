@@ -5,6 +5,7 @@ import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
+import { randomHex } from '@/mocks/utils/random';
 
 let nextId = 1;
 
@@ -118,10 +119,6 @@ export const mockOAuth2Clients: OAuth2Client[] = [
     updatedAt: '2024-06-03 11:00:00',
   },
 ];
-
-function randomHex(len: number) {
-  return Array.from({ length: len }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-}
 
 /** 演示用的用户授权记录：管理员对前两个应用各授权一次 */
 function grantsOf(client: OAuth2Client): OAuth2UserGrant[] {

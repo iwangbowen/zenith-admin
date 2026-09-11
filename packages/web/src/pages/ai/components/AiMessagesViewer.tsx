@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
-import React from 'react';
 import { AIChatDialogue, Tag, Typography } from '@douyinfe/semi-ui';
-import type { RenderAvatarProps, RenderTitleProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
+import type { RenderTitleProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
 import type { AiMessage } from '@zenith/shared/ai';
-import { UserAvatar } from '@/components/UserAvatar';
+import { renderUserDialogueAvatar } from '../chat/dialogue-avatar';
 import { AI_AVATAR, convertApiMessage, formatMessageTime } from '../chat/message-adapters';
 import { buildContentItemRenderers } from '../chat/content-renderers';
 
@@ -41,22 +40,7 @@ export default function AiMessagesViewer({ messages, targetMsgId, targetLabel = 
   }), [userMeta]);
 
   const dialogueRenderConfig = useMemo(() => ({
-    // 用户头像与聊天页一致:无头像时回退首字母 + 哈希色(Semi 默认无图是空头像)
-    renderDialogueAvatar: ({ role, message, defaultAvatar }: RenderAvatarProps) => {
-      if (message?.role !== 'user') return defaultAvatar;
-      const className = React.isValidElement(defaultAvatar)
-        ? (defaultAvatar.props as { className?: string }).className
-        : undefined;
-      return (
-        <UserAvatar
-          className={className}
-          name={role?.name ?? '用户'}
-          avatar={role?.avatar}
-          size={null}
-          semiSize="extra-small"
-        />
-      );
-    },
+    renderDialogueAvatar: renderUserDialogueAvatar('用户'),
     // 标题行与聊天页对齐：角色名 + 模型标注 + 完整时间;审计场景追加目标消息标记
     renderDialogueTitle: (props: RenderTitleProps) => {
       const msg = props.message;

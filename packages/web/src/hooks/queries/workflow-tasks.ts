@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, InputOf, PaginatedResponse, QueryOf } from '@zenith/shared/core';
-import { workflowInstanceContract, workflowTaskContract, type WorkflowBatchActionResponse, type WorkflowPendingInstanceItem } from '@zenith/shared/workflow';
-import { api, useApiMutation } from '@/lib/contract-query';
+import { workflowInstanceContract, workflowTaskContract, type WorkflowBatchActionResponse, type WorkflowInstance, type WorkflowPendingInstanceItem, type WorkflowTask } from '@zenith/shared/workflow';
+import { api, useApiMutation, type ApiCallOptions } from '@/lib/contract-query';
 
 /** 待办列表项：实例摘要 + 待我处理任务的 SLA / 摘要字段 */
 export type PendingWorkflowItem = WorkflowPendingInstanceItem;
@@ -85,38 +85,50 @@ export function useReplyWorkflowConsult() {
   return useApiMutation(workflowTaskContract.replyConsult, { invalidate: invalidateWorkflow });
 }
 
-/** 审批详情面板的单任务动作：动作名即幂等键前缀，body 形状由对应契约推导 */
-export type WorkflowTaskActionVariables =
+/** 同意 / 驳回 / 转办三个基础决策动作（移动审批端只暴露这三个） */
+export type WorkflowTaskDecisionVariables =
   | { taskId: number; action: 'approve'; body: BodyOf<typeof workflowTaskContract.approve> }
   | { taskId: number; action: 'reject'; body: BodyOf<typeof workflowTaskContract.reject> }
-  | { taskId: number; action: 'transfer'; body: BodyOf<typeof workflowTaskContract.transfer> }
+  | { taskId: number; action: 'transfer'; body: BodyOf<typeof workflowTaskContract.transfer> };
+
+/** 审批详情面板的单任务动作：动作名即幂等键前缀，body 形状由对应契约推导 */
+export type WorkflowTaskActionVariables =
+  | WorkflowTaskDecisionVariables
   | { taskId: number; action: 'delegate'; body: BodyOf<typeof workflowTaskContract.delegate> }
   | { taskId: number; action: 'add-sign'; body: BodyOf<typeof workflowTaskContract.addSign> }
   | { taskId: number; action: 'reduce-sign'; body: BodyOf<typeof workflowTaskContract.reduceSign> }
   | { taskId: number; action: 'return'; body: BodyOf<typeof workflowTaskContract.returnTask> };
 
+/**
+ * 单任务动作 → 契约调用的唯一映射；后台审批面板与移动审批端共用，
+ * 幂等键前缀与请求实例（会话语义）由调用方经 `options` 传入。
+ */
+export function runWorkflowTaskAction(vars: WorkflowTaskDecisionVariables, options?: ApiCallOptions): Promise<WorkflowInstance | WorkflowTask>;
+export function runWorkflowTaskAction(vars: WorkflowTaskActionVariables, options?: ApiCallOptions): Promise<unknown>;
+export function runWorkflowTaskAction(vars: WorkflowTaskActionVariables, options?: ApiCallOptions): Promise<unknown> {
+  const params = { taskId: vars.taskId };
+  switch (vars.action) {
+    case 'approve':
+      return api(workflowTaskContract.approve, { params, body: vars.body }, options);
+    case 'reject':
+      return api(workflowTaskContract.reject, { params, body: vars.body }, options);
+    case 'transfer':
+      return api(workflowTaskContract.transfer, { params, body: vars.body }, options);
+    case 'delegate':
+      return api(workflowTaskContract.delegate, { params, body: vars.body }, options);
+    case 'add-sign':
+      return api(workflowTaskContract.addSign, { params, body: vars.body }, options);
+    case 'reduce-sign':
+      return api(workflowTaskContract.reduceSign, { params, body: vars.body }, options);
+    case 'return':
+      return api(workflowTaskContract.returnTask, { params, body: vars.body }, options);
+  }
+}
+
 /** 幂等键按动作 + 任务生成，防止重复提交；缓存失效由调用方在关闭面板时统一处理 */
 export function useWorkflowTaskAction() {
   return useMutation({
-    mutationFn: (vars: WorkflowTaskActionVariables): Promise<unknown> => {
-      const params = { taskId: vars.taskId };
-      const options = { headers: { 'X-Idempotency-Key': `workflow-${vars.action}-${vars.taskId}` } };
-      switch (vars.action) {
-        case 'approve':
-          return api(workflowTaskContract.approve, { params, body: vars.body }, options);
-        case 'reject':
-          return api(workflowTaskContract.reject, { params, body: vars.body }, options);
-        case 'transfer':
-          return api(workflowTaskContract.transfer, { params, body: vars.body }, options);
-        case 'delegate':
-          return api(workflowTaskContract.delegate, { params, body: vars.body }, options);
-        case 'add-sign':
-          return api(workflowTaskContract.addSign, { params, body: vars.body }, options);
-        case 'reduce-sign':
-          return api(workflowTaskContract.reduceSign, { params, body: vars.body }, options);
-        case 'return':
-          return api(workflowTaskContract.returnTask, { params, body: vars.body }, options);
-      }
-    },
+    mutationFn: (vars: WorkflowTaskActionVariables) =>
+      runWorkflowTaskAction(vars, { headers: { 'X-Idempotency-Key': `workflow-${vars.action}-${vars.taskId}` } }),
   });
 }

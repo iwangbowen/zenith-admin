@@ -29,6 +29,7 @@ import type {
 } from '@zenith/shared/messaging';
 import './ChannelDashboardPage.css';
 import { useChannelDashboard } from '@/hooks/queries/channel-dashboard';
+import { shortDate } from '@/utils/date';
 
 const { Text, Title } = Typography;
 
@@ -57,10 +58,6 @@ interface StatItem {
   icon: React.ReactNode;
   color: string;
   value: string | number;
-}
-
-function shortDate(dateStr: string) {
-  return dateStr.length >= 5 ? dateStr.slice(5) : dateStr;
 }
 
 export default function ChannelDashboardPage() {

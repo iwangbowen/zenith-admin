@@ -6,8 +6,18 @@ import {
   formatDateTimeForApi,
   formatDateTimeRangeForApi,
   formatDateTimeRangeValuesForApi,
+  shortDate,
   stripHtml,
 } from './date';
+
+describe('shortDate', () => {
+  it('YYYY-MM-DD → MM-DD，短串原样返回', () => {
+    expect(shortDate('2026-09-11')).toBe('09-11');
+    expect(shortDate('2026-09-11 08:00:00')).toBe('09-11 08:00:00');
+    expect(shortDate('9-11')).toBe('9-11');
+    expect(shortDate('')).toBe('');
+  });
+});
 
 describe('formatDateTime', () => {
   it('should return empty string for null/undefined', () => {

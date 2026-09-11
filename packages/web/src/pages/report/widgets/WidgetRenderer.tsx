@@ -14,6 +14,7 @@ import {
 import { aggregateReportRows, formatReportFieldValue } from '@zenith/shared/report';
 import type { ReportWidget, ReportField, ReportDataResult, ReportConditionalFormat, ReportWidgetOptions, ReportDatasetQueryOptions, ReportResultField } from '@zenith/shared/report';
 import { useReportWidgetDictMaps } from '@/hooks/queries/report-designer';
+import { useElementSize } from '@/hooks/useElementSize';
 import { TABLE_PAGE_SIZE_OPTIONS } from '@/hooks/usePagination';
 import { DataBar } from '@/components/data-viz/DataBar';
 import { iframeSandboxFor, safeHttpUrl, safeLinkUrl } from '@/utils/safe-url';
@@ -68,27 +69,6 @@ function cellStyle(field: string, value: unknown, formats?: ReportConditionalFor
     }
   }
   return undefined;
-}
-
-function useElementSize<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    // ResizeObserver 本身按帧合并回调；这里只需在取整后尺寸未变时沿用旧对象，让 React 直接跳过本次更新
-    // （亚像素抖动、缩放导致的小数变化会触发回调但取整结果相同）
-    const ro = new ResizeObserver((entries) => {
-      const r = entries[0]?.contentRect;
-      if (!r) return;
-      const width = Math.round(r.width);
-      const height = Math.round(r.height);
-      setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return { ref, ...size };
 }
 
 function EmptyHint({ text }: { readonly text: string }) {

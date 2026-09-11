@@ -13,6 +13,7 @@ import {
 import type { IotAlarm, IotDeviceEvent } from '@zenith/shared/iot';
 import { useIotDashboard } from '@/hooks/queries/iot-dashboard';
 import { IOT_ALARM_LEVEL_COLORS, IOT_EVENT_LEVEL_COLORS } from './iot-tag-colors';
+import { shortDate } from '@/utils/date';
 
 const { Text } = Typography;
 
@@ -48,7 +49,7 @@ export default function IotDashboardPage() {
     ],
     palette,
     stack: true,
-    axis: { xLabel: (v) => String(v).slice(5) },
+    axis: { xLabel: (v) => shortDate(String(v)) },
   }), [data?.alarmTrend, palette]);
 
   const distributionSpec = useMemo(() => makePieSpec({

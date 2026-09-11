@@ -12,11 +12,11 @@ import {
   type Edge as RFEdge,
   type NodeProps,
 } from '@xyflow/react';
-import dagre from 'dagre';
 import { Switch, Space, Typography, Empty, Spin } from '@douyinfe/semi-ui';
 import type { WorkflowFormField } from '@zenith/shared/workflow';
 import { ThemedReactFlow } from '@/components/ThemedReactFlow';
 import { useGraphSelectionHighlight } from '@/hooks/useGraphSelectionHighlight';
+import { layoutWithDagre } from '@/utils/graph-layout';
 import { FORM_FIELD_TYPES } from '../form-types';
 import { buildFieldDependencyGraph, DEP_KIND_COLOR, type DepKind } from '../form-graph';
 
@@ -69,17 +69,8 @@ FieldNode.displayName = 'FieldNode';
 
 const nodeTypes = { field: FieldNode };
 
-function layoutWithDagre(nodes: RFNode[], edges: RFEdge[]): RFNode[] {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', nodesep: 24, ranksep: 90, marginx: 20, marginy: 20 });
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }));
-  edges.forEach((e) => g.setEdge(e.source, e.target));
-  dagre.layout(g);
-  return nodes.map((n) => {
-    const pos = g.node(n.id);
-    return { ...n, position: { x: pos.x - pos.width / 2, y: pos.y - pos.height / 2 } };
-  });
+function layoutFieldGraph(nodes: RFNode[], edges: RFEdge[]): RFNode[] {
+  return layoutWithDagre(nodes, edges, { rankdir: 'LR', nodesep: 24, ranksep: 90, nodeSize: { width: NODE_WIDTH, height: NODE_HEIGHT } });
 }
 
 function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormField[] }>) {
@@ -139,7 +130,7 @@ function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormFi
       });
   }, [graph.edges, baseNodes]);
 
-  const laidOutNodes = useMemo(() => layoutWithDagre(baseNodes, baseEdges), [baseNodes, baseEdges]);
+  const laidOutNodes = useMemo(() => layoutFieldGraph(baseNodes, baseEdges), [baseNodes, baseEdges]);
 
   const { nodes, edges, onNodesChange, onEdgesChange, handleNodeClick, handlePaneClick } =
     useGraphSelectionHighlight<FieldNodeData>(laidOutNodes, baseEdges, {

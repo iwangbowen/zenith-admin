@@ -30,7 +30,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateTimeRangeForApi, shortDate } from '@/utils/date';
 import { useListSearch } from '@/hooks/useListSearch';
 import { pushSendLogKeys, usePushSendLogList, usePushSendLogStats } from '@/hooks/queries/push';
 import { SEND_LOG_STATUS_OPTIONS } from '../send-log-constants';
@@ -56,10 +56,6 @@ const STATS_DAYS_OPTIONS = [
   { value: 14, label: '近 14 天' },
   { value: 30, label: '近 30 天' },
 ];
-
-function shortDate(dateStr: string) {
-  return dateStr.length >= 5 ? dateStr.slice(5) : dateStr;
-}
 
 function PushStatsSection() {
   const palette = useChartPalette();

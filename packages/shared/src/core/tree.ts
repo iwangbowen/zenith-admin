@@ -40,3 +40,8 @@ export function mapTree<T extends { children?: T[] }, R extends { children?: R[]
 ): R[] {
   return nodes.map((node) => ({ ...map(node), children: node.children ? mapTree(node.children, map) : undefined }) as R);
 }
+
+/** 树 → 先序平铺列表（父节点在其子树之前），节点原样返回不拷贝；用于树形下拉源的查找 / 计数 */
+export function flattenTree<T extends { children?: T[] | null }>(nodes: readonly T[]): T[] {
+  return nodes.flatMap((node) => [node, ...flattenTree(node.children ?? [])]);
+}

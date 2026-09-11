@@ -13,6 +13,17 @@ export function msToReadable(ms: number | null): string {
   return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`;
 }
 
+/** 表格单元格的空值兜底：null / undefined / 空串统一显示「–」 */
+export function nullableText(value: string | number | null | undefined): string {
+  return value == null || value === '' ? '–' : String(value);
+}
+
+/** 表单可选文本 → 提交值：去空白后为空则视为未填（null） */
+export function trimToNull(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export const DAYS_OPTIONS = BEHAVIOR_DAYS_OPTIONS;
 
 /** 无语义元素（elementLabel 缺失或就是裸标签名）的展示兜底：「未命名 button」比裸 "button" 更明确 */

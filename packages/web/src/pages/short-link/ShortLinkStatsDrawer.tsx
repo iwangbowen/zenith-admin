@@ -7,6 +7,7 @@ import {
 } from '@/components/charts';
 import { useShortLinkStats } from '@/hooks/queries/short-links';
 import type { ShortLink } from '@zenith/shared/short-link';
+import { shortDate } from '@/utils/date';
 
 interface ShortLinkStatsDrawerProps {
   link: ShortLink | null;
@@ -29,7 +30,7 @@ export default function ShortLinkStatsDrawer({ link, onClose }: ShortLinkStatsDr
     ],
     palette,
     fillOpacity: 0.16,
-    axis: { xLabel: (value) => value.slice(5) },
+    axis: { xLabel: shortDate },
     tooltip: { title: (value) => `日期：${value}` },
   }), [stats?.trend, palette]);
 

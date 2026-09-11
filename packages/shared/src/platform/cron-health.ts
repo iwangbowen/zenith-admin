@@ -38,6 +38,12 @@ export function cronSuccessRatePercent(successCount: number, total: number): num
   return total > 0 ? Math.round((successCount / total) * 100) : null;
 }
 
+/** 告警文案里的耗时描述：不足 1 秒按毫秒，否则保留一位小数的秒；缺失显示「—」 */
+export function describeCronDurationMs(ms: number | null): string {
+  if (ms == null) return '—';
+  return ms < 1000 ? `${ms} 毫秒` : `${(ms / 1000).toFixed(1)} 秒`;
+}
+
 /** P95 显著高于平均：一部分执行特别慢，耗时不稳定 */
 export function isCronSlowTail(avgDurationMs: number | null, p95DurationMs: number | null): boolean {
   return avgDurationMs != null && p95DurationMs != null && avgDurationMs > 0

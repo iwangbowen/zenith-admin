@@ -10,6 +10,7 @@ import { RefreshButton } from '@/components/toolbar-controls';
 import {
   useWikiContributors, useWikiHotDocs, useWikiOpsStats, useWikiStaleDocs, useWikiStatsOverview,
 } from '@/hooks/queries/wiki-stats';
+import { shortDate } from '@/utils/date';
 
 const { Text } = Typography;
 
@@ -41,7 +42,7 @@ export default function WikiStatsPage() {
     series: [{ field: 'count', name: '新建文档', color: palette.primary }],
     palette,
     fillOpacity: 0.24,
-    axis: { xLabel: (value) => value.slice(5) },
+    axis: { xLabel: shortDate },
     tooltip: { title: (value) => `日期：${value}`, value: (value) => `${value} 篇` },
   }), [ops?.createdTrend, palette]);
 

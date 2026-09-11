@@ -21,6 +21,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { useImportEntities } from '@/hooks/queries/import-jobs';
 import { asyncTaskKeys, useAsyncTaskList } from '@/hooks/queries/async-tasks';
 import NewImportModal from './NewImportModal';
+import { groupImportEntitiesByModule } from './import-entity-groups';
 
 const { Text } = Typography;
 
@@ -91,15 +92,7 @@ export default function ImportCenterPage() {
     setHasActiveTask(list.some((t) => t.status === 'pending' || t.status === 'running'));
   }, [list]);
 
-  const entityOptions = useMemo(() => {
-    const byModule = new Map<string, ImportEntityMeta[]>();
-    for (const e of entities) {
-      const group = byModule.get(e.module) ?? [];
-      group.push(e);
-      byModule.set(e.module, group);
-    }
-    return [...byModule.entries()];
-  }, [entities]);
+  const entityOptions = useMemo(() => groupImportEntitiesByModule(entities), [entities]);
 
   const columns: ColumnProps<AsyncTask>[] = [
     { title: 'ID', dataIndex: 'id', width: 70 },

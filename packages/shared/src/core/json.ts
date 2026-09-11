@@ -19,13 +19,14 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 }
 
 /**
- * 按点分路径读取嵌套值（`data.items` / `result.list.0`），数组可用下标段访问；
+ * 按点分路径读取嵌套值（`data.items` / `result.list.0`），数组可用下标段访问，
+ * 也接受 `items[0].name` 形式的方括号下标（归一为 `items.0.name`）；
  * 路径为空时返回原值，中途遇到非对象返回 `undefined`。
- * 用于外部 API 响应的 `itemsPath` 之类由配置指定的取数路径。
+ * 用于外部 API 响应的 `itemsPath` 之类由配置指定的取数路径，以及表单嵌套字段（`actions[0]`）的读取。
  */
 export function getByPath(source: unknown, path: string | null | undefined): unknown {
   if (!path) return source;
-  return path.split('.').reduce<unknown>(
+  return path.replaceAll(/\[(\d+)\]/g, '.$1').split('.').reduce<unknown>(
     (current, key) => (current && typeof current === 'object' ? (current as Record<string, unknown>)[key.trim()] : undefined),
     source,
   );

@@ -44,15 +44,9 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { toUserOptions } from '@/hooks/queries/users';
 import { copyableNoColumn, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
+import { msToReadable, nullableText, trimToNull } from './analytics-format';
 
 const PAGE_SIZE = 20;
-
-function msToReadable(ms: number | null) {
-  if (ms == null) return '–';
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
-}
 
 function referencePart(label: string, items: Array<{ name: string }>) {
   if (items.length === 0) return null;
@@ -149,15 +143,6 @@ const defaultEventSearch: EventSearchParams = {
   timeRange: null,
 };
 const defaultMetaSearch: MetaSearchParams = { keyword: '', status: undefined, category: '' };
-
-function nullableText(value: string | number | null | undefined) {
-  return value == null || value === '' ? '–' : String(value);
-}
-
-function trimToNull(value: string | null | undefined) {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
 
 function buildQuery(params: Record<string, string | number | undefined>) {
   const query = new URLSearchParams();

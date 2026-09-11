@@ -19,6 +19,7 @@ import { slugifyName } from '@/utils/slug';
 import { confirmDelete as confirmDeleteModal } from '@/utils/confirm';
 import { CMS_CHANNEL_DETAIL_PATH_RULE_LABELS, CMS_CHANNEL_DETAIL_PATH_RULES, CMS_CHANNEL_STATIC_MODE_LABELS, CMS_CHANNEL_STATIC_MODES, CMS_CHANNEL_TYPE_LABELS } from '@zenith/shared/cms';
 import type { CmsChannel } from '@zenith/shared/cms';
+import { flattenChannels } from './channel-tree';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
 import { CmsWidgetSourceRefsSheet, type CmsWidgetSourceTarget } from './CmsWidgetSourceRefsSheet';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -54,10 +55,6 @@ function toTreeSelectData(nodes: CmsChannel[], excludeId?: number): TreeNodeData
 }
 
 /** 栏目树拍平为一维数组，用于按 id 反查最新栏目对象 */
-function flattenChannels(nodes: CmsChannel[]): CmsChannel[] {
-  return nodes.flatMap((n) => [n, ...(n.children ? flattenChannels(n.children) : [])]);
-}
-
 export default function ChannelsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);

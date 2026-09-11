@@ -5,8 +5,9 @@ import type { CronRunStatus, CronRunTrigger } from '@zenith/shared/platform';
 import { CRON_RUN_STATUS_LABELS } from '@zenith/shared/platform';
 import { cronJobKeys } from '@/hooks/queries/cron-jobs';
 import { useListSearch } from '@/hooks/useListSearch';
+import { makeMixedBarLineSpec, type ChartPalette } from '@/components/charts';
 import { formatDurationMs } from '@/utils/format';
-import { formatRelativeTime } from '@/utils/date';
+import { formatRelativeTime, shortDate } from '@/utils/date';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 export const SUCCESS_COLOR = '#10b981';
@@ -15,6 +16,34 @@ export const RUNNING_COLOR = '#3b82f6';
 export const TIMEOUT_COLOR = '#f97316';
 export const DURATION_COLOR = '#8b5cf6';
 export const P95_COLOR = '#f59e0b';
+
+/** 每日执行趋势的一行：成功 / 失败 / 超时次数 + 平均与 P95 耗时（缺失日由调用方补 0） */
+export interface CronDailyTrendPoint {
+  date: string;
+  successCount: number;
+  failCount: number;
+  timeoutCount: number;
+  avgDurationMs: number;
+  p95DurationMs: number;
+}
+
+/** 「成功 / 失败 / 超时」堆叠柱 + 平均 / P95 耗时折线的趋势图配置，概览页与任务详情抽屉共用 */
+export function buildCronTrendSpec(data: CronDailyTrendPoint[], palette: ChartPalette) {
+  return makeMixedBarLineSpec({
+    data,
+    xField: 'date',
+    palette,
+    bar: { field: 'successCount', name: '成功', color: SUCCESS_COLOR },
+    stackedBars: [
+      { field: 'failCount', name: '失败', color: FAIL_COLOR },
+      { field: 'timeoutCount', name: '超时', color: TIMEOUT_COLOR },
+    ],
+    line: { field: 'avgDurationMs', name: '平均耗时', color: DURATION_COLOR, format: (v) => formatDurationMs(v) },
+    extraLines: [{ field: 'p95DurationMs', name: 'P95 耗时', color: P95_COLOR, lineWidth: 1.5, showPoint: false, format: (v) => formatDurationMs(v) }],
+    axis: { xLabel: shortDate, rightLabel: (v) => formatDurationMs(v) },
+    tooltip: { title: (x) => `日期：${x}`, barValue: (v) => `${v} 次` },
+  });
+}
 
 /** 统计周期可选天数 */
 export const CRON_STATS_DAYS_OPTIONS = [7, 14, 30] as const;

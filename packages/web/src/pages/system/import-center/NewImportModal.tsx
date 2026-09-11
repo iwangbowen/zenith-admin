@@ -8,6 +8,7 @@ import { Download, FileSearch, Upload } from 'lucide-react';
 import type { ImportEntityMeta } from '@zenith/shared/tasks';
 import { downloadImportTemplate } from '@/hooks/queries/import-jobs';
 import { useImportUpload } from '@/hooks/useImportUpload';
+import { groupImportEntitiesByModule } from './import-entity-groups';
 
 const { Text } = Typography;
 
@@ -30,15 +31,7 @@ export default function NewImportModal({ visible, entities, entitiesLoading, onC
     onSubmitted: (task) => { if (entity) onSubmitted(task.id, entity.title); },
   });
 
-  const entityGroups = useMemo(() => {
-    const byModule = new Map<string, ImportEntityMeta[]>();
-    for (const e of entities) {
-      const group = byModule.get(e.module) ?? [];
-      group.push(e);
-      byModule.set(e.module, group);
-    }
-    return [...byModule.entries()];
-  }, [entities]);
+  const entityGroups = useMemo(() => groupImportEntitiesByModule(entities), [entities]);
 
   const requiredColumns = entity?.columns.filter((c) => c.required) ?? [];
 

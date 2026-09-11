@@ -9,7 +9,6 @@ import {
   HeatmapChart,
   chartOptions,
   makeHeatmapSpec,
-  makeMixedBarLineSpec,
   useChartPalette,
   StatCard,
   StatGrid,
@@ -25,13 +24,9 @@ import { CronJobHealthTable } from './CronJobHealthTable';
 import { CronJobRecentLogs } from './CronJobRecentLogs';
 import {
   CRON_STATS_DAYS_OPTIONS,
-  DURATION_COLOR,
-  FAIL_COLOR,
-  P95_COLOR,
   RelativeTime,
-  SUCCESS_COLOR,
-  TIMEOUT_COLOR,
   TrendMark,
+  buildCronTrendSpec,
   useRecentLogsSearch,
   type CronStatsDays,
 } from './cron-dashboard-shared';
@@ -364,20 +359,7 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
     });
   }, [stats, days, now]);
 
-  const trendSpec = useMemo(() => ({ ...makeMixedBarLineSpec({
-    data: filledDaily,
-    xField: 'date',
-    palette,
-    bar: { field: 'successCount', name: '成功', color: SUCCESS_COLOR },
-    stackedBars: [
-      { field: 'failCount', name: '失败', color: FAIL_COLOR },
-      { field: 'timeoutCount', name: '超时', color: TIMEOUT_COLOR },
-    ],
-    line: { field: 'avgDurationMs', name: '平均耗时', color: DURATION_COLOR, format: (v) => formatDurationMs(v) },
-    extraLines: [{ field: 'p95DurationMs', name: 'P95 耗时', color: P95_COLOR, lineWidth: 1.5, showPoint: false, format: (v) => formatDurationMs(v) }],
-    axis: { xLabel: (d) => d.slice(5), rightLabel: (v) => formatDurationMs(v) },
-    tooltip: { title: (x) => `日期：${x}`, barValue: (v) => `${v} 次` },
-  }), animation: chartAnimation }), [filledDaily, palette, chartAnimation]);
+  const trendSpec = useMemo(() => ({ ...buildCronTrendSpec(filledDaily, palette), animation: chartAnimation }), [filledDaily, palette, chartAnimation]);
 
   const heatmapData = useMemo(() => {
     const map = new Map((stats?.dowHourStats ?? []).map((d) => [`${d.dow}-${d.hour}`, d]));

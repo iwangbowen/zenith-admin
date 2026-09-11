@@ -5,9 +5,10 @@
  */
 import { QueryClient, keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BodyOf } from '@zenith/shared/core';
-import { workflowDefinitionContract, workflowInstanceContract, workflowQuickPhraseContract, workflowTaskContract, type WorkflowInstance, type WorkflowInstanceListItem, type WorkflowTask } from '@zenith/shared/workflow';
+import { workflowDefinitionContract, workflowInstanceContract, workflowQuickPhraseContract, workflowTaskContract, type WorkflowInstanceListItem } from '@zenith/shared/workflow';
 import { authContract, userContract } from '@zenith/shared/identity';
 import { api, urlOf } from '@/lib/contract-query';
+import { runWorkflowTaskAction, type WorkflowTaskDecisionVariables } from '@/hooks/queries/workflow-tasks';
 import { approvalRequest } from './approval-request';
 
 export const approvalQueryClient = new QueryClient({
@@ -97,27 +98,15 @@ export function useApprovalMe() {
   });
 }
 
-export type ApprovalTaskActionVariables =
-  | { taskId: number; action: 'approve'; body: BodyOf<typeof workflowTaskContract.approve> }
-  | { taskId: number; action: 'reject'; body: BodyOf<typeof workflowTaskContract.reject> }
-  | { taskId: number; action: 'transfer'; body: BodyOf<typeof workflowTaskContract.transfer> };
+/** 移动审批端暴露的任务动作：同意 / 驳回 / 转办，与后台面板共用同一映射 */
+export type ApprovalTaskActionVariables = WorkflowTaskDecisionVariables;
 
 /** 同意 / 驳回 / 转办：幂等键按动作 + 任务生成，防止弱网下的重复提交 */
 export function useTaskAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: ApprovalTaskActionVariables): Promise<WorkflowInstance | WorkflowTask> => {
-      const params = { taskId: vars.taskId };
-      const options = { ...client, headers: { 'X-Idempotency-Key': `approval-${vars.action}-${vars.taskId}` } };
-      switch (vars.action) {
-        case 'approve':
-          return api(workflowTaskContract.approve, { params, body: vars.body }, options);
-        case 'reject':
-          return api(workflowTaskContract.reject, { params, body: vars.body }, options);
-        case 'transfer':
-          return api(workflowTaskContract.transfer, { params, body: vars.body }, options);
-      }
-    },
+    mutationFn: (vars: ApprovalTaskActionVariables) =>
+      runWorkflowTaskAction(vars, { ...client, headers: { 'X-Idempotency-Key': `approval-${vars.action}-${vars.taskId}` } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: approvalKeys.all }),
   });
 }

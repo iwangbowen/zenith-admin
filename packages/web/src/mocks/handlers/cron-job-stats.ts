@@ -14,6 +14,7 @@ import {
   CRON_ALERT_TYPE_LABELS,
   countConsecutiveFails,
   cronSuccessRatePercent,
+  describeCronDurationMs as describeMs,
   isCronLowSuccessRate,
   isCronNearTimeout,
   isCronSlowTail,
@@ -33,11 +34,6 @@ function percentile(values: number[], p: number): number | null {
   const lo = Math.floor(idx);
   const hi = Math.ceil(idx);
   return Math.round(sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo));
-}
-
-function describeMs(ms: number | null): string {
-  if (ms == null) return '—';
-  return ms < 1000 ? `${ms} 毫秒` : `${(ms / 1000).toFixed(1)} 秒`;
 }
 
 function average(values: number[]): number | null {

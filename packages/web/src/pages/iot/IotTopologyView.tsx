@@ -5,12 +5,12 @@ import {
   useNodesState, useEdgesState, useReactFlow, useUpdateNodeInternals,
   type Node as RFNode, type Edge as RFEdge, type NodeProps,
 } from '@xyflow/react';
-import dagre from 'dagre';
 import { Badge, Empty, Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { IotTopologyChild } from '@zenith/shared/iot';
 import { ThemedReactFlow } from '@/components/ThemedReactFlow';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
+import { layoutWithDagre } from '@/utils/graph-layout';
 import { useIotDeviceTopology, iotTopologyKeys } from '@/hooks/queries/iot-devices';
 import { useWebSocket } from '@/hooks/useWebSocket';
 
@@ -80,16 +80,7 @@ TopoNode.displayName = 'TopoNode';
 const nodeTypes = { topo: TopoNode };
 
 function layoutTopology(nodes: RFNode[], edges: RFEdge[]): RFNode[] {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'TB', nodesep: 24, ranksep: 70, marginx: 20, marginy: 20 });
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }));
-  edges.forEach((e) => g.setEdge(e.source, e.target));
-  dagre.layout(g);
-  return nodes.map((n) => {
-    const pos = g.node(n.id);
-    return { ...n, position: { x: pos.x - pos.width / 2, y: pos.y - pos.height / 2 } };
-  });
+  return layoutWithDagre(nodes, edges, { rankdir: 'TB', nodesep: 24, ranksep: 70, nodeSize: { width: NODE_WIDTH, height: NODE_HEIGHT } });
 }
 
 interface IotTopologyViewProps {

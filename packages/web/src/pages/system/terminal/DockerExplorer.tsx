@@ -27,6 +27,7 @@ import { fileIcon } from './fileIcon';
 import { fetchDockerDir, useDockerExplorerAction } from '@/hooks/queries/terminal-files';
 import { fetchDockerContainerLogs, useDockerContainers, useDockerFetchStats } from '@/hooks/queries/docker';
 import type { DockerContainer, DockerFileEntry } from '@zenith/shared/ops';
+import { groupContainersByCompose } from '@/pages/system/docker/docker-grouping';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
 import { formatBytes } from '@zenith/shared/core';
 
@@ -139,16 +140,7 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
     setDockerAvailable(true);
 
     // 按 Compose 项目分组
-    const groups: Record<string, DockerContainer[]> = {};
-    const standalone: DockerContainer[] = [];
-    for (const c of containers) {
-      if (c.composeProject) {
-        if (!groups[c.composeProject]) groups[c.composeProject] = [];
-        groups[c.composeProject].push(c);
-      } else {
-        standalone.push(c);
-      }
-    }
+    const { groups, standalone } = groupContainersByCompose(containers);
 
     const nodes: DockerTreeNode[] = [];
 

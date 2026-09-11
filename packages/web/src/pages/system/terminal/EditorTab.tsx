@@ -8,21 +8,13 @@ import { useThemeController } from '@/providers/theme-controller';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { resolveTheme, toMonacoTheme, monacoThemeName } from './themes';
 import { editableFileDownloadUrl, useFileContent, useSaveFileContent, type EditableFileRef } from '@/hooks/queries/terminal-files';
+import { monacoLanguageByExt } from '@/utils/monaco-language';
 
 interface EditorTabProps {
   readonly filePath: string;
   readonly active: boolean;
   readonly onDirtyChange?: (dirty: boolean) => void;
 }
-
-const LANGUAGE_MAP: Record<string, string> = {
-  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
-  json: 'json', html: 'html', htm: 'html', css: 'css', scss: 'scss', less: 'less',
-  md: 'markdown', markdown: 'markdown', py: 'python', go: 'go', rs: 'rust', java: 'java',
-  c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', hpp: 'cpp', cs: 'csharp', php: 'php', rb: 'ruby',
-  sh: 'shell', bash: 'shell', zsh: 'shell', yml: 'yaml', yaml: 'yaml', xml: 'xml', sql: 'sql',
-  toml: 'ini', ini: 'ini', conf: 'ini', env: 'ini', vue: 'html', svelte: 'html',
-};
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif']);
 
@@ -88,7 +80,7 @@ function detectLanguage(filePath: string): string {
   if (name === 'dockerfile') return 'dockerfile';
   if (name === 'makefile') return 'plaintext';
   const ext = name.includes('.') ? name.split('.').pop() ?? '' : '';
-  return LANGUAGE_MAP[ext] ?? 'plaintext';
+  return monacoLanguageByExt(ext);
 }
 
 type FileKind = 'local' | 'docker' | 'sftp';

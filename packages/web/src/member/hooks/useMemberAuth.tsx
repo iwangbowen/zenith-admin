@@ -56,26 +56,25 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
     fetchMember();
   }, [fetchMember]);
 
+  /** 登录 / 注册成功后的统一落地：持久化双 token 并切换为已登录态 */
+  const applyLoginResult = useCallback((result: MemberLoginResult) => {
+    localStorage.setItem(MEMBER_TOKEN_KEY, result.token.accessToken);
+    localStorage.setItem(MEMBER_REFRESH_TOKEN_KEY, result.token.refreshToken);
+    setState({ member: result.member, loading: false });
+  }, []);
+
   const login = useCallback(async (params: MemberLoginParams) => {
     // 直接消费响应包络：code / message 决定登录页的错误提示分支，不走 api() 解包
     const res = await apiRaw(memberAuthContract.login, { body: params }, { client: memberRequest, silent: true });
-    if (res.code === 0) {
-      localStorage.setItem(MEMBER_TOKEN_KEY, res.data.token.accessToken);
-      localStorage.setItem(MEMBER_REFRESH_TOKEN_KEY, res.data.token.refreshToken);
-      setState({ member: res.data.member, loading: false });
-    }
+    if (res.code === 0) applyLoginResult(res.data);
     return res;
-  }, []);
+  }, [applyLoginResult]);
 
   const register = useCallback(async (params: MemberRegisterParams) => {
     const res = await apiRaw(memberAuthContract.register, { body: params }, { client: memberRequest, silent: true });
-    if (res.code === 0) {
-      localStorage.setItem(MEMBER_TOKEN_KEY, res.data.token.accessToken);
-      localStorage.setItem(MEMBER_REFRESH_TOKEN_KEY, res.data.token.refreshToken);
-      setState({ member: res.data.member, loading: false });
-    }
+    if (res.code === 0) applyLoginResult(res.data);
     return res;
-  }, []);
+  }, [applyLoginResult]);
 
   const logout = useCallback(() => {
     // 请求构造会在本行同步读取当前 token，随后再清理本地身份。

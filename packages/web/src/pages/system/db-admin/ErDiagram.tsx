@@ -12,12 +12,12 @@ import {
   type Edge as RFEdge,
   type NodeProps,
 } from '@xyflow/react';
-import dagre from 'dagre';
 import { AutoComplete, Button, Switch, Space, Tooltip, Toast } from '@douyinfe/semi-ui';
 import { Download, Search } from 'lucide-react';
 import type { DbAdminErColumn, DbAdminErDiagramFk, DbAdminErSchema, DbAdminErTable } from '@zenith/shared/ops';
 import { ThemedReactFlow } from '@/components/ThemedReactFlow';
 import { useGraphSelectionHighlight } from '@/hooks/useGraphSelectionHighlight';
+import { layoutWithDagre } from '@/utils/graph-layout';
 
 export type ErColumn = DbAdminErColumn;
 export type ErTable = DbAdminErTable;
@@ -197,23 +197,15 @@ interface ErDiagramProps {
   onNodeDoubleClick?: (full: string) => void;
 }
 
-function layoutWithDagre(nodes: RFNode[], edges: RFEdge[]): RFNode[] {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', nodesep: 30, ranksep: 80, marginx: 20, marginy: 20 });
-  nodes.forEach((n) => {
-    const cols = (n.data as TableNodeData).columns;
-    const h = cols ? estimateHeight(cols.length) : 60;
-    g.setNode(n.id, { width: NODE_WIDTH, height: h });
-  });
-  edges.forEach((e) => g.setEdge(e.source, e.target));
-  dagre.layout(g);
-  return nodes.map((n) => {
-    const pos = g.node(n.id);
-    return {
-      ...n,
-      position: { x: pos.x - pos.width / 2, y: pos.y - pos.height / 2 },
-    };
+function layoutErDiagram(nodes: RFNode[], edges: RFEdge[]): RFNode[] {
+  return layoutWithDagre(nodes, edges, {
+    rankdir: 'LR',
+    nodesep: 30,
+    ranksep: 80,
+    nodeSize: (n) => {
+      const cols = (n.data as TableNodeData).columns;
+      return { width: NODE_WIDTH, height: cols ? estimateHeight(cols.length) : 60 };
+    },
   });
 }
 
@@ -296,7 +288,7 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
     return opts;
   }, [schema]);
 
-  const laidOutNodes = useMemo(() => layoutWithDagre(baseNodes, baseEdges), [baseNodes, baseEdges]);
+  const laidOutNodes = useMemo(() => layoutErDiagram(baseNodes, baseEdges), [baseNodes, baseEdges]);
 
   const { setSelectedId, nodes, edges, onNodesChange, onEdgesChange, handleNodeClick, handlePaneClick } =
     useGraphSelectionHighlight<TableNodeData>(laidOutNodes, baseEdges, {

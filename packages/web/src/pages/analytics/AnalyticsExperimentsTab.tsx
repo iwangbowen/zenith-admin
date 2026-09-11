@@ -19,6 +19,7 @@ import { FormSliderInput } from '@/components/SliderInput';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
+import { trimToNull } from './analytics-format';
 
 const PAGE_SIZE = 20;
 const defaultSearch = { name: '', status: undefined as AnalyticsExperiment['status'] | undefined };
@@ -69,11 +70,6 @@ type ExperimentFormValues = {
   startAt?: Date | string | null;
   endAt?: Date | string | null;
 };
-
-function trimToNull(value: string | null | undefined) {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
 
 /**
  * 表单时间值 → 接口的 `YYYY-MM-DD HH:mm:ss`；留空表示不限，需明确传 null。

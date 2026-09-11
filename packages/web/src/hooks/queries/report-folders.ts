@@ -1,4 +1,4 @@
-import type { BodyOf, QueryOf } from '@zenith/shared/core';
+import { flattenTree, type BodyOf, type QueryOf } from '@zenith/shared/core';
 import { reportFolderContract, type ReportFolderTreeNode } from '@zenith/shared/report';
 import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
@@ -20,7 +20,7 @@ export function useReportFolderDetail(id: number | undefined, enabled = true) {
 }
 
 export function flattenReportFolders(nodes: ReportFolderTreeNode[]): ReportFolderTreeNode[] {
-  return nodes.flatMap((node) => [node, ...flattenReportFolders(node.children ?? [])]);
+  return flattenTree(nodes);
 }
 
 /** 新增 / 编辑共用的保存载荷：resourceType 只在创建时提交，编辑表单由 rules 保证必填 */

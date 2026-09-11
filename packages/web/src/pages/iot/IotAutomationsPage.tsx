@@ -16,7 +16,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
+import { USER_STATUSES, enumValueOf, getByPath } from '@zenith/shared/core';
 import {
   IOT_AUTOMATION_ACTION_TYPE_LABELS, IOT_AUTOMATION_ACTION_TYPE_OPTIONS,
   IOT_AUTOMATION_DEFAULT_COOLDOWN_SECONDS, IOT_AUTOMATION_ACTION_MAX,
@@ -426,16 +426,7 @@ function ActionRow({ field, onRemove, devices, services, groups, workflows }: Re
   );
 }
 
-/** 通过 useFormState 读当前行类型渲染差异字段（Semi ArrayField 内没有行级 values 注入） */
-function getByPath(obj: unknown, path: string): unknown {
-  // path 形如 actions[0]
-  const normalized = path.replaceAll(/\[(\d+)\]/g, '.$1');
-  return normalized.split('.').reduce<unknown>(
-    (acc, seg) => (acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[seg] : undefined),
-    obj,
-  );
-}
-
+/** 通过 useFormState 读当前行类型渲染差异字段（Semi ArrayField 内没有行级 values 注入；`field` 形如 actions[0]） */
 function ActionRowFields({ field, devices, services, groups, workflows }: Readonly<{
   field: string;
   devices: Array<{ id: number; name: string; sn: string }>;

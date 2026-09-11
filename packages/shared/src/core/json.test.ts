@@ -43,6 +43,13 @@ describe('getByPath', () => {
     expect(getByPath(source, 'data. total ')).toBe(2);
   });
 
+  it('方括号下标与点分下标等价（表单嵌套字段 `actions[0]`）', () => {
+    expect(getByPath(source, 'data.items[1].name')).toBe('b');
+    expect(getByPath(source, 'data.items[0]')).toEqual({ name: 'a' });
+    expect(getByPath({ actions: [{ type: 'notify' }] }, 'actions[0]')).toEqual({ type: 'notify' });
+    expect(getByPath(source, 'data.items[9].name')).toBeUndefined();
+  });
+
   it('中途遇到缺失键或标量返回 undefined', () => {
     expect(getByPath(source, 'data.missing.x')).toBeUndefined();
     expect(getByPath(source, 'data.items.0.name.length')).toBeUndefined();

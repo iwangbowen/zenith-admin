@@ -23,11 +23,7 @@ import {
 import { mockDateTime } from '../utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
 import { abortMockUploadSession, completeMockUploadSession, initMockUploadSession, mockUploadSessionStatus, receiveMockUploadChunk } from '@/mocks/utils/upload-sessions';
-
-function randomHex(len: number): string {
-  const chars = '0123456789abcdef';
-  return Array.from({ length: len }, () => chars[Math.floor(Math.random() * 16)]).join('');
-}
+import { randomHex } from '@/mocks/utils/random';
 
 function productWithCounts(p: IotProduct): IotProduct {
   return {

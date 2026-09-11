@@ -13,6 +13,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag/interface';
 import { Plus, Trash2 } from 'lucide-react';
 import type { WorkflowAutomation, WorkflowAutomationAction, WorkflowAutomationRun, WorkflowAutomationTrigger, WorkflowDefinition } from '@zenith/shared/workflow';
+import { isPlainObject } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
@@ -175,14 +176,10 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
   );
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
 function parseJsonStringRecord(json: string): JsonRecordParseResult {
   try {
     const parsed: unknown = JSON.parse(json);
-    if (!isPlainRecord(parsed)) {
+    if (!isPlainObject(parsed)) {
       return { ok: false, message: '请输入合法的 JSON 对象' };
     }
     const entries = Object.entries(parsed);
@@ -257,7 +254,7 @@ function draftToAction(d: ActionDraft): WorkflowAutomationAction | { __error: st
     if (d.buttonsJson?.trim()) {
       try {
         const parsed: unknown = JSON.parse(d.buttonsJson);
-        if (!Array.isArray(parsed) || parsed.some((item) => !isPlainRecord(item))) {
+        if (!Array.isArray(parsed) || parsed.some((item) => !isPlainObject(item))) {
           return { __error: '按钮配置必须是合法 JSON 数组' };
         }
         buttons = parsed as Array<{ text: string; url: string }>;

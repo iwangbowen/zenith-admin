@@ -22,11 +22,11 @@ import {
   StatCard,
   StatGrid,
 } from '@/components/charts';
-import dayjs from 'dayjs';
 import { useOperationLogStats } from '@/hooks/queries/operation-logs';
 import { ModuleOperationPie } from '@/components/logs/ModuleOperationPie';
 import { buildUserChartLabels, formatUserLabel } from '@/components/UserDisplay';
-import { LogStatsScaffold, WEEKDAY_LABELS, calcSuccessRate, calcSuccessRateDelta, deltaOf } from '@/components/logs/LogStatsScaffold';
+import { LogStatsScaffold, calcSuccessRate, calcSuccessRateDelta, deltaOf, weekdayBuckets } from '@/components/logs/LogStatsScaffold';
+import { shortDate } from '@/utils/date';
 
 const METHOD_COLORS: Record<string, string> = {
   GET: '#3b82f6',
@@ -137,13 +137,7 @@ export default function OperationLogStatsPanel() {
     };
   }, [stats]);
 
-  const weekdayChartData = useMemo(() => {
-    const buckets = new Array(7).fill(0);
-    for (const d of stats?.dailyStats ?? []) {
-      buckets[(dayjs(d.date).day() + 6) % 7] += d.count;
-    }
-    return WEEKDAY_LABELS.map((name, i) => ({ name, count: buckets[i] }));
-  }, [stats]);
+  const weekdayChartData = useMemo(() => weekdayBuckets(stats?.dailyStats), [stats]);
 
   const summary = stats?.summary;
   const prevSummary = stats?.prevSummary;
@@ -219,7 +213,7 @@ export default function OperationLogStatsPanel() {
     ],
     palette,
     fillOpacity: 0.28,
-    axis: { xLabel: (v) => v.slice(5) },
+    axis: { xLabel: shortDate },
     tooltip: { title: (x) => `日期：${x}`, value: (v) => `${v} 次` },
   }), [dailyChartData, palette]);
 
@@ -288,7 +282,7 @@ export default function OperationLogStatsPanel() {
     bar: { field: 'count', name: '请求数', color: palette.dataColors[0] ?? palette.primary },
     line: { field: 'avgMs', name: '平均耗时', color: '#f59e0b' },
     axis: {
-      xLabel: (v) => v.slice(5),
+      xLabel: shortDate,
       rightLabel: (v) => `${v}ms`,
     },
     tooltip: {

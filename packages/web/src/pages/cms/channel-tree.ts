@@ -1,6 +1,11 @@
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import type { CmsChannel } from '@zenith/shared/cms';
-import { mapTree } from '@zenith/shared/core';
+import { flattenTree, mapTree } from '@zenith/shared/core';
+
+/** 栏目树 → 先序平铺（栏目管理 / 分发 / 页面部件的下拉源与名称映射共用） */
+export function flattenChannels(nodes: CmsChannel[]): CmsChannel[] {
+  return flattenTree(nodes);
+}
 
 /** 栏目树 → Semi 树节点（key / value 为栏目 id） */
 export function channelsToTree(nodes: CmsChannel[]): TreeNodeData[] {

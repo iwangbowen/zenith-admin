@@ -19,7 +19,8 @@ import {
 import dayjs from 'dayjs';
 import { useLoginLogStats } from '@/hooks/queries/login-logs';
 import { buildUserChartLabels } from '@/components/UserDisplay';
-import { ChartPanel, LogStatsScaffold, WEEKDAY_LABELS, calcSuccessRate, calcSuccessRateDelta, deltaOf } from '@/components/logs/LogStatsScaffold';
+import { ChartPanel, LogStatsScaffold, WEEKDAY_LABELS, calcSuccessRate, calcSuccessRateDelta, deltaOf, weekdayBuckets } from '@/components/logs/LogStatsScaffold';
+import { shortDate } from '@/utils/date';
 
 interface BarDatum {
   readonly name: string;
@@ -54,13 +55,7 @@ export default function LoginLogStatsPanel() {
     });
   }, [stats, days]);
 
-  const weekdayChartData = useMemo<BarDatum[]>(() => {
-    const buckets = new Array(7).fill(0);
-    for (const d of stats?.dailyStats ?? []) {
-      buckets[(dayjs(d.date).day() + 6) % 7] += d.count;
-    }
-    return WEEKDAY_LABELS.map((name, i) => ({ name, count: buckets[i] }));
-  }, [stats]);
+  const weekdayChartData = useMemo<BarDatum[]>(() => weekdayBuckets(stats?.dailyStats), [stats]);
 
   const { userChartData, userChartTitleOf } = useMemo(() => {
     const items = [...(stats?.userStats ?? [])].reverse();
@@ -137,7 +132,7 @@ export default function LoginLogStatsPanel() {
     point: days <= 7,
     pointSize: 6,
     fillOpacity: 0.26,
-    axis: { xLabel: (value) => value.slice(5) },
+    axis: { xLabel: shortDate },
     tooltip: {
       title: (value) => `日期：${value}`,
       value: (value) => `${value} 次`,

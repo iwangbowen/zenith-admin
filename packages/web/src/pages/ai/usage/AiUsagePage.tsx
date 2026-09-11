@@ -6,7 +6,7 @@ import { Bot, CircleCheck, Coins, Gauge, MessageCircle, Users, Wallet } from 'lu
 import { useQueryClient } from '@tanstack/react-query';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { ListSearchToolbar } from '@/components/list-page';
-import { formatDateForApi } from '@/utils/date';
+import { formatDateForApi, shortDate } from '@/utils/date';
 import { aiUsageKeys, useAiUsageStats } from '@/hooks/queries/ai-usage';
 import type { AiUsageByModel, AiUsageByUser } from '@/hooks/queries/ai-usage';
 import { DateRangeFilter } from '@/components/search-filters';
@@ -30,10 +30,6 @@ function formatNumber(value: number | null | undefined) {
 function formatCostYuan(fen: number | null | undefined) {
   if (fen == null) return '—';
   return `¥${(fen / 100).toFixed(2)}`;
-}
-
-function shortDate(date: string) {
-  return date.slice(5);
 }
 
 export default function AiUsagePage() {

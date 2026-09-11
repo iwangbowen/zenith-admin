@@ -1,9 +1,9 @@
-import React, { useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Button, Space, Tooltip } from '@douyinfe/semi-ui';
-import type { RenderActionProps, RenderAvatarProps, RenderTitleProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
+import type { RenderActionProps, RenderTitleProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
 import { ChevronLeft, ChevronRight, Square, Volume2 } from 'lucide-react';
 import type { BranchInfo } from '@zenith/shared/ai';
-import { UserAvatar } from '@/components/UserAvatar';
+import { renderUserDialogueAvatar } from '../dialogue-avatar';
 import { formatMessageTime, type ChatMessage as Message } from '../message-adapters';
 import { dbIdOf } from '../chat-utils';
 
@@ -64,22 +64,7 @@ export function useDialogueRenderConfig({ branchInfo, generating, onSwitchBranch
   }, [branchInfo, generating, onSwitchBranch]);
 
   return useMemo(() => ({
-    // 用户消息头像与全站一致：有头像显示图片，无头像回退首字母 + 哈希色（Semi 默认无图时是空头像）
-    renderDialogueAvatar: ({ role, message, defaultAvatar }: RenderAvatarProps) => {
-      if (message?.role !== 'user') return defaultAvatar;
-      const className = React.isValidElement(defaultAvatar)
-        ? (defaultAvatar.props as { className?: string }).className
-        : undefined;
-      return (
-        <UserAvatar
-          className={className}
-          name={role?.name ?? '我'}
-          avatar={role?.avatar}
-          size={null}
-          semiSize="extra-small"
-        />
-      );
-    },
+    renderDialogueAvatar: renderUserDialogueAvatar('我'),
     // 操作栏：默认操作（去掉分享）+ 追加 TTS 朗读按钮（assistant 消息）
     renderDialogueAction: (props: RenderActionProps) => {
       if (!props.defaultActionsObj) return null;

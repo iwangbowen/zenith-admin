@@ -9,6 +9,7 @@ import { Button, Col, Form, Input, Modal, Row, Space, SideSheet, Spin, Switch, T
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
 import type { CreateWorkflowEventSubscriptionInput, WorkflowDefinition, WorkflowEventDelivery, WorkflowEventSubscription, WorkflowEventType } from '@zenith/shared/workflow';
+import { isPlainObject } from '@zenith/shared/core';
 import { formatDateTimeForApi } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -76,10 +77,6 @@ interface FormValues {
   headers?: string;
   connectorId?: number | null;
   enabled?: boolean;
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 export default function WorkflowEventSubscriptionsPage() {
@@ -162,7 +159,7 @@ export default function WorkflowEventSubscriptionsPage() {
     if (vals.headers?.trim()) {
       try {
         const parsed: unknown = JSON.parse(vals.headers);
-        if (!isPlainRecord(parsed) || Object.entries(parsed).some(([key, value]) => !key.trim() || typeof value !== 'string')) {
+        if (!isPlainObject(parsed) || Object.entries(parsed).some(([key, value]) => !key.trim() || typeof value !== 'string')) {
           throw new Error('invalid headers');
         }
         headers = parsed as Record<string, string>;

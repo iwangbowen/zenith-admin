@@ -19,14 +19,11 @@ import {
 import { Users, UserPlus, CalendarPlus, Activity, Coins, Wallet, CalendarCheck, Ticket } from 'lucide-react';
 import type { MemberStatsOverview } from '@zenith/shared/member';
 import { useMemberStatsCharts, useMemberStatsOverview } from '@/hooks/queries/member-admin';
+import { shortDate } from '@/utils/date';
 
 const { Text } = Typography;
 
 const PIE_COLORS = ['#07c160', '#4A90E2', '#FA8C16', '#722ED1', '#F5222D', '#13C2C2', '#EB2F96', '#1677FF'];
-
-function shortDate(dateStr: string) {
-  return dateStr.slice(5);
-}
 
 interface StatItem {
   key: keyof MemberStatsOverview;

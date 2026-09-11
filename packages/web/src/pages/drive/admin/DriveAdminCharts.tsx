@@ -3,6 +3,7 @@ import { Card } from '@douyinfe/semi-ui';
 import { formatBytes } from '@zenith/shared/core';
 import type { DriveAdminStats } from '@zenith/shared/drive';
 import { EmptyChart, LineChart, PieChart, chartOptions, makeLineSpec, makePieSpec, useChartPalette } from '@/components/charts';
+import { shortDate } from '@/utils/date';
 
 /** 治理页图表区：独立 chunk，避免 VChart 进入网盘主包 */
 export default function DriveAdminCharts({ stats }: { readonly stats: DriveAdminStats }) {
@@ -13,7 +14,7 @@ export default function DriveAdminCharts({ stats }: { readonly stats: DriveAdmin
     series: [{ field: 'uploads', name: '上传' }, { field: 'downloads', name: '下载' }],
     palette,
     point: true,
-    axis: { xLabel: (d: string) => d.slice(5) },
+    axis: { xLabel: shortDate },
     tooltip: { title: (x) => `日期：${x}` },
   }), [stats.dailyTrend, palette]);
   const typeSpec = useMemo(() => makePieSpec({

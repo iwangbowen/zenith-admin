@@ -17,12 +17,9 @@ import {
 } from '@/components/charts';
 import { ModuleOperationPie } from '@/components/logs/ModuleOperationPie';
 import type { DashboardCharts } from '@zenith/shared/analytics';
+import { shortDate } from '@/utils/date';
 
 const { Text } = Typography;
-
-function shortDate(dateStr: string) {
-  return dateStr.slice(5); // MM-DD
-}
 
 const chartSkeleton = (
   <div className="dashboard-chart-placeholder">

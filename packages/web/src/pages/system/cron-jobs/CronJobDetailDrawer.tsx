@@ -9,7 +9,6 @@ import {
   ScatterChart,
   chartOptions,
   makeBarSpec,
-  makeMixedBarLineSpec,
   makeScatterSpec,
   useChartPalette,
   StatCard,
@@ -20,16 +19,12 @@ import { useCronJobDetailStats } from '@/hooks/queries/cron-jobs';
 import { formatDurationMs } from '@/utils/format';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import {
-  DURATION_COLOR,
-  FAIL_COLOR,
-  P95_COLOR,
   RESULT_META,
   RecentResultBlocks,
   RelativeTime,
-  SUCCESS_COLOR,
-  TIMEOUT_COLOR,
   TRIGGER_TAG,
   TrendMark,
+  buildCronTrendSpec,
   statusMeta,
   type CronStatsDays,
 } from './cron-dashboard-shared';
@@ -69,20 +64,7 @@ function DetailBody({ detail, days, updatedAt, onViewLogs }: Readonly<{ detail: 
     });
   }, [detail, days, now]);
 
-  const trendSpec = useMemo(() => makeMixedBarLineSpec({
-    data: filledDaily,
-    xField: 'date',
-    palette,
-    bar: { field: 'successCount', name: '成功', color: SUCCESS_COLOR },
-    stackedBars: [
-      { field: 'failCount', name: '失败', color: FAIL_COLOR },
-      { field: 'timeoutCount', name: '超时', color: TIMEOUT_COLOR },
-    ],
-    line: { field: 'avgDurationMs', name: '平均耗时', color: DURATION_COLOR, format: (v) => formatDurationMs(v) },
-    extraLines: [{ field: 'p95DurationMs', name: 'P95 耗时', color: P95_COLOR, lineWidth: 1.5, showPoint: false, format: (v) => formatDurationMs(v) }],
-    axis: { xLabel: (d) => d.slice(5), rightLabel: (v) => formatDurationMs(v) },
-    tooltip: { title: (x) => `日期：${x}`, barValue: (v) => `${v} 次` },
-  }), [filledDaily, palette]);
+  const trendSpec = useMemo(() => buildCronTrendSpec(filledDaily, palette), [filledDaily, palette]);
 
   const runPoints = useMemo(() => detail.runs
     .filter((r): r is CronJobRunPoint & { durationMs: number } => r.durationMs != null)

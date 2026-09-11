@@ -16,10 +16,7 @@ import { KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
 import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
-
-function nullableText(value: string | number | null | undefined) {
-  return value == null || value === '' ? '–' : String(value);
-}
+import { nullableText } from './analytics-format';
 
 /** 枚举原值 → 中文标签，未收录的自定义值原样展示 */
 function labelOf(labels: Record<string, string>, value: string | null | undefined): string {

@@ -18,7 +18,8 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ArrowDown, ArrowLeft, ArrowUp, Eye, GripVertical, ImageUp, Monitor, Save, Send, Smartphone, Tablet, Trash2 } from 'lucide-react';
 import dayjs from 'dayjs';
 import { CMS_WIDGET_RENDERER_LABELS, CMS_WIDGET_SOURCE_TYPE_LABELS, CMS_WIDGET_STATUS_LABELS, CMS_WIDGET_RENDERER_OPTIONS, CMS_WIDGET_SOURCE_TYPE_OPTIONS } from '@zenith/shared/cms';
-import type { CmsChannel, CmsWidgetItem, CmsWidgetRendererKey, CmsWidgetSourceType } from '@zenith/shared/cms';
+import type { CmsWidgetItem, CmsWidgetRendererKey, CmsWidgetSourceType } from '@zenith/shared/cms';
+import { flattenChannels } from './channel-tree';
 import AppModal from '@/components/AppModal';
 import MediaPickerModal from '@/components/MediaPickerModal';
 import { usePermission } from '@/hooks/usePermission';
@@ -37,10 +38,6 @@ import { abortSubmit } from '@/lib/abort-submit';
 
 function newItemId(): string {
   return `wi${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
-}
-
-function flattenChannels(nodes: CmsChannel[]): CmsChannel[] {
-  return nodes.flatMap((node) => [node, ...flattenChannels(node.children ?? [])]);
 }
 
 function itemLabel(item: CmsWidgetItem, lookup?: { channelNames?: Map<number, string>; contentTitles?: Map<number, string> }): string {

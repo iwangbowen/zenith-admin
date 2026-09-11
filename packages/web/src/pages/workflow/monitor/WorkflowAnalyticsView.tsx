@@ -18,6 +18,7 @@ import type { WorkflowDefinition } from '@zenith/shared/workflow';
 import { useWorkflowAnalytics, useWorkflowOverdueTasks } from '@/hooks/queries/workflow-monitor';
 import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared/workflow';
 import { FilterSelect } from '@/components/search-filters';
+import { shortDate } from '@/utils/date';
 
 // 文案统一来自 @zenith/shared；hex 色值为图表 canvas 专用（Semi Tag 色名不适用）
 const STATUS_META: Record<string, { text: string; color: string }> = {
@@ -92,7 +93,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
       { field: 'pending', name: '积压', color: '#fa8c16' },
     ],
     palette,
-    axis: { xLabel: (d) => d.slice(5) },
+    axis: { xLabel: shortDate },
   }), [data, palette]);
   const statusPieSpec = useMemo(() => makePieSpec({
     data: statusPie,

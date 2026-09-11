@@ -6,19 +6,7 @@
 import type { CSSProperties } from 'react';
 import Editor from '@monaco-editor/react';
 import { useThemeController } from '@/providers/theme-controller';
-
-const LANGUAGE_MAP: Record<string, string> = {
-  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
-  mjs: 'javascript', cjs: 'javascript', json: 'json', html: 'html', htm: 'html',
-  css: 'css', scss: 'scss', less: 'less', md: 'markdown', markdown: 'markdown',
-  py: 'python', go: 'go', rs: 'rust', java: 'java', c: 'c', h: 'c',
-  cpp: 'cpp', cc: 'cpp', hpp: 'cpp', cs: 'csharp', php: 'php', rb: 'ruby',
-  sh: 'shell', bash: 'shell', zsh: 'shell', yml: 'yaml', yaml: 'yaml',
-  xml: 'xml', sql: 'sql', toml: 'ini', ini: 'ini', conf: 'ini',
-  env: 'ini', vue: 'html', svelte: 'html', graphql: 'graphql', kt: 'kotlin',
-  swift: 'swift', dart: 'dart', r: 'r', ex: 'elixir', exs: 'elixir',
-  lua: 'lua', m: 'objective-c', mm: 'objective-c',
-};
+import { monacoLanguageByExt } from '@/utils/monaco-language';
 
 interface MonacoPreviewPanelProps {
   /** 文件内容 */
@@ -31,10 +19,7 @@ interface MonacoPreviewPanelProps {
 export default function MonacoPreviewPanel({ content, fileName, style }: Readonly<MonacoPreviewPanelProps>) {
   const { isDark } = useThemeController();
 
-  const language = (() => {
-    const ext = (fileName?.split('.').pop() ?? '').toLowerCase();
-    return LANGUAGE_MAP[ext] ?? 'plaintext';
-  })();
+  const language = monacoLanguageByExt(fileName?.split('.').pop() ?? '');
 
   return (
     <div style={{ flex: 1, minHeight: 0, ...style }}>

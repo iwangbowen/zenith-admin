@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Spin, Typography, Skeleton, Card, Button, Toast } from '@douyinfe/semi-ui';
 import { Users, UserCheck, UserMinus, Tags, Image, FileText, MessageSquare, Reply, BarChart3 } from 'lucide-react';
 import type { MpStats } from '@zenith/shared/mp';
-import { formatDateForApi } from '@/utils/date';
+import { formatDateForApi, shortDate } from '@/utils/date';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -56,7 +56,7 @@ export default function MpStatisticsPage() {
     xField: 'date',
     series: [{ field: 'count', name: '粉丝数', color: '#3b82f6' }],
     palette,
-    axis: { xLabel: (v) => v.slice(5) },
+    axis: { xLabel: shortDate },
     tooltip: { value: (v) => `${v} 人` },
   });
   const msgSpec = makeBarSpec({
@@ -67,7 +67,7 @@ export default function MpStatisticsPage() {
       { field: 'out', name: '发出', color: '#10b981' },
     ],
     palette,
-    axis: { xLabel: (v) => v.slice(5) },
+    axis: { xLabel: shortDate },
     tooltip: { value: (v) => `${v} 条` },
   });
 

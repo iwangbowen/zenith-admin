@@ -59,6 +59,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { confirmDelete, confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
+import { groupContainersByCompose } from './docker-grouping';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { formatBytes } from '@zenith/shared/core';
@@ -105,16 +106,7 @@ function formatPorts(ports: DockerPortBinding[]): string {
 }
 
 function groupByCompose(containers: DockerContainer[]): (DockerContainer & { children?: DockerContainer[] })[] {
-  const groups: Record<string, DockerContainer[]> = {};
-  const standalone: DockerContainer[] = [];
-  for (const c of containers) {
-    if (c.composeProject) {
-      if (!groups[c.composeProject]) groups[c.composeProject] = [];
-      groups[c.composeProject].push(c);
-    } else {
-      standalone.push(c);
-    }
-  }
+  const { groups, standalone } = groupContainersByCompose(containers);
   const result: (DockerContainer & { children?: DockerContainer[] })[] = [];
   for (const [project, members] of Object.entries(groups)) {
     const runningCount = members.filter((m) => m.state === 'running').length;

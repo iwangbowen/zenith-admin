@@ -147,12 +147,14 @@ export type ReportFillSyncStatus = typeof REPORT_FILL_SYNC_STATUSES[number];
 /** 外部数据库类型（凭据加密 + 走外部连接池取数） */
 export const EXTERNAL_DB_TYPES = ['mysql', 'postgresql', 'sqlserver'] as const;
 
+export type ReportExternalDbType = (typeof EXTERNAL_DB_TYPES)[number];
+
 /** 以 SQL 文本取数的类型（内置主库 + 外部库），统一驱动 SQL 编辑 / 系统变量解析 */
 export const SQL_DATASET_TYPES = ['sql', 'mysql', 'postgresql', 'sqlserver'] as const;
 
-/** 是否外部数据库类型 */
-export function isExternalDbType(t: ReportDatasourceType): boolean {
-  return (EXTERNAL_DB_TYPES as readonly string[]).includes(t);
+/** 是否外部数据库类型；接受未收窄的表单值（`unknown`）并作类型守卫 */
+export function isExternalDbType(t: unknown): t is ReportExternalDbType {
+  return (EXTERNAL_DB_TYPES as readonly unknown[]).includes(t);
 }
 
 /** 是否以 SQL 取数（内置主库或外部库） */

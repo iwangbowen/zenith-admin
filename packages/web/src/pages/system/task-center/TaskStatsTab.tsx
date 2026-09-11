@@ -16,6 +16,7 @@ import {
 } from '@/components/charts';
 import { asyncTaskRateColor } from '@/utils/async-task';
 import { formatDurationMs as formatDuration } from '@/utils/format';
+import { shortDate } from '@/utils/date';
 
 const SUCCESS_COLOR = '#10b981';
 const FAIL_COLOR = '#ef4444';
@@ -62,7 +63,7 @@ export default function TaskStatsTab({ stats }: Readonly<{ stats: AsyncTaskStats
     palette,
     stack: true,
     barMaxWidth: 18,
-    axis: { xLabel: (value) => value.slice(5) },
+    axis: { xLabel: shortDate },
     tooltip: {
       title: (value) => `日期：${value}`,
       value: (value) => `${value} 个`,

@@ -30,6 +30,11 @@ export function formatDate(date: DateInput): string {
   return dayjs(date).format(DATE_FORMAT);
 }
 
+/** `YYYY-MM-DD` → `MM-DD`：图表 X 轴 / 趋势表的短日期标签；长度不足 5 的串原样返回 */
+export function shortDate(dateStr: string): string {
+  return dateStr.length >= 5 ? dateStr.slice(5) : dateStr;
+}
+
 /**
  * 格式化接口提交用日期时间，禁止直接使用 toISOString() 造成时区偏移。
  */

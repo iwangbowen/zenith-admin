@@ -21,7 +21,7 @@ import {
 } from '@/hooks/queries/report-datasources';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { ReportDatasource, ReportDatasourceType, ReportApiDatasourceConfig, ReportExternalDbConfig } from '@zenith/shared/report';
-import { REPORT_DATASOURCE_TYPE_OPTIONS, REPORT_DATASOURCE_TYPES } from '@zenith/shared/report';
+import { REPORT_DATASOURCE_TYPE_OPTIONS, REPORT_DATASOURCE_TYPES, isExternalDbType } from '@zenith/shared/report';
 import { useDictItems } from '@/hooks/useDictItems';
 import { renderReportDatasourceTypeTag } from './report-datasource-ui';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
@@ -34,10 +34,6 @@ import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from
 
 interface SearchParams { keyword: string; type?: string; status?: string; ownerId?: number; folderId?: number }
 const defaultSearchParams: SearchParams = { keyword: '', type: undefined, status: undefined, ownerId: undefined, folderId: undefined };
-
-function isExternalDbType(type: unknown): type is 'mysql' | 'postgresql' | 'sqlserver' {
-  return type === 'mysql' || type === 'postgresql' || type === 'sqlserver';
-}
 
 export default function DataSourcesPage() {
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');

@@ -4,7 +4,8 @@ import dayjs from 'dayjs';
 import { Banner, Col, Form, Row, SideSheet, TabPane, Tabs, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CMS_CONTENT_TYPES, CMS_CONTENT_TYPE_LABELS, CMS_DISTRIBUTION_CONFLICT_STRATEGIES, CMS_DISTRIBUTION_CONFLICT_STRATEGY_LABELS, CMS_DISTRIBUTION_MODES, CMS_DISTRIBUTION_MODE_LABELS, CMS_DISTRIBUTION_RUN_OUTCOME_LABELS, CMS_DISTRIBUTION_TASK_STATUSES, CMS_DISTRIBUTION_TASK_STATUS_LABELS } from '@zenith/shared/cms';
-import type { CmsChannel, CmsDistributionRule, CmsDistributionRun } from '@zenith/shared/cms';
+import type { CmsDistributionRule, CmsDistributionRun } from '@zenith/shared/cms';
+import { flattenChannels } from './channel-tree';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
@@ -52,10 +53,6 @@ interface RunSearch {
 
 const EMPTY_RULE_SEARCH: RuleSearch = { keyword: '' };
 const EMPTY_RUN_SEARCH: RunSearch = { range: null };
-
-function flattenChannels(nodes: CmsChannel[]): CmsChannel[] {
-  return nodes.flatMap((node) => [node, ...flattenChannels(node.children ?? [])]);
-}
 
 export default function DistributionPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['rules', 'runs'] as const, 'rules');

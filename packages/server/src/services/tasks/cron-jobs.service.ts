@@ -19,6 +19,7 @@ import {
   CRON_ALERT_TYPE_LABELS,
   countConsecutiveFails,
   cronSuccessRatePercent,
+  describeCronDurationMs as describeMs,
   isCronLowSuccessRate,
   isCronNearTimeout,
   isCronRunningTimeout,
@@ -329,11 +330,6 @@ function detectMissedRun(job: JobRow, now: Date): Date | null {
 const ALERT_LEVEL_ORDER = { danger: 0, warning: 1, info: 2 } as const;
 
 /** 提醒文案里的耗时：毫秒级直接显示毫秒，否则保留一位小数的秒 */
-function describeMs(ms: number | null): string {
-  if (ms == null) return '—';
-  return ms < 1000 ? `${ms} 毫秒` : `${(ms / 1000).toFixed(1)} 秒`;
-}
-
 function buildAlerts(
   jobs: JobRow[],
   perJob: Map<number, CronJobStatsPerJob>,

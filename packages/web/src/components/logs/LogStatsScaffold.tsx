@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import type { ReactNode } from 'react';
+import dayjs from 'dayjs';
 import { Select, Skeleton, Spin } from '@douyinfe/semi-ui';
 import { sectionTitleStyle } from '@/components/charts/helpers';
 import { StatGrid } from '@/components/charts/StatCard';
@@ -11,6 +12,15 @@ export const LOG_STATS_DAYS_OPTIONS = [
 ];
 
 export const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+/** 日统计按周一 … 周日归桶（本地时区取周几），登录 / 操作日志的周分布柱图共用 */
+export function weekdayBuckets(dailyStats: readonly { date: string; count: number }[] | null | undefined): { name: string; count: number }[] {
+  const buckets = new Array<number>(7).fill(0);
+  for (const d of dailyStats ?? []) {
+    buckets[(dayjs(d.date).day() + 6) % 7] += d.count;
+  }
+  return WEEKDAY_LABELS.map((name, i) => ({ name, count: buckets[i] }));
+}
 
 export interface SuccessRateSummary {
   readonly total: number;
