@@ -13,6 +13,7 @@ import AppModal from '@/components/AppModal';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
 import { useAllCmsSites } from '@/hooks/queries/cms';
@@ -68,11 +69,19 @@ export default function PublishingPage() {
   const sites = sitesQuery.data ?? [];
   const siteOptions = sites.map((site) => ({ value: site.id, label: site.name }));
   const [activeTab, setActiveTab] = useUrlTabState(['queue', 'history', 'artifacts', 'failed'] as const, 'queue');
-  const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
-  const [submitted, setSubmitted] = useState<Filters>(EMPTY_FILTERS);
   const [selected, setSelected] = useState<number[]>([]);
-  const taskPagination = usePagination();
+  // 同一组筛选驱动任务列表与产物列表：任务列表分页由 useListSearch 托管，产物列表另有独立分页，查询 / 重置时同步回首页
   const artifactPagination = usePagination();
+  const {
+    draftParams: draft, setDraftParams, bind, bindKeyword, submittedParams: submitted,
+    handleSearch: applySearch, handleReset: resetSearch, ...taskPagination
+  } = useListSearch<Filters>({
+    defaults: EMPTY_FILTERS,
+    listKey: cmsPublishingKeys.lists,
+    extraKeys: [cmsPublishingKeys.artifacts],
+    onSearch: () => { artifactPagination.setPage(1); setSelected([]); },
+    onReset: () => { artifactPagination.setPage(1); setSelected([]); },
+  });
   // 产物页按通道筛选：通道随所选站点变化，未选站点时不可用
 
   const taskStatus = activeTab === 'queue' ? 'active' : activeTab === 'failed' ? 'failed' : 'terminal';
@@ -113,25 +122,6 @@ export default function PublishingPage() {
   useTaskProgressEvents(useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: cmsPublishingKeys.all });
   }, [queryClient]));
-
-  const applySearch = () => {
-    setSubmitted(draft);
-    taskPagination.setPage(1);
-    artifactPagination.setPage(1);
-    setSelected([]);
-    void queryClient.invalidateQueries({ queryKey: cmsPublishingKeys.lists });
-    void queryClient.invalidateQueries({ queryKey: cmsPublishingKeys.artifacts });
-  };
-
-  const resetSearch = () => {
-    setDraft(EMPTY_FILTERS);
-    setSubmitted(EMPTY_FILTERS);
-    taskPagination.setPage(1);
-    artifactPagination.setPage(1);
-    setSelected([]);
-    void queryClient.invalidateQueries({ queryKey: cmsPublishingKeys.lists });
-    void queryClient.invalidateQueries({ queryKey: cmsPublishingKeys.artifacts });
-  };
 
   const runAction = async (record: CmsPublishingTask, action: 'cancel' | 'resume' | 'restart' | 'rebuild') => {
     await actionMutation.mutateAsync({ params: { id: record.id, action } });
@@ -232,7 +222,7 @@ export default function PublishingPage() {
   }, [draft.endTime, draft.startTime]);
 
   const keywordInput = (
-    <KeywordInput placeholder="任务/路径关键词" value={draft.keyword} onChange={(keyword) => setDraft((prev) => ({ ...prev, keyword }))} />
+    <KeywordInput placeholder="任务/路径关键词" {...bindKeyword('keyword')} />
   );
 
   const filters = (
@@ -240,21 +230,19 @@ export default function PublishingPage() {
       <FilterSelect
         placeholder="全部站点"
         items={siteOptions}
-        value={draft.siteId}
-        onChange={(value) => setDraft((prev) => ({ ...prev, siteId: value }))}
+        {...bind('siteId')}
         width={150}
       />
       <FilterSelect
         placeholder="全部目标类型"
         items={CMS_PUBLISH_TARGET_TYPES.map((value) => ({ value, label: CMS_PUBLISH_TARGET_TYPE_LABELS[value] }))}
-        value={draft.targetType}
-        onChange={(value) => setDraft((prev) => ({ ...prev, targetType: value ? value as CmsPublishTargetType : undefined }))}
+        {...bind('targetType')}
         width={150}
       />
-      <Input placeholder="创建人" value={draft.createdBy} onChange={(createdBy) => setDraft((prev) => ({ ...prev, createdBy }))} style={{ width: 130 }} />
+      <Input placeholder="创建人" {...bind('createdBy')} style={{ width: 130 }} />
       <DateRangeFilter value={dateValue} onChange={(value) => {
           const range = Array.isArray(value) ? value : [];
-          setDraft((prev) => ({
+          setDraftParams((prev) => ({
             ...prev,
             ...formatDateTimeRangeForApi(range),
           }));

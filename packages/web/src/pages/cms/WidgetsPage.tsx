@@ -11,7 +11,7 @@ import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import {
   cmsWidgetKeys,
@@ -46,19 +46,22 @@ export default function WidgetsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
-  const { page, pageSize, resetPage, buildPagination } = usePagination();
   const [siteId, setSiteId] = useState<number | undefined>();
-  const [draft, setDraft] = useState<SearchState>(DEFAULT_SEARCH);
-  const [submitted, setSubmitted] = useState<SearchState>(DEFAULT_SEARCH);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedRecords, setSelectedRecords] = useState<Record<number, CmsWidget>>({});
+  const clearSelection = () => { setSelectedIds([]); setSelectedRecords({}); };
+  const {
+    page, pageSize, resetPage, buildPagination,
+    draftParams, setField, bindKeyword, submittedParams: submitted,
+    handleSearch, handleReset,
+  } = useListSearch<SearchState>({ defaults: DEFAULT_SEARCH, listKey: cmsWidgetKeys.lists, onSearch: clearSelection, onReset: clearSelection });
   const [refsWidget, setRefsWidget] = useState<CmsWidget | null>(null);
 
   const listQuery = useCmsWidgetList({
     page,
     pageSize,
     siteId,
-    keyword: submitted.keyword || undefined,
+    keyword: submitted.keyword.trim() || undefined,
     status: submitted.status || undefined,
     type: submitted.type || undefined,
   });
@@ -88,23 +91,6 @@ export default function WidgetsPage() {
     }
     if (batchCompleted) void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.all });
   }, [queryClient, tasks]);
-
-  function handleSearch() {
-    resetPage();
-    setSelectedIds([]);
-    setSelectedRecords({});
-    setSubmitted({ ...draft, keyword: draft.keyword.trim() });
-    void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
-  }
-
-  function handleReset() {
-    resetPage();
-    setSelectedIds([]);
-    setSelectedRecords({});
-    setDraft(DEFAULT_SEARCH);
-    setSubmitted(DEFAULT_SEARCH);
-    void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
-  }
 
   function runSingle(action: 'publish' | 'offline', widget: CmsWidget) {
     const execute = async () => {
@@ -238,21 +224,22 @@ export default function WidgetsPage() {
   ];
 
   const keywordInput = (
-    <KeywordInput placeholder="部件名称 / 编码" value={draft.keyword} onChange={(keyword) => setDraft((current) => ({ ...current, keyword }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="部件名称 / 编码" {...bindKeyword('keyword')} />
   );
+  // 切换筛选即清空已选行，避免跨条件误批量操作
   const statusFilter = (
     <StatusSelect
       items={CMS_WIDGET_STATUS_OPTIONS}
-      value={draft.status}
-      onChange={(value) => { setDraft((current) => ({ ...current, status: value })); setSelectedIds([]); setSelectedRecords({}); }}
+      value={draftParams.status}
+      onChange={(value) => { setField('status')(value); clearSelection(); }}
     />
   );
   const typeFilter = (
     <FilterSelect
       placeholder="全部类型"
       items={CMS_WIDGET_TYPE_OPTIONS}
-      value={draft.type}
-      onChange={(value) => { setDraft((current) => ({ ...current, type: value as CmsWidgetType | undefined })); setSelectedIds([]); setSelectedRecords({}); }}
+      value={draftParams.type}
+      onChange={(value) => { setField('type')(value); clearSelection(); }}
       width={140}
     />
   );

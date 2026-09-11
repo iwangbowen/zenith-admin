@@ -15,7 +15,7 @@ import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-c
 import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useAllCmsSites, useCmsChannelTree } from '@/hooks/queries/cms';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
@@ -58,14 +58,12 @@ export default function DistributionPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['rules', 'runs'] as const, 'rules');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
-  const rulePagination = usePagination();
-  const runPagination = usePagination();
+  const ruleSearch = useListSearch<RuleSearch>({ defaults: EMPTY_RULE_SEARCH, listKey: cmsDistributionKeys.lists });
+  const runSearch = useListSearch<RunSearch>({ defaults: EMPTY_RUN_SEARCH, listKey: cmsDistributionKeys.runs });
+  const ruleSubmitted = ruleSearch.submittedParams;
+  const runSubmitted = runSearch.submittedParams;
   const { items: commonStatuses } = useDictItems('common_status');
   const { data: sites } = useAllCmsSites();
-  const [ruleDraft, setRuleDraft] = useState<RuleSearch>(EMPTY_RULE_SEARCH);
-  const [ruleSubmitted, setRuleSubmitted] = useState<RuleSearch>(EMPTY_RULE_SEARCH);
-  const [runDraft, setRunDraft] = useState<RunSearch>(EMPTY_RUN_SEARCH);
-  const [runSubmitted, setRunSubmitted] = useState<RunSearch>(EMPTY_RUN_SEARCH);
   const [formSourceSiteId, setFormSourceSiteId] = useState<number>();
   const [formTargetSiteId, setFormTargetSiteId] = useState<number>();
   const [formMode, setFormMode] = useState<string>('copy');
@@ -73,8 +71,8 @@ export default function DistributionPage() {
   const [detailRunId, setDetailRunId] = useState<number>();
 
   const ruleQuery = useCmsDistributionRuleList({
-    page: rulePagination.page,
-    pageSize: rulePagination.pageSize,
+    page: ruleSearch.page,
+    pageSize: ruleSearch.pageSize,
     keyword: ruleSubmitted.keyword || undefined,
     sourceSiteId: ruleSubmitted.sourceSiteId,
     targetSiteId: ruleSubmitted.targetSiteId,
@@ -82,8 +80,8 @@ export default function DistributionPage() {
     status: enumValueOf(USER_STATUSES, ruleSubmitted.status),
   });
   const runQuery = useCmsDistributionRunList({
-    page: runPagination.page,
-    pageSize: runPagination.pageSize,
+    page: runSearch.page,
+    pageSize: runSearch.pageSize,
     ruleId: runSubmitted.ruleId,
     siteId: runSubmitted.siteId,
     status: enumValueOf(CMS_DISTRIBUTION_TASK_STATUSES, runSubmitted.status),
@@ -158,32 +156,6 @@ export default function DistributionPage() {
     setFormCron(rule.scheduleCron ?? '');
     ruleModal.openEdit(rule);
   };
-
-  function searchRules() {
-    rulePagination.setPage(1);
-    setRuleSubmitted(ruleDraft);
-    void queryClient.invalidateQueries({ queryKey: cmsDistributionKeys.lists });
-  }
-
-  function resetRules() {
-    rulePagination.setPage(1);
-    setRuleDraft(EMPTY_RULE_SEARCH);
-    setRuleSubmitted(EMPTY_RULE_SEARCH);
-    void queryClient.invalidateQueries({ queryKey: cmsDistributionKeys.lists });
-  }
-
-  function searchRuns() {
-    runPagination.setPage(1);
-    setRunSubmitted(runDraft);
-    void queryClient.invalidateQueries({ queryKey: cmsDistributionKeys.runs });
-  }
-
-  function resetRuns() {
-    runPagination.setPage(1);
-    setRunDraft(EMPTY_RUN_SEARCH);
-    setRunSubmitted(EMPTY_RUN_SEARCH);
-    void queryClient.invalidateQueries({ queryKey: cmsDistributionKeys.runs });
-  }
 
   async function runRule(rule: CmsDistributionRule) {
     await runMutation.mutateAsync({ params: { id: rule.id } });
@@ -377,45 +349,41 @@ export default function DistributionPage() {
             description="仅同步已发布内容；所有写入都先校验来源与目标 ACL。copy 生成独立草稿，mapping 生成正文跟随的映射草稿，scheduled 按 Cron 提交任务。"
           />
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="搜索规则名称" value={ruleDraft.keyword} onChange={(keyword) => setRuleDraft((value) => ({ ...value, keyword }))} onSearch={searchRules} />}
+            keyword={<KeywordInput placeholder="搜索规则名称" {...ruleSearch.bindKeyword('keyword')} />}
             filters={(
               <>
                 <FilterSelect
                   placeholder="全部来源站点"
                   items={siteOptions}
-                  value={ruleDraft.sourceSiteId}
-                  onChange={(sourceSiteId) => setRuleDraft((value) => ({ ...value, sourceSiteId: sourceSiteId as number | undefined }))}
+                  {...ruleSearch.bind('sourceSiteId')}
                   width={150}
                 />
                 <FilterSelect
                   placeholder="全部模式"
                   items={CMS_DISTRIBUTION_MODES.map((mode) => ({ value: mode, label: CMS_DISTRIBUTION_MODE_LABELS[mode] }))}
-                  value={ruleDraft.mode}
-                  onChange={(mode) => setRuleDraft((value) => ({ ...value, mode: mode as string | undefined }))}
+                  {...ruleSearch.bind('mode')}
                 />
                 <FilterSelect
                   placeholder="全部目标站点"
                   items={siteOptions}
-                  value={ruleDraft.targetSiteId}
-                  onChange={(targetSiteId) => setRuleDraft((value) => ({ ...value, targetSiteId: targetSiteId as number | undefined }))}
+                  {...ruleSearch.bind('targetSiteId')}
                   width={150}
                 />
                 <FilterSelect
                   placeholder="全部规则状态"
                   items={commonStatuses}
-                  value={ruleDraft.status}
-                  onChange={(status) => setRuleDraft((value) => ({ ...value, status: status as string | undefined }))}
+                  {...ruleSearch.bind('status')}
                   width={140}
                 />
               </>
             )}
-            onSearch={searchRules}
-            onReset={resetRules}
+            onSearch={ruleSearch.handleSearch}
+            onReset={ruleSearch.handleReset}
             create={hasPermission('cms:distribution:create') ? <CreateButton onClick={openCreate} /> : null}
           />
           <ConfigurableTable<CmsDistributionRule>
             columns={ruleColumns}
-            {...listTableProps(ruleQuery, { pagination: rulePagination.buildPagination })}
+            {...listTableProps(ruleQuery, { pagination: ruleSearch.buildPagination })}
           />
         </TabPane>
 
@@ -426,36 +394,30 @@ export default function DistributionPage() {
               <FilterSelect
                 placeholder="全部分发规则"
                 items={ruleOptions}
-                value={runDraft.ruleId}
-                onChange={(ruleId) => setRunDraft((value) => ({ ...value, ruleId: ruleId as number | undefined }))}
+                {...runSearch.bind('ruleId')}
                 width={180}
                 filter
               />
                 <FilterSelect
                   placeholder="全部站点"
                   items={siteOptions}
-                  value={runDraft.siteId}
-                  onChange={(siteId) => setRunDraft((value) => ({ ...value, siteId: siteId as number | undefined }))}
+                  {...runSearch.bind('siteId')}
                   width={150}
                 />
-                <DateRangeFilter
-                  value={runDraft.range}
-                  onChange={(range) => setRunDraft((value) => ({ ...value, range }))}
-                />
+                <DateRangeFilter {...runSearch.bind('range')} />
                 <FilterSelect
                   placeholder="全部任务状态"
                   items={CMS_DISTRIBUTION_TASK_STATUSES.map((status) => ({
                     value: status,
                     label: CMS_DISTRIBUTION_TASK_STATUS_LABELS[status],
                   }))}
-                  value={runDraft.status}
-                  onChange={(status) => setRunDraft((value) => ({ ...value, status: status as string | undefined }))}
+                  {...runSearch.bind('status')}
                   width={140}
                 />
               </>
             )}
-            onSearch={searchRuns}
-            onReset={resetRuns}
+            onSearch={runSearch.handleSearch}
+            onReset={runSearch.handleReset}
             actions={(
               <>
                 {hasPermission('cms:distribution:export') ? (
@@ -483,7 +445,7 @@ export default function DistributionPage() {
           />
           <ConfigurableTable<CmsDistributionRun>
             columns={runColumns}
-            {...listTableProps(runQuery, { pagination: runPagination.buildPagination })}
+            {...listTableProps(runQuery, { pagination: runSearch.buildPagination })}
           />
         </TabPane>
       </Tabs>

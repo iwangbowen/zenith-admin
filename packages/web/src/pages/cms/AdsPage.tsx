@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Tag, Toast, Tabs, TabPane, SideSheet, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Trash2 } from 'lucide-react';
@@ -12,6 +11,7 @@ import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import {
   useCmsAdSlots, useSaveCmsAdSlot, useDeleteCmsAdSlot,
   useCmsAdList, useSaveCmsAd, useDeleteCmsAds,
@@ -192,7 +192,7 @@ interface AdEventSearch {
   slotId?: number;
   eventType?: 'impression' | 'click';
   device?: 'pc' | 'mobile' | 'bot';
-  timeRange?: [Date, Date];
+  timeRange?: [Date, Date] | null;
 }
 
 function EventsTab({ siteId, setSiteId }: Readonly<{
@@ -200,10 +200,11 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
   setSiteId: (siteId: number | undefined) => void;
 }>) {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draft, setDraft] = useState<AdEventSearch>({});
-  const [submitted, setSubmitted] = useState<AdEventSearch>({});
+  const {
+    page, pageSize, buildPagination,
+    bind, submittedParams: submitted,
+    handleSearch, handleReset, applySearch,
+  } = useListSearch<AdEventSearch>({ defaults: {}, listKey: cmsAdEventKeys.lists });
   const [detail, setDetail] = useState<CmsAdEvent | null>(null);
   const slotsQuery = useCmsAdSlots(siteId);
   // The API caps paginated lists at 200. Keep the lookup request within that
@@ -220,24 +221,10 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
   const listQuery = useCmsAdEventList(params, !!siteId);
   const cleanupMutation = useCleanupCmsAdEvents();
 
-  const handleSearch = () => {
-    setPage(1);
-    setSubmitted(draft);
-    void queryClient.invalidateQueries({ queryKey: cmsAdEventKeys.lists });
-  };
-  const handleReset = () => {
-    setPage(1);
-    setDraft({});
-    setSubmitted({});
-    void queryClient.invalidateQueries({ queryKey: cmsAdEventKeys.lists });
-  };
-
   const handleSiteChange = (value: number | undefined) => {
     setSiteId(value);
-    setPage(1);
     // Ad and slot IDs are site-scoped; never carry them into another site.
-    setDraft({});
-    setSubmitted({});
+    applySearch({});
     setDetail(null);
   };
 
@@ -246,31 +233,27 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
       <FilterSelect
         placeholder="全部广告"
         items={(adsQuery.data?.list ?? []).map((ad) => ({ value: ad.id, label: ad.name }))}
-        value={draft.adId}
-        onChange={(value) => setDraft((current) => ({ ...current, adId: value as number | undefined }))}
+        {...bind('adId')}
         width={160}
       />
       <FilterSelect
         placeholder="全部广告位"
         items={(slotsQuery.data ?? []).map((slot) => ({ value: slot.id, label: slot.name }))}
-        value={draft.slotId}
-        onChange={(value) => setDraft((current) => ({ ...current, slotId: value as number | undefined }))}
+        {...bind('slotId')}
         width={160}
       />
       <FilterSelect
         placeholder="全部事件类型"
         items={CMS_AD_EVENT_TYPE_OPTIONS}
-        value={draft.eventType}
-        onChange={(value) => setDraft((current) => ({ ...current, eventType: value as AdEventSearch['eventType'] }))}
+        {...bind('eventType')}
         width={140}
       />
       <FilterSelect
         placeholder="全部设备"
         items={CMS_DEVICE_TYPE_OPTIONS}
-        value={draft.device}
-        onChange={(value) => setDraft((current) => ({ ...current, device: value as AdEventSearch['device'] }))}
+        {...bind('device')}
       />
-      <DateRangeFilter placeholder={['发生开始时间', '发生结束时间']} value={draft.timeRange} onChange={(value) => setDraft((current) => ({ ...current, timeRange: value as [Date, Date] | undefined }))} />
+      <DateRangeFilter placeholder={['发生开始时间', '发生结束时间']} {...bind('timeRange')} />
     </>
   );
 
@@ -367,8 +350,7 @@ function StatsTab({ siteId, setSiteId }: Readonly<{
   siteId: number | undefined;
   setSiteId: (siteId: number | undefined) => void;
 }>) {
-  const [draft, setDraft] = useState<AdEventSearch>({});
-  const [submitted, setSubmitted] = useState<AdEventSearch>({});
+  const { bind, submittedParams: submitted, handleSearch, handleReset } = useListSearch<AdEventSearch>({ defaults: {}, listKey: cmsAdEventKeys.statsAll });
   const params = {
     siteId: siteId ?? 0,
     ...submitted,
@@ -389,20 +371,18 @@ function StatsTab({ siteId, setSiteId }: Readonly<{
         <FilterSelect
           placeholder="全部事件类型"
           items={CMS_AD_EVENT_TYPE_OPTIONS}
-          value={draft.eventType}
-          onChange={(value) => setDraft((current) => ({ ...current, eventType: value as AdEventSearch['eventType'] }))}
+          {...bind('eventType')}
           width={140}
         />
         <FilterSelect
           placeholder="全部设备"
           items={CMS_DEVICE_TYPE_OPTIONS}
-          value={draft.device}
-          onChange={(value) => setDraft((current) => ({ ...current, device: value as AdEventSearch['device'] }))}
+          {...bind('device')}
           width={140}
         />
-        <DateRangeFilter placeholder={['统计开始时间', '统计结束时间']} value={draft.timeRange} onChange={(value) => setDraft((current) => ({ ...current, timeRange: value as [Date, Date] | undefined }))} />
-        <SearchButton onClick={() => setSubmitted(draft)} />
-        <ResetButton onClick={() => { setDraft({}); setSubmitted({}); }} />
+        <DateRangeFilter placeholder={['统计开始时间', '统计结束时间']} {...bind('timeRange')} />
+        <SearchButton onClick={handleSearch} />
+        <ResetButton onClick={handleReset} />
       </SearchToolbar>
       {statsQuery.data ? (
         <div style={{ display: 'flex', gap: 24, marginBottom: 12 }} aria-label="广告事件统计摘要">

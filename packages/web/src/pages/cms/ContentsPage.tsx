@@ -12,7 +12,7 @@ import AppModal from '@/components/AppModal';
 import { ExportButton } from '@/components/ExportButton';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { usePermission } from '@/hooks/usePermission';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import ImportButton from '@/components/ImportButton';
 import {
   useCmsChannelTree, useCmsContentList, useCmsContentAction, useCmsContentBatch,
@@ -56,10 +56,18 @@ export default function ContentsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['all', 'pending', 'published', 'archived', 'recycle'] as const, 'all');
   const [channelId, setChannelId] = useState<number | undefined>(undefined);
   const [contentType, setContentType] = useState<CmsContentType | undefined>(undefined);
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  // 栏目 / 类型为即时筛选，仅关键字走「草稿 → 查询」；重置时一并清空即时筛选与选中行
+  const {
+    page, pageSize, setPage, buildPagination,
+    bindKeyword, submittedParams, handleSearch, handleReset,
+  } = useListSearch<{ keyword: string }>({
+    defaults: { keyword: '' },
+    listKey: cmsContentKeys.lists,
+    onSearch: () => setSelectedIds([]),
+    onReset: () => { setChannelId(undefined); setContentType(undefined); setSelectedIds([]); },
+  });
+  const submittedKeyword = submittedParams.keyword;
   const [widgetSourceTarget, setWidgetSourceTarget] = useState<CmsWidgetSourceTarget | null>(null);
   // 窄屏单栏模式下的栏目树显隐（MasterDetailLayout 响应式）
   const [showChannelTree, setShowChannelTree] = useState(false);
@@ -109,23 +117,6 @@ export default function ContentsPage() {
   const [copyTarget, setCopyTarget] = useState<CmsContent | null>(null);
   const [copyChannelId, setCopyChannelId] = useState<number | undefined>(undefined);
   const distributeTargetTreeQuery = useCmsChannelTree(distributeTargetSiteId);
-
-  function handleSearch() {
-    setPage(1);
-    setSelectedIds([]);
-    setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: cmsContentKeys.lists });
-  }
-
-  function handleReset() {
-    setPage(1);
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setChannelId(undefined);
-    setContentType(undefined);
-    setSelectedIds([]);
-    void queryClient.invalidateQueries({ queryKey: cmsContentKeys.lists });
-  }
 
   function handleTabChange(key: string) {
     setActiveTab(key as TabKey);
@@ -586,7 +577,7 @@ export default function ContentsPage() {
   const tableContent = (
     <>
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标题/作者..." value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索标题/作者..." {...bindKeyword('keyword')} />}
         filters={(
           <FilterSelect
             placeholder="全部内容形态"

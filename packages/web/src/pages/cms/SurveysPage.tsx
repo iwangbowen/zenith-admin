@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Button, Modal, SideSheet, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -9,7 +8,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
   cmsInteractionKeys,
@@ -47,18 +46,26 @@ const STATUS_COLORS: Record<CmsInteractionStatus, 'grey' | 'green' | 'orange'> =
 export default function SurveysPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['interactions', 'responses'] as const, 'interactions');
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [siteId, setSiteId] = useState<number | undefined>();
-  const [draft, setDraft] = useState<ListSearch>(initialSearch);
-  const [submitted, setSubmitted] = useState<ListSearch>(initialSearch);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [resultsTarget, setResultsTarget] = useState<CmsInteraction | null>(null);
   const [responseDetail, setResponseDetail] = useState<CmsInteractionResponse | null>(null);
   const [responsePage, setResponsePage] = useState(1);
   const [responseTimeRange, setResponseTimeRange] = useState<[Date, Date] | undefined>();
   const [responseInteractionId, setResponseInteractionId] = useState<number | undefined>();
+  // 两个页签共用 kind 筛选：查询同时回源互动列表与答卷列表，答卷页自身的即时筛选随重置一起清空
+  const {
+    page, pageSize, setPage, buildPagination,
+    draftParams, setField, bind, bindKeyword, submittedParams: submitted,
+    handleSearch, handleReset,
+  } = useListSearch<ListSearch>({
+    defaults: initialSearch,
+    listKey: cmsInteractionKeys.lists,
+    extraKeys: [cmsInteractionKeys.responseLists],
+    onSearch: () => { setResponsePage(1); setSelectedIds([]); },
+    onReset: () => { setResponsePage(1); setResponseTimeRange(undefined); setResponseInteractionId(undefined); setSelectedIds([]); },
+  });
 
   const listQuery = useCmsInteractionList({
     page,
@@ -86,24 +93,6 @@ export default function SurveysPage() {
 
   const canManage = hasPermission('cms:interaction:manage');
   const canBatch = hasPermission('cms:interaction:batch');
-
-  const handleSearch = () => {
-    setPage(1);
-    setResponsePage(1);
-    setSelectedIds([]);
-    setSubmitted(draft);
-    void queryClient.invalidateQueries({ queryKey: cmsInteractionKeys.lists });
-  };
-  const handleReset = () => {
-    setPage(1);
-    setResponsePage(1);
-    setDraft(initialSearch);
-    setSubmitted(initialSearch);
-    setResponseTimeRange(undefined);
-    setResponseInteractionId(undefined);
-    setSelectedIds([]);
-    void queryClient.invalidateQueries({ queryKey: cmsInteractionKeys.lists });
-  };
 
   const openEditor = (record: CmsInteraction) => {
     navigate(`/cms/interactions/edit?id=${record.id}&siteId=${record.siteId}`);
@@ -219,15 +208,15 @@ export default function SurveysPage() {
   const listSearch = (
     <>
       <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); setPage(1); setResponsePage(1); setSelectedIds([]); setResponseInteractionId(undefined); }} />
-      <KeywordInput placeholder="标题/标识" value={draft.keyword} onChange={(value) => setDraft((current) => ({ ...current, keyword: value }))} onSearch={handleSearch} width={200} />
+      <KeywordInput placeholder="标题/标识" {...bindKeyword('keyword')} width={200} />
       <FilterSelect
         placeholder="全部类型"
         items={CMS_INTERACTION_KIND_OPTIONS}
-        value={draft.kind}
-        onChange={(value) => { setDraft((current) => ({ ...current, kind: value as CmsInteractionKind | undefined })); setSelectedIds([]); }}
+        value={draftParams.kind}
+        onChange={(value) => { setField('kind')(value); setSelectedIds([]); }}
       />
-      <StatusSelect items={CMS_INTERACTION_STATUS_OPTIONS} value={draft.status}
-        onChange={(value) => { setDraft((current) => ({ ...current, status: value as CmsInteractionStatus | undefined })); setSelectedIds([]); }} />
+      <StatusSelect items={CMS_INTERACTION_STATUS_OPTIONS} value={draftParams.status}
+        onChange={(value) => { setField('status')(value); setSelectedIds([]); }} />
       <SearchButton onClick={handleSearch} />
       <ResetButton onClick={handleReset} />
     </>
@@ -292,8 +281,7 @@ export default function SurveysPage() {
                 <FilterSelect
                   placeholder="全部类型"
                   items={CMS_INTERACTION_KIND_OPTIONS}
-                  value={draft.kind}
-                  onChange={(value) => setDraft((current) => ({ ...current, kind: value as CmsInteractionKind | undefined }))}
+                  {...bind('kind')}
                   width={140}
                 />
                 <DateRangeFilter placeholder={['提交开始时间', '提交结束时间']} value={responseTimeRange} onChange={(value) => setResponseTimeRange(value as [Date, Date] | undefined)} />

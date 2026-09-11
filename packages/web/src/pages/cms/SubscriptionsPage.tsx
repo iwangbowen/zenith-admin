@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { SideSheet, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CMS_SUBSCRIPTION_SUBJECT_TYPE_LABELS, CMS_SUBSCRIPTION_SUBJECT_TYPE_OPTIONS } from '@zenith/shared/cms';
@@ -8,7 +7,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
   cmsSubscriptionKeys,
@@ -26,19 +25,20 @@ import { listTableProps } from '@/components/list-page';
 interface SearchState {
   subjectType?: CmsSubscriptionSubjectType;
   subjectKeyword: string;
-  timeRange?: [Date, Date];
+  timeRange?: [Date, Date] | null;
 }
 
 const initialSearch: SearchState = { subjectKeyword: '' };
 
 export default function SubscriptionsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['aggregate', 'detail'] as const, 'aggregate');
-  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const {
+    page, pageSize, setPage, buildPagination,
+    bind, bindKeyword, submittedParams: submitted,
+    handleSearch, handleReset,
+  } = useListSearch<SearchState>({ defaults: initialSearch, listKey: cmsSubscriptionKeys.lists });
   const [siteId, setSiteId] = useState<number | undefined>();
-  const [draft, setDraft] = useState<SearchState>(initialSearch);
-  const [submitted, setSubmitted] = useState<SearchState>(initialSearch);
   const [detail, setDetail] = useState<CmsMemberSubscription | null>(null);
   const query = {
     siteId: siteId ?? 0,
@@ -49,36 +49,22 @@ export default function SubscriptionsPage() {
   const listQuery = useCmsSubscriptionList({ ...query, page, pageSize }, !!siteId);
   const aggregateQuery = useCmsSubscriptionAggregates(query, !!siteId);
 
-  const handleSearch = () => {
-    setPage(1);
-    setSubmitted(draft);
-    void queryClient.invalidateQueries({ queryKey: cmsSubscriptionKeys.lists });
-  };
-
-  const handleReset = () => {
-    setPage(1);
-    setDraft(initialSearch);
-    setSubmitted(initialSearch);
-    void queryClient.invalidateQueries({ queryKey: cmsSubscriptionKeys.lists });
-  };
-
   const filters = (
     <>
       <FilterSelect
         placeholder="全部对象类型"
         items={CMS_SUBSCRIPTION_SUBJECT_TYPE_OPTIONS}
-        value={draft.subjectType}
-        onChange={(value) => setDraft((current) => ({ ...current, subjectType: value as CmsSubscriptionSubjectType | undefined }))}
+        {...bind('subjectType')}
         width={150}
       />
-      <DateRangeFilter value={draft.timeRange} onChange={(value) => setDraft((current) => ({ ...current, timeRange: value as [Date, Date] | undefined }))} />
+      <DateRangeFilter {...bind('timeRange')} />
     </>
   );
 
   const primary = (
     <>
       <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); setPage(1); }} />
-      <KeywordInput placeholder="订阅对象" value={draft.subjectKeyword} onChange={(value) => setDraft((current) => ({ ...current, subjectKeyword: value }))} onSearch={handleSearch} width={200} />
+      <KeywordInput placeholder="订阅对象" {...bindKeyword('subjectKeyword')} width={200} />
       {filters}
       <SearchButton onClick={handleSearch} />
       <ResetButton onClick={handleReset} />
