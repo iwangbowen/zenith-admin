@@ -432,6 +432,13 @@ export const workflowCcTaskParam = z.object({
   ccTaskId: z.coerce.number().int().positive().meta({ description: '抄送任务 ID', example: 1 }),
 });
 
+/** 审批单打印：可临时指定模板（设计器预览 / 更正版式），缺省用流程绑定模板，再缺省按表单快照自动生成 */
+export const workflowInstancePrintQuery = z.object({
+  templateId: z.coerce.number().int().positive().optional().meta({ description: '临时指定的打印模板 ID（需为 workflow_instance 实体模板）' }),
+});
+
+export type WorkflowInstancePrintQueryInput = z.infer<typeof workflowInstancePrintQuery>;
+
 /**
  * 流程实例：查询 / 生命周期 / 抄送催办 / 评论 / 实例级批量操作。
  * 与 workflowTaskContract、workflowInstanceOpsContract 共用工作流资源根，操作名全局唯一。
@@ -452,6 +459,7 @@ export const workflowInstanceContract = defineContract('/api/workflows', {
   batchUrge: op.post('/instances/batch-urge', { body: batchUrgeWorkflowInstanceSchema, response: workflowInstanceBatchActionResponseSchema, summary: '批量催办' }),
   ccRead: op.post('/instances/cc/{ccTaskId}/read', { params: workflowCcTaskParam, summary: '标记抄送已读' }),
   detail: op.get('/instances/{id}', { params: idParam, response: workflowInstanceSchema, summary: '实例详情' }),
+  print: op.get('/instances/{id}/print', { params: idParam, query: workflowInstancePrintQuery, kind: 'file', summary: '审批单 PDF（预览 / 打印 / 下载同一份文件）' }),
   comments: op.get('/instances/{id}/comments', { params: idParam, response: z.array(workflowCommentSchema), summary: '流程评论列表' }),
   addComment: op.post('/instances/{id}/comments', { params: idParam, body: createWorkflowCommentSchema, response: workflowCommentSchema, summary: '发表流程评论' }),
   create: op.post('/instances', { body: createWorkflowInstanceWithDraftSchema, response: workflowInstanceSchema, summary: '发起流程' }),

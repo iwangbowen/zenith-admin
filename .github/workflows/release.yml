@@ -54,6 +54,7 @@ jobs:
           mkdir -p release_artifacts/server
           cp -r packages/server/dist release_artifacts/server/dist
           cp -r packages/server/drizzle release_artifacts/server/drizzle
+          cp -r packages/server/assets release_artifacts/server/assets
           cp packages/server/package.json release_artifacts/server/package.json
           cd release_artifacts
           zip -r "../zenith-admin-server-${TAG}.zip" server/

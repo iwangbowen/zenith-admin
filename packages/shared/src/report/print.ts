@@ -1068,12 +1068,19 @@ function pageContentHeightPx(config: ReportPrintPageConfig, headerRowsHeight = 0
   return Math.max(0, usableHeightMm * MM_TO_PX - bandPaddingPx);
 }
 
-function estimatedWrappedLineCount(value: string, width: number, fontSize: number): number {
-  const availableWidth = Math.max(fontSize, width - 12);
+/**
+ * 自动换行行高估算。单元格 fontSize 与 PDF / Excel 输出一致按 pt 解释（1pt = 96/72 px），
+ * 字宽与行高都换算到 px 再与 px 单位的列宽 / 行高比较；按 px 解释会低估约 1/3，导出时末行被截断。
+ */
+const PT_TO_PX = 96 / 72;
+
+function estimatedWrappedLineCount(value: string, width: number, fontSizePt: number): number {
+  const fontPx = fontSizePt * PT_TO_PX;
+  const availableWidth = Math.max(fontPx, width - 12);
   return value.split(/\r?\n/).reduce((total, line) => {
     let lineWidth = 0;
     for (const char of line) {
-      lineWidth += /[\u2e80-\u9fff\uf900-\ufaff\uff01-\uff60]/u.test(char) ? fontSize : fontSize * 0.55;
+      lineWidth += /[\u2e80-\u9fff\uf900-\ufaff\uff01-\uff60]/u.test(char) ? fontPx : fontPx * 0.55;
     }
     return total + Math.max(1, Math.ceil(lineWidth / availableWidth));
   }, 0);
@@ -1095,7 +1102,8 @@ function adjustWrappedRowHeights(grid: ReportPrintGrid, config: ReportPrintPageC
     const rowSpan = merge?.rowSpan ?? 1;
     const width = widths.slice(cell.col, cell.col + colSpan).reduce((sum, value) => sum + value, 0) * widthScale;
     const fontSize = cell.s.fontSize ?? 12;
-    const requiredHeight = Math.ceil(estimatedWrappedLineCount(String(cell.v), width, fontSize) * fontSize * 1.35 + 8);
+    // 行高 = 行数 × 字号 × 1.5（CJK 字体 ascender+descender ≈ 1.45em）+ 上下内边距；宁高勿截（导出端超高即省略号）
+    const requiredHeight = Math.ceil(estimatedWrappedLineCount(String(cell.v), width, fontSize) * fontSize * PT_TO_PX * 1.5 + 12);
     if (requiredHeight > 4096) {
       throw new ReportPrintValidationError('PRINT_ROW_HEIGHT_LIMIT', `单元格 R${cell.row + 1}C${cell.col + 1} 自动换行后的高度超过 4096px`);
     }

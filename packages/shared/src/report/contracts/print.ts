@@ -19,6 +19,7 @@ import {
   updateReportPrintTemplateSchema,
 } from '../validation';
 import { reportLookupOptionSchema, reportStatusSchema } from './_common';
+import { REPORT_PRINT_ENTITY_KINDS, REPORT_PRINT_SOURCE_TYPES } from '../types';
 
 // ─── 归一化网格 / 页面配置（与请求校验同源，渲染引擎共用） ────────────────────────
 
@@ -50,6 +51,9 @@ export const reportPrintTemplateSchema = z.object({
   folderName: z.string().nullable().optional(),
   datasetId: z.int().nullable().optional(),
   datasetName: z.string().nullable().optional(),
+  sourceType: z.enum(REPORT_PRINT_SOURCE_TYPES).meta({ description: 'dataset=报表数据集取数；entity=业务实体注入数据集' }),
+  entityKind: z.enum(REPORT_PRINT_ENTITY_KINDS).nullable().optional(),
+  entityRefId: z.int().nullable().optional().meta({ description: '实体模板设计参照（workflow_instance → 流程定义 ID）' }),
   content: reportPrintContentSchema,
   params: z.array(reportDatasetParamSchema),
   pageConfig: reportPrintPageConfigSchema,
@@ -104,6 +108,10 @@ export const reportPrintListQuery = paginationQuery.extend({
   folderId: z.coerce.number().int().positive().optional(),
   ownerId: z.coerce.number().int().positive().optional(),
   status: reportStatusSchema.optional(),
+  sourceType: z.enum(REPORT_PRINT_SOURCE_TYPES).optional(),
+  entityKind: z.enum(REPORT_PRINT_ENTITY_KINDS).optional(),
+  /** 与 entityKind 联用：命中该参照 ID 或通用模板（entityRefId 为空） */
+  entityRefId: z.coerce.number().int().positive().optional(),
 });
 
 export const reportPrintContract = defineContract('/api/report/print', {

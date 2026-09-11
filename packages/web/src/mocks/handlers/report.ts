@@ -571,7 +571,11 @@ export const reportHandlers = [
     }
   }),
   mock(reportPrintContract.list, ({ query, ok, paginate }) => {
-    const list = filterByKeyword(mockReportPrintTemplates, query.keyword, [(t) => t.name]);
+    let list = filterByKeyword(mockReportPrintTemplates, query.keyword, [(t) => t.name]);
+    if (query.sourceType) list = list.filter((t) => t.sourceType === query.sourceType);
+    if (query.entityKind) list = list.filter((t) => t.entityKind === query.entityKind);
+    // 指定参照时同时命中该参照的专用模板与通用模板（entityRefId 为空），与服务端口径一致
+    if (query.entityRefId) list = list.filter((t) => t.entityRefId == null || t.entityRefId === query.entityRefId);
     return ok(paginate(list));
   }),
   mock(reportPrintContract.detail, ({ params, ok }) => {
@@ -581,6 +585,8 @@ export const reportHandlers = [
   mock(reportPrintContract.create, ({ body, ok }) => {
     const item: ReportPrintTemplate = {
       id: getNextReportPrintId(), name: body.name, datasetId: body.datasetId ?? null,
+      sourceType: body.sourceType, entityKind: body.sourceType === 'entity' ? body.entityKind ?? null : null,
+      entityRefId: body.sourceType === 'entity' ? body.entityRefId ?? null : null,
       content: body.content, params: body.params, pageConfig: body.pageConfig,
       status: body.status, remark: body.remark ?? null, createdBy: 1, updatedBy: 1,
       createdAt: mockDateTime(), updatedAt: mockDateTime(),

@@ -612,6 +612,7 @@ export const workflowDefinitionsRelations = relations(workflowDefinitions, ({ on
   createdByUser: one(users, { fields: [workflowDefinitions.createdBy], references: [users.id] }),
   category: one(workflowCategories, { fields: [workflowDefinitions.categoryId], references: [workflowCategories.id] }),
   form: one(workflowForms, { fields: [workflowDefinitions.formId], references: [workflowForms.id] }),
+  printTemplate: one(reportPrintTemplates, { fields: [workflowDefinitions.printTemplateId], references: [reportPrintTemplates.id] }),
   instances: many(workflowInstances),
   versions: many(workflowDefinitionVersions),
   automations: many(workflowAutomations),

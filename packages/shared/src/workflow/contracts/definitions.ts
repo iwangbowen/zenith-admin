@@ -40,6 +40,8 @@ export const workflowDefinitionSchema = z.object({
   formSettings: workflowFormSettingsSchema.nullable().optional(),
   formType: z.enum(WORKFLOW_FORM_TYPES).meta({ description: 'designer=表单库，custom=自定义业务页面，external=业务系统主导' }),
   customForm: workflowCustomFormSchema.nullable(),
+  printTemplateId: z.int().nullable().optional().meta({ description: '审批单打印模板 ID（报表打印设计器实体模板）；为空按表单快照自动生成版式' }),
+  printTemplateName: z.string().nullable().optional(),
   status: z.enum(WORKFLOW_DEFINITION_STATUSES),
   version: z.int(),
   tenantId: z.int().nullable(),

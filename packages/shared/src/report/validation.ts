@@ -4,7 +4,7 @@ import { dateTimeStringSchema, httpUrl, partialForUpdate } from '../core/validat
 import { isHttpUrlTemplate, isSafeLinkUrlTemplate } from '../core/url';
 import { workflowFormSchemaSchema } from '../workflow/validation';
 import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_DASHBOARD_VERSION_SOURCES, REPORT_FIELD_TYPES, REPORT_FILTER_TYPES, REPORT_NOTIFY_CHANNELS, REPORT_SCHEDULE_MISFIRE_POLICIES } from './constants';
-import { REPORT_ACL_ROLES, REPORT_ACL_SUBJECT_TYPES, REPORT_APPROVAL_STATUSES, REPORT_ASSET_TEMPLATE_TYPES, REPORT_CHATBI_MESSAGE_ROLES, REPORT_CHATBI_SESSION_STATUSES, REPORT_DATASOURCE_TYPES, REPORT_DQ_ANOMALY_STATUSES, REPORT_DQ_RULE_TYPES, REPORT_DQ_RUN_STATUSES, REPORT_DQ_SEVERITIES, REPORT_ENVIRONMENT_KINDS, REPORT_FILL_RECORD_STATUSES, REPORT_FILL_TEMPLATE_STATUSES, REPORT_MATERIALIZATION_STRATEGIES, REPORT_METRIC_LIFECYCLE_STATUSES, REPORT_METRIC_TYPES, REPORT_PROMOTION_STATUSES, REPORT_QUOTA_SCOPES, REPORT_RESOURCE_TYPES, REPORT_SLA_TYPES, REPORT_SLA_VIOLATION_STATUSES, REPORT_SNAPSHOT_STATUSES, REPORT_TRANSFER_STATUSES, REPORT_WIDGET_TYPES } from './types';
+import { REPORT_ACL_ROLES, REPORT_ACL_SUBJECT_TYPES, REPORT_APPROVAL_STATUSES, REPORT_ASSET_TEMPLATE_TYPES, REPORT_CHATBI_MESSAGE_ROLES, REPORT_CHATBI_SESSION_STATUSES, REPORT_DATASOURCE_TYPES, REPORT_DQ_ANOMALY_STATUSES, REPORT_DQ_RULE_TYPES, REPORT_DQ_RUN_STATUSES, REPORT_DQ_SEVERITIES, REPORT_ENVIRONMENT_KINDS, REPORT_FILL_RECORD_STATUSES, REPORT_FILL_TEMPLATE_STATUSES, REPORT_MATERIALIZATION_STRATEGIES, REPORT_METRIC_LIFECYCLE_STATUSES, REPORT_METRIC_TYPES, REPORT_PRINT_ENTITY_KINDS, REPORT_PRINT_SOURCE_TYPES, REPORT_PROMOTION_STATUSES, REPORT_QUOTA_SCOPES, REPORT_RESOURCE_TYPES, REPORT_SLA_TYPES, REPORT_SLA_VIOLATION_STATUSES, REPORT_SNAPSHOT_STATUSES, REPORT_TRANSFER_STATUSES, REPORT_WIDGET_TYPES } from './types';
 import { entityStatusSchema } from '../core/api-schemas';
 
 const timezoneSchema = z.string().min(1).max(64)
@@ -681,6 +681,11 @@ export const reportPrintContentSchema = z.object({
   workbook: z.unknown().optional(),
   grid: reportPrintGridSchema.optional(),
   sheets: z.array(reportPrintSheetSchema).optional(),
+  /**
+   * 实体模板（sourceType=entity）在渲染时由业务实体所属域注入的数据集键（如 instance / form / tasks），
+   * 声明后单元格与重复块即可引用；数据集模板不使用
+   */
+  entityDatasets: z.array(reportIdentifierSchema('实体数据集键', 64)).max(64).optional(),
   datasetBindings: z.array(z.object({
     key: reportIdentifierSchema('数据集绑定键', 64),
     datasetId: z.number().int().positive(),
@@ -719,7 +724,7 @@ export const reportPrintContentSchema = z.object({
     }
   }
   for (const [index, sheet] of (value.sheets ?? []).entries()) {
-    const validKeys = new Set(['main', ...keys]);
+    const validKeys = new Set(['main', ...keys, ...(value.entityDatasets ?? []).map((key) => key.toLowerCase())]);
     if (sheet.datasetKey && !validKeys.has(sheet.datasetKey.toLowerCase())) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sheets', index, 'datasetKey'], message: 'Sheet 引用了不存在的数据集绑定' });
     }
@@ -756,6 +761,12 @@ export const createReportPrintTemplateSchema = z.object({
   ownerId: z.number().int().positive().nullable().optional(),
   folderId: z.number().int().positive().nullable().optional(),
   datasetId: z.number().int().positive().nullable().optional(),
+  /** dataset = 绑定报表数据集取数；entity = 渲染时由业务实体所属域注入数据集（如审批单） */
+  sourceType: z.enum(REPORT_PRINT_SOURCE_TYPES).default('dataset'),
+  /** sourceType=entity 时必填：实体类型，决定设计器字段目录与渲染数据集 */
+  entityKind: z.enum(REPORT_PRINT_ENTITY_KINDS).nullable().optional(),
+  /** 实体模板的设计时参照（workflow_instance → 流程定义 ID），为空表示通用模板 */
+  entityRefId: z.number().int().positive().nullable().optional(),
   content: reportPrintContentSchema.default({}),
   params: z.array(reportDatasetParamSchema).default([]),
   pageConfig: reportPrintPageConfigSchema.default({}),

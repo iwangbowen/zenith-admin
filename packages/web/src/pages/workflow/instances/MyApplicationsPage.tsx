@@ -16,10 +16,8 @@ import {
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ExternalLink, Megaphone, Plus, Undo2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { escapeHtml } from '@zenith/shared/core';
 import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared/workflow';
 import { buildWorkflowSummaryItems } from '@zenith/shared/workflow';
-import { formatDateTime } from '@/utils/date';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -49,99 +47,9 @@ import {
 } from '@/hooks/queries/workflow-instances';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
 import { useListSearch } from '@/hooks/useListSearch';
-import { WORKFLOW_TASK_STATUS_LABELS } from '@zenith/shared/workflow';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { workflowInstanceStatusColumn } from '@/components/workflow/WorkflowInstanceListColumns';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
-
-const TASK_STATUS_TEXT: Record<string, string> = WORKFLOW_TASK_STATUS_LABELS;
-
-const LAYOUT_ONLY_TYPES = new Set(['divider', 'description', 'group', 'row']);
-
-function buildPrintHtml(instance: WorkflowInstance): string {
-  const statusText = INSTANCE_STATUS_MAP[instance.status]?.text ?? instance.status;
-  const formFields = normalizeWorkflowFormSnapshot(instance.formSnapshot)?.fields ?? [];
-  const formData = instance.formData ?? {};
-
-  const formRows = formFields.length > 0
-    ? formFields
-        .filter(f => !LAYOUT_ONLY_TYPES.has(f.type) && f.key)
-        .map(f => {
-          const val = formData[f.key];
-          const display = val === null || val === undefined ? ''
-            : typeof val === 'object' ? escapeHtml(JSON.stringify(val))
-            : escapeHtml(String(val));
-          return `<tr>
-            <td style="width:160px;background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">${escapeHtml(f.label ?? f.key)}</td>
-            <td style="padding:8px 12px;border:1px solid #ddd;">${display}</td>
-          </tr>`;
-        }).join('')
-    : Object.entries(formData).map(([k, v]) => {
-        const display = typeof v === 'object' ? escapeHtml(JSON.stringify(v)) : escapeHtml(String(v ?? ''));
-        return `<tr>
-          <td style="width:160px;background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">${escapeHtml(k)}</td>
-          <td style="padding:8px 12px;border:1px solid #ddd;">${display}</td>
-        </tr>`;
-      }).join('');
-
-  const tasks = instance.tasks ?? [];
-  const taskRows = tasks.map(t =>
-    `<tr>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(t.nodeName)}</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(t.assigneeName ?? '—')}</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${TASK_STATUS_TEXT[t.status] ?? t.status}</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(t.comment ?? '')}</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${t.actionAt ? formatDateTime(t.actionAt) : '—'}</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${t.signature ? `<img src="${escapeHtml(t.signature)}" alt="签名" style="max-height:48px;" />` : '—'}</td>
-    </tr>`
-  ).join('');
-
-  return `<!DOCTYPE html>
-<html><head>
-  <meta charset="UTF-8">
-  <title>${escapeHtml(instance.title)} - 审批单</title>
-  <style>
-    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; color: #333; padding: 20px; max-width: 860px; margin: 0 auto; }
-    h1 { font-size: 22px; text-align: center; margin: 0 0 4px; }
-    .subtitle { text-align: center; color: #888; font-size: 12px; margin-bottom: 20px; }
-    h2 { font-size: 15px; border-bottom: 2px solid #333; padding-bottom: 4px; margin: 20px 0 10px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-    th { background: #f5f5f5; font-weight: bold; text-align: left; padding: 8px 12px; border: 1px solid #ddd; }
-    @media print { @page { margin: 1.5cm; } }
-  </style>
-</head><body>
-  <h1>${escapeHtml(instance.title)}</h1>
-  <div class="subtitle">${instance.serialNo ? `业务编号：${escapeHtml(instance.serialNo)}` : '&nbsp;'}</div>
-  <h2>基本信息</h2>
-  <table>
-    <tr>
-      <td style="width:120px;background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">流程名称</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(instance.definitionName ?? '—')}</td>
-      <td style="width:120px;background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">发起人</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(instance.initiatorName ?? '—')}</td>
-    </tr>
-    <tr>
-      <td style="background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">发起时间</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${formatDateTime(instance.createdAt)}</td>
-      <td style="background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">状态</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${statusText}</td>
-    </tr>
-  </table>
-  <h2>表单内容</h2>
-  <table>
-    ${formRows || '<tr><td colspan="2" style="text-align:center;color:#888;padding:12px;border:1px solid #ddd;">无表单数据</td></tr>'}
-  </table>
-  <h2>审批记录</h2>
-  ${tasks.length > 0
-    ? `<table>
-        <thead><tr>
-          <th>节点</th><th>处理人</th><th>状态</th><th>审批意见</th><th>处理时间</th><th>签名</th>
-        </tr></thead>
-        <tbody>${taskRows}</tbody>
-      </table>`
-    : '<p style="color:#888;">无审批记录</p>'}
-</body></html>`;
-}
 
 function InstanceDetailDrawer({
   instanceId,
@@ -189,23 +97,6 @@ function InstanceDetailDrawer({
     onClose();
   };
 
-  const handlePrint = () => {
-    if (!data) return;
-    const html = buildPrintHtml(data);
-    const iframe = document.createElement('iframe');
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
-    iframe.srcdoc = html;
-    iframe.onload = () => {
-      const cw = iframe.contentWindow;
-      if (!cw) { iframe.remove(); return; }
-      cw.addEventListener('afterprint', () => iframe.remove(), { once: true });
-      cw.focus();
-      cw.print();
-    };
-    document.body.appendChild(iframe);
-  };
-
   const [urgeVisible, setUrgeVisible] = useState(false);
   const [urgeMessage, setUrgeMessage] = useState('');
   const handleUrge = async () => {
@@ -245,20 +136,16 @@ function InstanceDetailDrawer({
     onRefresh();
   };
 
-  const printAction = data ? (
-    <Space>
-      <Button
-        theme="borderless"
-        size="small"
-        icon={<ExternalLink size={13} />}
-        onClick={() => { onClose(); navigate(`/workflow/instance/${viewId}`, { state: { tabTitle: data.title } }); }}
-      >
-        在新页签打开
-      </Button>
-      <Button theme="borderless" size="small" onClick={handlePrint}>
-        打印 / 保存 PDF
-      </Button>
-    </Space>
+  // 打印入口由 WorkflowInstanceDetailPanel 内置提供，这里只保留页面级动作
+  const openInTabAction = data ? (
+    <Button
+      theme="borderless"
+      size="small"
+      icon={<ExternalLink size={13} />}
+      onClick={() => { onClose(); navigate(`/workflow/instance/${viewId}`, { state: { tabTitle: data.title } }); }}
+    >
+      在新页签打开
+    </Button>
   ) : null;
 
   return (
@@ -303,7 +190,7 @@ function InstanceDetailDrawer({
             definition={definition}
             loading={loading}
             onOpenInstance={(id) => setViewId(id)}
-            extraActions={printAction}
+            extraActions={openInTabAction}
           />
         )}
       </div>

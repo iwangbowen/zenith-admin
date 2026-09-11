@@ -5,7 +5,7 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { ReportPrintValidationError, renderPrintContent } from '@zenith/shared/report';
 import { db } from '../../db';
 import { reportDatasets, reportPrintTemplates } from '../../db/schema';
@@ -26,7 +26,7 @@ import {
   validateReportResourcePlacement,
 } from './report-resource.service';
 import type { ReportPrintTemplateRow } from '../../db/schema';
-import type { ReportPrintTemplate, ReportPrintContent, ReportPrintPageConfig, ReportDatasetParam, ReportPrintDatasetBinding, ReportPrintDatasetRows, ReportPrintRenderResult, ReportPrintResolvedSubreport, ReportPrintSubreportCell, CreateReportPrintTemplateInput, UpdateReportPrintTemplateInput, ReportPrintRenderInput, ReportLookupOption } from '@zenith/shared/report';
+import type { ReportPrintTemplate, ReportPrintContent, ReportPrintPageConfig, ReportDatasetParam, ReportPrintDatasetBinding, ReportPrintDatasetRows, ReportPrintRenderResult, ReportPrintResolvedSubreport, ReportPrintSubreportCell, CreateReportPrintTemplateInput, UpdateReportPrintTemplateInput, ReportPrintRenderInput, ReportLookupOption, ReportPrintEntityKind, ReportPrintSourceType } from '@zenith/shared/report';
 
 type PrintRowExt = ReportPrintTemplateRow & {
   dataset?: { name: string } | null;
@@ -44,6 +44,9 @@ export function mapPrintTemplate(row: PrintRowExt): ReportPrintTemplate {
     name: row.name,
     datasetId: row.datasetId ?? null,
     datasetName: row.dataset?.name ?? null,
+    sourceType: row.sourceType,
+    entityKind: (row.entityKind as ReportPrintTemplate['entityKind']) ?? null,
+    entityRefId: row.entityRefId ?? null,
     content: (row.content ?? {}) as ReportPrintContent,
     params: (row.params ?? []) as ReportDatasetParam[],
     pageConfig: (row.pageConfig ?? {}) as ReportPrintPageConfig,
@@ -65,6 +68,43 @@ export async function ensurePrintTemplateExists(id: number): Promise<ReportPrint
   return row;
 }
 
+/**
+ * 供业务实体（审批单等）渲染时加载已启用的实体模板。
+ * 访问控制由实体所属域负责（能看实例即能打印），这里不套报表资源 ACL；
+ * 只校验模板类型、实体类型与租户归属（平台级模板可被任一租户使用）。
+ */
+export async function loadEntityPrintTemplate(
+  id: number,
+  expected: { entityKind: ReportPrintEntityKind; tenantId: number | null },
+): Promise<ReportPrintTemplateRow> {
+  const [rowOrUndefined] = await db.select().from(reportPrintTemplates).where(eq(reportPrintTemplates.id, id)).limit(1);
+  const row = requireRow(rowOrUndefined, '打印模板不存在');
+  if (row.sourceType !== 'entity' || row.entityKind !== expected.entityKind) {
+    throw new HTTPException(400, { message: '打印模板不是该实体类型的实体模板' });
+  }
+  if (row.status !== 'enabled') throw new HTTPException(400, { message: '打印模板已停用' });
+  if (row.tenantId != null && row.tenantId !== expected.tenantId) {
+    throw new HTTPException(400, { message: '打印模板与实体不属于同一租户' });
+  }
+  return row;
+}
+
+/** sourceType / entityKind / entityRefId 三者一致性：实体模板必须声明实体类型；数据集模板不得携带实体字段 */
+function normalizeEntitySource(input: {
+  sourceType?: ReportPrintSourceType;
+  entityKind?: ReportPrintEntityKind | null;
+  entityRefId?: number | null;
+}, current?: { sourceType: ReportPrintSourceType; entityKind: string | null; entityRefId: number | null }) {
+  const sourceType = input.sourceType ?? current?.sourceType ?? 'dataset';
+  const entityKind = input.entityKind === undefined ? (current?.entityKind as ReportPrintEntityKind | null | undefined) ?? null : input.entityKind;
+  const entityRefId = input.entityRefId === undefined ? current?.entityRefId ?? null : input.entityRefId;
+  if (sourceType === 'entity' && !entityKind) throw new HTTPException(400, { message: '实体模板必须选择实体类型' });
+  if (sourceType === 'dataset' && (entityKind || entityRefId != null)) {
+    throw new HTTPException(400, { message: '数据集模板不能携带实体类型 / 实体参照' });
+  }
+  return { sourceType, entityKind: sourceType === 'entity' ? entityKind : null, entityRefId: sourceType === 'entity' ? entityRefId : null };
+}
+
 export async function getPrintTemplate(id: number): Promise<ReportPrintTemplate> {
   if (currentUserOrNull()) await ensureReportResourceAccess('print_template', id, 'viewer');
   const rowOrUndefined = await db.query.reportPrintTemplates.findFirst({
@@ -81,8 +121,9 @@ export async function getPrintTemplate(id: number): Promise<ReportPrintTemplate>
 
 export async function listPrintTemplates(query: {
   page?: number; pageSize?: number; keyword?: string; folderId?: number; ownerId?: number; status?: string;
+  sourceType?: ReportPrintSourceType; entityKind?: ReportPrintEntityKind; entityRefId?: number;
 }) {
-  const { page = 1, pageSize = 20, keyword, folderId, ownerId, status } = query;
+  const { page = 1, pageSize = 20, keyword, folderId, ownerId, status, sourceType, entityKind, entityRefId } = query;
   const conds = [];
   const tenantScope = reportTenantScope(reportPrintTemplates);
   if (tenantScope) conds.push(tenantScope);
@@ -91,6 +132,10 @@ export async function listPrintTemplates(query: {
   if (accessibleIds) conds.push(inArray(reportPrintTemplates.id, accessibleIds));
   if (folderId) conds.push(eq(reportPrintTemplates.folderId, folderId));
   if (ownerId) conds.push(eq(reportPrintTemplates.ownerId, ownerId));
+  if (sourceType) conds.push(eq(reportPrintTemplates.sourceType, sourceType));
+  if (entityKind) conds.push(eq(reportPrintTemplates.entityKind, entityKind));
+  // 指定参照时同时命中该参照的专用模板与通用模板（entityRefId 为空）
+  if (entityRefId) conds.push(or(eq(reportPrintTemplates.entityRefId, entityRefId), isNull(reportPrintTemplates.entityRefId)));
   conds.push(keywordCondition(keyword, [reportPrintTemplates.name, reportPrintTemplates.remark], 'ilike'));
   if (status === 'enabled' || status === 'disabled') conds.push(eq(reportPrintTemplates.status, status));
   const where = buildWhere(...conds);
@@ -196,6 +241,7 @@ export async function createPrintTemplate(input: CreateReportPrintTemplateInput)
   }
   const ownerId = input.ownerId ?? defaultReportOwnerId();
   await validateReportResourcePlacement('print_template', { ownerId, folderId: input.folderId, tenantId });
+  const entitySource = normalizeEntitySource(input);
   try {
     const [row] = await db.insert(reportPrintTemplates).values({
       tenantId,
@@ -203,6 +249,7 @@ export async function createPrintTemplate(input: CreateReportPrintTemplateInput)
       folderId: input.folderId ?? null,
       name: input.name,
       datasetId: input.datasetId ?? null,
+      ...entitySource,
       content: (input.content ?? {}) as ReportPrintContent,
       params: (input.params ?? []) as ReportDatasetParam[],
       pageConfig: (input.pageConfig ?? {}) as ReportPrintPageConfig,
@@ -233,12 +280,16 @@ export async function updatePrintTemplate(id: number, input: UpdateReportPrintTe
     folderId: input.folderId,
     tenantId: current.tenantId ?? null,
   });
+  const entitySource = input.sourceType !== undefined || input.entityKind !== undefined || input.entityRefId !== undefined
+    ? normalizeEntitySource(input, current)
+    : {};
   try {
     const [rowOrUndefined] = await db.update(reportPrintTemplates).set({
       ownerId: input.ownerId,
       folderId: input.folderId,
       name: input.name,
       datasetId: input.datasetId,
+      ...entitySource,
       content: input.content as ReportPrintContent | undefined,
       params: input.params as ReportDatasetParam[] | undefined,
       pageConfig: input.pageConfig as ReportPrintPageConfig | undefined,

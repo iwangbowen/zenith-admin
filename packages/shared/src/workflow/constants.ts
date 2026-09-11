@@ -181,3 +181,11 @@ export const WORKFLOW_TASK_STATUS_LABELS = {
   skipped: '已跳过',
   waiting: '等待中',
 } as const;
+
+/** 实例优先级标签（审批单打印 / 导出等纯文本场景；web 标签色见 WorkflowPriorityTag） */
+export const WORKFLOW_INSTANCE_PRIORITY_LABELS: Record<typeof WORKFLOW_INSTANCE_PRIORITIES[number], string> = {
+  low: '低',
+  normal: '普通',
+  high: '高',
+  urgent: '加急',
+};

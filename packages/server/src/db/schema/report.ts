@@ -2,7 +2,7 @@ import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, uniq
 import { sql } from 'drizzle-orm';
 // 报表中心 jsonb 列形态（前后端共享契约；type-only 导入，编译期即擦除）
 import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportComputedField, ReportCanvasItem, ReportPrintContent, ReportPrintPageConfig, ReportDatasetMaterialize, ReportNotifyChannel, ReportRowRule, ReportScheduleMisfirePolicy, ReportDeliveryStatus, ReportDeliveryTargetType, ReportDeliveryTriggerType, ReportDashboardLifecycleStatus, ReportDashboardVersionSource, ReportDashboardSnapshot, ReportResourceType } from '@zenith/shared/report';
-import { REPORT_RESOURCE_TYPES } from '@zenith/shared/report';
+import { REPORT_PRINT_SOURCE_TYPES, REPORT_RESOURCE_TYPES } from '@zenith/shared/report';
 import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
 
@@ -10,6 +10,7 @@ import { auditColumns, tenants, users } from './core';
 // 报表中心（Report Center）—— 通用报表设计器 / 数据大屏
 // ════════════════════════════════════════════════════════════════════════════
 export const reportDatasourceTypeEnum = pgEnum('report_datasource_type', ['api', 'sql', 'mysql', 'postgresql', 'sqlserver', 'static']);
+export const reportPrintSourceTypeEnum = pgEnum('report_print_source_type', REPORT_PRINT_SOURCE_TYPES);
 export const reportScheduleMisfirePolicyEnum = pgEnum('report_schedule_misfire_policy', ['skip', 'fire_once']);
 export const reportDeliveryStatusEnum = pgEnum('report_delivery_status', ['pending', 'running', 'success', 'partial', 'failed', 'cancelled']);
 export const reportDeliveryTargetTypeEnum = pgEnum('report_delivery_target_type', ['subscription', 'alert', 'sla']);
@@ -158,6 +159,12 @@ export const reportPrintTemplates = pgTable('report_print_templates', {
   name: varchar({ length: 64 }).notNull(),
   /** 绑定的数据集（主数据源，可空）*/
   datasetId: integer().references((): AnyPgColumn => reportDatasets.id, { onDelete: 'set null' }),
+  /** 数据来源：dataset 走主数据集 / 数据集绑定取数；entity 由业务实体所属域在渲染时注入数据集 */
+  sourceType: reportPrintSourceTypeEnum().notNull().default('dataset'),
+  /** sourceType=entity 时的实体类型（如 workflow_instance），决定设计器字段目录与渲染时的数据集提供方 */
+  entityKind: varchar({ length: 32 }),
+  /** 实体模板的设计时参照（如流程定义 ID：决定表单字段目录）；渲染时的实体 ID 由请求方给出 */
+  entityRefId: integer(),
   /** Univer 工作簿快照(编辑用) + 归一化网格(渲染/导出用)，单元格含 ${field}/#{field}/${SUM(field)} 表达式 */
   content: jsonb().$type<ReportPrintContent>().notNull().default(sql`'{}'::jsonb`),
   /** 参数定义（${param} 注入）*/
@@ -174,6 +181,8 @@ export const reportPrintTemplates = pgTable('report_print_templates', {
   index('report_print_templates_tenant_status_idx').on(t.tenantId, t.status),
   index('report_print_templates_folder_idx').on(t.folderId),
   index('report_print_templates_owner_idx').on(t.ownerId),
+  // 实体模板按「实体类型 + 设计参照」检索（流程绑定下拉 / 设计器筛选）
+  index('report_print_templates_entity_idx').on(t.entityKind, t.entityRefId),
 ]);
 
 export type ReportPrintTemplateRow = typeof reportPrintTemplates.$inferSelect;

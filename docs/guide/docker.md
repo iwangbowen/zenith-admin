@@ -107,6 +107,8 @@ shared 与 server 的 `build` 脚本在 `tsc` 之后运行 `tsc-alias --resolve-
 
 API 容器以非 root 用户 `node` 运行；如需在容器内访问宿主机 Docker socket（运维模块的容器管理），请在自定义 override 中挂载 socket 并通过 `group_add` 加入 socket 所属组，不要改回 root。
 
+镜像内随包携带 PDF 导出所需的 CJK 字体（`packages/server/assets/fonts/NotoSansSC-Regular.otf`，SIL OFL），报表打印与审批单的 PDF 中文渲染无需再安装系统字体；企业自有字体挂载进容器后以 `REPORT_PDF_FONT_PATH` 指定即可覆盖。
+
 ## Nginx 行为
 
 `docker/nginx.conf` 的当前行为：

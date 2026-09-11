@@ -3,8 +3,10 @@ import { workflowInstanceContract, workflowTaskContract } from '@zenith/shared/w
 import { authMiddleware } from '../../../middleware/auth';
 import { guard } from '../../../middleware/guard';
 import { defineContractRoute } from '../../../lib/contract-route';
+import { inlineOrAttachmentDisposition } from '../../../lib/content-disposition';
 import { okBody } from '../../../lib/openapi-schemas';
 import { listMyInstances, listPendingMine, listAllInstances, listMyCc, listMyHandled, getInstanceDetail, countMyCcUnread, countPendingMine, listRelationOptions, listAllTasks } from '../../../services/workflow/workflow-instances.service';
+import { renderWorkflowInstancePdf } from '../../../services/workflow/workflow-print.service';
 import { getWorkflowAnalytics, listOverdueTasks } from '../../../services/workflow/workflow-analytics.service';
 import { listWorkflowSelectableUsers } from '../../../services/workflow/workflow-selectable-users.service';
 
@@ -67,6 +69,21 @@ export const detailRoute = defineContractRoute(workflowInstanceContract.detail, 
   // service 层再按发起人/参与人/monitor 权限细粒度判定
   middleware: [authMiddleware, guard({ permission: ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] })] as const,
   handler: async (c) => c.json(okBody(await getInstanceDetail(c.req.valid('param').id)), 200),
+});
+
+/** 审批单 PDF：访问口径与详情完全一致（能看详情即能打印），预览 / 打印 / 下载同一份文件 */
+export const printRoute = defineContractRoute(workflowInstanceContract.print, {
+  middleware: [authMiddleware, guard({ permission: ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] })] as const,
+  handler: async (c) => {
+    const { buffer, filename } = await renderWorkflowInstancePdf(c.req.valid('param').id, c.req.valid('query'));
+    return new Response(new Uint8Array(buffer), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': inlineOrAttachmentDisposition('application/pdf', filename),
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  },
 });
 
 export const analyticsRoute = defineContractRoute(workflowInstanceContract.analytics, {

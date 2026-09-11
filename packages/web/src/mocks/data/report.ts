@@ -81,7 +81,7 @@ export const mockReportAlerts: ReportAlertRule[] = [
 
 export const mockReportPrintTemplates: ReportPrintTemplate[] = [
   {
-    id: 1, name: '部门人数清单', datasetId: 2, datasetName: '部门用户榜',
+    id: 1, name: '部门人数清单', datasetId: 2, datasetName: '部门用户榜', sourceType: 'dataset',
     content: {
       grid: {
         rows: 3, cols: 2, colWidths: [200, 120],

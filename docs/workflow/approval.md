@@ -169,3 +169,20 @@ POST /api/workflows/instances/{id}/cc/add
 ## 保存视图
 
 「我的申请」「待我审批」「我已办」「抄送我的」和「流程监控」列表支持把当前筛选条件保存为个人视图，一键切换常用筛选组合；可设默认视图（进入页面自动套用）并调整排序。视图按用户隔离存储。
+
+## 审批单打印
+
+实例详情面板（我的申请 / 待我审批 / 我已办 / 抄送我的 / 流程监控共用）提供「打印」：服务端把实例渲染成 **PDF**，
+应用内预览后可直接调用浏览器打印或下载，预览、打印、下载是同一份文件。草稿尚无审批链与流水号，不提供打印。
+
+| 项 | 说明 |
+| --- | --- |
+| 接口 | `GET /api/workflows/instances/{id}/print`（`kind: file`，返回 `application/pdf`），可选 `templateId` 临时指定模板 |
+| 访问口径 | 与实例详情完全一致：发起人 / 参与人 / 持有 `workflow:instance:monitor` 的监控管理员，能看详情即能打印 |
+| 版式来源 | 流程定义绑定的打印模板（`printTemplateId`，报表打印设计器中 `sourceType=entity` / `entityKind=workflow_instance` 的实体模板）→ 未绑定时按**表单快照自动生成**版式 |
+| 自动版式 | 标题（流程名称 + 审批单）、编号 / 状态 / 发起时间副标题、基本信息、表单内容（尊重栅格 `row` 并排、`group` / `tabs` / `steps` 分段、`detail` 明细子表 + 数值合计、`signature` 图片、附件文件名）、审批记录（节点 / 处理人 / 结果 / 意见 / 时间 / 手写签名）、抄送、沟通记录、打印人与时间页脚 |
+| 数据集 | `instance`（主数据集）、`form`、`form_fields`、`form_<明细 key>`、`tasks`、`cc`、`comments`、`consults`、`attachments`，字段目录见 `describeWorkflowPrintDatasets()`（`@zenith/shared/workflow`） |
+| 字段格式化 | 选项 → 标签、金额千分位 + 单位、人员 / 部门 / 字典 / 关联审批单 → 名称、附件 → 文件名、富文本 → 纯文本；密码与说明类字段不打印 |
+| 字体 | 服务端随包内置 Noto Sans SC（`packages/server/assets/fonts`），无需运维配置；企业自有字体经 `REPORT_PDF_FONT_PATH` 覆盖 |
+
+纯逻辑（版式生成、数据集构建、字段格式化）在 `@zenith/shared/workflow` 的 `print.ts`，服务端与设计器共用。

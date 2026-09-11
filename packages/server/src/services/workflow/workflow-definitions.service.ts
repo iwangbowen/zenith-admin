@@ -8,6 +8,7 @@ export function mapDefinition(
   row: typeof workflowDefinitions.$inferSelect & {
     category?: { name: string | null; color: string | null; icon: string | null } | null;
     form?: { name: string | null; schema: unknown } | null;
+    printTemplate?: { name: string } | null;
   },
   createdByName?: string | null,
 ) {
@@ -32,6 +33,8 @@ export function mapDefinition(
     formSettings: formSchema?.settings ?? null,
     formType: (row.formType ?? 'designer') as WorkflowFormType,
     customForm: (row.customForm ?? null) as WorkflowCustomFormConfig | null,
+    printTemplateId: row.printTemplateId ?? null,
+    printTemplateName: row.printTemplate?.name ?? null,
     status: row.status,
     version: row.version,
     tenantId: row.tenantId,
@@ -85,6 +88,7 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import type { DbExecutor } from '../../db/types';
 import { ensureFormExists, resolveFormSnapshot } from './workflow-forms.service';
+import { loadEntityPrintTemplate } from '../report/report-print.service';
 
 export type WorkflowDefinitionStatus = 'draft' | 'published' | 'disabled';
 type WorkflowInitiatorScopeType = 'all' | 'users' | 'departments' | 'roles';
@@ -198,19 +202,28 @@ export async function getDefinition(id: number) {
       createdByUser: { columns: { nickname: true } },
       category: { columns: { name: true, color: true, icon: true } },
       form: { columns: { name: true, schema: true } },
+      printTemplate: { columns: { name: true } },
     },
   }), '流程定义不存在');
   return mapDefinition(row, row.createdByUser?.nickname ?? null);
 }
 
+/** 审批单打印模板必须是本租户可用的 workflow_instance 实体模板（null = 解除绑定，按表单自动生成） */
+async function ensurePrintTemplateBindable(templateId: number | null | undefined, tenantId: number | null): Promise<void> {
+  if (templateId == null) return;
+  await loadEntityPrintTemplate(templateId, { entityKind: 'workflow_instance', tenantId });
+}
+
 export async function createDefinition(data: {
-  name: string; description?: string | null; categoryId?: number | null; initiatorScopeType?: WorkflowInitiatorScopeType; initiatorScopeIds?: number[] | null; flowData?: unknown; formId?: number | null; formType?: WorkflowFormType; customForm?: WorkflowCustomFormConfig | null; status?: WorkflowDefinitionStatus;
+  name: string; description?: string | null; categoryId?: number | null; initiatorScopeType?: WorkflowInitiatorScopeType; initiatorScopeIds?: number[] | null; flowData?: unknown; formId?: number | null; formType?: WorkflowFormType; customForm?: WorkflowCustomFormConfig | null; printTemplateId?: number | null; status?: WorkflowDefinitionStatus;
 }) {
   const user = currentUser();
   const scopeType = data.initiatorScopeType ?? 'all';
   const scopeIds = scopeType === 'all' ? null : normalizeScopeIds(data.initiatorScopeIds);
   const formType = data.formType ?? 'designer';
   if (formType === 'designer' && data.formId != null) await ensureFormExists(data.formId);
+  const tenantId = getCreateTenantId(user);
+  await ensurePrintTemplateBindable(data.printTemplateId, tenantId);
   // 禁止经 create 直接发布：发布必须走 publishDefinition（含 validateFlowData 校验与版本快照）
   const initialStatus = (data.status ?? 'draft') === 'published' ? 'draft' : (data.status ?? 'draft');
   const [row] = await db.insert(workflowDefinitions).values({
@@ -223,18 +236,20 @@ export async function createDefinition(data: {
     formId: formType === 'designer' ? (data.formId ?? null) : null,
     formType,
     customForm: hasBusinessFormConfig(formType) ? (data.customForm ?? null) : null,
+    printTemplateId: data.printTemplateId ?? null,
     status: initialStatus,
-    tenantId: getCreateTenantId(user),
+    tenantId,
   }).returning();
   return getDefinition(row.id);
 }
 
 export async function updateDefinition(id: number, data: Partial<{
-  name: string; description: string | null; categoryId: number | null; initiatorScopeType: WorkflowInitiatorScopeType; initiatorScopeIds: number[] | null; flowData: unknown; formId: number | null; formType: WorkflowFormType; customForm: WorkflowCustomFormConfig | null; status: WorkflowDefinitionStatus;
+  name: string; description: string | null; categoryId: number | null; initiatorScopeType: WorkflowInitiatorScopeType; initiatorScopeIds: number[] | null; flowData: unknown; formId: number | null; formType: WorkflowFormType; customForm: WorkflowCustomFormConfig | null; printTemplateId: number | null; status: WorkflowDefinitionStatus;
 }>) {
   const where = findDefinition(id);
   const [existing] = await db.select().from(workflowDefinitions).where(where).limit(1);
   requireRow(existing, '流程定义不存在');
+  if (data.printTemplateId !== undefined) await ensurePrintTemplateBindable(data.printTemplateId, existing.tenantId ?? null);
   // 解析最终的表单类型（本次更新值优先，否则取库中现值），用于条件写入两类表单字段
   const nextFormType = (data.formType ?? existing.formType ?? 'designer') as WorkflowFormType;
   if (nextFormType === 'designer' && data.formId != null) await ensureFormExists(data.formId);

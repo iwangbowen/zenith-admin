@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { PDFViewer, ZoomMode } from '@embedpdf/react-pdf-viewer';
 import type { PDFViewerRef, PluginRegistry } from '@embedpdf/react-pdf-viewer';
 // 本地加载 PDFium WASM：经 npm 安装，dev 与生产构建均由 Vite 处理为本地资源，
@@ -40,9 +40,11 @@ interface PDFPreviewPanelProps {
   readonly fullscreen?: boolean;
   readonly onToggleFullscreen?: () => void;
   readonly style?: CSSProperties;
+  /** 顶栏额外动作（打印 / 下载等），渲染在缩放选择器之前 */
+  readonly actions?: ReactNode;
 }
 
-export function PDFPreviewPanel({ file, onClose, fullscreen, onToggleFullscreen, style }: PDFPreviewPanelProps) {
+export function PDFPreviewPanel({ file, onClose, fullscreen, onToggleFullscreen, style, actions }: PDFPreviewPanelProps) {
   const viewerRef = useRef<PDFViewerRef>(null);
   const registryRef = useRef<PluginRegistry | null>(null);
   const { isDark } = useThemeController();
@@ -178,6 +180,7 @@ export function PDFPreviewPanel({ file, onClose, fullscreen, onToggleFullscreen,
         >
           {file.name}
         </Text>
+        {actions}
         <Select
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           value={zoomMode as any}

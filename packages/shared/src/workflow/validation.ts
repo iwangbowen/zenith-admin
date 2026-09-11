@@ -470,6 +470,8 @@ export const createWorkflowDefinitionSchema = z.object({
   formId: z.number().int().positive().nullable().optional(),
   formType: workflowFormTypeSchema.default('designer'),
   customForm: workflowCustomFormConfigSchema.nullable().optional(),
+  /** 审批单打印模板（报表打印设计器中 sourceType=entity / entityKind=workflow_instance 的模板），为空按表单自动生成版式 */
+  printTemplateId: z.number().int().positive().nullable().optional(),
   status: z.enum(['draft', 'published', 'disabled']).default('draft'),
 });
 

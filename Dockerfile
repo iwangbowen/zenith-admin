@@ -70,9 +70,10 @@ RUN apk add --no-cache libstdc++ \
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 
-# Copy compiled server and Drizzle migration files
+# Copy compiled server, Drizzle migration files and bundled runtime assets (CJK font for PDF export)
 COPY --from=builder /app/packages/server/dist ./packages/server/dist
 COPY --from=builder /app/packages/server/drizzle ./packages/server/drizzle
+COPY --from=builder /app/packages/server/assets ./packages/server/assets
 
 WORKDIR /app/packages/server
 

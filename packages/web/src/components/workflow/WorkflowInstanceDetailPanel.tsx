@@ -24,6 +24,7 @@ import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from './WorkflowGraphView';
+import WorkflowPrintButton from './WorkflowPrintButton';
 import WorkflowProcessLayout from './WorkflowProcessLayout';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
 import { linearizeApprovalNodes, INSTANCE_STATUS_MAP } from './workflow-runtime';
@@ -439,7 +440,7 @@ export default function WorkflowInstanceDetailPanel({
           {instance.suspendReason ? ` 原因：${instance.suspendReason}` : ''}
         </div>
       )}
-      {(instance.parentInstanceId || extraActions || myRecallableTask) ? (
+      {(instance.parentInstanceId || extraActions || myRecallableTask || instance.status !== 'draft') ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
           {instance.parentInstanceId ? (
             <Button
@@ -452,6 +453,8 @@ export default function WorkflowInstanceDetailPanel({
               来自父流程实例 #{instance.parentInstanceId}
             </Button>
           ) : null}
+          {/* 草稿尚无审批链与流水号，不提供打印；其余状态均可打印当前快照 */}
+          {instance.status !== 'draft' ? <WorkflowPrintButton instanceId={instance.id} /> : null}
           {extraActions}
           {myRecallableTask ? (
             <Popconfirm title="撤回我刚做的处理？" content="后续节点已处理时无法撤回。" onConfirm={() => void handleRecall()}>

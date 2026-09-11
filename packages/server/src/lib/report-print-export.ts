@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import type ExcelJS from 'exceljs';
 import bwipjs from 'bwip-js';
@@ -24,7 +23,7 @@ import {
   WidthType,
 } from 'docx';
 import type { IBorderOptions, ISectionOptions, ITableCellBorders } from 'docx';
-import { config } from '../config';
+import { resolvePdfFontPath } from './pdf-font';
 import { findPrintMerge, isPrintCellCoveredByMerge } from '@zenith/shared/report';
 import type { ReportPrintBorder, ReportPrintCell, ReportPrintCellStyle, ReportPrintGrid, ReportPrintPageConfig, ReportPrintRenderPage, ReportPrintRenderResult } from '@zenith/shared/report';
 
@@ -35,17 +34,6 @@ const loadPdfDocument = () => require('pdfkit') as typeof import('pdfkit');
 
 const PAPER_SIZE: Record<NonNullable<ReportPrintPageConfig['paper']>, number> = { A4: 9, A3: 8, A5: 11, Letter: 1 };
 const PDF_PAPER_SIZE: Record<NonNullable<ReportPrintPageConfig['paper']>, string> = { A4: 'A4', A3: 'A3', A5: 'A5', Letter: 'LETTER' };
-const PDF_FONT_CANDIDATES = [
-  ...(config.report.pdfFontPath ? [config.report.pdfFontPath] : []),
-  'C:\\Windows\\Fonts\\simhei.ttf',
-  'C:\\Windows\\Fonts\\msyh.ttc',
-  'C:\\Windows\\Fonts\\simsun.ttc',
-  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-  '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
-  '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
-  '/System/Library/Fonts/PingFang.ttc',
-  '/System/Library/Fonts/Hiragino Sans GB.ttc',
-];
 const MM_TO_PX = 96 / 25.4;
 const DOCX_PAPER_PX: Record<NonNullable<ReportPrintPageConfig['paper']>, { width: number; height: number }> = {
   A3: { width: 297 * MM_TO_PX, height: 420 * MM_TO_PX },
@@ -540,16 +528,6 @@ export async function renderPrintResultToDocx(result: ReportPrintRenderResult): 
   return buffer;
 }
 
-// 字体安装状态运行期不变：首次探测后缓存，避免每次导出重复 existsSync
-let cachedPdfFontPath: string | null | undefined;
-
-function resolvePdfFontPath() {
-  if (cachedPdfFontPath === undefined) {
-    cachedPdfFontPath = PDF_FONT_CANDIDATES.find((candidate) => fs.existsSync(candidate)) ?? null;
-  }
-  return cachedPdfFontPath;
-}
-
 function resultContainsCjk(result: ReportPrintRenderResult): boolean {
   const hasCjk = (value: unknown) => /[\u3400-\u9fff\uf900-\ufaff]/u.test(String(value ?? ''));
   return result.pages.some((page) =>
@@ -656,10 +634,14 @@ async function drawPdfGrid(doc: PDFKit.PDFDocument, pageResult: ReportPrintRende
       if (graphic) {
         doc.save().rect(x + 1, y + 1, Math.max(1, width - 2), Math.max(1, height - 2)).clip();
         const imageSize: [number, number] = [Math.max(8, width - 4), Math.max(8, height - 4)];
-        if (cell?.image?.fit === 'cover') {
-          doc.image(graphic.buffer, x + 2, y + 2, { cover: imageSize, align: 'center', valign: 'center' });
-        } else {
-          doc.image(graphic.buffer, x + 2, y + 2, { fit: imageSize, align: 'center', valign: 'center' });
+        try {
+          if (cell?.image?.fit === 'cover') {
+            doc.image(graphic.buffer, x + 2, y + 2, { cover: imageSize, align: 'center', valign: 'center' });
+          } else {
+            doc.image(graphic.buffer, x + 2, y + 2, { fit: imageSize, align: 'center', valign: 'center' });
+          }
+        } catch {
+          // 单张损坏 / 不支持的图片（如异常的签名 data URL）跳过，不让整份文件失败
         }
         doc.restore();
         continue;
@@ -668,7 +650,8 @@ async function drawPdfGrid(doc: PDFKit.PDFDocument, pageResult: ReportPrintRende
       const value = cell?.v == null ? '' : String(cell.v);
       if (!value) continue;
       const fontSize = cell?.s?.fontSize ?? 10;
-      doc.font(fontName).fontSize(fontSize).fillColor(textColor(cell?.s?.color));
+      const color = textColor(cell?.s?.color);
+      doc.font(fontName).fontSize(fontSize).fillColor(color);
       const textWidth = Math.max(8, width - 8);
       const textHeight = doc.heightOfString(value, { width: textWidth, align: cell?.s?.align ?? 'left' });
       const align = cell?.s?.align ?? 'left';
@@ -676,12 +659,16 @@ async function drawPdfGrid(doc: PDFKit.PDFDocument, pageResult: ReportPrintRende
       if (cell?.s?.valign === 'middle') textY = y + Math.max(2, (height - textHeight) / 2);
       if (cell?.s?.valign === 'bottom') textY = y + Math.max(2, height - textHeight - 4);
       doc.save().rect(x + 1, y + 1, Math.max(1, width - 2), Math.max(1, height - 2)).clip();
+      // 只嵌入一个字重：加粗用细描边叠加填充模拟（标签 / 标题），避免再随包一份 Bold 字体
+      const bold = cell?.s?.bold === true;
+      if (bold) doc.strokeColor(color).lineWidth(Math.max(0.2, fontSize * 0.028));
       doc.text(value, x + 4, textY, {
         width: textWidth,
         height: Math.max(8, height - 8),
         align,
         lineBreak: cell?.s?.wrap !== false,
         ellipsis: true,
+        ...(bold ? { fill: true, stroke: true } : {}),
       });
       doc.restore();
     }
@@ -695,7 +682,7 @@ export async function renderPrintResultToPdf(result: ReportPrintRenderResult): P
   const imageCache = new Map<string, RenderedGraphic>();
   const fontPath = resolvePdfFontPath();
   if (!fontPath && resultContainsCjk(result)) {
-    throw new Error('PDF 导出包含中文，但未找到 CJK 字体；请配置 REPORT_PDF_FONT_PATH');
+    throw new Error('PDF 导出包含中文，但未找到 CJK 字体（内置 assets/fonts 缺失且未配置 REPORT_PDF_FONT_PATH）');
   }
   const fontName = fontPath ? 'zh' : 'Helvetica';
   if (fontPath) doc.registerFont(fontName, fontPath);

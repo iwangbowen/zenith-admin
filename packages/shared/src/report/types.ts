@@ -32,6 +32,20 @@ export const REPORT_RESOURCE_TYPES = [
 
 export type ReportResourceType = typeof REPORT_RESOURCE_TYPES[number];
 
+/** 打印模板数据来源：dataset = 绑定报表数据集取数；entity = 渲染时由业务实体（审批单等）所属域注入数据集 */
+export const REPORT_PRINT_SOURCE_TYPES = ['dataset', 'entity'] as const;
+
+export type ReportPrintSourceType = typeof REPORT_PRINT_SOURCE_TYPES[number];
+
+/** 实体打印可绑定的业务实体类型（新增实体：所属域提供数据集构建 + 字段目录，并在此登记） */
+export const REPORT_PRINT_ENTITY_KINDS = ['workflow_instance'] as const;
+
+export type ReportPrintEntityKind = typeof REPORT_PRINT_ENTITY_KINDS[number];
+
+export const REPORT_PRINT_ENTITY_KIND_LABELS: Record<ReportPrintEntityKind, string> = {
+  workflow_instance: '审批单（流程实例）',
+};
+
 export const REPORT_METRIC_TYPES = ['simple', 'ratio', 'composite'] as const;
 
 export type ReportMetricType = typeof REPORT_METRIC_TYPES[number];

@@ -1,8 +1,9 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, foreignKey, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { WorkflowAutomationAction, WorkflowDefinitionSnapshot } from '@zenith/shared/workflow';
 import { statusEnum, timestampColumns } from './common';
 import { auditColumns, tenants, users } from './core';
+import { reportPrintTemplates } from './report';
 
 // ─── 工作流引擎健康快照表（append-only，由定时任务 platform-wide 采集，驱动健康趋势 + 告警指标源）───
 export const workflowEngineHealthSnapshots = pgTable('workflow_engine_health_snapshots', {
@@ -118,6 +119,9 @@ export const workflowDefinitions = pgTable('workflow_definitions', {
   formId: integer().references(() => workflowForms.id, { onDelete: 'set null' }), // 绑定的表单（实时引用最新表单）
   formType: workflowFormTypeEnum().default('designer').notNull(), // 表单类型：designer=表单库，custom=自定义业务页面
   customForm: jsonb(), // 自定义业务表单配置 { createComponent, viewComponent?, icon?, variables[] }
+  // 审批单打印模板（报表打印设计器 sourceType=entity 的模板）；未绑定时按表单快照自动生成版式。
+  // 外键在表级显式命名：drizzle 派生名超过 PG 63 字符标识符上限会被静默截断
+  printTemplateId: integer(),
   status: workflowDefinitionStatusEnum().default('draft').notNull(),
   version: integer().default(1).notNull(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
@@ -128,6 +132,7 @@ export const workflowDefinitions = pgTable('workflow_definitions', {
   index('workflow_definitions_tenant_status_idx').on(t.tenantId, t.status),
   // 决策表/流/评分卡引用扫描按 flowData @> containment 粗筛（rules.service findWorkflowGatewayUsages）
   index('workflow_definitions_flow_data_gin_idx').using('gin', t.flowData.op('jsonb_path_ops')),
+  foreignKey({ name: 'workflow_definitions_print_template_fk', columns: [t.printTemplateId], foreignColumns: [reportPrintTemplates.id] }).onDelete('set null'),
 ]);
 
 export type WorkflowDefinitionRow = typeof workflowDefinitions.$inferSelect;

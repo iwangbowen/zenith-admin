@@ -63,6 +63,15 @@
 - `detailDirection: 'crosstab'` 使用 `rowFields`、`columnFields`、`valueFields[{ field, aggregate }]` 生成交叉表，可显示行/列总计。服务端限制动态列数（256）、总单元格数（10 万）和结果字节数（8MB），超预算直接失败，不截断成错误报表。
 - `kind: 'subreport'` 单元格通过 `templateId`、可选 `datasetKey` 和 `paramBindings` 嵌入另一个模板。服务端限制递归深度（最多 3 层）并检测循环引用；子报表仍执行目标模板和数据集权限校验。
 
+## 实体模板（审批单等业务单据）
+
+模板的 `sourceType` 区分数据来源：`dataset`（默认，绑定报表数据集取数）与 `entity`（渲染时由业务实体所属域注入数据集）。
+实体模板声明 `entityKind`（当前支持 `workflow_instance` 审批单）与可选的设计参照 `entityRefId`（流程定义 ID，决定表单字段目录；为空为通用模板），
+并在 `content.entityDatasets[]` 登记渲染时会注入的数据集键（如 `instance` / `form` / `tasks`），单元格与重复块即可用 `datasetKey` 引用这些数据集。
+
+- 实体模板不走数据集取数与报表资源 ACL：能访问实体（如能看审批实例详情）即能用其绑定的模板打印，访问控制由实体所属域负责。
+- 流程定义在「更多设置」绑定实体模板（`printTemplateId`）；未绑定时服务端按表单快照自动生成版式，见[审批单打印](../workflow/approval.md#审批单打印)。
+
 ## 预览与打印
 
 - **预览**：调用渲染接口取数填充，按真实 `pages[]` 逐页还原 HTML（页眉、页脚、底图、页码、重复表头、页小计都会生效）。
@@ -73,7 +82,7 @@
 打印报表可导出为 **Excel（.xlsx）**、**PDF** 与 **Word（.docx）**，接入项目统一**导出中心**（导出实体 `report.print`）。明细行数 ≤ 800 时同步直出，超过则按导出中心容量策略转异步任务 + 下载中心取件。
 
 - **Excel**：服务端用 ExcelJS 还原多 Sheet 网格、合并、字体/对齐/底纹/边框、行高列宽、公式、数字格式、图片/二维码/条码、纸张与页面设置。
-- **PDF**：服务端用 PDFKit 按真实分页结果绘制文本表格、页眉页脚、页码、边框，并对合并单元格做合理降级。
+- **PDF**：服务端用 PDFKit 按真实分页结果绘制文本表格、页眉页脚、页码、边框，并对合并单元格做合理降级。中文字形来自随包内置的 Noto Sans SC（`packages/server/assets/fonts`，SIL OFL），Docker 镜像与源码部署零配置可用；企业要用自有字体时以 `REPORT_PDF_FONT_PATH` 指向单个 TTF / OTF 文件覆盖。加粗以细描边模拟，不需要再内置 Bold 字重。
 - **Word**：服务端生成原生 `.docx`，按渲染后的 Sheet/分页组织表格、页眉页脚、图片、二维码/条码和子报表；不是把 HTML 改扩展名。
 
 ## 与仪表盘的区别

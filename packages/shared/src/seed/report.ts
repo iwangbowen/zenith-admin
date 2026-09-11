@@ -204,6 +204,7 @@ export const SEED_REPORT_PRINT_TEMPLATES: ReportPrintTemplate[] = [
     id: 1,
     name: '部门用户统计表',
     datasetId: 2,
+    sourceType: 'dataset',
     content: {
       grid: {
         rows: 4,

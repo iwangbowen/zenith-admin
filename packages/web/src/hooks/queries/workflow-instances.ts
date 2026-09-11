@@ -1,7 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { InputOf, QueryOf } from '@zenith/shared/core';
 import { workflowInstanceContract } from '@zenith/shared/workflow';
-import { api, useApiMutation } from '@/lib/contract-query';
+import { api, urlOf, useApiMutation } from '@/lib/contract-query';
+import { compactQuery } from '@/lib/query';
+import { request } from '@/utils/request';
 
 export type WorkflowInstanceListParams = QueryOf<typeof workflowInstanceContract.list>;
 
@@ -77,6 +79,28 @@ export function useResubmitWorkflowInstance() {
 
 export function useWithdrawWorkflowInstance() {
   return useApiMutation(workflowInstanceContract.withdraw, { invalidate: invalidateWorkflow });
+}
+
+export interface WorkflowInstancePrintPdf {
+  blob: Blob;
+  filename: string;
+}
+
+/**
+ * 审批单 PDF：预览 / 打印 / 下载共用同一份文件。二进制通道不走 api()，经 request.fetchRaw 取 Blob
+ * 与响应头文件名；失败时服务端返回标准 JSON 信封，取其 message 抛出供调用方提示。
+ */
+export async function fetchWorkflowInstancePrintPdf(id: number, templateId?: number): Promise<WorkflowInstancePrintPdf> {
+  const res = await request.fetchRaw(urlOf(workflowInstanceContract.print, { params: { id }, query: compactQuery({ templateId }) }));
+  if (!res) throw new Error('审批单生成失败');
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { message?: string } | null;
+    throw new Error(body?.message || `审批单生成失败（HTTP ${res.status}）`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  return { blob, filename: match ? decodeURIComponent(match[1]) : `审批单-${id}.pdf` };
 }
 
 export function useBatchWithdrawWorkflowInstances() {

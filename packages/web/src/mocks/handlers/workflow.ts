@@ -1,6 +1,7 @@
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest, fail, notFound } from '@/mocks/utils/handlers';
+import { demoPdfResponse } from '@/mocks/utils/pdf';
 import type {
   WorkflowDefinition,
   WorkflowDefinitionHealthReport,
@@ -2090,6 +2091,20 @@ export const workflowHandlers = [
       .filter(i => i.parentInstanceId === inst.id)
       .map(c => ({ id: c.id, title: c.title, status: c.status, parentTaskNodeKey: null, createdAt: c.createdAt }));
     return ok({ ...withDefinitionSnapshot(withActiveNodes(inst)), tasks, childInstances });
+  }),
+
+  // 审批单 PDF：Demo 无 pdfkit，返回最小 PDF 替身，保证预览 / 打印 / 下载链路可走通
+  mock(workflowInstanceContract.print, ({ params }) => {
+    const inst = mockWorkflowInstances.find(i => i.id === params.id);
+    if (!inst) return notFound('流程实例不存在');
+    const tasks = mockWorkflowTasks.filter(t => t.instanceId === inst.id);
+    return demoPdfResponse([
+      'Zenith Admin Demo - Approval Sheet',
+      `Instance #${inst.id}  Serial: ${inst.serialNo ?? '-'}  Status: ${inst.status}`,
+      `Created: ${inst.createdAt}`,
+      `Approval records: ${tasks.length}`,
+      'Demo mode renders a placeholder; the real server generates the full sheet as PDF.',
+    ], `${inst.serialNo ?? `approval-${inst.id}`}.pdf`);
   }),
 
   // 发起流程申请（支持保存草稿 asDraft）
