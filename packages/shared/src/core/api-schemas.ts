@@ -10,7 +10,7 @@ import { USER_STATUSES } from './constants';
 
 // ─── 通用状态 ────────────────────────────────────────────────────────────────
 
-/** 通用启用 / 禁用状态 */
+/** 通用启用 / 禁用状态（请求体 / 实体字段）；列表 query 的状态筛选用下方 `entityStatusQuery` */
 export const entityStatusSchema = z.enum(USER_STATUSES);
 
 // ─── 路径 / 查询参数 ─────────────────────────────────────────────────────────

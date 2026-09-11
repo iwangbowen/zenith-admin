@@ -77,7 +77,11 @@
   **禁止**在契约文件逐个导出 `type XxxListQueryInput = z.infer<typeof xxxListQuery>`（泛型已覆盖，两种写法并存即缺陷）。
   筛选条件需与导出中心等不带分页的调用方共用时，定义**一个**
   `type XxxListFilter = Omit<QueryOutputOf<typeof xxxContract.list>, 'page' | 'pageSize'>`；
-  路径参数（`memberId` / `siteId`）保持独立形参，不混入 query 类型
+  路径参数（`memberId` / `siteId`）保持独立形参，不混入 query 类型。
+  请求体经路由解析后的服务端类型同理用 `z.output<typeof xxxBodySchema>`，不手写含分页字段的 interface。
+  `packages/server/eslint.config.js` 对 `src/services/**` 封禁：含 `pageSize` 的手写 interface、`and(...conditions)`、
+  `page = 1` / `pageSize = 10` 解构默认值与 `q.page ?? 1`；前台渲染 / 引擎内部的分页视图模型属例外，
+  加 `eslint-disable-next-line no-restricted-syntax -- 理由` 注明
 - **契约操作命名**：标准 CRUD 固定为 `list` / `detail` / `create` / `update` / `remove`，可选 `all`（下拉源）/
   `removeBatch`（`DELETE /batch`）——web 的 `createResourceQueries` 按此约定派生 hooks；其余操作按业务动词命名
 - **契约积木**：路径 `{id}` 用 `idParam`；列表查询 `paginationQuery.extend({...})`；分页响应 `paginated(xxxSchema)`；
