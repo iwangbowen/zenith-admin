@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { listTableProps, ListSearchToolbar } from '@/components/list-page';
-import { useQueryClient } from '@tanstack/react-query';
 import { Form, Modal, Select, Spin, Tag, Toast, Banner, Typography, Tooltip, Input, Descriptions } from '@douyinfe/semi-ui';
 import { MP_BROADCAST_TYPE_LABELS, MP_BROADCAST_TYPE_OPTIONS } from '@zenith/shared/mp';
 import type { CreateMpBroadcastInput, MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus } from '@zenith/shared/mp';
@@ -11,7 +10,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, dateTimeColumn } from '../../utils/table-columns';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -30,7 +29,7 @@ import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { StatusSelect } from '@/components/search-filters';
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS: { label: string; value: MpBroadcastStatus }[] = [
   { label: '草稿', value: 'draft' },
   { label: '已发送', value: 'sent' },
   { label: '失败', value: 'failed' },
@@ -46,13 +45,13 @@ const STATUS_META: Record<MpBroadcastStatus, { label: string; color: 'grey' | 'g
 
 export default function MpBroadcastsPage() {
   const { hasPermission: can } = usePermission();
-  const queryClient = useQueryClient();
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draftStatus, setDraftStatus] = useState<MpBroadcastStatus | undefined>(undefined);
-  const [submittedStatus, setSubmittedStatus] = useState<MpBroadcastStatus | undefined>(undefined);
+  const {
+    page, pageSize, buildPagination,
+    bind, submittedParams, handleSearch, handleReset,
+  } = useListSearch<{ status?: MpBroadcastStatus }>({ defaults: { status: undefined }, listKey: mpBroadcastKeys.lists });
 
-  const listQuery = useMpBroadcastList({ accountId: currentId ?? 0, page, pageSize, status: submittedStatus }, !!currentId);
+  const listQuery = useMpBroadcastList({ accountId: currentId ?? 0, page, pageSize, status: submittedParams.status }, !!currentId);
   const auxQuery = useMpBroadcastAux(currentId);
   const tags = auxQuery.data?.tags ?? [];
   const materials = auxQuery.data?.materials ?? [];
@@ -72,18 +71,6 @@ export default function MpBroadcastsPage() {
   const previewMutation = usePreviewMpBroadcast();
   const deleteMutation = useDeleteMpBroadcasts();
   const sendingId = sendMutation.isPending ? (sendMutation.variables?.params.id ?? null) : null;
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmittedStatus(draftStatus);
-    void queryClient.invalidateQueries({ queryKey: mpBroadcastKeys.lists });
-  };
-  const handleReset = () => {
-    setDraftStatus(undefined);
-    setSubmittedStatus(undefined);
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: mpBroadcastKeys.lists });
-  };
 
   const modal = useEditModal<MpBroadcast, BroadcastFormValues, Partial<CreateMpBroadcastInput>>({
     save: saveMutation,
@@ -202,8 +189,7 @@ export default function MpBroadcastsPage() {
             <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
             <StatusSelect
               items={STATUS_OPTIONS}
-              value={draftStatus}
-              onChange={(v) => setDraftStatus(v as MpBroadcastStatus | undefined)}
+              {...bind('status')}
             />
           </>
         }

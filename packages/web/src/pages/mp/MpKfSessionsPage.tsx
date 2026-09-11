@@ -48,6 +48,7 @@ import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { abortSubmit } from '@/lib/abort-submit';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { useListSearch } from '@/hooks/useListSearch';
 import { confirmDanger } from '@/utils/confirm';
 const { Text } = Typography;
 
@@ -79,8 +80,11 @@ export default function MpKfSessionsPage() {
   const queryClient = useQueryClient();
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
   const [tab, setTab] = useUrlTabState(['waiting', 'active', 'closed'] as const, 'waiting');
-  const [keyword, setKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  // 会话列表固定取前 50 条，不分页；只用 useListSearch 的搜索态与回源语义
+  const { bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch<{ keyword: string }>({
+    defaults: { keyword: '' },
+    listKey: mpKfSessionKeys.lists,
+  });
   // 页面已用 ?tab= 承载页签态，选中会话不再入 URL（同页两个写 URL 的 hook 会竞写震荡，以 tab 为准）
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -93,7 +97,7 @@ export default function MpKfSessionsPage() {
   const [rateValue, setRateValue] = useState(5);
   const [rateRemark, setRateRemark] = useState('');
 
-  const listQuery = useMpKfSessionList({ accountId: currentId ?? 0, status: tab, keyword: submittedKeyword || undefined, page: 1, pageSize: 50 }, !!currentId);
+  const listQuery = useMpKfSessionList({ accountId: currentId ?? 0, status: tab, keyword: submittedParams.keyword || undefined, page: 1, pageSize: 50 }, !!currentId);
   const statsQuery = useMpKfSessionStats(currentId);
   const detailQuery = useMpKfSessionDetail(selectedId ?? undefined);
   const configQuery = useMpKfRoutingConfig(currentId, configVisible);
@@ -136,16 +140,6 @@ export default function MpKfSessionsPage() {
   const handleTabChange = (key: string) => {
     setTab(key as MpKfSessionStatus);
     setSelectedId(null);
-  };
-
-  const handleSearch = () => {
-    setSubmittedKeyword(keyword);
-    void queryClient.invalidateQueries({ queryKey: mpKfSessionKeys.lists });
-  };
-  const handleReset = () => {
-    setKeyword('');
-    setSubmittedKeyword('');
-    void queryClient.invalidateQueries({ queryKey: mpKfSessionKeys.lists });
   };
 
   const openPick = (mode: 'accept' | 'transfer') => {
@@ -216,7 +210,7 @@ export default function MpKfSessionsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索 openid / 粉丝昵称" value={keyword} onChange={setKeyword} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="搜索 openid / 粉丝昵称" {...bindKeyword('keyword')} width={200} />}
         filters={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
         onSearch={handleSearch}
         onReset={handleReset}

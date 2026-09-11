@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Space, Spin, Tag, Toast, Typography, TextArea } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import type { MpDraft, MpArticle } from '@zenith/shared/mp';
@@ -9,7 +8,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -30,13 +29,13 @@ const blankArticle = (): MpArticle => ({ title: '', author: '', digest: '', cont
 
 export default function MpDraftsPage() {
   const { hasPermission: can } = usePermission();
-  const queryClient = useQueryClient();
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const {
+    page, pageSize, buildPagination,
+    bindKeyword, submittedParams, handleSearch, handleReset,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: mpDraftKeys.lists });
 
-  const listQuery = useMpDraftList({ accountId: currentId ?? 0, page, pageSize, keyword: submittedKeyword || undefined }, !!currentId);
+  const listQuery = useMpDraftList({ accountId: currentId ?? 0, page, pageSize, keyword: submittedParams.keyword || undefined }, !!currentId);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MpDraft | null>(null);
@@ -51,18 +50,6 @@ export default function MpDraftsPage() {
   useEffect(() => {
     if (modalVisible && editingRecord) setArticles(detailQuery.data?.articles.length ? detailQuery.data.articles : [blankArticle()]);
   }, [modalVisible, editingRecord, detailQuery.data]);
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: mpDraftKeys.lists });
-  };
-  const handleReset = () => {
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: mpDraftKeys.lists });
-  };
 
   const openCreate = () => { setEditingRecord(null); setArticles([blankArticle()]); setModalVisible(true); };
   const openEdit = (record: MpDraft) => { setEditingRecord(record); setArticles([blankArticle()]); setModalVisible(true); };
@@ -121,7 +108,7 @@ export default function MpDraftsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标题" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={180} />}
+        keyword={<KeywordInput placeholder="搜索标题" {...bindKeyword('keyword')} width={180} />}
         filters={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
         onSearch={handleSearch}
         onReset={handleReset}

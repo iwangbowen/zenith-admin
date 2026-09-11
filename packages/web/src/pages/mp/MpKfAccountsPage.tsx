@@ -1,6 +1,4 @@
-import { useState } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { useQueryClient } from '@tanstack/react-query';
 import { Avatar, Button, Form, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import type { CreateMpKfAccountInput, MpKfAccount } from '@zenith/shared/mp';
@@ -10,7 +8,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -35,28 +33,16 @@ const INVITE_LABEL: Record<string, { label: string; color: 'green' | 'orange' | 
 
 export default function MpKfAccountsPage() {
   const { hasPermission: can } = usePermission();
-  const queryClient = useQueryClient();
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const listQuery = useMpKfAccountList({ accountId: currentId ?? 0, page, pageSize, keyword: submittedKeyword || undefined }, !!currentId);
+  const {
+    page, pageSize, buildPagination,
+    bindKeyword, submittedParams, handleSearch, handleReset,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: mpKfAccountKeys.lists });
+  const listQuery = useMpKfAccountList({ accountId: currentId ?? 0, page, pageSize, keyword: submittedParams.keyword || undefined }, !!currentId);
 
   const syncMutation = useSyncMpKfAccounts();
   const saveMutation = useSaveMpKfAccount();
   const deleteMutation = useDeleteMpKfAccounts();
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: mpKfAccountKeys.lists });
-  };
-  const handleReset = () => {
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: mpKfAccountKeys.lists });
-  };
 
   const handleSync = async () => {
     if (!currentId) return;
@@ -121,7 +107,7 @@ export default function MpKfAccountsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索客服昵称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={180} />}
+        keyword={<KeywordInput placeholder="搜索客服昵称" {...bindKeyword('keyword')} width={180} />}
         filters={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
         onSearch={handleSearch}
         onReset={handleReset}

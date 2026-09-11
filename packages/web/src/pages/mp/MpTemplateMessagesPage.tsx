@@ -13,6 +13,7 @@ import { listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -41,13 +42,11 @@ export default function MpTemplateMessagesPage() {
 
   const [tab, setTab] = useUrlTabState(['templates', 'logs'] as const, 'templates');
   const tplPg = usePagination();
-  const logPg = usePagination();
-  const [draftLogStatus, setDraftLogStatus] = useState<string | undefined>(undefined);
-  const [submittedLogStatus, setSubmittedLogStatus] = useState<string | undefined>(undefined);
+  const logSearch = useListSearch<{ status?: string }>({ defaults: { status: undefined }, listKey: mpTemplateLogKeys.lists });
 
   const templateQuery = useMpTemplateList({ accountId: currentId ?? 0, page: tplPg.page, pageSize: tplPg.pageSize }, !!currentId);
   const logQuery = useMpTemplateLogList(
-    { accountId: currentId ?? 0, page: logPg.page, pageSize: logPg.pageSize, status: enumValueOf(MP_TEMPLATE_SEND_STATUSES, submittedLogStatus) },
+    { accountId: currentId ?? 0, page: logSearch.page, pageSize: logSearch.pageSize, status: enumValueOf(MP_TEMPLATE_SEND_STATUSES, logSearch.submittedParams.status) },
     !!currentId,
   );
   const syncMutation = useSyncMpTemplates();
@@ -97,7 +96,7 @@ export default function MpTemplateMessagesPage() {
       Toast.success('发送成功');
     }
     setSendVisible(false);
-    logPg.setPage(1);
+    logSearch.setPage(1);
   };
 
   const openIndustry = () => {
@@ -168,15 +167,10 @@ export default function MpTemplateMessagesPage() {
   const renderLogStatusFilter = () => (
     <StatusSelect
       items={[{ label: '成功', value: 'success' }, { label: '失败', value: 'failed' }]}
-      value={draftLogStatus}
-      onChange={(v) => setDraftLogStatus(v as string | undefined)}
+      {...logSearch.bind('status')}
     />
   );
-  const refreshLogs = () => {
-    logPg.setPage(1);
-    setSubmittedLogStatus(draftLogStatus);
-    void queryClient.invalidateQueries({ queryKey: mpTemplateLogKeys.lists });
-  };
+  const refreshLogs = logSearch.handleSearch;
   const renderLogRefreshButton = () => (
     <Button type="tertiary" icon={<Search size={14} />} onClick={refreshLogs}>刷新</Button>
   );
@@ -226,7 +220,7 @@ export default function MpTemplateMessagesPage() {
           />
           <ConfigurableTable
             columns={logColumns}
-            {...listTableProps(logQuery, { pagination: logPg.buildPagination })}
+            {...listTableProps(logQuery, { pagination: logSearch.buildPagination })}
           />
         </TabPane>
       </Tabs>

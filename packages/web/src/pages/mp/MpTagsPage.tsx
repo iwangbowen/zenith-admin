@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { Button, Form, Spin, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import type { CreateMpTagInput, MpTag } from '@zenith/shared/mp';
@@ -10,7 +9,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -21,18 +20,18 @@ import { abortSubmit } from '@/lib/abort-submit';
 
 export default function MpTagsPage() {
   const { hasPermission: can } = usePermission();
-  const queryClient = useQueryClient();
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
 
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const {
+    page, pageSize, setPage, buildPagination,
+    bindKeyword, submittedParams, handleSearch, handleReset,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: mpTagKeys.lists });
 
   const listQuery = useMpTagList({
     accountId: currentId ?? 0,
     page,
     pageSize,
-    keyword: submittedKeyword || undefined,
+    keyword: submittedParams.keyword || undefined,
   }, !!currentId);
   const syncMutation = useSyncMpTags();
   const saveMutation = useSaveMpTag();
@@ -41,18 +40,6 @@ export default function MpTagsPage() {
   useEffect(() => {
     setPage(1);
   }, [currentId, setPage]);
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: mpTagKeys.lists });
-  };
-  const handleReset = () => {
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: mpTagKeys.lists });
-  };
 
   const handleSync = async () => {
     if (!currentId) return;
@@ -101,7 +88,7 @@ export default function MpTagsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标签名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={180} />}
+        keyword={<KeywordInput placeholder="搜索标签名称" {...bindKeyword('keyword')} width={180} />}
         filters={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
         onSearch={handleSearch}
         onReset={handleReset}
