@@ -1,10 +1,10 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { REPORT_DQ_SEVERITIES, REPORT_SLA_TYPES, REPORT_SLA_VIOLATION_STATUSES } from '../types';
 import { createReportSlaRuleSchema, reportSlaTypeSchema, reportSlaViolationStatusSchema, updateReportSlaRuleSchema, updateReportSlaViolationSchema } from '../validation';
-import { reportNotifyChannelEnum, strictQueryBool } from './_common';
+import { reportNotifyChannelEnum } from './_common';
 
 // ─── SLA ────────────────────────────────────────────────────────────────────
 
@@ -58,14 +58,14 @@ export type ReportSlaViolation = z.infer<typeof reportSlaViolationSchema>;
 
 export const reportSlaRuleListQuery = paginationQuery.extend({
   datasetId: z.coerce.number().int().positive().optional(),
-  type: reportSlaTypeSchema.optional(),
-  enabled: strictQueryBool,
+  type: queryEnum(REPORT_SLA_TYPES),
+  enabled: queryBool(),
 });
 
 export const reportSlaViolationListQuery = paginationQuery.extend({
   datasetId: z.coerce.number().int().positive().optional(),
   ruleId: z.coerce.number().int().positive().optional(),
-  status: reportSlaViolationStatusSchema.optional(),
+  status: queryEnum(REPORT_SLA_VIOLATION_STATUSES),
 });
 
 export const reportSlaContract = defineContract('/api/report/sla', {

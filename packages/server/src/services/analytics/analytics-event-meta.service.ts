@@ -5,7 +5,9 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { analyticsEventMeta, analyticsSavedReports, analyticsUserSegments, analyticsExperiments, users } from '../../db/schema';
 import type { AnalyticsEventMetaRow } from '../../db/schema';
-import type { TrackEventInput, CreateAnalyticsEventMetaInput, UpdateAnalyticsEventMetaInput, AnalyticsEventMetaListQueryInput } from '@zenith/shared/analytics';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { analyticsContract } from '@zenith/shared/analytics';
+import type { TrackEventInput, CreateAnalyticsEventMetaInput, UpdateAnalyticsEventMetaInput } from '@zenith/shared/analytics';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
@@ -66,15 +68,14 @@ async function resolveOwnerName(ownerId: number): Promise<string> {
   return owner.nickname;
 }
 
-export type EventMetaListQuery = AnalyticsEventMetaListQueryInput;
-export async function listEventMeta(q: EventMetaListQuery) {
+export async function listEventMeta(q: QueryOutputOf<typeof analyticsContract.eventMeta>) {
   const { page, pageSize } = q;
-  const conditions = [];
-  conditions.push(keywordCondition(q.keyword, [analyticsEventMeta.eventName]));
-  if (q.status) conditions.push(eq(analyticsEventMeta.status, q.status as 'active'));
-  if (q.category) conditions.push(eq(analyticsEventMeta.category, q.category));
   // 事件字典为平台级全局分类（事件名全局唯一，跨租户共享），不做租户隔离
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    keywordCondition(q.keyword, [analyticsEventMeta.eventName]),
+    q.status ? eq(analyticsEventMeta.status, q.status) : undefined,
+    q.category ? eq(analyticsEventMeta.category, q.category) : undefined,
+  );
 
   return buildListResult({
     page: page,

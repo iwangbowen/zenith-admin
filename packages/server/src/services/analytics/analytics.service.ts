@@ -5,13 +5,13 @@ import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
 import { userEvents, analyticsSessions, analyticsDailyRollup } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import type { PaginationQuery } from '@zenith/shared/core';
-import type { TrackEventInput, AnalyticsEventSource, AnalyticsEnvironment, AnalyticsIdentityType, AnalyticsDeviceType, AnalyticsSessionListQueryInput, AnalyticsPagedDaysQueryInput, AnalyticsFeatureStatsQueryInput, AnalyticsEventListQueryInput } from '@zenith/shared/analytics';
-import { ANALYTICS_RAGE_CLICK_EVENT, ANALYTICS_PATH_EXIT_PAGE } from '@zenith/shared/analytics';
+import type { PaginationQuery, QueryOutputOf } from '@zenith/shared/core';
+import type { TrackEventInput, AnalyticsEventSource, AnalyticsEnvironment, AnalyticsIdentityType, AnalyticsDeviceType } from '@zenith/shared/analytics';
+import { ANALYTICS_RAGE_CLICK_EVENT, ANALYTICS_PATH_EXIT_PAGE, analyticsContract } from '@zenith/shared/analytics';
 import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
 import { tenantScope, getCreateTenantId } from '../../lib/tenant';
-import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { formatNullableDateTime, formatDateTime, formatDate, APP_TIME_ZONE, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { parseClientEnv, lookupIpGeo, clampDays, clampLimit, startOfDaysAgo, anonymizeIpAddr, resolveIngestPlatformFields } from '../../lib/analytics-helpers';
@@ -688,8 +688,7 @@ function countDistinctGroups(column: PgColumn, where?: SQL): Promise<number> {
   return countGroups(sql`${column}`, where);
 }
 
-export type PageStatsQuery = AnalyticsPagedDaysQueryInput;
-export async function getPageStats(q: PageStatsQuery) {
+export async function getPageStats(q: QueryOutputOf<typeof analyticsContract.pageStats>) {
   const days = clampDays(q.days, 30);
   const { page, pageSize } = q;
   const start = startOfDaysAgo(days);
@@ -745,14 +744,17 @@ export async function getPageStats(q: PageStatsQuery) {
   };
 }
 
-export type FeatureStatsQuery = AnalyticsFeatureStatsQueryInput;
-export async function getFeatureStats(q: FeatureStatsQuery) {
+export async function getFeatureStats(q: QueryOutputOf<typeof analyticsContract.featureStats>) {
   const days = clampDays(q.days, 30);
   const { page, pageSize } = q;
   const start = startOfDaysAgo(days);
-  const conditions = [eq(userEvents.eventType, 'feature_use'), isNotNull(userEvents.elementKey), gte(userEvents.createdAt, start)];
-  if (q.pagePath) conditions.push(eq(userEvents.pagePath, q.pagePath));
-  const where = buildWhere(...conditions, tenantScope(userEvents));
+  const where = buildWhere(
+    eq(userEvents.eventType, 'feature_use'),
+    isNotNull(userEvents.elementKey),
+    gte(userEvents.createdAt, start),
+    q.pagePath ? eq(userEvents.pagePath, q.pagePath) : undefined,
+    tenantScope(userEvents),
+  );
 
   const [rows, totalEvents, total] = await Promise.all([
     withPagination(
@@ -970,8 +972,7 @@ export async function getHeatmapPageList(q: HeatmapPageListQuery) {
   return { pages: Array.from(pageMap.values()).map((p) => ({ pagePath: p.pagePath, pageTitle: p.pageTitle, areas: Array.from(p.areas) })) };
 }
 
-export type UserStatsQuery = AnalyticsPagedDaysQueryInput;
-export async function getUserStats(q: UserStatsQuery) {
+export async function getUserStats(q: QueryOutputOf<typeof analyticsContract.userStats>) {
   const days = clampDays(q.days, 30);
   const { page, pageSize } = q;
   const start = startOfDaysAgo(days);
@@ -1024,13 +1025,13 @@ export async function getUserStats(q: UserStatsQuery) {
 // 会话列表
 // ════════════════════════════════════════════════════════════════════════════
 
-export type SessionListQuery = AnalyticsSessionListQueryInput;
-export async function listSessions(q: SessionListQuery) {
+export async function listSessions(q: QueryOutputOf<typeof analyticsContract.sessions>) {
   const { page, pageSize } = q;
-  const conditions = [];
-  conditions.push(keywordCondition(q.username, [analyticsSessions.username]));
-  if (q.deviceType) conditions.push(eq(analyticsSessions.deviceType, q.deviceType as 'desktop'));
-  const where = buildWhere(...conditions, tenantScope(analyticsSessions));
+  const where = buildWhere(
+    keywordCondition(q.username, [analyticsSessions.username]),
+    q.deviceType ? eq(analyticsSessions.deviceType, q.deviceType) : undefined,
+    tenantScope(analyticsSessions),
+  );
 
   return buildListResult({
     page,
@@ -1265,12 +1266,13 @@ function findFeedbackArcs(links: readonly RawPathLink[]): Set<string> {
 // 用户行为时间线
 // ════════════════════════════════════════════════════════════════════════════
 
-export async function getUserTimeline(input: { userId?: number; username?: string; limit?: number }) {
+export async function getUserTimeline(input: QueryOutputOf<typeof analyticsContract.userTimeline>) {
   const limit = clampLimit(input.limit, 100, 500);
-  const conditions = [];
-  if (input.userId != null) conditions.push(eq(userEvents.userId, input.userId));
-  if (input.username) conditions.push(eq(userEvents.username, input.username));
-  const where = buildWhere(...conditions, tenantScope(userEvents));
+  const where = buildWhere(
+    input.userId != null ? eq(userEvents.userId, input.userId) : undefined,
+    input.username ? eq(userEvents.username, input.username) : undefined,
+    tenantScope(userEvents),
+  );
 
   const [rows, summary] = await Promise.all([
     db
@@ -1471,20 +1473,20 @@ export async function getRealtime() {
 // ════════════════════════════════════════════════════════════════════════════
 
 /** 事件列表筛选：字段由契约派生，时间范围由路由 / 导出定义经 parseDateRangeStart / End 预解析为 Date */
-export type EventListFilter = Omit<AnalyticsEventListQueryInput, 'page' | 'pageSize' | 'startTime' | 'endTime'> & { startTime?: Date; endTime?: Date };
+export type EventListFilter = Omit<QueryOutputOf<typeof analyticsContract.events>, 'page' | 'pageSize' | 'startTime' | 'endTime'> & { startTime?: Date; endTime?: Date };
 
 export type EventListQuery = EventListFilter & PaginationQuery;
 
 function buildEventListWhere(q: EventListFilter) {
-  const conditions = [];
-  if (q.eventType) conditions.push(eq(userEvents.eventType, q.eventType));
-  if (q.eventName) conditions.push(eq(userEvents.eventName, q.eventName));
-  conditions.push(keywordCondition(q.username, [userEvents.username]));
-  conditions.push(keywordCondition(q.pagePath, [userEvents.pagePath]));
-  if (q.deviceType) conditions.push(eq(userEvents.deviceType, q.deviceType as 'desktop'));
-  if (q.startTime) conditions.push(gte(userEvents.createdAt, q.startTime));
-  if (q.endTime) conditions.push(lt(userEvents.createdAt, q.endTime));
-  return buildWhere(...conditions, tenantScope(userEvents));
+  return buildWhere(
+    q.eventType ? eq(userEvents.eventType, q.eventType) : undefined,
+    q.eventName ? eq(userEvents.eventName, q.eventName) : undefined,
+    keywordCondition(q.username, [userEvents.username]),
+    keywordCondition(q.pagePath, [userEvents.pagePath]),
+    q.deviceType ? eq(userEvents.deviceType, q.deviceType) : undefined,
+    ...dateRangeConditions(userEvents.createdAt, q.startTime, q.endTime),
+    tenantScope(userEvents),
+  );
 }
 
 export async function listAnalyticsEvents(q: EventListQuery) {

@@ -4,8 +4,9 @@ import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { AnalyticsExperimentAssignment, AnalyticsExperimentReport, AnalyticsExperimentReportVariant, AnalyticsExperimentVariant, CreateAnalyticsExperimentInput, UpdateAnalyticsExperimentInput, AnalyticsExperimentListQueryInput } from '@zenith/shared/analytics';
-import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT } from '@zenith/shared/analytics';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import type { AnalyticsExperimentAssignment, AnalyticsExperimentReport, AnalyticsExperimentReportVariant, AnalyticsExperimentVariant, CreateAnalyticsExperimentInput, UpdateAnalyticsExperimentInput } from '@zenith/shared/analytics';
+import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, analyticsExperimentContract } from '@zenith/shared/analytics';
 import { db } from '../../db';
 import { analyticsExperiments, userEvents } from '../../db/schema';
 import type { AnalyticsExperimentRow } from '../../db/schema';
@@ -29,7 +30,6 @@ type ExperimentForAssignment = Pick<AnalyticsExperimentRow, 'expKey' | 'trafficA
 interface ExperimentCacheEntry { fetchedAt: number; rows: ExperimentForAssignment[] }
 const assignmentCache = new Map<string, ExperimentCacheEntry>();
 
-export type ListExperimentsQuery = AnalyticsExperimentListQueryInput;
 export interface ExperimentReportQuery { startDate?: string; endDate?: string }
 
 type ExperimentWithTenant = AnalyticsExperimentRow & { tenant?: { name: string | null } | null };
@@ -92,14 +92,15 @@ function invalidateAssignmentCache(tenantId?: number | null): void {
   else assignmentCache.delete(String(tenantId ?? 0));
 }
 
-function buildExperimentWhere(q: ListExperimentsQuery): SQL | undefined {
-  const conditions: (SQL | undefined)[] = [];
-  conditions.push(keywordCondition(q.name, [analyticsExperiments.name], 'ilike'));
-  if (q.status) conditions.push(eq(analyticsExperiments.status, q.status));
-  return buildWhere(...conditions, tenantScope(analyticsExperiments));
+function buildExperimentWhere(q: QueryOutputOf<typeof analyticsExperimentContract.experiments>): SQL | undefined {
+  return buildWhere(
+    keywordCondition(q.name, [analyticsExperiments.name], 'ilike'),
+    q.status ? eq(analyticsExperiments.status, q.status) : undefined,
+    tenantScope(analyticsExperiments),
+  );
 }
 
-export async function listExperiments(q: ListExperimentsQuery) {
+export async function listExperiments(q: QueryOutputOf<typeof analyticsExperimentContract.experiments>) {
   const { page, pageSize } = q;
   const where = buildExperimentWhere(q);
   return buildListResult({
@@ -245,13 +246,17 @@ export async function getExperimentReport(id: number, q: ExperimentReportQuery):
   // COALESCE(tenant_id,0)），平台超管查看某租户实验时若用查看者作用域（undefined=全部租户）
   // 会把其他租户同名 expKey 的曝光/同名指标事件混入报告
   const experimentTenantFilter = exactTenantCondition(userEvents.tenantId, experiment.tenantId);
-  const conditions: SQL[] = [eq(userEvents.eventName, ANALYTICS_EXPERIMENT_EXPOSURE_EVENT), experimentTenantFilter];
-  if (start) conditions.push(gte(userEvents.createdAt, start));
-  if (end) conditions.push(lte(userEvents.createdAt, end));
-  const exposureWhere = and(...conditions)!;
-  const conversionConditions: SQL[] = [eq(userEvents.eventName, experiment.metricEventName), experimentTenantFilter];
-  if (end) conversionConditions.push(lte(userEvents.createdAt, end));
-  const conversionWhere = and(...conversionConditions)!;
+  const exposureWhere = buildWhere(
+    eq(userEvents.eventName, ANALYTICS_EXPERIMENT_EXPOSURE_EVENT),
+    experimentTenantFilter,
+    start ? gte(userEvents.createdAt, start) : undefined,
+    end ? lte(userEvents.createdAt, end) : undefined,
+  );
+  const conversionWhere = buildWhere(
+    eq(userEvents.eventName, experiment.metricEventName),
+    experimentTenantFilter,
+    end ? lte(userEvents.createdAt, end) : undefined,
+  );
   const rows = (await db.execute(sql`
     WITH exposures AS (
       SELECT ${userEvents.distinctId} AS distinct_id,

@@ -1,9 +1,8 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { REPORT_QUOTA_SCOPES } from '../types';
 import { createReportQueryQuotaSchema, resetReportQueryQuotaSchema, updateReportQueryQuotaSchema } from '../validation';
-import { strictQueryBool } from './_common';
 import { reportQueryCapacitySchema, reportQueryCostTrendPointSchema } from './executions';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
@@ -84,15 +83,15 @@ export type ReportQueryCostStats = z.infer<typeof reportQueryCostStatsSchema>;
 const rangeQueryFields = {
   datasetId: z.coerce.number().int().positive().optional(),
   datasourceId: z.coerce.number().int().positive().optional(),
-  start: z.string().optional(),
-  end: z.string().optional(),
+  start: dateRangeBound('起始时间'),
+  end: dateRangeBound('结束时间'),
 };
 
 export const reportQueryCostRangeQuery = z.object(rangeQueryFields);
 
 export const reportQueryCostTrendQuery = z.object({
   ...rangeQueryFields,
-  bucket: z.enum(['hour', 'day']).default('day'),
+  bucket: queryEnum(['hour', 'day'] as const).default('day'),
 });
 
 export const reportQueryCostLogListQuery = paginationQuery.extend({
@@ -100,9 +99,9 @@ export const reportQueryCostLogListQuery = paginationQuery.extend({
   datasetId: z.coerce.number().int().positive().optional(),
   datasourceId: z.coerce.number().int().positive().optional(),
   scene: z.string().max(64).optional(),
-  success: strictQueryBool,
-  start: z.string().optional(),
-  end: z.string().optional(),
+  success: queryBool(),
+  start: dateRangeBound('起始时间'),
+  end: dateRangeBound('结束时间'),
 });
 
 export const reportQuotaUsageQuery = z.object({

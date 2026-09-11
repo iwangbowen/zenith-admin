@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { ANALYTICS_CAMPAIGN_CHANNELS, ANALYTICS_CAMPAIGN_STATUSES } from '../constants';
@@ -37,11 +37,8 @@ export type AnalyticsSegmentCampaign = z.infer<typeof analyticsSegmentCampaignSc
 
 export const analyticsCampaignListQuery = paginationQuery.extend({
   segmentId: z.coerce.number().int().positive().optional(),
-  status: z.enum(ANALYTICS_CAMPAIGN_STATUSES).optional(),
+  status: queryEnum(ANALYTICS_CAMPAIGN_STATUSES),
 });
-
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type AnalyticsCampaignListQueryInput = z.infer<typeof analyticsCampaignListQuery>;
 
 export const analyticsCampaignContract = defineContract('/api/analytics', {
   campaigns: op.get('/campaigns', { query: analyticsCampaignListQuery, response: paginated(analyticsSegmentCampaignSchema), summary: '分群触达活动列表' }),

@@ -4,7 +4,7 @@ import { CMS_INTERACTION_KIND_LABELS } from '@zenith/shared/cms';
 import {
   buildCmsInteractionResponseWhere,
   streamCmsInteractionResponses,
-  type ListCmsInteractionResponsesQuery,
+  type CmsInteractionResponseListFilter,
 } from '../../../services/cms/cms-interactions.service';
 import { assertSiteAccess, ensureCmsSiteExists } from '../../../services/cms/cms-sites.service';
 import { defineExport } from '../registry';
@@ -52,7 +52,7 @@ async function resolveInteractionColumns(query: Record<string, unknown>): Promis
 }
 
 async function* exportRows(
-  query: Omit<ListCmsInteractionResponsesQuery, 'page' | 'pageSize'>,
+  query: CmsInteractionResponseListFilter,
 ): AsyncGenerator<Record<string, unknown>> {
   for await (const row of streamCmsInteractionResponses(query)) {
     const flat: Record<string, unknown> = {
@@ -72,7 +72,7 @@ async function* exportRows(
   }
 }
 
-function queryOf(query: Record<string, unknown>): Omit<ListCmsInteractionResponsesQuery, 'page' | 'pageSize'> {
+function queryOf(query: Record<string, unknown>): CmsInteractionResponseListFilter {
   return {
     siteId: Number(query.siteId),
     interactionId: query.interactionId ? Number(query.interactionId) : undefined,

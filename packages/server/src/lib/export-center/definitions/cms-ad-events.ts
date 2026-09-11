@@ -4,7 +4,7 @@ import { CMS_AD_EVENT_TYPE_LABELS } from '@zenith/shared/cms';
 import {
   buildCmsAdEventWhere,
   streamCmsAdEvents,
-  type ListCmsAdEventsQuery,
+  type CmsAdEventListFilter,
 } from '../../../services/cms/cms-ad-events.service';
 import { assertSiteAccess, ensureCmsSiteExists } from '../../../services/cms/cms-sites.service';
 import { defineExport } from '../registry';
@@ -27,7 +27,7 @@ interface AdEventExportRow extends Record<string, unknown> {
 }
 
 async function* exportRows(
-  query: Omit<ListCmsAdEventsQuery, 'page' | 'pageSize'>,
+  query: CmsAdEventListFilter,
 ): AsyncGenerator<AdEventExportRow> {
   for await (const row of streamCmsAdEvents(query)) {
     yield {
@@ -48,7 +48,7 @@ async function* exportRows(
   }
 }
 
-function queryOf(query: Record<string, unknown>): Omit<ListCmsAdEventsQuery, 'page' | 'pageSize'> {
+function queryOf(query: Record<string, unknown>): CmsAdEventListFilter {
   return {
     siteId: Number(query.siteId),
     adId: query.adId ? Number(query.adId) : undefined,

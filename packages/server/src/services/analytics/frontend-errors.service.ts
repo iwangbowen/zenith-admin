@@ -4,7 +4,9 @@ import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { errorGroups, errorEvents, errorGroupIdentities, sourceMaps, users } from '../../db/schema';
 import type { ErrorGroupRow, ErrorEventRow } from '../../db/schema';
-import type { FrontendErrorType, ErrorLevel, ErrorBreadcrumb, UpdateErrorGroupInput, SourceMapUploadInput, AnalyticsEventSource, AnalyticsEnvironment, ErrorGroupListQueryInput, ErrorEventListQueryInput, SourceMapListQueryInput } from '@zenith/shared/analytics';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { frontendErrorContract } from '@zenith/shared/analytics';
+import type { FrontendErrorType, ErrorLevel, ErrorBreadcrumb, UpdateErrorGroupInput, SourceMapUploadInput, AnalyticsEventSource, AnalyticsEnvironment } from '@zenith/shared/analytics';
 import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
 import { tenantScope, getCreateTenantId } from '../../lib/tenant';
@@ -234,17 +236,17 @@ export async function reportError(input: {
 }
 
 // ─── 分组列表 ─────────────────────────────────────────────────────────────────
-export type GroupListQuery = ErrorGroupListQueryInput;
-export async function listGroups(q: GroupListQuery) {
+export async function listGroups(q: QueryOutputOf<typeof frontendErrorContract.groups>) {
   const { page, pageSize } = q;
-  const conditions = [];
-  if (q.status) conditions.push(eq(errorGroups.status, q.status as 'unresolved'));
-  if (q.errorType) conditions.push(eq(errorGroups.errorType, q.errorType as 'js_error'));
-  if (q.level) conditions.push(eq(errorGroups.level, q.level as 'error'));
-  if (q.assigneeId) conditions.push(eq(errorGroups.assigneeId, q.assigneeId));
-  conditions.push(keywordCondition(q.keyword, [errorGroups.message]));
-  if (q.environment) conditions.push(eq(errorGroups.environment, q.environment as 'production'));
-  const where = buildWhere(...conditions, tenantScope(errorGroups));
+  const where = buildWhere(
+    q.status ? eq(errorGroups.status, q.status) : undefined,
+    q.errorType ? eq(errorGroups.errorType, q.errorType) : undefined,
+    q.level ? eq(errorGroups.level, q.level) : undefined,
+    q.assigneeId ? eq(errorGroups.assigneeId, q.assigneeId) : undefined,
+    keywordCondition(q.keyword, [errorGroups.message]),
+    q.environment ? eq(errorGroups.environment, q.environment) : undefined,
+    tenantScope(errorGroups),
+  );
 
   return buildListResult({
     page,
@@ -445,12 +447,9 @@ export async function getErrorOverview(daysRaw: unknown) {
 }
 
 // ─── 事件列表 ─────────────────────────────────────────────────────────────────
-export type ErrorEventListQuery = ErrorEventListQueryInput;
-export async function listErrorEvents(q: ErrorEventListQuery) {
+export async function listErrorEvents(q: QueryOutputOf<typeof frontendErrorContract.events>) {
   const { page, pageSize } = q;
-  const conditions = [];
-  if (q.groupId) conditions.push(eq(errorEvents.groupId, q.groupId));
-  const where = buildWhere(...conditions, tenantScope(errorEvents));
+  const where = buildWhere(q.groupId ? eq(errorEvents.groupId, q.groupId) : undefined, tenantScope(errorEvents));
   return buildListResult({
     page,
     pageSize,
@@ -483,12 +482,9 @@ export async function uploadSourceMap(input: SourceMapUploadInput) {
   return { id: row.id, release: row.release, fileName: row.fileName, size: row.size, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
 }
 
-export type SourceMapListQuery = SourceMapListQueryInput;
-export async function listSourceMaps(q: SourceMapListQuery) {
+export async function listSourceMaps(q: QueryOutputOf<typeof frontendErrorContract.sourceMaps>) {
   const { page, pageSize } = q;
-  const conditions = [];
-  conditions.push(keywordCondition(q.release, [sourceMaps.release]));
-  const where = buildWhere(...conditions, tenantScope(sourceMaps));
+  const where = buildWhere(keywordCondition(q.release, [sourceMaps.release]), tenantScope(sourceMaps));
   return buildListResult({
     page,
     pageSize,

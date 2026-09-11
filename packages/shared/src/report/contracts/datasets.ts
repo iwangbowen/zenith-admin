@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, entityStatusQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { REPORT_DATASOURCE_TYPES, REPORT_MATERIALIZATION_STRATEGIES } from '../types';
@@ -105,7 +105,7 @@ export type ReportDatasetContent = z.infer<typeof reportDatasetContentSchema>;
 export const reportDatasetMaterializeStateSchema = z.object({
   enabled: z.boolean(),
   cron: z.string().optional().meta({ description: '刷新 Cron（留空 = 仅手动刷新）' }),
-  strategy: z.enum(REPORT_MATERIALIZATION_STRATEGIES).optional(),
+  strategy: queryEnum(REPORT_MATERIALIZATION_STRATEGIES),
   keyField: z.string().nullable().optional(),
   deltaWindowMinutes: z.int().nullable().optional(),
   refreshedAt: z.string().nullable().optional().meta({ description: '最近刷新时间（只读，服务端注入）' }),
@@ -179,8 +179,8 @@ export const reportDatasetListQuery = paginationQuery.extend({
   folderId: z.coerce.number().int().positive().optional(),
   ownerId: z.coerce.number().int().positive().optional(),
   datasourceId: z.coerce.number().int().positive().optional(),
-  type: reportDatasourceTypeSchema.optional(),
-  status: reportStatusSchema.optional(),
+  type: queryEnum(REPORT_DATASOURCE_TYPES),
+  status: entityStatusQuery,
 });
 
 export const reportDatasetContract = defineContract('/api/report/datasets', {

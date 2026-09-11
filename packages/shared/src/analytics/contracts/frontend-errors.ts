@@ -164,9 +164,6 @@ export const errorGroupListQuery = paginationQuery.extend({
   environment: queryEnum(ANALYTICS_ENVIRONMENTS),
 });
 
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type ErrorGroupListQueryInput = z.infer<typeof errorGroupListQuery>;
-
 export const errorGroupBatchStatusQuery = z.object({
   status: z.enum(ERROR_STATUSES),
 });
@@ -174,9 +171,6 @@ export const errorGroupBatchStatusQuery = z.object({
 export const errorEventListQuery = paginationQuery.extend({
   groupId: z.coerce.number().int().optional(),
 });
-
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type ErrorEventListQueryInput = z.infer<typeof errorEventListQuery>;
 
 export const errorCleanQuery = z.object({
   days: z.coerce.number().int().min(0).default(0).meta({ description: '仅清除 N 天前的数据；0 = 全部' }),
@@ -186,15 +180,9 @@ export const sourceMapListQuery = paginationQuery.extend({
   release: z.string().optional(),
 });
 
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type SourceMapListQueryInput = z.infer<typeof sourceMapListQuery>;
-
 export const errorAlertLogListQuery = paginationQuery.extend({
   ruleId: z.coerce.number().int().optional(),
 });
-
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type ErrorAlertLogListQueryInput = z.infer<typeof errorAlertLogListQuery>;
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 

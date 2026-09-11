@@ -15,7 +15,8 @@ import { db } from '../../db';
 import { analyticsUserSegments, analyticsSegmentMembers, analyticsUserProfiles, userEvents } from '../../db/schema';
 import type { AnalyticsUserSegmentRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import type { AnalyticsSegmentRule, AnalyticsSegmentEventCondition, AnalyticsSegmentAttributeCondition, CreateAnalyticsUserSegmentInput, UpdateAnalyticsUserSegmentInput, AnalyticsSegmentListQueryInput } from '@zenith/shared/analytics';
+import { analyticsContract } from '@zenith/shared/analytics';
+import type { AnalyticsSegmentRule, AnalyticsSegmentEventCondition, AnalyticsSegmentAttributeCondition, CreateAnalyticsUserSegmentInput, UpdateAnalyticsUserSegmentInput } from '@zenith/shared/analytics';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
@@ -24,7 +25,7 @@ import { currentCreateTenantId, tenantScope, exactTenantCondition } from '../../
 import { startOfDaysAgo } from '../../lib/analytics-helpers';
 import logger from '../../lib/logger';
 import { buildJsonPropertyCondition, buildColumnCompareCondition, PROPERTY_KEY_RE } from './analytics-property-filter';
-import type { PaginationQuery } from '@zenith/shared/core';
+import type { PaginationQuery, QueryOutputOf } from '@zenith/shared/core';
 
 export function mapSegment(row: AnalyticsUserSegmentRow) {
   return {
@@ -66,14 +67,14 @@ function validateRules(rules: AnalyticsSegmentRule): void {
 }
 
 // ─── 列表 / 详情 ──────────────────────────────────────────────────────────────
-export type SegmentListQuery = AnalyticsSegmentListQueryInput;
 
-export async function listSegments(q: SegmentListQuery) {
+export async function listSegments(q: QueryOutputOf<typeof analyticsContract.segments>) {
   const { page, pageSize } = q;
-  const conditions: (SQL | undefined)[] = [];
-  conditions.push(keywordCondition(q.keyword, [analyticsUserSegments.name], 'ilike'));
-  if (q.status) conditions.push(eq(analyticsUserSegments.status, q.status as 'enabled' | 'disabled'));
-  const where = buildWhere(...conditions, tenantScope(analyticsUserSegments));
+  const where = buildWhere(
+    keywordCondition(q.keyword, [analyticsUserSegments.name], 'ilike'),
+    q.status ? eq(analyticsUserSegments.status, q.status) : undefined,
+    tenantScope(analyticsUserSegments),
+  );
 
   return buildListResult({
     page: page,

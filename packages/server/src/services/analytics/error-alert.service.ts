@@ -4,14 +4,15 @@ import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { errorAlertRules, errorAlertLogs, errorEvents, errorGroups } from '../../db/schema';
 import type { ErrorAlertRuleRow, ErrorAlertLogRow } from '../../db/schema';
-import type { CreateErrorAlertRuleInput, UpdateErrorAlertRuleInput, FrontendErrorType, ErrorLevel, ErrorAlertLogListQueryInput } from '@zenith/shared/analytics';
+import { frontendErrorContract } from '@zenith/shared/analytics';
+import type { CreateErrorAlertRuleInput, UpdateErrorAlertRuleInput, FrontendErrorType, ErrorLevel } from '@zenith/shared/analytics';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { validateAlertDelivery } from '../../lib/alert-validation';
 import { dispatchAlertChannels } from '../../lib/alert-dispatch';
-import type { PaginationQuery } from '@zenith/shared/core';
+import type { PaginationQuery, QueryOutputOf } from '@zenith/shared/core';
 
 export function mapRule(row: ErrorAlertRuleRow) {
   return {
@@ -282,8 +283,7 @@ export function mapAlertLog(row: ErrorAlertLogRow) {
   };
 }
 
-export type AlertLogListQuery = ErrorAlertLogListQueryInput;
-export async function listAlertLogs(q: AlertLogListQuery) {
+export async function listAlertLogs(q: QueryOutputOf<typeof frontendErrorContract.alertLogs>) {
   const { page, pageSize } = q;
   const where = buildWhere(q.ruleId != null ? eq(errorAlertLogs.ruleId, q.ruleId) : undefined, tenantScope(errorAlertLogs));
   return buildListResult({

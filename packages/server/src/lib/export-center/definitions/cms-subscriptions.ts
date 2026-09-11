@@ -4,7 +4,7 @@ import { CMS_SUBSCRIPTION_SUBJECT_TYPE_LABELS } from '@zenith/shared/cms';
 import {
   buildCmsSubscriptionWhere,
   streamCmsSubscriptions,
-  type ListCmsSubscriptionsQuery,
+  type CmsSubscriptionListFilter,
 } from '../../../services/cms/cms-subscriptions.service';
 import { assertSiteAccess, ensureCmsSiteExists } from '../../../services/cms/cms-sites.service';
 import { defineExport } from '../registry';
@@ -21,7 +21,7 @@ interface SubscriptionExportRow extends Record<string, unknown> {
 }
 
 async function* exportRows(
-  query: Omit<ListCmsSubscriptionsQuery, 'page' | 'pageSize'>,
+  query: CmsSubscriptionListFilter,
 ): AsyncGenerator<SubscriptionExportRow> {
   for await (const row of streamCmsSubscriptions(query)) {
     yield {
@@ -36,7 +36,7 @@ async function* exportRows(
   }
 }
 
-function queryOf(query: Record<string, unknown>): Omit<ListCmsSubscriptionsQuery, 'page' | 'pageSize'> {
+function queryOf(query: Record<string, unknown>): CmsSubscriptionListFilter {
   return {
     siteId: Number(query.siteId),
     subjectType: ['site', 'channel', 'author'].includes(String(query.subjectType))

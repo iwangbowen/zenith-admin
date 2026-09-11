@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { REPORT_CHATBI_MESSAGE_ROLES, REPORT_CHATBI_SESSION_STATUSES, REPORT_DATASOURCE_TYPES, REPORT_RESOURCE_TYPES, REPORT_WIDGET_TYPES } from '../types';
 import {
@@ -9,7 +9,6 @@ import {
   saveReportChatbiMessageAssetSchema,
   updateReportChatbiSessionSchema,
 } from '../validation';
-import { strictQueryBool } from './_common';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -116,13 +115,13 @@ export type ReportChatbiSavedResource = z.infer<typeof reportChatbiSavedResource
 
 export const reportChatbiSessionListQuery = paginationQuery.extend({
   keyword: z.string().max(128).optional(),
-  status: reportChatbiSessionStatusSchema.optional(),
+  status: queryEnum(REPORT_CHATBI_SESSION_STATUSES),
   userId: z.coerce.number().int().positive().optional(),
 });
 
 export const reportChatbiAuditQuery = paginationQuery.extend({
   userId: z.coerce.number().int().positive().optional(),
-  failedOnly: strictQueryBool,
+  failedOnly: queryBool(),
 });
 
 export const reportChatbiContract = defineContract('/api/report/chatbi', {

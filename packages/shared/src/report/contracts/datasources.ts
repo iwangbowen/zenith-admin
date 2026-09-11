@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, entityStatusQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { REPORT_DATASOURCE_TYPES } from '../types';
@@ -98,8 +98,8 @@ export const reportDatasourceListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   folderId: z.coerce.number().int().positive().optional(),
   ownerId: z.coerce.number().int().positive().optional(),
-  type: reportDatasourceTypeSchema.optional(),
-  status: reportStatusSchema.optional(),
+  type: queryEnum(REPORT_DATASOURCE_TYPES),
+  status: entityStatusQuery,
 });
 
 export const reportDatasourceContract = defineContract('/api/report/datasources', {

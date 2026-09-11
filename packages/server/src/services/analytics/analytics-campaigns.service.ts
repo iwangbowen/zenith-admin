@@ -2,7 +2,9 @@ import { and, desc, eq, inArray, ne, type SQL } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
-import type { CreateAnalyticsCampaignInput, UpdateAnalyticsCampaignInput, AnalyticsCampaignListQueryInput } from '@zenith/shared/analytics';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { analyticsCampaignContract } from '@zenith/shared/analytics';
+import type { CreateAnalyticsCampaignInput, UpdateAnalyticsCampaignInput } from '@zenith/shared/analytics';
 import { db } from '../../db';
 import { analyticsSegmentCampaigns, analyticsUserSegments, emailTemplates, inAppTemplates, shortLinks, smsTemplates } from '../../db/schema';
 import type { AnalyticsSegmentCampaignRow } from '../../db/schema';
@@ -15,7 +17,6 @@ import { ensureSegmentExists } from './analytics-segments.service';
 
 export const ANALYTICS_CAMPAIGN_EXECUTE_TASK_TYPE = 'analytics-campaign-execute';
 
-export type ListCampaignsQuery = AnalyticsCampaignListQueryInput;
 
 interface CampaignJoinedRow {
   campaign: AnalyticsSegmentCampaignRow;
@@ -69,14 +70,15 @@ function mapJoined(row: CampaignJoinedRow, shortLinkMap: Map<number, CampaignSho
   return mapCampaign(row.campaign, row.segmentName, shortLinkMap.get(row.campaign.id) ?? null);
 }
 
-function buildCampaignWhere(q: ListCampaignsQuery): SQL | undefined {
-  const conditions: SQL[] = [];
-  if (q.segmentId) conditions.push(eq(analyticsSegmentCampaigns.segmentId, q.segmentId));
-  if (q.status) conditions.push(eq(analyticsSegmentCampaigns.status, q.status));
-  return buildWhere(...conditions, tenantScope(analyticsSegmentCampaigns));
+function buildCampaignWhere(q: QueryOutputOf<typeof analyticsCampaignContract.campaigns>): SQL | undefined {
+  return buildWhere(
+    q.segmentId ? eq(analyticsSegmentCampaigns.segmentId, q.segmentId) : undefined,
+    q.status ? eq(analyticsSegmentCampaigns.status, q.status) : undefined,
+    tenantScope(analyticsSegmentCampaigns),
+  );
 }
 
-export async function listCampaigns(q: ListCampaignsQuery) {
+export async function listCampaigns(q: QueryOutputOf<typeof analyticsCampaignContract.campaigns>) {
   const { page, pageSize } = q;
   if (q.segmentId) await ensureSegmentExists(q.segmentId);
   const where = buildCampaignWhere(q);

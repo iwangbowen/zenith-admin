@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { AI_FEEDBACK_STATUSES } from '../constants';
 import {
@@ -76,7 +76,7 @@ export const aiConversationMessageParams = idParam.extend({
 });
 
 export const aiConversationListQuery = z.object({
-  archived: z.enum(['true', 'false']).optional().meta({ description: '是否查看已归档对话' }),
+  archived: queryBool('是否查看已归档对话'),
   keyword: z.string().max(100).optional().meta({ description: '搜索关键词（匹配标题或消息内容）' }),
   tag: z.string().max(20).optional().meta({ description: '按标签过滤' }),
   limit: z.coerce.number().int().min(1).max(100).optional().meta({ description: '返回条数上限（分页加载）' }),
@@ -89,8 +89,8 @@ export const aiConversationExportQuery = z.object({
 
 /** 管理端反馈筛选条件（列表与 CSV 导出共用） */
 export const aiFeedbackFilterQuery = z.object({
-  feedback: z.enum(['1', '-1']).optional().meta({ description: '反馈类型：1=点赞, -1=点踩' }),
-  status: z.enum(AI_FEEDBACK_STATUSES).optional().meta({ description: '处理状态筛选' }),
+  feedback: queryEnum(['1', '-1'] as const, '反馈类型：1=点赞, -1=点踩'),
+  status: queryEnum(AI_FEEDBACK_STATUSES, '处理状态筛选'),
   model: z.string().max(100).optional().meta({ description: '按模型筛选' }),
   startDate: dateRangeBound('反馈时间起（YYYY-MM-DD）'),
   endDate: dateRangeBound('反馈时间止（YYYY-MM-DD）'),

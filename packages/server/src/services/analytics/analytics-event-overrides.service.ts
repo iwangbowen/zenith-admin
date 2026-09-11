@@ -8,13 +8,16 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { analyticsEventOverrides } from '../../db/schema';
 import type { AnalyticsEventOverrideRow } from '../../db/schema';
-import type { CreateAnalyticsEventOverrideInput, UpdateAnalyticsEventOverrideInput, AnalyticsEventOverrideListQueryInput } from '@zenith/shared/analytics';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { analyticsContract } from '@zenith/shared/analytics';
+import type { CreateAnalyticsEventOverrideInput, UpdateAnalyticsEventOverrideInput } from '@zenith/shared/analytics';
 import { formatDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUser } from '../../lib/context';
 import { getEffectiveTenantId } from '../../lib/tenant';
 import { invalidateGovernanceCache } from './analytics-governance.service';
+import { buildWhere } from '../../lib/where-helpers';
 
 export function mapEventOverride(row: AnalyticsEventOverrideRow) {
   return {
@@ -37,14 +40,14 @@ export function requireViewingTenantId(): number {
   return effective;
 }
 
-export type EventOverrideListQuery = AnalyticsEventOverrideListQueryInput;
-export async function listEventOverrides(q: EventOverrideListQuery) {
+export async function listEventOverrides(q: QueryOutputOf<typeof analyticsContract.eventOverrides>) {
   const tenantId = requireViewingTenantId();
   const { page, pageSize } = q;
-  const conditions = [eq(analyticsEventOverrides.tenantId, tenantId)];
-  if (q.eventName) conditions.push(eq(analyticsEventOverrides.eventName, q.eventName));
-  if (q.status) conditions.push(eq(analyticsEventOverrides.status, q.status as 'enabled'));
-  const where = and(...conditions);
+  const where = buildWhere(
+    eq(analyticsEventOverrides.tenantId, tenantId),
+    q.eventName ? eq(analyticsEventOverrides.eventName, q.eventName) : undefined,
+    q.status ? eq(analyticsEventOverrides.status, q.status) : undefined,
+  );
 
   return buildListResult({
     page: page,

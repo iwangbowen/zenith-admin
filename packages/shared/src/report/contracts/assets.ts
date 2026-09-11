@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeBound, entityStatusQuery, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { REPORT_ASSET_TEMPLATE_TYPES, REPORT_RESOURCE_TYPES } from '../types';
 import {
@@ -13,7 +13,7 @@ import {
   updateReportAssetTemplateSchema,
   updateReportDeprecationNoticeSchema,
 } from '../validation';
-import { reportCodedResourceFields, reportStatusSchema, strictQueryBool } from './_common';
+import { reportCodedResourceFields, reportStatusSchema } from './_common';
 
 const resourceTypeSchema = z.enum(REPORT_RESOURCE_TYPES);
 
@@ -133,8 +133,8 @@ export const reportAssetCatalogQuery = paginationQuery.extend({
   folderId: z.coerce.number().int().positive().optional(),
   lifecycle: z.string().max(32).optional(),
   status: z.string().max(32).optional(),
-  updatedStart: z.string().optional(),
-  updatedEnd: z.string().optional(),
+  updatedStart: dateRangeBound('更新时间起'),
+  updatedEnd: dateRangeBound('更新时间止'),
 });
 
 export const reportAssetUsageParam = z.object({
@@ -157,20 +157,20 @@ export const reportAssetInactiveQuery = paginationQuery.extend({ days: daysQuery
 export const reportAssetTrendQuery = z.object({
   days: daysQuery(90, 30),
   bucket: z.enum(['hour', 'day']).default('day'),
-  resourceType: reportResourceTypeSchema.optional(),
+  resourceType: queryEnum(REPORT_RESOURCE_TYPES),
   resourceId: z.coerce.number().int().positive().optional(),
 });
 
 export const reportDeprecationListQuery = paginationQuery.extend({
-  resourceType: reportResourceTypeSchema.optional(),
+  resourceType: queryEnum(REPORT_RESOURCE_TYPES),
   resourceId: z.coerce.number().int().positive().optional(),
-  published: strictQueryBool,
+  published: queryBool(),
 });
 
 export const reportAssetTemplateListQuery = paginationQuery.extend({
   keyword: z.string().max(128).optional(),
-  type: reportAssetTemplateTypeSchema.optional(),
-  status: reportStatusSchema.optional(),
+  type: queryEnum(REPORT_ASSET_TEMPLATE_TYPES),
+  status: entityStatusQuery,
 });
 
 export const reportAssetContract = defineContract('/api/report/assets', {

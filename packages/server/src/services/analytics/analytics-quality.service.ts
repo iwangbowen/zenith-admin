@@ -7,7 +7,9 @@ import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { analyticsEventQualityDaily, userEvents } from '../../db/schema';
 import { buildListResult } from '../../lib/list-query';
-import type { AnalyticsQualityIssueType, AnalyticsQualityQueryInput, AnalyticsDebugEventsQueryInput } from '@zenith/shared/analytics';
+import { analyticsContract } from '@zenith/shared/analytics';
+import type { AnalyticsQualityIssueType } from '@zenith/shared/analytics';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { formatDate, formatDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { config } from '../../config';
@@ -25,19 +27,17 @@ export function qualityTenantScope(): SQL | undefined {
   return eq(analyticsEventQualityDaily.tenantId, effective ?? 0);
 }
 
-export type QualityQuery = AnalyticsQualityQueryInput;
-
-export async function queryQuality(q: QualityQuery) {
+export async function queryQuality(q: QueryOutputOf<typeof analyticsContract.quality>) {
   const days = clampDays(q.days, 7, 90);
   const { page, pageSize } = q;
   const startDate = formatDate(new Date(Date.now() - (days - 1) * 86_400_000));
 
-  const conditions: SQL[] = [gte(analyticsEventQualityDaily.statDate, startDate)];
-  if (q.eventName) conditions.push(eq(analyticsEventQualityDaily.eventName, q.eventName));
-  if (q.issueType) conditions.push(eq(analyticsEventQualityDaily.issueType, q.issueType));
-  const scope = qualityTenantScope();
-  if (scope) conditions.push(scope);
-  const where = and(...conditions);
+  const where = buildWhere(
+    gte(analyticsEventQualityDaily.statDate, startDate),
+    q.eventName ? eq(analyticsEventQualityDaily.eventName, q.eventName) : undefined,
+    q.issueType ? eq(analyticsEventQualityDaily.issueType, q.issueType) : undefined,
+    qualityTenantScope(),
+  );
 
   const [items, totalCount, totals] = await Promise.all([
     db.select().from(analyticsEventQualityDaily).where(where)
@@ -68,15 +68,12 @@ export async function queryQuality(q: QualityQuery) {
   };
 }
 
-export type DebugEventsQuery = AnalyticsDebugEventsQueryInput;
-
-export async function listDebugEvents(q: DebugEventsQuery) {
+export async function listDebugEvents(q: QueryOutputOf<typeof analyticsContract.debugEvents>) {
   const { page, pageSize } = q;
-  const conditions: SQL[] = [];
-  if (q.eventName) conditions.push(eq(userEvents.eventName, q.eventName));
-  const scope = tenantScope(userEvents);
-  if (scope) conditions.push(scope);
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    q.eventName ? eq(userEvents.eventName, q.eventName) : undefined,
+    tenantScope(userEvents),
+  );
 
   return buildListResult({
     page,

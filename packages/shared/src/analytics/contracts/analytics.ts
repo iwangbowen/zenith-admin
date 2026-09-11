@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { userBehaviorEventTypeEnum } from '../validation';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
@@ -82,21 +82,16 @@ export const analyticsRangeQuery = z.object({
 });
 
 export const analyticsTrendsQuery = analyticsRangeQuery.extend({
-  compare: z.enum(['true', 'false']).default('false').meta({ description: '是否附带上一周期对比序列' }),
+  compare: queryBool('是否附带上一周期对比序列').default(false),
 });
 
 export const analyticsDaysQuery = z.object({ days: daysQuery(365, 30) });
 
 export const analyticsPagedDaysQuery = paginationQuery.extend({ days: daysQuery(365, 30) });
 
-/** 分页 + 统计天数（页面 / 用户统计等分页榜单的服务层入参类型） */
-export type AnalyticsPagedDaysQueryInput = z.infer<typeof analyticsPagedDaysQuery>;
-
 export const analyticsFeatureStatsQuery = analyticsPagedDaysQuery.extend({
   pagePath: z.string().optional(),
 });
-
-export type AnalyticsFeatureStatsQueryInput = z.infer<typeof analyticsFeatureStatsQuery>;
 
 export const analyticsHeatmapQuery = z.object({
   pagePath: z.string().min(1),
@@ -110,9 +105,6 @@ export const analyticsSessionListQuery = paginationQuery.extend({
   username: z.string().optional(),
   deviceType: queryEnum(ANALYTICS_DEVICE_TYPES),
 });
-
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type AnalyticsSessionListQueryInput = z.infer<typeof analyticsSessionListQuery>;
 
 export const analyticsAcquisitionQuery = z.object({
   days: daysQuery(365, 30),
@@ -153,20 +145,15 @@ export const analyticsEventListQuery = paginationQuery.extend({
   endTime: dateRangeBound('结束时间'),
 });
 
-export type AnalyticsEventListQueryInput = z.infer<typeof analyticsEventListQuery>;
-
 export const analyticsCleanQuery = z.object({
   days: z.coerce.number().int().min(0).default(0).meta({ description: '仅清除 N 天前的数据；0 = 全部' }),
 });
 
 export const analyticsEventMetaListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: z.enum(ANALYTICS_EVENT_META_STATUSES).optional(),
+  status: queryEnum(ANALYTICS_EVENT_META_STATUSES),
   category: z.string().optional(),
 });
-
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type AnalyticsEventMetaListQueryInput = z.infer<typeof analyticsEventMetaListQuery>;
 
 export const analyticsEventMetaReferencesQuery = z.object({
   eventName: z.string().min(1).max(128),
@@ -174,37 +161,25 @@ export const analyticsEventMetaReferencesQuery = z.object({
 
 export const analyticsEventOverrideListQuery = paginationQuery.extend({
   eventName: z.string().optional(),
-  status: z.enum(ANALYTICS_EVENT_OVERRIDE_STATUSES).optional(),
+  status: queryEnum(ANALYTICS_EVENT_OVERRIDE_STATUSES),
 });
-
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type AnalyticsEventOverrideListQueryInput = z.infer<typeof analyticsEventOverrideListQuery>;
 
 export const analyticsQualityQuery = paginationQuery.extend({
   days: z.coerce.number().int().min(1).max(90).optional(),
   eventName: z.string().optional(),
-  issueType: z.enum(ANALYTICS_QUALITY_ISSUE_TYPES).optional(),
+  issueType: queryEnum(ANALYTICS_QUALITY_ISSUE_TYPES),
 });
-
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type AnalyticsQualityQueryInput = z.infer<typeof analyticsQualityQuery>;
 
 export const analyticsDebugEventsQuery = paginationQuery.extend({
   eventName: z.string().optional(),
 });
 
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type AnalyticsDebugEventsQueryInput = z.infer<typeof analyticsDebugEventsQuery>;
-
 export const analyticsRollupQuery = z.object({ days: daysQuery(730, 30) });
 
 export const analyticsSegmentListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: z.enum(ANALYTICS_EVENT_OVERRIDE_STATUSES).optional(),
+  status: queryEnum(ANALYTICS_EVENT_OVERRIDE_STATUSES),
 });
-
-/** 列表查询参数（契约解析后的形态，服务层入参类型） */
-export type AnalyticsSegmentListQueryInput = z.infer<typeof analyticsSegmentListQuery>;
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 

@@ -2,8 +2,10 @@
 import { randomBytes } from 'node:crypto';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
-import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
-import type { CreateAnalyticsSiteInput, UpdateAnalyticsSiteInput, AnalyticsSiteListQueryInput } from '@zenith/shared/analytics';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { analyticsSiteContract } from '@zenith/shared/analytics';
+import type { CreateAnalyticsSiteInput, UpdateAnalyticsSiteInput } from '@zenith/shared/analytics';
 import { db } from '../../db';
 import { analyticsSites, userEvents } from '../../db/schema';
 import type { AnalyticsSiteRow } from '../../db/schema';
@@ -17,7 +19,6 @@ const SITE_CACHE_TTL_MS = 60_000;
 // siteKey 是匿名入口的用户可控输入：负缓存条目也会入 Map，必须设上限防止随机 key 灌爆内存
 const SITE_CACHE_MAX_ENTRIES = 500;
 
-export type AnalyticsSiteListQuery = AnalyticsSiteListQueryInput;
 export interface ResolvedAnalyticsSite {
   id: number;
   tenantId: number | null;
@@ -81,13 +82,14 @@ function invalidateSiteCache(siteKey?: string): void {
   else loadingByKey.clear();
 }
 
-export async function listSites(q: AnalyticsSiteListQuery) {
+export async function listSites(q: QueryOutputOf<typeof analyticsSiteContract.sites>) {
   const { page, pageSize } = q;
-  const conditions: (SQL | undefined)[] = [];
-  conditions.push(keywordCondition(q.name, [analyticsSites.name], 'ilike'));
-  if (q.appId) conditions.push(eq(analyticsSites.appId, q.appId));
-  if (q.status) conditions.push(eq(analyticsSites.status, q.status));
-  const where = buildWhere(...conditions, tenantScope(analyticsSites));
+  const where = buildWhere(
+    keywordCondition(q.name, [analyticsSites.name], 'ilike'),
+    q.appId ? eq(analyticsSites.appId, q.appId) : undefined,
+    q.status ? eq(analyticsSites.status, q.status) : undefined,
+    tenantScope(analyticsSites),
+  );
   return buildListResult({
     page,
     pageSize,

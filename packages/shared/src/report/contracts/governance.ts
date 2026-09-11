@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { REPORT_APPROVAL_ACTIONS } from '../constants';
 import { REPORT_ACL_ROLES, REPORT_ACL_SUBJECT_TYPES, REPORT_APPROVAL_STATUSES, REPORT_RESOURCE_TYPES, REPORT_TRANSFER_STATUSES } from '../types';
@@ -98,20 +98,17 @@ export type ReportResourceTransfer = z.infer<typeof reportResourceTransferSchema
 export const reportResourceRefQuery = z.object({
   resourceType: reportResourceTypeSchema,
   resourceId: z.coerce.number().int().positive(),
-  // 查询串布尔不能用 z.coerce.boolean()（'false' 会变 true）；空串视为未传，缺省回落 false
-  inheritFromFolder: z
-    .preprocess((v) => (v === '' ? undefined : v), z.stringbool().default(false))
-    .meta({ type: 'boolean', default: false, description: '是否包含从目录继承的权限' }),
+  inheritFromFolder: queryBool('是否包含从目录继承的权限').default(false),
 });
 
 export const reportApprovalListQuery = paginationQuery.extend({
-  status: reportApprovalStatusSchema.optional(),
-  resourceType: reportResourceTypeSchema.optional(),
+  status: queryEnum(REPORT_APPROVAL_STATUSES),
+  resourceType: queryEnum(REPORT_RESOURCE_TYPES),
 });
 
 export const reportTransferListQuery = paginationQuery.extend({
-  status: reportTransferStatusSchema.optional(),
-  resourceType: reportResourceTypeSchema.optional(),
+  status: queryEnum(REPORT_TRANSFER_STATUSES),
+  resourceType: queryEnum(REPORT_RESOURCE_TYPES),
 });
 
 export const reportGovernanceContract = defineContract('/api/report/governance', {

@@ -19,7 +19,7 @@ import redis from '../../lib/redis';
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
-import { keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { getUserPermissions, isSuperAdmin } from '../../lib/permissions';
 import { estimateTokens, truncateHistoryByBudget } from '../../lib/ai/tokens';
 import { streamAiChat } from '../ai/ai-chat.service';
@@ -198,14 +198,13 @@ export async function listChatbiSessions(query: QueryOutputOf<typeof reportChatb
   const user = currentUser();
   const manage = await canManageChatbi();
   const { page, pageSize } = query;
-  const conditions = [
+  const where = buildWhere(
     reportTenantScope(reportChatbiSessions),
     manage && query.userId ? eq(reportChatbiSessions.userId, query.userId) : undefined,
     manage ? undefined : eq(reportChatbiSessions.userId, user.userId),
     query.status ? eq(reportChatbiSessions.status, query.status) : undefined,
     keywordCondition(query.keyword, [reportChatbiSessions.title], 'ilike'),
-  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
-  const where = and(...conditions);
+  );
   return buildListResult({
     page,
     pageSize,
@@ -294,7 +293,7 @@ function buildSystemPrompt(snapshot: ReportChatbiContextSnapshot, requestChart: 
 }
 
 async function aggregateDailyAiTokens(userId?: number, tenantId?: number | null): Promise<number> {
-  const conditions = [
+  const where = buildWhere(
     gte(reportChatbiMessages.createdAt, dayjs().startOf('day').toDate()),
     userId ? eq(reportChatbiMessages.userId, userId) : undefined,
     tenantId !== undefined
@@ -302,10 +301,10 @@ async function aggregateDailyAiTokens(userId?: number, tenantId?: number | null)
         ? sql`${reportChatbiMessages.tenantId} is null`
         : eq(reportChatbiMessages.tenantId, tenantId))
       : undefined,
-  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+  );
   const [row] = await db.select({
     tokens: sql<number>`coalesce(sum(${reportChatbiMessages.promptTokens} + ${reportChatbiMessages.completionTokens}), 0)::int`,
-  }).from(reportChatbiMessages).where(and(...conditions));
+  }).from(reportChatbiMessages).where(where);
   return row?.tokens ?? 0;
 }
 

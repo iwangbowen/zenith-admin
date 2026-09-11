@@ -1,6 +1,7 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { REPORT_DELIVERY_STATUSES, REPORT_DELIVERY_TRIGGER_TYPES } from '../constants';
 import { acknowledgeReportDeliveryRunSchema } from '../validation';
 import {
   reportDeliveryStatusSchema,
@@ -62,11 +63,11 @@ export const reportDeliveryRunSchema = z.object({
 export type ReportDeliveryRun = z.infer<typeof reportDeliveryRunSchema>;
 
 export const reportDeliveryRunListQuery = paginationQuery.extend({
-  targetType: z.enum(['subscription', 'alert']).optional(),
+  targetType: queryEnum(['subscription', 'alert'] as const),
   subscriptionId: z.coerce.number().int().positive().optional(),
   alertRuleId: z.coerce.number().int().positive().optional(),
-  status: reportDeliveryStatusSchema.optional(),
-  triggerType: z.enum(['trigger', 'recover', 'manual', 'scheduled']).optional(),
+  status: queryEnum(REPORT_DELIVERY_STATUSES),
+  triggerType: queryEnum(REPORT_DELIVERY_TRIGGER_TYPES),
   startAt: dateRangeBound('起始时间'),
   endAt: dateRangeBound('结束时间'),
   includeAttempts: queryBool('附带每次尝试明细'),

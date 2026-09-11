@@ -37,9 +37,6 @@ export const reportAlertAggregateSchema = z.enum(REPORT_ALERT_AGGREGATES);
 /** 启用 / 禁用状态（与 core 的通用状态一致） */
 export const reportStatusSchema = entityStatusSchema;
 
-/** 查询串布尔（仅接受 'true' / 'false' 字面量；缺省 = 不过滤） */
-export const strictQueryBool = z.enum(['true', 'false']).transform((value) => value === 'true').optional();
-
 // ─── 编码类资源公共字段 ────────────────────────────────────────────────────────
 
 /**

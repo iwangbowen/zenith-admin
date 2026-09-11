@@ -11,7 +11,7 @@ import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { tenantCondition } from '../../lib/tenant';
-import { keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import type { CloneReportFillTemplateInput, CreateReportFillTemplateInput, ReportFillTemplate, ReportFillTemplateLifecycleActionInput, UpdateReportFillTemplateInput } from '@zenith/shared/report';
 import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
 import {
@@ -50,15 +50,16 @@ export async function ensureReportFillTemplate(
 async function validateWorkflowDefinition(id: number | null | undefined, needReview: boolean) {
   if (!id) return;
   requireRow(needReview, '仅需要审核的模板可以绑定工作流定义', 400);
-  const conditions = [eq(workflowDefinitions.id, id), eq(workflowDefinitions.status, 'published')];
-  const scoped = tenantCondition(workflowDefinitions, currentUser());
-  if (scoped) conditions.push(scoped);
   const [definitionOrUndefined] = await db.select({
     id: workflowDefinitions.id,
     formType: workflowDefinitions.formType,
     customForm: workflowDefinitions.customForm,
   }).from(workflowDefinitions)
-    .where(and(...conditions)).limit(1);
+    .where(buildWhere(
+      eq(workflowDefinitions.id, id),
+      eq(workflowDefinitions.status, 'published'),
+      tenantCondition(workflowDefinitions, currentUser()),
+    )).limit(1);
   const definition = requireRow(definitionOrUndefined, '工作流定义不存在、未发布或不属于当前租户', 400);
   if (definition.formType !== 'external') {
     throw new HTTPException(400, { message: '填报审批必须绑定业务系统主导（external）工作流定义' });
