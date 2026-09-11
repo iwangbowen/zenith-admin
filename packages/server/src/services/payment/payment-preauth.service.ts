@@ -35,10 +35,7 @@ import { assertEffectivePaymentOperation } from './payment-capability-evaluator'
 import { postSystemJournalWithin } from './payment-journal.service';
 import { recordEvent, processEvent } from './payment-outbox.service';
 import { buildAdapterContext, markOrderPaid } from './payment.service';
-
-function genNo(): string {
-  return `PRE${Date.now()}${Math.floor(1000 + Math.random() * 9000)}`;
-}
+import { genPaymentNo } from './payment-no';
 
 export function mapPreauth(row: PaymentPreauthRow & { operatorName?: string | null }): PaymentPreauth {
   return {
@@ -232,7 +229,7 @@ export async function createPreauth(input: CreatePaymentPreauthInput): Promise<P
   const adapter = getAdapter(channel);
   if (!adapter.preauthFreeze) throw new HTTPException(400, { message: `CAPABILITY_UNSUPPORTED: ${channel}/preauth.freeze` });
 
-  const preauthNo = genNo();
+  const preauthNo = genPaymentNo('PRE');
   const [row] = await db.insert(paymentPreauths).values({
     preauthNo, channel, channelConfigId: config.id, appId: application.appId, currency: input.currency,
     bizType: input.bizType?.trim() || 'admin_preauth', bizId: input.bizId, subject: input.subject,

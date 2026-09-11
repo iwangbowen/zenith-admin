@@ -11,6 +11,7 @@
 import { and, desc, eq, gte, inArray, lt, lte, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
+import { genPaymentNo } from './payment-no';
 import dayjs from 'dayjs';
 import { config } from '../../config';
 import { db } from '../../db';
@@ -40,10 +41,6 @@ const OPEN_STATUSES: PaymentDisputeStatus[] = ['pending', 'processing'];
 const SYNC_MAX_OPEN = 3;
 /** 默认处理时效（小时） */
 const DEFAULT_DEADLINE_HOURS = 24;
-
-function genNo(): string {
-  return `DSP${Date.now()}${randomInt(1000, 9999)}`;
-}
 
 function isOverdue(row: PaymentDisputeRow): boolean {
   return OPEN_STATUSES.includes(row.status) && row.deadline != null && row.deadline.getTime() < Date.now();
@@ -323,7 +320,7 @@ async function createMockDispute(order: { orderNo: string; channel: PaymentChann
   const [row] = await db
     .insert(paymentDisputes)
     .values({
-      disputeNo: genNo(),
+      disputeNo: genPaymentNo('DSP'),
       channelDisputeNo: `${order.channel === 'wechat' ? 'WXC' : order.channel === 'alipay' ? 'ALIC' : 'UPC'}${Date.now()}${randomInt(100, 999)}`,
       channel: order.channel,
       orderNo: order.orderNo,

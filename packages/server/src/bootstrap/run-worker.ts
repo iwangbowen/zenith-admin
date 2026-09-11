@@ -10,16 +10,14 @@
 import { serve, type ServerType } from '@hono/node-server';
 import { prometheus } from '@hono/prometheus';
 import { Hono } from 'hono';
-import { sql } from 'drizzle-orm';
 import { Registry } from 'prom-client';
+import type { HealthCheckResult } from '@zenith/shared/platform';
 import { config } from '../config';
-import { db } from '../db';
-import { invalidationBusState } from '../lib/invalidation-bus';
+import { checkInfraHealth, overallHealthStatus } from '../lib/health-checks';
 import logger from '../lib/logger';
 import { errBody, okBody } from '../lib/openapi-schemas';
 import { getSchedulerIntrospection } from '../lib/pg-boss-scheduler';
 import { registerZenithMetrics } from '../lib/prometheus-metrics';
-import redis from '../lib/redis';
 import { assertWorkerStorageTopology } from '../lib/storage-topology';
 import { withTimeout } from './shutdown';
 
@@ -39,23 +37,9 @@ export function createWorkerApp(): Hono {
   registerZenithMetrics(registry);
 
   app.get('/health', async (c) => {
-    const checks: Record<string, 'ok' | 'degraded' | 'error'> = {};
-    try {
-      await db.execute(sql`SELECT 1`);
-      checks.database = 'ok';
-    } catch {
-      checks.database = 'error';
-    }
-    try {
-      await redis.ping();
-      checks.redis = 'ok';
-    } catch {
-      checks.redis = 'error';
-    }
-    checks.invalidationBus = invalidationBusState() === 'listening' ? 'ok' : 'degraded';
+    const checks: Record<string, HealthCheckResult> = await checkInfraHealth();
     checks.scheduler = getSchedulerIntrospection().initialized ? 'ok' : 'error';
-    const status = Object.values(checks).some((v) => v === 'error') ? 'degraded' : 'ok';
-    return c.json(okBody({ status, roles: config.roles.list, checks }), 200);
+    return c.json(okBody({ status: overallHealthStatus(checks), roles: config.roles.list, checks }), 200);
   });
   // 就绪 = pg-boss 已启动并完成声明；未就绪返回 503 让编排器暂缓把它计入可用副本
   app.get('/ready', (c) => {

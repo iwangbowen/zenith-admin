@@ -8,7 +8,7 @@
  */
 import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { randomInt } from 'node:crypto';
+import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
 import {
@@ -38,10 +38,6 @@ import { assertPaymentEngineConfig } from './payment-channel-config-resolver';
 
 /** 单笔分账渠道调用次数上限（首次 + 重试） */
 const MAX_SHARING_ATTEMPTS = 3;
-
-function genNo(): string {
-  return `SHR${Date.now()}${randomInt(1000, 9999)}`;
-}
 
 async function recordSharingJournal(
   sharing: PaymentSharingOrderRow,
@@ -275,7 +271,7 @@ export async function dispatchSharing(input: DispatchSharingInput): Promise<Paym
     orderNo: input.orderNo,
     receiver,
     amount: input.amount,
-    sharingNo: genNo(),
+    sharingNo: genPaymentNo('SHR'),
     remark: input.remark,
   });
   const updated = await executeSharingAtChannel(sharing, order, receiver);

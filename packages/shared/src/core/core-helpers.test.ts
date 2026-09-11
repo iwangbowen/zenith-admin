@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { compareNumber, NUMERIC_COMPARE_OPS } from './compare';
 import { isPositiveInt, percentOf, uniquePositiveInts } from './math';
 import { maskSecret, SECRET_PLACEHOLDER, REDACTED_TEXT } from './sensitive';
+import { trimTrailingSlash } from './url';
 
 describe('compareNumber', () => {
   it('六种算子与历史 switch 实现逐一对应', () => {
@@ -102,5 +103,15 @@ describe('maskSecret', () => {
   it('SECRET_PLACEHOLDER 与 REDACTED_TEXT 同值', () => {
     expect(SECRET_PLACEHOLDER).toBe(REDACTED_TEXT);
     expect(SECRET_PLACEHOLDER).toBe('******');
+  });
+});
+
+describe('trimTrailingSlash', () => {
+  it('去掉末尾全部斜杠，其余原样', () => {
+    expect(trimTrailingSlash('https://a.b/')).toBe('https://a.b');
+    expect(trimTrailingSlash('https://a.b///')).toBe('https://a.b');
+    expect(trimTrailingSlash('https://a.b/x')).toBe('https://a.b/x');
+    expect(trimTrailingSlash('/')).toBe('');
+    expect(trimTrailingSlash('')).toBe('');
   });
 });

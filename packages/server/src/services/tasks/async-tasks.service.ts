@@ -9,7 +9,7 @@ import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, users } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, APP_TIME_ZONE } from '../../lib/datetime';
+import { APP_TIME_ZONE } from '../../lib/datetime';
 import { currentUser, hasPermission } from '../../lib/context';
 import {
   buildTaskTypeMeta,
@@ -18,6 +18,7 @@ import {
   listTaskHandlers,
   listTaskTypeConfigs,
   mapAsyncTask,
+  mapAsyncTaskItem,
   registrationDefaults,
   requestCancelAsyncTask,
   restartAsyncTask,
@@ -226,18 +227,7 @@ export async function listAsyncTaskItems(taskId: number, query: ListTaskItemsQue
       .orderBy(desc(asyncTaskItems.id))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
-    map: (row) => ({
-      id: row.id,
-      taskId: row.taskId,
-      itemKey: row.itemKey,
-      label: row.label ?? null,
-      status: row.status,
-      message: row.message ?? null,
-      data: row.data ?? null,
-      attempt: row.attempt,
-      createdAt: formatDateTime(row.createdAt),
-      updatedAt: formatDateTime(row.updatedAt),
-    }),
+    map: mapAsyncTaskItem,
   });
 }
 

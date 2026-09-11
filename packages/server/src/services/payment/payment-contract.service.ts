@@ -14,6 +14,7 @@
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
+import { genPaymentNo } from './payment-no';
 import dayjs from 'dayjs';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
@@ -46,10 +47,6 @@ import type { CreatePaymentContractInput, CreatePaymentDeductPlanInput, PaymentC
 import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
 
 const ACTIVE_CONTRACT_STATUSES: PaymentContractStatus[] = ['pending', 'unknown', 'signed', 'paused'];
-
-function genContractNo(): string {
-  return `CT${Date.now()}${randomInt(1000, 9999)}`;
-}
 
 /**
  * A deduction order is the durable idempotency key for one contract period.
@@ -429,7 +426,7 @@ export async function signContract(input: SignContractInput): Promise<SignContra
   });
   if (existing) throw new HTTPException(400, { message: `该业务已存在生效中的签约协议（${existing.contractNo}）` });
 
-  const contractNo = genContractNo();
+  const contractNo = genPaymentNo('CT');
   let row: PaymentContractRow;
   try {
     [row] = await db

@@ -4,7 +4,7 @@
 import { and, desc, eq, gte, inArray, isNull, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsContents, cmsChannels, cmsComments } from '../../db/schema';
-import { formatDate } from '../../lib/datetime';
+import { formatDate, startOfRecentDays, startOfToday } from '../../lib/datetime';
 import { assertSiteAccess } from './cms-sites.service';
 import { ensureCmsSiteExists } from './cms-sites.service';
 import { getAccessibleChannelIds } from './cms-channels.service';
@@ -50,10 +50,8 @@ export async function getCmsDashboardStats(siteId: number): Promise<CmsDashboard
     ));
     pendingCommentConditions.push(inArray(cmsComments.contentId, contentIds));
   }
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const trendStart = new Date(todayStart);
-  trendStart.setDate(trendStart.getDate() - (TREND_DAYS - 1));
+  const todayStart = startOfToday();
+  const trendStart = startOfRecentDays(TREND_DAYS);
 
   const [statusRows, recycled, pendingComments, todayPublished, viewsRow, trendRows, topViewed, channelRows] = await Promise.all([
     db.select({ status: cmsContents.status, count: sql<number>`count(*)::int` })

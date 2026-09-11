@@ -1,7 +1,23 @@
 import { inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { users } from '../db/schema';
+import type { DbExecutor } from '../db/types';
 import { keywordCondition } from './where-helpers';
+
+/** 用户 id → 展示名（昵称，空则回退用户名） */
+export type UserNameMap = Map<number, string>;
+
+/**
+ * 批量解析用户 id → 展示名（昵称 || 用户名），供列表行的 createdBy / ownerId / actorId 等补充展示名。
+ * 忽略空值并去重；不存在的用户不在结果中，调用方按需回退。
+ */
+export async function resolveUserNames(ids: Iterable<number | null | undefined>, executor: DbExecutor = db): Promise<UserNameMap> {
+  const uniq = [...new Set([...ids].filter((id): id is number => typeof id === 'number'))];
+  if (uniq.length === 0) return new Map();
+  const rows = await executor.select({ id: users.id, nickname: users.nickname, username: users.username })
+    .from(users).where(inArray(users.id, uniq));
+  return new Map(rows.map((r) => [r.id, r.nickname || r.username]));
+}
 
 /**
  * 批量解析用户名 → 昵称映射（日志/统计等只存 username 的场景补充展示名）。

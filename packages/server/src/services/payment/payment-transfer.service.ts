@@ -9,7 +9,8 @@
 import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
-import { createHash, randomInt, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { buildListResult } from '../../lib/list-query';
@@ -44,10 +45,6 @@ import { resolveApplicationChannelConfig } from './payment-apps.service';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { assertEffectivePaymentOperation } from './payment-capability-evaluator';
 import { getSettings } from '../../lib/settings';
-
-function genNo(): string {
-  return `TRF${Date.now()}${randomInt(1000, 9999)}`;
-}
 
 async function transferApprovalThreshold(tenantId: number | null): Promise<number> {
   return Math.max(0, Math.trunc((await getSettings('payment', { tenantId })).transferApprovalThreshold));
@@ -314,7 +311,7 @@ export async function createTransfer(input: CreatePaymentTransferInput & { idemp
     if (existing.requestHash !== requestHash) throw new HTTPException(409, { message: '同一 Idempotency-Key 不可用于不同转账请求' });
     return mapTransfer(existing);
   }
-  const transferNo = genNo();
+  const transferNo = genPaymentNo('TRF');
   const approvalThreshold = await transferApprovalThreshold(tenantId);
   const needApproval = approvalThreshold > 0 && input.amount >= approvalThreshold;
   let created: PaymentTransferRow;

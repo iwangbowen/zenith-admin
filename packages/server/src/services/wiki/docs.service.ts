@@ -40,6 +40,7 @@ import { wikiDeletedDocVisibilityCondition, wikiDocStatusVisibilityCondition, wi
 import { notifyWikiDocPublished, notifyWikiDocReviewed } from './notifications.service';
 import { removeWikiDocFromAiKb, syncPublishedWikiDocToAiKb } from './ai-sync.service';
 import { ensureSpaceRole, getMySpaceRole, spaceRoleAtLeast } from './spaces.service';
+import { nextWikiDocSort } from './doc-order';
 import { buildTree } from '@zenith/shared/core';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -312,20 +313,14 @@ export async function createWikiDoc(data: CreateWikiDocInput) {
 
   const row = await db.transaction(async (tx) => {
     // 新文档追加到目标层级末尾，保持手工排序不被打乱
-    const [{ maxSort }] = await tx.select({ maxSort: sql<number>`coalesce(max(${wikiDocs.sort}), -1)` })
-      .from(wikiDocs)
-      .where(buildWhere(
-        eq(wikiDocs.spaceId, data.spaceId),
-        data.parentId ? eq(wikiDocs.parentId, data.parentId) : isNull(wikiDocs.parentId),
-        isNull(wikiDocs.deletedAt),
-      ));
+    const sort = await nextWikiDocSort(tx, data.spaceId, data.parentId);
     const [created] = await tx.insert(wikiDocs).values({
       spaceId: data.spaceId,
       parentId: data.parentId ?? null,
       title: data.title,
       summary: data.summary ?? null,
       content: data.content,
-      sort: maxSort + 1,
+      sort,
       requireReadReceipt: data.requireReadReceipt,
       ownerId: currentUserId(),
       tenantId: getCreateTenantId(currentUser()),

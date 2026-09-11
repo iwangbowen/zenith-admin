@@ -13,19 +13,9 @@ import { sendSmsByProvider } from '../../sms-sender';
 import { registerJobHandler } from '../registry';
 import { WorkflowJobError } from '../errors';
 import type { WorkflowJobContext, WorkflowJobResult } from '../types';
+import { renderWorkflowTemplate as renderTemplate } from './shared';
 
 const TIMEOUT_MS_DEFAULT = 10_000;
-
-/** 占位符渲染：{{form.字段}} / {{instanceId}} / {{nodeKey}} / {{error}} */
-function renderTemplate(template: string, formData: Record<string, unknown>, extras: Record<string, string> = {}): string {
-  return template
-    .replace(/\{\{form\.([^}]+)\}\}/g, (_, key) => {
-      const v = formData[key.trim()];
-      if (v === undefined || v === null || typeof v === 'object') return '';
-      return String(v);
-    })
-    .replace(/\{\{([a-zA-Z_]\w*)\}\}/g, (_, key) => extras[key] ?? '');
-}
 
 /** URL 专用渲染：占位值百分号编码，表单值不能改写路径 / 参数 / 主机（见 workflow-outbound.renderUrlTemplate） */
 function renderUrl(template: string, formData: Record<string, unknown>, extras: Record<string, string>): string {

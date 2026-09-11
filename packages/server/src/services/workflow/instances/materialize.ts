@@ -13,8 +13,9 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { enqueueJob } from '../../../lib/workflow-jobs/engine';
 import { computeTimeoutAt } from '../../../lib/workflow-timeout';
 import { resolveActiveDelegate } from '../workflow-delegations.service';
+import { resolveAdminUserId } from '../workflow-assignee-resolver.service';
 import { notifyWithin } from '../../messaging/notification-outbox.service';
-import { applyAssigneeRuntimeStrategies, resolveAdminAssigneeId } from './assignees';
+import { applyAssigneeRuntimeStrategies } from './assignees';
 import { armTaskAsyncJobs } from './async-jobs';
 import { findExceptionCatchNode } from './mapping';
 
@@ -40,7 +41,7 @@ async function pushAdminFallbackOrReject(args: {
   ctx: ExpandTasksContext;
   rejectReason: string;
 }): Promise<boolean> {
-  const adminId = await resolveAdminAssigneeId(args.ctx.executor);
+  const adminId = await resolveAdminUserId(args.ctx.executor);
   if (adminId) {
     args.rows.push({
       instanceId: args.ctx.instanceId,
@@ -270,7 +271,7 @@ async function expandTasksToRows(
         } else {
           // notify：自动通过本节点并继续 + 通知相关人
           pushAutoRow(t, 'approved', `${emptyReason}，按异常策略自动通过`);
-          const adminId = await resolveAdminAssigneeId(ctx.executor);
+          const adminId = await resolveAdminUserId(ctx.executor);
           const recipients = t.nodeConfig.catchNotifyUserIds && t.nodeConfig.catchNotifyUserIds.length > 0
             ? t.nodeConfig.catchNotifyUserIds
             : [ctx.initiatorId, adminId].filter((v): v is number => typeof v === 'number');
@@ -285,7 +286,7 @@ async function expandTasksToRows(
         if (action === 'terminate') {
           pushAutoRow(t, 'rejected', `${emptyReason}，按异常捕获策略终止流程`);
         } else if (action === 'toAdmin') {
-          const adminId = await resolveAdminAssigneeId(ctx.executor);
+          const adminId = await resolveAdminUserId(ctx.executor);
           if (adminId) {
             rows.push({
               instanceId: ctx.instanceId,
@@ -311,7 +312,7 @@ async function expandTasksToRows(
             actionAt: new Date(),
           });
           autoApprovedNodeKeys.push(catchCfg.key);
-          const adminId = await resolveAdminAssigneeId(ctx.executor);
+          const adminId = await resolveAdminUserId(ctx.executor);
           const recipients = catchCfg.catchNotifyUserIds && catchCfg.catchNotifyUserIds.length > 0
             ? catchCfg.catchNotifyUserIds
             : [ctx.initiatorId, adminId].filter((v): v is number => typeof v === 'number');

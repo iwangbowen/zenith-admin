@@ -8,7 +8,7 @@
  *  - timeout   超时/SLA 策略完整性（审批节点是否配置超时提醒）
  */
 import type { WorkflowDefinitionBranchCoverageItem, WorkflowDefinitionHealthCheckItem, WorkflowDefinitionHealthIssue, WorkflowDefinitionHealthReport, WorkflowEdge, WorkflowEdgeCondition, WorkflowFlowData, WorkflowNodeConfig } from '@zenith/shared/workflow';
-import { validateFlowData } from './workflow-engine';
+import { edgeHasCondition, validateFlowData } from './workflow-engine';
 import { validateExpression } from './workflow-expression';
 import { formatDateTime } from './datetime';
 import { clamp } from '@zenith/shared/core';
@@ -50,10 +50,6 @@ function statusFromIssues(issues: WorkflowDefinitionHealthIssue[]): WorkflowDefi
   if (issues.some((i) => i.severity === 'critical')) return 'fail';
   if (issues.some((i) => i.severity === 'warning')) return 'warn';
   return 'pass';
-}
-
-function edgeHasCondition(e: WorkflowEdge): boolean {
-  return Boolean(e.condition || (Array.isArray(e.conditions) && e.conditions.length > 0));
 }
 
 function conditionSignature(e: WorkflowEdge): string {

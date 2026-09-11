@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { createCipheriv, generateKeyPairSync } from 'node:crypto';
-import { rsaSign, rsaVerify, aesGcmDecrypt, ensurePem } from './signing';
+import { rsaSign, rsaVerify, aesGcmDecrypt, ensurePem, buildWechatPayAuthorization, wechatNonce } from './signing';
 
 // ─── 共用测试密钥对（模块级一次生成，2048-bit，约 30ms）────────────────────────
 const { privateKey: _privKey, publicKey: _pubKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -141,5 +141,41 @@ describe('ensurePem', () => {
     const withWhitespace = raw.replace(/(.{20})/g, '$1\n  ');
     const result = ensurePem(withWhitespace, 'RSA PRIVATE KEY');
     expect(result).toMatch(/^-----BEGIN RSA PRIVATE KEY-----/);
+  });
+});
+
+// ─── 微信支付 v3 Authorization ────────────────────────────────────────────────
+
+describe('buildWechatPayAuthorization', () => {
+  it('随机串为 32 位大写十六进制', () => {
+    expect(wechatNonce()).toMatch(/^[0-9A-F]{32}$/);
+    expect(wechatNonce()).not.toBe(wechatNonce());
+  });
+
+  it('生成的头可用商户公钥按 v3 签名串验签', () => {
+    const before = Math.floor(Date.now() / 1000);
+    const auth = buildWechatPayAuthorization({
+      mchid: '1900000001',
+      serialNo: 'SERIAL01',
+      privateKey: TEST_PRIVATE_KEY,
+      method: 'POST',
+      urlPath: '/v3/pay/transactions/native',
+      body: '{"a":1}',
+    });
+    const m = /^WECHATPAY2-SHA256-RSA2048 mchid="([^"]+)",nonce_str="([^"]+)",signature="([^"]+)",timestamp="(\d+)",serial_no="([^"]+)"$/.exec(auth);
+    expect(m).not.toBeNull();
+    const [, mchid, nonce, signature, timestamp, serialNo] = m!;
+    expect(mchid).toBe('1900000001');
+    expect(serialNo).toBe('SERIAL01');
+    expect(nonce).toMatch(/^[0-9A-F]{32}$/);
+    expect(Number(timestamp)).toBeGreaterThanOrEqual(before);
+    const message = `POST\n/v3/pay/transactions/native\n${timestamp}\n${nonce}\n{"a":1}\n`;
+    expect(rsaVerify(message, signature, TEST_PUBLIC_KEY, 'RSA-SHA256')).toBe(true);
+  });
+
+  it('接受裸 base64 私钥（内部 ensurePem）', () => {
+    const rawKey = TEST_PRIVATE_KEY.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, '').replace(/\s+/g, '');
+    const auth = buildWechatPayAuthorization({ mchid: 'm', serialNo: 's', privateKey: rawKey, method: 'GET', urlPath: '/v3/certificates', body: '' });
+    expect(auth.startsWith('WECHATPAY2-SHA256-RSA2048 mchid="m"')).toBe(true);
   });
 });

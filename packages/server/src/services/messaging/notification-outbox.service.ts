@@ -23,6 +23,7 @@ import { currentTraceId, currentParentRef } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { escapeHtml } from '@zenith/shared/core';
 import { deliverOutboxRow } from '../../lib/notification/dispatch';
+import { normalizeTemplateVars } from '../../lib/notification/template-vars';
 import logger from '../../lib/logger';
 import { renderTemplate } from '../../lib/sms-sender';
 import { buildWhere } from '../../lib/where-helpers';
@@ -276,7 +277,7 @@ export async function aggregateNotificationDigests(): Promise<{ groups: number; 
 
         const lines = items.map((r) => {
           if (!isNotificationEventKey(r.eventKey)) return null;
-          const vars = normalizeDigestVars(r.vars ?? {});
+          const vars = normalizeTemplateVars(r.vars ?? {});
           const def = getNotificationEvent(r.eventKey);
           return {
             title: renderTemplate(def.title, vars),
@@ -318,12 +319,4 @@ export async function aggregateNotificationDigests(): Promise<{ groups: number; 
 
 function inArrayIds(ids: number[]) {
   return sql`${notificationOutbox.id} in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`;
-}
-
-function normalizeDigestVars(vars: Record<string, unknown>): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(vars)) {
-    result[key] = value === null || value === undefined ? '' : String(value);
-  }
-  return result;
 }

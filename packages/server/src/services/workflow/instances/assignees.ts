@@ -1,22 +1,11 @@
 // ─── 审批人运行时策略（去重/同发起人替换/管理员兜底）（拆分自 workflow-instances.service.ts）───
 import { eq, ne, and, desc } from 'drizzle-orm';
-import { workflowTasks, users } from '../../../db/schema';
+import { workflowTasks } from '../../../db/schema';
 import { type TaskAction } from '../../../lib/workflow-engine';
 import type { WorkflowFlowData, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy } from '@zenith/shared/workflow';
 import { resolveApproverDedupMode } from '@zenith/shared/workflow';
 import { resolveAssigneeIds } from '../workflow-assignee-resolver.service';
 import type { DbExecutor } from '../../../db/types';
-
-export async function resolveAdminAssigneeId(exec: DbExecutor): Promise<number | null> {
-  const [admin] = await exec.select({ id: users.id }).from(users)
-    .where(and(eq(users.username, 'admin'), eq(users.status, 'enabled')))
-    .limit(1);
-  if (admin) return admin.id;
-  const [firstEnabled] = await exec.select({ id: users.id }).from(users)
-    .where(eq(users.status, 'enabled'))
-    .limit(1);
-  return firstEnabled?.id ?? null;
-}
 
 async function resolveSameInitiatorReplacement(
   task: TaskAction,

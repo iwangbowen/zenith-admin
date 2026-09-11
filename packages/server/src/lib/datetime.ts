@@ -149,3 +149,55 @@ export function parseDateRangeEnd(value: ParseDateInput): Date | null {
 export function isDateTimeString(value: unknown): value is string {
   return typeof value === 'string' && DATE_TIME_PATTERN.test(value);
 }
+
+// ─── 本地日界（统计窗口起点）───────────────────────────────────────────────────
+// 统计类 service 的「今日 / 近 N 天」窗口起点。刻意沿用进程本地时区的 setHours(0,0,0,0)
+// 而非 APP_TIME_ZONE：与各统计口径此前的实现逐毫秒一致（部署时 TZ 与 APP_TIME_ZONE 应保持相同）。
+
+/** 今日 00:00:00.000（进程本地时区）。 */
+export function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** `daysAgo` 天前的 00:00:00.000（进程本地时区）；`startOfDayAgo(0)` 即今日起点。 */
+export function startOfDayAgo(daysAgo: number): Date {
+  const d = startOfToday();
+  d.setDate(d.getDate() - daysAgo);
+  return d;
+}
+
+/** 「近 N 天（含今日）」窗口起点，即 `days - 1` 天前的 00:00:00。 */
+export function startOfRecentDays(days: number): Date {
+  return startOfDayAgo(days - 1);
+}
+
+export interface StatsWindow {
+  /** 夹紧后的天数 */
+  days: number;
+  /** 本期起点：近 `days` 天（含今日）的 00:00:00 */
+  startDate: Date;
+  /** 本期起点的 `YYYY-MM-DD`，用于补齐空日序列的日期标签 */
+  startDateLabel: string;
+  /** 上一同长周期起点（环比），区间为 `[prevStartDate, startDate)` */
+  prevStartDate: Date;
+}
+
+/**
+ * 「近 N 天 + 上一同长周期」统计窗口（登录日志 / 操作日志统计等环比看板共用）。
+ * `daysRaw` 非法或缺省取 `fallback`，并夹紧到 `[min, max]`。
+ */
+export function resolveStatsWindow(
+  daysRaw: unknown,
+  { fallback = 90, min = 7, max = 365 }: { fallback?: number; min?: number; max?: number } = {},
+): StatsWindow {
+  const days = Math.min(Math.max(Number(daysRaw) || fallback, min), max);
+  const startDate = startOfRecentDays(days);
+  return {
+    days,
+    startDate,
+    startDateLabel: formatDate(startDate),
+    prevStartDate: startOfDayAgo(2 * days - 1),
+  };
+}

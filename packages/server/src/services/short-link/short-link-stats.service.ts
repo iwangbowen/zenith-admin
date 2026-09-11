@@ -9,21 +9,9 @@ import type { ShortLinkStats, ShortLinkTrendPoint } from '@zenith/shared/short-l
 import { SHORT_LINK_STATS_DEFAULT_DAYS, SHORT_LINK_STATS_MAX_DAYS, SHORT_LINK_STATS_TOP_LIMIT } from '@zenith/shared/short-link';
 import { db } from '../../db';
 import { shortLinkClicks, shortLinkDailyStats } from '../../db/schema';
-import { formatDate } from '../../lib/datetime';
+import { formatDate, startOfRecentDays, startOfToday } from '../../lib/datetime';
 import { clampDays } from '../../lib/analytics-helpers';
 import { ensureShortLinkExists } from './short-link.service';
-
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function windowStart(days: number): Date {
-  const d = startOfToday();
-  d.setDate(d.getDate() - (days - 1));
-  return d;
-}
 
 /** 维度分布查询（非爬虫口径，窗口内 Top N；数据源为点击明细） */
 async function dimensionBreakdown(linkId: number, since: Date, column: 'deviceType' | 'os' | 'browser' | 'province') {
@@ -65,7 +53,7 @@ export async function getShortLinkStats(id: number, days?: number): Promise<Shor
  */
 export async function computeShortLinkStats(id: number, days?: number): Promise<ShortLinkStats> {
   const windowDays = clampDays(days, SHORT_LINK_STATS_DEFAULT_DAYS, SHORT_LINK_STATS_MAX_DAYS);
-  const since = windowStart(windowDays);
+  const since = startOfRecentDays(windowDays);
   const notBot = and(eq(shortLinkClicks.linkId, id), eq(shortLinkClicks.isBot, false));
 
   const dateExpr = sql<string>`to_char(${shortLinkClicks.clickedAt}, 'YYYY-MM-DD')`;

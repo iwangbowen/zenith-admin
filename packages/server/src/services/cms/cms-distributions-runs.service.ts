@@ -27,7 +27,7 @@ import { mapAsyncTask } from '../../lib/task-center';
 import { assertSiteAccess, getAccessibleSiteIds } from './cms-sites.service';
 import { DISTRIBUTION_TASK_TYPE, nextSchedule, SYSTEM_USER } from './cms-distributions-shared';
 import { submitCmsDistributionRun } from './cms-distributions-sync.service';
-import { mapAsyncTaskItem } from './cms-task-shared';
+import { mapAsyncTaskItem } from '../../lib/task-center';
 
 export interface ListCmsDistributionRunsQuery {
   page: number;

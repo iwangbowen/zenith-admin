@@ -5,7 +5,8 @@
  */
 import { and, desc, eq, gt, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { randomBytes, randomInt } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
 import { paymentCashierSessions, paymentLinkRedemptions, paymentLinks, paymentOrders, type PaymentLinkRow } from '../../db/schema';
@@ -28,9 +29,6 @@ function isPublicLinkPayMethod(method: PaymentMethod): method is PaymentCashierM
   return PUBLIC_LINK_PAY_METHODS.has(method as PaymentCashierMethod);
 }
 
-function genLinkNo(): string {
-  return `LINK${Date.now()}${randomInt(1000, 9999)}`;
-}
 function genToken(): string {
   return randomBytes(16).toString('hex');
 }
@@ -186,7 +184,7 @@ export async function createLink(input: CreatePaymentLinkInput): Promise<Payment
   const [row] = await db
     .insert(paymentLinks)
     .values({
-      linkNo: genLinkNo(),
+      linkNo: genPaymentNo('LINK'),
       token: genToken(),
       appId: input.applicationId,
       subject: input.subject,

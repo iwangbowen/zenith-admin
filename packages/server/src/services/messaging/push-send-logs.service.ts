@@ -5,7 +5,7 @@ import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { PushDeliveryStatus, PushProvider, PushSendLogStats } from '@zenith/shared/messaging';
 import { db } from '../../db';
 import { pushSendLogs, users, type PushSendLogRow } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, startOfRecentDays } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
@@ -128,9 +128,7 @@ export async function applyPushReceipt(event: PushReceiptEvent): Promise<boolean
 // ─── 记录页统计（窗口汇总 + 按日趋势补零）────────────────────────────────────
 
 export async function getPushSendLogStats(days = 14): Promise<PushSendLogStats> {
-  const since = new Date();
-  since.setHours(0, 0, 0, 0);
-  since.setDate(since.getDate() - (days - 1));
+  const since = startOfRecentDays(days);
 
   const dateExpr = sql<string>`to_char(${pushSendLogs.createdAt}, 'YYYY-MM-DD')`;
   const successExpr = sql<number>`count(*) filter (where ${pushSendLogs.status} = 'success')::int`;

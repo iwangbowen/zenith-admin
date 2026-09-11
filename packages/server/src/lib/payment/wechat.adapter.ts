@@ -10,7 +10,7 @@ import { httpGet, httpPost } from '../http-client';
 import { formatDateTime } from '../datetime';
 import logger from '../logger';
 import type { CreatePaymentResult } from '@zenith/shared/payment';
-import { rsaSign, rsaVerify, aesGcmDecrypt, ensurePem } from './signing';
+import { rsaSign, rsaVerify, aesGcmDecrypt, ensurePem, buildWechatPayAuthorization, wechatNonce as genNonce } from './signing';
 import { trySandboxNotify } from './sandbox-notify';
 import { getPlatformCert } from './wechat-certs';
 import { WECHAT_PROVIDER_MANIFEST } from './capabilities';
@@ -54,19 +54,15 @@ function requireField<T>(v: T | null | undefined, name: string): T {
   return v;
 }
 
-function genNonce(): string {
-  return randomBytes(16).toString('hex').toUpperCase();
-}
-
 function buildAuthToken(ctx: AdapterContext, method: string, urlPath: string, body: string): string {
-  const mchid = requireField(ctx.config.wechatMchId, '商户号(mchId)');
-  const serialNo = requireField(ctx.config.wechatSerialNo, '证书序列号(serialNo)');
-  const privateKey = ensurePem(requireField(ctx.secrets.wechatPrivateKey, '商户私钥'), 'PRIVATE KEY');
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const nonce = genNonce();
-  const message = `${method}\n${urlPath}\n${timestamp}\n${nonce}\n${body}\n`;
-  const signature = rsaSign(message, privateKey, 'RSA-SHA256');
-  return `WECHATPAY2-SHA256-RSA2048 mchid="${mchid}",nonce_str="${nonce}",signature="${signature}",timestamp="${timestamp}",serial_no="${serialNo}"`;
+  return buildWechatPayAuthorization({
+    mchid: requireField(ctx.config.wechatMchId, '商户号(mchId)'),
+    serialNo: requireField(ctx.config.wechatSerialNo, '证书序列号(serialNo)'),
+    privateKey: requireField(ctx.secrets.wechatPrivateKey, '商户私钥'),
+    method,
+    urlPath,
+    body,
+  });
 }
 
 async function wechatRequest<T = Record<string, unknown>>(

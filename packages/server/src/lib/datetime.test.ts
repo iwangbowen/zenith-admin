@@ -12,6 +12,10 @@ import {
   parseDateRangeEnd,
   parseDateRangeStart,
   parseDateTimeInput,
+  resolveStatsWindow,
+  startOfDayAgo,
+  startOfRecentDays,
+  startOfToday,
 } from './datetime';
 
 dayjs.extend(utc);
@@ -74,5 +78,43 @@ describe('datetime utilities', () => {
 
   it('Invalid Date 回落 dayjs 语义', () => {
     expect(formatDateTime(new Date(NaN))).toBe(dayjs(new Date(NaN)).tz(APP_TIME_ZONE).format('YYYY-MM-DD HH:mm:ss'));
+  });
+
+  describe('本地日界与统计窗口', () => {
+    const localMidnight = (d: Date) => d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
+
+    it('startOfToday 为进程本地时区的今日 00:00:00.000', () => {
+      const today = startOfToday();
+      const now = new Date();
+      expect(localMidnight(today)).toBe(true);
+      expect(today.getFullYear()).toBe(now.getFullYear());
+      expect(today.getMonth()).toBe(now.getMonth());
+      expect(today.getDate()).toBe(now.getDate());
+    });
+
+    it('startOfDayAgo / startOfRecentDays 按本地日历回推并保持 00:00', () => {
+      const today = startOfToday();
+      const expected = new Date(today);
+      expected.setDate(expected.getDate() - 6);
+      expect(startOfDayAgo(6).getTime()).toBe(expected.getTime());
+      expect(startOfRecentDays(7).getTime()).toBe(expected.getTime());
+      expect(startOfDayAgo(0).getTime()).toBe(today.getTime());
+      expect(localMidnight(startOfRecentDays(30))).toBe(true);
+    });
+
+    it('resolveStatsWindow 夹紧天数并给出本期 / 上期起点', () => {
+      expect(resolveStatsWindow(undefined).days).toBe(90);
+      expect(resolveStatsWindow('abc').days).toBe(90);
+      expect(resolveStatsWindow(1).days).toBe(7);
+      expect(resolveStatsWindow(9999).days).toBe(365);
+      expect(resolveStatsWindow(3, { fallback: 30, min: 1, max: 90 }).days).toBe(3);
+
+      const win = resolveStatsWindow(30);
+      expect(win.startDate.getTime()).toBe(startOfRecentDays(30).getTime());
+      expect(win.startDateLabel).toBe(formatDate(win.startDate));
+      const prev = new Date(win.startDate);
+      prev.setDate(prev.getDate() - 30);
+      expect(win.prevStartDate.getTime()).toBe(prev.getTime());
+    });
   });
 });

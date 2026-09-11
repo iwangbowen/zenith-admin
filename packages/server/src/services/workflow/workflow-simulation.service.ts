@@ -1,13 +1,12 @@
 /**
  * 流程仿真服务：复用真实 DAG 引擎做 dry-run，不落库、不外呼、不创建真实实例。
  */
-import { uniquePositiveInts } from '@zenith/shared/core';
 import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { users, workflowDefinitions } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { evaluateCondition, evaluateConditionGroups, validateFlowData, type AdvanceResult, type TaskAction } from '../../lib/workflow-engine';
+import { edgeHasCondition, evaluateCondition, evaluateConditionGroups, validateFlowData, type AdvanceResult, type TaskAction } from '../../lib/workflow-engine';
 import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../../lib/workflow-token-engine';
 import { analyzeWorkflowHealth } from '../../lib/workflow-health';
 import { tenantCondition } from '../../lib/tenant';
@@ -15,6 +14,7 @@ import { buildStarterContext, resolveAdminUserId, resolveAssigneeIds } from './w
 import { resolveFormSnapshot } from './workflow-forms.service';
 import type { SimulateWorkflowInput, WorkflowConditionGroup, WorkflowEdge, WorkflowEdgeCondition, WorkflowFlowData, WorkflowHealthCheckInput, WorkflowDefinitionHealthReport, WorkflowNodeConfig, WorkflowSimulationEdgeResult, WorkflowSimulationHealthIssue, WorkflowSimulationBlockingPoint, WorkflowSimulationNodeState, WorkflowSimulationResult, WorkflowSimulationTimelineItem, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
+import { resolveUserNames } from '../../lib/user-nicknames';
 
 type SimulatedRuntimeStatus = 'pending' | 'waiting' | 'approved' | 'rejected' | 'skipped';
 type SimulationDecision = NonNullable<SimulateWorkflowInput['decisions']>[number];
@@ -79,18 +79,6 @@ async function resolveFlowData(input: SimulateWorkflowInput): Promise<WorkflowFl
   return flowData;
 }
 
-async function resolveUserNames(ids: number[]): Promise<Map<number, string>> {
-  const uniqueIds = uniquePositiveInts(ids);
-  const nameMap = new Map<number, string>();
-  if (uniqueIds.length === 0) return nameMap;
-  const rows = await db.select({ id: users.id, nickname: users.nickname, username: users.username })
-    .from(users)
-    .where(inArray(users.id, uniqueIds));
-  for (const row of rows) {
-    nameMap.set(row.id, row.nickname ?? row.username);
-  }
-  return nameMap;
-}
 
 function appendTimeline(
   ctx: SimulationContext,
@@ -282,10 +270,6 @@ async function materializeResult(result: AdvanceResult, ctx: SimulationContext):
 
 function getNodeByKey(flowData: WorkflowFlowData, nodeKey: string): WorkflowNodeConfig | null {
   return flowData.nodes.find((node) => node.data.key === nodeKey)?.data ?? null;
-}
-
-function edgeHasCondition(edge: WorkflowEdge): boolean {
-  return !!edge.condition || !!edge.conditions?.length;
 }
 
 /** 网关类节点：其无条件出边才具有「默认兜底分支」语义 */

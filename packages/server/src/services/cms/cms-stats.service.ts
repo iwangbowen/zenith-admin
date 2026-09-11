@@ -3,7 +3,7 @@ import { and, eq, gte, sql, desc, isNotNull } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsVisitLogs, cmsSearchLogs, cmsContents } from '../../db/schema';
 import logger from '../../lib/logger';
-import { formatDate } from '../../lib/datetime';
+import { formatDate, startOfRecentDays } from '../../lib/datetime';
 import { assertSiteAccess } from './cms-sites.service';
 import { ensureCmsSiteExists } from './cms-sites.service';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
@@ -93,20 +93,13 @@ export function recordCmsSearchLog(input: { siteId: number; keyword: string; res
 // ─── 报表 ─────────────────────────────────────────────────────────────────────
 const dateExpr = sql<string>`to_char(${cmsVisitLogs.createdAt}, 'YYYY-MM-DD')`;
 
-function sinceDate(days: number): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - (days - 1));
-  return d;
-}
-
 /** 访问统计总览：今日/昨日卡片 + 趋势 + 内容TOP + 栏目/来源/设备/通道分布（bot 不计入） */
 export async function getCmsVisitStats(siteId: number, days = 30) {
   await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
   await assertAllCmsSiteChannelsAccess(siteId);
   const rangeDays = Math.min(90, Math.max(1, days));
-  const since = sinceDate(rangeDays);
+  const since = startOfRecentDays(rangeDays);
   const base = and(
     eq(cmsVisitLogs.siteId, siteId),
     gte(cmsVisitLogs.createdAt, since),
@@ -181,7 +174,7 @@ export async function getCmsSearchAnalytics(siteId: number, days = 30) {
   await assertSiteAccess(siteId);
   await assertAllCmsSiteChannelsAccess(siteId);
   const rangeDays = Math.min(90, Math.max(1, days));
-  const since = sinceDate(rangeDays);
+  const since = startOfRecentDays(rangeDays);
   const base = and(
     eq(cmsSearchLogs.siteId, siteId),
     gte(cmsSearchLogs.createdAt, since),

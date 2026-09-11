@@ -4,7 +4,7 @@ import { db } from '../../db';
 import { operationLogs } from '../../db/schema';
 import { tenantCondition } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatDate } from '../../lib/datetime';
+import { formatDateTime, resolveStatsWindow } from '../../lib/datetime';
 import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nicknames';
 import { buildListResult } from '../../lib/list-query';
 
@@ -69,13 +69,7 @@ export async function listOperationLogs(q: ListOperationLogsQuery) {
 
 export async function operationLogStats(daysRaw?: number) {
   const user = currentUser();
-  const days = Math.min(Math.max(Number(daysRaw) || 90, 7), 365);
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days + 1);
-  startDate.setHours(0, 0, 0, 0);
-  const startDateLabel = formatDate(startDate);
-  const prevStartDate = new Date(startDate);
-  prevStartDate.setDate(prevStartDate.getDate() - days);
+  const { startDate, startDateLabel, prevStartDate } = resolveStatsWindow(daysRaw);
   const tc = tenantCondition(operationLogs, user);
   const baseWhere = tc ? and(gte(operationLogs.createdAt, startDate), tc) : gte(operationLogs.createdAt, startDate);
   const prevWhere = tc

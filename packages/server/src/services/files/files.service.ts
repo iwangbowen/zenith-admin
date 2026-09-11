@@ -1,6 +1,6 @@
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { managedFiles, fileStorageConfigs, users } from '../../db/schema';
+import { managedFiles, fileStorageConfigs } from '../../db/schema';
 import type { FileStorageConfigRow } from '../../db/schema';
 import type { FileVisibility } from '@zenith/shared/platform';
 import { buildManagedFileProxyUrl, buildPublicFileUrl, deleteStoredFile, readStoredFile, resolveFileAccessUrl, resolveObjectAcl, uploadFileByConfig } from '../../lib/file-storage';
@@ -50,6 +50,7 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { runAsUser } from '../../lib/audit-context';
 import { attachmentDisposition } from '../../lib/content-disposition';
+import { resolveUserNames } from '../../lib/user-nicknames';
 
 /** 全量存储配置 id→row 映射（配置表行数极少），供列表映射直链使用 */
 export async function getStorageConfigMap(): Promise<Map<number, FileStorageConfigRow>> {
@@ -159,15 +160,7 @@ export async function listManagedFiles(query: {
         withPagination(db.select().from(managedFiles).where(finalWhere).orderBy(desc(managedFiles.createdAt)).$dynamic(), page, pageSize),
         getStorageConfigMap(),
       ]);
-      const uploaderIds = [...new Set(paginated.map((f) => f.createdBy).filter((id): id is number => id != null))];
-      const uploaderMap = new Map<number, string>();
-      if (uploaderIds.length > 0) {
-        const uploaders = await db
-          .select({ id: users.id, nickname: users.nickname, username: users.username })
-          .from(users)
-          .where(inArray(users.id, uploaderIds));
-        for (const u of uploaders) uploaderMap.set(u.id, u.nickname || u.username);
-      }
+      const uploaderMap = await resolveUserNames(paginated.map((f) => f.createdBy));
       return paginated.map((f) => ({ ...mapManagedFile(f, configMap.get(f.storageConfigId)), uploaderName: f.createdBy ? (uploaderMap.get(f.createdBy) ?? null) : null }));
     },
   });
@@ -487,15 +480,7 @@ export async function browseStorageFiles(query: { storageConfigId: number; path?
     }
   }
 
-  const uploaderIds = [...new Set(levelFileRows.map((f) => f.createdBy).filter((id): id is number => id != null))];
-  const uploaderMap = new Map<number, string>();
-  if (uploaderIds.length > 0) {
-    const uploaders = await db
-      .select({ id: users.id, nickname: users.nickname, username: users.username })
-      .from(users)
-      .where(inArray(users.id, uploaderIds));
-    for (const u of uploaders) uploaderMap.set(u.id, u.nickname || u.username);
-  }
+  const uploaderMap = await resolveUserNames(levelFileRows.map((f) => f.createdBy));
 
   const folders = [...folderSet].sort().map((name) => ({
     name,
@@ -624,11 +609,7 @@ export async function getFileStats() {
   }
 
   // 上传人用户名映射
-  const uploaderIds = uploaderRows.map((r) => r.userId).filter((id): id is number => id !== null);
-  const uploaderUsers = uploaderIds.length > 0
-    ? await db.select({ id: users.id, nickname: users.nickname, username: users.username }).from(users).where(inArray(users.id, uploaderIds))
-    : [];
-  const userMap = new Map(uploaderUsers.map((u) => [u.id, u.nickname || u.username]));
+  const userMap = await resolveUserNames(uploaderRows.map((r) => r.userId));
 
   const s = summary[0] ?? { totalFiles: 0, totalSize: 0, imageCount: 0, docCount: 0, videoCount: 0, audioCount: 0, todayCount: 0, thisMonthCount: 0 };
   return {

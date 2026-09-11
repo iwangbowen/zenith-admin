@@ -7,7 +7,7 @@ import { SAML, ValidateInResponseTo, type CacheItem, type CacheProvider, type Pr
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { CreateTenantIdentityProviderInput, IdentityProviderConnectionTestResult, IdentityProviderAttributeMapping, IdentityProviderSyncResult, IdentityProviderType, LdapDirectoryUser, UpdateTenantIdentityProviderInput } from '@zenith/shared/identity';
-import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
+import { SECRET_PLACEHOLDER, trimTrailingSlash } from '@zenith/shared/core';
 import { config } from '../../config';
 import { db } from '../../db';
 import { identityProviderSyncLogs, tenantIdentityProviders, tenants, userIdentityAccounts, userRoles, users, type UserRow } from '../../db/schema';
@@ -535,10 +535,6 @@ export async function searchDirectoryEntries(
 
 function oidcRedirectUri(): string {
   return `${config.oauth.callbackBaseUrl}/enterprise/callback`;
-}
-
-function trimTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, '');
 }
 
 function samlAcsUrl(): string {

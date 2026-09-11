@@ -7,7 +7,7 @@
  */
 import { and, desc, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { randomInt } from 'node:crypto';
+import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
 import {
@@ -32,10 +32,6 @@ import { assertEffectivePaymentOperation } from './payment-capability-evaluator'
 import logger from '../../lib/logger';
 import type { SQL } from 'drizzle-orm';
 import type { HandlePaymentReconItemInput, PaymentChannel, PaymentReconBatch, PaymentReconHandleStatus, PaymentReconItem, PaymentReconResult, PaymentReconSource, PaymentReconStatus } from '@zenith/shared/payment';
-
-function genNo(prefix: string): string {
-  return `${prefix}${Date.now()}${randomInt(1000, 9999)}`;
-}
 
 export function mapReconBatch(row: PaymentReconBatchRow): PaymentReconBatch {
   return {
@@ -290,7 +286,7 @@ async function createReconBatchScoped(
     });
   }
 
-  const batchNo = genNo('RECON');
+  const batchNo = genPaymentNo('RECON');
   const diffCount = items.length - matched;
   const row = await db.transaction(async (tx) => {
     const [batch] = await tx

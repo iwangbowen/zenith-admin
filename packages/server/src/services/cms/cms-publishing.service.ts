@@ -91,7 +91,7 @@ import {
   loadCmsInheritanceState,
   resolveEffectiveCmsSiteRow,
 } from './cms-site-inheritance.service';
-import { mapAsyncTaskItem } from './cms-task-shared';
+import { mapAsyncTaskItem } from '../../lib/task-center';
 
 const SYSTEM_USER = { userId: 1, username: 'admin', roles: ['super_admin'], tenantId: null };
 

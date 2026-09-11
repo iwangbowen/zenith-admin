@@ -5,7 +5,7 @@
  */
 import { and, between, desc, eq, inArray, isNull, lte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { randomInt } from 'node:crypto';
+import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
 import {
@@ -27,10 +27,6 @@ import { isPgUniqueViolation, rethrowPgUniqueViolation } from '../../lib/db-erro
 import { postSystemJournalWithin } from './payment-journal.service';
 import logger from '../../lib/logger';
 import type { PaymentChannel, PaymentSettlementBatch, PaymentSettlementItem, PaymentSettlementStatus } from '@zenith/shared/payment';
-
-function genNo(): string {
-  return `SETTLE${Date.now()}${randomInt(1000, 9999)}`;
-}
 
 // Only provider-derived and explicitly approved reconciliation movements are
 // eligible for payout. Manual adjustments, reservations and transfer journals
@@ -254,7 +250,7 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
   try {
     const row = await db.transaction(async (tx) => {
       const [batch] = await tx.insert(paymentSettlementBatches).values({
-        batchNo: genNo(),
+        batchNo: genPaymentNo('SETTLE'),
         channel: scope.channel,
         appId: input.applicationId,
         channelConfigId: input.channelConfigId,

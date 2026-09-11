@@ -3,7 +3,7 @@ import type { DriveAdminStats, DriveSpaceType } from '@zenith/shared/drive';
 import { readSnapshot } from '../../db';
 import { driveActivities, driveFileVersions, driveNodes, driveShareLinks, driveSpaces } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, startOfToday } from '../../lib/datetime';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
 import { effectiveQuotaBytes, getDriveSettings } from './drive-settings.service';
@@ -26,8 +26,7 @@ export async function getDriveAdminStats(): Promise<DriveAdminStats> {
   const settings = await getDriveSettings();
   const spaceTenant = tenantCondition(driveSpaces, user);
   const nodeTenant = tenantCondition(driveNodes, user);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  const todayStart = startOfToday();
   const weekAgo = new Date(todayStart.getTime() - 6 * 86_400_000);
 
   return readSnapshot(async (tx) => {

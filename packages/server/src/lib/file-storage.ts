@@ -9,6 +9,7 @@ import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import type { FileStorageConfigRow, ManagedFileRow } from '../db/schema';
 import { FILE_OBJECT_ACL_SUPPORT } from '@zenith/shared/platform';
+import { trimTrailingSlash } from '@zenith/shared/core';
 import { HTTPException } from 'hono/http-exception';
 import { formatDate } from './datetime';
 import logger from './logger';
@@ -234,10 +235,6 @@ interface FileUrlSource {
 
 function encodeObjectKey(objectKey: string) {
   return objectKey.split('/').map(encodeURIComponent).join('/');
-}
-
-function trimTrailingSlash(value: string) {
-  return value.replace(/\/+$/, '');
 }
 
 /** 拆出 endpoint 的协议与主机；无协议时默认 https */

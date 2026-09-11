@@ -17,20 +17,16 @@
  * Ctrl+C 断开（管理端在线态随之变为离线）。
  */
 import { createHmac } from 'node:crypto';
-
-function arg(name: string, fallback: string): string {
-  const idx = process.argv.indexOf(`--${name}`);
-  return idx >= 0 && process.argv[idx + 1] ? process.argv[idx + 1] : fallback;
-}
+import { arg, flag } from './lib/cli-args';
 
 const SERVER = arg('server', 'http://localhost:3300');
-const GATEWAY_MODE = process.argv.includes('--gateway');
-const LOG_MODE = process.argv.includes('--log');
+const GATEWAY_MODE = flag('gateway');
+const LOG_MODE = flag('log');
 const SN = arg('sn', GATEWAY_MODE ? 'SN-DEMO-GW-0001' : 'SN-DEMO-TH100-0001');
 const SECRET = arg('secret', GATEWAY_MODE
   ? 'demogw01secretgw01demogw01secretgw01demogw01sec3'
   : 'demo0001secret0001demo0001secret0001demo0001sec1');
-const HOT_MODE = process.argv.includes('--hot');
+const HOT_MODE = flag('hot');
 const STARTUP_EVENT = arg('event', '');
 /** 网关模式代理的子设备 SN（默认演示子设备） */
 const SUB_SNS = arg('subs', 'SN-DEMO-SUB-0001,SN-DEMO-SUB-0002').split(',').map((s) => s.trim()).filter(Boolean);

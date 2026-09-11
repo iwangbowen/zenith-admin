@@ -1,5 +1,5 @@
-import { isAsyncTaskTerminal, type AsyncTask } from '@zenith/shared/tasks';
-import type { AsyncTaskRow } from '../../db/schema';
+import { isAsyncTaskTerminal, type AsyncTask, type AsyncTaskItem } from '@zenith/shared/tasks';
+import type { AsyncTaskRow, asyncTaskItems } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../datetime';
 import { sendToUser } from '../ws-manager';
 import { getTaskTypeMeta } from './registry';
@@ -33,6 +33,22 @@ export function mapAsyncTask(row: AsyncTaskRowWithCreator): AsyncTask {
     traceId: row.traceId ?? null,
     startedAt: formatNullableDateTime(row.startedAt),
     completedAt: formatNullableDateTime(row.completedAt),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
+  };
+}
+
+/** 任务子项（逐条处理明细）→ 契约实体；任务中心列表与 CMS 发布 / 分发的明细视图共用 */
+export function mapAsyncTaskItem(row: typeof asyncTaskItems.$inferSelect): AsyncTaskItem {
+  return {
+    id: row.id,
+    taskId: row.taskId,
+    itemKey: row.itemKey,
+    label: row.label ?? null,
+    status: row.status,
+    message: row.message ?? null,
+    data: row.data ?? null,
+    attempt: row.attempt,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };

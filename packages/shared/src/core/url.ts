@@ -63,3 +63,8 @@ export function isSameOriginUrl(value: string, origin: string): boolean {
   const url = parseUrl(value);
   return url != null && url.origin === origin;
 }
+
+/** 去掉末尾全部 `/`，供 `${base}/${path}` 拼接前归一 base URL / 根路径（`'/'` → `''`）。 */
+export function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '');
+}

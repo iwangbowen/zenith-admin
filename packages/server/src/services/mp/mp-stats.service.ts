@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpFans, mpTags, mpMaterials, mpDrafts, mpMessages, mpAutoReplies } from '../../db/schema';
 import { buildWhere } from '../../lib/where-helpers';
-import { formatDate } from '../../lib/datetime';
+import { formatDate, startOfRecentDays } from '../../lib/datetime';
 import { tenantScope } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { getUserSummary, getUserCumulate, getUpstreamMsg, getArticleSummary, getUserShare, getInterfaceSummary, DATACUBE_MAX_SPAN_DAYS } from '../../lib/wechat';
@@ -34,9 +34,7 @@ export async function getMpStats(accountId: number): Promise<MpStats> {
     d.setDate(d.getDate() - i);
     days.push(formatDate(d));
   }
-  const since = new Date(today);
-  since.setDate(since.getDate() - 6);
-  since.setHours(0, 0, 0, 0);
+  const since = startOfRecentDays(7);
 
   const [fanRows, msgRows] = await Promise.all([
     db.select({ d: sql<string>`to_char(${mpFans.createdAt}, 'YYYY-MM-DD')`, n: sql<number>`count(*)::int` })

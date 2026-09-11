@@ -9,7 +9,7 @@
  */
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { randomInt } from 'node:crypto';
+import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
 import {
@@ -28,7 +28,7 @@ import { requireTenantScopeId, tenantCondition, exactTenantCondition, inheritedT
 import { buildWhere, keywordCondition, nullableEq, withPagination } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart, startOfToday } from '../../lib/datetime';
 import { recordEvent, processEvent } from './payment-outbox.service';
 import { buildPaymentEventPayload } from './payment-events';
 import { checkRuleListsBatch, type RuleListBatchHit } from '../platform/rules-lists.service';
@@ -197,12 +197,6 @@ function ruleApplies(rule: PaymentRiskRuleRow, input: RiskCheckInput): boolean {
   if (rule.scope === 'channel') return rule.channel === input.channel;
   if (rule.scope === 'bizType') return rule.bizType === input.bizType;
   return false;
-}
-
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
 }
 
 /** 参与名单匹配的标识集合（openid / 用户ID / 客户端IP） */
@@ -419,10 +413,6 @@ export async function listRiskHits(q: ListRiskHitsQuery) {
 
 // ─── 人工审核队列 ─────────────────────────────────────────────────────────────
 
-function genReviewNo(): string {
-  return `RSK${Date.now()}${randomInt(1000, 9999)}`;
-}
-
 function mapRiskReview(row: PaymentRiskReviewRow & { reviewer?: { nickname: string | null } | null }): PaymentRiskReview {
   return {
     id: row.id,
@@ -474,7 +464,7 @@ export async function suspendOrderForReview(order: PaymentOrderRow, decision: Ex
   const [review] = await db
     .insert(paymentRiskReviews)
     .values({
-      reviewNo: genReviewNo(),
+      reviewNo: genPaymentNo('RSK'),
       hitId,
       orderNo: order.orderNo,
       channel: order.channel,

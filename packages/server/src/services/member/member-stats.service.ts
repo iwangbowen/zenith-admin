@@ -9,13 +9,7 @@ import {
   members, memberLevels, memberPointAccounts, memberWallets,
   memberPointTransactions, memberCheckins, memberCoupons, memberWalletTransactions,
 } from '../../db/schema';
-import { formatDate } from '../../lib/datetime';
-
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { formatDate, startOfToday } from '../../lib/datetime';
 
 function shiftDays(base: Date, delta: number): Date {
   const d = new Date(base);

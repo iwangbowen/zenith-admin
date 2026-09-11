@@ -8,20 +8,13 @@ import type { ChannelAnalysisDimension, ChannelAnalysisResult, ShortLinkTrendPoi
 import { SHORT_LINK_STATS_MAX_DAYS } from '@zenith/shared/short-link';
 import { db } from '../../db';
 import { shortLinks, shortLinkClicks, userEvents } from '../../db/schema';
-import { formatDate } from '../../lib/datetime';
+import { formatDate, startOfRecentDays } from '../../lib/datetime';
 import { clampDays } from '../../lib/analytics-helpers';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
 
 const ROWS_LIMIT = 20;
-
-function windowStart(days: number): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - (days - 1));
-  return d;
-}
 
 const LINK_DIM_COLUMNS = {
   source: shortLinks.utmSource,
@@ -44,7 +37,7 @@ export interface ChannelAnalysisQuery {
 
 export async function getChannelAnalysis(q: ChannelAnalysisQuery): Promise<ChannelAnalysisResult> {
   const days = clampDays(q.days, 30, SHORT_LINK_STATS_MAX_DAYS);
-  const since = windowStart(days);
+  const since = startOfRecentDays(days);
   const user = currentUser();
 
   const dimCol = LINK_DIM_COLUMNS[q.dimension];

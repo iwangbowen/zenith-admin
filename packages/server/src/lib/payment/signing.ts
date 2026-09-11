@@ -4,7 +4,7 @@
  * - 支付宝：RSA2（SHA256withRSA）/ RSA（SHA1withRSA）签名与验签
  * - 微信支付 v3：RSA-SHA256 请求签名、平台证书验签、AES-256-GCM 回调解密
  */
-import { createSign, createVerify, createDecipheriv } from 'node:crypto';
+import { createSign, createVerify, createDecipheriv, randomBytes } from 'node:crypto';
 
 export type RsaAlgorithm = 'RSA-SHA256' | 'RSA-SHA1';
 
@@ -52,4 +52,30 @@ export function ensurePem(key: string, label: 'PUBLIC KEY' | 'PRIVATE KEY' | 'RS
   if (trimmed.includes('-----BEGIN')) return trimmed;
   const body = trimmed.replace(/\s+/g, '').match(/.{1,64}/g)?.join('\n') ?? trimmed;
   return `-----BEGIN ${label}-----\n${body}\n-----END ${label}-----`;
+}
+
+/** 微信支付 v3 随机串（32 位大写十六进制） */
+export function wechatNonce(): string {
+  return randomBytes(16).toString('hex').toUpperCase();
+}
+
+/**
+ * 微信支付 v3 请求 `Authorization` 头（WECHATPAY2-SHA256-RSA2048）：
+ * 对 `method\nurlPath\ntimestamp\nnonce\nbody\n` 做 RSA-SHA256 签名。适配器与平台证书下载共用。
+ * 私钥可为裸 base64 或 PEM，缺失校验由调用方负责。
+ */
+export function buildWechatPayAuthorization(input: {
+  mchid: string;
+  serialNo: string;
+  privateKey: string;
+  method: string;
+  urlPath: string;
+  body: string;
+}): string {
+  const privateKey = ensurePem(input.privateKey, 'PRIVATE KEY');
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = wechatNonce();
+  const message = `${input.method}\n${input.urlPath}\n${timestamp}\n${nonce}\n${input.body}\n`;
+  const signature = rsaSign(message, privateKey, 'RSA-SHA256');
+  return `WECHATPAY2-SHA256-RSA2048 mchid="${input.mchid}",nonce_str="${nonce}",signature="${signature}",timestamp="${timestamp}",serial_no="${input.serialNo}"`;
 }

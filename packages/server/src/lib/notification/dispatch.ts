@@ -24,6 +24,7 @@ import { createConcurrencyLimiter } from '../concurrency';
 import { renderTemplate } from '../sms-sender';
 import { getNotificationAdapter } from './registry';
 import { resolveDispatchPlan, type ChannelResolution } from './resolver';
+import { normalizeTemplateVars } from './template-vars';
 import type { ResolvedRecipient } from './types';
 
 /**
@@ -46,15 +47,6 @@ function recipientTag(recipient: NotificationRecipient): string {
   return recipient.type === 'external'
     ? `external:${recipient.channel}:${recipient.address}`
     : `${recipient.type}:${recipient.id}`;
-}
-
-/** 模板变量统一转成字符串：`renderTemplate` 只做字面替换，数字直接传会渲染出 `undefined`。 */
-function normalizeVars(vars: Record<string, unknown>): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(vars)) {
-    result[key] = value === null || value === undefined ? '' : String(value);
-  }
-  return result;
 }
 
 function dispatchRowBase(row: NotificationOutboxRow, recipient: NotificationRecipient, channel: NotificationChannel) {
@@ -124,7 +116,7 @@ export async function deliverOutboxRow(row: NotificationOutboxRow): Promise<Deli
   }
   const eventKey = row.eventKey as NotificationEventKey;
   const event = getNotificationEvent(eventKey);
-  const vars = normalizeVars(row.vars ?? {});
+  const vars = normalizeTemplateVars(row.vars ?? {});
   const title = renderTemplate(event.title, vars);
   const content = renderTemplate(event.content, vars);
 

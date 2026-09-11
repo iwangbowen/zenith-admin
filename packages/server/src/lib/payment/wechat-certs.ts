@@ -7,9 +7,8 @@
  *
  * 设计:adapter 单向依赖本模块(本模块不反向依赖 wechat.adapter,避免循环)。
  */
-import { randomBytes } from 'node:crypto';
 import { httpGet } from '../http-client';
-import { rsaSign, aesGcmDecrypt, ensurePem } from './signing';
+import { aesGcmDecrypt, buildWechatPayAuthorization } from './signing';
 import logger from '../logger';
 import type { AdapterContext } from './types';
 import { providerHttpOptions } from './provider-http';
@@ -23,21 +22,12 @@ interface CertCacheEntry {
 }
 const cache = new Map<string, CertCacheEntry>(); // key: mchId
 
-function genNonce(): string {
-  return randomBytes(16).toString('hex').toUpperCase();
-}
-
 function buildAuthToken(ctx: AdapterContext, method: string, urlPath: string, body: string): string | null {
   const mchid = ctx.config.wechatMchId;
   const serialNo = ctx.config.wechatSerialNo;
-  const privateKeyRaw = ctx.secrets.wechatPrivateKey;
-  if (!mchid || !serialNo || !privateKeyRaw) return null;
-  const privateKey = ensurePem(privateKeyRaw, 'PRIVATE KEY');
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const nonce = genNonce();
-  const message = `${method}\n${urlPath}\n${timestamp}\n${nonce}\n${body}\n`;
-  const signature = rsaSign(message, privateKey, 'RSA-SHA256');
-  return `WECHATPAY2-SHA256-RSA2048 mchid="${mchid}",nonce_str="${nonce}",signature="${signature}",timestamp="${timestamp}",serial_no="${serialNo}"`;
+  const privateKey = ctx.secrets.wechatPrivateKey;
+  if (!mchid || !serialNo || !privateKey) return null;
+  return buildWechatPayAuthorization({ mchid, serialNo, privateKey, method, urlPath, body });
 }
 
 interface CertListResponse {

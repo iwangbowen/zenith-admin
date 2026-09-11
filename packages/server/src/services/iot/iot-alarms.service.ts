@@ -9,7 +9,6 @@
  * 去重：`uq_iot_alarms_active`（同规则同设备仅一条 firing）+ insert onConflictDoNothing。
  * 通知：唯一入口 notify()，接收人来自规则 notifyUserIds，为空则只留告警记录。
  */
-import { HTTPException } from 'hono/http-exception';
 import { and, count, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL } from 'drizzle-orm';
 import { alias as aliasedTable } from 'drizzle-orm/pg-core';
 import type { CreateIotAlarmRuleInput, IotAlarmLevel, IotAlarmRuleType, IotAlarmStatus, UpdateIotAlarmRuleInput } from '@zenith/shared/iot';
@@ -34,7 +33,7 @@ import { openEventBus } from '../../lib/open-event-bus';
 import { TtlCache } from '../../lib/ttl-cache';
 import { notify } from '../messaging/notification-outbox.service';
 import { dispatchIotForward } from './iot-forward.service';
-import { loadThingModel } from './iot-model.service';
+import { ensureIotRuleReferencesValid } from './iot-rule-refs';
 import { isDeviceInMaintenance } from './iot-maintenance.service';
 
 // ─── 规则映射与 CRUD ─────────────────────────────────────────────────────────
@@ -120,21 +119,12 @@ async function ensureRuleReferencesValid(
   productId: number,
   data: { ruleType: IotAlarmRuleType; propertyIdentifier?: string | null; eventIdentifier?: string | null; deviceId?: number | null },
 ): Promise<void> {
-  if (data.deviceId) {
-    const [maybeDevice] = await db.select({ id: iotDevices.id, productId: iotDevices.productId })
-      .from(iotDevices).where(eq(iotDevices.id, data.deviceId)).limit(1);
-    const device = requireRow(maybeDevice, '指定的设备不存在', 400);
-    if (device.productId !== productId) throw new HTTPException(400, { message: '设备不属于该产品' });
-  }
-  const model = await loadThingModel(productId);
-  if (data.ruleType === 'threshold') {
-    const maybeProp = model.properties.find((p) => p.identifier === data.propertyIdentifier);
-    const prop = requireRow(maybeProp, `属性 "${data.propertyIdentifier}" 未在物模型中声明`, 400);
-    if (prop.dataType !== 'number') throw new HTTPException(400, { message: '阈值规则仅支持数值型属性' });
-  }
-  if (data.ruleType === 'event' && !model.events.some((e) => e.identifier === data.eventIdentifier)) {
-    throw new HTTPException(400, { message: `事件 "${data.eventIdentifier}" 未在物模型中声明` });
-  }
+  await ensureIotRuleReferencesValid(productId, {
+    refKind: data.ruleType === 'threshold' ? 'property' : data.ruleType === 'event' ? 'event' : null,
+    propertyIdentifier: data.propertyIdentifier,
+    eventIdentifier: data.eventIdentifier,
+    deviceId: data.deviceId,
+  }, { numericOnly: '阈值规则仅支持数值型属性' });
 }
 
 export async function createIotAlarmRule(data: CreateIotAlarmRuleInput) {

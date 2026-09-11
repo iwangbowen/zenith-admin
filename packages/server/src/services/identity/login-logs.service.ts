@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { loginLogs } from '../../db/schema';
 import { tenantCondition } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatDate } from '../../lib/datetime';
+import { formatDateTime, resolveStatsWindow } from '../../lib/datetime';
 import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nicknames';
 
 export interface ListLoginLogsQuery {
@@ -49,13 +49,7 @@ export async function listLoginLogs(q: ListLoginLogsQuery) {
 
 export async function loginLogStats(daysRaw?: number) {
   const user = currentUser();
-  const days = Math.min(Math.max(Number(daysRaw) || 90, 7), 365);
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days + 1);
-  startDate.setHours(0, 0, 0, 0);
-  const startDateLabel = formatDate(startDate);
-  const prevStartDate = new Date(startDate);
-  prevStartDate.setDate(prevStartDate.getDate() - days);
+  const { startDate, startDateLabel, prevStartDate } = resolveStatsWindow(daysRaw);
   const tc = tenantCondition(loginLogs, user);
   const baseWhere = tc
     ? and(gte(loginLogs.createdAt, startDate), eq(loginLogs.eventType, 'login'), tc)

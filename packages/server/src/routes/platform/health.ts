@@ -1,11 +1,8 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { sql } from 'drizzle-orm';
-import { healthContract, type HealthCheckResult, type HealthStatus } from '@zenith/shared/platform';
+import { healthContract, type HealthCheckResult } from '@zenith/shared/platform';
 import { config } from '../../config';
-import { db } from '../../db';
-import redis from '../../lib/redis';
-import { invalidationBusState } from '../../lib/invalidation-bus';
 import { defineContractRoute } from '../../lib/contract-route';
+import { checkInfraHealth, overallHealthStatus } from '../../lib/health-checks';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { countActiveWorkerNodes } from '../../lib/pg-boss-scheduler';
 import { wsFanoutState } from '../../lib/ws-fanout';
@@ -31,30 +28,14 @@ async function checkWorkers(): Promise<HealthCheckResult> {
 const healthRoute = defineContractRoute(healthContract.check, {
   middleware: [],
   handler: async (c) => {
-    const checks: Record<string, HealthCheckResult> = {};
-    try {
-      await db.execute(sql`SELECT 1`);
-      checks.database = 'ok';
-    } catch {
-      checks.database = 'error';
-    }
-    try {
-      await redis.ping();
-      checks.redis = 'ok';
-    } catch {
-      checks.redis = 'error';
-    }
-    // 失效广播未建立时功能仍可用（缓存退回 TTL 兜底），只作为降级提示，不拉低整体 status
-    checks.invalidationBus = invalidationBusState() === 'listening' ? 'ok' : 'degraded';
+    const checks: Record<string, HealthCheckResult> = await checkInfraHealth();
     if (config.roles.api) {
       // 跨进程 WS 推送订阅未建立：其他进程（worker / 别的 api 副本）产生的推送到不了本进程的连接
       checks.wsFanout = wsFanoutState() === 'subscribed' ? 'ok' : 'degraded';
       checks.workers = await checkWorkers();
     }
-    const anyError = Object.values(checks).some((v) => v === 'error');
-    const status: HealthStatus = anyError ? 'degraded' : 'ok';
     return c.json(okBody({
-      status,
+      status: overallHealthStatus(checks),
       version: appVersion,
       uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
       roles: config.roles.list,

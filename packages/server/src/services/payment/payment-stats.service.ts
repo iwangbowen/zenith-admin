@@ -7,7 +7,7 @@ import { paymentOrders, paymentRefunds } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
-import { APP_TIME_ZONE, formatDate } from '../../lib/datetime';
+import { APP_TIME_ZONE, formatDate, startOfDayAgo, startOfToday } from '../../lib/datetime';
 import type { PaymentStats, PaymentTrendPoint } from '@zenith/shared/payment';
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
@@ -16,8 +16,7 @@ export async function getPaymentStats(): Promise<PaymentStats> {
   const user = currentUser();
   const tc = tenantCondition(paymentOrders, user);
   const rtc = tenantCondition(paymentRefunds, user);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  const todayStart = startOfToday();
 
   const PAID_STATUSES = ['success', 'refunding', 'refunded'] as const;
   const paidAmountExpr = sql<number>`coalesce(sum(case when ${paymentOrders.status} in ('success','refunding','refunded') then ${paymentOrders.amount} else 0 end),0)`;
@@ -107,9 +106,7 @@ export async function getPaymentTrend(days = 30): Promise<PaymentTrendPoint[]> {
   const safeDays = Math.min(Math.max(Math.trunc(days) || 30, 1), 365);
 
   // 覆盖下界：多回溯 1 天，避免时区边界漏数据（多余日期不在序列内会被忽略）
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - safeDays);
+  const start = startOfDayAgo(safeDays);
 
   const PAID_STATUSES = ['success', 'refunding', 'refunded'] as const;
   const orderDay = sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${paymentOrders.paidAt}), 'YYYY-MM-DD')`;

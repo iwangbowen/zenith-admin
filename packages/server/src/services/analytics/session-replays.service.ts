@@ -21,7 +21,7 @@ import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
 import { tenantScope, getCreateTenantId, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, startOfToday } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { parseClientEnv, resolveIngestPlatformFields } from '../../lib/analytics-helpers';
 import { isSiteOriginAllowed, resolveSiteByKey } from './analytics-sites.service';
@@ -294,8 +294,7 @@ async function getReplayUsageBytesFresh(tenantId: number | null): Promise<number
 /** 存储统计（容量看板）：总量 / 今日新增 / 配额使用率 */
 export async function getReplayStorageStats() {
   const where = tenantScope(replaySessions);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  const todayStart = startOfToday();
   const [[totals], [today], quotaBytes] = await Promise.all([
     db.select({
       bytes: sql<number>`COALESCE(SUM(${replaySessions.totalBytes}), 0)::bigint`,

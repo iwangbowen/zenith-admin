@@ -5,6 +5,7 @@ import { departments, driveNodes, driveSpaces, roles, userGroups, userRoles, use
 import type { DbExecutor } from '../../db/types';
 import type { JwtPayload } from '../../middleware/auth';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { resolveUserNames, type UserNameMap } from '../../lib/user-nicknames';
 
 /** 节点内容鉴权地址（与 routes/drive/drive-nodes.ts 的 /{id}/content 一致） */
 export function driveNodeContentUrl(nodeId: number): string {
@@ -39,15 +40,8 @@ export async function loadDriveActorPayload(userId: number, executor: DbExecutor
 
 // ─── 名称批量解析 ─────────────────────────────────────────────────────────────
 
-export type NameMap = Map<number, string>;
-
-export async function resolveUserNames(ids: Iterable<number | null | undefined>, executor: DbExecutor = db): Promise<NameMap> {
-  const uniq = [...new Set([...ids].filter((id): id is number => typeof id === 'number'))];
-  if (uniq.length === 0) return new Map();
-  const rows = await executor.select({ id: users.id, nickname: users.nickname, username: users.username })
-    .from(users).where(inArray(users.id, uniq));
-  return new Map(rows.map((r) => [r.id, r.nickname || r.username]));
-}
+export type NameMap = UserNameMap;
+export { resolveUserNames };
 
 export interface DriveNodeSpaceLabels {
   nodeName: string;

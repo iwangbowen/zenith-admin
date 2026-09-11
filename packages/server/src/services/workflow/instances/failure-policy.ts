@@ -9,12 +9,11 @@ import type { WorkflowFlowData, WorkflowEventActor } from '@zenith/shared/workfl
 import { resolveFailurePolicy } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
-import { buildStarterContext } from '../workflow-assignee-resolver.service';
+import { buildStarterContext, resolveAdminUserId } from '../workflow-assignee-resolver.service';
 import { recordCompensation, addCompensationLog } from '../workflow-compensations.service';
 import type { DbExecutor } from '../../../db/types';
 import { enqueueJob } from '../../../lib/workflow-jobs/engine';
 import type { WorkflowNodeFailurePolicy } from '@zenith/shared/workflow';
-import { resolveAdminAssigneeId } from './assignees';
 import { findExceptionCatchNode, mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, killInstanceTokens, loadLiveTokens } from './materialize';
 import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents } from './shared';
@@ -211,7 +210,7 @@ async function applyNodeFailurePolicy(input: {
     // notify / compensate / retry(耗尽) / 默认 → 挂起为待人工修复工单；compensate 额外入队反向动作 job
     const ticketAction = policy.action === 'compensate' ? 'compensate' : policy.action === 'fallback' ? 'fallback' : 'notify';
     const compensationCfg = policy.action === 'compensate' ? policy.compensation : undefined;
-    const adminId = await resolveAdminAssigneeId(tx);
+    const adminId = await resolveAdminUserId(tx);
     if (!adminId) {
       await recordCompensation(tx, { instanceId: lockedInst.id, nodeKey: input.nodeKey, nodeName: input.nodeName, errorMessage: `${input.errorMessage}；未找到管理员`, action: ticketAction, status: 'terminated', tenantId: lockedInst.tenantId });
       const row = await markInstanceRejected(tx, { instanceId: lockedInst.id, comment: errorComment, killTokens: true, actorId: input.actor.userId });
@@ -387,7 +386,7 @@ export async function handleNodeExecutionError(input: {
     }
 
     if (action === 'toAdmin') {
-      const adminId = await resolveAdminAssigneeId(tx);
+      const adminId = await resolveAdminUserId(tx);
       if (!adminId) {
         const [catchTask] = await tx.insert(workflowTasks).values({
           instanceId: lockedInst.id,

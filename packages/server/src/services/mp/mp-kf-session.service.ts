@@ -22,7 +22,7 @@ import type {
   MpKfSessionRow, MpKfRoutingConfigRow, MpAccountRow,
 } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime, formatDate } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatDate, startOfRecentDays, startOfToday } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { currentUserOrNull } from '../../lib/context';
 import { ensureMpAccountExists } from './mp-account.service';
@@ -415,8 +415,7 @@ export async function getMpKfSessionStats(accountId: number): Promise<MpKfSessio
   await ensureMpAccountExists(accountId);
   const tenant = tenantScope(mpKfSessions);
   const scoped = (extra: SQL) => (tenant ? and(extra, tenant) : extra);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  const todayStart = startOfToday();
 
   const [waiting, active, closedTodayRows, agentsRows] = await Promise.all([
     db.$count(mpKfSessions, scoped(and(eq(mpKfSessions.accountId, accountId), eq(mpKfSessions.status, 'waiting'))!)),
@@ -470,9 +469,7 @@ export async function rateMpKfSession(id: number, rating: number, remark?: strin
 export async function getMpKfSessionReport(accountId: number, days: number): Promise<{ date: string; created: number; closed: number; avgWaitSeconds: number; avgRating: number }[]> {
   await ensureMpAccountExists(accountId);
   const tenant = tenantScope(mpKfSessions);
-  const since = new Date();
-  since.setDate(since.getDate() - (days - 1));
-  since.setHours(0, 0, 0, 0);
+  const since = startOfRecentDays(days);
   const base = (extra: SQL) => buildWhere(tenant ? and(extra, tenant) : extra);
 
   const [createdRows, closedRows] = await Promise.all([

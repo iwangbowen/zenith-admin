@@ -27,18 +27,14 @@ import {
 } from '../src/services/cms/cms-contents-query.service';
 import { searchCmsContents } from '../src/services/cms/cms-search.service';
 import { createCmsThemeDataApi, generateRssXml, renderChannelPage, renderHomePage } from '../src/services/cms/cms-render.service';
-
-function arg(name: string, fallback: string): string {
-  const idx = process.argv.indexOf(`--${name}`);
-  return idx >= 0 && process.argv[idx + 1] ? process.argv[idx + 1] : fallback;
-}
+import { arg, flag } from './lib/cli-args';
 
 const SITE_CODE = 'bench-cms';
 const CONTENTS = Number(arg('contents', '3000'));
 const BODY_KB = Number(arg('body-kb', '30'));
 const RUNS = Number(arg('runs', '7'));
 const OUT = arg('out', '');
-const CLEANUP = process.argv.includes('--cleanup');
+const CLEANUP = flag('cleanup');
 const CHANNEL_COUNT = 5;
 const TAG_COUNT = 12;
 

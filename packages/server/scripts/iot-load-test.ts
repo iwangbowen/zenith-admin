@@ -14,11 +14,7 @@
  * 以及服务端「今日上报量」差值（核对落库是否完整）。压测设备复用 SN 前缀 SN-LOAD-，重复运行不重复建档。
  */
 import { createHmac } from 'node:crypto';
-
-function arg(name: string, fallback: string): string {
-  const idx = process.argv.indexOf(`--${name}`);
-  return idx >= 0 && process.argv[idx + 1] ? process.argv[idx + 1] : fallback;
-}
+import { arg, flag } from './lib/cli-args';
 
 const SERVER = arg('server', 'http://localhost:3300');
 const USERNAME = arg('username', 'admin');
@@ -29,7 +25,7 @@ const RATE = Number(arg('rate', '1'));
 const DURATION = Number(arg('duration', '30'));
 const BATCH = Number(arg('batch', '1'));
 const TRANSPORT = arg('transport', 'http') as 'http' | 'ws';
-const CLEANUP = process.argv.includes('--cleanup');
+const CLEANUP = flag('cleanup');
 const SN_PREFIX = 'SN-LOAD-';
 
 interface ApiEnvelope<T> { code: number; message: string; data: T }

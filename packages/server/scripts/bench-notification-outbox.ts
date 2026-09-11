@@ -19,11 +19,7 @@ import { notificationDispatches, notificationOutbox } from '../src/db/schema';
 import { registerNotificationAdapter } from '../src/lib/notification/registry';
 import { runWithTraceId } from '../src/lib/context';
 import { dispatchPendingNotifications, notifyWithin } from '../src/services/messaging/notification-outbox.service';
-
-function arg(name: string, fallback: string): string {
-  const idx = process.argv.indexOf(`--${name}`);
-  return idx >= 0 && process.argv[idx + 1] ? process.argv[idx + 1] : fallback;
-}
+import { arg } from './lib/cli-args';
 
 const ROWS = Number(arg('rows', '200'));
 const FANOUT = Number(arg('fanout', '1'));

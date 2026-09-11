@@ -7,7 +7,7 @@ import { tenantCondition } from '../../lib/tenant';
 import { HTTPException } from 'hono/http-exception';
 import type { JwtPayload } from '../../middleware/auth';
 import { currentUser } from '../../lib/context';
-import { formatDate } from '../../lib/datetime';
+import { formatDate, startOfDayAgo, startOfToday } from '../../lib/datetime';
 
 function ensureSuperAdmin(user: JwtPayload) {
   if (!isSuperAdmin(user)) throw new HTTPException(403, { message: '无权限' });
@@ -16,8 +16,7 @@ function ensureSuperAdmin(user: JwtPayload) {
 export async function getDashboardStats() {
   const user = currentUser();
   ensureSuperAdmin(user);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  const todayStart = startOfToday();
   const todayEnd = new Date(todayStart);
   todayEnd.setDate(todayEnd.getDate() + 1);
 
@@ -45,13 +44,10 @@ export async function getDashboardStats() {
 export async function getDashboardCharts() {
   const user = currentUser();
   ensureSuperAdmin(user);
-  const now = new Date();
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
+  const todayStart = startOfToday();
   const todayEnd = new Date(todayStart);
   todayEnd.setDate(todayEnd.getDate() + 1);
-  const sevenDaysAgo = new Date(todayStart);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  const sevenDaysAgo = startOfDayAgo(6);
 
   const ltc = tenantCondition(loginLogs, user);
   const otc = tenantCondition(operationLogs, user);

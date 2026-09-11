@@ -13,7 +13,7 @@ import logger from '../../logger';
 import { registerJobHandler } from '../registry';
 import { WorkflowJobSkip, WorkflowJobError } from '../errors';
 import type { WorkflowJobContext, WorkflowJobResult } from '../types';
-import { snapshotNodeConfig, requireNumber } from './shared';
+import { snapshotNodeConfig, requireNumber, renderWorkflowTemplate as renderTemplate } from './shared';
 
 const TIMEOUT_MS_DEFAULT = 10_000;
 const ACTOR = { userId: 0, name: 'system:trigger' } as const;
@@ -29,17 +29,6 @@ type TriggerRunResult = {
   requestMethod: string;
   requestBody: string | null;
 };
-
-function renderTemplate(template: string, formData: Record<string, unknown>, extras: Record<string, string> = {}): string {
-  return template
-    .replace(/\{\{form\.([^}]+)\}\}/g, (_, key) => {
-      const v = formData[key.trim()];
-      if (v === undefined || v === null || typeof v === 'object') return '';
-      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
-      return '';
-    })
-    .replace(/\{\{([a-zA-Z_]\w*)\}\}/g, (_, key) => extras[key] ?? '');
-}
 
 async function executeHttpTrigger(cfg: WorkflowTriggerNodeConfig, formData: Record<string, unknown>, extras: Record<string, string>): Promise<TriggerRunResult> {
   const method = (cfg.httpMethod ?? 'POST').toUpperCase() as 'GET' | 'POST' | 'PUT';

@@ -16,13 +16,7 @@ import type {
   ChannelDashboardSubscriptionTrendPoint, ChannelDashboardMessageTypeDistItem, ChannelDashboardHourlyPoint,
   ChannelDashboardRatingDist, ChannelDashboardAutoReplyMatchDistItem,
 } from '@zenith/shared/messaging';
-import { formatDate } from '../../lib/datetime';
-
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { formatDate, startOfToday } from '../../lib/datetime';
 
 function daysAgo(n: number): Date {
   const d = startOfToday();

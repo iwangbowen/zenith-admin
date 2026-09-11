@@ -7,7 +7,8 @@
  */
 import { and, desc, eq, gte, inArray, lte, ne, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { createHash, randomInt } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
 import {
@@ -49,10 +50,6 @@ import type { DbExecutor } from '../../db/types';
 import { assertEffectivePaymentOperation } from './payment-capability-evaluator';
 
 // ─── 工具 ─────────────────────────────────────────────────────────────────────
-
-function genNo(prefix: string): string {
-  return `${prefix}${Date.now()}${randomInt(1000, 9999)}`;
-}
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : '未知错误';
@@ -592,7 +589,7 @@ export async function createPayment(input: InternalCreatePaymentInput): Promise<
     throw new HTTPException(400, { message: riskDecision.message });
   }
 
-  const orderNo = genNo('PAY');
+  const orderNo = genPaymentNo('PAY');
   const expireMinutes = input.expireMinutes ?? 30;
   const expiredAt = new Date(Date.now() + expireMinutes * 60_000);
 
@@ -1035,7 +1032,7 @@ export async function refund(input: CreateRefundInput & { idempotencyKey: string
   await assertPaymentOperation(config, 'refund.create', order.payMethod, order.currency);
   assertNotifyUrl(buildAdapterContext(config).notifyUrl, config.sandbox);
 
-  const refundNo = genNo('REF');
+  const refundNo = genPaymentNo('REF');
   const operatorId = input.operatorId ?? currentUserOrNull()?.userId ?? null;
   const threshold = await refundApprovalThreshold(order.tenantId ?? null);
   const needApproval = threshold > 0 && input.refundAmount >= threshold;
