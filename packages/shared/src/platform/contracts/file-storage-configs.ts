@@ -71,7 +71,7 @@ export type FileStorageConfig = z.infer<typeof fileStorageConfigSchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const fileStorageConfigListQuery = paginationQuery.extend({
-  status: z.string().optional().meta({ description: '按状态筛选（enabled / disabled），其余取值不过滤' }),
+  status: entityStatusQuery,
   startTime: dateRangeBound('更新时间起'),
   endTime: dateRangeBound('更新时间止'),
 });

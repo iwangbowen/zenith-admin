@@ -8,7 +8,6 @@ import {
   reportBatchStatusSchema,
   reportCloneSchema,
   reportDatasourceTestSchema,
-  reportDatasourceTypeSchema,
   reportLookupQuerySchema,
   updateReportDatasourceSchema,
 } from '../validation';

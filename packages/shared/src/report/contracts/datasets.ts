@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, entityStatusQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { REPORT_DATASOURCE_TYPES, REPORT_MATERIALIZATION_STRATEGIES } from '../types';
@@ -11,7 +11,6 @@ import {
   reportDatasetDataBodySchema,
   reportDatasetParamSchema,
   reportDatasetPreviewSchema,
-  reportDatasourceTypeSchema,
   reportFieldSchema,
   reportLookupQuerySchema,
   reportRowRuleSchema,

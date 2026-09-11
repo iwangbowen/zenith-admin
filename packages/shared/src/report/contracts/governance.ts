@@ -12,9 +12,7 @@ import {
   decideReportPublishApprovalSchema,
   decideReportResourceTransferSchema,
   grantReportResourceAclSchema,
-  reportApprovalStatusSchema,
   reportResourceTypeSchema,
-  reportTransferStatusSchema,
   updateReportResourceAclSchema,
 } from '../validation';
 

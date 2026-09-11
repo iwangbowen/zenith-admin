@@ -159,11 +159,8 @@ import { db } from '../../db';
 import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
 
-export type ListFileStorageConfigsQuery = QueryOutputOf<typeof fileStorageConfigContract.list>;
-
-export async function listFileStorageConfigs(q: ListFileStorageConfigsQuery) {
-  const { startTime, endTime, page, pageSize } = q;
-  const status = q.status as 'enabled' | 'disabled' | undefined;
+export async function listFileStorageConfigs(q: QueryOutputOf<typeof fileStorageConfigContract.list>) {
+  const { status, startTime, endTime, page, pageSize } = q;
   const where = buildWhere(
     status ? eq(fileStorageConfigs.status, status) : undefined,
     ...dateRangeConditions(fileStorageConfigs.updatedAt, startTime, endTime),

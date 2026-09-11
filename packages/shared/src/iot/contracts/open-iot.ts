@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, paginated, paginationQuery, entityStatusQuery } from '../../core/api-schemas';
+import { paginated, paginationQuery, entityStatusQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sendIotCommandSchema, setIotDesiredSchema } from '../validation';
 import { iotMetricsSchema } from './devices';

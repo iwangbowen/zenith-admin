@@ -5,7 +5,6 @@ import { REPORT_CHATBI_MESSAGE_ROLES, REPORT_CHATBI_SESSION_STATUSES, REPORT_DAT
 import {
   createReportChatbiMessageSchema,
   createReportChatbiSessionSchema,
-  reportChatbiSessionStatusSchema,
   saveReportChatbiMessageAssetSchema,
   updateReportChatbiSessionSchema,
 } from '../validation';

@@ -3,7 +3,7 @@ import { auditFieldsSchema, idParam, paginated, paginationQuery, queryBool, quer
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { REPORT_DQ_SEVERITIES, REPORT_SLA_TYPES, REPORT_SLA_VIOLATION_STATUSES } from '../types';
-import { createReportSlaRuleSchema, reportSlaTypeSchema, reportSlaViolationStatusSchema, updateReportSlaRuleSchema, updateReportSlaViolationSchema } from '../validation';
+import { createReportSlaRuleSchema, updateReportSlaRuleSchema, updateReportSlaViolationSchema } from '../validation';
 import { reportNotifyChannelEnum } from './_common';
 
 // ─── SLA ────────────────────────────────────────────────────────────────────

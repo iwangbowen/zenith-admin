@@ -6,8 +6,6 @@ import {
   createReportMetricSchema,
   reportMetricEvaluateSchema,
   reportMetricLifecycleActionSchema,
-  reportMetricLifecycleStatusSchema,
-  reportMetricTypeSchema,
   updateReportMetricSchema,
 } from '../validation';
 import { reportCodedResourceFields } from './_common';

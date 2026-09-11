@@ -8,7 +8,6 @@ import {
   createReportAssetTemplateSchema,
   createReportDeprecationNoticeSchema,
   publishReportDeprecationNoticeSchema,
-  reportAssetTemplateTypeSchema,
   reportResourceTypeSchema,
   updateReportAssetTemplateSchema,
   updateReportDeprecationNoticeSchema,

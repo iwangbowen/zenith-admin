@@ -6,10 +6,7 @@ import { REPORT_DQ_TRIGGER_TYPES } from '../constants';
 import { REPORT_DQ_ANOMALY_STATUSES, REPORT_DQ_RULE_TYPES, REPORT_DQ_RUN_STATUSES, REPORT_DQ_SEVERITIES } from '../types';
 import {
   createReportDqRuleSchema,
-  reportDqAnomalyStatusSchema,
   reportDqRuleConfigSchema,
-  reportDqRuleTypeSchema,
-  reportDqRunStatusSchema,
   runReportDqRuleSchema,
   updateReportDqAnomalyStatusSchema,
   updateReportDqRuleSchema,
