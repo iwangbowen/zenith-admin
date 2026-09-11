@@ -4,6 +4,56 @@
 
 ---
 
+## v2.29.0 - 2026-09-11
+
+**审批单 PDF 打印全链路**：流程实例一键生成审批单 PDF——服务端按表单快照自动排版（栅格 / 分组 / 明细 / 签名 / 审批链）或按流程绑定的打印设计器实体模板渲染，应用内预览后打印 / 下载同一份文件；流程级可配置模板、水印、「仅通过后可打印」与办结自动归档（不可变 PDF 存证 + SHA-256），打印件右上角验真二维码指向公开验真页；支持多份合并批量导出与移动端系统分享。服务端随包内置 CJK 字体，Alpine 镜像的报表 PDF 中文导出不再依赖系统字体。另：标签页 favicon 跟随主题色与明暗模式。
+
+### 升级注意
+
+- 本次包含迁移 `0008`（`workflow_definitions.print_template_id`；`report_print_templates.source_type` / `entity_kind` / `entity_ref_id`）与 `0009`（`workflow_instances.archive_file_id` / `archive_sha256` / `archive_template_id` / `archived_at`）。
+- 重跑 `npm run db:seed` 补入权限 `workflow:instance:print`（我的申请 / 待我审批 / 流程监控的打印按钮）；未授予该权限的角色看不到打印入口。
+- 验真二维码链接以 `PUBLIC_BASE_URL` 为前缀，生产环境必须配置为扫码者可访问的外网地址。
+- 镜像 / 发布包新增 `packages/server/assets/fonts/NotoSansSC-Regular.otf`（SIL OFL，约 8MB）；企业自有字体经 `REPORT_PDF_FONT_PATH` 覆盖。
+
+### Added
+
+#### 审批单打印（工作流）
+
+- `GET /api/workflows/instances/{id}/print`（`kind: file`）服务端渲染审批单 PDF；实例详情面板内置「打印」，我的申请 / 待我审批 / 我已办 / 抄送我的 / 流程监控共用，应用内 embedpdf 预览后浏览器打印或下载同一份文件；删除「我的申请」硬编码 HTML 打印。
+- `@zenith/shared/workflow` 新增 `print.ts`：表单快照 → 24 栏打印网格（`row` 栅格并排、`group` / `tabs` / `steps` 分段、`detail` 明细重复块 + 格式化数值列与合计、`signature` 图片单元格）、实例 → 打印数据集（`instance` / `form` / `form_fields` / `form_<明细>` / `tasks` / `cc` / `comments` / `consults` / `attachments`）、字段按类型格式化（选项标签、千分位与单位、人员 / 部门 / 字典 / 关联审批单名称解析）、数据集字段目录；打印人 / 打印时间进入每页重复的页脚带。
+- 新增权限 `workflow:instance:print`：在详情可见性之上独立授权，每次打印写操作日志（不记录二进制响应体）。
+- 审批表单 `phone` / `email` / `idCard` 字段登记为敏感字段实体 `WorkflowForm`，打印前按查看者的脱敏决策打码，与接口出口共用策略与豁免权限。
+- 流程设计器「更多设置 → 审批单打印」：绑定实体打印模板（本流程专用 / 通用）、「新建模板」按当前表单生成并打开设计器、仅通过后可打印、办结自动归档、打印水印（文本支持 `{printer}` / `{time}` / `{serialNo}`）。
+
+#### 归档、验真、批量与移动端
+
+- 办结自动归档：实例进入通过 / 驳回终态后，系统队列 `workflow-print-archive` 以平台超管视角生成不打码、无水印的 PDF 原件，存为受限托管文件并记录 SHA-256；之后打印默认返回归档原件（响应头 `X-Zenith-Print-Source`），预览面板显示「归档原件」并可「按当前版式重新生成」；查看者存在脱敏字段时不下发原件、回退实时打码渲染；下发前重新校验 SHA-256；删除实例同步释放归档文件。
+- 验真二维码：打印件标题区右上角二维码指向公开页 `GET /api/workflows/print-verify/{token}`（HMAC 签名令牌、无脚本、`noindex`），实时展示单号 / 流程 / 状态 / 发起与办结时间 / 归档 SHA-256，不含表单内容与参与人。
+- 批量导出审批单 PDF：导出中心新增实体 `workflow.approval-sheets`（单次 ≤ 200 份，≤ 10 份同步返回，其余进后台任务），多份顺序拼页合并为一个 PDF，沿用各自访问控制 / 脱敏 / 模板 / 水印；「我的申请」「流程监控」勾选实例后出现入口。
+- 移动审批详情页「分享审批单 PDF」：支持 Web Share 的浏览器直接系统分享文件，否则保存文件。
+
+#### 打印设计器实体模板（报表中心）
+
+- 打印模板新增数据来源 `sourceType`（`dataset` / `entity`）、`entityKind`（`workflow_instance`）、`entityRefId`（参照流程）与 `content.entityDatasets`；实体模板由业务域注入数据集渲染，不套报表资源 ACL。
+- 设计器实体模式：顶栏「参照流程」决定表单字段目录，字段面板按数据集分组插入（主数据集直插、其余标注 `datasetKey`、签名为图片单元格），「从流程表单生成」一键产出完整审批单版式，「预览」挑选样例审批单走真实渲染链路出 PDF；模板列表新增数据来源列。
+- 明细数据集数值列同时提供原始数值（供 `${SUM()}`）与格式化文本 `<key>_text`，汇总列在主数据集给出 `<明细>_<列>_total`；页眉 / 页脚带支持 `${printerName}` / `${printedAt}`。
+
+#### PDF 导出与字体
+
+- 服务端随包内置 Noto Sans SC 作为 PDF 首选字体（`lib/pdf-font.ts`，启动自检缺失告警），Docker 镜像与发布包携带；修复 Alpine 镜像无 CJK 字体导致报表 PDF 导出含中文即失败的问题。
+- 报表 PDF 导出支持页面水印（斜向平铺、低不透明度）与多文档合并；单字体下以描边模拟加粗；换行行高按 pt → px 换算估算（此前低估约 1/3 导致末行省略）；损坏图片跳过不再拖垮整份文件。
+
+#### 前端
+
+- 标签页 favicon 跟随主题色与明暗模式：`lib/brand-logo.ts` 作为 logo 几何与混色比例的唯一来源，`ThemeProvider` 切换主题色后同步重写 `<link rel="icon">`。
+
+### Changed
+
+- 「我的申请」列表勾选放开为全部已提交实例（此前仅审批中可勾选），批量撤回 / 催办仍按状态过滤；「流程监控」实例列表新增勾选列（持有打印权限时）。
+- 公开端点数量阈值 66 → 67（新增验真页）；`docs/guide/deployment.md` 补充 `PUBLIC_BASE_URL` 说明。
+
+---
+
 ## v2.28.0 - 2026-09-11
 
 **后端进程角色拆分 + 多进程实时通道 + CMS 前台脚本岛化**：服务端引入 `api` / `worker` 角色模型（`ZENITH_ROLES`），Docker Compose 以 `migrate` 一次性迁移 + `api` + `worker` 三个服务部署；WebSocket / IoT 推送经 Redis 在进程间扇出，在线状态为集群合并视图；监控告警新增「后台调度」指标组并由 api 进程兜底评估 worker 缺失；CMS 前台 9 段内联脚本迁移为有类型、可测试的岛模块，CSP 头全站恒定；鉴权主体校验接入进程内缓存，WebSocket 连接按 socket 逐条登记。
