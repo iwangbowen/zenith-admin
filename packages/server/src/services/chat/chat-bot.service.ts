@@ -1,11 +1,11 @@
 import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { chatConversations, chatMessages } from '../../db/schema';
+import { chatMessages } from '../../db/schema';
 import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { httpGet } from '../../lib/http-client';
 import { HTTPException } from 'hono/http-exception';
 import type { ChatLinkPreview, ChatMessage, ChatMessageExtra, ChatMessageType } from '@zenith/shared/chat';
-import { mapChatMessage, fetchUserBrief, listConversationMemberIds } from './chat-shared';
+import { mapChatMessage, fetchUserBrief, listConversationMemberIds, touchConversation } from './chat-shared';
 import { escapeRegExp } from '@zenith/shared/core';
 
 const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
@@ -234,7 +234,7 @@ export async function postBotMessage(
   }
 
   const [, members] = await Promise.all([
-    db.update(chatConversations).set({ updatedAt: new Date() }).where(eq(chatConversations.id, conversationId)),
+    touchConversation(conversationId),
     listConversationMemberIds(conversationId),
   ]);
 

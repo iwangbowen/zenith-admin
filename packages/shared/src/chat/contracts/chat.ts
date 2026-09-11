@@ -93,13 +93,13 @@ export const chatMessagesQuery = z.object({
   limit: z.coerce.number().int().positive().max(50).default(30),
 });
 
-export const chatMessageSearchQuery = z.object({
+// 聊天检索按会话滚动加载：每页默认 20、上限 100，比通用分页积木更紧
+export const chatMessageSearchQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   types: z.string().optional().meta({ description: '逗号分隔的消息类型', example: 'text,image' }),
   senderId: z.coerce.number().int().positive().optional(),
   startAt: dateRangeBound('起始时间'),
   endAt: dateRangeBound('结束时间'),
-  page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(20),
 });
 
@@ -108,10 +108,9 @@ export const chatMessageContextQuery = z.object({
   after: z.coerce.number().int().min(0).max(100).default(15),
 });
 
-export const chatGlobalSearchQuery = z.object({
+export const chatGlobalSearchQuery = paginationQuery.extend({
   keyword: z.string().min(1).max(200),
   types: z.string().optional().meta({ description: '逗号分隔的消息类型', example: 'text,image' }),
-  page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(50).default(20),
 });
 

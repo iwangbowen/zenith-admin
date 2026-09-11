@@ -104,7 +104,7 @@ export async function submitVote(messageId: number, optionIds: string[]): Promis
   const nextExtra: ChatMessageExtra = { ...extra, voteData: nextVoteData };
 
   const [updated] = await db.update(chatMessages)
-    .set({ extra: nextExtra, updatedAt: new Date() })
+    .set({ extra: nextExtra })
     .where(eq(chatMessages.id, messageId))
     .returning();
 

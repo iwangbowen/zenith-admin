@@ -1,7 +1,7 @@
 import { paymentAppContract } from '@zenith/shared/payment';
 import type { QueryOutputOf } from '@zenith/shared/core';
 /** 支付应用：开放平台客户端的一对一支付路由画像。 */
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
@@ -193,11 +193,8 @@ export async function resolveApplicationChannelConfig(
   channel: PaymentChannel,
   expectedTenantId: number | null,
 ): Promise<{ appId: number; channelConfigId: number; tenantId: number | null }> {
-  const appTenant = expectedTenantId === null
-    ? isNull(paymentApps.tenantId)
-    : eq(paymentApps.tenantId, expectedTenantId);
   const maybeApp = await db.query.paymentApps.findFirst({
-    where: and(eq(paymentApps.id, applicationId), appTenant),
+    where: and(eq(paymentApps.id, applicationId), exactTenantCondition(paymentApps.tenantId, expectedTenantId)),
     with: { openClient: true },
   });
   const app = requireRow(maybeApp, '支付应用不存在或不属于当前租户', 400);

@@ -10,7 +10,7 @@ import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
 import type { ForwardMessagesInput, ChatMessage, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatMessageType, ChatForwardedItem, SendChatMessageInput } from '@zenith/shared/chat';
-import { notHiddenFor, rowSender, mapChatMessage, fetchUserBrief, listConversationMemberIds, ensureConversationMember, ensureMessageAccessible } from './chat-shared';
+import { notHiddenFor, rowSender, mapChatMessage, fetchUserBrief, listConversationMemberIds, ensureConversationMember, ensureMessageAccessible, touchConversation } from './chat-shared';
 import { aggregateReactions } from './chat-reactions.service';
 import { keywordCondition } from '../../lib/where-helpers';
 
@@ -117,9 +117,7 @@ export async function appendSystemMessage(
   }).returning();
 
   const [, members] = await Promise.all([
-    db.update(chatConversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(chatConversations.id, conversationId)),
+    touchConversation(conversationId),
     listConversationMemberIds(conversationId),
   ]);
 
@@ -299,7 +297,7 @@ export async function toggleMessagePin(messageId: number, pin: boolean): Promise
 
   const nextExtra: ChatMessageExtra = { ...normalizeMessageExtra(msg.extra), isPinned: pin };
   const [updated] = await db.update(chatMessages)
-    .set({ extra: nextExtra, updatedAt: new Date() })
+    .set({ extra: nextExtra })
     .where(eq(chatMessages.id, messageId))
     .returning();
 
@@ -538,10 +536,7 @@ export async function sendMessage(conversationId: number, input: InternalSendCha
     extra: input.extra ?? null,
   }).returning();
 
-  // 更新会话 updatedAt
-  await db.update(chatConversations)
-    .set({ updatedAt: new Date() })
-    .where(eq(chatConversations.id, conversationId));
+  await touchConversation(conversationId);
 
   let replySnapshot: ChatMessage['replyToMessage'] = null;
   if (row.replyToId) {
@@ -757,7 +752,7 @@ export async function editMessage(messageId: number, content: string): Promise<C
   }
 
   const [updated] = await db.update(chatMessages)
-    .set({ content, isEdited: true, updatedAt: new Date() })
+    .set({ content, isEdited: true })
     .where(eq(chatMessages.id, messageId))
     .returning();
 

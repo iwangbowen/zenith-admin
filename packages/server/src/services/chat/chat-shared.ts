@@ -1,7 +1,7 @@
 // chat 域内部共享 helper：仅供 services/chat 下各模块引用；对外统一走 chat.service.ts facade
 import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { chatConversationMembers, chatMessages, users } from '../../db/schema';
+import { chatConversationMembers, chatConversations, chatMessages, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
@@ -73,6 +73,14 @@ export function listConversationMemberIds(conversationId: number) {
     .select({ userId: chatConversationMembers.userId })
     .from(chatConversationMembers)
     .where(eq(chatConversationMembers.conversationId, conversationId));
+}
+
+/**
+ * 「触碰」会话：新消息 / 通话记录落库后刷新 updatedAt，会话列表据此按最近活动排序。
+ * 除时间戳外没有别的字段要写，`$onUpdate` 只随非空 set 触发，因此这里是唯一允许手写 updatedAt 的地方。
+ */
+export function touchConversation(conversationId: number) {
+  return db.update(chatConversations).set({ updatedAt: new Date() }).where(eq(chatConversations.id, conversationId));
 }
 
 export async function ensureConversationMember(conversationId: number) {
