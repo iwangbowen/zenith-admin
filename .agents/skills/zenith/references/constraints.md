@@ -45,7 +45,9 @@
   契约实体 schema 用 `...auditFieldsSchema`（`@zenith/shared/core`）
 - **枚举三端同步**：`pgEnum` / TS union type / Zod enum 完全一致
 - **updatedAt 自动维护**：schema 已配 `.$onUpdate(() => new Date())`，
-  **禁止**在 `db.update().set({})` 中手动传 `updatedAt: new Date()`
+  **禁止**在 `db.update().set({})` 中手动传 `updatedAt: new Date()`。仅两处例外：`insert().onConflictDoUpdate({ set })` 的 upsert
+  （`$onUpdate` 不参与 conflict 分支）；「只触碰时间戳、别无字段可写」的场景（drizzle 拒绝空 `set({})`），
+  且必须收口成一个具名 helper（如 `services/chat/chat-shared.ts` 的 `touchConversation(id)`），**禁止**在各调用点散写
 - **relations 集中**：`xxxRelations` 一律写在 `db/schema/relations.ts`；缺失时 `db.query.xxx` 无法识别关联
 - **数据权限字段**：`department_id` 只加到需按部门隔离查看的业务数据表；配置表、日志表、公共数据表不加
 - **多租户字段**：业务数据表加 `tenantId`，查询用 `tenantCondition(table, user)`，创建用 `getCreateTenantId(user)`
@@ -79,8 +81,9 @@
   `type XxxListFilter = Omit<QueryOutputOf<typeof xxxContract.list>, 'page' | 'pageSize'>`；
   路径参数（`memberId` / `siteId`）保持独立形参，不混入 query 类型。
   请求体经路由解析后的服务端类型同理用 `z.output<typeof xxxBodySchema>`，不手写含分页字段的 interface。
-  `packages/server/eslint.config.js` 对 `src/services/**` 封禁：含 `pageSize` 的手写 interface、`and(...conditions)`、
-  `page = 1` / `pageSize = 10` 解构默认值与 `q.page ?? 1`；前台渲染 / 引擎内部的分页视图模型属例外，
+  `packages/server/eslint.config.js` 对 `src/services/**` 与 `src/lib/export-center/**` 封禁：含 `pageSize` 的手写 interface、
+  `and(...conditions)`、只带一个展开实参的 `buildWhere(...conditions)`、`page = 1` / `pageSize = 10` 解构默认值与 `q.page ?? 1`；
+  前台渲染 / 引擎内部的分页视图模型与循环拼装的条件数组属例外，
   加 `eslint-disable-next-line no-restricted-syntax -- 理由` 注明
 - **契约操作命名**：标准 CRUD 固定为 `list` / `detail` / `create` / `update` / `remove`，可选 `all`（下拉源）/
   `removeBatch`（`DELETE /batch`）——web 的 `createResourceQueries` 按此约定派生 hooks；其余操作按业务动词命名
@@ -150,7 +153,9 @@
   `lockInstanceExpecting(tx, id, expectedStatus, message)` 加行级锁并重校验状态；**禁止**手写 `SELECT status … FOR UPDATE` + 409 样板
 - **工作流实例可见性加载**：按 id 读取当前用户可见的实例一律用 `services/workflow/instances/shared.ts` 的
   `requireVisibleInstance(id, message?, executor?)`（不存在即 404）/ `findVisibleInstance(id, executor?)`（返回 `undefined`）；
-  **禁止**再手写 `eq(id) + tenantCondition(workflowInstances, currentUser())` → `select … limit(1)` → `requireRow` 五行块
+  **禁止**再手写 `eq(id) + tenantCondition(workflowInstances, currentUser())` → `select … limit(1)` → `requireRow` 五行块。
+  外部审批 / 触发器回调按 `externalCallbackId` 定位任务、实例与节点配置用同文件的 `requireCallbackTaskContext(callbackId)`
+  （公开回调无登录态、不带租户条件），路由与唤醒 service 共用，**禁止**在路由里直连 `db.select().from(workflowTasks)`
 - **工作流作业执行记录查询**：事件投递 / 触发器执行等「执行记录 ⋈ 父作业」的列表与定位统一从
   `services/workflow/workflow-job-execution-helpers.ts` 的 `jobExecutionsWithJob(projection)` 起步、`countJobExecutions(where)` 计数，
   各域只保留自己的 `leftJoin` / 范围条件 / 排序；**禁止**重复手写 `innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))` + `count(*)::int`

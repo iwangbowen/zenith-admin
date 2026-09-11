@@ -395,8 +395,10 @@ chunk 分层机理、度量脚本与预算数字见 [docs/frontend/bundle-perfor
 - **图标只走 `utils/icons.tsx` 的投递策略**：按名称渲染图标（菜单树、工作流模板、表单配置等任何来自数据的图标名）一律用
   `components/DynamicIcon.tsx` 的 `DynamicIcon` 或 `utils/icons.tsx` 的 `renderLucideIcon`，**禁止**在业务代码 `import * as icons from 'lucide-react'`
   或引入 `lucide-react/dynamicIconImports` 自建映射；静态已知的图标继续按名具名 `import { X } from 'lucide-react'`
-- **插画一律懒加载**：`@douyinfe/semi-illustrations` 只能在 `lazy(() => import('@douyinfe/semi-illustrations').then(m => ({ default: m.IllustrationXxx })))`
-  + `Suspense` 后使用，禁止静态引入
+- **插画一律懒加载**：`@douyinfe/semi-illustrations` 只能经 `components/EmptyIllustration.tsx` 的
+  `emptyIllustration(name, size?)` 使用（返回 Semi `Empty` 的 `image` / `darkModeImage` 一对，内部 `lazy` + `Suspense` 且按名缓存）：
+  `<Empty {...emptyIllustration('Idle', 120)} description="…" />`；**禁止**静态引入，也**禁止**在页面 / 组件里再写一份
+  `lazy(() => import('@douyinfe/semi-illustrations')…)` + `Suspense` 样板
 - **Demo Mock 只在 Demo 模式进入产物**：`src/mocks/` 只能经入口文件的 `if (import.meta.env.VITE_DEMO_MODE === 'true') await import('./mocks')`
   引入，任何业务模块**禁止**静态 `import` `mocks/**`
 - **启动链路的新增网络请求必须并行**：认证后壳层所需的数据（当前用户菜单树、个人设置等）通过 `lib/shell-prefetch.ts`
