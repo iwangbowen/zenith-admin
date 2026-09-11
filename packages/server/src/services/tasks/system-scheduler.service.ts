@@ -314,7 +314,7 @@ export async function updateSystemSchedulerTaskConfig(name: string, input: Updat
     },
   }).returning();
   await updateSystemTaskRuntimePolicy(name, normalized);
-  return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { ...row, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
 }
 
 export async function cleanupSystemSchedulerRuns(input: CleanupSystemSchedulerRunsInput = {}) {
