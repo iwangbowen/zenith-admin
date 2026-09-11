@@ -50,6 +50,9 @@ x-server-image: &server-image
     context: .
     dockerfile: Dockerfile
     target: server
+    args:
+      # PDF 导出字体：subset（默认，约 2.5MB）| full（约 8MB，含繁体 / 生僻字），见 .env.docker
+      PDF_FONT: ${PDF_FONT:-subset}
   image: zenith-admin-api:${TAG:-latest}
 
 services:

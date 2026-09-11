@@ -69,8 +69,8 @@ api ⇄ api_storage ⇄ worker       （本地文件、上传暂存、CMS 静态
 
 | 阶段 | 基础镜像 | 行为 |
 | --- | --- | --- |
-| `builder` | `node:24-alpine` | 安装全量依赖，构建 shared、analytics-sdk、server、web，执行 `docker/build-studio.mjs`，最后用 `docker/patch-shared-exports.mjs` 把 `@zenith/shared` 的 exports 指向编译产物 |
-| `server` | `node:24-alpine` | 安装生产依赖，复制 server dist、Drizzle 迁移与 shared dist，写入 entrypoint；entrypoint 传入参数时直接执行该命令（`migrate` 服务据此运行 `node dist/db/migrate.js`），否则启动 `node dist/index.js`；`storage` / `logs` 归属 `node` 后切换 `USER node` |
+| `builder` | `node:24-alpine` | 安装全量依赖，构建 shared、analytics-sdk、server（含 PDF 字体子集生成）、web，按 `PDF_FONT` 构建参数用 `packages/server/scripts/package-server.mjs` 组装 server 部署目录，执行 `docker/build-studio.mjs`，最后用 `docker/patch-shared-exports.mjs` 把 `@zenith/shared` 的 exports 指向编译产物 |
+| `server` | `node:24-alpine` | 安装生产依赖，复制组装好的 server dist、Drizzle 迁移、PDF 字体与 shared dist，写入 entrypoint；entrypoint 传入参数时直接执行该命令（`migrate` 服务据此运行 `node dist/db/migrate.js`），否则启动 `node dist/index.js`；`storage` / `logs` 归属 `node` 后切换 `USER node` |
 | `web` | `nginx:1.30-alpine` | 复制 `packages/web/dist` 与 `docker/nginx.conf` |
 
 `node-pty` 在 Linux 下需要编译，构建阶段安装 `python3 make g++`；server 阶段保留 `libstdc++` 并移除编译工具链。
@@ -101,13 +101,14 @@ shared 与 server 的 `build` 脚本在 `tsc` 之后运行 `tsc-alias --resolve-
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | 空 | GitHub OAuth 登录凭据 |
 | `OAUTH_CALLBACK_BASE_URL` | `http://localhost` | OAuth 回调基础地址 |
 | `TAG` | `latest` | 本地构建镜像标签 |
+| `PDF_FONT` | `subset` | 构建参数：镜像携带的 PDF 导出字体规格。`subset` 为 Noto Sans SC 子集（约 2.5MB，GB 2312 ∪ 通用规范汉字表 + 常用符号），`full` 为全量（约 8MB，含繁体 / 生僻字）；改后需 `docker compose build` |
 | `WORKER_SHUTDOWN_GRACE_MS` | `120000` | worker 优雅停机硬截止（同时作为 pg-boss 等待在飞作业收尾的预算）；Compose 为 worker 设 `stop_grace_period: 130s`、为 api 设 `25s`（api 硬截止 15s），均须大于对应进程的硬截止 |
 
 `JWT_SECRET` / `FIELD_ENCRYPTION_KEY` / `POSTGRES_PASSWORD` / `REDIS_PASSWORD` 任一留空时 `docker compose up` 直接失败（前两者为占位值时 API 启动也会失败）。生产环境请按实际域名设置 `ALLOWED_ORIGINS`。Compose 已固定 api / worker 的 `ZENITH_ROLES`，通常无需在 `.env` 中覆盖。使用外部 Redis 时整体覆盖 `REDIS_URL`（含口令）即可。
 
 API 容器以非 root 用户 `node` 运行；如需在容器内访问宿主机 Docker socket（运维模块的容器管理），请在自定义 override 中挂载 socket 并通过 `group_add` 加入 socket 所属组，不要改回 root。
 
-镜像内随包携带 PDF 导出所需的 CJK 字体（`packages/server/assets/fonts/NotoSansSC-Regular.otf`，SIL OFL），报表打印与审批单的 PDF 中文渲染无需再安装系统字体；企业自有字体挂载进容器后以 `REPORT_PDF_FONT_PATH` 指定即可覆盖。
+镜像内随包携带 PDF 导出所需的 CJK 字体（Noto Sans SC，SIL OFL），报表打印与审批单的 PDF 中文渲染无需再安装系统字体。默认是约 2.5MB 的子集（`PDF_FONT=subset`），含繁体 / 生僻字的场景用 `docker build --build-arg PDF_FONT=full --target server .`（compose 用户在 `.env` 设 `PDF_FONT=full` 后重新 build）切换为约 8MB 的全量字体；企业自有字体挂载进容器后以 `REPORT_PDF_FONT_PATH` 指定即可覆盖。两种规格的覆盖范围与启动 / 导出日志判读见[部署说明 → PDF 字体](./deployment.md#_7-pdf-字体-子集-全量)。
 
 ## Nginx 行为
 

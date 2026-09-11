@@ -68,7 +68,7 @@ ALLOWED_ORIGINS=https://admin.example.com
 | `UPLOAD_TEMP_DIR` | 分片上传本地暂存根目录，默认 `storage/tmp/uploads`；多实例部署见下文「多实例与本地存储」 |
 | `TRUSTED_PROXY_CIDRS` | 仅信任指定代理的 `X-Forwarded-For` / `X-Real-IP` |
 | `REPORT_OUTBOUND_PRIVATE_ALLOWLIST` | 报表外部数据源访问私网的 allowlist |
-| `REPORT_PDF_FONT_PATH` | PDF 导出（报表打印 / 审批单）的 CJK 字体覆盖。默认使用随包内置的 Noto Sans SC（`packages/server/assets/fonts`，镜像与发布包均包含），仅企业要求自有字体时指向单个 TTF / OTF 文件 |
+| `REPORT_PDF_FONT_PATH` | PDF 导出（报表打印 / 审批单）的 CJK 字体覆盖，指向单个 TTF / OTF 文件，优先级最高。默认使用随包内置的 Noto Sans SC（子集或全量，见下文「PDF 字体」），仅企业要求自有字体时设置 |
 | `PUBLIC_BASE_URL` | 对外可达的服务基址（默认 `http://localhost:3300`）。审批单打印件的验真二维码、通知退订链接等公开 URL 以此为前缀，生产环境必须设为用户 / 扫码者能访问的外网地址 |
 | `AI_OUTBOUND_PRIVATE_ALLOWLIST` | AI 服务商请求访问本地 / 私网模型的 allowlist，默认含 `127.0.0.1,localhost` |
 | `MASTRA_STUDIO_ALLOW_ANONYMOUS` | 开发环境放开 `/api/mastra` 鉴权；生产环境强制忽略 |
@@ -165,6 +165,37 @@ api 默认监听 `http://localhost:3300`；纯 worker 不占用业务端口，�
 无需共享卷。api / worker 拆分且 worker 需要访问本地暂存或 CMS 静态产物时，必须共享 `storage/` 并在 worker 设置 `STORAGE_SHARED=true`。Docker Compose 已把 `api_storage` 卷同时挂载到 api 与 worker，容器重建不会丢失进行中的分片。
 
 多 api / worker 进程依赖 Redis 保持运行时正确性：会话、限流、权限缓存与跨进程 WebSocket / IoT 推送都经 Redis 协作；WS 扇出使用 Redis pub/sub，Redis 故障时实时推送按 at-most-once 语义丢弃，客户端重连后回源补齐。
+
+### 7. PDF 字体（子集 / 全量）
+
+报表打印与审批单的 PDF 由服务端 pdfkit 生成，含中文必须嵌入 CJK 字体（pdfkit 内置字体没有汉字字形），与是否 Docker 部署无关。
+服务端随包内置 Noto Sans SC（SIL OFL），有两种规格：
+
+| 规格 | 文件（`packages/server/assets/fonts/`） | 体积 | 覆盖 | 何时携带 |
+| --- | --- | --- | --- | --- |
+| 子集（默认） | `NotoSansSC-Regular.subset.otf` | 约 2.5MB | GB 2312 ∪《通用规范汉字表》(2013) 共 8230 字，含三级表的姓氏人名 / 地名用字，加 ASCII、全角、标点、货币、单位、带圈数字、勾叉等常用符号 | GitHub Release 的 server zip、Docker 镜像默认 |
+| 全量 | `NotoSansSC-Regular.otf` | 约 8MB | 3.1 万字形：另含繁体、日韩汉字、Ext-A / Ext-B 生僻字 | 源码 checkout 天然存在；自行打包 / 构建镜像时按需选择 |
+
+运行时解析顺序：`REPORT_PDF_FONT_PATH` → 全量 → 子集 → 系统字体（Windows `msyh` / `simsun`、Linux `NotoSansCJK` / `wqy-zenhei`、macOS `PingFang`）。
+启动日志 `[pdf-font] PDF 导出使用……` 记录实际选用的字体；导出时若文本含字体没有字形的字符，会记一条 `[pdf-font] ……缺少以下字符的字形` 的 warn 并列出缺字（PDF 中显示为空白），据此判断是否需要全量字体。
+
+子集字体由 `npm run build -w @zenith/server` 从全量字体生成（`scripts/build-pdf-font.mjs`，harfbuzz WASM，不依赖 Python），字符集定义在 `scripts/pdf-font-charset/`。
+
+**切换到全量字体**（报表 / 审批单常含繁体或生僻字时）任选其一：
+
+```bash
+# 自行打包部署目录（与 Release zip 同布局：dist + drizzle + assets/fonts + package.json，默认输出到 release_artifacts/server）
+npm run build && npm run package:server -- --pdf-font=full [--out <目录>]
+
+# Docker：构建参数（compose 用户在 .env 中设 PDF_FONT=full 后 docker compose build）
+docker build --build-arg PDF_FONT=full --target server -t zenith-admin-api .
+
+# 已部署的子集包：把仓库中的全量文件复制到 assets/fonts 即生效（全量与子集并存时优先全量），重启服务
+cp packages/server/assets/fonts/NotoSansSC-Regular.otf <部署目录>/assets/fonts/
+```
+
+企业自有字体（方正 / 思源宋体等单个 TTF / OTF 文件）用 `REPORT_PDF_FONT_PATH` 指定，优先级高于内置字体。
+源码方式运行（`tsx src/index.ts`）时仓库内的全量字体总是存在，开发环境因此不会暴露子集缺字；要在开发机复现子集效果，把 `REPORT_PDF_FONT_PATH` 指向 `assets/fonts/NotoSansSC-Regular.subset.otf`。
 
 ## 前端部署
 
@@ -289,7 +320,7 @@ Docker 构建会自动执行该步骤。手动部署时需先 `npm run build`，
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | `master` push、pull request | Node 24、`npm ci`、`npm run lint`、`npm run test`、`npm run build` |
 | `.github/workflows/pages.yml` | 文档 / Web / shared / lockfile 变更、手动触发 | 构建 VitePress 文档与 Demo 站，把 Demo 合并到 `/demo/` 后发布 GitHub Pages |
-| `.github/workflows/release.yml` | `v*.*.*` tag、手动指定 tag | 构建全部包，打包 server / web zip，从 changelog 提取 Release Notes，创建 GitHub Release |
+| `.github/workflows/release.yml` | `v*.*.*` tag、手动指定 tag | 构建全部包，用 `npm run package:server` 组装 server 目录（子集字体）并打包 server / web zip，从 changelog 提取 Release Notes，创建 GitHub Release |
 
 ## 升级版本
 

@@ -25,3 +25,8 @@ packages/web/public/file-viewer/
 .playwright-mcp/
 
 docs/.vitepress/.temp/
+
+# 构建生成的 PDF 字体子集（scripts/build-pdf-font.mjs），全量字体仍随仓库提交
+packages/server/assets/fonts/*.subset.otf
+# 本地打包产物（scripts/package-server.mjs 默认输出）
+release_artifacts/

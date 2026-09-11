@@ -1,9 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import { renderPrintContent } from '@zenith/shared/report';
 import type { ReportPrintRenderPage, ReportPrintRenderResult } from '@zenith/shared/report';
-import { renderPrintResultToDocx, renderPrintResultToPdf, renderPrintResultToWorkbook } from './report-print-export';
+
+// 字形覆盖检查的日志出口；字体固定为仓库内的全量 Noto Sans SC 但标记为「子集」来源，验证提示文案按来源切换
+vi.mock('./logger', () => ({ default: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
+vi.mock('./pdf-font', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./pdf-font')>();
+  return { ...actual, resolvePdfFont: vi.fn(() => ({ path: actual.BUNDLED_PDF_FONT_FULL_PATH, source: 'bundled-subset' as const })) };
+});
+
+import logger from './logger';
+import { findUncoveredChars, renderPrintResultToDocx, renderPrintResultToPdf, renderPrintResultToWorkbook } from './report-print-export';
 
 describe('report-print-export', () => {
   const result = renderPrintContent(
@@ -137,4 +146,40 @@ describe('report-print-export', () => {
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
     expect(buffer.length).toBeGreaterThan(500);
   }, 60_000);
+
+  describe('字体字形覆盖检查', () => {
+    it('findUncoveredChars 去重、跳过空白与控制字符、按上限截断', () => {
+      const hasGlyph = (cp: number) => cp < 0x80 || cp === '中'.codePointAt(0);
+      expect(findUncoveredChars(hasGlyph, ['abc 中\n\t', ''])).toEqual([]);
+      expect(findUncoveredChars(hasGlyph, ['张三 龘', '龘龘 玥', 'x😀'])).toEqual(['张', '三', '龘', '玥', '😀']);
+      expect(findUncoveredChars(hasGlyph, ['张三龘玥'], 2)).toEqual(['张', '三']);
+    });
+
+    // 60s 超时：与上方 PDF 用例同一原因（pdfkit / fontkit 惰性加载在四路并行下被抢）
+    it('导出文本含字体没有字形的字符时记 warn 并列出缺字与切换全量字体的提示', async () => {
+      const warn = vi.mocked(logger.warn);
+      warn.mockClear();
+      const ok = renderPrintContent('覆盖', { grid: { rows: 1, cols: 1, cells: [{ row: 0, col: 0, v: '审批单：张三（财务部）￥1,234.56 ①' }] } }, []);
+      await renderPrintResultToPdf(ok, { watermark: '打印人 时间' });
+      expect(warn).not.toHaveBeenCalled();
+
+      // 泰文与 emoji 不在 Noto Sans SC 内；二维码单元格的值不参与文本绘制，不应计入
+      const missing = renderPrintContent('覆盖', {
+        grid: {
+          rows: 1,
+          cols: 2,
+          cells: [
+            { row: 0, col: 0, v: '备注：ก 😀' },
+            { row: 0, col: 1, v: 'ยยย', kind: 'qrcode' },
+          ],
+        },
+      }, []);
+      await renderPrintResultToPdf(missing);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = warn.mock.calls[0][0] as string;
+      expect(message).toContain('ก 😀');
+      expect(message).not.toContain('ย');
+      expect(message).toContain('PDF_FONT=full');
+    }, 60_000);
+  });
 });

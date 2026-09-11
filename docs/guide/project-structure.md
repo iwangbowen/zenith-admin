@@ -36,6 +36,8 @@ zenith-admin/
 | `src/middleware/` | 认证、权限、限流、幂等、CSRF、维护模式、开放平台网关、HTTP 日志等 |
 | `src/lib/` | 契约路由适配（`contract-route.ts`）、运行时设置（`settings/`）与跨实例失效总线（`invalidation-bus.ts`）、跨进程 WebSocket 扇出（`ws-fanout.ts`）与连接管理（`ws-manager.ts`）、pg-boss 调度（`pg-boss-scheduler.ts`）、任务中心（`task-center/`）、进程身份（`process-identity.ts`）、存储拓扑自检（`storage-topology.ts`）、时间、JWT、Redis、文件存储、通知 outbox、HTTP 客户端、日志等通用能力 |
 | `drizzle/` | Drizzle 生成的迁移文件 |
+| `assets/fonts/` | PDF 导出内置字体：全量 Noto Sans SC（随仓库提交）与构建生成的子集（`*.subset.otf`，gitignore） |
+| `scripts/` | 开发编排（`dev.mjs`）、构建后置步骤（`copy-theme-assets.mjs`、`build-islands.mjs`、`build-pdf-font.mjs` 与字符集 `pdf-font-charset/`）、部署目录组装（`package-server.mjs`，Release / Docker / 本地打包共用）与压测 / 运维脚本 |
 
 `packages/server/src/routes/` 当前领域目录：
 

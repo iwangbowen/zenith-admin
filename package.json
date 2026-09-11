@@ -31,6 +31,7 @@
 		"db:migrate": "npm run db:migrate -w @zenith/server",
 		"db:seed": "npm run db:seed -w @zenith/server",
 		"secret:generate": "npm run secret:generate -w @zenith/server --",
+		"package:server": "npm run package -w @zenith/server --",
 		"test": "npm run test -w @zenith/shared && npm run test -w @zenith/server && npm run test -w @zenith/web",
 		"test:shared": "npm run test -w @zenith/shared",
 		"test:server": "npm run test -w @zenith/server",

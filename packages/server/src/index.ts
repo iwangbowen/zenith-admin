@@ -29,7 +29,7 @@ import { closeDb } from './db';
 import { startInvalidationBus } from './lib/invalidation-bus';
 import logger from './lib/logger';
 import { metricsSampler } from './lib/metrics-sampler';
-import { warnIfPdfFontMissing } from './lib/pdf-font';
+import { logPdfFontStatus } from './lib/pdf-font';
 import { stopAllJobs } from './lib/pg-boss-scheduler';
 import { closeRedis } from './lib/redis';
 import { initTelemetry, shutdownTelemetry } from './lib/telemetry';
@@ -63,8 +63,8 @@ void import('./services/platform/monitor.service')
 // 开放平台 Webhook 订阅者：领域事件在哪个进程发出就在哪个进程投递
 registerOpenWebhookSubscriber();
 
-// PDF 导出字体自检（api 同步导出 / worker 异步导出都会用到）：缺失只告警，不阻断启动
-warnIfPdfFontMissing(logger);
+// PDF 导出字体自检（api 同步导出 / worker 异步导出都会用到）：记录选用的字体（全量 / 子集 / 自定义），缺失只告警，不阻断启动
+logPdfFontStatus(logger);
 
 // 跨实例缓存失效总线（PG LISTEN/NOTIFY）：只能在进程入口启动一次；失败进入降级、定时重试，不阻断服务。
 // 两种角色都需要——worker 的设置 / 脱敏策略 / 鉴权缓存同样要跟随变更

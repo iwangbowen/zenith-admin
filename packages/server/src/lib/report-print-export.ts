@@ -23,14 +23,18 @@ import {
   WidthType,
 } from 'docx';
 import type { IBorderOptions, ISectionOptions, ITableCellBorders } from 'docx';
-import { resolvePdfFontPath } from './pdf-font';
+import type { Font as FontkitFont } from 'fontkit';
+import logger from './logger';
+import { PDF_FONT_SOURCE_TEXT, resolvePdfFont } from './pdf-font';
+import type { ResolvedPdfFont } from './pdf-font';
 import { findPrintMerge, isPrintCellCoveredByMerge } from '@zenith/shared/report';
 import type { ReportPrintBorder, ReportPrintCell, ReportPrintCellStyle, ReportPrintGrid, ReportPrintPageConfig, ReportPrintRenderPage, ReportPrintRenderResult } from '@zenith/shared/report';
 
-// 惰性加载：exceljs / pdfkit 模块图大（实测约 2.4s / 0.7s），仅在导出打印文件时加载
+// 惰性加载：exceljs / pdfkit 模块图大（实测约 2.4s / 0.7s），仅在导出打印文件时加载；fontkit 是 pdfkit 的字体解析器，同批加载
 const require = createRequire(import.meta.url);
 const loadExcelJS = () => require('exceljs') as typeof import('exceljs');
 const loadPdfDocument = () => require('pdfkit') as typeof import('pdfkit');
+const loadFontkit = () => require('fontkit') as typeof import('fontkit');
 
 const PAPER_SIZE: Record<NonNullable<ReportPrintPageConfig['paper']>, number> = { A4: 9, A3: 8, A5: 11, Letter: 1 };
 const PDF_PAPER_SIZE: Record<NonNullable<ReportPrintPageConfig['paper']>, string> = { A4: 'A4', A3: 'A3', A5: 'A5', Letter: 'LETTER' };
@@ -536,6 +540,76 @@ function resultContainsCjk(result: ReportPrintRenderResult): boolean {
     || page.grid.cells.some((cell) => hasCjk(cell.v)));
 }
 
+/** 本次 PDF 会以文本绘制的全部内容：单元格值（二维码 / 条码 / 图片单元格除外）、页眉页脚、水印 */
+function collectPdfTexts(parts: PdfDocumentPart[]): string[] {
+  const texts: string[] = [];
+  for (const { result, options } of parts) {
+    if (options?.watermark) texts.push(options.watermark);
+    for (const page of result.pages) {
+      if (page.headerText) texts.push(page.headerText);
+      if (page.footerText) texts.push(page.footerText);
+      for (const cell of page.grid.cells) {
+        if (cell.kind === 'qrcode' || cell.kind === 'barcode' || cell.image || cell.v == null) continue;
+        texts.push(String(cell.v));
+      }
+    }
+  }
+  return texts;
+}
+
+/**
+ * 找出字体没有字形的字符（去重，最多 `limit` 个）。控制字符与空白跳过：它们本就不绘制字形。
+ * 字体缺字形时 pdfkit 会画成空白 / 豆腐块且不报错，调用方据此记日志提示切换全量字体。
+ */
+export function findUncoveredChars(hasGlyph: (codePoint: number) => boolean, texts: Iterable<string>, limit = 20): string[] {
+  const missing = new Set<string>();
+  const checked = new Set<number>();
+  for (const text of texts) {
+    for (const ch of text) {
+      const codePoint = ch.codePointAt(0)!;
+      if (codePoint < 0x20 || checked.has(codePoint) || /\s/u.test(ch)) continue;
+      checked.add(codePoint);
+      if (!hasGlyph(codePoint)) {
+        missing.add(ch);
+        if (missing.size >= limit) return [...missing];
+      }
+    }
+  }
+  return [...missing];
+}
+
+// 字体文件运行期不变：按路径缓存 fontkit 解析结果（解析失败记 null，交给 pdfkit 自己报错）
+const glyphFontCache = new Map<string, FontkitFont | null>();
+
+function parseGlyphFont(fontPath: string): FontkitFont | null {
+  try {
+    const opened = loadFontkit().openSync(fontPath);
+    // .ttc 字体集合取首个字体（与 pdfkit 未指定 family 时的取法一致）
+    return 'fonts' in opened ? opened.fonts[0] ?? null : opened;
+  } catch {
+    return null;
+  }
+}
+
+function openGlyphFont(fontPath: string): FontkitFont | null {
+  if (!glyphFontCache.has(fontPath)) glyphFontCache.set(fontPath, parseGlyphFont(fontPath));
+  return glyphFontCache.get(fontPath) ?? null;
+}
+
+/** 导出前检查本次文本是否都有字形；子集字体 / 企业自有字体缺字时记 warn，运维据此决定是否切换全量字体 */
+function warnUncoveredGlyphs(font: ResolvedPdfFont, parts: PdfDocumentPart[]): void {
+  const glyphFont = openGlyphFont(font.path);
+  if (!glyphFont) return;
+  const missing = findUncoveredChars((codePoint) => glyphFont.hasGlyphForCodePoint(codePoint), collectPdfTexts(parts));
+  if (missing.length === 0) return;
+  const hint = font.source === 'bundled-subset'
+    ? '请改用全量字体（docker build --build-arg PDF_FONT=full / npm run package:server -- --pdf-font=full，或把 NotoSansSC-Regular.otf 放进 assets/fonts）'
+    : '请改用覆盖更全的字体（REPORT_PDF_FONT_PATH）';
+  logger.warn(
+    `[pdf-font] ${PDF_FONT_SOURCE_TEXT[font.source]}缺少以下字符的字形，PDF 中将显示为空白：${missing.join(' ')}；${hint}`,
+  );
+}
+
 function pageInnerRect(page: PDFKit.PDFPage, config: ReportPrintPageConfig) {
   const margin = config.margin ?? { top: 12, right: 12, bottom: 12, left: 12 };
   return {
@@ -719,13 +793,16 @@ export async function renderPrintDocumentsToPdf(parts: PdfDocumentPart[]): Promi
   const doc = new PDFDocument({ autoFirstPage: false, margin: 0 });
   const chunks: Uint8Array[] = [];
   const imageCache = new Map<string, RenderedGraphic>();
-  const fontPath = resolvePdfFontPath();
+  const font = resolvePdfFont();
   const needsCjk = parts.some((part) => resultContainsCjk(part.result) || /[\u3400-\u9fff]/u.test(part.options?.watermark ?? ''));
-  if (!fontPath && needsCjk) {
+  if (!font && needsCjk) {
     throw new Error('PDF 导出包含中文，但未找到 CJK 字体（内置 assets/fonts 缺失且未配置 REPORT_PDF_FONT_PATH）');
   }
-  const fontName = fontPath ? 'zh' : 'Helvetica';
-  if (fontPath) doc.registerFont(fontName, fontPath);
+  const fontName = font ? 'zh' : 'Helvetica';
+  if (font) {
+    doc.registerFont(fontName, font.path);
+    warnUncoveredGlyphs(font, parts);
+  }
   doc.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
   for (const { result, options = {} } of parts) {
     for (const page of result.pages) {

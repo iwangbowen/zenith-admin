@@ -185,7 +185,7 @@ POST /api/workflows/instances/{id}/cc/add
 | 字段格式化 | 选项 → 标签、金额千分位 + 单位、人员 / 部门 / 字典 / 关联审批单 → 名称、附件 → 文件名、富文本 → 纯文本；密码与说明类字段不打印 |
 | 脱敏 | 表单中的手机号 / 邮箱 / 证件号字段按「数据脱敏」策略（实体 `WorkflowForm`）打码，与接口出口同一套规则与豁免权限；超管不打码 |
 | 流程级设置 | 「更多设置 → 审批单打印」：仅通过后可打印（非 `approved` 实例返回 400）、办结自动归档（见下）、打印水印（页面斜向平铺，文本支持 `{printer}` / `{time}` / `{serialNo}`，留空为「打印人 时间」） |
-| 字体 | 服务端随包内置 Noto Sans SC（`packages/server/assets/fonts`），无需运维配置；企业自有字体经 `REPORT_PDF_FONT_PATH` 覆盖 |
+| 字体 | 服务端随包内置 Noto Sans SC（`packages/server/assets/fonts`），无需运维配置；发布包 / 镜像默认为覆盖 GB 2312 ∪ 通用规范汉字表的子集，人名 / 内容含繁体或生僻字时切全量字体（导出日志会列出缺字），企业自有字体经 `REPORT_PDF_FONT_PATH` 覆盖，见[部署说明 → PDF 字体](../guide/deployment.md#_7-pdf-字体-子集-全量) |
 
 纯逻辑（版式生成、数据集构建、字段格式化）在 `@zenith/shared/workflow` 的 `print.ts`，服务端与设计器共用。
 

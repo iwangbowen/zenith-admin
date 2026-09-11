@@ -51,11 +51,9 @@ jobs:
       - name: Package server artifact
         run: |
           TAG="${{ steps.tag.outputs.name }}"
-          mkdir -p release_artifacts/server
-          cp -r packages/server/dist release_artifacts/server/dist
-          cp -r packages/server/drizzle release_artifacts/server/drizzle
-          cp -r packages/server/assets release_artifacts/server/assets
-          cp packages/server/package.json release_artifacts/server/package.json
+          # 与 Dockerfile / 本地 npm run package:server 同一脚本：dist + drizzle + package.json + assets/fonts。
+          # Release 只携带子集字体（约 2.5MB）；需要全量字体的用户自行打包（--pdf-font=full）或部署后把全量文件放进 assets/fonts
+          npm run package:server -- --out release_artifacts/server
           cd release_artifacts
           zip -r "../zenith-admin-server-${TAG}.zip" server/
           cd ..

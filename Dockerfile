@@ -28,10 +28,18 @@ COPY packages/server ./packages/server
 COPY packages/web ./packages/web
 
 # Build: shared → analytics-sdk → server → web
+# (server build also subsets the bundled Noto Sans SC into assets/fonts/NotoSansSC-Regular.subset.otf)
 RUN npm run build -w @zenith/shared \
  && npm run build -w @zenith/analytics-sdk \
  && npm run build -w @zenith/server \
  && npm run build -w @zenith/web
+
+# PDF export font shipped in the server image: `subset` (default, ~2.5MB, GB 2312 ∪ 通用规范汉字表 + common
+# symbols) or `full` (~8MB Noto Sans SC incl. traditional / rare characters). Same script as the GitHub
+# Release zip and `npm run package:server`, so all three deployment paths share one layout.
+#   docker build --build-arg PDF_FONT=full --target server .
+ARG PDF_FONT=subset
+RUN node packages/server/scripts/package-server.mjs --pdf-font="$PDF_FONT" --out /app/server-pkg
 
 # Mastra Studio 静态资源:产出到 web dist 子目录,随 web 产物一起进 Nginx 镜像
 # (版本由根 devDependencies 的 mastra 包管理;同源部署,鉴权由 API 侧强制)
@@ -70,10 +78,11 @@ RUN apk add --no-cache libstdc++ \
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 
-# Copy compiled server, Drizzle migration files and bundled runtime assets (CJK font for PDF export)
-COPY --from=builder /app/packages/server/dist ./packages/server/dist
-COPY --from=builder /app/packages/server/drizzle ./packages/server/drizzle
-COPY --from=builder /app/packages/server/assets ./packages/server/assets
+# Copy compiled server, Drizzle migration files and bundled runtime assets (CJK font for PDF export,
+# subset or full per PDF_FONT) from the layout assembled by package-server.mjs
+COPY --from=builder /app/server-pkg/dist ./packages/server/dist
+COPY --from=builder /app/server-pkg/drizzle ./packages/server/drizzle
+COPY --from=builder /app/server-pkg/assets ./packages/server/assets
 
 WORKDIR /app/packages/server
 

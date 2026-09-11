@@ -173,7 +173,8 @@ git push origin vX.Y.Z
 ## Step 7：等待 GitHub Actions 完成
 
 - `release.yml` 触发后会自动：构建产物 → 打包 zip → 提取 Changelog → 发布 GitHub Release
-- 发布产物包含：`zenith-admin-server-vX.Y.Z.zip`（后端）和 `zenith-admin-web-vX.Y.Z.zip`（前端静态文件）
+- 发布产物包含：`zenith-admin-server-vX.Y.Z.zip`（后端，由 `npm run package:server` 组装，只带约 2.5MB 的 PDF 字体子集；
+  全量字体由用户自行 `--pdf-font=full` 打包或 `--build-arg PDF_FONT=full` 构建镜像，不进 Release）和 `zenith-admin-web-vX.Y.Z.zip`（前端静态文件）
 
 ---
 
