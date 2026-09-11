@@ -42,6 +42,7 @@ import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/com
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactQuery } from '@/lib/query';
 import { toUserOptions } from '@/hooks/queries/users';
 import { copyableNoColumn, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
@@ -106,8 +107,6 @@ interface EventSearchParams {
   username: string;
   pagePath: string;
   deviceType?: string;
-  startTime: string;
-  endTime: string;
   timeRange: [Date, Date] | null;
 }
 
@@ -139,19 +138,9 @@ const defaultEventSearch: EventSearchParams = {
   username: '',
   pagePath: '',
   deviceType: undefined,
-  startTime: '',
-  endTime: '',
   timeRange: null,
 };
 const defaultMetaSearch: MetaSearchParams = { keyword: '', status: undefined, category: '' };
-
-function buildQuery(params: Record<string, string | number | undefined>) {
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== '') query.set(key, String(value));
-  });
-  return query.toString();
-}
 
 function parsePropertySchema(text: string | undefined): AnalyticsEventMeta['propertySchema'] {
   if (!text?.trim()) return null;
@@ -222,26 +211,23 @@ export default function AnalyticsDataPage() {
 
   const [settingsDraft, setSettingsDraft] = useState<AnalyticsSettings | null>(null);
 
-  const buildEventFilterQuery = (params: EventSearchParams) => buildQuery({
-    eventType: params.eventType,
-    eventName: params.eventName,
-    username: params.username,
-    pagePath: params.pagePath,
-    deviceType: params.deviceType,
-    startTime: params.startTime,
-    endTime: params.endTime,
-  });
+  const eventFilterQuery = (() => {
+    const [startTime, endTime] = formatDateTimeRangeValuesForApi(submittedEventSearch.timeRange);
+    return {
+      eventType: enumValueOf(userBehaviorEventTypeEnum.options, submittedEventSearch.eventType),
+      eventName: submittedEventSearch.eventName || undefined,
+      username: submittedEventSearch.username || undefined,
+      pagePath: submittedEventSearch.pagePath || undefined,
+      deviceType: enumValueOf(ANALYTICS_DEVICE_TYPES, submittedEventSearch.deviceType),
+      startTime,
+      endTime,
+    };
+  })();
 
   const eventsQuery = useAnalyticsEvents({
     page: eventList.page,
     pageSize: eventList.pageSize,
-    eventType: enumValueOf(userBehaviorEventTypeEnum.options, submittedEventSearch.eventType),
-    eventName: submittedEventSearch.eventName || undefined,
-    username: submittedEventSearch.username || undefined,
-    pagePath: submittedEventSearch.pagePath || undefined,
-    deviceType: enumValueOf(ANALYTICS_DEVICE_TYPES, submittedEventSearch.deviceType),
-    startTime: submittedEventSearch.startTime || undefined,
-    endTime: submittedEventSearch.endTime || undefined,
+    ...eventFilterQuery,
   });
   const events = eventsQuery.data?.list ?? [];
   const eventsTotal = eventsQuery.data?.total ?? 0;
@@ -322,20 +308,7 @@ export default function AnalyticsDataPage() {
   const ownerOptions = toUserOptions(ownerUsersQuery.data?.list ?? []);
   const metaReferencesQuery = useEventMetaReferences(metaModal.editing?.eventName, metaModal.visible);
 
-  const handleEventRangeChange = (range: [Date, Date] | null) => {
-    const [startTime, endTime] = formatDateTimeRangeValuesForApi(range, '');
-    eventList.setDraftParams((prev) => ({
-      ...prev,
-      timeRange: range,
-      startTime,
-      endTime,
-    }));
-  };
-
-  const buildExportQuery = () => {
-    const query = buildEventFilterQuery(submittedEventSearch);
-    return Object.fromEntries(new URLSearchParams(query).entries());
-  };
+  const eventExportQuery = compactQuery(eventFilterQuery);
 
   const handleClean = (days: number) => {
     const option = CLEAN_DAY_OPTIONS.find((item) => item.value === days);
@@ -798,17 +771,14 @@ export default function AnalyticsDataPage() {
                   items={DEVICE_OPTIONS}
                   {...eventList.bind('deviceType')}
                 />
-                <DateRangeFilter
-                  value={eventList.draftParams.timeRange ?? undefined}
-                  onChange={handleEventRangeChange}
-                />
+                <DateRangeFilter {...eventList.bind('timeRange')} />
               </>
             }
             onSearch={eventList.handleSearch}
             onReset={eventList.handleReset}
             actions={
               <>
-                <ExportButton entity="analytics.events" query={buildExportQuery()} />
+                <ExportButton entity="analytics.events" query={eventExportQuery} />
                 {canClean ? (
                   <SplitButtonGroup>
                     <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={cleanMutation.isPending} onClick={() => handleClean(90)}>清除数据</Button>
@@ -833,7 +803,7 @@ export default function AnalyticsDataPage() {
             }
             mobileActions={(
               <>
-                <ExportButton entity="analytics.events" query={buildExportQuery()} variant="flat" />
+                <ExportButton entity="analytics.events" query={eventExportQuery} variant="flat" />
                 {canClean && CLEAN_DAY_OPTIONS.map((item) => (
                   <Button
                     key={item.value}

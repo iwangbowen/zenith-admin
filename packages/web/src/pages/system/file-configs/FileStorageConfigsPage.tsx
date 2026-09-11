@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, Col, Form, Radio, Row, Select, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { PlugZap } from 'lucide-react';
 import type { CreateFileStorageConfigInput, FileObjectAcl, FileStorageConfig, FileStorageProvider, FileUrlStrategy, UpdateFileStorageConfigInput } from '@zenith/shared/platform';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_URL_STRATEGY_LABELS, FILE_URL_STRATEGY_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -216,7 +217,7 @@ export default function FileStorageConfigsPage() {
   const listQuery = useFileStorageConfigList({
     page,
     pageSize,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
   const saveMutation = useSaveFileStorageConfig();

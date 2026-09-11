@@ -40,7 +40,7 @@ const STATUS_COLOR = { pending: 'grey', processing: 'blue', unknown: 'orange', s
 const APPROVAL_COLOR = { none: 'grey', pending: 'orange', approved: 'green', rejected: 'red' } as const satisfies Record<PaymentTransferApprovalStatus, string>;
 
 interface SearchParams { keyword: string; channel?: string; status?: string; approvalStatus?: string; }
-const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: undefined, approvalStatus: '' };
+const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: undefined, approvalStatus: undefined };
 
 interface TransferFormValues {
   applicationId: number;

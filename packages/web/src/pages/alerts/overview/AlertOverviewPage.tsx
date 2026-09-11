@@ -76,7 +76,7 @@ export default function AlertOverviewPage() {
     tooltip: { value: (v) => `${v} 次` },
   }), [data?.topRules, palette]);
 
-  const renderRangeSelect = () => (
+  const rangeSelect = (
     <Select
       value={range}
       onChange={(v) => setRange(v as MonitorAlertOverviewRange)}
@@ -90,11 +90,11 @@ export default function AlertOverviewPage() {
       <SearchToolbar
         primary={(
           <>
-            {renderRangeSelect()}
+            {rangeSelect}
             <RefreshButton onClick={() => void overviewQuery.refetch()} loading={overviewQuery.isFetching} />
           </>
         )}
-        mobilePrimary={renderRangeSelect()}
+        mobilePrimary={rangeSelect}
         mobileActions={<RefreshButton onClick={() => void overviewQuery.refetch()} loading={overviewQuery.isFetching} />}
         actionTitle="告警概览操作"
       />

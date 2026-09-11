@@ -20,6 +20,7 @@ import { createdAtColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useDictItems } from '@/hooks/useDictItems';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import { cmsSiteExportUrl, cmsSiteKeys, useCmsSiteList, useCmsSiteTree, useDeleteCmsSites, useEnableSiteAnalytics, useImportCmsSite } from '@/hooks/queries/cms';
 import { useSubmitCmsSiteGroupPublish } from '@/hooks/queries/cms-stage3';
@@ -44,6 +45,7 @@ const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
 export default function SitesPage() {
   const { hasPermission } = usePermission();
+  const { items: statusItems } = useDictItems('common_status');
 
   const {
     page, pageSize, buildPagination,
@@ -267,12 +269,7 @@ export default function SitesPage() {
     <div className="page-container">
       <ListSearchToolbar
         keyword={<KeywordInput placeholder="搜索名称/标识/域名..." {...bindKeyword('keyword')} />}
-        filters={(
-          <StatusSelect
-            items={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
-            {...bind('status')}
-          />
-        )}
+        filters={<StatusSelect items={statusItems} {...bind('status')} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={(

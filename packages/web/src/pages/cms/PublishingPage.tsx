@@ -1,8 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Descriptions, Form, Input, Modal, Select, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import dayjs from 'dayjs';
 import { XCircle } from 'lucide-react';
 import { CMS_PUBLISH_ARTIFACT_STATUS_LABELS, CMS_PUBLISH_TARGET_TYPE_LABELS, CMS_PUBLISH_TARGET_TYPES } from '@zenith/shared/cms';
 import type { CmsPublishingTask, CmsPublishArtifact, CmsPublishArtifactStatus, CmsPublishTargetType } from '@zenith/shared/cms';
@@ -27,7 +26,8 @@ import {
   useSubmitCmsPublish,
 } from '@/hooks/queries/cms-stage3';
 import { ASYNC_TASK_STATUS_TAG_MAP } from '@/utils/async-task';
-import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateTime, formatDateTimeRangeValuesForApi } from '@/utils/date';
+import { compactQuery } from '@/lib/query';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
@@ -40,24 +40,17 @@ type TabKey = 'queue' | 'history' | 'artifacts' | 'failed';
 interface Filters {
   siteId?: number;
   targetType?: CmsPublishTargetType;
-  /** 产物页专用：0 = 站点级产物（无归属通道） */
-  publishChannelId?: number;
-  taskType: string;
   createdBy: string;
   keyword: string;
-  startTime?: string;
-  endTime?: string;
+  timeRange: [Date, Date] | null;
 }
 
 const EMPTY_FILTERS: Filters = {
   siteId: undefined,
   targetType: undefined,
-  publishChannelId: undefined,
-  taskType: '',
   createdBy: '',
   keyword: '',
-  startTime: undefined,
-  endTime: undefined,
+  timeRange: null,
 };
 
 export default function PublishingPage() {
@@ -73,7 +66,7 @@ export default function PublishingPage() {
   // 同一组筛选驱动任务列表与产物列表：任务列表分页由 useListSearch 托管，产物列表另有独立分页，查询 / 重置时同步回首页
   const artifactPagination = usePagination();
   const {
-    draftParams: draft, setDraftParams, bind, bindKeyword, submittedParams: submitted,
+    bind, bindKeyword, submittedParams: submitted,
     handleSearch: applySearch, handleReset: resetSearch, ...taskPagination
   } = useListSearch<Filters>({
     defaults: EMPTY_FILTERS,
@@ -82,23 +75,31 @@ export default function PublishingPage() {
     onSearch: () => { artifactPagination.setPage(1); setSelected([]); },
     onReset: () => { artifactPagination.setPage(1); setSelected([]); },
   });
-  // 产物页按通道筛选：通道随所选站点变化，未选站点时不可用
+  const [startTime, endTime] = formatDateTimeRangeValuesForApi(submitted.timeRange);
+  const filterQuery = {
+    siteId: submitted.siteId,
+    targetType: submitted.targetType,
+    createdBy: submitted.createdBy || undefined,
+    keyword: submitted.keyword || undefined,
+    startTime,
+    endTime,
+  };
 
   const taskStatus = activeTab === 'queue' ? 'active' : activeTab === 'failed' ? 'failed' : 'terminal';
   const taskListQuery = useCmsPublishingList({
     page: taskPagination.page,
     pageSize: taskPagination.pageSize,
-    ...submitted,
+    ...filterQuery,
     status: taskStatus,
   }, activeTab !== 'artifacts');
   const artifactListQuery = useCmsPublishArtifactList({
     page: artifactPagination.page,
     pageSize: artifactPagination.pageSize,
-    siteId: submitted.siteId,
-    targetType: submitted.targetType,
-    startTime: submitted.startTime,
-    endTime: submitted.endTime,
-    keyword: submitted.keyword || undefined,
+    siteId: filterQuery.siteId,
+    targetType: filterQuery.targetType,
+    startTime,
+    endTime,
+    keyword: filterQuery.keyword,
   }, activeTab === 'artifacts');
   // Keep the id independent from the currently loaded tab. Artifact rows can
   // point to a task that is not present in the history page cache.
@@ -216,11 +217,6 @@ export default function PublishingPage() {
     }),
   ];
 
-  const dateValue = useMemo<[Date, Date] | undefined>(() => {
-    if (!draft.startTime || !draft.endTime) return undefined;
-    return [dayjs(draft.startTime).toDate(), dayjs(draft.endTime).toDate()];
-  }, [draft.endTime, draft.startTime]);
-
   const keywordInput = (
     <KeywordInput placeholder="任务/路径关键词" {...bindKeyword('keyword')} />
   );
@@ -239,22 +235,13 @@ export default function PublishingPage() {
         {...bind('targetType')}
         width={150}
       />
-      <Input placeholder="创建人" {...bind('createdBy')} style={{ width: 130 }} />
-      <DateRangeFilter value={dateValue} onChange={(value) => {
-          const range = Array.isArray(value) ? value : [];
-          setDraftParams((prev) => ({
-            ...prev,
-            ...formatDateTimeRangeForApi(range),
-          }));
-        }} />
+      <KeywordInput placeholder="创建人" {...bindKeyword('createdBy')} width={130} />
+      <DateRangeFilter {...bind('timeRange')} />
     </>
   );
 
-  const taskExportQuery = {
-    ...submitted,
-    taskStatus: activeTab === 'queue' ? 'active' : activeTab === 'failed' ? 'failed' : 'terminal',
-  };
-  const artifactExportQuery = submitted as unknown as Record<string, unknown>;
+  const taskExportQuery = compactQuery({ ...filterQuery, taskStatus });
+  const artifactExportQuery = compactQuery(filterQuery);
 
   const createBuildButton = canBuild ? <CreateButton onClick={() => { setSubmitVisible(true); setSubmitForm((prev) => ({ ...prev, siteId: sites[0]?.id })); }}>新建发布</CreateButton> : null;
 
@@ -268,8 +255,8 @@ export default function PublishingPage() {
 
   const taskActions = (
     <>
-      <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskExportQuery as unknown as Record<string, unknown>} />
-      <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskExportQuery as unknown as Record<string, unknown>} />
+      <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskExportQuery} />
+      <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskExportQuery} />
     </>
   );
 
@@ -292,8 +279,8 @@ export default function PublishingPage() {
         mobileActions={(
           <>
             {batchActions}
-            <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskExportQuery as unknown as Record<string, unknown>} variant="flat" />
-            <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskExportQuery as unknown as Record<string, unknown>} variant="flat" />
+            <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskExportQuery} variant="flat" />
+            <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskExportQuery} variant="flat" />
           </>
         )}
       />

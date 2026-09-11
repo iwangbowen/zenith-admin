@@ -34,7 +34,7 @@ import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useEnabledPaymentAppLookup } from './payment-app-options';
 import { PaymentAppField, PaymentAppFilterSelect, PaymentCurrencyField } from './payment-form-fields';
 import { deleteAction, ListSearchToolbar } from '@/components/list-page';
-
+import { compactQuery } from '@/lib/query';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const yuan = formatYuan;
 const CONTRACT_STATUS_COLOR = { pending: 'grey', unknown: 'orange', signed: 'green', paused: 'orange', terminated: 'red', failed: 'red' } as const satisfies Record<PaymentContractStatus, string>;
@@ -54,7 +54,7 @@ function describePlanPeriod(p: Pick<PaymentDeductPlan, 'period' | 'customDays'>)
 }
 
 interface SearchParams { keyword: string; status?: string; channel?: string }
-const defaultSearchParams: SearchParams = { keyword: '', status: undefined, channel: '' };
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined, channel: undefined };
 
 export default function PaymentContractsPage() {
   const { hasPermission } = usePermission();
@@ -283,12 +283,12 @@ export default function PaymentContractsPage() {
     }),
   ];
 
-  const exportQuery = {
+  const exportQuery = compactQuery({
     applicationId: effectiveContractAppId,
-    keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    channel: submittedParams.channel || undefined,
-  };
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
+    channel: submittedParams.channel,
+  });
 
   return (
     <div className="page-container page-tabs-page">
