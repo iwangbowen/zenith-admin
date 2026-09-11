@@ -27,6 +27,8 @@
 
 会员会话 TTL 为 8 小时，请求经过 `memberAuthMiddleware` 时会刷新活跃时间；refresh 授权 TTL 30 天，`/api/member/auth/refresh` 一次性消费后轮换到新 `jti`（响应同时返回新的 access token 与 refresh token）；黑名单 TTL 为 2 小时，与会员 Access Token 有效期一致。登出、封禁、改密 / 重置密码都会吊销 `jti`，access 与 refresh token 同时失效。
 
+JWT 签名有效不等于会员仍然有效：`memberAuthMiddleware`（CMS 前台的可选会员会话复用同一 `checkMemberJwtSubject`）还会核对会员 / 所属租户的权威行——会员非 `active`、已删除、租户停用或到期、JWT 中的租户声明与库中不一致都会直接拒绝。权威行与管理员侧同构地经进程内副本读取（`lib/ttl-cache.ts`，5s TTL、关闭 stale-while-revalidate、单飞），失效由 `members` / `tenants` 表上的 `notify_cache_invalidate` 触发器经 `invalidation-bus` 广播到全部实例（迁移 `0010_member_subject_cache_invalidate.sql`）；缓存的是原始行，租户 `expireAt` 到点在请求时求值。NOTIFY 不可用时新鲜度退回 TTL，而上述吊销 `jti` 的操作不经该缓存，黑名单检查仍即时生效。
+
 ---
 
 ## 会员认证

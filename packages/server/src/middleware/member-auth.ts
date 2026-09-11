@@ -15,6 +15,8 @@ import { config } from '../config';
 import { errBody } from '../lib/openapi-schemas';
 import logger from '../lib/logger';
 import { isTenantActive } from '../lib/tenant';
+import { TtlCache } from '../lib/ttl-cache';
+import { onInvalidate, onInvalidationReset } from '../lib/invalidation-bus';
 
 export interface MemberJwtPayload {
   memberId: number;
@@ -42,11 +44,20 @@ type MemberJwtCheck =
   | { ok: true; payload: MemberJwtPayload; nickname: string }
   | { ok: false; status: 401 | 403; message: string };
 
-/** Re-check the member and its tenant on every request; JWT claims are staleable. */
-export async function checkMemberJwtSubject(payload: MemberJwtPayload): Promise<MemberJwtCheck> {
-  if (!Number.isInteger(payload.memberId) || payload.memberId <= 0) {
-    return { ok: false, status: 401, message: '无效的会员令牌' };
-  }
+// ─── 主体权威行的进程内副本 ──────────────────────────────────────────────────
+/**
+ * 与管理员侧 `middleware/auth.ts` 的 `subjectRows` 同构：会员每个已认证请求（含 CMS 前台带会员 token 的页面请求）
+ * 都要重读会员 / 所属租户权威行，此前是会员请求链上唯一未缓存的每请求 PG 查询。
+ *
+ * - 失效以 `members` / `tenants` 表触发器经 `cache_invalidate` 总线广播为准
+ *   （迁移 `0010_member_subject_cache_invalidate.sql`），TTL 只是 NOTIFY 不可用时的兜底；
+ * - 关闭 stale-while-revalidate：鉴权不能拿过期值放行，过期即同步回源；单飞让并发未命中只发一条查询；
+ * - 缓存的是原始行：租户 `expireAt` 到点在请求时求值，不受 TTL 影响；
+ * - 封禁 / 删除 / 改密本身还会吊销 `jti`，黑名单检查不经本缓存，这些操作的「立即失效」不依赖 NOTIFY 时效。
+ */
+const SUBJECT_CACHE_TTL_MS = 5_000;
+
+async function loadSubjectRow(memberId: number) {
   const [row] = await db.select({
     id: members.id,
     nickname: members.nickname,
@@ -60,8 +71,39 @@ export async function checkMemberJwtSubject(payload: MemberJwtPayload): Promise<
   })
     .from(members)
     .leftJoin(tenants, eq(members.tenantId, tenants.id))
-    .where(and(eq(members.id, payload.memberId), isNull(members.deletedAt)))
+    .where(and(eq(members.id, memberId), isNull(members.deletedAt)))
     .limit(1);
+  return row ?? null;
+}
+
+type MemberSubjectRow = NonNullable<Awaited<ReturnType<typeof loadSubjectRow>>>;
+
+/** memberId → 会员行（含所属租户状态）；不存在 / 已删除的会员缓存为 null，避免伪造主体反复回源 */
+const subjectRows = new TtlCache<number, MemberSubjectRow | null>(SUBJECT_CACHE_TTL_MS, { staleWhileRevalidate: false });
+
+/** 清空全部会员主体副本（监听重建 / 测试） */
+export function resetMemberSubjectCache(): void {
+  subjectRows.clear();
+}
+
+onInvalidate('members', (message) => {
+  const memberId = Number(message.key);
+  if (Number.isInteger(memberId) && memberId > 0) subjectRows.delete(memberId);
+  else subjectRows.clear();
+});
+// 会员副本按 memberId 键、没有租户反向索引；租户行改动极少，整段清空即可
+onInvalidate('tenants', resetMemberSubjectCache);
+onInvalidationReset(resetMemberSubjectCache);
+
+/**
+ * Re-check the member and its tenant on every request; JWT claims are staleable.
+ * 权威行经进程内副本读取（见上），失效由 `cache_invalidate` 总线驱动。
+ */
+export async function checkMemberJwtSubject(payload: MemberJwtPayload): Promise<MemberJwtCheck> {
+  if (!Number.isInteger(payload.memberId) || payload.memberId <= 0) {
+    return { ok: false, status: 401, message: '无效的会员令牌' };
+  }
+  const row = await subjectRows.get(payload.memberId, () => loadSubjectRow(payload.memberId));
   if (!row) return { ok: false, status: 401, message: '会员不存在' };
   if (row.status !== 'active') return { ok: false, status: 403, message: '账号不可用' };
 

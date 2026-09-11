@@ -71,6 +71,13 @@
       "when": 1789114128253,
       "tag": "0009_workflow_print_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789137340109,
+      "tag": "0010_member_subject_cache_invalidate",
+      "breakpoints": true
     }
   ]
 }

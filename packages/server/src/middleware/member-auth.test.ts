@@ -40,8 +40,9 @@ vi.mock('../lib/logger', () => ({
   default: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 
-import { memberAuthMiddleware } from './member-auth';
+import { memberAuthMiddleware, resetMemberSubjectCache } from './member-auth';
 import { db } from '../db';
+import { dispatchInvalidation } from '../lib/invalidation-bus';
 
 const dbMock = vi.mocked(db);
 
@@ -99,6 +100,8 @@ function buildApp() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // 会员 / 租户权威行带进程内副本，逐用例清空以免串台
+  resetMemberSubjectCache();
   dbMock.select.mockReturnValue(createChain([activeMemberRow()]));
 });
 
@@ -188,5 +191,91 @@ describe('memberAuthMiddleware - token 隔离（安全关键）', () => {
     const token = await makeMemberToken({ iat: now() - 10, exp: now() - 1 });
     const res = await buildApp().request('/protected', { headers: { Authorization: `Bearer ${token}` } });
     expect(res.status).toBe(401);
+  });
+});
+
+describe('memberAuthMiddleware - 主体权威行进程内副本', () => {
+  async function probe(token: string) {
+    return buildApp().request('/protected', { headers: { Authorization: `Bearer ${token}` } });
+  }
+
+  it('同一会员的连续请求只回源一次；不同会员各自回源', async () => {
+    const tokenA = await makeMemberToken();
+    const tokenB = await makeMemberToken({ memberId: 2, jti: 'test-jti-2' });
+    dbMock.select.mockReturnValue(createChain([activeMemberRow({ id: 2 })]));
+    dbMock.select.mockReturnValueOnce(createChain([activeMemberRow()]));
+
+    expect((await probe(tokenA)).status).toBe(200);
+    expect((await probe(tokenA)).status).toBe(200);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+    expect((await probe(tokenB)).status).toBe(200);
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
+  });
+
+  it('members 触发器广播 → 仅该会员副本失效，封禁立即生效', async () => {
+    const tokenA = await makeMemberToken();
+    const tokenB = await makeMemberToken({ memberId: 2, jti: 'test-jti-2' });
+    dbMock.select.mockReturnValue(createChain([activeMemberRow({ id: 2 })]));
+    dbMock.select.mockReturnValueOnce(createChain([activeMemberRow()]));
+    await probe(tokenA);
+    await probe(tokenB);
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
+
+    dbMock.select.mockReturnValueOnce(createChain([activeMemberRow({ status: 'banned' })]));
+    dispatchInvalidation({ topic: 'members', key: '1' });
+
+    const denied = await probe(tokenA);
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).message).toBe('账号不可用');
+    // 会员 2 的副本未受影响
+    expect((await probe(tokenB)).status).toBe(200);
+    expect(dbMock.select).toHaveBeenCalledTimes(3);
+  });
+
+  it('tenants 触发器广播 → 全部副本清空，租户停用立即生效', async () => {
+    const token = await makeMemberToken({ tenantId: 7 });
+    dbMock.select.mockReturnValueOnce(createChain([activeMemberRow({ tenantId: 7, tenantStatus: 'enabled' })]));
+    expect((await probe(token)).status).toBe(200);
+
+    dbMock.select.mockReturnValueOnce(createChain([activeMemberRow({ tenantId: 7, tenantStatus: 'disabled' })]));
+    dispatchInvalidation({ topic: 'tenants', key: '7' });
+
+    const denied = await probe(token);
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).message).toBe('租户已被禁用或过期');
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
+  });
+
+  it('缓存的是原始行：租户 expireAt 到点后即使命中缓存也拒绝', async () => {
+    const token = await makeMemberToken({ tenantId: 7 });
+    dbMock.select.mockReturnValueOnce(createChain([activeMemberRow({
+      tenantId: 7,
+      tenantStatus: 'enabled',
+      tenantExpireAt: new Date(Date.now() + 200),
+    })]));
+    expect((await probe(token)).status).toBe(200);
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect((await probe(token)).status).toBe(403);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('不存在的会员同样缓存，伪造 / 已删除主体不会反复回源', async () => {
+    const token = await makeMemberToken({ memberId: 404 });
+    dbMock.select.mockReturnValue(createChain([]));
+
+    expect((await probe(token)).status).toBe(401);
+    expect((await probe(token)).status).toBe(401);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('resetMemberSubjectCache 清空后重新回源', async () => {
+    const token = await makeMemberToken();
+    await probe(token);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+
+    resetMemberSubjectCache();
+    await probe(token);
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
   });
 });

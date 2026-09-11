@@ -43,6 +43,8 @@ vi.mock('../db', () => ({
 }));
 
 import { optionalMemberSessionMiddleware } from './optional-member-session';
+import { resetMemberSubjectCache } from './member-auth';
+import { dispatchInvalidation } from '../lib/invalidation-bus';
 
 async function memberToken() {
   const now = Math.floor(Date.now() / 1000);
@@ -67,6 +69,7 @@ function app() {
 describe('optional member session middleware', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMemberSubjectCache();
     mocks.memberEnabled = true;
     mocks.blacklisted.mockResolvedValue(false);
     mocks.getSession.mockResolvedValue({ memberId: 7 });
@@ -97,7 +100,9 @@ describe('optional member session middleware', () => {
     });
     expect(await missingSession.json()).toEqual({ memberId: null });
 
+    // 封禁 / 删除会员：members 触发器广播失效后，权威行副本重新回源
     mocks.memberEnabled = false;
+    dispatchInvalidation({ topic: 'members', key: '7' });
     const disabled = await app().request('/probe', {
       headers: { Authorization: `Bearer ${await memberToken()}` },
     });
