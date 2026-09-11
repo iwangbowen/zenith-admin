@@ -39,8 +39,8 @@ function publicUrl(token: string): string {
   return `${window.location.origin}${base}${publicPath}`;
 }
 
-interface SearchParams { keyword: string; status: PaymentLinkStatus | ''; }
-const defaultSearch: SearchParams = { keyword: '', status: '' };
+interface SearchParams { keyword: string; status?: PaymentLinkStatus; }
+const defaultSearch: SearchParams = { keyword: '', status: undefined };
 
 interface LinkFormValues {
   applicationId: number;
@@ -236,7 +236,7 @@ export default function PaymentLinksPage() {
         filters={(
           <StatusSelect
             items={PAYMENT_LINK_STATUS_OPTIONS}
-            {...bind('status', (v) => v as PaymentLinkStatus | '')}
+            {...bind('status')}
           />
         )}
         onSearch={handleSearch}

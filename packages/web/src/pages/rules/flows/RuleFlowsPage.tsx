@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Form, Input, List, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import type { RuleDecisionFlow, RuleFlowEvaluateResult, RuleFlowStep } from '@zenith/shared/rules';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -25,7 +24,7 @@ import {
   useToggleRuleFlow,
 } from '@/hooks/queries/rules';
 import { PUBLISHABLE_STATUS_META as STATUS } from '@/lib/publishable-status';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -152,15 +151,11 @@ export default function RuleFlowsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canCreate && <CreateButton onClick={openCreate} />}
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canCreate ? <CreateButton onClick={openCreate} /> : null}
       />
       <ConfigurableTable columns={columns} empty="暂无数据"
         {...listTableProps(listQuery, { pagination: buildPagination })}

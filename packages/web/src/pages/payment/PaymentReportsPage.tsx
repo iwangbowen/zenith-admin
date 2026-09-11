@@ -182,7 +182,7 @@ export default function PaymentReportsPage() {
 
   const dimensionTitle = PAYMENT_REPORT_GROUP_BY_LABELS[summary?.groupBy ?? 'day'];
 
-  const renderGroupByFilter = () => (
+  const groupByFilter = (
     <Select
       value={draftParams.groupBy}
       // 分组维度是视图切换而非筛选条件：选择后立即提交查询，无需再点「查询」
@@ -192,12 +192,8 @@ export default function PaymentReportsPage() {
       placeholder="选择维度"
     />
   );
-
-  const renderTimeRangeFilter = () => (
-    <DateRangeFilter {...bind('timeRange')} />
-  );
-
-  const renderCompareToggle = () => (
+  const timeRangeFilter = <DateRangeFilter {...bind('timeRange')} />;
+  const compareToggle = (
     <Checkbox
       checked={draftParams.compare}
       onChange={(e) => setField('compare')(Boolean(e.target.checked))}
@@ -206,9 +202,8 @@ export default function PaymentReportsPage() {
       环比对照
     </Checkbox>
   );
-
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} disabled={!canView} />;
-  const renderExportButton = () => (
+  const searchButton = <SearchButton onClick={handleSearch} disabled={!canView} />;
+  const exportButton = (
     <Button icon={<Download size={14} />} disabled={!canView || !summary?.rows.length} onClick={() => summary && exportReportCsv(dimensionTitle, summary.rows)}>
       导出 CSV
     </Button>
@@ -219,21 +214,21 @@ export default function PaymentReportsPage() {
       <SearchToolbar
         primary={(
           <>
-            {renderGroupByFilter()}
-            {renderTimeRangeFilter()}
-            {renderCompareToggle()}
-            {renderSearchButton()}
+            {groupByFilter}
+            {timeRangeFilter}
+            {compareToggle}
+            {searchButton}
             <ResetButton onClick={handleReset} disabled={!canView} />
           </>
         )}
-        actions={renderExportButton()}
-        mobilePrimary={renderSearchButton()}
-        mobileActions={renderExportButton()}
+        actions={exportButton}
+        mobilePrimary={searchButton}
+        mobileActions={exportButton}
         mobileFilters={(
           <>
-            {renderGroupByFilter()}
-            {renderTimeRangeFilter()}
-            {renderCompareToggle()}
+            {groupByFilter}
+            {timeRangeFilter}
+            {compareToggle}
           </>
         )}
         filterTitle="财务报表筛选"

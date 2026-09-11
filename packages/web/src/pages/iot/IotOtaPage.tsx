@@ -12,6 +12,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
+import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -360,11 +361,11 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
 
 /** 任务明细抽屉：设备状态机 + 进度轮询 */
 function OtaTaskDetailDrawer({ task, onClose }: Readonly<{ task: IotOtaTask | null; onClose: () => void }>) {
-  const [page, setPage] = useState(1);
+  const { page, pageSize, setPage, buildPagination } = usePagination(10);
   const [status, setStatus] = useState<string | undefined>();
   const devicesQuery = useIotOtaTaskDevices(
     task?.id ?? null,
-    { page, pageSize: 10, status: enumValueOf(IOT_OTA_DEVICE_STATUSES, status) },
+    { page, pageSize, status: enumValueOf(IOT_OTA_DEVICE_STATUSES, status) },
     task?.status === 'running',
   );
 
@@ -422,12 +423,7 @@ function OtaTaskDetailDrawer({ task, onClose }: Readonly<{ task: IotOtaTask | nu
             size="small"
             loading={devicesQuery.isPending}
             empty="暂无设备明细"
-            pagination={{
-              currentPage: page,
-              pageSize: 10,
-              total: devicesQuery.data?.total ?? 0,
-              onPageChange: setPage,
-            }}
+            pagination={buildPagination(devicesQuery.data?.total ?? 0)}
           />
         </>
       )}

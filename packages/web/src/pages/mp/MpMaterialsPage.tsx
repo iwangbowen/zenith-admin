@@ -111,29 +111,29 @@ export default function MpMaterialsPage() {
     }),
   ];
 
-  const renderMaterialActions = () => {
-    const syncButton = can('mp:material:sync') ? (
-      <Button icon={<RefreshCw size={14} />} loading={syncMutation.isPending} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>
-    ) : null;
-    const uploadButton = can('mp:material:create') ? (
-      <Button icon={<UploadCloud size={14} />} disabled={!currentId} onClick={() => { setUploadType('image'); setUploadName(''); setUploadVisible(true); }}>上传素材</Button>
-    ) : null;
-    return syncButton || uploadButton ? <>{syncButton}{uploadButton}</> : null;
-  };
+  const syncButton = can('mp:material:sync') ? (
+    <Button icon={<RefreshCw size={14} />} loading={syncMutation.isPending} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>
+  ) : null;
+  const uploadButton = can('mp:material:create') ? (
+    <Button icon={<UploadCloud size={14} />} disabled={!currentId} onClick={() => { setUploadType('image'); setUploadName(''); setUploadVisible(true); }}>上传素材</Button>
+  ) : null;
+  const materialActions = syncButton || uploadButton ? <>{syncButton}{uploadButton}</> : null;
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索素材名称" {...bindKeyword('keyword')} width={180} />}
-        filters={(
+        keyword={(
           <>
             <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-            <FilterSelect
-              placeholder="全部类型"
-              items={MP_MATERIAL_TYPE_OPTIONS}
-              {...bind('filterType', (v) => enumValueOf(MP_MATERIAL_TYPES, v))}
-            />
+            <KeywordInput placeholder="搜索素材名称" {...bindKeyword('keyword')} width={180} />
           </>
+        )}
+        filters={(
+          <FilterSelect
+            placeholder="全部类型"
+            items={MP_MATERIAL_TYPE_OPTIONS}
+            {...bind('filterType', (v) => enumValueOf(MP_MATERIAL_TYPES, v))}
+          />
         )}
         onSearch={handleSearch}
         onReset={handleReset}
@@ -142,8 +142,8 @@ export default function MpMaterialsPage() {
             <CreateButton onClick={modal.openCreate} disabled={!currentId} />
           ) : null
         )}
-        actions={renderMaterialActions()}
-        mobileActions={(renderMaterialActions())}
+        actions={materialActions}
+        mobileActions={materialActions}
         filterTitle="素材筛选"
         actionTitle="素材操作"
       />

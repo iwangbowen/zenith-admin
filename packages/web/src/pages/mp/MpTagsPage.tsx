@@ -81,24 +81,28 @@ export default function MpTagsPage() {
     }),
   ];
 
-  const renderSyncButton = () => can('mp:tag:sync') ? (
+  const syncButton = can('mp:tag:sync') ? (
     <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>
   ) : null;
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索标签名称" {...bindKeyword('keyword')} width={180} />}
-        filters={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
+        keyword={(
+          <>
+            <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
+            <KeywordInput placeholder="搜索标签名称" {...bindKeyword('keyword')} width={180} />
+          </>
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        actions={renderSyncButton()}
+        actions={syncButton}
         create={(
           can('mp:tag:create') ? (
             <CreateButton onClick={modal.openCreate} disabled={!currentId} />
           ) : null
         )}
-        mobileActions={renderSyncButton()}
+        mobileActions={syncButton}
         filterTitle="标签筛选"
         actionTitle="标签操作"
       />

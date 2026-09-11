@@ -200,24 +200,26 @@ export default function MpAutoRepliesPage() {
     await deleteHotwordMutation.mutateAsync({ params: { id } });
   };
 
-  const renderHotwordsButton = () => can('mp:reply:list') ? (
+  const hotwordsButton = can('mp:reply:list') ? (
     <Button icon={<Flame size={14} />} disabled={!currentId} onClick={() => void openHotwords()}>未命中热词</Button>
   ) : null;
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索关键词" {...bindKeyword('keyword')} width={180} />}
-        filters={(
+        keyword={(
           <>
             <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-            <FilterSelect
-              placeholder="全部回复类型"
-              items={REPLY_TYPE_OPTIONS}
-              {...bind('filterType', (v) => enumValueOf(MP_AUTO_REPLY_TYPES, v))}
-              width={140}
-            />
+            <KeywordInput placeholder="搜索关键词" {...bindKeyword('keyword')} width={180} />
           </>
+        )}
+        filters={(
+          <FilterSelect
+            placeholder="全部回复类型"
+            items={REPLY_TYPE_OPTIONS}
+            {...bind('filterType', (v) => enumValueOf(MP_AUTO_REPLY_TYPES, v))}
+            width={140}
+          />
         )}
         onSearch={handleSearch}
         onReset={handleReset}
@@ -226,8 +228,8 @@ export default function MpAutoRepliesPage() {
             <CreateButton onClick={openCreate} disabled={!currentId} />
           ) : null
         )}
-        actions={renderHotwordsButton()}
-        mobileActions={(renderHotwordsButton())}
+        actions={hotwordsButton}
+        mobileActions={hotwordsButton}
         filterTitle="自动回复筛选"
         actionTitle="自动回复操作"
       />

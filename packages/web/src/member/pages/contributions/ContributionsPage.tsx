@@ -1,13 +1,15 @@
 /** 我的投稿：列表 + 状态筛选 + 写投稿入口（CMS 会员投稿） */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Empty, Pagination, Spin, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Empty, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { PenLine, Trash2, Pencil } from 'lucide-react';
 import { CMS_CONTENT_STATUSES, type CmsContentStatus } from '@zenith/shared/cms';
 import { enumValueOf } from '@zenith/shared/core';
 import { MemberPage } from '../../components/MemberPage';
 import { useMyContributions, useDeleteContribution } from '../../hooks/queries';
 import { confirmDelete } from '@/utils/confirm';
+import { usePagination } from '@/hooks/usePagination';
+import { ListPagination } from '@/components/ListPagination';
 
 const STATUS_META: Record<CmsContentStatus, { label: string; color: 'grey' | 'orange' | 'green' | 'red' | 'blue' }> = {
   draft: { label: '草稿', color: 'grey' },
@@ -17,8 +19,8 @@ const STATUS_META: Record<CmsContentStatus, { label: string; color: 'grey' | 'or
   rejected: { label: '已驳回', color: 'red' },
 };
 
-const FILTERS: { value: string; label: string }[] = [
-  { value: '', label: '全部' },
+const FILTERS: { value: CmsContentStatus | undefined; label: string }[] = [
+  { value: undefined, label: '全部' },
   { value: 'pending', label: '审核中' },
   { value: 'published', label: '已发布' },
   { value: 'rejected', label: '已驳回' },
@@ -26,9 +28,9 @@ const FILTERS: { value: string; label: string }[] = [
 
 export default function ContributionsPage() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState('');
-  const [page, setPage] = useState(1);
-  const listQuery = useMyContributions({ page, pageSize: 10, status: enumValueOf(CMS_CONTENT_STATUSES, status) });
+  const [status, setStatus] = useState<CmsContentStatus | undefined>();
+  const { page, pageSize, setPage, buildPagination } = usePagination(10);
+  const listQuery = useMyContributions({ page, pageSize, status: enumValueOf(CMS_CONTENT_STATUSES, status) });
   const deleteMutation = useDeleteContribution();
 
   const list = listQuery.data?.list ?? [];
@@ -58,7 +60,7 @@ export default function ContributionsPage() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         {FILTERS.map((f) => (
           <Button
-            key={f.value}
+            key={f.value ?? 'all'}
             size="small"
             theme={status === f.value ? 'solid' : 'light'}
             onClick={() => { setStatus(f.value); setPage(1); }}
@@ -125,11 +127,7 @@ export default function ContributionsPage() {
         </div>
       )}
 
-      {total > 10 ? (
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
-          <Pagination total={total} pageSize={10} currentPage={page} onPageChange={setPage} />
-        </div>
-      ) : null}
+      {total > pageSize ? <ListPagination pagination={buildPagination(total)} /> : null}
     </MemberPage>
   );
 }

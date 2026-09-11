@@ -178,16 +178,16 @@ export default function MpConditionalMenusPage() {
     }),
   ];
 
-  const renderAccountFilter = () => (
+  const accountFilter = (
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
   );
-  const renderRefreshButton = () => (
+  const refreshButton = (
     <RefreshButton onClick={() => void listQuery.refetch()} />
   );
-  const renderCreateButton = () => can('mp:condmenu:create') ? (
+  const createButton = can('mp:condmenu:create') ? (
     <CreateButton onClick={openCreate} disabled={!currentId}>新增个性化菜单</CreateButton>
   ) : null;
-  const renderMatchButton = () => (
+  const matchButton = (
     <Button icon={<FlaskConical size={14} />} disabled={!currentId} onClick={() => { setMatchResult(null); setMatchUserId(''); setMatchVisible(true); }}>匹配测试</Button>
   );
 
@@ -196,20 +196,20 @@ export default function MpConditionalMenusPage() {
       <SearchToolbar
         primary={(
           <>
-            {renderAccountFilter()}
-            {renderRefreshButton()}
-            {renderMatchButton()}
-            {renderCreateButton()}
+            {accountFilter}
+            {refreshButton}
+            {matchButton}
+            {createButton}
           </>
         )}
         mobilePrimary={(
           <>
-            {renderRefreshButton()}
-            {renderCreateButton()}
+            {refreshButton}
+            {createButton}
           </>
         )}
-        mobileFilters={renderAccountFilter()}
-        mobileActions={renderMatchButton()}
+        mobileFilters={accountFilter}
+        mobileActions={matchButton}
         filterTitle="个性化菜单筛选"
         actionTitle="个性化菜单操作"
         onFilterApply={() => void listQuery.refetch()}

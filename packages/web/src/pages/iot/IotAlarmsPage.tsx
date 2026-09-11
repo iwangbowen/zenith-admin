@@ -52,7 +52,7 @@ interface AlarmSearchParams {
   ruleType?: string;
 }
 
-const defaultAlarmSearch: AlarmSearchParams = { keyword: '', status: undefined, level: undefined, ruleType: '' };
+const defaultAlarmSearch: AlarmSearchParams = { keyword: '', status: undefined, level: undefined, ruleType: undefined };
 
 function AlarmRecordsTab() {
   const { hasPermission } = usePermission();
@@ -164,29 +164,6 @@ function AlarmRecordsTab() {
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput
-      placeholder="搜索规则 / 设备 / 内容..."
-      {...bindKeyword('keyword')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-     
-      items={IOT_ALARM_STATUS_OPTIONS}
-      {...bind('status')}
-    />
-  );
-
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={IOT_ALARM_RULE_TYPE_OPTIONS}
-      {...bind('ruleType')}
-    />
-  );
-
   return (
     <>
       <StatGrid style={{ marginBottom: 12 }}>
@@ -211,15 +188,27 @@ function AlarmRecordsTab() {
         />
       </StatGrid>
       <ListSearchToolbar
-        keyword={renderKeyword()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索规则 / 设备 / 内容..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={<>
-          {renderStatusFilter()}
+          <StatusSelect
+            items={IOT_ALARM_STATUS_OPTIONS}
+            {...bind('status')}
+          />
           <FilterSelect
             placeholder="全部级别"
             items={IOT_ALARM_LEVEL_OPTIONS}
             {...bind('level')}
           />
-          {renderTypeFilter()}
+          <FilterSelect
+            placeholder="全部类型"
+            items={IOT_ALARM_RULE_TYPE_OPTIONS}
+            {...bind('ruleType')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
@@ -314,7 +303,7 @@ interface RuleSearchParams {
   status?: string;
 }
 
-const defaultRuleSearch: RuleSearchParams = { keyword: '', ruleType: undefined, status: '' };
+const defaultRuleSearch: RuleSearchParams = { keyword: '', ruleType: undefined, status: undefined };
 
 function AlarmRulesTab() {
   const { hasPermission } = usePermission();
@@ -437,35 +426,25 @@ function AlarmRulesTab() {
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput
-      placeholder="搜索规则名称..."
-      {...bindKeyword('keyword')}
-    />
-  );
-
-  const renderTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部类型"
-      items={IOT_ALARM_RULE_TYPE_OPTIONS}
-      {...bind('ruleType')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      {...bind('status')}
-    />
-  );
-
   return (
     <>
       <ListSearchToolbar
-        keyword={renderKeyword()}
+        keyword={(
+          <KeywordInput
+            placeholder="搜索规则名称..."
+            {...bindKeyword('keyword')}
+          />
+        )}
         filters={<>
-          {renderTypeFilter()}
-          {renderStatusFilter()}
+          <FilterSelect
+            placeholder="全部类型"
+            items={IOT_ALARM_RULE_TYPE_OPTIONS}
+            {...bind('ruleType')}
+          />
+          <StatusSelect
+            items={statusItems}
+            {...bind('status')}
+          />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}

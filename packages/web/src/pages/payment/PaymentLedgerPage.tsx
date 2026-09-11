@@ -53,6 +53,7 @@ import { formatMinorAmount } from '@/utils/payment';
 import { confirmDanger } from '@/utils/confirm';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
+import { enumValueOf } from '@zenith/shared/core';
 
 const ACCOUNT_STATUS_ITEMS = [
   { value: 'enabled', label: '启用' },
@@ -254,7 +255,7 @@ export default function PaymentLedgerPage() {
     appId: accountSearch.submittedParams.appId,
     channelConfigId: accountSearch.submittedParams.channelConfigId,
     currency: accountSearch.submittedParams.currency || undefined,
-    status: (accountSearch.submittedParams.status as 'enabled' | 'disabled') || undefined,
+    status: enumValueOf(['enabled', 'disabled'] as const, accountSearch.submittedParams.status),
   }, canView && activeTab === 'accounts');
   const journalQuery = usePaymentJournalList({
     page: journalSearch.page,
@@ -269,7 +270,7 @@ export default function PaymentLedgerPage() {
     page: reservationSearch.page,
     pageSize: reservationSearch.pageSize,
     accountId: reservationSearch.submittedParams.accountId,
-    status: (reservationSearch.submittedParams.status as PaymentFundReservationStatus) || undefined,
+    status: enumValueOf(PAYMENT_FUND_RESERVATION_STATUSES, reservationSearch.submittedParams.status),
     sourceType: reservationSearch.submittedParams.sourceType.trim() || undefined,
     ...formatDateTimeRangeForApi(reservationSearch.submittedParams.timeRange),
   }, canView && activeTab === 'reservations');

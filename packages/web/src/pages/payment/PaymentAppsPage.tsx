@@ -19,7 +19,7 @@ import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 interface SearchParams { keyword: string; status?: string; }
-const defaultSearch: SearchParams = { keyword: '', status: '' };
+const defaultSearch: SearchParams = { keyword: '', status: undefined };
 const STATUS_COLOR = { enabled: 'green', disabled: 'grey' } as const satisfies Record<PaymentApp['status'], string>;
 const STATUS_LABEL = { enabled: '启用', disabled: '停用' } as const satisfies Record<PaymentApp['status'], string>;
 

@@ -149,29 +149,26 @@ export default function MpTemplateMessagesPage() {
     dateTimeColumn('发送时间', 'createdAt'),
   ];
 
-  const renderAccountFilter = () => (
+  const accountFilter = (
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
   );
-  const renderTemplateRefreshButton = () => (
+  const templateRefreshButton = (
     <RefreshButton onClick={() => { tplPg.setPage(1); void queryClient.invalidateQueries({ queryKey: mpTemplateKeys.lists }); }} />
   );
-  const renderTemplateActions = () => {
-    if (!can('mp:template:sync')) return null;
-    return (
-      <>
-        <Button icon={<RefreshCw size={14} />} loading={syncMutation.isPending} disabled={!currentId} onClick={() => void handleSync()}>从微信同步模板</Button>
-        <Button icon={<Briefcase size={14} />} disabled={!currentId} onClick={openIndustry}>行业设置</Button>
-      </>
-    );
-  };
-  const renderLogStatusFilter = () => (
+  const templateActions = can('mp:template:sync') ? (
+    <>
+      <Button icon={<RefreshCw size={14} />} loading={syncMutation.isPending} disabled={!currentId} onClick={() => void handleSync()}>从微信同步模板</Button>
+      <Button icon={<Briefcase size={14} />} disabled={!currentId} onClick={openIndustry}>行业设置</Button>
+    </>
+  ) : null;
+  const logStatusFilter = (
     <StatusSelect
       items={[{ label: '成功', value: 'success' }, { label: '失败', value: 'failed' }]}
       {...logSearch.bind('status')}
     />
   );
   const refreshLogs = logSearch.handleSearch;
-  const renderLogRefreshButton = () => (
+  const logRefreshButton = (
     <Button type="tertiary" icon={<Search size={14} />} onClick={refreshLogs}>刷新</Button>
   );
 
@@ -181,8 +178,8 @@ export default function MpTemplateMessagesPage() {
   return (
     <div className="page-container">
       <SearchToolbar
-        primary={renderAccountFilter()}
-        mobilePrimary={renderAccountFilter()}
+        primary={accountFilter}
+        mobilePrimary={accountFilter}
         filterTitle="模板消息筛选"
       />
       <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
@@ -192,12 +189,12 @@ export default function MpTemplateMessagesPage() {
           <SearchToolbar
             primary={(
               <>
-                {renderTemplateRefreshButton()}
-                {renderTemplateActions()}
+                {templateRefreshButton}
+                {templateActions}
               </>
             )}
-            mobilePrimary={renderTemplateRefreshButton()}
-            mobileActions={renderTemplateActions()}
+            mobilePrimary={templateRefreshButton}
+            mobileActions={templateActions}
             actionTitle="模板库操作"
           />
           <ConfigurableTable
@@ -209,12 +206,12 @@ export default function MpTemplateMessagesPage() {
           <SearchToolbar
             primary={(
               <>
-                {renderLogStatusFilter()}
-                {renderLogRefreshButton()}
+                {logStatusFilter}
+                {logRefreshButton}
               </>
             )}
-            mobilePrimary={renderLogRefreshButton()}
-            mobileFilters={renderLogStatusFilter()}
+            mobilePrimary={logRefreshButton}
+            mobileFilters={logStatusFilter}
             filterTitle="发送记录筛选"
             onFilterApply={refreshLogs}
           />

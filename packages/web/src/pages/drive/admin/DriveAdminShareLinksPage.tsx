@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
@@ -7,9 +7,7 @@ import { type DriveShareLink, type DriveShareLinkState } from '@zenith/shared/dr
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
@@ -82,15 +80,17 @@ export default function DriveAdminShareLinksPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
+      <ListSearchToolbar
+        keyword={<KeywordInput {...bindKeyword('keyword')} placeholder="搜索文件名 / 分享人 / 备注" width={240} />}
         filters={(
           <>
-            <KeywordInput {...bindKeyword('keyword')} placeholder="搜索文件名 / 分享人 / 备注" width={240} />
             <FilterSelect<DriveShareLinkState> {...bind('state')} placeholder="全部状态" items={STATE_OPTIONS} />
             <DateRangeFilter {...bind('timeRange')} />
           </>
         )}
-        actions={(<><SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} /></>)}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        filterTitle="外链筛选"
       />
       <ConfigurableTable<DriveShareLink> columns={columns}
         {...listTableProps(query, { pagination: buildPagination })}

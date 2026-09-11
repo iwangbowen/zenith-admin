@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import { Table, Typography } from '@douyinfe/semi-ui';
 import { useMemberTransactions, type MemberTransactionOp } from '../hooks/queries';
 import { dateTimeColumn } from '@/utils/table-columns';
+import { usePagination } from '@/hooks/usePagination';
 
 interface TransactionListProps {
   /** 数据源契约操作：积分流水或钱包流水 */
@@ -13,8 +13,8 @@ interface TransactionListProps {
 const PAGE_SIZE = 15;
 
 export function TransactionList({ op, typeLabels, formatAmount }: TransactionListProps) {
-  const [page, setPage] = useState(1);
-  const query = useMemberTransactions(op, { page, pageSize: PAGE_SIZE });
+  const { page, pageSize, buildPagination } = usePagination(PAGE_SIZE);
+  const query = useMemberTransactions(op, { page, pageSize });
   const data = query.data?.list ?? [];
   const total = query.data?.total ?? 0;
 
@@ -55,13 +55,7 @@ export function TransactionList({ op, typeLabels, formatAmount }: TransactionLis
       loading={query.isFetching}
       rowKey="id"
       size="small"
-      pagination={{
-        total,
-        pageSize: PAGE_SIZE,
-        currentPage: page,
-        showSizeChanger: false,
-        onPageChange: (p: number) => setPage(p),
-      }}
+      pagination={{ ...buildPagination(total), showSizeChanger: false }}
       empty={<div className="m-empty">暂无记录</div>}
     />
   );

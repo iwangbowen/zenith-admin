@@ -81,24 +81,23 @@ export function DriveSubjectPicker({ value, onChange, disabled, subjectTypes, em
     setSubjectIds([]);
   };
 
-  const renderSubjectSelect = () => {
-    const common = { multiple: true, value: subjectIds, onChange: (v: number | number[] | undefined) => setSubjectIds(Array.isArray(v) ? v : v ? [v] : []) };
-    if (subjectType === 'user') return <UserSelect {...common} placeholder="选择用户" />;
-    if (subjectType === 'department') return <DepartmentSelect {...common} placeholder="选择部门（含子部门成员）" />;
-    if (subjectType === 'role') {
-      return (
-        <Select multiple filter maxTagCount={3} style={{ width: '100%' }} placeholder="选择角色" value={subjectIds}
-          onChange={(v) => setSubjectIds((v as number[]) ?? [])}
-          optionList={(roles ?? []).map((r) => ({ value: r.id, label: r.name }))} />
-      );
-    }
-    return (
-      <Select multiple filter maxTagCount={3} style={{ width: '100%' }} placeholder="选择用户组" value={subjectIds}
-        loading={groupsQuery.isPending}
-        onChange={(v) => setSubjectIds((v as number[]) ?? [])}
-        optionList={(groupsQuery.data?.list ?? []).map((g) => ({ value: g.id, label: g.name }))} />
-    );
-  };
+  const commonSelectProps = { multiple: true, value: subjectIds, onChange: (v: number | number[] | undefined) => setSubjectIds(Array.isArray(v) ? v : v ? [v] : []) };
+  const subjectSelect = subjectType === 'user'
+    ? <UserSelect {...commonSelectProps} placeholder="选择用户" />
+    : subjectType === 'department'
+      ? <DepartmentSelect {...commonSelectProps} placeholder="选择部门（含子部门成员）" />
+      : subjectType === 'role'
+        ? (
+            <Select multiple filter maxTagCount={3} style={{ width: '100%' }} placeholder="选择角色" value={subjectIds}
+              onChange={(v) => setSubjectIds((v as number[]) ?? [])}
+              optionList={(roles ?? []).map((r) => ({ value: r.id, label: r.name }))} />
+          )
+        : (
+            <Select multiple filter maxTagCount={3} style={{ width: '100%' }} placeholder="选择用户组" value={subjectIds}
+              loading={groupsQuery.isPending}
+              onChange={(v) => setSubjectIds((v as number[]) ?? [])}
+              optionList={(groupsQuery.data?.list ?? []).map((g) => ({ value: g.id, label: g.name }))} />
+          );
 
   const columns: ColumnProps<SubjectGrant>[] = [
     {
@@ -133,7 +132,7 @@ export function DriveSubjectPicker({ value, onChange, disabled, subjectTypes, em
         <div className="drive-subject-picker__add">
           <Select style={{ width: 110 }} value={subjectType} onChange={(v) => { setSubjectType(v as DriveSubjectType); setSubjectIds([]); }}
             optionList={typeOptions.map((o) => ({ value: o.value, label: o.label }))} />
-          <div style={{ flex: 1, minWidth: 160 }}>{renderSubjectSelect()}</div>
+          <div style={{ flex: 1, minWidth: 160 }}>{subjectSelect}</div>
           <Select style={{ width: 110 }} value={role} onChange={(v) => setRole(v as DriveRole)}
             optionList={DRIVE_ROLE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
             renderOptionItem={(item) => (

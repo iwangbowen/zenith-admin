@@ -9,6 +9,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { AreaChart, EmptyChart, LineChart, chartOptions, makeAreaSpec, makeLineSpec, useChartPalette } from '@/components/charts';
 import AppModal from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -282,10 +283,15 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
   const chartEmpty = useAgg ? aggData.length === 0 : chartData.length === 0;
 
   // ─── 指令 ────────────────────────────────────────────────────────────────────
-  const [commandPage, setCommandPage] = useState(1);
+  const {
+    page: commandPage,
+    pageSize: commandPageSize,
+    setPage: setCommandPage,
+    buildPagination: buildCommandPagination,
+  } = usePagination(5);
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [commandFormApi, setCommandFormApi] = useState<FormApi | null>(null);
-  const commandsQuery = useIotCommands(canCommand ? deviceId : null, { page: commandPage, pageSize: 5 });
+  const commandsQuery = useIotCommands(canCommand ? deviceId : null, { page: commandPage, pageSize: commandPageSize });
   const sendCommandMutation = useSendIotCommand();
 
   const services = model?.services ?? [];
@@ -349,12 +355,17 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
   ];
 
   // ─── 事件 ────────────────────────────────────────────────────────────────────
-  const [eventPage, setEventPage] = useState(1);
+  const {
+    page: eventPage,
+    pageSize: eventPageSize,
+    setPage: setEventPage,
+    buildPagination: buildEventPagination,
+  } = usePagination(10);
   const [eventKind, setEventKind] = useState<string | undefined>();
   const [eventLevel, setEventLevel] = useState<string | undefined>();
   const eventsQuery = useIotDeviceEvents(deviceId, {
     page: eventPage,
-    pageSize: 10,
+    pageSize: eventPageSize,
     kind: enumValueOf(IOT_DEVICE_EVENT_KINDS, eventKind),
     level: enumValueOf(IOT_EVENT_LEVELS, eventLevel),
   });
@@ -388,11 +399,16 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
   ];
 
   // ─── 设备日志（五期）─────────────────────────────────────────────────────────
-  const [logPage, setLogPage] = useState(1);
+  const {
+    page: logPage,
+    pageSize: logPageSize,
+    setPage: setLogPage,
+    buildPagination: buildLogPagination,
+  } = usePagination(10);
   const [logLevel, setLogLevel] = useState<string | undefined>();
   const logsQuery = useIotDeviceLogs(deviceId, {
     page: logPage,
-    pageSize: 10,
+    pageSize: logPageSize,
     level: enumValueOf(IOT_LOG_LEVELS, logLevel),
   });
 
@@ -591,12 +607,7 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
                   size="small"
                   loading={commandsQuery.isFetching}
                   empty="暂无指令记录"
-                  pagination={{
-                    currentPage: commandPage,
-                    pageSize: 5,
-                    total: commandsQuery.data?.total ?? 0,
-                    onPageChange: setCommandPage,
-                  }}
+                  pagination={buildCommandPagination(commandsQuery.data?.total ?? 0)}
                 />
               </TabPane>
             )}
@@ -625,12 +636,7 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
                 size="small"
                 loading={eventsQuery.isFetching}
                 empty="暂无设备事件"
-                pagination={{
-                  currentPage: eventPage,
-                  pageSize: 10,
-                  total: eventsQuery.data?.total ?? 0,
-                  onPageChange: setEventPage,
-                }}
+                pagination={buildEventPagination(eventsQuery.data?.total ?? 0)}
               />
             </TabPane>
 
@@ -651,12 +657,7 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
                 size="small"
                 loading={logsQuery.isFetching}
                 empty={`暂无设备日志（设备侧通过 log 帧 / POST ${iotIngestContract.logs.fullPath} 上报）`}
-                pagination={{
-                  currentPage: logPage,
-                  pageSize: 10,
-                  total: logsQuery.data?.total ?? 0,
-                  onPageChange: setLogPage,
-                }}
+                pagination={buildLogPagination(logsQuery.data?.total ?? 0)}
               />
             </TabPane>
 

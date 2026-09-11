@@ -22,6 +22,7 @@ import {
   useRevokeDriveShareLink, useUpdateDriveShareLink,
 } from '@/hooks/queries/drive';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -55,8 +56,8 @@ interface DriveShareLinksPanelProps {
 
 /** 收集链接的提交记录 */
 function CollectSubmissionsModal({ link, onClose }: { readonly link: DriveShareLink | null; readonly onClose: () => void }) {
-  const [page, setPage] = useState(1);
-  const query = useDriveCollectSubmissions(link?.id, { page, pageSize: 10 }, !!link);
+  const { page, pageSize, buildPagination } = usePagination(10);
+  const query = useDriveCollectSubmissions(link?.id, { page, pageSize }, !!link);
   const columns: ColumnProps<DriveCollectSubmission>[] = [
     { title: '文件', dataIndex: 'fileName', ellipsis: { showTitle: false }, render: renderEllipsis },
     { title: '大小', dataIndex: 'size', width: 90, render: (v: number) => <span className="drive-nowrap">{formatBytes(v)}</span> },
@@ -68,7 +69,7 @@ function CollectSubmissionsModal({ link, onClose }: { readonly link: DriveShareL
   return (
     <AppModal visible={!!link} title={`收集记录 · ${link?.nodeName ?? ''}`} onCancel={onClose} footer={null} width={760} closeOnEsc>
       <Table<DriveCollectSubmission> size="small" rowKey="id" columns={columns} dataSource={query.data?.list ?? []} loading={query.isFetching}
-        pagination={{ currentPage: page, pageSize: 10, total: query.data?.total ?? 0, onPageChange: setPage }}
+        pagination={buildPagination(query.data?.total ?? 0)}
         empty={<Empty description="还没有收到文件" />} />
     </AppModal>
   );

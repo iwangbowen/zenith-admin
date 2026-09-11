@@ -27,8 +27,8 @@ const HEALTH_LABELS = [
   ['reconPendingDiff', '待处理对账差异'],
 ] as const;
 
-interface SearchParams { keyword: string; status?: string; type: string; }
-const defaultSearch: SearchParams = { keyword: '', status: undefined, type: '' };
+interface SearchParams { keyword: string; status?: string; type?: string; }
+const defaultSearch: SearchParams = { keyword: '', status: undefined, type: undefined };
 
 /** payload 为 JSON 字符串时美化缩进，解析失败原样展示 */
 function formatPayload(raw: string | null | undefined): string {

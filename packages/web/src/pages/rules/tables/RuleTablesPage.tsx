@@ -1,12 +1,11 @@
 import { useState, useMemo } from 'react';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Checkbox, DatePicker, Input, InputNumber, Select, Space, Tag, Modal, Form, TextArea, Toast, Typography, SideSheet, List, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Save, Upload } from 'lucide-react';
 import { RULE_DECISION_STATUSES, type RuleDecisionTable, type RuleEvaluateResult, type RuleTestRunResult, type RuleHitPolicy, type RuleTestCase, type RuleUsageItem, type RuleDecisionTableSettings, type RuleShadowRunResult, type RuleSimulateResult } from '@zenith/shared/rules';
 import { enumValueOf } from '@zenith/shared/core';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import DecisionTableEditor from './DecisionTableEditor';
@@ -44,7 +43,7 @@ import {
   useToggleRuleDecisionTable,
 } from '@/hooks/queries/rules';
 import { PUBLISHABLE_STATUS_META as STATUS } from '@/lib/publishable-status';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -800,20 +799,17 @@ export default function RuleTablesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />
-            <StatusSelect
-              items={[{ value: 'draft', label: '草稿' }, { value: 'published', label: '已发布' }, { value: 'disabled', label: '已禁用' }]}
-              {...bind('status')}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canCreate && <Button icon={<Upload size={14} />} onClick={importTable}>导入</Button>}
-            {canCreate && <CreateButton onClick={openCreate} />}
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />}
+        filters={<StatusSelect
+          items={[{ value: 'draft', label: '草稿' }, { value: 'published', label: '已发布' }, { value: 'disabled', label: '已禁用' }]}
+          {...bind('status')}
+        />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={canCreate ? <Button icon={<Upload size={14} />} onClick={importTable}>导入</Button> : null}
+        create={canCreate ? <CreateButton onClick={openCreate} /> : null}
+        filterTitle="决策表筛选"
       />
       <ConfigurableTable columns={columns} empty="暂无数据"
         {...listTableProps(listQuery, { pagination: buildPagination })}

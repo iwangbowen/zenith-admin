@@ -195,27 +195,29 @@ export default function MpKfSessionsPage() {
   const agentOptions = (stats?.agents ?? []).filter((a) => a.status === 'enabled' && (pickModal.mode === 'accept' || a.kfId !== detail?.kfId));
   const acting = acceptMutation.isPending || transferMutation.isPending;
 
-  const renderSessionActions = () => {
-    const configButton = can('mp:kf:session:config') ? (
-      <Button icon={<Settings size={14} />} disabled={!currentId} onClick={openConfig}>路由配置</Button>
-    ) : null;
-    return (
-      <>
-        <Button icon={<RefreshCw size={14} />} onClick={refreshAll}>刷新</Button>
-        {configButton}
-      </>
-    );
-  };
+  const configButton = can('mp:kf:session:config') ? (
+    <Button icon={<Settings size={14} />} disabled={!currentId} onClick={openConfig}>路由配置</Button>
+  ) : null;
+  const sessionActions = (
+    <>
+      <Button icon={<RefreshCw size={14} />} onClick={refreshAll}>刷新</Button>
+      {configButton}
+    </>
+  );
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索 openid / 粉丝昵称" {...bindKeyword('keyword')} width={200} />}
-        filters={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
+        keyword={(
+          <>
+            <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
+            <KeywordInput placeholder="搜索 openid / 粉丝昵称" {...bindKeyword('keyword')} width={200} />
+          </>
+        )}
         onSearch={handleSearch}
         onReset={handleReset}
-        actions={renderSessionActions()}
-        mobileActions={(renderSessionActions())}
+        actions={sessionActions}
+        mobileActions={sessionActions}
         filterTitle="会话筛选"
         actionTitle="会话操作"
       />

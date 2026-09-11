@@ -1,16 +1,15 @@
 import { useState } from 'react';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, DatePicker, Form, Input, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search } from 'lucide-react';
 import { RULE_LIST_TYPES, type RuleList, type RuleListItem, type RuleUsageItem } from '@zenith/shared/rules';
 import { enumValueOf } from '@zenith/shared/core';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { formatDateTimeForApi } from '@/utils/date';
 import {
@@ -27,7 +26,7 @@ import {
   useSaveRuleList,
   useSaveRuleListItem,
 } from '@/hooks/queries/rules';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -61,7 +60,7 @@ export default function RuleListsPage() {
   } = useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined }, listKey: ruleKeys.ruleLists.lists });
 
   const [itemsRow, setItemsRow] = useState<RuleList | null>(null);
-  const [itemsPage, setItemsPage] = useState(1);
+  const { page: itemsPage, pageSize: itemsPageSize, setPage: setItemsPage, buildPagination: buildItemsPagination } = usePagination(10);
   const [itemKeyword, setItemKeyword] = useState('');
   const [itemForm, setItemForm] = useState<{ value: string; label: string; matchMode: 'exact' | 'prefix' | 'regex'; expiresAt?: string; remark: string }>({ value: '', label: '', matchMode: 'exact', remark: '' });
   const [importText, setImportText] = useState('');
@@ -69,7 +68,7 @@ export default function RuleListsPage() {
   const [checkResult, setCheckResult] = useState<{ hit: boolean; listType?: string } | null>(null);
 
   const listQuery = useRuleListList({ page, pageSize, keyword: submittedParams.keyword || undefined, type: enumValueOf(RULE_LIST_TYPES, submittedParams.type) });
-  const itemsQuery = useRuleListItems(itemsRow?.id, { page: itemsPage, pageSize: 10, keyword: itemKeyword || undefined }, !!itemsRow);
+  const itemsQuery = useRuleListItems(itemsRow?.id, { page: itemsPage, pageSize: itemsPageSize, keyword: itemKeyword || undefined }, !!itemsRow);
   const items = itemsQuery.data ?? null;
   const saveMutation = useSaveRuleList();
   const deleteMutation = useDeleteRuleList();
@@ -180,20 +179,19 @@ export default function RuleListsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} width={200} />
-            <FilterSelect
-              placeholder="全部类型"
-              items={TYPE_OPTIONS}
-              {...bind('type')}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canCreate && <CreateButton onClick={modal.openCreate} />}
-          </>
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} width={200} />}
+        filters={(
+          <FilterSelect
+            placeholder="全部类型"
+            items={TYPE_OPTIONS}
+            {...bind('type')}
+          />
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canCreate ? <CreateButton onClick={modal.openCreate} /> : null}
+        filterTitle="名单筛选"
       />
       <ConfigurableTable columns={columns} empty="暂无数据"
         {...listTableProps(listQuery, { pagination: buildPagination })}
@@ -242,7 +240,7 @@ export default function RuleListsPage() {
             </div>
           </div>
           <Space spacing={8}>
-            <Input size="small" prefix={<Search size={12} />} value={itemKeyword} onChange={(v) => { setItemKeyword(v); setItemsPage(1); }} placeholder="按值搜索" showClear style={{ width: 200 }} />
+            <KeywordInput size="small" value={itemKeyword} onChange={(v) => { setItemKeyword(v); setItemsPage(1); }} placeholder="按值搜索" width={200} />
             <Text type="tertiary" size="small">共 {items?.total ?? 0} 条</Text>
           </Space>
           <ConfigurableTable<RuleListItem>
@@ -261,7 +259,7 @@ export default function RuleListsPage() {
             dataSource={items?.list ?? []}
             loading={itemsQuery.isFetching}
             empty="暂无条目"
-            pagination={{ currentPage: itemsPage, pageSize: 10, total: items?.total ?? 0, onPageChange: setItemsPage }}
+            pagination={buildItemsPagination(items?.total ?? 0)}
           />
         </div>
       </SideSheet>

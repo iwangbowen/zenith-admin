@@ -18,6 +18,8 @@ import {
   useCancelDriveAccessRequest, useCreateDriveAccessRequest, useDecideDriveAccessRequest, useDriveAccessRequests, useDriveAccessTarget, useDriveNodePresence,
 } from '@/hooks/queries/drive';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
+import { StatusSelect } from '@/components/search-filters';
 import { formatDateTimeForApi } from '@/utils/date';
 
 const STATUS_COLORS: Record<DriveAccessRequestStatus, 'orange' | 'green' | 'red' | 'grey'> = { pending: 'orange', approved: 'green', rejected: 'red', cancelled: 'grey' };
@@ -171,16 +173,22 @@ interface AccessRequestsModalProps {
 export function DriveAccessRequestsModal({ visible, initialBox = 'inbox', onClose, onOpenNode }: AccessRequestsModalProps) {
   const [box, setBox] = useState<'inbox' | 'outbox'>(initialBox);
   const [status, setStatus] = useState<DriveAccessRequestStatus | undefined>(undefined);
-  const [page, setPage] = useState(1);
-  const query = useDriveAccessRequests({ box, status, page, pageSize: 20 }, visible);
+  const { page, pageSize, setPage } = usePagination(20);
+  const query = useDriveAccessRequests({ box, status, page, pageSize }, visible);
   const list = query.data?.list ?? [];
   const total = query.data?.total ?? 0;
   return (
     <AppModal visible={visible} title="访问申请" onCancel={onClose} footer={null} width={720} closeOnEsc>
       <Tabs type="line" size="small" activeKey={box} onChange={(k) => { setBox(k as 'inbox' | 'outbox'); setPage(1); }}
         tabBarExtraContent={(
-          <Select value={status ?? ''} onChange={(v) => { setStatus((v as string) ? (v as DriveAccessRequestStatus) : undefined); setPage(1); }} size="small" style={{ width: 120 }} aria-label="状态"
-            optionList={[{ value: '', label: '全部状态' }, ...Object.entries(DRIVE_ACCESS_REQUEST_STATUS_LABELS).map(([value, label]) => ({ value, label }))]} />
+          <StatusSelect
+            value={status}
+            onChange={(v) => { setStatus(v as DriveAccessRequestStatus | undefined); setPage(1); }}
+            size="small"
+            width={120}
+            aria-label="状态"
+            items={Object.entries(DRIVE_ACCESS_REQUEST_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+          />
         )}>
         <TabPane tab={<span><Inbox size={14} style={{ verticalAlign: -2, marginRight: 4 }} />待我审批</span>} itemKey="inbox" />
         <TabPane tab="我提交的" itemKey="outbox" />
@@ -189,10 +197,10 @@ export function DriveAccessRequestsModal({ visible, initialBox = 'inbox', onClos
         {list.length === 0
           ? <Empty description={box === 'inbox' ? '没有需要你处理的申请' : '你还没有提交过访问申请'} style={{ padding: '24px 0' }} />
           : <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>{list.map((r) => <RequestItem key={r.id} request={r} box={box} onOpenNode={onOpenNode} />)}</ul>}
-        {total > 20 && (
+        {total > pageSize && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8 }}>
-            <Button size="small" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>上一页</Button>
-            <Button size="small" disabled={page * 20 >= total} onClick={() => setPage((p) => p + 1)}>下一页</Button>
+            <Button size="small" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button>
+            <Button size="small" disabled={page * pageSize >= total} onClick={() => setPage(page + 1)}>下一页</Button>
           </div>
         )}
       </Spin>

@@ -63,13 +63,13 @@ export default function PaymentMethodsPage() {
     }),
   ];
 
-  const renderRefreshButton = () => (
+  const refreshButton = (
     <RefreshButton onClick={() => { void queryClient.invalidateQueries({ queryKey: paymentMethodKeys.lists }); }} />
   );
 
   return (
     <div className="page-container">
-      <SearchToolbar actions={renderRefreshButton()} mobileActions={renderRefreshButton()} />
+      <SearchToolbar actions={refreshButton} mobileActions={refreshButton} />
 
       <ConfigurableTable<PaymentMethodConfig>
         columns={columns}

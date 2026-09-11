@@ -48,7 +48,7 @@ const PROVIDER_HANDLE_ACTION_OPTIONS = [
 const yuan = formatYuan;
 
 interface SearchParams { channel?: string; status?: string; }
-const defaultSearch: SearchParams = { channel: undefined, status: '' };
+const defaultSearch: SearchParams = { channel: undefined, status: undefined };
 
 interface ReconFormValues {
   applicationId: number;

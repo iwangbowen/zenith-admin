@@ -29,7 +29,7 @@ interface SearchParams {
   status?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', status: '' };
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
 /** 产品表单值：记录里的 null 描述在表单中归一为空串 */
 type IotProductFormValues = Partial<CreateIotProductInput>;

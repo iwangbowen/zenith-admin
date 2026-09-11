@@ -1,18 +1,17 @@
 import { useState } from 'react';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Banner, Button, Divider, Input, InputNumber, Modal, Select, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
 import { RULE_DECISION_STATUSES, type RuleScorecard, type RuleScorecardBand, type RuleScorecardEvaluateResult, type RuleScorecardGrade, type RuleScorecardVariable } from '@zenith/shared/rules';
 import { enumValueOf } from '@zenith/shared/core';
 import { createdAtColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import {
@@ -215,22 +214,13 @@ export default function RuleScorecardsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} width={200} />
-            <StatusSelect {...bind('status')} items={STATUS_OPTIONS} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-          </>
-        )}
-        actions={canCreate ? <CreateButton onClick={openCreate} /> : null}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />
-            {canCreate ? <CreateButton onClick={openCreate} /> : null}
-          </>
-        )}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} width={200} />}
+        filters={<StatusSelect {...bind('status')} items={STATUS_OPTIONS} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canCreate ? <CreateButton onClick={openCreate} /> : null}
+        filterTitle="评分卡筛选"
       />
       <ConfigurableTable
 

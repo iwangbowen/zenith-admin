@@ -12,11 +12,11 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { FileNameCell } from '@/components/FileNameCell';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { DateRangeFilter, FilterSelect, NumberFilter } from '@/components/search-filters';
+import { CreateButton } from '@/components/toolbar-controls';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
@@ -93,20 +93,17 @@ function LegalHoldsTab() {
 
   return (
     <>
-      <SearchToolbar
+      <ListSearchToolbar
         filters={(
           <>
             <FilterSelect<number> {...bind('spaceId')} placeholder="全部空间" width={200} items={spaceOptions} />
             <Checkbox checked={draftParams.activeOnly} onChange={(e) => setField('activeOnly')(!!e.target.checked)}>仅保留中</Checkbox>
           </>
         )}
-        actions={(
-          <>
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canEdit && <Button type="primary" icon={<Scale size={14} />} onClick={() => setPicking(true)}>对文件夹设置保留</Button>}
-          </>
-        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={canEdit && <Button type="primary" icon={<Scale size={14} />} onClick={() => setPicking(true)}>对文件夹设置保留</Button>}
+        filterTitle="法律保留筛选"
       />
       <ConfigurableTable<DriveLegalHold> columns={columns} {...listTableProps(query, { pagination: buildPagination })} />
       {query.data?.total === 0 && <Typography.Text type="tertiary">暂无法律保留记录；对单个文件设置保留请在文件详情抽屉中操作。</Typography.Text>}
@@ -184,14 +181,16 @@ function QuotaRequestsTab() {
 
   return (
     <>
-      <SearchToolbar
+      <ListSearchToolbar
         filters={(
           <>
             <FilterSelect<DriveQuotaRequestStatus> {...bind('status')} placeholder="全部状态" width={130} items={STATUS_OPTIONS} />
             <FilterSelect<number> {...bind('spaceId')} placeholder="全部空间" width={200} items={spaceOptions} />
           </>
         )}
-        actions={(<><SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} /></>)}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        filterTitle="扩容审批筛选"
       />
       <ConfigurableTable<DriveQuotaRequest> columns={columns} {...listTableProps(query, { pagination: buildPagination })} />
       {query.data?.total === 0 && <Typography.Text type="tertiary">没有{submittedParams.status ? DRIVE_ACCESS_REQUEST_STATUS_LABELS[submittedParams.status] : ''}的扩容申请。空间管理者可在「共享空间」页对配额有限的空间发起申请。</Typography.Text>}
@@ -243,17 +242,20 @@ function ShareAccessLogsTab() {
 
   return (
     <>
-      <SearchToolbar
+      <ListSearchToolbar
         filters={(
           <>
             <FilterSelect<number> {...bind('spaceId')} placeholder="全部空间" width={200} items={spaceOptions} />
-            <InputNumber min={1} placeholder="外链 ID" {...bind('shareId', (v) => typeof v === 'number' ? v : undefined)} style={{ width: 120 }} hideButtons />
+            <NumberFilter min={1} placeholder="外链 ID" {...bind('shareId')} />
             <FilterSelect<string> {...bind('action')} placeholder="全部动作" width={130} items={LOG_ACTION_OPTIONS} />
             <FilterSelect<'true' | 'false'> {...bind('ok')} placeholder="全部结果" width={110} items={[{ value: 'true', label: '通过' }, { value: 'false', label: '拒绝' }]} />
             <DateRangeFilter {...bind('timeRange')} />
           </>
         )}
-        actions={(<><SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} />{exportButton}</>)}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={exportButton}
+        filterTitle="外链访问日志筛选"
       />
       <ConfigurableTable<DriveShareAccessLog> columns={columns} {...listTableProps(query, { pagination: buildPagination })} />
       {query.data?.total === 0 && <Typography.Text type="tertiary">暂无外链访问记录。被拒绝的尝试（密码错误 / 过期 / IP 拦截）同样留痕，可用于排查外链爆破。</Typography.Text>}

@@ -187,23 +187,25 @@ export default function MpFansPage() {
     }),
   ];
 
-  const renderSyncActions = () => {
-    const syncButton = can('mp:fan:sync') ? (
-      <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>同步粉丝</Button>
-    ) : null;
-    const blacklistButton = can('mp:fan:blacklist') ? (
-      <Button icon={<Ban size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSyncBlacklist()}>同步黑名单</Button>
-    ) : null;
-    return syncButton || blacklistButton ? <>{syncButton}{blacklistButton}</> : null;
-  };
+  const syncButton = can('mp:fan:sync') ? (
+    <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>同步粉丝</Button>
+  ) : null;
+  const blacklistButton = can('mp:fan:blacklist') ? (
+    <Button icon={<Ban size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSyncBlacklist()}>同步黑名单</Button>
+  ) : null;
+  const syncActions = syncButton || blacklistButton ? <>{syncButton}{blacklistButton}</> : null;
 
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索昵称/openid/备注" {...bindKeyword('keyword')} width={200} />}
-        filters={(
+        keyword={(
           <>
             <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
+            <KeywordInput placeholder="搜索昵称/openid/备注" {...bindKeyword('keyword')} width={200} />
+          </>
+        )}
+        filters={(
+          <>
             <FilterSelect
               placeholder="全部关注状态"
               items={SUBSCRIBE_OPTIONS}
@@ -227,8 +229,8 @@ export default function MpFansPage() {
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        actions={renderSyncActions()}
-        mobileActions={(renderSyncActions())}
+        actions={syncActions}
+        mobileActions={syncActions}
         filterTitle="粉丝筛选"
         actionTitle="粉丝操作"
       />

@@ -52,7 +52,7 @@ interface ScheduleSearchParams {
   status?: string;
 }
 
-const defaultSearch: ScheduleSearchParams = { keyword: '', status: '' };
+const defaultSearch: ScheduleSearchParams = { keyword: '', status: undefined };
 
 function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSchedule) => void }>) {
   const { hasPermission } = usePermission();

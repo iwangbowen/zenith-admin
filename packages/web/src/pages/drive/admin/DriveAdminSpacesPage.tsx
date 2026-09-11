@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Checkbox, Form, Input, InputNumber, Select, Skeleton, Space, Spin, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
@@ -13,9 +13,8 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import DepartmentSelect from '@/components/DepartmentSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import UserSelect from '@/components/UserSelect';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -197,25 +196,33 @@ export default function DriveAdminSpacesPage() {
           <DriveAdminCharts stats={stats} />
         </Suspense>
       )}
-      <SearchToolbar
+      <ListSearchToolbar
+        keyword={<KeywordInput {...bindKeyword('keyword')} placeholder="搜索空间 / 所有者" />}
         filters={(
           <>
-            <KeywordInput {...bindKeyword('keyword')} placeholder="搜索空间 / 所有者" />
             <FilterSelect<DriveSpaceType> {...bind('type')} placeholder="全部类型" items={DRIVE_SPACE_TYPE_OPTIONS} />
             <StatusSelect<'enabled' | 'disabled'> {...bind('status')} items={STATUS_OPTIONS} />
             <Checkbox checked={draftParams.orphaned} onChange={(event) => setField('orphaned')(!!event.target.checked)}>仅待接管</Checkbox>
             <Checkbox checked={draftParams.archived} onChange={(event) => setField('archived')(!!event.target.checked)}>仅已归档</Checkbox>
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canEdit ? <CreateButton onClick={() => setDeptModal(true)}>创建部门空间</CreateButton> : null}
         actions={(
           <>
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canEdit && <CreateButton onClick={() => setDeptModal(true)}>创建部门空间</CreateButton>}
             {canEdit && <Button icon={<RefreshCcw size={14} />} onClick={() => runTask('recalc')} loading={submitTask.isPending}>全量重算容量</Button>}
             {canEdit && <Button icon={<Search size={14} />} onClick={() => runTask('reindex')} loading={submitTask.isPending}>补建全文索引</Button>}
           </>
         )}
+        mobileActions={(
+          <>
+            {canEdit && <Button theme="borderless" onClick={() => runTask('recalc')} loading={submitTask.isPending}>全量重算容量</Button>}
+            {canEdit && <Button theme="borderless" onClick={() => runTask('reindex')} loading={submitTask.isPending}>补建全文索引</Button>}
+          </>
+        )}
+        filterTitle="空间治理筛选"
+        actionTitle="空间治理操作"
       />
       <ConfigurableTable<DriveSpace> columns={columns}
         {...listTableProps(listQuery, { pagination: buildPagination })}

@@ -40,7 +40,7 @@ const reviewStatusOptions = PAYMENT_RISK_REVIEW_STATUS_OPTIONS;
 const REVIEW_STATUS_COLOR = { pending: 'orange', approved: 'green', rejected: 'red' } as const satisfies Record<PaymentRiskReviewStatus, string>;
 
 interface SearchParams { scope?: string; status?: string; }
-const defaultSearch: SearchParams = { scope: undefined, status: '' };
+const defaultSearch: SearchParams = { scope: undefined, status: undefined };
 
 interface RiskFormValues {
   name: string;

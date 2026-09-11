@@ -15,6 +15,7 @@ import UserSelect from '@/components/UserSelect';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { SearchButton, ResetButton } from '@/components/toolbar-controls';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar } from '@/components/list-page';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { useFilePreview } from '@/hooks/useFilePreview';
 import { useAuth } from '@/hooks/useAuth';
@@ -196,16 +197,15 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
           })}>清空回收站</Button>
         )}
       </div>
-      <SearchToolbar
-        filters={(
-          <>
-            <KeywordInput {...bindKeyword('keyword')} width={200} placeholder={view === 'links' ? '搜索文件名 / 备注' : '搜索名称'} />
-            {view === 'recycle' && (
-              <FilterSelect<number> {...bind('spaceId')} placeholder="全部空间" width={160} items={spaceOptions} />
-            )}
-          </>
-        )}
-        actions={(<>{recycleBatch}<SearchButton onClick={handleSearch} /><ResetButton onClick={handleReset} /></>)}
+      <ListSearchToolbar
+        keyword={<KeywordInput {...bindKeyword('keyword')} width={200} placeholder={view === 'links' ? '搜索文件名 / 备注' : '搜索名称'} />}
+        filters={view === 'recycle' ? (
+          <FilterSelect<number> {...bind('spaceId')} placeholder="全部空间" width={160} items={spaceOptions} />
+        ) : null}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        actions={recycleBatch}
+        filterTitle="视图筛选"
       />
       {view === 'links' ? (
         <ConfigurableTable<DriveShareLink> bordered size="small" rowKey="id" columns={linkColumns} dataSource={rows as DriveShareLink[]}

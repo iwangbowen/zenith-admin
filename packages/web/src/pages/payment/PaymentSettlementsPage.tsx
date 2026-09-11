@@ -34,7 +34,7 @@ const channelOptions = PAYMENT_CHANNEL_OPTIONS;
 const STATUS_COLOR = { pending: 'grey', settling: 'blue', settled: 'green', failed: 'red' } as const satisfies Record<PaymentSettlementStatus, string>;
 
 interface SearchParams { channel?: string; status?: string; }
-const defaultSearch: SearchParams = { channel: undefined, status: '' };
+const defaultSearch: SearchParams = { channel: undefined, status: undefined };
 
 interface GenerateFormValues { applicationId: number; channelConfigId: number; currency: 'CNY'; period: [Date, Date]; remark?: string; }
 interface SettlementReferenceFormValues { reference: string; }

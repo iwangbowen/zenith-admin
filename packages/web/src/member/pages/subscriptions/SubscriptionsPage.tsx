@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Empty, Modal, Pagination, Select, Spin, Switch, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Empty, Modal, Select, Spin, Switch, Tag, Toast } from '@douyinfe/semi-ui';
 import { BellRing } from 'lucide-react';
 import { CMS_SUBSCRIPTION_SUBJECT_TYPE_LABELS, CMS_SUBSCRIPTION_SUBJECT_TYPE_OPTIONS } from '@zenith/shared/cms';
 import type { CmsSubscriptionSubjectType } from '@zenith/shared/cms';
@@ -9,13 +9,15 @@ import {
   useMyCmsSubscriptions,
   useUpdateCmsSubscription,
 } from '../../hooks/queries';
+import { usePagination } from '@/hooks/usePagination';
+import { ListPagination } from '@/components/ListPagination';
 
 const PAGE_SIZE = 10;
 
 export default function SubscriptionsPage() {
-  const [page, setPage] = useState(1);
+  const { page, pageSize, setPage, buildPagination } = usePagination(PAGE_SIZE);
   const [subjectType, setSubjectType] = useState<CmsSubscriptionSubjectType | undefined>();
-  const listQuery = useMyCmsSubscriptions({ page, pageSize: PAGE_SIZE, subjectType });
+  const listQuery = useMyCmsSubscriptions({ page, pageSize, subjectType });
   const updateMutation = useUpdateCmsSubscription();
   const cancelMutation = useCancelCmsSubscription();
   const list = listQuery.data?.list ?? [];
@@ -110,11 +112,7 @@ export default function SubscriptionsPage() {
           ))}
         </div>
       )}
-      {total > PAGE_SIZE ? (
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
-          <Pagination total={total} pageSize={PAGE_SIZE} currentPage={page} onPageChange={setPage} />
-        </div>
-      ) : null}
+      {total > pageSize ? <ListPagination pagination={buildPagination(total)} /> : null}
     </MemberPage>
   );
 }

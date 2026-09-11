@@ -1,12 +1,13 @@
 /** 我的评论：CMS 内容评论列表（含审核状态，可删除、跳转内容页） */
-import { useState } from 'react';
-import { Button, Empty, Pagination, Spin, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Empty, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { ExternalLink, Trash2 } from 'lucide-react';
 import { CMS_COMMENT_STATUS_LABELS } from '@zenith/shared/cms';
 import type { CmsCommentStatus } from '@zenith/shared/cms';
 import { MemberPage } from '../../components/MemberPage';
 import { useMyCmsComments, useDeleteMyCmsComment } from '../../hooks/queries';
 import { confirmDelete } from '@/utils/confirm';
+import { usePagination } from '@/hooks/usePagination';
+import { ListPagination } from '@/components/ListPagination';
 
 const STATUS_COLORS: Record<CmsCommentStatus, 'orange' | 'green' | 'red'> = {
   pending: 'orange',
@@ -15,8 +16,8 @@ const STATUS_COLORS: Record<CmsCommentStatus, 'orange' | 'green' | 'red'> = {
 };
 
 export default function MyCommentsPage() {
-  const [page, setPage] = useState(1);
-  const listQuery = useMyCmsComments({ page, pageSize: 10 });
+  const { page, pageSize, buildPagination } = usePagination(10);
+  const listQuery = useMyCmsComments({ page, pageSize });
   const deleteMutation = useDeleteMyCmsComment();
 
   const list = listQuery.data?.list ?? [];
@@ -67,11 +68,7 @@ export default function MyCommentsPage() {
           ))}
         </div>
       )}
-      {total > 10 ? (
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
-          <Pagination total={total} pageSize={10} currentPage={page} onPageChange={setPage} />
-        </div>
-      ) : null}
+      {total > pageSize ? <ListPagination pagination={buildPagination(total)} /> : null}
     </MemberPage>
   );
 }

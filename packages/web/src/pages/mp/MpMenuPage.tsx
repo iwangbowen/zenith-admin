@@ -201,30 +201,26 @@ export default function MpMenuPage() {
   const actionBusy = busy === 'save' || busy === 'publish';
   const canEditMenu = can('mp:menu:save') || can('mp:menu:publish');
 
-  const renderAccountFilter = () => (
+  const accountFilter = (
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
   );
-  const renderStatusTag = () => menu ? (menu.status === 'published'
+  const statusTag = menu ? (menu.status === 'published'
     ? <Tag color="green" type="light">已发布{menu.publishedAt ? ` · ${menu.publishedAt.slice(5, 16)}` : ''}</Tag>
     : <Tag color="grey" type="light">草稿</Tag>) : null;
-  const renderPullButton = () => can('mp:menu:pull') ? (
+  const pullButton = can('mp:menu:pull') ? (
     <Button icon={<RefreshCw size={14} />} loading={busy === 'pull'} disabled={!currentId} onClick={() => void doPull()}>从微信拉取</Button>
   ) : null;
-  const renderSaveButton = () => can('mp:menu:save') ? (
+  const saveButton = can('mp:menu:save') ? (
     <Button icon={<Save size={14} />} loading={busy === 'save'} disabled={!currentId} onClick={() => void doSave()}>保存草稿</Button>
   ) : null;
-  const renderPublishButton = () => can('mp:menu:publish') ? (
+  const publishButton = can('mp:menu:publish') ? (
     <Button type="primary" icon={<Send size={14} />} loading={busy === 'publish'} disabled={!currentId} onClick={() => void doPublish()}>发布到微信</Button>
   ) : null;
-  const renderDeleteButton = () => can('mp:menu:delete') ? (
+  const deleteButton = can('mp:menu:delete') ? (
     <Button type="danger" icon={<Trash2 size={14} />} loading={busy === 'delete'} disabled={!currentId} onClick={doDelete}>删除微信菜单</Button>
   ) : null;
-  const renderMobileActions = () => {
-    const pullButton = renderPullButton();
-    const saveButton = can('mp:menu:publish') ? renderSaveButton() : null;
-    const deleteButton = renderDeleteButton();
-    return pullButton || saveButton || deleteButton ? <>{pullButton}{saveButton}{deleteButton}</> : null;
-  };
+  const mobileSaveButton = can('mp:menu:publish') ? saveButton : null;
+  const mobileActions = pullButton || mobileSaveButton || deleteButton ? <>{pullButton}{mobileSaveButton}{deleteButton}</> : null;
 
   return (
     <div className="page-container">
@@ -233,22 +229,22 @@ export default function MpMenuPage() {
       <SearchToolbar
         primary={(
           <>
-            {renderAccountFilter()}
-            {renderStatusTag()}
-            {renderPullButton()}
-            {renderSaveButton()}
-            {renderPublishButton()}
-            {renderDeleteButton()}
+            {accountFilter}
+            {statusTag}
+            {pullButton}
+            {saveButton}
+            {publishButton}
+            {deleteButton}
           </>
         )}
         mobilePrimary={(
           <>
-            {renderStatusTag()}
-            {renderPublishButton() ?? renderSaveButton()}
+            {statusTag}
+            {publishButton ?? saveButton}
           </>
         )}
-        mobileFilters={renderAccountFilter()}
-        mobileActions={renderMobileActions()}
+        mobileFilters={accountFilter}
+        mobileActions={mobileActions}
         filterTitle="自定义菜单筛选"
         actionTitle="自定义菜单操作"
       />

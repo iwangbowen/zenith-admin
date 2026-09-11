@@ -31,7 +31,7 @@ interface SearchParams {
   channel?: string;
   status?: string;
 }
-const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: '' };
+const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: undefined };
 
 export default function PaymentChannelsPage() {
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');

@@ -1,14 +1,14 @@
 /** 我的收藏：CMS 内容收藏列表（点击跳前台详情，可取消收藏） */
-import { useState } from 'react';
 import { Button, Modal, Toast } from '@douyinfe/semi-ui';
 import { Trash2 } from 'lucide-react';
 import { MemberPage } from '../../components/MemberPage';
 import { CmsContentPagedList } from '../../components/CmsContentList';
 import { useMyCmsFavorites, useRemoveCmsFavorite } from '../../hooks/queries';
+import { usePagination } from '@/hooks/usePagination';
 
 export default function FavoritesPage() {
-  const [page, setPage] = useState(1);
-  const listQuery = useMyCmsFavorites({ page, pageSize: 10 });
+  const { page, pageSize, setPage } = usePagination(10);
+  const listQuery = useMyCmsFavorites({ page, pageSize });
   const removeMutation = useRemoveCmsFavorite();
 
   const list = listQuery.data?.list ?? [];

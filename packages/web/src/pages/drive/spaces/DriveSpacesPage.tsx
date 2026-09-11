@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Checkbox, Input, InputNumber, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
@@ -11,9 +11,8 @@ import {
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import UserSelect from '@/components/UserSelect';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
@@ -191,21 +190,18 @@ export default function DriveSpacesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
+      <ListSearchToolbar
+        keyword={<KeywordInput {...bindKeyword('keyword')} placeholder="搜索空间名称" />}
         filters={(
           <>
-            <KeywordInput {...bindKeyword('keyword')} placeholder="搜索空间名称" />
             <FilterSelect<DriveSpaceType> {...bind('type')} placeholder="全部类型" items={DRIVE_SPACE_TYPE_OPTIONS} />
             <Checkbox checked={draftParams.archived} onChange={(e) => setField('archived')(!!e.target.checked)}>只看已归档</Checkbox>
           </>
         )}
-        actions={(
-          <>
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {hasPermission('drive:space:create') && <CreateButton onClick={() => setSpaceEditor('create')}>新建协作空间</CreateButton>}
-          </>
-        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('drive:space:create') ? <CreateButton onClick={() => setSpaceEditor('create')}>新建协作空间</CreateButton> : null}
+        filterTitle="空间筛选"
       />
       <ConfigurableTable<DriveSpace> columns={columns}
         {...listTableProps(listQuery, { pagination: buildPagination })}

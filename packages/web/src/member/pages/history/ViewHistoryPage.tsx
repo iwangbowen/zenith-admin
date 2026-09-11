@@ -1,15 +1,15 @@
 /** 浏览历史：CMS 内容浏览记录（最近浏览优先，可清空） */
-import { useState } from 'react';
 import { Button, Toast } from '@douyinfe/semi-ui';
 import { Trash2 } from 'lucide-react';
 import { MemberPage } from '../../components/MemberPage';
 import { CmsContentPagedList } from '../../components/CmsContentList';
 import { useMyCmsViewHistory, useClearCmsViewHistory } from '../../hooks/queries';
 import { confirmDelete } from '@/utils/confirm';
+import { usePagination } from '@/hooks/usePagination';
 
 export default function ViewHistoryPage() {
-  const [page, setPage] = useState(1);
-  const listQuery = useMyCmsViewHistory({ page, pageSize: 10 });
+  const { page, pageSize, setPage } = usePagination(10);
+  const listQuery = useMyCmsViewHistory({ page, pageSize });
   const clearMutation = useClearCmsViewHistory();
 
   const list = listQuery.data?.list ?? [];

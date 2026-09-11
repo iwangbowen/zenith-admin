@@ -1,14 +1,12 @@
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { RuleExecution, RuleExecutionSource, RuleRefKind } from '@zenith/shared/rules';
 import { RULE_EXECUTION_SOURCE_LABELS, RULE_REF_KIND_LABELS, RULE_EXECUTION_SOURCES, RULE_REF_KINDS } from '@zenith/shared/rules';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ruleKeys, useRuleExecutions } from '@/hooks/queries/rules';
 import { formatDateTimeRangeValuesForApi } from '@/utils/date';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
@@ -89,10 +87,10 @@ export default function RuleExecutionsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="规则 Key" {...bindKeyword('ruleKey')} width={180} />}
+        filters={(
           <>
-            <KeywordInput placeholder="规则 Key" {...bindKeyword('ruleKey')} width={180} />
             <FilterSelect
               placeholder="全部类型"
               items={RULE_REF_KINDS.map((k) => ({ value: k, label: RULE_REF_KIND_LABELS[k] }))}
@@ -110,10 +108,11 @@ export default function RuleExecutionsPage() {
               {...bind('matched')}
             />
             <DateRangeFilter {...bind('range')} />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
           </>
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        filterTitle="执行记录筛选"
       />
       <ConfigurableTable
 

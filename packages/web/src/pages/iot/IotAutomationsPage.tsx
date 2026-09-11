@@ -64,7 +64,7 @@ interface AutomationSearchParams {
   status?: string;
 }
 
-const defaultSearch: AutomationSearchParams = { keyword: '', triggerType: undefined, status: '' };
+const defaultSearch: AutomationSearchParams = { keyword: '', triggerType: undefined, status: undefined };
 
 /** 表单值中的动作行（JSON 字段以文本形态编辑，提交时解析） */
 interface ActionFormRow {

@@ -49,15 +49,15 @@ export default function MpOAuthPage() {
 
   const copy = (text: string) => copyTextWithToast(text, { error: '复制失败' });
 
-  const renderAccountFilter = () => (
+  const accountFilter = (
     <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
   );
 
   return (
     <div className="page-container">
       <SearchToolbar
-        primary={renderAccountFilter()}
-        mobilePrimary={renderAccountFilter()}
+        primary={accountFilter}
+        mobilePrimary={accountFilter}
         filterTitle="网页授权筛选"
       />
 

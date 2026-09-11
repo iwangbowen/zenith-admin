@@ -30,7 +30,7 @@ const channelOptions = PAYMENT_CHANNEL_OPTIONS;
 const methodOptions = PAYMENT_METHOD_OPTIONS.filter((option) => enumValueOf(PAYMENT_CASHIER_METHODS, option.value) !== undefined);
 
 interface SearchParams { channel?: string; status?: string; }
-const defaultSearch: SearchParams = { channel: undefined, status: '' };
+const defaultSearch: SearchParams = { channel: undefined, status: undefined };
 
 interface FeeFormValues {
   name: string;

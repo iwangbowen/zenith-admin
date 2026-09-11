@@ -38,7 +38,7 @@ interface ForwardSearchParams {
   status?: string;
 }
 
-const defaultSearch: ForwardSearchParams = { keyword: '', source: undefined, status: '' };
+const defaultSearch: ForwardSearchParams = { keyword: '', source: undefined, status: undefined };
 
 /** 流转规则表单值：请求头以 JSON 文本编辑，提交前由 beforeSave 解析；密钥留空表示不变更 */
 interface ForwardRuleFormValues extends Partial<Omit<CreateIotForwardRuleInput, 'headers'>> {

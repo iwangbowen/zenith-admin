@@ -184,14 +184,12 @@ export default function MpBroadcastsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
+        keyword={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
         filters={
-          <>
-            <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-            <StatusSelect
-              items={STATUS_OPTIONS}
-              {...bind('status')}
-            />
-          </>
+          <StatusSelect
+            items={STATUS_OPTIONS}
+            {...bind('status')}
+          />
         }
         onSearch={handleSearch}
         onReset={handleReset}
