@@ -351,6 +351,43 @@ function journalSourceWhere(scope: PaymentMoneyScope, sourceType: string, source
   );
 }
 
+/** 分录归一化（顺序行号、bigint 金额、空备注归 null）并校验借贷平衡：借贷相等且大于 0 */
+function normalizeBalancedLines(lines: PostPaymentJournalInput['lines']) {
+  const normalized = lines.map((line, index) => ({
+    lineNo: index + 1,
+    accountId: line.accountId,
+    debitAmount: BigInt(line.debitAmount),
+    creditAmount: BigInt(line.creditAmount),
+    memo: line.memo ?? null,
+  }));
+  const debitTotal = normalized.reduce((total, line) => total + line.debitAmount, 0n);
+  const creditTotal = normalized.reduce((total, line) => total + line.creditAmount, 0n);
+  if (debitTotal <= 0n || debitTotal !== creditTotal) {
+    throw new HTTPException(400, { message: '资金凭证借贷金额必须相等且大于 0' });
+  }
+  return normalized;
+}
+
+/**
+ * 同一凭证来源（作用域 + sourceType + sourceId）已入账时的幂等判定：
+ * 内容一致（requestHash 相同）返回已有凭证 id 供复用；不一致抛 409；尚未入账返回 undefined。
+ */
+async function findPostedJournalId(
+  executor: DbExecutor,
+  scope: PaymentMoneyScope,
+  source: { sourceType: string; sourceId: string },
+  requestHash: string,
+): Promise<number | undefined> {
+  const [existing] = await executor
+    .select({ id: paymentJournals.id, requestHash: paymentJournals.requestHash })
+    .from(paymentJournals)
+    .where(journalSourceWhere(scope, source.sourceType, source.sourceId))
+    .limit(1);
+  if (!existing) return undefined;
+  if (existing.requestHash !== requestHash) throw new HTTPException(409, { message: '同一凭证来源对应的内容不一致' });
+  return existing.id;
+}
+
 async function getJournalForTenant(id: number, tenantId: number | null): Promise<PaymentJournal> {
   const [row] = await db
     .select()
@@ -377,32 +414,14 @@ async function postJournalInternal(
     channelConfigId: input.channelConfigId,
     currency: input.currency,
   };
-  const normalized = input.lines.map((line, index) => ({
-    lineNo: index + 1,
-    accountId: line.accountId,
-    debitAmount: BigInt(line.debitAmount),
-    creditAmount: BigInt(line.creditAmount),
-    memo: line.memo ?? null,
-  }));
-  const debitTotal = normalized.reduce((total, line) => total + line.debitAmount, 0n);
-  const creditTotal = normalized.reduce((total, line) => total + line.creditAmount, 0n);
-  if (debitTotal <= 0n || debitTotal !== creditTotal) {
-    throw new HTTPException(400, { message: '资金凭证借贷金额必须相等且大于 0' });
-  }
+  const normalized = normalizeBalancedLines(input.lines);
   const requestHash = journalRequestHash(input, reversalOfJournalId);
 
   let journalId: number;
   try {
     journalId = await db.transaction(async (tx) => {
-      const [existing] = await tx
-        .select({ id: paymentJournals.id, requestHash: paymentJournals.requestHash })
-        .from(paymentJournals)
-        .where(journalSourceWhere(scope, input.sourceType, input.sourceId))
-        .limit(1);
-      if (existing) {
-        if (existing.requestHash !== requestHash) throw new HTTPException(409, { message: '同一凭证来源对应的内容不一致' });
-        return existing.id;
-      }
+      const posted = await findPostedJournalId(tx, scope, input, requestHash);
+      if (posted !== undefined) return posted;
 
       await assertScopeOwnership(tx, scope);
       const accountIds = [...new Set(normalized.map((line) => line.accountId))];
@@ -562,28 +581,10 @@ async function postSystemJournalWithExecutor(
       memo: line.memo,
     })),
   };
-  const normalized = journalInput.lines.map((line, index) => ({
-    lineNo: index + 1,
-    accountId: line.accountId,
-    debitAmount: BigInt(line.debitAmount),
-    creditAmount: BigInt(line.creditAmount),
-    memo: line.memo ?? null,
-  }));
-  const debitTotal = normalized.reduce((total, line) => total + line.debitAmount, 0n);
-  const creditTotal = normalized.reduce((total, line) => total + line.creditAmount, 0n);
-  if (debitTotal <= 0n || debitTotal !== creditTotal) {
-    throw new HTTPException(400, { message: '资金凭证借贷金额必须相等且大于 0' });
-  }
+  const normalized = normalizeBalancedLines(journalInput.lines);
   const requestHash = journalRequestHash(journalInput, null);
-  const [existing] = await executor
-    .select({ id: paymentJournals.id, requestHash: paymentJournals.requestHash })
-    .from(paymentJournals)
-    .where(journalSourceWhere(scope, input.sourceType, input.sourceId))
-    .limit(1);
-  if (existing) {
-    if (existing.requestHash !== requestHash) throw new HTTPException(409, { message: '同一凭证来源对应的内容不一致' });
-    return existing.id;
-  }
+  const posted = await findPostedJournalId(executor, scope, input, requestHash);
+  if (posted !== undefined) return posted;
   // Idempotency must win before any balance check. A retry after a crash may
   // legitimately see the already-posted journal while the current balance has
   // since changed; re-running the debit guard would incorrectly reject it.

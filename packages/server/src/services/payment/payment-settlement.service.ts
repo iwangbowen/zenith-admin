@@ -189,20 +189,21 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
   if (start > end) throw new HTTPException(400, { message: '账期开始不能晚于结束' });
   const currency = input.currency ?? 'CNY';
   const tenantScope = exactTenantCondition(paymentJournals.tenantId, tenantId);
+  /** 本批次作用域内「未结算的可用资金分录」条件（不含账期），账期条件由两处查询各自追加 */
+  const scopeConditions = [
+    ...unsettledEligibleLineConditions(),
+    eq(paymentJournals.appId, input.applicationId),
+    eq(paymentJournals.channelConfigId, input.channelConfigId),
+    eq(paymentJournals.currency, currency),
+    tenantScope,
+  ];
   const [earliest] = await db
     .select({ postedAt: sql<Date>`min(${paymentJournals.postedAt})` })
     .from(paymentJournalLines)
     .innerJoin(paymentJournals, eq(paymentJournals.id, paymentJournalLines.journalId))
     .innerJoin(paymentLedgerAccounts, eq(paymentLedgerAccounts.id, paymentJournalLines.accountId))
     .leftJoin(paymentSettlementItems, eq(paymentSettlementItems.journalLineId, paymentJournalLines.id))
-    .where(and(
-      ...unsettledEligibleLineConditions(),
-      eq(paymentJournals.appId, input.applicationId),
-      eq(paymentJournals.channelConfigId, input.channelConfigId),
-      eq(paymentJournals.currency, currency),
-      tenantScope,
-      lte(paymentJournals.postedAt, end),
-    ));
+    .where(and(...scopeConditions, lte(paymentJournals.postedAt, end)));
   if (earliest?.postedAt && start && earliest.postedAt < start) {
     throw new HTTPException(400, { message: `账期不能跳过更早的未结算资金，请从 ${formatDate(earliest.postedAt)} 开始` });
   }
@@ -218,14 +219,7 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
     .innerJoin(paymentJournals, eq(paymentJournals.id, paymentJournalLines.journalId))
     .innerJoin(paymentLedgerAccounts, eq(paymentLedgerAccounts.id, paymentJournalLines.accountId))
     .leftJoin(paymentSettlementItems, eq(paymentSettlementItems.journalLineId, paymentJournalLines.id))
-    .where(and(
-      ...unsettledEligibleLineConditions(),
-      eq(paymentJournals.appId, input.applicationId),
-      eq(paymentJournals.channelConfigId, input.channelConfigId),
-      eq(paymentJournals.currency, currency),
-      tenantScope,
-      between(paymentJournals.postedAt, start, end),
-    ));
+    .where(and(...scopeConditions, between(paymentJournals.postedAt, start, end)));
   if (lines.length === 0) throw new HTTPException(400, { message: '该账期没有未结算的可用资金分录' });
   const signedAmounts = lines.map((line) => line.creditAmount - line.debitAmount);
   const netBigInt = signedAmounts.reduce((sum, amount) => sum + amount, 0n);

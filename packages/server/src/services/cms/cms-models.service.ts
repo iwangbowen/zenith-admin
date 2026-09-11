@@ -205,16 +205,23 @@ function modelVisibilityCondition(siteId?: number): SQL | undefined {
   return or(isNull(cmsModels.ownerSiteId), eq(cmsModels.ownerSiteId, siteId));
 }
 
+/** 模型被栏目 / 内容 / 站点扩展引用的 WHERE；`scope` 为站点范围（平台管理员传 `null` 表示全部站点） */
+function cmsModelRefWheres(id: number, scope: number | null | undefined) {
+  return {
+    channelWhere: buildWhere(eq(cmsChannels.modelId, id), scope == null ? undefined : eq(cmsChannels.siteId, scope)),
+    contentWhere: buildWhere(eq(cmsContents.modelId, id), scope == null ? undefined : eq(cmsContents.siteId, scope)),
+    siteWhere: buildWhere(eq(cmsSites.modelId, id), scope == null ? undefined : eq(cmsSites.id, scope)),
+  };
+}
+
 export async function listCmsModels(q: ListCmsModelsQuery) {
   const { keyword = '', status, siteId, page, pageSize } = q;
   const scope = await resolveCmsModelScope(siteId);
-  const conditions: (SQL | undefined)[] = [];
-  conditions.push(keywordCondition(keyword, [cmsModels.name, cmsModels.code]));
-  if (status) conditions.push(eq(cmsModels.status, status));
-  const visibility = modelVisibilityCondition(scope ?? undefined);
-  if (visibility) conditions.push(visibility);
-
-  const where = buildWhere(buildWhere(...conditions));
+  const where = buildWhere(
+    keywordCondition(keyword, [cmsModels.name, cmsModels.code]),
+    status ? eq(cmsModels.status, status) : undefined,
+    modelVisibilityCondition(scope ?? undefined),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -285,15 +292,7 @@ export async function assertCmsModelUsableBySite(modelId: number, siteId: number
 export async function getCmsModelRefs(id: number, siteId?: number) {
   const scope = await resolveCmsModelScope(siteId);
   await ensureCmsModelReadable(id, scope ?? undefined);
-  const channelWhere = scope == null
-    ? eq(cmsChannels.modelId, id)
-    : and(eq(cmsChannels.modelId, id), eq(cmsChannels.siteId, scope));
-  const contentWhere = scope == null
-    ? eq(cmsContents.modelId, id)
-    : and(eq(cmsContents.modelId, id), eq(cmsContents.siteId, scope));
-  const siteWhere = scope == null
-    ? eq(cmsSites.modelId, id)
-    : and(eq(cmsSites.modelId, id), eq(cmsSites.id, scope));
+  const { channelWhere, contentWhere, siteWhere } = cmsModelRefWheres(id, scope);
   const [channels, contentCount, siteExtendCount] = await Promise.all([
     db.select({
       id: cmsChannels.id,
@@ -448,15 +447,7 @@ export async function deleteCmsModel(id: number, siteId?: number) {
       throw new HTTPException(409, { message: '内容模型归属已发生变化，请重试' });
     }
     if (locked.isSystem) throw new HTTPException(400, { message: '系统内置模型不可删除' });
-    const channelWhere = scope == null
-      ? eq(cmsChannels.modelId, id)
-      : and(eq(cmsChannels.modelId, id), eq(cmsChannels.siteId, scope));
-    const contentWhere = scope == null
-      ? eq(cmsContents.modelId, id)
-      : and(eq(cmsContents.modelId, id), eq(cmsContents.siteId, scope));
-    const siteWhere = scope == null
-      ? eq(cmsSites.modelId, id)
-      : and(eq(cmsSites.modelId, id), eq(cmsSites.id, scope));
+    const { channelWhere, contentWhere, siteWhere } = cmsModelRefWheres(id, scope);
     const [channelCount, contentCount, siteExtendCount] = await Promise.all([
       tx.$count(cmsChannels, channelWhere),
       tx.$count(cmsContents, contentWhere),

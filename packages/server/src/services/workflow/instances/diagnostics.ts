@@ -10,6 +10,7 @@ import { currentUser } from '../../../lib/context';
 import { mapInstance, mapTask } from './mapping';
 import { mapTriggerExecution } from '../workflow-trigger-executions.service';
 import { requireRow } from '../../../lib/db-assert';
+import { jobExecutionsWithJob } from '../workflow-job-execution-helpers';
 
 async function instanceDiagnosticWhere(id: number) {
   const user = currentUser();
@@ -260,9 +261,7 @@ export async function getInstanceRuntimeDiagnostics(id: number): Promise<Workflo
     );
   });
   const [triggerExecRows, eventJobRows, instanceJobs, tokenRows] = await Promise.all([
-    db.select({ execution: workflowJobExecutions, job: workflowJobs, nodeName: workflowTasks.nodeName })
-      .from(workflowJobExecutions)
-      .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
+    jobExecutionsWithJob({ execution: workflowJobExecutions, job: workflowJobs, nodeName: workflowTasks.nodeName })
       .leftJoin(workflowTasks, eq(workflowJobs.taskId, workflowTasks.id))
       .where(and(eq(workflowJobs.instanceId, id), eq(workflowJobExecutions.jobType, 'trigger_dispatch')))
       .orderBy(desc(workflowJobExecutions.id))

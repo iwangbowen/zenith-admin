@@ -133,6 +133,12 @@
   在事务内清除范围内其它默认标记，范围条件由调用方给出；**禁止**在 service 里手写 `update(table).set({ isDefault: false })`
 - **工作流实例并发保护**：实例上的审批 / 推进 / 管理操作在事务内用 `services/workflow/instances/shared.ts` 的
   `lockInstanceExpecting(tx, id, expectedStatus, message)` 加行级锁并重校验状态；**禁止**手写 `SELECT status … FOR UPDATE` + 409 样板
+- **工作流实例可见性加载**：按 id 读取当前用户可见的实例一律用 `services/workflow/instances/shared.ts` 的
+  `requireVisibleInstance(id, message?, executor?)`（不存在即 404）/ `findVisibleInstance(id, executor?)`（返回 `undefined`）；
+  **禁止**再手写 `eq(id) + tenantCondition(workflowInstances, currentUser())` → `select … limit(1)` → `requireRow` 五行块
+- **工作流作业执行记录查询**：事件投递 / 触发器执行等「执行记录 ⋈ 父作业」的列表与定位统一从
+  `services/workflow/workflow-job-execution-helpers.ts` 的 `jobExecutionsWithJob(projection)` 起步、`countJobExecutions(where)` 计数，
+  各域只保留自己的 `leftJoin` / 范围条件 / 排序；**禁止**重复手写 `innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))` + `count(*)::int`
 - **工作流新任务事件**：推进 / 跳转 / 恢复产生的新任务一律经 `services/workflow/instances/shared.ts` 的
   `emitTasksEnteredEvents(instanceId, tasks, meta, executor?)` 补发 `node.entered` → `task.created` → 按状态 `task.assigned` /
   `task.approved` / `task.rejected`（事务内传 `executor` 并 `await`，提交后同步发射不传）；**禁止**在各推进路径手写这组循环；

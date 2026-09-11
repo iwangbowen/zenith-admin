@@ -15,6 +15,7 @@ import { getWorkflowEventBusIntrospection } from '../../lib/workflow-event-bus';
 import { validateFlowData } from '../../lib/workflow-engine';
 import { mapTriggerExecution as mapSharedTriggerExecution } from './workflow-trigger-executions.service';
 import { payloadString } from './payload-utils';
+import { jobExecutionsWithJob } from './workflow-job-execution-helpers';
 import { buildWhere } from '../../lib/where-helpers';
 
 type ComponentKey = WorkflowEngineComponent['key'];
@@ -489,9 +490,7 @@ export async function getWorkflowEngineIntrospection(
       ))
       .orderBy(asc(workflowTasks.createdAt))
       .limit(300),
-    db.select({ execution: workflowJobExecutions, job: workflowJobs, nodeName: workflowTasks.nodeName, instanceTitle: workflowInstances.title })
-      .from(workflowJobExecutions)
-      .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
+    jobExecutionsWithJob({ execution: workflowJobExecutions, job: workflowJobs, nodeName: workflowTasks.nodeName, instanceTitle: workflowInstances.title })
       .innerJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
       .leftJoin(workflowTasks, eq(workflowJobs.taskId, workflowTasks.id))
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
@@ -546,7 +545,7 @@ export async function getWorkflowEngineIntrospection(
       .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
       .where(buildWhere(...outboxScopeConds)),
-    db.select({
+    jobExecutionsWithJob({
       total24h: sql<number>`count(*) filter (where ${gte(workflowJobExecutions.createdAt, since24h)})`.mapWith(Number),
       success24h: sql<number>`count(*) filter (where ${and(eq(workflowJobExecutions.status, 'succeeded'), gte(workflowJobExecutions.createdAt, since24h))})`.mapWith(Number),
       failed24h: sql<number>`count(*) filter (where ${and(eq(workflowJobExecutions.status, 'failed'), gte(workflowJobExecutions.createdAt, since24h))})`.mapWith(Number),
@@ -566,8 +565,6 @@ export async function getWorkflowEngineIntrospection(
       th5: sql<number>`count(*) filter (where ${trDone24h} and ${trDuration} >= 1000 and ${trDuration} < 5000)`.mapWith(Number),
       th6: sql<number>`count(*) filter (where ${trDone24h} and ${trDuration} >= 5000)`.mapWith(Number),
     })
-      .from(workflowJobExecutions)
-      .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
       .innerJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
       .where(buildWhere(...triggerScopeConds)),

@@ -1,5 +1,4 @@
 import { desc, eq, sql, type SQL } from 'drizzle-orm';
-import { db } from '../../db';
 import { workflowJobExecutions, workflowJobs, workflowTasks, workflowInstances } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
@@ -9,6 +8,8 @@ import type { WorkflowTriggerExecution, WorkflowTriggerExecutionStatus, Workflow
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere } from '../../lib/where-helpers';
+import { payloadString } from './payload-utils';
+import { countJobExecutions, jobExecutionsWithJob } from './workflow-job-execution-helpers';
 
 /**
  * 触发器执行记录的原始行。nodeName 取自 workflow_tasks.node_name（非空列，建任务时冻结），
@@ -20,12 +21,6 @@ export interface TriggerExecutionRow {
   nodeName: string | null;
   /** 实例标题；引擎内省等调用方不查实例表时可缺省 */
   instanceTitle?: string | null;
-}
-
-function getPayloadString(payload: unknown, key: string): string | null {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  const value = (payload as Record<string, unknown>)[key];
-  return typeof value === 'string' ? value : null;
 }
 
 /**
@@ -66,7 +61,7 @@ export function mapTriggerExecution(row: TriggerExecutionRow): WorkflowTriggerEx
     taskId: job.taskId ?? null,
     nodeKey: job.nodeKey ?? '',
     nodeName: row.nodeName,
-    triggerType: (getPayloadString(job.payload, 'triggerType') ?? 'webhook') as WorkflowTriggerType,
+    triggerType: (payloadString(job.payload, 'triggerType') ?? 'webhook') as WorkflowTriggerType,
     status: deriveTriggerExecutionStatus(job, execution),
     attempt: execution.attempt,
     requestUrl: execution.requestUrl ?? null,
@@ -89,6 +84,21 @@ const TRIGGER_EXECUTION_SELECTION = {
   instanceTitle: workflowInstances.title,
 } as const;
 
+function triggerExecutionsQuery() {
+  return jobExecutionsWithJob(TRIGGER_EXECUTION_SELECTION)
+    .leftJoin(workflowTasks, eq(workflowJobs.taskId, workflowTasks.id))
+    .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id));
+}
+
+/** 触发器执行记录的范围条件：trigger_dispatch 类型 + 当前用户租户范围 */
+function triggerExecutionConditions(...extra: (SQL | undefined)[]): SQL | undefined {
+  return buildWhere(
+    eq(workflowJobExecutions.jobType, 'trigger_dispatch'),
+    tenantCondition(workflowJobExecutions, currentUser()),
+    ...extra,
+  );
+}
+
 export interface ListTriggerExecutionsParams {
   page?: number;
   pageSize?: number;
@@ -100,25 +110,17 @@ export interface ListTriggerExecutionsParams {
 export async function listTriggerExecutions(params: ListTriggerExecutionsParams) {
   const page = params.page && params.page > 0 ? params.page : 1;
   const pageSize = params.pageSize && params.pageSize > 0 ? params.pageSize : 20;
-  const tc = tenantCondition(workflowJobExecutions, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowJobExecutions.jobType, 'trigger_dispatch'), tc];
-  if (params.instanceId) conds.push(eq(workflowJobs.instanceId, params.instanceId));
-  if (params.nodeKey) conds.push(eq(workflowJobs.nodeKey, params.nodeKey));
-  if (params.status) conds.push(sql`${triggerExecutionStatusSql} = ${params.status}`);
-  const where = buildWhere(...conds);
+  const where = triggerExecutionConditions(
+    params.instanceId ? eq(workflowJobs.instanceId, params.instanceId) : undefined,
+    params.nodeKey ? eq(workflowJobs.nodeKey, params.nodeKey) : undefined,
+    params.status ? sql`${triggerExecutionStatusSql} = ${params.status}` : undefined,
+  );
 
   return buildListResult({
     page,
     pageSize,
-    count: () => db.select({ c: sql<number>`count(*)::int` })
-      .from(workflowJobExecutions)
-      .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
-      .where(where)
-      .then((r) => r[0]?.c ?? 0),
-    rows: () => db.select(TRIGGER_EXECUTION_SELECTION).from(workflowJobExecutions)
-      .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
-      .leftJoin(workflowTasks, eq(workflowJobs.taskId, workflowTasks.id))
-      .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
+    count: () => countJobExecutions(where),
+    rows: () => triggerExecutionsQuery()
       .where(where)
       .orderBy(desc(workflowJobExecutions.id))
       .limit(pageSize)
@@ -128,14 +130,8 @@ export async function listTriggerExecutions(params: ListTriggerExecutionsParams)
 }
 
 export async function getTriggerExecution(id: number) {
-  const tc = tenantCondition(workflowJobExecutions, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowJobExecutions.id, id), eq(workflowJobExecutions.jobType, 'trigger_dispatch'), tc];
-  const [row] = await db.select(TRIGGER_EXECUTION_SELECTION)
-    .from(workflowJobExecutions)
-    .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
-    .leftJoin(workflowTasks, eq(workflowJobs.taskId, workflowTasks.id))
-    .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
-    .where(buildWhere(...conds))
+  const [row] = await triggerExecutionsQuery()
+    .where(triggerExecutionConditions(eq(workflowJobExecutions.id, id)))
     .limit(1);
   return mapTriggerExecution(requireRow(row, '触发器执行记录不存在'));
 }

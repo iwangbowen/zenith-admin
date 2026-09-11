@@ -18,22 +18,9 @@ import {
   providerHttpOptions,
   readProviderResponseText,
 } from './provider-http';
-import { requireSandboxOperation, sandboxProfitShareReverse } from './adapter-sandbox';
-import { buildSignedSandboxOperation } from './sandbox-operation';
+import { requireSandboxOperation, sandboxContractPreauthOps, sandboxProfitShareReverse } from './adapter-sandbox';
 import type {
   AdapterContext,
-  ContractDeductInput,
-  ContractDeductResult,
-  ContractQueryInput,
-  ContractQueryResult,
-  ContractSignInput,
-  ContractSignResult,
-  PreauthCaptureInput,
-  PreauthCaptureResult,
-  PreauthFreezeInput,
-  PreauthFreezeResult,
-  PreauthQueryInput,
-  PreauthQueryResult,
   NotifyResult,
   PaymentChannelAdapter,
   PaymentQueryResult,
@@ -490,87 +477,19 @@ export const alipayAdapter: PaymentChannelAdapter = {
     };
   },
 
-  // ── 签约代扣（周期扣款）：真实模式需商户开通周期扣款产品权限，本期仅支持沙箱模拟 ──
-  async signContract(ctx: AdapterContext, input: ContractSignInput): Promise<ContractSignResult> {
-    if (ctx.config.sandbox) {
-      logger.info('[alipay] simulate contract sign (sandbox)', { outContractNo: input.outContractNo, plan: input.planName });
-      const signed = buildSignedSandboxOperation(ctx, 'ALICT', 'contract.sign', { outContractNo: input.outContractNo });
-      await Promise.resolve();
-      return { channelContractNo: signed.reference, status: 'signed', raw: signed.raw };
-    }
-    throw new HTTPException(400, { message: '支付宝周期扣款需商户开通产品权限，当前仅支持沙箱渠道签约' });
-  },
-
-  async terminateContract(ctx: AdapterContext, input): Promise<void> {
-    if (ctx.config.sandbox) {
-      logger.info('[alipay] simulate contract terminate (sandbox)', { outContractNo: input.outContractNo });
-      await Promise.resolve();
-      return;
-    }
-    throw new HTTPException(400, { message: '支付宝周期扣款需商户开通产品权限，当前仅支持沙箱渠道解约' });
-  },
-
-  async queryContract(ctx: AdapterContext, input: ContractQueryInput): Promise<ContractQueryResult> {
-    requireSandboxOperation(ctx, 'contract.query', 'alipay');
-    const signed = buildSignedSandboxOperation(ctx, 'ALICT', 'contract.sign', { outContractNo: input.outContractNo });
-    await Promise.resolve();
-    return {
-      status: input.operation === 'terminate' ? 'terminated' : 'signed',
-      channelContractNo: input.channelContractNo ?? signed.reference,
-      raw: signed.raw,
-    };
-  },
-
-  async deductContract(ctx: AdapterContext, input: ContractDeductInput): Promise<ContractDeductResult> {
-    if (ctx.config.sandbox) {
-      logger.info('[alipay] simulate contract deduct (sandbox)', { outTradeNo: input.outTradeNo, amount: input.amount });
-      await Promise.resolve();
-      return { channelTradeNo: `ALIDED${Date.now()}${Math.floor(Math.random() * 1e6)}`, status: 'success' };
-    }
-    throw new HTTPException(400, { message: '支付宝周期扣款需商户开通产品权限，当前仅支持沙箱渠道扣款' });
-  },
-
-  // ── 预授权（资金授权冻结/转交易/解冻）：真实模式需开通资金预授权产品权限，本期仅支持沙箱 ──
-  async preauthFreeze(ctx: AdapterContext, input: PreauthFreezeInput): Promise<PreauthFreezeResult> {
-    if (ctx.config.sandbox) {
-      logger.info('[alipay] simulate preauth freeze (sandbox)', { outPreauthNo: input.outPreauthNo, amount: input.amount });
-      const signed = buildSignedSandboxOperation(ctx, 'ALIPA', 'preauth.freeze', { outPreauthNo: input.outPreauthNo });
-      await Promise.resolve();
-      return { channelPreauthNo: signed.reference, status: 'frozen', raw: signed.raw };
-    }
-    throw new HTTPException(400, { message: '支付宝资金预授权需商户开通产品权限，当前仅支持沙箱渠道冻结' });
-  },
-
-  async preauthCapture(ctx: AdapterContext, input: PreauthCaptureInput): Promise<PreauthCaptureResult> {
-    if (ctx.config.sandbox) {
-      logger.info('[alipay] simulate preauth capture (sandbox)', { outPreauthNo: input.outPreauthNo, captureAmount: input.captureAmount });
-      const signed = buildSignedSandboxOperation(ctx, 'ALIPAC', 'preauth.capture', { outPreauthNo: input.outPreauthNo, outTradeNo: input.outTradeNo });
-      await Promise.resolve();
-      return { channelTradeNo: signed.reference, status: 'success', raw: signed.raw };
-    }
-    throw new HTTPException(400, { message: '支付宝资金预授权需商户开通产品权限，当前仅支持沙箱渠道转支付' });
-  },
-
-  async preauthRelease(ctx: AdapterContext, input): Promise<void> {
-    if (ctx.config.sandbox) {
-      logger.info('[alipay] simulate preauth release (sandbox)', { outPreauthNo: input.outPreauthNo });
-      await Promise.resolve();
-      return;
-    }
-    throw new HTTPException(400, { message: '支付宝资金预授权需商户开通产品权限，当前仅支持沙箱渠道解冻' });
-  },
-
-  async queryPreauth(ctx: AdapterContext, input: PreauthQueryInput): Promise<PreauthQueryResult> {
-    if (!ctx.config.sandbox) throw new HTTPException(400, { message: 'CAPABILITY_UNSUPPORTED: alipay/preauth.query/live' });
-    if (input.operation === 'capture') {
-      const signed = buildSignedSandboxOperation(ctx, 'ALIPAC', 'preauth.capture', { outPreauthNo: input.outPreauthNo, outTradeNo: input.outTradeNo });
-      return { status: 'captured', channelPreauthNo: input.channelPreauthNo, channelTradeNo: signed.reference, raw: signed.raw };
-    }
-    const signed = buildSignedSandboxOperation(ctx, 'ALIPA', 'preauth.freeze', { outPreauthNo: input.outPreauthNo });
-    return {
-      status: input.operation === 'release' ? 'released' : 'frozen',
-      channelPreauthNo: input.channelPreauthNo ?? signed.reference,
-      raw: signed.raw,
-    };
-  },
+  // ── 签约代扣（周期扣款）/ 资金预授权：真实模式需商户开通对应产品权限，本期仅支持沙箱模拟 ──
+  ...sandboxContractPreauthOps({
+    label: 'alipay',
+    logPrefix: '[alipay]',
+    refs: { contract: 'ALICT', preauth: 'ALIPA', preauthCapture: 'ALIPAC', deduct: 'ALIDED' },
+    deductSuffix: () => String(Math.floor(Math.random() * 1e6)),
+    liveMessages: {
+      sign: '支付宝周期扣款需商户开通产品权限，当前仅支持沙箱渠道签约',
+      terminate: '支付宝周期扣款需商户开通产品权限，当前仅支持沙箱渠道解约',
+      deduct: '支付宝周期扣款需商户开通产品权限，当前仅支持沙箱渠道扣款',
+      preauthFreeze: '支付宝资金预授权需商户开通产品权限，当前仅支持沙箱渠道冻结',
+      preauthCapture: '支付宝资金预授权需商户开通产品权限，当前仅支持沙箱渠道转支付',
+      preauthRelease: '支付宝资金预授权需商户开通产品权限，当前仅支持沙箱渠道解冻',
+    },
+  }),
 };

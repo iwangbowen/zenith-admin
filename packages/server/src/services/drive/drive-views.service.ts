@@ -25,6 +25,21 @@ async function spaceNameMap(rows: Array<{ spaceId: number }>): Promise<Map<numbe
   return new Map(spaces.map((s) => [s.id, s.name]));
 }
 
+type DriveSubjects = Awaited<ReturnType<typeof loadDriveSubjects>>;
+
+/**
+ * 分页取出的节点行 → 展示节点（收藏 / 最近 / 与我共享 / 搜索四个视图共用的尾段）：
+ * 挂当前用户角色、按角色装饰、补空间名。`visible` 是挂角色后的行（搜索用它取正文摘要），
+ * `list` 与 `visible` 同序；需要按其它顺序或附加字段组装时用 `byId`。
+ */
+async function decorateVisibleNodes(rows: DriveNodeRow[], subjects: DriveSubjects) {
+  const visible = await attachNodeRoles(rows, subjects);
+  const names = await spaceNameMap(visible);
+  const decorated = await decorateNodes(visible, new Map(visible.map((r) => [r.id, r.myRole])));
+  const list = decorated.map((n) => ({ ...n, spaceName: names.get(n.spaceId) ?? '' }));
+  return { visible, list, byId: new Map(list.map((n) => [n.id, n])) };
+}
+
 // ─── 收藏 ─────────────────────────────────────────────────────────────────────
 
 export async function setDriveNodeStar(nodeId: number, starred: boolean): Promise<boolean> {
@@ -57,10 +72,7 @@ export async function listStarredNodes(q: PagedQuery) {
     count: () => db.$count(driveNodes, where),
     rows: async () => {
       const rows = await withPagination(db.select().from(driveNodes).where(where).orderBy(desc(driveNodes.updatedAt), desc(driveNodes.id)).$dynamic(), page, pageSize);
-      const visible = await attachNodeRoles(rows, subjects);
-      const names = await spaceNameMap(visible);
-      const list = await decorateNodes(visible, new Map(visible.map((r) => [r.id, r.myRole])));
-      return list.map((n) => ({ ...n, spaceName: names.get(n.spaceId) ?? '' }));
+      return (await decorateVisibleNodes(rows, subjects)).list;
     },
   });
 }
@@ -92,15 +104,10 @@ export async function listRecentNodes(q: PagedQuery) {
     },
     rows: async () => {
       const rows = await withPagination(base.orderBy(desc(driveRecentAccess.lastAccessAt)).$dynamic(), page, pageSize);
-      const nodeRows = rows.map((r) => r.node);
-      const visible = await attachNodeRoles(nodeRows, subjects);
-      const names = await spaceNameMap(visible);
-      const decorated = await decorateNodes(visible, new Map(visible.map((r) => [r.id, r.myRole])));
-      const decoratedMap = new Map(decorated.map((d) => [d.id, d]));
+      const { byId } = await decorateVisibleNodes(rows.map((r) => r.node), subjects);
       return rows
         .map((r): DriveRecentItem => ({
-          ...decoratedMap.get(r.node.id)!,
-          spaceName: names.get(r.node.spaceId) ?? '',
+          ...byId.get(r.node.id)!,
           lastAccessAt: formatDateTime(r.lastAccessAt),
           lastAction: r.lastAction,
         }));
@@ -141,12 +148,9 @@ export async function listSharedWithMe(q: PagedQuery) {
         const cur = grantMap.get(g.nodeId);
         if (!cur || priority[g.subjectType] > priority[cur.via]) grantMap.set(g.nodeId, { via: g.subjectType, role: g.role });
       }
-      const visible = await attachNodeRoles(rows, subjects);
-      const names = await spaceNameMap(visible);
-      const decorated = await decorateNodes(visible, new Map(visible.map((r) => [r.id, r.myRole])));
-      return decorated.map((n): DriveSharedItem => ({
+      const { list } = await decorateVisibleNodes(rows, subjects);
+      return list.map((n): DriveSharedItem => ({
         ...n,
-        spaceName: names.get(n.spaceId) ?? '',
         grantedVia: grantMap.get(n.id)?.via ?? 'user',
         grantedRole: grantMap.get(n.id)?.role ?? 'viewer',
       }));
@@ -213,8 +217,7 @@ export async function searchDriveNodes(q: SearchDriveNodesQuery) {
     count: () => db.$count(driveNodes, where),
     rows: async () => {
       const rows = await withPagination(db.select().from(driveNodes).where(where).orderBy(desc(driveNodes.updatedAt), desc(driveNodes.id)).$dynamic(), page, pageSize);
-      const visible = await attachNodeRoles(rows, subjects);
-      const names = await spaceNameMap(visible);
+      const { visible, list } = await decorateVisibleNodes(rows, subjects);
       const isCjk = CJK_PATTERN.test(keyword);
       const snippets = q.fullText && visible.length
         ? await db.select({
@@ -228,10 +231,8 @@ export async function searchDriveNodes(q: SearchDriveNodesQuery) {
         ))
         : [];
       const snippetMap = new Map(snippets.map((s) => [s.nodeId, isCjk ? substringSnippet(s.snippet, keyword) : s.snippet]));
-      const decorated = await decorateNodes(visible, new Map(visible.map((r) => [r.id, r.myRole])));
-      return decorated.map((n): DriveSearchItem => ({
+      return list.map((n): DriveSearchItem => ({
         ...n,
-        spaceName: names.get(n.spaceId) ?? '',
         snippet: snippetMap.get(n.id) ?? null,
       }));
     },

@@ -283,6 +283,28 @@ export async function dispatchSharing(input: DispatchSharingInput): Promise<Paym
 }
 
 /** 调渠道执行分账并落状态（不抛出渠道异常，统一转 failed + attempts 累加，供手动/自动/重试三路径复用）。 */
+/**
+ * 分账单的乐观锁推进：只对仍在 processing / failed 且版本未变的行生效，attempts + 1、version + 1；
+ * CAS 落空（并发已推进）时回读最新行，读不到则沿用入参行，调用方按返回的 row 继续。
+ */
+async function casAdvanceSharing(
+  sharing: PaymentSharingOrderRow,
+  patch: { status: PaymentSharingOrderStatus; channelSharingNo?: string | null; finishedAt: Date | null },
+): Promise<PaymentSharingOrderRow> {
+  const [updated] = await db
+    .update(paymentSharingOrders)
+    .set({ ...patch, attempts: sharing.attempts + 1, version: sql`${paymentSharingOrders.version} + 1` })
+    .where(and(
+      eq(paymentSharingOrders.id, sharing.id),
+      eq(paymentSharingOrders.version, sharing.version),
+      inArray(paymentSharingOrders.status, ['processing', 'failed']),
+    ))
+    .returning();
+  if (updated) return updated;
+  const [latest] = await db.select().from(paymentSharingOrders).where(eq(paymentSharingOrders.id, sharing.id)).limit(1);
+  return latest ?? sharing;
+}
+
 async function executeSharingAtChannel(
   sharing: PaymentSharingOrderRow,
   order: PaymentOrderRow,
@@ -313,67 +335,28 @@ async function executeSharingAtChannel(
         await recordSharingJournal(sharing, order, receiver.name);
       } catch (accountingError) {
         logger.error('[payment-sharing] journal posting failed', { sharingNo: sharing.sharingNo, err: accountingError });
-        const [pending] = await db
-          .update(paymentSharingOrders)
-          .set({
-            status: 'processing',
-            channelSharingNo: res.channelSharingNo ?? sharing.channelSharingNo,
-            attempts: sharing.attempts + 1,
-            version: sql`${paymentSharingOrders.version} + 1`,
-            finishedAt: null,
-          })
-          .where(and(
-            eq(paymentSharingOrders.id, sharing.id),
-            eq(paymentSharingOrders.version, sharing.version),
-            inArray(paymentSharingOrders.status, ['processing', 'failed']),
-          ))
-          .returning();
-        const latest = pending ?? (await db.select().from(paymentSharingOrders).where(eq(paymentSharingOrders.id, sharing.id)).limit(1))[0];
-        return { row: latest ?? sharing, error: accountingError };
+        const row = await casAdvanceSharing(sharing, {
+          status: 'processing',
+          channelSharingNo: res.channelSharingNo ?? sharing.channelSharingNo,
+          finishedAt: null,
+        });
+        return { row, error: accountingError };
       }
     }
-    const [updated] = await db
-      .update(paymentSharingOrders)
-      .set({
-        status,
-        channelSharingNo: res.channelSharingNo ?? null,
-        attempts: sharing.attempts + 1,
-        version: sql`${paymentSharingOrders.version} + 1`,
-        finishedAt: status === 'success' || status === 'failed' ? new Date() : null,
-      })
-      .where(and(
-        eq(paymentSharingOrders.id, sharing.id),
-        eq(paymentSharingOrders.version, sharing.version),
-        inArray(paymentSharingOrders.status, ['processing', 'failed']),
-      ))
-      .returning();
-    if (!updated) {
-      const [latest] = await db.select().from(paymentSharingOrders).where(eq(paymentSharingOrders.id, sharing.id)).limit(1);
-      return { row: latest ?? sharing };
-    }
-    return { row: updated };
+    const row = await casAdvanceSharing(sharing, {
+      status,
+      channelSharingNo: res.channelSharingNo ?? null,
+      finishedAt: status === 'success' || status === 'failed' ? new Date() : null,
+    });
+    return { row };
   } catch (err) {
     logger.error('[payment-sharing] channel dispatch failed', { sharingNo: sharing.sharingNo, orderNo: order.orderNo, err });
     const resultUnknown = providerAccepted || isIndeterminateProviderError(err);
-    const [updated] = await db
-      .update(paymentSharingOrders)
-      .set({
-        status: resultUnknown ? 'processing' : 'failed',
-        attempts: sharing.attempts + 1,
-        version: sql`${paymentSharingOrders.version} + 1`,
-        finishedAt: resultUnknown ? null : new Date(),
-      })
-      .where(and(
-        eq(paymentSharingOrders.id, sharing.id),
-        eq(paymentSharingOrders.version, sharing.version),
-        inArray(paymentSharingOrders.status, ['processing', 'failed']),
-      ))
-      .returning();
-    if (!updated) {
-      const [latest] = await db.select().from(paymentSharingOrders).where(eq(paymentSharingOrders.id, sharing.id)).limit(1);
-      return { row: latest ?? sharing, error: err };
-    }
-    return { row: updated, error: err };
+    const row = await casAdvanceSharing(sharing, {
+      status: resultUnknown ? 'processing' : 'failed',
+      finishedAt: resultUnknown ? null : new Date(),
+    });
+    return { row, error: err };
   }
 }
 

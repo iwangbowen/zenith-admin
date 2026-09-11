@@ -1096,15 +1096,21 @@ export async function refund(input: CreateRefundInput & { idempotencyKey: string
   return executeChannelRefund(order, refundRow, config);
 }
 
-/** 审批通过待审批退款单并执行渠道退款。 */
-export async function approveRefund(id: number, remark?: string): Promise<{ refundNo: string; status: string }> {
+/** 审批 / 驳回共用的前置：租户可见的待审批退款单 + 原订单 */
+async function loadPendingRefundForApproval(id: number) {
   const user = currentUser();
-  const tc = tenantCondition(paymentRefunds, user);
-  const [refundRow] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.id, id), tc)).limit(1);
+  const [refundRow] = await db.select().from(paymentRefunds)
+    .where(buildWhere(eq(paymentRefunds.id, id), tenantCondition(paymentRefunds, user))).limit(1);
   requireRow(refundRow, '退款记录不存在');
   if (refundRow.approvalStatus !== 'pending') throw new HTTPException(400, { message: '该退款单无需审批或已处理' });
   const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, refundRow.orderNo)).limit(1);
   requireRow(order, '原支付订单不存在');
+  return { user, refundRow, order };
+}
+
+/** 审批通过待审批退款单并执行渠道退款。 */
+export async function approveRefund(id: number, remark?: string): Promise<{ refundNo: string; status: string }> {
+  const { user, refundRow, order } = await loadPendingRefundForApproval(id);
   const config = await loadOrderConfig(order);
   if (!config) throw new HTTPException(400, { message: '支付渠道配置不存在，无法退款' });
 
@@ -1130,13 +1136,7 @@ export async function approveRefund(id: number, remark?: string): Promise<{ refu
 
 /** 驳回待审批退款单（退款单置失败，订单不变）。 */
 export async function rejectRefund(id: number, remark: string): Promise<void> {
-  const user = currentUser();
-  const tc = tenantCondition(paymentRefunds, user);
-  const [refundRow] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.id, id), tc)).limit(1);
-  requireRow(refundRow, '退款记录不存在');
-  if (refundRow.approvalStatus !== 'pending') throw new HTTPException(400, { message: '该退款单无需审批或已处理' });
-  const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, refundRow.orderNo)).limit(1);
-  requireRow(order, '原支付订单不存在');
+  const { user, refundRow, order } = await loadPendingRefundForApproval(id);
   const eventId = await db.transaction(async (tx) => {
     const updated = await tx
       .update(paymentRefunds)

@@ -5,6 +5,7 @@ import { workflowJobExecutions, workflowJobs, workflowInstances, workflowTasks, 
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { tenantCondition } from '../../lib/tenant';
+import { jobExecutionsWithJob } from './workflow-job-execution-helpers';
 
 type TaskRow = {
   task: typeof workflowTasks.$inferSelect;
@@ -67,9 +68,7 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
     .filter((row) => row.task.nodeType === 'trigger')
     .map((row) => row.task.id);
   const triggerExecutions = triggerTaskIds.length > 0
-    ? await db.select({ taskId: workflowJobs.taskId })
-      .from(workflowJobExecutions)
-      .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
+    ? await jobExecutionsWithJob({ taskId: workflowJobs.taskId })
       .where(and(eq(workflowJobExecutions.jobType, 'trigger_dispatch'), inArray(workflowJobs.taskId, triggerTaskIds)))
     : [];
   const triggerTaskIdsWithExecution = new Set(triggerExecutions.map((row) => row.taskId).filter((id): id is number => typeof id === 'number'));

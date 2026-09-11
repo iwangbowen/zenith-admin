@@ -1,4 +1,5 @@
-import { eq, and, desc, sql, inArray, ne, asc, gte, lte, lt, gt } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, ne, asc, gte, lte, lt, gt, type SQL } from 'drizzle-orm';
+import type { PgSelect } from 'drizzle-orm/pg-core';
 import { db } from '../../db';
 import { chatConversations, chatConversationMembers, chatMessages, chatMessageFavorites, users } from '../../db/schema';
 import { scheduleSendToUsers } from '../../lib/ws-manager';
@@ -198,31 +199,33 @@ export async function listPinnedMessages(conversationId: number): Promise<ChatMe
   )), favIds);
 }
 
-export async function listFavoriteMessages(conversationId: number, page: number, pageSize: number) {
-  const me = currentUser();
-  await ensureConversationMember(conversationId);
-
-  const where = and(
-    eq(chatMessages.conversationId, conversationId),
-    eq(chatMessageFavorites.userId, me.userId),
-    notHiddenFor(me.userId),
-  );
+/**
+ * 收藏消息列表公共主体：`chatMessages ⋈ chatMessageFavorites`（全局视图额外 ⋈ 会话成员表，成员身份条件由调用方放进 `where`），
+ * 按收藏时间倒序分页。
+ */
+function favoriteMessagesList(where: SQL | undefined, page: number, pageSize: number, opts: { joinMembers: boolean }) {
+  // 选择列为显式投影（partial 模式），追加 inner join 不改变结果行类型，故可安全断言回 T；成员表只用于成员身份过滤
+  const withMembers = <T extends PgSelect>(qb: T): T => (opts.joinMembers
+    ? qb.innerJoin(chatConversationMembers, eq(chatConversationMembers.conversationId, chatMessages.conversationId)) as unknown as T
+    : qb);
 
   return buildListResult({
     page,
     pageSize,
     count: async () => {
-      const [row] = await db
+      const [row] = await withMembers(db
         .select({ count: sql<number>`count(*)` })
         .from(chatMessages)
         .innerJoin(chatMessageFavorites, eq(chatMessageFavorites.messageId, chatMessages.id))
+        .$dynamic())
         .where(where);
       return Number(row?.count ?? 0);
     },
-    rows: async () => markFavorited(await db
+    rows: async () => markFavorited(await withMembers(db
       .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
       .from(chatMessages)
       .innerJoin(chatMessageFavorites, eq(chatMessageFavorites.messageId, chatMessages.id))
+      .$dynamic())
       .leftJoin(users, eq(chatMessages.senderId, users.id))
       .where(where)
       .orderBy(desc(chatMessageFavorites.createdAt), desc(chatMessages.id))
@@ -231,39 +234,26 @@ export async function listFavoriteMessages(conversationId: number, page: number,
   });
 }
 
+export async function listFavoriteMessages(conversationId: number, page: number, pageSize: number) {
+  const me = currentUser();
+  await ensureConversationMember(conversationId);
+
+  return favoriteMessagesList(and(
+    eq(chatMessages.conversationId, conversationId),
+    eq(chatMessageFavorites.userId, me.userId),
+    notHiddenFor(me.userId),
+  ), page, pageSize, { joinMembers: false });
+}
+
 export async function listGlobalFavoriteMessages(page: number, pageSize: number) {
   const me = currentUser();
 
   // 仍要求当前是会话成员：退群/被移出后无权访问会话内容，收藏随之不可见
-  const where = and(
+  return favoriteMessagesList(and(
     eq(chatConversationMembers.userId, me.userId),
     eq(chatMessageFavorites.userId, me.userId),
     notHiddenFor(me.userId),
-  );
-
-  return buildListResult({
-    page,
-    pageSize,
-    count: async () => {
-      const [row] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(chatMessages)
-        .innerJoin(chatMessageFavorites, eq(chatMessageFavorites.messageId, chatMessages.id))
-        .innerJoin(chatConversationMembers, eq(chatConversationMembers.conversationId, chatMessages.conversationId))
-        .where(where);
-      return Number(row?.count ?? 0);
-    },
-    rows: async () => markFavorited(await db
-      .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
-      .from(chatMessages)
-      .innerJoin(chatMessageFavorites, eq(chatMessageFavorites.messageId, chatMessages.id))
-      .innerJoin(chatConversationMembers, eq(chatConversationMembers.conversationId, chatMessages.conversationId))
-      .leftJoin(users, eq(chatMessages.senderId, users.id))
-      .where(where)
-      .orderBy(desc(chatMessageFavorites.createdAt), desc(chatMessages.id))
-      .limit(pageSize)
-      .offset(pageOffset(page, pageSize))),
-  });
+  ), page, pageSize, { joinMembers: true });
 }
 
 export async function toggleMessageFavorite(messageId: number, favorite: boolean): Promise<ChatMessage> {

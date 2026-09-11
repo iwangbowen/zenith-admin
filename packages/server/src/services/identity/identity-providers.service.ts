@@ -804,6 +804,55 @@ function mapSamlProfile(profile: Profile): Record<string, unknown> {
   return record;
 }
 
+/** 已绑定的外部身份账号（providerId + subject 唯一） */
+async function findIdentityAccount(providerId: number, subject: string) {
+  const [account] = await db
+    .select()
+    .from(userIdentityAccounts)
+    .where(and(eq(userIdentityAccounts.providerId, providerId), eq(userIdentityAccounts.subject, subject)))
+    .limit(1);
+  return account;
+}
+
+/**
+ * JIT 建号（登录路径与管理员目录同步共用）：事务内占用租户席位 → 建用户 → 绑定身份账号 →
+ * 授予可授予的默认角色（永不授予平台保留角色）；提交后异步补动态成员关系。
+ * 调用方已确认 `provider.jitEnabled` 且 `external.email` 存在。
+ */
+async function provisionJitUser(
+  provider: typeof tenantIdentityProviders.$inferSelect,
+  external: NormalizedExternalProfile & { email: string },
+  profile: Record<string, unknown>,
+  opts: { lastLoginAt?: Date; phone?: string | null; membershipReason: string },
+) {
+  const password = await hashPassword(crypto.randomBytes(32).toString('hex'));
+  const created = await db.transaction(async (tx) => {
+    await reserveTenantSeats(tx, provider.tenantId ?? null);
+    const [user] = await tx.insert(users).values({
+      username: external.username.slice(0, 32),
+      nickname: external.nickname.slice(0, 32),
+      email: external.email,
+      ...(opts.phone !== undefined ? { phone: opts.phone } : {}),
+      password,
+      tenantId: provider.tenantId ?? null,
+    }).returning();
+    await tx.insert(userIdentityAccounts).values(identityAccountValues({
+      providerId: provider.id,
+      userId: user.id,
+      external,
+      profile,
+      lastLoginAt: opts.lastLoginAt,
+    }));
+    const roleIds = await resolveGrantableDefaultRoleIds(provider.defaultRoleIds, provider.tenantId ?? null, tx);
+    if (roleIds.length > 0) {
+      await tx.insert(userRoles).values(roleIds.map((roleId) => ({ userId: user.id, roleId }))).onConflictDoNothing();
+    }
+    return user;
+  });
+  syncUserDynamicMembershipsSafe([created.id], opts.membershipReason);
+  return created;
+}
+
 /**
  * 登录路径：解析外部身份对应的本地账号。
  * 1) 已绑定（providerId + subject）→ 直接返回；
@@ -814,11 +863,7 @@ function mapSamlProfile(profile: Profile): Record<string, unknown> {
 export async function findOrCreateUserForProvider(provider: typeof tenantIdentityProviders.$inferSelect, profile: Record<string, unknown>) {
   const external = normalizeExternalProfile(provider, profile);
   const now = new Date();
-  const [existingAccount] = await db
-    .select()
-    .from(userIdentityAccounts)
-    .where(and(eq(userIdentityAccounts.providerId, provider.id), eq(userIdentityAccounts.subject, external.subject)))
-    .limit(1);
+  const existingAccount = await findIdentityAccount(provider.id, external.subject);
   if (existingAccount) {
     const [user] = await db.select().from(users).where(eq(users.id, existingAccount.userId)).limit(1);
     if (!user) throw new HTTPException(401, { message: '绑定用户不存在' });
@@ -840,36 +885,7 @@ export async function findOrCreateUserForProvider(provider: typeof tenantIdentit
 
   if (!provider.jitEnabled) throw new HTTPException(403, { message: '未找到已绑定账号，请联系管理员完成账号绑定或启用 JIT 创建' });
   if (!external.email) throw new HTTPException(400, { message: '企业身份源未返回邮箱，无法自动创建账号' });
-  const email = external.email;
-
-  const password = await hashPassword(crypto.randomBytes(32).toString('hex'));
-  const createdUser = await db.transaction(async (tx) => {
-    await reserveTenantSeats(tx, provider.tenantId ?? null);
-    const [created] = await tx.insert(users).values({
-      username: external.username.slice(0, 32),
-      nickname: external.nickname.slice(0, 32),
-      email,
-      password,
-      tenantId: provider.tenantId ?? null,
-    }).returning();
-    await tx.insert(userIdentityAccounts).values({
-      userId: created.id,
-      providerId: provider.id,
-      subject: external.subject,
-      email,
-      username: external.username,
-      displayName: external.nickname,
-      rawProfile: profile,
-      lastLoginAt: now,
-    });
-    const roleIds = await resolveGrantableDefaultRoleIds(provider.defaultRoleIds, provider.tenantId ?? null, tx);
-    if (roleIds.length > 0) {
-      await tx.insert(userRoles).values(roleIds.map((roleId) => ({ userId: created.id, roleId }))).onConflictDoNothing();
-    }
-    return created;
-  });
-  syncUserDynamicMembershipsSafe([createdUser.id], 'SSO JIT 建号');
-  return createdUser;
+  return provisionJitUser(provider, { ...external, email: external.email }, profile, { lastLoginAt: now, membershipReason: 'SSO JIT 建号' });
 }
 
 type ProviderSyncAction = 'created' | 'linked' | 'updated' | 'skipped';
@@ -880,11 +896,7 @@ type ProviderSyncAction = 'created' | 'linked' | 'updated' | 'skipped';
  */
 export async function syncUserForProvider(provider: typeof tenantIdentityProviders.$inferSelect, profile: Record<string, unknown>): Promise<ProviderSyncAction> {
   const external = normalizeExternalProfile(provider, profile);
-  const [existingAccount] = await db
-    .select()
-    .from(userIdentityAccounts)
-    .where(and(eq(userIdentityAccounts.providerId, provider.id), eq(userIdentityAccounts.subject, external.subject)))
-    .limit(1);
+  const existingAccount = await findIdentityAccount(provider.id, external.subject);
 
   if (existingAccount) {
     const [user] = await db.select().from(users).where(eq(users.id, existingAccount.userId)).limit(1);
@@ -917,33 +929,7 @@ export async function syncUserForProvider(provider: typeof tenantIdentityProvide
   }
 
   if (!provider.jitEnabled || !external.email) return 'skipped';
-  const password = await hashPassword(crypto.randomBytes(32).toString('hex'));
-  const jitCreated = await db.transaction(async (tx) => {
-    await reserveTenantSeats(tx, provider.tenantId ?? null);
-    const [created] = await tx.insert(users).values({
-      username: external.username.slice(0, 32),
-      nickname: external.nickname.slice(0, 32),
-      email: external.email!,
-      phone: external.phone ?? null,
-      password,
-      tenantId: provider.tenantId ?? null,
-    }).returning();
-    await tx.insert(userIdentityAccounts).values({
-      userId: created.id,
-      providerId: provider.id,
-      subject: external.subject,
-      email: external.email,
-      username: external.username,
-      displayName: external.nickname,
-      rawProfile: profile,
-    });
-    const roleIds = await resolveGrantableDefaultRoleIds(provider.defaultRoleIds, provider.tenantId ?? null, tx);
-    if (roleIds.length > 0) {
-      await tx.insert(userRoles).values(roleIds.map((roleId) => ({ userId: created.id, roleId }))).onConflictDoNothing();
-    }
-    return created;
-  });
-  syncUserDynamicMembershipsSafe([jitCreated.id], '身份源同步建号');
+  await provisionJitUser(provider, { ...external, email: external.email }, profile, { phone: external.phone ?? null, membershipReason: '身份源同步建号' });
   return 'created';
 }
 
