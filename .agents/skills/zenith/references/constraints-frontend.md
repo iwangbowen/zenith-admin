@@ -132,7 +132,9 @@
 - **搜索栏布局**：标准列表页统一用 `components/list-page` 的 `ListSearchToolbar`（`keyword` / `filters` / `create` / `actions`），
   它已按规则排布桌面与移动端：移动端主区 关键词 + 查询 + 新增，其余筛选进底部抽屉、低频操作进更多菜单。
   非标准页（无查询语义的工具面板、多套筛选区）才直接用 `components/SearchToolbar.tsx` 的结构化模式
-  （`primary` / `filters` / `actions` + `mobilePrimary` / `mobileFilters` / `mobileActions`）
+  （`primary` / `filters` / `actions` + `mobilePrimary` / `mobileFilters` / `mobileActions`）。
+  工具栏会同时渲染桌面与移动两套控件（CSS 决定显隐），页面测试取控件一律用 `test-utils/toolbar.ts` 的
+  `desktopToolbar(container).getByText('查询')`，**禁止** `screen.getByPlaceholderText(...)` 直取（jsdom 下命中两个元素）
 - **筛选控件**：关键字 / 枚举 / 状态 / 数字 / 时间范围统一用 `components/search-filters.tsx` 的
   `KeywordInput` / `FilterSelect` / `StatusSelect` / `NumberFilter` / `DateRangeFilter`，**禁止**手写 `prefix={<Search size={14} />}`、
   `showClear`、`hideButtons`、`style={{ width: N }}` 这类装饰性属性，也**禁止**手写 InputNumber 的
