@@ -21,8 +21,9 @@
  * />
  */
 import type { ReactNode } from 'react';
-import { DatePicker, Input, Select } from '@douyinfe/semi-ui';
+import { DatePicker, Input, InputNumber, Select } from '@douyinfe/semi-ui';
 import type { InputProps } from '@douyinfe/semi-ui/lib/es/input';
+import type { InputNumberProps } from '@douyinfe/semi-ui/lib/es/inputNumber';
 import type { SelectProps } from '@douyinfe/semi-ui/lib/es/select';
 import type { DatePickerProps } from '@douyinfe/semi-ui/lib/es/datePicker';
 import { Search } from 'lucide-react';
@@ -127,6 +128,38 @@ export type StatusSelectProps<V extends string = string> = Omit<FilterSelectBase
 /** 状态筛选：`FilterSelect` 的特化，占位固定为「全部状态」 */
 export function StatusSelect<V extends string = string>(props: StatusSelectProps<V>) {
   return <FilterSelect<V> {...props} placeholder="全部状态" />;
+}
+
+interface NumberFilterProps extends Omit<InputNumberProps, 'onChange' | 'onNumberChange' | 'value' | 'hideButtons'> {
+  /** `undefined` = 不过滤 */
+  readonly value: number | undefined;
+  /** 清空或输入非法值时回调 `undefined` */
+  readonly onChange: (value: number | undefined) => void;
+  /** 占位说明筛选语义，如「耗时 ≥ (ms)」「金额 ≤ (元)」「外链 ID」 */
+  readonly placeholder: string;
+  /** 输入框宽度，默认 130 */
+  readonly width?: number | string;
+}
+
+/**
+ * 单个数字筛选（ID / 阈值 / 金额上下界）：隐藏步进按钮、固定宽度，并把 Semi 宽松的
+ * `onChange`（`number | string`，清空时为空串）收窄为 `number | undefined`——
+ * 页面此前各自手写 `v !== '' && v != null ? Number(v) : null` / `typeof v === 'number' ? v : undefined`。
+ * 搭配 `useListSearch` 的 `bind('字段')`，字段声明为可选 `number`。
+ */
+export function NumberFilter({ value, onChange, width = 130, style, ...rest }: NumberFilterProps) {
+  return (
+    <InputNumber
+      value={value}
+      onChange={(v) => {
+        const parsed = typeof v === 'number' ? v : (v === '' || v == null ? Number.NaN : Number(v));
+        onChange(Number.isFinite(parsed) ? parsed : undefined);
+      }}
+      hideButtons
+      style={{ width, maxWidth: '100%', ...style }}
+      {...rest}
+    />
+  );
 }
 
 /**

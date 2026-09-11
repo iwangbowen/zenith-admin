@@ -309,6 +309,7 @@ onSelect={(deptId) => applySearch({ ...draftParams, departmentId: deptId })}
 | `KeywordInput` | 放大镜前缀、`showClear`、宽度 220 | `width` / `style` / 其余 props 原样穿透 |
 | `FilterSelect` | 单选枚举筛选：`showClear`、宽度 120、清空回调 `undefined` | `placeholder`（必填，写「全部 X」）/ `width` / `items` 或 `groups` / `filter` 等 Select props 穿透 |
 | `StatusSelect` | `FilterSelect` 的状态特化，占位固定「全部状态」 | `width` / `items` |
+| `NumberFilter` | 单个数字筛选（ID / 阈值 / 金额上下界）：隐藏步进按钮、宽度 130、清空或非法输入回调 `undefined` | `placeholder`（必填，写明语义如「耗时 ≥ (ms)」）/ `width` / `min` / `max` / `precision` 等 InputNumber props 穿透 |
 | `DateRangeFilter` | `dateTimeRange`、占位「开始时间/结束时间」、宽度 400（`DATE_TIME_RANGE_FILTER_WIDTH`） | `type="dateRange"`（占位「开始日期/结束日期」，宽度 280 = `DATE_RANGE_FILTER_WIDTH`）/ `placeholder` / `width`（只用于 `"100%"`、`style={{ flex: 1 }}` 这类自适应场景，**不要改小**） |
 
 - 只收敛**装饰性属性**，业务属性（`items` / `placeholder`）仍显式传入；`value` / `onChange` 一律由

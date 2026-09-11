@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatYuan } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Button, Col, Divider, Form, Input, InputNumber, Row, SideSheet, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
+import { Banner, Col, Divider, Form, Row, SideSheet, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Plus } from 'lucide-react';
 import { PaymentResultModal } from './PaymentResultModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { CreateButton } from '@/components/toolbar-controls';
 // 本页无图表：直接引组件文件，避免经桶文件带入 ~2MB 的 vchart
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -34,7 +34,7 @@ import {
 import { usePaymentStats } from '@/hooks/queries/payment-stats';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter, StatusSelect } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -57,11 +57,12 @@ interface SearchParams {
   status?: string;
   payMethod?: string;
   bizType: string;
-  minAmount: number | null;
-  maxAmount: number | null;
+  /** 金额上下界（元）：未填为 undefined */
+  minAmount?: number;
+  maxAmount?: number;
   timeRange: [Date, Date] | null;
 }
-const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: undefined, payMethod: undefined, bizType: '', minAmount: null, maxAmount: null, timeRange: null };
+const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: undefined, payMethod: undefined, bizType: '', minAmount: undefined, maxAmount: undefined, timeRange: null };
 interface ManualOrderFormValues { applicationId: number; subject: string; amount: number; bizType: string; bizId: string; payMethod: PaymentCashierMethod; openId?: string; }
 interface ManualOrderRecord { id: number; orderNo: string; payParams: CreatePaymentResult; payMethod: PaymentCashierMethod; }
 type CreateOrderPayload = BodyOf<typeof paymentOrderContract.createOrder>;
@@ -92,7 +93,7 @@ export default function PaymentOrdersPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentOrderKeys.lists });
 
@@ -115,8 +116,8 @@ export default function PaymentOrdersPage() {
       status: enumValueOf(PAYMENT_ORDER_STATUSES, active.status),
       payMethod: enumValueOf(PAYMENT_CASHIER_METHODS, active.payMethod),
       bizType: active.bizType || undefined,
-      minAmount: active.minAmount == null ? undefined : Math.round(active.minAmount * 100),
-      maxAmount: active.maxAmount == null ? undefined : Math.round(active.maxAmount * 100),
+      minAmount: active.minAmount === undefined ? undefined : Math.round(active.minAmount * 100),
+      maxAmount: active.maxAmount === undefined ? undefined : Math.round(active.maxAmount * 100),
       ...formatDateTimeRangeForApi(active.timeRange),
     };
   }
@@ -344,13 +345,7 @@ export default function PaymentOrdersPage() {
             keyword={<KeywordInput placeholder="订单号/标题..." {...bindKeyword('keyword')} width={180} />}
             filters={(
               <>
-                <Input
-                  placeholder="业务类型"
-                  {...bind('bizType')}
-                  showClear
-                  style={{ width: 120 }}
-                  onEnterPress={handleSearch}
-                />
+                <KeywordInput placeholder="业务类型" width={120} {...bindKeyword('bizType')} />
                 <FilterSelect
                   placeholder="全部渠道"
                   items={PAYMENT_CHANNEL_OPTIONS}
@@ -366,32 +361,14 @@ export default function PaymentOrdersPage() {
                   items={PAYMENT_ORDER_STATUS_OPTIONS}
                   {...bind('status')}
                 />
-                <InputNumber
-                  placeholder="金额≥(元)"
-                  value={draftParams.minAmount ?? undefined}
-                  onChange={(v) => setField('minAmount')(v !== '' && v != null ? Number(v) : null)}
-                  min={0}
-                  hideButtons
-                  style={{ width: 110 }}
-                />
-                <InputNumber
-                  placeholder="金额≤(元)"
-                  value={draftParams.maxAmount ?? undefined}
-                  onChange={(v) => setField('maxAmount')(v !== '' && v != null ? Number(v) : null)}
-                  min={0}
-                  hideButtons
-                  style={{ width: 110 }}
-                />
+                <NumberFilter placeholder="金额≥(元)" min={0} width={110} {...bind('minAmount')} />
+                <NumberFilter placeholder="金额≤(元)" min={0} width={110} {...bind('maxAmount')} />
                 <DateRangeFilter placeholder={['创建开始', '创建结束']} {...bind('timeRange')} />
               </>
             )}
             onSearch={handleSearch}
             onReset={handleReset}
-            create={(
-              hasPermission('payment:order:create') ? (
-                <Button type="primary" icon={<Plus size={14} />} onClick={openCreateOrder}>手动下单</Button>
-              ) : null
-            )}
+            create={hasPermission('payment:order:create') ? <CreateButton onClick={openCreateOrder}>手动下单</CreateButton> : null}
             actions={<ExportButton entity="payment.orders" query={buildQuery(submittedParams)} />}
             mobileActions={<ExportButton entity="payment.orders" query={buildQuery(submittedParams)} variant="flat" />}
             filterTitle="支付订单筛选"

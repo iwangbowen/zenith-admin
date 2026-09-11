@@ -133,9 +133,11 @@
   它已按规则排布桌面与移动端：移动端主区 关键词 + 查询 + 新增，其余筛选进底部抽屉、低频操作进更多菜单。
   非标准页（无查询语义的工具面板、多套筛选区）才直接用 `components/SearchToolbar.tsx` 的结构化模式
   （`primary` / `filters` / `actions` + `mobilePrimary` / `mobileFilters` / `mobileActions`）
-- **筛选控件**：关键字 / 枚举 / 状态 / 时间范围统一用 `components/search-filters.tsx` 的
-  `KeywordInput` / `FilterSelect` / `StatusSelect` / `DateRangeFilter`，**禁止**手写 `prefix={<Search size={14} />}`、
-  `showClear`、`style={{ width: N }}` 这类装饰性属性；业务属性仍显式传入。
+- **筛选控件**：关键字 / 枚举 / 状态 / 数字 / 时间范围统一用 `components/search-filters.tsx` 的
+  `KeywordInput` / `FilterSelect` / `StatusSelect` / `NumberFilter` / `DateRangeFilter`，**禁止**手写 `prefix={<Search size={14} />}`、
+  `showClear`、`hideButtons`、`style={{ width: N }}` 这类装饰性属性，也**禁止**手写 InputNumber 的
+  `v !== '' && v != null ? Number(v) : null` 归一；业务属性仍显式传入。
+  筛选字段的空值一律 `undefined`（`SearchParams` 声明为可选，不用 `null`），这样控件能直接 `{...bind('字段')}`。
   **例外**：面板 / 弹窗内需跟随容器自适应的搜索框（如 `NavListPanel` 的 List header）不套用
 - **时间范围筛选**：一律 `DateRangeFilter`（秒级默认 `dateTimeRange`，日期级 `type="dateRange"`），弹窗 / 抽屉 / 统计卡里的区间查询同样适用；
   **禁止**手写 `DatePicker type="date(Time)Range"`，**禁止**用两个 `type="dateTime"` 单选拼「开始 / 结束」；

@@ -1,4 +1,4 @@
-import { Tabs, TabPane, InputNumber } from '@douyinfe/semi-ui';
+import { Tabs, TabPane } from '@douyinfe/semi-ui';
 import { ListSearchToolbar } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
@@ -9,7 +9,7 @@ import { compactQuery } from '@/lib/query';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
 import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/hooks/queries/operation-logs';
 import { useListSearch } from '@/hooks/useListSearch';
-import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter, StatusSelect } from '@/components/search-filters';
 import { enumValueOf } from '@zenith/shared/core';
 import { OPERATION_LOG_RESULTS } from '@zenith/shared/platform';
 
@@ -27,17 +27,18 @@ interface SearchParams {
   status?: string;
   content: string;
   timeRange: [Date, Date] | null;
-  minDurationMs: number | null;
-  maxDurationMs: number | null;
+  /** 耗时区间（ms）：未填为 undefined，与其它可选筛选字段一致 */
+  minDurationMs?: number;
+  maxDurationMs?: number;
 }
 
-const defaultParams: SearchParams = { username: '', module: '', description: '', method: undefined, path: '', ip: '', status: undefined, content: '', timeRange: null, minDurationMs: null, maxDurationMs: null };
+const defaultParams: SearchParams = { username: '', module: '', description: '', method: undefined, path: '', ip: '', status: undefined, content: '', timeRange: null, minDurationMs: undefined, maxDurationMs: undefined };
 
 export default function OperationLogsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: operationLogKeys.all });
   const listQuery = useOperationLogList({
@@ -52,8 +53,8 @@ export default function OperationLogsPage() {
     status: enumValueOf(OPERATION_LOG_RESULTS, submittedParams.status),
     content: submittedParams.content || undefined,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-    minDurationMs: submittedParams.minDurationMs ?? undefined,
-    maxDurationMs: submittedParams.maxDurationMs ?? undefined,
+    minDurationMs: submittedParams.minDurationMs,
+    maxDurationMs: submittedParams.maxDurationMs,
   });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -64,8 +65,9 @@ export default function OperationLogsPage() {
     onCleared: () => setPage(1),
   });
 
+  // 导出条件取已提交的筛选，与列表一致
   const buildExportQuery = () => {
-    const p = draftParams;
+    const p = submittedParams;
     return compactQuery({
       username: p.username,
       module: p.module,
@@ -76,8 +78,8 @@ export default function OperationLogsPage() {
       status: p.status,
       content: p.content,
       ...formatDateTimeRangeForApi(p.timeRange),
-      minDurationMs: p.minDurationMs?.toString(),
-      maxDurationMs: p.maxDurationMs?.toString(),
+      minDurationMs: p.minDurationMs,
+      maxDurationMs: p.maxDurationMs,
     });
   };
 
@@ -112,24 +114,8 @@ export default function OperationLogsPage() {
                   {...bind('status')}
                 />
                 <DateRangeFilter {...bind('timeRange')} />
-                <>
-                  <InputNumber
-                    placeholder="耗时 ≥ (ms)"
-                    value={draftParams.minDurationMs ?? undefined}
-                    onChange={(v) => setField('minDurationMs')(v !== '' && v != null ? Number(v) : null)}
-                    min={0}
-                    style={{ width: 130 }}
-                    hideButtons
-                  />
-                  <InputNumber
-                    placeholder="耗时 ≤ (ms)"
-                    value={draftParams.maxDurationMs ?? undefined}
-                    onChange={(v) => setField('maxDurationMs')(v !== '' && v != null ? Number(v) : null)}
-                    min={0}
-                    style={{ width: 130 }}
-                    hideButtons
-                  />
-                </>
+                <NumberFilter placeholder="耗时 ≥ (ms)" min={0} {...bind('minDurationMs')} />
+                <NumberFilter placeholder="耗时 ≤ (ms)" min={0} {...bind('maxDurationMs')} />
               </>
             )}
             onSearch={handleSearch}

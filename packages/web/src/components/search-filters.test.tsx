@@ -10,7 +10,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Input } from '@douyinfe/semi-ui';
 import { Search } from 'lucide-react';
-import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from './search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter, StatusSelect } from './search-filters';
 
 interface SelectStubProps {
   readonly optionList?: readonly { value: string | number; label: ReactNode }[];
@@ -130,6 +130,27 @@ describe('StatusSelect', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'disabled' } });
     expect(onChange).toHaveBeenLastCalledWith('disabled');
     fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } });
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
+});
+
+describe('NumberFilter', () => {
+  it('隐藏步进按钮，默认宽度 130，可被 width 覆盖', () => {
+    const { container, rerender } = render(<NumberFilter placeholder="耗时 ≥ (ms)" value={undefined} onChange={vi.fn()} />);
+    expect(screen.getByPlaceholderText('耗时 ≥ (ms)')).toBeInTheDocument();
+    expect(container.querySelector('.semi-input-number-suffix-btns')).toBeNull();
+    expect((container.querySelector('.semi-input-number') as HTMLElement).style.width).toBe('130px');
+    rerender(<NumberFilter placeholder="耗时 ≥ (ms)" value={undefined} onChange={vi.fn()} width={110} />);
+    expect((container.querySelector('.semi-input-number') as HTMLElement).style.width).toBe('110px');
+  });
+
+  it('输入数字回调 number，清空回调 undefined', () => {
+    const onChange = vi.fn();
+    render(<NumberFilter placeholder="金额 ≥ (元)" value={undefined} onChange={onChange} />);
+    const input = screen.getByPlaceholderText('金额 ≥ (元)');
+    fireEvent.change(input, { target: { value: '120' } });
+    expect(onChange).toHaveBeenLastCalledWith(120);
+    fireEvent.change(input, { target: { value: '' } });
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });
 });
