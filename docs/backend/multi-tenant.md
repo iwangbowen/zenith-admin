@@ -50,6 +50,12 @@ Service、导出定义和后台任务应优先复用这些工具，避免手写 
 - 套餐禁用时功能集为空，按 fail-closed 处理；
 - 用户、角色分配菜单时会校验菜单功能是否在租户套餐范围内。
 
+功能集由 `lib/tenant-package.ts` 的 `getTenantPackageFeatureSet(tenantId)` 解析：一次「租户 ⟕ 套餐 ⟕ 功能」JOIN，
+结果放进进程内副本（`lib/ttl-cache.ts`，60s TTL、关闭 stale-while-revalidate、单飞）供权限加载、`getMySettings`
+的模块门控与菜单 / 角色 / 用户校验共用；失效由 `tenants`（改绑套餐，按租户键）、`tenant_packages` /
+`tenant_package_features`（整段清空）表上的 `notify_cache_invalidate` 触发器经 `invalidation-bus` 广播到全部实例
+（迁移 `0005` / `0013`），TTL 只是 NOTIFY 不可用时的兜底。返回的集合在调用方之间共享，只读。
+
 ## 用户席位与 License
 
 租户创建、用户启用等场景会调用 `reserveTenantSeats(tx, tenantId, adding)`。该函数在事务中使用 advisory lock，并同时检查：

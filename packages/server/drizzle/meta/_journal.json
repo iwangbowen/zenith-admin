@@ -92,6 +92,13 @@
       "when": 1789154689932,
       "tag": "0012_logs_tenant_created_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789154983266,
+      "tag": "0013_tenant_package_cache_invalidate",
+      "breakpoints": true
     }
   ]
 }

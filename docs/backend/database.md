@@ -66,7 +66,9 @@ npm run db:seed
 后续新增无法表达的 DDL 时，用 `drizzle-kit generate --custom` 建独立迁移；重建基线时将其内容并回 `0001_extensions.sql`。
 当前需要并回的增量手写 DDL：`0005_auth_subject_cache_invalidate.sql`——`users` / `tenants` 上的 `notify_cache_invalidate('id')` 触发器，
 供认证中间件的主体权威行副本跨实例失效，见[安全体系 · 认证令牌](./security.md#认证令牌)；
-`0010_member_subject_cache_invalidate.sql`——`members` 上的同类触发器，供会员认证中间件的主体副本失效，见[会员体系](../member/index.md)。
+`0010_member_subject_cache_invalidate.sql`——`members` 上的同类触发器，供会员认证中间件的主体副本失效，见[会员体系](../member/index.md)；
+`0013_tenant_package_cache_invalidate.sql`——`tenant_packages` / `tenant_package_features` 上的同类触发器（key = 套餐 id），
+供套餐功能集副本失效，见[多租户指南 · 套餐与菜单](./multi-tenant.md#套餐与菜单)。
 
 ### 重建基线
 
