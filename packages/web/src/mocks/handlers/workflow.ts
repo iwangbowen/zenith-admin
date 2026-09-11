@@ -1317,6 +1317,66 @@ function createDelegationReceiptTask(current: WorkflowTask, receiptComment: stri
   return newTask;
 }
 
+/**
+ * 审批通过 / 驳回的公共主体：幂等回放 → 任务定位与 pending 校验 → `beforeSettle`（如可编辑字段写回）→
+ * 委派回执分流（只关任务、不推进）→ 任务落终态 → `advanceInstance` 推进实例 → 回包实例最新状态并写幂等缓存。
+ */
+function settleTask(
+  ctx: {
+    taskId: number;
+    body: { comment?: string | null; attachments?: WorkflowTask['attachments'] };
+    request: Request;
+    ok: (data: WorkflowInstance, message?: string) => Response;
+  },
+  decision: 'approved' | 'rejected',
+  hooks: {
+    beforeSettle?: (current: WorkflowTask, now: string) => void;
+    /** 落终态时追加的任务字段（如 approve 的 signature） */
+    taskPatch?: Partial<WorkflowTask>;
+    advanceInstance: (task: WorkflowTask, now: string) => void;
+  },
+): Response {
+  const { taskId, body, request, ok } = ctx;
+  const idemKey = idempotencyKeyOf(request);
+  const cached = idemKey ? approveIdempotencyCache.get(idemKey) : undefined;
+  if (cached) return ok(cached.data, cached.message);
+  const taskIdx = mockWorkflowTasks.findIndex(t => t.id === taskId);
+  if (taskIdx === -1) return notFound('任务不存在');
+  if (mockWorkflowTasks[taskIdx].status !== 'pending') return badRequest('该任务已处理');
+
+  const now = mockDateTime();
+  const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
+  const current = mockWorkflowTasks[taskIdx];
+  hooks.beforeSettle?.(current, now);
+
+  const respond = (message?: string) => {
+    const inst = mockWorkflowInstances.find(i => i.id === current.instanceId);
+    if (!inst) return notFound('流程实例不存在');
+    const data = withActiveNodes(inst);
+    if (idemKey) approveIdempotencyCache.set(idemKey, { data, message: message ?? 'ok' });
+    return ok(data, message);
+  };
+
+  // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不推进 / 不驳回流程
+  if (current.delegatedFromId) {
+    const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} ${decision === 'approved' ? '建议同意' : '建议拒绝'}：${body.comment ?? ''}`;
+    mockWorkflowTasks[taskIdx] = { ...current, status: decision, comment: receiptComment, attachments, actionAt: now };
+    createDelegationReceiptTask(current, receiptComment, now);
+    return respond('已提交委派回执，等待原审批人确认');
+  }
+
+  mockWorkflowTasks[taskIdx] = {
+    ...current,
+    status: decision,
+    comment: body.comment ?? null,
+    attachments,
+    ...hooks.taskPatch,
+    actionAt: now,
+  };
+  hooks.advanceInstance(mockWorkflowTasks[taskIdx], now);
+  return respond();
+}
+
 export const workflowHandlers = [
   // ─── 流程定义 ─────────────────────────────────────────────────────────────
 
@@ -2417,65 +2477,30 @@ export const workflowHandlers = [
   }),
 
   // 审批通过（按 X-Idempotency-Key 幂等；返回所属实例最新状态）
-  mock(workflowTaskContract.approve, ({ params, body, ok, request }) => {
-    const idemKey = idempotencyKeyOf(request);
-    const cached = idemKey ? approveIdempotencyCache.get(idemKey) : undefined;
-    if (cached) return ok(cached.data, cached.message);
-    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
-    if (taskIdx === -1) return notFound('任务不存在');
-    if (mockWorkflowTasks[taskIdx].status !== 'pending') return badRequest('该任务已处理');
-
-    const now = mockDateTime();
-    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
-    const current = mockWorkflowTasks[taskIdx];
-    const instForUpdate = mockWorkflowInstances.find(i => i.id === current.instanceId);
-
-    // 可编辑字段写回：与服务端一致，按节点 fieldPermissions 白名单过滤后合并进实例 formData
-    if (body.formUpdates && instForUpdate) {
-      const flow = instForUpdate.definitionSnapshot?.flowData
-        ?? mockWorkflowDefinitions.find(d => d.id === instForUpdate.definitionId)?.flowData;
-      const sanitized = sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(flow, current.nodeKey), body.formUpdates);
-      if (Object.keys(sanitized).length > 0) {
-        instForUpdate.formData = { ...(instForUpdate.formData ?? {}), ...sanitized };
-        instForUpdate.updatedAt = now;
-      }
-    }
-
-    const respond = (message?: string) => {
-      const inst = mockWorkflowInstances.find(i => i.id === current.instanceId);
-      if (!inst) return notFound('流程实例不存在');
-      const data = withActiveNodes(inst);
-      if (idemKey) approveIdempotencyCache.set(idemKey, { data, message: message ?? 'ok' });
-      return ok(data, message);
-    };
-
-    // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不推进流程
-    if (current.delegatedFromId) {
-      const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} 建议同意：${body.comment ?? ''}`;
-      mockWorkflowTasks[taskIdx] = { ...current, status: 'approved', comment: receiptComment, attachments, actionAt: now };
-      createDelegationReceiptTask(current, receiptComment, now);
-      return respond('已提交委派回执，等待原审批人确认');
-    }
-
-    mockWorkflowTasks[taskIdx] = {
-      ...current,
-      status: 'approved',
-      comment: body.comment ?? null,
-      attachments,
-      signature: body.signature ?? null,
-      actionAt: now,
-    };
-
-    const instanceId = mockWorkflowTasks[taskIdx].instanceId;
-    const inst = mockWorkflowInstances.find(i => i.id === instanceId);
-    if (inst) {
-      // 检查是否还有 pending 任务
-      const remainingPending = mockWorkflowTasks.filter(
-        t => t.instanceId === instanceId && t.status === 'pending' && t.id !== mockWorkflowTasks[taskIdx].id
-      );
-      if (remainingPending.length === 0) {
-        // 流程完成
-        const instIdx = mockWorkflowInstances.findIndex(i => i.id === instanceId);
+  mock(workflowTaskContract.approve, ({ params, body, ok, request }) => settleTask(
+    { taskId: params.taskId, body, ok, request },
+    'approved',
+    {
+      // 可编辑字段写回：与服务端一致，按节点 fieldPermissions 白名单过滤后合并进实例 formData
+      beforeSettle: (current, now) => {
+        const instForUpdate = mockWorkflowInstances.find(i => i.id === current.instanceId);
+        if (!body.formUpdates || !instForUpdate) return;
+        const flow = instForUpdate.definitionSnapshot?.flowData
+          ?? mockWorkflowDefinitions.find(d => d.id === instForUpdate.definitionId)?.flowData;
+        const sanitized = sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(flow, current.nodeKey), body.formUpdates);
+        if (Object.keys(sanitized).length > 0) {
+          instForUpdate.formData = { ...(instForUpdate.formData ?? {}), ...sanitized };
+          instForUpdate.updatedAt = now;
+        }
+      },
+      taskPatch: { signature: body.signature ?? null },
+      // 无其它 pending 任务即流程完成
+      advanceInstance: (task, now) => {
+        const remainingPending = mockWorkflowTasks.filter(
+          t => t.instanceId === task.instanceId && t.status === 'pending' && t.id !== task.id
+        );
+        if (remainingPending.length > 0) return;
+        const instIdx = mockWorkflowInstances.findIndex(i => i.id === task.instanceId);
         if (instIdx !== -1) {
           mockWorkflowInstances[instIdx] = {
             ...mockWorkflowInstances[instIdx],
@@ -2484,69 +2509,34 @@ export const workflowHandlers = [
             updatedAt: now,
           };
         }
-      }
-    }
-
-    return respond();
-  }),
+      },
+    },
+  )),
 
   // 审批驳回（按 X-Idempotency-Key 幂等；返回所属实例最新状态）
-  mock(workflowTaskContract.reject, ({ params, body, ok, request }) => {
-    const idemKey = idempotencyKeyOf(request);
-    const cached = idemKey ? approveIdempotencyCache.get(idemKey) : undefined;
-    if (cached) return ok(cached.data, cached.message);
-    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
-    if (taskIdx === -1) return notFound('任务不存在');
-    if (mockWorkflowTasks[taskIdx].status !== 'pending') return badRequest('该任务已处理');
-
-    const now = mockDateTime();
-    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
-    const current = mockWorkflowTasks[taskIdx];
-
-    const respond = (message?: string) => {
-      const inst = mockWorkflowInstances.find(i => i.id === current.instanceId);
-      if (!inst) return notFound('流程实例不存在');
-      const data = withActiveNodes(inst);
-      if (idemKey) approveIdempotencyCache.set(idemKey, { data, message: message ?? 'ok' });
-      return ok(data, message);
-    };
-
-    // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不驳回流程
-    if (current.delegatedFromId) {
-      const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} 建议拒绝：${body.comment ?? ''}`;
-      mockWorkflowTasks[taskIdx] = { ...current, status: 'rejected', comment: receiptComment, attachments, actionAt: now };
-      createDelegationReceiptTask(current, receiptComment, now);
-      return respond('已提交委派回执，等待原审批人确认');
-    }
-
-    mockWorkflowTasks[taskIdx] = {
-      ...mockWorkflowTasks[taskIdx],
-      status: 'rejected',
-      comment: body.comment ?? null,
-      attachments,
-      actionAt: now,
-    };
-
-    const instanceId = mockWorkflowTasks[taskIdx].instanceId;
-    const instIdx = mockWorkflowInstances.findIndex(i => i.id === instanceId);
-    if (instIdx !== -1) {
-      mockWorkflowInstances[instIdx] = {
-        ...mockWorkflowInstances[instIdx],
-        status: 'rejected',
-        currentNodeKey: null,
-        updatedAt: now,
-      };
-      // 将其他 pending 任务设为 skipped
-      mockWorkflowTasks
-        .filter(t => t.instanceId === instanceId && t.status === 'pending')
-        .forEach(t => {
-          t.status = 'skipped';
-          t.actionAt = now;
-        });
-    }
-
-    return respond();
-  }),
+  mock(workflowTaskContract.reject, ({ params, body, ok, request }) => settleTask(
+    { taskId: params.taskId, body, ok, request },
+    'rejected',
+    {
+      // 实例驳回，其余 pending 任务置为 skipped
+      advanceInstance: (task, now) => {
+        const instIdx = mockWorkflowInstances.findIndex(i => i.id === task.instanceId);
+        if (instIdx === -1) return;
+        mockWorkflowInstances[instIdx] = {
+          ...mockWorkflowInstances[instIdx],
+          status: 'rejected',
+          currentNodeKey: null,
+          updatedAt: now,
+        };
+        mockWorkflowTasks
+          .filter(t => t.instanceId === task.instanceId && t.status === 'pending')
+          .forEach(t => {
+            t.status = 'skipped';
+            t.actionAt = now;
+          });
+      },
+    },
+  )),
 
   // 转办
   mock(workflowTaskContract.transfer, ({ params, body, ok }) => {

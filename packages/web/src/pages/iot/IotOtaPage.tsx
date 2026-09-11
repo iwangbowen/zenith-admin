@@ -17,6 +17,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import {
@@ -24,7 +25,7 @@ import {
   IOT_OTA_TASK_STATUS_LABELS, IOT_OTA_TASK_STATUS_OPTIONS,
 } from '@zenith/shared/iot';
 import type { IotFirmware, IotOtaTask, IotOtaTaskDevice, UpdateIotFirmwareInput } from '@zenith/shared/iot';
-import { useIotDeviceOptions, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
+import { IotProductSelectField, useIotDeviceOptions, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
 import { IotEnabledTag } from './components/IotStatus';
 import {
   iotFirmwareKeys, iotOtaTaskKeys, useCancelIotOtaTask, useCreateIotOtaTask, useDeleteIotFirmwares,
@@ -54,7 +55,7 @@ const defaultFirmwareSearch: FirmwareSearchParams = { keyword: '', productId: nu
 function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotFirmware) => void }>) {
   const { hasPermission } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
-  const { items: products, options: productOptions } = useIotProductOptions();
+  const { items: products } = useIotProductOptions();
 
   const {
     page, pageSize, buildPagination,
@@ -207,11 +208,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
         closeOnEsc
       >
         <Form labelPosition="left" labelWidth={100} getFormApi={(api) => setUploadFormApi(api)}>
-          <Form.Select
-            field="productId" label="所属产品" placeholder="选择产品" style={{ width: '100%' }}
-            optionList={productOptions}
-            rules={[{ required: true, message: '请选择所属产品' }]}
-          />
+          <IotProductSelectField />
           <Form.Input
             field="version" label="版本号" placeholder="如 2.0.0"
             extraText="语义化版本，同产品唯一；设备上报一致即判定升级成功"
@@ -243,11 +240,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
       <AppModal {...editModal.modalProps} width={520}>
         <Form key={editModal.formKey} {...editModal.formProps}>
           <Form.TextArea field="releaseNotes" label="发布说明" rows={3} maxCount={4000} />
-          <Form.RadioGroup field="status" label="状态" extraText="禁用后不可再发起升级任务">
-            {statusItems.map((o) => (
-              <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>
-            ))}
-          </Form.RadioGroup>
+          <FormStatusRadioGroup extraText="禁用后不可再发起升级任务" />
         </Form>
       </AppModal>
     </>

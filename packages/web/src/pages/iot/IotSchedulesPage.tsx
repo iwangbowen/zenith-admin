@@ -12,16 +12,18 @@ import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } fr
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePagination } from '@/hooks/usePagination';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import {
   IOT_SCHEDULE_ACTION_LABELS, IOT_SCHEDULE_ACTION_OPTIONS,
   IOT_SCHEDULE_TYPE_LABELS, IOT_SCHEDULE_TYPE_OPTIONS,
 } from '@zenith/shared/iot';
 import type { CreateIotScheduleInput, IotSchedule, IotScheduleRun } from '@zenith/shared/iot';
-import { useIotDeviceOptions, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
+import { IotDeviceSelectField, IotProductSelectField, useIotGroupOptions } from './components/IotSelectors';
 import { IotEnabledTag } from './components/IotStatus';
 import { IotServiceSelectField } from './components/ThingModelFields';
 import { formatIotDateTime, jsonObjectToText, parseJsonObjectInput, toFiveFieldCron, toSixFieldCron } from './iot-form-utils';
@@ -212,13 +214,10 @@ function ScheduleFormBody({ isEdit, values, onApplyCron }: Readonly<{
   values: Record<string, unknown>;
   onApplyCron: (expr: string) => void;
 }>) {
-  const { options: productOptions } = useIotProductOptions();
   const { options: groupOptions } = useIotGroupOptions();
   const productId = (values.productId as number | undefined) ?? null;
   const scheduleType = (values.scheduleType as string | undefined) ?? 'cron';
   const actionType = (values.actionType as string | undefined) ?? 'desired';
-  const { options: deviceOptions } = useIotDeviceOptions(productId, productId !== null);
-  const { items: statusItems } = useDictItems('common_status');
 
   return (
     <>
@@ -234,11 +233,7 @@ function ScheduleFormBody({ isEdit, values, onApplyCron }: Readonly<{
           </Form.RadioGroup>
         </Col>
         <Col span={12}>
-          <Form.RadioGroup field="status" label="状态">
-            {statusItems.map((o) => (
-              <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>
-            ))}
-          </Form.RadioGroup>
+          <FormStatusRadioGroup />
         </Col>
       </Row>
       {scheduleType === 'cron' ? (
@@ -258,19 +253,10 @@ function ScheduleFormBody({ isEdit, values, onApplyCron }: Readonly<{
       )}
       <Row gutter={16}>
         <Col span={12}>
-          <Form.Select
-            field="productId" label="所属产品" placeholder="选择产品" style={{ width: '100%' }}
-            disabled={isEdit}
-            extraText={isEdit ? '所属产品不可变更' : undefined}
-            optionList={productOptions}
-            rules={isEdit ? [] : [{ required: true, message: '请选择所属产品' }]}
-          />
+          <IotProductSelectField isEdit={isEdit} />
         </Col>
         <Col span={12}>
-          <Form.Select
-            field="deviceId" label="限定设备" placeholder="不限" showClear style={{ width: '100%' }}
-            optionList={deviceOptions}
-          />
+          <IotDeviceSelectField productId={productId} placeholder="不限" />
         </Col>
       </Row>
       <Form.Select
@@ -307,8 +293,7 @@ function ScheduleRunsTab({ filterSchedule, onClearFilter }: Readonly<{
   filterSchedule: IotSchedule | null;
   onClearFilter: () => void;
 }>) {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, buildPagination } = usePagination(10);
   const [detailRun, setDetailRun] = useState<IotScheduleRun | null>(null);
 
   const listQuery = useIotScheduleRunList({
@@ -352,13 +337,7 @@ function ScheduleRunsTab({ filterSchedule, onClearFilter }: Readonly<{
         columns={columns}
         {...listTableProps(listQuery, {
           empty: '暂无执行记录',
-          pagination: (total) => ({
-            currentPage: page,
-            pageSize,
-            total,
-            onPageChange: setPage,
-            onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
-          }),
+          pagination: buildPagination,
         })}
       />
 

@@ -16,6 +16,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import {
   IOT_ALARM_LEVELS, IOT_ALARM_LEVEL_LABELS, IOT_ALARM_LEVEL_OPTIONS, IOT_ALARM_RULE_TYPES, IOT_ALARM_RULE_TYPE_LABELS,
@@ -25,7 +26,7 @@ import {
 import type {
   CreateIotAlarmRuleInput, CreateIotMaintenanceWindowInput, IotAlarm, IotAlarmRule, IotMaintenanceWindow,
 } from '@zenith/shared/iot';
-import { useIotDeviceOptions, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
+import { IotDeviceSelectField, IotProductSelectField, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
 import { IotEnabledTag } from './components/IotStatus';
 import { IotEventSelectField, IotPropertyConditionFields } from './components/ThingModelFields';
 import { formatIotDateTime } from './iot-form-utils';
@@ -497,27 +498,15 @@ function AlarmRulesTab() {
 
 /** 规则表单体：按所选产品加载物模型联想，按规则类型切换条件字段 */
 function RuleFormBody({ isEdit, values }: Readonly<{ isEdit: boolean; values: Record<string, unknown> }>) {
-  const { options: productOptions } = useIotProductOptions();
   const productId = (values.productId as number | undefined) ?? null;
   const ruleType = (values.ruleType as string | undefined) ?? 'threshold';
-  const { options: deviceOptions } = useIotDeviceOptions(productId, productId !== null);
-  const { items: statusItems } = useDictItems('common_status');
 
   return (
     <>
       <Form.Input field="name" label="规则名称" placeholder="如：机房温度过高"
         rules={[{ required: true, message: '规则名称不能为空' }]} />
-      <Form.Select
-        field="productId" label="所属产品" placeholder="选择产品" style={{ width: '100%' }}
-        disabled={isEdit}
-        extraText={isEdit ? '所属产品不可变更' : undefined}
-        optionList={productOptions}
-        rules={isEdit ? [] : [{ required: true, message: '请选择所属产品' }]}
-      />
-      <Form.Select
-        field="deviceId" label="限定设备" placeholder="不限（产品下全部设备）" showClear style={{ width: '100%' }}
-        optionList={deviceOptions}
-      />
+      <IotProductSelectField isEdit={isEdit} />
+      <IotDeviceSelectField productId={productId} />
       <Form.RadioGroup field="ruleType" label="规则类型" disabled={isEdit}
         extraText={isEdit ? '规则类型不可变更' : undefined}>
         {IOT_ALARM_RULE_TYPE_OPTIONS.map((o) => (
@@ -546,11 +535,7 @@ function RuleFormBody({ isEdit, values }: Readonly<{ isEdit: boolean; values: Re
           showClear extraText="触发后超时未认领/未恢复即升级通知；留空 = 不升级" />
       </div>
       <FormUserSelect field="escalateUserIds" label="升级接收人" multiple placeholder="如值班主管（配置升级时长后必选）" />
-      <Form.RadioGroup field="status" label="状态">
-        {statusItems.map((o) => (
-          <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>
-        ))}
-      </Form.RadioGroup>
+      <FormStatusRadioGroup />
     </>
   );
 }

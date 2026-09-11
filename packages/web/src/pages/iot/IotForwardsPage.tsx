@@ -11,9 +11,11 @@ import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } fr
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePagination } from '@/hooks/usePagination';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import {
   IOT_FORWARD_SOURCES, IOT_FORWARD_SOURCE_LABELS, IOT_FORWARD_SOURCE_OPTIONS, IOT_FORWARD_STATUSES, IOT_FORWARD_STATUS_OPTIONS,
@@ -204,7 +206,6 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
 function ForwardFormBody({ isEdit }: Readonly<{ isEdit: boolean }>) {
   const { options: productOptions } = useIotProductOptions();
   const { options: groupOptions } = useIotGroupOptions();
-  const { items: statusItems } = useDictItems('common_status');
 
   return (
     <>
@@ -231,11 +232,7 @@ function ForwardFormBody({ isEdit }: Readonly<{ isEdit: boolean }>) {
         placeholder={isEdit ? '留空保持不变' : '可选；至少 8 位'}
         extraText="配置后携带 X-Iot-Signature = hex(HMAC-SHA256(secret, body))" />
       <Form.Input field="headersText" label="自定义请求头" placeholder='JSON 对象（可空），如 {"X-Token":"..."}' />
-      <Form.RadioGroup field="status" label="状态">
-        {statusItems.map((o) => (
-          <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>
-        ))}
-      </Form.RadioGroup>
+      <FormStatusRadioGroup />
     </>
   );
 }
@@ -245,8 +242,7 @@ function ForwardLogsTab({ filterRule, onClearFilter }: Readonly<{
   filterRule: IotForwardRule | null;
   onClearFilter: () => void;
 }>) {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, buildPagination } = usePagination(10);
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [detailLog, setDetailLog] = useState<IotForwardLog | null>(null);
 
@@ -311,13 +307,7 @@ function ForwardLogsTab({ filterRule, onClearFilter }: Readonly<{
         columns={columns}
         {...listTableProps(listQuery, {
           empty: '暂无投递日志',
-          pagination: (total) => ({
-            currentPage: page,
-            pageSize,
-            total,
-            onPageChange: setPage,
-            onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
-          }),
+          pagination: buildPagination,
         })}
       />
 

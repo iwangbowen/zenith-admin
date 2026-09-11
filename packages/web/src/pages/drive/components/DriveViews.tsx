@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Empty, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Empty, Space, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
 import {
-  DRIVE_ACTIVITY_ACTION_LABELS, DRIVE_ROLE_LABELS, describeShareCapabilities, DRIVE_SUBJECT_TYPE_LABELS,
+  DRIVE_ACTIVITY_ACTION_LABELS, DRIVE_ROLE_LABELS, DRIVE_SUBJECT_TYPE_LABELS,
   DRIVE_NODE_TYPE_OPTIONS, type DriveNodeType, type DriveNode, type DriveRecentItem, type DriveSearchItem, type DriveShareLink, type DriveSharedItem, type DriveView,
 } from '@zenith/shared/drive';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -26,11 +26,13 @@ import {
   useDriveTags, useDrivePreviewWatermark,
 } from '@/hooks/queries/drive';
 import { confirmDanger } from '@/utils/confirm';
-import { copyTextWithToast } from '@/utils/clipboard';
 import { canPreviewFile, fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
-import { nodeDownloadUrl, nodeToManagedFile, roleAtLeast, shareLinkStateTag } from '../drive-utils';
+import { nodeDownloadUrl, nodeToManagedFile, roleAtLeast } from '../drive-utils';
+import {
+  shareLinkAccessColumn, shareLinkCapabilitiesColumn, shareLinkCopyAction, shareLinkExpireColumn, shareLinkFileColumn, shareLinkStateColumn,
+} from '../drive-share-link-columns';
 
 type ListView = Exclude<DriveView, 'space'>;
 
@@ -154,19 +156,13 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
   })();
 
   const linkColumns: ColumnProps<DriveShareLink>[] = [
-    { title: '文件', dataIndex: 'nodeName', minWidth: 220, ellipsis: { showTitle: false },
-      render: (_: unknown, l: DriveShareLink) => <FileNameCell name={l.nodeName} mimeType={l.nodeType === 'folder' ? 'inode/directory' : null} onClick={() => onOpenDetail(l.nodeId)} /> },
-    { title: '状态', dataIndex: 'state', width: 90, render: (v: DriveShareLink['state']) => shareLinkStateTag(v) },
-    { title: '权限', dataIndex: 'capabilities', width: 110, render: (v: DriveShareLink['capabilities'], l: DriveShareLink) => (
-      <Space spacing={4} className="drive-nowrap">
-        <span>{describeShareCapabilities(v)}</span>
-        {l.hasPassword && <Tag size="small" color="orange">密码</Tag>}
-      </Space>
-    ) },
-    { title: '访问 / 下载', width: 110, render: (_: unknown, l: DriveShareLink) => <span className="drive-nowrap">{`${l.accessCount}${l.maxAccessCount ? `/${l.maxAccessCount}` : ''} · ${l.downloadCount}`}</span> },
-    dateTimeColumn('过期时间', 'expireAt', { empty: '永久' }),
+    shareLinkFileColumn((l) => onOpenDetail(l.nodeId)),
+    shareLinkStateColumn(),
+    shareLinkCapabilitiesColumn,
+    shareLinkAccessColumn,
+    shareLinkExpireColumn,
     createOperationColumn<DriveShareLink>({ width: 150, desktopInlineKeys: ['copy'], actions: (l) => [
-      { key: 'copy', label: '复制链接', disabled: l.state !== 'active', onClick: () => void copyTextWithToast(`${globalThis.location.origin}${l.url}`, { success: '链接已复制' }) },
+      shareLinkCopyAction(l),
       { key: 'node', label: '查看文件', onClick: () => onOpenDetail(l.nodeId) },
       { key: 'revoke', label: '撤销', hidden: l.state === 'revoked', onClick: () => { confirmDanger({ title: '撤销这条外链？', content: '撤销后链接立即失效。', okText: '撤销',
         onOk: () => revoke.mutateAsync({ id: l.id, nodeId: l.nodeId }).then(() => Toast.success('已撤销')) }); } },

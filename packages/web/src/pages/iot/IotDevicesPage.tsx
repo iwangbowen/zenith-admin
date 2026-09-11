@@ -16,12 +16,13 @@ import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useDictItems } from '@/hooks/useDictItems';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { abortSubmit } from '@/lib/abort-submit';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import type { CreateIotDeviceGroupInput, CreateIotDeviceInput, IotDevice, IotDeviceGroup, IotMetricValue } from '@zenith/shared/iot';
 import { IOT_NODE_TYPES, IOT_NODE_TYPE_OPTIONS } from '@zenith/shared/iot';
 import { IotEnabledTag } from './components/IotStatus';
-import { useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
+import { IotProductSelectField, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
 import { parseJsonObjectInput } from './iot-form-utils';
 import {
   iotDeviceKeys, useDeleteIotDevices, useIotDeviceList, useSaveIotDevice,
@@ -61,7 +62,7 @@ export default function IotDevicesPage() {
   const [groupsVisible, setGroupsVisible] = useState(false);
   const [batchKind, setBatchKind] = useState<'command' | 'desired' | null>(null);
 
-  const { items: products, options: productOptions } = useIotProductOptions();
+  const { items: products } = useIotProductOptions();
   const { items: groups, options: groupOptions, isFetching: groupsFetching } = useIotGroupOptions();
   // 网关设备清单（子设备表单「所属网关」选项）
   const gatewaysQuery = useIotDeviceList({ page: 1, pageSize: 100, nodeType: 'gateway' });
@@ -399,11 +400,7 @@ export default function IotDevicesPage() {
               const nodeType = (formState.values as Record<string, unknown>).nodeType as string | undefined;
               return (
                 <>
-                  <Form.Select
-                    field="productId" label="所属产品" placeholder="选择产品" style={{ width: '100%' }}
-                    optionList={productOptions}
-                    rules={[{ required: true, message: '请选择所属产品' }]}
-                  />
+                  <IotProductSelectField />
                   <Form.Input field="name" label="设备名称" placeholder="如：机房 A-01 温湿度"
                     rules={[{ required: true, message: '设备名称不能为空' }]} />
                   {!modal.editing && (
@@ -448,11 +445,7 @@ export default function IotDevicesPage() {
                       <Form.Input field="firmwareVersion" label="固件版本" placeholder="如 1.0.0（选填）" />
                     </Col>
                     <Col span={12}>
-                      <Form.RadioGroup field="status" label="状态">
-                        {statusItems.map((o) => (
-                          <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>
-                        ))}
-                      </Form.RadioGroup>
+                      <FormStatusRadioGroup />
                     </Col>
                   </Row>
                   <Form.TextArea field="remark" label="备注" rows={2} placeholder="安装位置等说明（选填）" maxCount={256} />

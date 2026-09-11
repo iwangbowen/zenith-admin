@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
-import { describeShareCapabilities, type DriveShareLink, type DriveShareLinkState } from '@zenith/shared/drive';
+import { type DriveShareLink, type DriveShareLinkState } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { FileNameCell } from '@/components/FileNameCell';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
@@ -15,11 +14,13 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { driveKeys, useAdminRevokeDriveShareLink, useDriveAdminShareLinks, useDriveShareAccessLogs } from '@/hooks/queries/drive';
-import { copyTextWithToast } from '@/utils/clipboard';
 import { confirmDanger } from '@/utils/confirm';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { SHARE_STATE_LABELS, shareLinkAbsoluteUrl, shareLinkStateTag } from '../drive-utils';
+import { SHARE_STATE_LABELS } from '../drive-utils';
+import {
+  shareLinkAccessColumn, shareLinkCapabilitiesColumn, shareLinkCopyAction, shareLinkExpireColumn, shareLinkFileColumn, shareLinkStateColumn,
+} from '../drive-share-link-columns';
 import '../drive.css';
 
 interface SearchParams {
@@ -63,22 +64,16 @@ export default function DriveAdminShareLinksPage() {
 
   // 页面宽约 1190px：密码并入权限列、去掉创建时间列，状态紧贴操作列并固定右侧
   const columns: ColumnProps<DriveShareLink>[] = [
-    { title: '文件', dataIndex: 'nodeName', minWidth: 220, ellipsis: { showTitle: false },
-      render: (_: unknown, l: DriveShareLink) => <FileNameCell name={l.nodeName} mimeType={l.nodeType === 'folder' ? 'inode/directory' : null} onClick={() => navigate(`/drive?space=${l.spaceId}`)} /> },
+    shareLinkFileColumn((l) => navigate(`/drive?space=${l.spaceId}`)),
     { title: '分享人', dataIndex: 'createdByName', width: 110, render: renderEllipsis },
-    { title: '权限', dataIndex: 'capabilities', width: 110, render: (v: DriveShareLink['capabilities'], l: DriveShareLink) => (
-      <Space spacing={4} className="drive-nowrap">
-        <span>{describeShareCapabilities(v)}</span>
-        {l.hasPassword && <Tag size="small" color="orange">密码</Tag>}
-      </Space>
-    ) },
-    { title: '访问 / 下载', width: 110, render: (_: unknown, l: DriveShareLink) => <span className="drive-nowrap">{`${l.accessCount}${l.maxAccessCount ? `/${l.maxAccessCount}` : ''} · ${l.downloadCount}`}</span> },
+    shareLinkCapabilitiesColumn,
+    shareLinkAccessColumn,
     { title: '备注', dataIndex: 'remark', width: 140, render: renderEllipsis },
-    dateTimeColumn('过期时间', 'expireAt', { empty: '永久' }),
-    { title: '状态', dataIndex: 'state', width: 90, fixed: 'right', render: (v: DriveShareLinkState) => shareLinkStateTag(v) },
+    shareLinkExpireColumn,
+    shareLinkStateColumn({ fixed: 'right' }),
     createOperationColumn<DriveShareLink>({ width: 210, desktopInlineKeys: ['logs', 'revoke'], actions: (l) => [
       { key: 'logs', label: '访问记录', onClick: () => setLogsOf(l) },
-      { key: 'copy', label: '复制链接', disabled: l.state !== 'active', onClick: () => void copyTextWithToast(shareLinkAbsoluteUrl(l), { success: '链接已复制' }) },
+      shareLinkCopyAction(l),
       { key: 'revoke', label: '撤销', danger: true, hidden: l.state === 'revoked' || !hasPermission('drive:admin:link:revoke'),
         onClick: () => { confirmDanger({ title: '撤销这条外链？', content: `「${l.nodeName}」的外链将立即失效，访客无法再访问。`, okText: '撤销',
           onOk: () => revoke.mutateAsync({ id: l.id, nodeId: l.nodeId }).then(() => Toast.success('已撤销')) }); } },

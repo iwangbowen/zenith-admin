@@ -12,6 +12,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useDictItems } from '@/hooks/useDictItems';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { IOT_VALIDATION_MODE_OPTIONS } from '@zenith/shared/iot';
 import { IotEnabledTag } from './components/IotStatus';
@@ -166,11 +167,7 @@ export default function IotProductsPage() {
               optionList={IOT_VALIDATION_MODE_OPTIONS}
               extraText="宽松：校验已声明属性（不符丢弃该键），未声明键放行；严格：仅接受已声明属性"
             />
-            <Form.RadioGroup field="status" label="状态">
-              {statusItems.map((o) => (
-                <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>
-              ))}
-            </Form.RadioGroup>
+            <FormStatusRadioGroup />
             <Form.TextArea field="description" label="描述" rows={3} placeholder="产品用途说明（选填）" maxCount={2000} />
           </Form>
         </Spin>

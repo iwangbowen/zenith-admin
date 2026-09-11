@@ -15,7 +15,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { copyTextWithToast } from '@/utils/clipboard';
 import { iotIngestContract } from '@zenith/shared/iot';
 import type { CreateIotWhitelistInput, IotWhitelistEntry } from '@zenith/shared/iot';
-import { useIotProductOptions } from './components/IotSelectors';
+import { IotProductSelectField, useIotProductOptions } from './components/IotSelectors';
 import {
   iotWhitelistKeys, useDeleteIotWhitelistEntry, useDisableIotRegistration,
   useImportIotWhitelist, useIotWhitelistList, useIotWhitelistStats, useResetIotRegistrationSecret,
@@ -211,7 +211,6 @@ export default function IotRegisterPage() {
 
       <ImportModal
         visible={importVisible}
-        productOptions={productOptions}
         pending={importMutation.isPending}
         onCancel={() => setImportVisible(false)}
         onSubmit={async (values) => {
@@ -224,9 +223,8 @@ export default function IotRegisterPage() {
   );
 }
 
-function ImportModal({ visible, productOptions, pending, onCancel, onSubmit }: Readonly<{
+function ImportModal({ visible, pending, onCancel, onSubmit }: Readonly<{
   visible: boolean;
-  productOptions: Array<{ value: number; label: string }>;
   pending: boolean;
   onCancel: () => void;
   onSubmit: (values: CreateIotWhitelistInput) => Promise<void>;
@@ -258,11 +256,7 @@ function ImportModal({ visible, productOptions, pending, onCancel, onSubmit }: R
       width={520}
     >
       <Form key={String(visible)} labelPosition="left" labelWidth={90} getFormApi={(api) => setFormApi(api as never)}>
-        <Form.Select
-          field="productId" label="所属产品" placeholder="选择产品" style={{ width: '100%' }}
-          optionList={productOptions}
-          rules={[{ required: true, message: '请选择所属产品' }]}
-        />
+        <IotProductSelectField />
         <Form.TextArea
           field="snsText" label="SN 列表" rows={8}
           placeholder={'每行一个 SN，如：\nSN-A1-0001\nSN-A1-0002'}

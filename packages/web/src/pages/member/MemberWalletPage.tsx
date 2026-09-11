@@ -1,45 +1,42 @@
 import { useRef, useState } from 'react';
-import { Button, Form, Toast, Tag, Banner } from '@douyinfe/semi-ui';
+import { Button, Form, Toast, Banner } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { WalletCards, Undo2 } from 'lucide-react';
 import type { MemberWalletTransaction } from '@zenith/shared/member';
-import { MEMBER_BIZ_TYPE_LABELS, WALLET_TX_TYPES, WALLET_TX_TYPE_LABELS } from '@zenith/shared/member';
+import { WALLET_TX_TYPES, WALLET_TX_TYPE_LABELS } from '@zenith/shared/member';
 import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
-import { useListSearch } from '@/hooks/useListSearch';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import ExportButton from '@/components/ExportButton';
+import { listTableProps } from '@/components/list-page';
 import { MemberSelect } from '@/components/MemberSelect';
-import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import {
   memberAdminKeys,
   useAdjustMemberWallet,
   useMemberWalletTransactions,
   useRefundMemberWallet,
 } from '@/hooks/queries/member-admin';
-import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
-import { memberCellColumn, signedYuanChange, useMemberKeywordDeepLink } from './member-admin-display';
-import { compactQuery } from '@/lib/query';
+import { signedYuanChange } from './member-admin-display';
+import {
+  MemberLedgerToolbar,
+  ledgerMemberColumn,
+  ledgerTailColumns,
+  ledgerTypeColumn,
+  ledgerTypeOptions,
+  useMemberLedgerSearch,
+} from './member-ledger';
 
-const typeOptions = (Object.keys(WALLET_TX_TYPE_LABELS) as (keyof typeof WALLET_TX_TYPE_LABELS)[]).map((v) => ({ value: v, label: WALLET_TX_TYPE_LABELS[v] }));
+const typeOptions = ledgerTypeOptions(WALLET_TX_TYPE_LABELS);
 const TYPE_COLORS: Record<string, string> = { recharge: 'green', consume: 'orange', refund: 'cyan', adjust: 'blue' };
 const yuan = (fen: number) => (fen / 100).toFixed(2);
-
-interface SearchParams { memberKeyword?: string; type?: string }
 
 export default function MemberWalletPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
-  const {
-    page, pageSize, buildPagination,
-    bind, bindKeyword, submittedParams,
-    handleSearch, handleReset, applySearch,
-  } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.walletLists });
-  useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ memberKeyword }) });
+  const search = useMemberLedgerSearch(memberAdminKeys.walletLists);
+  const { page, pageSize, buildPagination, submittedParams } = search;
   const [modalVisible, setModalVisible] = useState(false);
   const [mode, setMode] = useState<'adjust' | 'refund'>('adjust');
   const listQuery = useMemberWalletTransactions({
@@ -68,44 +65,26 @@ export default function MemberWalletPage() {
   };
 
   const columns: ColumnProps<MemberWalletTransaction>[] = [
-    memberCellColumn<MemberWalletTransaction>({ width: 140, nameField: 'memberName', idField: 'memberId' }),
-    { title: '类型', dataIndex: 'type', width: 100, render: (v: string) => <Tag color={TYPE_COLORS[v] as 'green'}>{WALLET_TX_TYPE_LABELS[v as keyof typeof WALLET_TX_TYPE_LABELS]}</Tag> },
+    ledgerMemberColumn<MemberWalletTransaction>(),
+    ledgerTypeColumn<MemberWalletTransaction>(WALLET_TX_TYPE_LABELS, TYPE_COLORS),
     { title: '变动(元)', dataIndex: 'amount', width: 110, align: 'right', render: signedYuanChange },
     { title: '变动后(元)', dataIndex: 'balanceAfter', width: 110, align: 'right', render: (v: number) => yuan(v) },
-    { title: '业务类型', dataIndex: 'bizType', width: 130, render: (v: string | null) => (v ? (MEMBER_BIZ_TYPE_LABELS[v] ?? v) : '-') },
-    { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
-    createdAtColumn,
+    ...ledgerTailColumns<MemberWalletTransaction>(),
   ];
-
-  const buildExportQuery = () => compactQuery({
-    memberKeyword: submittedParams.memberKeyword,
-    type: submittedParams.type,
-  });
-  const renderExportButton = (variant?: 'flat') => hasPermission('member:wallet:list') ? (
-    <ExportButton entity="member.wallet-transactions" query={buildExportQuery()} variant={variant} />
-  ) : null;
 
   return (
     <div className="page-container">
-      <ListSearchToolbar
-        keyword={<KeywordInput placeholder="会员ID/昵称" {...bindKeyword('memberKeyword')} width={180} />}
-        filters={(
-          <FilterSelect
-            placeholder="全部类型"
-            items={typeOptions}
-            {...bind('type')}
-          />
-        )}
-        onSearch={handleSearch}
-        onReset={handleReset}
+      <MemberLedgerToolbar
+        search={search}
+        typeOptions={typeOptions}
+        exportEntity="member.wallet-transactions"
+        exportPermission="member:wallet:list"
+        filterTitle="钱包流水筛选"
         create={<>{hasPermission('member:wallet:adjust') ? (
           <Button type="primary" icon={<WalletCards size={14} />} onClick={() => openModal('adjust')}>调整余额</Button>
         ) : null}{hasPermission('member:wallet:refund') ? (
           <Button type="primary" icon={<Undo2 size={14} />} onClick={() => openModal('refund')}>退款</Button>
         ) : null}</>}
-        actions={renderExportButton()}
-        mobileActions={renderExportButton('flat')}
-        filterTitle="钱包流水筛选"
       />
 
       <ConfigurableTable<MemberWalletTransaction> columns={columns} {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无钱包流水' })} />

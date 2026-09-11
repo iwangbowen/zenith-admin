@@ -1,28 +1,29 @@
 import { useMemo } from 'react';
-import { Button, Form, Tag } from '@douyinfe/semi-ui';
+import { Button, Form } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Coins } from 'lucide-react';
 import type { AdjustMemberPointsInput, MemberPointTransaction } from '@zenith/shared/member';
-import { MEMBER_BIZ_TYPE_LABELS, POINT_TX_TYPES, POINT_TX_TYPE_LABELS } from '@zenith/shared/member';
+import { POINT_TX_TYPES, POINT_TX_TYPE_LABELS } from '@zenith/shared/member';
 import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import ExportButton from '@/components/ExportButton';
+import { listTableProps } from '@/components/list-page';
 import { MemberSelect } from '@/components/MemberSelect';
-import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { memberAdminKeys, useAdjustMemberPoints, useMemberPointTransactions } from '@/hooks/queries/member-admin';
 import { useEditModal } from '@/hooks/useEditModal';
-import { useListSearch } from '@/hooks/useListSearch';
-import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { memberCellColumn, signedNumberChange, useMemberKeywordDeepLink } from './member-admin-display';
-import { compactQuery } from '@/lib/query';
+import { signedNumberChange } from './member-admin-display';
+import {
+  MemberLedgerToolbar,
+  ledgerMemberColumn,
+  ledgerTailColumns,
+  ledgerTypeColumn,
+  ledgerTypeOptions,
+  useMemberLedgerSearch,
+} from './member-ledger';
 
-const typeOptions = (Object.keys(POINT_TX_TYPE_LABELS) as (keyof typeof POINT_TX_TYPE_LABELS)[]).map((v) => ({ value: v, label: POINT_TX_TYPE_LABELS[v] }));
+const typeOptions = ledgerTypeOptions(POINT_TX_TYPE_LABELS);
 const TYPE_COLORS: Record<string, string> = { earn: 'green', redeem: 'orange', expire: 'grey', adjust: 'blue', refund: 'cyan' };
-
-interface SearchParams { memberKeyword?: string; type?: string }
 
 type AdjustPointFormValues = AdjustMemberPointsInput;
 
@@ -32,12 +33,8 @@ interface AdjustPointModalRecord {
 
 export default function MemberPointsPage() {
   const { hasPermission } = usePermission();
-  const {
-    page, pageSize, buildPagination,
-    bind, bindKeyword, submittedParams,
-    handleSearch, handleReset, applySearch,
-  } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.pointLists });
-  useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ memberKeyword }) });
+  const search = useMemberLedgerSearch(memberAdminKeys.pointLists);
+  const { page, pageSize, buildPagination, submittedParams } = search;
   const listQuery = useMemberPointTransactions({
     page,
     pageSize,
@@ -58,44 +55,26 @@ export default function MemberPointsPage() {
   });
 
   const columns: ColumnProps<MemberPointTransaction>[] = [
-    memberCellColumn<MemberPointTransaction>({ width: 140, nameField: 'memberName', idField: 'memberId' }),
-    { title: '类型', dataIndex: 'type', width: 100, render: (v: string) => <Tag color={TYPE_COLORS[v] as 'green'}>{POINT_TX_TYPE_LABELS[v as keyof typeof POINT_TX_TYPE_LABELS]}</Tag> },
+    ledgerMemberColumn<MemberPointTransaction>(),
+    ledgerTypeColumn<MemberPointTransaction>(POINT_TX_TYPE_LABELS, TYPE_COLORS),
     { title: '变动', dataIndex: 'amount', width: 100, align: 'right', render: signedNumberChange },
     { title: '变动后', dataIndex: 'balanceAfter', width: 100, align: 'right' },
-    { title: '业务类型', dataIndex: 'bizType', width: 130, render: (v: string | null) => (v ? (MEMBER_BIZ_TYPE_LABELS[v] ?? v) : '-') },
-    { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
-    createdAtColumn,
+    ...ledgerTailColumns<MemberPointTransaction>(),
   ];
-
-  const buildExportQuery = () => compactQuery({
-    memberKeyword: submittedParams.memberKeyword,
-    type: submittedParams.type,
-  });
-  const renderExportButton = (variant?: 'flat') => hasPermission('member:point:list') ? (
-    <ExportButton entity="member.point-transactions" query={buildExportQuery()} variant={variant} />
-  ) : null;
 
   return (
     <div className="page-container">
-      <ListSearchToolbar
-        keyword={<KeywordInput placeholder="会员ID/昵称" {...bindKeyword('memberKeyword')} width={180} />}
-        filters={(
-          <FilterSelect
-            placeholder="全部类型"
-            items={typeOptions}
-            {...bind('type')}
-          />
-        )}
-        onSearch={handleSearch}
-        onReset={handleReset}
+      <MemberLedgerToolbar
+        search={search}
+        typeOptions={typeOptions}
+        exportEntity="member.point-transactions"
+        exportPermission="member:point:list"
+        filterTitle="积分流水筛选"
         create={(
           hasPermission('member:point:adjust') ? (
             <Button type="primary" icon={<Coins size={14} />} onClick={adjustModal.openCreate}>调整积分</Button>
           ) : null
         )}
-        actions={renderExportButton()}
-        mobileActions={renderExportButton('flat')}
-        filterTitle="积分流水筛选"
       />
 
       <ConfigurableTable<MemberPointTransaction> columns={columns} {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无积分流水' })} />

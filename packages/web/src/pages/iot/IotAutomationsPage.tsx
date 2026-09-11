@@ -13,9 +13,11 @@ import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } fr
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePagination } from '@/hooks/usePagination';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { USER_STATUSES, enumValueOf, getByPath } from '@zenith/shared/core';
 import {
   IOT_AUTOMATION_ACTION_TYPE_LABELS, IOT_AUTOMATION_ACTION_TYPE_OPTIONS,
@@ -24,7 +26,7 @@ import {
   IOT_COMPARE_OP_LABELS,
 } from '@zenith/shared/iot';
 import type { CreateIotAutomationInput, IotAutomation, IotAutomationAction, IotAutomationRun } from '@zenith/shared/iot';
-import { useIotDeviceOptions, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
+import { IotDeviceSelectField, IotProductSelectField, useIotDeviceOptions, useIotGroupOptions } from './components/IotSelectors';
 import { IotEnabledTag, IotSuccessTag } from './components/IotStatus';
 import { IotEventSelectField, IotPropertyConditionFields, useIotThingModelSelects } from './components/ThingModelFields';
 import { jsonObjectToText, parseJsonObjectInput } from './iot-form-utils';
@@ -311,28 +313,17 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
 
 /** 联动表单体：触发器（按物模型联想）+ 动作编排（ArrayField） */
 function AutomationFormBody({ isEdit, values }: Readonly<{ isEdit: boolean; values: Record<string, unknown> }>) {
-  const { options: productOptions } = useIotProductOptions();
   const productId = (values.productId as number | undefined) ?? null;
   const triggerType = (values.triggerType as string | undefined) ?? 'property';
-  const { items: devices, options: deviceOptions } = useIotDeviceOptions(productId, productId !== null);
+  const { items: devices } = useIotDeviceOptions(productId, productId !== null);
   const { services } = useIotThingModelSelects(productId);
-  const { items: statusItems } = useDictItems('common_status');
 
   return (
     <>
       <Form.Input field="name" label="联动名称" placeholder="如：高温自动开启风扇"
         rules={[{ required: true, message: '联动名称不能为空' }]} />
-      <Form.Select
-        field="productId" label="所属产品" placeholder="选择产品" style={{ width: '100%' }}
-        disabled={isEdit}
-        extraText={isEdit ? '所属产品不可变更' : undefined}
-        optionList={productOptions}
-        rules={isEdit ? [] : [{ required: true, message: '请选择所属产品' }]}
-      />
-      <Form.Select
-        field="deviceId" label="限定设备" placeholder="不限（产品下全部设备）" showClear style={{ width: '100%' }}
-        optionList={deviceOptions}
-      />
+      <IotProductSelectField isEdit={isEdit} />
+      <IotDeviceSelectField productId={productId} />
       <Form.RadioGroup field="triggerType" label="触发器" disabled={isEdit}
         extraText={isEdit ? '触发器类型不可变更' : undefined}>
         {IOT_AUTOMATION_TRIGGER_OPTIONS.map((o) => (
@@ -353,11 +344,7 @@ function AutomationFormBody({ isEdit, values }: Readonly<{ isEdit: boolean; valu
         extraText="同一设备触发后在窗口内不重复执行" />
       <Form.Input field="decisionRuleKey" label="决策表 Key" placeholder="规则中心决策表 key（可选）" style={{ width: 220 }}
         extraText="填写后触发时先经决策表判定，命中才执行动作" />
-      <Form.RadioGroup field="status" label="状态">
-        {statusItems.map((o) => (
-          <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>
-        ))}
-      </Form.RadioGroup>
+      <FormStatusRadioGroup />
     </>
   );
 }
@@ -490,8 +477,7 @@ function AutomationRunsTab({ filterAutomation, onClearFilter }: Readonly<{
   filterAutomation: IotAutomation | null;
   onClearFilter: () => void;
 }>) {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, buildPagination } = usePagination(10);
   const [successFilter, setSuccessFilter] = useState<string | undefined>();
   const [detailRun, setDetailRun] = useState<IotAutomationRun | null>(null);
 
@@ -556,13 +542,7 @@ function AutomationRunsTab({ filterAutomation, onClearFilter }: Readonly<{
         columns={columns}
         {...listTableProps(listQuery, {
           empty: '暂无执行记录',
-          pagination: (total) => ({
-            currentPage: page,
-            pageSize,
-            total,
-            onPageChange: setPage,
-            onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
-          }),
+          pagination: buildPagination,
         })}
       />
 
