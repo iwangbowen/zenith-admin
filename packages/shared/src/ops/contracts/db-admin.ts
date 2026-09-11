@@ -1,8 +1,9 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   DB_ADMIN_COLUMN_DIFF_ISSUES,
+  DB_ADMIN_ORDER_DIRECTIONS,
   DB_ADMIN_SQL_EXPORT_MODES,
   DB_ADMIN_TABLE_DRIFT_STATUSES,
   DB_ADMIN_TABLE_KINDS,
@@ -406,7 +407,7 @@ export const dbAdminTableParam = z.object({
 
 export const dbAdminTableRowsQuery = paginationQuery.extend({
   orderBy: z.string().optional(),
-  orderDir: z.enum(['asc', 'desc']).optional(),
+  orderDir: queryEnum(DB_ADMIN_ORDER_DIRECTIONS),
   filters: z.string().optional().meta({ description: 'JSON 字符串：{ 列名: 关键字 }，每列做 ILIKE 模糊匹配' }),
   search: z.string().optional().meta({ description: '全列模糊搜索关键字' }),
   where: z.string().max(2000).optional().meta({ description: '原生 WHERE 片段（需 system:db-admin:query 权限，可跨表子查询）' }),
@@ -421,11 +422,10 @@ export const dbAdminBackendPidParam = z.object({
 });
 
 export const dbBackupListQuery = paginationQuery.extend({
-  status: z.enum(DB_BACKUP_STATUSES).optional(),
-  type: z.enum(DB_BACKUP_TYPES).optional(),
+  status: queryEnum(DB_BACKUP_STATUSES),
+  type: queryEnum(DB_BACKUP_TYPES),
 });
 
-export type DbBackupListQueryInput = z.infer<typeof dbBackupListQuery>;
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 

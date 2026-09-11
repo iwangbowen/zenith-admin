@@ -42,7 +42,7 @@ function listFeedbackMessages(filters: { feedback?: '1' | '-1'; status?: string;
 export const aiConversationsHandlers = [
   // 列表（支持 archived / keyword 筛选 + limit/offset 分页）
   mock(aiConversationContract.list, ({ query, ok }) => {
-    const archived = query.archived === 'true';
+    const archived = query.archived ?? false;
     const keyword = (query.keyword ?? '').trim().toLowerCase();
     let list = convStore.filter((c) => c.isArchived === archived);
     if (keyword) {

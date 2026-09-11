@@ -4,7 +4,9 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { and, desc, eq, isNull, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { GenerateSelfSignedCertInput } from '@zenith/shared/ops';
+import { sslCertificateContract } from '@zenith/shared/ops';
 import type { UploadCertSchemaInput } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { sslCertificates, users } from '../../db/schema';
@@ -19,7 +21,6 @@ import { notify } from '../messaging/notification-outbox.service';
 const execFileAsync = promisify(execFile);
 const PEM_CERT_HEADER = '-----BEGIN CERTIFICATE-----';
 
-type SslCertType = 'self_signed' | 'uploaded' | 'letsencrypt';
 type SslCertStatus = 'valid' | 'expiring' | 'expired' | 'invalid';
 type DownloadKind = 'cert' | 'key';
 
@@ -37,13 +38,6 @@ interface StoredCertificate {
   keyPath: string;
   certContent: string;
   keyContent: string;
-}
-
-export interface ListSslCertificatesQuery {
-  keyword?: string;
-  type?: SslCertType;
-  page: number;
-  pageSize: number;
 }
 
 function emptyCertInfo(): ParsedCertInfo {
@@ -188,7 +182,7 @@ function mapCert(row: SslCertificateRow) {
   };
 }
 
-function buildCertificateWhere(query: ListSslCertificatesQuery): SQL | undefined {
+function buildCertificateWhere(query: QueryOutputOf<typeof sslCertificateContract.list>): SQL | undefined {
   return buildWhere(
     query.type ? eq(sslCertificates.type, query.type) : undefined,
     keywordCondition(query.keyword, [sslCertificates.name, sslCertificates.domain]),
@@ -233,7 +227,7 @@ async function persistCertFiles(id: number, certContent: string, keyContent: str
   return { certPath, keyPath };
 }
 
-export async function listSslCertificates(query: ListSslCertificatesQuery) {
+export async function listSslCertificates(query: QueryOutputOf<typeof sslCertificateContract.list>) {
   const where = buildCertificateWhere(query);
   return buildListResult({
     page: query.page,

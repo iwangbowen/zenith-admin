@@ -1,7 +1,9 @@
 import { uniquePositiveInts } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { systemSchedulerContract } from '@zenith/shared/platform';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { and, desc, eq, isNotNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { CronExpressionParser } from 'cron-parser';
 import { db } from '../../db';
@@ -14,23 +16,10 @@ import {
   runSystemRecurringJobNow,
   updateSystemTaskRuntimePolicy,
   type SystemSchedulerAlertChannel,
-  type SystemSchedulerRunStatus,
   type SystemSchedulerTaskPolicy,
   type SystemSchedulerTaskInfo,
 } from '../../lib/pg-boss-scheduler';
 import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
-
-export interface ListSystemSchedulerRunsQuery {
-  page: number;
-  pageSize: number;
-  taskName?: string;
-  taskType?: 'recurring' | 'queue';
-  triggerType?: 'schedule' | 'manual' | 'queue';
-  status?: SystemSchedulerRunStatus;
-  alertStatus?: 'all' | 'alerted' | 'unacked';
-  startTime?: string;
-  endTime?: string;
-}
 
 export interface UpdateSystemSchedulerTaskConfigInput {
   enabled: boolean;
@@ -225,17 +214,17 @@ export async function listSystemSchedulerTasks() {
     .sort((a, b) => a.module.localeCompare(b.module, 'zh-Hans-CN') || a.title.localeCompare(b.title, 'zh-Hans-CN'));
 }
 
-export async function listSystemSchedulerRuns(query: ListSystemSchedulerRunsQuery) {
+export async function listSystemSchedulerRuns(query: QueryOutputOf<typeof systemSchedulerContract.runs>) {
   const { page, pageSize } = query;
-  const conditions: SQL[] = [];
-  if (query.taskName) conditions.push(eq(systemSchedulerRuns.taskName, query.taskName));
-  if (query.taskType) conditions.push(eq(systemSchedulerRuns.taskType, query.taskType));
-  if (query.triggerType) conditions.push(eq(systemSchedulerRuns.triggerType, query.triggerType));
-  if (query.status) conditions.push(eq(systemSchedulerRuns.status, query.status));
-  if (query.alertStatus === 'alerted') conditions.push(isNotNull(systemSchedulerRuns.alertMessage));
-  if (query.alertStatus === 'unacked') conditions.push(and(isNotNull(systemSchedulerRuns.alertMessage), sql`${systemSchedulerRuns.alertAckAt} is null`)!);
-  conditions.push(...dateRangeConditions(systemSchedulerRuns.startedAt, query.startTime, query.endTime));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    query.taskName ? eq(systemSchedulerRuns.taskName, query.taskName) : undefined,
+    query.taskType ? eq(systemSchedulerRuns.taskType, query.taskType) : undefined,
+    query.triggerType ? eq(systemSchedulerRuns.triggerType, query.triggerType) : undefined,
+    query.status ? eq(systemSchedulerRuns.status, query.status) : undefined,
+    query.alertStatus === 'alerted' ? isNotNull(systemSchedulerRuns.alertMessage) : undefined,
+    query.alertStatus === 'unacked' ? and(isNotNull(systemSchedulerRuns.alertMessage), sql`${systemSchedulerRuns.alertAckAt} is null`) : undefined,
+    ...dateRangeConditions(systemSchedulerRuns.startedAt, query.startTime, query.endTime),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -271,9 +260,8 @@ export async function acknowledgeSystemSchedulerRunAlert(id: number, note?: stri
   return mapRun(updated);
 }
 
-export async function listSystemSchedulerNodes(query: { page?: number; pageSize?: number } = {}) {
-  const page = Number(query.page ?? 1);
-  const pageSize = Number(query.pageSize ?? 10);
+export async function listSystemSchedulerNodes(query: QueryOutputOf<typeof systemSchedulerContract.nodes>) {
+  const { page, pageSize } = query;
   return buildListResult({
     page,
     pageSize,

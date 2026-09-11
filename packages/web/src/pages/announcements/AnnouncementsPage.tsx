@@ -53,9 +53,8 @@ export default function AnnouncementsPage() {
   const [selected, setSelected] = useState<AnnouncementWithRead | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
-  let isRead: string | undefined;
-  if (activeTab === 'unread') isRead = 'false';
-  else if (activeTab === 'read') isRead = 'true';
+  // Tab → 已读筛选：全部 = 不过滤
+  const isRead = activeTab === 'all' ? undefined : activeTab === 'read';
 
   const listQuery = useMyAnnouncementList({ page, pageSize, isRead });
   const list = listQuery.data?.list ?? [];

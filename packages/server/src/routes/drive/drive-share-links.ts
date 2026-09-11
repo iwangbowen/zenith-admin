@@ -59,8 +59,7 @@ const accessLogsRoute = defineContractRoute(driveShareLinkContract.accessLogs, {
   middleware: read,
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const { page, pageSize } = c.req.valid('query');
-    return c.json(okBody(await listShareAccessLogs(id, page, pageSize)), 200);
+    return c.json(okBody(await listShareAccessLogs(id, c.req.valid('query'))), 200);
   },
 });
 
@@ -68,8 +67,7 @@ const submissionsRoute = defineContractRoute(driveShareLinkContract.submissions,
   middleware: read,
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const { page, pageSize } = c.req.valid('query');
-    return c.json(okBody(await listCollectSubmissions(id, page, pageSize)), 200);
+    return c.json(okBody(await listCollectSubmissions(id, c.req.valid('query'))), 200);
   },
 });
 

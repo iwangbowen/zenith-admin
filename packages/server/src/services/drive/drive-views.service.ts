@@ -1,6 +1,8 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
-import type { DriveNodeType, DriveRecentItem, DriveSearchItem, DriveSharedItem, DriveSubjectType } from '@zenith/shared/drive';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import type { DriveRecentItem, DriveSearchItem, DriveSharedItem, DriveSubjectType } from '@zenith/shared/drive';
+import { driveNodeContract } from '@zenith/shared/drive';
 import { db } from '../../db';
 import { driveNodePermissions, driveNodes, driveNodeStars, driveNodeTags, driveNodeTexts, driveRecentAccess, driveSpaces, type DriveNodeRow } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
@@ -11,12 +13,7 @@ import { buildWhere, dateRangeConditions, keywordCondition, withPagination } fro
 import { attachNodeRoles, ensureNodeRole, loadDriveSubjects, subjectPairsCondition, visibleNodeCondition } from './drive-access.service';
 import { decorateNodes, ensureDriveNodeExists } from './drive-nodes.service';
 
-interface PagedQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  type?: DriveNodeType;
-}
+type DriveNodeViewQuery = QueryOutputOf<typeof driveNodeContract.starred>;
 
 async function spaceNameMap(rows: Array<{ spaceId: number }>): Promise<Map<number, string>> {
   const ids = [...new Set(rows.map((r) => r.spaceId))];
@@ -54,8 +51,8 @@ export async function setDriveNodeStar(nodeId: number, starred: boolean): Promis
   return starred;
 }
 
-export async function listStarredNodes(q: PagedQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listStarredNodes(q: DriveNodeViewQuery) {
+  const { page, pageSize } = q;
   const uid = currentUserId();
   const subjects = await loadDriveSubjects();
   const where = buildWhere(
@@ -79,8 +76,8 @@ export async function listStarredNodes(q: PagedQuery) {
 
 // ─── 最近访问 ─────────────────────────────────────────────────────────────────
 
-export async function listRecentNodes(q: PagedQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listRecentNodes(q: DriveNodeViewQuery) {
+  const { page, pageSize } = q;
   const uid = currentUserId();
   const subjects = await loadDriveSubjects();
   const where = buildWhere(
@@ -117,8 +114,8 @@ export async function listRecentNodes(q: PagedQuery) {
 
 // ─── 与我共享 ─────────────────────────────────────────────────────────────────
 
-export async function listSharedWithMe(q: PagedQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listSharedWithMe(q: DriveNodeViewQuery) {
+  const { page, pageSize } = q;
   const subjects = await loadDriveSubjects();
   const grantWhere = and(
     subjectPairsCondition(driveNodePermissions, subjects),
@@ -160,17 +157,6 @@ export async function listSharedWithMe(q: PagedQuery) {
 
 // ─── 搜索 ─────────────────────────────────────────────────────────────────────
 
-export interface SearchDriveNodesQuery extends PagedQuery {
-  spaceId?: number;
-  tagId?: number;
-  createdBy?: number;
-  extension?: string;
-  startTime?: string;
-  endTime?: string;
-  /** 是否同时检索文本文件正文 */
-  fullText?: boolean;
-}
-
 /** `simple` 分词器不切分中日韩文本：含 CJK 的关键词改用子串匹配，否则用 tsvector */
 const CJK_PATTERN = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/;
 
@@ -189,8 +175,8 @@ function substringSnippet(content: string, keyword: string, radius = 40): string
   return `${start > 0 ? '…' : ''}${content.slice(start, end).replaceAll(/\s+/g, ' ')}${end < content.length ? '…' : ''}`;
 }
 
-export async function searchDriveNodes(q: SearchDriveNodesQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function searchDriveNodes(q: QueryOutputOf<typeof driveNodeContract.search>) {
+  const { page, pageSize } = q;
   const keyword = q.keyword?.trim();
   if (!keyword) throw new HTTPException(400, { message: '请输入搜索关键词' });
   const subjects = await loadDriveSubjects();

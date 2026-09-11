@@ -3,6 +3,8 @@ import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { isIP } from 'node:net';
 import { and, eq, desc, inArray } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { oauth2ClientContract } from '@zenith/shared/open-platform';
 import { db } from '../../db';
 import {
   appWebhookDeliveries,
@@ -83,22 +85,13 @@ function mapTokenAuditRow(row: typeof oauth2Tokens.$inferSelect) {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-export async function listOAuth2Clients(opts: {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  ownerId?: number;
-  environment?: 'production' | 'sandbox';
-  reviewStatus?: 'draft' | 'pending' | 'approved' | 'rejected';
-}) {
+export async function listOAuth2Clients(opts: QueryOutputOf<typeof oauth2ClientContract.list> & { ownerId?: number }) {
   const { page, pageSize, keyword, ownerId, environment, reviewStatus } = opts;
-  const conditions = [];
-  conditions.push(keywordCondition(keyword, [oauth2Clients.name], 'ilike'));
-  if (ownerId !== undefined) conditions.push(eq(oauth2Clients.ownerId, ownerId));
-  if (environment) conditions.push(eq(oauth2Clients.environment, environment));
-  if (reviewStatus) conditions.push(eq(oauth2Clients.reviewStatus, reviewStatus));
   const where = buildWhere(
-    buildWhere(...conditions),
+    keywordCondition(keyword, [oauth2Clients.name], 'ilike'),
+    ownerId !== undefined ? eq(oauth2Clients.ownerId, ownerId) : undefined,
+    environment ? eq(oauth2Clients.environment, environment) : undefined,
+    reviewStatus ? eq(oauth2Clients.reviewStatus, reviewStatus) : undefined,
     tenantCondition(oauth2Clients, currentUser()),
   );
   return buildListResult({
@@ -308,7 +301,7 @@ export async function updateOAuth2Client(
           reviewedBy: options.resetReview ? null : undefined,
           status: input.status,
         })
-        .where(and(...updateConditions))
+        .where(buildWhere(...updateConditions))
         .returning();
       requireRow(row, '应用状态已变化，请刷新后重试', 409);
       if (shouldRevokeTokens) {
@@ -358,7 +351,7 @@ export async function deleteOAuth2Client(
     if (options.allowedReviewStatuses?.length) {
       deleteConditions.push(inArray(oauth2Clients.reviewStatus, options.allowedReviewStatuses));
     }
-    const result = await tx.delete(oauth2Clients).where(and(...deleteConditions)).returning();
+    const result = await tx.delete(oauth2Clients).where(buildWhere(...deleteConditions)).returning();
     requireRow(result[0], 'OAuth2 应用不存在');
 
     // Webhook：先删投递记录再删订阅（投递以订阅为父）

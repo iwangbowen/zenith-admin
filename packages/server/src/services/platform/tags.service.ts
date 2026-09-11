@@ -1,4 +1,6 @@
-import { eq, asc, inArray, type SQL } from 'drizzle-orm';
+import { eq, asc, inArray } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { tagContract } from '@zenith/shared/platform';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { tags } from '../../db/schema';
@@ -46,20 +48,13 @@ export async function getTagsBeforeAudit(ids: number[]) {
 
 // ─── 列表查询 ─────────────────────────────────────────────────────────────────
 
-export interface ListTagsQuery {
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  groupName?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listTags(q: ListTagsQuery) {
-  const { keyword = '', status, groupName = '', page, pageSize } = q;
-  const conditions: (SQL | undefined)[] = [keywordCondition(keyword, [tags.name, tags.description])];
-  if (status) conditions.push(eq(tags.status, status));
-  conditions.push(keywordCondition(groupName, [tags.groupName]));
-  const where = buildWhere(...conditions);
+export async function listTags(q: QueryOutputOf<typeof tagContract.list>) {
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [tags.name, tags.description]),
+    q.status ? eq(tags.status, q.status) : undefined,
+    keywordCondition(q.groupName, [tags.groupName]),
+  );
   return buildListResult({
     page,
     pageSize,

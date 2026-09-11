@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts';
 import { DRIVE_ACTIVITY_ACTIONS, DRIVE_NODE_TYPES, DRIVE_QUOTA_REQUEST_STATUSES, DRIVE_ROLES, DRIVE_SPACE_TYPES } from '../constants';
@@ -81,7 +81,7 @@ export const driveAdminActivityListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   spaceId: z.coerce.number().int().positive().optional(),
   actorId: z.coerce.number().int().positive().optional(),
-  action: z.enum(DRIVE_ACTIVITY_ACTIONS).optional(),
+  action: queryEnum(DRIVE_ACTIVITY_ACTIONS),
   startTime: dateRangeBound('时间起'),
   endTime: dateRangeBound('时间止'),
 });
@@ -102,7 +102,7 @@ export const driveLegalHoldListQuery = paginationQuery.extend({
 });
 
 export const driveQuotaRequestListQuery = paginationQuery.extend({
-  status: z.enum(DRIVE_QUOTA_REQUEST_STATUSES).optional(),
+  status: queryEnum(DRIVE_QUOTA_REQUEST_STATUSES),
   spaceId: z.coerce.number().int().positive().optional(),
 });
 

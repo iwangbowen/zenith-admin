@@ -1,11 +1,13 @@
-import { eq, desc, asc, gte, lte, lt, inArray, sql } from 'drizzle-orm';
+import { eq, desc, asc, gte, lt, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { terminalRecordingContract } from '@zenith/shared/ops';
 import { db } from '../../db';
 import { terminalRecordings, users, type RecordingEvent } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import { requireFirstRow } from '../../lib/db-assert';
-import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { getSettings } from '../../lib/settings';
 
 export interface CreateRecordingInput {
@@ -87,26 +89,14 @@ export async function createRecording(userId: number, tenantId: number | null, i
   return mapRow({ ...row, sizeBytes: Buffer.byteLength(JSON.stringify(row.events), 'utf8') });
 }
 
-export interface ListRecordingsParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  operatorUserId?: number;
-  shell?: string;
-  startDate?: Date;
-  endDate?: Date;
-}
-
 /** 分页查询全局录屏列表（管理员审计，不返回 events 字段）。 */
-export async function listRecordings(params: ListRecordingsParams) {
-  const { page, pageSize, keyword, operatorUserId, shell, startDate, endDate } = params;
-  const conditions = [];
-  conditions.push(keywordCondition(keyword, [terminalRecordings.title], 'ilike'));
-  if (operatorUserId) conditions.push(eq(terminalRecordings.userId, operatorUserId));
-  if (shell) conditions.push(eq(terminalRecordings.shell, shell));
-  if (startDate) conditions.push(gte(terminalRecordings.createdAt, startDate));
-  if (endDate) conditions.push(lte(terminalRecordings.createdAt, endDate));
-  const where = buildWhere(...conditions);
+export async function listRecordings(params: QueryOutputOf<typeof terminalRecordingContract.list>) {
+  const { page, pageSize, keyword, operatorUserId, startTime, endTime } = params;
+  const where = buildWhere(
+    keywordCondition(keyword, [terminalRecordings.title], 'ilike'),
+    operatorUserId ? eq(terminalRecordings.userId, operatorUserId) : undefined,
+    ...dateRangeConditions(terminalRecordings.createdAt, startTime, endTime),
+  );
 
   const baseQuery = db
     .select({ ...recordingBaseColumns, commandCount: commandCountExpr })

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { USER_FEEDBACK_CATEGORIES, USER_FEEDBACK_STATUSES } from '../constants';
 import { createUserFeedbackSchema, handleUserFeedbackSchema } from '../validation';
@@ -30,8 +30,8 @@ export type UserFeedback = z.infer<typeof userFeedbackSchema>;
 
 export const userFeedbackListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按反馈内容模糊匹配' }),
-  category: z.enum(USER_FEEDBACK_CATEGORIES).optional(),
-  status: z.enum(USER_FEEDBACK_STATUSES).optional(),
+  category: queryEnum(USER_FEEDBACK_CATEGORIES),
+  status: queryEnum(USER_FEEDBACK_STATUSES),
   startTime: dateRangeBound('提交时间起'),
   endTime: dateRangeBound('提交时间止'),
 });

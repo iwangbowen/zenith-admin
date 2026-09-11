@@ -1,6 +1,8 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { CreateWikiCommentInput, WikiCommentStatus } from '@zenith/shared/wiki';
+import { wikiCommentContract } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import { users, wikiComments, wikiDocs, type WikiCommentRow } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
@@ -122,18 +124,8 @@ export async function deleteMyWikiComment(id: number) {
 
 // ─── 管理端 ───────────────────────────────────────────────────────────────────
 
-export interface ListWikiCommentsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: WikiCommentStatus;
-  docId?: number;
-  startTime?: string;
-  endTime?: string;
-}
-
-export async function listWikiComments(q: ListWikiCommentsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listWikiComments(q: QueryOutputOf<typeof wikiCommentContract.list>) {
+  const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [wikiComments.content]),
     q.status ? eq(wikiComments.status, q.status) : undefined,

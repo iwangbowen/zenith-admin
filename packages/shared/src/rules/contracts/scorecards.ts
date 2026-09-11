@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { RULE_DECISION_STATUSES } from '../constants';
 import {
@@ -68,7 +68,7 @@ export type RuleScorecardEvaluateResult = z.infer<typeof ruleScorecardEvaluateRe
 
 export const ruleScorecardListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称模糊匹配' }),
-  status: z.enum(RULE_DECISION_STATUSES).optional(),
+  status: queryEnum(RULE_DECISION_STATUSES),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

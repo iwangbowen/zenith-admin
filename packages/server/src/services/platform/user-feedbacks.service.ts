@@ -1,13 +1,14 @@
-import { desc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { userFeedbacks } from '../../db/schema';
 import type { UserFeedbackRow } from '../../db/schema';
-import { USER_FEEDBACK_STATUS_LABELS } from '@zenith/shared/platform';
+import { userFeedbackContract, USER_FEEDBACK_STATUS_LABELS } from '@zenith/shared/platform';
 import type { UserFeedbackCategory, UserFeedbackStatus } from '@zenith/shared/platform';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
-import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
@@ -66,31 +67,17 @@ export async function createUserFeedback(data: CreateUserFeedbackData) {
   return mapUserFeedback(created);
 }
 
-export interface ListUserFeedbacksQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  category?: UserFeedbackCategory;
-  status?: UserFeedbackStatus;
-  startTime?: string;
-  endTime?: string;
+function buildListWhere(q: QueryOutputOf<typeof userFeedbackContract.list>) {
+  return buildWhere(
+    keywordCondition(q.keyword, [userFeedbacks.content]),
+    q.category ? eq(userFeedbacks.category, q.category) : undefined,
+    q.status ? eq(userFeedbacks.status, q.status) : undefined,
+    ...dateRangeConditions(userFeedbacks.createdAt, q.startTime, q.endTime),
+  );
 }
 
-function buildListWhere(q: ListUserFeedbacksQuery) {
-  const conditions = [];
-  conditions.push(keywordCondition(q.keyword, [userFeedbacks.content]));
-  if (q.category) conditions.push(eq(userFeedbacks.category, q.category));
-  if (q.status) conditions.push(eq(userFeedbacks.status, q.status));
-  const startTime = parseDateRangeStart(q.startTime);
-  const endTime = parseDateRangeEnd(q.endTime);
-  if (startTime) conditions.push(gte(userFeedbacks.createdAt, startTime));
-  if (endTime) conditions.push(lte(userFeedbacks.createdAt, endTime));
-  return buildWhere(...conditions);
-}
-
-export async function listUserFeedbacks(q: ListUserFeedbacksQuery) {
-  const page = Number(q.page) || 1;
-  const pageSize = Number(q.pageSize) || 10;
+export async function listUserFeedbacks(q: QueryOutputOf<typeof userFeedbackContract.list>) {
+  const { page, pageSize } = q;
   const where = buildListWhere(q);
   return buildListResult({
     page,

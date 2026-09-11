@@ -1,9 +1,10 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import {
   driveRoleAtLeast,
+  openDriveContract,
   type CreateDriveOpenAppGrantInput,
-  type DriveNodeType,
   type DriveOpenAppGrant,
   type DriveRole,
   type OpenDriveNode,
@@ -167,17 +168,8 @@ function mapOpenNode(row: DriveNodeRow, held: Set<number>): OpenDriveNode {
   };
 }
 
-export interface ListOpenDriveNodesQuery {
-  page?: number;
-  pageSize?: number;
-  spaceId: number;
-  parentId?: number;
-  keyword?: string;
-  type?: DriveNodeType;
-}
-
-export async function listOpenDriveNodes(principal: OpenPrincipal, q: ListOpenDriveNodesQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listOpenDriveNodes(principal: OpenPrincipal, q: QueryOutputOf<typeof openDriveContract.nodes>) {
+  const { page, pageSize } = q;
   await requireGrantedSpace(principal, q.spaceId, 'viewer');
   const keyword = q.keyword?.trim();
   const parentCondition: SQL | undefined = keyword

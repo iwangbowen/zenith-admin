@@ -13,6 +13,8 @@
  *  6. 路由层通过 guard({ permission: 'system:db-admin:*' }) 双层鉴权。
  */
 import { sql, desc, eq, and, type SQL } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { dbAdminContract } from '@zenith/shared/ops';
 import { keywordCondition } from '../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
 import { db, pgClient } from '../../db';
@@ -94,6 +96,7 @@ export interface QueryResult {
   /** 分页时的总行数；非分页为 null */
   total: number | null;
   page: number | null;
+  // eslint-disable-next-line no-restricted-syntax -- SQL 控制台响应视图模型，不是列表查询入参
   pageSize: number | null;
 }
 
@@ -501,20 +504,14 @@ export async function getTableStructure(schema: string, name: string): Promise<T
 }
 
 // ─── 3. 表数据分页 ──────────────────────────────────────────────────────────────
-export interface RowsParams {
+type RowsParams = Omit<QueryOutputOf<typeof dbAdminContract.tableRows>, 'filters' | 'where'> & {
   schema: string;
   name: string;
-  page: number;
-  pageSize: number;
-  orderBy?: string;
-  orderDir?: 'asc' | 'desc';
   /** 列名 -> 关键字（使用 col::text ILIKE %kw% 匹配） */
   filters?: Record<string, string>;
-  /** 全列模糊搜索关键字（对所有列 col::text ILIKE %kw% 取 OR） */
-  search?: string;
   /** 原生 WHERE 片段（需 query 权限；只读事务内执行，经 sanitizeWhereFragment 校验） */
   whereRaw?: string;
-}
+};
 
 const WHERE_FRAGMENT_MAX = 2000;
 
@@ -1123,6 +1120,7 @@ async function resolveOidTypeNames(columns: QueryResult['columns']): Promise<voi
 export interface QueryOptions {
   queryId?: string;
   page?: number;
+  // eslint-disable-next-line no-restricted-syntax -- SQL 控制台请求体选项，非契约 query 入参
   pageSize?: number;
 }
 

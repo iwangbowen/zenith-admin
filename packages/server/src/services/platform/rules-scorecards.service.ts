@@ -4,6 +4,7 @@
  */
 import { and, desc, eq, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type {
   RuleScorecardEvaluateResult,
   RuleScorecardGrade,
@@ -11,6 +12,7 @@ import type {
 } from '@zenith/shared/rules';
 import { stableStringify } from '@zenith/shared/core';
 import type { CreateRuleScorecardInput, UpdateRuleScorecardInput } from '@zenith/shared/rules';
+import { ruleScorecardContract } from '@zenith/shared/rules';
 import { db } from '../../db';
 import { ruleScorecards, ruleAssetVersions } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -66,28 +68,19 @@ export function mapRuleScorecard(row: Row) {
 
 export async function ensureRuleScorecard(id: number): Promise<Row> {
   const tc = tenantCondition(ruleScorecards, currentUser());
-  const conds: (SQL | undefined)[] = [eq(ruleScorecards.id, id), tc];
   return requireFirstRow(
-    db.select().from(ruleScorecards).where(buildWhere(...conds)).limit(1),
+    db.select().from(ruleScorecards).where(buildWhere(eq(ruleScorecards.id, id), tc)).limit(1),
     '评分卡不存在',
   );
 }
 
-export interface ListRuleScorecardsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'draft' | 'published' | 'disabled';
-}
-
-export async function listRuleScorecards(q: ListRuleScorecardsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
-  const tc = tenantCondition(ruleScorecards, currentUser());
-  const conds: (SQL | undefined)[] = [tc];
-  conds.push(keywordCondition(q.keyword, [ruleScorecards.name]));
-  if (q.status) conds.push(eq(ruleScorecards.status, q.status));
-  const where = buildWhere(...conds);
+export async function listRuleScorecards(q: QueryOutputOf<typeof ruleScorecardContract.list>) {
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    tenantCondition(ruleScorecards, currentUser()),
+    keywordCondition(q.keyword, [ruleScorecards.name]),
+    q.status ? eq(ruleScorecards.status, q.status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

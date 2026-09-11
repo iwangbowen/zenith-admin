@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { paginated, paginationQuery } from '../../core/api-schemas';
+import { paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { TERMINAL_SESSION_KINDS } from '../constants';
 
@@ -30,7 +30,7 @@ export type TerminalSession = z.infer<typeof terminalSessionSchema>;
 
 export const terminalSessionListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  kind: z.enum(TERMINAL_SESSION_KINDS).optional(),
+  kind: queryEnum(TERMINAL_SESSION_KINDS),
 });
 
 export const terminalSessionIdParam = z.object({

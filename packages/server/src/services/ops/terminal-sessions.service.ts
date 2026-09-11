@@ -11,7 +11,9 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { v7 as uuidv7 } from 'uuid';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { TerminalEndReason, TerminalSessionKind, TerminalSessionState } from '@zenith/shared/ops';
+import { terminalSessionContract } from '@zenith/shared/ops';
 import { config } from '../../config';
 import { db } from '../../db';
 import { terminalSessions } from '../../db/schema';
@@ -226,15 +228,8 @@ function mapMeta(m: TerminalSessionMeta) {
   };
 }
 
-export interface ListTerminalSessionsParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  kind?: TerminalSessionKind;
-}
-
 /** 分页列出活动终端会话（内存注册表，进程内分页）。 */
-export function listTerminalSessions(params: ListTerminalSessionsParams) {
+export function listTerminalSessions(params: QueryOutputOf<typeof terminalSessionContract.list>) {
   const { page, pageSize, keyword, kind } = params;
   const user = currentUser();
   let all = listSessionsMeta().filter((s) => canAccessTerminalSession(user, s.tenantId));
@@ -277,29 +272,20 @@ export function terminateTerminalSession(sessionId: string): void {
 
 // ─── 历史记录 ──────────────────────────────────────────────────────────────
 
-export interface ListTerminalSessionHistoryParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  kind?: TerminalSessionKind;
-}
-
 /** 分页查询会话历史（含已结束会话），用于事后追溯。 */
-export async function listTerminalSessionHistory(params: ListTerminalSessionHistoryParams) {
+export async function listTerminalSessionHistory(params: QueryOutputOf<typeof terminalSessionContract.list>) {
   const { page, pageSize, keyword, kind } = params;
   const user = currentUser();
-  const conditions = [];
-  if (config.multiTenantMode && !(isPlatformAdmin(user) && getEffectiveTenantId(user) === null)) {
-    const effectiveTenantId = getEffectiveTenantId(user);
-    conditions.push(
-      effectiveTenantId === null
+  const effectiveTenantId = getEffectiveTenantId(user);
+  const where = buildWhere(
+    config.multiTenantMode && !(isPlatformAdmin(user) && effectiveTenantId === null)
+      ? effectiveTenantId === null
         ? sql`${terminalSessions.tenantId} is null`
-        : eq(terminalSessions.tenantId, effectiveTenantId),
-    );
-  }
-  if (kind) conditions.push(eq(terminalSessions.kind, kind));
-  conditions.push(keywordCondition(keyword, [terminalSessions.label, terminalSessions.clientIp]));
-  const where = buildWhere(...conditions);
+        : eq(terminalSessions.tenantId, effectiveTenantId)
+      : undefined,
+    kind ? eq(terminalSessions.kind, kind) : undefined,
+    keywordCondition(keyword, [terminalSessions.label, terminalSessions.clientIp]),
+  );
 
   return buildListResult({
     page,

@@ -7,7 +7,9 @@
  */
 import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { RuleFlowStep, RuleFlowEvaluateResult } from '@zenith/shared/rules';
+import { decisionFlowContract } from '@zenith/shared/rules';
 import { db } from '../../db';
 import { ruleDecisionFlows, ruleDecisionTables, ruleAssetVersions } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -51,28 +53,19 @@ export function mapDecisionFlow(row: FlowRow) {
 
 export async function ensureDecisionFlow(id: number): Promise<FlowRow> {
   const tc = tenantCondition(ruleDecisionFlows, currentUser());
-  const conds: (SQL | undefined)[] = [eq(ruleDecisionFlows.id, id), tc];
   return requireFirstRow(
-    db.select().from(ruleDecisionFlows).where(buildWhere(...conds)).limit(1),
+    db.select().from(ruleDecisionFlows).where(buildWhere(eq(ruleDecisionFlows.id, id), tc)).limit(1),
     '决策流不存在',
   );
 }
 
-export interface ListDecisionFlowsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'draft' | 'published' | 'disabled';
-}
-
-export async function listDecisionFlows(q: ListDecisionFlowsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
-  const tc = tenantCondition(ruleDecisionFlows, currentUser());
-  const conds: (SQL | undefined)[] = [tc];
-  conds.push(keywordCondition(q.keyword, [ruleDecisionFlows.name]));
-  if (q.status) conds.push(eq(ruleDecisionFlows.status, q.status));
-  const where = buildWhere(...conds);
+export async function listDecisionFlows(q: QueryOutputOf<typeof decisionFlowContract.list>) {
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    tenantCondition(ruleDecisionFlows, currentUser()),
+    keywordCondition(q.keyword, [ruleDecisionFlows.name]),
+    q.status ? eq(ruleDecisionFlows.status, q.status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

@@ -1,5 +1,7 @@
 import { DRIVE_ACTIVITY_ACTION_LABELS, DRIVE_ACTIVITY_ACTIONS, type DriveActivity, type DriveActivityAction } from '@zenith/shared/drive';
-import { listDriveActivitiesForAdmin, type ListDriveActivitiesQuery } from '../../../services/drive/drive-activity.service';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { driveAdminContract } from '@zenith/shared/drive';
+import { listDriveActivitiesForAdmin } from '../../../services/drive/drive-activity.service';
 import { asPositiveInt, asString } from '../query-normalize';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
@@ -44,7 +46,9 @@ const columns: ExportColumn<DriveActivityExportRow>[] = [
 ];
 
 /** 导出中心传入的 query 与页面筛选同名：按管理端列表同一套过滤（含数据权限收窄） */
-function normalizeQuery(query: Record<string, unknown>): ListDriveActivitiesQuery {
+type DriveActivityExportQuery = Omit<QueryOutputOf<typeof driveAdminContract.activities>, 'page' | 'pageSize'>;
+
+function normalizeQuery(query: Record<string, unknown>): DriveActivityExportQuery {
   const action = asString(query.action);
   return {
     keyword: asString(query.keyword),

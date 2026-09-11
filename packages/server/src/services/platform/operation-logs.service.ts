@@ -1,4 +1,6 @@
 import { count, desc, and, or, gte, lt, lte, sql, eq, inArray } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { operationLogContract } from '@zenith/shared/platform';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { operationLogs } from '../../db/schema';
@@ -8,52 +10,38 @@ import { formatDateTime, resolveStatsWindow } from '../../lib/datetime';
 import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nicknames';
 import { buildListResult } from '../../lib/list-query';
 
-export interface ListOperationLogsQuery {
-  page?: number;
-  pageSize?: number;
-  username?: string;
-  module?: string;
-  description?: string;
-  method?: string;
-  path?: string;
-  ip?: string;
-  status?: 'success' | 'fail';
-  /** 内容关键字：模糊匹配请求体与 before/after 快照（trgm 索引加速） */
-  content?: string;
-  startTime?: string;
-  endTime?: string;
-  minDurationMs?: number;
-  maxDurationMs?: number;
-}
+export type OperationLogsListFilter = Omit<QueryOutputOf<typeof operationLogContract.list>, 'page' | 'pageSize'>;
 
-export async function buildOperationLogsWhere(q: ListOperationLogsQuery) {
+export async function buildOperationLogsWhere(q: OperationLogsListFilter) {
   const user = currentUser();
-  const conditions = [];
-  if (q.username) {
-    // 关键字同时匹配用户名与昵称（昵称先反查出用户名集合）
-    const byNickname = await findUsernamesByNickname(q.username);
-    const usernameLike = keywordCondition(q.username, [operationLogs.username]);
-    conditions.push(byNickname.length > 0 ? or(usernameLike, inArray(operationLogs.username, byNickname)) : usernameLike);
-  }
-  conditions.push(keywordCondition(q.module, [operationLogs.module]));
-  conditions.push(keywordCondition(q.description, [operationLogs.description]));
-  if (q.method) conditions.push(eq(operationLogs.method, q.method));
-  conditions.push(keywordCondition(q.path, [operationLogs.path]));
-  conditions.push(keywordCondition(q.ip, [operationLogs.ip]));
-  conditions.push(keywordCondition(q.content, [operationLogs.beforeData, operationLogs.afterData, operationLogs.requestBody], 'ilike'));
-  if (q.status === 'success') conditions.push(and(gte(operationLogs.responseCode, 200), lte(operationLogs.responseCode, 399)));
-  if (q.status === 'fail') conditions.push(gte(operationLogs.responseCode, 400));
-  conditions.push(...dateRangeConditions(operationLogs.createdAt, q.startTime, q.endTime));
-  if (q.minDurationMs != null) conditions.push(gte(operationLogs.durationMs, q.minDurationMs));
-  if (q.maxDurationMs != null) conditions.push(lte(operationLogs.durationMs, q.maxDurationMs));
-  const where = and(...conditions);
-  const tc = tenantCondition(operationLogs, user);
-  return buildWhere(where, tc);
+  const username = q.username;
+  const usernameCondition = username
+    ? await (async () => {
+        // 关键字同时匹配用户名与昵称（昵称先反查出用户名集合）
+        const byNickname = await findUsernamesByNickname(username);
+        const usernameLike = keywordCondition(username, [operationLogs.username]);
+        return byNickname.length > 0 ? or(usernameLike, inArray(operationLogs.username, byNickname)) : usernameLike;
+      })()
+    : undefined;
+  return buildWhere(
+    usernameCondition,
+    keywordCondition(q.module, [operationLogs.module]),
+    keywordCondition(q.description, [operationLogs.description]),
+    q.method ? eq(operationLogs.method, q.method) : undefined,
+    keywordCondition(q.path, [operationLogs.path]),
+    keywordCondition(q.ip, [operationLogs.ip]),
+    keywordCondition(q.content, [operationLogs.beforeData, operationLogs.afterData, operationLogs.requestBody], 'ilike'),
+    q.status === 'success' ? and(gte(operationLogs.responseCode, 200), lte(operationLogs.responseCode, 399)) : undefined,
+    q.status === 'fail' ? gte(operationLogs.responseCode, 400) : undefined,
+    ...dateRangeConditions(operationLogs.createdAt, q.startTime, q.endTime),
+    q.minDurationMs != null ? gte(operationLogs.durationMs, q.minDurationMs) : undefined,
+    q.maxDurationMs != null ? lte(operationLogs.durationMs, q.maxDurationMs) : undefined,
+    tenantCondition(operationLogs, user),
+  );
 }
 
-export async function listOperationLogs(q: ListOperationLogsQuery) {
-  const page = Number(q.page) || 1;
-  const pageSize = Number(q.pageSize) || 10;
+export async function listOperationLogs(q: QueryOutputOf<typeof operationLogContract.list>) {
+  const { page, pageSize } = q;
   const finalWhere = await buildOperationLogsWhere(q);
   return buildListResult({
     page,

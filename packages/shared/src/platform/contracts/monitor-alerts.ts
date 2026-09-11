@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   MONITOR_ALERT_EVENT_STATUSES,
@@ -127,21 +127,21 @@ export type MonitorAlertTestResult = z.infer<typeof monitorAlertTestResultSchema
 
 export const monitorAlertRuleListQuery = paginationQuery.extend({
   keyword: z.string().max(128).optional(),
-  metric: z.enum(MONITOR_METRICS).optional(),
-  level: z.enum(MONITOR_ALERT_LEVELS).optional(),
+  metric: queryEnum(MONITOR_METRICS),
+  level: queryEnum(MONITOR_ALERT_LEVELS),
   enabled: queryBool('规则是否参与定时评估'),
-  state: z.enum(MONITOR_ALERT_STATES).optional().meta({ description: '规则当前是否处于告警中' }),
+  state: queryEnum(MONITOR_ALERT_STATES, '规则当前是否处于告警中'),
 });
 
 export type MonitorAlertRuleQuery = z.infer<typeof monitorAlertRuleListQuery>;
 
 export const monitorAlertEventListQuery = paginationQuery.extend({
   keyword: z.string().max(128).optional(),
-  metric: z.enum(MONITOR_METRICS).optional(),
-  level: z.enum(MONITOR_ALERT_LEVELS).optional(),
-  status: z.enum(MONITOR_ALERT_EVENT_STATUSES).optional(),
-  notifyStatus: z.enum(MONITOR_ALERT_NOTIFY_STATUSES).optional(),
-  handleStatus: z.enum(MONITOR_ALERT_HANDLE_STATUSES).optional(),
+  metric: queryEnum(MONITOR_METRICS),
+  level: queryEnum(MONITOR_ALERT_LEVELS),
+  status: queryEnum(MONITOR_ALERT_EVENT_STATUSES),
+  notifyStatus: queryEnum(MONITOR_ALERT_NOTIFY_STATUSES),
+  handleStatus: queryEnum(MONITOR_ALERT_HANDLE_STATUSES),
   ruleId: z.coerce.number().int().positive().optional(),
   startTime: dateRangeBound('触发时间起'),
   endTime: dateRangeBound('触发时间止'),
@@ -150,7 +150,7 @@ export const monitorAlertEventListQuery = paginationQuery.extend({
 export type MonitorAlertEventQuery = z.infer<typeof monitorAlertEventListQuery>;
 
 export const monitorAlertOverviewQuery = z.object({
-  range: z.enum(MONITOR_ALERT_OVERVIEW_RANGES).default('24h'),
+  range: queryEnum(MONITOR_ALERT_OVERVIEW_RANGES).default('24h'),
 });
 
 export type MonitorAlertOverviewQuery = z.infer<typeof monitorAlertOverviewQuery>;

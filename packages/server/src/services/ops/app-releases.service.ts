@@ -10,6 +10,7 @@
 import { createHash } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type {
   AppArch,
   AppArtifactKind,
@@ -17,7 +18,6 @@ import type {
   AppPublicReleaseInfo,
   AppReleaseChannel,
   AppReleaseStats,
-  AppReleaseStatus,
   AppUpdateCheckResult,
   CheckAppUpdateQuery,
   CreateAppReleaseInput,
@@ -28,7 +28,7 @@ import type {
   UpdateAppReleaseInput,
   UpdateClientAppInput,
 } from '@zenith/shared/ops';
-import { APP_ARCHES, APP_FILE_ARTIFACT_KINDS, APP_PLATFORMS } from '@zenith/shared/ops';
+import { appReleaseContract, clientAppContract, APP_ARCHES, APP_FILE_ARTIFACT_KINDS, APP_PLATFORMS } from '@zenith/shared/ops';
 import * as z from 'zod';
 import { db } from '../../db';
 import {
@@ -47,6 +47,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { deleteManagedFile, saveGeneratedManagedFile } from '../files/files.service';
 import { bindUploadSession, requireUploadBinding } from '../files/upload-bindings.service';
@@ -144,14 +145,9 @@ export function mapAppRelease(
 
 // ─── 应用 CRUD ────────────────────────────────────────────────────────────────
 
-export interface ListClientAppsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-}
+type ClientAppListFilter = Omit<QueryOutputOf<typeof clientAppContract.list>, 'page' | 'pageSize'>;
 
-function buildClientAppWhere(q: ListClientAppsQuery & { id?: number }) {
+function buildClientAppWhere(q: ClientAppListFilter & { id?: number }) {
   return buildWhere(
     q.id !== undefined ? eq(clientApps.id, q.id) : undefined,
     keywordCondition(q.keyword, [clientApps.appKey, clientApps.name, clientApps.description]),
@@ -159,8 +155,8 @@ function buildClientAppWhere(q: ListClientAppsQuery & { id?: number }) {
   );
 }
 
-export async function listClientApps(q: ListClientAppsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listClientApps(q: QueryOutputOf<typeof clientAppContract.list>) {
+  const { page, pageSize } = q;
   const where = buildClientAppWhere(q);
   return buildListResult({
     page,
@@ -246,16 +242,9 @@ export async function deleteClientApp(id: number) {
 
 // ─── 版本 CRUD 与状态机 ───────────────────────────────────────────────────────
 
-export interface ListAppReleasesQuery {
-  page?: number;
-  pageSize?: number;
-  appId?: number;
-  channel?: AppReleaseChannel;
-  status?: AppReleaseStatus;
-  keyword?: string;
-}
+type AppReleaseListFilter = Omit<QueryOutputOf<typeof appReleaseContract.list>, 'page' | 'pageSize'>;
 
-function buildAppReleaseWhere(q: ListAppReleasesQuery & { id?: number }) {
+function buildAppReleaseWhere(q: AppReleaseListFilter & { id?: number }) {
   return buildWhere(
     q.id !== undefined ? eq(appReleases.id, q.id) : undefined,
     q.appId !== undefined ? eq(appReleases.appId, q.appId) : undefined,
@@ -265,8 +254,8 @@ function buildAppReleaseWhere(q: ListAppReleasesQuery & { id?: number }) {
   );
 }
 
-export async function listAppReleases(q: ListAppReleasesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listAppReleases(q: QueryOutputOf<typeof appReleaseContract.list>) {
+  const { page, pageSize } = q;
   const where = buildAppReleaseWhere(q);
   return buildListResult({
     page,
@@ -280,7 +269,7 @@ export async function listAppReleases(q: ListAppReleasesQuery) {
       },
       orderBy: [desc(appReleases.createdAt), desc(appReleases.id)],
       limit: pageSize,
-      offset: (Math.max(page, 1) - 1) * pageSize,
+      offset: pageOffset(page, pageSize),
     }),
     map: mapAppRelease,
   });

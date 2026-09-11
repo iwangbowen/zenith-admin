@@ -1,4 +1,6 @@
-import { desc, and, eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { ipAccessLogContract } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { ipAccessLogs } from '../../db/schema';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
@@ -7,24 +9,13 @@ import { buildListResult } from '../../lib/list-query';
 import { truncateVarchar } from '../../lib/sanitize';
 import logger from '../../lib/logger';
 
-export interface ListIpAccessLogsQuery {
-  page?: number;
-  pageSize?: number;
-  ip?: string;
-  blockType?: 'blacklist' | 'whitelist';
-  startTime?: string;
-  endTime?: string;
-}
-
-export async function listIpAccessLogs(q: ListIpAccessLogsQuery) {
-  const page = Number(q.page) || 1;
-  const pageSize = Number(q.pageSize) || 10;
-  const conditions = [];
-  conditions.push(keywordCondition(q.ip, [ipAccessLogs.ip]));
-  if (q.blockType) conditions.push(eq(ipAccessLogs.blockType, q.blockType));
-  conditions.push(...dateRangeConditions(ipAccessLogs.createdAt, q.startTime, q.endTime));
-  const where = and(...conditions);
-  const finalWhere = buildWhere(where);
+export async function listIpAccessLogs(q: QueryOutputOf<typeof ipAccessLogContract.list>) {
+  const { page, pageSize } = q;
+  const finalWhere = buildWhere(
+    keywordCondition(q.ip, [ipAccessLogs.ip]),
+    q.blockType ? eq(ipAccessLogs.blockType, q.blockType) : undefined,
+    ...dateRangeConditions(ipAccessLogs.createdAt, q.startTime, q.endTime),
+  );
   return buildListResult({
     page,
     pageSize,

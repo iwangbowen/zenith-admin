@@ -15,10 +15,7 @@ const read = [authMiddleware, guard({ permission: 'wiki:governance:list' })] as 
 
 const listRoute = defineContractRoute(wikiGovernanceContract.listDocs, {
   middleware: read,
-  handler: async (c) => {
-    const { kind, ...q } = c.req.valid('query');
-    return c.json(okBody(await listGovernanceDocs(kind, q)), 200);
-  },
+  handler: async (c) => c.json(okBody(await listGovernanceDocs(c.req.valid('query'))), 200),
 });
 
 const noResultRoute = defineContractRoute(wikiGovernanceContract.noResultKeywords, {

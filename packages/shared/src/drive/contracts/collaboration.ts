@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { DRIVE_ACTIVITY_ACTIONS } from '../constants';
 import { driveMetadataSchema, updateDriveNodeCommentSchema, updateDriveNodeProfileSchema } from '../validation';
@@ -14,7 +14,7 @@ export type DriveNodeProfile = z.infer<typeof driveNodeProfileSchema>;
 
 export const driveSpaceActivitiesQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  action: z.enum(DRIVE_ACTIVITY_ACTIONS).optional(),
+  action: queryEnum(DRIVE_ACTIVITY_ACTIONS),
   startTime: dateRangeBound('开始时间'),
   endTime: dateRangeBound('结束时间'),
 });

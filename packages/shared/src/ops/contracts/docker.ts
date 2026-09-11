@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { queryBool } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { DOCKER_FILE_ENTRY_TYPES } from '../constants';
 import { dockerCreateNetworkSchema, dockerCreateVolumeSchema, dockerPullImageSchema } from '../validation';
@@ -123,7 +124,7 @@ export const dockerContainerFileContentQuery = z.object({
 });
 
 export const dockerPruneImagesQuery = z.object({
-  all: z.enum(['true', 'false']).optional().meta({ description: 'true 清理全部未使用镜像；缺省仅清理悬空镜像' }),
+  all: queryBool('true 清理全部未使用镜像；缺省仅清理悬空镜像'),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

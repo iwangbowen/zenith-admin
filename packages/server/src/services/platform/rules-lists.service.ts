@@ -1,9 +1,11 @@
 /**
  * 名单库服务（规则中心）：黑/白/灰名单 CRUD、条目管理（含过期）与运行时命中判定。
  */
-import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { RuleListType, RuleListCheckResult, RuleUsageItem } from '@zenith/shared/rules';
+import { ruleListContract } from '@zenith/shared/rules';
 import { db } from '../../db';
 import { ruleLists, ruleListItems, paymentRiskRules } from '../../db/schema';
 import { currentUser, currentUserOrNull } from '../../lib/context';
@@ -45,28 +47,19 @@ const mapItem = (r: ItemRow) => ({
 
 export async function ensureRuleList(id: number): Promise<ListRow> {
   const tc = tenantCondition(ruleLists, currentUser());
-  const conds: (SQL | undefined)[] = [eq(ruleLists.id, id), tc];
   return requireFirstRow(
-    db.select().from(ruleLists).where(buildWhere(...conds)).limit(1),
+    db.select().from(ruleLists).where(buildWhere(eq(ruleLists.id, id), tc)).limit(1),
     '名单不存在',
   );
 }
 
-export interface ListRuleListsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  type?: RuleListType;
-}
-
-export async function listRuleLists(q: ListRuleListsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
-  const tc = tenantCondition(ruleLists, currentUser());
-  const conds: (SQL | undefined)[] = [tc];
-  conds.push(keywordCondition(q.keyword, [ruleLists.name]));
-  if (q.type) conds.push(eq(ruleLists.type, q.type));
-  const where = buildWhere(...conds);
+export async function listRuleLists(q: QueryOutputOf<typeof ruleListContract.list>) {
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    tenantCondition(ruleLists, currentUser()),
+    keywordCondition(q.keyword, [ruleLists.name]),
+    q.type ? eq(ruleLists.type, q.type) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -130,10 +123,8 @@ export async function listRuleListUsages(id: number): Promise<RuleUsageItem[]> {
 async function findListUsagesByKey(key: string, listTenantId: number | null): Promise<RuleUsageItem[]> {
   const refCond = keywordCondition(`"${key}"`, [sql`${paymentRiskRules.blockListKeys}::text`, sql`${paymentRiskRules.allowListKeys}::text`]);
   // 租户名单只可能被本租户的风控规则引用；平台级（null）名单可被任意租户引用，保持全量扫描
-  const conds = [refCond];
-  if (listTenantId != null) conds.push(eq(paymentRiskRules.tenantId, listTenantId));
   const rows = await db.select({ id: paymentRiskRules.id, name: paymentRiskRules.name, status: paymentRiskRules.status })
-    .from(paymentRiskRules).where(buildWhere(...conds));
+    .from(paymentRiskRules).where(buildWhere(refCond, listTenantId != null ? eq(paymentRiskRules.tenantId, listTenantId) : undefined));
   return rows.map((r) => ({ type: 'paymentRisk' as const, id: r.id, name: r.name, status: r.status }));
 }
 
@@ -153,19 +144,13 @@ export async function deleteRuleList(id: number): Promise<void> {
 
 // ─── 条目管理 ──────────────────────────────────────────────────────────────────
 
-export interface ListRuleListItemsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-}
-
-export async function listRuleListItems(listId: number, q: ListRuleListItemsQuery) {
+export async function listRuleListItems(listId: number, q: QueryOutputOf<typeof ruleListContract.items>) {
   await ensureRuleList(listId);
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
-  const conds: (SQL | undefined)[] = [eq(ruleListItems.listId, listId)];
-  conds.push(keywordCondition(q.keyword, [ruleListItems.value]));
-  const where = buildWhere(...conds);
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    eq(ruleListItems.listId, listId),
+    keywordCondition(q.keyword, [ruleListItems.value]),
+  );
   return buildListResult({
     page,
     pageSize,

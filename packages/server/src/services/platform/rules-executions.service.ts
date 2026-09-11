@@ -5,8 +5,9 @@
  * 每条记录携带 refKind / caller / version，执行记录页可按资产类型与调用方分析。
  */
 import { desc, eq, inArray } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { RuleExecution, RuleExecutionSource, RuleHitPolicy, RuleRefKind } from '@zenith/shared/rules';
-import { RULE_CALLER_LABELS } from '@zenith/shared/rules';
+import { ruleExecutionContract, RULE_CALLER_LABELS } from '@zenith/shared/rules';
 import { db } from '../../db';
 import { ruleExecutions, oauth2Clients } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -53,21 +54,6 @@ export function snapshotRuleScope(scope: Record<string, unknown>): Record<string
   }
 }
 
-export interface ListRuleExecutionsQuery {
-  page?: number;
-  pageSize?: number;
-  refKind?: RuleRefKind;
-  refId?: number;
-  caller?: string;
-  /** 关联上下文前缀匹配（如 workflow:42） */
-  bizRef?: string;
-  ruleKey?: string;
-  source?: RuleExecutionSource;
-  matched?: boolean;
-  dateStart?: string;
-  dateEnd?: string;
-}
-
 const OPEN_CALLER_PREFIX = 'open.';
 
 /**
@@ -93,11 +79,10 @@ async function resolveCallerNames(callers: Array<string | null>): Promise<(calle
   };
 }
 
-export async function listRuleExecutions(q: ListRuleExecutionsQuery) {
+export async function listRuleExecutions(q: QueryOutputOf<typeof ruleExecutionContract.list>) {
   // 分页前先落盘缓冲区，保证刚发生的求值可见
   await flushRuleExecutionQueue();
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
+  const { page, pageSize } = q;
   const where = buildWhere(
     tenantCondition(ruleExecutions, currentUser()),
     q.refKind ? eq(ruleExecutions.refKind, q.refKind) : undefined,

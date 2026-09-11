@@ -1,4 +1,6 @@
-import { eq, desc, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, desc, inArray, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { apiScopeContract } from '@zenith/shared/open-platform';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
@@ -45,18 +47,13 @@ async function countScopeReferences(codes: string[]): Promise<Map<string, number
   return result;
 }
 
-export async function listApiScopes(opts: {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  scopeGroup?: string;
-  status?: 'enabled' | 'disabled';
-}) {
+export async function listApiScopes(opts: QueryOutputOf<typeof apiScopeContract.list>) {
   const { page, pageSize, keyword, scopeGroup, status } = opts;
-  const conditions: (SQL | undefined)[] = [keywordCondition(keyword, [apiScopes.code, apiScopes.name], 'ilike')];
-  if (scopeGroup) conditions.push(eq(apiScopes.scopeGroup, scopeGroup));
-  if (status) conditions.push(eq(apiScopes.status, status));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    keywordCondition(keyword, [apiScopes.code, apiScopes.name], 'ilike'),
+    scopeGroup ? eq(apiScopes.scopeGroup, scopeGroup) : undefined,
+    status ? eq(apiScopes.status, status) : undefined,
+  );
 
   return buildListResult({
     page,

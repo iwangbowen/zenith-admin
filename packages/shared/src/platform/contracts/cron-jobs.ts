@@ -266,13 +266,11 @@ export const cronJobLogListQuery = paginationQuery.extend({
   endTime: dateRangeBound('开始时间上限'),
 });
 
-export type CronJobLogListQueryInput = z.infer<typeof cronJobLogListQuery>;
 
 export const cronJobStatsQuery = z.object({
   days: z.coerce.number().int().min(1).max(90).default(14).meta({ description: '统计周期天数（1-90，默认 14）；环比取再往前的等长周期' }),
 });
 
-export type CronJobStatsQueryInput = z.infer<typeof cronJobStatsQuery>;
 
 export const cronJobClearLogsQuery = z.object({
   days: z.coerce.number().int().min(1).max(3650).default(180).meta({ description: '清除多少天之前的日志' }),

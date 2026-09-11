@@ -1,6 +1,8 @@
 import { and, desc, eq, inArray, gte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleHitPolicy, RuleEvaluateResult, RuleTestRunResult, RuleCaseResult, RuleDecisionTableSettings, RuleUsageItem, RuleTableStats, RuleShadowRunResult, RuleShadowDiffSample, RuleSimulateResult, RuleSimulateRowResult } from '@zenith/shared/rules';
+import { decisionTableContract } from '@zenith/shared/rules';
 import { db } from '../../db';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases, ruleExecutions, workflowDefinitions } from '../../db/schema';
 import { getSettings } from '../../lib/settings';
@@ -84,28 +86,19 @@ export function mapDecisionTableVersion(row: VersionRow) {
 
 export async function ensureDecisionTable(id: number): Promise<TableRow> {
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds: (SQL | undefined)[] = [eq(ruleDecisionTables.id, id), tc];
   return requireFirstRow(
-    db.select().from(ruleDecisionTables).where(buildWhere(...conds)).limit(1),
+    db.select().from(ruleDecisionTables).where(buildWhere(eq(ruleDecisionTables.id, id), tc)).limit(1),
     '决策表不存在',
   );
 }
 
-export interface ListDecisionTablesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'draft' | 'published' | 'disabled';
-}
-
-export async function listDecisionTables(q: ListDecisionTablesQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
-  const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds: (SQL | undefined)[] = [tc];
-  conds.push(keywordCondition(q.keyword, [ruleDecisionTables.name]));
-  if (q.status) conds.push(eq(ruleDecisionTables.status, q.status));
-  const where = buildWhere(...conds);
+export async function listDecisionTables(q: QueryOutputOf<typeof decisionTableContract.list>) {
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    tenantCondition(ruleDecisionTables, currentUser()),
+    keywordCondition(q.keyword, [ruleDecisionTables.name]),
+    q.status ? eq(ruleDecisionTables.status, q.status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -562,7 +555,7 @@ async function loadRuntimeSnapshot(key: string, opts?: { tenantId?: number | nul
     const versionConds = [eq(ruleDecisionTableVersions.tableId, row.id)];
     if (opts?.version !== undefined) versionConds.push(eq(ruleDecisionTableVersions.version, opts.version));
     const [snapshot] = await db.select().from(ruleDecisionTableVersions)
-      .where(and(...versionConds)).orderBy(desc(ruleDecisionTableVersions.version)).limit(1);
+      .where(buildWhere(...versionConds)).orderBy(desc(ruleDecisionTableVersions.version)).limit(1);
     if (snapshot) {
       return {
         tableId: row.id,
@@ -603,7 +596,7 @@ export async function evaluateDecisionTableByKey(key: string, input: Record<stri
     const versionConds = [eq(ruleDecisionTableVersions.tableId, row.id)];
     if (pinned !== undefined) versionConds.push(eq(ruleDecisionTableVersions.version, pinned));
     const [snapshot] = await db.select().from(ruleDecisionTableVersions)
-      .where(and(...versionConds))
+      .where(buildWhere(...versionConds))
       .orderBy(desc(ruleDecisionTableVersions.version)).limit(1);
     if (snapshot) {
       version = snapshot.version;

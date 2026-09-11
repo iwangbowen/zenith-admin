@@ -2,7 +2,7 @@ import { desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { operationLogs } from '../../../db/schema';
 import { batchIterable } from '../../excel-export';
-import { buildOperationLogsWhere, type ListOperationLogsQuery } from '../../../services/platform/operation-logs.service';
+import { buildOperationLogsWhere, type OperationLogsListFilter } from '../../../services/platform/operation-logs.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -20,7 +20,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '时间', width: 22, type: 'datetime' },
 ];
 
-export const operationLogsExportDefinition = defineExport<ListOperationLogsQuery & Record<string, unknown>, Record<string, unknown>>({
+export const operationLogsExportDefinition = defineExport<OperationLogsListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'system.operation-logs',
   moduleName: '操作日志',
   filenamePrefix: '操作日志',

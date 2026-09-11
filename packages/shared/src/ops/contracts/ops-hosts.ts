@@ -11,7 +11,6 @@ export const hostQuery = z.object({
   hostId: z.coerce.number().int().positive().optional().meta({ description: '远端运维主机 ID；缺省为本机', example: 1 }),
 });
 
-export type HostQueryInput = z.infer<typeof hostQuery>;
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   EXPORT_COLUMN_TYPES,
@@ -19,7 +19,7 @@ export const exportColumnMetaSchema = z.object({
   key: z.string(),
   header: z.string(),
   width: z.number().optional(),
-  type: z.enum(EXPORT_COLUMN_TYPES).optional(),
+  type: queryEnum(EXPORT_COLUMN_TYPES),
   sensitive: z.boolean().optional(),
   get children(): z.ZodOptional<z.ZodArray<typeof exportColumnMetaSchema>> {
     return z.array(exportColumnMetaSchema).optional();
@@ -113,8 +113,8 @@ export type ExportJobDownload = z.infer<typeof exportJobDownloadSchema>;
 
 export const exportJobListQuery = paginationQuery.extend({
   entity: z.string().optional(),
-  status: z.enum(EXPORT_JOB_STATUSES).optional(),
-  format: z.enum(EXPORT_JOB_FORMATS).optional(),
+  status: queryEnum(EXPORT_JOB_STATUSES),
+  format: queryEnum(EXPORT_JOB_FORMATS),
   keyword: z.string().optional().meta({ description: '匹配模块名 / 文件名 / 实体' }),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),

@@ -1,9 +1,11 @@
-import { eq, asc, desc, and, gte, lte, type SQL } from 'drizzle-orm';
-import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
+import { eq, asc, desc, and } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { dictContract } from '@zenith/shared/platform';
+import { buildWhere, withPagination, keywordCondition, dateRangeConditions } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { dicts, dictItems } from '../../db/schema';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
-import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { formatDateTime } from '../../lib/datetime';
 import { currentUser } from '../../lib/context';
 import { HTTPException } from 'hono/http-exception';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
@@ -23,27 +25,15 @@ export function mapDictItem(row: typeof dictItems.$inferSelect) {
   };
 }
 
-export interface ListDictsQuery {
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  startDate?: string;
-  endDate?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listDicts(q: ListDictsQuery) {
+export async function listDicts(q: QueryOutputOf<typeof dictContract.list>) {
   const user = currentUser();
-  const { keyword = '', status = '', startDate = '', endDate = '', page, pageSize } = q;
-  const conditions: (SQL | undefined)[] = [keywordCondition(keyword, [dicts.name, dicts.code])];
-  if (status) conditions.push(eq(dicts.status, status));
-  const parsedStartDate = parseDateRangeStart(startDate);
-  const parsedEndDate = parseDateRangeEnd(endDate);
-  if (parsedStartDate) conditions.push(gte(dicts.createdAt, parsedStartDate));
-  if (parsedEndDate) conditions.push(lte(dicts.createdAt, parsedEndDate));
-  const where = and(...conditions);
-  const tc = tenantCondition(dicts, user);
-  const finalWhere = buildWhere(where, tc);
+  const { page, pageSize } = q;
+  const finalWhere = buildWhere(
+    keywordCondition(q.keyword, [dicts.name, dicts.code]),
+    q.status ? eq(dicts.status, q.status) : undefined,
+    ...dateRangeConditions(dicts.createdAt, q.startDate, q.endDate),
+    tenantCondition(dicts, user),
+  );
   return buildListResult({
     page,
     pageSize,

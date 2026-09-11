@@ -1,10 +1,11 @@
 import { percentOf } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
-import { ASYNC_TASK_TERMINAL_STATUSES, isAsyncTaskTerminal, type AsyncTaskItemStatus, type AsyncTaskStats, type AsyncTaskStatus } from '@zenith/shared/tasks';
+import { ASYNC_TASK_TERMINAL_STATUSES, asyncTaskContract, isAsyncTaskTerminal, type AsyncTaskStats } from '@zenith/shared/tasks';
 import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, users } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
@@ -14,6 +15,7 @@ import { currentUser, hasPermission } from '../../lib/context';
 import {
   buildTaskTypeMeta,
   cleanupAsyncTasks,
+  asyncTaskStatusCondition,
   getTaskTypePolicy,
   listTaskHandlers,
   listTaskTypeConfigs,
@@ -27,28 +29,17 @@ import {
   type UpdateTaskTypePolicyInput,
 } from '../../lib/task-center';
 
-export interface ListAsyncTasksQuery {
-  page?: number;
-  pageSize?: number;
-  taskType?: string;
-  status?: AsyncTaskStatus;
-  keyword?: string;
-  /** 任务内容关键字：模糊匹配 payload / result（jsonb 转文本，trgm 表达式索引加速） */
-  content?: string;
-  /** 提交人（模糊匹配用户名/昵称，仅管理端列表使用） */
-  createdBy?: string;
-  startTime?: string;
-  endTime?: string;
-}
+type AsyncTaskListFilter = Omit<QueryOutputOf<typeof asyncTaskContract.list>, 'page' | 'pageSize'>;
 
-function buildConditions(query: ListAsyncTasksQuery): (SQL | undefined)[] {
-  const conditions: (SQL | undefined)[] = [];
-  if (query.taskType) conditions.push(eq(asyncTasks.taskType, query.taskType));
-  if (query.status) conditions.push(eq(asyncTasks.status, query.status));
-  conditions.push(keywordCondition(query.keyword, [asyncTasks.title, asyncTasks.taskType], 'ilike'));
-  conditions.push(keywordCondition(query.content, [sql`${asyncTasks.payload}::text`, sql`${asyncTasks.result}::text`], 'ilike'));
-  conditions.push(...dateRangeConditions(asyncTasks.createdAt, query.startTime, query.endTime));
-  return conditions;
+function buildAsyncTaskWhere(query: AsyncTaskListFilter, extra?: SQL): SQL | undefined {
+  return buildWhere(
+    query.taskType ? eq(asyncTasks.taskType, query.taskType) : undefined,
+    asyncTaskStatusCondition(query.status),
+    keywordCondition(query.keyword, [asyncTasks.title, asyncTasks.taskType], 'ilike'),
+    keywordCondition(query.content, [sql`${asyncTasks.payload}::text`, sql`${asyncTasks.result}::text`], 'ilike'),
+    ...dateRangeConditions(asyncTasks.createdAt, query.startTime, query.endTime),
+    extra,
+  );
 }
 
 /** 提交人筛选：先按用户名/昵称匹配用户，再按 createdBy 过滤；无匹配返回 null（调用方直接返回空列表） */
@@ -60,8 +51,7 @@ async function creatorCondition(createdBy: string): Promise<SQL | null> {
   return inArray(asyncTasks.createdBy, matched.map((row) => row.id));
 }
 
-async function queryTasks(conditions: (SQL | undefined)[], page: number, pageSize: number) {
-  const where = buildWhere(...conditions);
+async function queryTasks(where: SQL | undefined, page: number, pageSize: number) {
   return buildListResult({
     page,
     pageSize,
@@ -78,26 +68,22 @@ async function queryTasks(conditions: (SQL | undefined)[], page: number, pageSiz
 }
 
 /** 管理端全局任务列表（任务中心页面） */
-export async function listAsyncTasks(query: ListAsyncTasksQuery) {
-  const page = Number(query.page ?? 1);
-  const pageSize = Number(query.pageSize ?? 10);
-  const conditions = buildConditions(query);
+export async function listAsyncTasks(query: QueryOutputOf<typeof asyncTaskContract.list>) {
+  const { page, pageSize } = query;
+  let extra: SQL | undefined;
   if (query.createdBy) {
     const cond = await creatorCondition(query.createdBy);
     if (!cond) return { list: [], total: 0, page, pageSize };
-    conditions.push(cond);
+    extra = cond;
   }
-  return queryTasks(conditions, page, pageSize);
+  return queryTasks(buildAsyncTaskWhere(query, extra), page, pageSize);
 }
 
 /** 当前用户自己的任务列表（业务页面进度展示） */
-export async function listMyAsyncTasks(query: ListAsyncTasksQuery) {
+export async function listMyAsyncTasks(query: QueryOutputOf<typeof asyncTaskContract.mine>) {
   const user = currentUser();
-  const page = Number(query.page ?? 1);
-  const pageSize = Number(query.pageSize ?? 10);
-  const conditions = buildConditions(query);
-  conditions.push(eq(asyncTasks.createdBy, user.userId));
-  return queryTasks(conditions, page, pageSize);
+  const { page, pageSize } = query;
+  return queryTasks(buildAsyncTaskWhere(query, eq(asyncTasks.createdBy, user.userId)), page, pageSize);
 }
 
 /** 校验当前用户可访问/操作该任务（创建者本人，或持有指定权限的管理员） */
@@ -203,22 +189,15 @@ export async function updateAsyncTaskTypePolicy(taskType: string, input: UpdateT
   return buildTaskTypeMeta(handler, await getTaskTypePolicy(db, taskType));
 }
 
-export interface ListTaskItemsQuery {
-  page?: number;
-  pageSize?: number;
-  status?: AsyncTaskItemStatus;
-  keyword?: string;
-}
-
 /** 任务项明细分页（创建者本人或管理员可见） */
-export async function listAsyncTaskItems(taskId: number, query: ListTaskItemsQuery) {
+export async function listAsyncTaskItems(taskId: number, query: QueryOutputOf<typeof asyncTaskContract.items>) {
   await ensureTaskAccessible(taskId, 'system:async-task:list');
-  const page = Number(query.page ?? 1);
-  const pageSize = Number(query.pageSize ?? 10);
-  const conditions: (SQL | undefined)[] = [eq(asyncTaskItems.taskId, taskId)];
-  if (query.status) conditions.push(eq(asyncTaskItems.status, query.status));
-  conditions.push(keywordCondition(query.keyword, [asyncTaskItems.itemKey, asyncTaskItems.label, asyncTaskItems.message], 'ilike'));
-  const where = and(...conditions);
+  const { page, pageSize } = query;
+  const where = buildWhere(
+    eq(asyncTaskItems.taskId, taskId),
+    query.status ? eq(asyncTaskItems.status, query.status) : undefined,
+    keywordCondition(query.keyword, [asyncTaskItems.itemKey, asyncTaskItems.label, asyncTaskItems.message], 'ilike'),
+  );
   return buildListResult({
     page,
     pageSize,

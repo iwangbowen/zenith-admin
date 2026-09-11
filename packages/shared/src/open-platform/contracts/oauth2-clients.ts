@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { OAUTH2_TOKEN_TYPES, OPEN_APP_ENVIRONMENTS, OPEN_APP_REVIEW_STATUSES } from '../constants';
 import { createOAuth2ClientSchema, reviewOAuth2ClientSchema, updateOAuth2ClientSchema } from '../validation';
@@ -116,8 +116,8 @@ export type OAuth2MyGrant = z.infer<typeof oauth2MyGrantSchema>;
 /** 应用列表筛选（管理端与开发者中心共用） */
 export const oauth2ClientListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按应用名称模糊匹配' }),
-  environment: z.enum(OPEN_APP_ENVIRONMENTS).optional(),
-  reviewStatus: z.enum(OPEN_APP_REVIEW_STATUSES).optional(),
+  environment: queryEnum(OPEN_APP_ENVIRONMENTS),
+  reviewStatus: queryEnum(OPEN_APP_REVIEW_STATUSES),
 });
 
 export const oauth2TokenListQuery = paginationQuery.extend({

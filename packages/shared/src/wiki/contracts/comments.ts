@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { lazyRecursive } from '../../core/validation';
 import { WIKI_COMMENT_STATUSES, type WikiCommentStatus } from '../constants';
@@ -46,7 +46,7 @@ export const wikiCommentSchema: z.ZodType<WikiComment> = lazyRecursive(() => z.o
 
 export const wikiCommentListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按评论内容模糊匹配' }),
-  status: z.enum(WIKI_COMMENT_STATUSES).optional(),
+  status: queryEnum(WIKI_COMMENT_STATUSES),
   docId: z.coerce.number().int().positive().optional(),
   startTime: dateRangeBound('评论时间起'),
   endTime: dateRangeBound('评论时间止'),

@@ -1,4 +1,6 @@
-import { eq, and, ne, desc, type SQL } from 'drizzle-orm';
+import { eq, and, ne, desc } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { ratePlanContract } from '@zenith/shared/open-platform';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { clearDefaultFlag } from '../../lib/default-flag';
@@ -31,16 +33,12 @@ export function mapRatePlan(row: RatePlanRow) {
   };
 }
 
-export async function listRatePlans(opts: {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-}) {
+export async function listRatePlans(opts: QueryOutputOf<typeof ratePlanContract.list>) {
   const { page, pageSize, keyword, status } = opts;
-  const conditions: (SQL | undefined)[] = [keywordCondition(keyword, [ratePlans.code, ratePlans.name], 'ilike')];
-  if (status) conditions.push(eq(ratePlans.status, status));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    keywordCondition(keyword, [ratePlans.code, ratePlans.name], 'ilike'),
+    status ? eq(ratePlans.status, status) : undefined,
+  );
 
   return buildListResult({
     page: page,

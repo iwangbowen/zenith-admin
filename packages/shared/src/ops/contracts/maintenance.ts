@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { paginated, paginationQuery } from '../../core/api-schemas';
+import { paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { MAINTENANCE_LOG_STATUSES } from '../constants';
 import { updateMaintenanceSchema } from '../validation';
@@ -36,7 +36,7 @@ export type MaintenanceLog = z.infer<typeof maintenanceLogSchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const maintenanceLogListQuery = paginationQuery.extend({
-  status: z.enum(MAINTENANCE_LOG_STATUSES).optional(),
+  status: queryEnum(MAINTENANCE_LOG_STATUSES),
 });
 
 export const maintenanceContract = defineContract('/api/maintenance', {

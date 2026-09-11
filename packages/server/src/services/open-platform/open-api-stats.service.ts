@@ -1,5 +1,7 @@
-import { and, gte, lte, eq, desc, sql, count, type SQL } from 'drizzle-orm';
+import { gte, lte, eq, desc, sql, count, type SQL } from 'drizzle-orm';
 import dayjs from 'dayjs';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { openApiStatsContract } from '@zenith/shared/open-platform';
 import { db } from '../../db';
 import { openApiCallLogs, openApiCallStatsDaily } from '../../db/schema';
 import { buildListResult } from '../../lib/list-query';
@@ -11,33 +13,28 @@ import { HTTPException } from 'hono/http-exception';
 
 const APP_TIME_ZONE_SQL = sql.raw(`'${APP_TIME_ZONE.replaceAll("'", "''")}'`);
 
-export interface OpenApiStatsRangeInput {
-  startTime?: string;
-  endTime?: string;
-  clientId?: string;
-  environment?: 'production' | 'sandbox';
-}
+type OpenApiStatsRangeInput = QueryOutputOf<typeof openApiStatsContract.overview>;
 
 function rangeConditions(opts: OpenApiStatsRangeInput): SQL[] {
-  const conds: SQL[] = [];
   const start = parseDateRangeStart(opts.startTime);
   const end = parseDateRangeEnd(opts.endTime);
-  if (start) conds.push(gte(openApiCallLogs.createdAt, start));
-  if (end) conds.push(lte(openApiCallLogs.createdAt, end));
-  if (opts.clientId) conds.push(eq(openApiCallLogs.clientId, opts.clientId));
-  if (opts.environment) conds.push(eq(openApiCallLogs.environment, opts.environment));
-  return conds;
+  return [
+    start ? gte(openApiCallLogs.createdAt, start) : undefined,
+    end ? lte(openApiCallLogs.createdAt, end) : undefined,
+    opts.clientId ? eq(openApiCallLogs.clientId, opts.clientId) : undefined,
+    opts.environment ? eq(openApiCallLogs.environment, opts.environment) : undefined,
+  ].filter((condition): condition is SQL => condition !== undefined);
 }
 
 function dailyRangeConditions(opts: OpenApiStatsRangeInput): SQL[] {
-  const conds: SQL[] = [];
   const start = parseDateRangeStart(opts.startTime);
   const end = parseDateRangeEnd(opts.endTime);
-  if (start) conds.push(gte(openApiCallStatsDaily.statDate, formatDate(start)));
-  if (end) conds.push(lte(openApiCallStatsDaily.statDate, formatDate(end)));
-  if (opts.clientId) conds.push(eq(openApiCallStatsDaily.clientId, opts.clientId));
-  if (opts.environment) conds.push(eq(openApiCallStatsDaily.environment, opts.environment));
-  return conds;
+  return [
+    start ? gte(openApiCallStatsDaily.statDate, formatDate(start)) : undefined,
+    end ? lte(openApiCallStatsDaily.statDate, formatDate(end)) : undefined,
+    opts.clientId ? eq(openApiCallStatsDaily.clientId, opts.clientId) : undefined,
+    opts.environment ? eq(openApiCallStatsDaily.environment, opts.environment) : undefined,
+  ].filter((condition): condition is SQL => condition !== undefined);
 }
 
 function todayStart(): Date {
@@ -52,14 +49,11 @@ async function aggregationWatermark(): Promise<string | null> {
 }
 
 function rawTailConditions(opts: OpenApiStatsRangeInput, watermark: string | null): SQL[] {
-  const conditions = rangeConditions(opts);
-  if (watermark) {
-    const tailStart = dayjs.tz(`${watermark} 00:00:00`, APP_TIME_ZONE)
-      .add(1, 'day')
-      .toDate();
-    conditions.push(gte(openApiCallLogs.createdAt, tailStart));
-  }
-  return conditions;
+  const tailStart = watermark
+    ? dayjs.tz(`${watermark} 00:00:00`, APP_TIME_ZONE).add(1, 'day').toDate()
+    : undefined;
+  return [...rangeConditions(opts), tailStart ? gte(openApiCallLogs.createdAt, tailStart) : undefined]
+    .filter((condition): condition is SQL => condition !== undefined);
 }
 
 function assertAggregateBoundaryCompatible(opts: OpenApiStatsRangeInput, watermark: string | null): void {
@@ -84,14 +78,13 @@ export async function getOpenApiStatsOverview(opts: OpenApiStatsRangeInput) {
   assertAggregateBoundaryCompatible(opts, watermark);
   const rawConditions = rawTailConditions(opts, watermark);
   const rawWhere = buildWhere(...rawConditions);
-  const dailyConditions = dailyRangeConditions(opts);
-  dailyConditions.push(watermark ? lte(openApiCallStatsDaily.statDate, watermark) : sql`false`);
-  const dailyWhere = and(...dailyConditions);
+  const dailyWhere = buildWhere(...dailyRangeConditions(opts), watermark ? lte(openApiCallStatsDaily.statDate, watermark) : sql`false`);
   const percentileWhere = rangeConditions(opts);
-  const todayConditions: SQL[] = [gte(openApiCallLogs.createdAt, todayStart())];
-  if (opts.clientId) todayConditions.push(eq(openApiCallLogs.clientId, opts.clientId));
-  if (opts.environment) todayConditions.push(eq(openApiCallLogs.environment, opts.environment));
-  const todayWhere = and(...todayConditions);
+  const todayWhere = buildWhere(
+    gte(openApiCallLogs.createdAt, todayStart()),
+    opts.clientId ? eq(openApiCallLogs.clientId, opts.clientId) : undefined,
+    opts.environment ? eq(openApiCallLogs.environment, opts.environment) : undefined,
+  );
   const [rawAgg, dailyAgg, percentileAgg, rawApps, dailyApps, todayCalls] = await Promise.all([
     db
       .select({
@@ -144,14 +137,13 @@ export async function getOpenApiStatsOverview(opts: OpenApiStatsRangeInput) {
   };
 }
 
-export async function getOpenApiStatsTrend(opts: OpenApiStatsRangeInput & { granularity?: 'hour' | 'day' }) {
+export async function getOpenApiStatsTrend(opts: QueryOutputOf<typeof openApiStatsContract.trend>) {
   const conds = rangeConditions(opts);
   const where = buildWhere(...conds);
   if (opts.granularity !== 'hour') {
     const watermark = await aggregationWatermark();
     assertAggregateBoundaryCompatible(opts, watermark);
-    const dailyConditions = dailyRangeConditions(opts);
-    dailyConditions.push(watermark ? lte(openApiCallStatsDaily.statDate, watermark) : sql`false`);
+    const dailyWhere = buildWhere(...dailyRangeConditions(opts), watermark ? lte(openApiCallStatsDaily.statDate, watermark) : sql`false`);
     const rawConditions = rawTailConditions(opts, watermark);
     const [dailyRows, rawRows] = await Promise.all([
       db.select({
@@ -160,7 +152,7 @@ export async function getOpenApiStatsTrend(opts: OpenApiStatsRangeInput & { gran
         success: sql<number>`sum(${openApiCallStatsDaily.successCalls})`,
         failed: sql<number>`sum(${openApiCallStatsDaily.failedCalls})`,
       }).from(openApiCallStatsDaily)
-        .where(and(...dailyConditions))
+        .where(dailyWhere)
         .groupBy(openApiCallStatsDaily.statDate)
         .orderBy(openApiCallStatsDaily.statDate),
       db.select({
@@ -210,7 +202,7 @@ export async function getOpenApiStatsTrend(opts: OpenApiStatsRangeInput & { gran
   });
 }
 
-async function groupBy(opts: OpenApiStatsRangeInput & { limit?: number }, withName: boolean) {
+async function groupBy(opts: QueryOutputOf<typeof openApiStatsContract.byApp>, withName: boolean) {
   const limit = opts.limit ?? 10;
   const rawColumn = withName ? openApiCallLogs.clientId : openApiCallLogs.path;
   const dailyColumn = withName ? openApiCallStatsDaily.clientId : openApiCallStatsDaily.path;
@@ -222,8 +214,7 @@ async function groupBy(opts: OpenApiStatsRangeInput & { limit?: number }, withNa
     : sql<string>`${dailyColumn}`;
   const watermark = await aggregationWatermark();
   assertAggregateBoundaryCompatible(opts, watermark);
-  const dailyConditions = dailyRangeConditions(opts);
-  dailyConditions.push(watermark ? lte(openApiCallStatsDaily.statDate, watermark) : sql`false`);
+  const dailyWhere = buildWhere(...dailyRangeConditions(opts), watermark ? lte(openApiCallStatsDaily.statDate, watermark) : sql`false`);
   const rawConditions = rawTailConditions(opts, watermark);
   const [rawRows, dailyRows] = await Promise.all([
     db.select({
@@ -242,7 +233,7 @@ async function groupBy(opts: OpenApiStatsRangeInput & { limit?: number }, withNa
       success: sql<number>`sum(${openApiCallStatsDaily.successCalls})`,
       durationSum: sql<number>`sum(${openApiCallStatsDaily.durationSumMs})`,
     }).from(openApiCallStatsDaily)
-      .where(and(...dailyConditions))
+      .where(dailyWhere)
       .groupBy(dailyColumn),
   ]);
   const merged = new Map<string, {
@@ -279,22 +270,15 @@ async function groupBy(opts: OpenApiStatsRangeInput & { limit?: number }, withNa
     }));
 }
 
-export function getOpenApiStatsByApp(opts: OpenApiStatsRangeInput & { limit?: number }) {
+export function getOpenApiStatsByApp(opts: QueryOutputOf<typeof openApiStatsContract.byApp>) {
   return groupBy(opts, true);
 }
 
-export function getOpenApiStatsByEndpoint(opts: OpenApiStatsRangeInput & { limit?: number }) {
+export function getOpenApiStatsByEndpoint(opts: QueryOutputOf<typeof openApiStatsContract.byEndpoint>) {
   return groupBy(opts, false);
 }
 
-export interface OpenApiCallLogQuery extends OpenApiStatsRangeInput {
-  page: number;
-  pageSize: number;
-  success?: boolean;
-  method?: string;
-  statusCode?: number;
-  keyword?: string;
-}
+type OpenApiCallLogQuery = QueryOutputOf<typeof openApiStatsContract.logs>;
 
 export function buildOpenApiCallLogWhere(opts: Omit<OpenApiCallLogQuery, 'page' | 'pageSize'>): SQL | undefined {
   const conds: (SQL | undefined)[] = rangeConditions(opts);

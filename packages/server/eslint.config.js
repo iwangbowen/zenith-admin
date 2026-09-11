@@ -67,6 +67,38 @@ export default tseslint.config(
       ],
     },
   },
+  // 列表查询链路纪律（constraints.md → Shared 层 / Service 层 / WHERE 条件构造 / 分页格式）：
+  // 入参类型只从契约派生、默认值只在契约声明、WHERE 静态条件直接写成 buildWhere 实参。
+  // 同名规则在更窄的 files 块中整体覆盖而非合并，这里要把 .partial() 那条一并带上。
+  {
+    files: ['src/services/**/*.ts'],
+    ignores: ['src/services/**/*.test.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='partial']",
+          message: '禁止直接调用 .partial()：请改用 partialForUpdate()（@zenith/shared/core），否则字段省略时会注入 .default() 并覆盖未提交的字段。',
+        },
+        {
+          selector: "TSInterfaceDeclaration TSPropertySignature[key.name='pageSize']",
+          message: '禁止在 service 手写含 pageSize 的查询入参 interface：列表函数入参写 QueryOutputOf<typeof xxxContract.op>（@zenith/shared/core），筛选子集用 Omit<…, \'page\' | \'pageSize\'>。',
+        },
+        {
+          selector: "CallExpression[callee.name='and'][arguments.length=1] > SpreadElement",
+          message: '禁止 and(...conditions)：可选条件用 buildWhere(...)（lib/where-helpers）合并，静态条件直接写成实参。',
+        },
+        {
+          selector: "ObjectPattern > Property[key.name=/^(page|pageSize)$/] > AssignmentPattern",
+          message: '禁止在 service 重复分页默认值：page / pageSize 的默认值只在契约 paginationQuery 声明，入参类型用 QueryOutputOf 后二者为必填 number。',
+        },
+        {
+          selector: "LogicalExpression[operator='??'][left.property.name=/^(page|pageSize)$/][right.type='Literal']",
+          message: '禁止 q.page ?? 1 / q.pageSize ?? 10：分页默认值只在契约 paginationQuery 声明，入参类型用 QueryOutputOf。',
+        },
+      ],
+    },
+  },
   // 通知渠道收口：业务域一律通过 notify() 发事件通知，不得直接调底层渠道。
   // 绕过统一入口就等于绕过收件人偏好、免打扰、幂等与派发留痕——
   // 而「明明配好了却没人收到」的排查完全依赖这些留痕。

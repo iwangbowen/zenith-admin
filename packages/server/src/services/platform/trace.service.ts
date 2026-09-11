@@ -9,7 +9,9 @@
  *   task         ← async_tasks.trace_id
  */
 import { and, desc, eq, gte, inArray, isNotNull } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { TraceFailureEntry, TraceNodeKind, TraceNodeStatus, TraceTimeline, TraceTimelineNode } from '@zenith/shared/platform';
+import { traceContract } from '@zenith/shared/platform';
 import { db } from '../../db';
 import {
   asyncTasks, notificationDispatches, notificationOutbox, operationLogs, workflowJobs,
@@ -217,13 +219,8 @@ export async function getTraceTimeline(traceId: string): Promise<TraceTimeline> 
 }
 
 // ─── 最近失败链路（排障入口：不知道 traceId 时从这里进）───────────────────────
-export interface ListTraceFailuresQuery {
-  days?: number;
-  kind?: TraceNodeKind;
-}
-
 /** 四类锚点的失败记录归一列表（每源限 50，合并倒序取前 50） */
-export async function listRecentTraceFailures(q: ListTraceFailuresQuery): Promise<TraceFailureEntry[]> {
+export async function listRecentTraceFailures(q: QueryOutputOf<typeof traceContract.recentFailures>): Promise<TraceFailureEntry[]> {
   const user = currentUser();
   const days = clampDays(q.days, 7, 30);
   const since = new Date(Date.now() - days * 86_400_000);

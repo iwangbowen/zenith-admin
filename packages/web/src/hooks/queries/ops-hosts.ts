@@ -1,9 +1,9 @@
-import type { HostQueryInput } from '@zenith/shared/ops';
-import { opsHostContract } from '@zenith/shared/ops';
+import type { ShapeInput } from '@zenith/shared/core';
+import { hostQuery, opsHostContract } from '@zenith/shared/ops';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
-/** 页面持有的主机选择（null = 本机）→ 契约 `hostQuery` 输入 */
-export function hostQueryOf(hostId: number | null | undefined): HostQueryInput {
+/** 页面持有的主机选择（null = 本机）→ 契约共享积木 `hostQuery` 的客户端输入（多组运维契约共用该 query） */
+export function hostQueryOf(hostId: number | null | undefined): ShapeInput<typeof hostQuery> {
   return hostId == null ? {} : { hostId };
 }
 

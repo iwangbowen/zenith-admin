@@ -162,9 +162,10 @@ import { HTTPException } from 'hono/http-exception';
 export type ListFileStorageConfigsQuery = QueryOutputOf<typeof fileStorageConfigContract.list>;
 
 export async function listFileStorageConfigs(q: ListFileStorageConfigsQuery) {
-  const { status, startTime, endTime, page, pageSize } = q;
+  const { startTime, endTime, page, pageSize } = q;
+  const status = q.status as 'enabled' | 'disabled' | undefined;
   const where = buildWhere(
-    status === 'enabled' || status === 'disabled' ? eq(fileStorageConfigs.status, status) : undefined,
+    status ? eq(fileStorageConfigs.status, status) : undefined,
     ...dateRangeConditions(fileStorageConfigs.updatedAt, startTime, endTime),
   );
   return buildListResult({

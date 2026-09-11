@@ -1,6 +1,8 @@
 import { HTTPException } from 'hono/http-exception';
 import { asc, eq, inArray, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { CreateWikiSpaceInput, SaveWikiSpaceMembersInput, UpdateWikiSpaceInput, WikiSpaceMemberRole } from '@zenith/shared/wiki';
+import { wikiSpaceContract } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { users, wikiDocs, wikiSpaceMembers, wikiSpaces, type WikiSpaceRow } from '../../db/schema';
@@ -33,15 +35,9 @@ export function mapWikiSpace(row: WikiSpaceRow) {
   };
 }
 
-export interface ListWikiSpacesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  visibility?: 'public' | 'private';
-  status?: 'enabled' | 'disabled';
-}
+type WikiSpaceListFilter = Omit<QueryOutputOf<typeof wikiSpaceContract.list>, 'page' | 'pageSize'>;
 
-interface WikiSpaceWhereInput extends ListWikiSpacesQuery {
+interface WikiSpaceWhereInput extends WikiSpaceListFilter {
   id?: number;
 }
 
@@ -57,8 +53,8 @@ function buildWikiSpaceWhere(q: WikiSpaceWhereInput) {
 
 // ─── 管理端：空间 CRUD ────────────────────────────────────────────────────────
 
-export async function listWikiSpaces(q: ListWikiSpacesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listWikiSpaces(q: QueryOutputOf<typeof wikiSpaceContract.list>) {
+  const { page, pageSize } = q;
   const where = buildWikiSpaceWhere(q);
 
   const { list: rows, total } = await buildListResult({

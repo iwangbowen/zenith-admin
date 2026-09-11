@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { OPEN_WEBHOOK_DELIVERY_STATUSES, OPEN_WEBHOOK_SIGN_MODES } from '../constants';
 import { createAppWebhookSchema, updateAppWebhookSchema } from '../validation';
@@ -91,14 +91,14 @@ export type OpenWebhookEventMeta = z.infer<typeof openWebhookEventMetaSchema>;
 
 export const appWebhookListQuery = paginationQuery.extend({
   clientId: z.string().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
   keyword: z.string().optional().meta({ description: '按名称 / 回调地址模糊匹配' }),
 });
 
 export const appWebhookDeliveryListQuery = paginationQuery.extend({
   subscriptionId: z.coerce.number().int().optional(),
   clientId: z.string().optional(),
-  status: z.enum(OPEN_WEBHOOK_DELIVERY_STATUSES).optional(),
+  status: queryEnum(OPEN_WEBHOOK_DELIVERY_STATUSES),
   eventType: z.string().optional(),
 });
 

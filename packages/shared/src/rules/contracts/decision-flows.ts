@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { batchIdsBody, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { RULE_DECISION_STATUSES, RULE_EVALUATE_REASONS, RULE_FLOW_SKIP_REASONS, RULE_HIT_POLICIES } from '../constants';
 import {
@@ -61,7 +61,7 @@ export type RuleFlowEvaluateResult = z.infer<typeof ruleFlowEvaluateResultSchema
 
 export const decisionFlowListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称模糊匹配' }),
-  status: z.enum(RULE_DECISION_STATUSES).optional(),
+  status: queryEnum(RULE_DECISION_STATUSES),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

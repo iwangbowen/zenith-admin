@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { paginated, paginationQuery } from '../../core/api-schemas';
+import { paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WIKI_DOC_STATUSES, WIKI_GOVERNANCE_KINDS } from '../constants';
 import {
@@ -49,7 +49,7 @@ export type WikiImportResult = z.infer<typeof wikiImportResultSchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const wikiGovernanceDocListQuery = paginationQuery.extend({
-  kind: z.enum(WIKI_GOVERNANCE_KINDS).meta({ description: '治理清单类型', example: 'all' }),
+  kind: queryEnum(WIKI_GOVERNANCE_KINDS, '治理清单类型').default('all').meta({ example: 'all' }),
 });
 
 export const wikiGovernanceContract = defineContract('/api/wiki/governance', {

@@ -1,7 +1,9 @@
 import { HTTPException } from 'hono/http-exception';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { ImportWikiDocsInput, WikiGovernanceKind } from '@zenith/shared/wiki';
+import { wikiGovernanceContract } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import {
   businessFiles, users, wikiDocVersions, wikiDocs, wikiReviewRecords, wikiSearchLogs, wikiSpaces,
@@ -71,8 +73,8 @@ function governanceScope() {
   );
 }
 
-export async function listGovernanceDocs(kind: WikiGovernanceKind, q: { page?: number; pageSize?: number }) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listGovernanceDocs(q: QueryOutputOf<typeof wikiGovernanceContract.listDocs>) {
+  const { page, pageSize, kind } = q;
   const pendingRemindHours = kind === 'review-backlog'
     ? (await getSettings('wiki')).pendingRemindHours
     : DEFAULT_REVIEW_BACKLOG_HOURS;

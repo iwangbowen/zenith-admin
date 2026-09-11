@@ -1,5 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { CreateWikiTemplateInput, UpdateWikiTemplateInput } from '@zenith/shared/wiki';
+import { wikiTemplateContract } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import { wikiTemplates, type WikiTemplateRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
@@ -22,14 +24,9 @@ export function mapWikiTemplate(row: WikiTemplateRow) {
   };
 }
 
-export interface ListWikiTemplatesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-}
+type WikiTemplateListFilter = Omit<QueryOutputOf<typeof wikiTemplateContract.list>, 'page' | 'pageSize'>;
 
-interface WikiTemplateWhereInput extends ListWikiTemplatesQuery {
+interface WikiTemplateWhereInput extends WikiTemplateListFilter {
   id?: number;
 }
 
@@ -41,8 +38,8 @@ function buildWikiTemplateWhere(q: WikiTemplateWhereInput) {
   );
 }
 
-export async function listWikiTemplates(q: ListWikiTemplatesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listWikiTemplates(q: QueryOutputOf<typeof wikiTemplateContract.list>) {
+  const { page, pageSize } = q;
   const where = buildWikiTemplateWhere(q);
 
   return buildListResult({

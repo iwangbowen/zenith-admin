@@ -1,5 +1,7 @@
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { licensingContract } from '@zenith/shared/licensing';
 import { db } from '../../db';
 import { licenses, licenseEvents, systemInstallations, systemSchedulerNodes } from '../../db/schema';
 import { config } from '../../config';
@@ -221,8 +223,8 @@ export async function deactivateLicense(): Promise<void> {
   invalidateLicenseSnapshot();
 }
 
-export async function listLicenseEvents(q: { page?: number; pageSize?: number }) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listLicenseEvents(q: QueryOutputOf<typeof licensingContract.events>) {
+  const { page, pageSize } = q;
   return buildListResult({
     page,
     pageSize,

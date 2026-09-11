@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   PROCESS_ROLES,
@@ -153,10 +153,10 @@ export type SystemSchedulerCleanupResult = z.infer<typeof systemSchedulerCleanup
 
 export const systemSchedulerRunListQuery = paginationQuery.extend({
   taskName: z.string().optional(),
-  taskType: z.enum(SYSTEM_SCHEDULER_TASK_TYPES).optional(),
-  triggerType: z.enum(SYSTEM_SCHEDULER_TRIGGER_TYPES).optional(),
-  status: z.enum(SYSTEM_SCHEDULER_RUN_STATUSES).optional(),
-  alertStatus: z.enum(SYSTEM_SCHEDULER_ALERT_FILTERS).optional(),
+  taskType: queryEnum(SYSTEM_SCHEDULER_TASK_TYPES),
+  triggerType: queryEnum(SYSTEM_SCHEDULER_TRIGGER_TYPES),
+  status: queryEnum(SYSTEM_SCHEDULER_RUN_STATUSES),
+  alertStatus: queryEnum(SYSTEM_SCHEDULER_ALERT_FILTERS),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
 });

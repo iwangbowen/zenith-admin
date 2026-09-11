@@ -1,7 +1,7 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { DRIVE_ACCESS_REQUEST_STATUSES, DRIVE_NODE_TYPES, DRIVE_REQUESTABLE_ROLES, DRIVE_ROLES } from '../constants';
+import { DRIVE_ACCESS_REQUEST_BOXES, DRIVE_ACCESS_REQUEST_STATUSES, DRIVE_NODE_TYPES, DRIVE_REQUESTABLE_ROLES, DRIVE_ROLES } from '../constants';
 import { createDriveAccessRequestSchema, decideDriveAccessRequestSchema } from '../validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
@@ -47,8 +47,8 @@ export type DriveAccessTarget = z.infer<typeof driveAccessTargetSchema>;
 
 export const driveAccessRequestListQuery = paginationQuery.extend({
   /** inbox = 待我审批（我是节点管理者）；outbox = 我提交的 */
-  box: z.enum(['inbox', 'outbox']).default('inbox'),
-  status: z.enum(DRIVE_ACCESS_REQUEST_STATUSES).optional(),
+  box: queryEnum(DRIVE_ACCESS_REQUEST_BOXES).default('inbox'),
+  status: queryEnum(DRIVE_ACCESS_REQUEST_STATUSES),
 });
 
 export const driveAccessRequestContract = defineContract('/api/drive/access-requests', {

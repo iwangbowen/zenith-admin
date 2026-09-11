@@ -1,4 +1,6 @@
-import { eq, desc, isNull, isNotNull, type SQL } from 'drizzle-orm';
+import { eq, desc, isNull, isNotNull } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { maintenanceContract } from '@zenith/shared/ops';
 import { db } from '../../db';
 import { maintenanceMode, maintenanceLogs } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
@@ -177,21 +179,13 @@ function mapMaintenanceLog(row: typeof maintenanceLogs.$inferSelect): Maintenanc
   };
 }
 
-export interface ListMaintenanceLogsQuery {
-  page?: number;
-  pageSize?: number;
-  status?: 'ongoing' | 'completed';
-}
-
 /** 维护记录分页查询（按开始时间倒序） */
-export async function listMaintenanceLogs(q: ListMaintenanceLogsQuery) {
-  const page = Number(q.page) || 1;
-  const pageSize = Number(q.pageSize) || 10;
-
-  const conditions: SQL[] = [];
-  if (q.status === 'ongoing') conditions.push(isNull(maintenanceLogs.endedAt));
-  if (q.status === 'completed') conditions.push(isNotNull(maintenanceLogs.endedAt));
-  const where = buildWhere(...conditions);
+export async function listMaintenanceLogs(q: QueryOutputOf<typeof maintenanceContract.logs>) {
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    q.status === 'ongoing' ? isNull(maintenanceLogs.endedAt) : undefined,
+    q.status === 'completed' ? isNotNull(maintenanceLogs.endedAt) : undefined,
+  );
 
   return buildListResult({
     page,

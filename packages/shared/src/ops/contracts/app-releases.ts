@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { uploadChunkBody, uploadChunkResultSchema, uploadSessionInitSchema, uploadSessionStatusSchema } from '../../platform/contracts';
 import { completeChunkUploadSchema, initChunkUploadSchema } from '../../platform/validation';
@@ -164,13 +164,13 @@ export type AppPublicReleaseInfo = z.infer<typeof appPublicReleaseInfoSchema>;
 
 export const clientAppListQuery = paginationQuery.extend({
   keyword: z.string().max(256).optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const appReleaseListQuery = paginationQuery.extend({
   appId: z.coerce.number().int().positive().optional(),
-  channel: z.enum(APP_RELEASE_CHANNELS).optional(),
-  status: z.enum(APP_RELEASE_STATUSES).optional(),
+  channel: queryEnum(APP_RELEASE_CHANNELS),
+  status: queryEnum(APP_RELEASE_STATUSES),
   keyword: z.string().max(256).optional(),
 });
 
@@ -181,9 +181,9 @@ export const appReleaseStatsQuery = z.object({
 
 export const clientDeviceListQuery = paginationQuery.extend({
   appId: z.coerce.number().int().positive().optional(),
-  platform: z.enum(APP_PLATFORMS).optional(),
-  subjectType: z.enum(DEVICE_SUBJECT_TYPES).optional(),
-  pushBound: z.enum(['true', 'false']).optional().meta({ description: 'true 只看已绑定推送的设备' }),
+  platform: queryEnum(APP_PLATFORMS),
+  subjectType: queryEnum(DEVICE_SUBJECT_TYPES),
+  pushBound: queryBool('true 只看已绑定推送的设备'),
   keyword: z.string().max(256).optional(),
 });
 
@@ -191,8 +191,8 @@ export const clientDeviceListQuery = paginationQuery.extend({
 export const uploadAppArtifactBody = multipart(z.object({
   file: fileField('制品文件'),
   platform: z.enum(APP_PLATFORMS),
-  arch: z.enum(APP_ARCHES).optional(),
-  kind: z.enum(APP_FILE_ARTIFACT_KINDS).optional(),
+  arch: queryEnum(APP_ARCHES),
+  kind: queryEnum(APP_FILE_ARTIFACT_KINDS),
 }));
 
 /** 制品分片上传初始化：通用分片字段 + 平台 / 架构 / 类型（complete 时按此落 app_artifacts） */
@@ -212,7 +212,7 @@ export const appArtifactUploadParams = idParam.extend({
 export const publicLatestReleaseQuery = z.object({
   app: z.string().min(1).max(64),
   channel: z.enum(APP_RELEASE_CHANNELS).default('stable'),
-  platform: z.enum(APP_PLATFORMS).optional(),
+  platform: queryEnum(APP_PLATFORMS),
 });
 
 export const publicArtifactParam = z.object({

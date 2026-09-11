@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { OPEN_API_STATS_GRANULARITIES, OPEN_APP_ENVIRONMENTS, OPEN_AUTH_CHANNELS } from '../constants';
 
@@ -74,11 +74,11 @@ export const openApiStatsRangeQuery = z.object({
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
   clientId: z.string().optional(),
-  environment: z.enum(OPEN_APP_ENVIRONMENTS).optional(),
+  environment: queryEnum(OPEN_APP_ENVIRONMENTS),
 });
 
 export const openApiStatsTrendQuery = openApiStatsRangeQuery.extend({
-  granularity: z.enum(OPEN_API_STATS_GRANULARITIES).default('day'),
+  granularity: queryEnum(OPEN_API_STATS_GRANULARITIES).default('day'),
 });
 
 export const openApiStatsGroupQuery = openApiStatsRangeQuery.extend({
@@ -90,7 +90,7 @@ export const openApiCallLogListQuery = paginationQuery.extend({
   success: queryBool('按调用结果筛选'),
   method: z.string().max(10).optional(),
   statusCode: z.coerce.number().int().min(100).max(599).optional(),
-  environment: z.enum(OPEN_APP_ENVIRONMENTS).optional(),
+  environment: queryEnum(OPEN_APP_ENVIRONMENTS),
   keyword: z.string().optional().meta({ description: '按路径 / 应用名称模糊匹配' }),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),

@@ -1,16 +1,17 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { formatBytes } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type {
   CreateDriveLegalHoldInput,
   CreateDriveQuotaRequestInput,
   DecideDriveQuotaRequestInput,
   DriveLegalHold,
   DriveQuotaRequest,
-  DriveQuotaRequestStatus,
   DriveSpace,
   ReleaseDriveLegalHoldInput,
 } from '@zenith/shared/drive';
+import { driveAdminContract } from '@zenith/shared/drive';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import {
@@ -147,16 +148,8 @@ async function mapLegalHolds(rows: DriveLegalHoldRow[]): Promise<DriveLegalHold[
   }));
 }
 
-export interface ListLegalHoldsQuery {
-  page?: number;
-  pageSize?: number;
-  spaceId?: number;
-  nodeId?: number;
-  active?: boolean;
-}
-
-export async function listLegalHolds(q: ListLegalHoldsQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listLegalHolds(q: QueryOutputOf<typeof driveAdminContract.legalHolds>) {
+  const { page, pageSize } = q;
   const where = buildWhere(
     q.spaceId !== undefined ? eq(driveLegalHolds.spaceId, q.spaceId) : undefined,
     q.nodeId !== undefined ? eq(driveLegalHolds.nodeId, q.nodeId) : undefined,
@@ -333,13 +326,6 @@ export async function listSpaceQuotaRequests(spaceId: number): Promise<DriveQuot
   return mapQuotaRequests(rows);
 }
 
-export interface ListQuotaRequestsQuery {
-  page?: number;
-  pageSize?: number;
-  status?: DriveQuotaRequestStatus;
-  spaceId?: number;
-}
-
 /** 管理端数据权限：非超管按空间归属部门 / 所有者收窄 */
 async function adminSpaceScope(column: typeof driveLegalHolds.spaceId | typeof driveQuotaRequests.spaceId): Promise<SQL | undefined> {
   if (isSuperAdmin()) return undefined;
@@ -347,8 +333,8 @@ async function adminSpaceScope(column: typeof driveLegalHolds.spaceId | typeof d
   return cond ? inArray(column, db.select({ id: driveSpaces.id }).from(driveSpaces).where(cond)) : undefined;
 }
 
-export async function listQuotaRequestsForAdmin(q: ListQuotaRequestsQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listQuotaRequestsForAdmin(q: QueryOutputOf<typeof driveAdminContract.quotaRequests>) {
+  const { page, pageSize } = q;
   const where = buildWhere(
     q.status ? eq(driveQuotaRequests.status, q.status) : undefined,
     q.spaceId !== undefined ? eq(driveQuotaRequests.spaceId, q.spaceId) : undefined,

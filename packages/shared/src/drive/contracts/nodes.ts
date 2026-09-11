@@ -1,11 +1,14 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { fileAccessUrlSchema, uploadChunkResultSchema, uploadSessionInitSchema, uploadSessionStatusSchema } from '../../platform/contracts';
 import {
   DRIVE_ACTIVITY_ACTIONS,
+  DRIVE_NODE_ACCESS_PURPOSES,
+  DRIVE_NODE_SORT_FIELDS,
   DRIVE_NODE_TYPES,
   DRIVE_ROLES,
+  DRIVE_SORT_ORDERS,
   DRIVE_SPACE_TYPES,
   DRIVE_SUBJECT_TYPES,
   DRIVE_UPLOAD_CONFLICT_POLICIES,
@@ -264,15 +267,15 @@ export const driveNodeListQuery = paginationQuery.extend({
   parentId: z.coerce.number().int().positive().optional().meta({ description: '目录节点 ID' }),
   keyword: z.string().optional(),
   tagId: z.coerce.number().int().positive().optional(),
-  type: z.enum(DRIVE_NODE_TYPES).optional(),
-  sortBy: z.enum(['name', 'size', 'updatedAt', 'createdAt']).optional(),
-  order: z.enum(['asc', 'desc']).optional(),
+  type: queryEnum(DRIVE_NODE_TYPES),
+  sortBy: queryEnum(DRIVE_NODE_SORT_FIELDS),
+  order: queryEnum(DRIVE_SORT_ORDERS),
 });
 
 /** 个人视图（与我共享 / 收藏 / 最近）分页参数 */
 export const driveNodeViewQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  type: z.enum(DRIVE_NODE_TYPES).optional(),
+  type: queryEnum(DRIVE_NODE_TYPES),
 });
 
 export const driveRecycleQuery = driveNodeViewQuery.extend({
@@ -282,7 +285,7 @@ export const driveRecycleQuery = driveNodeViewQuery.extend({
 export const driveNodeSearchQuery = paginationQuery.extend({
   keyword: z.string().min(1).meta({ description: '检索关键词', example: '需求' }),
   spaceId: optionalSpaceId,
-  type: z.enum(DRIVE_NODE_TYPES).optional(),
+  type: queryEnum(DRIVE_NODE_TYPES),
   extension: z.string().max(32).optional(),
   tagId: z.coerce.number().int().positive().optional(),
   createdBy: z.coerce.number().int().positive().optional(),
@@ -301,7 +304,7 @@ export const driveNodeContentQuery = z.object({
 });
 
 export const driveNodeAccessUrlQuery = z.object({
-  purpose: z.enum(['preview', 'download']).default('download'),
+  purpose: queryEnum(DRIVE_NODE_ACCESS_PURPOSES).default('download'),
 });
 
 export const driveNodeVersionParams = idParam.extend({

@@ -1,13 +1,14 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type {
   CreateWikiDocInput,
   MoveWikiDocInput,
   ReviewWikiDocInput,
   UpdateWikiDocInput,
-  WikiDocStatus,
   WikiDocTreeNode,
 } from '@zenith/shared/wiki';
+import { wikiDocContract } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import {
@@ -74,24 +75,14 @@ export function mapWikiDoc(row: WikiDocRow) {
   };
 }
 
-export interface ListWikiDocsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  spaceId?: number;
-  status?: WikiDocStatus;
-  tagId?: number;
+type WikiDocListQuery = QueryOutputOf<typeof wikiDocContract.list> & {
   /** true = 只查回收站；默认只查未删除 */
   deleted?: boolean;
-  /** 只查当前用户创建的 */
-  mine?: boolean;
-  /** 只查当前用户提交过审核的 */
-  submitted?: boolean;
   /** true = 只查已归档；默认排除已归档 */
   archived?: boolean;
-}
+};
 
-interface WikiDocWhereInput extends ListWikiDocsQuery {
+interface WikiDocWhereInput extends Omit<WikiDocListQuery, 'page' | 'pageSize'> {
   id?: number;
 }
 
@@ -163,8 +154,8 @@ async function attachDocExtras(rows: WikiDocRow[], opts: { spaceName?: boolean }
 
 // ─── 列表与详情 ───────────────────────────────────────────────────────────────
 
-export async function listWikiDocs(q: ListWikiDocsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listWikiDocs(q: WikiDocListQuery) {
+  const { page, pageSize } = q;
   let where = buildWikiDocWhere(q);
   if (q.tagId !== undefined) {
     where = and(
@@ -552,8 +543,8 @@ export async function listWikiDocReviewRecords(docId: number) {
 }
 
 /** 我处理过的审核记录（通过/驳回），供审核中心「已处理」视图 */
-export async function listMyProcessedReviews(q: { page?: number; pageSize?: number }) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listMyProcessedReviews(q: QueryOutputOf<typeof wikiDocContract.processedReviews>) {
+  const { page, pageSize } = q;
   const where = buildWhere(
     eq(wikiReviewRecords.actorId, currentUserId()),
     inArray(wikiReviewRecords.action, ['approve', 'reject']),
@@ -637,9 +628,9 @@ export async function getWikiDocReadReceipts(docId: number) {
 
 // ─── 版本 ─────────────────────────────────────────────────────────────────────
 
-export async function listWikiDocVersions(docId: number, q: { page?: number; pageSize?: number }) {
+export async function listWikiDocVersions(docId: number, q: QueryOutputOf<typeof wikiDocContract.versions>) {
   await getWikiDoc(docId); // 复用详情访问控制
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = eq(wikiDocVersions.docId, docId);
 
   return buildListResult({
@@ -778,8 +769,8 @@ export async function favoriteWikiDoc(docId: number, favorite: boolean) {
   }
 }
 
-export async function listMyFavoriteWikiDocs(q: { page?: number; pageSize?: number; keyword?: string }) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listMyFavoriteWikiDocs(q: QueryOutputOf<typeof wikiDocContract.favorites>) {
+  const { page, pageSize } = q;
   const favoriteIds = db.select({ id: wikiDocFavorites.docId }).from(wikiDocFavorites)
     .where(eq(wikiDocFavorites.userId, currentUserId()));
   const where = buildWhere(
@@ -826,18 +817,9 @@ function extractSnippet(content: string, keyword: string): string {
   return `${start > 0 ? '…' : ''}${plain.slice(start, end)}${end < plain.length ? '…' : ''}`;
 }
 
-export interface SearchWikiDocsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword: string;
-  spaceId?: number;
-  status?: WikiDocStatus;
-  tagId?: number;
-}
-
 /** 全文检索：标题 > 摘要 > 正文加权排序，返回命中片段；首页时写入搜索日志 */
-export async function searchWikiDocs(q: SearchWikiDocsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function searchWikiDocs(q: QueryOutputOf<typeof wikiDocContract.search>) {
+  const { page, pageSize } = q;
   const kw = q.keyword.trim();
   let where = buildWikiDocWhere({ keyword: kw, spaceId: q.spaceId, status: q.status });
   if (q.tagId !== undefined) {

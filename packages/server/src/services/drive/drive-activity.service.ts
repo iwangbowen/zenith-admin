@@ -1,6 +1,8 @@
 import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { tryGetContext } from 'hono/context-storage';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { DriveActivity, DriveActivityAction, DriveNodeType } from '@zenith/shared/drive';
+import { driveAdminContract } from '@zenith/shared/drive';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { driveActivities, driveRecentAccess, driveSpaces, type DriveActivityRow } from '../../db/schema';
@@ -99,19 +101,9 @@ export function mapDriveActivity(row: DriveActivityRow, names: Map<number, strin
   };
 }
 
-export interface ListDriveActivitiesQuery {
-  page?: number;
-  pageSize?: number;
-  spaceId?: number;
-  nodeId?: number;
-  actorId?: number;
-  action?: DriveActivityAction;
-  keyword?: string;
-  startTime?: string;
-  endTime?: string;
-}
+type DriveActivityListQuery = QueryOutputOf<typeof driveAdminContract.activities> & { nodeId?: number };
 
-async function listActivitiesWhere(q: ListDriveActivitiesQuery, extra?: SQL): Promise<SQL | undefined> {
+async function listActivitiesWhere(q: DriveActivityListQuery, extra?: SQL): Promise<SQL | undefined> {
   const user = currentUserOrNull();
   return buildWhere(
     q.spaceId !== undefined ? eq(driveActivities.spaceId, q.spaceId) : undefined,
@@ -143,8 +135,8 @@ async function paginateActivities(where: SQL | undefined, page: number, pageSize
 }
 
 /** 节点动态（调用方已校验节点 viewer 权限） */
-export async function listNodeActivities(nodeId: number, q: ListDriveActivitiesQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listNodeActivities(nodeId: number, q: DriveActivityListQuery) {
+  const { page, pageSize } = q;
   const where = await listActivitiesWhere({ ...q, nodeId });
   return paginateActivities(where, page, pageSize);
 }
@@ -152,8 +144,8 @@ export async function listNodeActivities(nodeId: number, q: ListDriveActivitiesQ
 /**
  * 管理端全局动态：叠加数据权限（按空间归属部门 / 所有者收窄）。
  */
-export async function listDriveActivitiesForAdmin(q: ListDriveActivitiesQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listDriveActivitiesForAdmin(q: DriveActivityListQuery) {
+  const { page, pageSize } = q;
   const user = currentUserOrNull();
   let scope: SQL | undefined;
   if (user && !isSuperAdmin()) {

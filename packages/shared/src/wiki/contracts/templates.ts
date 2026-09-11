@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { createWikiTemplateSchema, updateWikiTemplateSchema } from '../validation';
 
@@ -23,7 +23,7 @@ export type WikiTemplate = z.infer<typeof wikiTemplateSchema>;
 
 export const wikiTemplateListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称 / 描述模糊匹配' }),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const wikiTemplateContract = defineContract('/api/wiki/templates', {

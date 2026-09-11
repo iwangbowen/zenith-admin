@@ -21,10 +21,7 @@ const read = [authMiddleware, guard({ permission: 'open:rate-plan:view' })] as c
 
 const list = defineContractRoute(ratePlanContract.list, {
   middleware: read,
-  handler: async (c) => {
-    const { page, pageSize, keyword, status } = c.req.valid('query');
-    return c.json(okBody(await listRatePlans({ page, pageSize, keyword, status })), 200);
-  },
+  handler: async (c) => c.json(okBody(await listRatePlans(c.req.valid('query'))), 200),
 });
 
 const options = defineContractRoute(ratePlanContract.options, {

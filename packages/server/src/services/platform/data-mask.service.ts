@@ -1,7 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { DataMaskEffective, DataMaskField, SaveDataMaskPolicyInput } from '@zenith/shared/platform';
-import { DATA_MASK_REVEAL_PERMISSION, matchesDataMaskFieldQuery } from '@zenith/shared/platform';
+import { dataMaskContract, DATA_MASK_REVEAL_PERMISSION, matchesDataMaskFieldQuery } from '@zenith/shared/platform';
 import type { MaskDecision } from '@zenith/shared/core';
 import { db } from '../../db';
 import { dataMaskPolicies } from '../../db/schema';
@@ -54,15 +55,7 @@ async function fieldView(entry: SensitiveFieldEntry): Promise<DataMaskField> {
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
 
-export interface ListDataMaskFieldsQuery {
-  keyword?: string;
-  entity?: string;
-  maskType?: string;
-  enabled?: boolean;
-  overridden?: boolean;
-}
-
-export async function listDataMaskFields(query: ListDataMaskFieldsQuery = {}): Promise<DataMaskField[]> {
+export async function listDataMaskFields(query: QueryOutputOf<typeof dataMaskContract.fields>): Promise<DataMaskField[]> {
   const map = await getPolicyMap();
   return listSensitiveFieldEntries()
     .map((entry) => mapField(resolveEffectivePolicy(entry, map.get(entry.key))))

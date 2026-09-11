@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { FILE_OBJECT_ACLS, FILE_STORAGE_PROVIDERS, FILE_URL_STRATEGIES } from '../constants';
 import { createFileStorageConfigSchema, updateFileStorageConfigSchema } from '../validation';

@@ -71,8 +71,7 @@ export const announcementsHandlers = [
   // 公告收件箱（分页）
   mock(announcementContract.inbox, ({ query, ok, paginate }) => {
     let list = publishedForInbox();
-    if (query.isRead === 'true') list = list.filter((n) => n.isRead);
-    else if (query.isRead === 'false') list = list.filter((n) => !n.isRead);
+    if (query.isRead !== undefined) list = list.filter((n) => n.isRead === query.isRead);
     return ok(paginate(list));
   }),
 

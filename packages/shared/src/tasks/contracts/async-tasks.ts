@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { ASYNC_TASK_ITEM_STATUSES, ASYNC_TASK_STATUSES } from '../constants';
 import { updateAsyncTaskTypePolicySchema } from '../validation';
@@ -147,7 +147,7 @@ export type AsyncTaskCleanupResult = z.infer<typeof asyncTaskCleanupResultSchema
 
 export const asyncTaskListQuery = paginationQuery.extend({
   taskType: z.string().optional(),
-  status: z.enum(ASYNC_TASK_STATUSES).optional(),
+  status: queryEnum(ASYNC_TASK_STATUSES),
   keyword: z.string().optional().meta({ description: '匹配任务标题 / 任务类型' }),
   content: z.string().optional().meta({ description: '任务内容关键字（匹配入参与产出）' }),
   createdBy: z.string().optional().meta({ description: '提交人（模糊匹配用户名 / 昵称）' }),
@@ -156,7 +156,7 @@ export const asyncTaskListQuery = paginationQuery.extend({
 });
 
 export const asyncTaskItemListQuery = paginationQuery.extend({
-  status: z.enum(ASYNC_TASK_ITEM_STATUSES).optional(),
+  status: queryEnum(ASYNC_TASK_ITEM_STATUSES),
   keyword: z.string().optional(),
 });
 

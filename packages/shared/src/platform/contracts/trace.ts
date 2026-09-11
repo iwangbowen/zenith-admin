@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { TRACE_NODE_KINDS, TRACE_NODE_STATUSES } from '../constants';
 
@@ -45,7 +46,7 @@ export const traceIdParam = z.object({
 
 export const traceFailureListQuery = z.object({
   days: z.coerce.number().int().min(1).max(30).optional().meta({ description: '时间窗天数，默认 7' }),
-  kind: z.enum(TRACE_NODE_KINDS).optional().meta({ description: '按节点类型过滤' }),
+  kind: queryEnum(TRACE_NODE_KINDS, '按节点类型过滤'),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

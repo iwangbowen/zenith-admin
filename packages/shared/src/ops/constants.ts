@@ -57,6 +57,7 @@ export type DbAdminMaintenanceAction = (typeof DB_ADMIN_MAINTENANCE_ACTIONS)[num
 
 /** 表 SQL 导出范围：ddl=仅结构 data=仅数据 full=结构 + 数据 */
 export const DB_ADMIN_SQL_EXPORT_MODES = ['ddl', 'data', 'full'] as const;
+export const DB_ADMIN_ORDER_DIRECTIONS = ['asc', 'desc'] as const;
 export type DbAdminSqlExportMode = (typeof DB_ADMIN_SQL_EXPORT_MODES)[number];
 
 export const DB_ADMIN_COLUMN_DIFF_ISSUES = ['missing_in_db', 'extra_in_db', 'type_mismatch', 'nullable_mismatch'] as const;

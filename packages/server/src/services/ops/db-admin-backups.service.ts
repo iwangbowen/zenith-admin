@@ -1,6 +1,8 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { CreateDbBackupInput, DbBackupListQueryInput } from '@zenith/shared/ops';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import type { CreateDbBackupInput } from '@zenith/shared/ops';
+import { dbAdminContract } from '@zenith/shared/ops';
 import { db } from '../../db';
 import { dbBackups } from '../../db/schema';
 import { createDrizzleExportBackup, createPgDumpBackup } from '../../lib/db-backup';
@@ -8,6 +10,7 @@ import { formatDateTime, formatFileTimestamp, formatNullableDateTime } from '../
 import { buildListResult } from '../../lib/list-query';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
+import { buildWhere } from '../../lib/where-helpers';
 
 type DbBackupWithCreator = typeof dbBackups.$inferSelect & { createdByUser: { nickname: string | null } | null };
 
@@ -22,13 +25,12 @@ function mapDbBackup({ createdByUser, startedAt, completedAt, createdAt, updated
   };
 }
 
-export async function listDbBackups(q: DbBackupListQueryInput) {
-  const page = Number(q.page) || 1;
-  const pageSize = Number(q.pageSize) || 10;
-  const conditions = [];
-  if (q.status) conditions.push(eq(dbBackups.status, q.status));
-  if (q.type) conditions.push(eq(dbBackups.type, q.type));
-  const where = and(...conditions);
+export async function listDbBackups(q: QueryOutputOf<typeof dbAdminContract.backups>) {
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    q.status ? eq(dbBackups.status, q.status) : undefined,
+    q.type ? eq(dbBackups.type, q.type) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

@@ -8,12 +8,15 @@
  * 读取方:推送渠道适配器（按 subject 找在活设备）、升级看板（在网/版本分布)、管理端设备列表。
  */
 import { and, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { AppArch, AppPlatform, BindPushDeviceInput, DeviceSubjectType } from '@zenith/shared/ops';
+import { clientDeviceContract } from '@zenith/shared/ops';
 import { db } from '../../db';
 import { clientApps, clientDevices, members, users, type ClientDeviceRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import { pageOffset } from '../../lib/pagination';
 import logger from '../../lib/logger';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 
@@ -193,19 +196,8 @@ export async function clearInvalidPushRegistrations(provider: string, registrati
 
 // ─── 管理端 ───────────────────────────────────────────────────────────────────
 
-export interface ListClientDevicesQuery {
-  page?: number;
-  pageSize?: number;
-  appId?: number;
-  platform?: AppPlatform;
-  subjectType?: DeviceSubjectType;
-  /** true=仅绑定了推送的设备 */
-  pushBound?: boolean;
-  keyword?: string;
-}
-
-export async function listClientDevices(q: ListClientDevicesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listClientDevices(q: QueryOutputOf<typeof clientDeviceContract.list>) {
+  const { page, pageSize } = q;
   const where = buildWhere(
     q.appId !== undefined ? eq(clientDevices.appId, q.appId) : undefined,
     q.platform ? eq(clientDevices.platform, q.platform) : undefined,
@@ -223,7 +215,7 @@ export async function listClientDevices(q: ListClientDevicesQuery) {
         with: { app: { columns: { name: true } } },
         orderBy: [desc(clientDevices.lastActiveAt)],
         limit: pageSize,
-        offset: (Math.max(page, 1) - 1) * pageSize,
+        offset: pageOffset(page, pageSize),
       });
 
       // 绑定人显示名（user → 昵称,member → 昵称/手机号）

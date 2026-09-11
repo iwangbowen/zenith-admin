@@ -3,9 +3,12 @@ import { HTTPException } from 'hono/http-exception';
 import { tryGetContext } from 'hono/context-storage';
 import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import {
   DRIVE_SHARE_SESSION_TTL_SECONDS,
+  driveAdminContract,
   driveCollectPolicySchema,
+  driveShareLinkContract,
   normalizeDriveShareCapabilities,
   type CreateDriveShareLinkInput,
   type DriveCollectPolicy,
@@ -192,18 +195,7 @@ export async function createDriveShareLink(nodeId: number, data: CreateDriveShar
   return link;
 }
 
-export interface ListShareLinksQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  nodeId?: number;
-  spaceId?: number;
-  kind?: DriveShareKind;
-  state?: DriveShareLinkState;
-  createdBy?: number;
-  startTime?: string;
-  endTime?: string;
-}
+type ShareLinkListFilter = Omit<QueryOutputOf<typeof driveShareLinkContract.list>, 'page' | 'pageSize'> & { nodeId?: number; createdBy?: number };
 
 function stateCondition(state?: DriveShareLinkState): SQL | undefined {
   const now = new Date();
@@ -226,7 +218,7 @@ function stateCondition(state?: DriveShareLinkState): SQL | undefined {
   }
 }
 
-async function buildShareWhere(q: ListShareLinksQuery, extra?: SQL): Promise<SQL | undefined> {
+async function buildShareWhere(q: ShareLinkListFilter, extra?: SQL): Promise<SQL | undefined> {
   const nodeFilter = q.keyword || q.spaceId !== undefined
     ? inArray(driveShareLinks.nodeId, db.select({ id: driveNodes.id }).from(driveNodes).where(buildWhere(
       keywordCondition(q.keyword, [driveNodes.name], 'ilike'),
@@ -258,8 +250,8 @@ async function paginateShares(where: SQL | undefined, page: number, pageSize: nu
 }
 
 /** 我创建的外链 */
-export async function listMyShareLinks(q: ListShareLinksQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listMyShareLinks(q: QueryOutputOf<typeof driveShareLinkContract.list>) {
+  const { page, pageSize } = q;
   return paginateShares(await buildShareWhere({ ...q, createdBy: currentUserId() }), page, pageSize);
 }
 
@@ -273,8 +265,8 @@ export async function listNodeShareLinks(nodeId: number) {
 }
 
 /** 管理端：全部外链（数据权限按空间归属收窄） */
-export async function listShareLinksForAdmin(q: ListShareLinksQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listShareLinksForAdmin(q: QueryOutputOf<typeof driveAdminContract.shareLinks>) {
+  const { page, pageSize } = q;
   let scope: SQL | undefined;
   if (!isSuperAdmin()) {
     const cond = await getDataScopeCondition({ currentUserId: currentUserId(), deptColumn: driveSpaces.departmentId, ownerColumn: driveSpaces.ownerId });
@@ -404,7 +396,8 @@ export async function ensureDriveShareShortLink(id: number): Promise<{ shortUrl:
 }
 
 /** 文件收集的提交记录（创建者或节点 manager） */
-export async function listCollectSubmissions(shareId: number, page = 1, pageSize = 20) {
+export async function listCollectSubmissions(shareId: number, q: QueryOutputOf<typeof driveShareLinkContract.submissions>) {
+  const { page, pageSize } = q;
   await ensureShareEditable(shareId);
   const where = eq(driveCollectSubmissions.shareId, shareId);
   return buildListResult({
@@ -761,7 +754,8 @@ async function claimShareDownload(share: DriveShareLinkRow): Promise<void> {
 }
 
 /** 外链访问日志（创建者 / manager / 管理员） */
-export async function listShareAccessLogs(shareId: number, page = 1, pageSize = 20) {
+export async function listShareAccessLogs(shareId: number, q: QueryOutputOf<typeof driveShareLinkContract.accessLogs>) {
+  const { page, pageSize } = q;
   await ensureShareEditable(shareId);
   const where = eq(driveShareAccessLogs.shareId, shareId);
   return buildListResult({
@@ -773,20 +767,9 @@ export async function listShareAccessLogs(shareId: number, page = 1, pageSize = 
   });
 }
 
-export interface ListShareAccessLogsQuery {
-  page?: number;
-  pageSize?: number;
-  shareId?: number;
-  spaceId?: number;
-  action?: string;
-  ok?: boolean;
-  startTime?: string;
-  endTime?: string;
-}
-
 /** 管理端：全部外链访问日志（租户 + 数据权限按外链所属空间收窄；附节点 / 空间名） */
-export async function listShareAccessLogsForAdmin(q: ListShareAccessLogsQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listShareAccessLogsForAdmin(q: QueryOutputOf<typeof driveAdminContract.shareAccessLogs>) {
+  const { page, pageSize } = q;
   let scope: SQL | undefined;
   if (!isSuperAdmin()) {
     const cond = await getDataScopeCondition({ currentUserId: currentUserId(), deptColumn: driveSpaces.departmentId, ownerColumn: driveSpaces.ownerId });

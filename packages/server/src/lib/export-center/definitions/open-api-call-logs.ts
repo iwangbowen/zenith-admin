@@ -1,10 +1,9 @@
 import { and, desc, lt, lte, type SQL } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { openApiStatsContract } from '@zenith/shared/open-platform';
 import { db } from '../../../db';
 import { openApiCallLogs } from '../../../db/schema';
-import {
-  buildOpenApiCallLogWhere,
-  type OpenApiCallLogQuery,
-} from '../../../services/open-platform/open-api-stats.service';
+import { buildOpenApiCallLogWhere } from '../../../services/open-platform/open-api-stats.service';
 import { defineExport } from '../registry';
 import type { ExportColumn } from '../types';
 
@@ -25,7 +24,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '调用时间', width: 22, type: 'datetime' },
 ];
 
-type ExportQuery = Omit<OpenApiCallLogQuery, 'page' | 'pageSize'> & Record<string, unknown>;
+type ExportQuery = Omit<QueryOutputOf<typeof openApiStatsContract.logs>, 'page' | 'pageSize'> & Record<string, unknown>;
 
 async function* streamOpenApiCallLogs(query: ExportQuery) {
   const baseWhere = buildOpenApiCallLogWhere(query);

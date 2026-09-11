@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { OPERATION_LOG_RESULTS } from '../constants';
 
@@ -77,7 +77,7 @@ export const operationLogListQuery = paginationQuery.extend({
   method: z.string().optional(),
   path: z.string().optional(),
   ip: z.string().optional(),
-  status: z.enum(OPERATION_LOG_RESULTS).optional(),
+  status: queryEnum(OPERATION_LOG_RESULTS),
   content: z.string().optional().meta({ description: '内容关键字（匹配请求体与操作前后快照）' }),
   startTime: dateRangeBound('操作时间起'),
   endTime: dateRangeBound('操作时间止'),

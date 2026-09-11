@@ -31,10 +31,7 @@ const read = [authMiddleware, guard({ permission: 'system:oauth2-apps:view' })] 
 
 const list = defineContractRoute(oauth2ClientContract.list, {
   middleware: read,
-  handler: async (c) => {
-    const { page, pageSize, keyword, environment, reviewStatus } = c.req.valid('query');
-    return c.json(okBody(await listOAuth2Clients({ page, pageSize, keyword, environment, reviewStatus })), 200);
-  },
+  handler: async (c) => c.json(okBody(await listOAuth2Clients(c.req.valid('query'))), 200),
 });
 
 const create = defineContractRoute(oauth2ClientContract.create, {

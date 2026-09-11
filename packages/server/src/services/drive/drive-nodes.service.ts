@@ -1,7 +1,9 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql, type SQL } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import {
   DRIVE_SYNC_COPY_MAX_NODES,
+  driveNodeContract,
   driveRoleAtLeast,
   type CopyDriveNodesInput,
   type CreateDriveFolderInput,
@@ -10,7 +12,6 @@ import {
   type DriveNode,
   type DriveNodeDetail,
   type DriveNodeListResult,
-  type DriveNodeType,
   type DriveRole,
   type DriveTag,
   type MoveDriveNodesInput,
@@ -132,17 +133,7 @@ export async function decorateNode(row: DriveNodeRow, role: DriveRole | null | u
 
 // ─── 目录列表 ─────────────────────────────────────────────────────────────────
 
-export interface ListDriveNodesQuery {
-  spaceId?: number;
-  tagId?: number;
-  parentId?: number;
-  keyword?: string;
-  type?: DriveNodeType;
-  sortBy?: 'name' | 'size' | 'updatedAt' | 'createdAt';
-  order?: 'asc' | 'desc';
-  page?: number;
-  pageSize?: number;
-}
+type ListDriveNodesQuery = QueryOutputOf<typeof driveNodeContract.list>;
 
 function sortColumn(sortBy: ListDriveNodesQuery['sortBy']) {
   switch (sortBy) {
@@ -170,7 +161,7 @@ async function resolveDirectory(spaceId: number | undefined, parentId: number | 
 }
 
 export async function listDriveNodes(q: ListDriveNodesQuery): Promise<DriveNodeListResult> {
-  const { page = 1, pageSize = 50 } = q;
+  const { page, pageSize } = q;
   const { space, parent, role } = await resolveDirectory(q.spaceId, q.parentId);
   const subjects = await loadDriveSubjects();
   const where = buildWhere(
@@ -624,14 +615,6 @@ export async function deleteDriveNodes(ids: number[]): Promise<number> {
   return rows.length;
 }
 
-export interface ListRecycleQuery {
-  page?: number;
-  pageSize?: number;
-  spaceId?: number;
-  keyword?: string;
-  type?: DriveNodeType;
-}
-
 /** 回收站可见范围（SQL）：我删除的 ∪ 我是 manager 的空间；网盘管理员全部 */
 async function recycleVisibilityCondition(): Promise<SQL | undefined> {
   const subjects = await loadDriveSubjects();
@@ -639,8 +622,8 @@ async function recycleVisibilityCondition(): Promise<SQL | undefined> {
   return sql`(${driveNodes.deletedBy} = ${subjects.userId} OR ${inArray(driveNodes.spaceId, managerSpaceIdsSubquery(subjects))})`;
 }
 
-export async function listRecycleNodes(q: ListRecycleQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listRecycleNodes(q: QueryOutputOf<typeof driveNodeContract.recycle>) {
+  const { page, pageSize } = q;
   const where = buildWhere(
     isNotNull(driveNodes.deletedAt),
     sql`${driveNodes.deletedRootId} = ${driveNodes.id}`,

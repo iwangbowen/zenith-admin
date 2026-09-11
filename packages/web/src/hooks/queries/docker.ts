@@ -126,7 +126,7 @@ export function useDockerPrune() {
     mutationFn: ({ scope, all }: DockerPruneVariables) => {
       switch (scope) {
         case 'containers': return api(dockerContract.pruneContainers);
-        case 'images': return api(dockerContract.pruneImages, { query: all ? { all: 'true' } : {} });
+        case 'images': return api(dockerContract.pruneImages, { query: { all: all || undefined } });
         case 'networks': return api(dockerContract.pruneNetworks);
         case 'volumes': return api(dockerContract.pruneVolumes);
         case 'system': return api(dockerContract.pruneSystem);

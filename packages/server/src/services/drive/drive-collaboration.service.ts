@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { DriveActivityAction, DriveNodeProfile, UpdateDriveNodeProfileInput } from '@zenith/shared/drive';
-import { driveRoleAtLeast } from '@zenith/shared/drive';
+import { driveCollaborationContract, driveRoleAtLeast } from '@zenith/shared/drive';
 import { db } from '../../db';
 import { driveActivities, driveNodeProfiles, driveNodes, driveNodeSubscriptions, users, type DriveNodeRow } from '../../db/schema';
 import { currentUserId } from '../../lib/context';
@@ -12,7 +13,7 @@ import { buildWhere, dateRangeConditions, keywordCondition, withPagination } fro
 import { notifyWithin } from '../messaging/notification-outbox.service';
 import { ensureNodeRole, ensureSpaceRole, loadDriveSubjects, loadDriveSubjectsForUser, resolveNodeRoles, visibleNodeCondition } from './drive-access.service';
 import { ensureDriveNodeExists } from './drive-nodes.service';
-import { logDriveActivity, mapDriveActivity, type ListDriveActivitiesQuery } from './drive-activity.service';
+import { logDriveActivity, mapDriveActivity } from './drive-activity.service';
 import { resolveUserNames } from './drive-common';
 import { ensureDriveSpaceExists } from './drive-spaces.service';
 import { reportOrphanDriveSpaces } from './drive-handoff.service';
@@ -60,7 +61,7 @@ export async function setDriveSubscription(nodeId: number, subscribed: boolean):
   return subscribed;
 }
 
-export async function listDriveSpaceActivities(spaceId: number, query: ListDriveActivitiesQuery) {
+export async function listDriveSpaceActivities(spaceId: number, query: QueryOutputOf<typeof driveCollaborationContract.spaceActivities>) {
   const space = await ensureDriveSpaceExists(spaceId);
   const role = await ensureSpaceRole(space, 'viewer');
   const subjects = await loadDriveSubjects();
@@ -72,7 +73,7 @@ export async function listDriveSpaceActivities(spaceId: number, query: ListDrive
     keywordCondition(query.keyword, [driveActivities.nodeName], 'ilike'),
     ...dateRangeConditions(driveActivities.createdAt, query.startTime, query.endTime),
   );
-  const { page = 1, pageSize = 20 } = query;
+  const { page, pageSize } = query;
   return buildListResult({
     page, pageSize, count: () => db.$count(driveActivities, where),
     rows: async () => {

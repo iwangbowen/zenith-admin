@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, eq, gte, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type {
   AdminUpdateDriveSpaceInput,
   CreateDepartmentDriveSpaceInput,
@@ -7,10 +8,10 @@ import type {
   DriveRole,
   DriveSpace,
   DriveSpaceMember,
-  DriveSpaceType,
   SaveDriveSpaceMembersInput,
   UpdateDriveSpaceInput,
 } from '@zenith/shared/drive';
+import { driveAdminContract, driveSpaceContract } from '@zenith/shared/drive';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { departments, driveFileVersions, driveNodes, driveSpaceMembers, driveSpaces, users, type DriveSpaceRow } from '../../db/schema';
@@ -29,20 +30,9 @@ import { defaultQuotaBytes, effectiveQuotaBytes, gbToBytes, getDriveSettings, ty
 
 // ─── 查询边界 ─────────────────────────────────────────────────────────────────
 
-export interface ListDriveSpacesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  type?: DriveSpaceType;
-  status?: 'enabled' | 'disabled';
-  departmentId?: number;
-  ownerId?: number;
-  orphaned?: boolean;
-  /** true 只看已归档；false / undefined 由调用方决定（共享空间页缺省只看未归档） */
-  archived?: boolean;
-}
+type DriveSpaceListFilter = Omit<QueryOutputOf<typeof driveAdminContract.spaces>, 'page' | 'pageSize'>;
 
-interface SpaceWhereInput extends ListDriveSpacesQuery {
+interface SpaceWhereInput extends DriveSpaceListFilter {
   id?: number;
 }
 
@@ -223,8 +213,8 @@ export async function listMySpaces(): Promise<DriveSpace[]> {
 }
 
 /** 共享空间页：当前用户可访问的部门 / 协作空间分页（缺省只看未归档） */
-export async function listDriveSpaces(q: ListDriveSpacesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listDriveSpaces(q: QueryOutputOf<typeof driveSpaceContract.list>) {
+  const { page, pageSize } = q;
   const subjects = await loadDriveSubjects();
   const where = buildSpaceWhere(
     { ...q, type: q.type, archived: q.archived ?? false },
@@ -245,8 +235,8 @@ export async function listDriveSpaces(q: ListDriveSpacesQuery) {
 }
 
 /** 管理端：全部空间分页（租户 + 数据权限收窄；附近 30 天增速与预计用满天数） */
-export async function listDriveSpacesForAdmin(q: ListDriveSpacesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listDriveSpacesForAdmin(q: QueryOutputOf<typeof driveAdminContract.spaces>) {
+  const { page, pageSize } = q;
   const scope = isSuperAdmin() ? undefined : await getDataScopeCondition({
     currentUserId: currentUserId(),
     deptColumn: driveSpaces.departmentId,

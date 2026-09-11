@@ -135,7 +135,7 @@ export const pushHandlers = [
     if (query.appId) list = list.filter((d) => d.appId === query.appId);
     if (query.platform) list = list.filter((d) => d.platform === query.platform);
     if (query.subjectType) list = list.filter((d) => d.subjectType === query.subjectType);
-    if (query.pushBound === 'true') list = list.filter((d) => d.pushRegistrationId);
+    if (query.pushBound) list = list.filter((d) => d.pushRegistrationId);
     if (query.keyword) {
       list = filterByKeyword(list, query.keyword, [(d) => d.deviceId, (d) => d.deviceModel, (d) => d.appVersion]);
     }

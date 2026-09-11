@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { DRIVE_QUOTA_REQUEST_STATUSES, DRIVE_ROLES, DRIVE_SPACE_TYPES, DRIVE_SUBJECT_TYPES } from '../constants';
 import {
@@ -85,8 +85,8 @@ export type DriveQuotaRequest = z.infer<typeof driveQuotaRequestSchema>;
 
 export const driveSpaceListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  type: z.enum(DRIVE_SPACE_TYPES).optional(),
-  status: entityStatusSchema.optional(),
+  type: queryEnum(DRIVE_SPACE_TYPES),
+  status: entityStatusQuery,
   archived: queryBool('true 只看已归档；缺省 / false 只看未归档'),
 });
 

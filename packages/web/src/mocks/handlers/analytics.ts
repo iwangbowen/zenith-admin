@@ -527,7 +527,7 @@ export const analyticsHandlers = [
 
   mock(analyticsContract.trends, ({ query, ok }) => {
     const { startDate, endDate } = query;
-    const compare = query.compare === 'true';
+    const compare = query.compare ?? false;
     const days = startDate && endDate
       ? Math.min(Math.max(Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1, 1), 365)
       : query.days ?? 30;

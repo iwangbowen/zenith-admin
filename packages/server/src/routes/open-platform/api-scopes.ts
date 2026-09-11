@@ -22,10 +22,7 @@ const read = [authMiddleware, guard({ permission: 'open:scope:view' })] as const
 
 const list = defineContractRoute(apiScopeContract.list, {
   middleware: read,
-  handler: async (c) => {
-    const { page, pageSize, keyword, scopeGroup, status } = c.req.valid('query');
-    return c.json(okBody(await listApiScopes({ page, pageSize, keyword, scopeGroup, status })), 200);
-  },
+  handler: async (c) => c.json(okBody(await listApiScopes(c.req.valid('query'))), 200),
 });
 
 const options = defineContractRoute(apiScopeContract.options, {

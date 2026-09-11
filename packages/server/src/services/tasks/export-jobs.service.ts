@@ -2,6 +2,8 @@ import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, inArray, isNull, lt, lte, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { exportJobContract } from '@zenith/shared/tasks';
 import { db } from '../../db';
 import { exportJobDownloads, exportJobs, fileStorageConfigs, managedFiles, users } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
@@ -33,17 +35,6 @@ export interface CreateExportJobInput {
   raw?: boolean;
   watermark?: boolean;
   executionMode?: ExportRequestMode;
-}
-
-export interface ListExportJobsQuery {
-  page?: number;
-  pageSize?: number;
-  entity?: string;
-  status?: 'pending' | 'running' | 'success' | 'failed' | 'cancelled' | 'expired';
-  format?: ExportFormat;
-  keyword?: string;
-  startTime?: string;
-  endTime?: string;
 }
 
 function normalizeExecution(definition: AnyExportDefinition) {
@@ -413,19 +404,18 @@ async function visibleJobWhere(user: JwtPayload): Promise<SQL | undefined> {
   return eq(exportJobs.createdBy, user.userId);
 }
 
-export async function listExportJobs(query: ListExportJobsQuery) {
+export async function listExportJobs(query: QueryOutputOf<typeof exportJobContract.list>) {
   const user = currentUser();
-  const page = Number(query.page ?? 1);
-  const pageSize = Number(query.pageSize ?? 10);
-  const conditions: (SQL | undefined)[] = [];
   const visibleWhere = await visibleJobWhere(user);
-  if (visibleWhere) conditions.push(visibleWhere);
-  if (query.entity) conditions.push(eq(exportJobs.entity, query.entity));
-  if (query.status) conditions.push(eq(exportJobs.status, query.status));
-  if (query.format) conditions.push(eq(exportJobs.format, query.format));
-  conditions.push(keywordCondition(query.keyword, [exportJobs.moduleName, exportJobs.filename, exportJobs.entity], 'ilike'));
-  conditions.push(...dateRangeConditions(exportJobs.createdAt, query.startTime, query.endTime));
-  const where = buildWhere(...conditions);
+  const { page, pageSize } = query;
+  const where = buildWhere(
+    visibleWhere,
+    query.entity ? eq(exportJobs.entity, query.entity) : undefined,
+    query.status ? eq(exportJobs.status, query.status) : undefined,
+    query.format ? eq(exportJobs.format, query.format) : undefined,
+    keywordCondition(query.keyword, [exportJobs.moduleName, exportJobs.filename, exportJobs.entity], 'ilike'),
+    ...dateRangeConditions(exportJobs.createdAt, query.startTime, query.endTime),
+  );
   return buildListResult({
     page,
     pageSize,

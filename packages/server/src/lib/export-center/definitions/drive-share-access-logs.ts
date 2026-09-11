@@ -1,5 +1,7 @@
 import type { DriveShareAccessLog } from '@zenith/shared/drive';
-import { listShareAccessLogsForAdmin, type ListShareAccessLogsQuery } from '../../../services/drive/drive-share.service';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { driveAdminContract } from '@zenith/shared/drive';
+import { listShareAccessLogsForAdmin } from '../../../services/drive/drive-share.service';
 import { asBoolean, asPositiveInt, asString } from '../query-normalize';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
@@ -32,7 +34,9 @@ const columns: ExportColumn<ShareAccessLogExportRow>[] = [
 ];
 
 /** 导出中心传入的 query 与治理页筛选同名：按管理端列表同一套过滤（含数据权限收窄） */
-function normalizeQuery(query: Record<string, unknown>): ListShareAccessLogsQuery {
+type ShareAccessLogExportQuery = Omit<QueryOutputOf<typeof driveAdminContract.shareAccessLogs>, 'page' | 'pageSize'>;
+
+function normalizeQuery(query: Record<string, unknown>): ShareAccessLogExportQuery {
   return {
     shareId: asPositiveInt(query.shareId),
     spaceId: asPositiveInt(query.spaceId),

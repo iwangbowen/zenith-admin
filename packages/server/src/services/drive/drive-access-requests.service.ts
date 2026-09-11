@@ -1,11 +1,12 @@
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import {
+  driveAccessRequestContract,
   driveRoleAtLeast,
   type CreateDriveAccessRequestInput,
   type DecideDriveAccessRequestInput,
   type DriveAccessRequest,
-  type DriveAccessRequestStatus,
   type DriveAccessTarget,
 } from '@zenith/shared/drive';
 import { db } from '../../db';
@@ -115,21 +116,14 @@ export async function createDriveAccessRequest(data: CreateDriveAccessRequestInp
   return dto;
 }
 
-export interface ListAccessRequestsQuery {
-  page?: number;
-  pageSize?: number;
-  box: 'inbox' | 'outbox';
-  status?: DriveAccessRequestStatus;
-}
-
 async function inboxCondition(): Promise<SQL> {
   const subjects = await loadDriveSubjects();
   // 待我审批 = 我对其节点具有 manager 角色的申请（含网盘管理员）
   return inArray(driveAccessRequests.nodeId, db.select({ id: driveNodes.id }).from(driveNodes).where(and(isNull(driveNodes.deletedAt), visibleNodeCondition(subjects, 'manager'))));
 }
 
-export async function listDriveAccessRequests(q: ListAccessRequestsQuery) {
-  const { page = 1, pageSize = 20 } = q;
+export async function listDriveAccessRequests(q: QueryOutputOf<typeof driveAccessRequestContract.list>) {
+  const { page, pageSize } = q;
   const where = buildWhere(
     q.box === 'outbox' ? eq(driveAccessRequests.requesterId, currentUserId()) : await inboxCondition(),
     q.status ? eq(driveAccessRequests.status, q.status) : undefined,

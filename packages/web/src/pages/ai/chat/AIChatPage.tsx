@@ -74,7 +74,7 @@ export default function AIChatPage() {
   const knowledgeBases = kbQuery.data ?? [];
   const conversationsQuery = useInfiniteAiConversationList({
     keyword: debouncedSearchKeyword.trim() || undefined,
-    archived: showArchived ? 'true' : undefined,
+    archived: showArchived || undefined,
   });
   const messagesQuery = useAiConversationMessages(activeConvId);
   const createConversationMutation = useCreateAiConversation();

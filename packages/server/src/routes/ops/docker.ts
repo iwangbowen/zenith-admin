@@ -208,10 +208,7 @@ const pruneContainersRoute = defineContractRoute(dockerContract.pruneContainers,
 
 const pruneImagesRoute = defineContractRoute(dockerContract.pruneImages, {
   middleware: manage('清理 Docker 镜像'),
-  handler: async (c) => {
-    const all = c.req.valid('query').all === 'true';
-    return c.json(okBody(await pruneImages(all), '清理完成'), 200);
-  },
+  handler: async (c) => c.json(okBody(await pruneImages(c.req.valid('query').all ?? false), '清理完成'), 200),
 });
 
 const pruneNetworksRoute = defineContractRoute(dockerContract.pruneNetworks, {

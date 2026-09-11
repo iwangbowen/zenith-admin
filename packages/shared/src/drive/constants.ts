@@ -127,6 +127,12 @@ export function describeShareCapabilities(capabilities: readonly DriveShareCapab
   return parts.join(' · ') || '无权限';
 }
 
+// ─── 查询筛选 ─────────────────────────────────────────────────────────────────
+export const DRIVE_ACCESS_REQUEST_BOXES = ['inbox', 'outbox'] as const;
+export const DRIVE_NODE_SORT_FIELDS = ['name', 'size', 'updatedAt', 'createdAt'] as const;
+export const DRIVE_SORT_ORDERS = ['asc', 'desc'] as const;
+export const DRIVE_NODE_ACCESS_PURPOSES = ['preview', 'download'] as const;
+
 // ─── 访问申请 ─────────────────────────────────────────────────────────────────
 export const DRIVE_ACCESS_REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
 

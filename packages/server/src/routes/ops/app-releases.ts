@@ -313,10 +313,7 @@ export const clientDevicesRouter = new OpenAPIHono({ defaultHook: validationHook
 
 const listDevicesRoute = defineContractRoute(clientDeviceContract.list, {
   middleware: list,
-  handler: async (c) => {
-    const { pushBound, ...rest } = c.req.valid('query');
-    return c.json(okBody(await listClientDevices({ ...rest, pushBound: pushBound === 'true' })), 200);
-  },
+  handler: async (c) => c.json(okBody(await listClientDevices(c.req.valid('query'))), 200),
 });
 
 const unbindDeviceRoute = defineContractRoute(clientDeviceContract.unbind, {

@@ -5,7 +5,6 @@ import { guard, setAuditAfterData, setAuditBeforeData } from '../../middleware/g
 import { currentUser } from '../../lib/context';
 import { defineContractRoute } from '../../lib/contract-route';
 import { fileBody, okBody, validationHook } from '../../lib/openapi-schemas';
-import { parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import {
   createRecording,
   listRecordings,
@@ -25,15 +24,7 @@ const read = [authMiddleware, guard({ permission: PERM })] as const;
 const listRoute = defineContractRoute(terminalRecordingContract.list, {
   middleware: read,
   handler: async (c) => {
-    const { page = 1, pageSize = 20, keyword, operatorUserId, startTime, endTime } = c.req.valid('query');
-    return c.json(okBody(await listRecordings({
-      page: Number(page),
-      pageSize: Number(pageSize),
-      keyword,
-      operatorUserId,
-      startDate: parseDateRangeStart(startTime) ?? undefined,
-      endDate: parseDateRangeEnd(endTime) ?? undefined,
-    })), 200);
+    return c.json(okBody(await listRecordings(c.req.valid('query'))), 200);
   },
 });
 

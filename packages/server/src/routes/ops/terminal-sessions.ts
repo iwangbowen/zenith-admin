@@ -22,8 +22,7 @@ const PERM = 'system:terminal:monitor';
 const listRoute = defineContractRoute(terminalSessionContract.list, {
   middleware: [authMiddleware, guard({ permission: PERM })],
   handler: (c) => {
-    const { page, pageSize, keyword, kind } = c.req.valid('query');
-    return c.json(okBody(listTerminalSessions({ page, pageSize, keyword, kind })), 200);
+    return c.json(okBody(listTerminalSessions(c.req.valid('query'))), 200);
   },
 });
 

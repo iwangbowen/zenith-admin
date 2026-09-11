@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { paginated, paginationQuery } from '../../core/api-schemas';
+import { paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { DRIVE_NODE_TYPES, DRIVE_ROLES, DRIVE_SPACE_TYPES } from '../constants';
 
@@ -47,7 +47,7 @@ export const openDriveChildrenQuery = paginationQuery.extend({
   spaceId: z.coerce.number().int().positive().meta({ description: '被授权的空间 ID' }),
   parentId: z.coerce.number().int().positive().optional().meta({ description: '父文件夹 ID；缺省为空间根级' }),
   keyword: z.string().max(100).optional().meta({ description: '按名称模糊搜索（整个空间范围）' }),
-  type: z.enum(DRIVE_NODE_TYPES).optional(),
+  type: queryEnum(DRIVE_NODE_TYPES),
 });
 
 const openDriveUploadBody = multipart(z.object({

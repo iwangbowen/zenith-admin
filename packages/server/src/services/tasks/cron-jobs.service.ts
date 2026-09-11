@@ -2,19 +2,19 @@ import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { eq, and, desc, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import { CronExpressionParser } from 'cron-parser';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type {
   CronJobAlert,
   CronJobDetailStats,
-  CronJobLogListQueryInput,
   CronJobRunSummary,
   CronJobSchedulerWarning,
   CronJobStats,
   CronJobStatsPerJob,
-  CronJobStatsQueryInput,
   CronJobUpcomingRun,
   CronRunStatus,
 } from '@zenith/shared/platform';
 import {
+  cronJobContract,
   CRON_HEALTH_RULES,
   CRON_ALERT_TYPE_LABELS,
   countConsecutiveFails,
@@ -76,11 +76,9 @@ function mapLog(r: typeof cronJobLogs.$inferSelect) {
   };
 }
 
-export async function listCronJobs(q: { page: number; pageSize: number; keyword?: string }) {
+export async function listCronJobs(q: QueryOutputOf<typeof cronJobContract.list>) {
   const { page, pageSize, keyword } = q;
-  const conditions = [];
-  conditions.push(keywordCondition(keyword, [cronJobs.name]));
-  const where = and(...conditions);
+  const where = buildWhere(keywordCondition(keyword, [cronJobs.name]));
   return buildListResult({
     page,
     pageSize,
@@ -141,7 +139,7 @@ export async function setCronJobStatus(id: number, status: 'enabled' | 'disabled
   return status === 'enabled' ? '已启用' : '已停用';
 }
 
-export async function listAllCronJobLogs(q: CronJobLogListQueryInput) {
+export async function listAllCronJobLogs(q: QueryOutputOf<typeof cronJobContract.logs>) {
   const { page, pageSize, jobId, status, trigger, keyword, startTime, endTime } = q;
   const where = buildWhere(
     jobId ? eq(cronJobLogs.jobId, jobId) : undefined,
@@ -159,7 +157,7 @@ export async function listAllCronJobLogs(q: CronJobLogListQueryInput) {
   });
 }
 
-export async function listCronJobLogs(jobId: number, q: { page: number; pageSize: number }) {
+export async function listCronJobLogs(jobId: number, q: QueryOutputOf<typeof cronJobContract.jobLogs>) {
   const { page, pageSize } = q;
   return buildListResult({
     page,
@@ -171,11 +169,10 @@ export async function listCronJobLogs(jobId: number, q: { page: number; pageSize
 }
 
 function buildClearCronJobLogsWhere(days: number, jobId?: number) {
-  const conditions: ReturnType<typeof eq>[] = [
+  return buildWhere(
     lt(cronJobLogs.startedAt, new Date(Date.now() - days * 86_400_000)),
-  ];
-  if (jobId) conditions.push(eq(cronJobLogs.jobId, jobId));
-  return and(...conditions);
+    jobId ? eq(cronJobLogs.jobId, jobId) : undefined,
+  );
 }
 
 export async function getClearCronJobLogsBeforeAudit(days: number, jobId?: number) {
@@ -556,7 +553,7 @@ function dailyStatsQuery(tx: DbTransaction, where: SQL | undefined) {
     .orderBy(sql`date(${startedAt})`);
 }
 
-export async function getCronJobStats(q: CronJobStatsQueryInput): Promise<CronJobStats> {
+export async function getCronJobStats(q: QueryOutputOf<typeof cronJobContract.stats>): Promise<CronJobStats> {
   const { days } = q;
   const now = new Date();
   const windows = periodWindows(days);
@@ -697,7 +694,7 @@ const LATENCY_BUCKETS: ReadonlyArray<{ label: string; maxMs: number }> = [
 ];
 
 /** 单任务在统计周期内的明细：耗时散点、延迟分布、最近错误、未来执行 */
-export async function getCronJobDetailStats(jobId: number, q: CronJobStatsQueryInput): Promise<CronJobDetailStats> {
+export async function getCronJobDetailStats(jobId: number, q: QueryOutputOf<typeof cronJobContract.jobStats>): Promise<CronJobDetailStats> {
   const { days } = q;
   const now = new Date();
   const jobFilter = eq(cronJobLogs.jobId, jobId);

@@ -1,5 +1,7 @@
 import { asc, eq, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { CreateWikiTagInput, UpdateWikiTagInput } from '@zenith/shared/wiki';
+import { wikiTagContract } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import { wikiDocTags, wikiTags, type WikiTagRow } from '../../db/schema';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -20,13 +22,9 @@ export function mapWikiTag(row: WikiTagRow) {
   };
 }
 
-export interface ListWikiTagsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-}
+type WikiTagListFilter = Omit<QueryOutputOf<typeof wikiTagContract.list>, 'page' | 'pageSize'>;
 
-interface WikiTagWhereInput extends ListWikiTagsQuery {
+interface WikiTagWhereInput extends WikiTagListFilter {
   id?: number;
 }
 
@@ -37,8 +35,8 @@ function buildWikiTagWhere(q: WikiTagWhereInput) {
   );
 }
 
-export async function listWikiTags(q: ListWikiTagsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listWikiTags(q: QueryOutputOf<typeof wikiTagContract.list>) {
+  const { page, pageSize } = q;
   const where = buildWikiTagWhere(q);
 
   return buildListResult({

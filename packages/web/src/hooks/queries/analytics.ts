@@ -108,7 +108,7 @@ export function useAnalyticsOverview(range: AnalyticsRangeParams) {
 }
 
 export function useAnalyticsTrends(range: AnalyticsRangeParams, compare = false) {
-  return useApiQuery(analyticsContract.trends, { query: { ...rangeQuery(range), compare: compare ? 'true' : undefined } });
+  return useApiQuery(analyticsContract.trends, { query: { ...rangeQuery(range), compare: compare || undefined } });
 }
 
 export function useAnalyticsRealtime() {
