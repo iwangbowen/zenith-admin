@@ -25,7 +25,7 @@
   字段引入了新查询（统计、关联明细）时按 [query-cache.md → key 结构设计](./query-cache.md#key-结构设计)
   挂到合适前缀下，并确认已有 mutation 的 `onSuccess` 覆盖到它
 - **页面**（Step 8b）：`columns` 加列（新列写固定 `width`，弹性主列仍只有一个）、Modal 的 `<Form>` 加输入组件；
-  需要搜索时在 `SearchParams` 与 `SearchToolbar` 中添加；给操作列增删动作后按
+  需要搜索时在 `SearchParams` 中加字段、在 `ListSearchToolbar` 的 `filters` 槽位加控件（`{...bind('字段')}`）；给操作列增删动作后按
   [ui-patterns.md → 操作列](./ui-patterns.md#操作列) 重算 `width` 并复核内联动作数
 - **回填检查**（Step 8a）：工厂生成的 `useSave` 不做回填（见 [query-cache.md](./query-cache.md#标准-crud-与手写-mutation-的边界)），
   新增字段无需额外判断。仅当域内**手写**了带回填的 mutation 时，才按
@@ -41,7 +41,8 @@
 
 1. 请求体：修改 `shared/src/{业务域}/validation.ts` 中的 schema（Step 3）；查询 / 路径参数：修改契约操作的
    `query` / `params`（Step 4）——路由校验、前端调用类型与 Mock 解析同步生效
-2. 更新 service 函数的参数类型与处理逻辑（Step 5）
+2. service 入参类型是 `QueryOutputOf<typeof xxxContract.op>`，随契约自动更新，只需补上新字段的处理逻辑
+   （筛选字段加进 `buildXxxWhere` 的 `buildWhere(...)` 实参；Step 5）
 
 **改响应格式**
 

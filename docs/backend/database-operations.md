@@ -142,7 +142,7 @@ where(and(eq(users.username, 'admin'), isNull(users.tenantId)));
 | --- | --- |
 | 用户输入参与 LIKE / ILIKE（单列或跨列、包含或前缀） | `keywordCondition(keyword, [colA, colB], mode?, match?)` |
 | 时间范围闭区间 | `dateRangeConditions(column, start, end)` |
-| 合并可选条件（含租户 / 数据权限条件） | `buildWhere(...conditions)` |
+| 合并可选条件（含租户 / 数据权限条件） | `buildWhere(cond1, flag ? cond2 : undefined, ...)`——静态条件直接写成实参，不先攒 `conditions` 数组 |
 | SQL-builder 分页 | `withPagination(qb.$dynamic(), page, pageSize)` |
 
 ```ts

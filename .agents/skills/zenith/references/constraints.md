@@ -63,19 +63,30 @@
   一并写在 `shared/src/{业务域}/constants.ts`，`validation.ts` 通过 `z.enum(XXX_TYPES)` 引用。
   **禁止**把会被其他域 `z.enum()` 引用的常量数组放在 `validation.ts`——validation 互引形成 ESM 值环，
   `z.enum()` 在初始化期取到 `undefined` 直接崩溃。通用的启用 / 禁用状态字段一律用 `@zenith/shared/core` 的
-  `entityStatusSchema`（可继续链式 `.default('enabled')` / `.optional()`），**禁止**在各域手写 `z.enum(['enabled', 'disabled'])`
+  `entityStatusSchema`（可继续链式 `.default('enabled')` / `.optional()`），**禁止**在各域手写 `z.enum(['enabled', 'disabled'])`；
+  它只用于**请求体与实体**——列表 query 里的状态筛选用 `entityStatusQuery`（见下方契约积木），
+  **禁止**在 query schema 写 `status: entityStatusSchema.optional()`（筛选控件清空后发出的 `?status=` 会 400）
 - **API 契约是唯一真相**：实体形状与全部操作定义在 `shared/src/{业务域}/contracts/xxxs.ts`——
   `xxxSchema = z.object({...}).meta({ id: 'Xxx' })` + `type Xxx = z.infer<typeof xxxSchema>` +
   `xxxContract = defineContract('/api/xxxs', { list: op.get(...), ... })`（`@zenith/shared/core`）。
   **禁止**手写 `interface Xxx`、**禁止**在 server 定义实体 DTO、**禁止**在 web / mock 书写 `/api/...` 路径字面量。
-  service 的列表查询入参类型同样由契约派生（在契约文件导出 `type XxxListQueryInput = z.infer<typeof xxxListQuery>`），
-  **禁止**在 service 里手写与契约查询 schema 同形的 `interface XxxQuery`
+- **查询参数类型由契约操作派生**：service 列表 / 统计函数的入参写 `q: QueryOutputOf<typeof xxxContract.list>`
+  （`@zenith/shared/core`，解析后输出：`page` / `pageSize` 必填、`queryEnum` 空串已归一，与路由 `c.req.valid('query')` 同型）；
+  web 侧对应 `QueryOf<typeof xxxContract.list>`（客户端视角，带默认值字段可省略）。
+  **禁止**在 service 手写与契约 query 同形的 `interface XxxQuery { page?: number; … }`，
+  **禁止**在契约文件逐个导出 `type XxxListQueryInput = z.infer<typeof xxxListQuery>`（泛型已覆盖，两种写法并存即缺陷）。
+  筛选条件需与导出中心等不带分页的调用方共用时，定义**一个**
+  `type XxxListFilter = Omit<QueryOutputOf<typeof xxxContract.list>, 'page' | 'pageSize'>`；
+  路径参数（`memberId` / `siteId`）保持独立形参，不混入 query 类型
 - **契约操作命名**：标准 CRUD 固定为 `list` / `detail` / `create` / `update` / `remove`，可选 `all`（下拉源）/
   `removeBatch`（`DELETE /batch`）——web 的 `createResourceQueries` 按此约定派生 hooks；其余操作按业务动词命名
 - **契约积木**：路径 `{id}` 用 `idParam`；列表查询 `paginationQuery.extend({...})`；分页响应 `paginated(xxxSchema)`；
-  时间范围端点 `dateRangeBound()`；查询串布尔 `queryBool()`、查询串枚举筛选 `queryEnum(XXX_VALUES)`（空串 = 未筛选）；
+  时间范围端点 `dateRangeBound()`；查询串布尔 `queryBool()`、查询串枚举筛选 `queryEnum(XXX_VALUES)`（空串 = 未筛选）、
+  启用 / 禁用状态筛选 `entityStatusQuery`；
   批量 ID `batchIdsBody`；审计列 `...auditFieldsSchema`；业务请求头 `headers: z.object({...})`；
-  上传 `multipart(z.object({ file: fileField() }))`；非 JSON 响应 `kind: 'excel' | 'csv' | 'file' | 'sse'`
+  上传 `multipart(z.object({ file: fileField() }))`；非 JSON 响应 `kind: 'excel' | 'csv' | 'file' | 'sse'`。
+  query 里**禁止**裸写 `z.enum([...]).optional()`、`z.coerce.boolean()`、`z.enum(['true', 'false'])`、
+  时间端点 `z.string().optional()`——分别对应上述积木
 - **OpenAPI 元数据用 `.meta()`**：组件名 `.meta({ id })`、说明 `.meta({ description, example })`；shared **禁止**依赖
   `@hono/zod-openapi`、**禁止**调用 `.openapi()`
 - **新增业务域**：建 `shared/src/{新域}/{contracts/,validation,constants,index}.ts`（`contracts/index.ts` 汇总各资源契约，
@@ -168,11 +179,15 @@
 | --- | --- | --- |
 | 用户输入参与 LIKE / ILIKE（单列或跨列、包含或前缀匹配） | `keywordCondition(keyword, [colA, colB], mode?, match?)` | 手写 `like(col, '%…%')` / `or(like(a, '%…%'), …)` / 裸 `sql\`… ILIKE …\`` |
 | 时间范围过滤 | `dateRangeConditions(column, start, end)` | 手写 `parseXxx` + `gte`/`lte` |
-| 合并条件数组 / 附加租户与数据权限条件 | `buildWhere(...conditions)` | `conditions.length ? and(...) : undefined` |
+| 合并可选条件 / 附加租户与数据权限条件 | 一个 `buildWhere(cond1, flag ? cond2 : undefined, ...dateRangeConditions(...), tenantCondition(...))` 调用 | `const conditions = []` + 一串 `conditions.push(...)` 再 `and(...conditions)` / `conditions.length ? and(...) : undefined` / `buildWhere(...conditions)` |
 | 可空列与已知值的等值匹配（`parentId` / `appId` / `createdBy`…） | `nullableEq(col, value)`（`null → IS NULL`）；租户列用 `lib/tenant.ts` 的 `exactTenantCondition` | `x === null ? isNull(col) : eq(col, x)` 三目 |
 
-- 条件数组类型必须是 `(SQL | undefined)[]`；构造函数不适用时返回 `undefined`，`buildWhere` 自动过滤，
-  **禁止**为迁就 `SQL[]` 加 `!` 非空断言
+- 条件序列**静态可枚举**时（列表筛选、`ensureXxx` 附加租户条件——绝大多数场景）直接把每个条件写成 `buildWhere` 的实参，
+  不适用的条件写 `undefined`；只有循环 / 数据驱动（遍历规则数组）才允许先攒 `(SQL | undefined)[]` 数组，
+  且结尾必须是 `buildWhere(...conditions)`，**禁止**为迁就 `SQL[]` 加 `!` 非空断言。
+  `and(a, b)` 只用于两个都必然存在的条件（`and(eq(t.id, id), tenantCondition(t, user))`）
+- 契约 query 已把枚举收窄（`queryEnum` / `entityStatusQuery`），service **禁止**再写
+  `if (status === 'enabled' || status === 'disabled')`、`status as XxxStatus` 之类运行时收窄，直接 `q.status ? eq(t.status, q.status) : undefined`
 - `keywordCondition` 内部已 trim、判空（空串 / 纯空格返回 `undefined`）并转义 `%`、`_`、`\`，
   调用点**不要**再包 `if (keyword)`，也**不要**自行拼 `%…%`
 - 列参数接受裸列或 SQL 表达式（`sql\`coalesce(${col}, '')\``、`sql\`${col}::text\``），
@@ -355,8 +370,9 @@
   服务层的 count + rows + 包络用 `buildListResult`（见 [Service 层](#service-层step-5)）；
   MSW Mock 用契约上下文的 `paginate(list)` / `pageResult(list, page, pageSize)`
 - 禁止手写 `(page - 1) * pageSize`
-- `page` / `pageSize` 的取值范围只在契约 `paginationQuery`（`pageSize` 1..200）声明并由路由校验；service **禁止**再做
-  `Math.min(pageSize, 100)` / `Math.max(page, 1)` 之类二次夹紧，查询参数类型直接用契约导出的 `XxxQueryInput`
+- `page` / `pageSize` 的取值范围与默认值只在契约 `paginationQuery`（默认 1 / 10，`pageSize` 1..200）声明并由路由校验；
+  service 入参类型为 `QueryOutputOf<typeof xxxContract.list>` 后二者是必填 `number`，
+  **禁止**再写 `const { page = 1, pageSize = 10 } = q`、`q.page ?? 1`、`Math.min(pageSize, 100)` / `Math.max(page, 1)` 之类默认值或二次夹紧
 
 ### 重型依赖懒加载（Server）
 

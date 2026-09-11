@@ -45,6 +45,15 @@
 
 分页查询参数在契约中用 `paginationQuery.extend({ ... })` 声明，分页响应用 `paginated(xxxSchema)`。默认 `page=1`、`pageSize=10`，`pageSize` 最大 200。Service 层 SQL-builder 查询使用 `withPagination(query.$dynamic(), page, pageSize)`；RQB 查询使用 `pageOffset(page, pageSize)`。
 
+查询参数的 TypeScript 类型只从契约操作派生，不在 service 手写 interface、也不在契约文件逐个导出 `z.infer` 别名：
+
+- Server：`QueryOutputOf<typeof xxxContract.list>`（`@zenith/shared/core`）——解析后输出，`page` / `pageSize` 为必填 `number`，
+  `queryEnum` / `entityStatusQuery` 的空串已归一为 `undefined`，与路由 `c.req.valid('query')` 同型，service 里因此不再写 `page = 1` 之类默认值。
+- Web：`QueryOf<typeof xxxContract.list>`——客户端视角，带默认值的字段可省略。
+- 筛选条件需与导出中心等不带分页的调用方共用时，定义一个 `Omit<QueryOutputOf<…>, 'page' | 'pageSize'>` 的筛选类型。
+
+查询串里的启用 / 禁用状态筛选用 `entityStatusQuery`，其它枚举用 `queryEnum(XXX_VALUES)`，布尔用 `queryBool()`：三者都把筛选控件清空后发出的空串视为「全部」；`entityStatusSchema` 只用于请求体与实体字段。
+
 ## 日期时间格式
 
 所有对外 API 响应和业务日期时间入参统一使用 `YYYY-MM-DD HH:mm:ss`，例如：`2026-03-22 20:09:37`。

@@ -93,7 +93,7 @@ export type UpdateXxxInput = z.infer<typeof updateXxxSchema>;
 
 ```ts
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { XXX_STATUSES } from '../constants';
 import { createXxxSchema, updateXxxSchema } from '../validation';
@@ -120,10 +120,12 @@ export type Xxx = z.infer<typeof xxxSchema>;
 export const xxxOptionSchema = xxxSchema.pick({ id: true, name: true, status: true }).meta({ id: 'XxxOption' });
 export type XxxOption = z.infer<typeof xxxOptionSchema>;
 
-// ─── 列表查询参数：分页 + 筛选；枚举筛选用 queryEnum（空串 = 全部），范围端点必须用 dateRangeBound ──
+// ─── 列表查询参数：分页 + 筛选。启用 / 禁用状态用 entityStatusQuery，其它枚举用 queryEnum（空串 = 全部），
+//     范围端点必须用 dateRangeBound；不导出 z.infer 类型——server 用 QueryOutputOf、web 用 QueryOf 从契约操作派生 ──
 export const xxxListQuery = paginationQuery.extend({
-  keyword: z.string().optional(),
-  status: queryEnum(XXX_STATUSES),
+  keyword: z.string().optional().meta({ description: '按名称 / 描述模糊匹配' }),
+  status: entityStatusQuery,
+  type: queryEnum(XXX_TYPES),
   startTime: dateRangeBound('创建时间起'),
   endTime: dateRangeBound('创建时间止'),
 });
@@ -145,7 +147,8 @@ export const xxxContract = defineContract('/api/xxxs', {
 - 公开接口：`public: true`；设备签名 / 开放网关鉴权的接口：`security: 'device-signature' | 'open-gateway'`
   （默认 Bearer 登录令牌；凭证校验仍由 `middleware` 完成）；额外文档说明：`description`
 - 自定义路径参数：`params: z.object({ code: z.string().meta({ description: '编码', example: 'demo' }) })`
-- 查询串积木：布尔 `queryBool()`、枚举筛选 `queryEnum(XXX_VALUES)`（二者都把空串视为未传，handler 无需再 `|| undefined`）
+- 查询串积木：布尔 `queryBool()`、枚举筛选 `queryEnum(XXX_VALUES)`、启用 / 禁用状态 `entityStatusQuery`
+  （三者都把空串视为未传，handler 无需再 `|| undefined`）；`entityStatusSchema` 只用于请求体 / 实体字段
 - 业务请求头（如幂等键）：`headers: z.object({ 'x-idempotency-key': z.string().min(8).max(128) })`，键为小写头名；
   服务端 `c.req.valid('header')`，客户端在输入的 `headers` 段提供；认证头不在契约声明
 
@@ -155,6 +158,8 @@ export const xxxContract = defineContract('/api/xxxs', {
 
 ```ts
 import { eq, asc } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { xxxContract } from '@zenith/shared/{业务域}';
 import { db } from '../../db';
 import { xxxs, type XxxRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
@@ -176,33 +181,29 @@ export function mapXxx(row: XxxRow) {
   };
 }
 
-export interface ListXxxsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: XxxStatus;
-  startTime?: string;
-  endTime?: string;
-}
+// ─── 入参类型只从契约操作派生：QueryOutputOf 是解析后输出（page / pageSize 必填、枚举已收窄）──
+// 不手写 interface ListXxxsQuery，不在契约文件导出 z.infer 别名。
+// 所有读取入口共用的访问条件（筛选 + dataScope / tenantScope）集中在这里；
+// 筛选部分不含分页、字段全部可选，供 list / detail / update / delete / 导出中心复用
+type XxxWhereInput = Partial<Omit<QueryOutputOf<typeof xxxContract.list>, 'page' | 'pageSize'>> & { id?: number };
 
-interface XxxWhereInput extends ListXxxsQuery {
-  id?: number;
-}
-
-// 所有读取入口共用；Step 0 启用 dataScope / tenantScope 时也把访问条件集中加在这里
 async function buildXxxWhere(q: XxxWhereInput) {
+  // 静态条件序列直接写成 buildWhere 的实参；不适用的写 undefined，不攒 conditions 数组
   return buildWhere(
     q.id !== undefined ? eq(xxxs.id, q.id) : undefined,
     // 内部已 trim、判空并转义，调用点不要再包 if (q.keyword)
     keywordCondition(q.keyword, [xxxs.name, xxxs.description]),
+    // 契约已把 status 收窄为枚举 | undefined，不再做 === 'enabled' || === 'disabled' 之类运行时判断
     q.status ? eq(xxxs.status, q.status) : undefined,
+    q.type ? eq(xxxs.type, q.type) : undefined,
     // 终点自动取当天 23:59:59.999，不会漏掉当天数据
     ...dateRangeConditions(xxxs.createdAt, q.startTime, q.endTime),
   );
 }
 
-export async function listXxxs(q: ListXxxsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listXxxs(q: QueryOutputOf<typeof xxxContract.list>) {
+  // 默认值由契约 paginationQuery 提供，这里不写 = 1 / = 10
+  const { page, pageSize } = q;
   const where = await buildXxxWhere(q);
 
   // count 与 rows 并行 + 分页包络由 buildListResult 编排；条件 / 排序 / 投影仍在这里显式书写
