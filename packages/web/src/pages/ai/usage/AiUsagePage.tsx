@@ -6,7 +6,7 @@ import { Bot, CircleCheck, Coins, Gauge, MessageCircle, Users, Wallet } from 'lu
 import { useListSearch } from '@/hooks/useListSearch';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { ListSearchToolbar } from '@/components/list-page';
-import { formatDateForApi, shortDate } from '@/utils/date';
+import { formatDateRangeValuesForApi, shortDate } from '@/utils/date';
 import { aiUsageKeys, useAiUsageStats } from '@/hooks/queries/ai-usage';
 import type { AiUsageByModel, AiUsageByUser } from '@/hooks/queries/ai-usage';
 import { DateRangeFilter } from '@/components/search-filters';
@@ -33,17 +33,14 @@ function formatCostYuan(fen: number | null | undefined) {
 }
 
 export default function AiUsagePage() {
-  // 区间必选：清空时保持原值；重置重新取「默认区间」
-  const { draftParams, setField, submittedParams, handleSearch, handleReset } = useListSearch<{ range: [Date, Date] }>({
+  // 区间必选：清空时回到默认区间；重置重新取「默认区间」
+  const { bind, submittedParams, handleSearch, handleReset } = useListSearch<{ range: [Date, Date] }>({
     defaults: () => ({ range: getDefaultRange() }),
     listKey: aiUsageKeys.statsRoot,
   });
-  const submittedRange = submittedParams.range;
   const palette = useChartPalette();
-  const statsQuery = useAiUsageStats({
-    startDate: formatDateForApi(submittedRange[0]),
-    endDate: formatDateForApi(submittedRange[1]),
-  });
+  const [startDate, endDate] = formatDateRangeValuesForApi(submittedParams.range);
+  const statsQuery = useAiUsageStats({ startDate, endDate });
   const stats = statsQuery.data ?? null;
 
   const modelData = useMemo(
@@ -108,11 +105,7 @@ export default function AiUsagePage() {
   return (
     <div className="page-container zx-flat-panels">
       <ListSearchToolbar
-        filters={(
-          <DateRangeFilter type="dateRange" value={draftParams.range} onChange={(value) => {
-              if (value) setField('range')(value);
-            }} />
-        )}
+        filters={<DateRangeFilter type="dateRange" {...bind('range', (value: [Date, Date] | null) => value ?? getDefaultRange())} />}
         onSearch={handleSearch}
         onReset={handleReset}
         filterTitle="用量筛选"

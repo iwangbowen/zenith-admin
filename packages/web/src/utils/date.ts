@@ -89,12 +89,16 @@ export function formatDateForApi(date: DateInput): string {
  * 不要拿秒级的 `formatDateTimeRangeValuesForApi` 代替：那会把终点写成 `YYYY-MM-DD 00:00:00`，
  * 而服务端 `dateRangeConditions` 只对**纯日期**终点补到当天 23:59:59.999，整个终止日会被漏掉。
  */
+export function formatDateRangeValuesForApi(range: readonly [DefinedDateInput, DefinedDateInput]): [string, string];
+export function formatDateRangeValuesForApi(range: DateRangeInput): [string | undefined, string | undefined];
 export function formatDateRangeValuesForApi(range: DateRangeInput): [string | undefined, string | undefined] {
   const formatBound = (value: DateInput) => (value == null ? undefined : formatDateForApi(value));
   return [formatBound(range?.[0]), formatBound(range?.[1])];
 }
 
 /** 日期级区间 → 契约标准端点 `{ startTime, endTime }`（`YYYY-MM-DD`）；端点键名不同的契约用 `formatDateRangeValuesForApi` */
+export function formatDateRangeForApi(range: readonly [DefinedDateInput, DefinedDateInput]): { startTime: string; endTime: string };
+export function formatDateRangeForApi(range: DateRangeInput): { startTime: string | undefined; endTime: string | undefined };
 export function formatDateRangeForApi(range: DateRangeInput): { startTime: string | undefined; endTime: string | undefined } {
   const [startTime, endTime] = formatDateRangeValuesForApi(range);
   return { startTime, endTime };

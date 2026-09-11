@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, expectTypeOf } from 'vitest';
 import {
   formatDate,
   formatDateForApi,
@@ -98,6 +98,9 @@ describe('formatDateTime', () => {
     expect(formatDateRangeValuesForApi(null)).toEqual([undefined, undefined]);
     expect(formatDateRangeForApi([start, end])).toEqual({ startTime: '2026-03-22', endTime: '2026-03-23' });
     expect(formatDateRangeForApi(undefined)).toEqual({ startTime: undefined, endTime: undefined });
+    // 已定义的元组得到非可选字符串，必选区间的调用方无需再做空值判断
+    expectTypeOf(formatDateRangeValuesForApi([start, end] as const)).toEqualTypeOf<[string, string]>();
+    expectTypeOf(formatDateRangeForApi([start, end] as const)).toEqualTypeOf<{ startTime: string; endTime: string }>();
   });
 });
 
