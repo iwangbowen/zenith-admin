@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Col, Empty, Form, Modal, Row, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportMetric, ReportMetricType } from '@zenith/shared/report';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -39,12 +38,12 @@ interface MetricSearch {
 }
 
 const defaultSearch: MetricSearch = { keyword: '', type: undefined, status: undefined };
-const typeOptions = [
+const typeOptions: { value: ReportMetricType; label: string }[] = [
   { value: 'simple', label: '简单指标' },
   { value: 'ratio', label: '比率指标' },
   { value: 'composite', label: '复合指标' },
 ];
-const statusOptions = [
+const statusOptions: { value: NonNullable<MetricSearch['status']>; label: string }[] = [
   { value: 'draft', label: '草稿' },
   { value: 'published', label: '已发布' },
   { value: 'deprecated', label: '已废弃' },
@@ -52,11 +51,12 @@ const statusOptions = [
 const statusColor = { draft: 'grey', published: 'green', deprecated: 'red' } as const;
 
 export default function MetricsPage() {
-  const qc = useQueryClient();
   const { hasPermission } = usePermission();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draft, setDraft] = useState<MetricSearch>(defaultSearch);
-  const [submitted, setSubmitted] = useState<MetricSearch>(defaultSearch);
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams: submitted,
+    handleSearch, handleReset,
+  } = useListSearch<MetricSearch>({ defaults: defaultSearch, listKey: reportMetricKeys.lists });
   const [conflict, setConflict] = useState('');
   const [sheetMetric, setSheetMetric] = useState<ReportMetric | null>(null);
   const [sheetMode, setSheetMode] = useState<'preview' | 'refs'>('preview');
@@ -87,18 +87,6 @@ export default function MetricsPage() {
     value: field.name,
     label: field.label ? `${field.label}（${field.name}）` : field.name,
   }));
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmitted(draft);
-    void qc.invalidateQueries({ queryKey: reportMetricKeys.lists });
-  };
-  const handleReset = () => {
-    setPage(1);
-    setDraft(defaultSearch);
-    setSubmitted(defaultSearch);
-    void qc.invalidateQueries({ queryKey: reportMetricKeys.lists });
-  };
 
   const metricSave = {
     ...saveMutation,
@@ -203,44 +191,39 @@ export default function MetricsPage() {
   ];
 
   const keyword = (
-    <KeywordInput placeholder="搜索指标名称/编码" value={draft.keyword} onChange={(value) => setDraft((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={230} />
+    <KeywordInput placeholder="搜索指标名称/编码" {...bindKeyword('keyword')} width={230} />
   );
   const filters = (
     <>
       <FilterSelect
         placeholder="全部指标类型"
         items={typeOptions}
-        value={draft.type}
-        onChange={(value) => setDraft((p) => ({ ...p, type: value as MetricSearch['type'] | undefined }))}
+        {...bind('type')}
         width={140}
       />
       <FilterSelect
         placeholder="全部生命周期"
         items={statusOptions}
-        value={draft.status}
-        onChange={(value) => setDraft((p) => ({ ...p, status: value as MetricSearch['status'] | undefined }))}
+        {...bind('status')}
         width={140}
       />
       <FilterSelect
         placeholder="全部数据集"
         items={datasets.map((item) => ({ value: item.id, label: item.name }))}
-        value={draft.datasetId}
-        onChange={(value) => setDraft((p) => ({ ...p, datasetId: value as number | undefined }))}
+        {...bind('datasetId')}
         width={160}
         filter
         remote
       />
       <ReportOwnerFilter
         items={userOptions}
-        value={draft.ownerId}
-        onChange={(value) => setDraft((p) => ({ ...p, ownerId: value }))}
+        {...bind('ownerId')}
         width={150}
       />
       <ReportFolderFilter
         placeholder="全部指标目录"
         items={folderOptions}
-        value={draft.folderId}
-        onChange={(value) => setDraft((p) => ({ ...p, folderId: value }))}
+        {...bind('folderId')}
         width={150}
       />
     </>

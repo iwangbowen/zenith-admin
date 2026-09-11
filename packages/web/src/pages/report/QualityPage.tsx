@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Col, Empty, Form, Modal, Row, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportDqAnomaly, ReportDqAnomalyStatus, ReportDqRule, ReportDqRuleType, ReportDqRun, ReportDqRunStatus, ReportDqScore } from '@zenith/shared/report';
@@ -10,7 +9,7 @@ import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import ExportButton from '@/components/ExportButton';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -41,7 +40,7 @@ import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { FilterSelect } from '@/components/search-filters';
-const ruleTypeOptions = [
+const ruleTypeOptions: { value: ReportDqRuleType; label: string }[] = [
   { value: 'not_null', label: '非空' },
   { value: 'uniqueness', label: '唯一性' },
   { value: 'range', label: '范围' },
@@ -80,30 +79,34 @@ function RuleConfigFields({ type }: Readonly<{ type: ReportDqRuleType }>) {
   return null;
 }
 
+interface DqSearch {
+  datasetId?: number;
+  ruleType?: ReportDqRuleType;
+  /** 下拉以字符串承载，查询时再转布尔 */
+  enabled?: 'true' | 'false';
+  anomalyStatus?: ReportDqAnomalyStatus;
+  runStatus?: ReportDqRunStatus;
+}
+
+const ENABLED_OPTIONS = [{ value: 'true', label: '启用' }, { value: 'false', label: '停用' }] as const;
+
 export default function QualityPage() {
-  const qc = useQueryClient();
   const { hasPermission } = usePermission();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [activeTab, setActiveTab] = useUrlTabState(['rules', 'scores', 'anomalies', 'runs'] as const, 'rules');
-  const [datasetId, setDatasetId] = useState<number | undefined>();
-  const [ruleType, setRuleType] = useState<ReportDqRuleType | undefined>();
-  const [enabled, setEnabled] = useState<boolean | undefined>();
-  const [submitted, setSubmitted] = useState({
-    datasetId: undefined as number | undefined,
-    ruleType: undefined as ReportDqRuleType | undefined,
-    enabled: undefined as boolean | undefined,
-    anomalyStatus: undefined as ReportDqAnomalyStatus | undefined,
-    runStatus: undefined as ReportDqRunStatus | undefined,
-  });
+  // 四个页签共用一组筛选与分页
+  const {
+    page, pageSize, setPage, buildPagination,
+    draftParams, setField, bind, submittedParams: submitted,
+    handleSearch: applySearch, handleReset: resetSearch, applySearch: applyParams,
+  } = useListSearch<DqSearch>({ defaults: {}, listKey: reportDqKeys.lists });
   const [formRuleType, setFormRuleType] = useState<ReportDqRuleType>('not_null');
   const [cronExprValue, setCronExprValue] = useState('');
   const [historyRule, setHistoryRule] = useState<ReportDqRule | null>(null);
-  const [anomalyStatus, setAnomalyStatus] = useState<ReportDqAnomalyStatus | undefined>();
-  const [runStatus, setRunStatus] = useState<ReportDqRunStatus | undefined>();
 
   const datasetsQuery = useEnabledReportDatasets();
   const datasetOptions = (datasetsQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }));
-  const rulesQuery = useReportDqRuleList({ page, pageSize, datasetId: submitted.datasetId, type: submitted.ruleType, enabled: submitted.enabled });
+  const submittedEnabled = submitted.enabled === undefined ? undefined : submitted.enabled === 'true';
+  const rulesQuery = useReportDqRuleList({ page, pageSize, datasetId: submitted.datasetId, type: submitted.ruleType, enabled: submittedEnabled });
   const runsQuery = useReportDqRunList({ page, pageSize, datasetId: submitted.datasetId, status: submitted.runStatus });
   const historyQuery = useReportDqRunList({ page: 1, pageSize: 30, ruleId: historyRule?.id });
   const anomaliesQuery = useReportDqAnomalyList({ page, pageSize, datasetId: submitted.datasetId, status: submitted.anomalyStatus });
@@ -120,22 +123,6 @@ export default function QualityPage() {
     disabled: !hasPermission('report:dq:update'),
     messages: { enabled: null, disabled: null },
   });
-
-  const applySearch = () => {
-    setPage(1);
-    setSubmitted({ datasetId, ruleType, enabled, anomalyStatus, runStatus });
-    void qc.invalidateQueries({ queryKey: reportDqKeys.lists });
-  };
-  const resetSearch = () => {
-    setPage(1);
-    setDatasetId(undefined);
-    setRuleType(undefined);
-    setEnabled(undefined);
-    setAnomalyStatus(undefined);
-    setRunStatus(undefined);
-    setSubmitted({ datasetId: undefined, ruleType: undefined, enabled: undefined, anomalyStatus: undefined, runStatus: undefined });
-    void qc.invalidateQueries({ queryKey: reportDqKeys.lists });
-  };
 
   const ruleModal = useEditModal<ReportDqRule, Record<string, unknown>>({
     entityName: '质量规则',
@@ -262,15 +249,11 @@ export default function QualityPage() {
     <FilterSelect
       placeholder="全部数据集"
       items={datasetOptions}
-      value={datasetId}
-      onChange={(v) => {
-        const next = v as number | undefined;
-        setDatasetId(next);
+      value={draftParams.datasetId}
+      onChange={(next) => {
+        setField('datasetId')(next);
         // 评分 Tab 选中数据集即自动查询，无需再点「查询」
-        if (activeTab === 'scores') {
-          setPage(1);
-          setSubmitted((prev) => ({ ...prev, datasetId: next }));
-        }
+        if (activeTab === 'scores') applyParams({ ...submitted, datasetId: next });
       }}
       width={190}
       filter
@@ -295,15 +278,13 @@ export default function QualityPage() {
               <FilterSelect
                 placeholder="全部规则类型"
                 items={ruleTypeOptions}
-                value={ruleType}
-                onChange={(v) => setRuleType(v as ReportDqRuleType | undefined)}
+                {...bind('ruleType')}
                 width={140}
               />
               <FilterSelect
                 placeholder="全部启用状态"
-                items={[{ value: 'true', label: '启用' }, { value: 'false', label: '停用' }]}
-                value={enabled === undefined ? undefined : String(enabled)}
-                onChange={(v) => setEnabled(v == null ? undefined : v === 'true')}
+                items={ENABLED_OPTIONS}
+                {...bind('enabled')}
                 width={140}
               />
             </>,
@@ -330,8 +311,7 @@ export default function QualityPage() {
           {commonToolbar(<FilterSelect
             placeholder="全部异常状态"
             items={REPORT_DQ_ANOMALY_STATUS_OPTIONS}
-            value={anomalyStatus}
-            onChange={(v) => setAnomalyStatus(v as ReportDqAnomalyStatus | undefined)}
+            {...bind('anomalyStatus')}
             width={150}
           />)}
           {anomaliesQuery.isError && <Banner type="danger" description="质量异常加载失败" />}
@@ -341,9 +321,8 @@ export default function QualityPage() {
           {commonToolbar(
             <FilterSelect
               placeholder="全部运行状态"
-              items={['pending', 'running', 'succeeded', 'failed', 'cancelled'].map((v) => ({ value: v, label: dqRunStatusLabel(v as ReportDqRunStatus) }))}
-              value={runStatus}
-              onChange={(v) => setRunStatus(v as ReportDqRunStatus | undefined)}
+              items={(['pending', 'running', 'succeeded', 'failed', 'cancelled'] as ReportDqRunStatus[]).map((v) => ({ value: v, label: dqRunStatusLabel(v) }))}
+              {...bind('runStatus')}
               width={140}
             />,
             <ExportButton entity="report.dq-runs" query={{ datasetId: submitted.datasetId, status: submitted.runStatus }} />,

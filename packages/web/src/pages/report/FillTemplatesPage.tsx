@@ -9,7 +9,7 @@ import type { WorkflowFormField, WorkflowFormSettings } from '@zenith/shared/wor
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import AppModal from '@/components/AppModal';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
@@ -24,7 +24,6 @@ import {
   useReportFillTemplateList,
   useUpdateReportFillTemplate,
 } from '@/hooks/queries/report-fill';
-import { useQueryClient } from '@tanstack/react-query';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import FormDesigner from '@/pages/workflow/designer/components/FormDesigner';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
@@ -54,11 +53,12 @@ function templateStatusTag(status: ReportFillTemplate['status']) {
 
 export default function FillTemplatesPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draft, setDraft] = useState<SearchState>(DEFAULT_SEARCH);
-  const [submitted, setSubmitted] = useState<SearchState>(DEFAULT_SEARCH);
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams: submitted,
+    handleSearch, handleReset,
+  } = useListSearch<SearchState>({ defaults: DEFAULT_SEARCH, listKey: reportFillKeys.templateLists });
   const [fields, setFields] = useState<WorkflowFormField[]>([]);
   const [settings, setSettings] = useState<WorkflowFormSettings>(DEFAULT_SCHEMA.settings);
   const [editorStep, setEditorStep] = useState(0);
@@ -124,19 +124,6 @@ export default function FillTemplatesPage() {
     }),
     successMessage: () => '模板克隆成功',
   });
-
-  function handleSearch() {
-    setPage(1);
-    setSubmitted(draft);
-    void queryClient.invalidateQueries({ queryKey: reportFillKeys.templateLists });
-  }
-
-  function handleReset() {
-    setDraft(DEFAULT_SEARCH);
-    setSubmitted(DEFAULT_SEARCH);
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: reportFillKeys.templateLists });
-  }
 
   function openEditor(template?: ReportFillTemplate) {
     setFields(template?.formSchema.fields ?? []);
@@ -304,24 +291,21 @@ export default function FillTemplatesPage() {
   ];
 
   const keywordInput = (
-    <KeywordInput placeholder="搜索模板名称/编码" value={draft.keyword} onChange={(value) => setDraft((current) => ({ ...current, keyword: value }))} onSearch={handleSearch} />
+    <KeywordInput placeholder="搜索模板名称/编码" {...bindKeyword('keyword')} />
   );
   const filters = (
     <>
       <StatusSelect
         items={REPORT_FILL_TEMPLATE_STATUS_OPTIONS}
-        value={draft.status}
-        onChange={(value) => setDraft((current) => ({ ...current, status: value as ReportFillTemplate['status'] | undefined }))}
+        {...bind('status')}
       />
       <ReportOwnerFilter
         items={userOptions}
-        value={draft.ownerId}
-        onChange={(value) => setDraft((current) => ({ ...current, ownerId: value }))}
+        {...bind('ownerId')}
       />
       <ReportFolderFilter
         items={folderOptions}
-        value={draft.folderId}
-        onChange={(value) => setDraft((current) => ({ ...current, folderId: value }))}
+        {...bind('folderId')}
         width={150}
       />
     </>

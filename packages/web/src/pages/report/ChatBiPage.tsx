@@ -41,7 +41,7 @@ import AppModal from '@/components/AppModal';
 import MarkdownPreviewPanel from '@/components/MarkdownPreviewPanel';
 import { WidgetRenderer } from './widgets/WidgetRenderer';
 import { formatDateTime } from '@/utils/date';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -61,7 +61,6 @@ import {
   useReportDashboardDetail,
   useReportDashboardLookup,
 } from '@/hooks/queries/report-dashboards';
-import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -156,11 +155,11 @@ function StructuredAnswer({
 
 export default function ChatBiPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
-  const { page, pageSize, setPage } = usePagination(20);
-  const [keyword, setKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const {
+    page, pageSize, setPage,
+    draftParams, setField, submittedParams, handleSearch,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: reportChatbiKeys.lists, pageSize: 20 });
   const [status, setStatus] = useState<'active' | 'archived'>('active');
   const [activeSessionId, setActiveSessionId] = useState<number>();
   const [saveTarget, setSaveTarget] = useState<ReportChatbiMessage | null>(null);
@@ -178,7 +177,7 @@ export default function ChatBiPage() {
   const listQuery = useReportChatbiSessionList({
     page,
     pageSize,
-    keyword: submittedKeyword || undefined,
+    keyword: submittedParams.keyword.trim() || undefined,
     status,
   });
   const detailQuery = useReportChatbiSessionDetail(activeSessionId);
@@ -314,14 +313,10 @@ export default function ChatBiPage() {
           />
         ) : undefined}
         search={{
-          value: keyword,
-          onChange: setKeyword,
+          value: draftParams.keyword,
+          onChange: setField('keyword'),
           placeholder: '搜索会话',
-          onEnterPress: () => {
-            setPage(1);
-            setSubmittedKeyword(keyword.trim());
-            void queryClient.invalidateQueries({ queryKey: reportChatbiKeys.lists });
-          },
+          onEnterPress: handleSearch,
         }}
         loading={listQuery.isFetching}
         emptyText="暂无会话，创建一个数据上下文开始提问"

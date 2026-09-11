@@ -8,7 +8,7 @@ import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -44,15 +44,16 @@ export default function SubscriptionsPage() {
   const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const {
+    page, pageSize, buildPagination,
+    bindKeyword, submittedParams, handleSearch, handleReset,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: reportSubscriptionKeys.lists });
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [historyTarget, setHistoryTarget] = useState<ReportDashboardSubscription | null>(null);
   const [cronExprValue, setCronExprValue] = useState('');
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['inApp']);
 
-  const listQuery = useReportSubscriptionList({ page, pageSize, keyword: submittedKeyword || undefined });
+  const listQuery = useReportSubscriptionList({ page, pageSize, keyword: submittedParams.keyword || undefined });
   const dashboardsQuery = useReportSubscriptionDashboardOptions();
   const dashboards = dashboardsQuery.data ?? [];
   const saveMutation = useSaveReportSubscription();
@@ -60,19 +61,6 @@ export default function SubscriptionsPage() {
   const runMutation = useRunReportSubscription();
   const deleteMutation = useDeleteReportSubscriptions();
   const historyQuery = useReportSubscriptionHistory(historyTarget?.id, !!historyTarget);
-
-  function handleSearch() {
-    setPage(1);
-    setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: reportSubscriptionKeys.lists });
-  }
-
-  function handleReset() {
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: reportSubscriptionKeys.lists });
-  }
 
   const subscriptionModal = useEditModal<ReportDashboardSubscription, Record<string, unknown>>({
     entityName: '订阅',
@@ -170,7 +158,7 @@ export default function SubscriptionsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索 Cron/备注" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={200} />}
+        keyword={<KeywordInput placeholder="搜索 Cron/备注" {...bindKeyword('keyword')} width={200} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={hasPermission('report:subscription:create') ? <CreateButton onClick={openCreate} /> : null}

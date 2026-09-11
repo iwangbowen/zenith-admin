@@ -13,7 +13,7 @@ import ExportButton from '@/components/ExportButton';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import AppModal from '@/components/AppModal';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
@@ -27,7 +27,6 @@ import {
   useReviewReportFillRecord,
   useWithdrawReportFillRecord,
 } from '@/hooks/queries/report-fill';
-import { useQueryClient } from '@tanstack/react-query';
 import { formatDateTime } from '@/utils/date';
 import { canRunFillRecordAction, isRevisionConflict, shouldShowFillReviewTab } from './report-p2-utils';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -74,17 +73,14 @@ function syncStatus(record: ReportFillRecord, task?: AsyncTask) {
 
 export default function FillRecordsPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const canCreate = hasPermission('report:fill:record:create');
   const canReview = shouldShowFillReviewTab(hasPermission('report:fill:record:review'));
   const [activeTab, setActiveTab] = useUrlTabState(['mine', 'admin'] as const, 'mine');
-  const minePagination = usePagination();
-  const adminPagination = usePagination();
-  const [mineDraft, setMineDraft] = useState<MineFilters>(DEFAULT_MINE);
-  const [mineSubmitted, setMineSubmitted] = useState<MineFilters>(DEFAULT_MINE);
-  const [adminDraft, setAdminDraft] = useState<AdminFilters>(DEFAULT_ADMIN);
-  const [adminSubmitted, setAdminSubmitted] = useState<AdminFilters>(DEFAULT_ADMIN);
+  const mineSearch = useListSearch<MineFilters>({ defaults: DEFAULT_MINE, listKey: reportFillKeys.recordMineLists });
+  const adminSearch = useListSearch<AdminFilters>({ defaults: DEFAULT_ADMIN, listKey: reportFillKeys.recordAdminLists });
+  const mineSubmitted = mineSearch.submittedParams;
+  const adminSubmitted = adminSearch.submittedParams;
   const [detailId, setDetailId] = useState<number>();
   const [reviewDecision, setReviewDecision] = useState<'approved' | 'rejected'>('approved');
   const [entryVisible, setEntryVisible] = useState(false);
@@ -94,15 +90,15 @@ export default function FillRecordsPage() {
   const templates = templateLookupQuery.data ?? [];
   const users = useAllUsers({ enabled: canReview }).data ?? [];
   const mineQuery = useReportFillRecordMine({
-    page: minePagination.page,
-    pageSize: minePagination.pageSize,
+    page: mineSearch.page,
+    pageSize: mineSearch.pageSize,
     keyword: mineSubmitted.keyword || undefined,
     status: mineSubmitted.status,
     templateId: mineSubmitted.templateId,
   });
   const adminQuery = useReportFillRecordAdmin({
-    page: adminPagination.page,
-    pageSize: adminPagination.pageSize,
+    page: adminSearch.page,
+    pageSize: adminSearch.pageSize,
     status: adminSubmitted.status,
     templateId: adminSubmitted.templateId,
     submitterId: adminSubmitted.submitterId,
@@ -275,11 +271,7 @@ export default function FillRecordsPage() {
   const adminColumns = createColumns(true);
 
   const mineKeyword = (
-    <KeywordInput placeholder="搜索模板名称/编码" value={mineDraft.keyword} onChange={(value) => setMineDraft((current) => ({ ...current, keyword: value }))} onSearch={() => {
-        minePagination.setPage(1);
-        setMineSubmitted(mineDraft);
-        void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
-      }} />
+    <KeywordInput placeholder="搜索模板名称/编码" {...mineSearch.bindKeyword('keyword')} />
   );
   const templateFilter = (value: number | undefined, onChange: (value?: number) => void) => canCreate ? (
     <FilterSelect
@@ -301,28 +293,6 @@ export default function FillRecordsPage() {
 
   const detail = detailQuery.data;
   const detailTask = detail?.syncTaskId ? taskMap.get(detail.syncTaskId) : undefined;
-  const searchMine = () => {
-    minePagination.setPage(1);
-    setMineSubmitted(mineDraft);
-    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
-  };
-  const resetMine = () => {
-    setMineDraft(DEFAULT_MINE);
-    setMineSubmitted(DEFAULT_MINE);
-    minePagination.setPage(1);
-    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
-  };
-  const searchAdmin = () => {
-    adminPagination.setPage(1);
-    setAdminSubmitted(adminDraft);
-    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordAdminLists });
-  };
-  const resetAdmin = () => {
-    setAdminDraft(DEFAULT_ADMIN);
-    setAdminSubmitted(DEFAULT_ADMIN);
-    adminPagination.setPage(1);
-    void queryClient.invalidateQueries({ queryKey: reportFillKeys.recordAdminLists });
-  };
 
   return (
     <div className="page-container page-tabs-page">
@@ -332,19 +302,19 @@ export default function FillRecordsPage() {
             keyword={mineKeyword}
             filters={(
               <>
-                {statusFilter(mineDraft.status, (status) => setMineDraft((current) => ({ ...current, status })))}
-                {templateFilter(mineDraft.templateId, (templateId) => setMineDraft((current) => ({ ...current, templateId })))}
+                {statusFilter(mineSearch.draftParams.status, mineSearch.setField('status'))}
+                {templateFilter(mineSearch.draftParams.templateId, mineSearch.setField('templateId'))}
               </>
             )}
-            onSearch={searchMine}
-            onReset={resetMine}
+            onSearch={mineSearch.handleSearch}
+            onReset={mineSearch.handleReset}
             create={canCreate ? (
               <Button type="primary" icon={<ClipboardPlus size={14} />} onClick={() => openEntry()}>新增填报</Button>
             ) : null}
           />
           <ConfigurableTable<ReportFillRecord>
             columns={mineColumns}
-            {...listTableProps(mineQuery, { pagination: minePagination.buildPagination })}
+            {...listTableProps(mineQuery, { pagination: mineSearch.buildPagination })}
             columnSettingsKey="report-fill-records-mine"
           />
         </TabPane>
@@ -353,20 +323,19 @@ export default function FillRecordsPage() {
             <ListSearchToolbar
               filters={(
                 <>
-                  {statusFilter(adminDraft.status, (status) => setAdminDraft((current) => ({ ...current, status })))}
-                  {templateFilter(adminDraft.templateId, (templateId) => setAdminDraft((current) => ({ ...current, templateId })))}
+                  {statusFilter(adminSearch.draftParams.status, adminSearch.setField('status'))}
+                  {templateFilter(adminSearch.draftParams.templateId, adminSearch.setField('templateId'))}
                   <FilterSelect
                     placeholder="全部提交人"
                     items={users.map((user) => ({ value: user.id, label: user.nickname || user.username }))}
-                    value={adminDraft.submitterId}
-                    onChange={(value) => setAdminDraft((current) => ({ ...current, submitterId: value }))}
+                    {...adminSearch.bind('submitterId')}
                     width={150}
                     filter
                   />
                 </>
               )}
-              onSearch={searchAdmin}
-              onReset={resetAdmin}
+              onSearch={adminSearch.handleSearch}
+              onReset={adminSearch.handleReset}
               actions={hasPermission('report:fill:record:export') ? (
                 <ExportButton
                   entity="report.fill-records"
@@ -393,7 +362,7 @@ export default function FillRecordsPage() {
             />
             <ConfigurableTable<ReportFillRecord>
               columns={adminColumns}
-              {...listTableProps(adminQuery, { pagination: adminPagination.buildPagination })}
+              {...listTableProps(adminQuery, { pagination: adminSearch.buildPagination })}
               columnSettingsKey="report-fill-records-admin"
             />
           </TabPane>

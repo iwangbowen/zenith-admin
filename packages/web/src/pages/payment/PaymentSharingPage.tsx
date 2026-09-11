@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { formatYuan } from '@/utils/payment';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Descriptions, Form, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
@@ -8,7 +7,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -46,44 +45,34 @@ interface DispatchFormValues { orderNo: string; receiverId: number; amountYuan?:
 export default function PaymentSharingPage() {
   const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   const canManage = hasPermission('payment:sharing:manage');
   const canDispatch = hasPermission('payment:sharing:dispatch');
   const [activeTab, setActiveTab] = useUrlTabState(['receivers', 'orders', 'reversals'] as const, 'receivers');
 
-  // ── 接收方 ──
-  const { page: rPage, pageSize: rPageSize, setPage: setRPage, buildPagination: buildRPagination } = usePagination();
-  const [receiverKeyword, setReceiverKeyword] = useState('');
-  const [submittedReceiverKeyword, setSubmittedReceiverKeyword] = useState('');
-  // ── 分账单 ──
-  const { page: oPage, pageSize: oPageSize, setPage: setOPage, buildPagination: buildOPagination } = usePagination();
-  const [orderKeyword, setOrderKeyword] = useState('');
-  const [orderStatus, setOrderStatus] = useState<string | undefined>();
-  const [submittedOrderParams, setSubmittedOrderParams] = useState<{ keyword: string; status?: string }>({ keyword: '' });
-  // ── 冲正记录 ──
-  const { page: vPage, pageSize: vPageSize, setPage: setVPage, buildPagination: buildVPagination } = usePagination();
-  const [reversalStatus, setReversalStatus] = useState<string | undefined>();
-  const [submittedReversalStatus, setSubmittedReversalStatus] = useState<string | undefined>();
+  // ── 接收方 / 分账单 / 冲正记录：三组独立的搜索 + 分页 ──
+  const receiverSearch = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: paymentSharingKeys.receiverLists });
+  const orderSearch = useListSearch<{ keyword: string; status?: string }>({ defaults: { keyword: '' }, listKey: paymentSharingKeys.orderLists });
+  const reversalSearch = useListSearch<{ status?: string }>({ defaults: {}, listKey: paymentSharingKeys.reversalLists });
   const [reverseTarget, setReverseTarget] = useState<PaymentSharingOrder | null>(null);
   const [reverseReason, setReverseReason] = useState('');
   const [reverseIdempotencyKey, setReverseIdempotencyKey] = useState('');
   const [reversalDetailTarget, setReversalDetailTarget] = useState<PaymentSharingReversal | null>(null);
 
   const receiverQuery = usePaymentSharingReceivers({
-    page: rPage,
-    pageSize: rPageSize,
-    keyword: submittedReceiverKeyword || undefined,
+    page: receiverSearch.page,
+    pageSize: receiverSearch.pageSize,
+    keyword: receiverSearch.submittedParams.keyword || undefined,
   });
   const orderQuery = usePaymentSharingOrders({
-    page: oPage,
-    pageSize: oPageSize,
-    keyword: submittedOrderParams.keyword || undefined,
-    status: enumValueOf(PAYMENT_SHARING_ORDER_STATUSES, submittedOrderParams.status),
+    page: orderSearch.page,
+    pageSize: orderSearch.pageSize,
+    keyword: orderSearch.submittedParams.keyword || undefined,
+    status: enumValueOf(PAYMENT_SHARING_ORDER_STATUSES, orderSearch.submittedParams.status),
   });
   const reversalQuery = usePaymentSharingReversals({
-    page: vPage,
-    pageSize: vPageSize,
-    status: enumValueOf(PAYMENT_SHARING_REVERSAL_STATUSES, submittedReversalStatus),
+    page: reversalSearch.page,
+    pageSize: reversalSearch.pageSize,
+    status: enumValueOf(PAYMENT_SHARING_REVERSAL_STATUSES, reversalSearch.submittedParams.status),
   });
   const reversalDetailQuery = usePaymentSharingReversalDetail(reversalDetailTarget?.id, !!reversalDetailTarget);
   const reversalDetail = reversalDetailTarget ? (reversalDetailQuery.data ?? reversalDetailTarget) : null;
@@ -268,49 +257,14 @@ export default function PaymentSharingPage() {
     }),
   ];
 
-  const handleReceiverSearch = () => {
-    setRPage(1);
-    setSubmittedReceiverKeyword(receiverKeyword);
-    void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.receiverLists });
-  };
-  const handleReceiverReset = () => {
-    setReceiverKeyword('');
-    setRPage(1);
-    setSubmittedReceiverKeyword('');
-    void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.receiverLists });
-  };
-  const handleOrderSearch = () => {
-    setOPage(1);
-    setSubmittedOrderParams({ keyword: orderKeyword, status: orderStatus });
-    void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.orderLists });
-  };
-  const handleOrderReset = () => {
-    setOrderKeyword('');
-    setOrderStatus(undefined);
-    setOPage(1);
-    setSubmittedOrderParams({ keyword: '' });
-    void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.orderLists });
-  };
-  const handleReversalSearch = () => {
-    setVPage(1);
-    setSubmittedReversalStatus(reversalStatus);
-    void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.reversalLists });
-  };
-  const handleReversalReset = () => {
-    setReversalStatus(undefined);
-    setVPage(1);
-    setSubmittedReversalStatus(undefined);
-    void queryClient.invalidateQueries({ queryKey: paymentSharingKeys.reversalLists });
-  };
-
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as 'receivers' | 'orders' | 'reversals')} type="line" lazyRender keepDOM={false}>
         <TabPane tab="分账接收方" itemKey="receivers">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="名称..." value={receiverKeyword} onChange={setReceiverKeyword} onSearch={handleReceiverSearch} width={200} />}
-            onSearch={handleReceiverSearch}
-            onReset={handleReceiverReset}
+            keyword={<KeywordInput placeholder="名称..." {...receiverSearch.bindKeyword('keyword')} width={200} />}
+            onSearch={receiverSearch.handleSearch}
+            onReset={receiverSearch.handleReset}
             create={(
               canManage ? (
                 <CreateButton onClick={receiverModal.openCreate} />
@@ -319,21 +273,20 @@ export default function PaymentSharingPage() {
           />
           <ConfigurableTable
             columns={receiverColumns}
-            {...listTableProps(receiverQuery, { pagination: buildRPagination, empty: '暂无数据' })}
+            {...listTableProps(receiverQuery, { pagination: receiverSearch.buildPagination, empty: '暂无数据' })}
           />
         </TabPane>
         <TabPane tab="分账单" itemKey="orders">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="订单号..." value={orderKeyword} onChange={setOrderKeyword} onSearch={handleOrderSearch} width={200} />}
+            keyword={<KeywordInput placeholder="订单号..." {...orderSearch.bindKeyword('keyword')} width={200} />}
             filters={(
               <StatusSelect
                 items={PAYMENT_SHARING_ORDER_STATUS_OPTIONS}
-                value={orderStatus}
-                onChange={setOrderStatus}
+                {...orderSearch.bind('status')}
               />
             )}
-            onSearch={handleOrderSearch}
-            onReset={handleOrderReset}
+            onSearch={orderSearch.handleSearch}
+            onReset={orderSearch.handleReset}
             create={(
               canDispatch ? (
                 <Button type="primary" icon={<Plus size={14} />} onClick={openDispatch}>发起分账</Button>
@@ -343,7 +296,7 @@ export default function PaymentSharingPage() {
           />
           <ConfigurableTable
             columns={orderColumns}
-            {...listTableProps(orderQuery, { pagination: buildOPagination, empty: '暂无数据' })}
+            {...listTableProps(orderQuery, { pagination: orderSearch.buildPagination, empty: '暂无数据' })}
           />
         </TabPane>
         <TabPane tab="冲正记录" itemKey="reversals">
@@ -351,17 +304,16 @@ export default function PaymentSharingPage() {
             filters={(
               <StatusSelect
                 items={PAYMENT_SHARING_REVERSAL_STATUS_OPTIONS}
-                value={reversalStatus}
-                onChange={setReversalStatus}
+                {...reversalSearch.bind('status')}
               />
             )}
-            onSearch={handleReversalSearch}
-            onReset={handleReversalReset}
+            onSearch={reversalSearch.handleSearch}
+            onReset={reversalSearch.handleReset}
             filterTitle="冲正记录筛选"
           />
           <ConfigurableTable
             columns={reversalColumns}
-            {...listTableProps(reversalQuery, { pagination: buildVPagination, empty: '暂无冲正记录' })}
+            {...listTableProps(reversalQuery, { pagination: reversalSearch.buildPagination, empty: '暂无冲正记录' })}
           />
         </TabPane>
       </Tabs>
