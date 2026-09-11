@@ -29,6 +29,7 @@ import {
 } from '@/hooks/queries/report-dashboards';
 import { useDictItems } from '@/hooks/useDictItems';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
+import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus } from './report-form-fields';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -131,12 +132,7 @@ export default function DashboardListPage() {
     successMessage: ({ isEdit }) => isEdit ? '分类更新成功' : '分类创建成功',
   });
 
-  async function handleBatchStatus(status: 'enabled' | 'disabled') {
-    if (selectedRowKeys.length === 0) return;
-    await batchStatusMutation.mutateAsync({ body: { ids: selectedRowKeys, status } });
-    setSelectedRowKeys([]);
-    Toast.success(status === 'enabled' ? '批量启用成功' : '批量停用成功');
-  }
+  const handleBatchStatus = useReportBatchStatus({ selectedRowKeys, setSelectedRowKeys, mutation: batchStatusMutation });
 
   async function handleClone(record: ReportDashboard) {
     const cloned = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
@@ -229,10 +225,12 @@ export default function DashboardListPage() {
 
   const renderCategoryManageBtn = () => hasPermission('report:dashboard:update')
     ? <Button icon={<FolderTree size={14} />} onClick={() => setCategorySheetVisible(true)}>分类管理</Button> : null;
-  const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dashboard:update')
-    ? <Button onClick={() => void handleBatchStatus('enabled')}>批量启用</Button> : null;
-  const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dashboard:update')
-    ? <Button type="danger" onClick={() => void handleBatchStatus('disabled')}>批量停用</Button> : null;
+  const toolbarActions = (
+    <>
+      <ReportBatchStatusButtons visible={selectedRowKeys.length > 0 && hasPermission('report:dashboard:update')} onChange={handleBatchStatus} />
+      {renderCategoryManageBtn()}
+    </>
+  );
 
   return (
     <div className="page-container">
@@ -267,8 +265,8 @@ export default function DashboardListPage() {
           hasPermission('report:dashboard:create')
             ? <CreateButton onClick={dashboardModal.openCreate} /> : null
         )}
-        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCategoryManageBtn()}</>}
-        mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}{renderCategoryManageBtn()}</>}
+        actions={toolbarActions}
+        mobileActions={toolbarActions}
         filterTitle="仪表盘筛选"
       />
 
@@ -290,10 +288,7 @@ export default function DashboardListPage() {
       >
         <Form key={dashboardModal.formKey} {...dashboardModal.formProps}>
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear />
-          <Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }}
-            optionList={userOptions} />
-          <Form.Select field="folderId" label="资源目录" filter showClear style={{ width: '100%' }}
-            optionList={folderOptions} />
+          <ReportOwnerFolderFields userOptions={userOptions} folderOptions={folderOptions} />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={statusOptions} />
           <Form.Select field="categoryId" label="分类" style={{ width: '100%' }} showClear placeholder="未分类"

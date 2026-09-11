@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Form, Modal, Radio, Toast, Typography } from '@douyinfe/semi-ui';
+import { Form, Radio, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -28,6 +28,7 @@ import type { CreateReportPrintTemplateInput, ReportPrintRenderResult, ReportPri
 import type { ExportJobFormat } from '@zenith/shared/tasks';
 import { useDictItems } from '@/hooks/useDictItems';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
+import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus } from './report-form-fields';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -120,17 +121,9 @@ export default function PrintTemplatesPage() {
     Toast.success(`已复制为「${cloned.name}」`);
   }
 
-  function handleBatchStatus(status: 'enabled' | 'disabled') {
-    if (selectedRowKeys.length === 0) return;
-    Modal.confirm({
-      title: `确认批量${status === 'enabled' ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 个打印模板？`,
-      onOk: async () => {
-        await batchStatusMutation.mutateAsync({ body: { ids: selectedRowKeys, status } });
-        setSelectedRowKeys([]);
-        Toast.success(status === 'enabled' ? '批量启用成功' : '批量停用成功');
-      },
-    });
-  }
+  const handleBatchStatus = useReportBatchStatus({
+    selectedRowKeys, setSelectedRowKeys, mutation: batchStatusMutation, confirmEntity: '打印模板',
+  });
 
   async function runPreview(record: ReportPrintTemplate, values: Record<string, unknown>) {
     setPreviewVisible(true);
@@ -245,10 +238,9 @@ export default function PrintTemplatesPage() {
     }),
   ];
 
-  const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:print:update')
-    ? <Button onClick={() => handleBatchStatus('enabled')}>批量启用</Button> : null;
-  const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:print:update')
-    ? <Button type="danger" onClick={() => handleBatchStatus('disabled')}>批量停用</Button> : null;
+  const batchStatusButtons = (
+    <ReportBatchStatusButtons visible={selectedRowKeys.length > 0 && hasPermission('report:print:update')} onChange={handleBatchStatus} />
+  );
 
   return (
     <div className="page-container">
@@ -264,8 +256,8 @@ export default function PrintTemplatesPage() {
           hasPermission('report:print:create')
             ? <CreateButton onClick={() => { setDialogSourceType('dataset'); printModal.openCreate(); }} /> : null
         )}
-        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
-        mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
+        actions={batchStatusButtons}
+        mobileActions={batchStatusButtons}
         filterTitle="打印模板筛选"
       />
 
@@ -287,10 +279,7 @@ export default function PrintTemplatesPage() {
       >
         <Form key={printModal.formKey} {...printModal.formProps} onValueChange={(values: Record<string, unknown>) => setDialogSourceType(values.sourceType === 'entity' ? 'entity' : 'dataset')}>
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear placeholder="如：销售出库单" />
-          <Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }}
-            optionList={userOptions} />
-          <Form.Select field="folderId" label="资源目录" filter showClear style={{ width: '100%' }}
-            optionList={folderOptions} />
+          <ReportOwnerFolderFields userOptions={userOptions} folderOptions={folderOptions} />
           <Form.RadioGroup
             field="sourceType"
             label="数据来源"

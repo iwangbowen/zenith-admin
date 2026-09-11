@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Col, Form, Row, Toast, Modal, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Row, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -25,6 +25,7 @@ import { REPORT_DATASOURCE_TYPE_OPTIONS, REPORT_DATASOURCE_TYPES, isExternalDbTy
 import { useDictItems } from '@/hooks/useDictItems';
 import { renderReportDatasourceTypeTag } from './report-datasource-ui';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
+import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus } from './report-form-fields';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -182,19 +183,10 @@ export default function DataSourcesPage() {
     return <Typography.Text type="tertiary">未检测</Typography.Text>;
   }
 
-  function handleBatchStatus(status: 'enabled' | 'disabled') {
-    if (selectedRowKeys.length === 0) return;
-    const label = status === 'enabled' ? '启用' : '停用';
-    Modal.confirm({
-      title: `确认批量${label}选中的 ${selectedRowKeys.length} 个数据源？`,
-      content: status === 'disabled' ? '停用后相关数据集将无法继续取数。' : '启用后数据集可继续使用这些数据源。',
-      onOk: async () => {
-        await batchStatusMutation.mutateAsync({ body: { ids: selectedRowKeys, status } });
-        setSelectedRowKeys([]);
-        Toast.success(`批量${label}成功`);
-      },
-    });
-  }
+  const handleBatchStatus = useReportBatchStatus({
+    selectedRowKeys, setSelectedRowKeys, mutation: batchStatusMutation, confirmEntity: '数据源',
+    confirmContent: (status) => (status === 'disabled' ? '停用后相关数据集将无法继续取数。' : '启用后数据集可继续使用这些数据源。'),
+  });
 
   async function handleClone(record: ReportDatasource) {
     const cloned = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
@@ -275,10 +267,12 @@ export default function DataSourcesPage() {
 
   const renderBatchHealthBtn = () => selectedRowKeys.length > 0 && hasPermission('report:datasource:update')
     ? <Button icon={<Activity size={14} />} onClick={() => void handleHealthCheck(selectedRowKeys)}>批量检测</Button> : null;
-  const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:datasource:update')
-    ? <Button onClick={() => handleBatchStatus('enabled')}>批量启用</Button> : null;
-  const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:datasource:update')
-    ? <Button type="danger" onClick={() => handleBatchStatus('disabled')}>批量停用</Button> : null;
+  const toolbarActions = (
+    <>
+      {renderBatchHealthBtn()}
+      <ReportBatchStatusButtons visible={selectedRowKeys.length > 0 && hasPermission('report:datasource:update')} onChange={handleBatchStatus} />
+    </>
+  );
 
   return (
     <div className="page-container">
@@ -299,8 +293,8 @@ export default function DataSourcesPage() {
           hasPermission('report:datasource:create')
             ? <CreateButton onClick={datasourceModal.openCreate} /> : null
         )}
-        actions={<>{renderBatchHealthBtn()}{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
-        mobileActions={<>{renderBatchHealthBtn()}{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
+        actions={toolbarActions}
+        mobileActions={toolbarActions}
         filterTitle="数据源筛选"
       />
 
@@ -342,16 +336,7 @@ export default function DataSourcesPage() {
                   />
                 </Col>
               </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }}
-                    optionList={userOptions} />
-                </Col>
-                <Col span={12}>
-                  <Form.Select field="folderId" label="资源目录" filter showClear style={{ width: '100%' }}
-                    optionList={folderOptions} />
-                </Col>
-              </Row>
+              <ReportOwnerFolderFields layout="row" userOptions={userOptions} folderOptions={folderOptions} />
               {values.type === 'api' ? (
                 <>
                   <Row gutter={16}>

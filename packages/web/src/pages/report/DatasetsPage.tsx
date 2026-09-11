@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useRef, useMemo } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
-import { Button, Col, Empty, Form, Input, InputNumber, Modal, Row, Select, SideSheet, Space, Spin, Switch, Table, TabPane, Tabs, TextArea, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Empty, Form, Input, InputNumber, Row, Select, SideSheet, Space, Spin, Switch, Table, TabPane, Tabs, TextArea, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Play, Upload as UploadIcon, Sparkles, Blocks } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -31,6 +31,7 @@ import VisualModelBuilder from './components/VisualModelBuilder';
 import { useDictItems } from '@/hooks/useDictItems';
 import { renderReportDatasourceTypeTag } from './report-datasource-ui';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
+import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus } from './report-form-fields';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useReportDqAnomalyList } from '@/hooks/queries/report-dq';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
@@ -442,17 +443,9 @@ export default function DatasetsPage() {
     Toast.success(`已复制为「${cloned.name}」`);
   }
 
-  function handleBatchStatus(status: 'enabled' | 'disabled') {
-    if (selectedRowKeys.length === 0) return;
-    Modal.confirm({
-      title: `确认批量${status === 'enabled' ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 个数据集？`,
-      onOk: async () => {
-        await batchStatusMutation.mutateAsync({ body: { ids: selectedRowKeys, status } });
-        setSelectedRowKeys([]);
-        Toast.success(status === 'enabled' ? '批量启用成功' : '批量停用成功');
-      },
-    });
-  }
+  const handleBatchStatus = useReportBatchStatus({
+    selectedRowKeys, setSelectedRowKeys, mutation: batchStatusMutation, confirmEntity: '数据集',
+  });
 
   async function handleRefreshMaterialize(record: ReportDataset) {
     await refreshMaterializeMutation.mutateAsync({ params: { id: record.id } });
@@ -573,10 +566,9 @@ export default function DatasetsPage() {
   const previewColumns: ColumnProps<Record<string, unknown>>[] = (preview?.columns ?? []).map((c) => ({ title: c, dataIndex: c, width: 140 }));
   const previewData = (preview?.rows ?? []).map((r, i) => ({ ...r, __rk: i }));
 
-  const renderBatchEnableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dataset:update')
-    ? <Button onClick={() => handleBatchStatus('enabled')}>批量启用</Button> : null;
-  const renderBatchDisableBtn = () => selectedRowKeys.length > 0 && hasPermission('report:dataset:update')
-    ? <Button type="danger" onClick={() => handleBatchStatus('disabled')}>批量停用</Button> : null;
+  const batchStatusButtons = (
+    <ReportBatchStatusButtons visible={selectedRowKeys.length > 0 && hasPermission('report:dataset:update')} onChange={handleBatchStatus} />
+  );
 
   return (
     <div className="page-container">
@@ -592,8 +584,8 @@ export default function DatasetsPage() {
           hasPermission('report:dataset:create')
             ? <CreateButton onClick={openCreate} /> : null
         )}
-        actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
-        mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
+        actions={batchStatusButtons}
+        mobileActions={batchStatusButtons}
         filterTitle="数据集筛选"
       />
 
@@ -642,16 +634,7 @@ export default function DatasetsPage() {
                   />
                 </Col>
               </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }}
-                    optionList={userOptions} />
-                </Col>
-                <Col span={12}>
-                  <Form.Select field="folderId" label="资源目录" filter showClear style={{ width: '100%' }}
-                    optionList={folderOptions} />
-                </Col>
-              </Row>
+              <ReportOwnerFolderFields layout="row" userOptions={userOptions} folderOptions={folderOptions} />
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Select field="status" label="状态" style={{ width: '100%' }}
