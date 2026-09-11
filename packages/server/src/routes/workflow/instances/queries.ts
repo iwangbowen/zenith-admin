@@ -71,9 +71,19 @@ export const detailRoute = defineContractRoute(workflowInstanceContract.detail, 
   handler: async (c) => c.json(okBody(await getInstanceDetail(c.req.valid('param').id)), 200),
 });
 
-/** 审批单 PDF：访问口径与详情完全一致（能看详情即能打印），预览 / 打印 / 下载同一份文件 */
+/**
+ * 审批单 PDF：在详情访问口径（发起人 / 参与人 / 监控）之上再要求 workflow:instance:print，
+ * 让组织可以把「能看」与「能打印」分开授权；每次打印写操作日志（不记录二进制响应体）。
+ */
 export const printRoute = defineContractRoute(workflowInstanceContract.print, {
-  middleware: [authMiddleware, guard({ permission: ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] })] as const,
+  middleware: [
+    authMiddleware,
+    guard({ permission: ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] }),
+    guard({
+      permission: 'workflow:instance:print',
+      audit: { description: '打印审批单', module: '工作流', recordBody: false, recordResponseBody: false },
+    }),
+  ] as const,
   handler: async (c) => {
     const { buffer, filename } = await renderWorkflowInstancePdf(c.req.valid('param').id, c.req.valid('query'));
     return new Response(new Uint8Array(buffer), {

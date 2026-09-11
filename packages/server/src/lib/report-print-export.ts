@@ -675,13 +675,42 @@ async function drawPdfGrid(doc: PDFKit.PDFDocument, pageResult: ReportPrintRende
   }
 }
 
-export async function renderPrintResultToPdf(result: ReportPrintRenderResult): Promise<Buffer> {
+export interface PdfRenderOptions {
+  /** 每页叠加的斜向半透明水印文本（换行分多行居中） */
+  watermark?: string;
+}
+
+/** 水印：页面中心斜 30°，按 3×3 网格平铺，低不透明度不遮挡正文 */
+function drawPdfWatermark(doc: PDFKit.PDFDocument, text: string, fontName: string) {
+  const { width, height } = doc.page;
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (lines.length === 0) return;
+  const fontSize = Math.max(14, Math.min(28, Math.floor(width / 24)));
+  doc.save().fillOpacity(0.11).fillColor('#374151').font(fontName).fontSize(fontSize);
+  const cellW = width / 3;
+  const cellH = height / 3;
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      const cx = cellW * col + cellW / 2;
+      const cy = cellH * row + cellH / 2;
+      doc.save().rotate(-30, { origin: [cx, cy] });
+      lines.forEach((line, index) => {
+        const lineWidth = doc.widthOfString(line);
+        doc.text(line, cx - lineWidth / 2, cy - (lines.length * fontSize) / 2 + index * fontSize * 1.2, { lineBreak: false });
+      });
+      doc.restore();
+    }
+  }
+  doc.restore();
+}
+
+export async function renderPrintResultToPdf(result: ReportPrintRenderResult, options: PdfRenderOptions = {}): Promise<Buffer> {
   const PDFDocument = loadPdfDocument();
   const doc = new PDFDocument({ autoFirstPage: false, margin: 0 });
   const chunks: Uint8Array[] = [];
   const imageCache = new Map<string, RenderedGraphic>();
   const fontPath = resolvePdfFontPath();
-  if (!fontPath && resultContainsCjk(result)) {
+  if (!fontPath && (resultContainsCjk(result) || /[\u3400-\u9fff]/u.test(options.watermark ?? ''))) {
     throw new Error('PDF 导出包含中文，但未找到 CJK 字体（内置 assets/fonts 缺失且未配置 REPORT_PDF_FONT_PATH）');
   }
   const fontName = fontPath ? 'zh' : 'Helvetica';
@@ -694,6 +723,7 @@ export async function renderPrintResultToPdf(result: ReportPrintRenderResult): P
       margin: 0,
     });
     await drawPdfGrid(doc, page, fontName, imageCache);
+    if (options.watermark) drawPdfWatermark(doc, options.watermark, fontName);
   }
   await new Promise<void>((resolve) => {
     doc.on('end', () => resolve());

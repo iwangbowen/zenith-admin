@@ -178,11 +178,13 @@ POST /api/workflows/instances/{id}/cc/add
 | 项 | 说明 |
 | --- | --- |
 | 接口 | `GET /api/workflows/instances/{id}/print`（`kind: file`，返回 `application/pdf`），可选 `templateId` 临时指定模板 |
-| 访问口径 | 与实例详情完全一致：发起人 / 参与人 / 持有 `workflow:instance:monitor` 的监控管理员，能看详情即能打印 |
+| 访问口径 | 实例详情可见性（发起人 / 参与人 / 持有 `workflow:instance:monitor` 的监控管理员）**且**持有 `workflow:instance:print`；每次打印写操作日志（不记录二进制响应体） |
 | 版式来源 | 流程定义绑定的打印模板（`printTemplateId`，报表打印设计器中 `sourceType=entity` / `entityKind=workflow_instance` 的实体模板）→ 未绑定时按**表单快照自动生成**版式 |
 | 自动版式 | 标题（流程名称 + 审批单）、编号 / 状态 / 发起时间副标题、基本信息、表单内容（尊重栅格 `row` 并排、`group` / `tabs` / `steps` 分段、`detail` 明细子表 + 数值合计、`signature` 图片、附件文件名）、审批记录（节点 / 处理人 / 结果 / 意见 / 时间 / 手写签名）、抄送、沟通记录、打印人与时间页脚 |
 | 数据集 | `instance`（主数据集）、`form`、`form_fields`、`form_<明细 key>`、`tasks`、`cc`、`comments`、`consults`、`attachments`，字段目录见 `describeWorkflowPrintDatasets()`（`@zenith/shared/workflow`） |
 | 字段格式化 | 选项 → 标签、金额千分位 + 单位、人员 / 部门 / 字典 / 关联审批单 → 名称、附件 → 文件名、富文本 → 纯文本；密码与说明类字段不打印 |
+| 脱敏 | 表单中的手机号 / 邮箱 / 证件号字段按「数据脱敏」策略（实体 `WorkflowForm`）打码，与接口出口同一套规则与豁免权限；超管不打码 |
+| 流程级设置 | 「更多设置 → 审批单打印」：仅通过后可打印（非 `approved` 实例返回 400）、打印水印（页面斜向平铺，文本支持 `{printer}` / `{time}` / `{serialNo}`，留空为「打印人 时间」） |
 | 字体 | 服务端随包内置 Noto Sans SC（`packages/server/assets/fonts`），无需运维配置；企业自有字体经 `REPORT_PDF_FONT_PATH` 覆盖 |
 
 纯逻辑（版式生成、数据集构建、字段格式化）在 `@zenith/shared/workflow` 的 `print.ts`，服务端与设计器共用。

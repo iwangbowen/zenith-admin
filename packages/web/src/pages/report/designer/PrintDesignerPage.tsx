@@ -9,7 +9,7 @@ import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
 import type { IWorkbookData } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import sheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
-import { ArrowLeft, Eye, PanelRightOpen, Plus, RefreshCcw, Save, Settings2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Eye, PanelRightOpen, Plus, RefreshCcw, Save, Settings2, Trash2, Wand2 } from 'lucide-react';
 import '@univerjs/preset-sheets-core/lib/index.css';
 import '../report-grid.css';
 import { usePermission } from '@/hooks/usePermission';
@@ -18,6 +18,12 @@ import PrintPreviewModal from '../PrintPreviewModal';
 import ReportParamDialog from '@/components/ReportParamDialog';
 import { buildReportParamInitialValues } from '@/components/report-param-utils';
 import { printContentToUniver, univerToPrintContent } from './print-univer';
+import { buildEntityPrintCatalog, buildEntityTemplateDraft, entityDatasetKeys, findInvalidEntityDatasetRef } from './entity-print';
+import WorkflowPrintButton from '@/components/workflow/WorkflowPrintButton';
+import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
+import { useApiQuery } from '@/lib/contract-query';
+import { workflowInstanceContract } from '@zenith/shared/workflow';
+import type { WorkflowFormField } from '@zenith/shared/workflow';
 import { useReportDesignerDatasets } from '@/hooks/queries/report-designer';
 import { reportDatasetKeys, useReportDatasetDetail } from '@/hooks/queries/report-datasets';
 import {
@@ -27,8 +33,8 @@ import {
   useReportPrintTemplateDetail,
   useSaveReportPrintTemplate,
 } from '@/hooks/queries/report-print';
-import { REPORT_FIELD_TYPE_OPTIONS, reportDatasetContract, reportPrintContract } from '@zenith/shared/report';
-import type { ReportDataset, ReportDatasetParam, ReportFieldType, ReportPrintContent, ReportPrintCrosstabConfig, ReportPrintDatasetBinding, ReportPrintPageConfig, ReportPrintRenderResult, ReportPrintSheet, ReportPrintTemplate, UpdateReportPrintTemplateInput } from '@zenith/shared/report';
+import { REPORT_FIELD_TYPE_OPTIONS, REPORT_PRINT_ENTITY_KIND_LABELS, reportDatasetContract, reportPrintContract } from '@zenith/shared/report';
+import type { ReportDataset, ReportDatasetParam, ReportFieldType, ReportPrintContent, ReportPrintCrosstabConfig, ReportPrintDatasetBinding, ReportPrintEntityKind, ReportPrintPageConfig, ReportPrintRenderResult, ReportPrintSheet, ReportPrintSourceType, ReportPrintTemplate, UpdateReportPrintTemplateInput } from '@zenith/shared/report';
 import { useDictItems } from '@/hooks/useDictItems';
 import { api } from '@/lib/contract-query';
 
@@ -156,6 +162,12 @@ export default function PrintDesignerPage() {
   const [template, setTemplate] = useState<ReportPrintTemplate | null>(null);
   const [name, setName] = useState('');
   const [datasetId, setDatasetId] = useState<number | null>(null);
+  // 数据来源：dataset = 报表数据集；entity = 业务实体（审批单）在渲染时注入数据集
+  const [sourceType, setSourceType] = useState<ReportPrintSourceType>('dataset');
+  const [entityKind, setEntityKind] = useState<ReportPrintEntityKind | null>(null);
+  const [entityRefId, setEntityRefId] = useState<number | null>(null);
+  const [sampleInstanceId, setSampleInstanceId] = useState<number | null>(null);
+  const [sampleKeyword, setSampleKeyword] = useState('');
   const [status, setStatus] = useState<ReportPrintTemplate['status']>('enabled');
   const [remark, setRemark] = useState('');
   const [params, setParams] = useState<ReportDatasetParam[]>([]);
@@ -214,6 +226,26 @@ export default function PrintDesignerPage() {
   const activeFields = activeDataset?.fields ?? [];
   const activeFieldOptions = activeFields.map((field) => ({ value: field.name, label: field.label ? `${field.label} (${field.name})` : field.name }));
 
+  // ─── 实体模板（审批单）：字段目录来自参照流程的表单；样例实例用于预览 ────────────
+  const isEntity = sourceType === 'entity';
+  const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 }, isEntity);
+  const definitionOptions = (definitionsQuery.data?.list ?? []).map((d) => ({ value: d.id, label: d.name }));
+  const refDefinition = (definitionsQuery.data?.list ?? []).find((d) => d.id === entityRefId) ?? null;
+  const entityFormFields = useMemo<WorkflowFormField[]>(() => (refDefinition?.formFields ?? []) as WorkflowFormField[], [refDefinition]);
+  const entityCatalog = useMemo(() => (isEntity && entityKind ? buildEntityPrintCatalog(entityKind, entityFormFields) : null), [entityFormFields, entityKind, isEntity]);
+  const entityKeys = useMemo(() => (entityCatalog ? entityDatasetKeys(entityCatalog) : []), [entityCatalog]);
+  const sampleInstancesQuery = useApiQuery(
+    workflowInstanceContract.relationOptions,
+    { query: { ...(entityRefId ? { definitionId: entityRefId } : {}), ...(sampleKeyword ? { keyword: sampleKeyword } : {}), limit: 20 } },
+    { enabled: isEntity && previewVisible },
+  );
+  /** 单元格 / 重复块可选的数据集键：main + 实体数据集 + 附加绑定 */
+  const datasetKeyOptions = useMemo(() => [
+    { value: 'main', label: isEntity && entityCatalog ? `main（${entityCatalog.datasets[0]?.label ?? '主数据集'}）` : 'main（主数据集）' },
+    ...(entityCatalog?.datasets.slice(1).map((dataset) => ({ value: dataset.key, label: `${dataset.key} · ${dataset.label}${dataset.cardinality === 'rows' ? '（多行）' : ''}` })) ?? []),
+    ...datasetBindings.map((binding) => ({ value: binding.key, label: binding.key })),
+  ], [datasetBindings, entityCatalog, isEntity]);
+
   useEffect(() => {
     seededTemplateId.current = null;
   }, [templateId]);
@@ -225,6 +257,9 @@ export default function PrintDesignerPage() {
     setTemplate(tpl);
     setName(tpl.name);
     setDatasetId(tpl.datasetId ?? null);
+    setSourceType(tpl.sourceType);
+    setEntityKind(tpl.entityKind ?? null);
+    setEntityRefId(tpl.entityRefId ?? null);
     setStatus(tpl.status);
     setRemark(tpl.remark ?? '');
     setParams(tpl.params ?? []);
@@ -291,6 +326,32 @@ export default function PrintDesignerPage() {
     range.setValueForCell(text);
   }, []);
 
+  /**
+   * 实体字段插入：写入 `${key}` 并给单元格标上数据集（主数据集不标）；图片列（签名）改为图片单元格，
+   * 图片地址用表达式在渲染时替换为 data URL。
+   */
+  const insertEntityField = useCallback((datasetKey: string | null, key: string, isImage: boolean) => {
+    const workbook = univerAPIRef.current?.getActiveWorkbook();
+    const range = workbook?.getActiveRange() ?? workbook?.getActiveSheet().getActiveRange();
+    if (!range) {
+      Toast.warning('请先选择一个单元格');
+      return;
+    }
+    const metadata = { ...(range.getCustomMetaData() ?? {}) };
+    if (datasetKey) metadata.printDatasetKey = datasetKey;
+    else delete metadata.printDatasetKey;
+    if (isImage) {
+      metadata.printKind = 'image';
+      metadata.printImage = { src: `\${${key}}`, fit: 'contain' };
+      range.setValueForCell('');
+    } else {
+      if (metadata.printKind === 'image') delete metadata.printKind;
+      delete metadata.printImage;
+      range.setValueForCell(`\${${key}}`);
+    }
+    range.setCustomMetaData(metadata);
+  }, []);
+
   const extractSnapshot = useCallback(() => {
     const workbook = univerAPIRef.current?.getActiveWorkbook();
     if (!workbook) {
@@ -324,9 +385,11 @@ export default function PrintDesignerPage() {
         ...content,
         sheets: mergedSheets,
         grid: mergedSheets[0]?.grid ?? content.grid,
+        // 实体模板：声明渲染时注入的数据集键，服务端 schema 据此放行单元格 / 重复块引用
+        ...(isEntity && entityKeys.length ? { entityDatasets: entityKeys } : {}),
       } satisfies ReportPrintContent,
     };
-  }, [datasetBindings, sheetConfigs]);
+  }, [datasetBindings, entityKeys, isEntity, sheetConfigs]);
 
   const syncSheetsFromWorkbook = useCallback(() => {
     const extracted = extractSnapshot();
@@ -347,7 +410,13 @@ export default function PrintDesignerPage() {
       return false;
     }
     const bindingByKey = new Map(datasetBindings.map((binding) => [binding.key.toLowerCase(), binding]));
-    for (const sheet of content.sheets ?? []) {
+    // 实体模板：引用校验放行实体数据集键（渲染时由业务域注入，不是报表数据集绑定）
+    const invalidEntityRef = isEntity ? findInvalidEntityDatasetRef(content, [...entityKeys, ...bindingByKey.keys()]) : null;
+    if (invalidEntityRef) {
+      Toast.error(invalidEntityRef);
+      return false;
+    }
+    for (const sheet of isEntity ? [] : (content.sheets ?? [])) {
       const sheetKey = sheet.datasetKey?.toLowerCase();
       if (sheetKey && sheetKey !== 'main' && !bindingByKey.has(sheetKey)) {
         Toast.error(`页签「${sheet.name}」引用了不存在的数据集绑定 ${sheet.datasetKey}`);
@@ -437,7 +506,7 @@ export default function PrintDesignerPage() {
       }
     }
     return true;
-  }, [datasetBindings, datasetId, queryClient]);
+  }, [datasetBindings, datasetId, entityKeys, isEntity, queryClient]);
 
   const saveTemplate = useCallback(async (options?: { toast?: boolean }) => {
     const extracted = extractSnapshot();
@@ -448,11 +517,18 @@ export default function PrintDesignerPage() {
       return null;
     }
     try {
+      if (isEntity && !entityKind) {
+        Toast.error('请选择实体类型');
+        return null;
+      }
       if (!await validateAdvancedConfig(extracted.content, normalizedParams)) return null;
       const firstSheetPageConfig = extracted.content.sheets?.[0]?.pageConfig ?? DEFAULT_PAGE_CONFIG;
       const payload = {
         name: name.trim(),
-        datasetId,
+        datasetId: isEntity ? null : datasetId,
+        sourceType,
+        entityKind: isEntity ? entityKind : null,
+        entityRefId: isEntity ? entityRefId : null,
         content: extracted.content,
         params: normalizedParams,
         pageConfig: firstSheetPageConfig,
@@ -468,11 +544,17 @@ export default function PrintDesignerPage() {
     } catch {
       return null;
     }
-  }, [datasetId, extractSnapshot, name, params, remark, saveMutation, status, templateId, validateAdvancedConfig]);
+  }, [datasetId, entityKind, entityRefId, extractSnapshot, isEntity, name, params, remark, saveMutation, sourceType, status, templateId, validateAdvancedConfig]);
 
   async function handlePreview() {
     const saved = await saveTemplate({ toast: false });
     if (!saved) return;
+    // 实体模板：没有数据集可取数，改为挑一条样例审批单用真实渲染链路预览 PDF
+    if (isEntity) {
+      setPreviewResult(null);
+      setPreviewVisible(true);
+      return;
+    }
     // 无参数模板直接生成预览，跳过参数弹窗
     if ((saved.params ?? []).length === 0) {
       await handlePreviewSubmit({});
@@ -504,6 +586,46 @@ export default function PrintDesignerPage() {
     }
     const dataset = selectedDatasetDetailQuery.data;
     if (dataset && dataset.id === nextId) setParams(dataset.params ?? []);
+  }
+
+  function handleSourceTypeChange(next: ReportPrintSourceType) {
+    if (next === sourceType) return;
+    setSourceType(next);
+    if (next === 'entity') {
+      setEntityKind((current) => current ?? 'workflow_instance');
+      setDatasetId(null);
+      setParams([]);
+    } else {
+      setEntityKind(null);
+      setEntityRefId(null);
+    }
+  }
+
+  /** 「从流程表单生成」：用参照流程当前表单生成审批单版式，替换设计器工作簿（经确认） */
+  function handleGenerateFromForm() {
+    if (!entityKind) return;
+    if (!entityRefId) {
+      Toast.warning('请先选择参照流程');
+      return;
+    }
+    const apply = () => {
+      const draft = buildEntityTemplateDraft(entityKind, entityFormFields);
+      setSheetConfigs(draft.sheets.map((sheet) => ({ ...sheet, pageConfig: normalizePageConfig(sheet.pageConfig) })));
+      setActiveSheetId(draft.sheets[0]?.id ?? null);
+      setWorkbookSeed(printContentToUniver(draft.content, name || '审批单'));
+      Toast.success('已按表单生成版式，可继续调整后保存');
+    };
+    const hasDesign = sheetConfigs.some((sheet) => sheet.grid.cells.length > 0);
+    if (!hasDesign) {
+      apply();
+      return;
+    }
+    Modal.confirm({
+      title: '用表单生成的版式替换当前设计？',
+      content: '当前工作簿的单元格、合并与重复块都会被替换，保存前可撤销（重新加载页面）。',
+      okText: '替换',
+      onOk: apply,
+    });
   }
 
   function patchActiveSheetConfig(patch: Partial<ReportPrintPageConfig>) {
@@ -651,13 +773,34 @@ export default function PrintDesignerPage() {
         <Button icon={<ArrowLeft size={14} />} onClick={() => navigate('/report/print')}>返回</Button>
         <Input value={name} onChange={setName} placeholder="模板名称" style={{ width: 220 }} showClear />
         <Select
-          value={datasetId ?? undefined}
-          onChange={handleDatasetChange}
-          placeholder="选择数据集"
-          optionList={datasets.map((dataset) => ({ value: dataset.id, label: dataset.name }))}
-          showClear
-          style={{ width: 220 }}
+          value={sourceType}
+          onChange={(value) => handleSourceTypeChange(value as ReportPrintSourceType)}
+          optionList={[{ value: 'dataset', label: '数据集' }, { value: 'entity', label: REPORT_PRINT_ENTITY_KIND_LABELS.workflow_instance }]}
+          style={{ width: 170 }}
         />
+        {isEntity ? (
+          <Tooltip content="参照流程决定「表单字段」目录；留空为通用模板（只能引用审批单 / 审批记录等固定数据集）">
+            <Select
+              value={entityRefId ?? undefined}
+              onChange={(value) => setEntityRefId(value ? Number(value) : null)}
+              placeholder="参照流程（可选）"
+              optionList={definitionOptions}
+              loading={definitionsQuery.isPending}
+              filter
+              showClear
+              style={{ width: 220 }}
+            />
+          </Tooltip>
+        ) : (
+          <Select
+            value={datasetId ?? undefined}
+            onChange={handleDatasetChange}
+            placeholder="选择数据集"
+            optionList={datasets.map((dataset) => ({ value: dataset.id, label: dataset.name }))}
+            showClear
+            style={{ width: 220 }}
+          />
+        )}
         <Select
           value={status}
           onChange={(value) => setStatus((value as ReportPrintTemplate['status']) ?? 'enabled')}
@@ -665,6 +808,11 @@ export default function PrintDesignerPage() {
           style={{ width: 110 }}
         />
         <div style={{ flex: 1 }} />
+        {isEntity && (
+          <Tooltip content="按参照流程的表单快照生成审批单版式（基本信息 / 表单 / 明细 / 签名 / 审批记录），作为定制起点">
+            <Button icon={<Wand2 size={14} />} disabled={!entityRefId} onClick={handleGenerateFromForm}>从流程表单生成</Button>
+          </Tooltip>
+        )}
         <Tooltip content="同步当前页签配置">
           <Button icon={<RefreshCcw size={14} />} onClick={syncSheetsFromWorkbook}>同步页签</Button>
         </Tooltip>
@@ -687,6 +835,50 @@ export default function PrintDesignerPage() {
           <div className="report-designer__config" style={{ width: 380 }}>
             <Tabs collapsible="auto" activeKey={activePanel} onChange={(key) => setActivePanel(key as PanelKey)} type="line" size="small">
               <Tabs.TabPane tab="字段" itemKey="fields">
+                {isEntity && entityCatalog ? (
+                  <>
+                    <Typography.Title heading={6} style={{ marginTop: 0 }}>审批单字段</Typography.Title>
+                    <Typography.Text type="tertiary" size="small">
+                      主数据集「{entityCatalog.datasets[0]?.label}」的字段直接插入；其余数据集插入时会给单元格标上数据集，多行数据集需放在对应重复块内。
+                      {!entityRefId && ' 未选择参照流程，表单字段目录为空。'}
+                    </Typography.Text>
+                    <Divider margin={12} />
+                    <Space vertical align="start" style={{ width: '100%' }}>
+                      {entityCatalog.datasets.map((dataset, datasetIndex) => (
+                        <div key={dataset.key} style={{ width: '100%' }}>
+                          <Space wrap style={{ marginBottom: 6 }}>
+                            <Typography.Text strong>{dataset.label}</Typography.Text>
+                            <Tag size="small" color={dataset.cardinality === 'rows' ? 'blue' : 'grey'}>{dataset.cardinality === 'rows' ? '多行' : '单行'}</Tag>
+                            <Typography.Text type="tertiary" size="small">{datasetIndex === 0 ? 'main' : dataset.key}</Typography.Text>
+                          </Space>
+                          {dataset.columns.length === 0 ? (
+                            <Typography.Text type="tertiary" size="small">（无字段）</Typography.Text>
+                          ) : (
+                            <Space wrap>
+                              {dataset.columns.map((column) => (
+                                <Button
+                                  key={column.key}
+                                  size="small"
+                                  theme={column.kind === 'image' ? 'light' : 'solid'}
+                                  type={column.kind === 'image' ? 'tertiary' : 'tertiary'}
+                                  onClick={() => insertEntityField(datasetIndex === 0 ? null : dataset.key, column.key, column.kind === 'image')}
+                                >
+                                  {column.label}
+                                </Button>
+                              ))}
+                            </Space>
+                          )}
+                          <Divider margin={10} />
+                        </div>
+                      ))}
+                    </Space>
+                    <Typography.Title heading={6}>语法速查</Typography.Title>
+                    <Typography.Paragraph size="small" spacing="extended" style={{ color: 'var(--semi-color-text-2)' }}>
+                      ${'{字段}'}：当前行值；${'{SUM(字段)}'}：多行数据集合计（放在重复块外）；图片字段（签名）插入为图片单元格；${'{QRCODE(serialNo)}'}：业务编号二维码。
+                    </Typography.Paragraph>
+                  </>
+                ) : (
+                <>
                 <Typography.Title heading={6} style={{ marginTop: 0 }}>字段插入</Typography.Title>
                 <Typography.Text type="tertiary" size="small">
                   支持明细、标量、总计、组小计、页小计，以及二维码 / Code128 条码表达式。
@@ -728,6 +920,8 @@ export default function PrintDesignerPage() {
                 <Typography.Paragraph size="small" spacing="extended" style={{ color: 'var(--semi-color-text-2)' }}>
                   ${'{field}'}：明细；#{'{field}'}：标量；${'{SUM(field)}'}：总计；${'{GROUP_SUM(field)}'}：组小计；${'{PAGE_SUM(field)}'}：页小计；${'{QRCODE(field)}'} / ${'{CODE128(field)}'}：二维码 / 条码。
                 </Typography.Paragraph>
+                </>
+                )}
               </Tabs.TabPane>
 
               <Tabs.TabPane tab="参数" itemKey="params">
@@ -884,10 +1078,7 @@ export default function PrintDesignerPage() {
                 <Field label="页签默认数据集">
                   <Select
                     value={activeSheet?.datasetKey || 'main'}
-                    optionList={[
-                      { value: 'main', label: 'main（主数据集）' },
-                      ...datasetBindings.map((binding) => ({ value: binding.key, label: binding.key })),
-                    ]}
+                    optionList={datasetKeyOptions}
                     onChange={(value) => patchActiveSheet({ datasetKey: value === 'main' ? undefined : String(value) })}
                     style={{ width: '100%' }}
                   />
@@ -902,10 +1093,7 @@ export default function PrintDesignerPage() {
                     <Field label="数据集">
                       <Select
                         value={block.datasetKey}
-                        optionList={[
-                          { value: 'main', label: 'main' },
-                          ...datasetBindings.map((binding) => ({ value: binding.key, label: binding.key })),
-                        ]}
+                        optionList={datasetKeyOptions}
                         onChange={(value) => updateRepeatBlock(index, { datasetKey: String(value) })}
                         style={{ width: '100%' }}
                       />
@@ -924,10 +1112,7 @@ export default function PrintDesignerPage() {
                 <Field label="单元格数据集">
                   <Select
                     value={selectedCellDatasetKey || 'main'}
-                    optionList={[
-                      { value: 'main', label: 'main' },
-                      ...datasetBindings.map((binding) => ({ value: binding.key, label: binding.key })),
-                    ]}
+                    optionList={datasetKeyOptions}
                     onChange={(value) => setSelectedCellDatasetKey(value === 'main' ? '' : String(value))}
                     style={{ width: '100%' }}
                   />
@@ -1190,13 +1375,49 @@ export default function PrintDesignerPage() {
         onSubmit={(values) => void handlePreviewSubmit(values)}
       />
 
-      <PrintPreviewModal
-        visible={previewVisible}
-        loading={renderMutation.isPending}
-        result={previewResult}
-        params={previewParams}
-        onClose={() => setPreviewVisible(false)}
-      />
+      {isEntity ? (
+        <Modal
+          visible={previewVisible}
+          title="预览审批单模板"
+          footer={null}
+          onCancel={() => setPreviewVisible(false)}
+          width={560}
+        >
+          <Typography.Text type="tertiary" size="small">
+            选择一条样例审批单，用真实渲染链路（数据注入 → 模板 → PDF）预览当前已保存的版式。
+          </Typography.Text>
+          <Field label="样例审批单">
+            <Select
+              value={sampleInstanceId ?? undefined}
+              onChange={(value) => setSampleInstanceId(value ? Number(value) : null)}
+              onSearch={setSampleKeyword}
+              filter
+              remote
+              loading={sampleInstancesQuery.isFetching}
+              placeholder={entityRefId ? '搜索该流程的审批单' : '搜索任意审批单'}
+              optionList={(sampleInstancesQuery.data ?? []).map((item) => ({
+                value: item.instanceId,
+                label: `${item.serialNo ? `${item.serialNo} · ` : ''}${item.title}`,
+              }))}
+              emptyContent={<Empty description="没有可用的样例审批单，请先发起一条流程" />}
+              style={{ width: '100%' }}
+            />
+          </Field>
+          {sampleInstanceId ? (
+            <WorkflowPrintButton instanceId={sampleInstanceId} templateId={templateId} theme="solid" size="default">
+              生成 PDF 预览
+            </WorkflowPrintButton>
+          ) : null}
+        </Modal>
+      ) : (
+        <PrintPreviewModal
+          visible={previewVisible}
+          loading={renderMutation.isPending}
+          result={previewResult}
+          params={previewParams}
+          onClose={() => setPreviewVisible(false)}
+        />
+      )}
 
       <Modal
         visible={!canSave}

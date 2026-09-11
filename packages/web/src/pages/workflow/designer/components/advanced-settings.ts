@@ -1,4 +1,4 @@
-import type { WorkflowSerialNoConfig, WorkflowNotifyChannels, WorkflowApproverDedupMode } from '@zenith/shared/workflow';
+import type { WorkflowSerialNoConfig, WorkflowNotifyChannels, WorkflowApproverDedupMode, WorkflowPrintSettings } from '@zenith/shared/workflow';
 
 export interface AdvancedSettingsData {
   allowWithdraw: boolean;
@@ -11,6 +11,8 @@ export interface AdvancedSettingsData {
   summaryFields?: string[];
   serialNo?: WorkflowSerialNoConfig;
   notifyChannels?: WorkflowNotifyChannels;
+  /** 审批单打印限制与水印（模板绑定在流程定义列 printTemplateId） */
+  print?: WorkflowPrintSettings;
 }
 
 export const DEFAULT_SERIAL_NO: Required<WorkflowSerialNoConfig> = {

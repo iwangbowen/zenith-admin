@@ -38,6 +38,7 @@
 | `workflow:instance:create` | 发起工作台、我的申请、草稿、撤回、重新提交、催办 |
 | `workflow:instance:list` | 抄送我的、评论、保存视图 |
 | `workflow:task:handle` | 待我审批、我已办、审批处理、转办、委派、加签、减签、退回、协办、撤回已办、常用语 |
+| `workflow:instance:print` | 打印审批单 PDF（在详情可见性之上的独立授权，可把「能看」与「能打印」分开）；每次打印写操作日志 |
 
 实例详情接口接受 `workflow:instance:list`、`workflow:task:handle`、`workflow:instance:monitor` 三者任一；持有 `monitor` 的管理员可查看全局实例详情，其余身份按参与关系过滤（见下文「实例详情可见性」）。
 

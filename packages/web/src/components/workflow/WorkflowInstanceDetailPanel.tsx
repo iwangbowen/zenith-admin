@@ -16,6 +16,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useApiMutation } from '@/lib/contract-query';
 import { ApiError } from '@/lib/query';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermission } from '@/hooks/usePermission';
 import { formatDateTime, formatDurationBetween } from '@/utils/date';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import ApprovalTimeline from '@/components/ApprovalTimeline';
@@ -296,6 +297,7 @@ export default function WorkflowInstanceDetailPanel({
   viewerFieldPermissions, formEditable = false, onFormApiReady,
 }: Readonly<Props>) {
   const { user } = useAuth();
+  const { hasPermission } = usePermission();
   const recallMutation = useApiMutation(workflowTaskContract.recall);
   if (loading) {
     return <WorkflowDetailSkeleton />;
@@ -440,7 +442,7 @@ export default function WorkflowInstanceDetailPanel({
           {instance.suspendReason ? ` 原因：${instance.suspendReason}` : ''}
         </div>
       )}
-      {(instance.parentInstanceId || extraActions || myRecallableTask || instance.status !== 'draft') ? (
+      {(instance.parentInstanceId || extraActions || myRecallableTask || (instance.status !== 'draft' && hasPermission('workflow:instance:print'))) ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
           {instance.parentInstanceId ? (
             <Button
@@ -453,8 +455,8 @@ export default function WorkflowInstanceDetailPanel({
               来自父流程实例 #{instance.parentInstanceId}
             </Button>
           ) : null}
-          {/* 草稿尚无审批链与流水号，不提供打印；其余状态均可打印当前快照 */}
-          {instance.status !== 'draft' ? <WorkflowPrintButton instanceId={instance.id} /> : null}
+          {/* 草稿尚无审批链与流水号，不提供打印；其余状态按打印权限提供当前快照的 PDF */}
+          {instance.status !== 'draft' && hasPermission('workflow:instance:print') ? <WorkflowPrintButton instanceId={instance.id} /> : null}
           {extraActions}
           {myRecallableTask ? (
             <Popconfirm title="撤回我刚做的处理？" content="后续节点已处理时无法撤回。" onConfirm={() => void handleRecall()}>

@@ -103,6 +103,11 @@ export const workflowAdvancedSettingsSchema: z.ZodType<WorkflowAdvancedSettings>
     sms: z.boolean().optional(),
     smsTemplateId: z.int().optional(),
   }).optional(),
+  print: z.object({
+    onlyWhenApproved: z.boolean().optional(),
+    watermark: z.boolean().optional(),
+    watermarkText: z.string().max(64).optional(),
+  }).optional(),
 }).meta({ id: 'WorkflowAdvancedSettings' });
 
 /** React Flow 节点 + 边 + 高级设置（流程定义 / 版本 / 模板 / 快照共用） */

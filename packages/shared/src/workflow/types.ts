@@ -566,6 +566,18 @@ export interface WorkflowAdvancedSettings {
   serialNo?: WorkflowSerialNoConfig;
   /** 待办/结果的多渠道通知（站内信始终开启；email/sms 可选） */
   notifyChannels?: WorkflowNotifyChannels;
+  /** 审批单打印限制与水印 */
+  print?: WorkflowPrintSettings;
+}
+
+/** 审批单打印设置（打印模板绑定在流程定义列 printTemplateId，不在此处） */
+export interface WorkflowPrintSettings {
+  /** 仅审批通过后允许打印（用章 / 合同类流程防止打印未生效单据） */
+  onlyWhenApproved?: boolean;
+  /** 页面叠加水印 */
+  watermark?: boolean;
+  /** 水印文本，支持 {printer} / {time} / {serialNo} 占位；空 = 「打印人 时间」 */
+  watermarkText?: string;
 }
 
 /** 多渠道通知配置 */

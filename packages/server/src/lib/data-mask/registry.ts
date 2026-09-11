@@ -33,6 +33,16 @@ export function registerOperationSensitivity(op: AnyOperation): readonly Sensiti
   return refs;
 }
 
+/**
+ * 非契约出口（PDF 打印 / 文件导出等二进制通道）登记其打码的敏感字段：策略页据此列出可配置项，
+ * 出口自身在生成内容前调用 `resolveMaskDecisions(refs)` 应用同一套策略与豁免。
+ * `source` 用 `KIND target` 形式（如 `PRINT workflow_instance`）与 `METHOD /path` 区分。
+ */
+export function registerSensitiveSource(source: string, refs: readonly SensitiveFieldRef[]): readonly SensitiveFieldRef[] {
+  byOperation.set(source, refs);
+  return refs;
+}
+
 /** 全部已登记的敏感字段，按 `entity.field` 去重并按实体 / 字段排序 */
 export function listSensitiveFieldEntries(): SensitiveFieldEntry[] {
   const merged = new Map<string, { ref: SensitiveFieldRef; operations: Set<string> }>();

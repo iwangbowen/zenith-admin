@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Form, Modal, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Modal, Radio, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -23,7 +23,8 @@ import {
 } from '@/hooks/queries/report-print';
 import PrintPreviewModal from './PrintPreviewModal';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
-import type { CreateReportPrintTemplateInput, ReportPrintRenderResult, ReportPrintTemplate, UpdateReportPrintTemplateInput } from '@zenith/shared/report';
+import { REPORT_PRINT_ENTITY_KIND_LABELS } from '@zenith/shared/report';
+import type { CreateReportPrintTemplateInput, ReportPrintRenderResult, ReportPrintSourceType, ReportPrintTemplate, UpdateReportPrintTemplateInput } from '@zenith/shared/report';
 import type { ExportJobFormat } from '@zenith/shared/tasks';
 import { useDictItems } from '@/hooks/useDictItems';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
@@ -49,6 +50,8 @@ export default function PrintTemplatesPage() {
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportPrintKeys.lists });
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  // 新增 / 编辑弹窗中的数据来源（控制数据集选择器显隐）；打开弹窗时随记录回填
+  const [dialogSourceType, setDialogSourceType] = useState<ReportPrintSourceType>('dataset');
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewResult, setPreviewResult] = useState<ReportPrintRenderResult | null>(null);
   const [previewParams, setPreviewParams] = useState<Record<string, unknown>>({});
@@ -82,24 +85,31 @@ export default function PrintTemplatesPage() {
   const printModal = useEditModal<ReportPrintTemplate, Record<string, unknown>, CreateReportPrintTemplateInput | UpdateReportPrintTemplateInput>({
     entityName: '打印模板',
     save: saveMutation,
-    defaults: { status: 'enabled' },
+    defaults: { status: 'enabled', sourceType: 'dataset' },
     labelWidth: 72,
     toValues: (record) => ({
       name: record.name,
       ownerId: record.ownerId ?? undefined,
       folderId: record.folderId ?? undefined,
+      sourceType: record.sourceType,
       datasetId: record.datasetId ?? undefined,
       status: record.status,
       remark: record.remark ?? '',
     }),
-    beforeSave: (values) => ({
-      name: String(values.name ?? '').trim(),
-      ownerId: values.ownerId ? Number(values.ownerId) : null,
-      folderId: values.folderId ? Number(values.folderId) : null,
-      datasetId: values.datasetId ? Number(values.datasetId) : null,
-      status: values.status as ReportPrintTemplate['status'],
-      remark: values.remark ? String(values.remark) : undefined,
-    }),
+    beforeSave: (values) => {
+      const sourceType = values.sourceType === 'entity' ? 'entity' : 'dataset';
+      return {
+        name: String(values.name ?? '').trim(),
+        ownerId: values.ownerId ? Number(values.ownerId) : null,
+        folderId: values.folderId ? Number(values.folderId) : null,
+        sourceType,
+        // 审批单模板：实体类型固定，参照流程在设计器里选择
+        entityKind: sourceType === 'entity' ? 'workflow_instance' : null,
+        datasetId: sourceType === 'dataset' && values.datasetId ? Number(values.datasetId) : null,
+        status: values.status as ReportPrintTemplate['status'],
+        remark: values.remark ? String(values.remark) : undefined,
+      };
+    },
     onSaved: (saved, { isEdit }) => {
       if (!isEdit) navigate(`/report/print/${saved.id}/design`, { state: { tabTitle: `设计·${saved.name}` } });
     },
@@ -192,11 +202,16 @@ export default function PrintTemplatesPage() {
   const columns: ColumnProps<ReportPrintTemplate>[] = [
     {
       title: '名称', dataIndex: 'name', minWidth: 200,
-      render: (v: string, record: ReportPrintTemplate) => hasPermission('report:print:list') ? (
+      render: (v: string, record: ReportPrintTemplate) => hasPermission('report:print:list') && record.sourceType !== 'entity' ? (
         <Typography.Text link ellipsis={{ showTooltip: true }} onClick={() => void openPreview(record)}>{v}</Typography.Text>
       ) : v,
     },
-    { title: '数据集', dataIndex: 'datasetName', width: 160, render: renderEllipsis },
+    {
+      title: '数据来源', dataIndex: 'datasetName', width: 160,
+      render: (v: string | null, record: ReportPrintTemplate) => record.sourceType === 'entity'
+        ? <Typography.Text>{REPORT_PRINT_ENTITY_KIND_LABELS[record.entityKind ?? 'workflow_instance']}{record.entityRefId ? '' : '（通用）'}</Typography.Text>
+        : renderEllipsis(v ?? ''),
+    },
     { title: '负责人', dataIndex: 'ownerName', width: 120, render: (v: string | null) => v || '—' },
     { title: '目录', dataIndex: 'folderName', width: 140, render: (v: string | null) => v || '—' },
     { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
@@ -207,11 +222,12 @@ export default function PrintTemplatesPage() {
       desktopInlineKeys: ['design', 'preview', 'edit'],
       actions: (record) => [
         ...(hasPermission('report:print:update') ? [{ key: 'design', label: '设计', onClick: () => navigate(`/report/print/${record.id}/design`, { state: { tabTitle: `设计·${record.name}` } }) }] : []),
-        ...(hasPermission('report:print:list') ? [{ key: 'preview', label: '预览', onClick: () => void openPreview(record) }] : []),
-        ...(hasPermission('report:print:update') ? [{ key: 'edit', label: '编辑', onClick: () => printModal.openEdit(record) }] : []),
+        // 实体模板没有数据集可取数：预览 / 导出在审批实例详情或设计器的样例预览中进行
+        ...(hasPermission('report:print:list') && record.sourceType !== 'entity' ? [{ key: 'preview', label: '预览', onClick: () => void openPreview(record) }] : []),
+        ...(hasPermission('report:print:update') ? [{ key: 'edit', label: '编辑', onClick: () => { setDialogSourceType(record.sourceType); printModal.openEdit(record); } }] : []),
         { key: 'governance', label: '权限与转移', onClick: () => navigate(`/report/governance?resourceType=print_template&resourceId=${record.id}`) },
         ...(hasPermission('report:print:create') ? [{ key: 'clone', label: '复制', onClick: () => void handleClone(record) }] : []),
-        ...(hasPermission('report:print:list') ? [
+        ...(hasPermission('report:print:list') && record.sourceType !== 'entity' ? [
           { key: 'exportXlsx', label: '导出 XLSX', dividerBefore: true, loading: exportRunner.isPending, onClick: () => handleExport(record, 'xlsx') },
           { key: 'exportPdf', label: '导出 PDF', loading: exportRunner.isPending, onClick: () => handleExport(record, 'pdf') },
           { key: 'exportDocx', label: '导出 Word', loading: exportRunner.isPending, onClick: () => handleExport(record, 'docx') },
@@ -246,7 +262,7 @@ export default function PrintTemplatesPage() {
         onReset={handleReset}
         create={(
           hasPermission('report:print:create')
-            ? <CreateButton onClick={printModal.openCreate} /> : null
+            ? <CreateButton onClick={() => { setDialogSourceType('dataset'); printModal.openCreate(); }} /> : null
         )}
         actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
@@ -269,20 +285,32 @@ export default function PrintTemplatesPage() {
         {...printModal.modalProps}
         width={560}
       >
-        <Form key={printModal.formKey} {...printModal.formProps}>
+        <Form key={printModal.formKey} {...printModal.formProps} onValueChange={(values: Record<string, unknown>) => setDialogSourceType(values.sourceType === 'entity' ? 'entity' : 'dataset')}>
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear placeholder="如：销售出库单" />
           <Form.Select field="ownerId" label="负责人" filter showClear style={{ width: '100%' }}
             optionList={userOptions} />
           <Form.Select field="folderId" label="资源目录" filter showClear style={{ width: '100%' }}
             optionList={folderOptions} />
-          <Form.Select
-            field="datasetId"
-            label="数据集"
-            placeholder="可先不绑定，设计时再选择"
-            optionList={datasets.map((d) => ({ value: d.id, label: d.name }))}
-            style={{ width: '100%' }}
-            showClear
-          />
+          <Form.RadioGroup
+            field="sourceType"
+            label="数据来源"
+            type="button"
+            disabled={printModal.isEdit}
+            extraText={printModal.isEdit ? '数据来源创建后不可更改' : '审批单模板在渲染时由流程实例注入数据，无需数据集'}
+          >
+            <Radio value="dataset">报表数据集</Radio>
+            <Radio value="entity">{REPORT_PRINT_ENTITY_KIND_LABELS.workflow_instance}</Radio>
+          </Form.RadioGroup>
+          <div style={{ display: dialogSourceType === 'entity' ? 'none' : undefined }}>
+            <Form.Select
+              field="datasetId"
+              label="数据集"
+              placeholder="可先不绑定，设计时再选择"
+              optionList={datasets.map((d) => ({ value: d.id, label: d.name }))}
+              style={{ width: '100%' }}
+              showClear
+            />
+          </div>
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={statusOptions} />
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />

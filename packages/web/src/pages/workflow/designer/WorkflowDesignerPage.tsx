@@ -7,7 +7,8 @@ import { Button, Divider, Modal, RadioGroup, Radio, Toast, Tooltip, Typography }
 import PageLoading from '@/components/PageLoading';
 import { ArrowLeft, Check, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Stethoscope, TriangleAlert, Undo2, Upload } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared/workflow';
-import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared/workflow';
+import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, generateWorkflowPrintContent, resolveApproverDedupMode, workflowPrintPageConfig } from '@zenith/shared/workflow';
+import { useSaveReportPrintTemplate } from '@/hooks/queries/report-print';
 import { downloadBlob } from '@/utils/download';
 import { hasBusinessFormComponent } from '@/utils/business-form-registry';
 
@@ -145,6 +146,9 @@ export default function WorkflowDesignerPage({
 
   // 更多设置
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettingsData>(DEFAULT_ADVANCED_SETTINGS);
+  // 审批单打印模板（流程定义列，与 flowData.settings 分离）
+  const [printTemplateId, setPrintTemplateId] = useState<number | null>(null);
+  const createPrintTemplateMutation = useSaveReportPrintTemplate();
 
   // 基础信息（内联编辑）
   const [metaName, setMetaName] = useState('');
@@ -236,6 +240,7 @@ export default function WorkflowDesignerPage({
       setFormName(data.formName ?? null);
       setFormType(data.formType ?? 'designer');
       setCustomForm(data.customForm ?? null);
+      setPrintTemplateId(data.printTemplateId ?? null);
       if (data.formFields) setLocalFormFields(data.formFields);
       const fd = data.flowData;
       if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
@@ -271,6 +276,7 @@ export default function WorkflowDesignerPage({
     setFormName(d.formName ?? null);
     setFormType(d.formType ?? 'designer');
     setCustomForm(d.customForm ?? null);
+    setPrintTemplateId((d as WorkflowDefinition).printTemplateId ?? null);
     if (d.formFields) setLocalFormFields(d.formFields);
     const fd = d.flowData;
     if (fd?.process) history.reset(fd.process as unknown as FlowProcess);
@@ -462,6 +468,7 @@ export default function WorkflowDesignerPage({
     formId: formType === 'designer' ? formId : null,
     formType,
     customForm: formType === 'custom' || formType === 'external' ? customForm : null,
+    printTemplateId,
   });
   const baselineRef = useRef<string | null>(null);
   const pendingBaselineRef = useRef(true);
@@ -573,6 +580,7 @@ export default function WorkflowDesignerPage({
       formId: formType === 'designer' ? formId : null,
       formType,
       customForm: formType === 'custom' || formType === 'external' ? customForm : null,
+      printTemplateId,
     };
 
     const saved = await saveMutation.mutateAsync({ id: isNew ? null : definitionId, values: payload });
@@ -584,6 +592,38 @@ export default function WorkflowDesignerPage({
     // 保存成功后当前状态即已持久化，刷新未保存守卫基线
     baselineRef.current = serializeDesignerState();
     return saved;
+  };
+
+  /**
+   * 「新建模板」：按当前表单快照生成审批单版式，创建为本流程专用的实体打印模板并绑定，
+   * 随后在新页签打开打印设计器供调整。模板名取流程名，重名时报表域会以唯一约束提示。
+   */
+  const handleCreatePrintTemplate = async () => {
+    if (!definitionId) {
+      Toast.warning('请先保存流程');
+      return;
+    }
+    const fields = formType === 'designer' ? localFormFields : [];
+    try {
+      const saved = await createPrintTemplateMutation.mutateAsync({
+        values: {
+          name: `${metaName.trim() || '流程'}审批单`,
+          sourceType: 'entity',
+          entityKind: 'workflow_instance',
+          entityRefId: definitionId,
+          content: generateWorkflowPrintContent(fields, { includeCc: true, includeComments: true }),
+          pageConfig: workflowPrintPageConfig(),
+          params: [],
+          status: 'enabled',
+          remark: `由流程「${metaName}」的表单自动生成`,
+        },
+      });
+      setPrintTemplateId(saved.id);
+      Toast.success('已生成审批单模板并绑定，请保存流程');
+      window.open(`/report/print/${saved.id}/design`, '_blank', 'noopener');
+    } catch {
+      // 请求层已提示
+    }
   };
 
   /** 发布前体检：拉取最新体检报告（critical 阻断发布,分数用于发布摘要） */
@@ -999,6 +1039,13 @@ export default function WorkflowDesignerPage({
           onChange={setAdvancedSettings}
           readOnly={readOnly}
           formFields={formFields}
+          print={{
+            definitionId,
+            templateId: printTemplateId,
+            onTemplateChange: setPrintTemplateId,
+            onCreateTemplate: () => void handleCreatePrintTemplate(),
+            creating: createPrintTemplateMutation.isPending,
+          }}
         />
       )}
 

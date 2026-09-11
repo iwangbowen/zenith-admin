@@ -73,6 +73,7 @@ import {
   getNextDefinitionVersionId,
 } from '@/mocks/data/workflow';
 import { mockWorkflowForms } from '@/mocks/data/workflow-forms';
+import { mockReportPrintTemplates } from '@/mocks/data/report';
 import { mockUsers } from '@/mocks/data/users';
 import { mockWorkflowJobs, mockWorkflowJobExecutions } from '@/mocks/data/workflow-jobs';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
@@ -1446,6 +1447,8 @@ export const workflowHandlers = [
       formFields: null,
       formType: body.formType,
       customForm: isBusinessFormType(body.formType) ? (body.customForm ?? null) : null,
+      printTemplateId: body.printTemplateId ?? null,
+      printTemplateName: body.printTemplateId ? (mockReportPrintTemplates.find((t) => t.id === body.printTemplateId)?.name ?? null) : null,
       status: 'draft',
       version: 1,
       tenantId: 1,
@@ -1484,6 +1487,11 @@ export const workflowHandlers = [
       customForm: isBusinessFormType(nextFormType)
         ? (body.customForm !== undefined ? body.customForm ?? null : prev.customForm)
         : null,
+      printTemplateId: body.printTemplateId !== undefined ? body.printTemplateId ?? null : (prev.printTemplateId ?? null),
+      printTemplateName: (() => {
+        const id = body.printTemplateId !== undefined ? body.printTemplateId : prev.printTemplateId;
+        return id ? (mockReportPrintTemplates.find((t) => t.id === id)?.name ?? null) : null;
+      })(),
       status: nextStatus,
       version: prev.version,
       updatedAt: mockDateTime(),
