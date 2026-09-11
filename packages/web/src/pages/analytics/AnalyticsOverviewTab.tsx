@@ -4,7 +4,7 @@ import { Card, Select, Skeleton, Switch, Typography } from '@douyinfe/semi-ui';
 import { Activity, BarChart3, Clock, Eye, Flame, Target, TrendingUp, Users, Zap } from 'lucide-react';
 import { LineChart, chartOptions, makeLineSpec, useChartPalette, StatCard, StatGrid } from '@/components/charts';
 import { DateRangeFilter } from '@/components/search-filters';
-import { formatDateForApi } from '@/utils/date';
+import { formatDateRangeValuesForApi } from '@/utils/date';
 import { useAnalyticsOverview, useAnalyticsTrends } from '@/hooks/queries/analytics';
 import { useBehaviorDays } from './behavior-days-context';
 import { ACCENT_COLORS, DAYS_OPTIONS, msToReadable, numberText, percentText, sectionStyle, type ChartRow } from './analytics-format';
@@ -15,12 +15,11 @@ export default function AnalyticsOverviewTab() {
   const [days, setDays] = useBehaviorDays();
   const [customRange, setCustomRange] = useState<[Date, Date] | null>(null);
   const [compare, setCompare] = useState(false);
-  const range = useMemo(
-    () => (customRange
-      ? { days, startDate: formatDateForApi(customRange[0]), endDate: formatDateForApi(customRange[1]) }
-      : { days }),
-    [customRange, days],
-  );
+  const range = useMemo(() => {
+    if (!customRange) return { days };
+    const [startDate, endDate] = formatDateRangeValuesForApi(customRange);
+    return { days, startDate, endDate };
+  }, [customRange, days]);
   const overviewQuery = useAnalyticsOverview(range);
   const trendsQuery = useAnalyticsTrends(range, compare);
   const overview = overviewQuery.data ?? null;
