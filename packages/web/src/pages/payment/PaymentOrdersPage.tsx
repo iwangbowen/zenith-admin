@@ -15,8 +15,8 @@ import PaymentStatsPanel from './PaymentStatsPanel';
 import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { enumValueOf, type BodyOf } from '@zenith/shared/core';
-import { createPaymentSchema, PAYMENT_CASHIER_METHODS, PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS, PAYMENT_ORDER_STATUSES, PAYMENT_REFUND_STATUS_LABELS, PAYMENT_METHOD_OPTIONS, PAYMENT_ORDER_STATUS_OPTIONS, paymentOrderContract } from '@zenith/shared/payment';
-import type { CreateRefundInput, PaymentApp, PaymentCashierMethod, PaymentChannel, PaymentMethod, PaymentOrder, PaymentOrderStatus, PaymentRefund, PaymentRefundResult, PaymentRefundStatus, CreatePaymentResult, PaymentStats } from '@zenith/shared/payment';
+import { createPaymentSchema, PAYMENT_CASHIER_METHODS, PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS, PAYMENT_ORDER_STATUSES, PAYMENT_REFUND_STATUS_LABELS, PAYMENT_METHOD_OPTIONS, PAYMENT_ORDER_STATUS_OPTIONS, paymentOrderContract } from '@zenith/shared/payment';
+import type { CreateRefundInput, PaymentCashierMethod, PaymentChannel, PaymentMethod, PaymentOrder, PaymentOrderStatus, PaymentRefund, PaymentRefundResult, PaymentRefundStatus, CreatePaymentResult, PaymentStats } from '@zenith/shared/payment';
 import {
   paymentOrderKeys,
   useClosePaymentOrder,
@@ -39,11 +39,10 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { usePaymentAppList } from '@/hooks/queries/payment-apps';
-import { usePaymentCapabilities } from '@/hooks/queries/payment-capabilities';
-import { usePaymentMethodList } from '@/hooks/queries/payment-methods';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
+import { useAppPaymentMethodOptions } from './payment-app-options';
 const STATUS_COLOR = {
   pending: 'grey', paying: 'blue', success: 'green', closed: 'grey', refunding: 'amber', refunded: 'orange', failed: 'red',
   unknown: 'amber',
@@ -51,12 +50,6 @@ const STATUS_COLOR = {
 const REFUND_STATUS_COLOR = { pending: 'grey', processing: 'blue', success: 'green', failed: 'red', unknown: 'amber' } as const satisfies Record<PaymentRefundStatus, string>;
 const yuan = formatYuan;
 const PAYMENT_CREATE_METHODS = createPaymentSchema.shape.payMethod.options;
-
-function paymentAppConfigId(app: PaymentApp, channel: PaymentChannel): number | null {
-  if (channel === 'wechat') return app.wechatConfigId ?? null;
-  if (channel === 'alipay') return app.alipayConfigId ?? null;
-  return app.unionpayConfigId ?? null;
-}
 
 interface SearchParams {
   keyword: string;
@@ -79,7 +72,6 @@ export default function PaymentOrdersPage() {
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const canViewRefunds = hasPermission('payment:refund:list') || hasPermission('payment:order:refund');
-  const canReadCapabilities = hasPermission('payment:channel:list');
 
   const appsQuery = usePaymentAppList({ page: 1, pageSize: 100 });
   const paymentApps = useMemo(() => appsQuery.data?.list ?? [], [appsQuery.data?.list]);
@@ -95,17 +87,6 @@ export default function PaymentOrdersPage() {
         label: `${app.name}（${app.environment === 'sandbox' ? '沙箱' : '生产'}）`,
       })),
     [paymentApps],
-  );
-  const capabilitiesQuery = usePaymentCapabilities(
-    { operation: 'payment.create', currency: 'CNY' },
-    canReadCapabilities,
-  );
-  const paymentMethodQuery = usePaymentMethodList();
-  const enabledPaymentMethods = useMemo(
-    () => paymentMethodQuery.data
-      ? new Set(paymentMethodQuery.data.filter((config) => config.enabled).map((config) => config.method))
-      : null,
-    [paymentMethodQuery.data],
   );
 
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
@@ -125,36 +106,7 @@ export default function PaymentOrdersPage() {
   const refundIdempotencyKey = useRef<string | null>(null);
 
   const selectedPaymentApp = paymentApps.find((app) => app.id === selectedApplicationId);
-  const paymentMethodOptions = useMemo(() => {
-    if (!selectedPaymentApp || !enabledPaymentMethods) return [];
-
-    const appEnvironment = selectedPaymentApp.environment === 'sandbox' ? 'sandbox' : 'live';
-    if (capabilitiesQuery.data) {
-      const boundConfigIds = new Set(
-        (['wechat', 'alipay', 'unionpay'] as const)
-          .map((channel) => paymentAppConfigId(selectedPaymentApp, channel))
-          .filter((id): id is number => id != null),
-      );
-      const supportedMethods = new Set<PaymentMethod>();
-      for (const config of capabilitiesQuery.data.configs) {
-        if (!boundConfigIds.has(config.channelConfigId) || config.environment !== appEnvironment) continue;
-        for (const capability of config.capabilities) {
-          if (capability.supported && capability.paymentMethod) supportedMethods.add(capability.paymentMethod);
-        }
-      }
-      return PAYMENT_CREATE_METHODS
-        .filter((method) => enabledPaymentMethods.has(method) && supportedMethods.has(method))
-        .map((value) => ({ value, label: PAYMENT_METHOD_LABELS[value] }));
-    }
-
-    // 无渠道能力查询权限或能力接口暂时不可用时，退化为应用已绑定渠道；服务端下单仍会做最终能力校验。
-    if (!canReadCapabilities || capabilitiesQuery.isError) {
-      return PAYMENT_CREATE_METHODS
-        .filter((method) => enabledPaymentMethods.has(method) && paymentAppConfigId(selectedPaymentApp, PAYMENT_METHOD_CHANNEL[method]) != null)
-        .map((value) => ({ value, label: PAYMENT_METHOD_LABELS[value] }));
-    }
-    return [];
-  }, [canReadCapabilities, capabilitiesQuery.data, capabilitiesQuery.isError, enabledPaymentMethods, selectedPaymentApp]);
+  const { options: paymentMethodOptions, canReadCapabilities, capabilitiesQuery } = useAppPaymentMethodOptions(selectedPaymentApp, PAYMENT_CREATE_METHODS);
 
   function buildQuery(active: SearchParams): Omit<PaymentOrderListParams, 'page' | 'pageSize'> {
     return {

@@ -12,11 +12,9 @@ import { formatDateTimeForApi } from '@/utils/date';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { PAYMENT_CASHIER_METHODS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS, PAYMENT_LINK_STATUS_LABELS, PAYMENT_LINK_STATUS_OPTIONS } from '@zenith/shared/payment';
-import type { PaymentApp, PaymentCashierMethod, PaymentChannel, PaymentLink, PaymentLinkStatus } from '@zenith/shared/payment';
+import { PAYMENT_CASHIER_METHODS, PAYMENT_METHOD_LABELS, PAYMENT_LINK_STATUS_LABELS, PAYMENT_LINK_STATUS_OPTIONS } from '@zenith/shared/payment';
+import type { PaymentApp, PaymentCashierMethod, PaymentLink, PaymentLinkStatus } from '@zenith/shared/payment';
 import { paymentLinkKeys, useDeletePaymentLinks, usePaymentLinkDetail, usePaymentLinkList, useRotatePaymentLinkToken, useSavePaymentLink, type PaymentLinkSaveValues } from '@/hooks/queries/payment-links';
-import { usePaymentCapabilities } from '@/hooks/queries/payment-capabilities';
-import { usePaymentMethodList } from '@/hooks/queries/payment-methods';
 import { useEnsureShortLink } from '@/hooks/queries/short-links';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -24,7 +22,7 @@ import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { useEnabledPaymentAppLookup } from './payment-app-options';
+import { useAppPaymentMethodOptions, useEnabledPaymentAppLookup } from './payment-app-options';
 import { paymentMoneyColumn } from './payment-display';
 
 const yuan = (cents: number | null | undefined) => formatYuan(cents, '用户填写');
@@ -32,12 +30,6 @@ const LINK_STATUS_COLOR = { active: 'green', disabled: 'grey', expired: 'red' } 
 
 function isCashierMethod(value: PaymentLink['payMethod']): value is PaymentCashierMethod {
   return value != null && (PAYMENT_CASHIER_METHODS as readonly string[]).includes(value);
-}
-
-function paymentAppConfigId(app: PaymentApp, channel: PaymentChannel): number | null | undefined {
-  if (channel === 'wechat') return app.wechatConfigId;
-  if (channel === 'alipay') return app.alipayConfigId;
-  return app.unionpayConfigId;
 }
 
 function publicUrl(token: string): string {
@@ -89,47 +81,7 @@ export default function PaymentLinksPage() {
   const { apps: paymentApps, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup({ label: paymentAppOptionLabel });
   const appNameById = useMemo(() => new Map(paymentApps.map((app) => [app.id, app.name])), [paymentApps]);
   const selectedPaymentApp = paymentApps.find((app) => app.id === selectedApplicationId);
-  const canReadCapabilities = hasPermission('payment:channel:list');
-  const capabilitiesQuery = usePaymentCapabilities(
-    { operation: 'payment.create', currency: 'CNY' },
-    canReadCapabilities,
-  );
-  const paymentMethodQuery = usePaymentMethodList();
-  const enabledPaymentMethods = useMemo(
-    () => paymentMethodQuery.data
-      ? new Set(paymentMethodQuery.data.filter((config) => config.enabled).map((config) => config.method))
-      : null,
-    [paymentMethodQuery.data],
-  );
-  const methodOptions = useMemo(() => {
-    if (!selectedPaymentApp || !enabledPaymentMethods) return [];
-    if (capabilitiesQuery.data) {
-      const appEnvironment = selectedPaymentApp.environment === 'sandbox' ? 'sandbox' : 'live';
-      const boundConfigIds = new Set(
-        (['wechat', 'alipay', 'unionpay'] as const)
-          .map((channel) => paymentAppConfigId(selectedPaymentApp, channel))
-          .filter((id): id is number => id != null),
-      );
-      const supportedMethods = new Set<PaymentCashierMethod>();
-      for (const config of capabilitiesQuery.data.configs) {
-        if (!boundConfigIds.has(config.channelConfigId) || config.environment !== appEnvironment) continue;
-        for (const capability of config.capabilities) {
-          if (capability.supported && capability.paymentMethod && isCashierMethod(capability.paymentMethod)) {
-            supportedMethods.add(capability.paymentMethod);
-          }
-        }
-      }
-      return PAYMENT_CASHIER_METHODS
-        .filter((method) => enabledPaymentMethods.has(method) && supportedMethods.has(method))
-        .map((value) => ({ value, label: PAYMENT_METHOD_LABELS[value] }));
-    }
-    if (!canReadCapabilities || capabilitiesQuery.isError) {
-      return PAYMENT_CASHIER_METHODS
-        .filter((method) => enabledPaymentMethods.has(method) && paymentAppConfigId(selectedPaymentApp, PAYMENT_METHOD_CHANNEL[method]) != null)
-        .map((value) => ({ value, label: PAYMENT_METHOD_LABELS[value] }));
-    }
-    return [];
-  }, [canReadCapabilities, capabilitiesQuery.data, capabilitiesQuery.isError, enabledPaymentMethods, selectedPaymentApp]);
+  const { options: methodOptions } = useAppPaymentMethodOptions(selectedPaymentApp, PAYMENT_CASHIER_METHODS);
   const saveMutation = useSavePaymentLink();
   const modal = useEditModal<PaymentLink, LinkFormValues, PaymentLinkSaveValues>({
     entityName: '支付链接',

@@ -30,7 +30,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
-import { paymentAppBoundConfigIds, useAppMerchantConfigLookup } from './payment-app-options';
+import { resolveAppConfigBinding, useAppMerchantConfigLookup } from './payment-app-options';
 import { PaymentAppField, PaymentCurrencyField, PaymentMerchantConfigField } from './payment-form-fields';
 
 const STATUS_COLOR = { pending: 'grey', comparing: 'blue', done: 'green', failed: 'red' } as const satisfies Record<PaymentReconStatus, string>;
@@ -118,13 +118,7 @@ export default function PaymentReconPage() {
     save: createSaveMutation,
     defaults: { currency: 'CNY' },
     beforeSave: (values) => {
-      const config = channelConfigById.get(values.channelConfigId);
-      const app = appById.get(values.applicationId);
-      const appConfigIds = paymentAppBoundConfigIds(app);
-      if (!app || !config || !appConfigIds.has(config.id)) {
-        Toast.error('所选支付应用未绑定该商户配置，请重新选择');
-        abortSubmit('validation');
-      }
+      const { app, config } = resolveAppConfigBinding({ appById, channelConfigById }, values.applicationId, values.channelConfigId);
       return {
         applicationId: app.id,
         channel: config.channel,
