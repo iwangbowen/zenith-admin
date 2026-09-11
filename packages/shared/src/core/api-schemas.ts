@@ -66,6 +66,13 @@ export function queryEnum<const T extends readonly string[]>(values: T, descript
     .meta({ type: 'string', enum: [...values], ...(description ? { description } : {}) });
 }
 
+/**
+ * 通用启用 / 禁用状态的查询串筛选（`?status=enabled`）；空串 = 全部。
+ * 与请求体里的 `entityStatusSchema` 对应：列表 query 一律用本积木，**不要**写 `entityStatusSchema.optional()`
+ * （后者对筛选控件清空后发出的 `?status=` 返回 400）。
+ */
+export const entityStatusQuery = queryEnum(USER_STATUSES, '状态；空 = 全部');
+
 // ─── 请求体积木 ──────────────────────────────────────────────────────────────
 
 /** 批量 ID 操作请求体（批量删除 / 批量更新） */

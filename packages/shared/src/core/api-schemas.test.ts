@@ -1,6 +1,6 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryBool, queryEnum } from './api-schemas';
+import { dateRangeBound, entityStatusQuery, paginated, paginationQuery, queryBool, queryEnum } from './api-schemas';
 
 describe('queryBool', () => {
   const schema = z.object({ enabled: queryBool() });
@@ -28,6 +28,14 @@ describe('queryEnum', () => {
 
   it('documents the value set in OpenAPI metadata', () => {
     expect(queryEnum(STATUSES, '状态').meta()).toMatchObject({ type: 'string', enum: ['enabled', 'disabled'], description: '状态' });
+  });
+
+  it('entityStatusQuery is the shared enabled / disabled filter with empty string meaning "all"', () => {
+    const schema = z.object({ status: entityStatusQuery });
+    expect(schema.parse({ status: 'disabled' })).toEqual({ status: 'disabled' });
+    expect(schema.parse({ status: '' })).toEqual({ status: undefined });
+    expect(schema.safeParse({ status: 'archived' }).success).toBe(false);
+    expectTypeOf<z.output<typeof schema>['status']>().toEqualTypeOf<'enabled' | 'disabled' | undefined>();
   });
 });
 
