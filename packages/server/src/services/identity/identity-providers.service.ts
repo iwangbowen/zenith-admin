@@ -6,8 +6,9 @@ import { Client, InvalidCredentialsError, type Entry } from 'ldapts';
 import { SAML, ValidateInResponseTo, type CacheItem, type CacheProvider, type Profile } from '@node-saml/node-saml';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { CreateTenantIdentityProviderInput, IdentityProviderConnectionTestResult, IdentityProviderAttributeMapping, IdentityProviderSyncResult, IdentityProviderType, LdapDirectoryUser, UpdateTenantIdentityProviderInput } from '@zenith/shared/identity';
+import type { CreateTenantIdentityProviderInput, IdentityProviderConnectionTestResult, IdentityProviderAttributeMapping, IdentityProviderSyncResult, IdentityProviderType, LdapDirectoryUser, UpdateTenantIdentityProviderInput, identityProviderContract } from '@zenith/shared/identity';
 import { SECRET_PLACEHOLDER, trimTrailingSlash } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { config } from '../../config';
 import { db } from '../../db';
 import { identityProviderSyncLogs, tenantIdentityProviders, tenants, userIdentityAccounts, userRoles, users, type UserRow } from '../../db/schema';
@@ -231,17 +232,8 @@ function buildProviderValues(
   return values;
 }
 
-export interface ListIdentityProvidersQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  tenantId?: number;
-  type?: IdentityProviderType;
-  status?: 'enabled' | 'disabled';
-}
-
-export async function listIdentityProviders(query: ListIdentityProvidersQuery) {
-  const { page = 1, pageSize = 10, keyword, tenantId, type, status } = query;
+export async function listIdentityProviders(query: QueryOutputOf<typeof identityProviderContract.list>) {
+  const { page, pageSize, keyword, tenantId, type, status } = query;
   // 调用者租户作用域先行；query.tenantId 只是平台管理员的筛选项（租户用户传他租户 → 与作用域取交为空集）
   const where = buildWhere(
     tenantScope(tenantIdentityProviders),

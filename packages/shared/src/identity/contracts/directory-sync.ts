@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import {
@@ -150,8 +150,8 @@ export type DirectorySyncConnectionTest = z.infer<typeof directorySyncConnection
 
 export const directorySyncSourceListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称模糊匹配' }),
-  type: z.enum(DIRECTORY_SYNC_SOURCE_TYPES).optional(),
-  status: entityStatusSchema.optional(),
+  type: queryEnum(DIRECTORY_SYNC_SOURCE_TYPES),
+  status: entityStatusQuery,
 });
 
 export const directorySyncSourceContract = defineContract('/api/directory-sync/sources', {
@@ -169,20 +169,20 @@ export const directorySyncSourceContract = defineContract('/api/directory-sync/s
 
 export const directorySyncRunListQuery = paginationQuery.extend({
   sourceId: z.coerce.number().int().positive().optional(),
-  status: z.enum(DIRECTORY_SYNC_RUN_STATUSES).optional(),
+  status: queryEnum(DIRECTORY_SYNC_RUN_STATUSES),
   startTime: dateRangeBound('开始时间起'),
   endTime: dateRangeBound('开始时间止'),
 });
 
 export const directorySyncRunItemListQuery = paginationQuery.extend({
-  action: z.enum(DIRECTORY_SYNC_ITEM_ACTIONS).optional(),
-  entityType: z.enum(DIRECTORY_SYNC_ENTITY_TYPES).optional(),
+  action: queryEnum(DIRECTORY_SYNC_ITEM_ACTIONS),
+  entityType: queryEnum(DIRECTORY_SYNC_ENTITY_TYPES),
 });
 
 export const directorySyncConflictListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按外部 ID / 名称模糊匹配' }),
   sourceId: z.coerce.number().int().positive().optional(),
-  status: z.enum(DIRECTORY_SYNC_CONFLICT_STATUSES).optional(),
+  status: queryEnum(DIRECTORY_SYNC_CONFLICT_STATUSES),
 });
 
 export const directorySyncContract = defineContract('/api/directory-sync', {

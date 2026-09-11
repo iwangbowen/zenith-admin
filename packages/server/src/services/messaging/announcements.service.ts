@@ -9,7 +9,8 @@ import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
-import type { AnnouncementAttachment } from '@zenith/shared/messaging';
+import type { AnnouncementAttachment, announcementContract } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { listBusinessFiles, saveBusinessFiles } from '../files/business-files.service';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { sanitizeCmsHtml } from '../cms/cms-html-sanitizer';
@@ -163,16 +164,17 @@ export async function getUnreadAnnouncementCount(): Promise<number> {
   return Number(row?.count ?? 0);
 }
 
-export async function getInbox(q: { page?: number; pageSize?: number; isRead?: string }) {
+export async function getInbox(q: QueryOutputOf<typeof announcementContract.inbox>) {
   const user = currentUser();
-  const { page = 1, pageSize = 10, isRead } = q;
+  const { page, pageSize, isRead } = q;
   const tc = tenantCondition(announcements, user);
   const accessFilter = buildAccessFilter(user.userId);
   const baseWhere = and(eq(announcements.publishStatus, 'published'), accessFilter, ...(tc ? [tc] : []));
   const joinCond = and(eq(announcementReads.announcementId, announcements.id), eq(announcementReads.userId, user.userId));
   let readFilter: ReturnType<typeof isNotNull | typeof isNull> | undefined;
-  if (isRead === 'true') readFilter = isNotNull(announcementReads.id);
-  else if (isRead === 'false') readFilter = isNull(announcementReads.id);
+  const readValue: unknown = isRead;
+  if (readValue === true || readValue === 'true') readFilter = isNotNull(announcementReads.id);
+  else if (readValue === false || readValue === 'false') readFilter = isNull(announcementReads.id);
   const where = readFilter ? and(baseWhere, readFilter) : baseWhere;
   return buildListResult({
     page,
@@ -192,15 +194,15 @@ export async function getInbox(q: { page?: number; pageSize?: number; isRead?: s
   });
 }
 
-export async function listAnnouncements(q: { page?: number; pageSize?: number; title?: string; type?: string; publishStatus?: string; startTime?: string; endTime?: string }) {
+export async function listAnnouncements(q: QueryOutputOf<typeof announcementContract.list>) {
   const user = currentUser();
-  const { page = 1, pageSize = 10, title, type, publishStatus, startTime, endTime } = q;
-  const conditions = [];
-  conditions.push(keywordCondition(title, [announcements.title]));
-  if (type) conditions.push(eq(announcements.type, type));
-  if (publishStatus) conditions.push(eq(announcements.publishStatus, publishStatus));
-  conditions.push(...dateRangeConditions(announcements.createdAt, startTime, endTime));
-  const where = and(...conditions);
+  const { page, pageSize, title, type, publishStatus, startTime, endTime } = q;
+  const where = buildWhere(
+    keywordCondition(title, [announcements.title]),
+    type ? eq(announcements.type, type) : undefined,
+    publishStatus ? eq(announcements.publishStatus, publishStatus) : undefined,
+    ...dateRangeConditions(announcements.createdAt, startTime, endTime),
+  );
   const tc = tenantCondition(announcements, user);
   const finalWhere = buildWhere(where, tc);
   return buildListResult({
@@ -240,9 +242,9 @@ export async function getAnnouncementsBeforeAudit(ids: number[]) {
   return rows.map(mapAnnouncement);
 }
 
-export async function getAnnouncementReadStats(id: number, q: { page?: number; pageSize?: number; tab?: string }) {
+export async function getAnnouncementReadStats(id: number, q: QueryOutputOf<typeof announcementContract.readStats>) {
   const user = currentUser();
-  const { page = 1, pageSize = 10, tab: rawTab } = q;
+  const { page, pageSize, tab: rawTab } = q;
   const tab = rawTab === 'unread' ? 'unread' : 'read';
   const announcement = await requireFirstRow(
     db.select().from(announcements).where(eq(announcements.id, id)),
@@ -272,9 +274,9 @@ export async function getAnnouncementReadStats(id: number, q: { page?: number; p
     baseWhere = inArray(users.id, [...userIdSet]);
   }
 
-  const [readCountRow, totalCountRow, totalRow, list] = await Promise.all([
+  const [readCountRow, totalCount, totalRow, list] = await Promise.all([
     db.select({ cnt: count() }).from(users).leftJoin(announcementReads, joinCond).where(and(baseWhere, isNotNull(announcementReads.id))),
-    db.select({ cnt: count() }).from(users).where(baseWhere),
+    db.$count(users, baseWhere),
     db.select({ cnt: count() }).from(users).leftJoin(announcementReads, joinCond).where(and(baseWhere, tabFilter)),
     withPagination(
       db.select({ id: users.id, username: users.username, nickname: users.nickname, avatar: users.avatar, readAt: announcementReads.readAt })
@@ -289,7 +291,7 @@ export async function getAnnouncementReadStats(id: number, q: { page?: number; p
 
   return {
     readCount: readCountRow[0].cnt,
-    totalCount: totalCountRow[0].cnt,
+    totalCount,
     total: totalRow[0].cnt,
     list: list.map((u) => ({
       id: u.id,

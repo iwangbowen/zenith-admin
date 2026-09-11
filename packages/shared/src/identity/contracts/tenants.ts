@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sensitive } from '../../core/sensitive';
 import { createTenantSchema, updateTenantSchema } from '../validation';
@@ -66,7 +66,7 @@ export type TenantStats = z.infer<typeof tenantStatsSchema>;
 
 export const tenantListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称模糊匹配' }),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const tenantContract = defineContract('/api/tenants', {

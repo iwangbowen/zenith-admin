@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, type SQL } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
@@ -11,7 +11,8 @@ import { ensureMpAccountExists } from './mp-account.service';
 import { createWechatQrcode } from '../../lib/wechat';
 import { mapWechatError } from '../../lib/wechat-error';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import type { CreateMpQrcodeInput, MpQrcodeType } from '@zenith/shared/mp';
+import type { CreateMpQrcodeInput, mpQrcodeContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapMpQrcode(row: MpQrcodeRow) {
   return {
@@ -41,20 +42,14 @@ export async function getMpQrcodeBeforeAudit(id: number) {
   return mapMpQrcode(await ensureMpQrcodeExists(id));
 }
 
-export interface ListMpQrcodesQuery {
-  accountId: number;
-  type?: MpQrcodeType;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listMpQrcodes(q: ListMpQrcodesQuery) {
+export async function listMpQrcodes(q: QueryOutputOf<typeof mpQrcodeContract.list>) {
   await ensureMpAccountExists(q.accountId);
-  const conditions: (SQL | undefined)[] = [eq(mpQrcodes.accountId, q.accountId), tenantScope(mpQrcodes)];
-  if (q.type) conditions.push(eq(mpQrcodes.type, q.type));
-  conditions.push(keywordCondition(q.keyword, [mpQrcodes.name, mpQrcodes.sceneStr], 'ilike'));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpQrcodes.accountId, q.accountId),
+    tenantScope(mpQrcodes),
+    q.type ? eq(mpQrcodes.type, q.type) : undefined,
+    keywordCondition(q.keyword, [mpQrcodes.name, mpQrcodes.sceneStr], 'ilike'),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

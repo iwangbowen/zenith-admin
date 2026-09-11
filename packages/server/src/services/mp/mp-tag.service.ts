@@ -1,4 +1,4 @@
-import { eq, and, sql, type SQL } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
@@ -11,7 +11,8 @@ import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { ensureMpAccountExists } from './mp-account.service';
 import { getWechatTags, WechatApiError } from '../../lib/wechat';
-import type { CreateMpTagInput, UpdateMpTagInput } from '@zenith/shared/mp';
+import type { CreateMpTagInput, UpdateMpTagInput, mpTagContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapMpTag(row: MpTagRow) {
   return {
@@ -32,20 +33,13 @@ export async function ensureMpTagExists(id: number): Promise<MpTagRow> {
   return requireRow(row, '标签不存在');
 }
 
-export interface ListMpTagsQuery {
-  accountId: number;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listMpTags(q: ListMpTagsQuery) {
+export async function listMpTags(q: QueryOutputOf<typeof mpTagContract.list>) {
   await ensureMpAccountExists(q.accountId); // 校验账号归属当前租户
-  const conditions: (SQL | undefined)[] = [eq(mpTags.accountId, q.accountId)];
-  const tenant = tenantScope(mpTags);
-  if (tenant) conditions.push(tenant);
-  conditions.push(keywordCondition(q.keyword, [mpTags.name], 'ilike'));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpTags.accountId, q.accountId),
+    tenantScope(mpTags),
+    keywordCondition(q.keyword, [mpTags.name], 'ilike'),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

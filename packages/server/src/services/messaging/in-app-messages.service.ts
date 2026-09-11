@@ -12,29 +12,25 @@ import { currentUser } from '../../lib/context';
 import { renderTemplate } from '../../lib/sms-sender';
 import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { ensureInAppTemplateExists } from './in-app-templates.service';
-import type { InAppMessageType, SendInAppInput } from '@zenith/shared/messaging';
+import type { SendInAppInput, InAppMessageType, inAppMessageContract } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
-export interface ListInAppMessagesQuery {
-  keyword?: string;
-  type?: InAppMessageType;
-  isRead?: boolean;
-  recipientId?: number; // 默认为当前用户
-  page: number;
-  pageSize: number;
-}
+type InAppMessageListQuery = QueryOutputOf<typeof inAppMessageContract.list>;
+type InAppMessageAdminListQuery = QueryOutputOf<typeof inAppMessageContract.adminList>;
+type InAppMessageListFilter = Omit<InAppMessageListQuery, 'page' | 'pageSize'>;
 
 /** 收件箱 / 管理端列表共用的筛选条件：租户范围、标题关键字、类型、已读状态 */
-function inboxFilterConditions(q: Pick<ListInAppMessagesQuery, 'keyword' | 'type' | 'isRead'>): (SQL | undefined)[] {
-  return [
+function buildInboxFilterWhere(q: InAppMessageListFilter) {
+  return buildWhere(
     tenantScope(inAppMessages),
     keywordCondition(q.keyword, [inAppMessages.title], 'ilike'),
     q.type ? eq(inAppMessages.type, q.type) : undefined,
     typeof q.isRead === 'boolean' ? eq(inAppMessages.isRead, q.isRead) : undefined,
-  ];
+  );
 }
 
-function buildInboxWhere(q: ListInAppMessagesQuery, recipientId: number) {
-  return buildWhere(eq(inAppMessages.userId, recipientId), ...inboxFilterConditions(q));
+function buildInboxWhere(q: InAppMessageListFilter, recipientId: number) {
+  return buildWhere(eq(inAppMessages.userId, recipientId), buildInboxFilterWhere(q));
 }
 
 /** 站内信联表基础查询（消息 + 模板名 + 发送人用户名） */
@@ -91,9 +87,9 @@ async function ensureInAppMessageExists(id: number, ownedBy?: number) {
 }
 
 /** 当前用户的站内信收件箱 */
-export async function listMyInAppMessages(q: ListInAppMessagesQuery) {
+export async function listMyInAppMessages(q: InAppMessageListQuery) {
   const me = currentUser();
-  const recipientId = q.recipientId ?? me.userId;
+  const recipientId = me.userId;
   const where = buildInboxWhere(q, recipientId);
   return buildListResult({
     page: q.page,
@@ -136,11 +132,12 @@ export async function getInAppMessageBeforeAudit(id: number) {
 }
 
 /** 管理员视角：列出全租户的站内信（不限收件人） */
-export async function listAllInAppMessages(q: Omit<ListInAppMessagesQuery, 'recipientId'> & { recipientId?: number; senderId?: number }) {
-  const conditions: (SQL | undefined)[] = inboxFilterConditions(q);
-  if (q.recipientId) conditions.push(eq(inAppMessages.userId, q.recipientId));
-  if (q.senderId) conditions.push(eq(inAppMessages.senderId, q.senderId));
-  const where = buildWhere(...conditions);
+export async function listAllInAppMessages(q: InAppMessageAdminListQuery) {
+  const where = buildWhere(
+    buildInboxFilterWhere(q),
+    q.recipientId ? eq(inAppMessages.userId, q.recipientId) : undefined,
+    q.senderId ? eq(inAppMessages.senderId, q.senderId) : undefined,
+  );
 
   const sender = alias(users, 'sender');
   const recipient = alias(users, 'recipient');
@@ -339,4 +336,3 @@ export async function sendInApp(input: SendInAppInput) {
   );
   return { sentCount: rows.length };
 }
-

@@ -1,4 +1,4 @@
-import { eq, and, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
@@ -11,7 +11,8 @@ import { ensureMpAccountExists } from './mp-account.service';
 import { batchGetWechatMaterials, deleteWechatMaterial, uploadWechatMaterial } from '../../lib/wechat';
 import { mapWechatError } from '../../lib/wechat-error';
 import logger from '../../lib/logger';
-import type { CreateMpMaterialInput, UpdateMpMaterialInput, MpMaterialType } from '@zenith/shared/mp';
+import type { CreateMpMaterialInput, UpdateMpMaterialInput, MpMaterialType, mpMaterialContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapMpMaterial(row: MpMaterialRow) {
   return {
@@ -38,22 +39,14 @@ export async function getMpMaterialBeforeAudit(id: number) {
   return mapMpMaterial(await ensureMpMaterialExists(id));
 }
 
-export interface ListMpMaterialsQuery {
-  accountId: number;
-  type?: MpMaterialType;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listMpMaterials(q: ListMpMaterialsQuery) {
+export async function listMpMaterials(q: QueryOutputOf<typeof mpMaterialContract.list>) {
   await ensureMpAccountExists(q.accountId);
-  const conditions: (SQL | undefined)[] = [eq(mpMaterials.accountId, q.accountId)];
-  const tenant = tenantScope(mpMaterials);
-  if (tenant) conditions.push(tenant);
-  if (q.type) conditions.push(eq(mpMaterials.type, q.type));
-  conditions.push(keywordCondition(q.keyword, [mpMaterials.name], 'ilike'));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpMaterials.accountId, q.accountId),
+    tenantScope(mpMaterials),
+    q.type ? eq(mpMaterials.type, q.type) : undefined,
+    keywordCondition(q.keyword, [mpMaterials.name], 'ilike'),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

@@ -31,7 +31,8 @@ import { assertContentSafe } from './mp-security.service';
 import { sendCustomServiceMessage, WechatApiError } from '../../lib/wechat';
 import { broadcast } from '../../lib/ws-manager';
 import logger from '../../lib/logger';
-import type { MpKfSession, MpKfSessionDetail, MpKfSessionEvent, MpKfRoutingConfig, MpKfSessionStats, MpKfSessionEventType, MpKfSessionCloseReason, MpKfRoutingStrategy, MpMessageType, TransferMpKfSessionInput, UpdateMpKfRoutingConfigInput } from '@zenith/shared/mp';
+import type { MpKfSession, MpKfSessionDetail, MpKfSessionEvent, MpKfRoutingConfig, MpKfSessionStats, MpKfSessionEventType, MpKfSessionCloseReason, MpKfRoutingStrategy, MpMessageType, TransferMpKfSessionInput, UpdateMpKfRoutingConfigInput, mpKfSessionContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { AcceptMpKfSessionInput, CloseMpKfSessionInput, ReplyMpKfSessionInput } from '@zenith/shared/platform';
 
 // ─── 映射 ────────────────────────────────────────────────────────────────────
@@ -311,22 +312,15 @@ export async function onFanInboundMessage(accountId: number, tenantId: number | 
 }
 
 // ─── 鉴权路由：列表 / 详情 / 概览 ───────────────────────────────────────────────
-export interface ListMpKfSessionsQuery {
-  accountId: number;
-  status?: 'waiting' | 'active' | 'closed';
-  kfId?: number;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listMpKfSessions(q: ListMpKfSessionsQuery) {
+export async function listMpKfSessions(q: QueryOutputOf<typeof mpKfSessionContract.list>) {
   await ensureMpAccountExists(q.accountId);
-  const conditions: (SQL | undefined)[] = [eq(mpKfSessions.accountId, q.accountId), tenantScope(mpKfSessions)];
-  if (q.status) conditions.push(eq(mpKfSessions.status, q.status));
-  if (q.kfId) conditions.push(eq(mpKfSessions.kfId, q.kfId));
-  conditions.push(keywordCondition(q.keyword, [mpKfSessions.openid, mpFans.nickname], 'ilike'));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpKfSessions.accountId, q.accountId),
+    tenantScope(mpKfSessions),
+    q.status ? eq(mpKfSessions.status, q.status) : undefined,
+    q.kfId ? eq(mpKfSessions.kfId, q.kfId) : undefined,
+    keywordCondition(q.keyword, [mpKfSessions.openid, mpFans.nickname], 'ilike'),
+  );
 
   const order = q.status === 'waiting'
     ? [desc(mpKfSessions.priority), asc(mpKfSessions.waitingSince)]

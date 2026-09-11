@@ -1,4 +1,4 @@
-import { eq, and, desc, type SQL } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
@@ -10,7 +10,8 @@ import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { addWechatDraft } from '../../lib/wechat';
 import { mapWechatError } from '../../lib/wechat-error';
-import type { CreateMpDraftInput, UpdateMpDraftInput, MpArticle } from '@zenith/shared/mp';
+import type { CreateMpDraftInput, UpdateMpDraftInput, MpArticle, mpDraftContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapMpDraft(row: MpDraftRow) {
   return {
@@ -36,20 +37,13 @@ export async function getMpDraft(id: number) {
   return mapMpDraft(await ensureMpDraftExists(id));
 }
 
-export interface ListMpDraftsQuery {
-  accountId: number;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listMpDrafts(q: ListMpDraftsQuery) {
+export async function listMpDrafts(q: QueryOutputOf<typeof mpDraftContract.list>) {
   await ensureMpAccountExists(q.accountId);
-  const conditions: (SQL | undefined)[] = [eq(mpDrafts.accountId, q.accountId)];
-  const tenant = tenantScope(mpDrafts);
-  if (tenant) conditions.push(tenant);
-  conditions.push(keywordCondition(q.keyword, [mpDrafts.title], 'ilike'));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpDrafts.accountId, q.accountId),
+    tenantScope(mpDrafts),
+    keywordCondition(q.keyword, [mpDrafts.title], 'ilike'),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

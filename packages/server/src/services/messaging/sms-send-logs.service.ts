@@ -1,4 +1,4 @@
-import { eq, desc, type SQL } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
@@ -11,31 +11,23 @@ import { currentUser } from '../../lib/context';
 import { sendSmsByProvider, renderTemplate } from '../../lib/sms-sender';
 import { ensureSmsTemplateExists } from './sms-templates.service';
 import { findDefaultSmsConfig } from './sms-configs.service';
-import type { SmsProvider, SendSource, SendStatus, SendSmsInput } from '@zenith/shared/messaging';
+import type { SendSmsInput, SendSource, smsSendLogContract } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
-export interface ListSmsSendLogsQuery {
-  keyword?: string;
-  phone?: string;
-  provider?: SmsProvider;
-  status?: SendStatus;
-  source?: SendSource;
-  page: number;
-  pageSize: number;
+export type SmsSendLogListFilter = Omit<QueryOutputOf<typeof smsSendLogContract.list>, 'page' | 'pageSize'>;
+
+export function buildListWhere(q: SmsSendLogListFilter) {
+  return buildWhere(
+    tenantScope(smsSendLogs),
+    keywordCondition(q.keyword, [smsSendLogs.content], 'ilike'),
+    keywordCondition(q.phone, [smsSendLogs.phone], 'ilike'),
+    q.provider ? eq(smsSendLogs.provider, q.provider) : undefined,
+    q.status ? eq(smsSendLogs.status, q.status) : undefined,
+    q.source ? eq(smsSendLogs.source, q.source) : undefined,
+  );
 }
 
-export function buildListWhere(q: ListSmsSendLogsQuery) {
-  const conditions: (SQL | undefined)[] = [];
-  const tenant = tenantScope(smsSendLogs);
-  if (tenant) conditions.push(tenant);
-  conditions.push(keywordCondition(q.keyword, [smsSendLogs.content], 'ilike'));
-  conditions.push(keywordCondition(q.phone, [smsSendLogs.phone], 'ilike'));
-  if (q.provider) conditions.push(eq(smsSendLogs.provider, q.provider));
-  if (q.status) conditions.push(eq(smsSendLogs.status, q.status));
-  if (q.source) conditions.push(eq(smsSendLogs.source, q.source));
-  return buildWhere(...conditions);
-}
-
-export async function listSmsSendLogs(q: ListSmsSendLogsQuery) {
+export async function listSmsSendLogs(q: QueryOutputOf<typeof smsSendLogContract.list>) {
   const where = buildListWhere(q);
   return buildListResult({
     page: q.page,

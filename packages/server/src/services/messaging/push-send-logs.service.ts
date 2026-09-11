@@ -2,7 +2,8 @@
  * App 推送发送记录（追加型日志,回执回调更新送达状态）。
  */
 import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { PushDeliveryStatus, PushProvider, PushSendLogStats } from '@zenith/shared/messaging';
+import type { PushDeliveryStatus, PushProvider, PushSendLogStats, pushSendLogContract } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { pushSendLogs, users, type PushSendLogRow } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime, startOfRecentDays } from '../../lib/datetime';
@@ -38,18 +39,8 @@ export function mapPushSendLog(row: PushSendLogRow & { app?: { name: string } | 
   };
 }
 
-export interface ListPushSendLogsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  provider?: PushProvider;
-  status?: 'pending' | 'success' | 'failed';
-  startTime?: string;
-  endTime?: string;
-}
-
-export async function listPushSendLogs(q: ListPushSendLogsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listPushSendLogs(q: QueryOutputOf<typeof pushSendLogContract.list>) {
+  const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [pushSendLogs.title, pushSendLogs.content, pushSendLogs.eventKey]),
     q.provider ? eq(pushSendLogs.provider, q.provider) : undefined,

@@ -1,4 +1,4 @@
-import { eq, and, or, type SQL } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
@@ -12,8 +12,9 @@ import { clearDefaultFlag } from '../../lib/default-flag';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { refreshMpAccessToken, clearMpAccessToken, WechatApiError } from '../../lib/wechat';
 import type { DbExecutor } from '../../db/types';
-import type { CreateMpAccountInput, UpdateMpAccountInput, MpAccountType } from '@zenith/shared/mp';
+import type { CreateMpAccountInput, UpdateMpAccountInput, mpAccountContract } from '@zenith/shared/mp';
 import { SECRET_PLACEHOLDER } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 /** 列表 / 详情 / 写操作返回：appSecret 脱敏 */
 export function mapMpAccountSafe(row: MpAccountRow) {
@@ -51,19 +52,13 @@ export async function ensureMpAccountExists(id: number): Promise<MpAccountRow> {
   return requireRow(row, '公众号不存在');
 }
 
-export interface ListMpAccountsQuery {
-  keyword?: string;
-  type?: MpAccountType;
-  status?: 'enabled' | 'disabled';
-  page: number;
-  pageSize: number;
-}
-
-export async function listMpAccounts(q: ListMpAccountsQuery) {
-  const conditions: (SQL | undefined)[] = [tenantScope(mpAccounts), keywordCondition(q.keyword, [mpAccounts.name, mpAccounts.account, mpAccounts.appId], 'ilike')];
-  if (q.type) conditions.push(eq(mpAccounts.type, q.type));
-  if (q.status) conditions.push(eq(mpAccounts.status, q.status));
-  const where = buildWhere(...conditions);
+export async function listMpAccounts(q: QueryOutputOf<typeof mpAccountContract.list>) {
+  const where = buildWhere(
+    tenantScope(mpAccounts),
+    keywordCondition(q.keyword, [mpAccounts.name, mpAccounts.account, mpAccounts.appId], 'ilike'),
+    q.type ? eq(mpAccounts.type, q.type) : undefined,
+    q.status ? eq(mpAccounts.status, q.status) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

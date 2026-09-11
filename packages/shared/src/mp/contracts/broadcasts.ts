@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { MP_BROADCAST_STATUSES, MP_BROADCAST_TARGETS, MP_BROADCAST_TYPES } from '../constants';
 import { createMpBroadcastSchema, previewMpBroadcastSchema, updateMpBroadcastSchema } from '../validation';
@@ -42,7 +42,7 @@ export type MpBroadcastResult = z.infer<typeof mpBroadcastResultSchema>;
 
 export const mpBroadcastListQuery = paginationQuery.extend({
   ...mpAccountIdQuery.shape,
-  status: z.enum(MP_BROADCAST_STATUSES).optional(),
+  status: queryEnum(MP_BROADCAST_STATUSES),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { operationLogSchema } from '../../platform/contracts/operation-logs';
 import { LOGIN_EVENT_TYPES, LOGIN_STATUSES, MFA_FACTOR_STATUSES, MFA_FACTOR_TYPES, MFA_METHODS } from '../constants';
@@ -140,8 +140,8 @@ export const tokenIdParam = z.object({
 });
 
 export const myLoginLogsQuery = paginationQuery.extend({
-  eventType: z.enum(LOGIN_EVENT_TYPES).optional(),
-  status: z.enum(LOGIN_STATUSES).optional(),
+  eventType: queryEnum(LOGIN_EVENT_TYPES),
+  status: queryEnum(LOGIN_STATUSES),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
 });

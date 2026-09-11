@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PUSH_PROVIDERS } from '../constants';
 import { createPushConfigSchema, testPushSendSchema, updatePushConfigSchema } from '../validation';
@@ -34,8 +34,8 @@ export type PushTestSendResult = z.infer<typeof pushTestSendResultSchema>;
 
 export const pushConfigListQuery = paginationQuery.extend({
   keyword: z.string().max(256).optional().meta({ description: '按名称 / 备注模糊匹配' }),
-  provider: z.enum(PUSH_PROVIDERS).optional(),
-  status: entityStatusSchema.optional(),
+  provider: queryEnum(PUSH_PROVIDERS),
+  status: entityStatusQuery,
 });
 
 export const pushConfigContract = defineContract('/api/push-configs', {

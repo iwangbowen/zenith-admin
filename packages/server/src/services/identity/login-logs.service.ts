@@ -1,5 +1,5 @@
 import { buildListResult } from '../../lib/list-query';
-import { desc, eq, and, or, gte, lt, lte, count, sql, inArray } from 'drizzle-orm';
+import { desc, eq, and, or, gte, lt, lte, count, sql, inArray, type SQL } from 'drizzle-orm';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { loginLogs } from '../../db/schema';
@@ -7,34 +7,27 @@ import { tenantCondition } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, resolveStatsWindow } from '../../lib/datetime';
 import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nicknames';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import type { loginLogContract } from '@zenith/shared/identity';
 
-export interface ListLoginLogsQuery {
-  page?: number;
-  pageSize?: number;
-  username?: string;
-  eventType?: 'login' | 'logout';
-  status?: 'success' | 'fail';
-  startTime?: string;
-  endTime?: string;
-}
-
-export async function listLoginLogs(q: ListLoginLogsQuery) {
+export async function listLoginLogs(q: QueryOutputOf<typeof loginLogContract.list>) {
   const user = currentUser();
-  const page = Number(q.page) || 1;
-  const pageSize = Number(q.pageSize) || 10;
-  const conditions = [];
+  const { page, pageSize } = q;
+  let usernameCondition: SQL | undefined;
   if (q.username) {
     // 关键字同时匹配用户名与昵称（昵称先反查出用户名集合）
     const byNickname = await findUsernamesByNickname(q.username);
     const usernameLike = keywordCondition(q.username, [loginLogs.username]);
-    conditions.push(byNickname.length > 0 ? or(usernameLike, inArray(loginLogs.username, byNickname)) : usernameLike);
+    usernameCondition = byNickname.length > 0 ? or(usernameLike, inArray(loginLogs.username, byNickname)) : usernameLike;
   }
-  if (q.eventType) conditions.push(eq(loginLogs.eventType, q.eventType));
-  if (q.status) conditions.push(eq(loginLogs.status, q.status));
-  conditions.push(...dateRangeConditions(loginLogs.createdAt, q.startTime, q.endTime));
-  const where = and(...conditions);
   const tc = tenantCondition(loginLogs, user);
-  const finalWhere = buildWhere(where, tc);
+  const finalWhere = buildWhere(
+    usernameCondition,
+    q.eventType ? eq(loginLogs.eventType, q.eventType) : undefined,
+    q.status ? eq(loginLogs.status, q.status) : undefined,
+    ...dateRangeConditions(loginLogs.createdAt, q.startTime, q.endTime),
+    tc,
+  );
   return buildListResult({
     page,
     pageSize,

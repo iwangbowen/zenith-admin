@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, type SQL } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -11,7 +11,8 @@ import { ensureMpAccountExists } from './mp-account.service';
 import { assertContentSafe } from './mp-security.service';
 import { sendCustomServiceMessage, WechatApiError } from '../../lib/wechat';
 import type { SendMpMessageInput } from '@zenith/shared/messaging';
-import type { MpMessageType, MpMessageDirection } from '@zenith/shared/mp';
+import type { MpMessageType, mpMessageContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapMpMessage(row: MpMessageRow) {
   return {
@@ -31,26 +32,16 @@ export function mapMpMessage(row: MpMessageRow) {
   };
 }
 
-export interface ListMpMessagesQuery {
-  accountId: number;
-  openid?: string;
-  direction?: MpMessageDirection;
-  msgType?: MpMessageType;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listMessages(q: ListMpMessagesQuery) {
+export async function listMessages(q: QueryOutputOf<typeof mpMessageContract.list>) {
   await ensureMpAccountExists(q.accountId);
-  const conditions: (SQL | undefined)[] = [eq(mpMessages.accountId, q.accountId)];
-  const tenant = tenantScope(mpMessages);
-  if (tenant) conditions.push(tenant);
-  if (q.openid) conditions.push(eq(mpMessages.openid, q.openid));
-  if (q.direction) conditions.push(eq(mpMessages.direction, q.direction));
-  if (q.msgType) conditions.push(eq(mpMessages.msgType, q.msgType));
-  conditions.push(keywordCondition(q.keyword, [mpMessages.content], 'ilike'));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpMessages.accountId, q.accountId),
+    tenantScope(mpMessages),
+    q.openid ? eq(mpMessages.openid, q.openid) : undefined,
+    q.direction ? eq(mpMessages.direction, q.direction) : undefined,
+    q.msgType ? eq(mpMessages.msgType, q.msgType) : undefined,
+    keywordCondition(q.keyword, [mpMessages.content], 'ilike'),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

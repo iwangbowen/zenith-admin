@@ -1,4 +1,4 @@
-import { eq, and, desc, type SQL } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
@@ -11,29 +11,22 @@ import { currentUser } from '../../lib/context';
 import { sendMail } from '../../lib/email';
 import { renderTemplate } from '../../lib/sms-sender';
 import { ensureEmailTemplateExists } from './email-templates.service';
-import type { SendStatus, SendSource, SendEmailInput } from '@zenith/shared/messaging';
+import type { SendEmailInput, SendSource, emailSendLogContract } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
-export interface ListEmailSendLogsQuery {
-  keyword?: string;
-  toEmail?: string;
-  status?: SendStatus;
-  source?: SendSource;
-  page: number;
-  pageSize: number;
+export type EmailSendLogListFilter = Omit<QueryOutputOf<typeof emailSendLogContract.list>, 'page' | 'pageSize'>;
+
+export function buildListWhere(q: EmailSendLogListFilter) {
+  return buildWhere(
+    tenantScope(emailSendLogs),
+    keywordCondition(q.keyword, [emailSendLogs.subject], 'ilike'),
+    keywordCondition(q.toEmail, [emailSendLogs.toEmail], 'ilike'),
+    q.status ? eq(emailSendLogs.status, q.status) : undefined,
+    q.source ? eq(emailSendLogs.source, q.source) : undefined,
+  );
 }
 
-export function buildListWhere(q: ListEmailSendLogsQuery) {
-  const conditions: (SQL | undefined)[] = [];
-  const tenant = tenantScope(emailSendLogs);
-  if (tenant) conditions.push(tenant);
-  conditions.push(keywordCondition(q.keyword, [emailSendLogs.subject], 'ilike'));
-  conditions.push(keywordCondition(q.toEmail, [emailSendLogs.toEmail], 'ilike'));
-  if (q.status) conditions.push(eq(emailSendLogs.status, q.status));
-  if (q.source) conditions.push(eq(emailSendLogs.source, q.source));
-  return buildWhere(...conditions);
-}
-
-export async function listEmailSendLogs(q: ListEmailSendLogsQuery) {
+export async function listEmailSendLogs(q: QueryOutputOf<typeof emailSendLogContract.list>) {
   const where = buildListWhere(q);
   return buildListResult({
     page: q.page,

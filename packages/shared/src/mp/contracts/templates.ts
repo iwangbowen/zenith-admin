@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { batchSendMpTemplateSchema, sendMpTemplateSchema } from '../../messaging/validation';
 import { MP_TEMPLATE_SEND_STATUSES } from '../constants';
@@ -62,7 +62,7 @@ export const mpTemplateListQuery = paginationQuery.extend({
 
 export const mpTemplateSendLogListQuery = paginationQuery.extend({
   ...mpAccountIdQuery.shape,
-  status: z.enum(MP_TEMPLATE_SEND_STATUSES).optional(),
+  status: queryEnum(MP_TEMPLATE_SEND_STATUSES),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

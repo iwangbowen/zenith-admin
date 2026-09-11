@@ -5,8 +5,9 @@ import { buildWhere, keywordCondition, withPagination } from '../../lib/where-he
 import { db } from '../../db';
 import { userGroups, userGroupMembers, userGroupRoles, users, departments, roles } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
-import type { UserGroupMemberMode, UserGroupMemberRule } from '@zenith/shared/identity';
+import type { UserGroupMemberMode, UserGroupMemberRule, userGroupContract } from '@zenith/shared/identity';
 import { validateUserGroupRulePresence } from '@zenith/shared/identity';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { clearUserPermissionCache } from '../../lib/permissions';
@@ -88,27 +89,18 @@ export interface CreateUserGroupInput {
 }
 export type UpdateUserGroupInput = Partial<CreateUserGroupInput>;
 
-export interface ListUserGroupsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-}
-
 export async function listAllUserGroups() {
   const tc = tenantCondition(userGroups, currentUser());
   const rows = await baseSelect().where(tc).orderBy(asc(userGroups.id));
   return rows.map(mapGroup);
 }
 
-export async function listUserGroups(q: ListUserGroupsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conditions = [];
-  conditions.push(keywordCondition(q.keyword, [userGroups.name, userGroups.code]));
-  if (q.status) conditions.push(eq(userGroups.status, q.status));
-
-  const where = and(...conditions);
+export async function listUserGroups(q: QueryOutputOf<typeof userGroupContract.list>) {
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [userGroups.name, userGroups.code]),
+    q.status ? eq(userGroups.status, q.status) : undefined,
+  );
   const tc = tenantCondition(userGroups, currentUser());
   const finalWhere = buildWhere(where, tc);
 

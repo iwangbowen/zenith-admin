@@ -78,14 +78,11 @@ async function ensureNoProtectedAdminInIds(ids: number[], action: '删除' | '�
 /** 构造「当前操作者可管理的用户」过滤条件；返回 undefined 表示不限制（全量权限） */
 async function manageableUsersCondition(): Promise<SQL | undefined> {
   const user = currentUser();
-  const conditions: (SQL | undefined)[] = [];
   const tc = tenantCondition(users, user);
-  conditions.push(tc);
   const scope = await getDataScopeCondition({
     currentUserId: user.userId, deptColumn: users.departmentId, ownerColumn: users.id,
   });
-  if (scope) conditions.push(scope);
-  return buildWhere(...conditions);
+  return buildWhere(tc, scope);
 }
 
 /** 校验目标用户存在且落在当前操作者可管理范围内（防越权/跨租户 IDOR），返回其租户归属 */
@@ -189,36 +186,25 @@ export async function setUserPositions(executor: DbExecutor, userId: number, pos
 
 export async function ensureDepartmentExists(departmentId?: number | null, user?: JwtPayload) {
   if (departmentId === undefined || departmentId === null) return;
-  const conditions: (SQL | undefined)[] = [eq(departments.id, departmentId)];
-  if (user) {
-    const tc = tenantCondition(departments, user);
-    conditions.push(tc);
-  }
-  const [maybeD] = await db.select({ id: departments.id }).from(departments).where(buildWhere(...conditions)).limit(1);
+  const [maybeD] = await db.select({ id: departments.id }).from(departments)
+    .where(buildWhere(eq(departments.id, departmentId), user ? tenantCondition(departments, user) : undefined))
+    .limit(1);
   requireRow(maybeD, '所属部门不存在', 400);
 }
 
 export async function ensureRoleIdsExist(roleIds: number[], user?: JwtPayload) {
   const uniq = Array.from(new Set(roleIds));
   if (uniq.length === 0) return;
-  const conditions: (SQL | undefined)[] = [inArray(roles.id, uniq)];
-  if (user) {
-    const tc = tenantCondition(roles, user);
-    conditions.push(tc);
-  }
-  const rows = await db.select({ id: roles.id }).from(roles).where(buildWhere(...conditions));
+  const rows = await db.select({ id: roles.id }).from(roles)
+    .where(buildWhere(inArray(roles.id, uniq), user ? tenantCondition(roles, user) : undefined));
   if (rows.length !== uniq.length) throw new HTTPException(400, { message: '存在无效角色' });
 }
 
 export async function ensurePositionIdsExist(positionIds: number[], user?: JwtPayload) {
   const uniq = Array.from(new Set(positionIds));
   if (uniq.length === 0) return;
-  const conditions: (SQL | undefined)[] = [inArray(positions.id, uniq)];
-  if (user) {
-    const tc = tenantCondition(positions, user);
-    conditions.push(tc);
-  }
-  const rows = await db.select({ id: positions.id }).from(positions).where(buildWhere(...conditions));
+  const rows = await db.select({ id: positions.id }).from(positions)
+    .where(buildWhere(inArray(positions.id, uniq), user ? tenantCondition(positions, user) : undefined));
   if (rows.length !== uniq.length) throw new HTTPException(400, { message: '存在无效岗位' });
 }
 

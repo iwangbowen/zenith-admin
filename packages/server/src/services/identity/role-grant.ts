@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, notInArray, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, notInArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import { db } from '../../db';
@@ -46,13 +46,11 @@ export async function assertDefaultRolesGrantable(roleIds: number[], targetTenan
   const uniq = Array.from(new Set(roleIds));
   if (uniq.length === 0) return;
   const user = currentUser();
-  const conditions: (SQL | undefined)[] = [inArray(roles.id, uniq)];
-  if (!isPlatformAdmin(user)) {
-    const tc = tenantCondition(roles, user);
-    conditions.push(tc);
-  }
   const rows = await db.select({ id: roles.id, code: roles.code, tenantId: roles.tenantId })
-    .from(roles).where(buildWhere(...conditions));
+    .from(roles).where(buildWhere(
+      inArray(roles.id, uniq),
+      !isPlatformAdmin(user) ? tenantCondition(roles, user) : undefined,
+    ));
   if (rows.length !== uniq.length || rows.some((r) => (r.tenantId ?? null) !== targetTenantId)) {
     throw new HTTPException(400, { message: '默认角色不存在或不属于目标租户' });
   }

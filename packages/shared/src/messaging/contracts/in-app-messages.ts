@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { batchIdsBody, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { IN_APP_MESSAGE_TYPES, SEND_SOURCES } from '../constants';
 import { sendInAppSchema } from '../validation';
@@ -40,13 +40,11 @@ export type InAppUnreadCount = z.infer<typeof inAppUnreadCountSchema>;
 
 // ─── 查询参数 ────────────────────────────────────────────────────────────────
 
-/** 已读筛选：接受布尔或 'true' / 'false' 字符串 */
-const isReadQuery = z.union([z.boolean(), z.enum(['true', 'false']).transform((v) => v === 'true')]).optional();
 
 export const inAppMessageListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按标题模糊匹配' }),
-  type: z.enum(IN_APP_MESSAGE_TYPES).optional(),
-  isRead: isReadQuery,
+  type: queryEnum(IN_APP_MESSAGE_TYPES),
+  isRead: queryBool(),
 });
 
 export const inAppMessageAdminListQuery = inAppMessageListQuery.extend({

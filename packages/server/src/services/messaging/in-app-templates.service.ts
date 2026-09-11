@@ -1,4 +1,4 @@
-import { eq, and, type SQL } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
@@ -8,7 +8,8 @@ import { buildWhere, withPagination, keywordCondition } from '../../lib/where-he
 import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
-import type { CreateInAppTemplateInput, UpdateInAppTemplateInput, InAppMessageType } from '@zenith/shared/messaging';
+import type { CreateInAppTemplateInput, UpdateInAppTemplateInput, inAppTemplateContract } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapInAppTemplate(row: InAppTemplateRow) {
   return {
@@ -33,19 +34,13 @@ export async function ensureInAppTemplateExists(id: number) {
   );
 }
 
-export interface ListInAppTemplatesQuery {
-  keyword?: string;
-  type?: InAppMessageType;
-  status?: 'enabled' | 'disabled';
-  page: number;
-  pageSize: number;
-}
-
-export async function listInAppTemplates(q: ListInAppTemplatesQuery) {
-  const conditions: (SQL | undefined)[] = [tenantScope(inAppTemplates), keywordCondition(q.keyword, [inAppTemplates.name, inAppTemplates.code], 'ilike')];
-  if (q.type) conditions.push(eq(inAppTemplates.type, q.type));
-  if (q.status) conditions.push(eq(inAppTemplates.status, q.status));
-  const where = buildWhere(...conditions);
+export async function listInAppTemplates(q: QueryOutputOf<typeof inAppTemplateContract.list>) {
+  const where = buildWhere(
+    tenantScope(inAppTemplates),
+    keywordCondition(q.keyword, [inAppTemplates.name, inAppTemplates.code], 'ilike'),
+    q.type ? eq(inAppTemplates.type, q.type) : undefined,
+    q.status ? eq(inAppTemplates.status, q.status) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

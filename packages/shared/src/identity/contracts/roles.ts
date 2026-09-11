@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sensitive } from '../../core/sensitive';
 import { DATA_SCOPES } from '../constants';
@@ -15,7 +15,7 @@ export const roleSchema = z.object({
   code: z.string().meta({ example: 'super_admin' }),
   description: z.string().nullable().optional(),
   /** 用户携带的角色摘要（登录态 / 用户详情）不含数据范围 */
-  dataScope: z.enum(DATA_SCOPES).optional().meta({ example: 'all' }),
+  dataScope: queryEnum(DATA_SCOPES).meta({ example: 'all' }),
   tenantId: z.int().nullable().optional(),
   status: entityStatusSchema.meta({ example: 'enabled' }),
   ...auditFieldsSchema,
@@ -47,7 +47,7 @@ export type RoleUser = z.infer<typeof roleUserSchema>;
 
 export const roleListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称 / 编码模糊匹配' }),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
   startTime: dateRangeBound('创建时间起'),
   endTime: dateRangeBound('创建时间止'),
 });

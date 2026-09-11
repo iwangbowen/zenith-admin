@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { createEmailTemplateSchema, updateEmailTemplateSchema } from '../validation';
 
@@ -24,7 +24,7 @@ export type EmailTemplate = z.infer<typeof emailTemplateSchema>;
 
 export const emailTemplateListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称 / 编码模糊匹配' }),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const emailTemplateContract = defineContract('/api/email-templates', {

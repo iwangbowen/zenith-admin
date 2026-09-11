@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, type SQL } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
@@ -9,7 +9,8 @@ import { buildWhere, withPagination, keywordCondition } from '../../lib/where-he
 import { formatDateTime } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
-import type { CreateMpAutoReplyInput, UpdateMpAutoReplyInput, MpAutoReplyType, MpReplyContentType, MpReplyArticle } from '@zenith/shared/mp';
+import type { CreateMpAutoReplyInput, UpdateMpAutoReplyInput, MpReplyContentType, MpReplyArticle, mpAutoReplyContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapMpAutoReply(row: MpAutoReplyRow) {
   return {
@@ -57,22 +58,14 @@ export async function getMpUnmatchedKeywordBeforeAudit(id: number) {
   return mapMpUnmatchedKeyword(row);
 }
 
-export interface ListMpAutoRepliesQuery {
-  accountId: number;
-  replyType?: MpAutoReplyType;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listMpAutoReplies(q: ListMpAutoRepliesQuery) {
+export async function listMpAutoReplies(q: QueryOutputOf<typeof mpAutoReplyContract.list>) {
   await ensureMpAccountExists(q.accountId);
-  const conditions: (SQL | undefined)[] = [eq(mpAutoReplies.accountId, q.accountId)];
-  const tenant = tenantScope(mpAutoReplies);
-  if (tenant) conditions.push(tenant);
-  if (q.replyType) conditions.push(eq(mpAutoReplies.replyType, q.replyType));
-  conditions.push(keywordCondition(q.keyword, [mpAutoReplies.keyword], 'ilike'));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpAutoReplies.accountId, q.accountId),
+    tenantScope(mpAutoReplies),
+    q.replyType ? eq(mpAutoReplies.replyType, q.replyType) : undefined,
+    keywordCondition(q.keyword, [mpAutoReplies.keyword], 'ilike'),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

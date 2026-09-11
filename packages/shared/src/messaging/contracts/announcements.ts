@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { ANNOUNCEMENT_RECIPIENT_TYPES, ANNOUNCEMENT_TARGET_TYPES } from '../constants';
 import { createAnnouncementSchema, updateAnnouncementSchema } from '../validation';
@@ -109,11 +109,11 @@ export const announcementListQuery = paginationQuery.extend({
 });
 
 export const announcementInboxQuery = paginationQuery.extend({
-  isRead: z.string().optional().meta({ description: "'true' 仅已读 / 'false' 仅未读，其余不过滤" }),
+  isRead: queryBool("'true' 仅已读 / 'false' 仅未读，其余不过滤"),
 });
 
 export const announcementReadStatsQuery = paginationQuery.extend({
-  tab: z.string().optional().meta({ description: "'read'（默认）/ 'unread'" }),
+  tab: queryEnum(['read', 'unread'], "'read'（默认）/ 'unread'"),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { eq, and, type SQL } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
@@ -8,7 +8,8 @@ import { buildWhere, withPagination, keywordCondition } from '../../lib/where-he
 import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
-import type { CreateEmailTemplateInput, UpdateEmailTemplateInput } from '@zenith/shared/messaging';
+import type { CreateEmailTemplateInput, UpdateEmailTemplateInput, emailTemplateContract } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapEmailTemplate(row: EmailTemplateRow) {
   return {
@@ -32,17 +33,12 @@ export async function ensureEmailTemplateExists(id: number) {
   );
 }
 
-export interface ListEmailTemplatesQuery {
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  page: number;
-  pageSize: number;
-}
-
-export async function listEmailTemplates(q: ListEmailTemplatesQuery) {
-  const conditions: (SQL | undefined)[] = [tenantScope(emailTemplates), keywordCondition(q.keyword, [emailTemplates.name, emailTemplates.code], 'ilike')];
-  if (q.status) conditions.push(eq(emailTemplates.status, q.status));
-  const where = buildWhere(...conditions);
+export async function listEmailTemplates(q: QueryOutputOf<typeof emailTemplateContract.list>) {
+  const where = buildWhere(
+    tenantScope(emailTemplates),
+    keywordCondition(q.keyword, [emailTemplates.name, emailTemplates.code], 'ilike'),
+    q.status ? eq(emailTemplates.status, q.status) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

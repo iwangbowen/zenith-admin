@@ -8,12 +8,15 @@
 import { getOnlineSessions, forceLogout, forceLogoutAllByUser, type SessionInfo } from '../../lib/session-manager';
 import { sendToToken, closeTokenConnection, sendToUser, closeUserConnections } from '../../lib/ws-manager';
 import { pageOffset } from '../../lib/pagination';
+import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
 import { currentUser } from '../../lib/context';
 import { getTenantScopeId, isPlatformAdmin } from '../../lib/tenant';
 import { listPlatformSuperUserIds } from './role-grant';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import type { sessionContract } from '@zenith/shared/identity';
 
 /** 当前操作者可见（可管理）的在线会话 */
 async function visibleSessions(): Promise<SessionInfo[]> {
@@ -40,17 +43,20 @@ function toSessionDto(s: SessionInfo) {
   };
 }
 
-export async function listSessions(q: { page?: number; pageSize?: number; keyword?: string }) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
+export async function listSessions(q: QueryOutputOf<typeof sessionContract.list>) {
+  const { page, pageSize } = q;
   const keyword = q.keyword ?? '';
   let sessions = await visibleSessions();
   if (keyword) {
     sessions = sessions.filter((s) => s.username.includes(keyword) || s.nickname.includes(keyword) || s.ip.includes(keyword));
   }
-  const total = sessions.length;
-  const list = sessions.slice(pageOffset(page, pageSize), page * pageSize);
-  return { list: list.map(toSessionDto), total, page, pageSize };
+  return buildListResult({
+    page,
+    pageSize,
+    count: async () => sessions.length,
+    rows: async () => sessions.slice(pageOffset(page, pageSize), page * pageSize),
+    map: toSessionDto,
+  });
 }
 
 function notifyForceLogout(tokenId: string) {

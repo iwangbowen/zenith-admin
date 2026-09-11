@@ -1,6 +1,6 @@
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { and, desc, eq, gt, isNull, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, loginLogs, tenants, operationLogs, passwordResetTokens, type UserRow } from '../../db/schema';
 import { reserveTenantSeats } from '../../lib/tenant-quota';
@@ -13,12 +13,14 @@ import {
 import type { JwtPayload } from '../../middleware/auth';
 import { formatDateTime } from '../../lib/datetime';
 import { parseUserAgent } from '../../lib/request-helpers';
-import { dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { lookupIpLocation } from '../../lib/ip-location';
 import { clampSmallint, truncateVarchar } from '../../lib/sanitize';
 import logger from '../../lib/logger';
 import { getSettings } from '../../lib/settings';
 import { validatePassword, type IdentitySecuritySettings } from '@zenith/shared/settings';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import type { authContract } from '@zenith/shared/identity';
 import {
   clearMfaChallenge,
   createMfaChallenge,
@@ -653,14 +655,15 @@ export async function changeMyPassword(oldPassword: string, newPassword: string)
   await forceLogoutAllByUserExcept(userId, currentUser().jti);
 }
 
-export async function listMyLoginLogs(query: { page?: number; pageSize?: number; eventType?: LoginEventType; status?: 'success' | 'fail'; startTime?: string; endTime?: string }) {
+export async function listMyLoginLogs(query: QueryOutputOf<typeof authContract.myLoginLogs>) {
   const userId = currentUser().userId;
-  const { page = 1, pageSize = 10, eventType, status, startTime, endTime } = query;
-  const conditions = [eq(loginLogs.userId, userId)];
-  if (eventType) conditions.push(eq(loginLogs.eventType, eventType));
-  if (status) conditions.push(eq(loginLogs.status, status));
-  conditions.push(...dateRangeConditions(loginLogs.createdAt, startTime, endTime));
-  const where = and(...conditions);
+  const { page, pageSize, eventType, status, startTime, endTime } = query;
+  const where = buildWhere(
+    eq(loginLogs.userId, userId),
+    eventType ? eq(loginLogs.eventType, eventType) : undefined,
+    status ? eq(loginLogs.status, status) : undefined,
+    ...dateRangeConditions(loginLogs.createdAt, startTime, endTime),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -670,13 +673,14 @@ export async function listMyLoginLogs(query: { page?: number; pageSize?: number;
   });
 }
 
-export async function listMyOperationLogs(query: { page?: number; pageSize?: number; module?: string; startTime?: string; endTime?: string }) {
+export async function listMyOperationLogs(query: QueryOutputOf<typeof authContract.myOperationLogs>) {
   const userId = currentUser().userId;
-  const { page = 1, pageSize = 10, module, startTime, endTime } = query;
-  const conditions: (SQL | undefined)[] = [eq(operationLogs.userId, userId)];
-  conditions.push(keywordCondition(module, [operationLogs.module]));
-  conditions.push(...dateRangeConditions(operationLogs.createdAt, startTime, endTime));
-  const where = and(...conditions);
+  const { page, pageSize, module, startTime, endTime } = query;
+  const where = buildWhere(
+    eq(operationLogs.userId, userId),
+    keywordCondition(module, [operationLogs.module]),
+    ...dateRangeConditions(operationLogs.createdAt, startTime, endTime),
+  );
   return buildListResult({
     page,
     pageSize,

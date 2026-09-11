@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { SMS_PROVIDERS } from '../constants';
 import { createSmsTemplateSchema, updateSmsTemplateSchema } from '../validation';
@@ -27,8 +27,8 @@ export type SmsTemplate = z.infer<typeof smsTemplateSchema>;
 
 export const smsTemplateListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称 / 编码模糊匹配' }),
-  provider: z.enum(SMS_PROVIDERS).optional(),
-  status: entityStatusSchema.optional(),
+  provider: queryEnum(SMS_PROVIDERS),
+  status: entityStatusQuery,
 });
 
 export const smsTemplateContract = defineContract('/api/sms-templates', {

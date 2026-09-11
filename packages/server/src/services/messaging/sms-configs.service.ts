@@ -10,8 +10,9 @@ import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { clearDefaultFlag, ensureSingleDefault } from '../../lib/default-flag';
 import { currentUserOrNull } from '../../lib/context';
 import { config } from '../../config';
-import type { CreateSmsConfigInput, UpdateSmsConfigInput, SmsProvider } from '@zenith/shared/messaging';
+import type { CreateSmsConfigInput, UpdateSmsConfigInput, smsConfigContract } from '@zenith/shared/messaging';
 import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 /** 列表返回脱敏 */
 export function mapSmsConfigSafe(row: SmsConfigRow) {
@@ -60,19 +61,13 @@ function defaultScope(): SQL {
   return and(eq(smsConfigs.isDefault, true), tenantScope(smsConfigs)) ?? eq(smsConfigs.isDefault, true);
 }
 
-export interface ListSmsConfigsQuery {
-  keyword?: string;
-  provider?: SmsProvider;
-  status?: 'enabled' | 'disabled';
-  page: number;
-  pageSize: number;
-}
-
-export async function listSmsConfigs(q: ListSmsConfigsQuery) {
-  const conditions: (SQL | undefined)[] = [tenantScope(smsConfigs), keywordCondition(q.keyword, [smsConfigs.name, smsConfigs.signName], 'ilike')];
-  if (q.provider) conditions.push(eq(smsConfigs.provider, q.provider));
-  if (q.status) conditions.push(eq(smsConfigs.status, q.status));
-  const where = buildWhere(...conditions);
+export async function listSmsConfigs(q: QueryOutputOf<typeof smsConfigContract.list>) {
+  const where = buildWhere(
+    tenantScope(smsConfigs),
+    keywordCondition(q.keyword, [smsConfigs.name, smsConfigs.signName], 'ilike'),
+    q.provider ? eq(smsConfigs.provider, q.provider) : undefined,
+    q.status ? eq(smsConfigs.status, q.status) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

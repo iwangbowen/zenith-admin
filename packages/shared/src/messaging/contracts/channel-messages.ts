@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { chatMessageExtraSchema } from '../../chat/contracts/chat-messages';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { audienceEstimateSchema, publishChannelSchema } from '../../mp/validation';
 import { CHANNEL_MESSAGE_STATUSES, CHANNEL_MESSAGE_TYPES } from '../constants';
@@ -32,7 +32,7 @@ export type ChannelAudienceEstimate = z.infer<typeof channelAudienceEstimateSche
 // ─── 查询参数 ────────────────────────────────────────────────────────────────
 
 export const channelAdminMessageListQuery = paginationQuery.extend({
-  status: z.enum(CHANNEL_MESSAGE_STATUSES).optional(),
+  status: queryEnum(CHANNEL_MESSAGE_STATUSES),
 });
 
 // ─── 契约：群发 / 消息记录管理 / 群发模板 ─────────────────────────────────────

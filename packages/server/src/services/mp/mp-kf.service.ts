@@ -1,4 +1,4 @@
-import { eq, and, type SQL } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
@@ -11,7 +11,8 @@ import { ensureMpAccountExists } from './mp-account.service';
 import { getWechatKfList, addWechatKfAccount, updateWechatKfAccount, delWechatKfAccount } from '../../lib/wechat';
 import { mapWechatError } from '../../lib/wechat-error';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import type { CreateMpKfAccountInput, UpdateMpKfAccountInput } from '@zenith/shared/mp';
+import type { CreateMpKfAccountInput, UpdateMpKfAccountInput, mpKfAccountContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapMpKfAccount(row: MpKfAccountRow) {
   return {
@@ -40,20 +41,13 @@ export async function getMpKfAccountBeforeAudit(id: number) {
   return mapMpKfAccount(await ensureMpKfAccountExists(id));
 }
 
-export interface ListMpKfAccountsQuery {
-  accountId: number;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listMpKfAccounts(q: ListMpKfAccountsQuery) {
+export async function listMpKfAccounts(q: QueryOutputOf<typeof mpKfAccountContract.list>) {
   await ensureMpAccountExists(q.accountId);
-  const conditions: (SQL | undefined)[] = [eq(mpKfAccounts.accountId, q.accountId)];
-  const tenant = tenantScope(mpKfAccounts);
-  if (tenant) conditions.push(tenant);
-  conditions.push(keywordCondition(q.keyword, [mpKfAccounts.nickname], 'ilike'));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpKfAccounts.accountId, q.accountId),
+    tenantScope(mpKfAccounts),
+    keywordCondition(q.keyword, [mpKfAccounts.nickname], 'ilike'),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

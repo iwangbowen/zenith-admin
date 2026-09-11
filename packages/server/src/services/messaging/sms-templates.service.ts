@@ -1,4 +1,4 @@
-import { eq, and, type SQL } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
@@ -8,7 +8,8 @@ import { buildWhere, withPagination, keywordCondition } from '../../lib/where-he
 import { formatDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
-import type { CreateSmsTemplateInput, UpdateSmsTemplateInput, SmsProvider } from '@zenith/shared/messaging';
+import type { CreateSmsTemplateInput, UpdateSmsTemplateInput, smsTemplateContract } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapSmsTemplate(row: SmsTemplateRow) {
   return {
@@ -34,19 +35,13 @@ export async function ensureSmsTemplateExists(id: number) {
   );
 }
 
-export interface ListSmsTemplatesQuery {
-  keyword?: string;
-  provider?: SmsProvider;
-  status?: 'enabled' | 'disabled';
-  page: number;
-  pageSize: number;
-}
-
-export async function listSmsTemplates(q: ListSmsTemplatesQuery) {
-  const conditions: (SQL | undefined)[] = [tenantScope(smsTemplates), keywordCondition(q.keyword, [smsTemplates.name, smsTemplates.code], 'ilike')];
-  if (q.provider) conditions.push(eq(smsTemplates.provider, q.provider));
-  if (q.status) conditions.push(eq(smsTemplates.status, q.status));
-  const where = buildWhere(...conditions);
+export async function listSmsTemplates(q: QueryOutputOf<typeof smsTemplateContract.list>) {
+  const where = buildWhere(
+    tenantScope(smsTemplates),
+    keywordCondition(q.keyword, [smsTemplates.name, smsTemplates.code], 'ilike'),
+    q.provider ? eq(smsTemplates.provider, q.provider) : undefined,
+    q.status ? eq(smsTemplates.status, q.status) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

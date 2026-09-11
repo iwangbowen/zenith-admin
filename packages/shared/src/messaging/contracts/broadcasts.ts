@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { BROADCAST_AUDIENCE_TYPES, BROADCAST_CHANNELS, BROADCAST_STATUSES } from '../constants';
@@ -33,7 +33,7 @@ export type BroadcastCampaign = z.infer<typeof broadcastCampaignSchema>;
 
 export const broadcastListQuery = paginationQuery.extend({
   keyword: z.string().max(256).optional().meta({ description: '按标题 / 内容模糊匹配' }),
-  status: z.enum(BROADCAST_STATUSES).optional(),
+  status: queryEnum(BROADCAST_STATUSES),
 });
 
 export const broadcastContract = defineContract('/api/broadcasts', {

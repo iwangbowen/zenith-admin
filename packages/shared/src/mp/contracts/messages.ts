@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { paginated, paginationQuery } from '../../core/api-schemas';
+import { paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sendMpMessageSchema } from '../../messaging/validation';
 import { MP_MESSAGE_DIRECTIONS, MP_MESSAGE_STATUSES, MP_MESSAGE_TYPES } from '../constants';
@@ -44,8 +44,8 @@ export type MpConversation = z.infer<typeof mpConversationSchema>;
 export const mpMessageListQuery = paginationQuery.extend({
   ...mpAccountIdQuery.shape,
   openid: z.string().optional().meta({ description: '只看某个粉丝的会话' }),
-  direction: z.enum(MP_MESSAGE_DIRECTIONS).optional(),
-  msgType: z.enum(MP_MESSAGE_TYPES).optional(),
+  direction: queryEnum(MP_MESSAGE_DIRECTIONS),
+  msgType: queryEnum(MP_MESSAGE_TYPES),
   keyword: z.string().optional().meta({ description: '按消息内容模糊匹配' }),
 });
 

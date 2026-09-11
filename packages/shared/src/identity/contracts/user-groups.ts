@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sensitive } from '../../core/sensitive';
 import { USER_GROUP_MEMBER_MODES } from '../constants';
@@ -80,7 +80,7 @@ export type UserGroupRulePreview = z.infer<typeof userGroupRulePreviewResultSche
 
 export const userGroupListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称 / 编码模糊匹配' }),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const userGroupContract = defineContract('/api/user-groups', {

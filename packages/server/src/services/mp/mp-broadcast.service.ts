@@ -1,4 +1,4 @@
-import { eq, and, desc, inArray, isNotNull, lte, type SQL } from 'drizzle-orm';
+import { eq, and, desc, inArray, isNotNull, lte } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
@@ -12,7 +12,8 @@ import { ensureMpAccountExists } from './mp-account.service';
 import { assertContentSafe } from './mp-security.service';
 import { massSend, previewMassSend, getMassSendResult, WechatApiError } from '../../lib/wechat';
 import { mapWechatError } from '../../lib/wechat-error';
-import type { CreateMpBroadcastInput, UpdateMpBroadcastInput, MpBroadcastStatus } from '@zenith/shared/mp';
+import type { CreateMpBroadcastInput, UpdateMpBroadcastInput, mpBroadcastContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapMpBroadcast(row: MpBroadcastRow) {
   return {
@@ -44,20 +45,13 @@ export async function getMpBroadcastBeforeAudit(id: number) {
   return mapMpBroadcast(await ensureMpBroadcastExists(id));
 }
 
-export interface ListMpBroadcastsQuery {
-  accountId: number;
-  status?: MpBroadcastStatus;
-  page: number;
-  pageSize: number;
-}
-
-export async function listMpBroadcasts(q: ListMpBroadcastsQuery) {
+export async function listMpBroadcasts(q: QueryOutputOf<typeof mpBroadcastContract.list>) {
   await ensureMpAccountExists(q.accountId);
-  const conditions: SQL[] = [eq(mpBroadcasts.accountId, q.accountId)];
-  const tenant = tenantScope(mpBroadcasts);
-  if (tenant) conditions.push(tenant);
-  if (q.status) conditions.push(eq(mpBroadcasts.status, q.status));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpBroadcasts.accountId, q.accountId),
+    tenantScope(mpBroadcasts),
+    q.status ? eq(mpBroadcasts.status, q.status) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

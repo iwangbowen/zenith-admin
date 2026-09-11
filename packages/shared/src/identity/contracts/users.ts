@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sensitive } from '../../core/sensitive';
 import { DATA_SCOPES } from '../constants';
@@ -105,7 +105,7 @@ export const userListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按用户名 / 昵称 / 邮箱模糊匹配' }),
   phone: z.string().optional(),
   departmentId: z.coerce.number().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
   startTime: dateRangeBound('创建时间起'),
   endTime: dateRangeBound('创建时间止'),
 });

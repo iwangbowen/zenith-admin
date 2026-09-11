@@ -12,9 +12,11 @@ import {
 } from '../../db/schema';
 import type {
   CreateDirectorySyncSourceInput, UpdateDirectorySyncSourceInput, ResolveDirectorySyncConflictInput,
-  DirectorySyncRunStatus, DirectorySyncSourceType, DirectorySyncConflictStatus, DirectorySyncEntityType, DirectorySyncTriggerType, DirectorySyncItemAction,
+  DirectorySyncEntityType, DirectorySyncTriggerType, DirectorySyncItemAction,
   DirectorySyncMatchKey, DirectorySyncConflictPolicy, DirectorySyncConflictType, DirectorySyncResolution,
+  directorySyncSourceContract, directorySyncContract,
 } from '@zenith/shared/identity';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
@@ -139,15 +141,9 @@ export function mapDirectorySyncConflict(row: DirectorySyncConflictRow & { sourc
 }
 
 // ─── 同步源 CRUD ──────────────────────────────────────────────────────────────
-export interface ListDirectorySyncSourcesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  type?: DirectorySyncSourceType;
-  status?: 'enabled' | 'disabled';
-}
+type DirectorySyncSourceListFilter = Omit<QueryOutputOf<typeof directorySyncSourceContract.list>, 'page' | 'pageSize'>;
 
-function buildSourceWhere(q: ListDirectorySyncSourcesQuery & { id?: number }) {
+function buildSourceWhere(q: DirectorySyncSourceListFilter & { id?: number }) {
   return buildWhere(
     tenantScope(directorySyncSources),
     q.id !== undefined ? eq(directorySyncSources.id, q.id) : undefined,
@@ -157,8 +153,8 @@ function buildSourceWhere(q: ListDirectorySyncSourcesQuery & { id?: number }) {
   );
 }
 
-export async function listDirectorySyncSources(q: ListDirectorySyncSourcesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listDirectorySyncSources(q: QueryOutputOf<typeof directorySyncSourceContract.list>) {
+  const { page, pageSize } = q;
   const where = buildSourceWhere(q);
   return buildListResult({
     page,
@@ -330,16 +326,9 @@ export async function submitDirectorySyncTask(id: number, dryRun: boolean) {
 }
 
 // ─── 同步记录 ─────────────────────────────────────────────────────────────────
-export interface ListDirectorySyncRunsQuery {
-  page?: number;
-  pageSize?: number;
-  sourceId?: number;
-  status?: DirectorySyncRunStatus;
-  startTime?: string;
-  endTime?: string;
-}
+type DirectorySyncRunListFilter = Omit<QueryOutputOf<typeof directorySyncContract.listRuns>, 'page' | 'pageSize'>;
 
-function buildRunWhere(q: ListDirectorySyncRunsQuery) {
+function buildRunWhere(q: DirectorySyncRunListFilter) {
   return buildWhere(
     manageableSourceScope(directorySyncRuns.sourceId),
     q.sourceId !== undefined ? eq(directorySyncRuns.sourceId, q.sourceId) : undefined,
@@ -348,8 +337,8 @@ function buildRunWhere(q: ListDirectorySyncRunsQuery) {
   );
 }
 
-export async function listDirectorySyncRuns(q: ListDirectorySyncRunsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listDirectorySyncRuns(q: QueryOutputOf<typeof directorySyncContract.listRuns>) {
+  const { page, pageSize } = q;
   const where = buildRunWhere(q);
   return buildListResult({
     page,
@@ -381,16 +370,9 @@ async function ensureRunManageable(runId: number): Promise<DirectorySyncRunRow> 
   return requireRow(run, '同步记录不存在');
 }
 
-export interface ListDirectorySyncRunItemsQuery {
-  page?: number;
-  pageSize?: number;
-  action?: DirectorySyncItemAction;
-  entityType?: DirectorySyncEntityType;
-}
-
-export async function listDirectorySyncRunItems(runId: number, q: ListDirectorySyncRunItemsQuery) {
+export async function listDirectorySyncRunItems(runId: number, q: QueryOutputOf<typeof directorySyncContract.listRunItems>) {
   await ensureRunManageable(runId);
-  const { page = 1, pageSize = 20 } = q;
+  const { page, pageSize } = q;
   const where = buildWhere(
     eq(directorySyncRunItems.runId, runId),
     q.action ? eq(directorySyncRunItems.action, q.action) : undefined,
@@ -417,15 +399,9 @@ export async function retryDirectorySyncRun(runId: number) {
 }
 
 // ─── 冲突处理 ─────────────────────────────────────────────────────────────────
-export interface ListDirectorySyncConflictsQuery {
-  page?: number;
-  pageSize?: number;
-  sourceId?: number;
-  status?: DirectorySyncConflictStatus;
-  keyword?: string;
-}
+type DirectorySyncConflictListFilter = Omit<QueryOutputOf<typeof directorySyncContract.listConflicts>, 'page' | 'pageSize'>;
 
-function buildConflictWhere(q: ListDirectorySyncConflictsQuery) {
+function buildConflictWhere(q: DirectorySyncConflictListFilter) {
   return buildWhere(
     manageableSourceScope(directorySyncConflicts.sourceId),
     q.sourceId !== undefined ? eq(directorySyncConflicts.sourceId, q.sourceId) : undefined,
@@ -434,8 +410,8 @@ function buildConflictWhere(q: ListDirectorySyncConflictsQuery) {
   );
 }
 
-export async function listDirectorySyncConflicts(q: ListDirectorySyncConflictsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listDirectorySyncConflicts(q: QueryOutputOf<typeof directorySyncContract.listConflicts>) {
+  const { page, pageSize } = q;
   const where = buildConflictWhere(q);
   return buildListResult({
     page,

@@ -1,4 +1,4 @@
-import { eq, and, inArray, sql, desc, type SQL } from 'drizzle-orm';
+import { eq, and, inArray, sql, desc } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
@@ -10,7 +10,8 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { getFollowerOpenids, batchGetFanInfo, getWechatBlacklist, batchBlacklistFans, batchUnblacklistFans, WechatApiError } from '../../lib/wechat';
-import type { UpdateMpFanInput, MpFanSubscribe } from '@zenith/shared/mp';
+import type { UpdateMpFanInput, MpFanSubscribe, mpFanContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapMpFan(row: MpFanRow) {
   return {
@@ -115,27 +116,16 @@ export async function getMpBlacklistStateAudit(accountId: number) {
   };
 }
 
-export interface ListMpFansQuery {
-  accountId: number;
-  keyword?: string;
-  subscribe?: MpFanSubscribe;
-  tagId?: number;
-  blacklisted?: boolean;
-  page: number;
-  pageSize: number;
-}
-
-export async function listMpFans(q: ListMpFansQuery) {
+export async function listMpFans(q: QueryOutputOf<typeof mpFanContract.list>) {
   await ensureMpAccountExists(q.accountId); // 校验账号归属当前租户
-  const conditions: (SQL | undefined)[] = [
+  const where = buildWhere(
     eq(mpFans.accountId, q.accountId),
     tenantScope(mpFans),
     keywordCondition(q.keyword, [mpFans.nickname, mpFans.openid, mpFans.remark], 'ilike'),
-  ];
-  if (q.subscribe) conditions.push(eq(mpFans.subscribe, q.subscribe));
-  if (q.tagId) conditions.push(sql`${mpFans.tagIds} @> ${JSON.stringify([q.tagId])}::jsonb`);
-  if (q.blacklisted !== undefined) conditions.push(eq(mpFans.blacklisted, q.blacklisted));
-  const where = buildWhere(...conditions);
+    q.subscribe ? eq(mpFans.subscribe, q.subscribe) : undefined,
+    q.tagId ? sql`${mpFans.tagIds} @> ${JSON.stringify([q.tagId])}::jsonb` : undefined,
+    q.blacklisted !== undefined ? eq(mpFans.blacklisted, q.blacklisted) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

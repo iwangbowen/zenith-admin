@@ -150,12 +150,16 @@ export function serviceProviderConfig(): Record<string, unknown> {
 }
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
+const DEFAULT_SCIM_START_INDEX = 1;
+const DEFAULT_SCIM_COUNT = 100;
+const MAX_SCIM_COUNT = 200;
+
 export async function listScimUsers(
   source: DirectorySyncSourceRow,
   query: { filter?: string; startIndex?: number; count?: number },
 ): Promise<Record<string, unknown>> {
-  const startIndex = Math.max(1, query.startIndex ?? 1);
-  const count = Math.min(Math.max(0, query.count ?? 100), 200);
+  const startIndex = Math.max(DEFAULT_SCIM_START_INDEX, query.startIndex ?? DEFAULT_SCIM_START_INDEX);
+  const count = Math.min(Math.max(0, query.count ?? DEFAULT_SCIM_COUNT), MAX_SCIM_COUNT);
 
   // 仅支持 IdP 实际使用的等值过滤：userName eq "x" / externalId eq "x"
   let filterField: 'userName' | 'externalId' | null = null;

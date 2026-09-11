@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { assignConversationSchema, setConversationTagsSchema } from '../../mp/validation';
 import { CHANNEL_CONVERSATION_ASSIGNEE_FILTERS, CHANNEL_CONVERSATION_STATUSES, CHANNEL_MESSAGE_DIRECTIONS } from '../constants';
@@ -78,8 +78,8 @@ export type ChannelQuickReply = z.infer<typeof channelQuickReplySchema>;
 // ─── 查询参数 ────────────────────────────────────────────────────────────────
 
 export const channelConversationListQuery = z.object({
-  status: z.enum(CHANNEL_CONVERSATION_STATUSES).optional(),
-  assignee: z.enum(CHANNEL_CONVERSATION_ASSIGNEE_FILTERS).optional(),
+  status: queryEnum(CHANNEL_CONVERSATION_STATUSES),
+  assignee: queryEnum(CHANNEL_CONVERSATION_ASSIGNEE_FILTERS),
   keyword: z.string().optional(),
   tag: z.string().optional(),
 });

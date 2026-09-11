@@ -22,7 +22,8 @@ import {
   type ChannelMenuRow, type ChannelAutoReplyRow, type ChannelQuickReplyRow, type ChannelConversationRow, type ChannelRow,
 } from '../../db/schema';
 import type { ChatCard, ChatMessageExtra } from '@zenith/shared/chat';
-import type { ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelConversationStatus, ChannelMessage, ChannelMessageType, ChannelQuickReply, ChannelCsAgent, ChannelCsPerformance, ChannelRichReplyExtra, CreateChannelAutoReplyInput, UpdateChannelAutoReplyInput, CreateChannelQuickReplyInput, UpdateChannelQuickReplyInput } from '@zenith/shared/messaging';
+import type { ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelMessage, ChannelMessageType, ChannelQuickReply, ChannelCsAgent, ChannelCsPerformance, ChannelRichReplyExtra, CreateChannelAutoReplyInput, UpdateChannelAutoReplyInput, CreateChannelQuickReplyInput, UpdateChannelQuickReplyInput, channelCsContract } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { SaveChannelMenusInput } from '@zenith/shared/mp';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
@@ -371,12 +372,7 @@ export async function listCsChannels(): Promise<{ id: number; name: string; avat
 }
 
 /** 会话列表筛选条件 */
-export interface ConversationFilter {
-  status?: ChannelConversationStatus;
-  assignee?: 'mine' | 'unassigned' | 'all';
-  keyword?: string;
-  tag?: string;
-}
+type ConversationFilter = QueryOutputOf<typeof channelCsContract.conversations>;
 
 /** 某运营号下的会话列表（按用户聚合 + 治理属性 left join），按最近消息时间倒序。 */
 export async function listChannelConversations(channelId: number, filter: ConversationFilter = {}): Promise<ChannelConversation[]> {

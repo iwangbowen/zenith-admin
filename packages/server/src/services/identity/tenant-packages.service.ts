@@ -1,7 +1,7 @@
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { eq, and, desc, inArray } from 'drizzle-orm';
-import { keywordCondition } from '../../lib/where-helpers';
+import { eq, desc, inArray } from 'drizzle-orm';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
@@ -11,6 +11,8 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { clearUserPermissionCache } from '../../lib/permissions';
 import { formatDateTime } from '../../lib/datetime';
 import { isLicenseFeatureKey, type TenantPackageQuotas } from '@zenith/shared/licensing';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import type { tenantPackageContract } from '@zenith/shared/identity';
 
 export function mapTenantPackage(
   row: TenantPackageRow,
@@ -47,19 +49,12 @@ function normalizeFeatures(features: string[]): string[] {
   return unique;
 }
 
-export interface ListTenantPackagesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-}
-
-export async function listTenantPackages(q: ListTenantPackagesQuery) {
-  const { page = 1, pageSize = 10, keyword, status } = q;
-  const conditions = [];
-  conditions.push(keywordCondition(keyword, [tenantPackages.name]));
-  if (status === 'enabled' || status === 'disabled') conditions.push(eq(tenantPackages.status, status));
-  const where = and(...conditions);
+export async function listTenantPackages(q: QueryOutputOf<typeof tenantPackageContract.list>) {
+  const { page, pageSize, keyword, status } = q;
+  const where = buildWhere(
+    keywordCondition(keyword, [tenantPackages.name]),
+    status ? eq(tenantPackages.status, status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

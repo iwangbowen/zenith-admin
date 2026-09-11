@@ -11,12 +11,11 @@ import { decryptSecret, encryptSecret, SecretDecryptError } from '../../lib/secr
 import { getSettings } from '../../lib/settings';
 import { buildTotpUri, generateTotpSecret, verifyTotp } from '../../lib/totp';
 import type { IdentitySecuritySettings } from '@zenith/shared/settings';
-import type { QueryOf } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { identitySecurityContract } from '@zenith/shared/identity';
 import { tenantCondition } from '../../lib/tenant';
-import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
-import { pageOffset } from '../../lib/pagination';
 
 export type MfaMethod = 'totp' | 'passkey';
 
@@ -264,9 +263,8 @@ export async function removeMyTrustedDevice(id: number) {
   requireRow(row, '可信设备不存在');
 }
 
-export async function listLoginRiskEvents(query: QueryOf<typeof identitySecurityContract.riskEvents>) {
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 10;
+export async function listLoginRiskEvents(query: QueryOutputOf<typeof identitySecurityContract.riskEvents>) {
+  const { page, pageSize } = query;
   const where = buildWhere(
     tenantCondition(loginRiskEvents, currentUser()),
     keywordCondition(query.keyword, [loginRiskEvents.username, loginRiskEvents.reason, loginRiskEvents.ip]),
@@ -275,7 +273,7 @@ export async function listLoginRiskEvents(query: QueryOf<typeof identitySecurity
     page,
     pageSize,
     count: () => db.$count(loginRiskEvents, where),
-    rows: () => db.select({
+    rows: () => withPagination(db.select({
       id: loginRiskEvents.id,
       userId: loginRiskEvents.userId,
       username: loginRiskEvents.username,
@@ -288,8 +286,7 @@ export async function listLoginRiskEvents(query: QueryOf<typeof identitySecurity
       userAgent: loginRiskEvents.userAgent,
       createdAt: loginRiskEvents.createdAt,
     }).from(loginRiskEvents).where(where)
-      .orderBy(desc(loginRiskEvents.createdAt), desc(loginRiskEvents.id))
-      .limit(pageSize).offset(pageOffset(page, pageSize)),
+      .orderBy(desc(loginRiskEvents.createdAt), desc(loginRiskEvents.id)).$dynamic(), page, pageSize),
     map: (row) => ({ ...row, createdAt: formatDateTime(row.createdAt) }),
   });
 }

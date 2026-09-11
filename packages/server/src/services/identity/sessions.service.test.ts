@@ -44,19 +44,19 @@ beforeEach(() => {
 
 describe('在线会话可见范围（M2）', () => {
   it('平台超管平台视角看到全部会话', async () => {
-    const result = await listSessions({ pageSize: 50 });
+    const result = await listSessions({ page: 1, pageSize: 50 });
     expect(result.total).toBe(5);
   });
 
   it('平台超管切到租户视角只看该租户', async () => {
     state.user.viewingTenantId = 1;
-    const result = await listSessions({ pageSize: 50 });
+    const result = await listSessions({ page: 1, pageSize: 50 });
     expect(result.list.map((s) => s.tokenId).sort()).toEqual(['t1-a', 't1-b']);
   });
 
   it('租户管理员只看本租户会话，且不能强制下线其它租户 / 平台会话', async () => {
     state.user = { userId: 10, username: 'tenant-admin', roles: ['admin'], tenantId: 1, viewingTenantId: undefined };
-    const result = await listSessions({ pageSize: 50 });
+    const result = await listSessions({ page: 1, pageSize: 50 });
     expect(result.list.map((s) => s.tokenId).sort()).toEqual(['t1-a', 't1-b']);
 
     await expect(forceLogoutSession('t2-a')).rejects.toMatchObject({ status: 404 });
@@ -73,13 +73,14 @@ describe('在线会话可见范围（M2）', () => {
 
   it('无租户的非超管看不到平台超管会话（多租户与单租户模式一致）', async () => {
     state.user = { userId: 2, username: 'ops', roles: ['admin'], tenantId: null, viewingTenantId: undefined };
-    let result = await listSessions({ pageSize: 50 });
+    let result = await listSessions({ page: 1, pageSize: 50 });
     expect(result.list.map((s) => s.tokenId)).toEqual(['global']);
     await expect(forceLogoutSession('super')).rejects.toMatchObject({ status: 404 });
 
     state.multiTenantMode = false;
-    result = await listSessions({ pageSize: 50 });
+    result = await listSessions({ page: 1, pageSize: 50 });
     expect(result.list.map((s) => s.tokenId)).not.toContain('super');
     expect(result.total).toBe(4);
   });
 });
+

@@ -5,7 +5,7 @@
  * 租户管理员编辑本租户覆盖；租户视图里的「默认值」已含平台覆盖，
  * 与派发时 resolver 的求值顺序一致。
  */
-import { and, desc, eq, type SQL } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import {
   NOTIFICATION_EVENT_GROUP_LABELS,
@@ -14,12 +14,12 @@ import {
   getNotificationEvent,
   isNotificationEventKey,
   type NotificationChannel,
-  type NotificationDecision,
   type NotificationPolicyEvent,
-  type NotificationRecipientType,
+  type notificationPolicyContract,
   type ResetNotificationOverrideInput,
   type SaveNotificationOverrideInput,
 } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import {
   notificationDispatches,
@@ -153,20 +153,8 @@ export async function testFireNotificationEvent(eventKey: string, userId: number
 
 // ─── 派发日志 ─────────────────────────────────────────────────────────────────
 
-export interface ListNotificationDispatchesQuery {
-  page: number;
-  pageSize: number;
-  eventKey?: string;
-  channel?: NotificationChannel;
-  decision?: NotificationDecision;
-  recipientType?: NotificationRecipientType;
-  recipientId?: number;
-  startTime?: string;
-  endTime?: string;
-}
-
-export async function listNotificationDispatches(q: ListNotificationDispatchesQuery) {
-  const conditions: (SQL | undefined)[] = [
+export async function listNotificationDispatches(q: QueryOutputOf<typeof notificationPolicyContract.dispatches>) {
+  const where = buildWhere(
     tenantScope(notificationDispatches),
     q.eventKey ? eq(notificationDispatches.eventKey, q.eventKey) : undefined,
     q.channel ? eq(notificationDispatches.channel, q.channel) : undefined,
@@ -174,8 +162,7 @@ export async function listNotificationDispatches(q: ListNotificationDispatchesQu
     q.recipientType ? eq(notificationDispatches.recipientType, q.recipientType) : undefined,
     q.recipientId !== undefined ? eq(notificationDispatches.recipientId, q.recipientId) : undefined,
     ...dateRangeConditions(notificationDispatches.createdAt, q.startTime, q.endTime),
-  ];
-  const where = buildWhere(...conditions);
+  );
 
   return buildListResult({
     page: q.page,

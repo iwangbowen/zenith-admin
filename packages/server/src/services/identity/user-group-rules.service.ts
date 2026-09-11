@@ -10,7 +10,7 @@ import { requireRow } from '../../lib/db-assert';
  * - 隐含条件：仅启用用户、与组同租户；exclude 优先级最高，include 是规则外例外；
  * - 写入后清理受影响用户的权限缓存（组可能绑定角色，进出即授/撤权）。
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, type SQL } from 'drizzle-orm';
 import type { UserGroupMemberRule } from '@zenith/shared/identity';
 import { db } from '../../db';
 import { departments, userGroupMembers, userGroups, userPositions, users } from '../../db/schema';
@@ -18,6 +18,7 @@ import { clearUserPermissionCache } from '../../lib/permissions';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { exactTenantCondition } from '../../lib/tenant';
+import { buildWhere } from '../../lib/where-helpers';
 
 interface DynamicGroupRow {
   id: number;
@@ -61,18 +62,22 @@ async function computeRuleTargetUserIds(group: DynamicGroupRow): Promise<Set<num
 
   const target = new Set<number>();
   if (hasRuleConditions(rule)) {
-    const conditions = [eq(users.status, 'enabled' as const), tenantCond];
+    let departmentCondition: SQL | undefined;
     if (rule.departmentIds?.length) {
       const deptIds = await expandDepartmentIds(rule.departmentIds, rule.includeSubDepartments ?? false);
-      conditions.push(inArray(users.departmentId, deptIds));
+      departmentCondition = inArray(users.departmentId, deptIds);
     }
-    if (rule.positionIds?.length) {
-      conditions.push(inArray(
-        users.id,
-        db.select({ id: userPositions.userId }).from(userPositions).where(inArray(userPositions.positionId, rule.positionIds)),
-      ));
-    }
-    const rows = await db.select({ id: users.id }).from(users).where(and(...conditions));
+    const rows = await db.select({ id: users.id }).from(users).where(buildWhere(
+      eq(users.status, 'enabled' as const),
+      tenantCond,
+      departmentCondition,
+      rule.positionIds?.length
+        ? inArray(
+          users.id,
+          db.select({ id: userPositions.userId }).from(userPositions).where(inArray(userPositions.positionId, rule.positionIds)),
+        )
+        : undefined,
+    ));
     rows.forEach((r) => target.add(r.id));
   }
 

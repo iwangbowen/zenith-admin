@@ -10,7 +10,8 @@ import { desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
-import type { BroadcastChannel, BroadcastStatus, CreateBroadcastInput, UpdateBroadcastInput } from '@zenith/shared/messaging';
+import type { BroadcastChannel, CreateBroadcastInput, UpdateBroadcastInput, broadcastContract } from '@zenith/shared/messaging';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { broadcastCampaigns, members, users, type BroadcastCampaignRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -48,15 +49,8 @@ export async function ensureBroadcastExists(id: number): Promise<BroadcastCampai
   );
 }
 
-export interface ListBroadcastsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: BroadcastStatus;
-}
-
-export async function listBroadcasts(q: ListBroadcastsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listBroadcasts(q: QueryOutputOf<typeof broadcastContract.list>) {
+  const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [broadcastCampaigns.title, broadcastCampaigns.content, broadcastCampaigns.remark]),
     q.status ? eq(broadcastCampaigns.status, q.status) : undefined,

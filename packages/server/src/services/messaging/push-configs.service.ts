@@ -9,7 +9,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
-import type { CreatePushConfigInput, PushProvider, TestPushSendInput, UpdatePushConfigInput } from '@zenith/shared/messaging';
+import type { CreatePushConfigInput, TestPushSendInput, UpdatePushConfigInput, pushConfigContract } from '@zenith/shared/messaging';
 import { db } from '../../db';
 import { pushConfigs, pushSendLogs, type PushConfigRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
@@ -19,6 +19,7 @@ import { clearInvalidPushRegistrations } from '../ops/client-devices.service';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 type PushConfigWithApp = PushConfigRow & { app?: { name: string } | null };
 
@@ -55,16 +56,8 @@ export async function ensurePushConfigExists(id: number): Promise<PushConfigRow>
   );
 }
 
-export interface ListPushConfigsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  provider?: PushProvider;
-  status?: 'enabled' | 'disabled';
-}
-
-export async function listPushConfigs(q: ListPushConfigsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+export async function listPushConfigs(q: QueryOutputOf<typeof pushConfigContract.list>) {
+  const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [pushConfigs.name, pushConfigs.remark]),
     q.provider ? eq(pushConfigs.provider, q.provider) : undefined,

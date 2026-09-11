@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sensitive } from '../../core/sensitive';
 import { SEND_SOURCES, SEND_STATUSES, SMS_PROVIDERS } from '../constants';
@@ -45,9 +45,9 @@ export type SmsSendResult = z.infer<typeof smsSendResultSchema>;
 export const smsSendLogListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按内容模糊匹配' }),
   phone: z.string().optional(),
-  provider: z.enum(SMS_PROVIDERS).optional(),
-  status: z.enum(SEND_STATUSES).optional(),
-  source: z.enum(SEND_SOURCES).optional(),
+  provider: queryEnum(SMS_PROVIDERS),
+  status: queryEnum(SEND_STATUSES),
+  source: queryEnum(SEND_SOURCES),
 });
 
 export const smsSendLogContract = defineContract('/api/sms-send-logs', {

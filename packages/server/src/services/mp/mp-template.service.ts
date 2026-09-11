@@ -1,4 +1,4 @@
-import { eq, and, desc, type SQL } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
@@ -12,7 +12,8 @@ import { ensureMpAccountExists } from './mp-account.service';
 import { getAllPrivateTemplates, sendTemplateMessage, setTemplateIndustry, getTemplateIndustry, WechatApiError } from '../../lib/wechat';
 import { mapWechatError } from '../../lib/wechat-error';
 import type { SendMpTemplateInput } from '@zenith/shared/messaging';
-import type { MpTemplateSendStatus } from '@zenith/shared/mp';
+import type { MpTemplateSendStatus, mpTemplateContract } from '@zenith/shared/mp';
+import type { QueryOutputOf } from '@zenith/shared/core';
 
 export function mapMpTemplate(row: MpMessageTemplateRow) {
   return {
@@ -58,15 +59,13 @@ export async function getMpTemplateIndustryBeforeAudit(accountId: number) {
   };
 }
 
-export interface ListMpTemplatesQuery { accountId: number; keyword?: string; page: number; pageSize: number; }
-
-export async function listMpTemplates(q: ListMpTemplatesQuery) {
+export async function listMpTemplates(q: QueryOutputOf<typeof mpTemplateContract.list>) {
   await ensureMpAccountExists(q.accountId);
-  const conditions: (SQL | undefined)[] = [eq(mpMessageTemplates.accountId, q.accountId)];
-  const tenant = tenantScope(mpMessageTemplates);
-  if (tenant) conditions.push(tenant);
-  conditions.push(keywordCondition(q.keyword, [mpMessageTemplates.title], 'ilike'));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpMessageTemplates.accountId, q.accountId),
+    tenantScope(mpMessageTemplates),
+    keywordCondition(q.keyword, [mpMessageTemplates.title], 'ilike'),
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
@@ -130,15 +129,13 @@ export async function sendMpTemplate(input: SendMpTemplateInput) {
   }
 }
 
-export interface ListMpSendLogsQuery { accountId: number; status?: MpTemplateSendStatus; page: number; pageSize: number; }
-
-export async function listMpTemplateSendLogs(q: ListMpSendLogsQuery) {
+export async function listMpTemplateSendLogs(q: QueryOutputOf<typeof mpTemplateContract.logs>) {
   await ensureMpAccountExists(q.accountId);
-  const conditions: (SQL | undefined)[] = [eq(mpTemplateSendLogs.accountId, q.accountId)];
-  const tenant = tenantScope(mpTemplateSendLogs);
-  if (tenant) conditions.push(tenant);
-  if (q.status) conditions.push(eq(mpTemplateSendLogs.status, q.status));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(mpTemplateSendLogs.accountId, q.accountId),
+    tenantScope(mpTemplateSendLogs),
+    q.status ? eq(mpTemplateSendLogs.status, q.status) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
