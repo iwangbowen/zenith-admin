@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CHANNELS, PAYMENT_METHODS } from '../constants';
 import { createPaymentFeeRuleSchema, updatePaymentFeeRuleSchema } from '../validation';
@@ -27,8 +27,8 @@ export type PaymentFeeRule = z.infer<typeof paymentFeeRuleSchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const paymentFeeRuleListQuery = paginationQuery.extend({
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
-  status: entityStatusSchema.optional(),
+  channel: queryEnum(PAYMENT_CHANNELS),
+  status: entityStatusQuery,
 });
 
 export const paymentFeeRuleContract = defineContract('/api/payment/fee-rules', {

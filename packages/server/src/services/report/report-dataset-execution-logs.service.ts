@@ -3,6 +3,8 @@
  * 对外统一经 report-dataset.service.ts facade 暴露。
  */
 import dayjs from 'dayjs';
+import { reportExecutionContract } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { db, readSnapshot } from '../../db';
 import { reportDatasetExecutionLogs, reportDatasets, reportDatasources, users } from '../../db/schema';
@@ -15,7 +17,7 @@ import {
 } from './report-query-capacity.service';
 import { getReportRuntimeGovernance } from './report-dataset-shared';
 import type { ReportDatasetExecutionLog, ReportExecutionStats } from '@zenith/shared/report';
-import { buildWhere } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 
 function mapDatasetExecutionLog(row: {
@@ -66,31 +68,18 @@ function mapDatasetExecutionLog(row: {
   };
 }
 
-export async function listDatasetExecutionLogs(query: {
-  page?: number;
-  pageSize?: number;
-  datasetId?: number;
-  datasourceId?: number;
-  scene?: string;
-  success?: boolean;
-  dashboardId?: number;
-  slow?: boolean;
-  startAt?: Date;
-  endAt?: Date;
-}) {
-  const { page = 1, pageSize = 20, datasetId, datasourceId, scene, success, dashboardId, slow, startAt, endAt } = query;
-  const conds = [];
-  const tenantScope = reportTenantScope(reportDatasetExecutionLogs);
-  if (tenantScope) conds.push(tenantScope);
-  if (datasetId) conds.push(eq(reportDatasetExecutionLogs.datasetId, datasetId));
-  if (datasourceId) conds.push(eq(reportDatasetExecutionLogs.datasourceId, datasourceId));
-  if (scene) conds.push(eq(reportDatasetExecutionLogs.scene, scene));
-  if (success !== undefined) conds.push(eq(reportDatasetExecutionLogs.success, success));
-  if (dashboardId) conds.push(and(eq(reportDatasetExecutionLogs.scene, 'dashboard'), eq(reportDatasetExecutionLogs.sourceRefId, String(dashboardId))));
-  if (slow !== undefined) conds.push(eq(reportDatasetExecutionLogs.slow, slow));
-  if (startAt) conds.push(gte(reportDatasetExecutionLogs.executedAt, startAt));
-  if (endAt) conds.push(lte(reportDatasetExecutionLogs.executedAt, endAt));
-  const where = buildWhere(...conds);
+export async function listDatasetExecutionLogs(query: QueryOutputOf<typeof reportExecutionContract.list>) {
+  const { page, pageSize, datasetId, datasourceId, scene, success, dashboardId, slow, startAt, endAt } = query;
+  const where = buildWhere(
+    reportTenantScope(reportDatasetExecutionLogs),
+    datasetId ? eq(reportDatasetExecutionLogs.datasetId, datasetId) : undefined,
+    datasourceId ? eq(reportDatasetExecutionLogs.datasourceId, datasourceId) : undefined,
+    scene ? eq(reportDatasetExecutionLogs.scene, scene) : undefined,
+    success !== undefined ? eq(reportDatasetExecutionLogs.success, success) : undefined,
+    dashboardId ? and(eq(reportDatasetExecutionLogs.scene, 'dashboard'), eq(reportDatasetExecutionLogs.sourceRefId, String(dashboardId))) : undefined,
+    slow !== undefined ? eq(reportDatasetExecutionLogs.slow, slow) : undefined,
+    ...dateRangeConditions(reportDatasetExecutionLogs.executedAt, startAt, endAt),
+  );
   return buildListResult({
     page,
     pageSize,

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import {
@@ -220,14 +220,14 @@ export type CmsInteractionResponse = z.infer<typeof cmsInteractionResponseSchema
 export const cmsInteractionListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
   keyword: z.string().optional(),
-  kind: cmsInteractionKindSchema.optional(),
-  status: cmsInteractionStatusSchema.optional(),
+  kind: queryEnum(CMS_INTERACTION_KINDS),
+  status: queryEnum(CMS_INTERACTION_STATUSES),
 });
 
 export const cmsInteractionResponseListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
   interactionId: z.coerce.number().int().positive().optional(),
-  kind: cmsInteractionKindSchema.optional(),
+  kind: queryEnum(CMS_INTERACTION_KINDS),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
 });
@@ -263,3 +263,4 @@ export const cmsInteractionContract = defineContract('/api/cms/interactions', {
   copy: op.post('/{id}/copy', { params: idParam, response: cmsInteractionSchema, summary: '复制互动问卷（生成草稿副本）' }),
   remove: op.delete('/{id}', { params: idParam, summary: '删除互动问卷及全部答卷' }),
 }, { tags: ['CMS-互动问卷'] });
+

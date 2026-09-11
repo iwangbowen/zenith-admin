@@ -1,11 +1,13 @@
+import { memberRechargeContract } from '@zenith/shared/member';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 会员充值记录服务：基于支付订单（bizType=member_recharge）。
  * 充值订单由 member-wallet.service 下单，bizId = String(memberId)。
  */
-import { and, desc, eq, count, sql, type SQL } from 'drizzle-orm';
+import { desc, eq, count, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { paymentOrders, members } from '../../db/schema';
-import { dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -14,15 +16,8 @@ import { tenantCondition } from '../../lib/tenant';
 import { WALLET_RECHARGE_BIZ_TYPE } from './member-wallet.service';
 import type { PaymentChannel, PaymentOrderStatus } from '@zenith/shared/payment';
 
-export interface MemberRechargeQuery {
-  keyword?: string;
-  status?: PaymentOrderStatus;
-  channel?: PaymentChannel;
-  dateStart?: string;
-  dateEnd?: string;
-  page: number;
-  pageSize: number;
-}
+export type MemberRechargeQuery = QueryOutputOf<typeof memberRechargeContract.list>;
+export type MemberRechargeFilter = Omit<MemberRechargeQuery, 'page' | 'pageSize'>;
 
 interface RechargeRow {
   id: number;
@@ -67,23 +62,20 @@ function mapRecharge(r: RechargeRow) {
   };
 }
 
-export function buildRechargeWhere(q: Omit<MemberRechargeQuery, 'page' | 'pageSize'>): SQL | undefined {
-  const conds: (SQL | undefined)[] = [eq(paymentOrders.bizType, WALLET_RECHARGE_BIZ_TYPE)];
+export function buildRechargeWhere(q: MemberRechargeFilter): SQL | undefined {
   const adminUser = currentUserOrNull();
-  if (adminUser) {
-    // Keep both sides of the join in the active tenant scope. Filtering only
-    // payment_orders would still expose a mismatched member name if legacy
-    // rows ever contain an inconsistent member reference.
-    const orderScope = tenantCondition(paymentOrders, adminUser);
-    const memberScope = tenantCondition(members, adminUser);
-    if (orderScope) conds.push(orderScope);
-    if (memberScope) conds.push(memberScope);
-  }
-  conds.push(keywordCondition(q.keyword, [paymentOrders.orderNo, paymentOrders.outTradeNo, members.nickname, members.phone]));
-  if (q.status) conds.push(eq(paymentOrders.status, q.status));
-  if (q.channel) conds.push(eq(paymentOrders.channel, q.channel));
-  conds.push(...dateRangeConditions(paymentOrders.createdAt, q.dateStart, q.dateEnd));
-  return and(...conds);
+  // Keep both sides of the join in the active tenant scope. Filtering only
+  // payment_orders would still expose a mismatched member name if legacy
+  // rows ever contain an inconsistent member reference.
+  return buildWhere(
+    eq(paymentOrders.bizType, WALLET_RECHARGE_BIZ_TYPE),
+    adminUser ? tenantCondition(paymentOrders, adminUser) : undefined,
+    adminUser ? tenantCondition(members, adminUser) : undefined,
+    keywordCondition(q.keyword, [paymentOrders.orderNo, paymentOrders.outTradeNo, members.nickname, members.phone]),
+    q.status ? eq(paymentOrders.status, q.status) : undefined,
+    q.channel ? eq(paymentOrders.channel, q.channel) : undefined,
+    ...dateRangeConditions(paymentOrders.createdAt, q.dateStart, q.dateEnd),
+  );
 }
 
 export async function listMemberRecharges(q: MemberRechargeQuery) {

@@ -20,7 +20,6 @@ export {
   getCmsInteractionPublicState,
 } from './cms-interactions-forms.service';
 export type {
-  ListCmsInteractionsQuery,
   CmsInteractionCaptchaConfig,
   SubmitCmsInteractionMeta,
 } from './cms-interactions-forms.service';
@@ -33,7 +32,7 @@ export {
   toCmsInteractionPublicStats,
   getCmsInteractionStats,
 } from './cms-interactions-stats.service';
-export type { ListCmsInteractionTextsQuery } from './cms-interactions-stats.service';
+export type { CmsInteractionTextsQuery } from './cms-interactions-stats.service';
 export {
   buildCmsInteractionResponseWhere,
   toCmsInteractionAnswerDetail,
@@ -43,4 +42,4 @@ export {
   canExposeCmsInteractionResults,
   cmsInteractionRepeatIdentity,
 } from './cms-interactions-responses.service';
-export type { ListCmsInteractionResponsesQuery } from './cms-interactions-responses.service';
+export type { CmsInteractionResponseListFilter } from './cms-interactions-responses.service';

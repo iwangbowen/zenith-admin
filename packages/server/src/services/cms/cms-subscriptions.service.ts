@@ -1,5 +1,6 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { createHash } from 'node:crypto';
 import dayjs from 'dayjs';
 import {
@@ -22,6 +23,7 @@ import {
 import { HTTPException } from 'hono/http-exception';
 import { CMS_INTERACTION_DAILY_LIMITS, CMS_INTERACTION_POINTS } from '@zenith/shared/cms';
 import type { CmsSubscriptionSubjectInput, CmsSubscriptionSubjectType } from '@zenith/shared/cms';
+import { cmsSubscriptionContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
   cmsChannels,
@@ -36,9 +38,9 @@ import type { CmsContentRow, CmsMemberSubscriptionRow } from '../../db/schema';
 import { currentMemberId } from '../../lib/member-context';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
 import { resolveEffectiveCmsSite } from './cms-site-inheritance.service';
-import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { maskedMemberDisplay } from './cms-member-display';
-import { withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { streamByDescendingId } from '../../lib/export-center/cursor-stream';
 import { changePointsInTransaction } from '../member/member-points.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
@@ -277,7 +279,7 @@ export async function listMyCmsSubscriptions(q: {
     eq(cmsMemberSubscriptions.active, true),
   ];
   if (q.subjectType) conditions.push(eq(cmsMemberSubscriptions.subjectType, q.subjectType));
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   const base = db.select({ subscription: cmsMemberSubscriptions, siteName: cmsSites.name })
     .from(cmsMemberSubscriptions)
     .innerJoin(cmsSites, eq(cmsMemberSubscriptions.siteId, cmsSites.id))
@@ -292,37 +294,19 @@ export async function listMyCmsSubscriptions(q: {
   });
 }
 
-export interface ListCmsSubscriptionsQuery {
-  siteId: number;
-  subjectType?: CmsSubscriptionSubjectType;
-  subjectKeyword?: string;
-  startTime?: string;
-  endTime?: string;
-  page: number;
-  pageSize: number;
-}
+export type CmsSubscriptionListFilter = Omit<QueryOutputOf<typeof cmsSubscriptionContract.list>, 'page' | 'pageSize'>;
 
-export function buildCmsSubscriptionWhere(q: Omit<ListCmsSubscriptionsQuery, 'page' | 'pageSize'>): SQL {
-  const conditions: (SQL | undefined)[] = [
+export function buildCmsSubscriptionWhere(q: CmsSubscriptionListFilter): SQL | undefined {
+  return buildWhere(
     eq(cmsMemberSubscriptions.siteId, q.siteId),
     eq(cmsMemberSubscriptions.active, true),
-  ];
-  if (q.subjectType) conditions.push(eq(cmsMemberSubscriptions.subjectType, q.subjectType));
-  conditions.push(keywordCondition(q.subjectKeyword, [cmsMemberSubscriptions.subjectLabel], 'ilike'));
-  if (q.startTime) {
-    const parsed = parseDateRangeStart(q.startTime);
-    if (!parsed) throw new HTTPException(400, { message: '开始时间格式无效' });
-    conditions.push(gte(cmsMemberSubscriptions.createdAt, parsed));
-  }
-  if (q.endTime) {
-    const parsed = parseDateRangeEnd(q.endTime);
-    if (!parsed) throw new HTTPException(400, { message: '结束时间格式无效' });
-    conditions.push(lte(cmsMemberSubscriptions.createdAt, parsed));
-  }
-  return and(...conditions)!;
+    q.subjectType ? eq(cmsMemberSubscriptions.subjectType, q.subjectType) : undefined,
+    keywordCondition(q.subjectKeyword, [cmsMemberSubscriptions.subjectLabel], 'ilike'),
+    ...dateRangeConditions(cmsMemberSubscriptions.createdAt, q.startTime, q.endTime),
+  );
 }
 
-export async function listCmsSubscriptions(q: ListCmsSubscriptionsQuery) {
+export async function listCmsSubscriptions(q: QueryOutputOf<typeof cmsSubscriptionContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const where = buildCmsSubscriptionWhere(q);
@@ -362,7 +346,7 @@ function rawMemberDisplay(row: {
 }
 
 export async function* streamCmsSubscriptions(
-  q: Omit<ListCmsSubscriptionsQuery, 'page' | 'pageSize'>,
+  q: CmsSubscriptionListFilter,
 ) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
@@ -396,7 +380,7 @@ export async function* streamCmsSubscriptions(
   });
 }
 
-export async function listCmsSubscriptionAggregates(q: Omit<ListCmsSubscriptionsQuery, 'page' | 'pageSize'>) {
+export async function listCmsSubscriptionAggregates(q: QueryOutputOf<typeof cmsSubscriptionContract.aggregates>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const where = buildCmsSubscriptionWhere(q);

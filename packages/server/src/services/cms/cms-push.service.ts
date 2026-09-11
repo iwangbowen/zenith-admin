@@ -1,6 +1,8 @@
 import { buildListResult } from '../../lib/list-query';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { eq, desc, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { cmsSeoContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsPushLogs } from '../../db/schema';
 import type { CmsSiteRow, CmsPushLogRow } from '../../db/schema';
@@ -141,14 +143,7 @@ export function triggerAutoPushForContent(contentId: number): void {
 }
 
 // ─── 推送日志 ─────────────────────────────────────────────────────────────────
-export interface ListCmsPushLogsQuery {
-  siteId: number;
-  engine?: CmsPushEngine;
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsPushLogs(q: ListCmsPushLogsQuery) {
+export async function listCmsPushLogs(q: QueryOutputOf<typeof cmsSeoContract.pushLogs>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   await assertAllCmsSiteChannelsAccess(q.siteId);

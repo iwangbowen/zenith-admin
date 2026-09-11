@@ -1,6 +1,8 @@
 import { buildListResult } from '../../lib/list-query';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { eq, asc, desc, and, inArray, isNull, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { cmsCommentContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsComments, cmsContents, cmsSites, members } from '../../db/schema';
 import type { CmsSiteRow } from '../../db/schema';
@@ -152,16 +154,7 @@ export async function listApprovedComments(contentId: number, limit = 100) {
 }
 
 // ─── 后台管理 ─────────────────────────────────────────────────────────────────
-export interface ListCmsCommentsQuery {
-  siteId: number;
-  status?: CmsCommentStatus;
-  /** 来源筛选：member = 会员评论；guest = 游客评论 */
-  source?: 'member' | 'guest';
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsComments(q: ListCmsCommentsQuery) {
+export async function listCmsComments(q: QueryOutputOf<typeof cmsCommentContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: SQL[] = [eq(cmsComments.siteId, q.siteId)];
@@ -253,5 +246,5 @@ export async function countPendingComments(siteId: number): Promise<number> {
     ));
     conditions.push(inArray(cmsComments.contentId, contentIds));
   }
-  return db.$count(cmsComments, and(...conditions));
+  return db.$count(cmsComments, buildWhere(...conditions));
 }

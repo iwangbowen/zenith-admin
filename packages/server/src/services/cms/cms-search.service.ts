@@ -1,6 +1,7 @@
 import { sql, and, eq, gt, inArray, isNull, or, type SQL } from 'drizzle-orm';
 import { Jieba } from '@node-rs/jieba';
 import { dict } from '@node-rs/jieba/dict.js';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { cmsContents, cmsChannels, cmsSearchWords } from '../../db/schema';
 import { formatNullableDateTime } from '../../lib/datetime';
@@ -8,6 +9,7 @@ import { keywordCondition } from '../../lib/where-helpers';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
+import { cmsSearchContract } from '@zenith/shared/cms';
 import type { CmsChannelDetailPathRule, CmsSearchResult } from '@zenith/shared/cms';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { contentUrl } from './cms-urls';
@@ -274,13 +276,7 @@ export function buildSnippet(plainText: string, tokens: string[], radius = 60): 
   return highlightTokens(fragment, tokens);
 }
 
-export interface CmsSearchQuery {
-  skipAccessCheck?: boolean;
-  siteId: number;
-  keyword: string;
-  page: number;
-  pageSize: number;
-}
+export type CmsSearchQuery = QueryOutputOf<typeof cmsSearchContract.test> & { skipAccessCheck?: boolean };
 
 interface SearchRowShape {
   id: number;

@@ -1,3 +1,5 @@
+import { bizPayDemoContract } from '@zenith/shared/biz';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 业务接入示例：支付接入 Service
  *
@@ -14,9 +16,10 @@
  *   保证业务侧与支付中心数据一致；
  * - 尚未发起支付时（无支付订单），仅执行本地履约演示业务闭环（不存在支付订单，无一致性问题）。
  */
-import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { BizPayDemo, BizPayDemoStatus } from '@zenith/shared/biz';
+import type { BizPayDemo } from '@zenith/shared/biz';
+import { BIZ_PAY_DEMO_STATUSES } from '@zenith/shared/biz';
 import type { PaymentMethod, PaymentCashierMethod, CreatePaymentResult } from '@zenith/shared/payment';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
@@ -56,10 +59,11 @@ export function mapBizPayDemo(row: BizPayDemoRow): BizPayDemo {
 /** 仅本人可操作自己的示例单 */
 function findOwn(id: number) {
   const user = currentUser();
-  const conds: (SQL | undefined)[] = [eq(bizPayDemos.id, id), eq(bizPayDemos.createdBy, user.userId)];
-  const tc = tenantCondition(bizPayDemos, user);
-  conds.push(tc);
-  return buildWhere(...conds);
+  return buildWhere(
+    eq(bizPayDemos.id, id),
+    eq(bizPayDemos.createdBy, user.userId),
+    tenantCondition(bizPayDemos, user),
+  );
 }
 
 async function getOwnRow(id: number): Promise<BizPayDemoRow> {
@@ -70,16 +74,19 @@ async function getOwnRow(id: number): Promise<BizPayDemoRow> {
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
 
-export async function listBizPayDemos(query: { page?: number; pageSize?: number; keyword?: string; status?: string }) {
+type BizPayDemoListQuery = QueryOutputOf<typeof bizPayDemoContract.list>;
+
+export async function listBizPayDemos(query: BizPayDemoListQuery) {
   const user = currentUser();
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 10;
-  const conds: (SQL | undefined)[] = [eq(bizPayDemos.createdBy, user.userId)];
-  const tc = tenantCondition(bizPayDemos, user);
-  conds.push(tc);
-  if (query.status) conds.push(eq(bizPayDemos.status, query.status as BizPayDemoStatus));
-  conds.push(keywordCondition(query.keyword, [bizPayDemos.subject]));
-  const where = buildWhere(...conds);
+  const { page, pageSize } = query;
+  const where = buildWhere(
+    eq(bizPayDemos.createdBy, user.userId),
+    tenantCondition(bizPayDemos, user),
+    query.status && BIZ_PAY_DEMO_STATUSES.includes(query.status as (typeof BIZ_PAY_DEMO_STATUSES)[number])
+      ? eq(bizPayDemos.status, query.status as (typeof BIZ_PAY_DEMO_STATUSES)[number])
+      : undefined,
+    keywordCondition(query.keyword, [bizPayDemos.subject]),
+  );
   return buildListResult({
     page,
     pageSize,

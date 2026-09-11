@@ -4,7 +4,9 @@ import { createHash } from 'node:crypto';
 import dayjs from 'dayjs';
 import { HTTPException } from 'hono/http-exception';
 import { and, asc, desc, eq, gt, inArray, isNull, lt, max, or } from 'drizzle-orm';
+import { reportMaterializationContract } from '@zenith/shared/report';
 import type { ReportDataResult, ReportMaterializationSnapshot, ReportMaterializationStrategy, ReportResultField } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { config } from '../../config';
 import { db } from '../../db';
 import { reportDatasets, reportMaterializationSnapshots } from '../../db/schema';
@@ -297,7 +299,8 @@ export async function loadCurrentMaterializationSnapshot(datasetId: number): Pro
   return row ? { snapshot: row, data: await loadMaterializationSnapshotData(row) } : null;
 }
 
-export async function listMaterializationSnapshots(datasetId: number, page = 1, pageSize = 20) {
+export async function listMaterializationSnapshots(datasetId: number, query: QueryOutputOf<typeof reportMaterializationContract.snapshots>) {
+  const { page, pageSize } = query;
   await ensureReportResourceAccess('dataset', datasetId, 'viewer');
   const where = reportScopedWhere(
     reportMaterializationSnapshots,

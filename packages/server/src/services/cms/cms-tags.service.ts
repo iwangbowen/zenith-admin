@@ -1,6 +1,8 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { eq, asc, and } from 'drizzle-orm';
+import { cmsTagContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsTags } from '../../db/schema';
 import type { CmsTagRow } from '../../db/schema';
@@ -38,14 +40,7 @@ export async function getCmsTag(id: number) {
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
-export interface ListCmsTagsQuery {
-  siteId: number;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsTags(q: ListCmsTagsQuery) {
+export async function listCmsTags(q: QueryOutputOf<typeof cmsTagContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions = [eq(cmsTags.siteId, q.siteId), keywordCondition(q.keyword, [cmsTags.name, cmsTags.slug])];

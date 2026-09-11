@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 交易投诉/争议 Service。
  *
@@ -8,7 +9,7 @@
  * 状态机：pending →(商户回复) processing →(完结/退款) resolved | refunded。
  * 投诉退款直接复用支付中心 refund()（含审批阈值链路），退款单号回填工单。
  */
-import { and, desc, eq, gte, inArray, lt, lte, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { genPaymentNo } from './payment-no';
@@ -16,25 +17,17 @@ import dayjs from 'dayjs';
 import { config } from '../../config';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentChannelConfigs,
-  paymentDisputeReplies,
-  paymentDisputes,
-  paymentOrders,
-  paymentRefunds,
-  type PaymentDisputeReplyRow,
-  type PaymentDisputeRow,
-} from '../../db/schema';
+import { paymentChannelConfigs, paymentDisputeReplies, paymentDisputes, paymentOrders, paymentRefunds, type PaymentDisputeReplyRow, type PaymentDisputeRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { tenantCondition, exactTenantCondition } from '../../lib/tenant';
-import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
+import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { refund } from './payment.service';
 import { decide } from '../platform/rules-runtime.service';
 import logger from '../../lib/logger';
 import type { PaymentChannel, PaymentDispute, PaymentDisputeDetail, PaymentDisputeReply, PaymentDisputeStats, PaymentDisputeStatus, PaymentDisputeType, RefundPaymentDisputeInput } from '@zenith/shared/payment';
-import { PAYMENT_DISPUTE_ROUTE_LABELS } from '@zenith/shared/payment';
+import { PAYMENT_DISPUTE_ROUTE_LABELS, paymentDisputeContract } from '@zenith/shared/payment';
 
 const OPEN_STATUSES: PaymentDisputeStatus[] = ['pending', 'processing'];
 /** 模拟拉单：保持未完结工单不超过该数量，避免演示环境刷屏 */
@@ -83,19 +76,7 @@ export function mapReply(row: PaymentDisputeReplyRow & { operator?: { nickname: 
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
 
-export interface ListDisputesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: PaymentDisputeStatus;
-  channel?: PaymentChannel;
-  type?: PaymentDisputeType;
-  /** 分流路由筛选（urgent/manual/auto_refund_suggest） */
-  route?: string;
-  overdueOnly?: boolean;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListDisputesQuery = QueryOutputOf<typeof paymentDisputeContract.list>;
 
 function disputesTenantCondition() {
   const user = currentUserOrNull();
@@ -103,26 +84,21 @@ function disputesTenantCondition() {
 }
 
 export async function buildDisputesWhere(q: ListDisputesQuery) {
-  const conds = [];
-  conds.push(keywordCondition(q.keyword, [paymentDisputes.disputeNo, paymentDisputes.orderNo, paymentDisputes.complainant]));
-  if (q.status) conds.push(eq(paymentDisputes.status, q.status));
-  if (q.channel) conds.push(eq(paymentDisputes.channel, q.channel));
-  if (q.type) conds.push(eq(paymentDisputes.type, q.type));
-  if (q.route) conds.push(eq(paymentDisputes.route, q.route));
-  if (q.overdueOnly) {
-    conds.push(inArray(paymentDisputes.status, OPEN_STATUSES));
-    conds.push(lt(paymentDisputes.deadline, new Date()));
-  }
-  const start = parseDateRangeStart(q.startTime);
-  const end = parseDateRangeEnd(q.endTime);
-  if (start) conds.push(gte(paymentDisputes.createdAt, start));
-  if (end) conds.push(lte(paymentDisputes.createdAt, end));
-  return buildWhere(...conds, disputesTenantCondition());
+  return buildWhere(
+    keywordCondition(q.keyword, [paymentDisputes.disputeNo, paymentDisputes.orderNo, paymentDisputes.complainant]),
+    q.status ? eq(paymentDisputes.status, q.status) : undefined,
+    q.channel ? eq(paymentDisputes.channel, q.channel) : undefined,
+    q.type ? eq(paymentDisputes.type, q.type) : undefined,
+    q.route ? eq(paymentDisputes.route, q.route) : undefined,
+    q.overdueOnly ? inArray(paymentDisputes.status, OPEN_STATUSES) : undefined,
+    q.overdueOnly ? lt(paymentDisputes.deadline, new Date()) : undefined,
+    ...dateRangeConditions(paymentDisputes.createdAt, q.startTime, q.endTime),
+    disputesTenantCondition(),
+  );
 }
 
 export async function listDisputes(q: ListDisputesQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
+  const { page, pageSize } = q;
   const where = await buildDisputesWhere(q);
   return buildListResult({
     page,

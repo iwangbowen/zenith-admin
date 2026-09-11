@@ -1,18 +1,17 @@
 import { desc, sql } from 'drizzle-orm';
 import { db } from '../../../db';
 import { paymentOrders, members } from '../../../db/schema';
-import { buildRechargeWhere } from '../../../services/member/member-recharge.service';
+import { buildRechargeWhere, type MemberRechargeFilter } from '../../../services/member/member-recharge.service';
 import { batchIterable } from '../../excel-export';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
-import type { PaymentChannel, PaymentOrderStatus } from '@zenith/shared/payment';
 import { PAYMENT_ORDER_STATUS_LABELS, PAYMENT_CHANNEL_LABELS } from '@zenith/shared/payment';
 
 const STATUS_LABELS: Record<string, string> = PAYMENT_ORDER_STATUS_LABELS;
 const CHANNEL_LABELS: Record<string, string> = { ...PAYMENT_CHANNEL_LABELS, mock: '模拟支付' };
 
-type Query = { keyword?: string; status?: PaymentOrderStatus; channel?: PaymentChannel; dateStart?: string; dateEnd?: string };
+type Query = MemberRechargeFilter;
 
 const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 10, type: 'number' },

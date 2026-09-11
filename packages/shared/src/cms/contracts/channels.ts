@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CMS_CHANNEL_DETAIL_PATH_RULES, CMS_CHANNEL_STATIC_MODES, CMS_CHANNEL_TYPES } from '../constants';
 import {
@@ -61,7 +61,7 @@ export const cmsChannelSchema: z.ZodType<CmsChannel> = cmsChannelFieldsSchema
 
 export const cmsChannelTreeQuery = z.object({
   siteId: z.coerce.number().int().positive(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
@@ -78,3 +78,4 @@ export const cmsChannelContract = defineContract('/api/cms/channels', {
   users: op.get('/{id}/users', { params: idParam, response: cmsAuthorizedUsersSchema, summary: '栏目授权用户' }),
   setUsers: op.put('/{id}/users', { params: idParam, body: setCmsAuthorizedUsersSchema, summary: '设置栏目授权用户（绑定后仅授权用户可管理该栏目下内容）' }),
 }, { tags: ['CMS-栏目管理'] });
+

@@ -1,6 +1,8 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, type SQL } from 'drizzle-orm';
+import { cmsErrorProneWordContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsErrorProneWords } from '../../db/schema';
 import type { CmsErrorProneWordRow } from '../../db/schema';
@@ -62,14 +64,7 @@ export async function ensureCmsErrorProneWordExists(id: number): Promise<CmsErro
 }
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
-export interface ListCmsErrorProneWordsQuery {
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsErrorProneWords(q: ListCmsErrorProneWordsQuery) {
+export async function listCmsErrorProneWords(q: QueryOutputOf<typeof cmsErrorProneWordContract.list>) {
   const conditions: (SQL | undefined)[] = [];
   conditions.push(keywordCondition(q.keyword, [cmsErrorProneWords.word, cmsErrorProneWords.correction]));
   if (q.status) conditions.push(eq(cmsErrorProneWords.status, q.status));

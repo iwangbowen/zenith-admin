@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CHANNELS } from '../constants';
 
@@ -32,8 +32,8 @@ export type PaymentNotifyLog = z.infer<typeof paymentNotifyLogSchema>;
 
 export const paymentNotifyLogListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
-  scene: z.enum(['payment', 'refund']).optional(),
+  channel: queryEnum(PAYMENT_CHANNELS),
+  scene: queryEnum(['payment', 'refund']),
   signatureValid: queryBool('只看验签通过 / 失败的回调'),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),

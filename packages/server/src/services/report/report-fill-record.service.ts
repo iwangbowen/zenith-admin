@@ -1,3 +1,5 @@
+import { reportFillContract } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
@@ -92,15 +94,8 @@ async function ensureVisibleRecord(id: number): Promise<RecordRow> {
   return row;
 }
 
-export async function listMyReportFillRecords(query: {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: ReportFillRecordStatus;
-  templateId?: number;
-}) {
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 20;
+export async function listMyReportFillRecords(query: QueryOutputOf<typeof reportFillContract.myRecords>) {
+  const { page, pageSize } = query;
   const conditions = [
     reportTenantScope(reportFillRecords),
     eq(reportFillRecords.submitterId, currentUser().userId),
@@ -126,15 +121,8 @@ export async function listMyReportFillRecords(query: {
   });
 }
 
-export async function listAdminReportFillRecords(query: {
-  page?: number;
-  pageSize?: number;
-  status?: ReportFillRecordStatus;
-  templateId?: number;
-  submitterId?: number;
-}) {
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 20;
+export async function listAdminReportFillRecords(query: QueryOutputOf<typeof reportFillContract.adminRecords>) {
+  const { page, pageSize } = query;
   const accessibleTemplateIds = await listAccessibleReportResourceIds('fill_template');
   if (accessibleTemplateIds && accessibleTemplateIds.length === 0) return { list: [], total: 0, page, pageSize };
   const where = and(

@@ -1,3 +1,5 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { reportDashboardOpsContract } from '@zenith/shared/report';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
@@ -120,13 +122,12 @@ async function notifyMentions(
 
 export async function listComments(
   dashboardId: number,
-  query: { page?: number; pageSize?: number; widgetId?: string },
+  query: QueryOutputOf<typeof reportDashboardOpsContract.comments>,
 ) {
   await ensureDashboardCommentable(dashboardId, query.widgetId);
   const viewer = currentUser();
   const canManage = await canManageComments();
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 20;
+  const { page, pageSize } = query;
   const conds = [eq(reportDashboardComments.dashboardId, dashboardId), isNull(reportDashboardComments.parentId)];
   if (query.widgetId) conds.push(eq(reportDashboardComments.widgetId, query.widgetId));
   const where = and(...conds);

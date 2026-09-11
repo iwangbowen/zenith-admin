@@ -1,3 +1,5 @@
+import { reportQueryCapacityContract } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { exactTenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
@@ -389,7 +391,8 @@ async function validateQuotaUser(scope: 'tenant' | 'user', userId: number | null
   requireRow(userOrUndefined, '配额用户不存在或不属于当前租户', 400);
 }
 
-export async function listReportQueryQuotas(page = 1, pageSize = 20) {
+export async function listReportQueryQuotas(query: QueryOutputOf<typeof reportQueryCapacityContract.quotas>) {
+  const { page, pageSize } = query;
   const where = reportTenantScope(reportQueryQuotas);
   return buildListResult({
     page,
@@ -492,18 +495,8 @@ export function parseReportQueryCostRange(start?: string, end?: string): { start
   return { startAt, endAt };
 }
 
-export async function listReportQueryCostLogs(query: {
-  page?: number;
-  pageSize?: number;
-  userId?: number;
-  datasetId?: number;
-  datasourceId?: number;
-  scene?: string;
-  success?: boolean;
-  start?: string;
-  end?: string;
-}) {
-  const { page = 1, pageSize = 20 } = query;
+export async function listReportQueryCostLogs(query: QueryOutputOf<typeof reportQueryCapacityContract.costLogs>) {
+  const { page, pageSize } = query;
   const { startAt, endAt } = parseReportQueryCostRange(query.start, query.end);
   const conds = [
     gte(reportQueryCostLogs.occurredAt, startAt),

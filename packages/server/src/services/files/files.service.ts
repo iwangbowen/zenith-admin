@@ -1,3 +1,5 @@
+import { fileContract } from '@zenith/shared/platform';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { managedFiles, fileStorageConfigs } from '../../db/schema';
@@ -41,7 +43,7 @@ export interface ManagedFileUploadOptions {
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
-import { and, desc, asc, eq, inArray, like, or, gte, ne, sql } from 'drizzle-orm';
+import { and, desc, asc, eq, inArray, like, or, gte, ne, sql, type SQL } from 'drizzle-orm';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
@@ -115,43 +117,35 @@ export async function readGeneratedManagedFile(id: string, tenantId: number | nu
   return readStoredFile(file, storageConfig);
 }
 
-export async function listManagedFiles(query: {
-  page?: number; pageSize?: number; keyword?: string; provider?: 'local' | 'oss' | 's3' | 'cos' | 'obs' | 'kodo' | 'bos' | 'azure' | 'sftp';
-  fileType?: 'image' | 'video' | 'audio' | 'document'; startTime?: string; endTime?: string;
-  /** 缺省只列公开文件；受控文件（网盘等）由归属模块自行管理 */
-  visibility?: FileVisibility;
-}) {
+export async function listManagedFiles(query: QueryOutputOf<typeof fileContract.list> & { visibility?: FileVisibility }) {
   const user = currentUser();
-  const page = Number(query.page ?? 1);
-  const pageSize = Number(query.pageSize ?? 10);
-  const conditions = [
+  const { page, pageSize } = query;
+  const fileTypeCondition: SQL | undefined = query.fileType === 'image'
+    ? like(managedFiles.mimeType, 'image/%')
+    : query.fileType === 'video'
+      ? like(managedFiles.mimeType, 'video/%')
+      : query.fileType === 'audio'
+        ? like(managedFiles.mimeType, 'audio/%')
+        : query.fileType === 'document'
+          ? or(
+              like(managedFiles.mimeType, 'text/%'),
+              like(managedFiles.mimeType, 'application/pdf%'),
+              like(managedFiles.mimeType, '%msword%'),
+              like(managedFiles.mimeType, '%wordprocessingml%'),
+              like(managedFiles.mimeType, '%spreadsheetml%'),
+              like(managedFiles.mimeType, '%presentationml%'),
+              like(managedFiles.mimeType, '%powerpoint%'),
+              like(managedFiles.mimeType, '%excel%'),
+            )
+          : undefined;
+  const finalWhere = buildWhere(
     keywordCondition(query.keyword, [managedFiles.originalName, managedFiles.objectKey, managedFiles.storageName]),
     eq(managedFiles.visibility, query.visibility ?? 'public'),
-  ];
-  if (query.provider) conditions.push(eq(managedFiles.provider, query.provider));
-  if (query.fileType) {
-    if (query.fileType === 'image') conditions.push(like(managedFiles.mimeType, 'image/%'));
-    else if (query.fileType === 'video') conditions.push(like(managedFiles.mimeType, 'video/%'));
-    else if (query.fileType === 'audio') conditions.push(like(managedFiles.mimeType, 'audio/%'));
-    else if (query.fileType === 'document') {
-      conditions.push(
-        or(
-          like(managedFiles.mimeType, 'text/%'),
-          like(managedFiles.mimeType, 'application/pdf%'),
-          like(managedFiles.mimeType, '%msword%'),
-          like(managedFiles.mimeType, '%wordprocessingml%'),
-          like(managedFiles.mimeType, '%spreadsheetml%'),
-          like(managedFiles.mimeType, '%presentationml%'),
-          like(managedFiles.mimeType, '%powerpoint%'),
-          like(managedFiles.mimeType, '%excel%'),
-        )!,
-      );
-    }
-  }
-  conditions.push(...dateRangeConditions(managedFiles.createdAt, query.startTime, query.endTime));
-  const where = and(...conditions);
-  const tc = tenantCondition(managedFiles, user);
-  const finalWhere = buildWhere(where, tc);
+    query.provider ? eq(managedFiles.provider, query.provider) : undefined,
+    fileTypeCondition,
+    ...dateRangeConditions(managedFiles.createdAt, query.startTime, query.endTime),
+    tenantCondition(managedFiles, user),
+  );
   return buildListResult({
     page,
     pageSize,

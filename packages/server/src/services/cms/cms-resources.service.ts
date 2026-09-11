@@ -1,8 +1,10 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, and, desc, gt, inArray, isNull, notInArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { createRequire } from 'node:module';
+import { cmsResourceContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsResources, cmsResourceFolders, cmsResourceRefs } from '../../db/schema';
 import type { CmsResourceRow } from '../../db/schema';
@@ -65,17 +67,7 @@ function detectResourceType(mime: string): CmsResourceType {
 }
 
 // ─── 列表 / 上传 / 编辑 / 删除 ─────────────────────────────────────────────────
-export interface ListCmsResourcesQuery {
-  siteId: number;
-  type?: CmsResourceType;
-  keyword?: string;
-  /** undefined = 全部；0 = 根目录；正数 = 指定文件夹 */
-  folderId?: number;
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsResources(q: ListCmsResourcesQuery) {
+export async function listCmsResources(q: QueryOutputOf<typeof cmsResourceContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: (SQL | undefined)[] = [eq(cmsResources.siteId, q.siteId)];

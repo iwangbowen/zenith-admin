@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 签约代扣 Service（周期扣款/订阅）。
  *
@@ -11,28 +12,19 @@
  * 次日重试，达到计划 maxRetries 自动暂停。
  * 资金安全：payment_orders 活跃业务单唯一索引保证同协议同一时刻至多一笔进行中扣款单。
  */
-import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { genPaymentNo } from './payment-no';
 import dayjs from 'dayjs';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentChannelConfigs,
-  paymentContracts,
-  paymentDeductPlans,
-  paymentOrders,
-  type PaymentChannelConfigRow,
-  type PaymentContractRow,
-  type PaymentDeductPlanRow,
-  type PaymentOrderRow,
-} from '../../db/schema';
+import { paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentOrders, type PaymentChannelConfigRow, type PaymentContractRow, type PaymentDeductPlanRow, type PaymentOrderRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
-import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
+import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { getAdapter } from '../../lib/payment';
 import { paymentEventBus } from '../../lib/payment-event-bus';
@@ -43,8 +35,8 @@ import { resolveApplicationChannelConfig } from './payment-apps.service';
 import { assertEffectivePaymentOperation } from './payment-capability-evaluator';
 import { pageOffset } from '../../lib/pagination';
 import logger from '../../lib/logger';
-import type { CreatePaymentContractInput, CreatePaymentDeductPlanInput, PaymentChannel, PaymentContract, PaymentContractStatus, PaymentDeductMethod, PaymentDeductPlan, UpdatePaymentDeductPlanInput } from '@zenith/shared/payment';
-import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
+import type { CreatePaymentContractInput, CreatePaymentDeductPlanInput, PaymentContract, PaymentContractStatus, PaymentDeductMethod, PaymentDeductPlan, UpdatePaymentDeductPlanInput } from '@zenith/shared/payment';
+import { PAYMENT_METHOD_CHANNEL, paymentDeductPlanContract, paymentSigningContract } from '@zenith/shared/payment';
 
 const ACTIVE_CONTRACT_STATUSES: PaymentContractStatus[] = ['pending', 'unknown', 'signed', 'paused'];
 
@@ -131,12 +123,7 @@ export function mapContract(row: PaymentContractRow & { plan?: Pick<PaymentDeduc
 
 // ─── 扣款计划 CRUD ────────────────────────────────────────────────────────────
 
-export interface ListDeductPlansQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-}
+export type ListDeductPlansQuery = QueryOutputOf<typeof paymentDeductPlanContract.deductPlans>;
 
 function plansTenantCondition() {
   const user = currentUserOrNull();
@@ -144,12 +131,12 @@ function plansTenantCondition() {
 }
 
 export async function listDeductPlans(q: ListDeductPlansQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  conds.push(keywordCondition(q.keyword, [paymentDeductPlans.name]));
-  if (q.status) conds.push(eq(paymentDeductPlans.status, q.status));
-  const where = buildWhere(...conds, plansTenantCondition());
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [paymentDeductPlans.name]),
+    q.status ? eq(paymentDeductPlans.status, q.status) : undefined,
+    plansTenantCondition(),
+  );
   // 有效签约数（signed/paused）按计划分组后 LEFT JOIN。
   // 禁止在 sql`` 模板里做裸 Column 跨表比较（如 where ${a.planId} = ${b.id}）——
   // drizzle 渲染裸列名不带表限定，子查询内会自解析成恒真/自比较条件。
@@ -249,18 +236,7 @@ export async function deleteDeductPlan(id: number): Promise<void> {
 
 // ─── 协议查询 ─────────────────────────────────────────────────────────────────
 
-export interface ListContractsQuery {
-  page?: number;
-  pageSize?: number;
-  applicationId: number;
-  keyword?: string;
-  status?: PaymentContractStatus;
-  channel?: PaymentChannel;
-  planId?: number;
-  bizType?: string;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListContractsQuery = QueryOutputOf<typeof paymentSigningContract.contracts>;
 
 function contractsTenantCondition() {
   const user = currentUserOrNull();
@@ -268,22 +244,20 @@ function contractsTenantCondition() {
 }
 
 export async function buildContractsWhere(q: ListContractsQuery) {
-  const conds: Array<SQL | undefined> = [eq(paymentContracts.appId, q.applicationId)];
-  conds.push(keywordCondition(q.keyword, [paymentContracts.contractNo, paymentContracts.signerAccount, paymentContracts.bizId]));
-  if (q.status) conds.push(eq(paymentContracts.status, q.status));
-  if (q.channel) conds.push(eq(paymentContracts.channel, q.channel));
-  if (q.planId) conds.push(eq(paymentContracts.planId, q.planId));
-  if (q.bizType) conds.push(eq(paymentContracts.bizType, q.bizType));
-  const start = parseDateRangeStart(q.startTime);
-  const end = parseDateRangeEnd(q.endTime);
-  if (start) conds.push(gte(paymentContracts.createdAt, start));
-  if (end) conds.push(lte(paymentContracts.createdAt, end));
-  return buildWhere(...conds, contractsTenantCondition());
+  return buildWhere(
+    eq(paymentContracts.appId, q.applicationId),
+    keywordCondition(q.keyword, [paymentContracts.contractNo, paymentContracts.signerAccount, paymentContracts.bizId]),
+    q.status ? eq(paymentContracts.status, q.status) : undefined,
+    q.channel ? eq(paymentContracts.channel, q.channel) : undefined,
+    q.planId ? eq(paymentContracts.planId, q.planId) : undefined,
+    q.bizType ? eq(paymentContracts.bizType, q.bizType) : undefined,
+    ...dateRangeConditions(paymentContracts.createdAt, q.startTime, q.endTime),
+    contractsTenantCondition(),
+  );
 }
 
 export async function listContracts(q: ListContractsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
+  const { page, pageSize } = q;
   const where = await buildContractsWhere(q);
   return buildListResult({
     page,

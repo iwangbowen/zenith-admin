@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   PAYMENT_CHANNELS,
@@ -63,13 +63,13 @@ export type PaymentReconSampleBill = z.infer<typeof paymentReconSampleBillSchema
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const paymentReconBatchListQuery = paginationQuery.extend({
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
-  status: z.enum(PAYMENT_RECON_STATUSES).optional(),
+  channel: queryEnum(PAYMENT_CHANNELS),
+  status: queryEnum(PAYMENT_RECON_STATUSES),
 });
 
 export const paymentReconItemListQuery = paginationQuery.extend({
-  result: z.enum(PAYMENT_RECON_RESULTS).optional(),
-  handleStatus: z.enum(PAYMENT_RECON_HANDLE_STATUSES).optional(),
+  result: queryEnum(PAYMENT_RECON_RESULTS),
+  handleStatus: queryEnum(PAYMENT_RECON_HANDLE_STATUSES),
 });
 
 export const paymentReconSampleBillQuery = z.object({

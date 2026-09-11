@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 支付中心门面 Service。
  *
@@ -11,19 +12,7 @@ import { createHash } from 'node:crypto';
 import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentChannelConfigs,
-  paymentApps,
-  paymentNotifyLogs,
-  paymentOrders,
-  paymentRefunds,
-  paymentSharingOrders,
-  users,
-  type PaymentChannelConfigRow,
-  type PaymentNotifyLogRow,
-  type PaymentOrderRow,
-  type PaymentRefundRow,
-} from '../../db/schema';
+import { paymentChannelConfigs, paymentApps, paymentNotifyLogs, paymentOrders, paymentRefunds, paymentSharingOrders, users, type PaymentChannelConfigRow, type PaymentNotifyLogRow, type PaymentOrderRow, type PaymentRefundRow } from '../../db/schema';
 import { config } from '../../config';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
@@ -35,7 +24,7 @@ import { decryptField } from '../../lib/encryption';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { getSettings } from '../../lib/settings';
 import logger from '../../lib/logger';
-import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
+import { PAYMENT_METHOD_CHANNEL, paymentOrderContract, paymentRefundContract, paymentNotifyLogContract } from '@zenith/shared/payment';
 import type { CreatePaymentInput, CreatePaymentResult, CreateRefundInput, PaymentChannel, PaymentNotifyLog, PaymentOrder, PaymentOrderStatus, PaymentRefund } from '@zenith/shared/payment';
 import { getAdapter } from '../../lib/payment';
 import type { AdapterContext, DecryptedSecrets, NotifyResult } from '../../lib/payment';
@@ -1336,39 +1325,29 @@ export async function handleNotify(
 
 // ─── 后台查询接口 ───────────────────────────────────────────────────────────────
 
-export interface ListOrdersQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: PaymentOrderStatus;
-  channel?: PaymentChannel;
-  payMethod?: PaymentOrderRow['payMethod'];
-  bizType?: string;
-  minAmount?: number;
-  maxAmount?: number;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListOrdersQuery = QueryOutputOf<typeof paymentOrderContract.orders>;
+export type PaymentOrderListFilter = Omit<ListOrdersQuery, 'page' | 'pageSize'>;
 
-export async function buildOrdersWhere(q: ListOrdersQuery) {
+export async function buildOrdersWhere(q: PaymentOrderListFilter) {
   const user = currentUser();
-  const conditions = [keywordCondition(q.keyword, [paymentOrders.orderNo, paymentOrders.outTradeNo, paymentOrders.subject])];
-  if (q.status) conditions.push(eq(paymentOrders.status, q.status));
-  if (q.channel) conditions.push(eq(paymentOrders.channel, q.channel));
-  if (q.payMethod) conditions.push(eq(paymentOrders.payMethod, q.payMethod));
-  if (q.bizType) conditions.push(eq(paymentOrders.bizType, q.bizType));
-  if (q.minAmount != null) conditions.push(gte(paymentOrders.amount, q.minAmount));
-  if (q.maxAmount != null) conditions.push(lte(paymentOrders.amount, q.maxAmount));
-  conditions.push(...dateRangeConditions(paymentOrders.createdAt, q.startTime, q.endTime));
-  const where = buildWhere(...conditions);
   const tc = tenantCondition(paymentOrders, user);
   const scope = await getDataScopeCondition({ currentUserId: user.userId, deptColumn: paymentOrders.departmentId, ownerColumn: paymentOrders.createdBy });
-  return buildWhere(buildWhere(where, tc), scope);
+  return buildWhere(
+    keywordCondition(q.keyword, [paymentOrders.orderNo, paymentOrders.outTradeNo, paymentOrders.subject]),
+    q.status ? eq(paymentOrders.status, q.status) : undefined,
+    q.channel ? eq(paymentOrders.channel, q.channel) : undefined,
+    q.payMethod ? eq(paymentOrders.payMethod, q.payMethod) : undefined,
+    q.bizType ? eq(paymentOrders.bizType, q.bizType) : undefined,
+    q.minAmount != null ? gte(paymentOrders.amount, q.minAmount) : undefined,
+    q.maxAmount != null ? lte(paymentOrders.amount, q.maxAmount) : undefined,
+    ...dateRangeConditions(paymentOrders.createdAt, q.startTime, q.endTime),
+    tc,
+    scope,
+  );
 }
 
 export async function listOrders(q: ListOrdersQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
+  const { page, pageSize } = q;
   const finalWhere = await buildOrdersWhere(q);
   return buildListResult({
     page,
@@ -1414,31 +1393,22 @@ export async function listOrderRefunds(orderId: number): Promise<PaymentRefund[]
   return rows.map(mapRefund);
 }
 
-export interface ListRefundsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'pending' | 'processing' | 'unknown' | 'success' | 'failed';
-  approvalStatus?: 'none' | 'pending' | 'approved' | 'rejected';
-  channel?: PaymentChannel;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListRefundsQuery = QueryOutputOf<typeof paymentRefundContract.refunds>;
+export type PaymentRefundListFilter = Omit<ListRefundsQuery, 'page' | 'pageSize'>;
 
-export function buildRefundsWhere(q: ListRefundsQuery) {
-  const conditions = [];
-  conditions.push(keywordCondition(q.keyword, [paymentRefunds.refundNo, paymentRefunds.orderNo]));
-  if (q.status) conditions.push(eq(paymentRefunds.status, q.status));
-  if (q.approvalStatus) conditions.push(eq(paymentRefunds.approvalStatus, q.approvalStatus));
-  if (q.channel) conditions.push(eq(paymentRefunds.channel, q.channel));
-  conditions.push(...dateRangeConditions(paymentRefunds.createdAt, q.startTime, q.endTime));
-  const where = buildWhere(...conditions);
-  return buildWhere(where, tenantCondition(paymentRefunds, currentUser()));
+export function buildRefundsWhere(q: PaymentRefundListFilter) {
+  return buildWhere(
+    keywordCondition(q.keyword, [paymentRefunds.refundNo, paymentRefunds.orderNo]),
+    q.status ? eq(paymentRefunds.status, q.status) : undefined,
+    q.approvalStatus ? eq(paymentRefunds.approvalStatus, q.approvalStatus) : undefined,
+    q.channel ? eq(paymentRefunds.channel, q.channel) : undefined,
+    ...dateRangeConditions(paymentRefunds.createdAt, q.startTime, q.endTime),
+    tenantCondition(paymentRefunds, currentUser()),
+  );
 }
 
 export async function listRefunds(q: ListRefundsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
+  const { page, pageSize } = q;
   const finalWhere = buildRefundsWhere(q);
   return buildListResult({
     page,
@@ -1516,28 +1486,18 @@ export async function refreshRefundById(id: number): Promise<PaymentRefund> {
   }
 }
 
-export interface ListNotifyLogsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  channel?: PaymentChannel;
-  scene?: string;
-  signatureValid?: boolean;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListNotifyLogsQuery = QueryOutputOf<typeof paymentNotifyLogContract.logs>;
 
 export async function listNotifyLogs(q: ListNotifyLogsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conditions = [];
-  conditions.push(keywordCondition(q.keyword, [paymentNotifyLogs.orderNo]));
-  if (q.channel) conditions.push(eq(paymentNotifyLogs.channel, q.channel));
-  if (q.scene) conditions.push(eq(paymentNotifyLogs.scene, q.scene));
-  if (q.signatureValid != null) conditions.push(eq(paymentNotifyLogs.signatureValid, q.signatureValid));
-  conditions.push(...dateRangeConditions(paymentNotifyLogs.createdAt, q.startTime, q.endTime));
-  const where = buildWhere(...conditions);
-  const finalWhere = buildWhere(where, tenantCondition(paymentNotifyLogs, currentUser()));
+  const { page, pageSize } = q;
+  const finalWhere = buildWhere(
+    keywordCondition(q.keyword, [paymentNotifyLogs.orderNo]),
+    q.channel ? eq(paymentNotifyLogs.channel, q.channel) : undefined,
+    q.scene ? eq(paymentNotifyLogs.scene, q.scene) : undefined,
+    q.signatureValid != null ? eq(paymentNotifyLogs.signatureValid, q.signatureValid) : undefined,
+    ...dateRangeConditions(paymentNotifyLogs.createdAt, q.startTime, q.endTime),
+    tenantCondition(paymentNotifyLogs, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,

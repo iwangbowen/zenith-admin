@@ -1,3 +1,5 @@
+import { reportFillContract } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
@@ -74,16 +76,8 @@ async function validatePlacement(input: { ownerId?: number | null; folderId?: nu
   return { tenantId, ownerId };
 }
 
-export async function listReportFillTemplates(query: {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'draft' | 'published' | 'disabled';
-  ownerId?: number;
-  folderId?: number;
-}) {
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 20;
+export async function listReportFillTemplates(query: QueryOutputOf<typeof reportFillContract.templates>) {
+  const { page, pageSize } = query;
   const conditions = [reportTenantScope(reportFillTemplates)];
   const accessibleIds = await listAccessibleReportResourceIds('fill_template');
   if (accessibleIds && accessibleIds.length === 0) return { list: [], total: 0, page, pageSize };

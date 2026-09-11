@@ -10,7 +10,6 @@ export {
   listCmsDistributionRules,
   updateCmsDistributionRule,
 } from './cms-distributions-rules.service';
-export type { ListCmsDistributionRulesQuery } from './cms-distributions-rules.service';
 export {
   deleteCmsDistributionRule,
   registerCmsDistributionTaskHandler,
@@ -24,4 +23,4 @@ export {
   listCmsDistributionRuns,
   loadCmsDistributionExportRows,
 } from './cms-distributions-runs.service';
-export type { ListCmsDistributionRunsQuery } from './cms-distributions-runs.service';
+export type { CmsDistributionRunListFilter } from './cms-distributions-runs.service';

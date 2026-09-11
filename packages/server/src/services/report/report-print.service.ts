@@ -2,11 +2,12 @@
  * 类 Excel 打印报表模板 Service
  * CRUD + 取数渲染（复用数据集取数 + shared 填充引擎 renderPrintContent）。
  */
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { desc, eq, inArray, isNull, or } from 'drizzle-orm';
-import { ReportPrintValidationError, renderPrintContent } from '@zenith/shared/report';
+import { reportPrintContract, ReportPrintValidationError, renderPrintContent } from '@zenith/shared/report';
 import { db } from '../../db';
 import { reportDatasets, reportPrintTemplates } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
@@ -119,11 +120,8 @@ export async function getPrintTemplate(id: number): Promise<ReportPrintTemplate>
   return mapPrintTemplate(row);
 }
 
-export async function listPrintTemplates(query: {
-  page?: number; pageSize?: number; keyword?: string; folderId?: number; ownerId?: number; status?: string;
-  sourceType?: ReportPrintSourceType; entityKind?: ReportPrintEntityKind; entityRefId?: number;
-}) {
-  const { page = 1, pageSize = 20, keyword, folderId, ownerId, status, sourceType, entityKind, entityRefId } = query;
+export async function listPrintTemplates(query: QueryOutputOf<typeof reportPrintContract.list>) {
+  const { page, pageSize, keyword, folderId, ownerId, status, sourceType, entityKind, entityRefId } = query;
   const conds = [];
   const tenantScope = reportTenantScope(reportPrintTemplates);
   if (tenantScope) conds.push(tenantScope);

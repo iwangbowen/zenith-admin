@@ -1,6 +1,8 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and, isNull, type SQL } from 'drizzle-orm';
+import { cmsFriendLinkContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsFriendLinkGroups, cmsFriendLinks } from '../../db/schema';
 import type { CmsFriendLinkRow } from '../../db/schema';
@@ -38,17 +40,7 @@ export async function ensureCmsFriendLinkExists(id: number): Promise<CmsFriendLi
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
-export interface ListCmsFriendLinksQuery {
-  siteId: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  /** 按分组筛选；0 = 仅未分组 */
-  groupId?: number;
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsFriendLinks(q: ListCmsFriendLinksQuery) {
+export async function listCmsFriendLinks(q: QueryOutputOf<typeof cmsFriendLinkContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: (SQL | undefined)[] = [eq(cmsFriendLinks.siteId, q.siteId)];

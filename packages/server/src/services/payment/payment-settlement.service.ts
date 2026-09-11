@@ -1,3 +1,5 @@
+import { paymentSettlementContract } from '@zenith/shared/payment';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 支付结算批次 Service。
  * 按渠道 + 账期聚合成功订单生成结算批次（净额 = 收款 - 手续费 - 退款 - 分账），
@@ -8,16 +10,7 @@ import { HTTPException } from 'hono/http-exception';
 import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentApps,
-  paymentChannelConfigs,
-  paymentJournalLines,
-  paymentJournals,
-  paymentLedgerAccounts,
-  paymentSettlementBatches,
-  paymentSettlementItems,
-  type PaymentSettlementBatchRow,
-} from '../../db/schema';
+import { paymentApps, paymentChannelConfigs, paymentJournalLines, paymentJournals, paymentLedgerAccounts, paymentSettlementBatches, paymentSettlementItems, type PaymentSettlementBatchRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
@@ -26,7 +19,7 @@ import { formatDate, formatDateTime, formatNullableDateTime, parseDateRangeStart
 import { isPgUniqueViolation, rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { postSystemJournalWithin } from './payment-journal.service';
 import logger from '../../lib/logger';
-import type { PaymentChannel, PaymentSettlementBatch, PaymentSettlementItem, PaymentSettlementStatus } from '@zenith/shared/payment';
+import type { PaymentSettlementBatch, PaymentSettlementItem, PaymentSettlementStatus } from '@zenith/shared/payment';
 
 // Only provider-derived and explicitly approved reconciliation movements are
 // eligible for payout. Manual adjustments, reservations and transfer journals
@@ -78,20 +71,15 @@ export function mapSettlementBatch(row: PaymentSettlementBatchRow): PaymentSettl
   };
 }
 
-export interface ListSettlementsQuery {
-  page?: number;
-  pageSize?: number;
-  channel?: PaymentChannel;
-  status?: PaymentSettlementStatus;
-}
+export type ListSettlementsQuery = QueryOutputOf<typeof paymentSettlementContract.list>;
 
 export async function listSettlements(q: ListSettlementsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  if (q.channel) conds.push(eq(paymentSettlementBatches.channel, q.channel));
-  if (q.status) conds.push(eq(paymentSettlementBatches.status, q.status));
-  const where = buildWhere(...conds, tenantCondition(paymentSettlementBatches, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    q.channel ? eq(paymentSettlementBatches.channel, q.channel) : undefined,
+    q.status ? eq(paymentSettlementBatches.status, q.status) : undefined,
+    tenantCondition(paymentSettlementBatches, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,

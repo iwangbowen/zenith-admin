@@ -1,4 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
@@ -9,7 +10,7 @@ import { buildWhere, withPagination, keywordCondition } from '../../lib/where-he
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
 import type { CreateCmsLinkWordInput, UpdateCmsLinkWordInput } from '@zenith/shared/cms';
-import { isValidCmsLink } from '@zenith/shared/cms';
+import { isValidCmsLink, cmsSeoContract } from '@zenith/shared/cms';
 import { escapeRegExp } from '@zenith/shared/core';
 import type { CmsLinkResolver } from './cms-link.service';
 import { refreshCmsPublicConfiguration } from './cms-public-config-refresh.service';
@@ -102,14 +103,7 @@ export async function ensureCmsLinkWordExists(id: number): Promise<CmsLinkWordRo
   return requireRow(row, '内链词不存在');
 }
 
-export interface ListCmsLinkWordsQuery {
-  siteId: number;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsLinkWords(q: ListCmsLinkWordsQuery) {
+export async function listCmsLinkWords(q: QueryOutputOf<typeof cmsSeoContract.linkWordList>) {
   await assertSiteAccess(q.siteId);
   const conditions: (SQL | undefined)[] = [eq(cmsLinkWords.siteId, q.siteId)];
   conditions.push(keywordCondition(q.keyword, [cmsLinkWords.keyword]));

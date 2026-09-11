@@ -2,7 +2,8 @@ import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, lte, isNotNull, sql } from 'drizzle-orm';
-import { aggregateReportRows } from '@zenith/shared/report';
+import { aggregateReportRows, reportSubscriptionContract } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { reportDashboardSubscriptions, reportDeliveryRuns } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
@@ -123,8 +124,8 @@ export async function ensureSubscriptionExists(id: number): Promise<ReportDashbo
   return row;
 }
 
-export async function listSubscriptions(query: { page?: number; pageSize?: number; keyword?: string; dashboardId?: number; enabled?: boolean }) {
-  const { page = 1, pageSize = 20, keyword, dashboardId } = query;
+export async function listSubscriptions(query: QueryOutputOf<typeof reportSubscriptionContract.list>) {
+  const { page, pageSize, keyword, dashboardId } = query;
   const conds = [];
   const tenantScope = reportTenantScope(reportDashboardSubscriptions);
   if (tenantScope) conds.push(tenantScope);

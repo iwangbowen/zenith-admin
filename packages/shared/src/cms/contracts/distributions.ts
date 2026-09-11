@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskItemSchema, asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import {
@@ -78,14 +78,14 @@ export const cmsDistributionRuleListQuery = paginationQuery.extend({
   keyword: z.string().max(100).optional(),
   sourceSiteId: z.coerce.number().int().positive().optional(),
   targetSiteId: z.coerce.number().int().positive().optional(),
-  mode: z.enum(CMS_DISTRIBUTION_MODES).optional(),
-  status: entityStatusSchema.optional(),
+  mode: queryEnum(CMS_DISTRIBUTION_MODES),
+  status: entityStatusQuery,
 });
 
 export const cmsDistributionRunListQuery = paginationQuery.extend({
   ruleId: z.coerce.number().int().positive().optional(),
   siteId: z.coerce.number().int().positive().optional(),
-  status: z.enum(CMS_DISTRIBUTION_TASK_STATUSES).optional(),
+  status: queryEnum(CMS_DISTRIBUTION_TASK_STATUSES),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
 });
@@ -102,3 +102,4 @@ export const cmsDistributionContract = defineContract('/api/cms/distributions', 
   update: op.put('/{id}', { params: idParam, body: updateCmsDistributionRuleSchema, response: cmsDistributionRuleSchema, summary: '编辑或启停分发规则' }),
   remove: op.delete('/{id}', { params: idParam, summary: '删除分发规则（保留已物化内容）' }),
 }, { tags: ['CMS-内容分发'] });
+

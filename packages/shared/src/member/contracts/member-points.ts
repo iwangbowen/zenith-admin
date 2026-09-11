@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { POINT_TX_TYPES } from '../constants';
 import { adjustMemberPointsSchema } from '../validation';
@@ -35,7 +35,7 @@ export type MemberPointTransaction = z.infer<typeof memberPointTransactionSchema
 
 export const memberPointTransactionListQuery = paginationQuery.extend({
   memberKeyword: z.string().optional().meta({ description: '会员昵称 / 手机号 / 用户名模糊匹配；纯数字额外按会员 ID 精确匹配' }),
-  type: z.enum(POINT_TX_TYPES).optional(),
+  type: queryEnum(POINT_TX_TYPES),
 });
 
 export const memberPointContract = defineContract('/api/member-points', {

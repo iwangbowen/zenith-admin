@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 报表仪表盘 Service
  * - draft = 当前设计草稿
@@ -48,7 +49,7 @@ import {
   validateReportResourcePlacement,
 } from './report-resource.service';
 import type { ReportDashboardRow } from '../../db/schema';
-import { computeWidgetParams, type CreateReportDashboardInput, type ReportCanvasItem, type ReportDashboard, type ReportDashboardConfig, type ReportDashboardLifecycleStatus, type ReportDashboardSnapshot, type ReportDatasetQueryOptions, type ReportFilter, type ReportGridItem, type ReportLookupOption, type ReportMetricEvaluation, type ReportWidget, type ReportWidgetDataResult, type UpdateReportDashboardInput } from '@zenith/shared/report';
+import { computeWidgetParams, reportDashboardContract, type CreateReportDashboardInput, type ReportCanvasItem, type ReportDashboard, type ReportDashboardConfig, type ReportDashboardLifecycleStatus, type ReportDashboardSnapshot, type ReportDatasetQueryOptions, type ReportFilter, type ReportGridItem, type ReportLookupOption, type ReportMetricEvaluation, type ReportWidget, type ReportWidgetDataResult, type UpdateReportDashboardInput } from '@zenith/shared/report';
 
 type DashboardRowExt = ReportDashboardRow & {
   category?: { name: string } | null;
@@ -187,20 +188,10 @@ export async function getDashboard(
   return mapDashboard(row, favorited, snapshot);
 }
 
-export async function listDashboards(query: {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  folderId?: number;
-  ownerId?: number;
-  status?: string;
-  lifecycleStatus?: ReportDashboardLifecycleStatus;
-  categoryId?: number;
-  favorited?: boolean;
-}) {
+export async function listDashboards(query: QueryOutputOf<typeof reportDashboardContract.list>) {
   const {
-    page = 1,
-    pageSize = 20,
+    page,
+    pageSize,
     keyword,
     folderId,
     ownerId,

@@ -1,32 +1,22 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 支付财务报表 Service。
  *
  * Journal 是唯一资金事实来源：报表只聚合已过账凭证及其双分录行，不再读取旧单边台账或日切快照。
  * 金额口径由 sourceType + 标准科目 + 借贷方向共同确定，避免把同一凭证的两侧重复计入。
  */
-import { and, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
-import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared/payment';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { PAYMENT_CHANNEL_LABELS, paymentReportContract } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentReportGroupBy, PaymentReportRow } from '@zenith/shared/payment';
 import { readSnapshot } from '../../db';
-import {
-  paymentApps,
-  paymentChannelConfigs,
-  paymentJournalLines,
-  paymentJournals,
-  paymentLedgerAccounts,
-} from '../../db/schema';
+import { paymentApps, paymentChannelConfigs, paymentJournalLines, paymentJournals, paymentLedgerAccounts } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { currentUser } from '../../lib/context';
 import { getTenantScopeId, optionalExactTenantCondition } from '../../lib/tenant';
 import { APP_TIME_ZONE, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { buildWhere, dateRangeConditions } from '../../lib/where-helpers';
 
-export interface ReportSummaryQuery {
-  groupBy?: PaymentReportGroupBy;
-  startTime?: string;
-  endTime?: string;
-  /** 环比：附带上一等长周期的汇总（需同时提供 startTime/endTime） */
-  compare?: boolean;
-}
+export type ReportSummaryQuery = QueryOutputOf<typeof paymentReportContract.summary>;
 
 export interface ReportTotals {
   totalGross: number;
@@ -128,11 +118,10 @@ async function aggregateFromJournals(
   // as different group keys. For the day dimension select and group by one
   // canonical expression only; the row label is the key itself.
   const selectLabel = groupBy === 'day' ? sql<string>`'day'` : label;
-  const conditions: (SQL | undefined)[] = [
+  const where = buildWhere(
     optionalExactTenantCondition(paymentJournals.tenantId, tenantId),
-    start ? gte(paymentJournals.postedAt, start) : undefined,
-    end ? lte(paymentJournals.postedAt, end) : undefined,
-  ];
+    ...dateRangeConditions(paymentJournals.postedAt, start, end),
+  );
   const rows: RawAggRow[] = await executor
     .select({
       key,
@@ -188,7 +177,7 @@ async function aggregateFromJournals(
       eq(paymentChannelConfigs.id, paymentJournals.channelConfigId),
       optionalExactTenantCondition(paymentChannelConfigs.tenantId, tenantId),
     ))
-    .where(and(...conditions))
+    .where(where)
     .groupBy(...(groupBy === 'day' ? [sql`1`] : [key, label]));
 
   return rows

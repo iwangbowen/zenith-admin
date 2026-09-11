@@ -1,7 +1,9 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { cmsSensitiveWordContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsSensitiveWords } from '../../db/schema';
 import type { CmsSensitiveWordRow } from '../../db/schema';
@@ -62,14 +64,7 @@ export async function ensureCmsSensitiveWordExists(id: number): Promise<CmsSensi
   return requireRow(row, '敏感词不存在');
 }
 
-export interface ListCmsSensitiveWordsQuery {
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsSensitiveWords(q: ListCmsSensitiveWordsQuery) {
+export async function listCmsSensitiveWords(q: QueryOutputOf<typeof cmsSensitiveWordContract.list>) {
   const conditions: (SQL | undefined)[] = [];
   conditions.push(keywordCondition(q.keyword, [cmsSensitiveWords.word]));
   if (q.status) conditions.push(eq(cmsSensitiveWords.status, q.status));

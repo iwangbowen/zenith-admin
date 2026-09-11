@@ -651,7 +651,7 @@ export async function publishCmsContent(id: number, opts?: PublishCmsContentOpti
       scheduledAt: null,
       rejectReason: null,
       version: sql`${cmsContents.version} + 1`,
-    }).where(and(...conditions)).returning();
+    }).where(buildWhere(...conditions)).returning();
     requireRow(updated, '内容已发布或定时发布条件已变化', 409);
     await logContentOp(tx, id, 'published', opts?.fromWorkflow ? '工作流审核通过' : null);
     const task = await insertContentPublishOutbox(tx, site, updated, 'publish', oldPublish.deletePaths, { build: true });

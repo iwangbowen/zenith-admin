@@ -1,3 +1,5 @@
+import { reportDeliveryRunContract } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -18,7 +20,7 @@ import { sendInApp } from '../messaging/in-app-messages.service';
 import { reportScopedWhere, reportTenantScope } from './report-access';
 import { resolveReportSecret } from './report-secrets';
 import type { ReportAlertRule, ReportDashboardSubscription, ReportDeliveryAttempt, ReportDeliveryRun, ReportDeliveryStatus, ReportDeliveryTriggerType, ReportNotifyChannel, ReportScheduleMisfirePolicy } from '@zenith/shared/report';
-import { buildWhere } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions } from '../../lib/where-helpers';
 
 const emailSchema = z.email('邮箱格式不正确');
 
@@ -181,32 +183,17 @@ async function listAttemptsForRunIds(runIds: number[]): Promise<Map<number, Repo
   return map;
 }
 
-export async function listDeliveryRuns(query: {
-  page?: number;
-  pageSize?: number;
-  targetType?: 'subscription' | 'alert' | 'sla';
-  subscriptionId?: number;
-  alertRuleId?: number;
-  slaRuleId?: number;
-  status?: ReportDeliveryStatus;
-  triggerType?: ReportDeliveryTriggerType;
-  startAt?: Date;
-  endAt?: Date;
-  includeAttempts?: boolean;
-}) {
-  const { page = 1, pageSize = 20, includeAttempts = true } = query;
-  const conds = [];
-  const tenantScope = reportTenantScope(reportDeliveryRuns);
-  if (tenantScope) conds.push(tenantScope);
-  if (query.targetType) conds.push(eq(reportDeliveryRuns.targetType, query.targetType));
-  if (query.subscriptionId) conds.push(eq(reportDeliveryRuns.subscriptionId, query.subscriptionId));
-  if (query.alertRuleId) conds.push(eq(reportDeliveryRuns.alertRuleId, query.alertRuleId));
-  if (query.slaRuleId) conds.push(eq(reportDeliveryRuns.slaRuleId, query.slaRuleId));
-  if (query.status) conds.push(eq(reportDeliveryRuns.status, query.status));
-  if (query.triggerType) conds.push(eq(reportDeliveryRuns.triggerType, query.triggerType));
-  if (query.startAt) conds.push(gte(reportDeliveryRuns.createdAt, query.startAt));
-  if (query.endAt) conds.push(lte(reportDeliveryRuns.createdAt, query.endAt));
-  const where = buildWhere(...conds);
+export async function listDeliveryRuns(query: QueryOutputOf<typeof reportDeliveryRunContract.list>) {
+  const { page, pageSize, includeAttempts = true } = query;
+  const where = buildWhere(
+    reportTenantScope(reportDeliveryRuns),
+    query.targetType ? eq(reportDeliveryRuns.targetType, query.targetType) : undefined,
+    query.subscriptionId ? eq(reportDeliveryRuns.subscriptionId, query.subscriptionId) : undefined,
+    query.alertRuleId ? eq(reportDeliveryRuns.alertRuleId, query.alertRuleId) : undefined,
+    query.status ? eq(reportDeliveryRuns.status, query.status) : undefined,
+    query.triggerType ? eq(reportDeliveryRuns.triggerType, query.triggerType) : undefined,
+    ...dateRangeConditions(reportDeliveryRuns.createdAt, query.startAt, query.endAt),
+  );
   const [total, rows] = await Promise.all([
     db.$count(reportDeliveryRuns, where),
     db.select({

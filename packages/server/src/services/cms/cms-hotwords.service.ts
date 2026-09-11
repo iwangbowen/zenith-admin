@@ -8,7 +8,7 @@ import { config } from '../../config';
 import redis from '../../lib/redis';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import type { CmsHotKeyword, CreateCmsHotwordGroupInput, CreateCmsHotwordInput, UpdateCmsHotwordGroupInput, UpdateCmsHotwordInput } from '@zenith/shared/cms';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 
@@ -81,7 +81,7 @@ async function loadKeywordCounts(siteId: number, startTime?: string, endTime?: s
     const rows = await db.select({
       keyword: cmsSearchLogs.keyword,
       count: sql<number>`count(*)::int`,
-    }).from(cmsSearchLogs).where(and(...conditions))
+    }).from(cmsSearchLogs).where(buildWhere(...conditions))
       .groupBy(cmsSearchLogs.keyword)
       .orderBy(desc(sql`count(*)`))
       .limit(500);
@@ -111,7 +111,7 @@ export async function listCmsHotwords(input: {
   const managed = await db.select({ hotword: cmsHotwords, groupName: cmsHotwordGroups.name })
     .from(cmsHotwords)
     .leftJoin(cmsHotwordGroups, eq(cmsHotwords.groupId, cmsHotwordGroups.id))
-    .where(and(...conditions))
+    .where(buildWhere(...conditions))
     .orderBy(asc(cmsHotwords.sort), asc(cmsHotwords.id));
   const counts = await loadKeywordCounts(input.siteId, input.startTime, input.endTime);
   const result: CmsHotKeyword[] = managed.map(({ hotword, groupName }) => ({

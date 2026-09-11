@@ -6,7 +6,7 @@
  *   给邀请人发放积分（流水 bizType='invite', bizId=新会员ID，天然幂等）+ 站内通知
  */
 import crypto from 'node:crypto';
-import { and, count, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '../../db';
 import { members, memberPointTransactions } from '../../db/schema';
 import { getSettings } from '../../lib/settings';
@@ -90,9 +90,8 @@ export async function applyInviteOnRegister(newMemberId: number, inviteCode: str
 export async function getMyInviteSummary() {
   const memberId = currentMemberId();
   const inviteCode = await ensureMyInviteCode();
-  const [invitedCountRow, rewardRows, recentRows] = await Promise.all([
-    db.select({ v: count() }).from(members)
-      .where(and(eq(members.invitedBy, memberId), isNull(members.deletedAt))),
+  const [invitedCount, rewardRows, recentRows] = await Promise.all([
+    db.$count(members, and(eq(members.invitedBy, memberId), isNull(members.deletedAt))),
     db.select({ amount: memberPointTransactions.amount }).from(memberPointTransactions)
       .where(and(eq(memberPointTransactions.memberId, memberId), eq(memberPointTransactions.bizType, 'invite'))),
     db.select({ id: members.id, nickname: members.nickname, createdAt: members.createdAt }).from(members)
@@ -102,7 +101,7 @@ export async function getMyInviteSummary() {
   ]);
   return {
     inviteCode,
-    invitedCount: invitedCountRow[0]?.v ?? 0,
+    invitedCount,
     totalRewardPoints: rewardRows.reduce((sum, r) => sum + Math.max(0, r.amount), 0),
     recentInvitees: recentRows.map((r) => ({ id: r.id, nickname: r.nickname, createdAt: formatDateTime(r.createdAt) })),
   };

@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 报表数据源 Service
  * CRUD + 连接配置规整/校验。
@@ -40,7 +41,7 @@ import {
   defaultReportOwnerId,
   validateReportResourcePlacement,
 } from './report-resource.service';
-import { isExternalDbType, REPORT_DATASOURCE_TYPES } from '@zenith/shared/report';
+import { isExternalDbType, REPORT_DATASOURCE_TYPES, reportDatasourceContract } from '@zenith/shared/report';
 import type { ReportDatasourceRow } from '../../db/schema';
 import type { ReportDatasource, ReportDatasourceConfig, ReportDatasourceType, ReportExternalDbConfig, ReportApiDatasourceConfig, CreateReportDatasourceInput, UpdateReportDatasourceInput, ReportDatasourceTestInput, ReportLookupOption } from '@zenith/shared/report';
 
@@ -224,10 +225,8 @@ export async function getDatasource(id: number): Promise<ReportDatasource> {
   return mapDatasource(row);
 }
 
-export async function listDatasources(query: {
-  page?: number; pageSize?: number; keyword?: string; folderId?: number; ownerId?: number; type?: string; status?: string;
-}) {
-  const { page = 1, pageSize = 20, keyword, folderId, ownerId, type, status } = query;
+export async function listDatasources(query: QueryOutputOf<typeof reportDatasourceContract.list>) {
+  const { page, pageSize, keyword, folderId, ownerId, type, status } = query;
   const conds = [];
   const tenantScope = reportTenantScope(reportDatasources);
   if (tenantScope) conds.push(tenantScope);

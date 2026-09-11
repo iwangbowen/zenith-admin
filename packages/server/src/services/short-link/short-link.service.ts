@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 短链服务 —— 管理 CRUD 与跨域复用入口。
  *
@@ -7,12 +8,7 @@
 import { randomBytes } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import {
-  SHORT_LINK_CODE_ALPHABET,
-  SHORT_LINK_CODE_LENGTH,
-  SHORT_LINK_RESERVED_CODES,
-  type ShortLinkBizType,
-} from '@zenith/shared/short-link';
+import { SHORT_LINK_CODE_ALPHABET, SHORT_LINK_CODE_LENGTH, SHORT_LINK_RESERVED_CODES, type ShortLinkBizType, shortLinkContract } from '@zenith/shared/short-link';
 import type { CreateShortLinkInput, UpdateShortLinkInput } from '@zenith/shared/short-link';
 import { db } from '../../db';
 import { shortLinks, type ShortLinkRow } from '../../db/schema';
@@ -111,19 +107,9 @@ function ensureCodeNotReserved(code: string): void {
 }
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
-export interface ListShortLinksQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  bizType?: ShortLinkBizType;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListShortLinksQuery = QueryOutputOf<typeof shortLinkContract.list>;
 
-interface ShortLinkWhereInput extends ListShortLinksQuery {
-  id?: number;
-}
+type ShortLinkWhereInput = Omit<ListShortLinksQuery, 'page' | 'pageSize'> & { id?: number };
 
 function buildShortLinkWhere(q: ShortLinkWhereInput) {
   return buildWhere(
@@ -137,7 +123,7 @@ function buildShortLinkWhere(q: ShortLinkWhereInput) {
 }
 
 export async function listShortLinks(q: ListShortLinksQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildShortLinkWhere(q);
   return buildListResult({
     page,

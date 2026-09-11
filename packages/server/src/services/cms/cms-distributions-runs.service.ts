@@ -1,5 +1,6 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import {
   and,
   asc,
@@ -12,6 +13,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
+import { cmsDistributionContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
   asyncTaskItems,
@@ -21,6 +23,7 @@ import {
 } from '../../db/schema';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
+import { buildWhere } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { runWithCurrentUser } from '../../lib/context';
 import { mapAsyncTask } from '../../lib/task-center';
@@ -29,18 +32,8 @@ import { DISTRIBUTION_TASK_TYPE, nextSchedule, SYSTEM_USER } from './cms-distrib
 import { submitCmsDistributionRun } from './cms-distributions-sync.service';
 import { mapAsyncTaskItem } from '../../lib/task-center';
 
-export interface ListCmsDistributionRunsQuery {
-  page: number;
-  pageSize: number;
-  ruleId?: number;
-  siteId?: number;
-  status?: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
-  startTime?: string;
-  endTime?: string;
-}
-
 export async function buildCmsDistributionRunConditions(
-  query: Omit<ListCmsDistributionRunsQuery, 'page' | 'pageSize'>,
+  query: CmsDistributionRunListFilter,
 ): Promise<(SQL | undefined)[]> {
   const conditions: (SQL | undefined)[] = [eq(asyncTasks.taskType, DISTRIBUTION_TASK_TYPE)];
   const accessible = await getAccessibleSiteIds();
@@ -107,7 +100,7 @@ async function mapRuns(rows: Array<typeof asyncTasks.$inferSelect>) {
   });
 }
 
-export async function listCmsDistributionRuns(query: ListCmsDistributionRunsQuery) {
+export async function listCmsDistributionRuns(query: QueryOutputOf<typeof cmsDistributionContract.runs>) {
   const where = and(...await buildCmsDistributionRunConditions(query));
   return buildListResult({
     page: query.page,
@@ -143,7 +136,7 @@ export async function loadCmsDistributionExportRows(query: Record<string, unknow
     ruleId: positive(query.ruleId),
     siteId: positive(query.siteId),
     status: typeof query.status === 'string'
-      ? query.status as ListCmsDistributionRunsQuery['status']
+      ? query.status as CmsDistributionRunListFilter['status']
       : undefined,
     startTime: typeof query.startTime === 'string' ? query.startTime : undefined,
     endTime: typeof query.endTime === 'string' ? query.endTime : undefined,
@@ -151,7 +144,7 @@ export async function loadCmsDistributionExportRows(query: Record<string, unknow
   const rows = await db.select({ task: asyncTasks, item: asyncTaskItems })
     .from(asyncTaskItems)
     .innerJoin(asyncTasks, eq(asyncTaskItems.taskId, asyncTasks.id))
-    .where(and(...conditions))
+    .where(buildWhere(...conditions))
     .orderBy(desc(asyncTasks.id), asc(asyncTaskItems.id))
     .limit(50_000);
   const mappedRuns = await mapRuns([...new Map(rows.map(({ task }) => [task.id, task])).values()]);

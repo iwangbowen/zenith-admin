@@ -1,11 +1,12 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 渠道推广分析（纯读聚合）：
  * 短链侧点击/UV 按 UTM 维度聚合，选择转化事件时叠加 user_events 的同维度转化数，
  * 形成「渠道 → 点击 → 转化」归因视图。不落新表。
  */
 import { and, count, countDistinct, desc, eq, gte, sql } from 'drizzle-orm';
-import type { ChannelAnalysisDimension, ChannelAnalysisResult, ShortLinkTrendPoint } from '@zenith/shared/short-link';
-import { SHORT_LINK_STATS_MAX_DAYS } from '@zenith/shared/short-link';
+import type { ChannelAnalysisResult, ShortLinkTrendPoint } from '@zenith/shared/short-link';
+import { SHORT_LINK_STATS_MAX_DAYS, channelAnalysisContract } from '@zenith/shared/short-link';
 import { db } from '../../db';
 import { shortLinks, shortLinkClicks, userEvents } from '../../db/schema';
 import { formatDate, startOfRecentDays } from '../../lib/datetime';
@@ -28,12 +29,7 @@ const EVENT_DIM_COLUMNS = {
   campaign: userEvents.utmCampaign,
 } as const;
 
-export interface ChannelAnalysisQuery {
-  days?: number;
-  dimension: ChannelAnalysisDimension;
-  /** 转化事件名（可选，来自事件字典） */
-  convEvent?: string;
-}
+export type ChannelAnalysisQuery = QueryOutputOf<typeof channelAnalysisContract.analyze>;
 
 export async function getChannelAnalysis(q: ChannelAnalysisQuery): Promise<ChannelAnalysisResult> {
   const days = clampDays(q.days, 30, SHORT_LINK_STATS_MAX_DAYS);

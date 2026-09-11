@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { saveCmsWidgetSlotSchema } from '../../report/validation';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
@@ -151,8 +151,8 @@ export type CmsWidgetSlot = z.infer<typeof cmsWidgetSlotSchema>;
 export const cmsWidgetListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
   keyword: z.string().max(100).optional(),
-  status: z.enum(CMS_WIDGET_STATUSES).optional(),
-  type: cmsWidgetTypeSchema.optional(),
+  status: queryEnum(CMS_WIDGET_STATUSES),
+  type: queryEnum(CMS_WIDGET_TYPES),
 });
 
 export const cmsWidgetRenderersQuery = z.object({
@@ -192,3 +192,4 @@ export const cmsWidgetContract = defineContract('/api/cms/widgets', {
   update: op.put('/{id}', { params: idParam, body: updateCmsWidgetSchema, response: cmsWidgetSchema, summary: '保存页面部件草稿' }),
   remove: op.delete('/{id}', { params: idParam, summary: '删除未被引用的页面部件' }),
 }, { tags: ['CMS-页面部件'] });
+

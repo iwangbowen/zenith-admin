@@ -1,4 +1,5 @@
 import { percentOf as sharedPercentOf } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import {
   and,
@@ -7,7 +8,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { CMS_INTERACTION_MATRIX_SEPARATOR, CMS_INTERACTION_NPS_MAX, CMS_INTERACTION_OTHER_PREFIX, CMS_INTERACTION_OTHER_VALUE } from '@zenith/shared/cms';
+import { CMS_INTERACTION_MATRIX_SEPARATOR, CMS_INTERACTION_NPS_MAX, CMS_INTERACTION_OTHER_PREFIX, CMS_INTERACTION_OTHER_VALUE, cmsInteractionContract } from '@zenith/shared/cms';
 import type { CmsInteractionCrossStats, CmsInteractionQuestionType, CmsInteractionPublicStats, CmsInteractionQuestionStats, CmsInteractionStats, CmsInteractionTextAnswer, CmsInteractionTrendStats } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
@@ -258,16 +259,10 @@ export async function getCmsInteractionStatsInternal(id: number): Promise<CmsInt
   };
 }
 
-export interface ListCmsInteractionTextsQuery {
-  interactionId: number;
-  questionId: number;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
+export type CmsInteractionTextsQuery = QueryOutputOf<typeof cmsInteractionContract.texts> & { interactionId: number };
 
 /** 文本 / 日期 / 「其他」填空的完整答案分页；结果面板只给前 50 条样本 */
-export async function listCmsInteractionTexts(q: ListCmsInteractionTextsQuery) {
+export async function listCmsInteractionTexts(q: CmsInteractionTextsQuery) {
   const current = await ensureCmsInteractionExists(q.interactionId);
   await assertSiteAccess(current.siteId);
   const [question] = await db.select().from(cmsInteractionQuestions)

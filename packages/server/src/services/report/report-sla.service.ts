@@ -1,3 +1,5 @@
+import { reportSlaContract } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import dayjs from 'dayjs';
@@ -124,14 +126,8 @@ async function validateSlaInput(input: CreateReportSlaRuleInput | UpdateReportSl
   return dataset;
 }
 
-export async function listReportSlaRules(query: {
-  page?: number;
-  pageSize?: number;
-  datasetId?: number;
-  type?: ReportSlaType;
-  enabled?: boolean;
-}) {
-  const { page = 1, pageSize = 20 } = query;
+export async function listReportSlaRules(query: QueryOutputOf<typeof reportSlaContract.rules>) {
+  const { page, pageSize } = query;
   const conds = [];
   const scope = reportTenantScope(reportSlaRules);
   if (scope) conds.push(scope);
@@ -365,14 +361,8 @@ export async function submitReportSlaEvaluation(id: number) {
   }));
 }
 
-export async function listReportSlaViolations(query: {
-  page?: number;
-  pageSize?: number;
-  datasetId?: number;
-  ruleId?: number;
-  status?: 'open' | 'acknowledged' | 'resolved';
-}) {
-  const { page = 1, pageSize = 20 } = query;
+export async function listReportSlaViolations(query: QueryOutputOf<typeof reportSlaContract.violations>) {
+  const { page, pageSize } = query;
   const conds = [];
   const scope = reportTenantScope(reportSlaViolations);
   if (scope) conds.push(scope);

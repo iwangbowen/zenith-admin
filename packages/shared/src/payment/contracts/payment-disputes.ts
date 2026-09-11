@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sensitive } from '../../core/sensitive';
 import {
@@ -87,10 +87,10 @@ export type PaymentDisputeStats = z.infer<typeof paymentDisputeStatsSchema>;
 
 export const paymentDisputeListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: z.enum(PAYMENT_DISPUTE_STATUSES).optional(),
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
-  type: z.enum(PAYMENT_DISPUTE_TYPES).optional(),
-  route: z.enum(PAYMENT_DISPUTE_ROUTES).optional(),
+  status: queryEnum(PAYMENT_DISPUTE_STATUSES),
+  channel: queryEnum(PAYMENT_CHANNELS),
+  type: queryEnum(PAYMENT_DISPUTE_TYPES),
+  route: queryEnum(PAYMENT_DISPUTE_ROUTES),
   overdueOnly: queryBool('只看已超时工单'),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),

@@ -1,5 +1,6 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import {
   and,
   desc,
@@ -16,6 +17,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { CMS_PUBLISH_TASK_TYPES, CMS_PUBLISH_TARGET_TYPE_LABELS, CMS_PUBLISH_TARGET_TYPES } from '@zenith/shared/cms';
 import type { CmsPublishArtifactStatus, CmsPublishSubmitInput, CmsPublishTargetType, SubmitCmsSiteGroupPublishInput } from '@zenith/shared/cms';
 import { isAsyncTaskTerminal } from '@zenith/shared/tasks';
+import { cmsPublishingContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
   asyncTaskItems,
@@ -35,7 +37,7 @@ import {
   parseDateRangeEnd,
   parseDateRangeStart,
 } from '../../lib/datetime';
-import { keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import {
   currentUser,
   currentUserOrNull,
@@ -144,24 +146,11 @@ async function mapPublishingTasks(rows: Array<AsyncTaskRow & {
   });
 }
 
-export interface ListCmsPublishingQuery {
-  page: number;
-  pageSize: number;
-  siteId?: number;
-  targetType?: CmsPublishTargetType;
-  status?: AsyncTaskRow['status'] | 'active' | 'terminal';
-  taskType?: string;
-  createdBy?: string;
-  startTime?: string;
-  endTime?: string;
-  keyword?: string;
-}
-
 async function hasGlobalPublishingAccess(): Promise<boolean> {
   return isCmsPlatformAdmin() || hasPermission('system:async-task:list');
 }
 
-export async function buildCmsPublishingConditions(query: Omit<ListCmsPublishingQuery, 'page' | 'pageSize'>): Promise<(SQL | undefined)[]> {
+export async function buildCmsPublishingConditions(query: CmsPublishingListFilter): Promise<(SQL | undefined)[]> {
   const user = currentUser();
   const conditions: (SQL | undefined)[] = [inArray(asyncTasks.taskType, [...CMS_PUBLISH_TASK_TYPES])];
   const global = await hasGlobalPublishingAccess();
@@ -193,9 +182,9 @@ export async function buildCmsPublishingConditions(query: Omit<ListCmsPublishing
   return conditions;
 }
 
-export async function listCmsPublishingTasks(query: ListCmsPublishingQuery) {
+export async function listCmsPublishingTasks(query: QueryOutputOf<typeof cmsPublishingContract.list>) {
   const conditions = await buildCmsPublishingConditions(query);
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   return buildListResult({
     page: query.page,
     pageSize: query.pageSize,
@@ -388,19 +377,7 @@ async function cmsPublishTaskNeedsFreshInput(task: Pick<AsyncTaskRow, 'payload' 
   return false;
 }
 
-export interface ListCmsPublishArtifactsQuery {
-  page: number;
-  pageSize: number;
-  siteId?: number;
-  taskId?: number;
-  targetType?: CmsPublishTargetType;
-  status?: CmsPublishArtifactStatus;
-  startTime?: string;
-  endTime?: string;
-  keyword?: string;
-}
-
-export async function listCmsPublishArtifacts(query: ListCmsPublishArtifactsQuery) {
+export async function listCmsPublishArtifacts(query: QueryOutputOf<typeof cmsPublishingContract.artifacts>) {
   const taskConditions = await buildCmsPublishingConditions({ siteId: query.siteId });
   if (query.taskId) taskConditions.push(eq(asyncTasks.id, query.taskId));
   const conditions: (SQL | undefined)[] = [...taskConditions, eq(cmsPublishArtifacts.taskId, asyncTasks.id)];
@@ -412,7 +389,7 @@ export async function listCmsPublishArtifacts(query: ListCmsPublishArtifactsQuer
   const artifactTime = sql`coalesce(${cmsPublishArtifacts.generatedAt}, ${cmsPublishArtifacts.updatedAt})`;
   if (start) conditions.push(sql`${artifactTime} >= ${start}`);
   if (end) conditions.push(sql`${artifactTime} <= ${end}`);
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   const base = db.select({ artifact: cmsPublishArtifacts })
     .from(cmsPublishArtifacts)
     .innerJoin(asyncTasks, eq(cmsPublishArtifacts.taskId, asyncTasks.id))

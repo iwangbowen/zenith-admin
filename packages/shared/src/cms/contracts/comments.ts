@@ -1,7 +1,7 @@
 import * as z from 'zod';
-import { batchIdsBody, paginated, paginationQuery } from '../../core/api-schemas';
+import { batchIdsBody, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { CMS_COMMENT_STATUSES } from '../constants';
+import { CMS_COMMENT_SOURCES, CMS_COMMENT_STATUSES } from '../constants';
 import { cmsSiteScopeQuery } from './tags';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
@@ -40,8 +40,8 @@ export type CmsPendingCommentCount = z.infer<typeof cmsPendingCommentCountSchema
 
 export const cmsCommentListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
-  status: cmsCommentStatusSchema.optional(),
-  source: z.enum(['member', 'guest']).optional().meta({ description: '来源筛选：member=会员评论 guest=游客评论' }),
+  status: queryEnum(CMS_COMMENT_STATUSES),
+  source: queryEnum(CMS_COMMENT_SOURCES, '来源筛选：member=会员评论 guest=游客评论'),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
@@ -53,3 +53,4 @@ export const cmsCommentContract = defineContract('/api/cms/comments', {
   reject: op.post('/reject', { body: batchIdsBody, summary: '批量拒绝' }),
   batchDelete: op.post('/delete', { body: batchIdsBody, summary: '批量删除' }),
 }, { tags: ['CMS-评论管理'] });
+

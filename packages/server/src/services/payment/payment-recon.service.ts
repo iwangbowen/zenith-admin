@@ -1,3 +1,5 @@
+import { paymentReconContract } from '@zenith/shared/payment';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 支付对账中心 Service。
  * 上传渠道对账单（CSV），与本地订单逐笔比对，生成差异报表
@@ -10,15 +12,7 @@ import { HTTPException } from 'hono/http-exception';
 import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentChannelConfigs,
-  paymentApps,
-  paymentOrders,
-  paymentReconBatches,
-  paymentReconItems,
-  type PaymentReconBatchRow,
-  type PaymentReconItemRow,
-} from '../../db/schema';
+import { paymentChannelConfigs, paymentApps, paymentOrders, paymentReconBatches, paymentReconItems, type PaymentReconBatchRow, type PaymentReconItemRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
@@ -31,7 +25,7 @@ import { assertPaymentEngineConfig } from './payment-channel-config-resolver';
 import { assertEffectivePaymentOperation } from './payment-capability-evaluator';
 import logger from '../../lib/logger';
 import type { SQL } from 'drizzle-orm';
-import type { HandlePaymentReconItemInput, PaymentChannel, PaymentReconBatch, PaymentReconHandleStatus, PaymentReconItem, PaymentReconResult, PaymentReconSource, PaymentReconStatus } from '@zenith/shared/payment';
+import type { HandlePaymentReconItemInput, PaymentChannel, PaymentReconBatch, PaymentReconItem, PaymentReconResult, PaymentReconSource } from '@zenith/shared/payment';
 
 export function mapReconBatch(row: PaymentReconBatchRow): PaymentReconBatch {
   return {
@@ -162,20 +156,15 @@ async function loadLocalPaidRowsScoped(channel: PaymentChannel, appId: number, c
     );
 }
 
-export interface ListReconBatchesQuery {
-  page?: number;
-  pageSize?: number;
-  channel?: PaymentChannel;
-  status?: PaymentReconStatus;
-}
+export type ListReconBatchesQuery = QueryOutputOf<typeof paymentReconContract.list>;
 
 export async function listReconBatches(q: ListReconBatchesQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  if (q.channel) conds.push(eq(paymentReconBatches.channel, q.channel));
-  if (q.status) conds.push(eq(paymentReconBatches.status, q.status));
-  const where = buildWhere(...conds, tenantCondition(paymentReconBatches, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    q.channel ? eq(paymentReconBatches.channel, q.channel) : undefined,
+    q.status ? eq(paymentReconBatches.status, q.status) : undefined,
+    tenantCondition(paymentReconBatches, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -192,21 +181,16 @@ export async function getReconBatch(id: number): Promise<PaymentReconBatch> {
   return mapReconBatch(row);
 }
 
-export interface ListReconItemsQuery {
-  page?: number;
-  pageSize?: number;
-  result?: PaymentReconResult;
-  handleStatus?: PaymentReconHandleStatus;
-}
+export type ListReconItemsQuery = QueryOutputOf<typeof paymentReconContract.items>;
 
 export async function listReconItems(batchId: number, q: ListReconItemsQuery) {
   await getReconBatch(batchId);
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
-  const conds = [eq(paymentReconItems.batchId, batchId)];
-  if (q.result) conds.push(eq(paymentReconItems.result, q.result));
-  if (q.handleStatus) conds.push(eq(paymentReconItems.handleStatus, q.handleStatus));
-  const where = and(...conds);
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    eq(paymentReconItems.batchId, batchId),
+    q.result ? eq(paymentReconItems.result, q.result) : undefined,
+    q.handleStatus ? eq(paymentReconItems.handleStatus, q.handleStatus) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

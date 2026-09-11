@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 支付手续费/费率 Service。
  * 维护费率规则（按渠道/支付方式匹配，万分比 + 固定费，clamp 上下限），
@@ -7,15 +8,7 @@ import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentFeeRules,
-  paymentJournalLines,
-  paymentJournals,
-  paymentLedgerAccounts,
-  paymentOrders,
-  paymentRefunds,
-  type PaymentFeeRuleRow,
-} from '../../db/schema';
+import { paymentFeeRules, paymentJournalLines, paymentJournals, paymentLedgerAccounts, paymentOrders, paymentRefunds, type PaymentFeeRuleRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
@@ -24,7 +17,7 @@ import { formatDateTime } from '../../lib/datetime';
 import { postSystemJournal, postSystemJournalWithin } from './payment-journal.service';
 import { paymentEventBus } from '../../lib/payment-event-bus';
 import logger from '../../lib/logger';
-import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
+import { PAYMENT_METHOD_CHANNEL, paymentFeeRuleContract } from '@zenith/shared/payment';
 import type { CreatePaymentFeeRuleInput, UpdatePaymentFeeRuleInput } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentFeeRule, PaymentMethod } from '@zenith/shared/payment';
 
@@ -46,20 +39,15 @@ export function mapFeeRule(row: PaymentFeeRuleRow): PaymentFeeRule {
   };
 }
 
-export interface ListFeeRulesQuery {
-  page?: number;
-  pageSize?: number;
-  channel?: PaymentChannel;
-  status?: 'enabled' | 'disabled';
-}
+export type ListFeeRulesQuery = QueryOutputOf<typeof paymentFeeRuleContract.list>;
 
 export async function listFeeRules(q: ListFeeRulesQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  if (q.channel) conds.push(eq(paymentFeeRules.channel, q.channel));
-  if (q.status) conds.push(eq(paymentFeeRules.status, q.status));
-  const where = buildWhere(...conds, tenantCondition(paymentFeeRules, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    q.channel ? eq(paymentFeeRules.channel, q.channel) : undefined,
+    q.status ? eq(paymentFeeRules.status, q.status) : undefined,
+    tenantCondition(paymentFeeRules, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,

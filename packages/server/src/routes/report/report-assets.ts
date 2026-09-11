@@ -46,18 +46,12 @@ const usageSummaryRoute = defineContractRoute(reportAssetContract.usage, {
 
 const topAssetsRoute = defineContractRoute(reportAssetContract.topAssets, {
   middleware: [authMiddleware, guard({ permission: 'report:asset:usage' })],
-  handler: async (c) => {
-    const query = c.req.valid('query');
-    return c.json(okBody(await listTopReportAssets(query.days, query.limit)), 200);
-  },
+  handler: async (c) => c.json(okBody(await listTopReportAssets(c.req.valid('query'))), 200),
 });
 
 const inactiveAssetsRoute = defineContractRoute(reportAssetContract.inactiveAssets, {
   middleware: [authMiddleware, guard({ permission: 'report:asset:usage' })],
-  handler: async (c) => {
-    const query = c.req.valid('query');
-    return c.json(okBody(await listInactiveReportAssets(query.days, query.page, query.pageSize)), 200);
-  },
+  handler: async (c) => c.json(okBody(await listInactiveReportAssets(c.req.valid('query'))), 200),
 });
 
 const usageTrendRoute = defineContractRoute(reportAssetContract.usageTrend, {

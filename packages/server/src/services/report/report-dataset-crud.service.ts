@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 报表数据集 CRUD：映射、存在性/全局可求值校验、增删改查、复制、批量状态与血缘引用收集。
  * 对外统一经 report-dataset.service.ts facade 暴露。
@@ -40,7 +41,7 @@ import {
 } from './report-resource.service';
 import { assertMaterializable, normalizeDatasetContent, normalizeIdentifier } from './report-dataset-shared';
 import { clearDatasetCache } from './report-dataset-execution.service';
-import { isSqlLikeType, REPORT_DATASOURCE_TYPES } from '@zenith/shared/report';
+import { isSqlLikeType, REPORT_DATASOURCE_TYPES, reportDatasetContract } from '@zenith/shared/report';
 import type { ReportDatasetRow } from '../../db/schema';
 import type { ReportDataset, ReportField, ReportDatasetContent, ReportDatasetParam, ReportDatasourceType, ReportComputedField, ReportDatasetMaterialize, ReportRowRule, ReportDatasetRefs, ReportWidget, ReportFilter, ReportSqlDatasetContent, ReportDashboardSnapshot, ReportPrintContent, ReportLookupOption, CreateReportDatasetInput, UpdateReportDatasetInput } from '@zenith/shared/report';
 
@@ -170,10 +171,8 @@ export async function getDataset(id: number): Promise<ReportDataset> {
   return mapDataset(row);
 }
 
-export async function listDatasets(query: {
-  page?: number; pageSize?: number; keyword?: string; folderId?: number; ownerId?: number; datasourceId?: number; type?: string; status?: string;
-}) {
-  const { page = 1, pageSize = 20, keyword, folderId, ownerId, datasourceId, type, status } = query;
+export async function listDatasets(query: QueryOutputOf<typeof reportDatasetContract.list>) {
+  const { page, pageSize, keyword, folderId, ownerId, datasourceId, type, status } = query;
   const conds = [];
   const tenantScope = reportTenantScope(reportDatasets);
   if (tenantScope) conds.push(tenantScope);

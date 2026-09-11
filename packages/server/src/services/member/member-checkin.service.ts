@@ -1,16 +1,10 @@
 import dayjs from 'dayjs';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { memberCheckinContract, memberSelfContract } from '@zenith/shared/member';
 import { and, asc, count, desc, eq, gte, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import {
-  checkinRules,
-  checkinMilestones,
-  memberCheckins,
-  memberCheckinMilestoneAwards,
-  memberPointAccounts,
-  memberPointTransactions,
-  members,
-} from '../../db/schema';
+import { checkinRules, checkinMilestones, memberCheckins, memberCheckinMilestoneAwards, memberPointAccounts, memberPointTransactions, members } from '../../db/schema';
 import type { MemberCheckinRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
 import { formatDateTime } from '../../lib/datetime';
@@ -52,14 +46,7 @@ export function buildCheckinWhere(params: { memberId?: number; memberKeyword?: s
   );
 }
 
-export async function listMemberCheckins(params: {
-  page: number;
-  pageSize: number;
-  memberId?: number;
-  memberKeyword?: string;
-  dateStart?: string;
-  dateEnd?: string;
-}) {
+export async function listMemberCheckins(params: QueryOutputOf<typeof memberCheckinContract.list> & { memberId?: number }) {
   const where = buildCheckinWhere(params);
   const baseQuery = db
     .select({
@@ -366,12 +353,13 @@ export async function doCheckin() {
   return { consecutiveDays, points, experience, checkinDate: todayStr };
 }
 
-export async function getMyCheckinHistory(params: { page: number; pageSize: number; dateStart?: string; dateEnd?: string }) {
+export async function getMyCheckinHistory(params: QueryOutputOf<typeof memberSelfContract.checkinHistory>) {
   const memberId = currentMemberId();
-  const conds: SQL[] = [eq(memberCheckins.memberId, memberId)];
-  if (params.dateStart) conds.push(gte(memberCheckins.checkinDate, params.dateStart));
-  if (params.dateEnd) conds.push(lte(memberCheckins.checkinDate, params.dateEnd));
-  const where = and(...conds);
+  const where = buildWhere(
+    eq(memberCheckins.memberId, memberId),
+    params.dateStart ? gte(memberCheckins.checkinDate, params.dateStart) : undefined,
+    params.dateEnd ? lte(memberCheckins.checkinDate, params.dateEnd) : undefined,
+  );
   return buildListResult({
     page: params.page,
     pageSize: params.pageSize,

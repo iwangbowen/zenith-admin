@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeBound, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   MARKETING_CAMPAIGN_STATUSES,
@@ -68,7 +68,7 @@ export type MarketingParticipation = z.infer<typeof marketingParticipationSchema
 
 export const marketingCampaignListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按活动名称 / 说明模糊匹配' }),
-  status: z.enum(MARKETING_CAMPAIGN_STATUSES).optional(),
+  status: queryEnum(MARKETING_CAMPAIGN_STATUSES),
   startTime: dateRangeBound('创建时间起'),
   endTime: dateRangeBound('创建时间止'),
 });

@@ -28,11 +28,11 @@ export function customPageUrl(baseUrl: string, page: { slug: string; path?: stri
   return `${baseUrl}/${cmsCustomPagePath(page)}`;
 }
 
-export function channelUrl(baseUrl: string, path: string, page = 1): string {
+export function channelUrl(baseUrl: string, path: string, page: number): string {
   return page <= 1 ? `${baseUrl}/${path}/` : `${baseUrl}/${path}/index_${page}.html`;
 }
 
-export function tagUrl(baseUrl: string, slug: string, page = 1): string {
+export function tagUrl(baseUrl: string, slug: string, page: number): string {
   return page <= 1 ? `${baseUrl}/tag/${slug}/` : `${baseUrl}/tag/${slug}/index_${page}.html`;
 }
 

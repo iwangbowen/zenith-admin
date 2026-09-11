@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CHANNELS, PAYMENT_TRANSFER_APPROVAL_STATUSES, PAYMENT_TRANSFER_STATUSES } from '../constants';
 import { approvePaymentTransferSchema, createPaymentTransferSchema, idempotencyKeyHeaders } from '../validation';
@@ -53,15 +53,15 @@ export type PaymentTransferSummary = z.infer<typeof paymentTransferSummarySchema
 
 export const paymentTransferListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
-  status: z.enum(PAYMENT_TRANSFER_STATUSES).optional(),
-  approvalStatus: z.enum(PAYMENT_TRANSFER_APPROVAL_STATUSES).optional(),
+  channel: queryEnum(PAYMENT_CHANNELS),
+  status: queryEnum(PAYMENT_TRANSFER_STATUSES),
+  approvalStatus: queryEnum(PAYMENT_TRANSFER_APPROVAL_STATUSES),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
 });
 
 export const paymentTransferSummaryQuery = z.object({
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
+  channel: queryEnum(PAYMENT_CHANNELS),
 });
 
 export const paymentTransferContract = defineContract('/api/payment/transfers', {

@@ -726,10 +726,10 @@ export async function applyCmsContentPublishSnapshot(
     }
     // 栏目在快照生成后被切为纯动态：跳过产物生成（旧产物已在上方 deletePaths 清理）
     if (!isChannelDynamic(site, channel)) {
-      for (let page = 1; page <= snapshot.paths.length; page++) {
-        const rendered = await renderDetailPage(site, '', channel, snapshot.slug, page);
-        if (rendered.status !== 200) throw new Error(`内容 #${snapshot.contentId} 快照路径 ${snapshot.paths[page - 1]} 渲染失败（${rendered.status}）`);
-        await writeStaticFile(site.code, snapshot.paths[page - 1], rendered.html);
+      for (let pageNo = 1; pageNo <= snapshot.paths.length; pageNo++) {
+        const rendered = await renderDetailPage(site, '', channel, snapshot.slug, pageNo);
+        if (rendered.status !== 200) throw new Error(`内容 #${snapshot.contentId} 快照路径 ${snapshot.paths[pageNo - 1]} 渲染失败（${rendered.status}）`);
+        await writeStaticFile(site.code, snapshot.paths[pageNo - 1], rendered.html);
       }
     }
   }

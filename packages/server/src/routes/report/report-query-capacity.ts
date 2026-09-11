@@ -21,10 +21,7 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const listQuotasRoute = defineContractRoute(reportQueryCapacityContract.quotas, {
   middleware: [authMiddleware, guard({ permission: 'report:query-quota:list' })],
-  handler: async (c) => {
-    const query = c.req.valid('query');
-    return c.json(okBody(await listReportQueryQuotas(query.page, query.pageSize)), 200);
-  },
+  handler: async (c) => c.json(okBody(await listReportQueryQuotas(c.req.valid('query'))), 200),
 });
 
 const getQuotaRoute = defineContractRoute(reportQueryCapacityContract.quotaDetail, {

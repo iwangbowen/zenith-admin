@@ -1,7 +1,7 @@
 import { desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { paymentRefunds } from '../../../db/schema';
-import { buildRefundsWhere, type ListRefundsQuery } from '../../../services/payment/payment.service';
+import { buildRefundsWhere, type PaymentRefundListFilter } from '../../../services/payment/payment.service';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_REFUND_STATUS_LABELS } from '@zenith/shared/payment';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
@@ -22,7 +22,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 20, type: 'datetime' },
 ];
 
-export const paymentRefundsExportDefinition = defineExport<ListRefundsQuery & Record<string, unknown>, Record<string, unknown>>({
+export const paymentRefundsExportDefinition = defineExport<PaymentRefundListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'payment.refunds',
   moduleName: '退款记录',
   filenamePrefix: '退款记录',

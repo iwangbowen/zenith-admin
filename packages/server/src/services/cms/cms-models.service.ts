@@ -1,8 +1,10 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and, or, inArray, isNull, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
+import { cmsModelContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsModels, cmsModelFields, cmsChannels, cmsContents, cmsSites, dicts, dictItems } from '../../db/schema';
 import type { CmsModelRow, CmsModelFieldRow } from '../../db/schema';
@@ -190,15 +192,6 @@ export async function listCmsModelFields(modelId: number, siteId?: number): Prom
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
-export interface ListCmsModelsQuery {
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  /** 站群可见性过滤：返回平台共享 + 该站点专属的模型 */
-  siteId?: number;
-  page: number;
-  pageSize: number;
-}
-
 /** 站点可见性条件：平台共享（owner 为空）或归属该站点 */
 function modelVisibilityCondition(siteId?: number): SQL | undefined {
   if (siteId == null) return undefined;
@@ -214,7 +207,7 @@ function cmsModelRefWheres(id: number, scope: number | null | undefined) {
   };
 }
 
-export async function listCmsModels(q: ListCmsModelsQuery) {
+export async function listCmsModels(q: QueryOutputOf<typeof cmsModelContract.list>) {
   const { keyword = '', status, siteId, page, pageSize } = q;
   const scope = await resolveCmsModelScope(siteId);
   const where = buildWhere(

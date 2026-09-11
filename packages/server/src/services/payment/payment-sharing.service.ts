@@ -1,3 +1,5 @@
+import { paymentSharingContract } from '@zenith/shared/payment';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 支付分账/分润 Service。
  * 维护分账接收方，针对成功订单发起单笔分账（走渠道 adapter.profitShare 模拟实现），
@@ -11,15 +13,7 @@ import { HTTPException } from 'hono/http-exception';
 import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentOrders,
-  paymentRefunds,
-  paymentSharingOrders,
-  paymentSharingReceivers,
-  type PaymentOrderRow,
-  type PaymentSharingOrderRow,
-  type PaymentSharingReceiverRow,
-} from '../../db/schema';
+import { paymentOrders, paymentRefunds, paymentSharingOrders, paymentSharingReceivers, type PaymentOrderRow, type PaymentSharingOrderRow, type PaymentSharingReceiverRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
@@ -97,20 +91,15 @@ export function mapSharingOrder(row: PaymentSharingOrderRow & { receiverName?: s
   };
 }
 
-export interface ListReceiversQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-}
+export type ListReceiversQuery = QueryOutputOf<typeof paymentSharingContract.receivers>;
 
 export async function listReceivers(q: ListReceiversQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  conds.push(keywordCondition(q.keyword, [paymentSharingReceivers.name]));
-  if (q.status) conds.push(eq(paymentSharingReceivers.status, q.status));
-  const where = buildWhere(...conds, tenantCondition(paymentSharingReceivers, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [paymentSharingReceivers.name]),
+    q.status ? eq(paymentSharingReceivers.status, q.status) : undefined,
+    tenantCondition(paymentSharingReceivers, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -172,22 +161,16 @@ export async function deleteReceiver(id: number): Promise<void> {
 }
 
 // ─── 分账单 ───────────────────────────────────────────────────────────────────
-export interface ListSharingOrdersQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: PaymentSharingOrderStatus;
-  receiverId?: number;
-}
+export type ListSharingOrdersQuery = QueryOutputOf<typeof paymentSharingContract.orders>;
 
 export async function listSharingOrders(q: ListSharingOrdersQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  conds.push(keywordCondition(q.keyword, [paymentSharingOrders.orderNo]));
-  if (q.status) conds.push(eq(paymentSharingOrders.status, q.status));
-  if (q.receiverId) conds.push(eq(paymentSharingOrders.receiverId, q.receiverId));
-  const where = buildWhere(...conds, tenantCondition(paymentSharingOrders, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [paymentSharingOrders.orderNo]),
+    q.status ? eq(paymentSharingOrders.status, q.status) : undefined,
+    q.receiverId ? eq(paymentSharingOrders.receiverId, q.receiverId) : undefined,
+    tenantCondition(paymentSharingOrders, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,

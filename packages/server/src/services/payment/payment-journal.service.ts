@@ -1,34 +1,12 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import {
-  PAYMENT_LEDGER_STANDARD_ACCOUNTS,
-  type CreatePaymentFundReservationInput,
-  type CreatePaymentLedgerAccountInput,
-  type PaymentActiveReservationAmount,
-  type PaymentFundReservation,
-  type PaymentFundReservationStatus,
-  type PaymentJournal,
-  type PaymentJournalLine,
-  type PaymentLedgerAccount,
-  type PaymentLedgerAccountCode,
-  type PostPaymentJournalInput,
-  type TransitionPaymentFundReservationInput,
-} from '@zenith/shared/payment';
+import { PAYMENT_LEDGER_STANDARD_ACCOUNTS, type CreatePaymentFundReservationInput, type CreatePaymentLedgerAccountInput, type PaymentActiveReservationAmount, type PaymentFundReservation, type PaymentJournal, type PaymentJournalLine, type PaymentLedgerAccount, type PaymentLedgerAccountCode, type PostPaymentJournalInput, type TransitionPaymentFundReservationInput, paymentJournalContract } from '@zenith/shared/payment';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentApps,
-  paymentChannelConfigs,
-  paymentFundReservations,
-  paymentJournalLines,
-  paymentJournals,
-  paymentLedgerAccounts,
-  type PaymentFundReservationRow,
-  type PaymentJournalRow,
-  type PaymentLedgerAccountRow,
-} from '../../db/schema';
+import { paymentApps, paymentChannelConfigs, paymentFundReservations, paymentJournalLines, paymentJournals, paymentLedgerAccounts, type PaymentFundReservationRow, type PaymentJournalRow, type PaymentLedgerAccountRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { runAsUser } from '../../lib/audit-context';
 import { requireRow } from '../../lib/db-assert';
@@ -125,25 +103,18 @@ function accountScopeMatches(account: PaymentLedgerAccountRow, scope: PaymentMon
     && account.currency === scope.currency;
 }
 
-export interface ListLedgerAccountsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  appId?: number;
-  channelConfigId?: number;
-  currency?: string;
-  status?: 'enabled' | 'disabled';
-}
+export type ListLedgerAccountsQuery = QueryOutputOf<typeof paymentJournalContract.accounts>;
 
 export async function listLedgerAccounts(q: ListLedgerAccountsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
-  const conditions = [keywordCondition(q.keyword, [paymentLedgerAccounts.accountNo, paymentLedgerAccounts.name])];
-  if (q.appId) conditions.push(eq(paymentLedgerAccounts.appId, q.appId));
-  if (q.channelConfigId) conditions.push(eq(paymentLedgerAccounts.channelConfigId, q.channelConfigId));
-  if (q.currency) conditions.push(eq(paymentLedgerAccounts.currency, q.currency));
-  if (q.status) conditions.push(eq(paymentLedgerAccounts.status, q.status));
-  const where = buildWhere(...conditions, tenantCondition(paymentLedgerAccounts, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [paymentLedgerAccounts.accountNo, paymentLedgerAccounts.name]),
+    q.appId ? eq(paymentLedgerAccounts.appId, q.appId) : undefined,
+    q.channelConfigId ? eq(paymentLedgerAccounts.channelConfigId, q.channelConfigId) : undefined,
+    q.currency ? eq(paymentLedgerAccounts.currency, q.currency) : undefined,
+    q.status ? eq(paymentLedgerAccounts.status, q.status) : undefined,
+    tenantCondition(paymentLedgerAccounts, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -284,28 +255,20 @@ export async function getJournal(id: number): Promise<PaymentJournal> {
   return mapJournal(row, lines.get(row.id) ?? [], reversalMap.get(row.id));
 }
 
-export interface ListJournalsQuery {
-  page?: number;
-  pageSize?: number;
-  sourceType?: string;
-  appId?: number;
-  channelConfigId?: number;
-  currency?: string;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListJournalsQuery = QueryOutputOf<typeof paymentJournalContract.list>;
 
 export async function listJournals(q: ListJournalsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
+  const { page, pageSize } = q;
   const user = currentUser();
-  const conditions = [...dateRangeConditions(paymentJournals.postedAt, q.startTime, q.endTime)];
-  if (q.sourceType) conditions.push(eq(paymentJournals.sourceType, q.sourceType));
-  if (q.appId) conditions.push(eq(paymentJournals.appId, q.appId));
-  if (q.channelConfigId) conditions.push(eq(paymentJournals.channelConfigId, q.channelConfigId));
-  if (q.currency) conditions.push(eq(paymentJournals.currency, q.currency));
   const tenantScope = tenantCondition(paymentJournals, user);
-  const where = buildWhere(...conditions, tenantScope);
+  const where = buildWhere(
+    ...dateRangeConditions(paymentJournals.postedAt, q.startTime, q.endTime),
+    q.sourceType ? eq(paymentJournals.sourceType, q.sourceType) : undefined,
+    q.appId ? eq(paymentJournals.appId, q.appId) : undefined,
+    q.channelConfigId ? eq(paymentJournals.channelConfigId, q.channelConfigId) : undefined,
+    q.currency ? eq(paymentJournals.currency, q.currency) : undefined,
+    tenantScope,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -644,14 +607,10 @@ async function assertMerchantAvailableDebit(
     .select({ amount: sql<string>`coalesce(sum(${paymentJournalLines.creditAmount} - ${paymentJournalLines.debitAmount}), 0)::text` })
     .from(paymentJournalLines)
     .where(eq(paymentJournalLines.accountId, accountId));
-  const reservationConditions = [
-    eq(paymentFundReservations.accountId, accountId),
-    eq(paymentFundReservations.status, 'active'),
-    or(isNull(paymentFundReservations.expiresAt), gt(paymentFundReservations.expiresAt, new Date())),
-    exactTenantCondition(paymentFundReservations.tenantId, scope.tenantId),
-  ];
+  const excludeCurrentTransfer = sourceType === 'payment.transfer'
+    ? sql`not (${paymentFundReservations.sourceType} = 'payment.transfer' and ${paymentFundReservations.sourceId} = ${sourceId})`
+    : undefined;
   if (sourceType === 'payment.transfer') {
-    reservationConditions.push(sql`not (${paymentFundReservations.sourceType} = 'payment.transfer' and ${paymentFundReservations.sourceId} = ${sourceId})`);
     const [own] = await executor
       .select({ amount: paymentFundReservations.amount })
       .from(paymentFundReservations)
@@ -671,7 +630,13 @@ async function assertMerchantAvailableDebit(
   const [reserved] = await executor
     .select({ amount: sql<string>`coalesce(sum(${paymentFundReservations.amount}), 0)::text` })
     .from(paymentFundReservations)
-    .where(and(...reservationConditions));
+    .where(buildWhere(
+      eq(paymentFundReservations.accountId, accountId),
+      eq(paymentFundReservations.status, 'active'),
+      or(isNull(paymentFundReservations.expiresAt), gt(paymentFundReservations.expiresAt, new Date())),
+      exactTenantCondition(paymentFundReservations.tenantId, scope.tenantId),
+      excludeCurrentTransfer,
+    ));
   const available = BigInt(balance?.amount ?? '0') - BigInt(reserved?.amount ?? '0');
   if (available < debitAmount) {
     throw new HTTPException(409, { message: `商户可用余额不足，拒绝过账（可用 ${available.toString()} 分）` });
@@ -742,24 +707,17 @@ async function getReservationRow(id: number): Promise<PaymentFundReservationRow>
   return row;
 }
 
-export interface ListFundReservationsQuery {
-  page?: number;
-  pageSize?: number;
-  accountId?: number;
-  status?: PaymentFundReservationStatus;
-  sourceType?: string;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListFundReservationsQuery = QueryOutputOf<typeof paymentJournalContract.reservations>;
 
 export async function listFundReservations(q: ListFundReservationsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
-  const conditions = [...dateRangeConditions(paymentFundReservations.createdAt, q.startTime, q.endTime)];
-  if (q.accountId) conditions.push(eq(paymentFundReservations.accountId, q.accountId));
-  if (q.status) conditions.push(eq(paymentFundReservations.status, q.status));
-  if (q.sourceType) conditions.push(eq(paymentFundReservations.sourceType, q.sourceType));
-  const where = buildWhere(...conditions, tenantCondition(paymentFundReservations, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    ...dateRangeConditions(paymentFundReservations.createdAt, q.startTime, q.endTime),
+    q.accountId ? eq(paymentFundReservations.accountId, q.accountId) : undefined,
+    q.status ? eq(paymentFundReservations.status, q.status) : undefined,
+    q.sourceType ? eq(paymentFundReservations.sourceType, q.sourceType) : undefined,
+    tenantCondition(paymentFundReservations, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,

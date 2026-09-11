@@ -1,4 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, desc, and, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -15,7 +16,7 @@ import { ensureCmsSubmitAllowed } from './cms-submit-guard';
 import { sendMail } from '../../lib/email';
 import logger from '../../lib/logger';
 import { escapeHtml } from '@zenith/shared/core';
-import { CMS_SECRET_MASK } from '@zenith/shared/cms';
+import { CMS_SECRET_MASK, cmsFormContract } from '@zenith/shared/cms';
 import type { CmsFormField, CreateCmsFormInput, UpdateCmsFormInput } from '@zenith/shared/cms';
 import { assertCompleteCmsBatch } from './cms-access';
 import { ensureCmsSiteExists } from './cms-sites.service';
@@ -122,14 +123,7 @@ function notifyFormSubmission(form: CmsFormRow, data: Record<string, unknown>): 
 }
 
 // ─── 表单 CRUD ────────────────────────────────────────────────────────────────
-export interface ListCmsFormsQuery {
-  siteId: number;
-  keyword?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsForms(q: ListCmsFormsQuery) {
+export async function listCmsForms(q: QueryOutputOf<typeof cmsFormContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: (SQL | undefined)[] = [eq(cmsForms.siteId, q.siteId)];

@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 优惠券服务：模板 CRUD + 发券 / 会员领取 / 核销 / 作废 / 批量过期。
  *
@@ -21,7 +22,7 @@ import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { trackServerEvent } from '../analytics/analytics-server-events.service';
 import type { CouponType, CouponValidType, CouponTemplateStatus } from '@zenith/shared/member';
-import { COUPON_TEMPLATE_STATUS_LABELS } from '@zenith/shared/member';
+import { COUPON_TEMPLATE_STATUS_LABELS, couponContract, memberSelfContract } from '@zenith/shared/member';
 import { ANALYTICS_EVENT_NAMES } from '@zenith/shared/analytics';
 import { memberReferenceCondition } from './member-query-helpers';
 
@@ -91,20 +92,14 @@ export interface CreateCouponInput {
 }
 export type UpdateCouponInput = Partial<CreateCouponInput>;
 
-export interface ListCouponsQuery {
-  keyword?: string;
-  status?: CouponTemplateStatus;
-  type?: CouponType;
-  page: number;
-  pageSize: number;
-}
+export type ListCouponsQuery = QueryOutputOf<typeof couponContract.list>;
 
 export async function listCoupons(q: ListCouponsQuery) {
-  const conds: (SQL | undefined)[] = [];
-  conds.push(keywordCondition(q.keyword, [coupons.name], 'ilike'));
-  if (q.status) conds.push(eq(coupons.status, q.status));
-  if (q.type) conds.push(eq(coupons.type, q.type));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    keywordCondition(q.keyword, [coupons.name], 'ilike'),
+    q.status ? eq(coupons.status, q.status) : undefined,
+    q.type ? eq(coupons.type, q.type) : undefined,
+  );
 
   return buildListResult({
     page: q.page,
@@ -466,14 +461,7 @@ export async function getExchangeableCoupons() {
   return rows.filter((c) => !(c.validType === 'fixed' && c.validEnd && c.validEnd < now)).map(mapCoupon);
 }
 
-export interface ListMemberCouponsQuery {
-  memberId?: number;
-  memberKeyword?: string;
-  couponId?: number;
-  status?: MemberCouponRow['status'];
-  page: number;
-  pageSize: number;
-}
+export type ListMemberCouponsQuery = QueryOutputOf<typeof couponContract.records> & { memberId?: number };
 
 /** 后台：领券记录分页 */
 export function buildMemberCouponWhere(q: { memberId?: number; memberKeyword?: string; couponId?: number; status?: MemberCouponRow['status'] }): SQL | undefined {
@@ -503,11 +491,12 @@ export async function listMemberCoupons(q: ListMemberCouponsQuery) {
 }
 
 /** 前台：我的优惠券 */
-export async function listMyCoupons(q: { status?: MemberCouponRow['status']; page: number; pageSize: number }) {
+export async function listMyCoupons(q: QueryOutputOf<typeof memberSelfContract.coupons>) {
   const memberId = currentMemberId();
-  const conds: SQL[] = [eq(memberCoupons.memberId, memberId)];
-  if (q.status) conds.push(eq(memberCoupons.status, q.status));
-  const where = and(...conds);
+  const where = buildWhere(
+    eq(memberCoupons.memberId, memberId),
+    q.status ? eq(memberCoupons.status, q.status) : undefined,
+  );
 
   return buildListResult({
     page: q.page,

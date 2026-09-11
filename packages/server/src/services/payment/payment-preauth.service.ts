@@ -1,32 +1,24 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /** 支付预授权：应用/商户精确作用域、CAS 状态机与 unknown 查单恢复。 */
-import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
-import type { SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentChannelConfigs,
-  paymentOrders,
-  paymentPreauths,
-  type PaymentChannelConfigRow,
-  type PaymentOrderRow,
-  type PaymentPreauthRow,
-} from '../../db/schema';
+import { paymentChannelConfigs, paymentOrders, paymentPreauths, type PaymentChannelConfigRow, type PaymentOrderRow, type PaymentPreauthRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import type { PaymentEvent } from '../../lib/payment-event-bus';
 import { getAdapter } from '../../lib/payment';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
-import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared/payment';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
+import { PAYMENT_METHOD_CHANNEL, paymentPreauthContract } from '@zenith/shared/payment';
 import type {
   CapturePaymentPreauthInput,
   CreatePaymentPreauthInput,
-  PaymentChannel,
   PaymentPreauth,
   PaymentPreauthStatus,
 } from '@zenith/shared/payment';
@@ -140,16 +132,7 @@ async function assertPreauthOperation(
   return assertEffectivePaymentOperation({ configRow: config, operation, method: operation === 'preauth.query' ? undefined : payMethod, currency, recovery });
 }
 
-export interface ListPreauthsQuery {
-  page?: number;
-  pageSize?: number;
-  applicationId: number;
-  keyword?: string;
-  status?: PaymentPreauthStatus;
-  channel?: PaymentChannel;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListPreauthsQuery = QueryOutputOf<typeof paymentPreauthContract.list>;
 
 function preauthsTenantCondition() {
   const user = currentUserOrNull();
@@ -157,19 +140,15 @@ function preauthsTenantCondition() {
 }
 
 export async function listPreauths(q: ListPreauthsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds: Array<SQL | undefined> = [
+  const { page, pageSize } = q;
+  const where = buildWhere(
     eq(paymentPreauths.appId, q.applicationId),
     keywordCondition(q.keyword, [paymentPreauths.preauthNo, paymentPreauths.payerAccount, paymentPreauths.subject]),
-  ];
-  if (q.status) conds.push(eq(paymentPreauths.status, q.status));
-  if (q.channel) conds.push(eq(paymentPreauths.channel, q.channel));
-  const start = parseDateRangeStart(q.startTime);
-  const end = parseDateRangeEnd(q.endTime);
-  if (start) conds.push(gte(paymentPreauths.createdAt, start));
-  if (end) conds.push(lte(paymentPreauths.createdAt, end));
-  const where = buildWhere(...conds, preauthsTenantCondition());
+    q.status ? eq(paymentPreauths.status, q.status) : undefined,
+    q.channel ? eq(paymentPreauths.channel, q.channel) : undefined,
+    ...dateRangeConditions(paymentPreauths.createdAt, q.startTime, q.endTime),
+    preauthsTenantCondition(),
+  );
   return buildListResult({
     page,
     pageSize,

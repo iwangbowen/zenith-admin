@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_FUND_RESERVATION_STATUSES, PAYMENT_LEDGER_ACCOUNT_CODES, PAYMENT_LEDGER_NORMAL_BALANCES } from '../constants';
 import {
@@ -101,12 +101,12 @@ export const paymentLedgerAccountListQuery = paginationQuery.extend({
   appId: z.coerce.number().int().positive().optional(),
   channelConfigId: z.coerce.number().int().positive().optional(),
   currency: currencyQuery,
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const paymentFundReservationListQuery = paginationQuery.extend({
   accountId: z.coerce.number().int().positive().optional(),
-  status: z.enum(PAYMENT_FUND_RESERVATION_STATUSES).optional(),
+  status: queryEnum(PAYMENT_FUND_RESERVATION_STATUSES),
   sourceType: z.string().max(64).optional(),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),

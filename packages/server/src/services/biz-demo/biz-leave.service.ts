@@ -1,3 +1,5 @@
+import { bizLeaveContract } from '@zenith/shared/biz';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 业务接入示例：请假 Service
  *
@@ -5,9 +7,10 @@
  * 提交审批时通过 workflow-biz-bridge 发起并关联工作流实例（businessKey = biz_leave + leaveId），
  * 业务数据不进入流程；流程终态由 biz-leave-subscribers 回写本表状态。
  */
-import { and, desc, eq, isNull, inArray, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNull, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { BizLeave, BizLeaveStatus } from '@zenith/shared/biz';
+import type { BizLeave } from '@zenith/shared/biz';
+import { BIZ_LEAVE_STATUSES } from '@zenith/shared/biz';
 import type { WorkflowInstanceStatus } from '@zenith/shared/workflow';
 import { WORKFLOW_ACTIVE_INSTANCE_STATUSES } from '@zenith/shared/workflow';
 import { db } from '../../db';
@@ -66,10 +69,11 @@ async function buildApplicantNameMap(ids: Array<number | null>): Promise<Map<num
 /** 仅本人可操作自己的请假单 */
 function findOwnLeave(id: number) {
   const user = currentUser();
-  const conds: (SQL | undefined)[] = [eq(bizLeaves.id, id), eq(bizLeaves.createdBy, user.userId)];
-  const tc = tenantCondition(bizLeaves, user);
-  conds.push(tc);
-  return buildWhere(...conds);
+  return buildWhere(
+    eq(bizLeaves.id, id),
+    eq(bizLeaves.createdBy, user.userId),
+    tenantCondition(bizLeaves, user),
+  );
 }
 
 async function ensureLeaveDefinitionId(): Promise<number> {
@@ -100,16 +104,19 @@ async function linkLeaveWorkflow(leaveId: number, instance: { id: number; status
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
 
-export async function listBizLeaves(query: { page?: number; pageSize?: number; keyword?: string; status?: string }) {
+type BizLeaveListQuery = QueryOutputOf<typeof bizLeaveContract.list>;
+
+export async function listBizLeaves(query: BizLeaveListQuery) {
   const user = currentUser();
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 10;
-  const conds: (SQL | undefined)[] = [eq(bizLeaves.createdBy, user.userId)];
-  const tc = tenantCondition(bizLeaves, user);
-  conds.push(tc);
-  if (query.status) conds.push(eq(bizLeaves.status, query.status as BizLeaveStatus));
-  conds.push(keywordCondition(query.keyword, [bizLeaves.reason]));
-  const where = buildWhere(...conds);
+  const { page, pageSize } = query;
+  const where = buildWhere(
+    eq(bizLeaves.createdBy, user.userId),
+    tenantCondition(bizLeaves, user),
+    query.status && BIZ_LEAVE_STATUSES.includes(query.status as (typeof BIZ_LEAVE_STATUSES)[number])
+      ? eq(bizLeaves.status, query.status as (typeof BIZ_LEAVE_STATUSES)[number])
+      : undefined,
+    keywordCondition(query.keyword, [bizLeaves.reason]),
+  );
   return buildListResult({
     page,
     pageSize,

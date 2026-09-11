@@ -20,7 +20,7 @@ import {
 import type { CmsContentRow, CmsSiteRow } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
-import { dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import {
   encodeCmsOpenCursor, OpenQueryError, pickCmsOpenFields,
   type CmsOpenSortRule, type ParsedCmsOpenQuery,
@@ -441,7 +441,7 @@ async function buildMapOptions(
 
 export async function listOpenCmsContents(site: CmsSiteRow, query: ParsedCmsOpenQuery) {
   const conditions = await buildListConditions(site, query);
-  const baseWhere = and(...conditions)!;
+  const baseWhere = buildWhere(...conditions);
   const order = orderByOf(query.sort);
 
   return buildListResult({
@@ -473,7 +473,7 @@ export async function listOpenCmsContentsByCursor(site: CmsSiteRow, query: Parse
     ...openContentColumns(query.includes),
     micros: isTimeSort ? microsOf(SORT_COLUMNS[primaryField]) : sql<string | null>`null`,
   }).from(cmsContents)
-    .where(cursor ? and(and(...conditions)!, cursorCondition(query.sort, cursor)) : and(...conditions)!)
+    .where(cursor ? and(buildWhere(...conditions), cursorCondition(query.sort, cursor)) : buildWhere(...conditions))
     .orderBy(...orderByOf(query.sort))
     .limit(query.pageSize + 1);
   const hasMore = rows.length > query.pageSize;

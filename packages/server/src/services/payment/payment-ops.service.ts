@@ -1,3 +1,5 @@
+import { paymentOpsContract } from '@zenith/shared/payment';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 支付运营排障 Service。
  * Outbox 事件查看与手动重投、模拟支付成功回调（演示/联调用），
@@ -7,18 +9,7 @@ import { and, desc, eq, gte, inArray, like, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  appWebhookDeliveries,
-  oauth2Clients,
-  paymentApps,
-  paymentEvents,
-  paymentOrders,
-  paymentReconBatches,
-  paymentReconItems,
-  paymentSharingOrders,
-  paymentTransfers,
-  type PaymentEventRow,
-} from '../../db/schema';
+import { appWebhookDeliveries, oauth2Clients, paymentApps, paymentEvents, paymentOrders, paymentReconBatches, paymentReconItems, paymentSharingOrders, paymentTransfers, type PaymentEventRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
@@ -86,22 +77,16 @@ export async function getPaymentHealth(): Promise<PaymentHealth> {
   return { outboxPending, outboxFailed, webhookPending, webhookFailed24h, sharingProcessing, transferProcessing, reconPendingDiff };
 }
 
-export interface ListEventsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'pending' | 'done' | 'failed';
-  type?: string;
-}
+export type ListEventsQuery = QueryOutputOf<typeof paymentOpsContract.events>;
 
 export async function listPaymentEvents(q: ListEventsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  conds.push(keywordCondition(q.keyword, [paymentEvents.orderNo]));
-  if (q.status) conds.push(eq(paymentEvents.status, q.status));
-  if (q.type) conds.push(eq(paymentEvents.type, q.type));
-  const where = buildWhere(...conds, tenantCondition(paymentEvents, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [paymentEvents.orderNo]),
+    q.status ? eq(paymentEvents.status, q.status) : undefined,
+    q.type ? eq(paymentEvents.type, q.type) : undefined,
+    tenantCondition(paymentEvents, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,

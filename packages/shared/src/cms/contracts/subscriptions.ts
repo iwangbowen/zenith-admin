@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { CMS_SUBSCRIPTION_SUBJECT_TYPES } from '../constants';
 
@@ -54,7 +54,7 @@ export type CmsImageUpload = z.infer<typeof cmsImageUploadSchema>;
 
 const cmsSubscriptionFilters = {
   siteId: z.coerce.number().int().positive(),
-  subjectType: cmsSubscriptionSubjectTypeSchema.optional(),
+  subjectType: queryEnum(CMS_SUBSCRIPTION_SUBJECT_TYPES),
   subjectKeyword: z.string().max(255).optional(),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
@@ -84,3 +84,4 @@ export const cmsUploadContract = defineContract('/api/cms', {
     summary: '上传图片（按站点配置执行压缩/水印/缩略图）',
   }),
 }, { tags: ['CMS-内容管理'] });
+

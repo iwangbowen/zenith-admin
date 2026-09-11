@@ -1,4 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import {
   and,
@@ -10,7 +11,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { createCmsInteractionSchema, CMS_INTERACTION_CHOICE_QUESTION_TYPES, CMS_INTERACTION_MATRIX_SEPARATOR, CMS_INTERACTION_NPS_MAX, CMS_INTERACTION_OTHER_PREFIX, CMS_INTERACTION_OTHER_VALUE } from '@zenith/shared/cms';
+import { createCmsInteractionSchema, CMS_INTERACTION_CHOICE_QUESTION_TYPES, CMS_INTERACTION_MATRIX_SEPARATOR, CMS_INTERACTION_NPS_MAX, CMS_INTERACTION_OTHER_PREFIX, CMS_INTERACTION_OTHER_VALUE, cmsInteractionContract } from '@zenith/shared/cms';
 import type { CmsInteractionKind, CmsInteractionPublicStats, CreateCmsInteractionInput, SubmitCmsInteractionInput, UpdateCmsInteractionInput } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
@@ -27,7 +28,7 @@ import type {
 import type { DbExecutor } from '../../db/types';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { resolveEffectiveCmsSite } from './cms-site-inheritance.service';
 import { refreshCmsPublicConfiguration } from './cms-public-config-refresh.service';
@@ -93,23 +94,14 @@ export function mapCmsInteraction(row: CmsInteractionRow, questions?: CmsInterac
   };
 }
 
-export interface ListCmsInteractionsQuery {
-  siteId: number;
-  keyword?: string;
-  kind?: CmsInteractionKind;
-  status?: 'draft' | 'published' | 'closed';
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsInteractions(q: ListCmsInteractionsQuery) {
+export async function listCmsInteractions(q: QueryOutputOf<typeof cmsInteractionContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: (SQL | undefined)[] = [eq(cmsInteractions.siteId, q.siteId)];
   conditions.push(keywordCondition(q.keyword, [cmsInteractions.title], 'ilike'));
   if (q.kind) conditions.push(eq(cmsInteractions.kind, q.kind));
   if (q.status) conditions.push(eq(cmsInteractions.status, q.status));
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

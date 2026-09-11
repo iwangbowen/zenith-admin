@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { randomUUID } from 'node:crypto';
@@ -41,7 +42,7 @@ import {
   assertReportSqlTableAllowlist,
   extractReportSqlTableReferences,
 } from '../../lib/report-sql-safety';
-import { isExternalDbType, isSqlLikeType } from '@zenith/shared/report';
+import { reportChatbiContract, isExternalDbType, isSqlLikeType } from '@zenith/shared/report';
 import type { CreateReportChatbiMessageInput, CreateReportChatbiSessionInput, ReportChatbiChartSuggestion, ReportChatbiContextSnapshot, ReportChatbiMessage, ReportChatbiSession, ReportDataResult, ReportExternalDbConfig, ReportMetaColumn, ReportSqlDatasetContent, ReportWidgetType, SaveReportChatbiMessageAssetInput, UpdateReportChatbiSessionInput } from '@zenith/shared/report';
 
 const CHATBI_HISTORY_COUNT = 12;
@@ -193,17 +194,10 @@ async function resolveFrozenContext(input: CreateReportChatbiSessionInput): Prom
   };
 }
 
-export async function listChatbiSessions(query: {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'active' | 'archived';
-  userId?: number;
-}) {
+export async function listChatbiSessions(query: QueryOutputOf<typeof reportChatbiContract.sessions>) {
   const user = currentUser();
   const manage = await canManageChatbi();
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 20;
+  const { page, pageSize } = query;
   const conditions = [
     reportTenantScope(reportChatbiSessions),
     manage && query.userId ? eq(reportChatbiSessions.userId, query.userId) : undefined,
@@ -755,14 +749,8 @@ export async function getChatbiQuotaStats() {
   };
 }
 
-export async function listChatbiAudit(query: {
-  page?: number;
-  pageSize?: number;
-  userId?: number;
-  failedOnly?: boolean;
-}) {
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 20;
+export async function listChatbiAudit(query: QueryOutputOf<typeof reportChatbiContract.audit>) {
+  const { page, pageSize } = query;
   const where = and(
     reportTenantScope(reportChatbiMessages),
     query.userId ? eq(reportChatbiMessages.userId, query.userId) : undefined,

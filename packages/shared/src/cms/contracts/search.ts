@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { CMS_SEARCH_WORD_TYPES } from '../constants';
@@ -99,16 +99,16 @@ export const cmsSegmentQuery = z.object({
 export const cmsSearchWordListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
   keyword: z.string().optional(),
-  type: z.enum(CMS_SEARCH_WORD_TYPES).optional(),
+  type: queryEnum(CMS_SEARCH_WORD_TYPES),
   groupName: z.string().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const cmsHotKeywordQuery = z.object({
   siteId: z.coerce.number().int().positive(),
   groupId: z.coerce.number().int().positive().optional(),
   keyword: z.string().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
   limit: z.coerce.number().int().min(1).max(500).default(100),
@@ -136,3 +136,4 @@ export const cmsSearchContract = defineContract('/api/cms/search', {
   hotwordGroupUpdate: op.put('/hotword-groups/{id}', { params: idParam, body: updateCmsHotwordGroupSchema, response: cmsHotwordGroupSchema, summary: '更新热词分组' }),
   hotwordGroupRemove: op.delete('/hotword-groups/{id}', { params: idParam, summary: '删除空热词分组' }),
 }, { tags: ['CMS-全文检索'] });
+

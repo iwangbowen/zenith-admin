@@ -21,7 +21,7 @@ export {
   listRelatedContents,
   listPublishedContentsByTag,
 } from './cms-contents-query.service';
-export type { ResolvedCmsContentRow, ResolvedCmsContentListRow, ListCmsContentsQuery } from './cms-contents-query.service';
+export type { ResolvedCmsContentRow, ResolvedCmsContentListRow } from './cms-contents-query.service';
 export {
   ensureCmsContentTargetAccess,
   detectContentFlags,

@@ -1,10 +1,11 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { clearDefaultFlag as clearTableDefaultFlag } from '../../lib/default-flag';
 import { fileStorageConfigs, managedFiles } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import type { createFileStorageConfigSchema } from '@zenith/shared/platform';
-import { FILE_OBJECT_ACL_SUPPORT } from '@zenith/shared/platform';
+import { FILE_OBJECT_ACL_SUPPORT, fileStorageConfigContract } from '@zenith/shared/platform';
 import type { z } from '@hono/zod-openapi';
 import { formatDateTime } from '../../lib/datetime';
 import { randomUUID } from 'node:crypto';
@@ -153,25 +154,19 @@ export async function clearDefaultFlag(executor: DbExecutor) {
 }
 
 // ─── 业务入口 ─────────────────────────────────────────────────────────────────
-import { asc, desc, eq, and } from 'drizzle-orm';
+import { asc, desc, eq } from 'drizzle-orm';
 import { db } from '../../db';
-import { dateRangeConditions, withPagination } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
 
-export interface ListFileStorageConfigsQuery {
-  page?: number;
-  pageSize?: number;
-  status?: string;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListFileStorageConfigsQuery = QueryOutputOf<typeof fileStorageConfigContract.list>;
 
 export async function listFileStorageConfigs(q: ListFileStorageConfigsQuery) {
-  const { status, startTime, endTime, page = 1, pageSize = 10 } = q;
-  const conditions = [];
-  if (status === 'enabled' || status === 'disabled') conditions.push(eq(fileStorageConfigs.status, status));
-  conditions.push(...dateRangeConditions(fileStorageConfigs.updatedAt, startTime, endTime));
-  const where = and(...conditions);
+  const { status, startTime, endTime, page, pageSize } = q;
+  const where = buildWhere(
+    status === 'enabled' || status === 'disabled' ? eq(fileStorageConfigs.status, status) : undefined,
+    ...dateRangeConditions(fileStorageConfigs.updatedAt, startTime, endTime),
+  );
   return buildListResult({
     page,
     pageSize,

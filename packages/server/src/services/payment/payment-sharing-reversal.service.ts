@@ -1,18 +1,12 @@
+import { paymentSharingContract } from '@zenith/shared/payment';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { PaymentSharingReversal, PaymentSharingReversalStatus } from '@zenith/shared/payment';
+import type { PaymentSharingReversal } from '@zenith/shared/payment';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentOrders,
-  paymentChannelConfigs,
-  paymentSharingOrders,
-  paymentSharingReversals,
-  type PaymentOrderRow,
-  type PaymentSharingOrderRow,
-  type PaymentSharingReversalRow,
-} from '../../db/schema';
+import { paymentOrders, paymentChannelConfigs, paymentSharingOrders, paymentSharingReversals, type PaymentOrderRow, type PaymentSharingOrderRow, type PaymentSharingReversalRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -65,22 +59,16 @@ export function getSharingReversal(id: number): Promise<PaymentSharingReversal> 
   return loadReversal(id).then(mapSharingReversal);
 }
 
-export interface ListSharingReversalsQuery {
-  page?: number;
-  pageSize?: number;
-  sharingOrderId?: number;
-  status?: PaymentSharingReversalStatus;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListSharingReversalsQuery = QueryOutputOf<typeof paymentSharingContract.reversals>;
 
 export async function listSharingReversals(q: ListSharingReversalsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
-  const conditions = [...dateRangeConditions(paymentSharingReversals.createdAt, q.startTime, q.endTime)];
-  if (q.sharingOrderId) conditions.push(eq(paymentSharingReversals.sharingOrderId, q.sharingOrderId));
-  if (q.status) conditions.push(eq(paymentSharingReversals.status, q.status));
-  const where = buildWhere(...conditions, tenantCondition(paymentSharingReversals, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    ...dateRangeConditions(paymentSharingReversals.createdAt, q.startTime, q.endTime),
+    q.sharingOrderId ? eq(paymentSharingReversals.sharingOrderId, q.sharingOrderId) : undefined,
+    q.status ? eq(paymentSharingReversals.status, q.status) : undefined,
+    tenantCondition(paymentSharingReversals, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,

@@ -1,3 +1,5 @@
+import { marketingCampaignContract } from '@zenith/shared/marketing';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 营销活动（抽奖）服务。
  *
@@ -11,11 +13,7 @@ import { and, count, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { CreateMarketingCampaignInput, SaveMarketingPrizeInput, UpdateMarketingCampaignInput, MarketingDrawResult } from '@zenith/shared/marketing';
 import { db } from '../../db';
-import {
-  marketingCampaigns, marketingParticipations, marketingPrizes,
-  coupons, members, shortLinks,
-  type MarketingCampaignRow, type MarketingPrizeRow, type MarketingParticipationRow,
-} from '../../db/schema';
+import { marketingCampaigns, marketingParticipations, marketingPrizes, coupons, members, shortLinks, type MarketingCampaignRow, type MarketingPrizeRow, type MarketingParticipationRow } from '../../db/schema';
 import { formatDateTime, parseDateTimeInput, startOfToday } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -84,16 +82,11 @@ function mapParticipation(row: MarketingParticipationRow, memberNickname: string
 }
 
 // ─── 活动 CRUD ────────────────────────────────────────────────────────────────
-export interface ListMarketingCampaignsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'draft' | 'published' | 'ended';
-  startTime?: string;
-  endTime?: string;
-}
+export type ListMarketingCampaignsQuery = QueryOutputOf<typeof marketingCampaignContract.list>;
 
-function buildCampaignWhere(q: ListMarketingCampaignsQuery & { id?: number }): SQL | undefined {
+type MarketingCampaignListFilter = Omit<ListMarketingCampaignsQuery, 'page' | 'pageSize'>;
+
+function buildCampaignWhere(q: MarketingCampaignListFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(marketingCampaigns.id, q.id) : undefined,
     keywordCondition(q.keyword, [marketingCampaigns.name, marketingCampaigns.description]),
@@ -104,52 +97,47 @@ function buildCampaignWhere(q: ListMarketingCampaignsQuery & { id?: number }): S
 }
 
 export async function listMarketingCampaigns(q: ListMarketingCampaignsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildCampaignWhere(q);
-  const { list: rows, total } = await buildListResult({
+  return buildListResult({
     page,
     pageSize,
     count: () => db.$count(marketingCampaigns, where),
-    rows: () => withPagination(
-      db.select().from(marketingCampaigns).where(where).orderBy(desc(marketingCampaigns.id)).$dynamic(),
-      page,
-      pageSize,
-    ),
+    rows: async () => {
+      const rows = await withPagination(
+        db.select().from(marketingCampaigns).where(where).orderBy(desc(marketingCampaigns.id)).$dynamic(),
+        page,
+        pageSize,
+      );
+      const ids = rows.map((r) => r.id);
+      const [statRows, linkRows] = ids.length
+        ? await Promise.all([
+            db
+              .select({
+                campaignId: marketingParticipations.campaignId,
+                participations: count(),
+                awards: count(marketingParticipations.prizeId),
+              })
+              .from(marketingParticipations)
+              .where(inArray(marketingParticipations.campaignId, ids))
+              .groupBy(marketingParticipations.campaignId),
+            db
+              .select({ bizRef: shortLinks.bizRef, code: shortLinks.code })
+              .from(shortLinks)
+              .where(and(eq(shortLinks.bizType, 'marketing'), inArray(shortLinks.bizRef, ids.map(String)))),
+          ])
+        : [[], []];
+      const statMap = new Map(statRows.map((s) => [s.campaignId, s]));
+      const linkMap = new Map(linkRows
+        .filter((r): r is typeof r & { bizRef: string } => r.bizRef !== null)
+        .map((r) => [Number(r.bizRef), buildShortUrl(r.code)]));
+      return rows.map((row) => mapMarketingCampaign(row, {
+        participationCount: Number(statMap.get(row.id)?.participations ?? 0),
+        awardCount: Number(statMap.get(row.id)?.awards ?? 0),
+        shortUrl: linkMap.get(row.id) ?? null,
+      }));
+    },
   });
-
-  const ids = rows.map((r) => r.id);
-  const [statRows, linkRows] = ids.length
-    ? await Promise.all([
-      db
-        .select({
-          campaignId: marketingParticipations.campaignId,
-          participations: count(),
-          awards: count(marketingParticipations.prizeId),
-        })
-        .from(marketingParticipations)
-        .where(inArray(marketingParticipations.campaignId, ids))
-        .groupBy(marketingParticipations.campaignId),
-      db
-        .select({ bizRef: shortLinks.bizRef, code: shortLinks.code })
-        .from(shortLinks)
-        .where(and(eq(shortLinks.bizType, 'marketing'), inArray(shortLinks.bizRef, ids.map(String)))),
-    ])
-    : [[], []];
-  const statMap = new Map(statRows.map((s) => [s.campaignId, s]));
-  const linkMap = new Map(linkRows
-    .filter((r): r is typeof r & { bizRef: string } => r.bizRef !== null)
-    .map((r) => [Number(r.bizRef), buildShortUrl(r.code)]));
-
-  return {
-    list: rows.map((row) => mapMarketingCampaign(row, {
-      participationCount: Number(statMap.get(row.id)?.participations ?? 0),
-      awardCount: Number(statMap.get(row.id)?.awards ?? 0),
-      shortUrl: linkMap.get(row.id) ?? null,
-    })),
-    total,
-    page,
-    pageSize,
-  };
 }
 
 export async function ensureMarketingCampaignExists(id: number): Promise<MarketingCampaignRow> {
@@ -307,16 +295,11 @@ export async function deleteMarketingPrize(campaignId: number, prizeId: number):
 }
 
 // ─── 参与记录 ─────────────────────────────────────────────────────────────────
-export interface ListParticipationsQuery {
-  page?: number;
-  pageSize?: number;
-  memberId?: number;
-  wonOnly?: boolean;
-}
+export type ListParticipationsQuery = QueryOutputOf<typeof marketingCampaignContract.listParticipations>;
 
 export async function listMarketingParticipations(campaignId: number, q: ListParticipationsQuery) {
   await ensureMarketingCampaignExists(campaignId);
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildWhere(
     eq(marketingParticipations.campaignId, campaignId),
     q.memberId !== undefined ? eq(marketingParticipations.memberId, q.memberId) : undefined,

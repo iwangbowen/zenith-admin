@@ -7,7 +7,8 @@ import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { createReportDashboardSchema, createReportDatasetSchema, createReportPrintTemplateSchema, reportGridItemSchema, reportWidgetSchema } from '@zenith/shared/report';
+import { createReportDashboardSchema, createReportDatasetSchema, createReportPrintTemplateSchema, reportAssetContract, reportGridItemSchema, reportWidgetSchema } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type { ApplyReportAssetTemplateInput, CreateReportAssetTemplateInput, CreateReportDeprecationNoticeInput, ReportAssetCatalogItem, ReportAssetTemplate, ReportAssetTemplateType, ReportAssetUsageLog, ReportAssetUsageSummary, ReportDeprecationNotice, ReportResourceType, UpdateReportAssetTemplateInput, UpdateReportDeprecationNoticeInput } from '@zenith/shared/report';
 import { db } from '../../db';
 import {
@@ -296,19 +297,8 @@ async function catalogRowsForType(
   }
 }
 
-export async function listReportAssetCatalog(query: {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  types?: ReportResourceType[];
-  ownerId?: number;
-  folderId?: number;
-  lifecycle?: string;
-  status?: string;
-  updatedStart?: string;
-  updatedEnd?: string;
-}) {
-  const { page = 1, pageSize = 20 } = query;
+export async function listReportAssetCatalog(query: Omit<QueryOutputOf<typeof reportAssetContract.catalog>, 'types'> & { types?: ReportResourceType[] }) {
+  const { page, pageSize } = query;
   const updatedStart = parseDateRangeStart(query.updatedStart) ?? undefined;
   const updatedEnd = parseDateRangeEnd(query.updatedEnd) ?? undefined;
   if (updatedStart && updatedEnd && updatedStart > updatedEnd) {
@@ -411,7 +401,8 @@ export async function getReportAssetUsageSummary(
   };
 }
 
-export async function listTopReportAssets(days = 30, limit = 20): Promise<ReportAssetUsageSummary[]> {
+export async function listTopReportAssets(query: QueryOutputOf<typeof reportAssetContract.topAssets>): Promise<ReportAssetUsageSummary[]> {
+  const { days, limit } = query;
   const startAt = dayjs().subtract(days, 'day').toDate();
   const scope = reportTenantScope(reportAssetUsageLogs);
   const acl = await resourceAclCondition(reportAssetUsageLogs.resourceType, reportAssetUsageLogs.resourceId);
@@ -437,7 +428,8 @@ export async function listTopReportAssets(days = 30, limit = 20): Promise<Report
   return out;
 }
 
-export async function listInactiveReportAssets(days = 90, page = 1, pageSize = 20) {
+export async function listInactiveReportAssets(query: QueryOutputOf<typeof reportAssetContract.inactiveAssets>) {
+  const { days, page, pageSize } = query;
   const cutoff = dayjs().subtract(days, 'day').toDate();
   const acl = await resourceAclCondition(reportAssetUsageLogs.resourceType, reportAssetUsageLogs.resourceId);
   const usage = await db.select({
@@ -528,14 +520,8 @@ async function validateDeprecationReferences(input: {
   return resource;
 }
 
-export async function listReportDeprecationNotices(query: {
-  page?: number;
-  pageSize?: number;
-  resourceType?: ReportResourceType;
-  resourceId?: number;
-  published?: boolean;
-}) {
-  const { page = 1, pageSize = 20 } = query;
+export async function listReportDeprecationNotices(query: QueryOutputOf<typeof reportAssetContract.deprecations>) {
+  const { page, pageSize } = query;
   const conds = [];
   const scope = reportTenantScope(reportDeprecationNotices);
   if (scope) conds.push(scope);
@@ -684,14 +670,8 @@ async function ensureAssetTemplate(id: number, role: 'viewer' | 'editor' | 'owne
   return row;
 }
 
-export async function listReportAssetTemplates(query: {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  type?: ReportAssetTemplateType;
-  status?: 'enabled' | 'disabled';
-}) {
-  const { page = 1, pageSize = 20 } = query;
+export async function listReportAssetTemplates(query: QueryOutputOf<typeof reportAssetContract.templates>) {
+  const { page, pageSize } = query;
   const conds = [];
   const scope = reportTenantScope(reportAssetTemplates);
   if (scope) conds.push(scope);

@@ -1,7 +1,7 @@
 import { desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { paymentOrders } from '../../../db/schema';
-import { buildOrdersWhere, type ListOrdersQuery } from '../../../services/payment/payment.service';
+import { buildOrdersWhere, type PaymentOrderListFilter } from '../../../services/payment/payment.service';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS } from '@zenith/shared/payment';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
@@ -24,7 +24,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 20, type: 'datetime' },
 ];
 
-export const paymentOrdersExportDefinition = defineExport<ListOrdersQuery & Record<string, unknown>, Record<string, unknown>>({
+export const paymentOrdersExportDefinition = defineExport<PaymentOrderListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'payment.orders',
   moduleName: '支付订单',
   filenamePrefix: '支付订单',

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_OUTBOX_EVENT_STATUSES } from '../constants';
 import { paymentOrderSchema } from './payment-orders';
@@ -37,7 +37,7 @@ export type PaymentOpsHealth = z.infer<typeof paymentOpsHealthSchema>;
 
 export const paymentOutboxEventListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: z.enum(PAYMENT_OUTBOX_EVENT_STATUSES).optional(),
+  status: queryEnum(PAYMENT_OUTBOX_EVENT_STATUSES),
   type: z.string().optional(),
 });
 

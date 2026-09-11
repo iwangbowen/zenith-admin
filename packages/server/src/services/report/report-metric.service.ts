@@ -1,9 +1,10 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { exactTenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { formatReportValue } from '@zenith/shared/report';
+import { reportMetricContract, formatReportValue } from '@zenith/shared/report';
 import type { CreateReportMetricInput, ReportFieldFormat, ReportMetric, ReportMetricEvaluation, ReportMetricLifecycleActionInput, ReportMetricRefs, ReportMetricType, ReportWidget, ReportDashboardSnapshot, UpdateReportMetricInput } from '@zenith/shared/report';
 import { db } from '../../db';
 import {
@@ -124,17 +125,8 @@ export async function getReportMetric(id: number): Promise<ReportMetric> {
   return mapReportMetric(await ensureReportMetricExists(id));
 }
 
-export async function listReportMetrics(query: {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  datasetId?: number;
-  folderId?: number | null;
-  ownerId?: number | null;
-  type?: ReportMetricType;
-  status?: string;
-}) {
-  const { page = 1, pageSize = 20, keyword, datasetId, folderId, ownerId, type, status } = query;
+export async function listReportMetrics(query: QueryOutputOf<typeof reportMetricContract.list>) {
+  const { page, pageSize, keyword, datasetId, folderId, ownerId, type, status } = query;
   const conds = [];
   const tenantScope = reportTenantScope(reportMetrics);
   if (tenantScope) conds.push(tenantScope);

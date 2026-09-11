@@ -1,3 +1,5 @@
+import { paymentTransferContract } from '@zenith/shared/payment';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 转账/代付 Service。
  * 对接渠道适配器 transfer/queryTransfer（微信商家转账到零钱、支付宝单笔转账；sandbox 渠道为模拟实现）。
@@ -14,13 +16,7 @@ import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentChannelConfigs,
-  paymentFundReservations,
-  paymentTransfers,
-  type PaymentChannelConfigRow,
-  type PaymentTransferRow,
-} from '../../db/schema';
+import { paymentChannelConfigs, paymentFundReservations, paymentTransfers, type PaymentChannelConfigRow, type PaymentTransferRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
@@ -35,10 +31,7 @@ import { isIndeterminateProviderError } from '../../lib/payment/provider-http';
 import type {
   ApprovePaymentTransferInput,
   CreatePaymentTransferInput,
-  PaymentChannel,
   PaymentTransfer,
-  PaymentTransferApprovalStatus,
-  PaymentTransferStatus,
 } from '@zenith/shared/payment';
 import { assertPaymentEngineConfig, resolvePaymentChannelConfig } from './payment-channel-config-resolver';
 import { resolveApplicationChannelConfig } from './payment-apps.service';
@@ -575,27 +568,18 @@ export async function syncProcessingTransfers(): Promise<{ scanned: number; fini
 }
 
 // ─── 列表查询 ─────────────────────────────────────────────────────────────────
-export interface ListTransfersQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  channel?: PaymentChannel;
-  status?: PaymentTransferStatus;
-  approvalStatus?: PaymentTransferApprovalStatus;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListTransfersQuery = QueryOutputOf<typeof paymentTransferContract.list>;
 
 export async function listTransfers(q: ListTransfersQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  conds.push(keywordCondition(q.keyword, [paymentTransfers.transferNo, paymentTransfers.receiverAccount]));
-  if (q.channel) conds.push(eq(paymentTransfers.channel, q.channel));
-  if (q.status) conds.push(eq(paymentTransfers.status, q.status));
-  if (q.approvalStatus) conds.push(eq(paymentTransfers.approvalStatus, q.approvalStatus));
-  conds.push(...dateRangeConditions(paymentTransfers.createdAt, q.startTime, q.endTime));
-  const where = buildWhere(...conds, tenantCondition(paymentTransfers, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [paymentTransfers.transferNo, paymentTransfers.receiverAccount]),
+    q.channel ? eq(paymentTransfers.channel, q.channel) : undefined,
+    q.status ? eq(paymentTransfers.status, q.status) : undefined,
+    q.approvalStatus ? eq(paymentTransfers.approvalStatus, q.approvalStatus) : undefined,
+    ...dateRangeConditions(paymentTransfers.createdAt, q.startTime, q.endTime),
+    tenantCondition(paymentTransfers, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -612,10 +596,13 @@ export async function listTransfers(q: ListTransfersQuery) {
 }
 
 /** 转账汇总（列表页顶部统计） */
-export async function getTransferSummary(q: ListTransfersQuery) {
-  const conds = [];
-  if (q.channel) conds.push(eq(paymentTransfers.channel, q.channel));
-  const where = buildWhere(...conds, tenantCondition(paymentTransfers, currentUser()));
+export type PaymentTransferSummaryFilter = Omit<ListTransfersQuery, 'page' | 'pageSize'>;
+
+export async function getTransferSummary(q: PaymentTransferSummaryFilter) {
+  const where = buildWhere(
+    q.channel ? eq(paymentTransfers.channel, q.channel) : undefined,
+    tenantCondition(paymentTransfers, currentUser()),
+  );
   const [row] = await db
     .select({
       totalAmount: sql<number>`coalesce(sum(case when ${paymentTransfers.status} = 'success' then ${paymentTransfers.amount} else 0 end),0)`,

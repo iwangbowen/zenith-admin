@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { CMS_AD_EVENT_TYPES, CMS_DEVICE_TYPES } from '../constants';
@@ -98,8 +98,8 @@ const cmsAdEventFilters = {
   siteId: z.coerce.number().int().positive(),
   adId: z.coerce.number().int().positive().optional(),
   slotId: z.coerce.number().int().positive().optional(),
-  eventType: cmsAdEventTypeSchema.optional(),
-  device: cmsDeviceTypeSchema.optional(),
+  eventType: queryEnum(CMS_AD_EVENT_TYPES),
+  device: queryEnum(CMS_DEVICE_TYPES),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
 };
@@ -123,3 +123,4 @@ export const cmsAdContract = defineContract('/api/cms/ads', {
   update: op.put('/{id}', { params: idParam, body: updateCmsAdSchema, response: cmsAdSchema, summary: '更新广告' }),
   remove: op.delete('/{id}', { params: idParam, summary: '删除广告' }),
 }, { tags: ['CMS-广告管理'] });
+

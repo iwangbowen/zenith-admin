@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   CMS_SITE_INHERITABLE_FIELDS,
@@ -174,7 +174,7 @@ export type CmsTheme = z.infer<typeof cmsThemeSchema>;
 export const cmsThemeTemplateOptionSchema = z.object({
   name: z.string().meta({ example: 'list-card' }),
   label: z.string().meta({ example: '卡片网格（产品/案例）' }),
-  source: z.enum(CMS_TEMPLATE_RESOLUTION_SOURCES).optional(),
+  source: queryEnum(CMS_TEMPLATE_RESOLUTION_SOURCES),
   sourceSiteId: z.int().nullable().optional(),
 }).meta({ id: 'CmsThemeTemplateOption' });
 
@@ -289,12 +289,12 @@ export type CmsOpenAppGrant = z.infer<typeof cmsOpenAppGrantSchema>;
 
 export const cmsSiteListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const cmsSiteTreeQuery = z.object({
   keyword: z.string().max(100).optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const cmsThemeScopeQuery = z.object({
@@ -340,3 +340,4 @@ export const cmsSiteContract = defineContract('/api/cms/sites', {
   saveOpenGrant: op.put('/{id}/open-grants', { params: idParam, body: saveCmsOpenAppGrantSchema, response: cmsOpenAppGrantSchema, summary: '授权开放应用写入本站点（未授权一律拒绝）' }),
   removeOpenGrant: op.delete('/open-grants/{grantId}', { params: cmsOpenGrantIdParam, summary: '删除开放应用授权' }),
 }, { tags: ['CMS-站点管理'] });
+

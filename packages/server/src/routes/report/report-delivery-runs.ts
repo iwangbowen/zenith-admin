@@ -4,21 +4,13 @@ import { authMiddleware } from '../../middleware/auth';
 import { guard } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
-import { parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { acknowledgeAlertDeliveryRun, listAccessibleDeliveryRuns } from '../../services/report/report-delivery.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const listRoute = defineContractRoute(reportDeliveryRunContract.list, {
   middleware: [authMiddleware, guard({ permission: ['report:alert:list', 'report:subscription:list'] })],
-  handler: async (c) => {
-    const query = c.req.valid('query');
-    return c.json(okBody(await listAccessibleDeliveryRuns({
-      ...query,
-      startAt: parseDateRangeStart(query.startAt) ?? undefined,
-      endAt: parseDateRangeEnd(query.endAt) ?? undefined,
-    })), 200);
-  },
+  handler: async (c) => c.json(okBody(await listAccessibleDeliveryRuns(c.req.valid('query'))), 200),
 });
 
 const ackRoute = defineContractRoute(reportDeliveryRunContract.acknowledge, {

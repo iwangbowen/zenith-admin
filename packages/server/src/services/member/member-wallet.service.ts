@@ -1,3 +1,5 @@
+import { memberSelfContract, memberWalletContract } from '@zenith/shared/member';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 会员钱包服务。
  *
@@ -408,13 +410,7 @@ export async function reverseWalletRechargeOnRefund(event: {
 }
 
 // ─── 流水查询 ─────────────────────────────────────────────────────────────────
-export interface ListWalletTxQuery {
-  memberId?: number;
-  memberKeyword?: string;
-  type?: WalletTxType;
-  page: number;
-  pageSize: number;
-}
+export type ListWalletTxQuery = QueryOutputOf<typeof memberWalletContract.transactions> & { memberId?: number };
 
 export function buildWalletTxWhere(q: { memberId?: number; memberKeyword?: string; type?: WalletTxType }): SQL | undefined {
   return buildWhere(
@@ -447,6 +443,6 @@ export async function listWalletTransactions(q: ListWalletTxQuery) {
   });
 }
 
-export function listMyWalletTransactions(q: { type?: WalletTxType; page: number; pageSize: number }) {
+export function listMyWalletTransactions(q: QueryOutputOf<typeof memberSelfContract.walletTransactions>) {
   return listWalletTransactions({ ...q, memberId: currentMemberId() });
 }

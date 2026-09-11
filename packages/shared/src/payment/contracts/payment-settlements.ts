@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CHANNELS, PAYMENT_SETTLEMENT_STATUSES } from '../constants';
 import { createPaymentSettlementSchema, transitionPaymentSettlementSchema } from '../validation';
@@ -50,8 +50,8 @@ export type PaymentSettlementItem = z.infer<typeof paymentSettlementItemSchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const paymentSettlementListQuery = paginationQuery.extend({
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
-  status: z.enum(PAYMENT_SETTLEMENT_STATUSES).optional(),
+  channel: queryEnum(PAYMENT_CHANNELS),
+  status: queryEnum(PAYMENT_SETTLEMENT_STATUSES),
 });
 
 export const paymentSettlementContract = defineContract('/api/payment/settlements', {

@@ -66,10 +66,7 @@ const listRunsRoute = defineContractRoute(reportDqContract.runs, {
 
 const scoreHistoryRoute = defineContractRoute(reportDqContract.scores, {
   middleware: [authMiddleware, guard({ permission: 'report:dq:list' })],
-  handler: async (c) => {
-    const query = c.req.valid('query');
-    return c.json(okBody(await listReportDqScores(c.req.valid('param').id, query.page, query.pageSize)), 200);
-  },
+  handler: async (c) => c.json(okBody(await listReportDqScores(c.req.valid('param').id, c.req.valid('query'))), 200),
 });
 
 const currentScoreRoute = defineContractRoute(reportDqContract.currentScore, {

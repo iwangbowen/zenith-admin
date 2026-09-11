@@ -1,3 +1,5 @@
+import { reportDqContract } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { createHash } from 'node:crypto';
@@ -333,14 +335,8 @@ async function ensureRule(id: number, role: 'viewer' | 'editor' = 'viewer') {
   return row;
 }
 
-export async function listReportDqRules(query: {
-  page?: number;
-  pageSize?: number;
-  datasetId?: number;
-  type?: ReportDqRuleType;
-  enabled?: boolean;
-}) {
-  const { page = 1, pageSize = 20 } = query;
+export async function listReportDqRules(query: QueryOutputOf<typeof reportDqContract.rules>) {
+  const { page, pageSize } = query;
   const conds = [];
   const scope = reportTenantScope(reportDqRules);
   if (scope) conds.push(scope);
@@ -622,14 +618,8 @@ async function resolveDqNames(rows: Array<{ ruleId?: number | null; datasetId: n
   };
 }
 
-export async function listReportDqRuns(query: {
-  page?: number;
-  pageSize?: number;
-  datasetId?: number;
-  ruleId?: number;
-  status?: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-}) {
-  const { page = 1, pageSize = 20 } = query;
+export async function listReportDqRuns(query: QueryOutputOf<typeof reportDqContract.runs>) {
+  const { page, pageSize } = query;
   const conds = [];
   const scope = reportTenantScope(reportDqRuns);
   if (scope) conds.push(scope);
@@ -664,7 +654,8 @@ export async function listReportDqRuns(query: {
   };
 }
 
-export async function listReportDqScores(datasetId: number, page = 1, pageSize = 30) {
+export async function listReportDqScores(datasetId: number, query: QueryOutputOf<typeof reportDqContract.scores>) {
+  const { page, pageSize } = query;
   await ensureReportResourceAccess('dataset', datasetId, 'viewer');
   const where = reportScopedWhere(reportDqScores, eq(reportDqScores.datasetId, datasetId));
   return buildListResult({
@@ -686,13 +677,8 @@ export async function getCurrentReportDqScore(datasetId: number): Promise<Report
   return row ? mapReportDqScore(row) : null;
 }
 
-export async function listReportDqAnomalies(query: {
-  page?: number;
-  pageSize?: number;
-  datasetId?: number;
-  status?: 'open' | 'acknowledged' | 'resolved' | 'ignored';
-}) {
-  const { page = 1, pageSize = 20 } = query;
+export async function listReportDqAnomalies(query: QueryOutputOf<typeof reportDqContract.anomalies>) {
+  const { page, pageSize } = query;
   const conds = [];
   const scope = reportTenantScope(reportDqAnomalies);
   if (scope) conds.push(scope);

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_DEDUCT_PERIODS } from '../constants';
 import { createPaymentDeductPlanSchema, updatePaymentDeductPlanSchema } from '../validation';
@@ -26,7 +26,7 @@ export type PaymentDeductPlan = z.infer<typeof paymentDeductPlanSchema>;
 
 export const paymentDeductPlanListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 /** 扣款计划：与签约协议同挂支付资源根，操作名在根内唯一 */

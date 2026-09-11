@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { CMS_COLLECT_ITEM_STATUSES } from '../constants';
@@ -55,7 +55,7 @@ export const cmsCollectRuleListQuery = paginationQuery.extend({
 });
 
 export const cmsCollectItemListQuery = paginationQuery.extend({
-  status: z.enum(CMS_COLLECT_ITEM_STATUSES).optional(),
+  status: queryEnum(CMS_COLLECT_ITEM_STATUSES),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
@@ -68,3 +68,4 @@ export const cmsCollectContract = defineContract('/api/cms/collect', {
   run: op.post('/rules/{id}/run', { params: idParam, response: asyncTaskSchema, summary: '执行采集（任务中心异步）' }),
   items: op.get('/rules/{id}/items', { params: idParam, query: cmsCollectItemListQuery, response: paginated(cmsCollectItemSchema), summary: '采集明细分页列表' }),
 }, { tags: ['CMS-采集中心'] });
+

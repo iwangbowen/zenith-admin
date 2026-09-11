@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CMS_FIELD_OPTION_SOURCES, CMS_FIELD_TYPES } from '../constants';
 import { createCmsModelSchema, updateCmsModelSchema } from '../validation';
@@ -74,7 +74,7 @@ export const cmsModelScopeQuery = z.object({
 
 export const cmsModelListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
   siteId: z.coerce.number().int().positive().optional().meta({ description: '站群可见性过滤：返回平台共享 + 该站点专属的模型' }),
 });
 
@@ -89,3 +89,4 @@ export const cmsModelContract = defineContract('/api/cms/models', {
   update: op.put('/{id}', { params: idParam, query: cmsModelScopeQuery, body: updateCmsModelSchema, response: cmsModelSchema, summary: '更新模型（fields 提供时整组替换）' }),
   remove: op.delete('/{id}', { params: idParam, query: cmsModelScopeQuery, summary: '删除模型' }),
 }, { tags: ['CMS-内容模型'] });
+

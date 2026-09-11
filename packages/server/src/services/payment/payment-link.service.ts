@@ -1,3 +1,5 @@
+import { paymentLinkContract } from '@zenith/shared/payment';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 支付链接/收款码 Service。
  * 后台生成可分享的收款链接（固定/用户填写金额，可限次/限时），
@@ -84,26 +86,18 @@ export function mapLinkPublic(row: PaymentLinkRow, availableMethods: PaymentLink
   };
 }
 
-export interface ListLinksQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: PaymentLinkStatus;
-}
+export type ListLinksQuery = QueryOutputOf<typeof paymentLinkContract.list>;
 
-export async function listLinks(q: ListLinksQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  conds.push(keywordCondition(q.keyword, [paymentLinks.subject]));
-  if (q.status === 'active') {
-    conds.push(and(
+function linkStatusCondition(status: ListLinksQuery['status']) {
+  if (status === 'active') {
+    return and(
       eq(paymentLinks.status, 'active'),
       or(isNull(paymentLinks.expiredAt), gt(paymentLinks.expiredAt, new Date())),
       or(isNull(paymentLinks.maxUses), sql`${paymentLinks.usedCount} + ${paymentLinks.reservedCount} < ${paymentLinks.maxUses}`),
-    ));
-  } else if (q.status === 'expired') {
-    conds.push(or(
+    );
+  }
+  if (status === 'expired') {
+    return or(
       eq(paymentLinks.status, 'expired'),
       and(
         eq(paymentLinks.status, 'active'),
@@ -112,11 +106,18 @@ export async function listLinks(q: ListLinksQuery) {
           and(sql`${paymentLinks.maxUses} is not null`, sql`${paymentLinks.usedCount} + ${paymentLinks.reservedCount} >= ${paymentLinks.maxUses}`),
         ),
       ),
-    ));
-  } else if (q.status === 'disabled') {
-    conds.push(eq(paymentLinks.status, 'disabled'));
+    );
   }
-  const where = buildWhere(...conds, tenantCondition(paymentLinks, currentUser()));
+  return status === 'disabled' ? eq(paymentLinks.status, 'disabled') : undefined;
+}
+
+export async function listLinks(q: ListLinksQuery) {
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [paymentLinks.subject]),
+    linkStatusCondition(q.status),
+    tenantCondition(paymentLinks, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,

@@ -1,32 +1,18 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { asc } from 'drizzle-orm';
-import {
-  PAYMENT_PROVIDER_OPERATIONS as SHARED_PAYMENT_PROVIDER_OPERATIONS,
-  type PaymentCapabilitiesResponse,
-  type PaymentCapabilityQuery,
-  type PaymentConfigCapabilities,
-  type PaymentEffectiveCapability,
-  type PaymentMethod,
-} from '@zenith/shared/payment';
+import { PAYMENT_PROVIDER_OPERATIONS as SHARED_PAYMENT_PROVIDER_OPERATIONS, type PaymentCapabilitiesResponse, type PaymentConfigCapabilities, type PaymentEffectiveCapability, type PaymentMethod, paymentCapabilityContract } from '@zenith/shared/payment';
 import { db } from '../../db';
-import {
-  paymentChannelConfigs,
-  paymentMethodConfigs,
-  type PaymentChannelConfigRow,
-  type PaymentMethodConfigRow,
-} from '../../db/schema';
+import { paymentChannelConfigs, paymentMethodConfigs, type PaymentChannelConfigRow, type PaymentMethodConfigRow } from '../../db/schema';
 import { config } from '../../config';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
-import {
-  initPaymentAdapters,
-  listProviderManifests,
-  type PaymentProviderCapability,
-  type PaymentProviderOperation,
-} from '../../lib/payment';
+import { initPaymentAdapters, listProviderManifests, type PaymentProviderCapability, type PaymentProviderOperation } from '../../lib/payment';
 import { decidePaymentCapability, paymentConfigEnvironment } from './payment-capability-evaluator';
 
 /** 契约枚举中的每个操作都必须是适配器已实现的操作（PaymentProviderOperation） */
 export const PAYMENT_PROVIDER_OPERATIONS = SHARED_PAYMENT_PROVIDER_OPERATIONS satisfies readonly PaymentProviderOperation[];
+
+type PaymentCapabilityQuery = QueryOutputOf<typeof paymentCapabilityContract.list>;
 
 function capabilityRows(
   row: PaymentChannelConfigRow,

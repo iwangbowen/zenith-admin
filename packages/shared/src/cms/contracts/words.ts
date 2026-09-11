@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   createCmsErrorProneWordSchema,
@@ -39,7 +39,7 @@ export type CmsErrorProneWord = z.infer<typeof cmsErrorProneWordSchema>;
 /** 敏感词 / 易错词为平台级词库，不按站点过滤 */
 export const cmsWordListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
@@ -57,3 +57,4 @@ export const cmsErrorProneWordContract = defineContract('/api/cms/error-prone-wo
   update: op.put('/{id}', { params: idParam, body: updateCmsErrorProneWordSchema, response: cmsErrorProneWordSchema, summary: '更新易错词' }),
   remove: op.delete('/{id}', { params: idParam, summary: '删除易错词' }),
 }, { tags: ['CMS-易错词库'] });
+

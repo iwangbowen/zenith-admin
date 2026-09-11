@@ -1,7 +1,9 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { eq, asc, and, inArray, isNull, isNotNull, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { pinyin } from 'pinyin-pro';
+import { cmsChannelContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsChannels, cmsContents, cmsModels, cmsContentChannels, cmsCollectRules, cmsChannelUsers, cmsPages, users } from '../../db/schema';
 import type { CmsChannelRow } from '../../db/schema';
@@ -98,14 +100,9 @@ export async function getCmsChannel(id: number) {
 }
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
-export interface ListCmsChannelsQuery {
-  siteId: number;
-  status?: 'enabled' | 'disabled';
-}
-
 /** 站点栏目树（后台管理 + 前台导航共用底层数据） */
 export async function listCmsChannelTree(
-  q: ListCmsChannelsQuery,
+  q: QueryOutputOf<typeof cmsChannelContract.tree>,
   options?: { skipAccessCheck?: boolean },
 ): Promise<CmsChannel[]> {
   let accessible: number[] | null = null;

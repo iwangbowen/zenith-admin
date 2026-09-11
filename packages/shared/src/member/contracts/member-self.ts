@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_CHANNELS, PAYMENT_DEDUCT_METHODS, PAYMENT_METHODS } from '../../payment/constants';
 import { MEMBER_COUPON_STATUSES, POINT_TX_TYPES, WALLET_TX_TYPES } from '../constants';
@@ -94,11 +94,11 @@ export type MemberInviteSummary = z.infer<typeof memberInviteSummarySchema>;
 
 // ─── 契约（会员登录态自助接口） ─────────────────────────────────────────────
 
-export const memberPointTransactionQuery = paginationQuery.extend({ type: z.enum(POINT_TX_TYPES).optional() });
+export const memberPointTransactionQuery = paginationQuery.extend({ type: queryEnum(POINT_TX_TYPES) });
 
-export const memberWalletTransactionQuery = paginationQuery.extend({ type: z.enum(WALLET_TX_TYPES).optional() });
+export const memberWalletTransactionQuery = paginationQuery.extend({ type: queryEnum(WALLET_TX_TYPES) });
 
-export const memberCouponListQuery = paginationQuery.extend({ status: z.enum(MEMBER_COUPON_STATUSES).optional() });
+export const memberCouponListQuery = paginationQuery.extend({ status: queryEnum(MEMBER_COUPON_STATUSES) });
 
 export const memberCheckinHistoryQuery = paginationQuery.extend({
   dateStart: dateRangeBound('起始日期'),

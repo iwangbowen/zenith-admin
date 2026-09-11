@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CHANNELS } from '../constants';
 import { createPaymentChannelConfigSchema, updatePaymentChannelConfigSchema } from '../validation';
@@ -61,8 +61,8 @@ export type ChannelConnectivityResult = z.infer<typeof channelConnectivityResult
 
 export const paymentChannelListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
-  status: entityStatusSchema.optional(),
+  channel: queryEnum(PAYMENT_CHANNELS),
+  status: entityStatusQuery,
 });
 
 /** 商户配置：与订单 / 退款 / 签约代扣共用支付资源根，操作名在根内唯一 */

@@ -1,3 +1,5 @@
+import { reportEnvironmentContract, reportGovernanceContract } from '@zenith/shared/report';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, or } from 'drizzle-orm';
@@ -152,13 +154,8 @@ export async function createReportResourceTransfer(
   return mapReportResourceTransfer(row, resource.name);
 }
 
-export async function listReportResourceTransfers(query: {
-  page?: number;
-  pageSize?: number;
-  status?: ReportTransferStatus;
-  resourceType?: ReportResourceType;
-}) {
-  const { page = 1, pageSize = 20, status, resourceType } = query;
+export async function listReportResourceTransfers(query: QueryOutputOf<typeof reportGovernanceContract.transfers>) {
+  const { page, pageSize, status, resourceType } = query;
   const conds = [];
   const tenantScope = reportTenantScope(reportResourceTransfers);
   if (tenantScope) conds.push(tenantScope);
@@ -301,13 +298,8 @@ export async function createReportPublishApproval(
   return mapReportPublishApproval(row, resource.name);
 }
 
-export async function listReportPublishApprovals(query: {
-  page?: number;
-  pageSize?: number;
-  status?: ReportApprovalStatus;
-  resourceType?: ReportResourceType;
-}) {
-  const { page = 1, pageSize = 20, status, resourceType } = query;
+export async function listReportPublishApprovals(query: QueryOutputOf<typeof reportGovernanceContract.approvals>) {
+  const { page, pageSize, status, resourceType } = query;
   const conds = [];
   const tenantScope = reportTenantScope(reportPublishApprovals);
   if (tenantScope) conds.push(tenantScope);
@@ -623,13 +615,8 @@ export async function createReportEnvironmentPromotion(
   return mapReportEnvironmentPromotion(row, resource.name);
 }
 
-export async function listReportEnvironmentPromotions(query: {
-  page?: number;
-  pageSize?: number;
-  status?: ReportPromotionStatus;
-  resourceType?: ReportResourceType;
-}) {
-  const { page = 1, pageSize = 20, status, resourceType } = query;
+export async function listReportEnvironmentPromotions(query: QueryOutputOf<typeof reportEnvironmentContract.promotions>) {
+  const { page, pageSize, status, resourceType } = query;
   const conds = [];
   const tenantScope = reportTenantScope(reportEnvironmentPromotions);
   if (tenantScope) conds.push(tenantScope);

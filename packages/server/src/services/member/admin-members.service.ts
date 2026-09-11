@@ -1,50 +1,44 @@
+import { memberContract } from '@zenith/shared/member';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 会员后台管理服务：会员 CRUD / 启禁 / 重置密码 / 导出。
  * 复用 member-auth.service 的 mapMember / ensureMemberExists。
  */
 import { hashPassword } from '../../lib/password';
-import { and, asc, desc, eq, gte, lte, inArray, isNull, or, count, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, lte, inArray, isNull, or, count, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { members, memberLevels, memberPointAccounts, memberWallets, memberPointTransactions, memberWalletTransactions, memberCoupons, memberLoginLogs, memberTagBindings, memberCheckins, mpFans } from '../../db/schema';
 import type { MemberRow } from '../../db/schema';
 import { mapMember, ensureMemberExists } from './member-auth.service';
 import { forceLogoutAllByMember } from '../../lib/member-session-manager';
-import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
+import { formatDateTime } from '../../lib/datetime';
 import { registerRevealSource } from '../../lib/data-mask/reveal';
 import { mapPointAccount, mapPointTransaction, ensurePointAccount } from './member-points.service';
 import { mapWallet, mapWalletTransaction, ensureWallet } from './member-wallet.service';
 import type { MemberStatus } from '@zenith/shared/member';
 
-export interface ListMembersQuery {
-  keyword?: string;
-  status?: MemberStatus;
-  levelId?: number;
-  tagId?: number;
-  page: number;
-  pageSize: number;
-}
+export type ListMembersQuery = QueryOutputOf<typeof memberContract.list>;
 
 export function buildMemberWhere(q: { keyword?: string; status?: MemberStatus; levelId?: number; tagId?: number }): SQL | undefined {
   // 软删除的会员对列表/下拉/导出一律不可见
-  const conds: (SQL | undefined)[] = [
+  return buildWhere(
     isNull(members.deletedAt),
     keywordCondition(q.keyword, [members.nickname, members.phone, members.username, members.email], 'ilike'),
-  ];
-  if (q.status) conds.push(eq(members.status, q.status));
-  if (q.levelId) conds.push(eq(members.levelId, q.levelId));
-  if (q.tagId) {
-    conds.push(inArray(
-      members.id,
-      db.select({ id: memberTagBindings.memberId }).from(memberTagBindings).where(eq(memberTagBindings.tagId, q.tagId)),
-    ));
-  }
-  return and(...conds);
+    q.status ? eq(members.status, q.status) : undefined,
+    q.levelId ? eq(members.levelId, q.levelId) : undefined,
+    q.tagId
+      ? inArray(
+          members.id,
+          db.select({ id: memberTagBindings.memberId }).from(memberTagBindings).where(eq(memberTagBindings.tagId, q.tagId)),
+        )
+      : undefined,
+  );
 }
 
 // ─── 列表 / 详情 ──────────────────────────────────────────────────────────────
@@ -360,14 +354,8 @@ export async function getMemberOverview(id: number) {
 }
 
 // ─── 会员登录日志（后台跨会员查询）──────────────────────────────────────────────
-export interface MemberLoginLogQuery {
-  keyword?: string;
-  status?: 'success' | 'fail';
-  dateStart?: string;
-  dateEnd?: string;
-  page: number;
-  pageSize: number;
-}
+export type MemberLoginLogQuery = QueryOutputOf<typeof memberContract.loginLogs>;
+export type MemberLoginLogFilter = Omit<MemberLoginLogQuery, 'page' | 'pageSize'>;
 
 interface LoginLogRowWithNickname {
   id: number;
@@ -399,20 +387,19 @@ function mapMemberLoginLog(r: LoginLogRowWithNickname) {
   };
 }
 
-export function buildLoginLogWhere(q: Omit<MemberLoginLogQuery, 'page' | 'pageSize'>): SQL | undefined {
-  const conds: (SQL | undefined)[] = [];
-  if (q.keyword) {
-    const parts = [keywordCondition(q.keyword, [members.nickname, members.phone, members.username], 'ilike')];
-    // 与积分/钱包等流水的 memberKeyword 口径对齐：纯数字额外按会员 ID 精确匹配（会员详情深链使用）
-    if (/^\d+$/.test(q.keyword)) parts.push(eq(memberLoginLogs.memberId, parseInt(q.keyword, 10)));
-    conds.push(or(...parts));
-  }
-  if (q.status) conds.push(eq(memberLoginLogs.status, q.status));
-  const start = parseDateRangeStart(q.dateStart);
-  if (start) conds.push(gte(memberLoginLogs.createdAt, start));
-  const end = parseDateRangeEnd(q.dateEnd);
-  if (end) conds.push(lte(memberLoginLogs.createdAt, end));
-  return buildWhere(...conds);
+export function buildLoginLogWhere(q: MemberLoginLogFilter): SQL | undefined {
+  const keyword = q.keyword?.trim();
+  const keywordSql = keyword
+    ? or(
+        keywordCondition(keyword, [members.nickname, members.phone, members.username], 'ilike'),
+        /^\d+$/.test(keyword) ? eq(memberLoginLogs.memberId, parseInt(keyword, 10)) : undefined,
+      )
+    : undefined;
+  return buildWhere(
+    keywordSql,
+    q.status ? eq(memberLoginLogs.status, q.status) : undefined,
+    ...dateRangeConditions(memberLoginLogs.createdAt, q.dateStart, q.dateEnd),
+  );
 }
 
 export async function listMemberLoginLogs(q: MemberLoginLogQuery) {

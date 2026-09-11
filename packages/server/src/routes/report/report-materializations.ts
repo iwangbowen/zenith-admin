@@ -16,10 +16,7 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const listRoute = defineContractRoute(reportMaterializationContract.snapshots, {
   middleware: [authMiddleware, guard({ permission: 'report:materialization:list' })],
-  handler: async (c) => {
-    const query = c.req.valid('query');
-    return c.json(okBody(await listMaterializationSnapshots(c.req.valid('param').id, query.page, query.pageSize)), 200);
-  },
+  handler: async (c) => c.json(okBody(await listMaterializationSnapshots(c.req.valid('param').id, c.req.valid('query'))), 200),
 });
 
 const currentRoute = defineContractRoute(reportMaterializationContract.current, {

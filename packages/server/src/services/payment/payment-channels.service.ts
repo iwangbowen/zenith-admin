@@ -1,3 +1,5 @@
+import { paymentChannelContract } from '@zenith/shared/payment';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 支付渠道配置 Service。
  * 密钥字段（APIv3 Key / 商户私钥 / 支付宝应用私钥）以 encryptField 加密存储，
@@ -8,20 +10,7 @@ import { HTTPException } from 'hono/http-exception';
 import { randomBytes } from 'node:crypto';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentApps,
-  paymentChannelConfigs,
-  paymentContracts,
-  paymentJournals,
-  paymentLedgerAccounts,
-  paymentOrders,
-  paymentPreauths,
-  paymentReconBatches,
-  paymentSettlementBatches,
-  paymentTransfers,
-  type NewPaymentChannelConfig,
-  type PaymentChannelConfigRow,
-} from '../../db/schema';
+import { paymentApps, paymentChannelConfigs, paymentContracts, paymentJournals, paymentLedgerAccounts, paymentOrders, paymentPreauths, paymentReconBatches, paymentSettlementBatches, paymentTransfers, type NewPaymentChannelConfig, type PaymentChannelConfigRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, requireTenantScopeId } from '../../lib/tenant';
@@ -68,13 +57,7 @@ export function mapChannelConfig(row: PaymentChannelConfigRow): PaymentChannelCo
   };
 }
 
-export interface ListChannelConfigsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  channel?: PaymentChannel;
-  status?: 'enabled' | 'disabled';
-}
+export type ListChannelConfigsQuery = QueryOutputOf<typeof paymentChannelContract.channels>;
 
 export async function listAllChannelConfigs() {
   const tc = tenantCondition(paymentChannelConfigs, currentUser());
@@ -101,14 +84,13 @@ export async function listChannelConfigLookup(): Promise<PaymentChannelConfigLoo
 }
 
 export async function listChannelConfigs(q: ListChannelConfigsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conditions = [];
-  conditions.push(keywordCondition(q.keyword, [paymentChannelConfigs.name]));
-  if (q.channel) conditions.push(eq(paymentChannelConfigs.channel, q.channel));
-  if (q.status) conditions.push(eq(paymentChannelConfigs.status, q.status));
-  const where = buildWhere(...conditions);
-  const finalWhere = buildWhere(where, tenantCondition(paymentChannelConfigs, currentUser()));
+  const { page, pageSize } = q;
+  const finalWhere = buildWhere(
+    keywordCondition(q.keyword, [paymentChannelConfigs.name]),
+    q.channel ? eq(paymentChannelConfigs.channel, q.channel) : undefined,
+    q.status ? eq(paymentChannelConfigs.status, q.status) : undefined,
+    tenantCondition(paymentChannelConfigs, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,

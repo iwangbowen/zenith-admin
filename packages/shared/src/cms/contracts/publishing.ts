@@ -1,9 +1,9 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { ASYNC_TASK_STATUSES } from '../../tasks/constants';
 import { asyncTaskItemSchema, asyncTaskSchema } from '../../tasks/contracts/async-tasks';
-import { CMS_PUBLISH_ACTIONS, CMS_PUBLISH_ARTIFACT_STATUSES, CMS_PUBLISH_TARGET_TYPES } from '../constants';
+import { CMS_PUBLISH_ACTIONS, CMS_PUBLISH_ARTIFACT_STATUSES, CMS_PUBLISH_TARGET_TYPES, CMS_PUBLISHING_TASK_STATUS_FILTERS } from '../constants';
 import {
   batchCmsPublishActionSchema,
   cmsSiteIdBodySchema,
@@ -77,8 +77,8 @@ export type CmsPublishBatchActionResult = z.infer<typeof cmsPublishBatchActionRe
 
 export const cmsPublishingListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive().optional(),
-  targetType: cmsPublishTargetTypeSchema.optional(),
-  status: z.union([z.enum(ASYNC_TASK_STATUSES), z.literal('active'), z.literal('terminal')]).optional(),
+  targetType: queryEnum(CMS_PUBLISH_TARGET_TYPES),
+  status: queryEnum(CMS_PUBLISHING_TASK_STATUS_FILTERS),
   taskType: z.string().max(64).optional(),
   createdBy: z.string().max(100).optional(),
   startTime: dateRangeBound('起始时间'),
@@ -89,8 +89,8 @@ export const cmsPublishingListQuery = paginationQuery.extend({
 export const cmsPublishArtifactListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive().optional(),
   taskId: z.coerce.number().int().positive().optional(),
-  targetType: cmsPublishTargetTypeSchema.optional(),
-  status: z.enum(CMS_PUBLISH_ARTIFACT_STATUSES).optional(),
+  targetType: queryEnum(CMS_PUBLISH_TARGET_TYPES),
+  status: queryEnum(CMS_PUBLISH_ARTIFACT_STATUSES),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
   keyword: z.string().max(100).optional(),
@@ -115,3 +115,4 @@ export const cmsPublishingContract = defineContract('/api/cms/publishing', {
 export const cmsStaticContract = defineContract('/api/cms/static', {
   build: op.post('/build', { body: cmsSiteIdBodySchema, response: asyncTaskSchema, summary: '提交全站静态化任务（任务中心执行）' }),
 }, { tags: ['CMS-静态化'] });
+

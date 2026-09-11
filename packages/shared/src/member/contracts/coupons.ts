@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { COUPON_TEMPLATE_STATUSES, COUPON_TYPES, COUPON_VALID_TYPES, MEMBER_COUPON_STATUSES } from '../constants';
 import { createCouponSchema, issueCouponSchema, redeemCouponSchema, updateCouponSchema } from '../validation';
@@ -51,14 +51,14 @@ export type MemberCoupon = z.infer<typeof memberCouponSchema>;
 
 export const couponListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: z.enum(COUPON_TEMPLATE_STATUSES).optional(),
-  type: z.enum(COUPON_TYPES).optional(),
+  status: queryEnum(COUPON_TEMPLATE_STATUSES),
+  type: queryEnum(COUPON_TYPES),
 });
 
 export const memberCouponRecordListQuery = paginationQuery.extend({
   memberKeyword: z.string().optional().meta({ description: '会员昵称 / 手机号 / 用户名模糊匹配；纯数字额外按会员 ID 精确匹配' }),
   couponId: z.coerce.number().int().positive().optional(),
-  status: z.enum(MEMBER_COUPON_STATUSES).optional(),
+  status: queryEnum(MEMBER_COUPON_STATUSES),
 });
 
 export const couponCodeParam = z.object({

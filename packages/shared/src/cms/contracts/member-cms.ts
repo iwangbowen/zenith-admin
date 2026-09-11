@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { memberSubmitCmsCommentSchema } from '../../member/validation';
 import { CMS_CONTENT_STATUSES, CMS_CONTENT_TYPES, CMS_SUBSCRIPTION_SUBJECT_TYPES } from '../constants';
@@ -87,11 +87,11 @@ export type CmsMemberComment = z.infer<typeof cmsMemberCommentSchema>;
 // ─── 入参 ────────────────────────────────────────────────────────────────────
 
 export const memberCmsContributionListQuery = paginationQuery.extend({
-  status: z.enum(CMS_CONTENT_STATUSES).optional(),
+  status: queryEnum(CMS_CONTENT_STATUSES),
 });
 
 export const memberCmsSubscriptionListQuery = paginationQuery.extend({
-  subjectType: z.enum(CMS_SUBSCRIPTION_SUBJECT_TYPES).optional(),
+  subjectType: queryEnum(CMS_SUBSCRIPTION_SUBJECT_TYPES),
 });
 
 export const memberCmsSubscriptionStatusQuery = z.object({
@@ -133,3 +133,4 @@ export const memberCmsContract = defineContract('/api/member/cms', {
   removeComment: op.delete('/comments/{id}', { params: idParam, summary: '删除我的评论' }),
   submitInteraction: op.post('/interactions/{id}/submit', { params: idParam, query: memberCmsInteractionSubmitQuery, body: submitCmsInteractionSchema, response: cmsInteractionSubmitResultSchema, summary: '会员提交互动问卷' }),
 }, { tags: ['MemberCms'] });
+

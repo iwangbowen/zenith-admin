@@ -1,8 +1,11 @@
 import { uniquePositiveInts } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { CmsAdEventType, CmsDeviceType } from '@zenith/shared/cms';
+import { cmsAdContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
   cmsAdEvents,
@@ -14,7 +17,7 @@ import {
 import type { CmsAdEventRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
 import { formatDate, formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
-import { withPagination } from '../../lib/where-helpers';
+import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { streamByDescendingId } from '../../lib/export-center/cursor-stream';
 import { detectDeviceType } from './cms-stats.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
@@ -183,19 +186,7 @@ export async function recordCmsAdClick(id: number, meta: CmsAdEventMeta): Promis
 
 
 
-export interface ListCmsAdEventsQuery {
-  siteId: number;
-  adId?: number;
-  slotId?: number;
-  eventType?: CmsAdEventType;
-  device?: CmsDeviceType;
-  startTime?: string;
-  endTime?: string;
-  page: number;
-  pageSize: number;
-}
-
-export function buildCmsAdEventWhere(q: Omit<ListCmsAdEventsQuery, 'page' | 'pageSize'>): SQL {
+export function buildCmsAdEventWhere(q: CmsAdEventListFilter): SQL {
   const conditions: SQL[] = [eq(cmsAdEvents.siteId, q.siteId)];
   if (q.adId) conditions.push(eq(cmsAdEvents.adId, q.adId));
   if (q.slotId) conditions.push(eq(cmsAdEvents.slotId, q.slotId));
@@ -211,7 +202,7 @@ export function buildCmsAdEventWhere(q: Omit<ListCmsAdEventsQuery, 'page' | 'pag
     if (!parsed) throw new HTTPException(400, { message: '结束时间格式无效' });
     conditions.push(lte(cmsAdEvents.occurredAt, parsed));
   }
-  return and(...conditions)!;
+  return buildWhere(...conditions);
 }
 
 export function mapCmsAdEvent(row: CmsAdEventRow, extra?: {
@@ -240,7 +231,7 @@ export function mapCmsAdEvent(row: CmsAdEventRow, extra?: {
   };
 }
 
-export async function listCmsAdEvents(q: ListCmsAdEventsQuery) {
+export async function listCmsAdEvents(q: QueryOutputOf<typeof cmsAdContract.events>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const where = buildCmsAdEventWhere(q);
@@ -266,7 +257,7 @@ export async function listCmsAdEvents(q: ListCmsAdEventsQuery) {
 }
 
 export async function* streamCmsAdEvents(
-  q: Omit<ListCmsAdEventsQuery, 'page' | 'pageSize'>,
+  q: CmsAdEventListFilter,
 ) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
@@ -289,7 +280,7 @@ export async function* streamCmsAdEvents(
   });
 }
 
-export async function getCmsAdEventStats(q: Omit<ListCmsAdEventsQuery, 'page' | 'pageSize'>) {
+export async function getCmsAdEventStats(q: CmsAdEventListFilter) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const where = buildCmsAdEventWhere(q);
@@ -342,7 +333,7 @@ export async function cleanupCmsAdEventsBatch(input: {
   if (input.siteId) conditions.push(eq(cmsAdEvents.siteId, input.siteId));
   if (input.afterId) conditions.push(sql`${cmsAdEvents.id} > ${input.afterId}`);
   const ids = await db.select({ id: cmsAdEvents.id }).from(cmsAdEvents)
-    .where(and(...conditions))
+    .where(buildWhere(...conditions))
     .orderBy(cmsAdEvents.id)
     .limit(Math.min(Math.max(input.limit ?? 1000, 1), 5000));
   if (ids.length === 0) return { deleted: 0, lastId: null, threshold };

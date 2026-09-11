@@ -1,4 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt, gt, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
@@ -12,7 +13,7 @@ import { getAccessibleChannelIds, assertChannelAccess } from './cms-channels.ser
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { currentUserOrNull } from '../../lib/context';
-import { CMS_PREVIEW_PREFIX } from '@zenith/shared/cms';
+import { CMS_PREVIEW_PREFIX, cmsContentContract } from '@zenith/shared/cms';
 import type { CmsContentStatus } from '@zenith/shared/cms';
 import { pageOffset } from '../../lib/pagination';
 import { resolveCmsContentRow, resolveCmsContentRows } from './cms-resource-refs.service';
@@ -201,26 +202,7 @@ export async function getCmsContent(id: number) {
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
-export interface ListCmsContentsQuery {
-  siteId: number;
-  channelId?: number;
-  status?: CmsContentStatus;
-  contentType?: 'article' | 'album' | 'media' | 'link';
-  keyword?: string;
-  isTop?: boolean;
-  isRecommend?: boolean;
-  isHot?: boolean;
-  /** true = 回收站列表 */
-  deleted?: boolean;
-  /** true = 仅归档内容；false/未传 = 排除归档内容 */
-  archived?: boolean;
-  startTime?: string;
-  endTime?: string;
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsContents(q: ListCmsContentsQuery) {
+export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract.list>) {
   const site = await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   if (q.channelId) await assertChannelAccess(q.channelId);
@@ -310,7 +292,7 @@ export async function checkCmsContentTitle(siteId: number, title: string, exclud
   if (excludeId) conditions.push(ne(cmsContents.id, excludeId));
   const rows = await db.select({ id: cmsContents.id, title: cmsContents.title, status: cmsContents.status, channelId: cmsContents.channelId })
     .from(cmsContents)
-    .where(and(...conditions))
+    .where(buildWhere(...conditions))
     .orderBy(desc(cmsContents.id))
     .limit(5);
   return {

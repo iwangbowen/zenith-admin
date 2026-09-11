@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WALLET_TX_TYPES } from '../constants';
 import { adjustMemberWalletSchema, refundMemberWalletSchema } from '../validation';
@@ -35,7 +35,7 @@ export type MemberWalletTransaction = z.infer<typeof memberWalletTransactionSche
 
 export const memberWalletTransactionListQuery = paginationQuery.extend({
   memberKeyword: z.string().optional().meta({ description: '会员昵称 / 手机号 / 用户名模糊匹配；纯数字额外按会员 ID 精确匹配' }),
-  type: z.enum(WALLET_TX_TYPES).optional(),
+  type: queryEnum(WALLET_TX_TYPES),
 });
 
 export const memberWalletContract = defineContract('/api/member-wallets', {

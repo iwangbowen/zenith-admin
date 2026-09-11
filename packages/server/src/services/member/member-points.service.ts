@@ -1,3 +1,5 @@
+import { memberPointContract } from '@zenith/shared/member';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 会员积分服务。
  *
@@ -19,6 +21,7 @@ import { requireRow } from '../../lib/db-assert';
 import { ensureMemberExists } from './member-auth.service';
 import { memberReferenceCondition } from './member-query-helpers';
 import { trackServerEvent } from '../analytics/analytics-server-events.service';
+import { memberSelfContract } from '@zenith/shared/member';
 import type { PointTxType } from '@zenith/shared/member';
 import { ANALYTICS_MEMBER_POINTS_EVENT_BY_TX_TYPE } from '@zenith/shared/analytics';
 import type { DbTransaction } from '../../db/types';
@@ -198,13 +201,7 @@ export async function adjustPoints(memberId: number, delta: number, operatorId: 
 }
 
 // ─── 流水查询 ─────────────────────────────────────────────────────────────────
-export interface ListPointTxQuery {
-  memberId?: number;
-  memberKeyword?: string;
-  type?: PointTxType;
-  page: number;
-  pageSize: number;
-}
+export type ListPointTxQuery = QueryOutputOf<typeof memberPointContract.transactions> & { memberId?: number };
 
 export function buildPointTxWhere(q: { memberId?: number; memberKeyword?: string; type?: PointTxType }): SQL | undefined {
   return buildWhere(
@@ -231,6 +228,6 @@ export async function listPointTransactions(q: ListPointTxQuery) {
   });
 }
 
-export function listMyPointTransactions(q: { type?: PointTxType; page: number; pageSize: number }) {
+export function listMyPointTransactions(q: QueryOutputOf<typeof memberSelfContract.pointTransactions>) {
   return listPointTransactions({ ...q, memberId: currentMemberId() });
 }

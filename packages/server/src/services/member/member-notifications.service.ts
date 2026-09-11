@@ -4,7 +4,9 @@
  * - createMemberNotification()：内部业务发通知统一入口（bizId 配合 type 可防重）
  * - 前台自助：列表 / 未读数 / 标记已读
  */
-import { and, count, desc, eq, isNull } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { memberSelfContract } from '@zenith/shared/member';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '../../db';
 import { memberNotifications } from '../../db/schema';
 import type { MemberNotificationRow } from '../../db/schema';
@@ -14,6 +16,7 @@ import { currentMemberId } from '../../lib/member-context';
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
+import { buildWhere } from '../../lib/where-helpers';
 
 export function mapMemberNotification(row: MemberNotificationRow) {
   return {
@@ -61,11 +64,12 @@ export async function createMemberNotification(input: CreateNotificationInput, e
 }
 
 // ─── 前台自助 ─────────────────────────────────────────────────────────────────
-export async function listMyNotifications(q: { page: number; pageSize: number; unreadOnly?: boolean }) {
+export async function listMyNotifications(q: QueryOutputOf<typeof memberSelfContract.notifications>) {
   const memberId = currentMemberId();
-  const conds = [eq(memberNotifications.memberId, memberId)];
-  if (q.unreadOnly) conds.push(isNull(memberNotifications.readAt));
-  const where = and(...conds);
+  const where = buildWhere(
+    eq(memberNotifications.memberId, memberId),
+    q.unreadOnly ? isNull(memberNotifications.readAt) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,
@@ -81,9 +85,7 @@ export async function listMyNotifications(q: { page: number; pageSize: number; u
 
 export async function getMyUnreadCount(): Promise<number> {
   const memberId = currentMemberId();
-  const [row] = await db.select({ v: count() }).from(memberNotifications)
-    .where(and(eq(memberNotifications.memberId, memberId), isNull(memberNotifications.readAt)));
-  return row?.v ?? 0;
+  return db.$count(memberNotifications, and(eq(memberNotifications.memberId, memberId), isNull(memberNotifications.readAt)));
 }
 
 export async function markMyNotificationRead(id: number): Promise<void> {

@@ -1,4 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import {
   desc,
@@ -8,7 +9,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { createCmsDistributionRuleSchema } from '@zenith/shared/cms';
+import { createCmsDistributionRuleSchema, cmsDistributionContract } from '@zenith/shared/cms';
 import type { CmsDistributionFilters, CmsDistributionMode, CreateCmsDistributionRuleInput, UpdateCmsDistributionRuleInput } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
@@ -116,17 +117,7 @@ async function ruleAccessConditions(): Promise<(SQL | undefined)[]> {
   ];
 }
 
-export interface ListCmsDistributionRulesQuery {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  sourceSiteId?: number;
-  targetSiteId?: number;
-  mode?: CmsDistributionRuleRow['mode'];
-  status?: CmsDistributionRuleRow['status'];
-}
-
-export async function listCmsDistributionRules(query: ListCmsDistributionRulesQuery) {
+export async function listCmsDistributionRules(query: QueryOutputOf<typeof cmsDistributionContract.list>) {
   const conditions = await ruleAccessConditions();
   conditions.push(keywordCondition(query.keyword, [cmsDistributionRules.name], 'ilike'));
   if (query.sourceSiteId) {

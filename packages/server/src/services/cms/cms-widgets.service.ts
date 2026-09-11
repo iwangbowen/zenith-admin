@@ -22,7 +22,7 @@ import {
 import type { DbExecutor } from '../../db/types';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { getThemeWidgetSlots, listThemeWidgetRenderers, resolveThemeWidgetRenderer } from '../../cms/themes/registry';
 import { renderCmsWidgetHtml } from '../../cms/themes/widgets';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
@@ -124,7 +124,7 @@ export async function listCmsWidgets(params: {
   const conditions = [eq(cmsWidgets.siteId, params.siteId), keywordCondition(params.keyword, [cmsWidgets.name, cmsWidgets.code], 'ilike')];
   if (params.status) conditions.push(eq(cmsWidgets.status, params.status));
   if (params.type) conditions.push(eq(cmsWidgets.type, params.type));
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   const result = await buildListResult({
     page: params.page,
     pageSize: params.pageSize,

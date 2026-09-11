@@ -1,4 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { clearDefaultFlag } from '../../lib/default-flag';
 import { eq, asc, and, or, inArray, sql, type SQL } from 'drizzle-orm';
@@ -20,7 +21,7 @@ import { buildWhere, keywordCondition, withPagination } from '../../lib/where-he
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import logger from '../../lib/logger';
 import { currentCmsOpenApiAccess, currentUser, hasPermission } from '../../lib/context';
-import { CMS_SITE_INHERITABLE_FIELDS, CMS_SITE_MAX_DEPTH } from '@zenith/shared/cms';
+import { CMS_SITE_INHERITABLE_FIELDS, CMS_SITE_MAX_DEPTH, cmsSiteContract } from '@zenith/shared/cms';
 import type { CmsSiteInheritableField, CmsSiteInheritanceFlags, CreateCmsSiteInput, UpdateCmsSiteInput } from '@zenith/shared/cms';
 import type { AsyncTask } from '@zenith/shared/tasks';
 import { assertSiteTemplateSettings, assertSiteThemeConfig, pruneStaleTemplateDefaults } from './cms-template-refs.service';
@@ -313,14 +314,7 @@ export async function getCmsSite(id: number) {
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
-export interface ListCmsSitesQuery {
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsSites(q: ListCmsSitesQuery) {
+export async function listCmsSites(q: QueryOutputOf<typeof cmsSiteContract.list>) {
   const { keyword = '', status, page, pageSize } = q;
   const conditions: (SQL | undefined)[] = [];
   const accessible = await getAccessibleSiteIds();
@@ -354,7 +348,7 @@ export async function listAllCmsSites() {
   const accessible = await getAccessibleSiteIds();
   const conditions: (SQL | undefined)[] = [eq(cmsSites.status, 'enabled')];
   if (accessible !== null) conditions.push(inArray(cmsSites.id, accessible));
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   const rows = await db.select().from(cmsSites)
     .where(where)
     .orderBy(asc(cmsSites.sort), asc(cmsSites.id));

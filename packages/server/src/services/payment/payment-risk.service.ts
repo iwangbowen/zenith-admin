@@ -1,3 +1,5 @@
+import { paymentRiskRuleContract, paymentRiskOpsContract } from '@zenith/shared/payment';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 支付风控 Service。
  * 两层裁决：规则中心 payment_risk 决策表（发布即优先接管，输出 block/review/pass）；
@@ -7,35 +9,26 @@
  * 每次命中均落留痕（payment_risk_hits）；审核放行后用户重新下单复用挂起订单继续支付，
  * 拒绝则本地关闭挂起订单（渠道侧从未下单）。
  */
-import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { genPaymentNo } from './payment-no';
 import { db } from '../../db';
 import { buildListResult } from '../../lib/list-query';
-import {
-  paymentOrders,
-  paymentRiskHits,
-  paymentRiskReviews,
-  paymentRiskRules,
-  type PaymentOrderRow,
-  type PaymentRiskHitRow,
-  type PaymentRiskReviewRow,
-  type PaymentRiskRuleRow,
-} from '../../db/schema';
+import { paymentOrders, paymentRiskHits, paymentRiskReviews, paymentRiskRules, type PaymentOrderRow, type PaymentRiskHitRow, type PaymentRiskReviewRow, type PaymentRiskRuleRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition, inheritedTenantCondition } from '../../lib/tenant';
-import { buildWhere, keywordCondition, nullableEq, withPagination } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition, nullableEq, withPagination } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart, startOfToday } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, startOfToday } from '../../lib/datetime';
 import { recordEvent, processEvent } from './payment-outbox.service';
 import { buildPaymentEventPayload } from './payment-events';
 import { checkRuleListsBatch, type RuleListBatchHit } from '../platform/rules-lists.service';
 import { decide } from '../platform/rules-runtime.service';
 import { resolveRuntimeDecisionTable } from '../platform/rules.service';
 import type { CreatePaymentRiskRuleInput, UpdatePaymentRiskRuleInput } from '@zenith/shared/payment';
-import type { PaymentChannel, PaymentRiskDimension, PaymentRiskHit, PaymentRiskReview, PaymentRiskReviewStatus, PaymentRiskRule, PaymentRiskScope } from '@zenith/shared/payment';
+import type { PaymentChannel, PaymentRiskDimension, PaymentRiskHit, PaymentRiskReview, PaymentRiskRule, PaymentRiskScope } from '@zenith/shared/payment';
 
 export function mapRiskRule(row: PaymentRiskRuleRow): PaymentRiskRule {
   return {
@@ -57,20 +50,15 @@ export function mapRiskRule(row: PaymentRiskRuleRow): PaymentRiskRule {
   };
 }
 
-export interface ListRiskRulesQuery {
-  page?: number;
-  pageSize?: number;
-  scope?: PaymentRiskScope;
-  status?: 'enabled' | 'disabled';
-}
+export type ListRiskRulesQuery = QueryOutputOf<typeof paymentRiskRuleContract.list>;
 
 export async function listRiskRules(q: ListRiskRulesQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  if (q.scope) conds.push(eq(paymentRiskRules.scope, q.scope));
-  if (q.status) conds.push(eq(paymentRiskRules.status, q.status));
-  const where = buildWhere(...conds, tenantCondition(paymentRiskRules, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    q.scope ? eq(paymentRiskRules.scope, q.scope) : undefined,
+    q.status ? eq(paymentRiskRules.status, q.status) : undefined,
+    tenantCondition(paymentRiskRules, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -219,7 +207,7 @@ function createDailyStatsLoader(input: RiskCheckInput) {
     const scopeConds = [gte(paymentOrders.paidAt, startOfToday()), inArray(paymentOrders.status, ['success', 'refunding', 'refunded'])];
     if (scope === 'channel') scopeConds.push(eq(paymentOrders.channel, input.channel));
     if (scope === 'bizType') scopeConds.push(eq(paymentOrders.bizType, input.bizType));
-    const where = and(...scopeConds, exactTenantCondition(paymentOrders.tenantId, input.tenantId ?? null));
+    const where = buildWhere(...scopeConds, exactTenantCondition(paymentOrders.tenantId, input.tenantId ?? null));
     const pending = db
       .select({ total: sql<number>`coalesce(sum(${paymentOrders.amount}),0)`, count: sql<number>`count(*)` })
       .from(paymentOrders)
@@ -378,30 +366,18 @@ export async function recordRiskHit(decision: Exclude<RiskDecision, { action: 'p
   return row.id;
 }
 
-export interface ListRiskHitsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  action?: 'block' | 'review';
-  dimension?: PaymentRiskDimension;
-  channel?: PaymentChannel;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListRiskHitsQuery = QueryOutputOf<typeof paymentRiskOpsContract.hits>;
 
 export async function listRiskHits(q: ListRiskHitsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  conds.push(keywordCondition(q.keyword, [paymentRiskHits.ruleName, paymentRiskHits.bizId, paymentRiskHits.orderNo]));
-  if (q.action) conds.push(eq(paymentRiskHits.action, q.action));
-  if (q.dimension) conds.push(eq(paymentRiskHits.dimension, q.dimension));
-  if (q.channel) conds.push(eq(paymentRiskHits.channel, q.channel));
-  const start = parseDateRangeStart(q.startTime);
-  const end = parseDateRangeEnd(q.endTime);
-  if (start) conds.push(gte(paymentRiskHits.createdAt, start));
-  if (end) conds.push(lte(paymentRiskHits.createdAt, end));
-  const where = buildWhere(...conds, tenantCondition(paymentRiskHits, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [paymentRiskHits.ruleName, paymentRiskHits.bizId, paymentRiskHits.orderNo]),
+    q.action ? eq(paymentRiskHits.action, q.action) : undefined,
+    q.dimension ? eq(paymentRiskHits.dimension, q.dimension) : undefined,
+    q.channel ? eq(paymentRiskHits.channel, q.channel) : undefined,
+    ...dateRangeConditions(paymentRiskHits.createdAt, q.startTime, q.endTime),
+    tenantCondition(paymentRiskHits, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,
@@ -482,22 +458,16 @@ export async function suspendOrderForReview(order: PaymentOrderRow, decision: Ex
   return review;
 }
 
-export interface ListRiskReviewsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: PaymentRiskReviewStatus;
-  channel?: PaymentChannel;
-}
+export type ListRiskReviewsQuery = QueryOutputOf<typeof paymentRiskOpsContract.reviews>;
 
 export async function listRiskReviews(q: ListRiskReviewsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conds = [];
-  conds.push(keywordCondition(q.keyword, [paymentRiskReviews.reviewNo, paymentRiskReviews.orderNo, paymentRiskReviews.bizId]));
-  if (q.status) conds.push(eq(paymentRiskReviews.status, q.status));
-  if (q.channel) conds.push(eq(paymentRiskReviews.channel, q.channel));
-  const where = buildWhere(...conds, tenantCondition(paymentRiskReviews, currentUser()));
+  const { page, pageSize } = q;
+  const where = buildWhere(
+    keywordCondition(q.keyword, [paymentRiskReviews.reviewNo, paymentRiskReviews.orderNo, paymentRiskReviews.bizId]),
+    q.status ? eq(paymentRiskReviews.status, q.status) : undefined,
+    q.channel ? eq(paymentRiskReviews.channel, q.channel) : undefined,
+    tenantCondition(paymentRiskReviews, currentUser()),
+  );
   return buildListResult({
     page,
     pageSize,

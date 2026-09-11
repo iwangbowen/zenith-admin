@@ -1,6 +1,8 @@
 import { requireRow } from '../../lib/db-assert';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, inArray, type SQL } from 'drizzle-orm';
+import { cmsSearchContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsSearchWords } from '../../db/schema';
 import type { CmsSearchWordRow } from '../../db/schema';
@@ -35,17 +37,7 @@ export async function ensureCmsSearchWordExists(id: number): Promise<CmsSearchWo
   return requireRow(row, '词条不存在');
 }
 
-export interface ListCmsSearchWordsQuery {
-  keyword?: string;
-  siteId: number;
-  type?: 'extension' | 'stop';
-  groupName?: string;
-  status?: 'enabled' | 'disabled';
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsSearchWords(q: ListCmsSearchWordsQuery) {
+export async function listCmsSearchWords(q: QueryOutputOf<typeof cmsSearchContract.wordList>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions: (SQL | undefined)[] = [eq(cmsSearchWords.siteId, q.siteId)];

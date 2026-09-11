@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema } from '../../core/api-schemas';
+import { entityStatusSchema, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   PAYMENT_CAPABILITY_REASON_CODES,
@@ -65,9 +65,9 @@ export type PaymentCapabilitiesResponse = z.infer<typeof paymentCapabilitiesResp
 
 export const paymentCapabilityQuery = z.object({
   channelConfigId: z.coerce.number().int().positive().optional(),
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
-  operation: z.enum(PAYMENT_PROVIDER_OPERATIONS).optional(),
-  method: z.enum(PAYMENT_METHODS).optional(),
+  channel: queryEnum(PAYMENT_CHANNELS),
+  operation: queryEnum(PAYMENT_PROVIDER_OPERATIONS),
+  method: queryEnum(PAYMENT_METHODS),
   currency: z.string().length(3).transform((value) => value.toUpperCase()).optional(),
 });
 

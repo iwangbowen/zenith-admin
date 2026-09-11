@@ -1,7 +1,9 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { eq, asc, and, or, isNull, lte, gte, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { cmsAdContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsAdSlots, cmsAds } from '../../db/schema';
 import type { CmsAdSlotRow, CmsAdRow } from '../../db/schema';
@@ -11,7 +13,7 @@ import { assertSiteAccess } from './cms-sites.service';
 import { canonicalizeCmsResourceFields, deleteCmsResourceRefsForOwner, isSafeCmsResourceUrl, syncCmsResourceRefs, resolveCmsResourcePayload } from './cms-resource-refs.service';
 import type { CreateCmsAdSlotInput, UpdateCmsAdSlotInput, CreateCmsAdInput, UpdateCmsAdInput } from '@zenith/shared/cms';
 import { ensureCmsSiteExists } from './cms-sites.service';
-import { withPagination } from '../../lib/where-helpers';
+import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { normalizeCmsAdClickUrl } from './cms-ad-events.service';
 import { buildCmsLinkResolver } from './cms-link.service';
 import { refreshCmsPublicConfiguration } from './cms-public-config-refresh.service';
@@ -139,21 +141,14 @@ export async function deleteCmsAdSlot(id: number) {
 }
 
 // ─── 广告 CRUD ────────────────────────────────────────────────────────────────
-export interface ListCmsAdsQuery {
-  siteId: number;
-  slotId?: number;
-  page: number;
-  pageSize: number;
-}
-
-export async function listCmsAds(q: ListCmsAdsQuery) {
+export async function listCmsAds(q: QueryOutputOf<typeof cmsAdContract.list>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const conditions = [
     eq(cmsAdSlots.siteId, q.siteId),
   ];
   if (q.slotId) conditions.push(eq(cmsAds.slotId, q.slotId));
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   const adConditions = [
     inArray(cmsAds.slotId, db.select({ id: cmsAdSlots.id }).from(cmsAdSlots).where(eq(cmsAdSlots.siteId, q.siteId))),
   ];

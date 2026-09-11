@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   createCmsFriendLinkGroupSchema,
@@ -49,14 +49,14 @@ export type CmsFriendLink = z.infer<typeof cmsFriendLinkSchema>;
 export const cmsFriendLinkListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
   keyword: z.string().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
   groupId: z.coerce.number().int().min(0).optional().meta({ description: '0 = 仅未分组' }),
 });
 
 export const cmsFriendLinkGroupListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
   keyword: z.string().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
@@ -72,3 +72,4 @@ export const cmsFriendLinkContract = defineContract('/api/cms/friend-links', {
   update: op.put('/{id}', { params: idParam, body: updateCmsFriendLinkSchema, response: cmsFriendLinkSchema, summary: '更新友链' }),
   remove: op.delete('/{id}', { params: idParam, summary: '删除友链' }),
 }, { tags: ['CMS-友情链接'] });
+

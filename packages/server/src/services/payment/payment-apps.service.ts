@@ -1,3 +1,5 @@
+import { paymentAppContract } from '@zenith/shared/payment';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /** 支付应用：开放平台客户端的一对一支付路由画像。 */
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -48,21 +50,13 @@ export function mapApp(row: AppWithConfigs): PaymentApp {
   };
 }
 
-export interface ListAppsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-}
+export type ListAppsQuery = QueryOutputOf<typeof paymentAppContract.list>;
 
 export async function listApps(q: ListAppsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conditions = [];
-  conditions.push(keywordCondition(q.keyword, [paymentApps.name]));
-  if (q.status) conditions.push(eq(paymentApps.status, q.status));
+  const { page, pageSize } = q;
   const where = buildWhere(
-    buildWhere(...conditions),
+    keywordCondition(q.keyword, [paymentApps.name]),
+    q.status ? eq(paymentApps.status, q.status) : undefined,
     tenantCondition(paymentApps, currentUser()),
   );
   return buildListResult({

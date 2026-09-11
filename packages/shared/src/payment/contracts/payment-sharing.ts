@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_SHARING_ORDER_STATUSES, PAYMENT_SHARING_RECEIVER_TYPES, PAYMENT_SHARING_REVERSAL_STATUSES } from '../constants';
 import {
@@ -70,18 +70,18 @@ export type PaymentSharingReversal = z.infer<typeof paymentSharingReversalSchema
 
 export const paymentSharingReceiverListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const paymentSharingOrderListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: z.enum(PAYMENT_SHARING_ORDER_STATUSES).optional(),
+  status: queryEnum(PAYMENT_SHARING_ORDER_STATUSES),
   receiverId: z.coerce.number().int().optional(),
 });
 
 export const paymentSharingReversalListQuery = paginationQuery.extend({
   sharingOrderId: z.coerce.number().int().positive().optional(),
-  status: z.enum(PAYMENT_SHARING_REVERSAL_STATUSES).optional(),
+  status: queryEnum(PAYMENT_SHARING_REVERSAL_STATUSES),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
 });

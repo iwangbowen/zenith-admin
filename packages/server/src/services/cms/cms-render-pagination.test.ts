@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildCmsPagination } from './cms-render-pagination';
 
 describe('buildCmsPagination', () => {
-  const pages = (page: number, total: number, pageSize = 10, windowSize = 5) => buildCmsPagination({
+  const pages = (page: number, total: number, pageSize: number, windowSize = 5) => buildCmsPagination({
     page,
     pageSize,
     total,
@@ -11,11 +11,11 @@ describe('buildCmsPagination', () => {
   }).pages;
 
   it('centres a five-page window while clamping to the start and end', () => {
-    expect(pages(1, 100).map((item) => item.page)).toEqual([1, 2, 3, 4, 5]);
-    expect(pages(3, 100).map((item) => item.page)).toEqual([1, 2, 3, 4, 5]);
-    expect(pages(5, 100).map((item) => item.page)).toEqual([3, 4, 5, 6, 7]);
-    expect(pages(9, 100).map((item) => item.page)).toEqual([6, 7, 8, 9, 10]);
-    expect(pages(10, 100).map((item) => item.page)).toEqual([6, 7, 8, 9, 10]);
+    expect(pages(1, 100, 10).map((item) => item.page)).toEqual([1, 2, 3, 4, 5]);
+    expect(pages(3, 100, 10).map((item) => item.page)).toEqual([1, 2, 3, 4, 5]);
+    expect(pages(5, 100, 10).map((item) => item.page)).toEqual([3, 4, 5, 6, 7]);
+    expect(pages(9, 100, 10).map((item) => item.page)).toEqual([6, 7, 8, 9, 10]);
+    expect(pages(10, 100, 10).map((item) => item.page)).toEqual([6, 7, 8, 9, 10]);
   });
 
   it('keeps current flags and prev/next URLs byte-compatible with callers', () => {

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CMS_CONTENT_STATUSES, CMS_CONTENT_TYPES } from '../constants';
 import type { CmsLinkTarget } from '../link';
@@ -256,8 +256,8 @@ export type CmsContentBatchStatusResult = z.infer<typeof cmsContentBatchStatusRe
 export const cmsContentListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
   channelId: z.coerce.number().int().positive().optional(),
-  status: cmsContentStatusSchema.optional(),
-  contentType: cmsContentTypeSchema.optional(),
+  status: queryEnum(CMS_CONTENT_STATUSES),
+  contentType: queryEnum(CMS_CONTENT_TYPES),
   keyword: z.string().optional(),
   isTop: queryBool(),
   isRecommend: queryBool(),
@@ -318,3 +318,4 @@ export const cmsContentContract = defineContract('/api/cms/contents', {
   lock: op.post('/{id}/lock', { params: idParam, body: lockCmsContentSchema, response: cmsContentLockStateSchema, summary: '持久锁定内容（取消待执行计划发布时间）' }),
   unlock: op.post('/{id}/unlock', { params: idParam, summary: '解除内容持久锁' }),
 }, { tags: ['CMS-内容管理'] });
+

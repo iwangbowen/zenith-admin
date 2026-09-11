@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   PAYMENT_CHANNELS,
@@ -80,8 +80,8 @@ export type PaymentRiskReview = z.infer<typeof paymentRiskReviewSchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const paymentRiskRuleListQuery = paginationQuery.extend({
-  scope: z.enum(PAYMENT_RISK_SCOPES).optional(),
-  status: entityStatusSchema.optional(),
+  scope: queryEnum(PAYMENT_RISK_SCOPES),
+  status: entityStatusQuery,
 });
 
 export const paymentRiskRuleContract = defineContract('/api/payment/risk-rules', {
@@ -94,17 +94,17 @@ export const paymentRiskRuleContract = defineContract('/api/payment/risk-rules',
 
 export const paymentRiskHitListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  action: z.enum(PAYMENT_RISK_ACTIONS).optional(),
-  dimension: z.enum(PAYMENT_RISK_HIT_QUERY_DIMENSIONS).optional(),
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
+  action: queryEnum(PAYMENT_RISK_ACTIONS),
+  dimension: queryEnum(PAYMENT_RISK_HIT_QUERY_DIMENSIONS),
+  channel: queryEnum(PAYMENT_CHANNELS),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
 });
 
 export const paymentRiskReviewListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  status: z.enum(PAYMENT_RISK_REVIEW_STATUSES).optional(),
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
+  status: queryEnum(PAYMENT_RISK_REVIEW_STATUSES),
+  channel: queryEnum(PAYMENT_CHANNELS),
 });
 
 /** 风控运营：拦截 / 命中留痕与人工审核队列 */

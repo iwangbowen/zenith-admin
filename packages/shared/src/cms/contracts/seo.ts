@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { CMS_PUSH_ENGINES } from '../constants';
@@ -71,7 +71,7 @@ export const cmsSeoListQuery = paginationQuery.extend({
 
 export const cmsPushLogListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
-  engine: z.enum(CMS_PUSH_ENGINES).optional(),
+  engine: queryEnum(CMS_PUSH_ENGINES),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
@@ -89,3 +89,4 @@ export const cmsSeoContract = defineContract('/api/cms/seo', {
   pushLogs: op.get('/push-logs', { query: cmsPushLogListQuery, response: paginated(cmsPushLogSchema), summary: '推送日志' }),
   deadlinkCheck: op.post('/deadlink-check', { body: cmsSiteIdBodySchema, response: asyncTaskSchema, summary: '提交死链检测任务（站内链接查库 + 外链探测）' }),
 }, { tags: ['CMS-SEO'] });
+

@@ -11,14 +11,7 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const listRoute = defineContractRoute(reportExecutionContract.list, {
   middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })],
-  handler: async (c) => {
-    const query = c.req.valid('query');
-    return c.json(okBody(await listDatasetExecutionLogs({
-      ...query,
-      startAt: parseDateRangeStart(query.startAt) ?? undefined,
-      endAt: parseDateRangeEnd(query.endAt) ?? undefined,
-    })), 200);
-  },
+  handler: async (c) => c.json(okBody(await listDatasetExecutionLogs(c.req.valid('query'))), 200),
 });
 
 const statsRoute = defineContractRoute(reportExecutionContract.stats, {

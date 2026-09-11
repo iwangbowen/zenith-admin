@@ -54,6 +54,7 @@ export type { CmsUrlChannel } from './cms-urls';
 
 /** 正文分页拆分：编辑器插入 <p>[分页]</p>（兼容 <!-- pagebreak --> 与 <hr data-page-break>） */
 const PAGE_BREAK_RE = /<p[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*\[分页\](?:\s|&nbsp;|<br\s*\/?>)*<\/p>|<!--\s*pagebreak\s*-->|<hr[^>]*data-page-break[^>]*\/?>/gi;
+const SEARCH_PAGE_SIZE = 10;
 
 export function splitBodyPages(body: string | null | undefined): string[] {
   if (!body) return [''];
@@ -710,7 +711,7 @@ async function loadChannelCodeMap(siteId: number): Promise<Map<string, number>> 
   return new Map(rows.map((r) => [r.code, r.id]));
 }
 
-export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, channel: CmsChannelRow, page = 1, templateOverride?: string | null): Promise<RenderResult> {
+export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, channel: CmsChannelRow, page: number, templateOverride?: string | null): Promise<RenderResult> {
   const theme = getBuiltinThemeFallback(site.theme);
   if (channel.type === 'link') {
     const resolved = await resolveCmsLink(site.id, baseUrl, channel.linkUrl);
@@ -994,23 +995,22 @@ export async function renderSearchPage(
   site: CmsSiteRow,
   baseUrl: string,
   keyword: string,
-  page = 1,
+  page: number,
   track?: { ip: string | null; userAgent: string | null },
 ): Promise<RenderResult> {
   const theme = getBuiltinThemeFallback(site.theme);
-  const pageSize = 10;
   const seo = mergeSeo(site, { title: keyword ? `搜索：${keyword} - ${site.name}` : `搜索 - ${site.name}` });
   const base = await buildBaseContext(site, baseUrl, seo);
   const result = keyword
-    ? await searchCmsContents({ siteId: site.id, keyword, page, pageSize, skipAccessCheck: true })
-    : { list: [], total: 0, page, pageSize, tokens: [] };
+    ? await searchCmsContents({ siteId: site.id, keyword, page, pageSize: SEARCH_PAGE_SIZE, skipAccessCheck: true })
+    : { list: [], total: 0, page, pageSize: SEARCH_PAGE_SIZE, tokens: [] };
   // 搜索日志（仅首屏记一次，翻页不重复计）
   if (track && keyword && page === 1) {
     const { recordCmsSearchLog } = await import('./cms-stats.service');
     recordCmsSearchLog({ siteId: site.id, keyword, resultCount: result.total, ip: track.ip, userAgent: track.userAgent });
   }
   const searchPageUrl = (p: number) => `${baseUrl}/search?q=${encodeURIComponent(keyword)}&page=${p}`;
-  const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
+  const totalPages = Math.max(1, Math.ceil(result.total / SEARCH_PAGE_SIZE));
   const pages = [];
   const start = Math.max(1, page - 2);
   for (let p = start; p <= Math.min(totalPages, start + 4); p++) {
@@ -1021,7 +1021,7 @@ export async function renderSearchPage(
     keyword,
     results: result.list,
     pagination: {
-      page, pageSize, total: result.total, totalPages,
+      page, pageSize: SEARCH_PAGE_SIZE, total: result.total, totalPages,
       prevUrl: page > 1 ? searchPageUrl(page - 1) : null,
       nextUrl: page < totalPages ? searchPageUrl(page + 1) : null,
       pages,
@@ -1109,7 +1109,7 @@ export async function listSiteTags(siteId: number): Promise<CmsTagRow[]> {
   return db.select().from(cmsTags).where(eq(cmsTags.siteId, siteId));
 }
 
-export async function renderTagPage(site: CmsSiteRow, baseUrl: string, slug: string, page = 1): Promise<RenderResult> {
+export async function renderTagPage(site: CmsSiteRow, baseUrl: string, slug: string, page: number): Promise<RenderResult> {
   const theme = getBuiltinThemeFallback(site.theme);
   const tag = await findTagBySlug(site.id, slug);
   if (!tag) return renderNotFound(site, baseUrl, tagUrl('', slug, page));

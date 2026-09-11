@@ -643,6 +643,8 @@ export const CMS_COLLECT_ITEM_STATUS_LABELS: Record<(typeof CMS_COLLECT_ITEM_STA
 // ─── CMS P2 ───────────────────────────────────────────────────────────────────
 export const CMS_COMMENT_STATUSES = ['pending', 'approved', 'rejected'] as const;
 
+export const CMS_COMMENT_SOURCES = ['member', 'guest'] as const;
+
 export const CMS_COMMENT_STATUS_LABELS: Record<(typeof CMS_COMMENT_STATUSES)[number], string> = {
   pending: '待审核',
   approved: '已通过',
@@ -693,3 +695,4 @@ export const CMS_TWITTER_CARD_LABELS: Record<(typeof CMS_TWITTER_CARDS)[number],
   summary_large_image: '大图摘要',
   summary: '标准摘要',
 };
+

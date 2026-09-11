@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_REPORT_GROUP_BYS } from '../constants';
 
@@ -47,7 +47,7 @@ export type PaymentReportSummary = z.infer<typeof paymentReportSummarySchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const paymentReportSummaryQuery = z.object({
-  groupBy: z.enum(PAYMENT_REPORT_GROUP_BYS).optional(),
+  groupBy: queryEnum(PAYMENT_REPORT_GROUP_BYS),
   startTime: dateRangeBound('起始时间'),
   endTime: dateRangeBound('结束时间'),
   compare: queryBool('环比：附带上一等长周期汇总（需提供时间范围）'),

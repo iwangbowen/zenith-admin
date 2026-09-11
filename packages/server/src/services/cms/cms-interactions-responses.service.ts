@@ -11,7 +11,8 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { CMS_INTERACTION_MATRIX_SEPARATOR, CMS_INTERACTION_OTHER_PREFIX, CMS_INTERACTION_OTHER_VALUE } from '@zenith/shared/cms';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { CMS_INTERACTION_MATRIX_SEPARATOR, CMS_INTERACTION_OTHER_PREFIX, CMS_INTERACTION_OTHER_VALUE, cmsInteractionContract } from '@zenith/shared/cms';
 import type { CmsInteractionAnswerDetail, CmsInteractionKind, CmsInteractionQuestionType, CmsInteractionRepeatPolicy, CmsInteractionResponse } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
@@ -23,25 +24,17 @@ import {
 } from '../../db/schema';
 import type { CmsInteractionRow } from '../../db/schema';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
-import { withPagination } from '../../lib/where-helpers';
+import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 import { streamByDescendingId } from '../../lib/export-center/cursor-stream';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { repeatKeyFor } from './cms-interactions-shared';
 import { maskedMemberDisplay } from './cms-member-display';
 
-export interface ListCmsInteractionResponsesQuery {
-  siteId: number;
-  interactionId?: number;
-  kind?: CmsInteractionKind;
-  startTime?: string;
-  endTime?: string;
-  page: number;
-  pageSize: number;
-}
+export type CmsInteractionResponseListFilter = Omit<QueryOutputOf<typeof cmsInteractionContract.responses>, 'page' | 'pageSize'>;
 
 export function buildCmsInteractionResponseWhere(
-  q: Omit<ListCmsInteractionResponsesQuery, 'page' | 'pageSize'>,
+  q: CmsInteractionResponseListFilter,
 ): SQL {
   const conditions: SQL[] = [eq(cmsInteractions.siteId, q.siteId)];
   if (q.interactionId) conditions.push(eq(cmsInteractionResponses.interactionId, q.interactionId));
@@ -56,7 +49,7 @@ export function buildCmsInteractionResponseWhere(
     if (!parsed) throw new HTTPException(400, { message: '结束时间格式无效' });
     conditions.push(lte(cmsInteractionResponses.createdAt, parsed));
   }
-  return and(...conditions)!;
+  return buildWhere(...conditions);
 }
 
 /**
@@ -149,7 +142,7 @@ async function loadAnswers(responseIds: number[]): Promise<LoadedAnswers> {
   return { answers, details };
 }
 
-export async function listCmsInteractionResponses(q: ListCmsInteractionResponsesQuery) {
+export async function listCmsInteractionResponses(q: QueryOutputOf<typeof cmsInteractionContract.responses>) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const where = buildCmsInteractionResponseWhere(q);
@@ -194,7 +187,7 @@ export async function listCmsInteractionResponses(q: ListCmsInteractionResponses
 }
 
 export async function* streamCmsInteractionResponses(
-  q: Omit<ListCmsInteractionResponsesQuery, 'page' | 'pageSize'>,
+  q: CmsInteractionResponseListFilter,
 ) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);

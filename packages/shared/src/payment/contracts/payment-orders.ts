@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_CHANNELS, PAYMENT_METHODS, PAYMENT_ORDER_STATUSES } from '../constants';
 import { createPaymentSchema } from '../validation';
@@ -69,9 +69,9 @@ export type CreatePaymentResponse = z.infer<typeof createPaymentResponseSchema>;
 
 export const paymentOrderListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  channel: z.enum(PAYMENT_CHANNELS).optional(),
-  status: z.enum(PAYMENT_ORDER_STATUSES).optional(),
-  payMethod: z.enum(PAYMENT_CASHIER_METHODS).optional(),
+  channel: queryEnum(PAYMENT_CHANNELS),
+  status: queryEnum(PAYMENT_ORDER_STATUSES),
+  payMethod: queryEnum(PAYMENT_CASHIER_METHODS),
   bizType: z.string().optional(),
   minAmount: z.coerce.number().int().nonnegative().optional(),
   maxAmount: z.coerce.number().int().nonnegative().optional(),

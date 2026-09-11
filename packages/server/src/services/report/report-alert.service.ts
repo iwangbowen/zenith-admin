@@ -1,7 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
-import { aggregateReportRows, compare as compareReportValue } from '@zenith/shared/report';
+import { aggregateReportRows, compare as compareReportValue, reportAlertContract } from '@zenith/shared/report';
 import { and, desc, eq, inArray, isNotNull, lte } from 'drizzle-orm';
 import { db } from '../../db';
 import { reportAlertRules, reportDeliveryRuns } from '../../db/schema';
@@ -11,6 +11,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUserOrNull } from '../../lib/context';
 import { escapeHtml } from '@zenith/shared/core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { trimNullableText } from '../../lib/text-utils';
 import { assertDatasetEvaluableGlobally, ensureDatasetExists, getDatasetData } from './report-dataset.service';
 import { ensureReportMetricExists, evaluateReportMetric } from './report-metric.service';
@@ -139,8 +140,8 @@ export async function getAlert(id: number): Promise<ReportAlertRule> {
   return mapAlert({ ...row, latestDelivery: latestRunMap.get(row.id) ?? null });
 }
 
-export async function listAlerts(query: { page?: number; pageSize?: number; keyword?: string; datasetId?: number; metricId?: number; enabled?: boolean }) {
-  const { page = 1, pageSize = 20, keyword, datasetId, metricId, enabled } = query;
+export async function listAlerts(query: QueryOutputOf<typeof reportAlertContract.list>) {
+  const { page, pageSize, keyword, datasetId, metricId, enabled } = query;
   const conds = [];
   const tenantScope = reportTenantScope(reportAlertRules);
   if (tenantScope) conds.push(tenantScope);
