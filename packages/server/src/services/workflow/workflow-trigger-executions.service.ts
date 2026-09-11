@@ -1,4 +1,4 @@
-import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
+import { desc, eq, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowJobExecutions, workflowJobs, workflowTasks, workflowInstances } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -8,6 +8,7 @@ import { formatDateTime } from '../../lib/datetime';
 import type { WorkflowTriggerExecution, WorkflowTriggerExecutionStatus, WorkflowTriggerType } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
+import { buildWhere } from '../../lib/where-helpers';
 
 /**
  * 触发器执行记录的原始行。nodeName 取自 workflow_tasks.node_name（非空列，建任务时冻结），
@@ -100,12 +101,11 @@ export async function listTriggerExecutions(params: ListTriggerExecutionsParams)
   const page = params.page && params.page > 0 ? params.page : 1;
   const pageSize = params.pageSize && params.pageSize > 0 ? params.pageSize : 20;
   const tc = tenantCondition(workflowJobExecutions, currentUser());
-  const conds: SQL[] = [eq(workflowJobExecutions.jobType, 'trigger_dispatch')];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(workflowJobExecutions.jobType, 'trigger_dispatch'), tc];
   if (params.instanceId) conds.push(eq(workflowJobs.instanceId, params.instanceId));
   if (params.nodeKey) conds.push(eq(workflowJobs.nodeKey, params.nodeKey));
   if (params.status) conds.push(sql`${triggerExecutionStatusSql} = ${params.status}`);
-  const where = and(...conds);
+  const where = buildWhere(...conds);
 
   return buildListResult({
     page,
@@ -129,14 +129,13 @@ export async function listTriggerExecutions(params: ListTriggerExecutionsParams)
 
 export async function getTriggerExecution(id: number) {
   const tc = tenantCondition(workflowJobExecutions, currentUser());
-  const conds: SQL[] = [eq(workflowJobExecutions.id, id), eq(workflowJobExecutions.jobType, 'trigger_dispatch')];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(workflowJobExecutions.id, id), eq(workflowJobExecutions.jobType, 'trigger_dispatch'), tc];
   const [row] = await db.select(TRIGGER_EXECUTION_SELECTION)
     .from(workflowJobExecutions)
     .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
     .leftJoin(workflowTasks, eq(workflowJobs.taskId, workflowTasks.id))
     .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
-    .where(and(...conds))
+    .where(buildWhere(...conds))
     .limit(1);
   return mapTriggerExecution(requireRow(row, '触发器执行记录不存在'));
 }

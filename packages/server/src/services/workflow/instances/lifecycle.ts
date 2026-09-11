@@ -7,6 +7,7 @@ import { releaseManagedFiles } from '../../files/file-gc.service';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 import { workflowInstances, workflowTasks, workflowDefinitions, users, userRoles } from '../../../db/schema';
 import { tenantCondition, getCreateTenantId } from '../../../lib/tenant';
+import { buildWhere } from '../../../lib/where-helpers';
 import { validateFlowData } from '../../../lib/workflow-engine';
 import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs/engine';
 import type { WorkflowFlowData, WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
@@ -23,7 +24,7 @@ import { applyInitiatorSelectedApprovers, hasExecutableEntry, sanitizeFormByStar
 import type { SelectedApproverMap } from './initiator-select';
 import { assertLaunchMatchesFormType, buildInstanceFormSnapshot, mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
-import { buildSerialNoContext, emitInstanceEvent, emitTaskEvent, emitTasksEnteredEvents, toDefinitionSnapshot, lockInstanceExpecting } from './shared';
+import { buildSerialNoContext, emitInstanceEvent, emitTaskEvent, emitTasksEnteredEvents, toDefinitionSnapshot, lockInstanceExpecting, requireVisibleInstance } from './shared';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { requireRow } from '../../../lib/db-assert';
 
@@ -264,11 +265,8 @@ async function findInstanceByBusinessKey(
 
 export async function withdrawInstance(id: number) {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conditions = [eq(workflowInstances.id, id)];
-  if (tc) conditions.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conditions)).limit(1);
-  requireRow(inst, '流程实例不存在');
+  const inst = await requireVisibleInstance(id);
+  const where = buildWhere(eq(workflowInstances.id, id), tenantCondition(workflowInstances, user));
   if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只有发起人可以撤回' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '只能撤回进行中的申请' });
   const snapshot = inst.definitionSnapshot;
@@ -283,7 +281,7 @@ export async function withdrawInstance(id: number) {
       .returning();
     await killInstanceTokens(tx, id);
     await cancelJobs({ instanceId: id, jobTypes: WORKFLOW_ADVANCING_JOB_TYPES }, tx);
-    const [row] = await tx.update(workflowInstances).set({ status: 'withdrawn' }).where(and(...conditions)).returning();
+    const [row] = await tx.update(workflowInstances).set({ status: 'withdrawn' }).where(where).returning();
     await bridgeReportFillWorkflowOutcome(tx, {
       workflowInstanceId: id,
       outcome: 'withdrawn',
@@ -302,15 +300,12 @@ export async function withdrawInstance(id: number) {
 
 export async function cancelInstance(id: number) {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conditions = [eq(workflowInstances.id, id)];
-  if (tc) conditions.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conditions)).limit(1);
-  requireRow(inst, '流程实例不存在');
+  const inst = await requireVisibleInstance(id);
+  const where = buildWhere(eq(workflowInstances.id, id), tenantCondition(workflowInstances, user));
   if (inst.status !== 'running' && inst.status !== 'suspended') throw new HTTPException(400, { message: '只能取消进行中或已挂起的流程' });
   const { row: updated } = await workflowTransaction(async (tx) => {
     const [locked] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(and(...conditions)).for('update').limit(1);
+      .from(workflowInstances).where(where).for('update').limit(1);
     if (!locked || (locked.status !== 'running' && locked.status !== 'suspended')) {
       throw new HTTPException(400, { message: '只能取消进行中或已挂起的流程' });
     }
@@ -319,7 +314,7 @@ export async function cancelInstance(id: number) {
       .returning();
     await killInstanceTokens(tx, id);
     await cancelJobs({ instanceId: id, jobTypes: WORKFLOW_ADVANCING_JOB_TYPES }, tx);
-    const [row] = await tx.update(workflowInstances).set({ status: 'cancelled', currentNodeKey: null, suspendedAt: null, suspendReason: null }).where(and(...conditions)).returning();
+    const [row] = await tx.update(workflowInstances).set({ status: 'cancelled', currentNodeKey: null, suspendedAt: null, suspendReason: null }).where(where).returning();
     await bridgeReportFillWorkflowOutcome(tx, {
       workflowInstanceId: id,
       outcome: 'cancelled',
@@ -337,16 +332,12 @@ export async function cancelInstance(id: number) {
 
 export async function deleteInstance(id: number) {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conditions = [eq(workflowInstances.id, id)];
-  if (tc) conditions.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conditions)).limit(1);
-  requireRow(inst, '流程实例不存在');
+  const inst = await requireVisibleInstance(id);
   if (inst.status === 'running' || inst.status === 'draft') {
     throw new HTTPException(400, { message: '请先取消进行中的流程再删除' });
   }
   await db.transaction(async (tx) => {
-    await tx.delete(workflowInstances).where(and(...conditions));
+    await tx.delete(workflowInstances).where(buildWhere(eq(workflowInstances.id, id), tenantCondition(workflowInstances, user)));
     // 归档件随实例生命周期：解除引用后由托管文件 GC 延迟回收
     if (inst.archiveFileId) await releaseManagedFiles(tx, [inst.archiveFileId]);
   });
@@ -354,11 +345,7 @@ export async function deleteInstance(id: number) {
 
 async function loadOwnDraft(id: number) {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conds = [eq(workflowInstances.id, id)];
-  if (tc) conds.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  requireRow(inst, '流程实例不存在');
+  const inst = await requireVisibleInstance(id);
   if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只能操作自己的草稿' });
   return inst;
 }
@@ -448,11 +435,7 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
 /** 重新提交：将已驳回/已撤回的实例克隆为一份新草稿，供发起人编辑后再次提交 */
 export async function resubmitInstance(id: number) {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conds = [eq(workflowInstances.id, id)];
-  if (tc) conds.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  requireRow(inst, '流程实例不存在');
+  const inst = await requireVisibleInstance(id);
   if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只有发起人可以重新提交' });
   if (inst.status !== 'rejected' && inst.status !== 'withdrawn') {
     throw new HTTPException(400, { message: '只有已驳回或已撤回的申请可重新提交' });

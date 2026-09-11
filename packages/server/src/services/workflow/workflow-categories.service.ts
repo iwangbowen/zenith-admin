@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { asc, desc, eq, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowCategories, workflowDefinitions } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -30,9 +30,8 @@ export function mapCategory(row: typeof workflowCategories.$inferSelect) {
 
 export async function ensureCategoryExists(id: number) {
   const tc = tenantCondition(workflowCategories, currentUser());
-  const conds = [eq(workflowCategories.id, id)];
-  if (tc) conds.push(tc);
-  const [row] = await db.select().from(workflowCategories).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowCategories.id, id), tc];
+  const [row] = await db.select().from(workflowCategories).where(buildWhere(...conds)).limit(1);
   return requireRow(row, '流程分类不存在');
 }
 
@@ -106,8 +105,7 @@ export type UpdateWorkflowCategoryInput = Partial<CreateWorkflowCategoryInput>;
 export async function updateWorkflowCategory(id: number, input: UpdateWorkflowCategoryInput) {
   await ensureCategoryExists(id);
   const tc = tenantCondition(workflowCategories, currentUser());
-  const conds = [eq(workflowCategories.id, id)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(workflowCategories.id, id), tc];
   try {
     const patch: Partial<typeof workflowCategories.$inferInsert> = {};
     if (input.name === undefined) { /* skip */ } else { patch.name = input.name; }
@@ -116,7 +114,7 @@ export async function updateWorkflowCategory(id: number, input: UpdateWorkflowCa
     if (input.color === undefined) { /* skip */ } else { patch.color = input.color; }
     if (input.sort === undefined) { /* skip */ } else { patch.sort = input.sort; }
     if (input.description === undefined) { /* skip */ } else { patch.description = input.description; }
-    const [row] = await db.update(workflowCategories).set(patch).where(and(...conds)).returning();
+    const [row] = await db.update(workflowCategories).set(patch).where(buildWhere(...conds)).returning();
     return mapCategory(requireRow(row, '流程分类不存在'));
   } catch (err) {
     if (err instanceof HTTPException) throw err;
@@ -129,7 +127,6 @@ export async function deleteWorkflowCategory(id: number): Promise<void> {
   const used = await db.$count(workflowDefinitions, eq(workflowDefinitions.categoryId, id));
   if (used > 0) throw new HTTPException(400, { message: '该分类下仍有流程定义，无法删除' });
   const tc = tenantCondition(workflowCategories, currentUser());
-  const conds = [eq(workflowCategories.id, id)];
-  if (tc) conds.push(tc);
-  await db.delete(workflowCategories).where(and(...conds));
+  const conds: (SQL | undefined)[] = [eq(workflowCategories.id, id), tc];
+  await db.delete(workflowCategories).where(buildWhere(...conds));
 }

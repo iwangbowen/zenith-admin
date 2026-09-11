@@ -61,11 +61,16 @@ export { useChannelList, useSaveChannel, useDeleteChannel };
 
 const silent = { silent: true } as const;
 
-export function useChannelMenus(channelId: number | undefined, enabled = true) {
+/**
+ * 频道底部菜单：管理端菜单编辑器与聊天页频道视图共用同一缓存 key，
+ * `useSaveChannelMenus` 保存后两侧同时刷新。聊天侧菜单变动极少，可传 `staleTime` 减少重复拉取。
+ */
+export function useChannelMenus(channelId: number | undefined, enabled = true, options?: { staleTime?: number }) {
   return useQuery({
     queryKey: channelKeys.menus(channelId),
     queryFn: () => api(channelContract.menus, { params: { id: channelId ?? 0 } }, silent),
     enabled: enabled && channelId !== undefined,
+    staleTime: options?.staleTime,
   });
 }
 

@@ -302,7 +302,7 @@ export async function batchDeleteFiles(ids: string[]) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const idCondition = inArray(managedFiles.id, ids);
-  const where = tc ? and(idCondition, tc) : idCondition;
+  const where = buildWhere(idCondition, tc);
   const files = await db.select().from(managedFiles).where(where);
   const configIds = [...new Set(files.map((f) => f.storageConfigId))];
   const configs = await db.select().from(fileStorageConfigs).where(inArray(fileStorageConfigs.id, configIds));
@@ -320,7 +320,7 @@ export async function batchDeleteFiles(ids: string[]) {
 export async function deleteManagedFile(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
-  const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
+  const where = buildWhere(eq(managedFiles.id, id), tc);
   const [file] = await db.select().from(managedFiles).where(where).limit(1);
   requireRow(file, '文件不存在');
   const [storageConfig] = await db
@@ -349,7 +349,7 @@ export async function deleteGeneratedManagedFile(id: string, tenantId: number | 
 export async function getManagedFile(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
-  const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
+  const where = buildWhere(eq(managedFiles.id, id), tc);
   const file = requireRow(await db.query.managedFiles.findFirst({
     where,
     with: { createdByUser: { columns: { nickname: true, username: true } } },
@@ -364,7 +364,7 @@ export async function getManagedFile(id: string) {
 export async function getManagedFileBeforeAudit(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
-  const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
+  const where = buildWhere(eq(managedFiles.id, id), tc);
   const [file] = await db.select().from(managedFiles).where(where).limit(1);
   if (!file) return null;
   return mapManagedFile(file);
@@ -374,7 +374,7 @@ export async function getManagedFilesBeforeAudit(ids: string[]) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const idCondition = inArray(managedFiles.id, ids);
-  const where = tc ? and(idCondition, tc) : idCondition;
+  const where = buildWhere(idCondition, tc);
   const rows = await db.select().from(managedFiles).where(where);
   return rows.map((row) => mapManagedFile(row));
 }
@@ -390,7 +390,7 @@ export async function batchDownloadFilesAsZip(ids: string[]): Promise<{ stream: 
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const idCondition = inArray(managedFiles.id, ids);
-  const where = tc ? and(idCondition, tc) : idCondition;
+  const where = buildWhere(idCondition, tc);
   const files = await db.select().from(managedFiles).where(where);
   if (files.length === 0) throw new HTTPException(400, { message: '未找到可下载的文件' });
 
@@ -457,7 +457,7 @@ export async function browseStorageFiles(query: { storageConfigId: number; path?
 
   const tc = tenantCondition(managedFiles, user);
   const conditions = [eq(managedFiles.storageConfigId, query.storageConfigId), keywordCondition(fullPrefix ? `${fullPrefix}/` : undefined, [managedFiles.objectKey], 'like', 'prefix')];
-  const where = tc ? and(...conditions, tc) : and(...conditions);
+  const where = buildWhere(...conditions, tc);
 
   const allFiles = await db.select().from(managedFiles).where(where).orderBy(asc(managedFiles.objectKey));
 
@@ -560,7 +560,7 @@ export async function getFileStats() {
       month: sql<string>`to_char(date_trunc('month', ${managedFiles.createdAt}), 'YYYY-MM')`,
       count: sql<number>`CAST(COUNT(*) AS int)`,
     }).from(managedFiles)
-      .where(tc ? and(gte(managedFiles.createdAt, sql`NOW() - INTERVAL '12 months'`), tc) : gte(managedFiles.createdAt, sql`NOW() - INTERVAL '12 months'`))
+      .where(buildWhere(gte(managedFiles.createdAt, sql`NOW() - INTERVAL '12 months'`), tc))
       .groupBy(sql`date_trunc('month', ${managedFiles.createdAt})`)
       .orderBy(sql`date_trunc('month', ${managedFiles.createdAt})`),
   ]);

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowDelegations, users } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -78,9 +78,8 @@ async function ensureUserExists(id: number, msg: string) {
 async function ensureDelegationAccess(id: number): Promise<DelegationRow> {
   const user = currentUser();
   const tc = tenantCondition(workflowDelegations, user);
-  const conds = [eq(workflowDelegations.id, id)];
-  if (tc) conds.push(tc);
-  const [row] = await db.select().from(workflowDelegations).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowDelegations.id, id), tc];
+  const [row] = await db.select().from(workflowDelegations).where(buildWhere(...conds)).limit(1);
   requireRow(row, '委托规则不存在');
   if (!isSuperAdmin(user) && row.principalId !== user.userId) {
     throw new HTTPException(403, { message: '无权操作他人的委托规则' });
@@ -110,8 +109,7 @@ export async function listWorkflowDelegations(q: ListWorkflowDelegationsQuery) {
   const user = currentUser();
   const admin = isSuperAdmin(user);
   const tc = tenantCondition(workflowDelegations, user);
-  const conds = [];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [tc];
   // 非管理员或显式 scope='mine'：仅本人作为委托人的规则
   if (!admin || q.scope === 'mine') {
     conds.push(eq(workflowDelegations.principalId, user.userId));

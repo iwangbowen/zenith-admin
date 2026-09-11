@@ -404,7 +404,7 @@ export async function setGroupRoles(groupId: number, roleIds: number[]) {
   if (uniqueRoleIds.length > 0) {
     const tc = tenantCondition(roles, currentUser());
     const found = await db.select({ id: roles.id }).from(roles)
-      .where(tc ? and(inArray(roles.id, uniqueRoleIds), tc) : inArray(roles.id, uniqueRoleIds));
+      .where(buildWhere(inArray(roles.id, uniqueRoleIds), tc));
     if (found.length !== uniqueRoleIds.length) throw new HTTPException(400, { message: '包含不存在的角色' });
   }
   await db.transaction(async (tx) => {

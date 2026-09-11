@@ -1,11 +1,11 @@
 // ─── 审计前置数据读取（拆分自 workflow-instances.service.ts）───
 import { eq, and } from 'drizzle-orm';
 import { db } from '../../../db';
-import { workflowInstances, workflowTasks } from '../../../db/schema';
-import { tenantCondition } from '../../../lib/tenant';
+import { workflowTasks } from '../../../db/schema';
 import { currentUser } from '../../../lib/context';
 import { mapInstance } from './mapping';
 import { getInstanceDetail } from './queries';
+import { findVisibleInstance } from './shared';
 
 export async function getWorkflowInstanceBeforeAudit(id: number) {
   try {
@@ -38,10 +38,6 @@ export async function getWorkflowTaskForAdminAudit(taskId: number) {
 
 /** 监控页管理员操作的审计前置快照（不做发起人/审批人权限校验） */
 export async function getInstanceForAdminAudit(id: number) {
-  const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conditions = [eq(workflowInstances.id, id)];
-  if (tc) conditions.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conditions)).limit(1);
+  const inst = await findVisibleInstance(id);
   return inst ? mapInstance(inst) : null;
 }

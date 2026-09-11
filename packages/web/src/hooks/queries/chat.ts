@@ -53,7 +53,6 @@ export const chatKeys = {
   joinRequests: (conversationId: number | undefined) => contractKey(chatContract.joinRequests, { params: { id: conversationId ?? 0 } }),
   inviteInfo: (token: string | null) => contractKey(chatContract.inviteInfo, { params: { token: token ?? '' } }),
   channelMessages: (params: ChannelMessageParams) => [CHAT_KEY, 'list', 'channel-messages', params] as const,
-  channelMenus: (channelId: number | undefined) => [CHAT_KEY, 'channels', channelId, 'menus'] as const,
 };
 
 export function useDiscoverableChannels(params: DiscoverableChannelParams, enabled = true) {
@@ -304,15 +303,6 @@ export function useChannelMessages(params: ChannelMessageParams) {
       params: { id: params.channelId },
       query: { page: params.page, pageSize: params.pageSize },
     }, silent),
-  });
-}
-
-export function useChannelMenus(channelId: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: chatKeys.channelMenus(channelId),
-    queryFn: () => api(channelContract.menus, { params: { id: channelId ?? 0 } }, silent),
-    enabled: enabled && channelId !== undefined,
-    staleTime: LOOKUP_STALE_TIME,
   });
 }
 

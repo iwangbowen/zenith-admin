@@ -1,5 +1,5 @@
 // ─── 管理员强制操作与令牌运维恢复（拆分自 workflow-instances.service.ts）───
-import { eq, and, asc, lte, inArray, gt } from 'drizzle-orm';
+import { eq, and, asc, lte, inArray, gt, type SQL } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks, workflowTokens, workflowDefinitions, workflowDelegations, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
@@ -17,17 +17,14 @@ import { mapInstance, mapTask } from './mapping';
 import { recordTaskTransfer, assertAssigneesNotActiveOnNode } from './transfers';
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
 import { getInstanceDetail } from './queries';
-import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, lockInstanceExpecting } from './shared';
+import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, lockInstanceExpecting, requireVisibleInstance } from './shared';
 import { requireRow } from '../../../lib/db-assert';
+import { buildWhere } from '../../../lib/where-helpers';
 
 /** 强制跳转：终止当前活动任务，直接推进到指定审批/办理节点 */
 export async function jumpInstance(id: number, targetNodeKey: string, comment?: string) {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conds = [eq(workflowInstances.id, id)];
-  if (tc) conds.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  requireRow(inst, '流程实例不存在');
+  const inst = await requireVisibleInstance(id);
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可强制跳转' });
   const snapshot = inst.definitionSnapshot;
   const flowData = snapshot?.flowData;
@@ -70,11 +67,7 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
 /** 挂起实例：冻结待办操作与自动推进作业，用于争议冻结/外部故障排查（仅 running 可挂起） */
 export async function suspendInstance(id: number, reason: string) {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conds = [eq(workflowInstances.id, id)];
-  if (tc) conds.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  requireRow(inst, '流程实例不存在');
+  const inst = await requireVisibleInstance(id);
   if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可挂起' });
 
   const instance = await db.transaction(async (tx) => {
@@ -93,11 +86,7 @@ export async function suspendInstance(id: number, reason: string) {
 /** 恢复挂起实例：自动推进作业按挂起前剩余时长重排后继续流转 */
 export async function resumeInstance(id: number) {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conds = [eq(workflowInstances.id, id)];
-  if (tc) conds.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  requireRow(inst, '流程实例不存在');
+  const inst = await requireVisibleInstance(id);
   if (inst.status !== 'suspended') throw new HTTPException(400, { message: '仅已挂起的流程可恢复' });
 
   const { instance, restoredJobs } = await db.transaction(async (tx) => {
@@ -126,11 +115,7 @@ export async function reassignTask(taskId: number, targetUserId: number, comment
   }
   const [tgt] = await db.select({ id: users.id }).from(users).where(eq(users.id, targetUserId)).limit(1);
   requireRow(tgt, '目标处理人不存在', 400);
-  const tc = tenantCondition(workflowInstances, user);
-  const instConditions = [eq(workflowInstances.id, task.instanceId)];
-  if (tc) instConditions.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...instConditions)).limit(1);
-  requireRow(inst, '任务不存在或无权操作');
+  const inst = await requireVisibleInstance(task.instanceId, '任务不存在或无权操作');
   // 目标人已在本节点同轮持有活动任务时给出友好 409（否则撞 wf_tasks_active_uniq 唯一索引）；
   // 离职交接逐条改派复用本函数，冲突任务会按「单条失败不阻断」记入结果
   await assertAssigneesNotActiveOnNode(db, {
@@ -162,11 +147,7 @@ export async function recallTask(taskId: number, comment?: string) {
   if (task.status !== 'approved' && task.status !== 'rejected') {
     throw new HTTPException(400, { message: '只有已处理的任务可撤回' });
   }
-  const tc = tenantCondition(workflowInstances, user);
-  const instConditions = [eq(workflowInstances.id, task.instanceId)];
-  if (tc) instConditions.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...instConditions)).limit(1);
-  requireRow(inst, '任务不存在或无权操作');
+  const inst = await requireVisibleInstance(task.instanceId, '任务不存在或无权操作');
   if (inst.status === 'withdrawn' || inst.status === 'cancelled' || inst.status === 'approved' || inst.status === 'rejected') {
     throw new HTTPException(400, { message: '流程已结束，无法撤回' });
   }
@@ -248,11 +229,7 @@ async function loadTokenForOps(tokenId: number) {
   const user = currentUser();
   const [tok] = await db.select().from(workflowTokens).where(eq(workflowTokens.id, tokenId)).limit(1);
   requireRow(tok, '执行 Token 不存在');
-  const tc = tenantCondition(workflowInstances, user);
-  const conds = [eq(workflowInstances.id, tok.instanceId)];
-  if (tc) conds.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  requireRow(inst, '实例不存在或无权操作');
+  const inst = await requireVisibleInstance(tok.instanceId, '实例不存在或无权操作');
   return { user, tok, inst };
 }
 
@@ -325,20 +302,20 @@ const BATCH_RECOVERY_CAP = 200;
 export async function batchSkipStuckTokens(input: { definitionId: number; nodeKey: string; olderThanMinutes?: number; reason?: string }): Promise<WorkflowRecoveryBatchResult> {
   const user = currentUser();
   const tc = tenantCondition(workflowInstances, user);
-  const conds = [
+  const conds: (SQL | undefined)[] = [
     eq(workflowTokens.status, 'active'),
     eq(workflowTokens.nodeKey, input.nodeKey),
     eq(workflowInstances.status, 'running'),
     eq(workflowInstances.definitionId, input.definitionId),
+    tc,
   ];
-  if (tc) conds.push(tc);
   if (input.olderThanMinutes && input.olderThanMinutes > 0) {
     conds.push(lte(workflowTokens.createdAt, new Date(Date.now() - input.olderThanMinutes * 60_000)));
   }
   const rows = await db.select({ tokenId: workflowTokens.id })
     .from(workflowTokens)
     .innerJoin(workflowInstances, eq(workflowTokens.instanceId, workflowInstances.id))
-    .where(and(...conds))
+    .where(buildWhere(...conds))
     .orderBy(asc(workflowTokens.id))
     .limit(BATCH_RECOVERY_CAP);
   let success = 0;
@@ -365,16 +342,16 @@ export async function previewHandover(fromUserId: number): Promise<WorkflowHando
   requireRow(from, '交接人不存在');
 
   const tc = tenantCondition(workflowInstances, user);
-  const taskConds = [
+  const taskConds: (SQL | undefined)[] = [
     eq(workflowTasks.assigneeId, fromUserId),
     inArray(workflowTasks.status, ['pending', 'waiting']),
     inArray(workflowInstances.status, ['running', 'suspended']),
+    tc,
   ];
-  if (tc) taskConds.push(tc);
   const tasks = await db.select({ id: workflowTasks.id, status: workflowTasks.status })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(and(...taskConds));
+    .where(buildWhere(...taskConds));
 
   const delegations = await db.select({ id: workflowDelegations.id }).from(workflowDelegations)
     .where(and(eq(workflowDelegations.principalId, fromUserId), eq(workflowDelegations.enabled, true)));
@@ -418,16 +395,16 @@ export async function handoverTasks(input: { fromUserId: number; toUserId: numbe
   requireRow(tgt, '接手人不存在', 400);
 
   const tc = tenantCondition(workflowInstances, user);
-  const taskConds = [
+  const taskConds: (SQL | undefined)[] = [
     eq(workflowTasks.assigneeId, fromUserId),
     inArray(workflowTasks.status, ['pending', 'waiting']),
     inArray(workflowInstances.status, ['running', 'suspended']),
+    tc,
   ];
-  if (tc) taskConds.push(tc);
   const tasks = await db.select({ id: workflowTasks.id, nodeName: workflowTasks.nodeName, title: workflowInstances.title })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(and(...taskConds))
+    .where(buildWhere(...taskConds))
     .orderBy(asc(workflowTasks.id));
 
   const note = `[离职交接]${comment ? ' ' + comment : ''}`;

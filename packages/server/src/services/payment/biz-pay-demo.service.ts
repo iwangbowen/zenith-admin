@@ -25,7 +25,7 @@ import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
-import { keywordCondition } from '../../lib/where-helpers';
+import { keywordCondition, buildWhere } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import logger from '../../lib/logger';
 import { createPayment } from './payment.service';
@@ -56,10 +56,10 @@ export function mapBizPayDemo(row: BizPayDemoRow): BizPayDemo {
 /** 仅本人可操作自己的示例单 */
 function findOwn(id: number) {
   const user = currentUser();
-  const conds = [eq(bizPayDemos.id, id), eq(bizPayDemos.createdBy, user.userId)];
+  const conds: (SQL | undefined)[] = [eq(bizPayDemos.id, id), eq(bizPayDemos.createdBy, user.userId)];
   const tc = tenantCondition(bizPayDemos, user);
-  if (tc) conds.push(tc);
-  return and(...conds);
+  conds.push(tc);
+  return buildWhere(...conds);
 }
 
 async function getOwnRow(id: number): Promise<BizPayDemoRow> {
@@ -76,10 +76,10 @@ export async function listBizPayDemos(query: { page?: number; pageSize?: number;
   const pageSize = query.pageSize ?? 10;
   const conds: (SQL | undefined)[] = [eq(bizPayDemos.createdBy, user.userId)];
   const tc = tenantCondition(bizPayDemos, user);
-  if (tc) conds.push(tc);
+  conds.push(tc);
   if (query.status) conds.push(eq(bizPayDemos.status, query.status as BizPayDemoStatus));
   conds.push(keywordCondition(query.keyword, [bizPayDemos.subject]));
-  const where = and(...conds);
+  const where = buildWhere(...conds);
   return buildListResult({
     page,
     pageSize,

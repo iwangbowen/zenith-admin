@@ -482,7 +482,8 @@ export const directorySyncScopeSchema = z.object({
   excludeUserExternalIds: z.array(z.string().min(1).max(256)).max(1000).optional(),
 });
 
-export const createDirectorySyncSourceSchema = z.object({
+/** 目录同步源字段（无 refine 的基座）：create 叠加跨字段校验，update 由 `partialForUpdate(base.omit({ type }))` 派生 */
+const directorySyncSourceBaseSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(100),
   type: z.enum(DIRECTORY_SYNC_SOURCE_TYPES),
   status: entityStatusSchema.default('disabled'),
@@ -504,7 +505,9 @@ export const createDirectorySyncSourceSchema = z.object({
   /** 平台回调 AES Key（钉钉/企微必填 43 位；飞书 Encrypt Key 可选；写入后不回显） */
   callbackAesKey: z.string().max(256).nullable().optional(),
   remark: z.string().max(500).nullable().optional(),
-}).superRefine((v, ctx) => {
+});
+
+export const createDirectorySyncSourceSchema = directorySyncSourceBaseSchema.superRefine((v, ctx) => {
   if (v.type === 'ldap' && !v.identityProviderId) {
     ctx.addIssue({ code: 'custom', path: ['identityProviderId'], message: 'LDAP/AD 源必须绑定企业身份源' });
   }
@@ -519,26 +522,8 @@ export const createDirectorySyncSourceSchema = z.object({
   }
 });
 
-export const updateDirectorySyncSourceSchema = z.object({
-  name: z.string().min(1, '名称不能为空').max(100).optional(),
-  status: entityStatusSchema.optional(),
-  tenantId: z.number().int().positive().nullable().optional(),
-  identityProviderId: z.number().int().positive().nullable().optional(),
-  oauthProvider: z.string().max(32).nullable().optional(),
-  matchKey: z.enum(DIRECTORY_SYNC_MATCH_KEYS).optional(),
-  fieldMapping: z.record(z.string(), z.string().max(64)).optional(),
-  scopeConfig: directorySyncScopeSchema.optional(),
-  conflictPolicy: z.enum(DIRECTORY_SYNC_CONFLICT_POLICIES).optional(),
-  lifecycle: directorySyncLifecycleSchema.optional(),
-  syncDepartments: z.boolean().optional(),
-  cronExpression: z.string().max(64).nullable().optional(),
-  circuitBreakerPercent: z.number().int().min(0).max(100).optional(),
-  /** 缺省保持不变；空串视为不修改，null 显式清除 */
-  contactSecret: z.string().max(256).nullable().optional(),
-  callbackToken: z.string().max(256).nullable().optional(),
-  callbackAesKey: z.string().max(256).nullable().optional(),
-  remark: z.string().max(500).nullable().optional(),
-});
+/** 源类型一经创建不可变更；密钥类字段缺省保持不变、空串视为不修改、null 显式清除（由 service 解释） */
+export const updateDirectorySyncSourceSchema = partialForUpdate(directorySyncSourceBaseSchema.omit({ type: true }));
 
 export const resolveDirectorySyncConflictSchema = z.object({
   resolution: z.enum(DIRECTORY_SYNC_RESOLUTIONS),

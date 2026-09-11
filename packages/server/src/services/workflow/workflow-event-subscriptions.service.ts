@@ -82,9 +82,8 @@ export function mapSubscription(
 
 export async function ensureSubscriptionExists(id: number) {
   const tc = tenantCondition(workflowEventSubscriptions, currentUser());
-  const conds = [eq(workflowEventSubscriptions.id, id)];
-  if (tc) conds.push(tc);
-  const [row] = await db.select().from(workflowEventSubscriptions).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowEventSubscriptions.id, id), tc];
+  const [row] = await db.select().from(workflowEventSubscriptions).where(buildWhere(...conds)).limit(1);
   return requireRow(row, '事件订阅不存在');
 }
 
@@ -100,8 +99,7 @@ export async function listSubscriptions(q: ListSubscriptionsQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 20;
   const tc = tenantCondition(workflowEventSubscriptions, currentUser());
-  const conds = [];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [tc];
   conds.push(keywordCondition(q.keyword, [workflowEventSubscriptions.name, workflowEventSubscriptions.url], 'ilike'));
   if (q.definitionId !== undefined) {
     conds.push(nullableEq(workflowEventSubscriptions.definitionId, q.definitionId));
@@ -195,8 +193,7 @@ export async function updateSubscription(id: number, input: Partial<UpsertSubscr
   }
   const user = currentUser();
   const tc = tenantCondition(workflowEventSubscriptions, user);
-  const conds = [eq(workflowEventSubscriptions.id, id)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(workflowEventSubscriptions.id, id), tc];
   const patch: Partial<typeof workflowEventSubscriptions.$inferInsert> = { updatedBy: user.userId, updatedAt: new Date() };
   if (input.name !== undefined) patch.name = input.name;
   if (input.description !== undefined) patch.description = input.description;
@@ -212,7 +209,7 @@ export async function updateSubscription(id: number, input: Partial<UpsertSubscr
   if (input.connectorId !== undefined) patch.connectorId = input.connectorId;
   if (input.enabled !== undefined) patch.enabled = input.enabled;
   try {
-    const [row] = await db.update(workflowEventSubscriptions).set(patch).where(and(...conds)).returning();
+    const [row] = await db.update(workflowEventSubscriptions).set(patch).where(buildWhere(...conds)).returning();
     return mapSubscription(requireRow(row, '事件订阅不存在'));
   } catch (err) {
     if (err instanceof HTTPException) throw err;
@@ -223,9 +220,8 @@ export async function updateSubscription(id: number, input: Partial<UpsertSubscr
 export async function deleteSubscription(id: number) {
   await ensureSubscriptionExists(id);
   const tc = tenantCondition(workflowEventSubscriptions, currentUser());
-  const conds = [eq(workflowEventSubscriptions.id, id)];
-  if (tc) conds.push(tc);
-  await db.delete(workflowEventSubscriptions).where(and(...conds));
+  const conds: (SQL | undefined)[] = [eq(workflowEventSubscriptions.id, id), tc];
+  await db.delete(workflowEventSubscriptions).where(buildWhere(...conds));
 }
 
 export async function toggleSubscription(id: number, enabled: boolean) {
@@ -323,15 +319,14 @@ export async function listDeliveries(q: ListDeliveriesQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 20;
   const tc = tenantCondition(workflowJobs, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowJobExecutions.jobType, 'webhook_delivery')];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(workflowJobExecutions.jobType, 'webhook_delivery'), tc];
   if (q.subscriptionId) conds.push(sql`(${workflowJobs.payload}->>'subscriptionId')::int = ${q.subscriptionId}`);
   if (q.instanceId) conds.push(eq(workflowJobs.instanceId, q.instanceId));
   if (q.status === 'success') conds.push(eq(workflowJobExecutions.status, 'succeeded'));
   else if (q.status === 'failed') conds.push(or(eq(workflowJobExecutions.status, 'failed'), eq(workflowJobs.status, 'dead'))!);
   else if (q.status === 'retrying') conds.push(and(eq(workflowJobExecutions.status, 'failed'), sql`${workflowJobs.attempts} < ${workflowJobs.maxAttempts}`)!);
   else if (q.status === 'pending') conds.push(inArray(workflowJobs.status, ['pending', 'running']));
-  const where = and(...conds);
+  const where = buildWhere(...conds);
   return buildListResult({
     page,
     pageSize,
@@ -352,13 +347,12 @@ export async function listDeliveries(q: ListDeliveriesQuery) {
 
 export async function getDelivery(id: number) {
   const tc = tenantCondition(workflowJobs, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowJobExecutions.id, id), eq(workflowJobExecutions.jobType, 'webhook_delivery')];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(workflowJobExecutions.id, id), eq(workflowJobExecutions.jobType, 'webhook_delivery'), tc];
   const [row] = await db.select({ execution: workflowJobExecutions, job: workflowJobs, subscriptionName: workflowEventSubscriptions.name })
     .from(workflowJobExecutions)
     .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
     .leftJoin(workflowEventSubscriptions, sql`(${workflowJobs.payload}->>'subscriptionId')::int = ${workflowEventSubscriptions.id}`)
-    .where(and(...conds))
+    .where(buildWhere(...conds))
     .limit(1);
   return mapDelivery(requireRow(row, '投递记录不存在'));
 }
@@ -373,13 +367,12 @@ export async function getDeliveryBeforeAudit(id: number) {
 export async function getDeliveriesBeforeAudit(ids: number[]) {
   if (!ids.length) return [];
   const tc = tenantCondition(workflowJobs, currentUser());
-  const conds: (SQL | undefined)[] = [inArray(workflowJobExecutions.id, ids), eq(workflowJobExecutions.jobType, 'webhook_delivery')];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [inArray(workflowJobExecutions.id, ids), eq(workflowJobExecutions.jobType, 'webhook_delivery'), tc];
   const rows = await db.select({ execution: workflowJobExecutions, job: workflowJobs, subscriptionName: workflowEventSubscriptions.name })
     .from(workflowJobExecutions)
     .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
     .leftJoin(workflowEventSubscriptions, sql`(${workflowJobs.payload}->>'subscriptionId')::int = ${workflowEventSubscriptions.id}`)
-    .where(and(...conds))
+    .where(buildWhere(...conds))
     .orderBy(desc(workflowJobExecutions.id));
   return rows.map((r) => mapDelivery(r, r.subscriptionName));
 }
@@ -387,12 +380,11 @@ export async function getDeliveriesBeforeAudit(ids: number[]) {
 /** 手动重置投递为 retrying 立即重试 */
 export async function retryDelivery(id: number) {
   const tc = tenantCondition(workflowJobs, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowJobExecutions.id, id), eq(workflowJobExecutions.jobType, 'webhook_delivery')];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(workflowJobExecutions.id, id), eq(workflowJobExecutions.jobType, 'webhook_delivery'), tc];
   const [row] = await db.select({ jobId: workflowJobs.id })
     .from(workflowJobExecutions)
     .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
-    .where(and(...conds))
+    .where(buildWhere(...conds))
     .limit(1);
   requireRow(row, '投递记录不存在');
   if (!await retryJob(row.jobId)) throw new HTTPException(409, { message: '仅失败或已取消的投递可以重试' });
@@ -403,12 +395,11 @@ export async function retryDelivery(id: number) {
 export async function retryDeliveries(ids: number[]) {
   if (ids.length === 0) return 0;
   const tc = tenantCondition(workflowJobs, currentUser());
-  const conds: (SQL | undefined)[] = [inArray(workflowJobExecutions.id, ids), eq(workflowJobExecutions.jobType, 'webhook_delivery')];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [inArray(workflowJobExecutions.id, ids), eq(workflowJobExecutions.jobType, 'webhook_delivery'), tc];
   const rows = await db.select({ jobId: workflowJobs.id })
     .from(workflowJobExecutions)
     .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
-    .where(and(...conds));
+    .where(buildWhere(...conds));
   if (rows.length === 0) return 0;
   let retried = 0;
   for (const jobId of new Set(rows.map((row) => row.jobId))) if (await retryJob(jobId)) retried++;
@@ -435,8 +426,7 @@ export interface ReplayDeliveriesFilter {
  */
 export async function replayDeliveriesByFilter(f: ReplayDeliveriesFilter): Promise<{ count: number }> {
   const tc = tenantCondition(workflowJobs, currentUser());
-  const conds: (SQL | undefined)[] = [eq(workflowJobs.jobType, 'webhook_delivery')];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(workflowJobs.jobType, 'webhook_delivery'), tc];
   if (f.subscriptionId) conds.push(sql`(${workflowJobs.payload}->>'subscriptionId')::int = ${f.subscriptionId}`);
   if (f.eventType) conds.push(sql`${workflowJobs.payload}->>'eventType' = ${f.eventType}`);
   if (f.status === 'success') conds.push(eq(workflowJobs.status, 'succeeded'));
@@ -448,7 +438,7 @@ export async function replayDeliveriesByFilter(f: ReplayDeliveriesFilter): Promi
   if (end) conds.push(lte(workflowJobs.createdAt, end));
 
   const targets = await db.select().from(workflowJobs)
-    .where(and(...conds))
+    .where(buildWhere(...conds))
     .orderBy(desc(workflowJobs.id))
     .limit(DELIVERY_REPLAY_CAP);
   if (targets.length === 0) return { count: 0 };

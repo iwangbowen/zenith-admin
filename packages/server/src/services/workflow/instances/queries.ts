@@ -2,7 +2,7 @@
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
 import { count, countDistinct, eq, and, desc, or, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { keywordCondition, withPagination, dateRangeConditions } from '../../../lib/where-helpers';
+import { keywordCondition, withPagination, dateRangeConditions, buildWhere } from '../../../lib/where-helpers';
 import { db } from '../../../db';
 import { pageOffset } from '../../../lib/pagination';
 import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, users } from '../../../db/schema';
@@ -85,12 +85,11 @@ export async function listMyInstances(query: { page?: number; pageSize?: number;
   const user = currentUser();
   const { page = 1, pageSize = 20, status, priority, definitionId } = query;
   const tc = tenantCondition(workflowInstances, user);
-  const conditions = [eq(workflowInstances.initiatorId, user.userId)];
-  if (tc) conditions.push(tc);
+  const conditions: (SQL | undefined)[] = [eq(workflowInstances.initiatorId, user.userId), tc];
   if (status) conditions.push(eq(workflowInstances.status, status as InstanceStatus));
   if (priority) conditions.push(eq(workflowInstances.priority, priority));
   if (definitionId !== undefined) conditions.push(eq(workflowInstances.definitionId, definitionId));
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   return buildListResult({
     page,
     pageSize,
@@ -151,15 +150,15 @@ export async function listPendingMine(query: { page?: number; pageSize?: number;
   const user = currentUser();
   const { page = 1, pageSize = 20, keyword, definitionId } = query;
   const tc = tenantCondition(workflowInstances, user);
-  const baseConditions = [
+  const baseConditions: (SQL | undefined)[] = [
     eq(workflowTasks.assigneeId, user.userId),
     eq(workflowTasks.status, 'pending'),
     eq(workflowInstances.status, 'running'),
+    tc,
   ];
-  if (tc) baseConditions.push(tc);
   if (keyword) baseConditions.push(titleOrDefinitionNameLike(keyword));
   if (definitionId !== undefined) baseConditions.push(eq(workflowInstances.definitionId, definitionId));
-  const where = and(...baseConditions);
+  const where = buildWhere(...baseConditions);
   const [[{ total }], rows] = await Promise.all([
     db
       // 待办总数按任务行计数：同一实例的多条并行待办各占一行（与列表行一致，此前按实例去重会出现「显示 2 条/共 1 条」）。
@@ -206,13 +205,13 @@ export async function listMyCc(query: { page?: number; pageSize?: number; keywor
   const user = currentUser();
   const { page = 1, pageSize = 20, keyword } = query;
   const tc = tenantCondition(workflowInstances, user);
-  const conditions = [
+  const conditions: (SQL | undefined)[] = [
     eq(workflowTasks.assigneeId, user.userId),
     eq(workflowTasks.nodeType, 'ccNode'),
+    tc,
   ];
-  if (tc) conditions.push(tc);
   if (keyword) conditions.push(titleOrDefinitionNameLike(keyword));
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   const { total, rows } = await queryTaskJoinedInstancePage({ where, orderBy: desc(workflowTasks.id), page, pageSize });
   const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.inst.id));
   return {
@@ -241,12 +240,12 @@ export async function countMyCcUnread(): Promise<number> {
     eq(workflowTasks.nodeType, 'ccNode'),
     sql`${workflowTasks.ccReadAt} is null`,
   ];
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   const [{ total }] = await db
     .select({ total: count() })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(tc ? and(where, tc) : where);
+    .where(buildWhere(where, tc));
   return Number(total);
 }
 
@@ -254,17 +253,17 @@ export async function countMyCcUnread(): Promise<number> {
 export async function countPendingMine(): Promise<number> {
   const user = currentUser();
   const tc = tenantCondition(workflowInstances, user);
-  const conditions = [
+  const conditions: (SQL | undefined)[] = [
     eq(workflowTasks.assigneeId, user.userId),
     eq(workflowTasks.status, 'pending'),
     eq(workflowInstances.status, 'running'),
+    tc,
   ];
-  if (tc) conditions.push(tc);
   const [{ total }] = await db
     .select({ total: countDistinct(workflowInstances.id) })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(and(...conditions));
+    .where(buildWhere(...conditions));
   return Number(total);
 }
 
@@ -278,14 +277,14 @@ export async function listRelationOptions(query: { definitionId?: number; keywor
   const conds: (SQL | undefined)[] = [
     sql`${workflowInstances.status} <> 'draft'`,
     or(eq(workflowInstances.initiatorId, user.userId), inArray(workflowInstances.id, participantSub))!,
+    tc,
   ];
-  if (tc) conds.push(tc);
   if (definitionId) conds.push(eq(workflowInstances.definitionId, definitionId));
   conds.push(keywordCondition(keyword, [workflowInstances.title, workflowInstances.serialNo], 'ilike'));
   const rows = await db.select({ inst: workflowInstances, definitionName: workflowDefinitions.name })
     .from(workflowInstances)
     .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-    .where(and(...conds))
+    .where(buildWhere(...conds))
     .orderBy(desc(workflowInstances.id))
     .limit(Math.min(limit, 50));
   return rows.map((r) => ({
@@ -303,13 +302,13 @@ export async function listMyHandled(query: { page?: number; pageSize?: number; k
   const user = currentUser();
   const { page = 1, pageSize = 20, keyword } = query;
   const tc = tenantCondition(workflowInstances, user);
-  const conditions = [
+  const conditions: (SQL | undefined)[] = [
     eq(workflowTasks.assigneeId, user.userId),
     inArray(workflowTasks.status, ['approved', 'rejected']),
+    tc,
   ];
-  if (tc) conditions.push(tc);
   if (keyword) conditions.push(titleOrDefinitionNameLike(keyword));
-  const where = and(...conditions);
+  const where = buildWhere(...conditions);
   const { total, rows } = await queryTaskJoinedInstancePage({ where, orderBy: desc(workflowTasks.actionAt), page, pageSize });
   const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.inst.id));
   return {
@@ -330,9 +329,9 @@ export async function listMyHandled(query: { page?: number; pageSize?: number; k
 export async function listAllInstances(query: { page?: number; pageSize?: number; status?: string; keyword?: string; categoryId?: number; definitionId?: number; initiatorKeyword?: string; priority?: string }) {
   const user = currentUser();
   const { page = 1, pageSize = 20, status, keyword, categoryId, definitionId, initiatorKeyword, priority } = query;
-  const conditions = [];
+  const conditions: (SQL | undefined)[] = [];
   const tc = tenantCondition(workflowInstances, user);
-  if (tc) conditions.push(tc);
+  conditions.push(tc);
   // T2-3 数据权限：按发起人部门限制非超管可见的实例范围
   const scopeCond = await getDataScopeCondition({
     currentUserId: user.userId,
@@ -346,8 +345,8 @@ export async function listAllInstances(query: { page?: number; pageSize?: number
   if (definitionId !== undefined) conditions.push(eq(workflowInstances.definitionId, definitionId));
   conditions.push(keywordCondition(initiatorKeyword, [users.nickname], 'ilike'));
   if (priority) conditions.push(eq(workflowInstances.priority, priority));
-  const where = and(...conditions);
-  const statWhere = scopeCond ? (tc ? and(tc, scopeCond) : scopeCond) : tc;
+  const where = buildWhere(...conditions);
+  const statWhere = buildWhere(tc, scopeCond);
   const [statRows, [{ total }], rows] = await Promise.all([
     db.select({ status: workflowInstances.status, cnt: count() })
       .from(workflowInstances)
@@ -443,10 +442,9 @@ export function sanitizeDetailFormDataForViewer(
 export async function getInstanceDetail(id: number) {
   const user = currentUser();
   const tc = tenantCondition(workflowInstances, user);
-  const conditions = [eq(workflowInstances.id, id)];
-  if (tc) conditions.push(tc);
+  const conditions: (SQL | undefined)[] = [eq(workflowInstances.id, id), tc];
   const row = requireRow(await db.query.workflowInstances.findFirst({
-    where: and(...conditions),
+    where: buildWhere(...conditions),
     with: {
       definition: { columns: { name: true } },
       initiator: { columns: { nickname: true, avatar: true } },
@@ -595,7 +593,7 @@ export async function listAllTasks(query: ListAllTasksQuery) {
     conds.push(inArray(workflowTasks.status, ['pending', 'waiting']));
     conds.push(lte(workflowTasks.createdAt, new Date(Date.now() - stuckMinutes * 60_000)));
   }
-  const where = and(...conds);
+  const where = buildWhere(...conds);
 
   const buildBase = () => db
     .select({

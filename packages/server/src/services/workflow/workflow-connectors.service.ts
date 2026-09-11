@@ -70,9 +70,8 @@ async function mapConnector(row: WorkflowConnectorRow): Promise<WorkflowConnecto
 
 function findConnector(id: number): SQL {
   const tc = tenantCondition(workflowConnectors, currentUser());
-  const conds = [eq(workflowConnectors.id, id)];
-  if (tc) conds.push(tc);
-  return and(...conds)!;
+  const conds: (SQL | undefined)[] = [eq(workflowConnectors.id, id), tc];
+  return buildWhere(...conds)!;
 }
 
 async function ensureConnector(id: number): Promise<WorkflowConnectorRow> {
@@ -93,8 +92,7 @@ async function assertConnectorConfigSafe(type: string | undefined, cfg: Record<s
 export async function listWorkflowConnectors(query: { page?: number; pageSize?: number; keyword?: string; type?: WorkflowConnectorType; status?: 'enabled' | 'disabled' }) {
   const { page = 1, pageSize = 10, keyword, type, status } = query;
   const tc = tenantCondition(workflowConnectors, currentUser());
-  const conds: (SQL | undefined)[] = [];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [tc];
   if (type) conds.push(eq(workflowConnectors.type, type));
   if (status) conds.push(eq(workflowConnectors.status, status));
   conds.push(keywordCondition(keyword, [workflowConnectors.name, workflowConnectors.code], 'ilike'));
@@ -393,9 +391,8 @@ export async function testWorkflowConnector(id: number, input: TestWorkflowConne
 /** 按 code 取连接器（供运行时业务桥接按 code 引用）。 */
 export async function getConnectorRowByCode(code: string): Promise<WorkflowConnectorRow | null> {
   const tc = tenantCondition(workflowConnectors, currentUser());
-  const conds = [eq(workflowConnectors.code, code)];
-  if (tc) conds.push(tc);
-  const [row] = await db.select().from(workflowConnectors).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowConnectors.code, code), tc];
+  const [row] = await db.select().from(workflowConnectors).where(buildWhere(...conds)).limit(1);
   return row ?? null;
 }
 

@@ -71,10 +71,8 @@ export async function operationLogStats(daysRaw?: number) {
   const user = currentUser();
   const { startDate, startDateLabel, prevStartDate } = resolveStatsWindow(daysRaw);
   const tc = tenantCondition(operationLogs, user);
-  const baseWhere = tc ? and(gte(operationLogs.createdAt, startDate), tc) : gte(operationLogs.createdAt, startDate);
-  const prevWhere = tc
-    ? and(gte(operationLogs.createdAt, prevStartDate), lt(operationLogs.createdAt, startDate), tc)
-    : and(gte(operationLogs.createdAt, prevStartDate), lt(operationLogs.createdAt, startDate));
+  const baseWhere = buildWhere(gte(operationLogs.createdAt, startDate), tc);
+  const prevWhere = buildWhere(gte(operationLogs.createdAt, prevStartDate), lt(operationLogs.createdAt, startDate), tc);
   const moduleCount = count();
   const userCount = count();
   const methodCount = count();

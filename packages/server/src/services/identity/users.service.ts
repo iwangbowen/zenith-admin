@@ -64,7 +64,7 @@ async function ensureNoProtectedAdminInIds(ids: number[], action: '删除' | '�
   const rows = await db
     .select({ id: users.id, username: users.username })
     .from(users)
-    .where(tc ? and(inArray(users.id, ids), tc) : inArray(users.id, ids));
+    .where(buildWhere(inArray(users.id, ids), tc));
 
   const adminUser = rows.find((row) => isProtectedAdminUser(row.username));
   if (adminUser) {
@@ -79,7 +79,7 @@ async function manageableUsersCondition(): Promise<SQL | undefined> {
   const user = currentUser();
   const conditions: (SQL | undefined)[] = [];
   const tc = tenantCondition(users, user);
-  if (tc) conditions.push(tc);
+  conditions.push(tc);
   const scope = await getDataScopeCondition({
     currentUserId: user.userId, deptColumn: users.departmentId, ownerColumn: users.id,
   });
@@ -188,36 +188,36 @@ export async function setUserPositions(executor: DbExecutor, userId: number, pos
 
 export async function ensureDepartmentExists(departmentId?: number | null, user?: JwtPayload) {
   if (departmentId === undefined || departmentId === null) return;
-  const conditions = [eq(departments.id, departmentId)];
+  const conditions: (SQL | undefined)[] = [eq(departments.id, departmentId)];
   if (user) {
     const tc = tenantCondition(departments, user);
-    if (tc) conditions.push(tc);
+    conditions.push(tc);
   }
-  const [maybeD] = await db.select({ id: departments.id }).from(departments).where(and(...conditions)).limit(1);
+  const [maybeD] = await db.select({ id: departments.id }).from(departments).where(buildWhere(...conditions)).limit(1);
   requireRow(maybeD, '所属部门不存在', 400);
 }
 
 export async function ensureRoleIdsExist(roleIds: number[], user?: JwtPayload) {
   const uniq = Array.from(new Set(roleIds));
   if (uniq.length === 0) return;
-  const conditions = [inArray(roles.id, uniq)];
+  const conditions: (SQL | undefined)[] = [inArray(roles.id, uniq)];
   if (user) {
     const tc = tenantCondition(roles, user);
-    if (tc) conditions.push(tc);
+    conditions.push(tc);
   }
-  const rows = await db.select({ id: roles.id }).from(roles).where(and(...conditions));
+  const rows = await db.select({ id: roles.id }).from(roles).where(buildWhere(...conditions));
   if (rows.length !== uniq.length) throw new HTTPException(400, { message: '存在无效角色' });
 }
 
 export async function ensurePositionIdsExist(positionIds: number[], user?: JwtPayload) {
   const uniq = Array.from(new Set(positionIds));
   if (uniq.length === 0) return;
-  const conditions = [inArray(positions.id, uniq)];
+  const conditions: (SQL | undefined)[] = [inArray(positions.id, uniq)];
   if (user) {
     const tc = tenantCondition(positions, user);
-    if (tc) conditions.push(tc);
+    conditions.push(tc);
   }
-  const rows = await db.select({ id: positions.id }).from(positions).where(and(...conditions));
+  const rows = await db.select({ id: positions.id }).from(positions).where(buildWhere(...conditions));
   if (rows.length !== uniq.length) throw new HTTPException(400, { message: '存在无效岗位' });
 }
 
@@ -272,7 +272,7 @@ export async function buildUsersListWhere(q: ListUsersQuery, user: JwtPayload): 
   });
   if (scopeCondition) conditions.push(scopeCondition);
   const tc = tenantCondition(users, user);
-  if (tc) conditions.push(tc);
+  conditions.push(tc);
   return buildWhere(...conditions);
 }
 
@@ -364,7 +364,7 @@ export async function batchDeleteUsers(ids: number[]) {
   const tc = tenantCondition(users, user);
   await ensureNoProtectedAdminInIds(validIds, '删除');
   const deleted = await db.delete(users)
-    .where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds))
+    .where(buildWhere(inArray(users.id, validIds), tc))
     .returning({ id: users.id });
   await revokeUserSessions(deleted.map((r) => r.id));
   emitIdentityRemoval({ kind: 'user', ids: deleted.map((row) => row.id) });
@@ -382,7 +382,7 @@ export async function batchUpdateUserStatus(ids: number[], status: 'enabled' | '
     await ensureNoProtectedAdminInIds(validIds, '禁用');
   }
   const updated = await db.update(users).set({ status })
-    .where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds))
+    .where(buildWhere(inArray(users.id, validIds), tc))
     .returning({ id: users.id });
   if (status === 'disabled') {
     await revokeUserSessions(updated.map((r) => r.id));
@@ -397,7 +397,7 @@ export async function getUsersBeforeAudit(ids: number[]) {
   if (validIds.length === 0) return [];
   const tc = tenantCondition(users, user);
   const rawList = await findUsersWithRelations({
-    where: tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds),
+    where: buildWhere(inArray(users.id, validIds), tc),
     orderBy: users.id,
   });
   return mapUsers(rawList);
@@ -415,7 +415,7 @@ registerRevealSource('User', (id) => getUser(id) as Promise<Record<string, unkno
 export async function getUserBeforeAudit(id: number) {
   const user = currentUser();
   const tc = tenantCondition(users, user);
-  const full = await findUserWithRelations({ where: tc ? and(eq(users.id, id), tc) : eq(users.id, id) });
+  const full = await findUserWithRelations({ where: buildWhere(eq(users.id, id), tc) });
   if (!full) return null;
   return mapUser(full);
 }
@@ -462,7 +462,7 @@ export async function updateUser(id: number, data: UpdateUserInput) {
   const phoneWhereClause = tc
     ? and(eq(users.phone, data.phone!), ne(users.id, id), tc)
     : and(eq(users.phone, data.phone!), ne(users.id, id));
-  const idWhereClause = tc ? and(eq(users.id, id), tc) : eq(users.id, id);
+  const idWhereClause = buildWhere(eq(users.id, id), tc);
   const [usernameDup, emailDup, phoneDup, disabledTarget] = await Promise.all([
     data.username
       ? db.select({ id: users.id }).from(users).where(usernameWhereClause).limit(1)
@@ -493,7 +493,7 @@ export async function updateUser(id: number, data: UpdateUserInput) {
   const hadPlatformSuper = nextRoleIds !== undefined ? await userHasPlatformSuperRole(id) : false;
   const updated = await db.transaction(async (tx) => {
     const [u] = await tx.update(users).set(nextValues)
-      .where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
+      .where(buildWhere(eq(users.id, id), tc)).returning();
     if (!u) return null;
     if (nextRoleIds !== undefined) await setUserRoles(tx, id, nextRoleIds);
     if (nextPositionIds !== undefined) await setUserPositions(tx, id, nextPositionIds);
@@ -520,7 +520,7 @@ export async function deleteUser(id: number) {
   await ensureUserManageable(id);
   const tc = tenantCondition(users, user);
   await ensureNoProtectedAdminInIds([id], '删除');
-  const [deleted] = await db.delete(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
+  const [deleted] = await db.delete(users).where(buildWhere(eq(users.id, id), tc)).returning();
   requireRow(deleted, '用户不存在');
   await revokeUserSessions([id]);
 }
@@ -537,7 +537,7 @@ export async function batchResetUsersPassword(ids: number[], password: string) {
   const tc = tenantCondition(users, user);
   await ensureNoProtectedAdminInIds(validIds, '修改密码');
   const hashed = await hashPassword(password);
-  await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date() }).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
+  await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date() }).where(buildWhere(inArray(users.id, validIds), tc));
   // 管理员重置密码 = 凭据轮换：目标用户全部在线会话与 refresh 授权一并作废
   await revokeUserSessions(validIds);
 }

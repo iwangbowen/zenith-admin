@@ -230,7 +230,7 @@ export async function listOverdueTasks(query: { page?: number; pageSize?: number
   ];
   if (instTenant) conds.push(instTenant);
   if (query.definitionId) conds.push(eq(workflowInstances.definitionId, query.definitionId));
-  const where = and(...conds);
+  const where = buildWhere(...conds);
   const assignee = users;
   const now = Date.now();
   return buildListResult({
@@ -292,7 +292,7 @@ function buildInstancesExportWhere(query: WorkflowInstanceExportQuery) {
   const user = currentUser();
   const conds: (SQL | undefined)[] = [];
   const tc = tenantCondition(workflowInstances, user);
-  if (tc) conds.push(tc);
+  conds.push(tc);
   if (query.status) conds.push(eq(workflowInstances.status, query.status as WorkflowInstanceStatus));
   conds.push(keywordCondition(query.keyword, [workflowInstances.title, workflowDefinitions.name], 'ilike'));
   if (query.categoryId) conds.push(eq(workflowDefinitions.categoryId, query.categoryId));

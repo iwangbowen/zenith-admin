@@ -5,7 +5,7 @@
  * 触发其上配置的自动化动作（如发起新审批流程、发送站内消息）。
  */
 import { uniquePositiveInts } from '@zenith/shared/core';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import {
@@ -54,9 +54,8 @@ export function mapAutomation(row: WorkflowAutomationRow, definitionName?: strin
 
 async function ensureAutomationExists(id: number) {
   const tc = tenantCondition(workflowAutomations, currentUser());
-  const conds = [eq(workflowAutomations.id, id)];
-  if (tc) conds.push(tc);
-  const [row] = await db.select().from(workflowAutomations).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowAutomations.id, id), tc];
+  const [row] = await db.select().from(workflowAutomations).where(buildWhere(...conds)).limit(1);
   return requireRow(row, '自动化规则不存在');
 }
 
@@ -70,10 +69,9 @@ export async function getWorkflowAutomationBeforeAudit(id: number) {
 export async function getWorkflowAutomationsBeforeAudit(ids: number[]) {
   if (!ids.length) return [];
   const tc = tenantCondition(workflowAutomations, currentUser());
-  const conds = [inArray(workflowAutomations.id, ids)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [inArray(workflowAutomations.id, ids), tc];
   const rows = await db.query.workflowAutomations.findMany({
-    where: and(...conds),
+    where: buildWhere(...conds),
     orderBy: [asc(workflowAutomations.sort), desc(workflowAutomations.id)],
     with: { definition: { columns: { name: true } } },
   });
@@ -82,9 +80,8 @@ export async function getWorkflowAutomationsBeforeAudit(ids: number[]) {
 
 async function ensureDefinitionExists(definitionId: number) {
   const tc = tenantCondition(workflowDefinitions, currentUser());
-  const conds = [eq(workflowDefinitions.id, definitionId)];
-  if (tc) conds.push(tc);
-  const [row] = await db.select().from(workflowDefinitions).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, definitionId), tc];
+  const [row] = await db.select().from(workflowDefinitions).where(buildWhere(...conds)).limit(1);
   return requireRow(row, '流程定义不存在');
 }
 
@@ -119,8 +116,7 @@ export async function listWorkflowAutomations(q: ListWorkflowAutomationsQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 20;
   const tc = tenantCondition(workflowAutomations, currentUser());
-  const conds = [];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [tc];
   if (q.definitionId) conds.push(eq(workflowAutomations.definitionId, q.definitionId));
   if (q.trigger) conds.push(eq(workflowAutomations.trigger, q.trigger));
   if (q.status) conds.push(eq(workflowAutomations.status, q.status));
@@ -152,8 +148,7 @@ export async function listWorkflowAutomationRuns(q: ListWorkflowAutomationRunsQu
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 20;
   const tc = tenantCondition(workflowAutomationRuns, currentUser());
-  const conds = [];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [tc];
   if (q.ruleId) conds.push(eq(workflowAutomationRuns.ruleId, q.ruleId));
   if (q.instanceId) conds.push(eq(workflowAutomationRuns.instanceId, q.instanceId));
   if (q.status) conds.push(eq(workflowAutomationRuns.status, q.status));
@@ -241,9 +236,8 @@ export async function deleteWorkflowAutomation(id: number) {
 export async function batchDeleteWorkflowAutomations(ids: number[]) {
   if (!ids.length) return 0;
   const tc = tenantCondition(workflowAutomations, currentUser());
-  const conds = [inArray(workflowAutomations.id, ids)];
-  if (tc) conds.push(tc);
-  const result = await db.delete(workflowAutomations).where(and(...conds)).returning({ id: workflowAutomations.id });
+  const conds: (SQL | undefined)[] = [inArray(workflowAutomations.id, ids), tc];
+  const result = await db.delete(workflowAutomations).where(buildWhere(...conds)).returning({ id: workflowAutomations.id });
   return result.length;
 }
 

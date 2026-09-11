@@ -4,13 +4,13 @@ import { workflowComments, workflowInstances, workflowTasks } from '../../db/sch
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { isSuperAdmin } from '../../lib/permissions';
-import { tenantCondition } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import type { WorkflowComment, CreateWorkflowCommentInput } from '@zenith/shared/workflow';
 import { notify } from '../messaging/notification-outbox.service';
 import { loadWorkflowUserDisplays } from './workflow-user-helpers';
 import { requireRow } from '../../lib/db-assert';
+import { requireVisibleInstance } from './instances/shared';
 
 type CommentRow = typeof workflowComments.$inferSelect;
 
@@ -38,11 +38,7 @@ export function mapComment(
 /** 校验当前用户是否为实例参与者（发起人 / 任一任务处理人 / 超管），返回实例行 */
 async function assertParticipant(instanceId: number): Promise<typeof workflowInstances.$inferSelect> {
   const user = currentUser();
-  const tc = tenantCondition(workflowInstances, user);
-  const conds = [eq(workflowInstances.id, instanceId)];
-  if (tc) conds.push(tc);
-  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
-  requireRow(inst, '流程实例不存在');
+  const inst = await requireVisibleInstance(instanceId);
   if (isSuperAdmin(user) || inst.initiatorId === user.userId) return inst;
   const involved = await db.$count(
     workflowTasks,

@@ -45,10 +45,9 @@ const mapItem = (r: ItemRow) => ({
 
 export async function ensureRuleList(id: number): Promise<ListRow> {
   const tc = tenantCondition(ruleLists, currentUser());
-  const conds = [eq(ruleLists.id, id)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(ruleLists.id, id), tc];
   return requireFirstRow(
-    db.select().from(ruleLists).where(and(...conds)).limit(1),
+    db.select().from(ruleLists).where(buildWhere(...conds)).limit(1),
     '名单不存在',
   );
 }
@@ -64,8 +63,7 @@ export async function listRuleLists(q: ListRuleListsQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 20;
   const tc = tenantCondition(ruleLists, currentUser());
-  const conds = [];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [tc];
   conds.push(keywordCondition(q.keyword, [ruleLists.name]));
   if (q.type) conds.push(eq(ruleLists.type, q.type));
   const where = buildWhere(...conds);
@@ -135,7 +133,7 @@ async function findListUsagesByKey(key: string, listTenantId: number | null): Pr
   const conds = [refCond];
   if (listTenantId != null) conds.push(eq(paymentRiskRules.tenantId, listTenantId));
   const rows = await db.select({ id: paymentRiskRules.id, name: paymentRiskRules.name, status: paymentRiskRules.status })
-    .from(paymentRiskRules).where(and(...conds));
+    .from(paymentRiskRules).where(buildWhere(...conds));
   return rows.map((r) => ({ type: 'paymentRisk' as const, id: r.id, name: r.name, status: r.status }));
 }
 
@@ -167,7 +165,7 @@ export async function listRuleListItems(listId: number, q: ListRuleListItemsQuer
   const pageSize = q.pageSize ?? 20;
   const conds: (SQL | undefined)[] = [eq(ruleListItems.listId, listId)];
   conds.push(keywordCondition(q.keyword, [ruleListItems.value]));
-  const where = and(...conds);
+  const where = buildWhere(...conds);
   return buildListResult({
     page,
     pageSize,

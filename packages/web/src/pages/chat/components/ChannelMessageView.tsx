@@ -19,7 +19,9 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { UserAvatar } from '@/components/UserAvatar';
 import AppModal from '@/components/AppModal';
 import { MessageBubble } from './MessageBubble';
-import { useChannelMenus, useChannelMessages } from '@/hooks/queries/chat';
+import { useChannelMessages } from '@/hooks/queries/chat';
+import { useChannelMenus } from '@/hooks/queries/channels';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { openExternalUrl } from '@/utils/safe-url';
 
 const { Text } = Typography;
@@ -69,7 +71,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
   const scrollRef = useRef<HTMLDivElement>(null);
   const isBusiness = channel.type === 'business';
   const channelMessagesQuery = useChannelMessages({ channelId: channel.id, page: 1, pageSize: 50 });
-  const channelMenusQuery = useChannelMenus(channel.id, isBusiness);
+  const channelMenusQuery = useChannelMenus(channel.id, isBusiness, { staleTime: LOOKUP_STALE_TIME });
   const menus = channelMenusQuery.data ?? [];
   const loading = channelMessagesQuery.isFetching && messages.length === 0;
   const channelSender = useMemo(() => ({ name: channel.name, avatar: channel.avatar }), [channel.name, channel.avatar]);

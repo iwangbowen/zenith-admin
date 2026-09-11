@@ -1,7 +1,7 @@
 /**
  * 流程仿真服务：复用真实 DAG 引擎做 dry-run，不落库、不外呼、不创建真实实例。
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq, inArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { users, workflowDefinitions } from '../../db/schema';
@@ -15,6 +15,7 @@ import { resolveFormSnapshot } from './workflow-forms.service';
 import type { SimulateWorkflowInput, WorkflowConditionGroup, WorkflowEdge, WorkflowEdgeCondition, WorkflowFlowData, WorkflowHealthCheckInput, WorkflowDefinitionHealthReport, WorkflowNodeConfig, WorkflowSimulationEdgeResult, WorkflowSimulationHealthIssue, WorkflowSimulationBlockingPoint, WorkflowSimulationNodeState, WorkflowSimulationResult, WorkflowSimulationTimelineItem, WorkflowStarterContext } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
 import { resolveUserNames } from '../../lib/user-nicknames';
+import { buildWhere } from '../../lib/where-helpers';
 
 type SimulatedRuntimeStatus = 'pending' | 'waiting' | 'approved' | 'rejected' | 'skipped';
 type SimulationDecision = NonNullable<SimulateWorkflowInput['decisions']>[number];
@@ -70,9 +71,8 @@ async function resolveFlowData(input: SimulateWorkflowInput): Promise<WorkflowFl
   }
   const user = currentUser();
   const tc = tenantCondition(workflowDefinitions, user);
-  const conds = [eq(workflowDefinitions.id, definitionId)];
-  if (tc) conds.push(tc);
-  const [def] = await db.select().from(workflowDefinitions).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, definitionId), tc];
+  const [def] = await db.select().from(workflowDefinitions).where(buildWhere(...conds)).limit(1);
   requireRow(def, '流程定义不存在');
   const flowData = def.flowData as WorkflowFlowData | null;
   if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程未配置，无法仿真' });
@@ -735,9 +735,8 @@ async function resolveFormFieldMeta(input: WorkflowHealthCheckInput): Promise<{ 
   if (!input.definitionId) return { keys: null, types: null };
   const user = currentUser();
   const tc = tenantCondition(workflowDefinitions, user);
-  const conds = [eq(workflowDefinitions.id, input.definitionId)];
-  if (tc) conds.push(tc);
-  const [def] = await db.select({ formId: workflowDefinitions.formId }).from(workflowDefinitions).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, input.definitionId), tc];
+  const [def] = await db.select({ formId: workflowDefinitions.formId }).from(workflowDefinitions).where(buildWhere(...conds)).limit(1);
   if (!def?.formId) return { keys: null, types: null };
   const snap = await resolveFormSnapshot(def.formId);
   if (!snap || snap.fields.length === 0) return { keys: null, types: null };

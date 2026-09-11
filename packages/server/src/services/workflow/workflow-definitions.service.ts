@@ -72,7 +72,7 @@ export function mapDefinitionVersion(
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
-import { eq, and, desc, inArray, ne } from 'drizzle-orm';
+import { eq, and, desc, inArray, ne, type SQL } from 'drizzle-orm';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { pageOffset } from '../../lib/pagination';
@@ -137,8 +137,7 @@ export async function listDefinitions(query: { page?: number; pageSize?: number;
   const user = currentUser();
   const { page = 1, pageSize = 20, keyword, status, categoryId } = query;
   const tc = tenantCondition(workflowDefinitions, user);
-  const conditions = [];
-  if (tc) conditions.push(tc);
+  const conditions: (SQL | undefined)[] = [tc];
   conditions.push(keywordCondition(keyword, [workflowDefinitions.name]));
   if (status) conditions.push(eq(workflowDefinitions.status, status as WorkflowDefinitionStatus));
   if (categoryId) conditions.push(eq(workflowDefinitions.categoryId, categoryId));
@@ -165,11 +164,10 @@ export async function listDefinitions(query: { page?: number; pageSize?: number;
 export async function listPublishedDefinitions() {
   const user = currentUser();
   const tc = tenantCondition(workflowDefinitions, user);
-  const conditions = [eq(workflowDefinitions.status, 'published'), ne(workflowDefinitions.formType, 'external')];
-  if (tc) conditions.push(tc);
+  const conditions: (SQL | undefined)[] = [eq(workflowDefinitions.status, 'published'), ne(workflowDefinitions.formType, 'external'), tc];
   const [rows, me, roleRows] = await Promise.all([
     db.query.workflowDefinitions.findMany({
-      where: and(...conditions),
+      where: buildWhere(...conditions),
       with: { form: { columns: { name: true, schema: true } } },
       orderBy: desc(workflowDefinitions.updatedAt),
     }),
@@ -189,9 +187,8 @@ export async function listPublishedDefinitions() {
 function findDefinition(id: number) {
   const user = currentUser();
   const tc = tenantCondition(workflowDefinitions, user);
-  const conds = [eq(workflowDefinitions.id, id)];
-  if (tc) conds.push(tc);
-  return and(...conds);
+  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, id), tc];
+  return buildWhere(...conds);
 }
 
 export async function getDefinition(id: number) {
@@ -514,9 +511,8 @@ export async function importDefinition(data: {
   let categoryId: number | null = null;
   if (data.categoryName) {
     const tc = tenantCondition(workflowCategories, user);
-    const conds = [eq(workflowCategories.name, data.categoryName)];
-    if (tc) conds.push(tc);
-    const [cat] = await db.select({ id: workflowCategories.id }).from(workflowCategories).where(and(...conds)).limit(1);
+    const conds: (SQL | undefined)[] = [eq(workflowCategories.name, data.categoryName), tc];
+    const [cat] = await db.select({ id: workflowCategories.id }).from(workflowCategories).where(buildWhere(...conds)).limit(1);
     categoryId = cat?.id ?? null;
   }
   const newId = await db.transaction(async (tx) => {
@@ -616,19 +612,17 @@ export async function deleteDefinition(id: number) {
 export async function batchDisableDefinitions(ids: number[]) {
   if (!ids.length) return { updated: 0, skipped: 0 };
   const tc = tenantCondition(workflowDefinitions, currentUser());
-  const conds = [inArray(workflowDefinitions.id, ids), eq(workflowDefinitions.status, 'published')];
-  if (tc) conds.push(tc);
-  const rows = await db.update(workflowDefinitions).set({ status: 'disabled' }).where(and(...conds)).returning({ id: workflowDefinitions.id });
+  const conds: (SQL | undefined)[] = [inArray(workflowDefinitions.id, ids), eq(workflowDefinitions.status, 'published'), tc];
+  const rows = await db.update(workflowDefinitions).set({ status: 'disabled' }).where(buildWhere(...conds)).returning({ id: workflowDefinitions.id });
   return { updated: rows.length, skipped: ids.length - rows.length };
 }
 
 export async function batchEnableDefinitions(ids: number[]) {
   if (!ids.length) return { updated: 0, skipped: 0 };
   const tc = tenantCondition(workflowDefinitions, currentUser());
-  const conds = [inArray(workflowDefinitions.id, ids), eq(workflowDefinitions.status, 'disabled')];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [inArray(workflowDefinitions.id, ids), eq(workflowDefinitions.status, 'disabled'), tc];
   // 与单个启用同口径：逐个过发布门禁，体检不过的跳过而非带病上线
-  const candidates = await db.select().from(workflowDefinitions).where(and(...conds));
+  const candidates = await db.select().from(workflowDefinitions).where(buildWhere(...conds));
   const passedIds: number[] = [];
   for (const def of candidates) {
     try {
@@ -646,12 +640,11 @@ export async function batchEnableDefinitions(ids: number[]) {
 export async function batchDeleteDefinitions(ids: number[]) {
   if (!ids.length) return { deleted: 0, skipped: 0 };
   const tc = tenantCondition(workflowDefinitions, currentUser());
-  const scopeConds = [inArray(workflowDefinitions.id, ids), ne(workflowDefinitions.status, 'published')];
-  if (tc) scopeConds.push(tc);
+  const scopeConds: (SQL | undefined)[] = [inArray(workflowDefinitions.id, ids), ne(workflowDefinitions.status, 'published'), tc];
   const candidates = await db
     .select({ id: workflowDefinitions.id })
     .from(workflowDefinitions)
-    .where(and(...scopeConds));
+    .where(buildWhere(...scopeConds));
   const candidateIds = candidates.map((row) => row.id);
   if (!candidateIds.length) return { deleted: 0, skipped: ids.length };
   const used = await db
@@ -683,10 +676,9 @@ export async function getWorkflowDefinitionsBeforeAudit(ids: number[]) {
   if (!ids.length) return [];
   const user = currentUser();
   const tc = tenantCondition(workflowDefinitions, user);
-  const conds = [inArray(workflowDefinitions.id, ids)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [inArray(workflowDefinitions.id, ids), tc];
   const rows = await db.query.workflowDefinitions.findMany({
-    where: and(...conds),
+    where: buildWhere(...conds),
     with: {
       createdByUser: { columns: { nickname: true } },
       category: { columns: { name: true, color: true, icon: true } },

@@ -2,7 +2,7 @@
  * 评分卡服务（规则中心）：CRUD、发布快照与求值。
  * 发布采用单快照（publishedSnapshot），运行时按快照执行；编辑态求值仅用于测试。
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type {
   RuleScorecardEvaluateResult,
@@ -66,10 +66,9 @@ export function mapRuleScorecard(row: Row) {
 
 export async function ensureRuleScorecard(id: number): Promise<Row> {
   const tc = tenantCondition(ruleScorecards, currentUser());
-  const conds = [eq(ruleScorecards.id, id)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(ruleScorecards.id, id), tc];
   return requireFirstRow(
-    db.select().from(ruleScorecards).where(and(...conds)).limit(1),
+    db.select().from(ruleScorecards).where(buildWhere(...conds)).limit(1),
     '评分卡不存在',
   );
 }
@@ -85,8 +84,7 @@ export async function listRuleScorecards(q: ListRuleScorecardsQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 20;
   const tc = tenantCondition(ruleScorecards, currentUser());
-  const conds = [];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [tc];
   conds.push(keywordCondition(q.keyword, [ruleScorecards.name]));
   if (q.status) conds.push(eq(ruleScorecards.status, q.status));
   const where = buildWhere(...conds);
@@ -259,9 +257,8 @@ export async function testEvaluateRuleScorecard(id: number, input: Record<string
 /** 运行时求值：按 key 取发布快照执行（disabled/未发布视为不可用）。留痕 source=manual */
 export async function evaluateRuleScorecardByKey(key: string, input: Record<string, unknown>): Promise<RuleScorecardEvaluateResult> {
   const tc = tenantCondition(ruleScorecards, currentUser());
-  const conds = [eq(ruleScorecards.key, key), eq(ruleScorecards.status, 'published')];
-  if (tc) conds.push(tc);
-  const [row] = await db.select().from(ruleScorecards).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(ruleScorecards.key, key), eq(ruleScorecards.status, 'published'), tc];
+  const [row] = await db.select().from(ruleScorecards).where(buildWhere(...conds)).limit(1);
   requireRow(row, `评分卡不可用：${key}`);
   if (row.publishedSnapshot == null) throw new HTTPException(404, { message: `评分卡不可用：${key}` });
   const res = evaluateScorecard(row.publishedSnapshot as ScorecardLike, snapshotRuleScope(input));

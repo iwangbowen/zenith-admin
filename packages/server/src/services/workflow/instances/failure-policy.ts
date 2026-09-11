@@ -1,7 +1,7 @@
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 // ─── 节点失败策略、Saga 回滚与补偿恢复（拆分自 workflow-instances.service.ts）───
 import { randomUUID } from 'node:crypto';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, type SQL } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowJobs, workflowInstances, workflowTasks, workflowTokens, workflowCompensations } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
@@ -19,6 +19,7 @@ import { advanceAndMaterialize, killInstanceTokens, loadLiveTokens } from './mat
 import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents } from './shared';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { requireRow } from '../../../lib/db-assert';
+import { buildWhere } from '../../../lib/where-helpers';
 
 /**
  * Saga 反序回滚：对该实例此前所有已成功副作用节点（trigger/external/webhook），
@@ -262,9 +263,8 @@ async function applyNodeFailurePolicy(input: {
  */
 export async function resumeInstanceForCompensation(id: number): Promise<{ resumed: boolean }> {
   const tc = tenantCondition(workflowCompensations, currentUser());
-  const conds = [eq(workflowCompensations.id, id)];
-  if (tc) conds.push(tc);
-  const [ticket] = await db.select().from(workflowCompensations).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowCompensations.id, id), tc];
+  const [ticket] = await db.select().from(workflowCompensations).where(buildWhere(...conds)).limit(1);
   requireRow(ticket, '补偿工单不存在');
   if (ticket.status !== 'pending') throw new HTTPException(400, { message: '工单已处理' });
   const failedNodeKey = ticket.failedNodeKey ?? ticket.nodeKey;

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, gte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleHitPolicy, RuleEvaluateResult, RuleTestRunResult, RuleCaseResult, RuleDecisionTableSettings, RuleUsageItem, RuleTableStats, RuleShadowRunResult, RuleShadowDiffSample, RuleSimulateResult, RuleSimulateRowResult } from '@zenith/shared/rules';
 import { db } from '../../db';
@@ -84,10 +84,9 @@ export function mapDecisionTableVersion(row: VersionRow) {
 
 export async function ensureDecisionTable(id: number): Promise<TableRow> {
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds = [eq(ruleDecisionTables.id, id)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(ruleDecisionTables.id, id), tc];
   return requireFirstRow(
-    db.select().from(ruleDecisionTables).where(and(...conds)).limit(1),
+    db.select().from(ruleDecisionTables).where(buildWhere(...conds)).limit(1),
     '决策表不存在',
   );
 }
@@ -103,8 +102,7 @@ export async function listDecisionTables(q: ListDecisionTablesQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 20;
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds = [];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [tc];
   conds.push(keywordCondition(q.keyword, [ruleDecisionTables.name]));
   if (q.status) conds.push(eq(ruleDecisionTables.status, q.status));
   const where = buildWhere(...conds);
@@ -180,8 +178,7 @@ export async function updateDecisionTable(id: number, input: UpdateDecisionTable
     throw new HTTPException(409, { message: '决策表已被他人修改，请刷新后重试' });
   }
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds = [eq(ruleDecisionTables.id, id)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(ruleDecisionTables.id, id), tc];
   const patch: Partial<typeof ruleDecisionTables.$inferInsert> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.description !== undefined) patch.description = input.description;
@@ -200,7 +197,7 @@ export async function updateDecisionTable(id: number, input: UpdateDecisionTable
     patch.reviewRequestedAt = null;
     patch.reviewComment = '内容在审批期间被修改，发布申请已自动作废，请重新提交';
   }
-  const [row] = await db.update(ruleDecisionTables).set(patch).where(and(...conds)).returning();
+  const [row] = await db.update(ruleDecisionTables).set(patch).where(buildWhere(...conds)).returning();
   const updated = requireRow(row, '决策表不存在');
   invalidateRuleRuntimeCache();
   return mapDecisionTable(updated, await latestVersionOf(id));
@@ -210,20 +207,18 @@ export async function deleteDecisionTable(id: number): Promise<void> {
   const row = await ensureDecisionTable(id);
   await ensureNotReferenced(row);
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds = [eq(ruleDecisionTables.id, id)];
-  if (tc) conds.push(tc);
-  await db.delete(ruleDecisionTables).where(and(...conds));
+  const conds: (SQL | undefined)[] = [eq(ruleDecisionTables.id, id), tc];
+  await db.delete(ruleDecisionTables).where(buildWhere(...conds));
   invalidateRuleRuntimeCache();
 }
 
 export async function deleteDecisionTables(ids: number[]): Promise<void> {
   if (!ids.length) return;
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds = [inArray(ruleDecisionTables.id, ids)];
-  if (tc) conds.push(tc);
-  const rows = await db.select().from(ruleDecisionTables).where(and(...conds));
+  const conds: (SQL | undefined)[] = [inArray(ruleDecisionTables.id, ids), tc];
+  const rows = await db.select().from(ruleDecisionTables).where(buildWhere(...conds));
   for (const row of rows) await ensureNotReferenced(row);
-  await db.delete(ruleDecisionTables).where(and(...conds));
+  await db.delete(ruleDecisionTables).where(buildWhere(...conds));
   invalidateRuleRuntimeCache();
 }
 
@@ -246,7 +241,7 @@ export async function findWorkflowGatewayUsages(key: string, kind: 'table' | 'sc
   if (assetTenantId != null) conds.push(eq(workflowDefinitions.tenantId, assetTenantId));
   const defs = await db.select({ id: workflowDefinitions.id, name: workflowDefinitions.name, status: workflowDefinitions.status, flowData: workflowDefinitions.flowData })
     .from(workflowDefinitions)
-    .where(and(...conds));
+    .where(buildWhere(...conds));
   // containment 只做粗筛；kind 与 key 的精确匹配在 JS 侧完成（防止同 key 不同类型资产误报）
   type GatewayNode = { data?: { type?: string; decisionRuleKey?: string | null; decisionRefKind?: string | null } };
   return defs
@@ -592,10 +587,9 @@ async function loadRuntimeSnapshot(key: string, opts?: { tenantId?: number | nul
 /** 按 key 求值（对外通用）：已发布用最新发布快照；草稿直接跑编辑态（便于联调）；禁用报错。留痕 source=manual */
 export async function evaluateDecisionTableByKey(key: string, input: Record<string, unknown>): Promise<RuleEvaluateResult> {
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds = [eq(ruleDecisionTables.key, key)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(ruleDecisionTables.key, key), tc];
   const row = await requireFirstRow(
-    db.select().from(ruleDecisionTables).where(and(...conds)).limit(1),
+    db.select().from(ruleDecisionTables).where(buildWhere(...conds)).limit(1),
     '决策表不存在',
   );
   if (row.status === 'disabled') throw new HTTPException(400, { message: '决策表已禁用' });

@@ -15,6 +15,7 @@ import { currentUser } from '../../lib/context';
 import { config } from '../../config';
 import { getSettings } from '../../lib/settings';
 import { assertUploadSizeAllowed, assertUploadTypeAllowed, mapManagedFile, type ManagedFileUploadOptions } from './files.service';
+import { buildWhere } from '../../lib/where-helpers';
 
 /** 完成分片上传时归属模块可指定的属性 */
 export interface ChunkUploadCompleteOptions extends Pick<ManagedFileUploadOptions, 'visibility' | 'skipTypeCheck'> {
@@ -44,7 +45,7 @@ function chunkPath(uploadId: string, index: number) {
 async function ensureSession(uploadId: string) {
   const user = currentUser();
   const tc = tenantCondition(uploadSessions, user);
-  const where = tc ? and(eq(uploadSessions.uploadId, uploadId), tc) : eq(uploadSessions.uploadId, uploadId);
+  const where = buildWhere(eq(uploadSessions.uploadId, uploadId), tc);
   const [session] = await db.select().from(uploadSessions).where(where).limit(1);
   return requireRow(session, '上传会话不存在或已过期');
 }

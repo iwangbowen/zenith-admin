@@ -51,12 +51,8 @@ export async function loginLogStats(daysRaw?: number) {
   const user = currentUser();
   const { startDate, startDateLabel, prevStartDate } = resolveStatsWindow(daysRaw);
   const tc = tenantCondition(loginLogs, user);
-  const baseWhere = tc
-    ? and(gte(loginLogs.createdAt, startDate), eq(loginLogs.eventType, 'login'), tc)
-    : and(gte(loginLogs.createdAt, startDate), eq(loginLogs.eventType, 'login'));
-  const prevWhere = tc
-    ? and(gte(loginLogs.createdAt, prevStartDate), lt(loginLogs.createdAt, startDate), eq(loginLogs.eventType, 'login'), tc)
-    : and(gte(loginLogs.createdAt, prevStartDate), lt(loginLogs.createdAt, startDate), eq(loginLogs.eventType, 'login'));
+  const baseWhere = buildWhere(gte(loginLogs.createdAt, startDate), eq(loginLogs.eventType, 'login'), tc);
+  const prevWhere = buildWhere(gte(loginLogs.createdAt, prevStartDate), lt(loginLogs.createdAt, startDate), eq(loginLogs.eventType, 'login'), tc);
 
   const summarySelect = {
     total: count(),

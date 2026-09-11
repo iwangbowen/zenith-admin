@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, notInArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull, notInArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import { db } from '../../db';
@@ -6,6 +6,7 @@ import type { DbExecutor } from '../../db/types';
 import { roles, userRoles } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { exactTenantCondition, isPlatformAdmin, tenantCondition } from '../../lib/tenant';
+import { buildWhere } from '../../lib/where-helpers';
 
 /**
  * 平台保留角色编码：超管判定按 code + 平台归属执行。
@@ -45,13 +46,13 @@ export async function assertDefaultRolesGrantable(roleIds: number[], targetTenan
   const uniq = Array.from(new Set(roleIds));
   if (uniq.length === 0) return;
   const user = currentUser();
-  const conditions = [inArray(roles.id, uniq)];
+  const conditions: (SQL | undefined)[] = [inArray(roles.id, uniq)];
   if (!isPlatformAdmin(user)) {
     const tc = tenantCondition(roles, user);
-    if (tc) conditions.push(tc);
+    conditions.push(tc);
   }
   const rows = await db.select({ id: roles.id, code: roles.code, tenantId: roles.tenantId })
-    .from(roles).where(and(...conditions));
+    .from(roles).where(buildWhere(...conditions));
   if (rows.length !== uniq.length || rows.some((r) => (r.tenantId ?? null) !== targetTenantId)) {
     throw new HTTPException(400, { message: '默认角色不存在或不属于目标租户' });
   }

@@ -16,7 +16,7 @@ import { currentUser } from '../../lib/context';
 import { formatDate, formatDateTime, parseDateRangeStart } from '../../lib/datetime';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { isSuperAdmin, getUserPermissions } from '../../lib/permissions';
-import { keywordCondition } from '../../lib/where-helpers';
+import { keywordCondition, buildWhere } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { startWorkflowForBiz, resolveBizDefinitionId } from '../../lib/workflow-biz-bridge';
 import { buildListResult } from '../../lib/list-query';
@@ -66,10 +66,10 @@ async function buildApplicantNameMap(ids: Array<number | null>): Promise<Map<num
 /** 仅本人可操作自己的请假单 */
 function findOwnLeave(id: number) {
   const user = currentUser();
-  const conds = [eq(bizLeaves.id, id), eq(bizLeaves.createdBy, user.userId)];
+  const conds: (SQL | undefined)[] = [eq(bizLeaves.id, id), eq(bizLeaves.createdBy, user.userId)];
   const tc = tenantCondition(bizLeaves, user);
-  if (tc) conds.push(tc);
-  return and(...conds);
+  conds.push(tc);
+  return buildWhere(...conds);
 }
 
 async function ensureLeaveDefinitionId(): Promise<number> {
@@ -106,10 +106,10 @@ export async function listBizLeaves(query: { page?: number; pageSize?: number; k
   const pageSize = query.pageSize ?? 10;
   const conds: (SQL | undefined)[] = [eq(bizLeaves.createdBy, user.userId)];
   const tc = tenantCondition(bizLeaves, user);
-  if (tc) conds.push(tc);
+  conds.push(tc);
   if (query.status) conds.push(eq(bizLeaves.status, query.status as BizLeaveStatus));
   conds.push(keywordCondition(query.keyword, [bizLeaves.reason]));
-  const where = and(...conds);
+  const where = buildWhere(...conds);
   return buildListResult({
     page,
     pageSize,

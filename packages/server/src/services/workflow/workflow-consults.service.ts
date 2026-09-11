@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowTaskConsults, workflowTasks, workflowInstances } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -12,6 +12,7 @@ import logger from '../../lib/logger';
 import type { WorkflowTaskConsult, CreateWorkflowConsultInput, ReplyWorkflowConsultInput } from '@zenith/shared/workflow';
 import { notify } from '../messaging/notification-outbox.service';
 import { loadWorkflowUserDisplays } from './workflow-user-helpers';
+import { buildWhere } from '../../lib/where-helpers';
 
 type ConsultRow = typeof workflowTaskConsults.$inferSelect;
 
@@ -160,10 +161,10 @@ export async function listMyConsults(query: { page?: number; pageSize?: number; 
   const page = query.page ?? 1;
   const pageSize = query.pageSize ?? 20;
   const tc = tenantCondition(workflowTaskConsults, user);
-  const conds = [eq(workflowTaskConsults.consulteeId, user.userId)];
+  const conds: (SQL | undefined)[] = [eq(workflowTaskConsults.consulteeId, user.userId)];
   if (query.status) conds.push(eq(workflowTaskConsults.status, query.status as ConsultRow['status']));
-  if (tc) conds.push(tc);
-  const where = and(...conds);
+  conds.push(tc);
+  const where = buildWhere(...conds);
   return buildListResult({
     page,
     pageSize,

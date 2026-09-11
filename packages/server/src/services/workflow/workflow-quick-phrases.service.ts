@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, or } from 'drizzle-orm';
+import { asc, desc, eq, isNull, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowQuickPhrases } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -7,6 +7,7 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { formatDateTime } from '../../lib/datetime';
 import type { WorkflowQuickPhrase, CreateWorkflowQuickPhraseInput, UpdateWorkflowQuickPhraseInput } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
+import { buildWhere } from '../../lib/where-helpers';
 
 type PhraseRow = typeof workflowQuickPhrases.$inferSelect;
 
@@ -26,7 +27,7 @@ export async function listMyQuickPhrases(): Promise<WorkflowQuickPhrase[]> {
   const user = currentUser();
   const tc = tenantCondition(workflowQuickPhrases, user);
   const scope = or(isNull(workflowQuickPhrases.userId), eq(workflowQuickPhrases.userId, user.userId));
-  const where = tc ? and(scope, tc) : scope;
+  const where = buildWhere(scope, tc);
   const rows = await db.select().from(workflowQuickPhrases).where(where)
     .orderBy(asc(workflowQuickPhrases.sort), desc(workflowQuickPhrases.id));
   return rows.map(mapQuickPhrase);

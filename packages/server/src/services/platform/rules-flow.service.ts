@@ -5,7 +5,7 @@
  * 发布时把编辑态 steps 固化到 publishedSteps（单快照），运行时按 publishedSteps 执行，
  * 引用的决策表始终走其**发布版本快照**（rules.service.resolveRuntimeDecisionTable）。
  */
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { RuleFlowStep, RuleFlowEvaluateResult } from '@zenith/shared/rules';
 import { db } from '../../db';
@@ -51,10 +51,9 @@ export function mapDecisionFlow(row: FlowRow) {
 
 export async function ensureDecisionFlow(id: number): Promise<FlowRow> {
   const tc = tenantCondition(ruleDecisionFlows, currentUser());
-  const conds = [eq(ruleDecisionFlows.id, id)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(ruleDecisionFlows.id, id), tc];
   return requireFirstRow(
-    db.select().from(ruleDecisionFlows).where(and(...conds)).limit(1),
+    db.select().from(ruleDecisionFlows).where(buildWhere(...conds)).limit(1),
     '决策流不存在',
   );
 }
@@ -70,8 +69,7 @@ export async function listDecisionFlows(q: ListDecisionFlowsQuery) {
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 20;
   const tc = tenantCondition(ruleDecisionFlows, currentUser());
-  const conds = [];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [tc];
   conds.push(keywordCondition(q.keyword, [ruleDecisionFlows.name]));
   if (q.status) conds.push(eq(ruleDecisionFlows.status, q.status));
   const where = buildWhere(...conds);
@@ -151,11 +149,10 @@ export async function deleteDecisionFlow(id: number): Promise<void> {
 export async function deleteDecisionFlows(ids: number[]): Promise<void> {
   if (!ids.length) return;
   const tc = tenantCondition(ruleDecisionFlows, currentUser());
-  const conds = [inArray(ruleDecisionFlows.id, ids)];
-  if (tc) conds.push(tc);
-  const rows = await db.select().from(ruleDecisionFlows).where(and(...conds));
+  const conds: (SQL | undefined)[] = [inArray(ruleDecisionFlows.id, ids), tc];
+  const rows = await db.select().from(ruleDecisionFlows).where(buildWhere(...conds));
   for (const row of rows) await ensureFlowNotReferenced(row);
-  await db.delete(ruleDecisionFlows).where(and(...conds));
+  await db.delete(ruleDecisionFlows).where(buildWhere(...conds));
   invalidateRuleRuntimeCache();
 }
 
@@ -268,10 +265,9 @@ export async function testEvaluateDecisionFlow(id: number, input: Record<string,
 /** 按 key 求值（对外通用）：published 用 publishedSteps；draft 跑编辑态（联调）；禁用报错。留痕 source=manual */
 export async function evaluateDecisionFlowByKey(key: string, input: Record<string, unknown>): Promise<RuleFlowEvaluateResult> {
   const tc = tenantCondition(ruleDecisionFlows, currentUser());
-  const conds = [eq(ruleDecisionFlows.key, key)];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [eq(ruleDecisionFlows.key, key), tc];
   const row = await requireFirstRow(
-    db.select().from(ruleDecisionFlows).where(and(...conds)).limit(1),
+    db.select().from(ruleDecisionFlows).where(buildWhere(...conds)).limit(1),
     '决策流不存在',
   );
   if (row.status === 'disabled') throw new HTTPException(400, { message: '决策流已禁用' });

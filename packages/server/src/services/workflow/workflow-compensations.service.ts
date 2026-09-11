@@ -1,5 +1,5 @@
 import { workflowTransaction } from '../../lib/workflow-jobs/lease';
-import { and, eq, asc, desc } from 'drizzle-orm';
+import { and, eq, asc, desc, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { WorkflowCompensationActionStatus, WorkflowCompensationAction } from '@zenith/shared/workflow';
 import { db } from '../../db';
@@ -81,8 +81,7 @@ export async function markCompensationActionResult(compensationId: number, statu
 export async function listCompensations(q: { status?: string; instanceId?: number; page?: number; pageSize?: number }) {
   const page = q.page ?? 1, pageSize = q.pageSize ?? 20;
   const tc = tenantCondition(workflowCompensations, currentUser());
-  const conds = [];
-  if (tc) conds.push(tc);
+  const conds: (SQL | undefined)[] = [tc];
   if (q.status) conds.push(eq(workflowCompensations.status, q.status));
   if (q.instanceId) conds.push(eq(workflowCompensations.instanceId, q.instanceId));
   const where = buildWhere(...conds);
@@ -98,9 +97,8 @@ export async function listCompensations(q: { status?: string; instanceId?: numbe
 /** 人工修复：resolve=补偿完成放行（保留实例），terminate=终止实例并取消待办 */
 export async function resolveCompensation(id: number, action: 'resolve' | 'terminate', resolution?: string) {
   const tc = tenantCondition(workflowCompensations, currentUser());
-  const conds = [eq(workflowCompensations.id, id)];
-  if (tc) conds.push(tc);
-  const [row] = await db.select().from(workflowCompensations).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowCompensations.id, id), tc];
+  const [row] = await db.select().from(workflowCompensations).where(buildWhere(...conds)).limit(1);
   requireRow(row, '补偿工单不存在');
   if (row.status !== 'pending') throw new HTTPException(400, { message: '工单已处理' });
   return workflowTransaction(async (tx) => {
@@ -133,9 +131,8 @@ const mapLog = (r: { id: number; compensationId: number; action: string; note: s
 
 async function findCompensationOr404(id: number): Promise<Row> {
   const tc = tenantCondition(workflowCompensations, currentUser());
-  const conds = [eq(workflowCompensations.id, id)];
-  if (tc) conds.push(tc);
-  const [row] = await db.select().from(workflowCompensations).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowCompensations.id, id), tc];
+  const [row] = await db.select().from(workflowCompensations).where(buildWhere(...conds)).limit(1);
   return requireRow(row, '补偿工单不存在');
 }
 

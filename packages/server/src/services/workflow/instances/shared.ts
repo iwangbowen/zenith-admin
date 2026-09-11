@@ -2,12 +2,31 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { WorkflowTask as WorkflowTaskDto, WorkflowCustomFormConfig, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormType, WorkflowSerialNoConfig } from '@zenith/shared/workflow';
-import { currentUserOrNull, currentUserDetail } from '../../../lib/context';
+import { currentUser, currentUserOrNull, currentUserDetail } from '../../../lib/context';
+import { db } from '../../../db';
 import type { DbExecutor } from '../../../db/types';
 import { workflowInstances, workflowTasks, type WorkflowDefinitionRow } from '../../../db/schema';
+import { requireRow } from '../../../lib/db-assert';
+import { tenantCondition } from '../../../lib/tenant';
+import { buildWhere } from '../../../lib/where-helpers';
 import { workflowEventBus } from '../../../lib/workflow-event-bus';
 import { type SerialNoGenContext } from '../workflow-serial.service';
 import { mapInstance, mapTask } from './mapping';
+
+type WorkflowInstanceRow = typeof workflowInstances.$inferSelect;
+
+/** 按 id 取当前用户租户可见范围内的实例（条件：`id` + `tenantCondition`）；不存在或不可见返回 undefined */
+export async function findVisibleInstance(id: number, executor: DbExecutor = db): Promise<WorkflowInstanceRow | undefined> {
+  const [inst] = await executor.select().from(workflowInstances)
+    .where(buildWhere(eq(workflowInstances.id, id), tenantCondition(workflowInstances, currentUser())))
+    .limit(1);
+  return inst;
+}
+
+/** 同 `findVisibleInstance`，不存在则抛 404；文案按操作语义覆盖（如「任务不存在或无权操作」） */
+export async function requireVisibleInstance(id: number, message = '流程实例不存在', executor: DbExecutor = db): Promise<WorkflowInstanceRow> {
+  return requireRow(await findVisibleInstance(id, executor), message);
+}
 
 /**
  * 事务内对实例加行级锁并在锁内重校验状态：把同一实例上的并发审批 / 推进 / 管理操作串行化，

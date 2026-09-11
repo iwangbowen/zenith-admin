@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { asc, desc, eq, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowTemplates, workflowDefinitions, workflowForms } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -10,6 +10,7 @@ import type { WorkflowTemplate, WorkflowFlowData, WorkflowFormSchema, CreateWork
 import { createDefinition } from './workflow-definitions.service';
 import { createWorkflowForm } from './workflow-forms.service';
 import { requireRow } from '../../lib/db-assert';
+import { buildWhere } from '../../lib/where-helpers';
 
 type TemplateRow = typeof workflowTemplates.$inferSelect;
 
@@ -33,9 +34,8 @@ export function mapTemplate(row: TemplateRow): WorkflowTemplate {
 
 async function ensureTemplate(id: number): Promise<TemplateRow> {
   const tc = tenantCondition(workflowTemplates, currentUser());
-  const conds = [eq(workflowTemplates.id, id)];
-  if (tc) conds.push(tc);
-  const [row] = await db.select().from(workflowTemplates).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowTemplates.id, id), tc];
+  const [row] = await db.select().from(workflowTemplates).where(buildWhere(...conds)).limit(1);
   return requireRow(row, '模板不存在');
 }
 
@@ -124,9 +124,8 @@ export async function cloneTemplateToDefinition(templateId: number, input: { nam
 export async function saveAsTemplate(input: SaveAsTemplateInput): Promise<WorkflowTemplate> {
   const user = currentUser();
   const tc = tenantCondition(workflowDefinitions, user);
-  const conds = [eq(workflowDefinitions.id, input.definitionId)];
-  if (tc) conds.push(tc);
-  const [def] = await db.select().from(workflowDefinitions).where(and(...conds)).limit(1);
+  const conds: (SQL | undefined)[] = [eq(workflowDefinitions.id, input.definitionId), tc];
+  const [def] = await db.select().from(workflowDefinitions).where(buildWhere(...conds)).limit(1);
   requireRow(def, '流程定义不存在');
   if (def.formType !== 'designer') {
     throw new HTTPException(400, { message: '模板库暂仅支持表单库设计器流程；自定义业务表单或业务系统主导流程请使用复制流程或导出导入复用' });
