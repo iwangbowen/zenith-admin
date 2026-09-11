@@ -9,7 +9,6 @@ import type { CmsWidget, CmsWidgetRef, CmsWidgetStatus, CmsWidgetType } from '@z
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
@@ -24,9 +23,9 @@ import {
 } from '@/hooks/queries/cms-widgets';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { CmsSiteSelect } from './CmsSiteSelect';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 interface SearchState {
   keyword: string;
@@ -52,7 +51,7 @@ export default function WidgetsPage() {
   const clearSelection = () => { setSelectedIds([]); setSelectedRecords({}); };
   const {
     page, pageSize, resetPage, buildPagination,
-    draftParams, setField, bindKeyword, submittedParams: submitted,
+    bind, bindKeyword, submittedParams: submitted,
     handleSearch, handleReset,
   } = useListSearch<SearchState>({ defaults: DEFAULT_SEARCH, listKey: cmsWidgetKeys.lists, onSearch: clearSelection, onReset: clearSelection });
   const [refsWidget, setRefsWidget] = useState<CmsWidget | null>(null);
@@ -223,74 +222,44 @@ export default function WidgetsPage() {
     }),
   ];
 
-  const keywordInput = (
-    <KeywordInput placeholder="部件名称 / 编码" {...bindKeyword('keyword')} />
-  );
-  // 切换筛选即清空已选行，避免跨条件误批量操作
-  const statusFilter = (
-    <StatusSelect
-      items={CMS_WIDGET_STATUS_OPTIONS}
-      value={draftParams.status}
-      onChange={(value) => { setField('status')(value); clearSelection(); }}
-    />
-  );
-  const typeFilter = (
-    <FilterSelect
-      placeholder="全部类型"
-      items={CMS_WIDGET_TYPE_OPTIONS}
-      value={draftParams.type}
-      onChange={(value) => { setField('type')(value); clearSelection(); }}
-      width={140}
-    />
+  // 站点切换与查询 / 重置都会清空已选行（后两者经 useListSearch 的 onSearch / onReset），避免跨条件误批量操作
+  const batchActions = (flat: boolean) => (
+    <>
+      {selectedIds.length > 0 && hasPermission('cms:widget:publish') ? (
+        <Button theme={flat ? 'borderless' : undefined} icon={flat ? undefined : <Send size={14} />} onClick={() => submitBatch('publish')}>
+          {flat ? '批量发布' : `批量发布（${selectedIds.length}）`}
+        </Button>
+      ) : null}
+      {selectedIds.length > 0 && hasPermission('cms:widget:offline') ? (
+        <Button theme={flat ? 'borderless' : undefined} icon={flat ? undefined : <CircleOff size={14} />} onClick={() => submitBatch('offline')}>批量下线</Button>
+      ) : null}
+      {selectedIds.length > 0 && hasPermission('cms:widget:delete') ? (
+        <Button type="danger" theme={flat ? 'borderless' : 'light'} icon={flat ? undefined : <Trash2 size={14} />} onClick={() => submitBatch('delete')}>批量删除</Button>
+      ) : null}
+    </>
   );
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={(
           <>
-            <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); resetPage(); setSelectedIds([]); setSelectedRecords({}); }} />
-            {keywordInput}
-            {statusFilter}
-            {typeFilter}
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
+            <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); resetPage(); clearSelection(); }} />
+            <KeywordInput placeholder="部件名称 / 编码" {...bindKeyword('keyword')} />
           </>
         )}
-        actions={(
+        filters={(
           <>
-            {selectedIds.length > 0 && hasPermission('cms:widget:publish') ? (
-              <Button icon={<Send size={14} />} onClick={() => submitBatch('publish')}>批量发布（{selectedIds.length}）</Button>
-            ) : null}
-            {selectedIds.length > 0 && hasPermission('cms:widget:offline') ? (
-              <Button icon={<CircleOff size={14} />} onClick={() => submitBatch('offline')}>批量下线</Button>
-            ) : null}
-            {selectedIds.length > 0 && hasPermission('cms:widget:delete') ? (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={() => submitBatch('delete')}>批量删除</Button>
-            ) : null}
-            {hasPermission('cms:widget:create') ? (
-              <CreateButton onClick={() => navigate(`/cms/widgets/edit?siteId=${siteId}`)} disabled={!siteId} />
-            ) : null}
+            <StatusSelect items={CMS_WIDGET_STATUS_OPTIONS} {...bind('status')} />
+            <FilterSelect placeholder="全部类型" items={CMS_WIDGET_TYPE_OPTIONS} {...bind('type')} width={140} />
           </>
         )}
-        mobilePrimary={(
-          <>
-            <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); resetPage(); setSelectedIds([]); setSelectedRecords({}); }} width={150} />
-            {keywordInput}
-            <SearchButton onClick={handleSearch} />
-          </>
-        )}
-        mobileFilters={<>{statusFilter}{typeFilter}</>}
-        mobileActions={(
-          <>
-            {selectedIds.length > 0 && hasPermission('cms:widget:publish') ? <Button theme="borderless" onClick={() => submitBatch('publish')}>批量发布</Button> : null}
-            {selectedIds.length > 0 && hasPermission('cms:widget:offline') ? <Button theme="borderless" onClick={() => submitBatch('offline')}>批量下线</Button> : null}
-            {selectedIds.length > 0 && hasPermission('cms:widget:delete') ? <Button theme="borderless" type="danger" onClick={() => submitBatch('delete')}>批量删除</Button> : null}
-          </>
-        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('cms:widget:create') ? <CreateButton onClick={() => navigate(`/cms/widgets/edit?siteId=${siteId}`)} disabled={!siteId} /> : null}
+        actions={batchActions(false)}
+        mobileActions={batchActions(true)}
         filterTitle="页面部件筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable<CmsWidget>
@@ -298,7 +267,7 @@ export default function WidgetsPage() {
         {...listTableProps(listQuery, {
           rowKey: (record) => String(record?.id ?? ''),
           empty: siteId ? '暂无页面部件' : '请先选择站点',
-          pagination: (total) => buildPagination(total, () => { setSelectedIds([]); setSelectedRecords({}); }),
+          pagination: (total) => buildPagination(total, clearSelection),
           rowSelection: {
             selectedRowKeys: selectedIds.map(String),
             onChange: (keys) => {
