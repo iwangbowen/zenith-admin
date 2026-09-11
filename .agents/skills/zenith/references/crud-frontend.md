@@ -319,7 +319,11 @@ onSelect={(deptId) => applySearch({ ...draftParams, departmentId: deptId })}
   动态数据自行映射为 `{ value, label }`，需分组时传 `groups`
 - `DateRangeFilter` 把 Semi 宽松的 `onChange` 收窄为 `[Date, Date] | null`，
   页面不必再写 `Array.isArray(v) && v.length >= 2` 之类的判断；区间状态统一声明为 `[Date, Date] | null`（或 `?: [Date, Date]`），
-  提交时用 `formatDateTimeRangeForApi(range)` 得到 `{ startTime, endTime }`
+  提交时用 `utils/date` 的区间 helper（`...` 展开进参数对象）：
+  秒级 `formatDateTimeRangeForApi(range)` → `{ startTime, endTime }`；日期级（`type="dateRange"`）`formatDateRangeForApi(range)`
+  → `YYYY-MM-DD` 的 `{ startTime, endTime }`；契约端点键名不同（`startDate` / `endDate`、`dateStart` / `dateEnd`）时取元组形态
+  `const [startDate, endDate] = formatDateRangeValuesForApi(range)` / `formatDateTimeRangeValuesForApi(range)`。
+  日期级选择器**不要**套秒级 helper——终点会变成 `00:00:00`，服务端只对纯日期终点补到当天末尾
 - 时间范围**只**用 `DateRangeFilter`：不手写 `DatePicker type="dateTimeRange"`，也不用两个 `type="dateTime"` 单选拼「开始 / 结束」。
   默认宽度是按内容算出的下限（Semi 把两个输入框均分剩余宽度，360 时末位秒数就会被截掉），
   确需自定义宽度的控件（如报表筛选条）以 `DATE_RANGE_FILTER_WIDTH` / `DATE_TIME_RANGE_FILTER_WIDTH` 作下限

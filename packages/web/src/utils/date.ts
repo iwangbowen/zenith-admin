@@ -83,6 +83,24 @@ export function formatDateForApi(date: DateInput): string {
 }
 
 /**
+ * 日期级区间（`DateRangeFilter type="dateRange"`）→ 两个 `YYYY-MM-DD` 端点，未选的端点为 `undefined`；
+ * 键名由调用方按契约指定：`const [dateStart, dateEnd] = formatDateRangeValuesForApi(range)`。
+ *
+ * 不要拿秒级的 `formatDateTimeRangeValuesForApi` 代替：那会把终点写成 `YYYY-MM-DD 00:00:00`，
+ * 而服务端 `dateRangeConditions` 只对**纯日期**终点补到当天 23:59:59.999，整个终止日会被漏掉。
+ */
+export function formatDateRangeValuesForApi(range: DateRangeInput): [string | undefined, string | undefined] {
+  const formatBound = (value: DateInput) => (value == null ? undefined : formatDateForApi(value));
+  return [formatBound(range?.[0]), formatBound(range?.[1])];
+}
+
+/** 日期级区间 → 契约标准端点 `{ startTime, endTime }`（`YYYY-MM-DD`）；端点键名不同的契约用 `formatDateRangeValuesForApi` */
+export function formatDateRangeForApi(range: DateRangeInput): { startTime: string | undefined; endTime: string | undefined } {
+  const [startTime, endTime] = formatDateRangeValuesForApi(range);
+  return { startTime, endTime };
+}
+
+/**
  * 剥离 HTML 标签，返回纯文本摘要，用于列表/通知摘要场景。
  *
  * 必须用 DOMParser 解析：它产出的是惰性文档，不加载资源也不执行脚本；

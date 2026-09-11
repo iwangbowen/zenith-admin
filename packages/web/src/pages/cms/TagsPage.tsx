@@ -3,7 +3,6 @@ import { Form } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -12,9 +11,9 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { useCmsTagList, useSaveCmsTag, useDeleteCmsTags, cmsTagKeys } from '@/hooks/queries/cms';
 import type { CmsTag, CreateCmsTagInput } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { slugifyName } from '@/utils/slug';
 import { abortSubmit } from '@/lib/abort-submit';
 
@@ -26,7 +25,7 @@ export default function TagsPage() {
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setDraftParams, submittedParams,
+    bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: cmsTagKeys.lists });
 
@@ -89,15 +88,18 @@ export default function TagsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setPage(1); }} width={180} />
-        <KeywordInput placeholder="搜索标签名称/标识..." value={draftParams.keyword} onChange={(keyword) => setDraftParams({ keyword })} onSearch={handleSearch} width={200} />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        {hasPermission('cms:tag:create') ? (
-          <CreateButton onClick={modal.openCreate} />
-        ) : null}
-      </SearchToolbar>
+      {/* 站点是列表的作用域而非筛选条件，与关键字一起留在移动端主区 */}
+      <ListSearchToolbar
+        keyword={(
+          <>
+            <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setPage(1); }} width={180} />
+            <KeywordInput placeholder="搜索标签名称/标识..." {...bindKeyword('keyword')} />
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('cms:tag:create') ? <CreateButton onClick={modal.openCreate} /> : null}
+      />
 
       <ConfigurableTable<CmsTag>
         columns={columns}

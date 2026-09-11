@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   formatDate,
   formatDateForApi,
+  formatDateRangeForApi,
+  formatDateRangeValuesForApi,
   formatDateTime,
   formatDateTimeForApi,
   formatDateTimeRangeForApi,
@@ -86,6 +88,16 @@ describe('formatDateTime', () => {
   it('should format API date without timezone conversion', () => {
     const date = new Date(2026, 2, 22, 20, 9, 37);
     expect(formatDateForApi(date)).toBe('2026-03-22');
+  });
+
+  it('should format a date-level range as YYYY-MM-DD bounds with undefined for unselected ends', () => {
+    const start = new Date(2026, 2, 22, 20, 9, 37);
+    const end = new Date(2026, 2, 23, 8, 5, 2);
+    expect(formatDateRangeValuesForApi([start, end])).toEqual(['2026-03-22', '2026-03-23']);
+    expect(formatDateRangeValuesForApi([start])).toEqual(['2026-03-22', undefined]);
+    expect(formatDateRangeValuesForApi(null)).toEqual([undefined, undefined]);
+    expect(formatDateRangeForApi([start, end])).toEqual({ startTime: '2026-03-22', endTime: '2026-03-23' });
+    expect(formatDateRangeForApi(undefined)).toEqual({ startTime: undefined, endTime: undefined });
   });
 });
 
