@@ -296,8 +296,10 @@
 | 字节数展示（B / KB / MB / GB / TB） | `formatBytes(bytes)` |
 | 平铺列表（`id` / `parentId`，或自定义键）→ 树 | `buildTree(list, { compare?, keepEmptyChildren?, id?, parentId? })`；父节点缺失的节点挂到根 |
 | 树 → 另一种节点形态（如 Semi `TreeNodeData`） | `mapTree(nodes, (node) => ({ ... }))`，children 自动递归 |
-| 按点分路径读取 JSON 嵌套值（外部 API 响应的 `itemsPath` 等配置化取数路径） | `getByPath(source, path)`；空路径返回原值，中途非对象返回 `undefined`，数组可用下标段 |
+| 树 → 先序平铺列表（下拉源查找 / 名称映射） | `flattenTree(nodes)`；节点原样返回不拷贝 |
+| 按点分路径读取 JSON 嵌套值（外部 API 响应的 `itemsPath` 等配置化取数路径、表单嵌套字段 `actions[0]`） | `getByPath(source, path)`；空路径返回原值，中途非对象返回 `undefined`，数组可用下标段（`.0` 或 `[0]`） |
 | 非 null、非数组的普通对象判定 | `isPlainObject(value)` |
+| 拼接 `${base}/${path}` 前归一 base URL / 根路径 | `trimTrailingSlash(value)`（去掉末尾全部 `/`） |
 
 - 前端毫秒耗时展示用 `@/utils/format` 的 `formatDurationMs(ms)`；秒级时长的「N天N小时N分」用 `formatSecondsHuman(seconds)`
   （<1 分钟显示秒，`formatSecondsBetween(start, end)` 取两个时间的差），`mm:ss` 计时用 `formatClock(seconds)`；
@@ -314,6 +316,15 @@
 | --- | --- | --- |
 | 文件下载 / 预览响应头 | `content-disposition.ts`：`attachmentDisposition(filename)`（RFC 5987 `filename*=UTF-8''` + ASCII 回退）、`inlineOrAttachmentDisposition(filename, mimeType)`（仅 `SAFE_INLINE_MIME_TYPES` 允许 inline） | 手拼 `attachment; filename="…"`、各处自维护可内联 MIME 白名单 |
 | 无状态 HMAC 签名令牌（事件令牌、渲染凭证、退订链接…） | `signed-token.ts`：`createSignedTokenCodec<T>({ version })`（`<v>.<data>.<sig>`）或 `({ purpose })`（`<data>.<sig>`），`decode` 返回 `null` 后由调用方做载荷校验与错误语义；非 JSON 载荷的签名用 `hmacSha256(input, 'hex' \| 'base64url')` + `constantTimeEqual(a, b)` | 手写 `createHmac` + `timingSafeEqual` + base64url 拆包；新令牌自创线格式 |
+| 统计类 service 的「今日 / 近 N 天 / 环比窗口」起点 | `datetime.ts`：`startOfToday()`、`startOfDayAgo(n)`、`startOfRecentDays(days)`（近 N 天含今日）、`resolveStatsWindow(daysRaw, { fallback, min, max })`（夹紧天数 + 本期 / 上期起点 + 日期标签） | 逐 service 手写 `new Date()` + `setHours(0,0,0,0)` + `setDate(...)`、各自的 `startOfToday` / `windowStart` / `sinceDate` |
+| 用户 id → 展示名（昵称 \|\| 用户名）批量解析 | `user-nicknames.ts` 的 `resolveUserNames(ids, executor?)`（drive 域经 `drive-common.ts` re-export） | 手写 `select({ id, nickname, username }).from(users).where(inArray(...))` + `Map` |
+| 探针的基础设施检查 | `health-checks.ts`：`checkInfraHealth()`（database / redis / invalidationBus）+ `overallHealthStatus(checks)`，角色特有项由调用方追加 | 在 api / worker 探针各写一份 `SELECT 1` / `redis.ping()` 三件套 |
+| 通知模板变量归一化 | `notification/template-vars.ts` 的 `normalizeTemplateVars(vars)` | 派发 / 摘要各写一份 `String(value)` 循环 |
+| 工作流作业的占位符渲染（`{{form.x}}` / `{{instanceId}}` …） | `workflow-jobs/handlers/shared.ts` 的 `renderWorkflowTemplate(template, formData, extras)`；URL 仍走 `workflow-outbound.renderUrlTemplate` | 反向动作 / 触发器各写一份 `replace(/\{\{form\.…\}\}/)` |
+| 微信支付 v3 请求签名 | `payment/signing.ts` 的 `buildWechatPayAuthorization({ mchid, serialNo, privateKey, method, urlPath, body })` / `wechatNonce()`；缺配置的语义（返回 null / 抛 400）留在调用方 | adapter 与证书下载各拼一份 `WECHATPAY2-SHA256-RSA2048 …` |
+| 支付域业务单号 | `services/payment/payment-no.ts` 的 `genPaymentNo(prefix)` | 各 service 自写 `${prefix}${Date.now()}${randomInt(...)}` |
+| IoT 告警 / 联动规则的引用校验 | `services/iot/iot-rule-refs.ts` 的 `ensureIotRuleReferencesValid(productId, refs, { numericOnly })` | 两个 service 各写一份「设备属产品 + 物模型属性 / 事件已声明」 |
+| Wiki 文档追加排序 | `services/wiki/doc-order.ts` 的 `nextWikiDocSort(tx, spaceId, parentId)` | 新建 / 导入各写一份 `coalesce(max(sort), -1) + 1` |
 
 已有令牌的线格式（前缀 / 版本 / 摘要编码）已被黄金测试锁定（`unsubscribe.test.ts`、`cms-ad-render-proof.test.ts`、
 `cms-preview.service.test.ts`），改动实现不得改变一个字节。
