@@ -37,12 +37,12 @@ const { Text } = Typography;
 interface SearchParams {
   keyword: string;
   status?: string;
-  productId: number | null;
-  groupId: number | null;
+  productId?: number;
+  groupId?: number;
   nodeType?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', status: undefined, productId: null, groupId: null, nodeType: '' };
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined, productId: undefined, groupId: undefined, nodeType: undefined };
 
 /** 设备表单值：记录里的 null 在表单中归一为空串 / 未填，提交前由 beforeSave 还原 */
 type IotDeviceFormValues = Partial<CreateIotDeviceInput>;
@@ -62,7 +62,7 @@ export default function IotDevicesPage() {
   const [groupsVisible, setGroupsVisible] = useState(false);
   const [batchKind, setBatchKind] = useState<'command' | 'desired' | null>(null);
 
-  const { items: products } = useIotProductOptions();
+  const { options: productOptions } = useIotProductOptions();
   const { items: groups, options: groupOptions, isFetching: groupsFetching } = useIotGroupOptions();
   // 网关设备清单（子设备表单「所属网关」选项）
   const gatewaysQuery = useIotDeviceList({ page: 1, pageSize: 100, nodeType: 'gateway' });
@@ -70,7 +70,7 @@ export default function IotDevicesPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: iotDeviceKeys.lists });
 
@@ -79,8 +79,8 @@ export default function IotDevicesPage() {
     pageSize,
     keyword: submittedParams.keyword || undefined,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
-    productId: submittedParams.productId ?? undefined,
-    groupId: submittedParams.groupId ?? undefined,
+    productId: submittedParams.productId,
+    groupId: submittedParams.groupId,
     nodeType: enumValueOf(IOT_NODE_TYPES, submittedParams.nodeType),
   });
 
@@ -312,17 +312,15 @@ export default function IotDevicesPage() {
           />
         )}
         filters={<>
-          <FilterSelect
+          <FilterSelect<number>
             placeholder="全部产品"
-            items={products.map((p) => ({ value: String(p.id), label: p.name }))}
-            value={draftParams.productId === null ? '' : String(draftParams.productId)}
-            onChange={(v) => setField('productId')(v ? Number(v) : null)}
+            items={productOptions}
+            {...bind('productId')}
           />
-          <FilterSelect
+          <FilterSelect<number>
             placeholder="全部分组"
-            items={groups.map((g) => ({ value: String(g.id), label: g.name }))}
-            value={draftParams.groupId === null ? '' : String(draftParams.groupId)}
-            onChange={(v) => setField('groupId')(v ? Number(v) : null)}
+            items={groupOptions}
+            {...bind('groupId')}
           />
           <FilterSelect
             placeholder="全部形态"

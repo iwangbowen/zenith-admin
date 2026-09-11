@@ -46,20 +46,20 @@ const DEVICE_STATUS_COLORS = {
 // ─── 固件包 Tab ───────────────────────────────────────────────────────────────
 interface FirmwareSearchParams {
   keyword: string;
-  productId: number | null;
+  productId?: number;
   status?: string;
 }
 
-const defaultFirmwareSearch: FirmwareSearchParams = { keyword: '', productId: null, status: '' };
+const defaultFirmwareSearch: FirmwareSearchParams = { keyword: '', productId: undefined, status: undefined };
 
 function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotFirmware) => void }>) {
   const { hasPermission } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
-  const { items: products } = useIotProductOptions();
+  const { options: productOptions } = useIotProductOptions();
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<FirmwareSearchParams>({ defaults: defaultFirmwareSearch, listKey: iotFirmwareKeys.lists });
 
@@ -67,7 +67,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    productId: submittedParams.productId ?? undefined,
+    productId: submittedParams.productId,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
 
@@ -156,32 +156,17 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput
-      placeholder="搜索版本 / 文件名..."
-      {...bindKeyword('keyword')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-      items={statusItems}
-      {...bind('status')}
-    />
-  );
-
   return (
     <>
       <ListSearchToolbar
-        keyword={renderKeyword()}
+        keyword={<KeywordInput placeholder="搜索版本 / 文件名..." {...bindKeyword('keyword')} />}
         filters={<>
-          <FilterSelect
+          <FilterSelect<number>
             placeholder="全部产品"
-            items={products.map((p) => ({ value: String(p.id), label: p.name }))}
-            value={draftParams.productId === null ? '' : String(draftParams.productId)}
-            onChange={(v) => setField('productId')(v ? Number(v) : null)}
+            items={productOptions}
+            {...bind('productId')}
           />
-          {renderStatusFilter()}
+          <StatusSelect items={statusItems} {...bind('status')} />
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
@@ -253,7 +238,7 @@ interface TaskSearchParams {
   status?: string;
 }
 
-const defaultTaskSearch: TaskSearchParams = { keyword: '', status: '' };
+const defaultTaskSearch: TaskSearchParams = { keyword: '', status: undefined };
 
 function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
   detailTask: IotOtaTask | null;
@@ -355,26 +340,11 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
     }),
   ];
 
-  const renderKeyword = () => (
-    <KeywordInput
-      placeholder="搜索任务 / 版本..."
-      {...bindKeyword('keyword')}
-    />
-  );
-
-  const renderStatusFilter = () => (
-    <StatusSelect
-     
-      items={IOT_OTA_TASK_STATUS_OPTIONS}
-      {...bind('status')}
-    />
-  );
-
   return (
     <>
       <ListSearchToolbar
-        keyword={renderKeyword()}
-        filters={renderStatusFilter()}
+        keyword={<KeywordInput placeholder="搜索任务 / 版本..." {...bindKeyword('keyword')} />}
+        filters={<StatusSelect items={IOT_OTA_TASK_STATUS_OPTIONS} {...bind('status')} />}
         onSearch={handleSearch}
         onReset={handleReset}
         filterTitle="筛选条件"
