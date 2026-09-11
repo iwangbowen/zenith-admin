@@ -179,7 +179,8 @@ export const analyticsUserStatsSchema = paginated(analyticsUserStatItemSchema).m
 
 export type AnalyticsUserStats = z.infer<typeof analyticsUserStatsSchema>;
 
-export const analyticsUserTimelineEventSchema = z.object({
+/** 行为时间线事件的公共字段（用户时间线 / 会话时间线共用） */
+const behaviorTimelineEventFields = {
   id: z.int(),
   eventType: userBehaviorEventTypeEnum,
   eventName: z.string().nullable(),
@@ -188,6 +189,10 @@ export const analyticsUserTimelineEventSchema = z.object({
   elementLabel: z.string().nullable(),
   componentArea: z.string().nullable(),
   durationMs: z.int().nullable(),
+};
+
+export const analyticsUserTimelineEventSchema = z.object({
+  ...behaviorTimelineEventFields,
   sessionId: z.string().nullable(),
   properties: z.record(z.string(), z.unknown()).nullable(),
   createdAt: z.string(),
@@ -235,14 +240,7 @@ export const sessionListItemSchema = z.object({
 export type SessionListItem = z.infer<typeof sessionListItemSchema>;
 
 export const sessionTimelineEventSchema = z.object({
-  id: z.int(),
-  eventType: userBehaviorEventTypeEnum,
-  eventName: z.string().nullable(),
-  pagePath: z.string(),
-  pageTitle: z.string().nullable(),
-  elementLabel: z.string().nullable(),
-  componentArea: z.string().nullable(),
-  durationMs: z.int().nullable(),
+  ...behaviorTimelineEventFields,
   properties: z.record(z.string(), z.unknown()).nullable(),
   createdAt: z.string(),
 }).meta({ id: 'SessionTimelineEvent' });

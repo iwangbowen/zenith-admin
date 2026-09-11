@@ -28,15 +28,21 @@ export const createIotProductSchema = z.object({
 export const updateIotProductSchema = partialForUpdate(createIotProductSchema);
 
 // ─── 物模型：参数定义（服务/事件内嵌复用）────────────────────────────────────
+
+/** 取值约束字段（参数定义 / 属性新增 / 属性更新共用）：单位、量程、枚举映射 */
+const iotValueSpecFields = {
+  unit: z.string().max(16).nullable().optional(),
+  minValue: z.number().nullable().optional(),
+  maxValue: z.number().nullable().optional(),
+  enumOptions: z.record(z.string().min(1).max(64), z.string().min(1).max(64)).nullable().optional(),
+};
+
 export const iotParamDefSchema = z.object({
   identifier: identifierSchema,
   name: z.string().min(1, '参数名称不能为空').max(64),
   dataType: z.enum(IOT_PROPERTY_TYPES),
   required: z.boolean().optional(),
-  unit: z.string().max(16).nullable().optional(),
-  minValue: z.number().nullable().optional(),
-  maxValue: z.number().nullable().optional(),
-  enumOptions: z.record(z.string().min(1).max(64), z.string().min(1).max(64)).nullable().optional(),
+  ...iotValueSpecFields,
 });
 
 /** 服务/事件的参数定义（jsonb 内嵌，物模型实体与入参共用同一形状） */
@@ -48,10 +54,7 @@ export const createIotPropertySchema = z.object({
   name: z.string().min(1, '属性名称不能为空').max(64),
   dataType: z.enum(IOT_PROPERTY_TYPES),
   accessMode: z.enum(IOT_ACCESS_MODES).default('r'),
-  unit: z.string().max(16).nullable().optional(),
-  minValue: z.number().nullable().optional(),
-  maxValue: z.number().nullable().optional(),
-  enumOptions: z.record(z.string().min(1).max(64), z.string().min(1).max(64)).nullable().optional(),
+  ...iotValueSpecFields,
   featured: z.boolean().default(false),
   /** 遥测异常检测（仅数值型属性生效） */
   anomalyEnabled: z.boolean().default(false),
@@ -71,10 +74,7 @@ export const updateIotPropertySchema = z.object({
   name: z.string().min(1).max(64).optional(),
   dataType: z.enum(IOT_PROPERTY_TYPES).optional(),
   accessMode: z.enum(IOT_ACCESS_MODES).optional(),
-  unit: z.string().max(16).nullable().optional(),
-  minValue: z.number().nullable().optional(),
-  maxValue: z.number().nullable().optional(),
-  enumOptions: z.record(z.string().min(1).max(64), z.string().min(1).max(64)).nullable().optional(),
+  ...iotValueSpecFields,
   featured: z.boolean().optional(),
   anomalyEnabled: z.boolean().optional(),
   sort: z.number().int().min(0).max(9999).optional(),

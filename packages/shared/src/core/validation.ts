@@ -166,12 +166,18 @@ export function boundedJsonRecord(label: string, maxKeys: number, maxBytes: numb
 // ─── 告警规则 ─────────────────────────────────────────────────────────────────
 export const webhookUrlSchema = httpUrl('Webhook URL 仅支持 HTTP/HTTPS').max(512);
 
+interface AlertChannelsValue {
+  enabled?: boolean;
+  channels?: string[];
+  webhookUrl?: string | null;
+}
 
-export function validateAlertDelivery(
-  value: { enabled?: boolean; channels?: string[]; webhookUrl?: string | null; recipients?: string[] },
-  ctx: z.RefinementCtx,
-) {
-  if (value.enabled === false) return;
+/**
+ * 告警投递的渠道公共校验（启用时至少一个渠道；含 webhook 必须有 URL）。
+ * 返回生效渠道列表；规则未启用时返回 null，调用方跳过收件人校验。
+ */
+function validateAlertChannels(value: AlertChannelsValue, ctx: z.RefinementCtx): string[] | null {
+  if (value.enabled === false) return null;
   const channels = value.channels ?? [];
   if (channels.length === 0) {
     ctx.addIssue({ code: 'custom', path: ['channels'], message: '启用告警时至少选择一个通知渠道' });
@@ -179,7 +185,36 @@ export function validateAlertDelivery(
   if (channels.includes('webhook') && !value.webhookUrl) {
     ctx.addIssue({ code: 'custom', path: ['webhookUrl'], message: 'Webhook 渠道必须配置有效 URL' });
   }
+  return channels;
+}
+
+/** 告警投递校验：收件人为单一 `recipients` 列表（邮箱 / 用户标识混排，前端错误监控告警规则） */
+export function validateAlertDelivery(
+  value: AlertChannelsValue & { recipients?: string[] },
+  ctx: z.RefinementCtx,
+) {
+  const channels = validateAlertChannels(value, ctx);
+  if (!channels) return;
   if ((channels.includes('email') || channels.includes('inapp')) && !(value.recipients?.length)) {
     ctx.addIssue({ code: 'custom', path: ['recipients'], message: '邮件或站内通知渠道必须配置接收人' });
+  }
+}
+
+/** 告警投递校验：收件人分为接收用户 `recipientUserIds` 与额外邮箱 `recipientEmails`（系统监控告警规则） */
+export function validateTypedAlertDelivery(
+  value: AlertChannelsValue & { recipientUserIds?: number[]; recipientEmails?: string[] },
+  ctx: z.RefinementCtx,
+) {
+  const channels = validateAlertChannels(value, ctx);
+  if (!channels) return;
+  if (channels.includes('inapp') && !(value.recipientUserIds?.length)) {
+    ctx.addIssue({ code: 'custom', path: ['recipientUserIds'], message: '站内信渠道必须选择接收用户' });
+  }
+  if (
+    channels.includes('email')
+    && !(value.recipientUserIds?.length)
+    && !(value.recipientEmails?.length)
+  ) {
+    ctx.addIssue({ code: 'custom', path: ['recipientEmails'], message: '邮件渠道必须选择接收用户或填写额外邮箱' });
   }
 }

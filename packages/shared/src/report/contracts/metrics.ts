@@ -10,18 +10,12 @@ import {
   reportMetricTypeSchema,
   updateReportMetricSchema,
 } from '../validation';
+import { reportCodedResourceFields } from './_common';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
 export const reportMetricSchema = z.object({
-  id: z.int(),
-  tenantId: z.int().nullable(),
-  folderId: z.int().nullable(),
-  folderName: z.string().nullable().optional(),
-  ownerId: z.int().nullable(),
-  ownerName: z.string().nullable().optional(),
-  code: z.string(),
-  name: z.string(),
+  ...reportCodedResourceFields,
   description: z.string().nullable().optional(),
   type: z.enum(REPORT_METRIC_TYPES),
   datasetId: z.int(),

@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WORKFLOW_TRIGGER_EXECUTION_STATUSES, WORKFLOW_TRIGGER_TYPES } from '../constants';
+import { workflowOutboundTraceFields } from './_common';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -16,13 +17,7 @@ export const workflowTriggerExecutionSchema = z.object({
   triggerType: z.enum(WORKFLOW_TRIGGER_TYPES),
   status: z.enum(WORKFLOW_TRIGGER_EXECUTION_STATUSES),
   attempt: z.int(),
-  requestUrl: z.string().nullable(),
-  requestMethod: z.string().nullable(),
-  requestBody: z.string().nullable(),
-  responseStatus: z.int().nullable(),
-  responseBody: z.string().nullable(),
-  errorMessage: z.string().nullable(),
-  durationMs: z.int().nullable(),
+  ...workflowOutboundTraceFields,
   tenantId: z.int().nullable(),
   createdAt: z.string(),
 }).meta({ id: 'WorkflowTriggerExecution' });

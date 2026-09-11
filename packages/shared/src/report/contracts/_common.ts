@@ -40,6 +40,23 @@ export const reportStatusSchema = entityStatusSchema;
 /** 查询串布尔（仅接受 'true' / 'false' 字面量；缺省 = 不过滤） */
 export const strictQueryBool = z.enum(['true', 'false']).transform((value) => value === 'true').optional();
 
+// ─── 编码类资源公共字段 ────────────────────────────────────────────────────────
+
+/**
+ * 带编码的报表资源（指标 / 填报模板 / 资产模板）实体的标识与归属字段，展开到各实体 schema 头部：
+ * `{ ...reportCodedResourceFields, description, ... }`。数据集 / 仪表盘等旧资源的归属字段为可选形态，不在此列。
+ */
+export const reportCodedResourceFields = {
+  id: z.int(),
+  tenantId: z.int().nullable(),
+  folderId: z.int().nullable(),
+  folderName: z.string().nullable().optional(),
+  ownerId: z.int().nullable(),
+  ownerName: z.string().nullable().optional(),
+  code: z.string(),
+  name: z.string(),
+};
+
 // ─── 字段 / 参数定义（与请求校验同源） ──────────────────────────────────────────
 
 export type ReportFieldFormat = z.infer<typeof reportFieldFormatSchema>;

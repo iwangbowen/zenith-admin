@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { partialForUpdate, webhookUrlSchema } from '../core/validation';
+import { partialForUpdate, validateTypedAlertDelivery, webhookUrlSchema } from '../core/validation';
 import { CRON_JOB_STATUSES, FILE_OBJECT_ACL_SUPPORT, MASK_TYPES, MONITOR_ALERT_HANDLE_STATUSES, MONITOR_ALERT_LEVELS, MONITOR_ALERT_OPERATORS, MONITOR_HISTORY_RANGES, MONITOR_METRICS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS, RATE_LIMIT_ALGORITHMS, RATE_LIMIT_KEY_TYPES, RATE_LIMIT_MODES, REGION_LEVELS, SYSTEM_SCHEDULER_ALERT_CHANNELS, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_CHUNK_MIN_BYTES, USER_FEEDBACK_CATEGORIES, USER_FEEDBACK_STATUSES } from './constants';
 import { entityStatusSchema } from '../core/api-schemas';
 
@@ -366,40 +366,10 @@ const monitorAlertRuleBaseSchema = z.object({
   enabled: z.boolean().default(true),
 });
 
-function validateMonitorAlertDelivery(
-  value: {
-    enabled?: boolean;
-    channels?: string[];
-    webhookUrl?: string | null;
-    recipientUserIds?: number[];
-    recipientEmails?: string[];
-  },
-  ctx: z.RefinementCtx,
-) {
-  if (value.enabled === false) return;
-  const channels = value.channels ?? [];
-  if (channels.length === 0) {
-    ctx.addIssue({ code: 'custom', path: ['channels'], message: '启用告警时至少选择一个通知渠道' });
-  }
-  if (channels.includes('webhook') && !value.webhookUrl) {
-    ctx.addIssue({ code: 'custom', path: ['webhookUrl'], message: 'Webhook 渠道必须配置有效 URL' });
-  }
-  if (channels.includes('inapp') && !(value.recipientUserIds?.length)) {
-    ctx.addIssue({ code: 'custom', path: ['recipientUserIds'], message: '站内信渠道必须选择接收用户' });
-  }
-  if (
-    channels.includes('email')
-    && !(value.recipientUserIds?.length)
-    && !(value.recipientEmails?.length)
-  ) {
-    ctx.addIssue({ code: 'custom', path: ['recipientEmails'], message: '邮件渠道必须选择接收用户或填写额外邮箱' });
-  }
-}
-
-export const createMonitorAlertRuleSchema = monitorAlertRuleBaseSchema.superRefine(validateMonitorAlertDelivery);
+export const createMonitorAlertRuleSchema = monitorAlertRuleBaseSchema.superRefine(validateTypedAlertDelivery);
 
 export const updateMonitorAlertRuleSchema = partialForUpdate(monitorAlertRuleBaseSchema).superRefine((value, ctx) => {
-  if (value.enabled === true && value.channels !== undefined) validateMonitorAlertDelivery(value, ctx);
+  if (value.enabled === true && value.channels !== undefined) validateTypedAlertDelivery(value, ctx);
 });
 
 /** 启用 / 禁用单条告警规则 */

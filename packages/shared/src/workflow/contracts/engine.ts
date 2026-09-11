@@ -18,6 +18,7 @@ import {
   WORKFLOW_TASK_STATUSES,
   WORKFLOW_TRIGGER_EXECUTION_STATUSES,
 } from '../constants';
+import { workflowOutboundTraceFields } from './_common';
 import {
   workflowEngineActionFilterSchema,
   workflowJobBatchRetrySchema,
@@ -68,13 +69,7 @@ export const workflowJobExecutionSchema = z.object({
   attempt: z.int(),
   generation: z.int().nonnegative(),
   status: z.enum(WORKFLOW_JOB_EXECUTION_STATUSES),
-  requestUrl: z.string().nullable(),
-  requestMethod: z.string().nullable(),
-  requestBody: z.string().nullable(),
-  responseStatus: z.int().nullable(),
-  responseBody: z.string().nullable(),
-  errorMessage: z.string().nullable(),
-  durationMs: z.int().nullable(),
+  ...workflowOutboundTraceFields,
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
   createdAt: z.string(),

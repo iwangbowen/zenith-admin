@@ -17,6 +17,7 @@ import {
   updateReportFillRecordSchema,
   updateReportFillTemplateSchema,
 } from '../validation';
+import { reportCodedResourceFields } from './_common';
 
 /**
  * 表单 schema 复用工作流域的定义；实体类型以 WorkflowFormSchema 为准。
@@ -31,14 +32,7 @@ const fillFormSchema: z.ZodType<WorkflowFormSchema> = workflowFormSchemaSchema.m
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
 export const reportFillTemplateSchema = z.object({
-  id: z.int(),
-  tenantId: z.int().nullable(),
-  folderId: z.int().nullable(),
-  folderName: z.string().nullable().optional(),
-  ownerId: z.int().nullable(),
-  ownerName: z.string().nullable().optional(),
-  code: z.string(),
-  name: z.string(),
+  ...reportCodedResourceFields,
   description: z.string().nullable().optional(),
   formSchema: fillFormSchema,
   publishedSchema: fillFormSchema.nullable().optional(),

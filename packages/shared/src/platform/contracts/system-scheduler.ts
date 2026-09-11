@@ -13,6 +13,21 @@ import { acknowledgeSystemSchedulerAlertSchema, updateSystemSchedulerTaskConfigS
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
+/** 任务策略字段：注册信息（含策略生效值）与持久化策略记录共用 */
+const systemSchedulerTaskPolicyFields = {
+  enabled: z.boolean(),
+  logRetentionDays: z.int(),
+  logRetentionRuns: z.int(),
+  timeoutMs: z.int().nullable(),
+  failureAlertThreshold: z.int(),
+  alertEnabled: z.boolean(),
+  alertChannels: z.array(z.enum(SYSTEM_SCHEDULER_ALERT_CHANNELS)),
+  alertUserIds: z.array(z.int()),
+  alertEmails: z.array(z.string()),
+  alertWebhookUrl: z.string().nullable(),
+  manualSingleton: z.boolean(),
+};
+
 /** 系统调度任务注册信息基础字段（任务中心与工作流引擎诊断共用） */
 export const systemSchedulerTaskBaseSchema = z.object({
   name: z.string().meta({ example: 'export-file-cleanup' }),
@@ -26,17 +41,7 @@ export const systemSchedulerTaskBaseSchema = z.object({
   registeredHostname: z.string(),
   registeredPid: z.int(),
   allowManualRun: z.boolean(),
-  enabled: z.boolean(),
-  logRetentionDays: z.int(),
-  logRetentionRuns: z.int(),
-  timeoutMs: z.int().nullable(),
-  failureAlertThreshold: z.int(),
-  alertEnabled: z.boolean(),
-  alertChannels: z.array(z.enum(SYSTEM_SCHEDULER_ALERT_CHANNELS)),
-  alertUserIds: z.array(z.int()),
-  alertEmails: z.array(z.string()),
-  alertWebhookUrl: z.string().nullable(),
-  manualSingleton: z.boolean(),
+  ...systemSchedulerTaskPolicyFields,
   lastRunAt: z.string().nullable(),
   lastRunStatus: z.enum(SYSTEM_SCHEDULER_RUN_STATUSES).nullable(),
   lastRunMessage: z.string().nullable(),
@@ -127,17 +132,7 @@ export type SystemSchedulerRunResult = z.infer<typeof systemSchedulerRunResultSc
 /** 任务策略（持久化记录；时间戳为 ISO 8601） */
 export const systemSchedulerTaskConfigSchema = z.object({
   taskName: z.string(),
-  enabled: z.boolean(),
-  logRetentionDays: z.int(),
-  logRetentionRuns: z.int(),
-  timeoutMs: z.int().nullable(),
-  failureAlertThreshold: z.int(),
-  alertEnabled: z.boolean(),
-  alertChannels: z.array(z.enum(SYSTEM_SCHEDULER_ALERT_CHANNELS)),
-  alertUserIds: z.array(z.int()),
-  alertEmails: z.array(z.string()),
-  alertWebhookUrl: z.string().nullable(),
-  manualSingleton: z.boolean(),
+  ...systemSchedulerTaskPolicyFields,
   createdAt: z.string(),
   updatedAt: z.string(),
 }).meta({ id: 'SystemSchedulerTaskConfig' });

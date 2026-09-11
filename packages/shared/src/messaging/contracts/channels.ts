@@ -47,8 +47,8 @@ export const channelMessageSchema = z.object({
 
 export type ChannelMessage = z.infer<typeof channelMessageSchema>;
 
-/** 公众号 / 系统号（在聊天会话列表中以只读频道形式呈现） */
-export const channelSchema = z.object({
+/** 频道基础档案字段：用户侧频道与管理后台视图共用 */
+const channelProfileFields = {
   id: z.int(),
   code: z.string(),
   name: z.string(),
@@ -57,6 +57,11 @@ export const channelSchema = z.object({
   type: z.enum(CHANNEL_TYPES),
   builtin: z.boolean(),
   status: entityStatusSchema,
+};
+
+/** 公众号 / 系统号（在聊天会话列表中以只读频道形式呈现） */
+export const channelSchema = z.object({
+  ...channelProfileFields,
   unreadCount: z.int().meta({ description: '当前用户未读数' }),
   lastMessage: channelMessageSchema.nullable(),
   isMuted: z.boolean(),
@@ -70,14 +75,7 @@ export type Channel = z.infer<typeof channelSchema>;
 
 /** 频道管理后台视图（含订阅数 / 消息数） */
 export const channelAdminSchema = z.object({
-  id: z.int(),
-  code: z.string(),
-  name: z.string(),
-  avatar: z.string().nullable(),
-  description: z.string().nullable(),
-  type: z.enum(CHANNEL_TYPES),
-  builtin: z.boolean(),
-  status: entityStatusSchema,
+  ...channelProfileFields,
   subscriberCount: z.int(),
   messageCount: z.int(),
   createdAt: z.string(),

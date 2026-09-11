@@ -13,7 +13,7 @@ import {
   updateReportAssetTemplateSchema,
   updateReportDeprecationNoticeSchema,
 } from '../validation';
-import { reportStatusSchema, strictQueryBool } from './_common';
+import { reportCodedResourceFields, reportStatusSchema, strictQueryBool } from './_common';
 
 const resourceTypeSchema = z.enum(REPORT_RESOURCE_TYPES);
 
@@ -58,14 +58,7 @@ export const reportDeprecationNoticeSchema = z.object({
 export type ReportDeprecationNotice = z.infer<typeof reportDeprecationNoticeSchema>;
 
 export const reportAssetTemplateSchema = z.object({
-  id: z.int(),
-  tenantId: z.int().nullable(),
-  folderId: z.int().nullable(),
-  folderName: z.string().nullable().optional(),
-  ownerId: z.int().nullable(),
-  ownerName: z.string().nullable().optional(),
-  code: z.string(),
-  name: z.string(),
+  ...reportCodedResourceFields,
   type: z.enum(REPORT_ASSET_TEMPLATE_TYPES),
   description: z.string().nullable().optional(),
   content: z.record(z.string(), z.unknown()),

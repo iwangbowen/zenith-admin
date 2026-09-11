@@ -1,31 +1,12 @@
 import * as z from 'zod';
 import { defineContract, op } from '../../core/contract';
-import { APP_ARCHES, APP_PLATFORMS } from '../../ops/constants';
-import { DEVICE_SUBJECT_TYPES } from '../../ops/types';
+import { clientDeviceSchema } from '../../ops/contracts/app-releases';
 import { bindPushDeviceSchema } from '../../ops/validation';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
-/** 会员端绑定的推送设备（统一设备中心实体的会员侧视图，主体固定为 member） */
-export const memberPushDeviceSchema = z.object({
-  id: z.int(),
-  deviceId: z.string(),
-  appId: z.int(),
-  appName: z.string().optional(),
-  platform: z.enum(APP_PLATFORMS),
-  arch: z.enum(APP_ARCHES).nullable(),
-  deviceModel: z.string().nullable(),
-  osVersion: z.string().nullable(),
-  appVersion: z.string().nullable(),
-  subjectType: z.enum(DEVICE_SUBJECT_TYPES).nullable(),
-  subjectId: z.int().nullable(),
-  subjectName: z.string().nullable(),
-  pushProvider: z.string().nullable(),
-  pushRegistrationId: z.string().nullable(),
-  pushEnabled: z.boolean(),
-  createdAt: z.string(),
-  lastActiveAt: z.string(),
-}).meta({ id: 'MemberPushDevice' });
+/** 会员端绑定的推送设备：与统一设备中心实体同形（主体固定为 member），仅组件名不同 */
+export const memberPushDeviceSchema = clientDeviceSchema.meta({ id: 'MemberPushDevice' });
 
 export type MemberPushDevice = z.infer<typeof memberPushDeviceSchema>;
 

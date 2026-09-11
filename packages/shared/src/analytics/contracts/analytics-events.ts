@@ -177,8 +177,8 @@ export type AnalyticsQualityQueryResult = z.infer<typeof analyticsQualityQueryRe
 
 // ─── 采集设置（SDK 远程配置）────────────────────────────────────────────────
 
-export const analyticsSettingsSchema = z.object({
-  id: z.int(),
+/** SDK 采集开关与采样：管理端设置实体与公开精简配置共用 */
+const analyticsCollectionSwitchFields = {
   enabled: z.boolean(),
   sampleRate: z.number(),
   trackPageviews: z.boolean(),
@@ -188,6 +188,11 @@ export const analyticsSettingsSchema = z.object({
   trackApi: z.boolean(),
   maskInputs: z.boolean(),
   respectDnt: z.boolean(),
+};
+
+export const analyticsSettingsSchema = z.object({
+  id: z.int(),
+  ...analyticsCollectionSwitchFields,
   anonymizeIp: z.boolean(),
   blacklistPaths: z.array(z.string()),
   errorIgnorePatterns: z.array(z.string()).meta({ description: '错误忽略规则（正则字符串数组），命中 message 的错误上报直接丢弃' }),
@@ -209,15 +214,7 @@ export type AnalyticsSettings = z.infer<typeof analyticsSettingsSchema>;
 
 /** SDK 公开配置（无需鉴权可获取的精简版） */
 export const analyticsPublicConfigSchema = z.object({
-  enabled: z.boolean(),
-  sampleRate: z.number(),
-  trackPageviews: z.boolean(),
-  trackClicks: z.boolean(),
-  trackPerformance: z.boolean(),
-  trackErrors: z.boolean(),
-  trackApi: z.boolean(),
-  maskInputs: z.boolean(),
-  respectDnt: z.boolean(),
+  ...analyticsCollectionSwitchFields,
   blacklistPaths: z.array(z.string()),
   sessionTimeoutMinutes: z.int(),
   trackReplay: z.boolean().meta({ description: '会话回放总开关（关闭时 SDK 不加载 rrweb）' }),
