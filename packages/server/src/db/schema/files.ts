@@ -123,6 +123,9 @@ export const managedFiles = pgTable('managed_files', {
   index('managed_files_tenant_idx').on(t.tenantId),
   index('managed_files_content_hash_idx').on(t.tenantId, t.contentHash),
   index('managed_files_orphaned_idx').on(t.orphanedAt).where(sql`${t.orphanedAt} is not null`),
+  // 存储配置内按对象键前缀浏览目录（browseStorageFiles 的 LIKE 'prefix/%'）；
+  // 库排序规则为 en_US.utf8，普通 btree 无法服务 LIKE 前缀，须用 varchar_pattern_ops
+  index('managed_files_storage_object_key_idx').on(t.storageConfigId, t.objectKey.op('varchar_pattern_ops')),
 ]);
 
 export type ManagedFileRow = typeof managedFiles.$inferSelect;

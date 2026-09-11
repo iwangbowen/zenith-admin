@@ -78,6 +78,13 @@
       "when": 1789137340109,
       "tag": "0010_member_subject_cache_invalidate",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789138036822,
+      "tag": "0011_managed_files_storage_object_key_idx",
+      "breakpoints": true
     }
   ]
 }

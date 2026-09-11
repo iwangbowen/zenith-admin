@@ -1,0 +1,1 @@
+CREATE INDEX "managed_files_storage_object_key_idx" ON "managed_files" USING btree ("storage_config_id","object_key" varchar_pattern_ops);

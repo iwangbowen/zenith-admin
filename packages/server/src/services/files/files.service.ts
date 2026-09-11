@@ -44,6 +44,7 @@ export interface ManagedFileUploadOptions {
 import { and, desc, asc, eq, inArray, like, or, gte, ne, sql } from 'drizzle-orm';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import { streamToExcel, formatDateTimeForExcel } from '../../lib/excel-export';
 import { exactTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { HTTPException } from 'hono/http-exception';
@@ -441,9 +442,15 @@ function normalizePath(value?: string | null): string {
   return (value ?? '').replace(/^\/+|\/+$/g, '');
 }
 
-export async function browseStorageFiles(query: { storageConfigId: number; path?: string }) {
+/**
+ * 按存储配置浏览某一层目录：直接子文件与直接子目录都由 SQL 就地聚合。
+ * 曾经把该前缀下的**全部**后代行拉进内存再按 `/` 拆一层（根目录即整张配置的全表物化），随文件量线性恶化；
+ * 现在文件行只取「相对键不含 `/`」的直接子文件，目录名由 `split_part` 去重得出，行数与本层规模成正比。
+ * 前缀范围扫描由 `(storage_config_id, object_key varchar_pattern_ops)` 索引承接。
+ */
+export async function browseStorageFiles(query: { storageConfigId: number; path?: string }, executor: DbExecutor = db) {
   const user = currentUser();
-  const [storageConfig] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, query.storageConfigId)).limit(1);
+  const [storageConfig] = await executor.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, query.storageConfigId)).limit(1);
   const basePath = normalizePath(storageConfig?.basePath);
 
   // Sanitize browsing path — reject traversal attempts
@@ -454,35 +461,28 @@ export async function browseStorageFiles(query: { storageConfigId: number; path?
 
   // The full object-key prefix that scopes this browsing level
   const fullPrefix = [basePath, rawPath].filter(Boolean).join('/');
-
-  const tc = tenantCondition(managedFiles, user);
-  const conditions = [eq(managedFiles.storageConfigId, query.storageConfigId), keywordCondition(fullPrefix ? `${fullPrefix}/` : undefined, [managedFiles.objectKey], 'like', 'prefix')];
-  const where = buildWhere(...conditions, tc);
-
-  const allFiles = await db.select().from(managedFiles).where(where).orderBy(asc(managedFiles.objectKey));
-
-  const folderSet = new Set<string>();
-  const levelFileRows: (typeof allFiles)[number][] = [];
-
   const prefixWithSlash = fullPrefix ? `${fullPrefix}/` : '';
-  for (const file of allFiles) {
-    let relKey = file.objectKey;
-    if (prefixWithSlash) {
-      if (!relKey.startsWith(prefixWithSlash)) continue;
-      relKey = relKey.slice(prefixWithSlash.length);
-    }
-    const slashIdx = relKey.indexOf('/');
-    if (slashIdx === -1) {
-      levelFileRows.push(file);
-    } else {
-      const folderName = relKey.slice(0, slashIdx);
-      if (folderName) folderSet.add(folderName);
-    }
-  }
 
-  const uploaderMap = await resolveUserNames(levelFileRows.map((f) => f.createdBy));
+  const where = buildWhere(
+    eq(managedFiles.storageConfigId, query.storageConfigId),
+    keywordCondition(prefixWithSlash || undefined, [managedFiles.objectKey], 'like', 'prefix'),
+    tenantCondition(managedFiles, user),
+  );
+  // 相对本层前缀的剩余键；长度在 PG 侧按字符计算，避免 JS UTF-16 长度与 PG 字符数不一致
+  const relativeKey = sql`substr(${managedFiles.objectKey}, length(${prefixWithSlash}::text) + 1)`;
+  const folderName = sql<string>`split_part(${relativeKey}, '/', 1)`;
 
-  const folders = [...folderSet].sort().map((name) => ({
+  const [levelFileRows, folderRows] = await Promise.all([
+    executor.select().from(managedFiles)
+      .where(and(where, sql`strpos(${relativeKey}, '/') = 0`))
+      .orderBy(asc(managedFiles.objectKey)),
+    executor.selectDistinct({ name: folderName }).from(managedFiles)
+      .where(and(where, sql`strpos(${relativeKey}, '/') > 0`, sql`${folderName} <> ''`)),
+  ]);
+
+  const uploaderMap = await resolveUserNames(levelFileRows.map((f) => f.createdBy), executor);
+
+  const folders = folderRows.map((r) => r.name).sort().map((name) => ({
     name,
     path: rawPath ? `${rawPath}/${name}` : name,
   }));
