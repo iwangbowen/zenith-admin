@@ -4,6 +4,62 @@
 
 ---
 
+## v2.30.0 - 2026-09-12
+
+**性能专项 + 三波去重收敛 + PDF 字体子集化**：会员鉴权主体、套餐功能集接入进程内副本并由数据库触发器跨实例失效，频道列表 / 存储目录浏览的按行查询改为集合聚合，日志表补租户复合索引；server / shared / web 三包分三波把统计窗口、支付单号、租户条件拼装、契约字段积木、41 个列表页的搜索状态等重复实现收敛到公共模块；server 发布包内置的 PDF 字体改为构建期子集（8.3MB → 2.5MB），全量作为自行打包 / 构建镜像的选项。
+
+### 升级注意
+
+- 本次包含迁移 `0010`（`members` 失效触发器）、`0011`（`managed_files (storage_config_id, object_key varchar_pattern_ops)` 索引）、`0012`（`login_logs` / `operation_logs` 的 `(tenant_id, created_at)` 复合索引，取代原单列 tenant 索引）、`0013`（`tenant_packages` / `tenant_package_features` 失效触发器）。
+- server 发布包与镜像默认只带 PDF 字体子集（约 2.5MB，GB 2312 ∪《通用规范汉字表》+ 常用符号区段）；需要全量字体时自行 `npm run package:server -- --pdf-font=full` 打包、`docker build --build-arg PDF_FONT=full` 构建镜像（compose 透传），或经 `REPORT_PDF_FONT_PATH` 指定字体文件。PDF 导出前会检查字形覆盖，缺字时 warn 列出字符并提示切换全量。
+
+### Added
+
+#### PDF 字体子集化（server）
+
+- 构建时用 harfbuzz WASM（`subset-font`，纯 Node）从全量 Noto Sans SC 生成子集 `assets/fonts/NotoSansSC-Regular.subset.otf`（gitignore），字符集数据来源 Unihan 17.0 kGB0 / kTGH，生成后自检无字形丢失；全量 OTF 仍随仓库提交作子集化的源。
+- 新增 `scripts/package-server.mjs`（`npm run package:server -- --pdf-font=subset|full [--out]`）组装 server 部署目录，`release.yml`、Dockerfile 与本地打包共用同一布局；Release 只带子集。
+- `pdf-font.ts` 解析顺序：`REPORT_PDF_FONT_PATH` → 内置全量 → 内置子集 → 系统字体，启动日志记录实际选用；`docs/guide/deployment.md` 新增「PDF 字体（子集 / 全量）」。
+
+### Changed
+
+#### 性能
+
+- 会员认证：`memberAuthMiddleware`（含 CMS 前台可选会员会话）此前每请求重读 `members ⟕ tenants` 权威行，现与管理员侧同构地经进程内副本读取（5s TTL、关闭 stale-while-revalidate、单飞），失效由 `members` / `tenants` 触发器经 `invalidation-bus` 广播；封禁 / 改密仍即时吊销 `jti`。
+- 频道列表 / 发现频道：未读数与尾消息按频道集合批量聚合（订阅一次取全、广播未读 LEFT JOIN 订阅行分组计数、定向未读 JOIN 分组计数、尾消息 `DISTINCT ON`），查询数从 2 + 4N 固定为 5，不再一次打出 4N 并发。
+- 存储目录浏览：直接子文件 / 子目录由 SQL（`strpos` / `split_part`）就地聚合，不再把前缀下全部后代行拉进内存拆层（根目录曾等于全表物化）；前缀范围扫描由新增的 `varchar_pattern_ops` 复合索引承接。
+- 登录 / 操作日志：多租户模式下列表、统计与仪表盘的「租户 + 时间范围」过滤改走 `(tenant_id, created_at)` 复合索引，列表直接 `Index Scan Backward` 免排序。
+- 套餐功能集：`getTenantPackageFeatureSet` 改为一次 `tenants ⟕ tenant_packages ⟕ tenant_package_features` JOIN 并接入进程内副本（60s TTL、关闭 stale-while-revalidate、单飞），失效经 `tenants`（按租户键）与 `tenant_packages` / `tenant_package_features`（整段清空）触发器；多租户下一次壳层加载从十余次 × 3 条串行查询降为每租户每分钟 1 条；返回类型收窄为 `ReadonlySet`。
+
+#### 去重收敛：server
+
+- `lib/datetime` 新增 `startOfToday` / `startOfDayAgo` / `startOfRecentDays` / `resolveStatsWindow`，替换 15 处统计 service 的「今日 / 近 N 天」窗口计算；`genPaymentNo` 收敛 10 个支付单号生成器；`normalizeTemplateVars`、`renderWorkflowTemplate`、`checkInfraHealth` / `overallHealthStatus`、`resolveUserNames`、`buildWechatPayAuthorization` / `wechatNonce`、`ensureIotRuleReferencesValid`、`nextWikiDocSort`、`mapAsyncTaskItem` 上移为公共实现。
+- 111 处 `if (tc) conds.push(tc)` 守卫与 22 处 `tc ? and(x, tc) : x` 三目统一为 `buildWhere(..., tc)`；工作流实例按租户可见性加载的样板（14 处）收敛为 `findVisibleInstance` / `requireVisibleInstance`。
+- drive-views 四个列表共用 `decorateVisibleNodes`；OIDC / SAML JIT 建号收口 `findIdentityAccount` / `provisionJitUser`；payment 审批前置加载、分录归一化 + 幂等查重、结算范围条件、分账 CAS 更新抽私有 helper，alipay / wechat 8 个同构的沙箱签约 / 预授权方法收口 `sandboxContractPreauthOps` 工厂；`cmsModelRefWheres`；`favoriteMessagesList`；`workflow-job-execution-helpers` 统一 13 处「执行记录 ⋈ 父作业」查询。
+- 4 个运维脚本的参数读取收敛 `scripts/lib/cli-args`。
+
+#### 去重收敛：shared
+
+- `validateAlertDelivery` / `validateTypedAlertDelivery` 共用渠道公共校验（issue path / message 不变，补黄金测试）；`reportCodedResourceFields`、`workflowOutboundTraceFields`、`memberPushDeviceSchema` 等契约字段积木；目录同步源 update schema 改由 `partialForUpdate(base.omit({ type }))` 派生。
+- `flattenTree`、`getByPath`（补 `[n]` 下标）、`isExternalDbType`（升级为 `unknown` 入参类型守卫）、`trimTrailingSlash`、`describeCronDurationMs` 上移供两端与 Mock 共用。
+
+#### 去重收敛：web
+
+- 41 个列表页与 2 组次级页签的搜索状态迁 `useListSearch`（rules 5 / mp 6 / cms 7 / payment + report 7 / system + workflow + open-platform 7 / analytics + ai 9 / payment 合约与风控次级页签）：删除手写 draft / submitted 双状态、`usePagination` 与内联 `setPage + invalidateQueries`，控件改 `bind` / `bindKeyword` / `setField`，共用一组筛选的多列表用 `extraKeys` 一并回源；选项常量补字面量类型。
+- `shortDate` 替换 6 页本地定义与 15 处图表 X 轴闭包；`monacoLanguageByExt`、`layoutWithDagre`、`runWorkflowTaskAction`（移动审批端复用）、`ErrorStatePage`（403 / 404）、`formatUptime`、`weekdayBuckets`、`buildCronTrendSpec`、`dialogue-avatar`、`docker-grouping`、`import-entity-groups` 等公共件；本地重写的 `getByPath` / `isPlainObject` / `useElementSize` 改为导入。
+- 页面级共享：member `member-ledger`（积分 / 钱包流水共用搜索栏与列）、IoT `FormStatusRadioGroup` / `IotProductSelectField` / `IotDeviceSelectField` 与执行记录分页、drive `drive-share-link-columns`（「我的外链」与「外链治理」共用列与复制动作）、payment `useAppPaymentMethodOptions` / `resolveAppConfigBinding`、report `ReportOwnerFolderFields` / `useReportBatchStatus`、cms `model-field-renderer`；mocks/workflow approve / reject 主体抽 `settleTask`。
+- `useChannelMenus` 收敛到 `hooks/queries/channels` 单一缓存，管理端保存频道菜单后聊天视图同步失效。
+- 以上公共件登记到 skill 的「必须复用」清单与 constraints。
+
+### Fixed
+
+- Drive 复制外链地址统一经 `shareLinkAbsoluteUrl`，修正子路径部署下缺 `BASE_URL`。
+- PDF 内置字体缺字此前静默渲染为空白，现导出前检查字形覆盖并 warn 列出字符。
+- 缓存管理页与数据库总览的运行时长文案口径不一（「3天 2小时」「2 天 5 小时」「< 1 分」），统一为 `formatSecondsHuman` 口径。
+- 目录同步源校验补回 `circuitBreakerPercent` 的校验文案。
+
+---
+
 ## v2.29.0 - 2026-09-11
 
 **审批单 PDF 打印全链路**：流程实例一键生成审批单 PDF——服务端按表单快照自动排版（栅格 / 分组 / 明细 / 签名 / 审批链）或按流程绑定的打印设计器实体模板渲染，应用内预览后打印 / 下载同一份文件；流程级可配置模板、水印、「仅通过后可打印」与办结自动归档（不可变 PDF 存证 + SHA-256），打印件右上角验真二维码指向公开验真页；支持多份合并批量导出与移动端系统分享。服务端随包内置 CJK 字体，Alpine 镜像的报表 PDF 中文导出不再依赖系统字体。另：标签页 favicon 跟随主题色与明暗模式。
