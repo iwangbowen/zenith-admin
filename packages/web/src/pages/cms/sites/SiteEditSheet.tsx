@@ -27,6 +27,7 @@ import {
 } from './site-form-mapping';
 import type { TemplateDefaultsState } from './site-form-mapping';
 import { siteIndentOptions } from './site-tree-utils';
+import { CmsModelFieldControl } from '../model-field-renderer';
 import { FormSliderInput } from '@/components/SliderInput';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
@@ -42,33 +43,7 @@ function SiteModelFieldControl({ field }: Readonly<{ field: CmsModelField }>) {
   const f = `extend.${field.name}`;
   const rules = field.required ? [{ required: true, message: `请填写${field.label}` }] : undefined;
   const common = { field: f, label: field.label, labelWidth: 140, rules, placeholder: field.placeholder ?? undefined };
-  // 字典来源的选项由服务端解析进 resolvedOptions，前端不重复判断来源
-  const options = field.resolvedOptions ?? field.options ?? [];
-  switch (field.fieldType) {
-    case 'textarea':
-    case 'richtext':
-      return <Form.TextArea {...common} rows={3} />;
-    case 'number':
-      return <Form.InputNumber {...common} style={{ width: '100%' }} />;
-    case 'date':
-      return <Form.DatePicker {...common} type="date" density="compact" style={{ width: '100%' }} />;
-    case 'datetime':
-      return <Form.DatePicker {...common} type="dateTime" density="compact" style={{ width: '100%' }} />;
-    case 'select':
-      return <Form.Select {...common} style={{ width: '100%' }} optionList={options} showClear />;
-    case 'radio':
-      return (
-        <Form.RadioGroup {...common}>
-          {options.map((o) => <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>)}
-        </Form.RadioGroup>
-      );
-    case 'checkbox':
-      return <Form.CheckboxGroup {...common} options={options} direction="horizontal" />;
-    case 'switch':
-      return <Form.Switch {...common} />;
-    default:
-      return <Form.Input {...common} />;
-  }
+  return <CmsModelFieldControl field={field} common={common} />;
 }
 
 interface SiteEditSheetProps {

@@ -21,6 +21,7 @@ import type { CmsChannel, CmsModelField, CmsEditLock, CmsTextCheckResult, CmsCon
 import { useCmsLinkPicker } from './CmsLinkInput';
 import { formatBytes } from '@zenith/shared/core';
 import { channelsToSelectTree } from './channel-tree';
+import { CmsModelFieldControl } from './model-field-renderer';
 import './ContentEditPage.css';
 
 // 富文本引擎（wangeditor）压缩后约 266 KB。静态导入会阻塞整个编辑页 chunk 的加载，
@@ -83,14 +84,6 @@ function MediaFieldControl({ field, canUpload }: Readonly<{ field: CmsModelField
   );
 }
 
-/**
- * 字段可选项：优先用服务端解析后的 resolvedOptions（字典来源已展开），
- * 回落 options 兼容尚未返回 resolvedOptions 的旧接口响应。
- */
-function fieldOptions(field: CmsModelField): { label: string; value: string }[] {
-  return field.resolvedOptions ?? field.options ?? [];
-}
-
 /** 解析模型字段 defaultValue 为表单控件初值（与服务端 applyCmsModelFieldDefaults 同一口径） */
 function parseFieldDefault(field: CmsModelField): unknown {
   const raw = field.defaultValue?.trim();
@@ -130,35 +123,14 @@ function ModelFieldControl({ field, applyDefault, canUpload }: Readonly<{ field:
     placeholder: field.placeholder ?? undefined,
     ...(initValue !== undefined ? { initValue } : {}),
   };
-  switch (field.fieldType) {
-    case 'textarea':
-      return <Form.TextArea {...common} rows={3} />;
-    case 'richtext':
-      return <Form.TextArea {...common} rows={5} placeholder={field.placeholder ?? '支持 HTML'} />;
-    case 'number':
-      return <Form.InputNumber {...common} style={{ width: '100%' }} />;
-    case 'date':
-      return <Form.DatePicker {...common} type="date" density="compact" style={{ width: '100%' }} />;
-    case 'datetime':
-      return <Form.DatePicker {...common} type="dateTime" density="compact" style={{ width: '100%' }} />;
-    case 'select':
-      return <Form.Select {...common} style={{ width: '100%' }} optionList={fieldOptions(field)} showClear />;
-    case 'radio':
-      return (
-        <Form.RadioGroup {...common}>
-          {fieldOptions(field).map((o) => <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>)}
-        </Form.RadioGroup>
-      );
-    case 'checkbox':
-      return <Form.CheckboxGroup {...common} options={fieldOptions(field)} direction="horizontal" />;
-    case 'switch':
-      return <Form.Switch {...common} />;
-    case 'image':
-    case 'file':
-      return <MediaFieldControl field={field} canUpload={canUpload} />;
-    default:
-      return <Form.Input {...common} />;
-  }
+  return (
+    <CmsModelFieldControl
+      field={field}
+      common={common}
+      richtext={{ rows: 5, placeholder: field.placeholder ?? '支持 HTML' }}
+      media={<MediaFieldControl field={field} canUpload={canUpload} />}
+    />
+  );
 }
 
 /** 版本差异值展示（布尔/对象友好化） */
