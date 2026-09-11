@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Descriptions, InputNumber, Modal, Select, SideSheet, Spin, Switch, TabPane, Tabs, Tag, Toast, Typography, Input } from '@douyinfe/semi-ui';
+import { Button, Descriptions, InputNumber, Modal, Select, SideSheet, Spin, Switch, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Eraser, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type { PaginatedResponse } from '@zenith/shared/core';
@@ -14,7 +14,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
@@ -36,7 +36,6 @@ import {
   useDeleteAsyncTask,
   useUpdateAsyncTaskTypeConfig,
 } from '@/hooks/queries/async-tasks';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { JsonBlock } from '@/components/JsonBlock';
@@ -277,7 +276,7 @@ export default function TaskCenterPage() {
 
   const openDetail = (record: AsyncTask) => {
     setDetailTask(record);
-    setItemStatusFilter('');
+    setItemStatusFilter(undefined);
     setItemsPage(1);
   };
 
@@ -493,63 +492,84 @@ export default function TaskCenterPage() {
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as TabKey)} lazyRender>
         <TabPane tab="任务列表" itemKey="tasks">
-          <SearchToolbar>
-            <FilterSelect
-              placeholder="全部任务类型"
-              items={typeOptions}
-              {...bind('taskType')}
-              width={210}
-            />
-            <StatusSelect
-              items={statusOptions}
-              {...bind('status')}
-            />
-            <KeywordInput placeholder="搜索任务标题/类型" {...bindKeyword('keyword')} width={190} />
-            <KeywordInput placeholder="任务内容包含…" {...bindKeyword('content')} width={170} />
-            <Input
-              placeholder="提交人（用户名/昵称）"
-              {...bind('createdBy')}
-              onEnterPress={handleSearch}
-              style={{ width: 170 }}
-              showClear
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            <Button icon={<RefreshCw size={14} />} onClick={handleRefresh} loading={manualRefreshing}>刷新</Button>
-            <Select
-              prefix="自动刷新"
-              value={refreshInterval}
-              optionList={refreshIntervalOptions}
-              onChange={(value) => setRefreshInterval(value as number)}
-              style={{ width: 150 }}
-            />
-            {refreshInterval > 0 && (
-              // 固定宽度占位，轮询指示的出现/消失不会挤动后面的按钮
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, width: 84 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16 }}>
-                  {listQuery.isFetching
-                    ? <Spin size="small" />
-                    : <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--semi-color-success)' }} />}
-                </span>
-                <Typography.Text type="tertiary" size="small">
-                  {listQuery.isFetching ? '刷新中…' : '已开启'}
-                </Typography.Text>
-              </span>
-            )}
-            {canCleanup && (
-              <Button icon={<Eraser size={14} />} loading={cleanupMutation.isPending} onClick={handleCleanup}>清理过期记录</Button>
-            )}
-            {canManage && selectedRowKeys.length > 0 && (
+          <ListSearchToolbar
+            keyword={<KeywordInput placeholder="搜索任务标题/类型" {...bindKeyword('keyword')} width={190} />}
+            filters={(
               <>
-                <Button icon={<XCircle size={14} />} loading={batchLoading} onClick={handleBatchCancel}>
-                  批量取消 ({selectedRowKeys.length})
-                </Button>
-                <Button type="danger" icon={<Trash2 size={14} />} loading={batchLoading} onClick={handleBatchDelete}>
-                  批量删除 ({selectedRowKeys.length})
-                </Button>
+                <FilterSelect
+                  placeholder="全部任务类型"
+                  items={typeOptions}
+                  {...bind('taskType')}
+                  width={210}
+                />
+                <StatusSelect
+                  items={statusOptions}
+                  {...bind('status')}
+                />
+                <KeywordInput placeholder="任务内容包含…" {...bindKeyword('content')} width={170} />
+                <KeywordInput placeholder="提交人（用户名/昵称）" {...bindKeyword('createdBy')} width={170} />
               </>
             )}
-          </SearchToolbar>
+            onSearch={handleSearch}
+            onReset={handleReset}
+            actions={(
+              <>
+                <Button icon={<RefreshCw size={14} />} onClick={handleRefresh} loading={manualRefreshing}>刷新</Button>
+                <Select
+                  prefix="自动刷新"
+                  value={refreshInterval}
+                  optionList={refreshIntervalOptions}
+                  onChange={(value) => setRefreshInterval(value as number)}
+                  style={{ width: 150 }}
+                />
+                {refreshInterval > 0 && (
+                  // 固定宽度占位，轮询指示的出现/消失不会挤动后面的按钮
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, width: 84 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16 }}>
+                      {listQuery.isFetching
+                        ? <Spin size="small" />
+                        : <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--semi-color-success)' }} />}
+                    </span>
+                    <Typography.Text type="tertiary" size="small">
+                      {listQuery.isFetching ? '刷新中…' : '已开启'}
+                    </Typography.Text>
+                  </span>
+                )}
+                {canCleanup && (
+                  <Button icon={<Eraser size={14} />} loading={cleanupMutation.isPending} onClick={handleCleanup}>清理过期记录</Button>
+                )}
+                {canManage && selectedRowKeys.length > 0 && (
+                  <>
+                    <Button icon={<XCircle size={14} />} loading={batchLoading} onClick={handleBatchCancel}>
+                      批量取消 ({selectedRowKeys.length})
+                    </Button>
+                    <Button type="danger" icon={<Trash2 size={14} />} loading={batchLoading} onClick={handleBatchDelete}>
+                      批量删除 ({selectedRowKeys.length})
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
+            mobileActions={(
+              <>
+                {canCleanup && (
+                  <Button theme="borderless" icon={<Eraser size={14} />} loading={cleanupMutation.isPending} onClick={handleCleanup}>清理过期记录</Button>
+                )}
+                {canManage && selectedRowKeys.length > 0 && (
+                  <>
+                    <Button theme="borderless" icon={<XCircle size={14} />} loading={batchLoading} onClick={handleBatchCancel}>
+                      批量取消 ({selectedRowKeys.length})
+                    </Button>
+                    <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} loading={batchLoading} onClick={handleBatchDelete}>
+                      批量删除 ({selectedRowKeys.length})
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
+            filterTitle="任务筛选"
+            actionTitle="任务操作"
+          />
 
           <ConfigurableTable
             bordered

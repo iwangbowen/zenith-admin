@@ -47,7 +47,7 @@ type SimpleUser = UserTransferUser & {
   departmentId?: number | null;
 };
 
-const defaultSearchParams: SearchParams = { keyword: '', status: '' };
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
 export default function UserGroupsPage() {
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');

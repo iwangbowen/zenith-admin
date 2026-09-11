@@ -46,7 +46,7 @@ interface SearchParams {
   status?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', status: '' };
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
 const runStatusColor: Record<string, import('@douyinfe/semi-ui/lib/es/tag/interface').TagColor> = {
   success: 'green',

@@ -17,7 +17,8 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ExternalLink, Megaphone, Plus, Undo2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared/workflow';
-import { buildWorkflowSummaryItems } from '@zenith/shared/workflow';
+import { buildWorkflowSummaryItems, WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES } from '@zenith/shared/workflow';
+import { enumValueOf } from '@zenith/shared/core';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
@@ -275,8 +276,8 @@ export default function MyApplicationsPage() {
   const listQuery = useMyWorkflowInstances({
     page,
     pageSize,
-    status: submittedParams.status || undefined,
-    priority: submittedParams.priority || undefined,
+    status: enumValueOf(WORKFLOW_INSTANCE_STATUSES, submittedParams.status),
+    priority: enumValueOf(WORKFLOW_INSTANCE_PRIORITIES, submittedParams.priority),
   });
   const data = listQuery.data;
   const definitionsQuery = usePublishedWorkflowDefinitions({ enabled: applyVisible });
@@ -606,7 +607,7 @@ export default function MyApplicationsPage() {
         pageKey="workflow-my-applications"
         currentFilters={submittedParams as unknown as Record<string, unknown>}
         onApply={(filters) => {
-          const next = { status: '', priority: '', ...(filters as Partial<{ status: string; priority: string }>) };
+          const next = { status: undefined, priority: undefined, ...(filters as Partial<{ status?: string; priority?: string }>) };
           applySearch(next);
         }}
       />

@@ -43,7 +43,7 @@ interface SearchParams {
   status?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', status: '' };
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
 /** 测试发送对话框:直发 RegistrationID,不依赖设备登记 */
 function TestSendModal({ config, onClose }: { config: PushConfig | null; onClose: () => void }) {

@@ -4,13 +4,13 @@
  * 提供事件订阅 CRUD + 启用/禁用 + 投递记录查看与重试。
  */
 import { useState } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Space, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Modal, Row, Space, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { RotateCcw, Search } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import type { CreateWorkflowEventSubscriptionInput, WorkflowDefinition, WorkflowEventDelivery, WorkflowEventSubscription, WorkflowEventType } from '@zenith/shared/workflow';
 import { isPlainObject } from '@zenith/shared/core';
-import { formatDateTimeForApi } from '@/utils/date';
+import { formatDateTimeRangeValuesForApi } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -37,7 +37,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { useEditModal } from '@/hooks/useEditModal';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
-import { DateRangeFilter, FilterSelect, StatusSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import ModalFooter from '@/components/ModalFooter';
 
 const EVENT_OPTIONS: Array<{ value: WorkflowEventType; label: string }> = [
@@ -86,7 +86,7 @@ export default function WorkflowEventSubscriptionsPage() {
   const defaultSearchParams: SearchParams = { keyword: '', definitionId: undefined, enabled: undefined };
   const {
     page, pageSize, buildPagination,
-    bind, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowEventSubscriptionKeys.lists });
   const listQuery = useWorkflowEventSubscriptionList({
@@ -209,23 +209,22 @@ export default function WorkflowEventSubscriptionsPage() {
   const [replayVisible, setReplayVisible] = useState(false);
   const [replayStatus, setReplayStatus] = useState<'success' | 'failed' | 'pending' | undefined>('failed');
   const [replayEventType, setReplayEventType] = useState<WorkflowEventType | undefined>(undefined);
-  const [replayRange, setReplayRange] = useState<[Date, Date] | undefined>(undefined);
+  const [replayRange, setReplayRange] = useState<[Date, Date] | null>(null);
 
   const openReplay = () => {
-    setReplayStatus('failed'); setReplayEventType(undefined); setReplayRange(undefined); setReplayVisible(true);
+    setReplayStatus('failed'); setReplayEventType(undefined); setReplayRange(null); setReplayVisible(true);
   };
 
   const handleReplay = async () => {
     if (deliverySubId === null) return;
-    const start = replayRange?.[0];
-    const end = replayRange?.[1];
+    const [startAt, endAt] = formatDateTimeRangeValuesForApi(replayRange);
     const result = await replayDeliveriesMutation.mutateAsync({
       body: {
         subscriptionId: deliverySubId,
         ...(replayEventType ? { eventType: replayEventType } : {}),
         ...(replayStatus ? { status: replayStatus } : {}),
-        ...(start ? { startAt: formatDateTimeForApi(start) } : {}),
-        ...(end ? { endAt: formatDateTimeForApi(end) } : {}),
+        startAt,
+        endAt,
       },
     });
     Toast.success(`已重放 ${result.count} 条投递`);
@@ -336,16 +335,7 @@ export default function WorkflowEventSubscriptionsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={(
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="名称 / URL"
-            {...bind('keyword')}
-            showClear
-            style={{ width: 220 }}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-          />
-        )}
+        keyword={<KeywordInput placeholder="名称 / URL" {...bindKeyword('keyword')} width={220} />}
         filters={(
           <>
             <FilterSelect
@@ -599,7 +589,7 @@ export default function WorkflowEventSubscriptionsPage() {
             <DateRangeFilter
               width="100%"
               value={replayRange}
-              onChange={(range) => setReplayRange(range ?? undefined)}
+              onChange={setReplayRange}
             />
           </div>
         </div>

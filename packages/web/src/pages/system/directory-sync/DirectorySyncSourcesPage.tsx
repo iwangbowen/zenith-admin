@@ -56,7 +56,7 @@ interface SearchParams {
   status?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', type: undefined, status: '' };
+const defaultSearchParams: SearchParams = { keyword: '', type: undefined, status: undefined };
 
 export default function DirectorySyncSourcesPage() {
   const { hasPermission } = usePermission();

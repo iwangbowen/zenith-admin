@@ -36,7 +36,7 @@ interface SearchParams {
   status?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', status: '' };
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
 /** 租户表单值：`expireAt` 在表单里是 Date，提交前由 beforeSave 转成接口格式；记录里的 null 在提交时归一为未填 */
 interface TenantFormValues extends Partial<Omit<CreateTenantInput, 'expireAt' | 'contactName' | 'contactPhone' | 'logo' | 'remark'>> {

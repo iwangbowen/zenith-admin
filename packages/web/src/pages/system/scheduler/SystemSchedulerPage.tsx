@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Col, Descriptions, Form, Input, Modal, Row, Space, TabPane, Tabs, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
+import { Button, Col, Descriptions, Form, Modal, Row, Space, TabPane, Tabs, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { AlertTriangle, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react';
 import type { SystemSchedulerAlertChannel } from '@zenith/shared/chat';
@@ -13,11 +13,12 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
+import { formatDateTimeRangeForApi } from '@/utils/date';
 import { formatDurationMs as formatDuration } from '@/utils/format';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import {
@@ -31,8 +32,7 @@ import {
   useSystemSchedulerRuns,
   useSystemSchedulerTasks,
 } from '@/hooks/queries/system-scheduler';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { FilterSelect, KeywordInput, StatusSelect, DateRangeFilter } from '@/components/search-filters';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { confirmDanger } from '@/utils/confirm';
 type TabKey = 'tasks' | 'runs' | 'nodes';
@@ -50,8 +50,7 @@ interface RunSearchParams {
   triggerType?: string;
   status?: string;
   alertStatus?: string;
-  startTime: string;
-  endTime: string;
+  timeRange: [Date, Date] | null;
 }
 
 interface TaskConfigForm {
@@ -88,7 +87,7 @@ interface SaveTaskConfigPayload {
 }
 
 const defaultTaskSearch: TaskSearchParams = { keyword: '', module: undefined, taskType: undefined, status: undefined };
-const defaultRunSearch: RunSearchParams = { taskName: undefined, taskType: undefined, triggerType: undefined, status: undefined, alertStatus: undefined, startTime: '', endTime: '' };
+const defaultRunSearch: RunSearchParams = { taskName: undefined, taskType: undefined, triggerType: undefined, status: undefined, alertStatus: undefined, timeRange: null };
 const FormUserSelect = withField(UserSelect);
 const EMPTY_TASKS: SystemSchedulerTask[] = [];
 
@@ -154,8 +153,7 @@ export default function SystemSchedulerPage() {
     triggerType: enumValueOf(SYSTEM_SCHEDULER_TRIGGER_TYPES, submittedRunSearch.triggerType),
     status: enumValueOf(SYSTEM_SCHEDULER_RUN_STATUSES, submittedRunSearch.status),
     alertStatus: enumValueOf(SYSTEM_SCHEDULER_ALERT_FILTERS, submittedRunSearch.alertStatus),
-    startTime: submittedRunSearch.startTime || undefined,
-    endTime: submittedRunSearch.endTime || undefined,
+    ...formatDateTimeRangeForApi(submittedRunSearch.timeRange),
   }, activeTab === 'runs');
   const nodesQuery = useSystemSchedulerNodes({ page: nodesPage, pageSize: nodesPageSize }, activeTab === 'nodes');
   const detailQuery = useSystemSchedulerRunDetail(detailRun?.id, detailRun != null);
@@ -526,37 +524,42 @@ export default function SystemSchedulerPage() {
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as TabKey)} lazyRender>
         <TabPane tab="系统任务" itemKey="tasks">
-          <SearchToolbar>
-            <KeywordInput placeholder="搜索任务名称/标识/说明" value={taskSearch.keyword} onChange={(value) => setTaskSearch((prev) => ({ ...prev, keyword: value }))} width={240} />
-            <FilterSelect
-              placeholder="全部模块"
-              items={moduleOptions}
-              value={taskSearch.module}
-              onChange={(value) => setTaskSearch((prev) => ({ ...prev, module: value }))}
-              width={140}
-            />
-            <FilterSelect
-              placeholder="全部类型"
-              items={[{ value: 'recurring', label: '周期任务' },
-                { value: 'queue', label: '队列 Worker' },]}
-              value={taskSearch.taskType}
-              onChange={(value) => setTaskSearch((prev) => ({ ...prev, taskType: value }))}
-              width={140}
-            />
-            <StatusSelect
-              items={[{ value: 'running', label: '运行中' },
-                { value: 'success', label: '成功' },
-                { value: 'failed', label: '失败' },]}
-              value={taskSearch.status}
-              onChange={(value) => setTaskSearch((prev) => ({ ...prev, status: value }))}
-            />
-            <SearchButton onClick={() => void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.tasks })} />
-            <ResetButton onClick={() => {
+          <ListSearchToolbar
+            keyword={<KeywordInput placeholder="搜索任务名称/标识/说明" value={taskSearch.keyword} onChange={(value) => setTaskSearch((prev) => ({ ...prev, keyword: value }))} width={240} />}
+            filters={(
+              <>
+                <FilterSelect
+                  placeholder="全部模块"
+                  items={moduleOptions}
+                  value={taskSearch.module}
+                  onChange={(value) => setTaskSearch((prev) => ({ ...prev, module: value }))}
+                  width={140}
+                />
+                <FilterSelect
+                  placeholder="全部类型"
+                  items={[{ value: 'recurring', label: '周期任务' },
+                    { value: 'queue', label: '队列 Worker' },]}
+                  value={taskSearch.taskType}
+                  onChange={(value) => setTaskSearch((prev) => ({ ...prev, taskType: value }))}
+                  width={140}
+                />
+                <StatusSelect
+                  items={[{ value: 'running', label: '运行中' },
+                    { value: 'success', label: '成功' },
+                    { value: 'failed', label: '失败' },]}
+                  value={taskSearch.status}
+                  onChange={(value) => setTaskSearch((prev) => ({ ...prev, status: value }))}
+                />
+              </>
+            )}
+            onSearch={() => void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.tasks })}
+            onReset={() => {
                 setTaskSearch(defaultTaskSearch);
                 void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.tasks });
-              }} />
-            <Button icon={<RefreshCw size={14} />} onClick={() => void tasksQuery.refetch()} loading={tasksQuery.isFetching}>刷新</Button>
-          </SearchToolbar>
+              }}
+            actions={<Button icon={<RefreshCw size={14} />} onClick={() => void tasksQuery.refetch()} loading={tasksQuery.isFetching}>刷新</Button>}
+            filterTitle="系统任务筛选"
+          />
 
           <ConfigurableTable
             bordered
@@ -572,67 +575,65 @@ export default function SystemSchedulerPage() {
         </TabPane>
 
         <TabPane tab="运行日志" itemKey="runs">
-          <SearchToolbar>
-            <FilterSelect
-              placeholder="全部任务"
-              items={taskOptions}
-              {...runSearch.bind('taskName')}
-              width={220}
-              filter
-            />
-            <FilterSelect
-              placeholder="全部类型"
-              items={[{ value: 'recurring', label: '周期任务' },
-                { value: 'queue', label: '队列 Worker' },]}
-              {...runSearch.bind('taskType')}
-            />
-            <FilterSelect
-              placeholder="全部触发方式"
-              items={[{ value: 'schedule', label: '自动调度' },
-                { value: 'manual', label: '手动执行' },
-                { value: 'queue', label: '队列触发' },]}
-              {...runSearch.bind('triggerType')}
-              width={140}
-            />
-            <StatusSelect
-              items={[{ value: 'running', label: '运行中' },
-                { value: 'success', label: '成功' },
-                { value: 'failed', label: '失败' },]}
-              {...runSearch.bind('status')}
-            />
-            <FilterSelect
-              placeholder="全部告警状态"
-              items={[{ value: 'alerted', label: '有告警' },
-                { value: 'unacked', label: '未确认' },]}
-              {...runSearch.bind('alertStatus')}
-              width={140}
-            />
-            <Input
-              placeholder="开始时间"
-              {...runSearch.bind('startTime')}
-              showClear
-              style={{ width: 180 }}
-            />
-            <Input
-              placeholder="结束时间"
-              {...runSearch.bind('endTime')}
-              showClear
-              style={{ width: 180 }}
-            />
-            <SearchButton onClick={runSearch.handleSearch} />
-            <ResetButton onClick={runSearch.handleReset} />
-            <Button icon={<RefreshCw size={14} />} onClick={() => void runsQuery.refetch()} loading={runsQuery.isFetching}>刷新</Button>
-            <Button
-              type="danger"
-              theme="light"
-              icon={<Trash2 size={14} />}
-              onClick={handleCleanupRuns}
-              loading={cleanupRunsMutation.isPending}
-              disabled={!canCleanup}
-            >
-              清理
-            </Button>
-          </SearchToolbar>
+          <ListSearchToolbar
+            filters={(
+              <>
+                <FilterSelect
+                  placeholder="全部任务"
+                  items={taskOptions}
+                  {...runSearch.bind('taskName')}
+                  width={220}
+                  filter
+                />
+                <FilterSelect
+                  placeholder="全部类型"
+                  items={[{ value: 'recurring', label: '周期任务' },
+                    { value: 'queue', label: '队列 Worker' },]}
+                  {...runSearch.bind('taskType')}
+                />
+                <FilterSelect
+                  placeholder="全部触发方式"
+                  items={[{ value: 'schedule', label: '自动调度' },
+                    { value: 'manual', label: '手动执行' },
+                    { value: 'queue', label: '队列触发' },]}
+                  {...runSearch.bind('triggerType')}
+                  width={140}
+                />
+                <StatusSelect
+                  items={[{ value: 'running', label: '运行中' },
+                    { value: 'success', label: '成功' },
+                    { value: 'failed', label: '失败' },]}
+                  {...runSearch.bind('status')}
+                />
+                <FilterSelect
+                  placeholder="全部告警状态"
+                  items={[{ value: 'alerted', label: '有告警' },
+                    { value: 'unacked', label: '未确认' },]}
+                  {...runSearch.bind('alertStatus')}
+                  width={140}
+                />
+                <DateRangeFilter {...runSearch.bind('timeRange')} />
+              </>
+            )}
+            onSearch={runSearch.handleSearch}
+            onReset={runSearch.handleReset}
+            actions={(
+              <>
+                <Button icon={<RefreshCw size={14} />} onClick={() => void runsQuery.refetch()} loading={runsQuery.isFetching}>刷新</Button>
+                <Button
+                  type="danger"
+                  theme="light"
+                  icon={<Trash2 size={14} />}
+                  onClick={handleCleanupRuns}
+                  loading={cleanupRunsMutation.isPending}
+                  disabled={!canCleanup}
+                >
+                  清理
+                </Button>
+              </>
+            )}
+            filterTitle="运行日志筛选"
+          />
 
           <ConfigurableTable<SystemSchedulerRun>
             columns={runColumns}

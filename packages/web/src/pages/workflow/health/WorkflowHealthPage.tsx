@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Modal, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { workflowTaskContract, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
@@ -10,12 +9,12 @@ import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceD
 import { useWorkflowHealthSummary, workflowHealthKeys } from '@/hooks/queries/workflow-health';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { useApiMutation } from '@/lib/contract-query';
 import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import { FilterSelect } from '@/components/search-filters';
+import { ListSearchToolbar } from '@/components/list-page';
 
 const ISSUE_LABELS: Record<WorkflowHealthIssue['type'], string> = {
   external_dispatch_failed: '外部审批失败',
@@ -135,25 +134,10 @@ export default function WorkflowHealthPage() {
     }),
   ];
 
-  const renderIssueTypeFilter = () => (
-    <FilterSelect
-      placeholder="全部问题类型"
-      items={ISSUE_OPTIONS}
-      value={issueType}
-      onChange={setIssueType}
-      width={220}
-      prefix="问题类型"
-    />
-  );
-
-  const renderSearchButton = () => (
-    <SearchButton onClick={handleSearch} />
-  );
-
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        filters={(
           <>
             <Select
               {...bind('thresholdMinutes', (v: unknown) => Number(v) || 30)}
@@ -162,26 +146,19 @@ export default function WorkflowHealthPage() {
               suffix="的问题"
               style={{ width: 320 }}
             />
-            {renderIssueTypeFilter()}
-            {renderSearchButton()}
-            <ResetButton onClick={handleReset} />
-          </>
-        )}
-        mobilePrimary={(
-          <>
             <FilterSelect
-              placeholder="全部等待阈值"
-              items={THRESHOLD_OPTIONS}
-              {...bind('thresholdMinutes', (v: number | undefined) => Number(v) || 30)}
-              width={180}
+              placeholder="全部问题类型"
+              items={ISSUE_OPTIONS}
+              value={issueType}
+              onChange={setIssueType}
+              width={220}
+              prefix="问题类型"
             />
-            {renderSearchButton()}
           </>
         )}
-        mobileFilters={renderIssueTypeFilter()}
+        onSearch={handleSearch}
+        onReset={handleReset}
         filterTitle="健康巡检筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <StatGrid minItemWidth={150} style={{ marginBottom: 12 }}>

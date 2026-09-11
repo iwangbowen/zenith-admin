@@ -609,22 +609,6 @@ function ReleaseManageTab({ active }: { active: boolean }) {
     }),
   ];
 
-  const renderAppFilter = () => (
-    <FilterSelect
-      placeholder="全部应用"
-      items={appOptions}
-      {...bind('appId')}
-      width={160}
-    />
-  );
-
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索版本号 / 更新日志..."
-      {...bindKeyword('keyword')}
-    />
-  );
-
   const renderAppsManageButton = (borderless?: boolean) => (
     <Button
       icon={<Settings2 size={14} />}
@@ -640,9 +624,14 @@ function ReleaseManageTab({ active }: { active: boolean }) {
   return (
     <>
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索版本号 / 更新日志..." {...bindKeyword('keyword')} />}
         filters={<>
-          {renderAppFilter()}
+          <FilterSelect
+            placeholder="全部应用"
+            items={appOptions}
+            {...bind('appId')}
+            width={160}
+          />
           <FilterSelect
             placeholder="全部渠道"
             items={APP_RELEASE_CHANNEL_OPTIONS}
@@ -884,7 +873,7 @@ function DevicesTab({ active }: { active: boolean }) {
     appId: submittedParams.appId,
     platform: enumValueOf(APP_PLATFORMS, submittedParams.platform),
     subjectType: enumValueOf(DEVICE_SUBJECT_TYPES, submittedParams.subjectType),
-    pushBound: enumValueOf(['true', 'false'] as const, submittedParams.pushBound),
+    pushBound: submittedParams.pushBound === undefined ? undefined : submittedParams.pushBound === 'true',
     keyword: submittedParams.keyword || undefined,
   }, active);
 
@@ -951,28 +940,17 @@ function DevicesTab({ active }: { active: boolean }) {
     }),
   ];
 
-  const renderAppFilter = () => (
-    <FilterSelect
-      placeholder="全部应用"
-      items={appOptions}
-      {...bind('appId')}
-      width={160}
-    />
-  );
-
-  const renderKeywordSearch = () => (
-    <KeywordInput
-      placeholder="搜索设备标识 / 型号 / 版本..."
-      {...bindKeyword('keyword')}
-    />
-  );
-
   return (
     <>
       <ListSearchToolbar
-        keyword={renderKeywordSearch()}
+        keyword={<KeywordInput placeholder="搜索设备标识 / 型号 / 版本..." {...bindKeyword('keyword')} />}
         filters={<>
-          {renderAppFilter()}
+          <FilterSelect
+            placeholder="全部应用"
+            items={appOptions}
+            {...bind('appId')}
+            width={160}
+          />
           <FilterSelect
             placeholder="全部平台"
             items={APP_PLATFORM_OPTIONS}

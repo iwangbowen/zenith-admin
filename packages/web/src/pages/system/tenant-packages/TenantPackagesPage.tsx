@@ -29,7 +29,7 @@ interface SearchParams {
   status?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', status: '' };
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
 export default function TenantPackagesPage() {
   const { hasPermission } = usePermission();

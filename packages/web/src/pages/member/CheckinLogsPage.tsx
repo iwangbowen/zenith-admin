@@ -5,18 +5,16 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CalendarPlus } from 'lucide-react';
 import type { MemberCheckin, MemberCheckinCalendarDay } from '@zenith/shared/member';
 import { usePermission } from '@/hooks/usePermission';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import { MemberSelect } from '@/components/MemberSelect';
-import { formatDateForApi } from '@/utils/date';
+import { formatDateForApi, formatDateRangeValuesForApi } from '@/utils/date';
 import { compactQuery } from '@/lib/query';
 import { memberAdminKeys, useCheckinCalendar, useCheckinDayMembersInfinite, useCheckinLogList, useMakeupCheckin } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput } from '@/components/search-filters';
 import { dateColumn, dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -114,13 +112,13 @@ export default function CheckinLogsPage() {
     () => new Map((calendarQuery.data ?? []).map((d) => [d.date, d])),
     [calendarQuery.data],
   );
-  const [dateStart, dateEnd] = submittedParams.dateRange ?? [];
+  const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
   const listQuery = useCheckinLogList({
     page,
     pageSize,
     memberKeyword: submittedParams.memberKeyword || undefined,
-    dateStart: dateStart ? formatDateForApi(dateStart) : undefined,
-    dateEnd: dateEnd ? formatDateForApi(dateEnd) : undefined,
+    dateStart,
+    dateEnd,
   });
   const makeupMutation = useMakeupCheckin();
 
@@ -156,39 +154,17 @@ export default function CheckinLogsPage() {
     dateTimeColumn('签到时间', 'createdAt'),
   ];
 
-  const renderKeywordSearch = () => (
-    <KeywordInput placeholder="会员ID/昵称" {...bindKeyword('memberKeyword')} width={180} />
-  );
-
-  const renderDateRangeFilter = () => (
-    <DateRangeFilter type="dateRange" {...bind('dateRange')} />
-  );
-
-  const renderSearchButton = () => <SearchButton onClick={handleSearch} />;
   const buildExportQuery = () => {
-    const [ds, de] = submittedParams.dateRange ?? [];
+    const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
     return compactQuery({
       memberKeyword: submittedParams.memberKeyword,
-      dateStart: ds && formatDateForApi(ds),
-      dateEnd: de && formatDateForApi(de),
+      dateStart,
+      dateEnd,
     });
   };
   const renderExportButton = (variant?: 'flat') => hasPermission('member:checkin:log:list') ? (
     <ExportButton entity="member.checkins" query={buildExportQuery()} variant={variant} />
   ) : null;
-  const renderMakeupButton = () => hasPermission('member:checkin:makeup') ? (
-    <Button type="primary" icon={<CalendarPlus size={14} />} onClick={() => setMakeupVisible(true)}>
-      会员补签
-    </Button>
-  ) : null;
-
-  const renderViewSwitch = () => (
-    <RadioGroup type="button" value={view} onChange={(e) => setView(e.target.value as 'list' | 'calendar')}>
-      <Radio value="list">列表</Radio>
-      <Radio value="calendar">日历</Radio>
-    </RadioGroup>
-  );
-
   /** 点击日历某天：切回列表并按该日过滤 */
   const drillDownDate = (date: Date) => {
     setView('list');
@@ -212,41 +188,34 @@ export default function CheckinLogsPage() {
     );
   };
 
+  const viewSwitch = (
+    <RadioGroup type="button" value={view} onChange={(e) => setView(e.target.value as 'list' | 'calendar')}>
+      <Radio value="list">列表</Radio>
+      <Radio value="calendar">日历</Radio>
+    </RadioGroup>
+  );
+  const makeupButton = hasPermission('member:checkin:makeup') ? (
+    <Button type="primary" icon={<CalendarPlus size={14} />} onClick={() => setMakeupVisible(true)}>
+      会员补签
+    </Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
+      <ListSearchToolbar
+        keyword={(
           <>
-            {renderViewSwitch()}
-            {view === 'list' && (
-              <>
-                {renderKeywordSearch()}
-                {renderDateRangeFilter()}
-                {renderSearchButton()}
-                <ResetButton onClick={handleReset} />
-                {renderExportButton()}
-              </>
-            )}
-            {renderMakeupButton()}
+            {viewSwitch}
+            {view === 'list' ? <KeywordInput placeholder="会员ID/昵称" {...bindKeyword('memberKeyword')} width={180} /> : null}
           </>
         )}
-        mobilePrimary={(
-          <>
-            {renderViewSwitch()}
-            {view === 'list' && (
-              <>
-                {renderKeywordSearch()}
-                {renderSearchButton()}
-              </>
-            )}
-            {renderMakeupButton()}
-          </>
-        )}
-        mobileFilters={view === 'list' ? renderDateRangeFilter() : undefined}
+        filters={view === 'list' ? <DateRangeFilter type="dateRange" {...bind('dateRange')} /> : undefined}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={makeupButton}
+        actions={view === 'list' ? renderExportButton() : undefined}
         mobileActions={view === 'list' ? renderExportButton('flat') : undefined}
         filterTitle="签到记录筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       {view === 'list' ? (

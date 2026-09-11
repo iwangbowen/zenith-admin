@@ -24,7 +24,7 @@ import { parseHeadersJson } from '../components/http-integration';
 import { useEditModal } from '@/hooks/useEditModal';
 
 interface SearchParams { keyword: string; status?: string }
-const defaultSearchParams: SearchParams = { keyword: '', status: '' };
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
 interface DataSourceFormValues {
   name: string;

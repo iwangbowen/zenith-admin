@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Button, Descriptions, Divider, Empty, Modal, SideSheet, Space, Tag, Timeline, Toast, TextArea, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Paperclip } from 'lucide-react';
-import type { WorkflowCompensation } from '@zenith/shared/workflow';
+import { WORKFLOW_COMPENSATION_STATUSES, type WorkflowCompensation } from '@zenith/shared/workflow';
+import { enumValueOf } from '@zenith/shared/core';
 import { useUploadOneFile } from '@/hooks/queries/files';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTime } from '@/utils/date';
@@ -46,7 +47,7 @@ export default function WorkflowCompensationsView() {
   const canOperate = hasPermission('workflow:engine:operate');
   const { page, pageSize, buildPagination } = usePagination();
   const [status, setStatus] = useState<string | undefined>('pending');
-  const listQuery = useWorkflowCompensationList({ page, pageSize, status });
+  const listQuery = useWorkflowCompensationList({ page, pageSize, status: enumValueOf(WORKFLOW_COMPENSATION_STATUSES, status) });
   const [detailId, setDetailId] = useState<number | undefined>();
   const detailQuery = useWorkflowCompensationDetail(detailId, detailId !== undefined);
   const detail = detailQuery.data ?? null;

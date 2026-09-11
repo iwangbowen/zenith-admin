@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Descriptions, Input, InputNumber, Toast, Tag } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Input, Toast, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ScanLine } from 'lucide-react';
 import type { MemberCoupon, MemberCouponStatus } from '@zenith/shared/member';
@@ -15,7 +15,7 @@ import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '../../utils/ta
 import { memberAdminKeys, useCouponByCode, useCouponRecordList, useRedeemCoupon, useRevokeCouponRecord } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
-import { KeywordInput, StatusSelect } from '@/components/search-filters';
+import { KeywordInput, NumberFilter, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { memberCellColumn } from './member-admin-display';
 import { compactQuery } from '@/lib/query';
@@ -34,8 +34,8 @@ export default function CouponRecordsPage() {
   } = useListSearch<SearchParams>({ defaults: {}, listKey: memberAdminKeys.couponRecords });
   // 会员详情/优惠券列表入口的深链筛选（?memberKeyword= / ?couponId=，消费后即从 URL 移除）
   useListDeepLink(['memberKeyword', 'couponId'], (p) => applySearch({
-    ...(p.memberKeyword ? { memberKeyword: p.memberKeyword } : {}),
-    ...(p.couponId ? { couponId: Number(p.couponId) || undefined } : {}),
+    memberKeyword: p.memberKeyword,
+    couponId: Number(p.couponId) || undefined,
   }));
   const listQuery = useCouponRecordList({
     page,
@@ -124,11 +124,10 @@ export default function CouponRecordsPage() {
         keyword={<KeywordInput placeholder="会员ID/昵称" {...bindKeyword('memberKeyword')} width={180} />}
         filters={(
           <>
-            <InputNumber
+            <NumberFilter
               placeholder="优惠券ID"
-              {...bind('couponId', (v) => v as number | undefined)}
               min={1}
-              style={{ width: 120 }}
+              {...bind('couponId')}
             />
             <StatusSelect
               items={statusOptions}

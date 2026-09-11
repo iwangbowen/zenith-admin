@@ -33,7 +33,7 @@ interface SearchParams {
   level?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', status: undefined, level: '' };
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined, level: undefined };
 
 export default function RegionsPage() {
   const { hasPermission } = usePermission();

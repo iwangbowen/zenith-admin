@@ -13,8 +13,7 @@ import type { UploadCertSchemaInput } from '@zenith/shared/platform';
 import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -29,7 +28,6 @@ import {
   useSslCertificateList,
   useUploadSslCertificate,
 } from '@/hooks/queries/ssl-certificates';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 
 interface SearchParams {
@@ -37,13 +35,14 @@ interface SearchParams {
   type?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', type: '' };
+const defaultSearchParams: SearchParams = { keyword: '', type: undefined };
 
 const TYPE_LABELS: Record<SslCertificate['type'], string> = {
   self_signed: '自签名',
   uploaded: '上传',
   letsencrypt: 'Let\'s Encrypt',
 };
+const TYPE_OPTIONS = SSL_CERT_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] }));
 
 const STATUS_CONFIG: Record<SslCertificate['status'], { label: string; color: 'green' | 'orange' | 'red' | 'grey' }> = {
   valid: { label: '有效', color: 'green' },
@@ -180,45 +179,31 @@ export default function SslCertificatesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索名称或域名" {...bindKeyword('keyword')} width={240} />
-            <FilterSelect
-              placeholder="全部证书类型"
-              items={[{ value: 'self_signed', label: '自签名' },
-                { value: 'uploaded', label: '上传' },
-                { value: 'letsencrypt', label: 'Let\'s Encrypt' },]}
-              {...bind('type')}
-              width={160}
-            />
-            <SearchButton onClick={handleSearch} />
-            <ResetButton onClick={handleReset} />
-            {canCreate && <Button type="primary" icon={<Lock size={14} />} onClick={generateModal.openCreate}>生成自签名证书</Button>}
-            {canCreate && <Button type="primary" icon={<Upload size={14} />} onClick={uploadModal.openCreate}>上传证书</Button>}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索名称或域名" {...bindKeyword('keyword')} width={240} />
-            <SearchButton onClick={handleSearch} />
-            {canCreate && <Button type="primary" icon={<Lock size={14} />} onClick={generateModal.openCreate}>生成</Button>}
-            {canCreate && <Button type="primary" icon={<Upload size={14} />} onClick={uploadModal.openCreate}>上传</Button>}
-          </>
-        )}
-        mobileFilters={(
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索名称或域名" {...bindKeyword('keyword')} width={240} />}
+        filters={(
           <FilterSelect
             placeholder="全部证书类型"
-            items={[{ value: 'self_signed', label: '自签名' },
-              { value: 'uploaded', label: '上传' },
-              { value: 'letsencrypt', label: 'Let\'s Encrypt' },]}
+            items={TYPE_OPTIONS}
             {...bind('type')}
             width={160}
           />
         )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canCreate ? (
+          <>
+            <Button type="primary" icon={<Lock size={14} />} onClick={generateModal.openCreate}>生成自签名证书</Button>
+            <Button type="primary" icon={<Upload size={14} />} onClick={uploadModal.openCreate}>上传证书</Button>
+          </>
+        ) : null}
+        mobileActions={canCreate ? (
+          <>
+            <Button theme="borderless" icon={<Lock size={14} />} onClick={generateModal.openCreate}>生成</Button>
+            <Button theme="borderless" icon={<Upload size={14} />} onClick={uploadModal.openCreate}>上传</Button>
+          </>
+        ) : null}
         filterTitle="证书筛选"
-        onFilterApply={handleSearch}
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable

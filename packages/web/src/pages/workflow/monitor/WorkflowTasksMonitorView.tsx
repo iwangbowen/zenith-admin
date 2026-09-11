@@ -4,9 +4,8 @@
  * 审批状态 / 审批建议 / 耗时 / 流程编号 / 任务编号；行操作：详情（实例详情抽屉）/ 催办。
  */
 import { useQueryClient } from '@tanstack/react-query';
-import { Input, Modal, Toast, Typography } from '@douyinfe/semi-ui';
+import { Modal, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import { WORKFLOW_TASK_MONITOR_NODE_TYPES, WORKFLOW_TASK_STATUSES, workflowTaskContract, type WorkflowTaskMonitorItem } from '@zenith/shared/workflow';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -23,7 +22,7 @@ import { useWorkflowTaskMonitorList, workflowMonitorKeys, type WorkflowTaskMonit
 import { useApiMutation } from '@/lib/contract-query';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn } from '@/utils/table-columns';
-import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const STUCK_OPTIONS = [
@@ -38,11 +37,11 @@ interface SearchParams {
   status?: string;
   nodeType?: string;
   stuckMinutes?: number;
-  createdRange?: [Date, Date];
+  createdRange: [Date, Date] | null;
 }
 
 const defaultSearchParams: SearchParams = {
-  keyword: '', assigneeKeyword: '', status: undefined, nodeType: undefined, stuckMinutes: undefined, createdRange: undefined,
+  keyword: '', assigneeKeyword: '', status: undefined, nodeType: undefined, stuckMinutes: undefined, createdRange: null,
 };
 
 interface Props {
@@ -54,7 +53,7 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
-    draftParams, bind, submittedParams,
+    draftParams, bind, bindKeyword, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowMonitorKeys.taskMonitorLists });
 
@@ -149,25 +148,10 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
       </StatGrid>
 
       <ListSearchToolbar
-        keyword={(
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="流程名称 / 申请标题"
-            {...bind('keyword')}
-            showClear
-            style={{ width: 200 }}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-          />
-        )}
+        keyword={<KeywordInput placeholder="流程名称 / 申请标题" {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
-            <Input
-              placeholder="审批人"
-              {...bind('assigneeKeyword')}
-              showClear
-              style={{ width: 130 }}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-            />
+            <KeywordInput placeholder="审批人" {...bindKeyword('assigneeKeyword')} width={130} />
             <FilterSelect
               placeholder="全部节点类型"
               items={WORKFLOW_TASK_NODE_TYPE_OPTIONS}
@@ -182,7 +166,7 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
             />
             <DateRangeFilter
               placeholder={['创建时间起', '创建时间止']}
-              {...bind('createdRange', (range: [Date, Date] | null) => range ?? undefined)}
+              {...bind('createdRange')}
             />
           </>
         )}

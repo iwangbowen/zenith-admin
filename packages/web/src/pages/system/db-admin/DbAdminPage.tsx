@@ -46,6 +46,7 @@ import { downloadBlob } from '@/utils/download';
 import { useThemeController } from '@/providers/theme-controller';
 import { usePermission } from '@/hooks/usePermission';
 import { usePreferences } from '@/hooks/usePreferences';
+import { usePagination } from '@/hooks/usePagination';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, listTableProps } from '@/components/list-page';
@@ -235,8 +236,12 @@ export default function DbAdminPage() {
   const [sqlPreview, setSqlPreview] = useState<string | null>(null);
 
   // 历史
-  const [historyPage, setHistoryPage] = useState(1);
-  const [historyPageSize, setHistoryPageSize] = useState(20);
+  const {
+    page: historyPage,
+    pageSize: historyPageSize,
+    setPage: setHistoryPage,
+    buildPagination: buildHistoryPagination,
+  } = usePagination(20);
 
   // 行编辑 Modal
   const [rowModalOpen, setRowModalOpen] = useState(false);
@@ -1318,15 +1323,7 @@ export default function DbAdminPage() {
             </Space>
             <ConfigurableTable<HistoryItem>
               columns={historyColumns}
-              {...listTableProps(historyQuery, {
-                pagination: (total) => ({
-                  currentPage: historyPage,
-                  pageSize: historyPageSize,
-                  total,
-                  onPageChange: (p) => { setHistoryPage(p); },
-                  onPageSizeChange: (size) => { setHistoryPageSize(size); setHistoryPage(1); },
-                }),
-              })}
+              {...listTableProps(historyQuery, { pagination: buildHistoryPagination })}
             />
           </div>
         </TabPane>

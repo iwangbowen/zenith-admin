@@ -4,7 +4,8 @@ import { Button, Modal, Select, Space, Tag, Typography, Toast } from '@douyinfe/
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Ban, CircleCheck, GitCompare, Layers, LayoutTemplate, Save, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { importWorkflowDefinitionSchema, workflowDefinitionContract, WORKFLOW_FORM_TYPE_LABELS, type WorkflowDefinition, type WorkflowFormType, type WorkflowVersionDiff as WorkflowVersionDiffData } from '@zenith/shared/workflow';
+import { importWorkflowDefinitionSchema, workflowDefinitionContract, WORKFLOW_DEFINITION_STATUSES, WORKFLOW_FORM_TYPE_LABELS, type WorkflowDefinition, type WorkflowFormType, type WorkflowVersionDiff as WorkflowVersionDiffData } from '@zenith/shared/workflow';
+import { enumValueOf } from '@zenith/shared/core';
 import { api } from '@/lib/contract-query';
 import { downloadBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/date';
@@ -97,7 +98,7 @@ export default function WorkflowDefinitionsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(WORKFLOW_DEFINITION_STATUSES, submittedParams.status),
     categoryId: submittedParams.selectedCategoryId ?? undefined,
   });
   const publishMutation = usePublishWorkflowDefinition();
@@ -389,7 +390,7 @@ export default function WorkflowDefinitionsPage() {
     }),
   ];
 
-  const renderImportButton = () => hasPermission('workflow:definition:create') ? (
+  const importButton = hasPermission('workflow:definition:create') ? (
     <Button
       type="primary"
       icon={<Upload size={14} />}
@@ -400,13 +401,13 @@ export default function WorkflowDefinitionsPage() {
     </Button>
   ) : null;
 
-  const renderTemplateButton = () => hasPermission('workflow:definition:create') ? (
+  const templateButton = hasPermission('workflow:definition:create') ? (
     <Button type="tertiary" icon={<LayoutTemplate size={14} />} onClick={() => setTemplateGalleryVisible(true)}>
       从模板新建
     </Button>
   ) : null;
 
-  const renderBatchButtons = () => (
+  const batchButtons = (
     <>
       {selectedRowKeys.length > 0 && hasPermission('workflow:definition:publish') && (
         <Button type="warning" icon={<Ban size={14} />} onClick={batchDisable}>
@@ -474,9 +475,9 @@ export default function WorkflowDefinitionsPage() {
             )}
             actions={(
               <>
-                {renderImportButton()}
-                {renderTemplateButton()}
-                {renderBatchButtons()}
+                {importButton}
+                {templateButton}
+                {batchButtons}
               </>
             )}
             mobileActions={(
@@ -487,9 +488,9 @@ export default function WorkflowDefinitionsPage() {
                   onClick={() => setShowCategorySidebar(true)}
                   style={{ display: isLayoutNarrow ? undefined : 'none' }}
                 >分类</Button>
-                {renderImportButton()}
-                {renderTemplateButton()}
-                {renderBatchButtons()}
+                {importButton}
+                {templateButton}
+                {batchButtons}
               </>
             )}
             filterTitle="流程定义筛选"
@@ -673,4 +674,3 @@ export default function WorkflowDefinitionsPage() {
     </div>
   );
 }
-

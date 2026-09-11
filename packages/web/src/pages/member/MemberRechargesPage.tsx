@@ -9,7 +9,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
-import { formatDateForApi } from '@/utils/date';
+import { formatDateRangeValuesForApi } from '@/utils/date';
 import { compactQuery } from '@/lib/query';
 import { memberAdminKeys, useMemberRechargeList } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -41,15 +41,15 @@ export default function MemberRechargesPage() {
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.rechargeLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ keyword: memberKeyword, dateRange: null }) });
-  const [dateStart, dateEnd] = submittedParams.dateRange ?? [];
+  const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
   const listQuery = useMemberRechargeList({
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
     status: submittedParams.status || undefined,
     channel: submittedParams.channel || undefined,
-    dateStart: dateStart ? formatDateForApi(dateStart) : undefined,
-    dateEnd: dateEnd ? formatDateForApi(dateEnd) : undefined,
+    dateStart,
+    dateEnd,
   });
 
   const columns: ColumnProps<MemberRecharge>[] = [
@@ -66,13 +66,13 @@ export default function MemberRechargesPage() {
   ];
 
   const buildExportQuery = () => {
-    const [ds, de] = submittedParams.dateRange ?? [];
+    const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
     return compactQuery({
       keyword: submittedParams.keyword,
       status: submittedParams.status,
       channel: submittedParams.channel,
-      dateStart: ds && formatDateForApi(ds),
-      dateEnd: de && formatDateForApi(de),
+      dateStart,
+      dateEnd,
     });
   };
   const renderExportButton = (variant?: 'flat') => hasPermission('member:recharge:list') ? (

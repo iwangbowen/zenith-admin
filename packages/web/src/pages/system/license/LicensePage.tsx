@@ -7,6 +7,7 @@ import { LICENSE_FEATURE_OPTIONS, LICENSE_STATUS_LABELS, type LicenseEventItem, 
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useActivateLicense, useDeactivateLicense, useLicenseEvents, useLicensingStatus } from '@/hooks/queries/licensing';
+import { usePagination } from '@/hooks/usePagination';
 import { copyTextWithToast } from '@/utils/clipboard';
 
 const { Text, Paragraph } = Typography;
@@ -228,8 +229,7 @@ function ActivateTab() {
 }
 
 function EventsTab() {
-  const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const { page, pageSize, buildPagination } = usePagination(20);
   const eventsQuery = useLicenseEvents({ page, pageSize });
 
   const columns: ColumnProps<LicenseEventItem>[] = [
@@ -259,12 +259,7 @@ function EventsTab() {
       dataSource={eventsQuery.data?.list ?? []}
       rowKey="id"
       loading={eventsQuery.isFetching}
-      pagination={{
-        currentPage: page,
-        pageSize,
-        total: eventsQuery.data?.total ?? 0,
-        onPageChange: setPage,
-      }}
+      pagination={buildPagination(eventsQuery.data?.total ?? 0)}
       empty="暂无事件"
     />
   );

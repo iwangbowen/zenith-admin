@@ -10,7 +10,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { formatDateForApi } from '@/utils/date';
+import { formatDateRangeForApi } from '@/utils/date';
 import { compactQuery } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { useMySettings } from '@/hooks/queries/settings';
@@ -66,15 +66,13 @@ export default function FeedbacksPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: userFeedbackKeys.lists });
 
-  const [rangeStart, rangeEnd] = submittedParams.dateRange ?? [];
   const listQuery = useUserFeedbackList({
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
     category: submittedParams.category,
     status: submittedParams.status,
-    startTime: rangeStart ? formatDateForApi(rangeStart) : undefined,
-    endTime: rangeEnd ? formatDateForApi(rangeEnd) : undefined,
+    ...formatDateRangeForApi(submittedParams.dateRange),
   });
 
   // ─── 批量选择 ──────────────────────────────────────────────────────────
@@ -107,8 +105,7 @@ export default function FeedbacksPage() {
       keyword: submittedParams.keyword,
       category: submittedParams.category,
       status: submittedParams.status,
-      startTime: rangeStart && formatDateForApi(rangeStart),
-      endTime: rangeEnd && formatDateForApi(rangeEnd),
+      ...formatDateRangeForApi(submittedParams.dateRange),
     });
   }
 
@@ -176,7 +173,7 @@ export default function FeedbacksPage() {
 
   // ─── 搜索区渲染 ────────────────────────────────────────────────────────
 
-  const renderBatchDeleteButton = () => selectedRowKeys.length > 0 && hasPermission('system:feedback:delete') ? (
+  const batchDeleteButton = selectedRowKeys.length > 0 && hasPermission('system:feedback:delete') ? (
     <BatchDeleteButton count={selectedRowKeys.length} onClick={confirmBatchDelete} />
   ) : null;
 
@@ -224,13 +221,13 @@ export default function FeedbacksPage() {
         onReset={handleReset}
         actions={(
           <>
-            {renderBatchDeleteButton()}
+            {batchDeleteButton}
             {renderExportButton()}
           </>
         )}
         mobileActions={(
           <>
-            {renderBatchDeleteButton()}
+            {batchDeleteButton}
             {renderExportButton('flat')}
           </>
         )}

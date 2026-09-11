@@ -5,7 +5,8 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Download, FileText, UserRoundCog } from 'lucide-react';
 import dayjs from 'dayjs';
-import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowExecutionToken, WorkflowFlowData, WorkflowInstanceListItem, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared/workflow';
+import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, type WorkflowApproveMethod, type WorkflowAssigneeType, type WorkflowCategory, type WorkflowExecutionToken, type WorkflowFlowData, type WorkflowInstanceListItem, type WorkflowNodeConfig, type WorkflowRuntimeDiagnostics, type WorkflowRuntimeIssue, type WorkflowRuntimeOutboxEvent, type WorkflowTask, type WorkflowTriggerExecution } from '@zenith/shared/workflow';
+import { enumValueOf } from '@zenith/shared/core';
 import { WORKFLOW_ISSUE_SEVERITY_META as ISSUE_SEVERITY_MAP } from './constants';
 import { downloadBlob } from '@/utils/download';
 import { formatSecondsBetween } from '@/utils/format';
@@ -372,11 +373,11 @@ export default function WorkflowMonitorPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    status: enumValueOf(WORKFLOW_INSTANCE_STATUSES, submittedParams.status),
     categoryId: submittedParams.categoryId,
     definitionId: submittedParams.definitionId,
     initiatorKeyword: submittedParams.initiator || undefined,
-    priority: submittedParams.priority || undefined,
+    priority: enumValueOf(WORKFLOW_INSTANCE_PRIORITIES, submittedParams.priority),
   });
   const data = listQuery.data ?? null;
 

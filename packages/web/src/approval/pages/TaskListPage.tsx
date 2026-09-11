@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Checkbox, Input, Modal, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { Check, CheckCheck, CircleCheckBig, ClipboardCheck, FilePlus2, ListChecks, LogOut, Plus, Search, Send, type LucideIcon } from 'lucide-react';
+import { Button, Checkbox, Modal, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Check, CheckCheck, CircleCheckBig, ClipboardCheck, FilePlus2, ListChecks, LogOut, Plus, Send, type LucideIcon } from 'lucide-react';
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared/core';
 import { formatDateTime } from '@/utils/date';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -14,6 +14,7 @@ import {
 } from '../lib/queries';
 import { useInfiniteSentinel, usePullRefresh } from '../lib/usePullRefresh';
 import { INSTANCE_STATUS_MAP as STATUS_MAP } from '@/components/workflow/workflow-runtime';
+import { KeywordInput } from '@/components/search-filters';
 
 type TagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
 
@@ -261,14 +262,13 @@ export default function TaskListPage() {
         <Button theme="borderless" icon={<LogOut size={16} />} onClick={logout} aria-label="退出" />
       </div>
       <div className="ap-search">
-        <Input
-          prefix={<Search size={14} />}
+        <KeywordInput
           placeholder="搜索标题 / 流程名称"
+          width="100%"
           value={keywordDraft}
           onChange={setKeywordDraft}
-          onEnterPress={() => { setKeyword(keywordDraft.trim()); setSize(10); }}
+          onSearch={() => { setKeyword(keywordDraft.trim()); setSize(10); }}
           onClear={() => { setKeywordDraft(''); setKeyword(''); setSize(10); }}
-          showClear
         />
         {tab === 'pending' && !batchMode && quickableIds.length > 0 && (
           <Button theme="borderless" icon={<ListChecks size={15} />} onClick={() => setBatchMode(true)}>批量</Button>

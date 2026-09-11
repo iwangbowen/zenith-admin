@@ -63,7 +63,7 @@ const BREAKER_META: Record<WorkflowConnectorBreakerState, { text: string; color:
 };
 
 interface SearchParams { keyword: string; type?: string; status?: string }
-const defaultSearchParams: SearchParams = { keyword: '', type: undefined, status: '' };
+const defaultSearchParams: SearchParams = { keyword: '', type: undefined, status: undefined };
 
 interface ConnectorFormValues {
   name: string; code: string; description?: string; type: WorkflowConnectorType;

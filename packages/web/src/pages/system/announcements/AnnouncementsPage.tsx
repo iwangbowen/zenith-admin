@@ -18,7 +18,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { TABLE_PAGE_SIZE_OPTIONS } from '@/hooks/usePagination';
+import { usePagination } from '@/hooks/usePagination';
 import { useListSearch } from '@/hooks/useListSearch';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
@@ -117,8 +117,12 @@ export default function AnnouncementsPage() {
   const [statsDrawerVisible, setStatsDrawerVisible] = useState(false);
   const [statsNotice, setStatsNotice] = useState<Announcement | null>(null);
   const [statsTab, setStatsTab] = useState<'read' | 'unread'>('read');
-  const [statsPage, setStatsPage] = useState(1);
-  const [statsPageSize, setStatsPageSize] = useState(10);
+  const {
+    page: statsPage,
+    pageSize: statsPageSize,
+    setPage: setStatsPage,
+    buildPagination: buildStatsPagination,
+  } = usePagination(10);
 
   const listQuery = useAnnouncementList({
     page,
@@ -371,20 +375,7 @@ export default function AnnouncementsPage() {
               loading={statsLoading}
               dataSource={statsTab === 'read' ? statsData.list : []}
               rowKey="id"
-              pagination={{
-                total: statsTab === 'read' ? statsData.total : statsData.readCount,
-                currentPage: statsPage,
-                pageSize: statsPageSize,
-                showSizeChanger: true,
-                pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
-                onPageChange: (p: number) => {
-                  setStatsPage(p);
-                },
-                onPageSizeChange: (size: number) => {
-                  setStatsPageSize(size);
-                  setStatsPage(1);
-                },
-              }}
+              pagination={buildStatsPagination(statsTab === 'read' ? statsData.total : statsData.readCount)}
               columns={[
                 ...userColumns,
                 dateTimeColumn('已读时间', 'readAt'),
@@ -398,20 +389,7 @@ export default function AnnouncementsPage() {
               loading={statsLoading}
               dataSource={statsTab === 'unread' ? statsData.list : []}
               rowKey="id"
-              pagination={{
-                total: statsTab === 'unread' ? statsData.total : statsData.totalCount - statsData.readCount,
-                currentPage: statsPage,
-                pageSize: statsPageSize,
-                showSizeChanger: true,
-                pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
-                onPageChange: (p: number) => {
-                  setStatsPage(p);
-                },
-                onPageSizeChange: (size: number) => {
-                  setStatsPageSize(size);
-                  setStatsPage(1);
-                },
-              }}
+              pagination={buildStatsPagination(statsTab === 'unread' ? statsData.total : statsData.totalCount - statsData.readCount)}
               columns={userColumns}
             />
           </TabPane>

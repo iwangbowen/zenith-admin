@@ -6,7 +6,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
-import { formatDateForApi } from '@/utils/date';
+import { formatDateRangeValuesForApi } from '@/utils/date';
 import { compactQuery } from '@/lib/query';
 import { memberAdminKeys, useMemberLoginLogList } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -34,14 +34,14 @@ export default function MemberLoginLogsPage() {
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.loginLogLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ keyword: memberKeyword, dateRange: null }) });
-  const [dateStart, dateEnd] = submittedParams.dateRange ?? [];
+  const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
   const listQuery = useMemberLoginLogList({
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
     status: submittedParams.status || undefined,
-    dateStart: dateStart ? formatDateForApi(dateStart) : undefined,
-    dateEnd: dateEnd ? formatDateForApi(dateEnd) : undefined,
+    dateStart,
+    dateEnd,
   });
 
   const columns: ColumnProps<MemberLoginLog>[] = [
@@ -56,12 +56,12 @@ export default function MemberLoginLogsPage() {
   ];
 
   const buildExportQuery = () => {
-    const [ds, de] = submittedParams.dateRange ?? [];
+    const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
     return compactQuery({
       keyword: submittedParams.keyword,
       status: submittedParams.status,
-      dateStart: ds && formatDateForApi(ds),
-      dateEnd: de && formatDateForApi(de),
+      dateStart,
+      dateEnd,
     });
   };
   const renderExportButton = (variant?: 'flat') => hasPermission('member:loginlog:list') ? (
