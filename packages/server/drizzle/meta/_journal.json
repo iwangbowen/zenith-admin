@@ -85,6 +85,13 @@
       "when": 1789138036822,
       "tag": "0011_managed_files_storage_object_key_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789154689932,
+      "tag": "0012_logs_tenant_created_idx",
+      "breakpoints": true
     }
   ]
 }

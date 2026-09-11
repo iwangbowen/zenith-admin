@@ -27,7 +27,10 @@ export const loginLogs = pgTable('login_logs', {
   cpuCores: smallint(),
   memoryGb: varchar({ length: 8 }),
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index('login_logs_tenant_idx').on(t.tenantId), 
+}, (t) => [
+  // 列表 / 统计 / 仪表盘的热过滤都是「租户 + 时间范围（按时间倒序）」：
+  // 复合索引同时覆盖单独按 tenant_id 的查找与外键级联，不再另留单列 tenant 索引
+  index('login_logs_tenant_created_idx').on(t.tenantId, t.createdAt),
   index('login_logs_created_at_idx').on(t.createdAt),
   index('login_logs_user_idx').on(t.userId),
   index('login_logs_status_idx').on(t.status),
@@ -56,7 +59,9 @@ export const operationLogs = pgTable('operation_logs', {
   browser: varchar({ length: 64 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index('operation_logs_tenant_idx').on(t.tenantId), 
+}, (t) => [
+  // 同 login_logs：租户 + 时间范围复合索引取代单列 tenant 索引
+  index('operation_logs_tenant_created_idx').on(t.tenantId, t.createdAt),
   index('operation_logs_created_at_idx').on(t.createdAt),
   index('operation_logs_user_idx').on(t.userId),
   index('operation_logs_module_idx').on(t.module),
