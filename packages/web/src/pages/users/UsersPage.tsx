@@ -7,6 +7,7 @@ import { USER_STATUSES, enumValueOf, type BodyOf } from '@zenith/shared/core';
 import { userContract } from '@zenith/shared/identity';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTimeRangeForApi } from '@/utils/date';
+import { compactQuery } from '@/lib/query';
 import { formatPasswordPolicyHint, type PasswordRules as PasswordPolicy } from '@zenith/shared/settings';
 import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 import DictTag from '@/components/DictTag';
@@ -59,7 +60,8 @@ interface SearchParams {
   phone: string;
   status?: string;
   timeRange: [Date, Date] | null;
-  departmentId: number | null;
+  /** 部门树选中的部门；undefined = 全部部门 */
+  departmentId?: number;
 }
 
 /** 用户表单值：记录里的 null 在提交时归一为未填 / null，与创建入参对齐 */
@@ -76,7 +78,7 @@ interface ResetPasswordFormValues {
   confirmPassword: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', phone: '', status: undefined, timeRange: null, departmentId: null };
+const defaultSearchParams: SearchParams = { keyword: '', phone: '', status: undefined, timeRange: null, departmentId: undefined };
 const EMPTY_USERS: User[] = [];
 const EMPTY_ROLES: Role[] = [];
 const EMPTY_DEPARTMENTS: Department[] = [];
@@ -128,7 +130,7 @@ export default function UsersPage() {
     pageSize,
     keyword: submittedParams.keyword || undefined,
     phone: submittedParams.phone || undefined,
-    departmentId: submittedParams.departmentId ?? undefined,
+    departmentId: submittedParams.departmentId,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
@@ -297,14 +299,12 @@ export default function UsersPage() {
     [allPositions]
   );
 
-  const buildExportQuery = useCallback((params: SearchParams = submittedParams) => ({
-    ...(params.keyword ? { keyword: params.keyword } : {}),
-    ...(params.phone ? { phone: params.phone } : {}),
-    ...(params.departmentId ? { departmentId: params.departmentId } : {}),
-    ...(params.status ? { status: params.status } : {}),
-    ...(params.timeRange
-      ? formatDateTimeRangeForApi(params.timeRange)
-      : {}),
+  const buildExportQuery = useCallback((params: SearchParams = submittedParams) => compactQuery({
+    keyword: params.keyword,
+    phone: params.phone,
+    departmentId: params.departmentId,
+    status: params.status,
+    ...formatDateTimeRangeForApi(params.timeRange),
   }), [submittedParams]);
 
   const openCreate = modal.openCreate;
@@ -526,7 +526,7 @@ export default function UsersPage() {
       <Tree
         treeData={deptTreeData}
         expandedKeys={deptTreeExpandedKeys}
-      value={draftParams.departmentId == null ? '__all__' : String(draftParams.departmentId)}
+      value={draftParams.departmentId === undefined ? '__all__' : String(draftParams.departmentId)}
         filterTreeNode
         showFilteredOnly
         searchPlaceholder="搜索部门"
@@ -535,7 +535,7 @@ export default function UsersPage() {
         }}
         onSelect={(selectedKey) => {
           const key = selectedKey;
-          const newDeptId = !key || key === '__all__' ? null : Number(key);
+          const newDeptId = !key || key === '__all__' ? undefined : Number(key);
           const newParams = { ...draftParams, departmentId: newDeptId };
           applySearch(newParams);
           setShowDeptTree(false);
