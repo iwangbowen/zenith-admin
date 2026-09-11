@@ -1,3 +1,5 @@
+import { iotDeviceContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 遥测与指令。
  *
@@ -144,10 +146,8 @@ export async function ingestTelemetry(device: IotDeviceRow, input: IotTelemetryI
   return rows.length;
 }
 
-export interface ListTelemetryQuery {
-  days?: number;
-  limit?: number;
-}
+export type ListTelemetryFilter = Omit<QueryOutputOf<typeof iotDeviceContract.telemetry>, 'page' | 'pageSize'>;
+export type ListTelemetryQuery = QueryOutputOf<typeof iotDeviceContract.telemetry>;
 
 /** 设备遥测点列（时间窗内最近 N 条，升序返回供图表直接使用） */
 export async function listIotTelemetry(deviceId: number, q: ListTelemetryQuery) {
@@ -271,15 +271,13 @@ export async function sendIotCommandToDevice(device: IotDeviceRow, input: SendIo
   return mapIotCommand(row);
 }
 
-export interface ListCommandsQuery {
-  page?: number;
-  pageSize?: number;
-}
+export type ListCommandsFilter = Omit<QueryOutputOf<typeof iotDeviceContract.listCommands>, 'page' | 'pageSize'>;
+export type ListCommandsQuery = QueryOutputOf<typeof iotDeviceContract.listCommands>;
 
 export async function listIotCommands(deviceId: number, q: ListCommandsQuery) {
   await ensureIotDeviceExists(deviceId);
   await expireStaleCommands(deviceId);
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = eq(iotCommands.deviceId, deviceId);
   return buildListResult({
     page,

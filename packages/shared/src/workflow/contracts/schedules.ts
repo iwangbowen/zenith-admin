@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusSchema, idParam, paginated, paginationQuery, entityStatusQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { createWorkflowScheduleSchema, updateWorkflowScheduleSchema } from '../validation';
 
@@ -33,7 +33,7 @@ export type WorkflowSchedule = z.infer<typeof workflowScheduleSchema>;
 
 export const workflowScheduleListQuery = paginationQuery.extend({
   definitionId: z.coerce.number().int().optional(),
-  status: z.string().optional(),
+  status: entityStatusQuery,
 });
 
 export const workflowScheduleContract = defineContract('/api/workflows/schedules', {

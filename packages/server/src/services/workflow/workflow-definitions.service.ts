@@ -1,3 +1,5 @@
+import { workflowDefinitionContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { workflowDefinitions, workflowDefinitionVersions, workflowForms, workflowCategories, workflowInstances, users, userRoles } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import type { WorkflowFormSchema, WorkflowCustomFormConfig, WorkflowFormType } from '@zenith/shared/workflow';
@@ -133,9 +135,9 @@ function canUserInitiateByScope(
   return false;
 }
 
-export async function listDefinitions(query: { page?: number; pageSize?: number; keyword?: string; status?: string; categoryId?: number }) {
+export async function listDefinitions(query: QueryOutputOf<typeof workflowDefinitionContract.list>) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, keyword, status, categoryId } = query;
+  const { page, pageSize, keyword, status, categoryId } = query;
   const tc = tenantCondition(workflowDefinitions, user);
   const conditions: (SQL | undefined)[] = [tc];
   conditions.push(keywordCondition(keyword, [workflowDefinitions.name]));
@@ -366,9 +368,8 @@ export async function publishDefinition(id: number) {
   return getDefinition(updated.id);
 }
 
-export async function listVersions(definitionId: number, query: { page?: number; pageSize?: number } = {}) {
-  const page = Number(query.page ?? 1);
-  const pageSize = Number(query.pageSize ?? 10);
+export async function listVersions(definitionId: number, query: QueryOutputOf<typeof workflowDefinitionContract.versions>) {
+  const { page, pageSize } = query;
   // 校验定义存在 + 租户可见
   const [def] = await db.select().from(workflowDefinitions).where(findDefinition(definitionId)).limit(1);
   requireRow(def, '流程定义不存在');

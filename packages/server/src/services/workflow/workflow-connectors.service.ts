@@ -1,3 +1,5 @@
+import { workflowConnectorContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 流程连接器服务：统一外部集成注册中心（首期 http）。
  * - CRUD + 凭据 AES 加密落库 / 脱敏返回
@@ -89,8 +91,8 @@ async function assertConnectorConfigSafe(type: string | undefined, cfg: Record<s
   if (baseUrl) await assertSafeWorkflowUrl(baseUrl);
 }
 
-export async function listWorkflowConnectors(query: { page?: number; pageSize?: number; keyword?: string; type?: WorkflowConnectorType; status?: 'enabled' | 'disabled' }) {
-  const { page = 1, pageSize = 10, keyword, type, status } = query;
+export async function listWorkflowConnectors(query: QueryOutputOf<typeof workflowConnectorContract.list>) {
+  const { page, pageSize, keyword, type, status } = query;
   const tc = tenantCondition(workflowConnectors, currentUser());
   const conds: (SQL | undefined)[] = [tc];
   if (type) conds.push(eq(workflowConnectors.type, type));

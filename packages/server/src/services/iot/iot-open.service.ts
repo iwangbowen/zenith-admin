@@ -1,3 +1,5 @@
+import { openIotContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 开放 API 服务（开放平台网关侧）。
  *
@@ -5,12 +7,12 @@
  * 因此不走 currentUser()/tenantCondition；对外以 SN 为设备寻址标识，
  * 不暴露内部 id、secret 与租户信息。
  */
-import { and, count, desc, eq, type SQL } from 'drizzle-orm';
+import { count, desc, eq, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { iotDevices, iotDeviceState, iotProducts, type IotDeviceRow } from '../../db/schema';
 import { formatNullableDateTime } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
-import { withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { getOnlineMap, isDeviceOnline } from './iot-access.service';
 
 function mapOpenIotDevice(
@@ -30,22 +32,17 @@ function mapOpenIotDevice(
   };
 }
 
-export interface ListOpenIotDevicesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  productId?: number;
-  status?: 'enabled' | 'disabled';
-}
+export type ListOpenIotDevicesFilter = Omit<QueryOutputOf<typeof openIotContract.devices>, 'page' | 'pageSize'>;
+export type ListOpenIotDevicesQuery = QueryOutputOf<typeof openIotContract.devices>;
 
 export async function listOpenIotDevices(q: ListOpenIotDevicesQuery) {
-  const { page = 1, pageSize = 20 } = q;
+  const { page, pageSize } = q;
   const conditions: (SQL | undefined)[] = [
     keywordCondition(q.keyword, [iotDevices.sn, iotDevices.name], 'ilike'),
     q.productId ? eq(iotDevices.productId, q.productId) : undefined,
     q.status ? eq(iotDevices.status, q.status) : undefined,
   ];
-  const where = conditions.some(Boolean) ? and(...conditions.filter(Boolean)) : undefined;
+  const where = buildWhere(...conditions);
   const base = db.select({ device: iotDevices, productName: iotProducts.name })
     .from(iotDevices)
     .innerJoin(iotProducts, eq(iotDevices.productId, iotProducts.id));

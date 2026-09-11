@@ -1,3 +1,5 @@
+import { workflowCategoryContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { asc, desc, eq, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowCategories, workflowDefinitions } from '../../db/schema';
@@ -35,15 +37,10 @@ export async function ensureCategoryExists(id: number) {
   return requireRow(row, '流程分类不存在');
 }
 
-export interface ListWorkflowCategoriesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-}
+export type ListWorkflowCategoriesQuery = QueryOutputOf<typeof workflowCategoryContract.list>;
 
 export async function listWorkflowCategories(q: ListWorkflowCategoriesQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
+  const { page, pageSize } = q;
   const tc = tenantCondition(workflowCategories, currentUser());
   const conds = [tc, keywordCondition(q.keyword, [workflowCategories.name])];
   const where = buildWhere(...conds);

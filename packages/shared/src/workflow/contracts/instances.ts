@@ -1,13 +1,7 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import {
-  WORKFLOW_INSTANCE_PRIORITIES,
-  WORKFLOW_INSTANCE_STATUSES,
-  WORKFLOW_SLA_LEVELS,
-  WORKFLOW_TASK_CONSULT_STATUSES,
-  WORKFLOW_TASK_STATUSES,
-} from '../constants';
+import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_SLA_LEVELS, WORKFLOW_TASK_CONSULT_STATUSES, WORKFLOW_TASK_STATUSES, WORKFLOW_INSTANCE_STATUS_FILTERS, WORKFLOW_INSTANCE_PRINT_SOURCES } from '../constants';
 import {
   addInstanceCcSchema,
   batchUrgeWorkflowInstanceSchema,
@@ -402,8 +396,8 @@ export type WorkflowInstanceBatchActionResponse = z.infer<typeof workflowInstanc
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const workflowMyInstanceListQuery = paginationQuery.extend({
-  status: z.string().optional(),
-  priority: z.string().optional(),
+  status: queryEnum(WORKFLOW_INSTANCE_STATUS_FILTERS),
+  priority: queryEnum(WORKFLOW_INSTANCE_PRIORITIES),
   definitionId: z.coerce.number().int().optional(),
 });
 
@@ -417,12 +411,12 @@ export const workflowKeywordPageQuery = paginationQuery.extend({
 });
 
 export const workflowInstanceMonitorQuery = paginationQuery.extend({
-  status: z.string().optional(),
+  status: queryEnum(WORKFLOW_INSTANCE_STATUS_FILTERS),
   keyword: z.string().optional(),
   categoryId: z.coerce.number().int().optional(),
   definitionId: z.coerce.number().int().optional(),
   initiatorKeyword: z.string().optional(),
-  priority: z.string().optional(),
+  priority: queryEnum(WORKFLOW_INSTANCE_PRIORITIES),
 });
 
 export const workflowRelationOptionsQuery = z.object({
@@ -446,10 +440,8 @@ export const workflowCcTaskParam = z.object({
 /** 审批单打印：可临时指定模板（设计器预览 / 更正版式），缺省用流程绑定模板，再缺省按表单快照自动生成 */
 export const workflowInstancePrintQuery = z.object({
   templateId: z.coerce.number().int().positive().optional().meta({ description: '临时指定的打印模板 ID（需为 workflow_instance 实体模板）' }),
-  source: z.enum(['auto', 'archive', 'live']).optional().meta({ description: 'auto（默认）= 有归档件则返回归档件否则实时渲染；archive = 只要归档件；live = 强制按当前模板重新渲染' }),
+  source: queryEnum(WORKFLOW_INSTANCE_PRINT_SOURCES, 'auto（默认）= 有归档件则返回归档件否则实时渲染；archive = 只要归档件；live = 强制按当前模板重新渲染'),
 });
-
-export type WorkflowInstancePrintQueryInput = z.infer<typeof workflowInstancePrintQuery>;
 
 /** 批量导出审批单 PDF（导出中心 workflow.approval-sheets 的查询载荷） */
 export const workflowBatchPrintQuerySchema = z.object({

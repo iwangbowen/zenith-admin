@@ -1,3 +1,5 @@
+import { workflowTriggerExecutionContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { desc, eq, sql, type SQL } from 'drizzle-orm';
 import { workflowJobExecutions, workflowJobs, workflowTasks, workflowInstances } from '../../db/schema';
 import { currentUser } from '../../lib/context';
@@ -99,13 +101,7 @@ function triggerExecutionConditions(...extra: (SQL | undefined)[]): SQL | undefi
   );
 }
 
-export interface ListTriggerExecutionsParams {
-  page?: number;
-  pageSize?: number;
-  instanceId?: number;
-  nodeKey?: string;
-  status?: WorkflowTriggerExecutionStatus;
-}
+export type ListTriggerExecutionsParams = QueryOutputOf<typeof workflowTriggerExecutionContract.list>;
 
 export async function listTriggerExecutions(params: ListTriggerExecutionsParams) {
   const page = params.page && params.page > 0 ? params.page : 1;

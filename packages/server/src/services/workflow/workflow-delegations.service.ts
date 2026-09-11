@@ -1,3 +1,5 @@
+import { workflowDelegationContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { and, desc, eq, isNull, or, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowDelegations, users } from '../../db/schema';
@@ -95,17 +97,10 @@ export async function getWorkflowDelegationBeforeAudit(id: number) {
   return row ? mapDelegation(row) : null;
 }
 
-export interface ListWorkflowDelegationsQuery {
-  page?: number;
-  pageSize?: number;
-  principalId?: number;
-  /** scope='mine' 仅本人；'all' 管理员全部（默认） */
-  scope?: 'mine' | 'all';
-}
+export type ListWorkflowDelegationsQuery = QueryOutputOf<typeof workflowDelegationContract.list>;
 
 export async function listWorkflowDelegations(q: ListWorkflowDelegationsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
+  const { page, pageSize } = q;
   const user = currentUser();
   const admin = isSuperAdmin(user);
   const tc = tenantCondition(workflowDelegations, user);

@@ -1,3 +1,5 @@
+import { iotAlarmRuleContract, iotAlarmContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 告警：规则 CRUD、告警记录与运行时判定。
  *
@@ -11,7 +13,7 @@
  */
 import { and, count, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL } from 'drizzle-orm';
 import { alias as aliasedTable } from 'drizzle-orm/pg-core';
-import type { CreateIotAlarmRuleInput, IotAlarmLevel, IotAlarmRuleType, IotAlarmStatus, UpdateIotAlarmRuleInput } from '@zenith/shared/iot';
+import type { CreateIotAlarmRuleInput, IotAlarmRuleType, UpdateIotAlarmRuleInput } from '@zenith/shared/iot';
 import { IOT_ALARM_LEVEL_LABELS, IOT_COMPARE_OP_LABELS, IOT_ONLINE_TTL_SECONDS } from '@zenith/shared/iot';
 import type { IotMetricValue } from '@zenith/shared/iot';
 import { compareNumber } from '@zenith/shared/core';
@@ -67,16 +69,10 @@ export function mapIotAlarmRule(
   };
 }
 
-export interface ListIotAlarmRulesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  productId?: number;
-  ruleType?: IotAlarmRuleType;
-  status?: 'enabled' | 'disabled';
-}
+export type ListIotAlarmRulesFilter = Omit<QueryOutputOf<typeof iotAlarmRuleContract.list>, 'page' | 'pageSize'>;
+export type ListIotAlarmRulesQuery = QueryOutputOf<typeof iotAlarmRuleContract.list>;
 
-function buildRuleWhere(q: ListIotAlarmRulesQuery & { id?: number }): SQL | undefined {
+function buildRuleWhere(q: ListIotAlarmRulesFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotAlarmRules.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotAlarmRules.name]),
@@ -88,7 +84,7 @@ function buildRuleWhere(q: ListIotAlarmRulesQuery & { id?: number }): SQL | unde
 }
 
 export async function listIotAlarmRules(q: ListIotAlarmRulesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildRuleWhere(q);
   return buildListResult({
     page,
@@ -215,20 +211,11 @@ export function mapIotAlarm(
   };
 }
 
-export interface ListIotAlarmsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: IotAlarmStatus;
-  level?: IotAlarmLevel;
-  ruleType?: IotAlarmRuleType;
-  deviceId?: number;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListIotAlarmsFilter = Omit<QueryOutputOf<typeof iotAlarmContract.list>, 'page' | 'pageSize'>;
+export type ListIotAlarmsQuery = QueryOutputOf<typeof iotAlarmContract.list>;
 
 export async function listIotAlarms(q: ListIotAlarmsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildWhere(
     buildWhere(
       keywordCondition(q.keyword, [iotAlarms.ruleName, iotAlarms.message, iotDevices.name, iotDevices.sn]),

@@ -1,13 +1,7 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import {
-  WORKFLOW_COMPENSATION_ACTION_STATUSES,
-  WORKFLOW_ENGINE_EXPLANATION_STATES,
-  WORKFLOW_JOB_EXECUTION_STATUSES,
-  WORKFLOW_JOB_TYPES,
-  WORKFLOW_RUNTIME_ISSUE_SEVERITIES,
-} from '../constants';
+import { WORKFLOW_COMPENSATION_ACTION_STATUSES, WORKFLOW_ENGINE_EXPLANATION_STATES, WORKFLOW_JOB_EXECUTION_STATUSES, WORKFLOW_JOB_TYPES, WORKFLOW_RUNTIME_ISSUE_SEVERITIES, WORKFLOW_COMPENSATION_STATUSES } from '../constants';
 import {
   addWorkflowCompensationNoteSchema,
   batchSkipStuckTokensSchema,
@@ -268,7 +262,7 @@ export type WorkflowCompensationDetail = z.infer<typeof workflowCompensationDeta
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const workflowCompensationListQuery = paginationQuery.extend({
-  status: z.string().optional(),
+  status: queryEnum(WORKFLOW_COMPENSATION_STATUSES),
   instanceId: z.coerce.number().int().optional(),
 });
 

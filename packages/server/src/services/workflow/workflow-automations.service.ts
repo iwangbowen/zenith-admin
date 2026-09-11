@@ -1,3 +1,5 @@
+import { workflowAutomationContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 流程级自动化规则 service
  *
@@ -104,17 +106,10 @@ async function validateAutomationActions(actions: WorkflowAutomationActionConfig
   }
 }
 
-export interface ListWorkflowAutomationsQuery {
-  definitionId?: number;
-  trigger?: WorkflowAutomationTrigger;
-  status?: 'enabled' | 'disabled';
-  page?: number;
-  pageSize?: number;
-}
+export type ListWorkflowAutomationsQuery = QueryOutputOf<typeof workflowAutomationContract.list>;
 
 export async function listWorkflowAutomations(q: ListWorkflowAutomationsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
+  const { page, pageSize } = q;
   const tc = tenantCondition(workflowAutomations, currentUser());
   const conds: (SQL | undefined)[] = [tc];
   if (q.definitionId) conds.push(eq(workflowAutomations.definitionId, q.definitionId));
@@ -136,17 +131,10 @@ export async function listWorkflowAutomations(q: ListWorkflowAutomationsQuery) {
   });
 }
 
-export interface ListWorkflowAutomationRunsQuery {
-  ruleId?: number;
-  instanceId?: number;
-  status?: 'success' | 'failed' | 'skipped';
-  page?: number;
-  pageSize?: number;
-}
+export type ListWorkflowAutomationRunsQuery = QueryOutputOf<typeof workflowAutomationContract.runs>;
 
 export async function listWorkflowAutomationRuns(q: ListWorkflowAutomationRunsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
+  const { page, pageSize } = q;
   const tc = tenantCondition(workflowAutomationRuns, currentUser());
   const conds: (SQL | undefined)[] = [tc];
   if (q.ruleId) conds.push(eq(workflowAutomationRuns.ruleId, q.ruleId));

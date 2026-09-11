@@ -1,3 +1,5 @@
+import { iotWhitelistContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 一型一密动态注册。
  *
@@ -67,15 +69,10 @@ export function mapIotWhitelistEntry(
   };
 }
 
-export interface ListWhitelistQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  productId?: number;
-  used?: boolean;
-}
+export type ListWhitelistFilter = Omit<QueryOutputOf<typeof iotWhitelistContract.list>, 'page' | 'pageSize'>;
+export type ListWhitelistQuery = QueryOutputOf<typeof iotWhitelistContract.list>;
 
-function buildWhitelistWhere(q: ListWhitelistQuery & { id?: number }): SQL | undefined {
+function buildWhitelistWhere(q: ListWhitelistFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotDeviceWhitelist.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotDeviceWhitelist.sn]),
@@ -86,7 +83,7 @@ function buildWhitelistWhere(q: ListWhitelistQuery & { id?: number }): SQL | und
 }
 
 export async function listIotWhitelist(q: ListWhitelistQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildWhitelistWhere(q);
   return buildListResult({
     page,

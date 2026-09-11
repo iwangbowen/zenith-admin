@@ -1,3 +1,5 @@
+import { iotAutomationContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 场景联动：触发评估 + 动作执行 + 冷却抑制 + 执行留痕。
  *
@@ -78,16 +80,10 @@ export function mapIotAutomationRun(
   };
 }
 
-export interface ListIotAutomationsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  productId?: number;
-  triggerType?: 'property' | 'event' | 'online' | 'offline';
-  status?: 'enabled' | 'disabled';
-}
+export type ListIotAutomationsFilter = Omit<QueryOutputOf<typeof iotAutomationContract.list>, 'page' | 'pageSize'>;
+export type ListIotAutomationsQuery = QueryOutputOf<typeof iotAutomationContract.list>;
 
-function buildAutomationWhere(q: ListIotAutomationsQuery & { id?: number }): SQL | undefined {
+function buildAutomationWhere(q: ListIotAutomationsFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotAutomations.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotAutomations.name]),
@@ -99,7 +95,7 @@ function buildAutomationWhere(q: ListIotAutomationsQuery & { id?: number }): SQL
 }
 
 export async function listIotAutomations(q: ListIotAutomationsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildAutomationWhere(q);
   return buildListResult({
     page,
@@ -205,16 +201,11 @@ export async function deleteIotAutomation(id: number): Promise<void> {
   invalidateAutomationCache();
 }
 
-export interface ListAutomationRunsQuery {
-  page?: number;
-  pageSize?: number;
-  automationId?: number;
-  deviceId?: number;
-  success?: boolean;
-}
+export type ListAutomationRunsFilter = Omit<QueryOutputOf<typeof iotAutomationContract.runs>, 'page' | 'pageSize'>;
+export type ListAutomationRunsQuery = QueryOutputOf<typeof iotAutomationContract.runs>;
 
 export async function listIotAutomationRuns(q: ListAutomationRunsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildWhere(
     q.automationId ? eq(iotAutomationRuns.automationId, q.automationId) : undefined,
     q.deviceId ? eq(iotAutomationRuns.deviceId, q.deviceId) : undefined,

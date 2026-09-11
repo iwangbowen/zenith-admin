@@ -1,3 +1,5 @@
+import { workflowInstanceOpsContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { workflowTransaction } from '../../lib/workflow-jobs/lease';
 import { and, eq, asc, desc, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -78,8 +80,8 @@ export async function markCompensationActionResult(compensationId: number, statu
   });
 }
 
-export async function listCompensations(q: { status?: string; instanceId?: number; page?: number; pageSize?: number }) {
-  const page = q.page ?? 1, pageSize = q.pageSize ?? 20;
+export async function listCompensations(q: QueryOutputOf<typeof workflowInstanceOpsContract.compensations>) {
+  const { page, pageSize } = q;
   const tc = tenantCondition(workflowCompensations, currentUser());
   const conds: (SQL | undefined)[] = [tc];
   if (q.status) conds.push(eq(workflowCompensations.status, q.status));

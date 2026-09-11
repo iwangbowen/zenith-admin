@@ -1,3 +1,5 @@
+import { workflowTaskContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { and, asc, desc, eq, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowTaskConsults, workflowTasks, workflowInstances } from '../../db/schema';
@@ -156,10 +158,9 @@ export async function getConsultInstanceIdForAudit(consultId: number): Promise<n
 }
 
 /** 我收到的协办邀请（待我协办） */
-export async function listMyConsults(query: { page?: number; pageSize?: number; status?: string } = {}) {
+export async function listMyConsults(query: QueryOutputOf<typeof workflowTaskContract.myConsults>) {
   const user = currentUser();
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 20;
+  const { page, pageSize } = query;
   const tc = tenantCondition(workflowTaskConsults, user);
   const conds: (SQL | undefined)[] = [eq(workflowTaskConsults.consulteeId, user.userId)];
   if (query.status) conds.push(eq(workflowTaskConsults.status, query.status as ConsultRow['status']));

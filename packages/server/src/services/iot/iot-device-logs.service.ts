@@ -1,8 +1,10 @@
+import { iotDeviceContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 设备日志通道：设备上报运行日志（追加型，保留策略裁剪）。
  */
 import { count, desc, eq, gte, lte, type SQL } from 'drizzle-orm';
-import type { IotLogIngestInput, IotLogLevel } from '@zenith/shared/iot';
+import type { IotLogIngestInput } from '@zenith/shared/iot';
 import { db } from '../../db';
 import { iotDeviceLogs, type IotDeviceLogRow, type IotDeviceRow } from '../../db/schema';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -33,17 +35,11 @@ export async function ingestIotDeviceLogs(device: IotDeviceRow, input: IotLogIng
   return rows.length;
 }
 
-export interface ListDeviceLogsQuery {
-  page?: number;
-  pageSize?: number;
-  level?: IotLogLevel;
-  keyword?: string;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListDeviceLogsFilter = Omit<QueryOutputOf<typeof iotDeviceContract.logs>, 'page' | 'pageSize'>;
+export type ListDeviceLogsQuery = QueryOutputOf<typeof iotDeviceContract.logs>;
 
 export async function listIotDeviceLogs(deviceId: number, q: ListDeviceLogsQuery) {
-  const { page = 1, pageSize = 20 } = q;
+  const { page, pageSize } = q;
   const conditions: (SQL | undefined)[] = [
     eq(iotDeviceLogs.deviceId, deviceId),
     q.level ? eq(iotDeviceLogs.level, q.level) : undefined,

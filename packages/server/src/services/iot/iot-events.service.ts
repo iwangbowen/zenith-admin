@@ -1,3 +1,5 @@
+import { iotDeviceContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 设备事件流：生命周期事件（系统打点）+ 物模型事件（设备上报）。
  *
@@ -6,7 +8,7 @@
  */
 import { and, desc, eq } from 'drizzle-orm';
 import type { IotEventIngestInput } from '@zenith/shared/iot';
-import { IOT_LIFECYCLE_EVENTS, type IotDeviceEventKind, type IotEventLevel, type IotLifecycleEventId } from '@zenith/shared/iot';
+import { IOT_LIFECYCLE_EVENTS, type IotLifecycleEventId } from '@zenith/shared/iot';
 import { db } from '../../db';
 import { iotDeviceEvents, iotDevices, type IotDeviceEventRow, type IotDeviceRow } from '../../db/schema';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
@@ -126,15 +128,11 @@ export async function ingestIotDeviceEvents(device: IotDeviceRow, input: IotEven
   return rows.length;
 }
 
-export interface ListDeviceEventsQuery {
-  page?: number;
-  pageSize?: number;
-  kind?: IotDeviceEventKind;
-  level?: IotEventLevel;
-}
+export type ListDeviceEventsFilter = Omit<QueryOutputOf<typeof iotDeviceContract.events>, 'page' | 'pageSize'>;
+export type ListDeviceEventsQuery = QueryOutputOf<typeof iotDeviceContract.events>;
 
 export async function listIotDeviceEvents(deviceId: number, q: ListDeviceEventsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildWhere(
     eq(iotDeviceEvents.deviceId, deviceId),
     q.kind ? eq(iotDeviceEvents.kind, q.kind) : undefined,

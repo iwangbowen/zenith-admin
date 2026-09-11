@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusSchema, paginated, paginationQuery, entityStatusQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sendIotCommandSchema, setIotDesiredSchema } from '../validation';
 import { iotMetricsSchema } from './devices';
@@ -14,7 +14,7 @@ export const openIotDeviceSnParam = z.object({
 export const openIotDeviceListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: 'SN / 名称模糊搜索' }),
   productId: z.coerce.number().int().positive().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 // ─── 响应 ────────────────────────────────────────────────────────────────────

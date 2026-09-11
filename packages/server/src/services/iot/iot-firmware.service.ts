@@ -1,3 +1,5 @@
+import { iotFirmwareContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 固件包管理：产品维度版本 + 托管文件（生成文件通道，服务端计算 sha256）。
  *
@@ -45,15 +47,10 @@ export function mapIotFirmware(row: IotFirmwareRow, extra?: { productName?: stri
   };
 }
 
-export interface ListIotFirmwaresQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  productId?: number;
-  status?: 'enabled' | 'disabled';
-}
+export type ListIotFirmwaresFilter = Omit<QueryOutputOf<typeof iotFirmwareContract.list>, 'page' | 'pageSize'>;
+export type ListIotFirmwaresQuery = QueryOutputOf<typeof iotFirmwareContract.list>;
 
-function buildFirmwareWhere(q: ListIotFirmwaresQuery & { id?: number }): SQL | undefined {
+function buildFirmwareWhere(q: ListIotFirmwaresFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotFirmwares.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotFirmwares.version, iotFirmwares.fileName]),
@@ -64,7 +61,7 @@ function buildFirmwareWhere(q: ListIotFirmwaresQuery & { id?: number }): SQL | u
 }
 
 export async function listIotFirmwares(q: ListIotFirmwaresQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildFirmwareWhere(q);
   return buildListResult({
     page,

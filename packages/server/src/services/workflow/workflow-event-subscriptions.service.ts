@@ -1,3 +1,5 @@
+import { workflowEventSubscriptionContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { and, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db';
@@ -88,17 +90,10 @@ export async function ensureSubscriptionExists(id: number) {
   return requireRow(row, '事件订阅不存在');
 }
 
-export interface ListSubscriptionsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  definitionId?: number | null;
-  enabled?: boolean;
-}
+export type ListSubscriptionsQuery = QueryOutputOf<typeof workflowEventSubscriptionContract.list>;
 
 export async function listSubscriptions(q: ListSubscriptionsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
+  const { page, pageSize } = q;
   const tc = tenantCondition(workflowEventSubscriptions, currentUser());
   const conds: (SQL | undefined)[] = [tc];
   conds.push(keywordCondition(q.keyword, [workflowEventSubscriptions.name, workflowEventSubscriptions.url], 'ilike'));
@@ -308,13 +303,7 @@ export function mapDelivery(row: WebhookDeliveryRow, subscriptionName?: string |
   };
 }
 
-export interface ListDeliveriesQuery {
-  page?: number;
-  pageSize?: number;
-  subscriptionId?: number;
-  instanceId?: number;
-  status?: 'pending' | 'success' | 'failed' | 'retrying';
-}
+export type ListDeliveriesQuery = QueryOutputOf<typeof workflowEventSubscriptionContract.deliveries>;
 
 const DELIVERY_SELECTION = {
   execution: workflowJobExecutions,
@@ -343,8 +332,7 @@ function findDeliveryJobIds(idCondition: SQL): Promise<{ jobId: number }[]> {
 }
 
 export async function listDeliveries(q: ListDeliveriesQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 20;
+  const { page, pageSize } = q;
   const statusCondition = (): SQL | undefined => {
     switch (q.status) {
       case 'success': return eq(workflowJobExecutions.status, 'succeeded');

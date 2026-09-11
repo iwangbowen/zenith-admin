@@ -31,10 +31,7 @@ const feedbackViewer = [authMiddleware, guard({ permission: 'ai:feedback:view' }
 
 const list = defineContractRoute(aiConversationContract.list, {
   middleware: authed,
-  handler: async (c) => {
-    const { archived, keyword, tag, limit, offset } = c.req.valid('query');
-    return c.json(okBody(await listConversations({ archived: archived === 'true', keyword, tag, limit, offset })), 200);
-  },
+  handler: async (c) => c.json(okBody(await listConversations(c.req.valid('query'))), 200),
 });
 
 const create = defineContractRoute(aiConversationContract.create, {

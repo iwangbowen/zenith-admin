@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WORKFLOW_EVENT_DELIVERY_STATUSES, WORKFLOW_EVENT_SIGN_MODES, WORKFLOW_EVENT_TYPES } from '../constants';
 import {
@@ -91,7 +91,7 @@ export const workflowEventSubscriptionListQuery = paginationQuery.extend({
 export const workflowEventDeliveryListQuery = paginationQuery.extend({
   subscriptionId: z.coerce.number().int().optional(),
   instanceId: z.coerce.number().int().optional(),
-  status: z.enum(WORKFLOW_EVENT_DELIVERY_STATUSES).optional(),
+  status: queryEnum(WORKFLOW_EVENT_DELIVERY_STATUSES),
 });
 
 export const workflowEventSubscriptionContract = defineContract('/api/workflows/event-subscriptions', {

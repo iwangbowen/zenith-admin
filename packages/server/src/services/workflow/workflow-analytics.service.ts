@@ -1,3 +1,5 @@
+import { workflowInstanceContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { and, asc, eq, gte, desc, inArray, sql, type SQL } from 'drizzle-orm';
 import dayjs from 'dayjs';
 import { db } from '../../db';
@@ -217,10 +219,9 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
 }
 
 /** 超时待办预警列表（已超时仍 pending 的任务，按到期时间正序） */
-export async function listOverdueTasks(query: { page?: number; pageSize?: number; definitionId?: number } = {}): Promise<{ list: WorkflowOverdueTask[]; total: number; page: number; pageSize: number }> {
+export async function listOverdueTasks(query: QueryOutputOf<typeof workflowInstanceContract.overdue>): Promise<{ list: WorkflowOverdueTask[]; total: number; page: number; pageSize: number }> {
   const user = currentUser();
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 20;
+  const { page, pageSize } = query;
   const instTenant = tenantCondition(workflowInstances, user);
   const conds: (SQL | undefined)[] = [
     eq(workflowTasks.status, 'pending'),
@@ -280,13 +281,7 @@ export async function listOverdueTasks(query: { page?: number; pageSize?: number
 const INSTANCE_STATUS_TEXT: Record<string, string> = WORKFLOW_INSTANCE_STATUS_LABELS;
 
 /** 流程实例导出查询条件（与监控筛选一致） */
-export interface WorkflowInstanceExportQuery {
-  status?: string;
-  keyword?: string;
-  categoryId?: number;
-  definitionId?: number;
-  initiatorKeyword?: string;
-}
+export type WorkflowInstanceExportQuery = Omit<QueryOutputOf<typeof workflowInstanceContract.monitor>, 'page' | 'pageSize' | 'priority'>;
 
 function buildInstancesExportWhere(query: WorkflowInstanceExportQuery) {
   const user = currentUser();

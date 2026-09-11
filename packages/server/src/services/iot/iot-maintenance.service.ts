@@ -1,3 +1,5 @@
+import { iotMaintenanceWindowContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 维护窗口：计划性维护期间的告警静默。
  *
@@ -45,13 +47,10 @@ export function mapIotMaintenanceWindow(
   };
 }
 
-export interface ListMaintenanceWindowsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-}
+export type ListMaintenanceWindowsFilter = Omit<QueryOutputOf<typeof iotMaintenanceWindowContract.list>, 'page' | 'pageSize'>;
+export type ListMaintenanceWindowsQuery = QueryOutputOf<typeof iotMaintenanceWindowContract.list>;
 
-function buildWindowWhere(q: ListMaintenanceWindowsQuery & { id?: number }): SQL | undefined {
+function buildWindowWhere(q: ListMaintenanceWindowsFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotMaintenanceWindows.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotMaintenanceWindows.name]),
@@ -60,7 +59,7 @@ function buildWindowWhere(q: ListMaintenanceWindowsQuery & { id?: number }): SQL
 }
 
 export async function listIotMaintenanceWindows(q: ListMaintenanceWindowsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildWindowWhere(q);
   return buildListResult({
     page,

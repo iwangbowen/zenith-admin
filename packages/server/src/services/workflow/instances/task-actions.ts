@@ -1,3 +1,5 @@
+import { workflowTaskContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 // ─── 审批动作核心：同意/拒绝（含回调与动作按钮校验）（拆分自 workflow-instances.service.ts）───
 import { eq, and, desc, or, inArray } from 'drizzle-orm';
@@ -9,7 +11,7 @@ import { findNextApproverSelectNodes, resolveNodeFieldPermissions, sanitizeFormU
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../../lib/context';
 import { buildStarterContext, searchSelectableApprovers } from '../workflow-assignee-resolver.service';
-import type { WorkflowSelectableNextApproverGroup, WorkflowSelectableNextApproversQueryInput } from '@zenith/shared/workflow';
+import type { WorkflowSelectableNextApproverGroup } from '@zenith/shared/workflow';
 import logger from '../../../lib/logger';
 import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs/engine';
 import { enqueueSubprocessJoin } from './async-jobs';
@@ -95,7 +97,7 @@ export interface ApproveResult {
  */
 export async function listTaskSelectableNextApprovers(
   taskId: number,
-  query: WorkflowSelectableNextApproversQueryInput = { limit: 50 },
+  query: QueryOutputOf<typeof workflowTaskContract.selectableNextApprovers>,
 ): Promise<WorkflowSelectableNextApproverGroup[]> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks)

@@ -1,3 +1,5 @@
+import { iotDeviceGroupContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 设备分组：静态分组 CRUD 与成员维护（批量操作的圈选目标）。
  */
@@ -28,13 +30,10 @@ export function mapIotDeviceGroup(row: IotDeviceGroupRow, extra?: { deviceCount?
   };
 }
 
-export interface ListIotDeviceGroupsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-}
+export type ListIotDeviceGroupsFilter = Omit<QueryOutputOf<typeof iotDeviceGroupContract.list>, 'page' | 'pageSize'>;
+export type ListIotDeviceGroupsQuery = QueryOutputOf<typeof iotDeviceGroupContract.list>;
 
-function buildGroupWhere(q: ListIotDeviceGroupsQuery & { id?: number }): SQL | undefined {
+function buildGroupWhere(q: ListIotDeviceGroupsFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotDeviceGroups.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotDeviceGroups.name, iotDeviceGroups.description]),
@@ -52,7 +51,7 @@ async function loadMemberCounts(groupIds: number[]): Promise<Map<number, number>
 }
 
 export async function listIotDeviceGroups(q: ListIotDeviceGroupsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildGroupWhere(q);
   return buildListResult({
     page,

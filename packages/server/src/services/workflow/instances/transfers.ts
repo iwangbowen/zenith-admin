@@ -3,6 +3,7 @@
 // 同时支撑「禁止折返」校验与详情页转办时间线。
 import { uniquePositiveInts } from '@zenith/shared/core';
 import { and, eq, inArray, ne, or } from 'drizzle-orm';
+import { buildWhere } from '../../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../../db';
 import { workflowTaskTransfers, workflowTasks, users } from '../../../db/schema';
@@ -23,16 +24,16 @@ export async function assertAssigneesNotActiveOnNode(
 ): Promise<void> {
   const ids = uniquePositiveInts(args.userIds);
   if (ids.length === 0) return;
-  const conds = [
+  const where = buildWhere(
     eq(workflowTasks.instanceId, args.instanceId),
     eq(workflowTasks.nodeKey, args.nodeKey),
     eq(workflowTasks.activationId, args.activationId),
     inArray(workflowTasks.status, ['pending', 'waiting']),
     inArray(workflowTasks.assigneeId, ids),
-  ];
-  if (args.excludeTaskId != null) conds.push(ne(workflowTasks.id, args.excludeTaskId));
+    args.excludeTaskId != null ? ne(workflowTasks.id, args.excludeTaskId) : undefined,
+  );
   const dupes = await exec.select({ assigneeId: workflowTasks.assigneeId })
-    .from(workflowTasks).where(and(...conds)).limit(ids.length);
+    .from(workflowTasks).where(where).limit(ids.length);
   if (dupes.length === 0) return;
   const dupeIds = [...new Set(dupes.map((d) => d.assigneeId).filter((v): v is number => v != null))];
   const nameRows = await exec.select({ id: users.id, nickname: users.nickname, username: users.username })

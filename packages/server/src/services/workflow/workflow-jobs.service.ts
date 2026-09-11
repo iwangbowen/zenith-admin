@@ -1,3 +1,5 @@
+import { workflowEngineContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { percentOf } from '@zenith/shared/core';
 import { WORKFLOW_JOB_TYPES, summarizeWorkflowJobChain } from '@zenith/shared/workflow';
 import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, lte, max, type SQL } from 'drizzle-orm';
@@ -12,14 +14,7 @@ import { expiredWorkflowJobCondition } from '../../lib/workflow-jobs/engine';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 
-export interface ListWorkflowJobsQuery {
-  page?: number;
-  pageSize?: number;
-  jobType?: WorkflowJobRow['jobType'];
-  status?: WorkflowJobRow['status'];
-  instanceId?: number;
-  keyword?: string;
-}
+export type ListWorkflowJobsQuery = QueryOutputOf<typeof workflowEngineContract.jobs>;
 
 function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; definitionName?: string | null }) {
   return {
@@ -74,8 +69,7 @@ function mapExecution(row: WorkflowJobExecutionRow) {
 }
 
 export async function listWorkflowJobs(query: ListWorkflowJobsQuery) {
-  const page = Number(query.page ?? 1);
-  const pageSize = Number(query.pageSize ?? 10);
+  const { page, pageSize } = query;
   const conds: (SQL | undefined)[] = [];
   if (query.jobType) conds.push(eq(workflowJobs.jobType, query.jobType));
   if (query.status) conds.push(eq(workflowJobs.status, query.status));
@@ -270,7 +264,7 @@ function buildReplayConds(filter: WorkflowJobReplayFilter): (SQL | undefined)[] 
 
 /** 条件重放预览：仅统计匹配的死信/失败作业数量，不执行，供前端展示"将重放约 N 条"。 */
 export async function previewReplayJobs(filter: WorkflowJobReplayFilter): Promise<{ matched: number }> {
-  const matched = await db.$count(workflowJobs, and(...buildReplayConds(filter)));
+  const matched = await db.$count(workflowJobs, buildWhere(...buildReplayConds(filter)));
   return { matched };
 }
 
@@ -294,8 +288,8 @@ export async function replayDeadJobs(
   const limit = clampLimit(opts?.limit);
   const conds = buildReplayConds(opts ?? {});
   const [matched, rows] = await Promise.all([
-    db.$count(workflowJobs, and(...conds)),
-    db.select({ id: workflowJobs.id }).from(workflowJobs).where(and(...conds)).orderBy(asc(workflowJobs.id)).limit(limit),
+    db.$count(workflowJobs, buildWhere(...conds)),
+    db.select({ id: workflowJobs.id }).from(workflowJobs).where(buildWhere(...conds)).orderBy(asc(workflowJobs.id)).limit(limit),
   ]);
   const success = await throttledRetry(rows.map((r) => r.id), rate);
   return { total: rows.length, success, skipped: rows.length - success, matched, ratePerSecond: rate, limit };

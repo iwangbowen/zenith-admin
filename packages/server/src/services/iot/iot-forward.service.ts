@@ -1,3 +1,5 @@
+import { iotForwardRuleContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 数据流转：遥测/事件/告警/生命周期 → HTTP 推送目的地。
  *
@@ -72,15 +74,10 @@ export function mapIotForwardLog(row: IotForwardLogRow) {
   };
 }
 
-export interface ListIotForwardRulesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  source?: IotForwardSource;
-  status?: 'enabled' | 'disabled';
-}
+export type ListIotForwardRulesFilter = Omit<QueryOutputOf<typeof iotForwardRuleContract.list>, 'page' | 'pageSize'>;
+export type ListIotForwardRulesQuery = QueryOutputOf<typeof iotForwardRuleContract.list>;
 
-function buildRuleWhere(q: ListIotForwardRulesQuery & { id?: number }): SQL | undefined {
+function buildRuleWhere(q: ListIotForwardRulesFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotForwardRules.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotForwardRules.name]),
@@ -91,7 +88,7 @@ function buildRuleWhere(q: ListIotForwardRulesQuery & { id?: number }): SQL | un
 }
 
 export async function listIotForwardRules(q: ListIotForwardRulesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildRuleWhere(q);
   return buildListResult({
     page,
@@ -173,15 +170,11 @@ export async function deleteIotForwardRule(id: number): Promise<void> {
   invalidateForwardCache();
 }
 
-export interface ListForwardLogsQuery {
-  page?: number;
-  pageSize?: number;
-  ruleId?: number;
-  status?: 'succeeded' | 'failed';
-}
+export type ListForwardLogsFilter = Omit<QueryOutputOf<typeof iotForwardRuleContract.logs>, 'page' | 'pageSize'>;
+export type ListForwardLogsQuery = QueryOutputOf<typeof iotForwardRuleContract.logs>;
 
 export async function listIotForwardLogs(q: ListForwardLogsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildWhere(
     q.ruleId ? eq(iotForwardLogs.ruleId, q.ruleId) : undefined,
     q.status ? eq(iotForwardLogs.status, q.status) : undefined,

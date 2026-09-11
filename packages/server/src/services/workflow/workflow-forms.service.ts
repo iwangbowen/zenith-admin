@@ -1,3 +1,5 @@
+import { workflowFormContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowForms, workflowDefinitions } from '../../db/schema';
@@ -88,8 +90,8 @@ async function countUsage(formIds: number[]): Promise<Map<number, number>> {
   return map;
 }
 
-export async function listWorkflowForms(query: { page?: number; pageSize?: number; keyword?: string; status?: WorkflowFormStatus; categoryId?: number }) {
-  const { page = 1, pageSize = 20, keyword, status, categoryId } = query;
+export async function listWorkflowForms(query: QueryOutputOf<typeof workflowFormContract.list>) {
+  const { page, pageSize, keyword, status, categoryId } = query;
   const tc = tenantCondition(workflowForms, currentUser());
   const conds: (SQL | undefined)[] = [tc];
   conds.push(keywordCondition(keyword, [workflowForms.name]));

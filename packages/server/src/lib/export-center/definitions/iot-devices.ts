@@ -3,8 +3,9 @@ import { db } from '../../../db';
 import { iotDevices, iotProducts } from '../../../db/schema';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS, STATUS_ENUM_MAP } from '../presets';
-import { buildIotDeviceExportWhere, type ListIotDevicesQuery } from '../../../services/iot/iot-devices.service';
+import { buildIotDeviceExportWhere, type ListIotDevicesFilter } from '../../../services/iot/iot-devices.service';
 import type { ExportColumn } from '../types';
+import { asPositiveInt, asString } from '../query-normalize';
 
 const columns: ExportColumn[] = [
   { key: 'id', header: 'ID', width: 8, type: 'number' },
@@ -19,7 +20,24 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 22, type: 'datetime' },
 ];
 
-type Query = ListIotDevicesQuery & Record<string, unknown>;
+type Query = ListIotDevicesFilter & Record<string, unknown>;
+
+function normalizeQuery(query: Record<string, unknown>): ListIotDevicesFilter {
+  const status = query.status === 'enabled' || query.status === 'disabled' ? query.status : undefined;
+  const nodeType = query.nodeType === 'direct' || query.nodeType === 'gateway' || query.nodeType === 'sub'
+    ? query.nodeType
+    : undefined;
+  return {
+    keyword: asString(query.keyword),
+    status,
+    productId: asPositiveInt(query.productId),
+    groupId: asPositiveInt(query.groupId),
+    nodeType,
+    gatewayId: asPositiveInt(query.gatewayId),
+    startTime: asString(query.startTime),
+    endTime: asString(query.endTime),
+  };
+}
 
 export const iotDevicesExportDefinition = defineExport<Record<string, unknown>, Query>({
   entity: 'iot.devices',
@@ -31,8 +49,9 @@ export const iotDevicesExportDefinition = defineExport<Record<string, unknown>, 
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async (query) => db.$count(iotDevices, buildIotDeviceExportWhere(query)),
+  countRows: async (query) => db.$count(iotDevices, buildIotDeviceExportWhere(normalizeQuery(query))),
   streamRows: async (query) => {
+    const normalizedQuery = normalizeQuery(query);
     const rows = await db.select({
       id: iotDevices.id,
       sn: iotDevices.sn,
@@ -47,7 +66,7 @@ export const iotDevicesExportDefinition = defineExport<Record<string, unknown>, 
     })
       .from(iotDevices)
       .leftJoin(iotProducts, eq(iotDevices.productId, iotProducts.id))
-      .where(buildIotDeviceExportWhere(query))
+      .where(buildIotDeviceExportWhere(normalizedQuery))
       .orderBy(desc(iotDevices.id));
     return rows;
   },

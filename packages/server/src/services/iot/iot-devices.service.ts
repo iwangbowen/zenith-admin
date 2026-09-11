@@ -1,3 +1,5 @@
+import { iotProductContract, iotDeviceContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 产品 / 设备管理 CRUD。
  *
@@ -57,14 +59,10 @@ export function mapIotProduct(
   };
 }
 
-export interface ListIotProductsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-}
+export type ListIotProductsFilter = Omit<QueryOutputOf<typeof iotProductContract.list>, 'page' | 'pageSize'>;
+export type ListIotProductsQuery = QueryOutputOf<typeof iotProductContract.list>;
 
-function buildProductWhere(q: ListIotProductsQuery & { id?: number }): SQL | undefined {
+function buildProductWhere(q: ListIotProductsFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotProducts.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotProducts.name, iotProducts.description]),
@@ -84,7 +82,7 @@ async function loadCountMap(table: typeof iotDevices | typeof iotProductProperti
 }
 
 export async function listIotProducts(q: ListIotProductsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildProductWhere(q);
   return buildListResult({
     page,
@@ -217,20 +215,10 @@ export function mapIotDevice(
   };
 }
 
-export interface ListIotDevicesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  productId?: number;
-  groupId?: number;
-  nodeType?: 'direct' | 'gateway' | 'sub';
-  gatewayId?: number;
-  startTime?: string;
-  endTime?: string;
-}
+export type ListIotDevicesFilter = Omit<QueryOutputOf<typeof iotDeviceContract.list>, 'page' | 'pageSize'>;
+export type ListIotDevicesQuery = QueryOutputOf<typeof iotDeviceContract.list>;
 
-function buildDeviceWhere(q: ListIotDevicesQuery & { id?: number }): SQL | undefined {
+function buildDeviceWhere(q: ListIotDevicesFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotDevices.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotDevices.sn, iotDevices.name]),
@@ -248,7 +236,7 @@ function buildDeviceWhere(q: ListIotDevicesQuery & { id?: number }): SQL | undef
 }
 
 /** 导出中心复用：与列表同一访问边界与筛选语义 */
-export function buildIotDeviceExportWhere(q: ListIotDevicesQuery): SQL | undefined {
+export function buildIotDeviceExportWhere(q: ListIotDevicesFilter): SQL | undefined {
   return buildDeviceWhere(q);
 }
 
@@ -274,7 +262,7 @@ async function loadGroupMap(deviceIds: number[]): Promise<Map<number, { ids: num
 }
 
 export async function listIotDevices(q: ListIotDevicesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildDeviceWhere(q);
   const gatewayAlias = aliasedTable(iotDevices, 'gateway_device');
   return buildListResult({

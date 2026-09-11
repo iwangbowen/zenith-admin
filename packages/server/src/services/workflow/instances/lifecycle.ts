@@ -62,10 +62,11 @@ export async function createInstance(data: { definitionId: number; title: string
   const skipScopeCheck = !!callerOverride;
   // 租户隔离：定义查询强制限定当前身份可见租户（多租户关闭时无过滤，行为不变）。
   // callerOverride（定时发起/自动化/子流程）同样生效——其 tenantId 来自所属租户配置行。
-  const defConds = [eq(workflowDefinitions.id, data.definitionId), eq(workflowDefinitions.status, 'published')];
-  const defTenantCond = tenantCondition(workflowDefinitions, user);
-  if (defTenantCond) defConds.push(defTenantCond);
-  const [def] = await db.select().from(workflowDefinitions).where(and(...defConds)).limit(1);
+  const [def] = await db.select().from(workflowDefinitions).where(buildWhere(
+    eq(workflowDefinitions.id, data.definitionId),
+    eq(workflowDefinitions.status, 'published'),
+    tenantCondition(workflowDefinitions, user),
+  )).limit(1);
   requireRow(def, '流程定义不存在或未发布');
   const normalizedBizType = data.bizType?.trim() || null;
   const normalizedBizId = data.bizId?.trim() || null;

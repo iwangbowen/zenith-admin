@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WORKFLOW_TRIGGER_EXECUTION_STATUSES, WORKFLOW_TRIGGER_TYPES } from '../constants';
 import { workflowOutboundTraceFields } from './_common';
@@ -29,7 +29,7 @@ export type WorkflowTriggerExecution = z.infer<typeof workflowTriggerExecutionSc
 export const workflowTriggerExecutionListQuery = paginationQuery.extend({
   instanceId: z.coerce.number().int().optional(),
   nodeKey: z.string().optional(),
-  status: z.enum(WORKFLOW_TRIGGER_EXECUTION_STATUSES).optional(),
+  status: queryEnum(WORKFLOW_TRIGGER_EXECUTION_STATUSES),
 });
 
 export const workflowTriggerExecutionContract = defineContract('/api/workflows/trigger-executions', {

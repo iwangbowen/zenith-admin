@@ -1,4 +1,5 @@
-import { and, desc, eq, inArray, lte, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, lte } from 'drizzle-orm';
+import { buildWhere } from '../../lib/where-helpers';
 import { summarizeWorkflowHealth, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import { workflowJobExecutions, workflowJobs, workflowInstances, workflowTasks, workflowTokens } from '../../db/schema';
@@ -46,13 +47,12 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
   const now = new Date();
   const cutoff = new Date(now.getTime() - Math.max(1, thresholdMinutes) * 60_000);
   const user = currentUser();
-  const taskTenant = tenantCondition(workflowInstances, user);
-  const taskConditions = [
+  const taskWhere = buildWhere(
     eq(workflowInstances.status, 'running' as const),
     lte(workflowTasks.createdAt, cutoff),
     inArray(workflowTasks.status, ['pending', 'waiting']),
-  ];
-  if (taskTenant) taskConditions.push(taskTenant);
+    tenantCondition(workflowInstances, user),
+  );
 
   const taskRows = await db.select({
     task: workflowTasks,
@@ -60,7 +60,7 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
   })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(and(...taskConditions))
+    .where(taskWhere)
     .orderBy(desc(workflowTasks.id))
     .limit(300);
 
@@ -220,15 +220,13 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
     }
   }
 
-  const outboxTenant = tenantCondition(workflowJobs, user);
-  const outboxConditions: SQL[] = [
-    eq(workflowJobs.jobType, 'event_dispatch'),
-    inArray(workflowJobs.status, ['pending', 'failed', 'dead']),
-    lte(workflowJobs.createdAt, cutoff),
-  ];
-  if (outboxTenant) outboxConditions.push(outboxTenant);
   const outboxRows = await db.select().from(workflowJobs)
-    .where(and(...outboxConditions))
+    .where(buildWhere(
+      eq(workflowJobs.jobType, 'event_dispatch'),
+      inArray(workflowJobs.status, ['pending', 'failed', 'dead']),
+      lte(workflowJobs.createdAt, cutoff),
+      tenantCondition(workflowJobs, user),
+    ))
     .orderBy(desc(workflowJobs.id))
     .limit(100);
   for (const row of outboxRows) {
@@ -251,15 +249,13 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
 
   // 卡死实例：running 且超阈值未更新，既无待办/等待任务也无在途作业
   // （典型场景：并行汇聚残留孤儿 parked token、推进链路中断），需人工用监控页恢复动作处理。
-  const stalledTenant = tenantCondition(workflowInstances, user);
-  const stalledConditions: SQL[] = [
-    eq(workflowInstances.status, 'running' as const),
-    lte(workflowInstances.updatedAt, cutoff),
-  ];
-  if (stalledTenant) stalledConditions.push(stalledTenant);
   const runningRows = await db.select({ id: workflowInstances.id, title: workflowInstances.title, updatedAt: workflowInstances.updatedAt })
     .from(workflowInstances)
-    .where(and(...stalledConditions))
+    .where(buildWhere(
+      eq(workflowInstances.status, 'running' as const),
+      lte(workflowInstances.updatedAt, cutoff),
+      tenantCondition(workflowInstances, user),
+    ))
     .orderBy(desc(workflowInstances.id))
     .limit(200);
   if (runningRows.length > 0) {

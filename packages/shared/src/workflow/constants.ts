@@ -5,6 +5,8 @@ export const WORKFLOW_DEFINITION_STATUSES = ['draft', 'published', 'disabled'] a
 
 export const WORKFLOW_INSTANCE_STATUSES = ['draft', 'running', 'suspended', 'returned', 'approved', 'rejected', 'withdrawn', 'cancelled'] as const;
 
+export const WORKFLOW_INSTANCE_STATUS_FILTERS = WORKFLOW_INSTANCE_STATUSES;
+
 /** 活跃（非终态）实例状态：业务键（bizType+bizId）唯一约束仅作用于这些状态，终态后允许同一业务记录重新发起 */
 export const WORKFLOW_ACTIVE_INSTANCE_STATUSES = ['draft', 'running', 'suspended', 'returned'] as const;
 
@@ -24,6 +26,8 @@ export const WORKFLOW_CONDITION_OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lt
 
 /** 流程级自动化规则触发时机 */
 export const WORKFLOW_AUTOMATION_TRIGGERS = ['approved', 'rejected', 'withdrawn', 'created'] as const;
+
+export const WORKFLOW_AUTOMATION_RUN_STATUSES = ['success', 'failed', 'skipped'] as const;
 
 /** 流程事件总线事件类型（事件订阅 / 投递记录 / 引擎事件监听共用） */
 export const WORKFLOW_EVENT_TYPES = [
@@ -91,7 +95,13 @@ export const WORKFLOW_CONNECTOR_INVOCATION_SOURCES = ['test', 'trigger', 'extern
 /** 待办 SLA 紧急度：none=未配置超时, safe=充裕, warning=临近, overdue=已超时 */
 export const WORKFLOW_SLA_LEVELS = ['none', 'safe', 'warning', 'overdue'] as const;
 
+export const WORKFLOW_INSTANCE_PRINT_SOURCES = ['auto', 'archive', 'live'] as const;
+
 export const WORKFLOW_TASK_CONSULT_STATUSES = ['pending', 'replied', 'revoked'] as const;
+
+export const WORKFLOW_DELEGATION_SCOPES = ['mine', 'all'] as const;
+
+export const WORKFLOW_COMPENSATION_STATUSES = ['pending', 'resolved', 'terminated'] as const;
 
 export const WORKFLOW_COMPENSATION_ACTION_STATUSES = ['none', 'pending', 'running', 'succeeded', 'failed'] as const;
 

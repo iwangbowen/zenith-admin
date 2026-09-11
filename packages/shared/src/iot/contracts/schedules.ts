@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery, entityStatusQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { IOT_SCHEDULE_ACTIONS, IOT_SCHEDULE_TYPES } from '../constants';
 import { createIotScheduleSchema, updateIotScheduleSchema } from '../validation';
@@ -56,7 +56,7 @@ export type IotScheduleRun = z.infer<typeof iotScheduleRunSchema>;
 export const iotScheduleListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   productId: z.coerce.number().int().positive().optional(),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const iotScheduleRunListQuery = paginationQuery.extend({

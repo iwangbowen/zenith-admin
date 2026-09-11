@@ -1,3 +1,5 @@
+import { workflowInstanceContract, workflowTaskContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 // ─── 实例/待办/已办/抄送列表查询与详情（拆分自 workflow-instances.service.ts）───
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
 import { count, countDistinct, eq, and, desc, or, inArray, lte, sql, type SQL } from 'drizzle-orm';
@@ -81,9 +83,9 @@ async function loadActiveNodeKeysByInstance(instanceIds: number[]): Promise<Map<
   return map;
 }
 
-export async function listMyInstances(query: { page?: number; pageSize?: number; status?: string; priority?: string; definitionId?: number }) {
+export async function listMyInstances(query: QueryOutputOf<typeof workflowInstanceContract.list>) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, status, priority, definitionId } = query;
+  const { page, pageSize, status, priority, definitionId } = query;
   const tc = tenantCondition(workflowInstances, user);
   const conditions: (SQL | undefined)[] = [eq(workflowInstances.initiatorId, user.userId), tc];
   if (status) conditions.push(eq(workflowInstances.status, status as InstanceStatus));
@@ -146,9 +148,9 @@ function resolveInstanceSummary(
   return buildWorkflowSummaryItems(fields, (inst.formData ?? {}) as Record<string, unknown>, summaryKeys);
 }
 
-export async function listPendingMine(query: { page?: number; pageSize?: number; keyword?: string; definitionId?: number }) {
+export async function listPendingMine(query: QueryOutputOf<typeof workflowInstanceContract.pendingMine>) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, keyword, definitionId } = query;
+  const { page, pageSize, keyword, definitionId } = query;
   const tc = tenantCondition(workflowInstances, user);
   const baseConditions: (SQL | undefined)[] = [
     eq(workflowTasks.assigneeId, user.userId),
@@ -201,9 +203,9 @@ export async function listPendingMine(query: { page?: number; pageSize?: number;
 }
 
 /** G1 抄送我的：nodeType=ccNode 且 assigneeId=当前用户的任务对应的实例 */
-export async function listMyCc(query: { page?: number; pageSize?: number; keyword?: string }) {
+export async function listMyCc(query: QueryOutputOf<typeof workflowInstanceContract.ccMine>) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, keyword } = query;
+  const { page, pageSize, keyword } = query;
   const tc = tenantCondition(workflowInstances, user);
   const conditions: (SQL | undefined)[] = [
     eq(workflowTasks.assigneeId, user.userId),
@@ -268,9 +270,9 @@ export async function countPendingMine(): Promise<number> {
 }
 
 /** T2-2 关联审批单候选：当前用户可见（本人发起或参与）的非草稿实例，供 relation 字段检索 */
-export async function listRelationOptions(query: { definitionId?: number; keyword?: string; limit?: number }) {
+export async function listRelationOptions(query: QueryOutputOf<typeof workflowInstanceContract.relationOptions>) {
   const user = currentUser();
-  const { definitionId, keyword, limit = 20 } = query;
+  const { definitionId, keyword, limit } = query;
   const tc = tenantCondition(workflowInstances, user);
   const participantSub = db.select({ id: workflowTasks.instanceId }).from(workflowTasks)
     .where(eq(workflowTasks.assigneeId, user.userId));
@@ -286,7 +288,7 @@ export async function listRelationOptions(query: { definitionId?: number; keywor
     .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
     .where(buildWhere(...conds))
     .orderBy(desc(workflowInstances.id))
-    .limit(Math.min(limit, 50));
+    .limit(limit ?? 20);
   return rows.map((r) => ({
     instanceId: r.inst.id,
     title: r.inst.title,
@@ -298,9 +300,9 @@ export async function listRelationOptions(query: { definitionId?: number; keywor
 }
 
 /** G2 已办：当前用户处理过（approved/rejected）的任务对应的实例 */
-export async function listMyHandled(query: { page?: number; pageSize?: number; keyword?: string }) {
+export async function listMyHandled(query: QueryOutputOf<typeof workflowInstanceContract.handledMine>) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, keyword } = query;
+  const { page, pageSize, keyword } = query;
   const tc = tenantCondition(workflowInstances, user);
   const conditions: (SQL | undefined)[] = [
     eq(workflowTasks.assigneeId, user.userId),
@@ -326,9 +328,9 @@ export async function listMyHandled(query: { page?: number; pageSize?: number; k
   };
 }
 
-export async function listAllInstances(query: { page?: number; pageSize?: number; status?: string; keyword?: string; categoryId?: number; definitionId?: number; initiatorKeyword?: string; priority?: string }) {
+export async function listAllInstances(query: QueryOutputOf<typeof workflowInstanceContract.monitor>) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, status, keyword, categoryId, definitionId, initiatorKeyword, priority } = query;
+  const { page, pageSize, status, keyword, categoryId, definitionId, initiatorKeyword, priority } = query;
   const conditions: (SQL | undefined)[] = [];
   const tc = tenantCondition(workflowInstances, user);
   conditions.push(tc);
@@ -542,23 +544,7 @@ export async function getInstanceDetail(id: number) {
 
 // ─── 任务级全局监控（运维视角，Tab「任务监控」）──────────────────────────────
 
-type TaskMonitorStatus = 'pending' | 'waiting' | 'approved' | 'rejected' | 'skipped';
-type TaskMonitorNodeType = 'approve' | 'handler' | 'ccNode' | 'delay' | 'trigger' | 'subProcess';
-
-export interface ListAllTasksQuery {
-  page?: number;
-  pageSize?: number;
-  status?: TaskMonitorStatus;
-  nodeType?: TaskMonitorNodeType;
-  keyword?: string;
-  assigneeKeyword?: string;
-  definitionId?: number;
-  instanceId?: number;
-  startTime?: string;
-  endTime?: string;
-  /** 仅看停留超过 N 分钟的未终态任务（pending/waiting） */
-  stuckMinutes?: number;
-}
+export type ListAllTasksQuery = QueryOutputOf<typeof workflowTaskContract.taskMonitor>;
 
 /** 未终态任务优先展示（pending > waiting > 其余），组内按任务创建时间倒序 */
 const taskMonitorOrder = sql`CASE ${workflowTasks.status} WHEN 'pending' THEN 0 WHEN 'waiting' THEN 1 ELSE 2 END`;
@@ -570,7 +556,7 @@ const taskMonitorOrder = sql`CASE ${workflowTasks.status} WHEN 'pending' THEN 0 
  */
 export async function listAllTasks(query: ListAllTasksQuery) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, status, nodeType, keyword, assigneeKeyword, definitionId, instanceId, startTime, endTime, stuckMinutes } = query;
+  const { page, pageSize, status, nodeType, keyword, assigneeKeyword, definitionId, instanceId, startTime, endTime, stuckMinutes } = query;
   const assignee = alias(users, 'wf_task_assignee');
 
   const baseConds: (SQL | undefined)[] = [tenantCondition(workflowInstances, user)];
@@ -629,7 +615,7 @@ export async function listAllTasks(query: ListAllTasksQuery) {
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
     .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-    .where(and(...baseConds))
+    .where(buildWhere(...baseConds))
     .groupBy(workflowTasks.status);
 
   const [statRows, [{ total }], rows] = await Promise.all([

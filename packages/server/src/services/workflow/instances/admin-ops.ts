@@ -357,11 +357,8 @@ export async function previewHandover(fromUserId: number): Promise<WorkflowHando
     .where(and(eq(workflowDelegations.principalId, fromUserId), eq(workflowDelegations.enabled, true)));
 
   // 检测报告：已发布定义中把该用户写死为「指定成员」审批人的节点（仅提示，不自动改定义）
-  const defTc = tenantCondition(workflowDefinitions, user);
-  const defConds = [eq(workflowDefinitions.status, 'published')];
-  if (defTc) defConds.push(defTc);
   const defs = await db.select({ id: workflowDefinitions.id, name: workflowDefinitions.name, flowData: workflowDefinitions.flowData })
-    .from(workflowDefinitions).where(and(...defConds));
+    .from(workflowDefinitions).where(buildWhere(eq(workflowDefinitions.status, 'published'), tenantCondition(workflowDefinitions, user)));
   const affectedDefinitions: WorkflowHandoverPreview['affectedDefinitions'] = [];
   for (const def of defs) {
     const flow = def.flowData as WorkflowFlowData | null;

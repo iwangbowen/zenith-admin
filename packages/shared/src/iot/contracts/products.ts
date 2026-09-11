@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery, entityStatusQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { IOT_ACCESS_MODES, IOT_EVENT_LEVELS, IOT_PROPERTY_TYPES, IOT_VALIDATION_MODES } from '../constants';
 import {
@@ -92,7 +92,7 @@ export type IotThingModel = z.infer<typeof iotThingModelSchema>;
 
 export const iotProductListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称 / 描述模糊匹配' }),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
 });
 
 export const iotPropertyParams = idParam.extend({

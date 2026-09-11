@@ -1,3 +1,5 @@
+import { iotScheduleContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 设备计划任务：时间驱动的自动化（与场景联动的事件驱动互补）。
  *
@@ -87,15 +89,10 @@ function computeNextRunAt(
   }
 }
 
-export interface ListIotSchedulesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  productId?: number;
-  status?: 'enabled' | 'disabled';
-}
+export type ListIotSchedulesFilter = Omit<QueryOutputOf<typeof iotScheduleContract.list>, 'page' | 'pageSize'>;
+export type ListIotSchedulesQuery = QueryOutputOf<typeof iotScheduleContract.list>;
 
-function buildScheduleWhere(q: ListIotSchedulesQuery & { id?: number }): SQL | undefined {
+function buildScheduleWhere(q: ListIotSchedulesFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotSchedules.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotSchedules.name]),
@@ -106,7 +103,7 @@ function buildScheduleWhere(q: ListIotSchedulesQuery & { id?: number }): SQL | u
 }
 
 export async function listIotSchedules(q: ListIotSchedulesQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildScheduleWhere(q);
   return buildListResult({
     page,
@@ -228,14 +225,11 @@ export async function deleteIotSchedule(id: number): Promise<void> {
   await db.delete(iotSchedules).where(buildScheduleWhere({ id }));
 }
 
-export interface ListScheduleRunsQuery {
-  page?: number;
-  pageSize?: number;
-  scheduleId?: number;
-}
+export type ListScheduleRunsFilter = Omit<QueryOutputOf<typeof iotScheduleContract.runs>, 'page' | 'pageSize'>;
+export type ListScheduleRunsQuery = QueryOutputOf<typeof iotScheduleContract.runs>;
 
 export async function listIotScheduleRuns(q: ListScheduleRunsQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildWhere(
     q.scheduleId ? eq(iotScheduleRuns.scheduleId, q.scheduleId) : undefined,
   );

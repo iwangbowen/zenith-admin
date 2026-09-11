@@ -73,10 +73,7 @@ const overviewRoute = defineContractRoute(analyticsContract.overview, {
 
 const trendsRoute = defineContractRoute(analyticsContract.trends, {
   middleware: view,
-  handler: async (c) => {
-    const q = c.req.valid('query');
-    return c.json(okBody(await getTrends({ ...q, compare: q.compare === 'true' })), 200);
-  },
+  handler: async (c) => c.json(okBody(await getTrends(c.req.valid('query'))), 200),
 });
 
 const realtimeRoute = defineContractRoute(analyticsContract.realtime, {

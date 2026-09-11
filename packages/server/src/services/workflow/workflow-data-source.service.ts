@@ -1,3 +1,5 @@
+import { workflowDataSourceContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 表单远程数据源 Service
  * CRUD + 代理拉取选项（仅登记 URL 可被调用；保存时与请求时都经 workflow-outbound 做 SSRF 防护）。
@@ -90,11 +92,11 @@ export async function getDataSource(id: number): Promise<WorkflowDataSource> {
   return mapDataSource(await ensureDataSourceExists(id));
 }
 
-export async function listDataSources(query: { page?: number; pageSize?: number; keyword?: string; status?: string }) {
-  const { page = 1, pageSize = 20, keyword, status } = query;
+export async function listDataSources(query: QueryOutputOf<typeof workflowDataSourceContract.list>) {
+  const { page, pageSize, keyword, status } = query;
   const conds = [];
   conds.push(keywordCondition(keyword, [workflowDataSources.name, workflowDataSources.url], 'ilike'));
-  if (status === 'enabled' || status === 'disabled') conds.push(eq(workflowDataSources.status, status));
+  if (status) conds.push(eq(workflowDataSources.status, status));
   const where = buildWhere(...conds);
   return buildListResult({
     page,

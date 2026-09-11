@@ -1,3 +1,4 @@
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 审批单打印：实例 → PDF。
  *
@@ -21,7 +22,7 @@ import {
   workflowPrintPageConfig,
   workflowPrintRenderParams,
 } from '@zenith/shared/workflow';
-import type { WorkflowFormField, WorkflowInstance, WorkflowInstancePrintQueryInput, WorkflowPrintLookups, WorkflowPrintSettings } from '@zenith/shared/workflow';
+import type { WorkflowFormField, WorkflowInstance, WorkflowPrintLookups, WorkflowPrintSettings } from '@zenith/shared/workflow';
 import { renderPrintContent } from '@zenith/shared/report';
 import type { ReportPrintContent, ReportPrintPageConfig, ReportPrintRenderResult } from '@zenith/shared/report';
 import { applyMask } from '@zenith/shared/core';
@@ -315,7 +316,7 @@ async function readArchivePdf(archive: NonNullable<WorkflowInstance['archive']>)
  * 出 PDF。source=auto 时优先归档原件（临时指定模板除外），否则实时渲染。
  * 归档件未脱敏：查看者存在脱敏字段时回退实时（打码）渲染，显式要求归档件则拒绝。
  */
-export async function renderWorkflowInstancePdf(id: number, query: WorkflowInstancePrintQueryInput = {}): Promise<WorkflowInstancePdf> {
+export async function renderWorkflowInstancePdf(id: number, query: QueryOutputOf<typeof workflowInstanceContract.print> = {}): Promise<WorkflowInstancePdf> {
   const source = query.source ?? 'auto';
   const instance = await getInstanceDetail(id);
   const filename = instanceFilename(instance);

@@ -1,7 +1,5 @@
 import * as z from 'zod';
-import {
-  auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery,
-} from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery, entityStatusQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   IOT_COMMAND_STATUSES, IOT_DEVICE_EVENT_KINDS, IOT_EVENT_LEVELS, IOT_LOG_LEVELS, IOT_NODE_TYPES,
@@ -153,10 +151,10 @@ export type IotDeviceLog = z.infer<typeof iotDeviceLogSchema>;
 
 export const iotDeviceListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按 SN / 设备名模糊匹配' }),
-  status: entityStatusSchema.optional(),
+  status: entityStatusQuery,
   productId: z.coerce.number().int().positive().optional(),
   groupId: z.coerce.number().int().positive().optional(),
-  nodeType: z.enum(IOT_NODE_TYPES).optional(),
+  nodeType: queryEnum(IOT_NODE_TYPES),
   gatewayId: z.coerce.number().int().positive().optional(),
   startTime: dateRangeBound('创建时间起'),
   endTime: dateRangeBound('创建时间止'),
@@ -173,12 +171,12 @@ export const iotTelemetryAggQuery = z.object({
 });
 
 export const iotDeviceEventListQuery = paginationQuery.extend({
-  kind: z.enum(IOT_DEVICE_EVENT_KINDS).optional(),
-  level: z.enum(IOT_EVENT_LEVELS).optional(),
+  kind: queryEnum(IOT_DEVICE_EVENT_KINDS),
+  level: queryEnum(IOT_EVENT_LEVELS),
 });
 
 export const iotDeviceLogListQuery = paginationQuery.extend({
-  level: z.enum(IOT_LOG_LEVELS).optional(),
+  level: queryEnum(IOT_LOG_LEVELS),
   keyword: z.string().optional().meta({ description: '按日志内容模糊匹配' }),
   startTime: dateRangeBound('上报时间起'),
   endTime: dateRangeBound('上报时间止'),

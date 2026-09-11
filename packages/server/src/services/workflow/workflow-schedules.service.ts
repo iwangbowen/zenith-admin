@@ -1,3 +1,5 @@
+import { workflowScheduleContract } from '@zenith/shared/workflow';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 流程定时发起（T2-1）
  *
@@ -77,9 +79,9 @@ async function ensureScheduleDefinitionLaunchable(definitionId: number): Promise
   }
 }
 
-export async function listSchedules(query: { page?: number; pageSize?: number; definitionId?: number; status?: string }) {
+export async function listSchedules(query: QueryOutputOf<typeof workflowScheduleContract.list>) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, definitionId, status } = query;
+  const { page, pageSize, definitionId, status } = query;
   const tc = tenantCondition(workflowSchedules, user);
   const conds: (SQL | undefined)[] = [tc];
   if (definitionId) conds.push(eq(workflowSchedules.definitionId, definitionId));

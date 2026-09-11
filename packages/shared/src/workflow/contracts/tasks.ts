@@ -1,7 +1,7 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { WORKFLOW_TASK_MONITOR_NODE_TYPES, WORKFLOW_TASK_STATUSES } from '../constants';
+import { WORKFLOW_TASK_MONITOR_NODE_TYPES, WORKFLOW_TASK_STATUSES, WORKFLOW_TASK_CONSULT_STATUSES } from '../constants';
 import {
   addSignWorkflowTaskSchema,
   approveWorkflowTaskSchema,
@@ -43,8 +43,6 @@ export const workflowSelectableNextApproversQuery = z.object({
   keyword: z.string().trim().max(50).optional().meta({ description: '按姓名 / 用户名模糊匹配' }),
   limit: z.coerce.number().int().min(1).max(200).default(50).meta({ description: '每组候选上限' }),
 });
-
-export type WorkflowSelectableNextApproversQueryInput = z.infer<typeof workflowSelectableNextApproversQuery>;
 
 export const workflowBatchActionResultSchema = z.object({
   taskId: z.int(),
@@ -136,8 +134,8 @@ export const workflowTaskIdParam = z.object({
 });
 
 export const workflowTaskMonitorQuery = paginationQuery.extend({
-  status: z.enum(WORKFLOW_TASK_STATUSES).optional(),
-  nodeType: z.enum(WORKFLOW_TASK_MONITOR_NODE_TYPES).optional(),
+  status: queryEnum(WORKFLOW_TASK_STATUSES),
+  nodeType: queryEnum(WORKFLOW_TASK_MONITOR_NODE_TYPES),
   keyword: z.string().optional(),
   assigneeKeyword: z.string().optional(),
   definitionId: z.coerce.number().int().optional(),
@@ -148,7 +146,7 @@ export const workflowTaskMonitorQuery = paginationQuery.extend({
 });
 
 export const workflowMyConsultsQuery = paginationQuery.extend({
-  status: z.string().optional(),
+  status: queryEnum(WORKFLOW_TASK_CONSULT_STATUSES),
 });
 
 export const workflowHandoverPreviewQuery = z.object({

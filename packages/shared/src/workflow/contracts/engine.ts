@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { batchIdsBody, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { systemSchedulerTaskBaseSchema } from '../../platform/contracts';
 import {
@@ -591,8 +591,8 @@ export const workflowEngineActionParam = z.object({
 });
 
 export const workflowJobListQuery = paginationQuery.extend({
-  jobType: z.enum(WORKFLOW_JOB_TYPES).optional(),
-  status: z.enum(WORKFLOW_JOB_STATUSES).optional(),
+  jobType: queryEnum(WORKFLOW_JOB_TYPES),
+  status: queryEnum(WORKFLOW_JOB_STATUSES),
   instanceId: z.coerce.number().int().positive().optional(),
   keyword: z.string().optional().meta({ description: '按幂等键 / traceId / 节点 key 模糊匹配' }),
 });
@@ -602,7 +602,7 @@ export const workflowJobTraceParam = z.object({
 });
 
 export const workflowJobFailureClusterQuery = z.object({
-  dimension: z.enum(WORKFLOW_JOB_CLUSTER_DIMENSIONS).optional().meta({ description: '聚类维度，默认 reason' }),
+  dimension: queryEnum(WORKFLOW_JOB_CLUSTER_DIMENSIONS, '聚类维度，默认 reason'),
 });
 
 export const workflowEngineContract = defineContract('/api/workflows/engine', {

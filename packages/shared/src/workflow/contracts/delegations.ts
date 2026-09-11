@@ -1,5 +1,6 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { WORKFLOW_DELEGATION_SCOPES } from '../constants';
+import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { createWorkflowDelegationSchema, updateWorkflowDelegationSchema } from '../validation';
 
@@ -30,7 +31,7 @@ export type WorkflowDelegation = z.infer<typeof workflowDelegationSchema>;
 
 export const workflowDelegationListQuery = paginationQuery.extend({
   principalId: z.coerce.number().int().optional(),
-  scope: z.enum(['mine', 'all']).optional().meta({ description: 'mine=我作为委托人 / 代理人的规则；all=全部（需管理权限）' }),
+  scope: queryEnum(WORKFLOW_DELEGATION_SCOPES, 'mine=我作为委托人 / 代理人的规则；all=全部（需管理权限）'),
 });
 
 export const workflowDelegationContract = defineContract('/api/workflows/delegations', {

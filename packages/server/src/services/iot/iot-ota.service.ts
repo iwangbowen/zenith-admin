@@ -1,3 +1,5 @@
+import { iotOtaTaskContract } from '@zenith/shared/iot';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT OTA 升级：任务创建 / 设备状态机 / 协议下发 / 版本确认 / 超时收敛。
  *
@@ -75,15 +77,10 @@ export function mapIotOtaTaskDevice(
 }
 
 // ─── 任务查询 ─────────────────────────────────────────────────────────────────
-export interface ListIotOtaTasksQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  productId?: number;
-  status?: 'running' | 'paused' | 'completed' | 'cancelled';
-}
+export type ListIotOtaTasksFilter = Omit<QueryOutputOf<typeof iotOtaTaskContract.list>, 'page' | 'pageSize'>;
+export type ListIotOtaTasksQuery = QueryOutputOf<typeof iotOtaTaskContract.list>;
 
-function buildTaskWhere(q: ListIotOtaTasksQuery & { id?: number }): SQL | undefined {
+function buildTaskWhere(q: ListIotOtaTasksFilter & { id?: number }): SQL | undefined {
   return buildWhere(
     q.id !== undefined ? eq(iotOtaTasks.id, q.id) : undefined,
     keywordCondition(q.keyword, [iotOtaTasks.title, iotOtaTasks.firmwareVersion]),
@@ -94,7 +91,7 @@ function buildTaskWhere(q: ListIotOtaTasksQuery & { id?: number }): SQL | undefi
 }
 
 export async function listIotOtaTasks(q: ListIotOtaTasksQuery) {
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildTaskWhere(q);
   return buildListResult({
     page,
@@ -126,15 +123,12 @@ export async function getIotOtaTask(id: number) {
   return mapIotOtaTask(row, { productName: product?.name ?? null });
 }
 
-export interface ListOtaTaskDevicesQuery {
-  page?: number;
-  pageSize?: number;
-  status?: IotOtaTaskDeviceRow['status'];
-}
+export type ListOtaTaskDevicesFilter = Omit<QueryOutputOf<typeof iotOtaTaskContract.devices>, 'page' | 'pageSize'>;
+export type ListOtaTaskDevicesQuery = QueryOutputOf<typeof iotOtaTaskContract.devices>;
 
 export async function listIotOtaTaskDevices(taskId: number, q: ListOtaTaskDevicesQuery) {
   await ensureIotOtaTaskExists(taskId);
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = buildWhere(
     eq(iotOtaTaskDevices.taskId, taskId),
     q.status ? eq(iotOtaTaskDevices.status, q.status) : undefined,

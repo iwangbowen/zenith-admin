@@ -1,7 +1,5 @@
 import * as z from 'zod';
-import {
-  auditFieldsSchema, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery,
-} from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery, entityStatusQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { IOT_ALARM_LEVELS, IOT_ALARM_RULE_TYPES, IOT_ALARM_STATUSES, IOT_COMPARE_OPS } from '../constants';
 import {
@@ -87,9 +85,9 @@ export type IotMaintenanceWindow = z.infer<typeof iotMaintenanceWindowSchema>;
 
 export const iotAlarmListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按规则名 / 告警内容 / 设备名 / SN 模糊匹配' }),
-  status: z.enum(IOT_ALARM_STATUSES).optional(),
-  level: z.enum(IOT_ALARM_LEVELS).optional(),
-  ruleType: z.enum(IOT_ALARM_RULE_TYPES).optional(),
+  status: queryEnum(IOT_ALARM_STATUSES),
+  level: queryEnum(IOT_ALARM_LEVELS),
+  ruleType: queryEnum(IOT_ALARM_RULE_TYPES),
   deviceId: z.coerce.number().int().positive().optional(),
   startTime: dateRangeBound('触发时间起'),
   endTime: dateRangeBound('触发时间止'),
@@ -98,8 +96,8 @@ export const iotAlarmListQuery = paginationQuery.extend({
 export const iotAlarmRuleListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   productId: z.coerce.number().int().positive().optional(),
-  ruleType: z.enum(IOT_ALARM_RULE_TYPES).optional(),
-  status: entityStatusSchema.optional(),
+  ruleType: queryEnum(IOT_ALARM_RULE_TYPES),
+  status: entityStatusQuery,
 });
 
 export const iotMaintenanceWindowListQuery = paginationQuery.extend({
